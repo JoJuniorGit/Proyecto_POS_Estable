@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <!-- Desactivar búsqueda y recolección de metadatos de Git / SourceLink en desarrollo local -->
+    <PublishRepositoryUrl>false</PublishRepositoryUrl>
+    <EmbedUntrackedSources>false</EmbedUntrackedSources>
+
+    <!-- Desactivar verificación de desbordamiento aritmético en desarrollo local para velocidad -->
+    <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,293 @@
+<UserControl x:Class="Desktop.Client.Views.PendingOrdersView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=vm:PendingOrdersViewModel}">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- Expand row: visible only when this row is expanded -->
+        <DataTemplate x:Key="ExpandedRowTemplate">
+            <Border Background="{DynamicResource MaterialDesignCardBackground}"
+                    CornerRadius="0,0,6,6" Padding="20,12" Margin="2,0,2,0"
+                    BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="0,1,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="16"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Products list -->
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="📦 Productos del Pedido"
+                                   FontWeight="Bold" FontSize="12" Margin="0,0,0,6"
+                                   Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                        <ItemsControl ItemsSource="{Binding Items}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="55"/>
+                                            <ColumnDefinition Width="80"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding ProductName}"
+                                                   FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Quantity, StringFormat='x{0:N0}'}"
+                                                   FontSize="12" HorizontalAlignment="Right" Foreground="Gray"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding UnitPrice, StringFormat='${0:N2}'}"
+                                                   FontSize="12" HorizontalAlignment="Right" FontWeight="Medium"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- Divider -->
+                    <Rectangle Grid.Column="1" Width="1" Fill="{DynamicResource MaterialDesignDivider}" Margin="8,0"/>
+
+                    <!-- Payment history -->
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="🛡 Historial de Abonos"
+                                   FontWeight="Bold" FontSize="12" Margin="0,0,0,6"
+                                   Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                        <ItemsControl ItemsSource="{Binding Payments}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="75"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Date, StringFormat='{}{0:dd/MM HH:mm}'}"
+                                                   FontSize="11" Foreground="Gray"/>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding PaymentMethodName}"
+                                                   FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding AmountUSD, StringFormat='${0:N2}'}"
+                                                   FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Right"
+                                                   Foreground="#059669"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="(Sin abonos registrados)" FontSize="11" Foreground="Gray" FontStyle="Italic"
+                                   Visibility="{Binding Payments.Count, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!-- Badge style for status -->
+        <Style x:Key="StatusBadgeStyle" TargetType="Border">
+            <Setter Property="Background" Value="#FFF3CD"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="6,2"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ── Header ── -->
+        <Border Grid.Row="0" Padding="24,20,24,12"
+                Background="{DynamicResource MaterialDesignPaper}"
+                BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="ClipboardClock" Width="28" Height="28"
+                                                 VerticalAlignment="Center" Foreground="#F59E0B"/>
+                        <TextBlock Text="Cuentas Abiertas (Pedidos en Espera)"
+                                   Style="{DynamicResource MaterialDesignHeadline5TextBlock}"
+                                   FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Text="Gestión de abonos y liquidaciones de pedidos pendientes de pago"
+                               FontSize="12" Foreground="{DynamicResource MaterialDesignBodyLight}"
+                               Margin="38,2,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Command="{Binding RefreshCommand}"
+                            Style="{DynamicResource MaterialDesignOutlinedButton}" VerticalAlignment="Center"
+                            materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsLoading}"
+                            materialDesign:ButtonProgressAssist.IsIndeterminate="True"
+                            materialDesign:ButtonProgressAssist.Value="-1">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="Refresh" Width="16" Height="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Refrescar" Margin="6,0,0,0"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
+                            CommandParameter="{x:Static Dock.Right}"
+                            Style="{DynamicResource MaterialDesignIconButton}"
+                            ToolTip="Abrir Menú Principal"
+                            Margin="8,0,0,0" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="Menu" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+
+        <!-- ── Search bar + Rate + Success message ── -->
+        <Border Grid.Row="1" Padding="24,12" Background="{DynamicResource MaterialDesignBackground}">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             materialDesign:HintAssist.Hint="🔍  Buscar por Cliente, Cédula/RIF o ID..."
+                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                             Margin="0,0,16,0"/>
+                    <Border Grid.Column="1" Background="{DynamicResource MaterialDesignCardBackground}"
+                            CornerRadius="6" Padding="14,8" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="CurrencyUsd" Width="16" Height="16" VerticalAlignment="Center" Foreground="#059669"/>
+                            <TextBlock Margin="4,0,0,0" FontSize="13" VerticalAlignment="Center">
+                                <Run Text="Tasa BCV: "/>
+                                <Run Text="{Binding CurrentExchangeRate, StringFormat='{}{0:N2} Bs/$'}" FontWeight="Bold" Foreground="#059669"/>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Success message banner -->
+                <Border Visibility="{Binding SuccessMessage, Converter={StaticResource BoolToVis}}"
+                        Background="#D1FAE5" CornerRadius="6" Padding="14,8" Margin="0,8,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="CheckCircleOutline" Width="18" Height="18" VerticalAlignment="Center" Foreground="#059669"/>
+                        <TextBlock Text="{Binding SuccessMessage}" Foreground="#065F46"
+                                   FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!-- ── DataGrid ── -->
+        <DataGrid Grid.Row="2"
+                  ItemsSource="{Binding FilteredPendingSales}"
+                  AutoGenerateColumns="False" CanUserAddRows="False"
+                  IsReadOnly="True" SelectionMode="Single"
+                  RowDetailsVisibilityMode="VisibleWhenSelected"
+                  GridLinesVisibility="Horizontal"
+                  HeadersVisibility="Column"
+                  Margin="16,0,16,16"
+                  VerticalScrollBarVisibility="Auto"
+                  materialDesign:DataGridAssist.CellPadding="12,8"
+                  materialDesign:DataGridAssist.ColumnHeaderPadding="12,8">
+
+            <DataGrid.RowDetailsTemplate>
+                <DataTemplate>
+                    <ContentControl Content="{Binding}"
+                                    ContentTemplate="{StaticResource ExpandedRowTemplate}"/>
+                </DataTemplate>
+            </DataGrid.RowDetailsTemplate>
+
+            <DataGrid.Columns>
+                <!-- ID + Date -->
+                <DataGridTemplateColumn Header="ID / Fecha" Width="115" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <TextBlock Text="{Binding Id, StringFormat='Pedido #{0}'}"
+                                           FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding Date, StringFormat='{}{0:dd/MM/yy HH:mm}'}"
+                                           FontSize="11" Foreground="Gray"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Customer -->
+                <DataGridTemplateColumn Header="Cliente" Width="180" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <TextBlock Text="{Binding CustomerName}" FontWeight="Medium" FontSize="13"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding CustomerCedula}" FontSize="11" Foreground="Gray"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Total Factura: Bs.S principal + USD secundario -->
+                <DataGridTemplateColumn Header="Total Factura" Width="120" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding TotalBsS, StringFormat='{}{0:N2} Bs.S'}"
+                                           FontWeight="Bold" FontSize="14"
+                                           HorizontalAlignment="Right"/>
+                                <TextBlock Text="{Binding TotalUSD, StringFormat='${0:N2}'}"
+                                           FontSize="11" Foreground="Gray" HorizontalAlignment="Right"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Status badge -->
+                <DataGridTemplateColumn Header="Estado" Width="100" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource StatusBadgeStyle}" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                <TextBlock Text="En Espera" FontSize="11" FontWeight="SemiBold" Foreground="#B45309"/>
+                            </Border>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Actions -->
+                <DataGridTemplateColumn Header="Acciones" Width="*" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="Liquidar / Abonar"
+                                        Command="{Binding DataContext.LiquidarAbonarCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{DynamicResource MaterialDesignRaisedButton}"
+                                        Height="30" Padding="12,0" FontSize="12" Margin="0,0,8,0"
+                                        Background="#1A56DB" Foreground="White"/>
+                                <Button Content="Editar"
+                                        Command="{Binding DataContext.EditarCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                        Height="30" Padding="12,0" FontSize="12"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Loading overlay -->
+        <Grid Grid.Row="2" Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
+              Background="#80000000">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}" IsIndeterminate="True" Width="48" Height="48"/>
+                <TextBlock Text="Cargando..." Foreground="White" Margin="0,12,0,0" FontSize="14" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

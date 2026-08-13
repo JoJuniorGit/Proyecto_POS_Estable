@@ -1,0 +1,16 @@
+---
+Description: Rules for data access, migrations, and Entity Framework Core.
+
+globs: ["**/*Repository.cs", "**/*DbContext.cs", "**/*Service.cs"]
+---
+# ENTITY FRAMEWORK CORE & POSTGRESQL SKILL
+
+- Read-Only Queries: ALWAYS add `.AsNoTracking()` when returning lists of invoices, histories, or catalogs that will not be modified in the same transaction.
+- Cycle Prevention: Never return EF Core entities that have bidirectional navigation properties to the API or UI. ALWAYS map them to a DTO object.
+- Migrations: Never alter the database schema using raw scripts. Use the CLI commands: `dotnet ef migrations add` and `dotnet ef database update`.
+- Deferred Execution: Build the `IQueryable` queries first and execute them asynchronously with `.ToListAsync(cancellationToken)` at the end.
+- **Capa de Datos:** Usa `Skip((page - 1) * 50).Take(50)` directamente sobre el `IQueryable` antes de ejecutar la consulta asíncrona.
+- **DTO de Respuesta:** Cada consulta paginada debe devolver un objeto que incluya:
+  - `Items`: La lista de 50 resultados.
+  - `TotalCount`: El conteo total de registros en la BD (usando `.CountAsync()`).
+  - `HasMore`: Booleano que indique si hay más páginas disponibles.

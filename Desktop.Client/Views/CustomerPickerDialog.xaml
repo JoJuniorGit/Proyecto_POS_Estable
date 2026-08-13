@@ -1,0 +1,460 @@
+<Window x:Class="Desktop.Client.Views.CustomerPickerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=vm:CustomerPickerViewModel}"
+        Title="Seleccionar / Cambiar Cliente"
+        Width="680"
+        SizeToContent="Height"
+        MaxHeight="740"
+        MinHeight="500"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource MaterialDesignPaper}"
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="13"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Auto"
+        FontFamily="{DynamicResource MaterialDesignFont}">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
+
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- 1. Header -->
+            <RowDefinition Height="Auto"/>   <!-- 2. Segmented Tab Control -->
+            <RowDefinition Height="*"/>      <!-- 3. Content -->
+            <RowDefinition Height="Auto"/>   <!-- 4. Error Message -->
+            <RowDefinition Height="Auto"/>   <!-- 5. Footer Buttons -->
+        </Grid.RowDefinitions>
+
+        <!-- ══════════════════════════════════════════
+             1. HEADER
+             ══════════════════════════════════════════ -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource MaterialDesignCardBackground}"
+                CornerRadius="10"
+                Padding="16,14"
+                Margin="0,0,0,20"
+                Effect="{DynamicResource MaterialDesignShadowDepth1}">
+            <StackPanel Orientation="Horizontal">
+                <Border Width="46" Height="46" CornerRadius="23"
+                        Background="{DynamicResource PrimaryHueLightBrush}"
+                        Margin="0,0,14,0" VerticalAlignment="Center">
+                    <materialDesign:PackIcon Kind="AccountSearch"
+                                             Width="26" Height="26"
+                                             HorizontalAlignment="Center"
+                                             VerticalAlignment="Center"
+                                             Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Seleccionar / Cambiar Cliente"
+                               Style="{DynamicResource MaterialDesignHeadline6TextBlock}"
+                               FontWeight="Bold"/>
+                    <TextBlock Text="Busque un cliente existente o registre uno nuevo con entradas controladas"
+                               Style="{DynamicResource MaterialDesignCaptionTextBlock}"
+                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                               Margin="0,2,0,0"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- ══════════════════════════════════════════
+             2. SEGMENTED TAB CONTROL (Pestañas Superiores)
+             ══════════════════════════════════════════ -->
+        <Border Grid.Row="1" Background="#F1F5F9" CornerRadius="8" Padding="4" Margin="0,0,0,18">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Buscar Tab Button -->
+                <Button Grid.Column="0"
+                        Click="SearchTab_Click"
+                        Height="38" Padding="12,0">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Foreground" Value="#64748B"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSearchTab}" Value="True">
+                                    <Setter Property="Background" Value="#7C3AED"/>
+                                    <Setter Property="Foreground" Value="White"/>
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Magnify" Width="18" Height="18" VerticalAlignment="Center"/>
+                        <TextBlock Text="Buscar Cliente" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <!-- Crear Tab Button -->
+                <Button Grid.Column="1"
+                        Click="CreateTab_Click"
+                        Height="38" Padding="12,0">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Foreground" Value="#64748B"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsCreateTab}" Value="True">
+                                    <Setter Property="Background" Value="#7C3AED"/>
+                                    <Setter Property="Foreground" Value="White"/>
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="AccountPlus" Width="18" Height="18" VerticalAlignment="Center"/>
+                        <TextBlock Text="Nuevo Cliente" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- ══════════════════════════════════════════
+             3. CONTENT AREA
+             ══════════════════════════════════════════ -->
+        <Grid Grid.Row="2" MinHeight="280">
+
+            <!-- ── SEARCH TAB ── -->
+            <StackPanel Visibility="{Binding IsSearchTab, Converter={StaticResource BoolToVis}}">
+
+                <!-- Search TextBox -->
+                <Grid Margin="0,0,0,10">
+                    <materialDesign:PackIcon Kind="Magnify"
+                                             Width="20" Height="20"
+                                             VerticalAlignment="Center"
+                                             HorizontalAlignment="Left"
+                                             Margin="12,0,0,0"
+                                             Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                             Panel.ZIndex="1"/>
+                    <TextBox Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                             materialDesign:HintAssist.Hint="Buscar por nombre o cédula/RIF..."
+                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                             Padding="38,8,12,8" FontSize="13"/>
+                </Grid>
+
+                <!-- Search loading indicator -->
+                <ProgressBar IsIndeterminate="True"
+                             Margin="0,0,0,6"
+                             Visibility="{Binding IsSearching, Converter={StaticResource BoolToVis}}"/>
+
+                <!-- Customer List Border -->
+                <Border BorderThickness="1"
+                        BorderBrush="{DynamicResource MaterialDesignDivider}"
+                        CornerRadius="8"
+                        MaxHeight="300"
+                        MinHeight="160"
+                        ClipToBounds="True">
+                    <Grid>
+                        <!-- Empty state -->
+                        <TextBlock Text="No se encontraron clientes."
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                   FontSize="13"
+                                   Margin="16"
+                                   Visibility="{Binding HasNoResults, Converter={StaticResource BoolToVis}}"/>
+
+                        <!-- Customer ListBox -->
+                        <ListBox ItemsSource="{Binding Customers}"
+                                 SelectedItem="{Binding SelectedCustomer, Mode=TwoWay}"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="Padding" Value="10,8"/>
+                                    <Setter Property="Cursor" Value="Hand"/>
+                                    <Setter Property="BorderThickness" Value="3,0,0,0"/>
+                                    <Setter Property="BorderBrush" Value="Transparent"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border Background="{TemplateBinding Background}"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource MaterialDesignDivider}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource PrimaryHueLightBrush}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Avatar icon -->
+                                        <Border Grid.Column="0"
+                                                Width="36" Height="36"
+                                                CornerRadius="18"
+                                                Background="{DynamicResource PrimaryHueLightBrush}"
+                                                Margin="0,0,12,0"
+                                                VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="Account"
+                                                                     Width="20" Height="20"
+                                                                     HorizontalAlignment="Center"
+                                                                     VerticalAlignment="Center"
+                                                                     Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                        </Border>
+
+                                        <!-- Name + Cedula + Phone -->
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Name}"
+                                                           FontWeight="Bold"
+                                                           FontSize="14"/>
+                                                <TextBlock Text="{Binding CedulaOrRif, StringFormat=' ({0})'}"
+                                                           FontSize="12"
+                                                           Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                           VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Phone, StringFormat='Tel: {0}'}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+
+                                        <!-- Credit Limit Badge -->
+                                        <Border Grid.Column="2"
+                                                CornerRadius="5"
+                                                Padding="8,4"
+                                                VerticalAlignment="Center"
+                                                Background="{DynamicResource PrimaryHueLightBrush}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <materialDesign:PackIcon Kind="ShieldCheck"
+                                                                         Width="14" Height="14"
+                                                                         VerticalAlignment="Center"
+                                                                         Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                                <TextBlock Text="{Binding CreditLimitUSD, StringFormat='${0:N2}'}"
+                                                           FontSize="11"
+                                                           FontWeight="Bold"
+                                                           Margin="5,0,0,0"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+            </StackPanel>
+
+            <!-- ── CREATE TAB (Entradas Controladas y Formateo ATM) ── -->
+            <StackPanel Visibility="{Binding IsCreateTab, Converter={StaticResource BoolToVis}}"
+                        Margin="0,4,0,0">
+
+                <!-- Row 1: Cédula/RIF + Phone -->
+                <Grid Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="16"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Cédula / RIF Input Controlado con Testigo Verde (V/E + 7-8 dígitos) -->
+                    <StackPanel Grid.Column="0">
+                        <Grid>
+                            <TextBox Text="{Binding NewCedula, UpdateSourceTrigger=PropertyChanged}"
+                                     materialDesign:HintAssist.Hint="Cédula o RIF *"
+                                     materialDesign:HintAssist.IsFloating="True"
+                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                     Padding="12,10,34,10"/>
+
+                            <!-- Green Check Witness when format V-12345678 is valid -->
+                            <materialDesign:PackIcon Kind="CheckCircle" Width="18" Height="18"
+                                                     Foreground="#059669" ToolTip="Formato Cédula/RIF válido (V/E + 7-8 dígitos)"
+                                                     HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                     Margin="0,0,10,0"
+                                                     Visibility="{Binding IsNewCedulaValid, Converter={StaticResource BoolToVis}}"/>
+                        </Grid>
+                        <TextBlock Text="Ej: V-12345678 (V/E + 7 u 8 dígitos)" FontSize="11" Foreground="#64748B" Margin="4,3,0,0"/>
+                    </StackPanel>
+
+                    <!-- Phone Input Controlado con Testigo Verde (11 dígitos con operadora) -->
+                    <StackPanel Grid.Column="2">
+                        <Grid>
+                            <TextBox Text="{Binding NewPhone, UpdateSourceTrigger=PropertyChanged}"
+                                     materialDesign:HintAssist.Hint="Teléfono *"
+                                     materialDesign:HintAssist.IsFloating="True"
+                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                     Padding="12,10,34,10"/>
+
+                            <!-- Green Check Witness when 11 digits + valid operator prefix -->
+                            <materialDesign:PackIcon Kind="CheckCircle" Width="18" Height="18"
+                                                     Foreground="#059669" ToolTip="Teléfono de 11 dígitos válido"
+                                                     HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                     Margin="0,0,10,0"
+                                                     Visibility="{Binding IsNewPhoneValid, Converter={StaticResource BoolToVis}}"/>
+                        </Grid>
+                        <TextBlock Text="Ej: 04121234567 (11 dígitos)" FontSize="11" Foreground="#64748B" Margin="4,3,0,0"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Row 2: Full Name / Razón Social con contador en vivo (0/50) -->
+                <StackPanel Margin="0,0,0,16">
+                    <Grid>
+                        <TextBox Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}"
+                                 MaxLength="50"
+                                 materialDesign:HintAssist.Hint="Nombre Completo o Razón Social *"
+                                 materialDesign:HintAssist.IsFloating="True"
+                                 Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                 Padding="12,10,50,10"/>
+
+                        <!-- Dynamic Character Counter (e.g. 0 / 50) -->
+                        <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0" FontSize="11">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#64748B"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsNewNameNearLimit}" Value="True">
+                                            <Setter Property="Foreground" Value="#D97706"/>
+                                            <Setter Property="FontWeight" Value="Bold"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                            <Run Text="{Binding NewNameLength, Mode=OneWay}"/>
+                            <Run Text=" / 50"/>
+                        </TextBlock>
+                    </Grid>
+                    <TextBlock Text="Máximo 50 caracteres para facturas impresas y reportes fiscales" FontSize="11" Foreground="#64748B" Margin="4,3,0,0"/>
+                </StackPanel>
+
+
+                <!-- Row 3: Credit Limit (Efecto Cajero Automático / ATM) -->
+                <StackPanel Margin="0,0,0,20">
+                    <TextBlock Text="Límite de Crédito ($ USD)" FontWeight="SemiBold" FontSize="12" Foreground="#334155" Margin="0,0,0,4"/>
+                    <TextBox Text="{Binding NewCreditLimitText, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                             Padding="12,10" FontSize="14" FontWeight="Bold" TextAlignment="Right"/>
+                    <TextBlock Text="Monto máximo que puede quedar pendiente de pago (formateo ATM)"
+                               FontSize="11" Foreground="#64748B" Margin="4,4,0,0"/>
+                </StackPanel>
+
+                <!-- Save button -->
+                <Button Command="{Binding CreateCustomerCommand}"
+                        HorizontalAlignment="Stretch"
+                        Height="44" Padding="16,0"
+                        Style="{DynamicResource MaterialDesignRaisedButton}"
+                        Background="#7C3AED" Foreground="White">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="AccountPlus" Width="18" Height="18" VerticalAlignment="Center"/>
+                        <TextBlock Text="Guardar y Seleccionar Cliente" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="Bold"/>
+                    </StackPanel>
+                </Button>
+
+                <!-- Create loading indicator -->
+                <ProgressBar IsIndeterminate="True"
+                             Margin="0,10,0,0"
+                             Visibility="{Binding IsCreating, Converter={StaticResource BoolToVis}}"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- ══════════════════════════════════════════
+             4. ERROR MESSAGE
+             ══════════════════════════════════════════ -->
+        <Border Grid.Row="3"
+                CornerRadius="6"
+                Padding="12,8"
+                Margin="0,12,0,0"
+                Background="#FFEEED">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ErrorMessage}" Value="{x:Null}">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding ErrorMessage}" Value="">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon Kind="AlertCircle"
+                                         Width="18" Height="18"
+                                         VerticalAlignment="Center"
+                                         Foreground="#C0392B"
+                                         Margin="0,0,8,0"/>
+                <TextBlock Text="{Binding ErrorMessage}"
+                           Foreground="#C0392B"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ══════════════════════════════════════════
+             5. FOOTER BUTTONS
+             ══════════════════════════════════════════ -->
+        <StackPanel Grid.Row="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,20,0,0">
+
+            <Button Content="Cancelar"
+                    Click="Cancel_Click"
+                    Style="{DynamicResource MaterialDesignOutlinedButton}"
+                    IsCancel="True"
+                    Margin="0,0,12,0"
+                    Padding="16,10"
+                    TabIndex="10"/>
+
+            <Button x:Name="BtnConfirm"
+                    Click="Confirm_Click"
+                    Style="{DynamicResource MaterialDesignRaisedButton}"
+                    Background="#7C3AED" Foreground="White"
+                    IsEnabled="{Binding CanConfirm}"
+                    IsDefault="True"
+                    Padding="20,10"
+                    MinWidth="180"
+                    TabIndex="11">
+                <StackPanel Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="CheckCircle" Width="18" Height="18" VerticalAlignment="Center"/>
+                    <TextBlock Text="Confirmar Cliente" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="Bold"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

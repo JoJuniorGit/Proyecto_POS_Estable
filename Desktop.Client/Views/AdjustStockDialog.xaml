@@ -1,0 +1,74 @@
+<Window x:Class="Desktop.Client.Views.AdjustStockDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        mc:Ignorable="d"
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="13"
+        TextOptions.TextFormattingMode="Ideal" 
+        TextOptions.TextRenderingMode="Auto"        
+        Background="{DynamicResource MaterialDesignPaper}"
+        FontFamily="{DynamicResource MaterialDesignFont}"
+        Title="Ajustar Cantidad de Stock" Height="520" Width="480"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanResizeWithGrip">
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header Section -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,15">
+            <TextBlock Text="Ajustar Cantidad de Stock" Style="{DynamicResource MaterialDesignHeadline5TextBlock}" FontWeight="Bold" Margin="0,0,0,10"/>
+            <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="4" Padding="12">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <materialDesign:PackIcon Kind="PackageVariant" Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock x:Name="CurrentStockText" Text="Disponible actual: 0" Style="{DynamicResource MaterialDesignSubtitle1TextBlock}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <!-- Main Form -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False" Margin="0,0,0,10">
+            <StackPanel Margin="0,5,10,5">
+                <!-- Mode Selection: Increase or Decrease -->
+                <TextBlock Text="Tipo de Ajuste:" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,8" FontWeight="Medium"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+                    <RadioButton x:Name="RadioIncrease" GroupName="AdjustmentMode" Content="Incrementar (+)" IsChecked="True" Style="{DynamicResource MaterialDesignChoiceChipOutlineRadioButton}" Margin="0,0,15,0" Cursor="Hand" Foreground="Green"/>
+                    <RadioButton x:Name="RadioDecrease" GroupName="AdjustmentMode" Content="Decrementar (-)" Style="{DynamicResource MaterialDesignChoiceChipOutlineRadioButton}" Cursor="Hand" Foreground="Red"/>
+                </StackPanel>
+
+                <!-- Quantity Validation Input -->
+                <Grid Margin="0,0,0,18">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Kind="Numeric" VerticalAlignment="Center" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}" Margin="0,0,12,0"/>
+                    <TextBox x:Name="QuantityInput" Grid.Column="1" materialDesign:HintAssist.Hint="Cantidad Absoluta *" materialDesign:HintAssist.HelperText="Ingrese un número entero o fraccionado positivo" Style="{DynamicResource MaterialDesignOutlinedTextBox}" TabIndex="1"/>
+                </Grid>
+                
+                <!-- Description Space -->
+                <Grid Margin="0,0,0,5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Kind="CommentTextOutline" VerticalAlignment="Top" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}" Margin="0,12,12,0"/>
+                    <TextBox x:Name="ReasonInput" Grid.Column="1" materialDesign:HintAssist.Hint="Motivo / Descripción *" materialDesign:HintAssist.HelperText="Obligatorio (mínimo 3 caracteres, ej. Mermas, Reabastecimiento, Auditoría)" Style="{DynamicResource MaterialDesignOutlinedTextBox}" AcceptsReturn="True" TextWrapping="Wrap" Height="80" TabIndex="2"/>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Footer / Action Buttons -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="Cancelar" Click="Cancel_Click" Style="{DynamicResource MaterialDesignFlatButton}" Foreground="DimGray" Margin="0,0,15,0" IsCancel="True" TabIndex="4"/>
+            <Button Content="Guardar Ajuste" Click="Save_Click" Style="{DynamicResource MaterialDesignRaisedButton}" IsDefault="True" TabIndex="3"/>
+        </StackPanel>
+    </Grid>
+</Window>

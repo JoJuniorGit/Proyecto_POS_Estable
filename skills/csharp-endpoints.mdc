@@ -1,0 +1,87 @@
+---
+Description: Strict Clean Code rules in C#, naming conventions, and standardization for creating RESTful endpoints.
+
+globs: ["**/*.cs", "**/*Controller.cs", "**/*Service.cs", "**/*Endpoint.cs"]
+---
+# C# BEST PRACTICES & API ENDPOINT SKILLS
+
+1. C# (Modern .NET) Conventions
+- Namespaces: ALWAYS use file-scoped namespaces (e.g., `namespace MyProject.Controllers;` without curly braces `{}`).
+
+- Naming Conventions:
+
+- Classes, Records, Interfaces, and Methods: `PascalCase`.
+
+- Parameters and local variables: `camelCase`.
+
+- Private fields: `_camelCase` (with an underscore).
+
+- Immutability and DTOs: For data transfer (DTOs), use `record` or `class` with `init` properties to ensure that data does not mutate unexpectedly after creation.
+
+- Nullability: The project has `<Nullable>enable</Nullable>`. It always warns of and handles potential null values. Explicitly use `?` where a value can be null.
+2. Endpoint Standardization (RESTful)
+- Routing: - Routes MUST be in lowercase and use kebab-case.
+
+- Always use plural nouns, NEVER verbs. (Correct: `api/v1/products`. Incorrect: `api/v1/getProducts`).
+
+- HTTP Verbs:
+
+- `GET`: To retrieve data. Never alter the state.
+
+- `POST`: To create new resources.
+
+- `PUT`: To completely replace an existing resource.
+
+- `PATCH`: For partial modifications (e.g., changing only the price).
+
+- `DELETE`: To delete a resource.
+
+- HTTP Status Codes:
+
+- `200 OK`: For successful responses from GET, PUT, PATCH, or DELETE.
+
+- `201 Created`: For successful POST requests (must include the path to the newly created resource).
+
+- `400 Bad Request`: Client validation error (missing or incorrect data).
+
+- `404 Not Found`: When the requested resource (ID) does not exist.
+
+Isolation (No Entity Leakage): NEVER return an EF Core entity (`Product`, `Sale`) from a controller. ALWAYS map to a DTO (`ProductResponseDto`) before returning `Ok()`.
+
+3. Performance and Concurrency
+- Every endpoint MUST be asynchronous (`async Task<IActionResult>`).
+
+- Every endpoint MUST accept a `CancellationToken` as its last parameter and pass it to database queries or services.
+
+4. Mandatory Code Pattern (Template)
+
+```csharp
+// Correct Endpoint Implementation Example
+using Microsoft.AspNetCore.Mvc;
+
+namespace PosSystem.Api.Controllers;
+
+[ApiController]
+[Route("api/v1/[controller]")]
+public class ProductsController : ControllerBase
+{
+    private readonly IProductService _productService;
+
+    public ProductsController(IProductService productService)
+    {
+        _productService = productService;
+    }
+
+    [HttpGet("{id:int}")]
+    public async Task<ActionResult<ProductResponseDto>> GetProductByIdAsync(int id, CancellationToken cancellationToken)
+    {
+        var productDto = await _productService.GetByIdAsync(id, cancellationToken);
+        
+        if (productDto is null)
+        {
+            return NotFound(new { message = $"The product with ID {id} was not found." });
+        }
+
+        return Ok(productDto);
+    }
+}

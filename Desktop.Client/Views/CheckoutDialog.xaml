@@ -1,0 +1,214 @@
+<UserControl x:Class="Desktop.Client.Views.CheckoutDialog"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             xmlns:behaviors="clr-namespace:Desktop.Client.Behaviors"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:controls="clr-namespace:Desktop.Client.Controls"
+             mc:Ignorable="d" Width="620" MinHeight="520">
+             
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </UserControl.Resources>
+
+    <Grid Margin="25">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header: Balances (Bs.S primary, USD secondary) -->
+        <Border Grid.Row="0" Margin="0,0,0,20">
+            <StackPanel>
+                <TextBlock Text="{Binding CheckoutTitle}" Style="{DynamicResource MaterialDesignHeadline4TextBlock}" FontWeight="Bold"/>
+
+                <!-- Override Sale: Show original total + already paid -->
+                <Border Visibility="{Binding IsOverrideMode, Converter={StaticResource BoolToVis}}"
+                        Background="#FFF3CD" CornerRadius="4" Padding="10,6" Margin="0,8,0,0">
+                    <StackPanel Orientation="Horizontal">
+
+                        <materialDesign:PackIcon Kind="InformationOutline" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="#92400E"/>
+                        <TextBlock Foreground="#92400E" FontSize="12" TextWrapping="Wrap">
+                            <Run Text="Total Factura: "/>
+                            <Run Text="{Binding OverrideSale.TotalUSD, StringFormat='USD {0:N2}', FallbackValue='-'}" FontWeight="Bold"/>
+                            <Run Text="  |  Ya Abonado: "/>
+                            <Run Text="{Binding OverrideSale.TotalPaidUSD, StringFormat='USD {0:N2}', FallbackValue='-'}" FontWeight="Bold" Foreground="#059669"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+
+
+                <Grid Margin="0,15,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Total Invoice" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                        <TextBlock Text="{Binding TotalAmountLocal, StringFormat='{}{0:N2}'}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueDarkBrush}"/>
+                        <TextBlock Text="{Binding TotalUSD, StringFormat='{}USD {0:N2}'}" FontSize="13" Opacity="0.6"/>
+                    </StackPanel>
+                    
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Paid" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                        <TextBlock Text="{Binding PaidAmountLocal, StringFormat='{}{0:N2}'}" FontSize="24" FontWeight="Medium" Foreground="#388E3C"/>
+                        <TextBlock Text="{Binding PaidAmountUsd, StringFormat='{}USD {0:N2}'}" FontSize="13" Opacity="0.6"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Remaining" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                        <TextBlock Text="{Binding RemainingBalanceLocal, StringFormat='{}{0:N2}'}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueDarkBrush}"/>
+                        <TextBlock Text="{Binding RemainingBalanceUsd, StringFormat='{}USD {0:N2}'}" FontSize="13" Opacity="0.6"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Add Payment Form (Bs.S primary) -->
+        <Border Grid.Row="1" Background="{DynamicResource MaterialDesignPaper}" materialDesign:ElevationAssist.Elevation="Dp1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
+            <StackPanel>
+                <TextBlock Text="Add payment (Bs.S):" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="1.5*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Method -->
+                    <ComboBox Grid.Column="0" ItemsSource="{Binding AvailableMethods}"
+                              SelectedItem="{Binding SelectedMethod, Mode=TwoWay}"
+                              materialDesign:HintAssist.Hint="Payment Method"
+                              Style="{DynamicResource MaterialDesignFloatingHintComboBox}"
+                              DisplayMemberPath="Name" Margin="0,0,10,0"/>
+
+                    <!-- Amount Bs.S (primary input with decimal-cents behavior) -->
+                    <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                        <TextBox x:Name="AmountInput"
+                                 Text="{Binding AmountBsSText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 behaviors:DecimalCentsBehavior.IsEnabled="True"
+                                 materialDesign:HintAssist.Hint="Amount Bs.S"
+                                 Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
+                                 FontWeight="Bold" FontSize="16"
+                                 HorizontalContentAlignment="Right"/>
+                        <TextBlock Text="{Binding AmountUsdPreview, StringFormat='{}≈ USD {0:N2}'}" 
+                                   FontSize="11" Opacity="0.6" HorizontalAlignment="Right" Margin="0,2,0,0"/>
+                    </StackPanel>
+
+                    <!-- Reference -->
+                    <TextBox Grid.Column="2" Text="{Binding CurrentReference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             materialDesign:HintAssist.Hint="Ref/ID (Optional)"
+                             Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
+                             Visibility="{Binding SelectedMethod.RequiresReference, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}"
+                             Margin="0,0,10,0"/>
+
+                    <!-- Add Button -->
+                    <Button Grid.Column="3" Command="{Binding AddPaymentCommand}" Style="{DynamicResource MaterialDesignIconButton}" ToolTip="Add Payment" VerticalAlignment="Bottom">
+                        <materialDesign:PackIcon Kind="PlusBox" Width="28" Height="28" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                    </Button>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Applied Payments List -->
+        <Border Grid.Row="2" Margin="0,0,0,20">
+            <StackPanel>
+                <TextBlock Text="Applied Payments" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" Margin="0,0,0,10"/>
+                
+                <controls:PerformantDataGrid ItemsSource="{Binding Payments}" 
+                          SelectedItem="{Binding SelectedPayment, Mode=TwoWay}"
+                          AutoGenerateColumns="False" 
+                          CanUserAddRows="False"
+                          IsReadOnly="True"
+                          GridLinesVisibility="Horizontal"
+                          HeadersVisibility="Column"
+                          BorderThickness="0"
+                          Background="Transparent"
+                          MaxHeight="150"
+                          VerticalScrollBarVisibility="Auto"
+                          SelectionUnit="FullRow">
+
+                    <!-- Double-click to edit -->
+                    <controls:PerformantDataGrid.InputBindings>
+                        <MouseBinding Gesture="LeftDoubleClick" 
+                                      Command="{Binding EditPaymentCommand}" 
+                                      CommandParameter="{Binding SelectedPayment}"/>
+                    </controls:PerformantDataGrid.InputBindings>
+
+                    <controls:PerformantDataGrid.Columns>
+                        <DataGridTextColumn Header="Bs.S" Binding="{Binding AmountBsS, StringFormat='{}{0:N2}'}" IsReadOnly="True" FontWeight="Bold" Width="Auto"/>
+                        <DataGridTextColumn Header="USD" Binding="{Binding AmountUsd, StringFormat='{}{0:N2}'}" IsReadOnly="True" Width="Auto" Foreground="Gray"/>
+                        <DataGridTextColumn Header="Method" Binding="{Binding MethodName}" IsReadOnly="True" Width="*"/>
+                        <DataGridTextColumn Header="Reference" Binding="{Binding Dto.ReferenceNumber}" IsReadOnly="True" Width="*" Foreground="Gray"/>
+                        
+                        <!-- Delete only (edit via double-click) -->
+                        <DataGridTemplateColumn Width="Auto">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Command="{Binding DataContext.RemovePaymentCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                            CommandParameter="{Binding}"
+                                            Style="{DynamicResource MaterialDesignIconButton}"
+                                            ToolTip="Delete Payment"
+                                            Foreground="Red">
+                                        <materialDesign:PackIcon Kind="Delete" />
+                                    </Button>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </controls:PerformantDataGrid.Columns>
+                </controls:PerformantDataGrid>
+
+                <!-- Hint for double-click editing -->
+                <TextBlock Text="Tip: Double-click a payment to edit it" 
+                           FontSize="11" FontStyle="Italic" Opacity="0.5" 
+                           HorizontalAlignment="Center" Margin="0,6,0,0"/>
+
+                <!-- Mercancía en Custodia (Pendiente por Retirar) Option -->
+                <CheckBox Content="Mercancía en Custodia (Pendiente por Retirar)"
+                          IsChecked="{Binding IsPendingPickup}"
+                          Margin="0,10,0,0"
+                          FontWeight="Bold"
+                          Foreground="#F59E0B"
+                          ToolTip="El cliente paga al 100% y la mercancía se guardará en el local para su retiro posterior."/>
+            </StackPanel>
+        </Border>
+
+        <!-- Footer Actions -->
+        <StackPanel Grid.Row="3">
+            <TextBlock Text="{Binding PendingPickupErrorMessage}"
+                       Foreground="Red"
+                       FontWeight="SemiBold"
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,10"
+                       Visibility="{Binding PendingPickupErrorMessage, Converter={StaticResource BoolToVis}}"/>
+
+            <Grid>
+                <Button Content="CANCEL" 
+                        Command="{x:Static materialDesign:DialogHost.CloseDialogCommand}"
+                        CommandParameter="{x:Null}"
+                        Style="{DynamicResource MaterialDesignOutlinedButton}" 
+                        HorizontalAlignment="Left"
+                        Height="40" Padding="20,0"/>
+                        
+                <Button Content="{Binding FinalizeSaleButtonLabel}" 
+                        Command="{Binding FinalizeSaleCommand}"
+                        Style="{DynamicResource MaterialDesignRaisedButton}" 
+                        HorizontalAlignment="Right"
+                        Height="40" Padding="30,0"
+                        materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsProcessing}"
+                        materialDesign:ButtonProgressAssist.IsIndeterminate="True"
+                        materialDesign:ButtonProgressAssist.Value="-1"/>
+
+            </Grid>
+        </StackPanel>
+
+    </Grid>
+</UserControl>

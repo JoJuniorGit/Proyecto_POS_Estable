@@ -1,0 +1,76 @@
+<UserControl x:Class="Desktop.Client.Views.LoginView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="800"
+             Background="{DynamicResource MaterialDesignPaper}">
+    <Grid>
+        <Border HorizontalAlignment="Center" 
+                VerticalAlignment="Center"
+                Width="420"
+                Padding="32"
+                CornerRadius="12"
+                Background="{DynamicResource MaterialDesignCard}"
+                Effect="{DynamicResource MaterialDesignShadowDepth3}">
+            <StackPanel>
+                <!-- Icon & Title -->
+                <materialDesign:PackIcon Kind="AccountKey" Width="48" Height="48"
+                                         HorizontalAlignment="Center"
+                                         Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,12"/>
+                <TextBlock Text="INICIO DE SESIÓN POS" 
+                           FontSize="20" FontWeight="Bold" 
+                           HorizontalAlignment="Center" 
+                           Foreground="{DynamicResource MaterialDesignBody}"/>
+                <TextBlock Text="Ingrese su Cédula de Identidad para continuar" 
+                           FontSize="12" Foreground="{DynamicResource NavTextMutedBrush}" 
+                           HorizontalAlignment="Center" Margin="0,4,0,24"/>
+
+                <!-- Error Message Alert -->
+                <Border Background="#1FEE5353" BorderBrush="#EE5353" BorderThickness="1"
+                        CornerRadius="6" Padding="12,8" Margin="0,0,0,16"
+                        Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}">
+                    <TextBlock Text="{Binding ErrorMessage}" Foreground="#EE5353" FontSize="12" TextWrapping="Wrap" HorizontalAlignment="Center"/>
+                </Border>
+
+                <!-- Input Field -->
+                <TextBox Text="{Binding Cedula, UpdateSourceTrigger=PropertyChanged}"
+                         materialDesign:HintAssist.Hint="Número de Cédula"
+                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                         FontSize="22" FontWeight="Bold" HorizontalContentAlignment="Center"
+                         MaxLength="12" Margin="0,0,0,16"
+                         KeyDown="TextBox_KeyDown">
+                </TextBox>
+
+                <!-- Onscreen Numpad for Touchscreen / Easy Entry -->
+                <UniformGrid Rows="4" Columns="3" Margin="0,0,0,20">
+                    <Button Content="1" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4" FontSize="18" Command="{Binding AppendDigitCommand}" CommandParameter="1"/>
+                    <Button Content="2" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4" FontSize="18" Command="{Binding AppendDigitCommand}" CommandParameter="2"/>
+                    <Button Content="3" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4" FontSize="18" Command="{Binding AppendDigitCommand}" CommandParameter="3"/>
+                    <Button Content="4" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4" FontSize="18" Command="{Binding AppendDigitCommand}" CommandParameter="4"/>
+                    <Button Content="5" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4" FontSize="18" Command="{Binding AppendDigitCommand}" CommandParameter="5"/>
+                    <Button Content="6" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4" FontSize="18" Command="{Binding AppendDigitCommand}" CommandParameter="6"/>
+                    <Button Content="7" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4" FontSize="18" Command="{Binding AppendDigitCommand}" CommandParameter="7"/>
+                    <Button Content="8" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4" FontSize="18" Command="{Binding AppendDigitCommand}" CommandParameter="8"/>
+                    <Button Content="9" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4" FontSize="18" Command="{Binding AppendDigitCommand}" CommandParameter="9"/>
+                    <Button Content="C" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4" FontSize="16" Command="{Binding ClearCommand}"/>
+                    <Button Content="0" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4" FontSize="18" Command="{Binding AppendDigitCommand}" CommandParameter="0"/>
+                    <Button Content="⌫" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4" FontSize="16" Command="{Binding BackspaceCommand}"/>
+                </UniformGrid>
+
+                <!-- Login Button -->
+                <Button Command="{Binding LoginCommand}"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Height="48" FontSize="16" FontWeight="Bold"
+                        materialDesign:ButtonProgressAssist.IsIndeterminate="{Binding IsLoading}">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Login" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="INGRESAR AL SISTEMA" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

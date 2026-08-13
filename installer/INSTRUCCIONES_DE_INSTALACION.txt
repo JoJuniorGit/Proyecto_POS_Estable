@@ -1,0 +1,74 @@
+================================================================================
+         GUÍA DE INSTALACIÓN Y CONFIGURACIÓN INICIAL DEL SISTEMA POS
+================================================================================
+Sistema POS Administrador - Versión 1.0.0
+Documento de Instrucciones para Usuarios y Administradores
+
+Bienvenido a la guía de instalación para usuarios del Sistema POS Administrador.
+Este documento le guiará paso a paso de forma sencilla para instalar y poner en
+marcha el sistema en su ordenador con Microsoft Windows.
+
+--------------------------------------------------------------------------------
+1. REQUISITOS PREVIOS
+--------------------------------------------------------------------------------
+Antes de comenzar la instalación, asegúrese de contar con:
+
+1. Sistema Operativo: Windows 10 o Windows 11 (edición de 64 bits).
+2. Servidor de Base de Datos PostgreSQL instalado en el equipo principal o accesible en su red local:
+   - Si aún no lo tiene instalado, puede descargarlo gratuitamente desde el sitio oficial:
+     https://www.postgresql.org/download/windows/
+   - Durante la instalación de PostgreSQL, recuerde la contraseña que le asignó al usuario "postgres". El puerto estándar es 5432.
+3. Permisos de Administrador: Debe ejecutar el instalador con permisos de administrador en Windows.
+
+--------------------------------------------------------------------------------
+2. PASO A PASO: INSTALACIÓN DEL SISTEMA
+--------------------------------------------------------------------------------
+
+Paso 1: Ubicar y Ejecutar el Instalador
+  - El archivo ejecutable del instalador generado por Inno Setup se encuentra en la carpeta:
+    "dist_installer/POS_System_Setup_v1.0.0.exe" (o en la carpeta/unidad USB donde se haya distribuido).
+  - Haga clic derecho sobre dicho archivo ejecutable y seleccione "Ejecutar como Administrador".
+
+Paso 2: Pantalla de Bienvenida y Directorio de Instalación
+  - Haga clic en "Siguiente" en la pantalla inicial.
+  - Seleccione la ubicación de instalación (se recomienda dejar la ruta sugerida por defecto).
+
+Paso 3: Configuración de Conexión a PostgreSQL
+  En esta ventana el asistente le solicitará los datos de su base de datos:
+  - Servidor Host: Ingrese "localhost" si PostgreSQL está en este mismo ordenador, o la dirección IP de su servidor de red (ej. 192.168.1.100).
+  - Puerto: 5432 (puerto estándar de PostgreSQL).
+  - Nombre de Base de Datos: CommandCenterDb (se creará automáticamente si no existe).
+  - Usuario Postgres: postgres
+  - Contraseña Postgres: Introduzca la clave de su usuario postgres.
+
+Paso 4: Configuración del Administrador Inicial del Negocio
+  Defina los datos de su cuenta principal de administración:
+  - Usuario Administrador: Nombre del primer usuario (ejemplo: Admin).
+  - Contraseña Administrador: Clave de acceso (ejemplo: Admin123!).
+  - Nombre del Negocio: El nombre comercial de su establecimiento para los comprobantes.
+
+Paso 5: Servidor de Actualizaciones
+  - Deje la URL predeterminada (http://localhost:5000/updates/) salvo que su soporte técnico le indique una ruta personalizada en su red local.
+
+Paso 6: Finalizar la Instalación
+  - Haga clic en "Instalar". El asistente copiará los archivos del sistema y registrará automáticamente el Servicio del Backend en segundo plano.
+  - Al finalizar, deje marcada la casilla "Ejecutar Sistema POS Administrador" y haga clic en "Finalizar".
+
+--------------------------------------------------------------------------------
+3. PRIMER INICIO DE SESIÓN
+--------------------------------------------------------------------------------
+1. La aplicación se abrirá mostrando la pantalla de Inicio de Sesión (Login).
+2. Introduzca las credenciales configuradas durante la instalación:
+   - Usuario: Admin (o el usuario que definió).
+   - Contraseña: Su clave asignada.
+3. Una vez dentro del sistema, podrá acceder al Punto de Venta (POS), registrar su catálogo de productos, ajustar la tasa de cambio diaria (Bs.S / USD) y aperturar cajas.
+
+--------------------------------------------------------------------------------
+4. NOTAS IMPORTANTES Y RECOMENDACIONES OPERATIVAS
+--------------------------------------------------------------------------------
+- Servicio en Segundo Plano: El motor de datos del sistema funciona silenciosamente en segundo plano como un Servicio de Windows ("PosBackendService"). No requiere mantener consolas de comando de pantalla negra (cmd.exe) abiertas.
+- Versión Web Frontend: Puede acceder al sistema desde navegadores web en su red local ingresando a:
+  http://localhost:5000/  o  http://<IP-DE-SU-EQUIPO>:5000/
+- Actualizaciones Automáticas: El sistema verifica automáticamente al iniciar que la versión instalada sea compatible. En caso de requerirse una actualización obligatoria, la aplicación le notificará y le guiará para descargar el parche oficial.
+
+Para mayor asistencia o soporte técnico, comuníquese con el administrador del sistema o su proveedor autorizado.

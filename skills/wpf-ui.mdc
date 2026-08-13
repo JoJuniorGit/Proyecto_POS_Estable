@@ -1,0 +1,16 @@
+---
+Description: Strict rules for developing the User Interface and ViewModels.
+
+globs: ["**/*.xaml", "**/*ViewModel.cs"]
+---
+# WPF & MVVM SKILL
+
+- Zero Code-Behind: NEVER write logic in `.xaml.cs`. Use `Behaviors` from Microsoft.Xaml.Behaviors.Wpf for visual events (e.g., KeyDown, Loaded).
+
+- Exclusive Library: Use `CommunityToolkit.Mvvm`. Generate properties using the `[ObservableProperty]` attribute on private fields in camelCase (e.g., `private string _name;`).
+
+- Commands: Use `[RelayCommand]` for methods instead of manually instantiating `ICommand`.
+
+- POS Aesthetics: Do not use currency symbols (Bs.S or $). Round Bolivars to integers using `(long)` cast in calculated properties.
+
+- Visual Performance: For `DataGrid` or `ListView` controls, you must include `VirtualizingStackPanel.IsVirtualizing="True"`.

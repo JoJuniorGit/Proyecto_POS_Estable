@@ -1,0 +1,2 @@
+Necesitamos que los datos obtenidos por el instalar se apliquen Realimente a la instalación: EL nombre del usuario, el nombre de la base de datos, la contraseña de la BD etc.
+Implementar un crash.log y un startlog, para obtener detalle de fallos críticos durante el uso del sistema como en el inicio.

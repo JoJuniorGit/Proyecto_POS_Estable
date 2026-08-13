@@ -1,0 +1,301 @@
+<UserControl x:Class="Desktop.Client.Views.DailyClosureView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
+             xmlns:behaviors="clr-namespace:Desktop.Client.Behaviors"
+             xmlns:controls="clr-namespace:Desktop.Client.Controls"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=vm:DailyClosureViewModel}">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </UserControl.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- Header -->
+            <RowDefinition Height="*"/>      <!-- DataGrid -->
+            <RowDefinition Height="Auto"/>   <!-- Summary -->
+            <RowDefinition Height="Auto"/>   <!-- Observation -->
+            <RowDefinition Height="Auto"/>   <!-- Button -->
+        </Grid.RowDefinitions>
+
+        <!-- ═══════════════════════════════════════════
+             HEADER
+             ═══════════════════════════════════════════ -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource MaterialDesignCardBackground}"
+                CornerRadius="10"
+                Padding="16,14"
+                Margin="0,0,0,16"
+                Effect="{DynamicResource MaterialDesignShadowDepth1}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="CashRegister"
+                                                 Width="26" Height="26"
+                                                 Foreground="{DynamicResource PrimaryHueMidBrush}"
+                                                 VerticalAlignment="Center"
+                                                 Margin="0,0,8,0"/>
+                        <TextBlock Text="Cierre Diario y Arqueo de Caja"
+                                   FontSize="20"
+                                   Foreground="{DynamicResource MaterialDesignBody}"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Text="Conteo físico de dinero en efectivo y arqueo de comprobantes por método de pago."
+                               FontSize="12"
+                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                               Margin="34,2,0,0"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Blind Closing Toggle -->
+                    <Border Background="{DynamicResource MaterialDesignDivider}"
+                            CornerRadius="6"
+                            Padding="10,6"
+                            Margin="0,0,12,0">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="ShieldLock"
+                                                     Width="18" Height="18"
+                                                     VerticalAlignment="Center"
+                                                     Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                            <TextBlock Text="Cierre a Ciegas"
+                                       Margin="6,0,8,0"
+                                       VerticalAlignment="Center"
+                                       FontWeight="SemiBold"
+                                       FontSize="12"/>
+                            <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                          IsChecked="{Binding IsBlindClosing, Mode=TwoWay}"
+                                          IsEnabled="{Binding CanToggleBlindClosing}"
+                                          ToolTip="Cuando está activo, los montos esperados se ocultan para la recolección a ciegas del cajero"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Reload Button -->
+                    <Button Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Command="{Binding LoadExpectedTotalsCommand}"
+                            ToolTip="Recargar totales esperados desde la base de datos">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="Refresh" Width="18" Height="18" VerticalAlignment="Center"/>
+                            <TextBlock Text="Recargar" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Navigation / Menu Button -->
+                    <Button Style="{DynamicResource MaterialDesignIconButton}"
+                            Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
+                            CommandParameter="{x:Static Dock.Right}"
+                            Margin="8,0,0,0"
+                            ToolTip="Abrir Menú Principal">
+                        <materialDesign:PackIcon Kind="Cog" Width="26" Height="26" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ═══════════════════════════════════════════
+             LOADING INDICATOR
+             ═══════════════════════════════════════════ -->
+        <ProgressBar Grid.Row="1"
+                     IsIndeterminate="True"
+                     VerticalAlignment="Top"
+                     Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
+                     Margin="0,0,0,8"/>
+
+        <!-- ═══════════════════════════════════════════
+             DATA GRID
+             ═══════════════════════════════════════════ -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource MaterialDesignCardBackground}"
+                CornerRadius="10"
+                Padding="8"
+                Effect="{DynamicResource MaterialDesignShadowDepth1}">
+            <controls:PerformantDataGrid ItemsSource="{Binding DetailRows}"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      CanUserSortColumns="False"
+                      SelectionMode="Single"
+                      IsReadOnly="False"
+                      HeadersVisibility="Column"
+                      materialDesign:DataGridAssist.CellPadding="14 10"
+                      materialDesign:DataGridAssist.ColumnHeaderPadding="14 10"
+                      VerticalScrollBarVisibility="Auto"
+                      BorderThickness="0">
+
+                <controls:PerformantDataGrid.Columns>
+                    <!-- Col 1: Payment Method (Read-only) -->
+                    <DataGridTextColumn Header="Método de Pago"
+                                        Binding="{Binding PaymentMethodName}"
+                                        IsReadOnly="True"
+                                        Width="*"
+                                        FontWeight="Bold"/>
+
+                    <!-- Col 2: Expected Amount (Read-only, hidden if blind) -->
+                    <DataGridTextColumn Header="Monto Esperado (Bs.S)"
+                                        Binding="{Binding ExpectedAmountBsS, StringFormat=N2}"
+                                        IsReadOnly="True"
+                                        Width="*"
+                                        x:Name="ExpectedColumn"/>
+
+                    <!-- Col 3: Actual Amount (Editable) -->
+                    <DataGridTemplateColumn Header="Monto Declarado (Bs.S)" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBox TextAlignment="Right"
+                                         materialDesign:HintAssist.Hint="0.00"
+                                         MinWidth="130"
+                                         HorizontalAlignment="Stretch"
+                                         VerticalAlignment="Center"
+                                         Padding="6,4"
+                                         FontWeight="Bold"
+                                         FontSize="14">
+                                    <i:Interaction.Behaviors>
+                                        <behaviors:NumericCalculatorBehavior Value="{Binding ActualAmountBsS, Mode=TwoWay}" />
+                                    </i:Interaction.Behaviors>
+                                </TextBox>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- Col 4: Difference (Read-only, reactive) -->
+                    <DataGridTextColumn Header="Diferencia (Bs.S)"
+                                        Binding="{Binding DifferenceBsS, StringFormat=N2}"
+                                        IsReadOnly="True"
+                                        Width="*"
+                                        x:Name="DifferenceColumn"/>
+                </controls:PerformantDataGrid.Columns>
+            </controls:PerformantDataGrid>
+        </Border>
+
+        <!-- ═══════════════════════════════════════════
+             SUMMARY TOTALS
+             ═══════════════════════════════════════════ -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource MaterialDesignCardBackground}"
+                CornerRadius="10"
+                Padding="16"
+                Margin="0,16,0,0"
+                Effect="{DynamicResource MaterialDesignShadowDepth1}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Expected Total -->
+                <StackPanel Grid.Column="0" HorizontalAlignment="Center"
+                            x:Name="ExpectedTotalPanel">
+                    <TextBlock Text="TOTAL ESPERADO"
+                               FontSize="11" FontWeight="Bold"
+                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="{Binding TotalExpectedBsS, StringFormat=Bs.S {0:N2}}"
+                               FontSize="20" FontWeight="Bold"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource PrimaryHueMidBrush}"
+                               Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <!-- Actual Total -->
+                <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                    <TextBlock Text="TOTAL DECLARADO"
+                               FontSize="11" FontWeight="Bold"
+                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="{Binding TotalActualBsS, StringFormat=Bs.S {0:N2}}"
+                               FontSize="20" FontWeight="Bold"
+                               HorizontalAlignment="Center"
+                               Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <!-- Difference Total -->
+                <StackPanel Grid.Column="2" HorizontalAlignment="Center"
+                            x:Name="DifferenceTotalPanel">
+                    <TextBlock Text="DIFERENCIA TOTAL"
+                               FontSize="11" FontWeight="Bold"
+                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="{Binding TotalDifferenceBsS, StringFormat=Bs.S {0:N2}}"
+                               FontSize="20" FontWeight="Bold"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource MaterialDesignBody}"
+                               Margin="0,4,0,0"/>
+                    <Border CornerRadius="4"
+                            Padding="8,3"
+                            Margin="0,4,0,0"
+                            HorizontalAlignment="Center">
+                        <TextBlock Text="{Binding DifferenceStatusLabel}"
+                                   FontSize="11"
+                                   FontWeight="Bold"
+                                   Foreground="{Binding DifferenceStatusColor}"/>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ═══════════════════════════════════════════
+             OBSERVATION
+             ═══════════════════════════════════════════ -->
+        <TextBox Grid.Row="3"
+                 Margin="0,16,0,0"
+                 Text="{Binding Observation, UpdateSourceTrigger=PropertyChanged}"
+                 materialDesign:HintAssist.Hint="Observaciones / Notas del Arqueo (opcional)"
+                 materialDesign:HintAssist.IsFloating="True"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 MinHeight="60"
+                 MaxLength="500"
+                 VerticalScrollBarVisibility="Auto"/>
+
+        <!-- ═══════════════════════════════════════════
+             FOOTER BUTTONS
+             ═══════════════════════════════════════════ -->
+        <StackPanel Grid.Row="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,16,0,0">
+            <!-- Export Receipt Button -->
+            <Button Style="{StaticResource MaterialDesignOutlinedButton}"
+                    Command="{Binding ExportClosureReceiptCommand}"
+                    Margin="0,0,12,0"
+                    Padding="16,10"
+                    ToolTip="Exportar o guardar el comprobante de cierre de caja">
+                <StackPanel Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="FileDownload" Width="20" Height="20" VerticalAlignment="Center"/>
+                    <TextBlock Text="Exportar Comprobante" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                </StackPanel>
+            </Button>
+
+            <!-- Confirm Closure Button -->
+            <Button Command="{Binding ConfirmClosureCommand}"
+                    MinWidth="220"
+                    Padding="18,10">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedDarkButton}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsSaved}" Value="True">
+                                <Setter Property="IsEnabled" Value="False"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+                <StackPanel Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="CheckCircle" Width="20" Height="20" VerticalAlignment="Center"/>
+                    <TextBlock Text="Confirmar y Procesar Cierre" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="Bold"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
+    </Grid>
+</UserControl>

@@ -1,0 +1,308 @@
+<UserControl x:Class="Desktop.Client.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:Desktop.Client.Views"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:controls="clr-namespace:Desktop.Client.Controls"
+             mc:Ignorable="d" 
+             d:DesignHeight="700" d:DesignWidth="900">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="20,15,20,20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- TÍTULO PRINCIPAL & BANNER PERMISOS -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,15">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Configuración del Sistema" Style="{DynamicResource MaterialDesignHeadline4TextBlock}" FontWeight="Bold"/>
+                        <TextBlock Text="Gestione las preferencias globales, zona horaria y los métodos de pago aceptados en el Punto de Venta." 
+                                   Style="{DynamicResource MaterialDesignBody1TextBlock}" Opacity="0.7" Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <!-- Botón Menú Lateral -->
+                    <Button Grid.Column="1"
+                            Style="{DynamicResource MaterialDesignOutlinedButton}"
+                            Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
+                            CommandParameter="{x:Static Dock.Right}"
+                            ToolTip="Abrir Menú Principal"
+                            Height="38"
+                            Padding="12,0">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="CogOutline" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Menú" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+
+                <!-- Banner Modo Solo Lectura -->
+                <Border Visibility="{Binding UserSession.CanMutateSettings, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
+                        Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,15,0,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="LockOutline" Foreground="#D97706" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="Modo Solo Lectura: Su cuenta tiene permisos de consulta. Los cambios de configuración están bloqueados."
+                                   Foreground="#B45309" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- SECCIÓN 1: ZONA HORARIA GLOBAL -->
+            <Border Grid.Row="1" Background="{DynamicResource MaterialDesignPaper}" 
+                    BorderBrush="{DynamicResource MaterialDesignDivider}" 
+                    BorderThickness="1" 
+                    CornerRadius="10" 
+                    Padding="20" 
+                    Margin="0,0,0,20">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,12">
+                        <materialDesign:PackIcon Kind="Web" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="Zona Horaria Global" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <ComboBox ItemsSource="{Binding AvailableTimeZones}" 
+                              DisplayMemberPath="DisplayName"
+                              SelectedItem="{Binding SelectedTimeZone, Mode=TwoWay}"
+                              IsEnabled="{Binding UserSession.CanMutateSettings}"
+                              materialDesign:HintAssist.Hint="Seleccionar Zona Horaria"
+                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                              MaxWidth="550"
+                              HorizontalAlignment="Left"/>
+                </StackPanel>
+            </Border>
+
+            <!-- SECCIÓN 2: ADMINISTRACIÓN DE MÉTODOS DE PAGO -->
+            <Border Grid.Row="2" Background="{DynamicResource MaterialDesignPaper}" 
+                    BorderBrush="{DynamicResource MaterialDesignDivider}" 
+                    BorderThickness="1" 
+                    CornerRadius="10" 
+                    Padding="20">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Encabezado de Sección -->
+                    <Grid Grid.Row="0" Margin="0,0,0,15">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <materialDesign:PackIcon Kind="CreditCardOutline" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBlock Text="Métodos de Pago Aceptados" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock Text="Configure la lista de métodos de pago, renómbrelos o reordénelos según la prioridad en el Punto de Venta (POS)." 
+                                       Style="{DynamicResource MaterialDesignCaptionTextBlock}" Opacity="0.7" Margin="34,4,0,0"/>
+                        </StackPanel>
+
+                        <!-- Acciones Principales -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Command="{Binding AddNewMethodCommand}"
+                                    IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                    Style="{DynamicResource MaterialDesignRaisedButton}"
+                                    Height="38"
+                                    Padding="14,0"
+                                    Margin="0,0,8,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Kind="Plus" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Nuevo Método" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            
+                            <Button Command="{Binding LoadMethodsCommand}" 
+                                    Style="{DynamicResource MaterialDesignOutlinedButton}" 
+                                    ToolTip="Recargar Lista"
+                                    Height="38" Width="38" Padding="0">
+                                <materialDesign:PackIcon Kind="Refresh" Width="20" Height="20"/>
+                            </Button>
+                            
+                            <!-- Indicador de Carga -->
+                            <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}"
+                                         Value="0" IsIndeterminate="True"
+                                         Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}"
+                                         Margin="10,0,0,0" Width="20" Height="20"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- TABLA DE MÉTODOS DE PAGO CON ORDENAMIENTO Y EDICIÓN DE NOMBRE -->
+                    <controls:PerformantDataGrid Grid.Row="2" 
+                              ItemsSource="{Binding PaymentMethods}" 
+                              AutoGenerateColumns="False" 
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              GridLinesVisibility="Horizontal"
+                              HeadersVisibility="Column"
+                              ColumnHeaderHeight="40"
+                              RowHeight="44"
+                              BorderThickness="1"
+                              BorderBrush="{DynamicResource MaterialDesignDivider}"
+                              Background="Transparent">
+                        
+                        <controls:PerformantDataGrid.RowStyle>
+                            <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                        <Setter Property="Opacity" Value="0.5"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </controls:PerformantDataGrid.RowStyle>
+
+                        <controls:PerformantDataGrid.Columns>
+                            <!-- Columna Orden (Subir / Bajar) -->
+                            <DataGridTemplateColumn Header="Orden" Width="75">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <!-- Mover Arriba -->
+                                            <Button Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{DynamicResource MaterialDesignIconButton}"
+                                                    ToolTip="Subir Posición"
+                                                    Width="26" Height="26" Padding="0">
+                                                <materialDesign:PackIcon Kind="ArrowUp" Width="16" Height="16"/>
+                                            </Button>
+
+                                            <!-- Mover Abajo -->
+                                            <Button Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{DynamicResource MaterialDesignIconButton}"
+                                                    ToolTip="Bajar Posición"
+                                                    Width="26" Height="26" Padding="0">
+                                                <materialDesign:PackIcon Kind="ArrowDown" Width="16" Height="16"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Columna Nombre con Edición -->
+                            <DataGridTemplateColumn Header="Nombre del Método" Width="*" MinWidth="180">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" 
+                                                       FontWeight="Bold" 
+                                                       FontSize="13"
+                                                       VerticalAlignment="Center" 
+                                                       Margin="4,0,8,0"/>
+                                            
+                                            <!-- Botón Renombrar -->
+                                            <Button Command="{Binding DataContext.RenameMethodCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{DynamicResource MaterialDesignIconButton}"
+                                                    Foreground="{DynamicResource PrimaryHueMidBrush}"
+                                                    ToolTip="Renombrar Método"
+                                                    Width="26" Height="26" Padding="0">
+                                                <materialDesign:PackIcon Kind="Pencil" Width="15" Height="15"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Columna Tipo (Efectivo vs Electrónico) -->
+                            <DataGridTemplateColumn Header="Tipo" Width="Auto">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border CornerRadius="4" Padding="6,2" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#E2E8F0"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsCash}" Value="True">
+                                                            <Setter Property="Background" Value="#DCFCE7"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock FontWeight="SemiBold" FontSize="11">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="ELECTRÓNICO"/>
+                                                        <Setter Property="Foreground" Value="#475569"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsCash}" Value="True">
+                                                                <Setter Property="Text" Value="EFECTIVO"/>
+                                                                <Setter Property="Foreground" Value="#166534"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Switch Requiere Referencia -->
+                            <DataGridTemplateColumn Header="Requiere Referencia" Width="Auto">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding RequiresReference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                                  Command="{Binding DataContext.UpdateReferenceRequirementCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                  CommandParameter="{Binding}"
+                                                  HorizontalAlignment="Center"
+                                                  Margin="0"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Switch Estado Activo -->
+                            <DataGridTemplateColumn Header="Estado Activo" Width="Auto">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  Command="{Binding DataContext.SetActiveStatusCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                  CommandParameter="{Binding}"
+                                                  ToolTip="Activar o desactivar este método en el POS"
+                                                  HorizontalAlignment="Center"
+                                                  Margin="0"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Botones de Acción -->
+                            <DataGridTemplateColumn Header="Acciones" Width="Auto">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <!-- Desactivar / Eliminar -->
+                                            <Button Command="{Binding DataContext.DeleteMethodCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{DynamicResource MaterialDesignIconButton}"
+                                                    ToolTip="Desactivar Método"
+                                                    Foreground="#DC2626"
+                                                    Width="30" Height="30">
+                                                <materialDesign:PackIcon Kind="Delete" Width="18" Height="18"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </controls:PerformantDataGrid.Columns>
+                    </controls:PerformantDataGrid>
+                </Grid>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,217 @@
+<Window x:Class="Desktop.Client.Views.AddProductView"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Desktop.Client.Views"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        mc:Ignorable="d"
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="13"
+        TextOptions.TextFormattingMode="Ideal" 
+        TextOptions.TextRenderingMode="Auto"        
+        Background="{DynamicResource MaterialDesignPaper}"
+        FontFamily="{DynamicResource MaterialDesignFont}"
+        Title="{Binding ViewTitle}" Height="580" Width="650"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+    
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
+    </Window.Resources>
+
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- HEADER -->
+        <TextBlock Grid.Row="0" Text="Product Registration" Style="{DynamicResource MaterialDesignHeadline5TextBlock}" Margin="0,0,0,25" FontWeight="Bold"/>
+
+        <!-- MAIN FORM -->
+        <Grid Grid.Row="1">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                            <Setter Property="Visibility" Value="Hidden"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsError}" Value="True">
+                            <Setter Property="Visibility" Value="Hidden"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="20" /> <!-- Spacing -->
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- LEFT COLUMN: Basic Info & Categorization -->
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="Basic Information" Style="{DynamicResource MaterialDesignSubtitle2TextBlock}" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,15"/>
+                
+                <Grid Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Kind="PackageVariantClosed" VerticalAlignment="Center" Margin="0,0,15,0" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}"/>
+                    <TextBox Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Product Name *" materialDesign:HintAssist.HelperText="e.g. Coca Cola 2L" Style="{DynamicResource MaterialDesignOutlinedTextBox}" TabIndex="1"/>
+                </Grid>
+
+                <Grid Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Kind="Barcode" VerticalAlignment="Center" Margin="0,0,15,0" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}"/>
+                    <TextBox Grid.Column="1" Text="{Binding Sku, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="SKU / Barcode *" materialDesign:HintAssist.HelperText="Unique identifier" Style="{DynamicResource MaterialDesignOutlinedTextBox}" TabIndex="2"/>
+                </Grid>
+
+                <Grid Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Kind="TextSubject" VerticalAlignment="Top" Margin="0,15,15,0" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}"/>
+                    <TextBox Grid.Column="1" Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Description" materialDesign:HintAssist.HelperText="Optional product details" Style="{DynamicResource MaterialDesignOutlinedTextBox}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" TabIndex="3"/>
+                </Grid>
+
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Kind="ScaleBalance" VerticalAlignment="Center" Margin="0,0,15,0" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding UnitOfMeasures}" SelectedItem="{Binding UnitOfMeasure}" materialDesign:HintAssist.Hint="Unit of Measure" materialDesign:HintAssist.HelperText="Select kg, pcs, liters..." Style="{DynamicResource MaterialDesignOutlinedComboBox}" TabIndex="4"/>
+                </Grid>
+            </StackPanel>
+
+            <!-- RIGHT COLUMN: Pricing & Inventory -->
+            <StackPanel Grid.Column="2">
+                <TextBlock Text="Pricing &amp; Validation" Style="{DynamicResource MaterialDesignSubtitle2TextBlock}" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,15"/>
+
+                <Grid Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Kind="CashMultiple" VerticalAlignment="Center" Margin="0,0,15,0" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}"/>
+                    <TextBox Grid.Column="1" Text="{Binding Cost, UpdateSourceTrigger=PropertyChanged, Delay=200}" materialDesign:HintAssist.Hint="Cost *" materialDesign:HintAssist.HelperText="Purchase cost" Style="{DynamicResource MaterialDesignOutlinedTextBox}" TabIndex="5"/>
+                    <TextBox Grid.Column="3" Text="{Binding ProfitPercentage, UpdateSourceTrigger=PropertyChanged, Delay=200}" materialDesign:HintAssist.Hint="Target Profit %" materialDesign:HintAssist.HelperText="Profit margin" Style="{DynamicResource MaterialDesignOutlinedTextBox}" TabIndex="6"/>
+                </Grid>
+
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Kind="TagOutline" VerticalAlignment="Center" Margin="0,0,15,0" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}"/>
+                    <TextBox Grid.Column="1" Text="{Binding Price, UpdateSourceTrigger=PropertyChanged, Delay=200}" materialDesign:HintAssist.Hint="Final Sale Price *" materialDesign:HintAssist.HelperText="Final customer price" Style="{DynamicResource MaterialDesignOutlinedTextBox}" TabIndex="7"/>
+                </Grid>
+
+
+                <TextBlock Text="Initial Inventory" Style="{DynamicResource MaterialDesignSubtitle2TextBlock}" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,15"/>
+
+                <Grid Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Kind="LayersOutline" VerticalAlignment="Center" Margin="0,0,15,0" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}"/>
+                    <TextBox Grid.Column="1" Text="{Binding StockQuantity, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Current Stock" materialDesign:HintAssist.HelperText="Initial available quantity" Style="{DynamicResource MaterialDesignOutlinedTextBox}" TabIndex="8"/>
+                </Grid>
+
+                <Grid Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Kind="BellAlertOutline" VerticalAlignment="Center" Margin="0,0,15,0" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}"/>
+                    <TextBox Grid.Column="1" Text="{Binding LowStockThreshold, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Low Stock Alert" materialDesign:HintAssist.HelperText="Minimum quantity before warning" Style="{DynamicResource MaterialDesignOutlinedTextBox}" TabIndex="9"/>
+                </Grid>
+            </StackPanel>
+        </Grid>
+
+        <!-- SKELETON SCREEN (LOADING OVERLAY) -->
+        <Grid Grid.Row="1">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.Triggers>
+                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                    <BeginStoryboard>
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.3" To="0.8" Duration="0:0:0.8"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </EventTrigger>
+            </Grid.Triggers>
+            
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Grid.Column="0">
+                    <Border Background="{DynamicResource MaterialDesignDivider}" Height="20" Width="150" HorizontalAlignment="Left" CornerRadius="4" Margin="0,0,0,20"/>
+                    <Border Background="{DynamicResource MaterialDesignDivider}" Height="55" CornerRadius="4" Margin="0,0,0,25"/>
+                    <Border Background="{DynamicResource MaterialDesignDivider}" Height="55" CornerRadius="4" Margin="0,0,0,25"/>
+                    <Border Background="{DynamicResource MaterialDesignDivider}" Height="95" CornerRadius="4" Margin="0,0,0,25"/>
+                    <Border Background="{DynamicResource MaterialDesignDivider}" Height="55" CornerRadius="4" Margin="0,0,0,25"/>
+                </StackPanel>
+                
+                <StackPanel Grid.Column="2">
+                    <Border Background="{DynamicResource MaterialDesignDivider}" Height="20" Width="150" HorizontalAlignment="Left" CornerRadius="4" Margin="0,0,0,20"/>
+                    <Border Background="{DynamicResource MaterialDesignDivider}" Height="55" CornerRadius="4" Margin="0,0,0,30"/>
+                    <Border Background="{DynamicResource MaterialDesignDivider}" Height="55" CornerRadius="4" Margin="0,0,0,45"/>
+                    <Border Background="{DynamicResource MaterialDesignDivider}" Height="20" Width="150" HorizontalAlignment="Left" CornerRadius="4" Margin="0,0,0,20"/>
+                    <Border Background="{DynamicResource MaterialDesignDivider}" Height="55" CornerRadius="4" Margin="0,0,0,25"/>
+                    <Border Background="{DynamicResource MaterialDesignDivider}" Height="55" CornerRadius="4" Margin="0,0,0,25"/>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <!-- ERROR STATE (TIMEOUT OVERLAY) -->
+        <Grid Grid.Row="1">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsError}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="300">
+                <materialDesign:PackIcon Kind="AlertCircleOutline" Width="48" Height="48" Foreground="{DynamicResource SecondaryHueMidBrush}" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource MaterialDesignBody}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,20"/>
+                <Button Command="{Binding LoadMetadataCommand}" Content="Retry Connection" HorizontalAlignment="Center" Style="{DynamicResource MaterialDesignOutlinedButton}"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- FOOTER: Actions -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button Content="Cancel" Command="{Binding CancelCommand}" Style="{DynamicResource MaterialDesignFlatButton}" Margin="0,0,20,0" IsCancel="True" TabIndex="11"/>
+            <Button Content="Save Product" Command="{Binding SaveCommand}" Style="{DynamicResource MaterialDesignRaisedButton}" IsDefault="True" TabIndex="10"/>
+        </StackPanel>
+    </Grid>
+</Window>
