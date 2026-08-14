@@ -345,6 +345,7 @@ public class InventoryService : IInventoryService
                 StockQuantity = p.StockQuantity,
                 ReservedQuantity = p.ReservedQuantity,
                 IsCashAdvance = p.IsCashAdvance,
+                IsActive = p.IsActive,
                 ProfitPercentage = p.ProfitPercentage
             })
             .Take(10)
@@ -436,6 +437,7 @@ public class InventoryService : IInventoryService
                 StockQuantity = p.StockQuantity,
                 ReservedQuantity = p.ReservedQuantity,
                 IsCashAdvance = p.IsCashAdvance,
+                IsActive = p.IsActive,
                 ProfitPercentage = p.ProfitPercentage
             })
             .FirstOrDefaultAsync();

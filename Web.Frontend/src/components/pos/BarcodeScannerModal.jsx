@@ -4,21 +4,26 @@ import { Loader2, CameraOff, ShieldAlert } from 'lucide-react';
 import Modal from '../ui/Modal';
 import './BarcodeScannerModal.css';
 
-// Same-code cool-down so a barcode held still in front of the camera
-// doesn't keep re-adding the product to the cart.
-const SAME_CODE_COOLDOWN_MS = 3000;
-
 // La API de cámara solo existe en contextos seguros: HTTPS, localhost o loopback (127.0.0.1).
 // Con http:// + IP de red (ej. http://192.168.1.10:5000) navigator.mediaDevices no existe.
 const INSECURE_CONTEXT_MESSAGE =
   'La cámara requiere una conexión segura (HTTPS o localhost). Esta página se abrió con http:// y una IP de red. ' +
   'Abra el sistema en esta PC con http://localhost:5000, o configure HTTPS para usarlo desde otros dispositivos.';
 
+// Debounce mínimo entre dos registros cualesquiera (evita dobles disparos en fotogramas seguidos).
+const MIN_GLOBAL_INTERVAL_MS = 150;
+// Pausa mínima entre intentos de decodificación fallidos (ritmo ~16 intentos/seg, sin saturar la CPU).
+const ATTEMPT_PACING_MS = 60;
+
 export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned }) {
   const videoRef = useRef(null);
   const onCodeScannedRef = useRef(onCodeScanned);
   const lastCodeRef = useRef(null);
-  const lastDecodedAtRef = useRef(0);
+  const lastHitAtRef = useRef(0);
+  // true mientras la cámara sigue viendo un código (se actualiza en CADA fotograma,
+  // éxito o fallo): permite distinguir "código sostenido" de "re-presentado".
+  const codeVisibleRef = useRef(false);
+  const lastSuppressedWarnAtRef = useRef(0);
 
   const [starting, setStarting] = useState(false);
   const [status, setStatus] = useState({ type: 'info', text: '' });
@@ -34,16 +39,36 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned }) 
     let reader = null;
     let disposed = false;
 
-    const handleDecoded = (text) => {
-      if (!text || !text.trim() || disposed) return;
-      const now = Date.now();
-      if (lastCodeRef.current === text && now - lastDecodedAtRef.current < SAME_CODE_COOLDOWN_MS) {
+    const handleDecoded = (result) => {
+      if (disposed) return;
+
+      // Fotograma sin código: la cámara ya no está viendo uno en este momento.
+      if (!result || !result.getText || !result.getText().trim()) {
+        codeVisibleRef.current = false;
         return;
       }
-      lastCodeRef.current = text;
-      lastDecodedAtRef.current = now;
 
-      const trimmed = text.trim();
+      const trimmed = result.getText().trim();
+      const now = Date.now();
+
+      // Debounce global entre registros consecutivos.
+      if (now - lastHitAtRef.current < MIN_GLOBAL_INTERVAL_MS) return;
+
+      // El mismo código sigue visible (nunca salió de la vista): se ignora para no
+      // volver a agregar el producto sin querer. Solo se re-escanea si el código
+      // sale de la vista (al menos un fotograma sin él) o aparece otro distinto.
+      if (lastCodeRef.current === trimmed && codeVisibleRef.current) {
+        if (now - lastSuppressedWarnAtRef.current > 500) {
+          lastSuppressedWarnAtRef.current = now;
+          setStatus({ type: 'warn', text: 'Código repetido — retírelo de la vista para escanearlo de nuevo' });
+        }
+        return;
+      }
+
+      lastCodeRef.current = trimmed;
+      lastHitAtRef.current = now;
+      codeVisibleRef.current = true;
+
       // Copy to clipboard (best effort — requires a secure context).
       if (navigator.clipboard?.writeText) {
         navigator.clipboard.writeText(trimmed).catch(() => {});
@@ -64,11 +89,18 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned }) 
       }
 
       try {
-        reader = new BrowserMultiFormatReader();
-        // deviceId null -> cámara predeterminada (facingMode 'environment' en móviles).
-        await reader.decodeFromVideoDevice(null, videoRef.current, (result) => {
-          if (result) handleDecoded(result.getText());
-        });
+        // Segundo argumento = 0: sin pausa de 500 ms tras cada código detectado,
+        // para permitir escanear varios productos uno tras otro rápidamente.
+        reader = new BrowserMultiFormatReader(null, 0);
+        reader.timeBetweenDecodingAttempts = ATTEMPT_PACING_MS;
+
+        // Resolución de captura limitada: decodificar fotogramas más pequeños es
+        // mucho más rápido (los móviles por defecto entregan 720p/1080p).
+        await reader.decodeFromConstraints(
+          { video: { facingMode: 'environment', width: { ideal: 960 }, height: { ideal: 540 } } },
+          videoRef.current,
+          (result) => handleDecoded(result),
+        );
         if (disposed) return;
         setStarting(false);
         setStatus({ type: 'info', text: 'Apunte la cámara a un código de barras…' });

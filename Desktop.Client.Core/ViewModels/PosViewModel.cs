@@ -415,6 +415,25 @@ public partial class PosViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Exact-SKU lookup used by the barcode scanner window to show the product name, price
+    /// and status (found / not found / inactive) on the scan result card.
+    /// Non-numeric SKUs (e.g. alphanumeric Code-128 values) are treated as "not found".
+    /// </summary>
+    public async Task<Core.DTOs.ProductQuickInfoDto?> ResolveScannedCodeAsync(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        try
+        {
+            return await _product_service.GetQuickInfoAsync(code.Trim());
+        }
+        catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        {
+            // SKU no numérico: el endpoint quick-check lo rechaza; no es un producto del catálogo.
+            return null;
+        }
+    }
+
     [RelayCommand]
     private async Task CheckoutAsync()
     {

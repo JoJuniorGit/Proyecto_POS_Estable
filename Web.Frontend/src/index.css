@@ -2732,3 +2732,11 @@ input::placeholder {
 }
 
 
+
+/* Hold Sale Modal — Deuda Restante (contraste sobre fondos oscuros) */
+.hold-sale-debt {
+  color: #C62828;
+}
+[data-theme="dark"] .hold-sale-debt {
+  color: #FF8A80;
+}

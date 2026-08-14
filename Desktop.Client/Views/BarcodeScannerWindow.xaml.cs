@@ -7,8 +7,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using Desktop.Client.Services;
+using MaterialDesignThemes.Wpf;
 using ZXing;
 using ZXing.Windows.Compatibility;
 
@@ -29,9 +31,17 @@ public partial class BarcodeScannerWindow : Window
     private static readonly Brush CameraActiveBrush = CreateBrush("#2E7D32");
     private static readonly Brush CameraErrorBrush = CreateBrush("#C62828");
 
+    // Result card state accents (Material Design friendly tones)
+    private static readonly Brush ResultFoundBrush = CreateBrush("#2E7D32");   // green — product found
+    private static readonly Brush ResultWarnBrush = CreateBrush("#E65100");    // deep orange — not found / not addable
+    private static readonly Brush ResultErrorBrush = CreateBrush("#C62828");   // red — inactive / error
+    private static readonly Brush ResultNeutralBrush = CreateBrush("#546E7A"); // blue-gray — no resolver available
+    private static readonly Brush ResultTitleDefaultBrush = CreateBrush("#ECEFF1");
+
     private readonly BarcodeScannerService _scannerService = new();
     private readonly OcrService? _ocrService;
     private readonly Action<string>? _onValueReady;
+    private readonly Func<string, Task<Core.DTOs.ProductQuickInfoDto?>>? _productResolver;
     private readonly BarcodeReaderBitmapSource _barcodeReader = new()
     {
         AutoRotate = true,
@@ -44,16 +54,23 @@ public partial class BarcodeScannerWindow : Window
     private bool _cameraErrorShown;
     private string? _lastCode;
     private DateTime _lastCopyAt = DateTime.MinValue;
+    private int _resultSeq;
 
     public ObservableCollection<string> History { get; } = new();
 
     /// <param name="onValueReady">Invoked (on the UI thread) whenever a value is copied:
     /// a scanned code, recognized OCR text, or a history item. The POS uses it to add the
     /// product to the cart (barcodes) or fill its search box.</param>
-    public BarcodeScannerWindow(Action<string>? onValueReady = null)
+    /// <param name="productResolver">Resolves a scanned code to its product (exact SKU).
+    /// When provided, the window shows the product name / "not found" / "inactive" states
+    /// on the result card; when null, it falls back to a neutral "code copied" card.</param>
+    public BarcodeScannerWindow(
+        Action<string>? onValueReady = null,
+        Func<string, Task<Core.DTOs.ProductQuickInfoDto?>>? productResolver = null)
     {
         InitializeComponent();
         _onValueReady = onValueReady;
+        _productResolver = productResolver;
         _ocrService = OcrService.TryCreate();
         HistoryList.ItemsSource = History;
 
@@ -212,6 +229,7 @@ public partial class BarcodeScannerWindow : Window
                     _lastCopyAt = now;
                     HandleValueReady(code, $"Code copied: {code}  ({result.BarcodeFormat})");
                     SystemSounds.Asterisk.Play();
+                    _ = ShowProductResultAsync(code, result.BarcodeFormat.ToString());
                 }
             }
         }
@@ -223,6 +241,87 @@ public partial class BarcodeScannerWindow : Window
         {
             _isProcessing = false;
         }
+    }
+
+    /// <summary>
+    /// Resolves the scanned code against the catalog (exact SKU) and renders the result
+    /// card: product name in green, "Producto no encontrado" in amber, inactive / errors
+    /// in red. Stale results (a newer scan fired meanwhile) are discarded.
+    /// </summary>
+    private async Task ShowProductResultAsync(string code, string format)
+    {
+        var seq = ++_resultSeq;
+        try
+        {
+            Core.DTOs.ProductQuickInfoDto? info = null;
+            if (_productResolver != null)
+            {
+                info = await _productResolver(code);
+            }
+
+            if (seq != _resultSeq || _isClosed) return;
+
+            if (_productResolver == null)
+            {
+                // Standalone mode (no POS context): neutral card with the raw code.
+                ShowResultCard(PackIconKind.Barcode, ResultNeutralBrush,
+                    title: code, titleBrush: null,
+                    subtitle: $"Format: {format}");
+                return;
+            }
+
+            if (info == null)
+            {
+                ShowResultCard(PackIconKind.AlertCircle, ResultWarnBrush,
+                    title: "Producto no encontrado", titleBrush: ResultWarnBrush,
+                    subtitle: code);
+                return;
+            }
+
+            if (!info.IsActive)
+            {
+                ShowResultCard(PackIconKind.CloseCircle, ResultErrorBrush,
+                    title: "Producto inactivo", titleBrush: ResultErrorBrush,
+                    subtitle: $"{code}  •  {info.Name}");
+                return;
+            }
+
+            if (info.IsCashAdvance)
+            {
+                ShowResultCard(PackIconKind.AlertCircle, ResultWarnBrush,
+                    title: info.Name, titleBrush: ResultWarnBrush,
+                    subtitle: $"{code}  •  Sistema — requiere captura manual");
+                return;
+            }
+
+            // Found and active: show the product name and price in green.
+            string price = info.PriceBsS > 0 ? $"Bs.S {info.PriceBsS:N2}" : $"USD {info.PriceUSD:N2}";
+            ShowResultCard(PackIconKind.CheckCircle, ResultFoundBrush,
+                title: info.Name, titleBrush: null,
+                subtitle: $"{code}  •  {format}  •  {price}");
+        }
+        catch (Exception ex)
+        {
+            if (seq != _resultSeq || _isClosed) return;
+            ShowResultCard(PackIconKind.CloseCircle, ResultErrorBrush,
+                title: "Error de consulta", titleBrush: ResultErrorBrush,
+                subtitle: ex.Message);
+        }
+    }
+
+    private void ShowResultCard(PackIconKind iconKind, Brush accent, string title, Brush? titleBrush, string subtitle)
+    {
+        ResultIcon.Kind = iconKind;
+        ResultIcon.Foreground = accent;
+        ResultTitle.Text = title;
+        ResultTitle.Foreground = titleBrush ?? ResultTitleDefaultBrush;
+        ResultSubtitle.Text = subtitle;
+        ResultCard.BorderBrush = accent;
+
+        // Quick, non-blocking fade-in.
+        ResultCard.Visibility = Visibility.Visible;
+        ResultCard.BeginAnimation(UIElement.OpacityProperty, null);
+        ResultCard.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(160)));
     }
 
     private void Mode_Changed(object sender, RoutedEventArgs e)

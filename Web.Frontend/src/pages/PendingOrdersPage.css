@@ -1,0 +1,74 @@
+/* ══════════════════════════════════════════════════════════
+   Pulido visual — Cuentas Abiertas (PendingOrdersPage)
+   Reglas con prefijo :root para ganar en especificidad a
+   index.css sin importar el orden de concatenación del bundle.
+   ══════════════════════════════════════════════════════════ */
+
+/* ── 1. Contraste Tasa BCV: píldora celeste semitransparente ── */
+:root .pending-orders-bcv-badge {
+  padding: 8px 16px;
+  border-radius: 999px;
+  background-color: rgba(14, 165, 233, 0.10);
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  color: var(--text-muted, #94a3b8);
+}
+
+:root .pending-orders-bcv-badge .rate-value {
+  color: #0284c7; /* sky-600 en tema claro */
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+:root[data-theme="dark"] .pending-orders-bcv-badge {
+  background-color: rgba(56, 189, 248, 0.10);
+  border-color: rgba(56, 189, 248, 0.32);
+}
+
+:root[data-theme="dark"] .pending-orders-bcv-badge .rate-value {
+  color: #7dd3fc; /* sky-300 en tema oscuro */
+}
+
+/* En móvil conserva el ancho completo centrado de index.css */
+@media (max-width: 768px) {
+  :root .pending-orders-bcv-badge {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* ── 2. Colorimetría multimoneda ──
+   Bs.S en azul claro, USD en verde: identificación por color
+   sin necesidad de leer el símbolo. */
+:root .amount-bss {
+  color: #0369a1; /* sky-700 en tema claro */
+  font-variant-numeric: tabular-nums;
+}
+
+:root .amount-usd {
+  color: #059669; /* emerald-600 en tema claro */
+  font-variant-numeric: tabular-nums;
+}
+
+:root[data-theme="dark"] .amount-bss {
+  color: #7dd3fc;
+}
+
+:root[data-theme="dark"] .amount-usd {
+  color: #34d399;
+}
+
+/* ── 3. Bloque de resumen financiero móvil como "ticket" ── */
+:root .pending-mobile-card-summary {
+  background-color: var(--bg-primary, rgba(15, 23, 42, 0.04));
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.25));
+  border-radius: 10px;
+  padding: 12px 8px;
+}
+
+:root[data-theme="dark"] .pending-mobile-card-summary {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(148, 163, 184, 0.22);
+}

@@ -6,12 +6,36 @@ import { holdSale } from '../../services/salesApi';
 import { formatNumberEs, formatBsS, formatUSD } from '../../utils/formatters';
 import { Search, UserPlus, Clock, Loader2, RefreshCw, X } from 'lucide-react';
 
+// Reusable card/border tokens (the project's utility classes like .border/.rounded-3 don't exist in index.css)
+const cardStyle = {
+  border: '1px solid var(--border)',
+  borderRadius: '10px',
+  padding: '12px',
+  backgroundColor: 'var(--bg-surface)',
+};
+
+const fieldStyle = {
+  backgroundColor: 'var(--bg-input)',
+  color: 'var(--text-primary)',
+  borderColor: 'var(--border)',
+};
+
+const summaryRowStyle = {
+  display: 'grid',
+  gridTemplateColumns: '1fr auto auto',
+  gap: '16px',
+  alignItems: 'baseline',
+  width: '100%',
+};
+
 export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer, saleTotalUSD, exchangeRate, onSuccess }) {
   const [query, setQuery] = useState('');
   const [customers, setCustomers] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const searchInputRef = useRef(null);
+  const searchWrapRef = useRef(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // New customer creation state
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
@@ -49,9 +73,22 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
       setEnablePayment(false);
       setReference('');
       setIsCreatingCustomer(false);
+      setIsDropdownOpen(false);
       setQuery('');
     }
   }, [isOpen, currentCustomer]);
+
+  // Close the floating dropdown when clicking outside the search area
+  useEffect(() => {
+    if (!isOpen || selectedCustomer) return;
+    function handleMousedown(e) {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleMousedown);
+    return () => document.removeEventListener('mousedown', handleMousedown);
+  }, [isOpen, selectedCustomer]);
 
   const loadCustomers = async (q) => {
     setLoadingCustomers(true);
@@ -69,6 +106,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
   const handleSearchChange = (e) => {
     const val = e.target.value;
     setQuery(val);
+    setIsDropdownOpen(true);
     loadCustomers(val);
   };
 
@@ -77,7 +115,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
     setQuery('');
     loadCustomers('');
     setTimeout(() => {
-      if (searchInputRef.current) searchInputRef.current.focus();
+      if (searchInputRef.current) { searchInputRef.current.focus(); setIsDropdownOpen(true); }
     }, 50);
   };
 
@@ -92,6 +130,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
       });
       setSelectedCustomer(created);
       setIsCreatingCustomer(false);
+      setIsDropdownOpen(false);
       loadCustomers(created.cedulaOrRif);
     } catch (err) {
       setError(err.response?.data || err.message || 'Error al crear cliente');
@@ -175,344 +214,374 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Guardar Pedido en Espera" maxWidth="580px">
-      {error && <div className="alert alert-danger mb-3 text-center">{error}</div>}
+      <div style={{ padding: '0 6px' }}>
+        {error && <div className="alert alert-danger mb-3 text-center">{error}</div>}
 
-      {/* Step 1: Customer Selection */}
-      <div className="mb-4">
-        {selectedCustomer ? (
-          <div 
-            className="p-3 rounded-3 border text-center"
-            style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}
-          >
-            <div className="d-flex justify-content-between align-items-center mb-2">
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>
-                Cliente Asignado
-              </span>
-              <button 
-                type="button" 
-                className="btn btn-sm btn-link p-0 text-decoration-none"
-                style={{ fontSize: '0.8rem', color: 'var(--accent-primary)', fontWeight: '600' }}
-                onClick={handleClearOrChangeCustomer}
-              >
-                <RefreshCw size={13} className="me-1" /> Cambiar Cliente
-              </button>
-            </div>
-            
-            <div className="font-bold" style={{ color: 'var(--text-primary)', fontSize: '1.05rem' }}>
-              {selectedCustomer.name}
-            </div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '2px' }}>
-              {selectedCustomer.cedulaOrRif} {selectedCustomer.phone ? `• ${selectedCustomer.phone}` : ''}
-            </div>
-          </div>
-        ) : (
-          <div>
-            <label className="form-label font-bold mb-2" style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-              1. Cliente de la Cuenta (Requerido)
-            </label>
-            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', marginBottom: '8px', width: '100%' }}>
-              <div style={{ position: 'relative', flex: '1 1 auto', minWidth: 0 }}>
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  className="form-input text-center"
-                  placeholder="Buscar por Nombre o Cédula/RIF..."
-                  value={query}
-                  onChange={handleSearchChange}
-                  style={{ 
-                    paddingLeft: '36px', 
-                    paddingRight: '36px', 
-                    height: '38px',
-                    backgroundColor: 'var(--bg-input)', 
-                    color: 'var(--text-primary)', 
-                    borderColor: 'var(--border)' 
+        {/* Customer Selection */}
+        <div className="mb-4">
+          {selectedCustomer ? (
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>
+                  Cliente Asignado
+                </span>
+                <button
+                  type="button"
+                  onClick={handleClearOrChangeCustomer}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '0.8rem',
+                    color: 'var(--accent-primary)',
+                    fontWeight: '600'
                   }}
-                />
-                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                {query && (
-                  <button 
-                    type="button" 
-                    onClick={() => { setQuery(''); loadCustomers(''); }}
-                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-                  >
-                    <X size={14} />
-                  </button>
-                )}
+                >
+                  <RefreshCw size={13} /> Cambiar Cliente
+                </button>
               </div>
-              <button 
-                type="button" 
-                className="btn btn-outline d-inline-flex align-items-center justify-content-center gap-1.5"
-                onClick={() => setIsCreatingCustomer(!isCreatingCustomer)}
-                style={{ 
-                  height: '38px',
-                  flexShrink: 0,
-                  borderColor: 'var(--border)', 
-                  color: 'var(--text-primary)', 
-                  whiteSpace: 'nowrap' 
-                }}
-              >
-                <UserPlus size={16} /> Crear Cliente
-              </button>
+
+              <div className="font-bold" style={{ color: 'var(--text-primary)', fontSize: '1.05rem' }}>
+                {selectedCustomer.name}
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '2px' }}>
+                {selectedCustomer.cedulaOrRif} {selectedCustomer.phone ? `• ${selectedCustomer.phone}` : ''}
+              </div>
             </div>
+          ) : (
+            <div>
+              <label className="form-label font-bold mb-2" style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                Cliente (Requerido)
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', marginBottom: '8px', width: '100%' }}>
+                <div ref={searchWrapRef} style={{ position: 'relative', flex: '1 1 auto', minWidth: 0 }}>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    className="form-input text-center"
+                    placeholder="Buscar por Nombre o Cédula/RIF..."
+                    value={query}
+                    onChange={handleSearchChange}
+                    onFocus={() => setIsDropdownOpen(true)}
+                    style={{
+                      paddingLeft: '36px',
+                      paddingRight: '36px',
+                      height: '38px',
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      ...fieldStyle
+                    }}
+                  />
+                  <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  {query && (
+                    <button
+                      type="button"
+                      onClick={() => { setQuery(''); setIsDropdownOpen(true); loadCustomers(''); }}
+                      style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
 
-            {isCreatingCustomer && (
-              <form 
-                onSubmit={handleCreateCustomer} 
-                className="p-3 rounded-3 border mb-3 text-center"
-                style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}
-              >
-                <div className="font-bold mb-2 text-center" style={{ color: 'var(--text-primary)' }}>Registrar Nuevo Cliente</div>
-                <div className="d-flex gap-2 mb-2">
-                  <input type="text" className="form-input text-center" placeholder="Cédula/RIF" value={newCustomer.cedulaOrRif} onChange={e => setNewCustomer({...newCustomer, cedulaOrRif: e.target.value})} required style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }} />
-                  <input type="text" className="form-input text-center" placeholder="Nombre completo" value={newCustomer.name} onChange={e => setNewCustomer({...newCustomer, name: e.target.value})} required style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }} />
-                </div>
-                <div className="d-flex gap-2 mb-2">
-                  <input type="text" className="form-input text-center" placeholder="Teléfono (Opcional)" value={newCustomer.phone} onChange={e => setNewCustomer({...newCustomer, phone: e.target.value})} style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }} />
-                </div>
-                <button type="submit" className="btn btn-sm btn-primary">Guardar Cliente</button>
-              </form>
-            )}
-
-            {/* List box styled for Dark and Light mode + Custom Scrollbar + Left Aligned Flex Rows */}
-            <div 
-              className="border rounded-3 custom-scrollbar" 
-              style={{ 
-                maxHeight: '220px', 
-                overflowY: 'auto', 
-                backgroundColor: 'var(--bg-surface)', 
-                borderColor: 'var(--border)' 
-              }}
-            >
-              {loadingCustomers ? (
-                <div className="p-3 text-center" style={{ color: 'var(--text-muted)' }}>
-                  <Loader2 className="animate-spin d-inline me-2" size={16} /> Buscando clientes...
-                </div>
-              ) : customers.length === 0 ? (
-                <div className="p-3 text-center" style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                  No se encontraron clientes registrados disponibles.
-                </div>
-              ) : (
-                (!query.trim() ? customers.slice(0, 3) : customers).map(c => {
-                  const isItemChosen = selectedCustomer?.id === c.id;
-                  return (
+                  {/* Floating results dropdown — overlays content instead of pushing it down */}
+                  {isDropdownOpen && !isCreatingCustomer && (
                     <div
-                      key={c.id}
-                      className="p-2.5 px-3 border-bottom d-flex align-items-center justify-content-between text-start cursor-pointer customer-item-row"
-                      onClick={() => setSelectedCustomer(c)}
-                      style={{ 
-                        cursor: 'pointer',
-                        borderBottomColor: 'var(--border)',
-                        backgroundColor: isItemChosen ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                        borderLeft: isItemChosen ? '4px solid var(--accent-primary, #6366f1)' : '4px solid transparent',
-                        transition: 'all 0.15s ease',
-                        width: '100%'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isItemChosen) e.currentTarget.style.backgroundColor = 'var(--bg-hover, rgba(255, 255, 255, 0.05))';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isItemChosen) e.currentTarget.style.backgroundColor = 'transparent';
+                      className="custom-scrollbar"
+                      style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 6px)',
+                        left: 0,
+                        right: 0,
+                        zIndex: 40,
+                        maxHeight: '240px',
+                        overflowY: 'auto',
+                        backgroundColor: 'var(--bg-surface)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '10px',
+                        boxShadow: '0 12px 32px rgba(0, 0, 0, 0.35)'
                       }}
                     >
-                      {/* Lado Izquierdo: Nombre (con truncate) y datos personales */}
-                      <div style={{ flex: '1 1 auto', minWidth: 0, paddingRight: '12px' }}>
-                        <strong 
-                          style={{ 
-                            fontSize: '0.925rem', 
-                            color: 'var(--text-primary)', 
-                            display: 'block', 
-                            overflow: 'hidden', 
-                            textOverflow: 'ellipsis', 
-                            whiteSpace: 'nowrap' 
-                          }}
-                          title={c.name}
-                        >
-                          {c.name}
-                        </strong>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          {c.cedulaOrRif} {c.phone ? `• ${c.phone}` : ''}
+                      {loadingCustomers ? (
+                        <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                          <Loader2 className="animate-spin" size={16} /> Buscando clientes...
                         </div>
-                      </div>
-
+                      ) : customers.length === 0 ? (
+                        <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                          No se encontraron clientes registrados disponibles.
+                        </div>
+                      ) : (
+                        (!query.trim() ? customers.slice(0, 3) : customers).map((c, idx) => {
+                          const isItemChosen = selectedCustomer?.id === c.id;
+                          return (
+                            <div
+                              key={c.id}
+                              onClick={() => { setSelectedCustomer(c); setIsDropdownOpen(false); }}
+                              style={{
+                                cursor: 'pointer',
+                                padding: '10px 12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                textAlign: 'left',
+                                backgroundColor: isItemChosen ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                                borderLeft: isItemChosen ? '4px solid var(--accent-primary, #6366f1)' : '4px solid transparent',
+                                borderBottom: idx < customers.length - 1 ? '1px solid var(--border)' : 'none',
+                                transition: 'background-color 0.15s ease',
+                                width: '100%',
+                                boxSizing: 'border-box'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isItemChosen) e.currentTarget.style.backgroundColor = 'var(--bg-hover, rgba(255, 255, 255, 0.05))';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isItemChosen) e.currentTarget.style.backgroundColor = 'transparent';
+                              }}
+                            >
+                              <div style={{ flex: '1 1 auto', minWidth: 0, paddingRight: '12px' }}>
+                                <strong
+                                  style={{
+                                    fontSize: '0.925rem',
+                                    color: 'var(--text-primary)',
+                                    display: 'block',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                  title={c.name}
+                                >
+                                  {c.name}
+                                </strong>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                  {c.cedulaOrRif} {c.phone ? `• ${c.phone}` : ''}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
-                  );
-                })
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setIsCreatingCustomer(!isCreatingCustomer); setIsDropdownOpen(false); }}
+                  style={{
+                    height: '38px',
+                    flexShrink: 0,
+                    whiteSpace: 'nowrap',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    padding: '0 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)',
+                    backgroundColor: 'transparent',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.875rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <UserPlus size={16} /> Crear Cliente
+                </button>
+              </div>
+
+              {isCreatingCustomer && (
+                <form
+                  onSubmit={handleCreateCustomer}
+                  style={{ ...cardStyle, marginBottom: '12px', textAlign: 'center' }}
+                >
+                  <div className="font-bold mb-2 text-center" style={{ color: 'var(--text-primary)' }}>Registrar Nuevo Cliente</div>
+                  <div className="d-flex gap-2 mb-2" style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                    <input type="text" className="form-input text-center" placeholder="Cédula/RIF" value={newCustomer.cedulaOrRif} onChange={e => setNewCustomer({...newCustomer, cedulaOrRif: e.target.value})} required style={fieldStyle} />
+                    <input type="text" className="form-input text-center" placeholder="Nombre completo" value={newCustomer.name} onChange={e => setNewCustomer({...newCustomer, name: e.target.value})} required style={fieldStyle} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                    <input type="text" className="form-input text-center" placeholder="Teléfono (Opcional)" value={newCustomer.phone} onChange={e => setNewCustomer({...newCustomer, phone: e.target.value})} style={fieldStyle} />
+                  </div>
+                  <button type="submit" className="btn btn-sm btn-primary">Guardar Cliente</button>
+                </form>
               )}
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* Step 2: Initial Payment with Centered Toggle Switch */}
-      <div 
-        className="mb-4 p-3 rounded-3 border text-center"
-        style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border)' }}
-      >
-        <div 
-          className="d-flex align-items-center justify-content-center gap-3 cursor-pointer text-center"
-          onClick={() => setEnablePayment(!enablePayment)}
-          style={{ userSelect: 'none', margin: '0 auto', width: 'fit-content' }}
-        >
-          <span className="font-bold" style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: '24px', display: 'inline-block' }}>
-            Registrar Abono
-          </span>
-
-          {/* Toggle Switch */}
-          <div 
-            style={{
-              width: '44px',
-              height: '24px',
-              backgroundColor: enablePayment ? 'var(--accent-primary, #6366f1)' : 'rgba(148, 163, 184, 0.3)',
-              borderRadius: '12px',
-              padding: '2px',
-              transition: 'background-color 0.25s ease',
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'flex-start',
-              flexShrink: 0
-            }}
-          >
-            <div 
-              style={{
-                width: '20px',
-                height: '20px',
-                backgroundColor: '#ffffff',
-                borderRadius: '50%',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                transform: enablePayment ? 'translateX(20px)' : 'translateX(0px)',
-                transition: 'transform 0.25s ease'
-              }}
-            />
-          </div>
+          )}
         </div>
 
-        {enablePayment && (
-          <div className="mt-3 pt-3 border-top" style={{ borderTopColor: 'var(--border)' }}>
-            <div className="form-group mb-2 text-start">
-              <label className="form-label" style={{ color: 'var(--text-primary)', fontWeight: '600' }}>Método de Pago</label>
-              <select
-                className="form-select text-center"
-                value={paymentMethodId}
-                onChange={(e) => setPaymentMethodId(e.target.value)}
-                style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
-              >
-                {paymentMethods.map(m => (
-                  <option key={m.id} value={m.id}>{m.name} {m.isCash ? '(Efectivo)' : ''}</option>
-                ))}
-              </select>
-            </div>
+        {/* Initial Payment — section title left, toggle right */}
+        <div className="mb-4" style={cardStyle}>
+          <div
+            onClick={() => setEnablePayment(!enablePayment)}
+            style={{ userSelect: 'none', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+          >
+            <span className="font-bold" style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: '24px', display: 'inline-block' }}>
+              Registrar Abono
+            </span>
 
-            <div className="form-group mb-2 text-start">
-              <label className="form-label" style={{ color: 'var(--text-primary)', fontWeight: '600' }}>Monto de Abono (Bs.S) - Entrada ATM</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                className="form-input font-bold text-center"
-                value={formatNumberEs(initialBsS)}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-                onFocus={(e) => { setIsFreshFocus(true); e.target.select(); }}
-                onChange={() => {}}
-                style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
+            {/* Toggle Switch */}
+            <div
+              style={{
+                width: '44px',
+                height: '24px',
+                backgroundColor: enablePayment ? '#6366f1' : 'rgba(148, 163, 184, 0.3)',
+                borderRadius: '12px',
+                padding: '2px',
+                transition: 'background-color 0.25s ease',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                flexShrink: 0
+              }}
+            >
+              <div
+                style={{
+                  width: '20px',
+                  height: '20px',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '50%',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                  transform: enablePayment ? 'translateX(20px)' : 'translateX(0px)',
+                  transition: 'transform 0.25s ease'
+                }}
               />
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px', textAlign: 'center' }}>
-                ≈ {formatUSD(initialUsd)} (Tasa: {formatNumberEs(exchangeRate)} Bs/$)
-              </div>
             </div>
+          </div>
 
-            {selectedMethod?.requiresReference && (
-              <div className="form-group mb-2 text-start">
-                <label className="form-label" style={{ color: 'var(--text-primary)', fontWeight: '600' }}>Número de Referencia *</label>
+          {enablePayment && (
+            <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+              <div className="form-group mb-2" style={{ textAlign: 'left' }}>
+                <label className="form-label" style={{ color: 'var(--text-primary)', fontWeight: '600' }}>Método de Pago</label>
+                <select
+                  className="form-select text-center"
+                  value={paymentMethodId}
+                  onChange={(e) => setPaymentMethodId(e.target.value)}
+                  style={fieldStyle}
+                >
+                  {paymentMethods.map(m => (
+                    <option key={m.id} value={m.id}>{m.name} {m.isCash ? '(Efectivo)' : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group mb-2" style={{ textAlign: 'left' }}>
+                <label className="form-label" style={{ color: 'var(--text-primary)', fontWeight: '600' }}>Monto de Abono (Bs.S) - Entrada ATM</label>
                 <input
                   type="text"
-                  className="form-input text-center"
-                  placeholder="Ingrese el N° de referencia"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
+                  inputMode="numeric"
+                  className="form-input font-bold text-center"
+                  value={formatNumberEs(initialBsS)}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  onFocus={(e) => { setIsFreshFocus(true); e.target.select(); }}
+                  onChange={() => {}}
+                  style={fieldStyle}
                 />
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px', textAlign: 'center' }}>
+                  ≈ {formatUSD(initialUsd)} (Tasa: {formatNumberEs(exchangeRate)} Bs/$)
+                </div>
               </div>
-            )}
-          </div>
-        )}
-      </div>
 
-      {/* Summary Box */}
-      <div className="checkout-summary-box mb-4">
-        <div className="checkout-summary-row">
-          <span>Total del Pedido:</span>
-          <span className="font-bold">{formatBsS(saleTotalUSD * exchangeRate)} ({formatUSD(saleTotalUSD)})</span>
+              {selectedMethod?.requiresReference && (
+                <div className="form-group mb-2" style={{ textAlign: 'left' }}>
+                  <label className="form-label" style={{ color: 'var(--text-primary)', fontWeight: '600' }}>Número de Referencia *</label>
+                  <input
+                    type="text"
+                    className="form-input text-center"
+                    placeholder="Ingrese el N° de referencia"
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
+                    style={fieldStyle}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
-        {enablePayment && initialBsS > 0 && (
-          <div className="checkout-summary-row text-success">
-            <span>Abono Inicial:</span>
-            <span className="font-bold">{formatBsS(initialBsS)} ({formatUSD(initialUsd)})</span>
-          </div>
-        )}
-        <div className="checkout-summary-row text-danger highlight">
-          <span>Deuda Restante Resultante:</span>
-          <span className="font-bold">{formatBsS(remainingBsS)} ({formatUSD(remainingUsd)})</span>
-        </div>
-      </div>
 
-      {/* Footer Actions */}
-      <div 
-        style={{ 
-          display: 'flex', 
-          flexDirection: 'row', 
-          alignItems: 'center', 
-          justifyContent: 'center', 
-          gap: '12px', 
-          width: '100%', 
-          marginTop: '16px' 
-        }}
-      >
-        <button 
-          type="button" 
-          className="btn btn-outline" 
-          onClick={onClose} 
-          disabled={submitting}
-          style={{ 
-            height: '42px', 
-            padding: '0 24px', 
-            display: 'inline-flex', 
-            alignItems: 'center', 
+        {/* Summary Box — label left, USD center, Bs.S right-aligned */}
+        <div className="checkout-summary-box mb-4">
+          <div className="checkout-summary-row" style={summaryRowStyle}>
+            <span>Total del Pedido:</span>
+            <span className="font-bold" style={{ color: 'var(--text-muted)' }}>{formatUSD(saleTotalUSD)}</span>
+            <span className="font-bold" style={{ whiteSpace: 'nowrap' }}>{formatBsS(saleTotalUSD * exchangeRate)}</span>
+          </div>
+          {enablePayment && initialBsS > 0 && (
+            <div className="checkout-summary-row text-success" style={summaryRowStyle}>
+              <span>Abono Inicial:</span>
+              <span className="font-bold" style={{ color: 'var(--text-muted)' }}>{formatUSD(initialUsd)}</span>
+              <span className="font-bold" style={{ whiteSpace: 'nowrap' }}>{formatBsS(initialBsS)}</span>
+            </div>
+          )}
+          <div className="checkout-summary-row highlight" style={summaryRowStyle}>
+            <span>Deuda Restante Resultante:</span>
+            <span className="font-bold hold-sale-debt" style={{ whiteSpace: 'nowrap' }}>{formatUSD(remainingUsd)}</span>
+            <span className="font-bold hold-sale-debt" style={{ whiteSpace: 'nowrap' }}>{formatBsS(remainingBsS)}</span>
+          </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
             justifyContent: 'center',
-            margin: 0,
-            lineHeight: 1
+            gap: '12px',
+            width: '100%',
+            marginTop: '16px'
           }}
         >
-          Cancelar
-        </button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={handleConfirmHold}
-          disabled={!selectedCustomer || submitting}
-          style={{ 
-            height: '42px', 
-            padding: '0 24px', 
-            display: 'inline-flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            gap: '8px',
-            margin: 0,
-            lineHeight: 1,
-            borderRadius: '8px',
-            fontWeight: '700',
-            backgroundColor: (!selectedCustomer || submitting) ? 'rgba(148, 163, 184, 0.2)' : 'var(--accent-primary, #6366f1)',
-            color: (!selectedCustomer || submitting) ? '#94a3b8' : '#ffffff',
-            border: (!selectedCustomer || submitting) ? '1px solid rgba(148, 163, 184, 0.25)' : '1px solid var(--accent-primary, #6366f1)',
-            boxShadow: (!selectedCustomer || submitting) ? 'none' : '0 2px 8px rgba(99, 102, 241, 0.4)',
-            cursor: (!selectedCustomer || submitting) ? 'not-allowed' : 'pointer',
-            opacity: (!selectedCustomer || submitting) ? 0.65 : 1,
-            transition: 'all 0.2s ease'
-          }}
-        >
-          {submitting ? <Loader2 className="animate-spin" size={16} /> : <Clock size={16} />}
-          <span>CONFIRMAR Y GUARDAR EN ESPERA</span>
-        </button>
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={onClose}
+            disabled={submitting}
+            style={{
+              height: '42px',
+              padding: '0 24px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: 0,
+              lineHeight: 1,
+              fontWeight: '700',
+              letterSpacing: '0.02em'
+            }}
+          >
+            CANCELAR
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirmHold}
+            disabled={!selectedCustomer || submitting}
+            style={{
+              height: '42px',
+              padding: '0 24px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              margin: 0,
+              lineHeight: 1,
+              borderRadius: '8px',
+              fontWeight: '700',
+              letterSpacing: '0.02em',
+              backgroundColor: (!selectedCustomer || submitting) ? 'rgba(148, 163, 184, 0.2)' : '#6366f1',
+              color: (!selectedCustomer || submitting) ? '#94a3b8' : '#ffffff',
+              border: (!selectedCustomer || submitting) ? '1px solid rgba(148, 163, 184, 0.25)' : '1px solid #6366f1',
+              boxShadow: (!selectedCustomer || submitting) ? 'none' : '0 2px 10px rgba(99, 102, 241, 0.45)',
+              cursor: (!selectedCustomer || submitting) ? 'not-allowed' : 'pointer',
+              opacity: (!selectedCustomer || submitting) ? 0.65 : 1,
+              transition: 'all 0.2s ease'
+            }}
+          >
+            {submitting ? <Loader2 className="animate-spin" size={16} /> : <Clock size={16} />}
+            <span>CONFIRMAR Y GUARDAR EN ESPERA</span>
+          </button>
+        </div>
       </div>
     </Modal>
   );

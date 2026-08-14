@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -34,7 +35,8 @@ namespace Desktop.Client.Views
 
         /// <summary>
         /// Opens the floating barcode scanner / OCR window. The window stays open so the
-        /// cashier can scan several codes; each scanned barcode is added straight to the cart.
+        /// cashier can scan several codes; each scanned barcode is added straight to the cart,
+        /// and the window shows the product name (or not-found/inactive states) on its result card.
         /// </summary>
         private void OpenScanner_Click(object sender, RoutedEventArgs e)
         {
@@ -44,7 +46,7 @@ namespace Desktop.Client.Views
                 return;
             }
 
-            _scannerWindow = new BarcodeScannerWindow(InsertScannedValue)
+            _scannerWindow = new BarcodeScannerWindow(InsertScannedValue, ResolveScannedProductAsync)
             {
                 Owner = Window.GetWindow(this)
             };
@@ -58,6 +60,15 @@ namespace Desktop.Client.Views
                 _ = vm.AddProductByCodeAsync(value);
                 SearchInput.Focus();
             }
+        }
+
+        private Task<Core.DTOs.ProductQuickInfoDto?> ResolveScannedProductAsync(string code)
+        {
+            if (DataContext is ViewModels.PosViewModel vm)
+            {
+                return vm.ResolveScannedCodeAsync(code);
+            }
+            return Task.FromResult<Core.DTOs.ProductQuickInfoDto?>(null);
         }
 
 

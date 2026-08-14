@@ -8,6 +8,7 @@ import EditSaleModal from '../components/pos/EditSaleModal';
 import SuccessScreen from '../components/checkout/SuccessScreen';
 import { formatNumberEs, formatBsS, formatUSD } from '../utils/formatters';
 import { Search, Loader2, Clock, ChevronRight, ChevronDown, RefreshCw, CheckCircle, ShieldCheck, Edit2, User } from 'lucide-react';
+import './PendingOrdersPage.css';
 
 export default function PendingOrdersPage({ onNavigate }) {
   const [sales, setSales] = useState([]);
@@ -97,7 +98,7 @@ export default function PendingOrdersPage({ onNavigate }) {
         </div>
 
         <div className="pending-orders-bcv-badge">
-          Tasa BCV del Día: <span style={{ color: 'var(--primary-color, #6366f1)' }}>{formatNumberEs(exchangeRate)} Bs/$</span>
+          Tasa BCV del Día: <span className="rate-value">{formatNumberEs(exchangeRate)} Bs/$</span>
         </div>
       </div>
 
@@ -125,7 +126,7 @@ export default function PendingOrdersPage({ onNavigate }) {
                 <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary, rgba(255,255,255,0.03))' }}>
                   <th style={{ padding: '14px' }}>ID / Fecha</th>
                   <th style={{ padding: '14px' }}>Cliente</th>
-                  <th style={{ padding: '14px' }}>Total Factura</th>
+                  <th style={{ padding: '14px', textAlign: 'right' }}>Total Factura</th>
                   <th style={{ padding: '14px' }}>Estado</th>
                   <th style={{ padding: '14px', textAlign: 'right' }}>Acciones</th>
                 </tr>
@@ -141,7 +142,7 @@ export default function PendingOrdersPage({ onNavigate }) {
                         style={{
                           borderBottom: '1px solid var(--border-color)',
                           cursor: 'pointer',
-                          backgroundColor: isExpanded ? 'var(--bg-secondary, rgba(255,255,255,0.05))' : 'transparent',
+                          backgroundColor: isExpanded ? 'rgba(99, 102, 241, 0.06)' : 'transparent',
                         }}
                         onClick={() => toggleExpand(sale.id)}
                       >
@@ -168,11 +169,11 @@ export default function PendingOrdersPage({ onNavigate }) {
                           <div style={{ fontSize: '0.8em', opacity: 0.6 }}>{sale.customerCedula || sale.customer?.cedulaOrRif || 'V-00000000'}</div>
                         </td>
 
-                        <td style={{ padding: '14px' }}>
-                          <div style={{ fontWeight: 'bold', fontSize: '0.95rem', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <div className="amount-bss" style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>
                             {formatBsS(sale.totalBsS)}
                           </div>
-                          <div style={{ fontSize: '0.8em', opacity: 0.6 }}>
+                          <div className="amount-usd" style={{ fontSize: '0.8em' }}>
                             {formatUSD(sale.totalUSD)}
                           </div>
                         </td>
@@ -206,7 +207,7 @@ export default function PendingOrdersPage({ onNavigate }) {
                       {/* Expanded Detail Desktop */}
                       {isExpanded && (
                         <tr className="history-detail-row">
-                          <td colSpan="5" className="history-detail-cell" style={{ padding: '20px', backgroundColor: 'var(--bg-secondary, rgba(0,0,0,0.2))' }}>
+                          <td colSpan="5" className="history-detail-cell" style={{ padding: '20px', backgroundColor: 'rgba(99, 102, 241, 0.06)', borderTop: '1px dashed rgba(99, 102, 241, 0.25)' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                               
                               {/* Products Section */}
@@ -216,18 +217,18 @@ export default function PendingOrdersPage({ onNavigate }) {
                                   <thead>
                                     <tr style={{ borderBottom: '1px solid var(--border-color)', opacity: 0.7 }}>
                                       <th>Producto</th>
-                                      <th>Cant.</th>
-                                      <th>P. Unidad</th>
-                                      <th>Subtotal</th>
+                                      <th style={{ textAlign: 'right' }}>Cant.</th>
+                                      <th style={{ textAlign: 'right' }}>P. Unidad</th>
+                                      <th style={{ textAlign: 'right' }}>Subtotal</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {sale.items.map(item => (
                                       <tr key={item.id} style={{ borderBottom: '1px dashed var(--border-color)' }}>
                                         <td style={{ padding: '6px 0' }}>{item.displayProductName || (item.unitOfMeasure && item.unitOfMeasure !== 'Und' ? `${item.productName} (${item.unitOfMeasure})` : item.productName)}</td>
-                                        <td>{item.isFractional ? item.quantity.toFixed(3) : item.quantity}</td>
-                                        <td>{formatBsS(item.unitPriceBsS)}</td>
-                                        <td>{formatBsS(item.subtotalBsS)}</td>
+                                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{item.isFractional ? item.quantity.toFixed(3) : item.quantity}</td>
+                                        <td className="amount-bss" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatBsS(item.unitPriceBsS)}</td>
+                                        <td className="amount-bss" style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600 }}>{formatBsS(item.subtotalBsS)}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -247,9 +248,9 @@ export default function PendingOrdersPage({ onNavigate }) {
                                       <tr style={{ borderBottom: '1px solid var(--border-color)', opacity: 0.7 }}>
                                         <th>Fecha</th>
                                         <th>Método</th>
-                                        <th>Monto Bs.S</th>
-                                        <th>Tasa Usada</th>
-                                        <th>Abono USD</th>
+                                        <th style={{ textAlign: 'right' }}>Monto Bs.S</th>
+                                        <th style={{ textAlign: 'right' }}>Tasa Usada</th>
+                                        <th style={{ textAlign: 'right' }}>Abono USD</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -257,9 +258,9 @@ export default function PendingOrdersPage({ onNavigate }) {
                                         <tr key={p.id} style={{ borderBottom: '1px dashed var(--border-color)' }}>
                                           <td style={{ padding: '6px 0' }}>{new Date(p.createdAt || sale.date).toLocaleDateString()}</td>
                                           <td>{p.paymentMethodName}</td>
-                                          <td>{formatBsS(p.amountBsS)}</td>
-                                          <td>{formatNumberEs(p.exchangeRate)} Bs/$</td>
-                                          <td style={{ fontWeight: 'bold', color: '#10b981' }}>+{formatUSD(p.amount)}</td>
+                                          <td className="amount-bss" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatBsS(p.amountBsS)}</td>
+                                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatNumberEs(p.exchangeRate)} Bs/$</td>
+                                          <td className="amount-usd" style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 'bold' }}>+{formatUSD(p.amount)}</td>
                                         </tr>
                                       ))}
                                     </tbody>
@@ -331,17 +332,17 @@ export default function PendingOrdersPage({ onNavigate }) {
                   <div className="pending-mobile-card-summary">
                     <div>
                       <div className="text-xs text-muted mb-1">Total Factura</div>
-                      <div className="font-bold">{formatBsS(sale.totalBsS)}</div>
-                      <div className="text-xs text-muted">{formatUSD(sale.totalUSD)}</div>
+                      <div className="font-bold amount-bss">{formatBsS(sale.totalBsS)}</div>
+                      <div className="text-xs amount-usd">{formatUSD(sale.totalUSD)}</div>
                     </div>
                     <div>
                       <div className="text-xs text-muted mb-1">Abonado</div>
-                      <div className="font-bold text-success">+{formatUSD(totalPaidUsd)}</div>
+                      <div className="font-bold amount-usd">+{formatUSD(totalPaidUsd)}</div>
                     </div>
                     <div>
                       <div className="text-xs text-muted mb-1">Deuda Pendiente</div>
                       <div className="font-bold text-danger">{formatUSD(remainingUsd)}</div>
-                      <div className="text-xs text-muted">≈ {formatBsS(remainingBsS)}</div>
+                      <div className="text-xs amount-bss">≈ {formatBsS(remainingBsS)}</div>
                     </div>
                   </div>
 
@@ -379,12 +380,12 @@ export default function PendingOrdersPage({ onNavigate }) {
                       <h4 style={{ margin: '0 0 8px 0', fontSize: '0.9rem' }}>📦 Productos del Pedido</h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
                         {sale.items.map(item => (
-                          <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border-color)' }}>
-                            <div>
+                          <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '4px 0', borderBottom: '1px solid var(--border-color)' }}>
+                            <div style={{ minWidth: 0, marginRight: '12px' }}>
                               <div><strong>{item.displayProductName || item.productName}</strong></div>
                               <div className="text-xs text-muted">{item.isFractional ? item.quantity.toFixed(3) : item.quantity} x {formatBsS(item.unitPriceBsS)}</div>
                             </div>
-                            <div className="font-bold">{formatBsS(item.subtotalBsS)}</div>
+                            <div className="font-bold amount-bss" style={{ marginLeft: 'auto', textAlign: 'right', whiteSpace: 'nowrap', flexShrink: 0 }}>{formatBsS(item.subtotalBsS)}</div>
                           </div>
                         ))}
                       </div>
@@ -397,12 +398,12 @@ export default function PendingOrdersPage({ onNavigate }) {
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                           {sale.payments.map(p => (
-                            <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border-color)', fontSize: '0.8rem' }}>
-                              <div>
+                            <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '4px 0', borderBottom: '1px solid var(--border-color)', fontSize: '0.8rem' }}>
+                              <div style={{ minWidth: 0, marginRight: '12px' }}>
                                 <span>{p.paymentMethodName}</span>
                                 <span className="text-muted ml-2">({formatBsS(p.amountBsS)})</span>
                               </div>
-                              <div className="font-bold text-success">+{formatUSD(p.amount)}</div>
+                              <div className="font-bold amount-usd" style={{ marginLeft: 'auto', textAlign: 'right', whiteSpace: 'nowrap', flexShrink: 0 }}>+{formatUSD(p.amount)}</div>
                             </div>
                           ))}
                         </div>

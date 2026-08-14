@@ -63,6 +63,10 @@
   color: var(--danger-color, #ef4444);
 }
 
+.scanner-status.warn {
+  color: var(--warning-color, #f59e0b);
+}
+
 .scanner-privacy {
   margin: 0;
   font-size: 0.75rem;
