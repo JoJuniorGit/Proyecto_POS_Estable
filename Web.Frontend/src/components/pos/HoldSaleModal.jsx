@@ -6,9 +6,8 @@ import { holdSale } from '../../services/salesApi';
 import { formatNumberEs, formatBsS, formatUSD } from '../../utils/formatters';
 import { Search, UserPlus, Clock, Loader2, RefreshCw, X } from 'lucide-react';
 
-// Reusable card/border tokens (the project's utility classes like .border/.rounded-3 don't exist in index.css)
+// Tokens reutilizables que no son utilitarios de escala (borde/borde-redondeado lo da .border)
 const cardStyle = {
-  border: '1px solid var(--border)',
   borderRadius: '10px',
   padding: '12px',
   backgroundColor: 'var(--bg-surface)',
@@ -220,21 +219,20 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
         {/* Customer Selection */}
         <div className="mb-4">
           {selectedCustomer ? (
-            <div style={cardStyle}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>
+            <div className="border" style={cardStyle}>
+              <div className="d-flex flex-between flex-align-center mb-2">
+                <span className="text-muted font-semibold" style={{ fontSize: '0.8rem', textTransform: 'uppercase' }}>
                   Cliente Asignado
                 </span>
                 <button
                   type="button"
                   onClick={handleClearOrChangeCustomer}
+                  className="d-inline-flex flex-align-center"
                   style={{
                     background: 'none',
                     border: 'none',
                     padding: 0,
                     cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
                     gap: '4px',
                     fontSize: '0.8rem',
                     color: 'var(--accent-primary)',
@@ -245,10 +243,10 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
                 </button>
               </div>
 
-              <div className="font-bold" style={{ color: 'var(--text-primary)', fontSize: '1.05rem' }}>
+              <div className="font-bold text-primary" style={{ fontSize: '1.05rem' }}>
                 {selectedCustomer.name}
               </div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '2px' }}>
+              <div className="text-muted" style={{ fontSize: '0.85rem', marginTop: '2px' }}>
                 {selectedCustomer.cedulaOrRif} {selectedCustomer.phone ? `• ${selectedCustomer.phone}` : ''}
               </div>
             </div>
@@ -257,7 +255,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
               <label className="form-label font-bold mb-2" style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>
                 Cliente (Requerido)
               </label>
-              <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', marginBottom: '8px', width: '100%' }}>
+              <div className="d-flex flex-row flex-align-center gap-2 mb-2 w-full">
                 <div ref={searchWrapRef} style={{ position: 'relative', flex: '1 1 auto', minWidth: 0 }}>
                   <input
                     ref={searchInputRef}
@@ -306,11 +304,11 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
                       }}
                     >
                       {loadingCustomers ? (
-                        <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                        <div className="d-flex flex-align-center justify-center text-muted" style={{ padding: '12px', gap: '8px' }}>
                           <Loader2 className="animate-spin" size={16} /> Buscando clientes...
                         </div>
                       ) : customers.length === 0 ? (
-                        <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                        <div className="text-muted" style={{ padding: '12px', textAlign: 'center', fontSize: '0.875rem' }}>
                           No se encontraron clientes registrados disponibles.
                         </div>
                       ) : (
@@ -320,13 +318,10 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
                             <div
                               key={c.id}
                               onClick={() => { setSelectedCustomer(c); setIsDropdownOpen(false); }}
+                              className="d-flex flex-between flex-align-center text-left"
                               style={{
                                 cursor: 'pointer',
                                 padding: '10px 12px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                textAlign: 'left',
                                 backgroundColor: isItemChosen ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
                                 borderLeft: isItemChosen ? '4px solid var(--accent-primary, #6366f1)' : '4px solid transparent',
                                 borderBottom: idx < customers.length - 1 ? '1px solid var(--border)' : 'none',
@@ -343,19 +338,13 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
                             >
                               <div style={{ flex: '1 1 auto', minWidth: 0, paddingRight: '12px' }}>
                                 <strong
-                                  style={{
-                                    fontSize: '0.925rem',
-                                    color: 'var(--text-primary)',
-                                    display: 'block',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap'
-                                  }}
+                                  className="text-primary text-truncate d-block"
+                                  style={{ fontSize: '0.925rem' }}
                                   title={c.name}
                                 >
                                   {c.name}
                                 </strong>
-                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                <div className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px' }}>
                                   {c.cedulaOrRif} {c.phone ? `• ${c.phone}` : ''}
                                 </div>
                               </div>
@@ -369,11 +358,11 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
                 <button
                   type="button"
                   onClick={() => { setIsCreatingCustomer(!isCreatingCustomer); setIsDropdownOpen(false); }}
+                  className="d-inline-flex"
                   style={{
                     height: '38px',
                     flexShrink: 0,
                     whiteSpace: 'nowrap',
-                    display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '6px',
@@ -393,14 +382,15 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
               {isCreatingCustomer && (
                 <form
                   onSubmit={handleCreateCustomer}
+                  className="border"
                   style={{ ...cardStyle, marginBottom: '12px', textAlign: 'center' }}
                 >
-                  <div className="font-bold mb-2 text-center" style={{ color: 'var(--text-primary)' }}>Registrar Nuevo Cliente</div>
-                  <div className="d-flex gap-2 mb-2" style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                  <div className="font-bold mb-2 text-center text-primary">Registrar Nuevo Cliente</div>
+                  <div className="d-flex gap-2 mb-2">
                     <input type="text" className="form-input text-center" placeholder="Cédula/RIF" value={newCustomer.cedulaOrRif} onChange={e => setNewCustomer({...newCustomer, cedulaOrRif: e.target.value})} required style={fieldStyle} />
                     <input type="text" className="form-input text-center" placeholder="Nombre completo" value={newCustomer.name} onChange={e => setNewCustomer({...newCustomer, name: e.target.value})} required style={fieldStyle} />
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                  <div className="d-flex gap-2 mb-2">
                     <input type="text" className="form-input text-center" placeholder="Teléfono (Opcional)" value={newCustomer.phone} onChange={e => setNewCustomer({...newCustomer, phone: e.target.value})} style={fieldStyle} />
                   </div>
                   <button type="submit" className="btn btn-sm btn-primary">Guardar Cliente</button>
@@ -411,12 +401,13 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
         </div>
 
         {/* Initial Payment — section title left, toggle right */}
-        <div className="mb-4" style={cardStyle}>
+        <div className="mb-4 border" style={cardStyle}>
           <div
             onClick={() => setEnablePayment(!enablePayment)}
-            style={{ userSelect: 'none', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+            className="d-flex flex-between flex-align-center w-full cursor-pointer"
+            style={{ userSelect: 'none' }}
           >
-            <span className="font-bold" style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: '24px', display: 'inline-block' }}>
+            <span className="font-bold text-primary" style={{ fontSize: '0.95rem', lineHeight: '24px', display: 'inline-block' }}>
               Registrar Abono
             </span>
 
@@ -451,7 +442,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
           </div>
 
           {enablePayment && (
-            <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+            <div className="mt-3 pt-3 border-top">
               <div className="form-group mb-2" style={{ textAlign: 'left' }}>
                 <label className="form-label" style={{ color: 'var(--text-primary)', fontWeight: '600' }}>Método de Pago</label>
                 <select
@@ -479,7 +470,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
                   onChange={() => {}}
                   style={fieldStyle}
                 />
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px', textAlign: 'center' }}>
+                <div className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px', textAlign: 'center' }}>
                   ≈ {formatUSD(initialUsd)} (Tasa: {formatNumberEs(exchangeRate)} Bs/$)
                 </div>
               </div>
@@ -505,35 +496,25 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
         <div className="checkout-summary-box mb-4">
           <div className="checkout-summary-row" style={summaryRowStyle}>
             <span>Total del Pedido:</span>
-            <span className="font-bold" style={{ color: 'var(--text-muted)' }}>{formatUSD(saleTotalUSD)}</span>
-            <span className="font-bold" style={{ whiteSpace: 'nowrap' }}>{formatBsS(saleTotalUSD * exchangeRate)}</span>
+            <span className="font-bold text-muted">{formatUSD(saleTotalUSD)}</span>
+            <span className="font-bold text-nowrap">{formatBsS(saleTotalUSD * exchangeRate)}</span>
           </div>
           {enablePayment && initialBsS > 0 && (
             <div className="checkout-summary-row text-success" style={summaryRowStyle}>
               <span>Abono Inicial:</span>
-              <span className="font-bold" style={{ color: 'var(--text-muted)' }}>{formatUSD(initialUsd)}</span>
-              <span className="font-bold" style={{ whiteSpace: 'nowrap' }}>{formatBsS(initialBsS)}</span>
+              <span className="font-bold text-muted">{formatUSD(initialUsd)}</span>
+              <span className="font-bold text-nowrap">{formatBsS(initialBsS)}</span>
             </div>
           )}
           <div className="checkout-summary-row highlight" style={summaryRowStyle}>
             <span>Deuda Restante Resultante:</span>
-            <span className="font-bold hold-sale-debt" style={{ whiteSpace: 'nowrap' }}>{formatUSD(remainingUsd)}</span>
-            <span className="font-bold hold-sale-debt" style={{ whiteSpace: 'nowrap' }}>{formatBsS(remainingBsS)}</span>
+            <span className="font-bold hold-sale-debt text-nowrap">{formatUSD(remainingUsd)}</span>
+            <span className="font-bold hold-sale-debt text-nowrap">{formatBsS(remainingBsS)}</span>
           </div>
         </div>
 
         {/* Footer Actions */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '12px',
-            width: '100%',
-            marginTop: '16px'
-          }}
-        >
+        <div className="d-flex flex-row flex-align-center justify-center gap-3 w-full mt-4">
           <button
             type="button"
             className="btn btn-outline"
@@ -542,9 +523,6 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
             style={{
               height: '42px',
               padding: '0 24px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               margin: 0,
               lineHeight: 1,
               fontWeight: '700',
@@ -560,9 +538,6 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
             style={{
               height: '42px',
               padding: '0 24px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               gap: '8px',
               margin: 0,
               lineHeight: 1,

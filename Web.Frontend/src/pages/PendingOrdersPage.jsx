@@ -123,7 +123,7 @@ export default function PendingOrdersPage({ onNavigate }) {
           <div className="pending-desktop-view dark-card" style={{ overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary, rgba(255,255,255,0.03))' }}>
+                <tr style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'var(--bg-secondary, rgba(255,255,255,0.03))' }}>
                   <th style={{ padding: '14px' }}>ID / Fecha</th>
                   <th style={{ padding: '14px' }}>Cliente</th>
                   <th style={{ padding: '14px', textAlign: 'right' }}>Total Factura</th>
@@ -140,14 +140,14 @@ export default function PendingOrdersPage({ onNavigate }) {
                     <React.Fragment key={sale.id}>
                       <tr
                         style={{
-                          borderBottom: '1px solid var(--border-color)',
+                          borderBottom: '1px solid var(--border)',
                           cursor: 'pointer',
                           backgroundColor: isExpanded ? 'rgba(99, 102, 241, 0.06)' : 'transparent',
                         }}
                         onClick={() => toggleExpand(sale.id)}
                       >
                         <td style={{ padding: '14px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div className="d-flex flex-align-center gap-2">
                             {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                             <div>
                               <strong>Pedido #{sale.id}</strong>
@@ -159,18 +159,18 @@ export default function PendingOrdersPage({ onNavigate }) {
                         </td>
 
                         <td style={{ padding: '14px', maxWidth: '220px' }}>
-                          <div 
-                            className="font-medium"
+                          <div
+                            className="font-medium text-truncate"
                             title={sale.customerName || sale.customer?.name || 'Consumidor Final'}
-                            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px' }}
+                            style={{ maxWidth: '220px' }}
                           >
                             <strong>{sale.customerName || sale.customer?.name || 'Consumidor Final'}</strong>
                           </div>
                           <div style={{ fontSize: '0.8em', opacity: 0.6 }}>{sale.customerCedula || sale.customer?.cedulaOrRif || 'V-00000000'}</div>
                         </td>
 
-                        <td style={{ padding: '14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          <div className="amount-bss" style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>
+                        <td className="text-right text-nowrap" style={{ padding: '14px' }}>
+                          <div className="amount-bss font-bold" style={{ fontSize: '0.95rem' }}>
                             {formatBsS(sale.totalBsS)}
                           </div>
                           <div className="amount-usd" style={{ fontSize: '0.8em' }}>
@@ -184,12 +184,12 @@ export default function PendingOrdersPage({ onNavigate }) {
                           </span>
                         </td>
 
-                        <td style={{ padding: '14px', textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        <td className="text-right" style={{ padding: '14px' }} onClick={(e) => e.stopPropagation()}>
+                          <div className="d-flex gap-2 justify-end">
                             <button
                               className="btn btn-sm btn-primary"
                               onClick={() => setSelectedSaleForCheckout(sale)}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              style={{ gap: '4px' }}
                             >
                               <CheckCircle size={14} /> {remainingUsd <= 0.05 ? 'Cerrar / Entregar' : 'Liquidar / Abonar'}
                             </button>
@@ -207,7 +207,7 @@ export default function PendingOrdersPage({ onNavigate }) {
                       {/* Expanded Detail Desktop */}
                       {isExpanded && (
                         <tr className="history-detail-row">
-                          <td colSpan="5" className="history-detail-cell" style={{ padding: '20px', backgroundColor: 'rgba(99, 102, 241, 0.06)', borderTop: '1px dashed rgba(99, 102, 241, 0.25)' }}>
+                          <td colSpan="5" className="history-detail-cell" style={{ borderTop: '1px dashed rgba(99, 102, 241, 0.25)' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                               
                               {/* Products Section */}
@@ -215,20 +215,20 @@ export default function PendingOrdersPage({ onNavigate }) {
                                 <h4 style={{ margin: '0 0 10px 0' }}>📦 Productos del Pedido</h4>
                                 <table style={{ width: '100%', fontSize: '0.9em', borderCollapse: 'collapse' }}>
                                   <thead>
-                                    <tr style={{ borderBottom: '1px solid var(--border-color)', opacity: 0.7 }}>
+                                    <tr style={{ borderBottom: '1px solid var(--border)', opacity: 0.7 }}>
                                       <th>Producto</th>
-                                      <th style={{ textAlign: 'right' }}>Cant.</th>
-                                      <th style={{ textAlign: 'right' }}>P. Unidad</th>
-                                      <th style={{ textAlign: 'right' }}>Subtotal</th>
+                                      <th className="text-right">Cant.</th>
+                                      <th className="text-right">P. Unidad</th>
+                                      <th className="text-right">Subtotal</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {sale.items.map(item => (
-                                      <tr key={item.id} style={{ borderBottom: '1px dashed var(--border-color)' }}>
+                                      <tr key={item.id} style={{ borderBottom: '1px dashed var(--border)' }}>
                                         <td style={{ padding: '6px 0' }}>{item.displayProductName || (item.unitOfMeasure && item.unitOfMeasure !== 'Und' ? `${item.productName} (${item.unitOfMeasure})` : item.productName)}</td>
-                                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{item.isFractional ? item.quantity.toFixed(3) : item.quantity}</td>
-                                        <td className="amount-bss" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatBsS(item.unitPriceBsS)}</td>
-                                        <td className="amount-bss" style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600 }}>{formatBsS(item.subtotalBsS)}</td>
+                                        <td className="text-right text-nowrap">{item.isFractional ? item.quantity.toFixed(3) : item.quantity}</td>
+                                        <td className="amount-bss text-right text-nowrap">{formatBsS(item.unitPriceBsS)}</td>
+                                        <td className="amount-bss text-right text-nowrap font-semibold">{formatBsS(item.subtotalBsS)}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -245,22 +245,22 @@ export default function PendingOrdersPage({ onNavigate }) {
                                 ) : (
                                   <table style={{ width: '100%', fontSize: '0.9em', borderCollapse: 'collapse' }}>
                                     <thead>
-                                      <tr style={{ borderBottom: '1px solid var(--border-color)', opacity: 0.7 }}>
+                                      <tr style={{ borderBottom: '1px solid var(--border)', opacity: 0.7 }}>
                                         <th>Fecha</th>
                                         <th>Método</th>
-                                        <th style={{ textAlign: 'right' }}>Monto Bs.S</th>
-                                        <th style={{ textAlign: 'right' }}>Tasa Usada</th>
-                                        <th style={{ textAlign: 'right' }}>Abono USD</th>
+                                        <th className="text-right">Monto Bs.S</th>
+                                        <th className="text-right">Tasa Usada</th>
+                                        <th className="text-right">Abono USD</th>
                                       </tr>
                                     </thead>
                                     <tbody>
                                       {sale.payments.map(p => (
-                                        <tr key={p.id} style={{ borderBottom: '1px dashed var(--border-color)' }}>
+                                        <tr key={p.id} style={{ borderBottom: '1px dashed var(--border)' }}>
                                           <td style={{ padding: '6px 0' }}>{new Date(p.createdAt || sale.date).toLocaleDateString()}</td>
                                           <td>{p.paymentMethodName}</td>
-                                          <td className="amount-bss" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatBsS(p.amountBsS)}</td>
-                                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatNumberEs(p.exchangeRate)} Bs/$</td>
-                                          <td className="amount-usd" style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 'bold' }}>+{formatUSD(p.amount)}</td>
+                                          <td className="amount-bss text-right text-nowrap">{formatBsS(p.amountBsS)}</td>
+                                          <td className="text-right text-nowrap">{formatNumberEs(p.exchangeRate)} Bs/$</td>
+                                          <td className="amount-usd text-right text-nowrap font-bold">+{formatUSD(p.amount)}</td>
                                         </tr>
                                       ))}
                                     </tbody>
@@ -308,17 +308,12 @@ export default function PendingOrdersPage({ onNavigate }) {
 
                   {/* Customer Info Box */}
                   <div className="pending-mobile-card-customer">
-                    <div className="flex-align-center gap-1 font-bold pending-mobile-card-customer-name" style={{ overflow: 'hidden', minWidth: 0, display: 'flex', alignItems: 'center' }}>
+                    <div className="d-flex flex-align-center gap-1 font-bold pending-mobile-card-customer-name" style={{ overflow: 'hidden', minWidth: 0 }}>
                       <User size={15} className="text-muted flex-shrink-0" />
                       <span
                         title={sale.customerName || sale.customer?.name || 'Consumidor Final'}
-                        style={{
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          display: 'inline-block',
-                          maxWidth: '100%'
-                        }}
+                        className="text-truncate"
+                        style={{ maxWidth: '100%' }}
                       >
                         {sale.customerName || sale.customer?.name || 'Consumidor Final'}
                       </span>
@@ -356,7 +351,7 @@ export default function PendingOrdersPage({ onNavigate }) {
                       <CheckCircle size={18} /> {remainingUsd <= 0.05 ? 'Cerrar / Entregar Cuenta' : 'Liquidar / Abonar Cuenta'}
                     </button>
 
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div className="d-flex gap-2">
                       <button
                         className="btn btn-outline flex-1 flex-align-center justify-center gap-1"
                         onClick={() => handleEditSale(sale)}
@@ -376,16 +371,16 @@ export default function PendingOrdersPage({ onNavigate }) {
 
                   {/* Mobile Collapsible Detail */}
                   {isExpanded && (
-                    <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '12px', marginTop: '4px', fontSize: '0.85rem' }}>
+                    <div className="border-top-dashed pt-3" style={{ marginTop: '4px', fontSize: '0.85rem' }}>
                       <h4 style={{ margin: '0 0 8px 0', fontSize: '0.9rem' }}>📦 Productos del Pedido</h4>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
+                      <div className="d-flex flex-column gap-1" style={{ marginBottom: '14px' }}>
                         {sale.items.map(item => (
-                          <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '4px 0', borderBottom: '1px solid var(--border-color)' }}>
+                          <div key={item.id} className="d-flex flex-between align-start border-bottom" style={{ padding: '4px 0' }}>
                             <div style={{ minWidth: 0, marginRight: '12px' }}>
                               <div><strong>{item.displayProductName || item.productName}</strong></div>
                               <div className="text-xs text-muted">{item.isFractional ? item.quantity.toFixed(3) : item.quantity} x {formatBsS(item.unitPriceBsS)}</div>
                             </div>
-                            <div className="font-bold amount-bss" style={{ marginLeft: 'auto', textAlign: 'right', whiteSpace: 'nowrap', flexShrink: 0 }}>{formatBsS(item.subtotalBsS)}</div>
+                            <div className="font-bold amount-bss text-right text-nowrap flex-shrink-0" style={{ marginLeft: 'auto' }}>{formatBsS(item.subtotalBsS)}</div>
                           </div>
                         ))}
                       </div>
@@ -396,14 +391,14 @@ export default function PendingOrdersPage({ onNavigate }) {
                       {sale.payments.length === 0 ? (
                         <p className="text-xs text-muted">Sin abonos previos.</p>
                       ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div className="d-flex flex-column gap-1">
                           {sale.payments.map(p => (
-                            <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '4px 0', borderBottom: '1px solid var(--border-color)', fontSize: '0.8rem' }}>
+                            <div key={p.id} className="d-flex flex-between align-start border-bottom" style={{ padding: '4px 0', fontSize: '0.8rem' }}>
                               <div style={{ minWidth: 0, marginRight: '12px' }}>
                                 <span>{p.paymentMethodName}</span>
                                 <span className="text-muted ml-2">({formatBsS(p.amountBsS)})</span>
                               </div>
-                              <div className="font-bold amount-usd" style={{ marginLeft: 'auto', textAlign: 'right', whiteSpace: 'nowrap', flexShrink: 0 }}>+{formatUSD(p.amount)}</div>
+                              <div className="font-bold amount-usd text-right text-nowrap flex-shrink-0" style={{ marginLeft: 'auto' }}>+{formatUSD(p.amount)}</div>
                             </div>
                           ))}
                         </div>

@@ -6,15 +6,6 @@ import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime } from '..
 
 const PAGE_SIZE = 25;
 
-// Tokens de estilo para jerarquía tipográfica (etiquetas vs valores)
-const labelStyle = { color: '#a0aec0', fontWeight: 400 };
-const valueStyle = { color: 'var(--text-primary)', fontWeight: 600 };
-const tableHeaderStyle = {
-  color: 'var(--text-secondary, #94a3b8)',
-  fontWeight: 600,
-  whiteSpace: 'nowrap',
-};
-
 export default function HistoryPage() {
   const { exchangeRate } = useExchangeRate();
   const [sales, setSales] = useState([]);
@@ -99,7 +90,6 @@ export default function HistoryPage() {
             className="btn btn-outline btn-sm flex-align-center gap-2"
             onClick={() => fetchHistory(currentPage)}
             disabled={loading}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Actualizar
           </button>
@@ -177,35 +167,23 @@ export default function HistoryPage() {
                 return (
                   <div
                     key={sale.id}
-                    className="history-mobile-card p-3 mb-3 bg-surface"
+                    className="history-mobile-card d-flex flex-column mb-3"
                     style={{
                       padding: '14px',
-                      marginBottom: '14px',
-                      backgroundColor: 'var(--bg-surface)',
-                      border: '1px solid var(--border-color)',
+                      gap: '10px',
                       borderRadius: '10px',
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '10px'
+                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)'
                     }}
                   >
 
                     {/* Piso Superior: Identificación y Estado */}
                     <div
                       onClick={() => toggleExpand(sale.id)}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        paddingBottom: '8px',
-                        borderBottom: '1px solid var(--border-color)',
-                        cursor: 'pointer'
-                      }}
+                      className="d-flex flex-between flex-align-center pb-2 border-bottom cursor-pointer"
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '0.95rem' }}>
+                      <div className="d-flex flex-align-center font-bold" style={{ gap: '6px', fontSize: '0.95rem' }}>
                         {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                        <span style={{ color: 'var(--text-primary)' }}>N° {invoiceNum}</span>
+                        <span className="text-primary">N° {invoiceNum}</span>
                       </div>
 
                       <div>
@@ -227,60 +205,55 @@ export default function HistoryPage() {
 
                     {/* Piso Medio: Datos Operativos con Etiquetas Contextuales */}
                     <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '6px',
-                        paddingBottom: '8px',
-                        borderBottom: '1px solid var(--border-color)',
-                        fontSize: '0.8rem'
-                      }}
+                      className="d-flex flex-column pb-2 border-bottom"
+                      style={{ gap: '6px', fontSize: '0.8rem' }}
                     >
                       {/* Cliente + Cédula en su propia línea */}
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={labelStyle}>Cliente:</span>
+                        <div className="d-flex flex-align-center" style={{ gap: '6px' }}>
+                          <span className="text-label">Cliente:</span>
                           <span
-                            style={{ ...valueStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px', display: 'inline-block', verticalAlign: 'bottom' }}
+                            className="text-primary font-semibold text-truncate"
+                            style={{ maxWidth: '200px' }}
                             title={customerName}
                           >
                             {customerName}
                           </span>
                         </div>
-                        <div style={{ ...labelStyle, fontFamily: 'monospace', marginLeft: '16px' }}>
+                        <div className="text-label font-mono" style={{ marginLeft: '16px' }}>
                           {sale.customerCedula || 'V-00000000'}
                         </div>
                       </div>
 
                       {/* Cajero */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={labelStyle}>Cajero:</span>
-                        <span style={valueStyle}>{cashierName}</span>
+                      <div className="d-flex flex-align-center" style={{ gap: '6px' }}>
+                        <span className="text-label">Cajero:</span>
+                        <span className="text-primary font-semibold">{cashierName}</span>
                       </div>
 
                       {/* Fecha (Sólo fecha plana sin hora) */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={labelStyle}>Fecha:</span>
-                        <span style={{ ...valueStyle, fontFamily: 'monospace' }}>{dateOnlyStr}</span>
+                      <div className="d-flex flex-align-center" style={{ gap: '6px' }}>
+                        <span className="text-label">Fecha:</span>
+                        <span className="text-primary font-semibold font-mono">{dateOnlyStr}</span>
                       </div>
                     </div>
 
                     {/* Piso Inferior: Finanzas Resaltadas */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', fontSize: '0.8rem', paddingTop: '2px' }}>
+                    <div className="d-flex flex-between flex-align-center w-full" style={{ fontSize: '0.8rem', paddingTop: '2px' }}>
                       <div>
-                        <span style={{ ...labelStyle, display: 'block', fontSize: '0.7rem', marginBottom: '2px' }}>Total USD:</span>
-                        <span style={{ ...valueStyle, fontFamily: 'monospace', fontSize: '0.875rem' }}>{formatUSD(sale.totalUSD || 0)}</span>
+                        <span className="text-label" style={{ display: 'block', fontSize: '0.7rem', marginBottom: '2px' }}>Total USD:</span>
+                        <span className="text-primary font-semibold font-mono" style={{ fontSize: '0.875rem' }}>{formatUSD(sale.totalUSD || 0)}</span>
                       </div>
 
                       <div style={{ textAlign: 'right' }}>
-                        <span style={{ ...labelStyle, display: 'block', fontSize: '0.7rem', marginBottom: '2px' }}>Total Bs.S:</span>
-                        <span style={{ ...valueStyle, fontFamily: 'monospace', fontSize: '0.95rem' }}>{formatNumberEs(totalBsS)}</span>
+                        <span className="text-label" style={{ display: 'block', fontSize: '0.7rem', marginBottom: '2px' }}>Total Bs.S:</span>
+                        <span className="text-primary font-semibold font-mono" style={{ fontSize: '0.95rem' }}>{formatNumberEs(totalBsS)}</span>
                       </div>
                     </div>
 
                     {/* Fila Desplegable de Detalle en Móvil */}
                     {isExpanded && (
-                      <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '12px', fontSize: '0.8rem' }}>
+                      <div className="border-top-dashed pt-3" style={{ fontSize: '0.8rem' }}>
                         {detailState?.loading ? (
                           <div className="flex-center p-3 text-muted">
                             <Loader2 className="animate-spin mr-2" size={18} /> Cargando detalles...
@@ -288,34 +261,34 @@ export default function HistoryPage() {
                         ) : detailState?.error ? (
                           <div className="alert alert-danger text-xs p-2">{detailState.error}</div>
                         ) : detailState?.data ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          <div className="d-flex flex-column" style={{ gap: '12px' }}>
 
                             <div style={{ padding: '10px', borderRadius: '8px', backgroundColor: 'var(--bg-tertiary, rgba(128,128,128,0.08))' }}>
-                              <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '4px' }}>
+                              <div className="font-bold text-xs mb-1" style={{ marginBottom: '4px' }}>
                                 Factura N° {detailState.data.invoiceNumber || sale.id}
                               </div>
-                              <div style={{ ...labelStyle, fontSize: '0.7rem', fontFamily: 'monospace' }}>
-                                Hora de Emisión: <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{new Date(detailState.data.date || sale.date).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}</strong>
+                              <div className="text-label font-mono" style={{ fontSize: '0.7rem' }}>
+                                Hora de Emisión: <strong className="text-primary font-semibold">{new Date(detailState.data.date || sale.date).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}</strong>
                               </div>
                             </div>
 
                             <div>
-                              <h4 style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '6px' }}>📦 Artículos Vendidos ({detailState.data.items?.length || 0})</h4>
-                              <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                              <h4 className="font-bold text-xs" style={{ marginBottom: '6px' }}>📦 Artículos Vendidos ({detailState.data.items?.length || 0})</h4>
+                              <div className="border" style={{ borderRadius: '8px', overflow: 'hidden' }}>
                                 <table className="cart-table" style={{ width: '100%', fontSize: '0.7rem' }}>
                                   <thead>
                                     <tr>
-                                      <th style={{ padding: '6px', color: 'var(--text-secondary, #94a3b8)' }}>Producto</th>
-                                      <th style={{ padding: '6px', textAlign: 'right', color: 'var(--text-secondary, #94a3b8)' }}>Cant.</th>
-                                      <th style={{ padding: '6px', textAlign: 'right', color: 'var(--text-secondary, #94a3b8)' }}>Subtotal Bs.S</th>
+                                      <th className="text-secondary" style={{ padding: '6px' }}>Producto</th>
+                                      <th className="text-right text-secondary" style={{ padding: '6px' }}>Cant.</th>
+                                      <th className="text-right text-secondary" style={{ padding: '6px' }}>Subtotal Bs.S</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {(detailState.data.items || []).map((item) => (
                                       <tr key={item.id}>
                                         <td className="font-medium" style={{ padding: '6px' }}>{item.productName}</td>
-                                        <td style={{ padding: '6px', textAlign: 'right', fontFamily: 'monospace' }}>{item.quantity}</td>
-                                        <td style={{ padding: '6px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{formatBsS(item.subtotalBsS)}</td>
+                                        <td className="text-right font-mono" style={{ padding: '6px' }}>{item.quantity}</td>
+                                        <td className="text-right font-mono font-bold" style={{ padding: '6px' }}>{formatBsS(item.subtotalBsS)}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -325,24 +298,21 @@ export default function HistoryPage() {
 
                             {detailState.data.payments?.length > 0 && (
                               <div>
-                                <h4 style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '6px' }}>💳 Métodos de Pago</h4>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <h4 className="font-bold text-xs" style={{ marginBottom: '6px' }}>💳 Métodos de Pago</h4>
+                                <div className="d-flex flex-column gap-1">
                                   {detailState.data.payments.map((pay, idx) => (
                                     <div
                                       key={idx}
+                                      className="d-flex flex-between flex-align-center border"
                                       style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
                                         padding: '6px 8px',
-                                        border: '1px solid var(--border-color)',
                                         borderRadius: '8px',
                                         backgroundColor: 'var(--bg-surface)',
                                         fontSize: '0.7rem'
                                       }}
                                     >
                                       <span>{pay.methodName} {pay.reference ? `(Ref: ${pay.reference})` : ''}</span>
-                                      <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{formatBsS(pay.amountBsS || 0)}</span>
+                                      <span className="font-bold font-mono">{formatBsS(pay.amountBsS || 0)}</span>
                                     </div>
                                   ))}
                                 </div>
@@ -364,11 +334,11 @@ export default function HistoryPage() {
               <table className="cart-table history-main-table">
                 <thead>
                   <tr>
-                    <th style={{ ...tableHeaderStyle, textAlign: 'left' }}>N° Factura</th>
-                    <th style={tableHeaderStyle}>Cliente</th>
-                    <th style={tableHeaderStyle}>Cajero</th>
-                    <th style={{ ...tableHeaderStyle, textAlign: 'right', paddingRight: '16px' }}>Total Bs.S</th>
-                    <th style={{ ...tableHeaderStyle, textAlign: 'center' }}>Estado</th>
+                    <th className="text-left text-secondary font-semibold text-nowrap">N° Factura</th>
+                    <th className="text-secondary font-semibold text-nowrap">Cliente</th>
+                    <th className="text-secondary font-semibold text-nowrap">Cajero</th>
+                    <th className="text-right text-secondary font-semibold text-nowrap" style={{ paddingRight: '16px' }}>Total Bs.S</th>
+                    <th className="text-center text-secondary font-semibold text-nowrap">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -392,41 +362,41 @@ export default function HistoryPage() {
                       <React.Fragment key={sale.id}>
                         <tr className="cursor-pointer" onClick={() => toggleExpand(sale.id)}>
                           {/* Ícono + N° de factura como una unidad */}
-                          <td style={{ whiteSpace: 'nowrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <td className="text-nowrap">
+                            <div className="d-flex flex-align-center gap-2">
                               {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                              <span className="font-bold font-mono" style={{ color: 'var(--text-primary)' }}>
+                              <span className="font-bold font-mono text-primary">
                                 N° {sale.invoiceNumber ? sale.invoiceNumber.toString().padStart(6, '0') : sale.id}
                               </span>
                             </div>
                           </td>
 
-                          <td style={{ maxWidth: '180px', whiteSpace: 'nowrap' }}>
+                          <td className="text-nowrap" style={{ maxWidth: '180px' }}>
                             <div
-                              className="font-medium"
+                              className="font-medium text-truncate"
                               title={customerName}
-                              style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '180px' }}
+                              style={{ maxWidth: '180px' }}
                             >
                               {customerName}
                             </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            <div className="text-xs text-muted">
                               {sale.customerCedula || 'V-00000000'}
                             </div>
                           </td>
 
-                          <td style={{ whiteSpace: 'nowrap' }}>
+                          <td className="text-nowrap">
                             <span className="font-medium">{sale.cashierName || 'Usuario Desconocido'}</span>
                           </td>
 
-                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap', paddingRight: '16px' }}>
-                            <div style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>{formatBsS(totalBsS)}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400 }}>
+                          <td className="text-right text-nowrap" style={{ paddingRight: '16px' }}>
+                            <div className="font-mono font-bold text-primary">{formatBsS(totalBsS)}</div>
+                            <div className="text-xs text-muted">
                               {formatUSD(sale.totalUSD || 0)}
                             </div>
                           </td>
 
                           {/* Etiqueta Visual de Estado */}
-                          <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <td className="text-center text-nowrap">
                             {isCompleted ? (
                               <span className="history-status-badge badge-success-subtle">
                                 <CheckCircle size={13} /> Completada
@@ -446,7 +416,7 @@ export default function HistoryPage() {
                         {/* Fila Desplegable de Detalle Escritorio */}
                         {isExpanded && (
                           <tr className="history-detail-row">
-                            <td colSpan={5} style={{ padding: '16px', backgroundColor: 'var(--bg-tertiary, rgba(128,128,128,0.05))' }}>
+                            <td colSpan={5} className="history-detail-cell border-top-dashed">
                               {detailState?.loading ? (
                                 <div className="flex-center p-3 text-muted">
                                   <Loader2 className="animate-spin mr-2" size={18} /> Cargando detalles de la factura...
@@ -455,9 +425,9 @@ export default function HistoryPage() {
                                 <div className="alert alert-danger text-sm">{detailState.error}</div>
                               ) : detailState?.data ? (
                                 <>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '14px', fontSize: '0.875rem' }}>
-                                    <Calendar size={16} style={{ flexShrink: 0 }} />
-                                    <span style={{ fontWeight: 600 }}>
+                                  <div className="d-flex flex-align-center" style={{ gap: '6px', marginBottom: '14px', fontSize: '0.875rem' }}>
+                                    <Calendar size={16} className="flex-shrink-0" />
+                                    <span className="font-semibold">
                                       {formatDate(detailState.data.date)} — {formatTime(detailState.data.date)}
                                     </span>
                                   </div>
@@ -465,23 +435,23 @@ export default function HistoryPage() {
 
                                   <div>
                                     <h4 className="font-bold mb-2" style={{ fontSize: '0.95rem' }}>Artículos Vendidos ({detailState.data.items?.length || 0})</h4>
-                                    <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflowX: 'auto' }}>
+                                    <div className="border" style={{ borderRadius: '8px', overflowX: 'auto' }}>
                                       <table className="cart-table" style={{ width: '100%', fontSize: '0.8rem' }}>
                                         <thead>
                                           <tr>
-                                            <th style={{ ...tableHeaderStyle, textAlign: 'left' }}>Producto</th>
-                                            <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Cant.</th>
-                                            <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>P. Unidad</th>
-                                            <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Subtotal Bs.S</th>
+                                            <th className="text-left text-secondary font-semibold text-nowrap">Producto</th>
+                                            <th className="text-right text-secondary font-semibold text-nowrap">Cant.</th>
+                                            <th className="text-right text-secondary font-semibold text-nowrap">P. Unidad</th>
+                                            <th className="text-right text-secondary font-semibold text-nowrap">Subtotal Bs.S</th>
                                           </tr>
                                         </thead>
                                         <tbody>
                                           {(detailState.data.items || []).map((item) => (
                                             <tr key={item.id}>
                                               <td className="font-medium">{item.productName}</td>
-                                              <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{item.quantity}</td>
-                                              <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{formatBsS(item.unitPriceBsS)}</td>
-                                              <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{formatBsS(item.subtotalBsS)}</td>
+                                              <td className="text-right font-mono">{item.quantity}</td>
+                                              <td className="text-right font-mono">{formatBsS(item.unitPriceBsS)}</td>
+                                              <td className="text-right font-mono font-bold">{formatBsS(item.subtotalBsS)}</td>
                                             </tr>
                                           ))}
                                         </tbody>
@@ -491,32 +461,32 @@ export default function HistoryPage() {
 
                                   <div>
                                     <h4 className="font-bold mb-2" style={{ fontSize: '0.95rem' }}>Resumen Financiero</h4>
-                                    <div style={{ padding: '12px', border: '1px solid var(--border-color)', borderRadius: '8px', marginBottom: '12px', backgroundColor: 'var(--bg-surface)', fontSize: '0.875rem' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                    <div className="border text-sm p-3" style={{ borderRadius: '8px', marginBottom: '12px', backgroundColor: 'var(--bg-surface)' }}>
+                                      <div className="d-flex flex-between mb-1">
                                         <span className="text-muted">Cliente:</span>
                                         <span className="font-bold">{detailState.data.customerName || 'Consumidor Final'}</span>
                                       </div>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                      <div className="d-flex flex-between mb-1">
                                         <span className="text-muted">Cédula / RIF:</span>
                                         <span className="font-bold">{detailState.data.customerCedula || 'V-00000000'}</span>
                                       </div>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                      <div className="d-flex flex-between mb-1">
                                         <span className="text-muted">Tasa de Cambio:</span>
                                         <span className="font-bold">Bs.S {formatNumberEs(detailState.data.appliedRate)}</span>
                                       </div>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                      <div className="d-flex flex-between mb-1">
                                         <span className="text-muted">Total USD:</span>
                                         <span className="font-bold">{formatUSD(detailState.data.totalUSD || 0)}</span>
                                       </div>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                      <div className="d-flex flex-between">
                                         <span className="text-muted">Total Bs.S:</span>
-                                        <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{formatBsS(detailState.data.totalBsS || 0)}</span>
+                                        <span className="font-bold text-primary">{formatBsS(detailState.data.totalBsS || 0)}</span>
                                       </div>
                                     </div>
 
                                     <h4 className="font-bold mb-2" style={{ fontSize: '0.95rem' }}>Métodos de Pago</h4>
                                     {detailState.data.payments?.length > 0 ? (
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                      <div className="d-flex flex-column gap-2">
                                         {detailState.data.payments.map((pay, idx) => (
                                           <div key={idx} className="history-payment-item">
                                             <div>
@@ -553,35 +523,27 @@ export default function HistoryPage() {
       {/* ── Controles de Paginación (25 Pedidos por Página) ── */}
       {totalCount > 0 && (
         <div
-          className="card mt-3 p-3"
-          style={{
-            marginTop: '16px',
-            borderRadius: '12px',
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '12px'
-          }}
+          className="card mt-4 d-flex flex-wrap flex-align-center justify-between gap-3"
+          style={{ borderRadius: '12px' }}
         >
-          <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-            Mostrando <span style={{ fontWeight: 700, color: 'var(--accent-primary)' }}>{((currentPage - 1) * PAGE_SIZE) + 1}</span> a{' '}
-            <span style={{ fontWeight: 700, color: 'var(--accent-primary)' }}>{Math.min(currentPage * PAGE_SIZE, totalCount)}</span> de{' '}
-            <span style={{ fontWeight: 700, color: 'var(--accent-primary)' }}>{totalCount}</span> pedidos
+          <div className="text-sm text-muted font-medium">
+            Mostrando <span className="font-bold color-primary">{((currentPage - 1) * PAGE_SIZE) + 1}</span> a{' '}
+            <span className="font-bold color-primary">{Math.min(currentPage * PAGE_SIZE, totalCount)}</span> de{' '}
+            <span className="font-bold color-primary">{totalCount}</span> pedidos
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div className="d-flex flex-align-center" style={{ gap: '6px' }}>
             <button
               type="button"
               className="btn btn-outline btn-sm"
               disabled={currentPage === 1 || loading}
               onClick={() => handlePageChange(currentPage - 1)}
-              style={{ padding: '6px 12px', fontSize: '0.825rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+              style={{ padding: '6px 12px', fontSize: '0.825rem', gap: '4px' }}
             >
               <ChevronLeft size={16} /> Anterior
             </button>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', margin: '0 4px' }}>
+            <div className="d-flex flex-align-center" style={{ gap: '4px', margin: '0 4px' }}>
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
                 .map((p, idx, arr) => {
@@ -609,7 +571,7 @@ export default function HistoryPage() {
               className="btn btn-outline btn-sm"
               disabled={currentPage >= totalPages || loading}
               onClick={() => handlePageChange(currentPage + 1)}
-              style={{ padding: '6px 12px', fontSize: '0.825rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+              style={{ padding: '6px 12px', fontSize: '0.825rem', gap: '4px' }}
             >
               Siguiente <ChevronRight size={16} />
             </button>
