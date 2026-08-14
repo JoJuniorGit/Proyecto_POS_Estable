@@ -1,16 +1,23 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Search, X } from 'lucide-react';
 import { getProductSuggestions } from '../../services/productsApi';
 import SuggestionList from './SuggestionList';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 
-export default function SearchBar({ onSelectProduct }) {
+const SearchBar = forwardRef(function SearchBar({ onSelectProduct }, ref) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const searchRef = useRef(null);
   const { exchangeRate } = useExchangeRate();
+
+  // Permite que el escáner de código de barras deje un código no encontrado en la búsqueda.
+  useImperativeHandle(ref, () => ({
+    setQuery: (text) => {
+      setQuery(text);
+    },
+  }));
 
   // Debounce search API calls
   useEffect(() => {
@@ -108,4 +115,6 @@ export default function SearchBar({ onSelectProduct }) {
       )}
     </div>
   );
-}
+});
+
+export default SearchBar;

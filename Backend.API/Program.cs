@@ -7,6 +7,8 @@ using DotNetEnv;
 using Npgsql;
 using Backend.API.Services;
 using Backend.API.Hubs;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
+using System.Security.Cryptography.X509Certificates;
 
 // Setup global unhandled exception logger for crash.log
 AppDomain.CurrentDomain.UnhandledException += (s, e) =>
@@ -23,6 +25,26 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
     builder.WebHost.UseUrls("http://0.0.0.0:5000");
+
+    // HTTPS (contexto seguro requerido por el escáner de cámara desde dispositivos de la red local).
+    // Usa el certificado autofirmado pos-https.pfx si existe (ver scripts/create-https-cert.ps1).
+    // Si el certificado falta, el servidor continúa sirviendo solo HTTP sin romper el arranque.
+    // Nota: ConfigureKestrel REEMPLAZA los endpoints por URL, por eso se definen aquí ambos
+    // (HTTP 5000 + HTTPS 5001) para no perder el HTTP cuando el certificado existe.
+    var httpsCert = LoadHttpsCertificate();
+    if (httpsCert != null)
+    {
+        builder.WebHost.ConfigureKestrel(kestrel =>
+        {
+            kestrel.ListenAnyIP(5000);
+            kestrel.ListenAnyIP(5001, listen => listen.UseHttps(httpsCert));
+        });
+        AppLogger.LogStart("HTTPS habilitado en https://0.0.0.0:5001 (certificado autofirmado)");
+    }
+    else
+    {
+        AppLogger.LogStart("[AVISO] Certificado HTTPS no encontrado; el servidor solo escuchará en http://0.0.0.0:5000. Ejecute scripts/create-https-cert.ps1 para habilitar HTTPS.");
+    }
 
     // Enable Windows Service integration (allows sc.exe to manage service natively without Error 1053)
     builder.Host.UseWindowsService();
@@ -289,4 +311,34 @@ catch (Exception fatalEx)
 {
     AppLogger.LogCrash(fatalEx, "Backend.API.Program.FatalStartup");
     throw;
+}
+
+// Devuelve el certificado HTTPS autofirmado (pos-https.pfx) si está disponible; si no, null.
+// Busca primero junto al ejecutable (modo servicio/publicado) y luego en el directorio actual.
+X509Certificate2? LoadHttpsCertificate()
+{
+    const string certPassword = "PosHttpsDev2026!";
+    var candidates = new[]
+    {
+        Path.Combine(AppContext.BaseDirectory, "certs", "pos-https.pfx"),
+        Path.Combine(Directory.GetCurrentDirectory(), "certs", "pos-https.pfx"),
+    };
+
+    foreach (var candidate in candidates)
+    {
+        if (File.Exists(candidate))
+        {
+            try
+            {
+                return X509CertificateLoader.LoadPkcs12FromFile(candidate, certPassword);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.LogStart($"[AVISO] No se pudo cargar el certificado HTTPS ({candidate}): {ex.Message}");
+                return null;
+            }
+        }
+    }
+
+    return null;
 }

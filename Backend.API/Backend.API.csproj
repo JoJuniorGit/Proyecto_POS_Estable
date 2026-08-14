@@ -26,4 +26,10 @@
     <ProjectReference Include="..\Logistics.Module\Logistics.Module.csproj" />
   </ItemGroup>
 
+  <!-- Certificado HTTPS autofirmado (ver scripts/create-https-cert.ps1): se copia a la salida
+       para que funcione tanto en desarrollo (dotnet run) como en el servicio publicado. -->
+  <ItemGroup>
+    <None Include="certs\pos-https.pfx" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

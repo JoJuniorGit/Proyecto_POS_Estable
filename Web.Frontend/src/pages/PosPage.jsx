@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useCart } from '../context/CartContext';
 import SearchBar from '../components/pos/SearchBar';
 import EmptyCart from '../components/pos/EmptyCart';
@@ -6,10 +6,14 @@ import CartTable from '../components/pos/CartTable';
 import CartList from '../components/pos/CartList';
 import SummaryPanel from '../components/pos/SummaryPanel';
 import CustomerModal from '../components/pos/CustomerModal';
-import { Edit2 } from 'lucide-react';
+import BarcodeScannerModal from '../components/pos/BarcodeScannerModal';
+import { getProductBySku } from '../services/productsApi';
+import { Edit2, ScanLine } from 'lucide-react';
 
 export default function PosPage({ onOpenCheckout, onOpenHold }) {
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const searchBarRef = useRef(null);
   const {
     currentSale,
     items,
@@ -30,6 +34,22 @@ export default function PosPage({ onOpenCheckout, onOpenHold }) {
   const handleSelectCustomer = async (customerId) => {
     await updateCustomer(customerId);
     setIsCustomerModalOpen(false);
+  };
+
+  // Código escaneado con la cámara: se resuelve por SKU exacto y se agrega
+  // directamente al carrito. Si el código no existe (o es un avance de efectivo),
+  // se deja en la barra de búsqueda para que el cajero decida.
+  const handleScannedCode = async (code) => {
+    try {
+      const product = await getProductBySku(code);
+      if (product?.id && !product.isCashAdvance) {
+        await addItem(product, 1);
+        return;
+      }
+    } catch (err) {
+      console.error('[PosPage] Error resolviendo código escaneado:', err);
+    }
+    searchBarRef.current?.setQuery(code);
   };
 
   return (
@@ -95,7 +115,35 @@ export default function PosPage({ onOpenCheckout, onOpenHold }) {
       <div className="pos-layout">
         {/* Columna Izquierda: Búsqueda y Lista de Carrito */}
         <div className="pos-left-column">
-          <SearchBar onSelectProduct={handleSelectProduct} />
+          {/* Fila de búsqueda + escáner de cámara */}
+          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'stretch', width: '100%' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <SearchBar ref={searchBarRef} onSelectProduct={handleSelectProduct} />
+            </div>
+            <button
+              type="button"
+              aria-label="Escanear código de barras con la cámara"
+              title="Escanear código de barras con la cámara"
+              onClick={() => setIsScannerOpen(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 48,
+                height: 48,
+                flexShrink: 0,
+                color: 'var(--primary-color, #673AB7)',
+                backgroundColor: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+                boxShadow: 'var(--shadow-sm)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <ScanLine size={20} />
+            </button>
+          </div>
 
           {items.length === 0 ? (
             <EmptyCart />
@@ -138,6 +186,13 @@ export default function PosPage({ onOpenCheckout, onOpenHold }) {
         onClose={() => setIsCustomerModalOpen(false)} 
         onSelectCustomer={handleSelectCustomer}
         mode="select"
+      />
+
+      {/* Escáner de código de barras con cámara */}
+      <BarcodeScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onCodeScanned={handleScannedCode}
       />
     </div>
   );

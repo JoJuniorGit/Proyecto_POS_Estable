@@ -15,6 +15,11 @@ FOR /F "tokens=5" %%T IN ('netstat -a -n -o ^| findstr :%PORT%') DO (
     taskkill /F /PID %%T /T >nul 2>&1
 )
 
+echo Releasing Port 5001 (Backend HTTPS)...
+FOR /F "tokens=5" %%T IN ('netstat -a -n -o ^| findstr :5001') DO (
+    taskkill /F /PID %%T /T >nul 2>&1
+)
+
 echo Releasing Port 5173 (Web Frontend)...
 FOR /F "tokens=5" %%T IN ('netstat -a -n -o ^| findstr :5173') DO (
     taskkill /F /PID %%T /T >nul 2>&1
@@ -52,7 +57,8 @@ start "Web Frontend" cmd /k "cd /d %~dp0\Web.Frontend && npm run dev"
 echo.
 echo ==========================================
 echo   System Started Successfully.
-echo   - Backend API:     http://localhost:%PORT%
+echo   - Backend API (HTTP):  http://localhost:%PORT%
+echo   - Backend API (HTTPS): https://localhost:5001  (red local: https://<ip-del-equipo>:5001)
 echo   - Web Frontend:    http://localhost:5173
 echo   - Desktop Client:  Running
 echo ==========================================
