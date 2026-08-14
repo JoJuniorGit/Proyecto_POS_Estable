@@ -188,7 +188,7 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={modalTitle} maxWidth="650px">
       {error && (
-        <div className="alert alert-danger mb-3" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div className="alert alert-danger mb-3 d-flex flex-align-center gap-2">
           <AlertCircle size={20} />
           <span>{error}</span>
         </div>
@@ -230,11 +230,11 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
               <Search size={18} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />
             </div>
 
-            <div className="customer-list" style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px', marginTop: '10px' }}>
+            <div className="customer-list border custom-scrollbar" style={{ maxHeight: '220px', overflowY: 'auto', borderRadius: '8px', marginTop: '10px' }}>
               {loading ? (
-                <p style={{ padding: '15px', textAlign: 'center' }}>Cargando clientes...</p>
+                <p className="text-center" style={{ padding: '15px' }}>Cargando clientes...</p>
               ) : !Array.isArray(customers) || customers.length === 0 ? (
-                <p style={{ padding: '15px', textAlign: 'center', color: '#888' }}>No se encontraron clientes registrados.</p>
+                <p className="text-center" style={{ padding: '15px', color: '#888' }}>No se encontraron clientes registrados.</p>
               ) : (
                 customers.map((c) => {
                   const isSelected = selectedCustomer?.id === c.id;
@@ -264,12 +264,12 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
             </div>
           </div>
         ) : (
-          <form onSubmit={handleCreateCustomer} className="customer-modal-create-form" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          <form onSubmit={handleCreateCustomer} className="customer-modal-create-form d-flex flex-column" style={{ gap: '15px' }}>
             <div className="customer-modal-form-grid">
               {/* Cédula / RIF Input Controlado */}
               <div className="form-group mb-0 customer-form-group">
                 <label htmlFor="customer-cedula-input">Cédula o RIF *</label>
-                <div style={{ position: 'relative', width: '100%' }}>
+                <div className="w-full" style={{ position: 'relative' }}>
                   <input
                     id="customer-cedula-input"
                     name="cedulaOrRif"
@@ -295,7 +295,7 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
               {/* Teléfono Input Controlado */}
               <div className="form-group mb-0 customer-form-group">
                 <label htmlFor="customer-phone-input">Teléfono *</label>
-                <div style={{ position: 'relative', width: '100%' }}>
+                <div className="w-full" style={{ position: 'relative' }}>
                   <input
                     id="customer-phone-input"
                     name="phone"
@@ -321,7 +321,7 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
             {/* Nombre o Razón Social (Límite 50 caracteres) */}
             <div className="form-group mb-0 customer-form-group">
               <label htmlFor="customer-name-input">Nombre Completo o Razón Social *</label>
-              <div style={{ width: '100%' }}>
+              <div className="w-full">
                 <input
                   id="customer-name-input"
                   name="name"
@@ -334,7 +334,7 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
                   onChange={(e) => setName(e.target.value)}
                 />
               </div>
-              <div className="d-flex justify-content-between align-items-center w-100 mt-1 customer-name-counter-wrapper">
+              <div className="d-flex flex-between flex-align-center w-full mt-1 customer-name-counter-wrapper">
                 <small className="form-text text-muted" style={{ margin: 0 }}>Máximo 50 caracteres para facturas impresas</small>
                 <span
                   style={{
@@ -352,10 +352,10 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
 
             {/* Botón Principal Único de la Pestaña Crear */}
             <div className="customer-modal-footer mt-2">
-              <button type="button" className="btn btn-outline" onClick={onClose} style={{ flex: 1 }}>
+              <button type="button" className="btn btn-outline flex-1" onClick={onClose}>
                 Cancelar
               </button>
-              <button type="submit" className="btn btn-primary" style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <button type="submit" className="btn btn-primary flex-2">
                 <UserPlus size={18} /> Guardar Cliente y Seleccionar
               </button>
             </div>
@@ -368,7 +368,7 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
         <>
           {/* Abono Inicial Sección */}
           <div className="checkout-section">
-            <label className="checkbox-container" htmlFor="enable-initial-payment" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+            <label className="d-flex flex-align-center gap-2 cursor-pointer font-bold" htmlFor="enable-initial-payment">
               <input
                 id="enable-initial-payment"
                 name="enableInitialPayment"
@@ -380,8 +380,8 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
             </label>
 
             {enableInitialPayment && (
-              <div className="row mt-3 p-3 bg-light rounded border">
-                <div className="col-md-6 form-group mb-0">
+              <div className="d-flex flex-wrap gap-2 mt-3 p-3 border">
+                <div className="flex-1 form-group mb-0" style={{ minWidth: '200px' }}>
                   <label htmlFor="initial-payment-bss">Monto Abonado (Bs.S)</label>
                   <input
                     id="initial-payment-bss"
@@ -396,7 +396,7 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
                   <span className="form-text text-muted">Equivale a: ${initialUsd.toFixed(2)} USD</span>
                 </div>
 
-                <div className="col-md-6 form-group mb-0">
+                <div className="flex-1 form-group mb-0" style={{ minWidth: '200px' }}>
                   <label htmlFor="payment-method-id">Método de Pago</label>
                   <select
                     id="payment-method-id"
@@ -437,15 +437,14 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
       {/* Footer Buttons - Exclusivo para la pestaña de Búsqueda */}
       {tab === 'search' && (
         <div className="customer-modal-footer">
-          <button type="button" className="btn btn-outline" onClick={onClose} style={{ flex: 1 }}>
+          <button type="button" className="btn btn-outline flex-1" onClick={onClose}>
             Cancelar
           </button>
           <button 
             type="button" 
-            className="btn btn-primary" 
+            className="btn btn-primary flex-2" 
             onClick={handleConfirm} 
             disabled={!selectedCustomer}
-            style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
           >
             <Check size={18} /> {mode === 'hold' ? 'Confirmar y Guardar en Espera' : 'Confirmar Cliente'}
           </button>
@@ -454,4 +453,3 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
     </Modal>
   );
 }
-

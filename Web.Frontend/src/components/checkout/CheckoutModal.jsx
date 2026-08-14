@@ -164,7 +164,7 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
       </div>
 
       {!overrideSale && (
-        <div className="checkout-section" style={{ marginTop: '12px' }}>
+        <div className="checkout-section mt-3">
           <div
             style={{
               padding: '12px 14px',

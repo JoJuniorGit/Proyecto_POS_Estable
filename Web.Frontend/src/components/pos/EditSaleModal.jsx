@@ -122,7 +122,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`✏️ Editar Productos del Pedido #${sale?.id || ''}`} maxWidth="680px" overflowVisible={true}>
       {error && (
-        <div className="alert alert-danger mb-3" style={{ fontSize: '0.875rem' }}>
+        <div className="alert alert-danger mb-3 text-sm">
           {error}
         </div>
       )}
@@ -134,9 +134,9 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       </div>
 
       {/* Tabla de Productos Editables con Estilo del Carrito del POS */}
-      <div className="cart-table-wrapper custom-scrollbar" style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '16px' }}>
+      <div className="cart-table-wrapper custom-scrollbar mb-4" style={{ maxHeight: '250px', overflowY: 'auto' }}>
         {items.length === 0 ? (
-          <div className="text-center py-4 text-muted" style={{ border: '1px dashed var(--border)', borderRadius: '8px' }}>
+          <div className="text-center py-4 text-muted border-dashed" style={{ borderRadius: '8px' }}>
             No hay productos en la lista.
           </div>
         ) : (
@@ -227,13 +227,11 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
 
       {/* Resumen Financiero */}
       <div 
+        className="border text-sm mb-4"
         style={{ 
           backgroundColor: 'var(--bg-secondary, rgba(255,255,255,0.03))', 
-          border: '1px solid var(--border)', 
           borderRadius: '8px', 
-          padding: '12px 16px',
-          marginBottom: '16px',
-          fontSize: '0.875rem'
+          padding: '12px 16px'
         }}
       >
         <div className="flex-between mb-1">
@@ -251,7 +249,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       </div>
 
       {/* Acciones */}
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+      <div className="d-flex justify-center flex-align-center gap-3 flex-wrap">
         <button type="button" className="btn btn-outline" onClick={onClose} disabled={isSaving}>
           Cancelar
         </button>
