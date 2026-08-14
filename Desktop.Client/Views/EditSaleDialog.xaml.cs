@@ -176,9 +176,6 @@ public partial class EditSaleDialog : Window
         TxtNewTotal.Text = $"${newTotalUsd:N2} (Bs.S {newTotalBsS:N2})";
         TxtTotalPaid.Text = $"${_sale.TotalPaidUSD:N2}";
         TxtRemaining.Text = $"${remainingUsd:N2}";
-
-        decimal creditLimitUsd = _sale.Customer?.CreditLimitUSD ?? 0m;
-        TxtCreditLimit.Text = creditLimitUsd > 0m ? $"${creditLimitUsd:N2}" : "Sin Límite";
     }
 
     private void BtnCancel_Click(object sender, RoutedEventArgs e)
@@ -202,7 +199,7 @@ public partial class EditSaleDialog : Window
         {
             MessageBox.Show(
                 $"El nuevo total del pedido (${newTotalUsd:N2}) no puede ser menor al monto ya abonado por el cliente (${_sale.TotalPaidUSD:N2}).",
-                "Restricción de Crédito", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "Restricción del Pedido", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 

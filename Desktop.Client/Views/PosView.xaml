@@ -45,7 +45,12 @@
 
                 <!-- Header: Search -->
                 <Grid Margin="0,0,0,10">
-                    <TextBox x:Name="SearchInput"
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox x:Name="SearchInput" Grid.Column="0"
                              materialDesign:HintAssist.Hint="Enter the desired product"
                              materialDesign:TextFieldAssist.HasClearButton="True"
                              Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
@@ -60,7 +65,16 @@
                             </i:EventTrigger>
                         </i:Interaction.Triggers>
                     </TextBox>
-                    
+
+                    <!-- Camera barcode scanner -->
+                    <Button Grid.Column="1" x:Name="OpenScannerButton" Click="OpenScanner_Click"
+                            Style="{DynamicResource MaterialDesignIconButton}"
+                            Margin="8,0,0,0" VerticalAlignment="Center"
+                            ToolTip="Scan a barcode or text with the camera">
+                        <materialDesign:PackIcon Kind="Camera" Width="20" Height="20"
+                                                 Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                    </Button>
+
                     <Popup IsOpen="{Binding HasSuggestions, Mode=TwoWay}"
                            StaysOpen="False"
                            PlacementTarget="{Binding ElementName=SearchInput}"

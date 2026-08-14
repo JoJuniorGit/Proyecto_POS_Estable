@@ -36,13 +36,16 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="55"/>
                                             <ColumnDefinition Width="80"/>
+                                            <ColumnDefinition Width="110"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" Text="{Binding ProductName}"
                                                    FontSize="12" TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="1" Text="{Binding Quantity, StringFormat='x{0:N0}'}"
                                                    FontSize="12" HorizontalAlignment="Right" Foreground="Gray"/>
-                                        <TextBlock Grid.Column="2" Text="{Binding UnitPrice, StringFormat='${0:N2}'}"
+                                        <TextBlock Grid.Column="2" Text="{Binding UnitPriceBsS, StringFormat='Bs.S {0:N2}'}"
                                                    FontSize="12" HorizontalAlignment="Right" FontWeight="Medium"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding SubtotalBsS, StringFormat='Bs.S {0:N2}'}"
+                                                   FontSize="12" HorizontalAlignment="Right" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

@@ -351,7 +351,6 @@
                                 <DataGridTextColumn Header="Cédula / RIF" Binding="{Binding CedulaOrRif}" Width="110" FontWeight="Bold"/>
                                 <DataGridTextColumn Header="Nombre / Razón Social" Binding="{Binding Name}" Width="*"/>
                                 <DataGridTextColumn Header="Teléfono" Binding="{Binding Phone}" Width="120"/>
-                                <DataGridTextColumn Header="Crédito ($)" Binding="{Binding CreditLimitUSD, StringFormat='${0:N2}'}" Width="100" FontWeight="SemiBold"/>
                                 <DataGridTemplateColumn Header="Estado" Width="90">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
@@ -472,16 +471,6 @@
                                                          Visibility="{Binding IsPhoneValid, Converter={StaticResource BoolToVis}}"/>
                             </Grid>
                             <TextBlock Text="Ej: 0412-1234567 (11 dígitos)" FontSize="11" Foreground="#64748B" Margin="4,2,0,0"/>
-                        </StackPanel>
-
-                        <!-- Límite de Crédito (Efecto ATM 0.0x) -->
-                        <StackPanel Margin="0,0,0,16">
-                            <TextBlock Text="Límite de Crédito ($ USD)" FontWeight="SemiBold" FontSize="12" Foreground="#334155" Margin="0,0,0,4"/>
-                            <TextBox Text="{Binding CreditLimitText, UpdateSourceTrigger=PropertyChanged}"
-                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                     Padding="12,10" FontSize="14" FontWeight="Bold" TextAlignment="Right"
-                                     IsEnabled="{Binding CanMutate}"/>
-                            <TextBlock Text="Monto máximo permitido en crédito (formateo ATM)" FontSize="11" Foreground="#64748B" Margin="4,3,0,0"/>
                         </StackPanel>
 
                         <!-- CheckBox Activo -->

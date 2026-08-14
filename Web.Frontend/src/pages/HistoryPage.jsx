@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { getSalesHistory, getSaleHistoryDetail } from '../services/historyApi';
 import { Search, Loader2, Calendar, ChevronRight, ChevronLeft, ChevronDown, RefreshCw, CheckCircle, Clock, XCircle, FileText } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
-import { formatBsS, formatUSD, formatNumberEs } from '../utils/formatters';
+import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime } from '../utils/formatters';
 
 const PAGE_SIZE = 25;
 
@@ -313,10 +313,8 @@ export default function HistoryPage() {
                   <tr>
                     <th style={{ width: '40px', textAlign: 'center' }}></th>
                     <th style={{ whiteSpace: 'nowrap' }}>N° Factura</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>Fecha</th>
                     <th style={{ whiteSpace: 'nowrap' }}>Cliente</th>
                     <th style={{ whiteSpace: 'nowrap' }}>Cajero</th>
-                    <th style={{ textAlign: 'right', whiteSpace: 'nowrap', paddingRight: '16px' }}>Total USD</th>
                     <th style={{ textAlign: 'right', whiteSpace: 'nowrap', paddingRight: '16px' }}>Total Bs.S</th>
                     <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Estado</th>
                   </tr>
@@ -325,8 +323,6 @@ export default function HistoryPage() {
                   {sales.map((sale) => {
                     const isExpanded = expandedSaleId === sale.id;
                     
-                    const dateStr = sale.date ? new Date(sale.date).toLocaleDateString('es-VE') : '-';
-
                     const totalBsS = sale.totalBsS > 0
                       ? sale.totalBsS
                       : (sale.totalUSD || 0) * (sale.appliedRate || exchangeRate);
@@ -350,10 +346,6 @@ export default function HistoryPage() {
                             N° {sale.invoiceNumber ? sale.invoiceNumber.toString().padStart(6, '0') : sale.id}
                           </td>
                           
-                          <td style={{ whiteSpace: 'nowrap' }} className="font-mono text-sm">
-                            {dateStr}
-                          </td>
-
                           <td style={{ maxWidth: '180px', whiteSpace: 'nowrap' }}>
                             <div 
                               className="font-medium" 
@@ -371,11 +363,11 @@ export default function HistoryPage() {
                             <span className="font-medium">{sale.cashierName || 'Usuario Desconocido'}</span>
                           </td>
 
-                          <td className="text-right font-mono font-medium" style={{ whiteSpace: 'nowrap', paddingRight: '16px' }}>
-                            {formatUSD(sale.totalUSD || 0)}
-                          </td>
                           <td className="text-right font-mono font-bold color-primary" style={{ whiteSpace: 'nowrap', paddingRight: '16px' }}>
-                            {formatBsS(totalBsS)}
+                            <div>{formatBsS(totalBsS)}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400 }}>
+                              {formatUSD(sale.totalUSD || 0)}
+                            </div>
                           </td>
 
                           {/* Etiqueta Visual de Estado */}
@@ -399,7 +391,7 @@ export default function HistoryPage() {
                         {/* Fila Desplegable de Detalle Escritorio */}
                         {isExpanded && (
                           <tr className="history-detail-row">
-                            <td colSpan={8} style={{ padding: '16px', backgroundColor: 'var(--bg-tertiary, rgba(128,128,128,0.05))' }}>
+                            <td colSpan={6} style={{ padding: '16px', backgroundColor: 'var(--bg-tertiary, rgba(128,128,128,0.05))' }}>
                               {detailState?.loading ? (
                                 <div className="flex-center p-3 text-muted">
                                   <Loader2 className="animate-spin mr-2" size={18} /> Cargando detalles de la factura...
@@ -407,7 +399,14 @@ export default function HistoryPage() {
                               ) : detailState?.error ? (
                                 <div className="alert alert-danger text-sm">{detailState.error}</div>
                               ) : detailState?.data ? (
-                                <div className="grid grid-1 sm:grid-2 gap-4">
+                                <>
+                                  <div className="sale-date flex-align-center gap-1.5" style={{ marginBottom: '14px', fontSize: '0.875rem' }}>
+                                    <Calendar size={16} className="color-primary flex-shrink-0" />
+                                    <span className="font-semibold">
+                                      {formatDate(detailState.data.date)} — {formatTime(detailState.data.date)}
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-1 sm:grid-2 gap-4">
                                   
                                   <div>
                                     <h4 className="font-bold mb-2 text-sm sm:text-base">Artículos Vendidos ({detailState.data.items?.length || 0})</h4>
@@ -417,7 +416,7 @@ export default function HistoryPage() {
                                           <tr>
                                             <th>Producto</th>
                                             <th className="text-center">Cant.</th>
-                                            <th className="text-right">P. Unit USD</th>
+                                            <th className="text-right">P. Unidad</th>
                                             <th className="text-right">Subtotal Bs.S</th>
                                           </tr>
                                         </thead>
@@ -426,7 +425,7 @@ export default function HistoryPage() {
                                             <tr key={item.id}>
                                               <td className="font-medium">{item.productName}</td>
                                               <td className="text-center font-mono">{item.quantity}</td>
-                                              <td className="text-right font-mono">{formatUSD(item.unitPrice)}</td>
+                                              <td className="text-right font-mono">{formatBsS(item.unitPriceBsS)}</td>
                                               <td className="text-right font-mono font-bold color-primary">{formatBsS(item.subtotalBsS)}</td>
                                             </tr>
                                           ))}
@@ -480,7 +479,8 @@ export default function HistoryPage() {
                                     )}
                                   </div>
                                   
-                                </div>
+                                  </div>
+                                </>
                               ) : null}
                             </td>
                           </tr>

@@ -181,12 +181,6 @@
                                     FontWeight="Bold" 
                                     Width="120" />
                 
-                <!-- FECHA (Sólo Fecha dd/MM/yyyy sin hora) -->
-                <DataGridTextColumn Header="FECHA" 
-                                    HeaderStyle="{StaticResource StandardHeaderStyle}"
-                                    Binding="{Binding Date, StringFormat={}{0:dd/MM/yyyy}}" 
-                                    Width="110" />
-
                 <!-- CLIENTE -->
                 <DataGridTextColumn Header="CLIENTE" 
                                     HeaderStyle="{StaticResource StandardHeaderStyle}"
@@ -199,22 +193,19 @@
                                     Binding="{Binding CashierName, FallbackValue='Usuario Desconocido'}" 
                                     Width="140" />
 
-                <!-- TOTAL USD (Alineación Estricta a la Derecha) -->
-                <DataGridTextColumn Header="TOTAL USD" 
-                                    HeaderStyle="{StaticResource RightAlignedHeaderStyle}"
-                                    ElementStyle="{StaticResource RightAlignedElementStyle}"
-                                    Binding="{Binding TotalUSD, StringFormat={}${0:N2}}" 
-                                    FontWeight="Medium" 
-                                    Width="110" />
-
-                <!-- TOTAL BS.S (Alineación Estricta a la Derecha) -->
-                <DataGridTextColumn Header="TOTAL BS.S" 
-                                    HeaderStyle="{StaticResource RightAlignedHeaderStyle}"
-                                    ElementStyle="{StaticResource RightAlignedElementStyle}"
-                                    Binding="{Binding FinalPaidAmountBsS, StringFormat={}{0:N2}}" 
-                                    FontWeight="Bold" 
-                                    Foreground="{DynamicResource PrimaryHueMidBrush}"
-                                    Width="130" />
+                <!-- TOTAL BS.S (Monto Principal en Bs.S con Equivalente USD como Subtexto) -->
+                <DataGridTemplateColumn Header="TOTAL BS.S" 
+                                        HeaderStyle="{StaticResource RightAlignedHeaderStyle}"
+                                        Width="130">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0">
+                                <TextBlock Text="{Binding TotalBsS, StringFormat={}{0:N2}}" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" FontSize="12" TextAlignment="Right"/>
+                                <TextBlock Text="{Binding TotalUSD, StringFormat={}USD ${0:N2}}" Foreground="Gray" FontSize="10" TextAlignment="Right"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
 
                 <!-- ESTADO (Badges tipo Píldora Redondeada con Ícono) -->
                 <DataGridTemplateColumn Header="ESTADO" 
@@ -333,8 +324,8 @@
                         <TextBlock Style="{DynamicResource MaterialDesignSubtitle1TextBlock}" FontWeight="Bold" VerticalAlignment="Center">
                             <Run Text="Detalle de Factura N° "/>
                             <Run Text="{Binding SelectedSale.InvoiceNumber, StringFormat={}{0:D6}}"/>
-                            <Run Text=" — Hora de Emisión: " Foreground="Gray" FontWeight="Normal"/>
-                            <Run Text="{Binding SelectedSale.Date, StringFormat={}{0:hh:mm:ss tt}}" Foreground="{DynamicResource PrimaryHueMidBrush}" FontWeight="Bold"/>
+                            <Run Text=" — Emitida: " Foreground="Gray" FontWeight="Normal"/>
+                            <Run Text="{Binding SelectedSale.Date, StringFormat={}{0:dd/MM/yyyy HH:mm}}" Foreground="{DynamicResource PrimaryHueMidBrush}" FontWeight="Bold"/>
                         </TextBlock>
                     </StackPanel>
                 </DockPanel>
@@ -385,7 +376,7 @@
                             <controls:PerformantDataGrid.Columns>
                                 <DataGridTextColumn Header="PRODUCTO" Binding="{Binding ProductName}" Width="*" HeaderStyle="{StaticResource StandardHeaderStyle}"/>
                                 <DataGridTextColumn Header="CANT." Binding="{Binding Quantity}" Width="80" HeaderStyle="{StaticResource StandardHeaderStyle}"/>
-                                <DataGridTextColumn Header="P. UNIT USD" Binding="{Binding UnitPrice, StringFormat={}${0:N2}}" Width="110" HeaderStyle="{StaticResource RightAlignedHeaderStyle}" ElementStyle="{StaticResource RightAlignedElementStyle}"/>
+                                <DataGridTextColumn Header="P. UNIDAD" Binding="{Binding UnitPriceBsS, StringFormat={}{0:N2}}" Width="110" HeaderStyle="{StaticResource RightAlignedHeaderStyle}" ElementStyle="{StaticResource RightAlignedElementStyle}"/>
                                 <DataGridTextColumn Header="SUBTOTAL BS.S" Binding="{Binding SubtotalBsS, StringFormat={}{0:N2}}" Width="130" HeaderStyle="{StaticResource RightAlignedHeaderStyle}" ElementStyle="{StaticResource RightAlignedElementStyle}" FontWeight="Bold"/>
                             </controls:PerformantDataGrid.Columns>
                         </controls:PerformantDataGrid>
@@ -423,7 +414,7 @@
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="Total Factura Bs.S:" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="14" FontWeight="Bold"/>
-                                    <TextBlock Text="{Binding SelectedSale.FinalPaidAmountBsS, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="16" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding SelectedSale.TotalBsS, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="16" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </StackPanel>
                         </Grid>

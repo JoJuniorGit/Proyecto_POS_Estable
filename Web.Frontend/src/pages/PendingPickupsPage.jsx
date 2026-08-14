@@ -157,8 +157,7 @@ export default function PendingPickupsPage() {
                 <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary, rgba(255,255,255,0.03))' }}>
                   <th style={{ padding: '14px' }}>Factura N° / Fecha</th>
                   <th style={{ padding: '14px' }}>Cliente</th>
-                  <th style={{ padding: '14px' }}>Total Factura USD</th>
-                  <th style={{ padding: '14px' }}>Total Factura Bs.S</th>
+                  <th style={{ padding: '14px', textAlign: 'right' }}>Total Factura Bs.S</th>
                   <th style={{ padding: '14px' }}>Estado</th>
                   <th style={{ padding: '14px', textAlign: 'right' }}>Acciones</th>
                 </tr>
@@ -202,12 +201,11 @@ export default function PendingPickupsPage() {
                           </div>
                         </td>
 
-                        <td style={{ padding: '14px' }}>
-                          <strong style={{ color: 'var(--primary-color, #6366f1)' }}>{formatUSD(pickup.totalUSD)}</strong>
-                        </td>
-
-                        <td style={{ padding: '14px' }}>
+                        <td style={{ padding: '14px', textAlign: 'right' }}>
                           <strong className="font-mono">{formatBsS(pickup.totalBsS)}</strong>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400, marginTop: '2px' }}>
+                            {formatUSD(pickup.totalUSD || 0)}
+                          </div>
                         </td>
 
                         <td style={{ padding: '14px' }}>

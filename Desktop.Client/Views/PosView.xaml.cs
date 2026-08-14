@@ -6,6 +6,8 @@ namespace Desktop.Client.Views
 {
     public partial class PosView : UserControl
     {
+        private BarcodeScannerWindow? _scannerWindow;
+
         public PosView()
         {
             InitializeComponent();
@@ -28,6 +30,34 @@ namespace Desktop.Client.Views
         private void FocusSearch()
         {
             SearchInput.Focus();
+        }
+
+        /// <summary>
+        /// Opens the floating barcode scanner / OCR window. The window stays open so the
+        /// cashier can scan several codes; each scanned barcode is added straight to the cart.
+        /// </summary>
+        private void OpenScanner_Click(object sender, RoutedEventArgs e)
+        {
+            if (_scannerWindow != null && _scannerWindow.IsVisible)
+            {
+                _scannerWindow.Activate();
+                return;
+            }
+
+            _scannerWindow = new BarcodeScannerWindow(InsertScannedValue)
+            {
+                Owner = Window.GetWindow(this)
+            };
+            _scannerWindow.Show();
+        }
+
+        private void InsertScannedValue(string value)
+        {
+            if (DataContext is ViewModels.PosViewModel vm)
+            {
+                _ = vm.AddProductByCodeAsync(value);
+                SearchInput.Focus();
+            }
         }
 
 

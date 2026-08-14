@@ -93,7 +93,6 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
   const rateToUse = sale?.appliedRate || exchangeRate || 1;
   const newTotalBsS = newTotalUSD * rateToUse;
   const newRemainingBalanceUSD = Math.max(0, newTotalUSD - totalPaidUSD);
-  const creditLimitUSD = sale?.customer?.creditLimitUSD || 0;
 
   // Validaciones
   const isBelowPaidAmount = newTotalUSD < (totalPaidUSD - 0.01);
@@ -249,12 +248,6 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
           <span className="text-muted">Nuevo Saldo Restante:</span>
           <span className="font-bold text-danger">{formatUSD(newRemainingBalanceUSD)}</span>
         </div>
-        {creditLimitUSD > 0 && (
-          <div className="flex-between">
-            <span className="text-muted">Límite de Crédito Cliente:</span>
-            <span className="font-medium">{formatUSD(creditLimitUSD)}</span>
-          </div>
-        )}
       </div>
 
       {/* Acciones */}

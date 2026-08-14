@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import { getCustomers, createCustomer } from '../../services/customerApi';
-import { Search, UserPlus, ShieldCheck, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
+import { Search, UserPlus, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
 
 const VALID_RIF_PREFIXES = ['V', 'E', 'J', 'G', 'P'];
 const VALID_PHONE_PREFIXES = [
@@ -20,8 +20,6 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
   const [cedulaOrRif, setCedulaOrRif] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [creditLimitText, setCreditLimitText] = useState('0.00');
-
   // Initial Payment fields
   const [enableInitialPayment, setEnableInitialPayment] = useState(false);
   const [initialPaymentBsS, setInitialPaymentBsS] = useState('');
@@ -111,25 +109,6 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
   const phoneDigits = phone.replace(/\D/g, '');
   const isPhoneValid = phoneDigits.length === 11 && VALID_PHONE_PREFIXES.includes(phoneDigits.substring(0, 4));
 
-  // ── Controlled Input 3: Credit Limit (ATM Shift Effect 0.0x) ──
-  const handleCreditLimitChange = (e) => {
-    const val = e.target.value;
-    if (!val || val === '0' || val === '0.00') {
-      setCreditLimitText('0.00');
-      return;
-    }
-    const digits = val.replace(/\D/g, '').replace(/^0+/, '');
-    if (!digits) {
-      setCreditLimitText('0.00');
-      return;
-    }
-    const cents = parseInt(digits, 10);
-    const dollars = (cents / 100).toFixed(2);
-    setCreditLimitText(dollars);
-  };
-
-  const numericCreditLimitUSD = parseFloat(creditLimitText) || 0;
-
   const handleCreateCustomer = async (e) => {
     e.preventDefault();
     setError(null);
@@ -160,7 +139,6 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
         cedulaOrRif: cedulaOrRif.trim(),
         name: name.trim(),
         phone: phone.trim(),
-        creditLimitUSD: numericCreditLimitUSD,
       });
       setSelectedCustomer(created);
       setTab('search');
@@ -175,7 +153,6 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
   const initialBs = parseFloat(initialPaymentBsS) || 0;
   const initialUsd = exchangeRate > 0 ? initialBs / exchangeRate : 0;
   const remainingDebtUsd = Math.max(0, saleTotalUSD - (enableInitialPayment ? initialUsd : 0));
-  const creditLimitUsd = selectedCustomer?.creditLimitUSD || (tab === 'create' ? numericCreditLimitUSD : 0);
 
   const handleConfirm = () => {
     if (!selectedCustomer) {
@@ -280,11 +257,6 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
                           {c.phone && <span>• Tel: {c.phone}</span>}
                         </div>
                       </div>
-                      <div className="customer-modal-item-credit">
-                        <span className="badge badge-info" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <ShieldCheck size={14} /> Crédito: ${c.creditLimitUSD.toFixed(2)}
-                        </span>
-                      </div>
                     </div>
                   );
                 })
@@ -378,23 +350,6 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
             </div>
 
 
-            {/* Límite de Crédito (Efecto Cajero Automático ATM 0.0x) */}
-            <div className="form-group mb-0 customer-form-group">
-              <label htmlFor="customer-credit-limit-input">Límite de Crédito ($ USD)</label>
-              <div style={{ width: '100%' }}>
-                <input
-                  id="customer-credit-limit-input"
-                  name="creditLimitUSD"
-                  type="text"
-                  className="form-control font-bold"
-                  value={creditLimitText}
-                  onChange={handleCreditLimitChange}
-                  style={{ fontWeight: 'bold' }}
-                />
-              </div>
-              <small className="form-text text-muted">Monto máximo que puede quedar pendiente de pago (formateo ATM)</small>
-            </div>
-
             {/* Botón Principal Único de la Pestaña Crear */}
             <div className="customer-modal-footer mt-2">
               <button type="button" className="btn btn-outline" onClick={onClose} style={{ flex: 1 }}>
@@ -473,11 +428,6 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
               <div className="checkout-summary-row highlight">
                 <span>Deuda Restante:</span>
                 <span className="font-bold">${remainingDebtUsd.toFixed(2)}</span>
-              </div>
-              <hr className="my-2" />
-              <div className="d-flex justify-content-between align-items-center">
-                <span className="text-muted">Límite de Crédito del Cliente:</span>
-                <span className="font-bold">${creditLimitUsd.toFixed(2)}</span>
               </div>
             </div>
           )}

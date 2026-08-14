@@ -217,8 +217,8 @@ export default function PendingOrdersPage({ onNavigate }) {
                                     <tr style={{ borderBottom: '1px solid var(--border-color)', opacity: 0.7 }}>
                                       <th>Producto</th>
                                       <th>Cant.</th>
-                                      <th>P. Unit ($)</th>
-                                      <th>Subtotal ($)</th>
+                                      <th>P. Unidad</th>
+                                      <th>Subtotal</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -226,8 +226,8 @@ export default function PendingOrdersPage({ onNavigate }) {
                                       <tr key={item.id} style={{ borderBottom: '1px dashed var(--border-color)' }}>
                                         <td style={{ padding: '6px 0' }}>{item.displayProductName || (item.unitOfMeasure && item.unitOfMeasure !== 'Und' ? `${item.productName} (${item.unitOfMeasure})` : item.productName)}</td>
                                         <td>{item.isFractional ? item.quantity.toFixed(3) : item.quantity}</td>
-                                        <td>{formatUSD(item.unitPrice)}</td>
-                                        <td>{formatUSD(item.subtotal)}</td>
+                                        <td>{formatBsS(item.unitPriceBsS)}</td>
+                                        <td>{formatBsS(item.subtotalBsS)}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -382,9 +382,9 @@ export default function PendingOrdersPage({ onNavigate }) {
                           <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border-color)' }}>
                             <div>
                               <div><strong>{item.displayProductName || item.productName}</strong></div>
-                              <div className="text-xs text-muted">{item.isFractional ? item.quantity.toFixed(3) : item.quantity} x {formatUSD(item.unitPrice)}</div>
+                              <div className="text-xs text-muted">{item.isFractional ? item.quantity.toFixed(3) : item.quantity} x {formatBsS(item.unitPriceBsS)}</div>
                             </div>
-                            <div className="font-bold">{formatUSD(item.subtotal)}</div>
+                            <div className="font-bold">{formatBsS(item.subtotalBsS)}</div>
                           </div>
                         ))}
                       </div>

@@ -218,10 +218,7 @@
                             <TextBlock Text="Nuevo Saldo Restante: " FontWeight="Bold" FontSize="13"/>
                             <TextBlock x:Name="TxtRemaining" Text="$0.00" FontWeight="Bold" FontSize="13" Foreground="#C0392B"/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Límite de Crédito Cliente: " FontWeight="SemiBold" FontSize="12" Foreground="Gray"/>
-                            <TextBlock x:Name="TxtCreditLimit" Text="Sin Límite" FontWeight="Bold" FontSize="12"/>
-                        </StackPanel>
+
                     </StackPanel>
                 </Grid>
             </Border>

@@ -357,6 +357,64 @@ public partial class PosViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Adds a scanned barcode (or any code coming from the camera tool) directly to the cart.
+    /// Resolves the product by exact SKU match; when the code is not a known product it falls
+    /// back to filling the search box so the cashier can search manually.
+    /// </summary>
+    public async Task AddProductByCodeAsync(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return;
+        var trimmedCode = code.Trim();
+
+        // Lazy-start the sale, mirroring AddSelectedSuggestionAsync.
+        if (Cart.CurrentSale == null)
+        {
+            await StartNewSaleAsync();
+
+            if (Cart.CurrentSale == null)
+            {
+                MessageBox.Show("Could not start a sale session. Please check that the server is running and try again.", "Connection Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+        }
+
+        try
+        {
+            var results = await _product_service.GetSuggestionsAsync(trimmedCode, true, System.Threading.CancellationToken.None);
+            var product = results.FirstOrDefault(p => p.SKU == trimmedCode);
+
+            // Unknown code, or a cash-advance item (which requires its own dialog):
+            // keep the previous behavior and fill the search box instead.
+            if (product == null || product.Id <= 0 || product.IsCashAdvance)
+            {
+                SearchText = trimmedCode;
+                return;
+            }
+
+            IsProcessing = true;
+            try
+            {
+                Cart.CurrentSale = await _sales_service.AddItemAsync(Cart.CurrentSale.Id, product.Id, 1, CurrentExchangeRate, null, null);
+                SearchText = string.Empty;
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show($"Error adding item: {ex.Message}");
+            }
+            finally
+            {
+                IsProcessing = false;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            // Network hiccup: don't swallow it silently — leave the code in the search box.
+            SearchText = trimmedCode;
+            MessageBox.Show($"Error looking up the scanned code: {ex.Message}");
+        }
+    }
+
     [RelayCommand]
     private async Task CheckoutAsync()
     {
@@ -476,4 +534,3 @@ public partial class PosViewModel : ObservableObject
         }
     }
 }
-

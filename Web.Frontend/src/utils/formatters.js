@@ -64,3 +64,21 @@ export function formatAtmInput(rawValue) {
   const num = parseInt(digits, 10) / 100;
   return formatNumberEs(num, 2);
 }
+
+/**
+ * Formats a date value (ISO string / Date) as es-VE locale date: "2026-08-13" -> "13/8/2026"
+ */
+export function formatDate(value) {
+  if (!value) return '-';
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? '-' : d.toLocaleDateString('es-VE');
+}
+
+/**
+ * Formats a date value (ISO string / Date) as es-VE locale time (HH:mm): "2026-08-13T23:16:41" -> "11:16 p. m."
+ */
+export function formatTime(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
+}

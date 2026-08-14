@@ -15,7 +15,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
 
   // New customer creation state
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ cedulaOrRif: '', name: '', phone: '', creditLimitUSD: 50 });
+  const [newCustomer, setNewCustomer] = useState({ cedulaOrRif: '', name: '', phone: '' });
 
   // Initial Payment state
   const [enablePayment, setEnablePayment] = useState(false);
@@ -89,7 +89,6 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
         cedulaOrRif: newCustomer.cedulaOrRif,
         name: newCustomer.name,
         phone: newCustomer.phone,
-        creditLimitUSD: parseFloat(newCustomer.creditLimitUSD) || 0,
       });
       setSelectedCustomer(created);
       setIsCreatingCustomer(false);
@@ -205,9 +204,6 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
             <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '2px' }}>
               {selectedCustomer.cedulaOrRif} {selectedCustomer.phone ? `• ${selectedCustomer.phone}` : ''}
             </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--success)', fontWeight: '600', marginTop: '4px' }}>
-              Límite de Crédito: {formatUSD(selectedCustomer.creditLimitUSD)}
-            </div>
           </div>
         ) : (
           <div>
@@ -272,7 +268,6 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
                 </div>
                 <div className="d-flex gap-2 mb-2">
                   <input type="text" className="form-input text-center" placeholder="Teléfono (Opcional)" value={newCustomer.phone} onChange={e => setNewCustomer({...newCustomer, phone: e.target.value})} style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }} />
-                  <input type="number" className="form-input text-center" placeholder="Límite Crédito USD" value={newCustomer.creditLimitUSD} onChange={e => setNewCustomer({...newCustomer, creditLimitUSD: e.target.value})} style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }} />
                 </div>
                 <button type="submit" className="btn btn-sm btn-primary">Guardar Cliente</button>
               </form>
@@ -339,23 +334,6 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
                         </div>
                       </div>
 
-                      {/* Lado Derecho: Botón ovalado de Crédito */}
-                      <div style={{ flexShrink: 0 }}>
-                        <span 
-                          className="badge" 
-                          style={{ 
-                            backgroundColor: 'var(--accent-primary-light, rgba(99, 102, 241, 0.15))', 
-                            color: 'var(--accent-primary, #6366f1)', 
-                            fontSize: '0.75rem',
-                            fontWeight: '600',
-                            padding: '4px 10px',
-                            borderRadius: '12px',
-                            border: '1px solid var(--border)' 
-                          }}
-                        >
-                          {formatUSD(c.creditLimitUSD)} Crédito
-                        </span>
-                      </div>
                     </div>
                   );
                 })
