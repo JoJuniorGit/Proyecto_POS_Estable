@@ -25,7 +25,11 @@ public partial class BarcodeScannerWindow : Window
 {
     private const int MaxHistoryItems = 5;
     private const int FrameIntervalMs = 40; // governs the preview/scan cadence
-    private const double SameCodeCooldownSeconds = 3.0;
+
+    // Enfriamiento SOLO para el mismo código re-presentado de inmediato (1.8 s): evita
+    // dobles disparos accidentales del mismo producto mientras sigue frente a la cámara.
+    // Un producto DISTINTO se escanea al instante, sin ninguna espera.
+    private const double SameCodeCooldownSeconds = 1.8;
 
     private static readonly Brush CameraIdleBrush = CreateBrush("#9E9E9E");
     private static readonly Brush CameraActiveBrush = CreateBrush("#2E7D32");
@@ -218,13 +222,17 @@ public partial class BarcodeScannerWindow : Window
                 var code = result.Text.Trim();
                 var now = DateTime.Now;
 
-                // Fire for a new code, or the same code again only after a cool-down.
-                // A generous cool-down keeps a barcode held in front of the camera from
-                // re-adding the same product to the cart repeatedly.
-                bool shouldFire = code != _lastCode || (now - _lastCopyAt).TotalSeconds >= SameCodeCooldownSeconds;
+                // Enfriamiento SOLO para el mismo código: si el mismo producto se vuelve
+                // a presentar dentro de la ventana de 1.8 s se ignora (evita dobles
+                // disparos accidentales). Un código DISTINTO se procesa de inmediato.
+                bool sameCodeWithinCooldown = code == _lastCode
+                    && (now - _lastCopyAt).TotalSeconds < SameCodeCooldownSeconds;
+
+                // El último código visto se recuerda siempre (aunque se suprima), para
+                // que al presentarlo de nuevo después del enfriamiento vuelva a disparar.
                 _lastCode = code;
 
-                if (shouldFire)
+                if (!sameCodeWithinCooldown)
                 {
                     _lastCopyAt = now;
                     HandleValueReady(code, $"Code copied: {code}  ({result.BarcodeFormat})");

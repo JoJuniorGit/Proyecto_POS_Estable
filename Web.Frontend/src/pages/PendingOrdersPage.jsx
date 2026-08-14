@@ -120,15 +120,15 @@ export default function PendingOrdersPage({ onNavigate }) {
       ) : (
         <>
           {/* ── 3A. VISTA ESCRITORIO (TABLA TRADICIONAL) ── */}
-          <div className="pending-desktop-view dark-card" style={{ overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <div className="pending-desktop-view">
+            <table>
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'var(--bg-secondary, rgba(255,255,255,0.03))' }}>
-                  <th style={{ padding: '14px' }}>ID / Fecha</th>
-                  <th style={{ padding: '14px' }}>Cliente</th>
-                  <th style={{ padding: '14px', textAlign: 'right' }}>Total Factura</th>
-                  <th style={{ padding: '14px' }}>Estado</th>
-                  <th style={{ padding: '14px', textAlign: 'right' }}>Acciones</th>
+                <tr>
+                  <th>ID / Fecha</th>
+                  <th>Cliente</th>
+                  <th style={{ textAlign: 'right' }}>Total Factura</th>
+                  <th>Estado</th>
+                  <th style={{ textAlign: 'right' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -140,13 +140,12 @@ export default function PendingOrdersPage({ onNavigate }) {
                     <React.Fragment key={sale.id}>
                       <tr
                         style={{
-                          borderBottom: '1px solid var(--border)',
                           cursor: 'pointer',
                           backgroundColor: isExpanded ? 'rgba(99, 102, 241, 0.06)' : 'transparent',
                         }}
                         onClick={() => toggleExpand(sale.id)}
                       >
-                        <td style={{ padding: '14px' }}>
+                        <td>
                           <div className="d-flex flex-align-center gap-2">
                             {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                             <div>
@@ -158,7 +157,7 @@ export default function PendingOrdersPage({ onNavigate }) {
                           </div>
                         </td>
 
-                        <td style={{ padding: '14px', maxWidth: '220px' }}>
+                        <td style={{ maxWidth: '220px' }}>
                           <div
                             className="font-medium text-truncate"
                             title={sale.customerName || sale.customer?.name || 'Consumidor Final'}
@@ -169,7 +168,7 @@ export default function PendingOrdersPage({ onNavigate }) {
                           <div style={{ fontSize: '0.8em', opacity: 0.6 }}>{sale.customerCedula || sale.customer?.cedulaOrRif || 'V-00000000'}</div>
                         </td>
 
-                        <td className="text-right text-nowrap" style={{ padding: '14px' }}>
+                        <td className="text-right text-nowrap">
                           <div className="amount-bss font-bold" style={{ fontSize: '0.95rem' }}>
                             {formatBsS(sale.totalBsS)}
                           </div>
@@ -178,13 +177,13 @@ export default function PendingOrdersPage({ onNavigate }) {
                           </div>
                         </td>
 
-                        <td style={{ padding: '14px' }}>
+                        <td>
                           <span className="badge badge-warning" style={{ backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b', padding: '4px 10px', borderRadius: '12px', fontSize: '0.85em' }}>
                             En Espera
                           </span>
                         </td>
 
-                        <td className="text-right" style={{ padding: '14px' }} onClick={(e) => e.stopPropagation()}>
+                        <td className="text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="d-flex gap-2 justify-end">
                             <button
                               className="btn btn-sm btn-primary"

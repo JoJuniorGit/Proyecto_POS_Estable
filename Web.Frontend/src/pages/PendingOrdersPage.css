@@ -72,3 +72,57 @@
   background-color: rgba(255, 255, 255, 0.05);
   border-color: rgba(148, 163, 184, 0.22);
 }
+
+/* ── 4. Tabla de escritorio con la estructura visual de
+   Historial de Ventas: cabecera discreta (mayúsculas, gris,
+   sin fondo sólido), separadores de fila sutiles y padding
+   generoso. Scope al contenedor de esta página porque
+   Retiros Pendientes comparte .pending-desktop-view. ── */
+:root .pending-orders-container .pending-desktop-view {
+  background-color: var(--bg-surface, #ffffff);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+:root[data-theme="dark"] .pending-orders-container .pending-desktop-view {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+:root .pending-orders-container .pending-desktop-view > table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+:root .pending-orders-container .pending-desktop-view > table > thead > tr > th {
+  padding: 16px 20px;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  background-color: transparent;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+:root[data-theme="dark"] .pending-orders-container .pending-desktop-view > table > thead > tr > th {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+:root .pending-orders-container .pending-desktop-view > table > tbody > tr {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+:root .pending-orders-container .pending-desktop-view > table > tbody > tr:last-child {
+  border-bottom: none;
+}
+
+:root[data-theme="dark"] .pending-orders-container .pending-desktop-view > table > tbody > tr {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+:root .pending-orders-container .pending-desktop-view > table > tbody > tr > td {
+  padding: 16px 20px;
+}

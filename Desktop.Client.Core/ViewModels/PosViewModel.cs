@@ -359,8 +359,10 @@ public partial class PosViewModel : ObservableObject
 
     /// <summary>
     /// Adds a scanned barcode (or any code coming from the camera tool) directly to the cart.
-    /// Resolves the product by exact SKU match; when the code is not a known product it falls
-    /// back to filling the search box so the cashier can search manually.
+    /// Resolves the product by exact SKU match; unknown codes / cash-advance items are not
+    /// added (the scanner window reports the outcome on its result card). The search box is
+    /// always cleared after the attempt — found, not found or error — so the cashier is
+    /// ready for the next scan.
     /// </summary>
     public async Task AddProductByCodeAsync(string code)
     {
@@ -385,10 +387,9 @@ public partial class PosViewModel : ObservableObject
             var product = results.FirstOrDefault(p => p.SKU == trimmedCode);
 
             // Unknown code, or a cash-advance item (which requires its own dialog):
-            // keep the previous behavior and fill the search box instead.
+            // nothing to add — the scanner window already shows "Producto no encontrado".
             if (product == null || product.Id <= 0 || product.IsCashAdvance)
             {
-                SearchText = trimmedCode;
                 return;
             }
 
@@ -396,7 +397,6 @@ public partial class PosViewModel : ObservableObject
             try
             {
                 Cart.CurrentSale = await _sales_service.AddItemAsync(Cart.CurrentSale.Id, product.Id, 1, CurrentExchangeRate, null, null);
-                SearchText = string.Empty;
             }
             catch (System.Exception ex)
             {
@@ -409,9 +409,13 @@ public partial class PosViewModel : ObservableObject
         }
         catch (System.Exception ex)
         {
-            // Network hiccup: don't swallow it silently — leave the code in the search box.
-            SearchText = trimmedCode;
             MessageBox.Show($"Error looking up the scanned code: {ex.Message}");
+        }
+        finally
+        {
+            // La caja de búsqueda se limpia tras CADA intento de escaneo, sin importar el
+            // resultado (producto encontrado, no encontrado o error de lectura).
+            SearchText = string.Empty;
         }
     }
 

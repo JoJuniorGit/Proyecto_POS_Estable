@@ -12,6 +12,9 @@ const INSECURE_CONTEXT_MESSAGE =
 
 // Debounce mínimo entre dos registros cualesquiera (evita dobles disparos en fotogramas seguidos).
 const MIN_GLOBAL_INTERVAL_MS = 150;
+// Enfriamiento SOLO para el mismo código re-presentado de inmediato: evita dobles disparos
+// accidentales del mismo producto. Un producto DISTINTO se escanea al instante, sin espera.
+const SAME_CODE_COOLDOWN_MS = 1800;
 // Pausa mínima entre intentos de decodificación fallidos (ritmo ~16 intentos/seg, sin saturar la CPU).
 const ATTEMPT_PACING_MS = 60;
 
@@ -53,6 +56,16 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned }) 
 
       // Debounce global entre registros consecutivos.
       if (now - lastHitAtRef.current < MIN_GLOBAL_INTERVAL_MS) return;
+
+      // Enfriamiento SOLO para el mismo código: si el mismo producto se vuelve a
+      // presentar dentro de 1.8 s se ignora. Un código distinto entra al instante.
+      if (lastCodeRef.current === trimmed && now - lastHitAtRef.current < SAME_CODE_COOLDOWN_MS) {
+        if (now - lastSuppressedWarnAtRef.current > 500) {
+          lastSuppressedWarnAtRef.current = now;
+          setStatus({ type: 'warn', text: 'Código repetido — espere un momento antes de volver a escanearlo' });
+        }
+        return;
+      }
 
       // El mismo código sigue visible (nunca salió de la vista): se ignora para no
       // volver a agregar el producto sin querer. Solo se re-escanea si el código
