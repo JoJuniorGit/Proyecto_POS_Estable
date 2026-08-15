@@ -49,6 +49,13 @@ public class CashDrawerService : ICashDrawerService
         return await response.Content.ReadFromJsonAsync<decimal>();
     }
 
+    public async Task<System.Collections.Generic.List<CashTransactionDto>> GetHistoryAsync(int limit = 300)
+    {
+        var response = await _httpClient.GetAsync($"api/cashdrawer/history?limit={limit}");
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<System.Collections.Generic.List<CashTransactionDto>>())!;
+    }
+
     public async Task<CashTransactionDto> AddTransactionAsync(int sessionId, decimal amountLocal, CashTransactionType type, CashTransactionSource source, string description, decimal exchangeRate)
     {
         var request = new

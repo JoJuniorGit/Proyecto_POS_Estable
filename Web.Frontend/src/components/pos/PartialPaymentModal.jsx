@@ -20,6 +20,9 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
     }
   }, [isOpen, paymentMethods]);
 
+  const selectedMethod = paymentMethods.find((m) => String(m.id) === String(paymentMethodId));
+  const isCashSelected = !!selectedMethod?.isCash;
+
   const handleBsSChange = (numericVal) => {
     setAmountBsS(numericVal);
     if (exchangeRate > 0) {
@@ -30,7 +33,8 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
   const handleUSDChange = (numericVal) => {
     setAmountUSD(numericVal);
     if (exchangeRate > 0) {
-      setAmountBsS(numericVal * exchangeRate);
+      // El efectivo solo acepta montos enteros: el equivalente en Bs.S se trunca sin centavos.
+      setAmountBsS(isCashSelected ? Math.trunc(numericVal * exchangeRate) : numericVal * exchangeRate);
     }
   };
 
@@ -47,6 +51,11 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
       return;
     }
 
+    if (isCashSelected && Math.abs(bsValue - Math.round(bsValue)) >= 0.0001) {
+      setError('El pago en efectivo solo acepta números enteros (ej: 10 o 10.00). Montos con centavos como 15.01 no son permitidos.');
+      return;
+    }
+
     if (usdValue > (sale?.remainingBalanceUSD || 0) + 0.01) {
       setError(`El abono (${formatUSD(usdValue)}) no puede ser mayor que la deuda pendiente (${formatUSD(sale?.remainingBalanceUSD || 0)}).`);
       return;
@@ -54,8 +63,8 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
 
     onConfirmPayment({
       paymentMethodId: parseInt(paymentMethodId),
-      amountBsS: bsValue,
-      amountUSD: usdValue,
+      amountBsS: isCashSelected ? Math.trunc(bsValue) : bsValue,
+      amountUSD: isCashSelected ? Math.trunc(bsValue) / exchangeRate : usdValue,
       exchangeRate: exchangeRate,
       referenceNumber: referenceNumber,
     });
@@ -103,8 +112,14 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
                 <AtmAmountInput
                   value={amountBsS}
                   onChange={handleBsSChange}
-                  placeholder="0,00"
+                  placeholder={isCashSelected ? '0' : '0,00'}
+                  allowDecimals={!isCashSelected}
                 />
+                {isCashSelected && (
+                  <small className="text-muted" style={{ display: 'block', marginTop: '4px', fontSize: '0.75rem', color: 'var(--accent-primary, #6366f1)' }}>
+                    El pago en efectivo solo acepta montos enteros.
+                  </small>
+                )}
               </div>
 
               <div>
@@ -155,7 +170,7 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
 
           <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '15px 20px', borderTop: '1px solid var(--border-color)' }}>
             <button type="button" className="btn btn-outline" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn btn-primary" disabled={usdValue <= 0 || remainingUsd < -0.01}>
+            <button type="submit" className="btn btn-primary" disabled={usdValue <= 0 || remainingUsd < -0.01 || (isCashSelected && bsValue % 1 !== 0)}>
               Confirmar Abono
             </button>
           </div>

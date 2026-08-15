@@ -176,6 +176,16 @@ public class CashDrawerService : ICashDrawerService
         return session.OpeningBalanceLocal + physicalIncomes - physicalExpenses;
     }
 
+    public async Task<System.Collections.Generic.List<CashTransaction>> GetHistoryAsync(int limit = 300)
+    {
+        return await _context.CashTransactions
+            .Include(t => t.Sale)
+            .Where(t => t.IsPhysicalCash)
+            .OrderByDescending(t => t.TransactionTime)
+            .Take(limit)
+            .ToListAsync();
+    }
+
     public async Task<CashAdvanceResultDto> ProcessCashAdvanceAsync(
         int sessionId,
         decimal requestedAmountLocal,
@@ -189,6 +199,12 @@ public class CashDrawerService : ICashDrawerService
         if (requestedAmountLocal <= 0)
         {
             throw new ArgumentException("El monto del adelanto debe ser mayor a cero.", nameof(requestedAmountLocal));
+        }
+
+        // Validación de integridad: el efectivo entregado solo acepta montos enteros (sin centavos).
+        if (requestedAmountLocal % 1 != 0)
+        {
+            throw new InvalidOperationException("El monto de efectivo a entregar debe ser un número entero sin decimales.");
         }
 
         var availableCash = await GetCurrentBalanceLocalAsync(sessionId);

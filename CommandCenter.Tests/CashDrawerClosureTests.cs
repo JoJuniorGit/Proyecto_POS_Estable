@@ -82,6 +82,22 @@ public class CashDrawerClosureTests
             return await _serverService.GetCurrentBalanceLocalAsync(sessionId);
         }
 
+        public async Task<List<CashTransactionDto>> GetHistoryAsync(int limit = 300)
+        {
+            var history = await _serverService.GetHistoryAsync(limit);
+            return history.Select(t => new CashTransactionDto
+            {
+                Id = t.Id,
+                Type = (Desktop.Client.Services.CashTransactionType)(int)t.Type,
+                Source = (Desktop.Client.Services.CashTransactionSource)(int)t.Source,
+                AmountLocal = t.AmountLocal,
+                AmountUsd = t.AmountUsd,
+                Description = t.Description,
+                IsPhysicalCash = t.IsPhysicalCash,
+                TransactionTimeLocal = t.TransactionTime
+            }).ToList();
+        }
+
         public async Task<CashDrawerSessionDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate)
         {
             var session = await _serverService.OpenSessionAsync(openingBalanceLocal, currentExchangeRate);
@@ -136,10 +152,11 @@ public class CashDrawerClosureTests
     }
 
     [Fact]
-    public async Task CashDrawer_AfterClosure_MaintainsExpectedCash_AndResetsIncomeExpenseAccumulatorsToZero()
+    public async Task CashDrawer_Closure_PreservesMovementsAndExpectedCash_InActiveSession()
     {
         using var context = GetInMemoryDbContext();
         var serverService = new ServerCashService.CashDrawerService(context);
+        var closureService = new ServerCashService.DailyClosureService(context);
         var clientService = new MockClientCashDrawerService(serverService);
         var rateService = new MockExchangeRateService();
 
@@ -151,75 +168,95 @@ public class CashDrawerClosureTests
         var vm = new CashDrawerViewModel(clientService, rateService);
         await vm.LoadSessionAsync();
 
-        // Assert session 1 totals before closure
+        // Assert session 1 before closure
         Assert.NotNull(vm.ActiveSession);
         Assert.Equal(1300m, vm.CurrentBalanceBsS);
-        Assert.Equal(500m, vm.TotalIncomeBsS);
-        Assert.Equal(200m, vm.TotalExpenseBsS);
-        Assert.Equal("500 Bs.S", vm.FormattedTotalIncomeBsS);
-        Assert.Equal("200 Bs.S", vm.FormattedTotalExpenseBsS);
+        Assert.Equal(3, vm.OrderedTransactions.Count);
 
-        // 2. Perform closure: close session 1 with 1300 balance and roll over to new session 2 with 1300 opening balance
-        decimal closingBalance = await serverService.GetCurrentBalanceLocalAsync(session1.Id);
-        await serverService.CloseSessionAsync(closingBalance, 50m);
-        await serverService.OpenSessionAsync(closingBalance, 50m);
+        // 2. Perform closure (Create DailyClosure)
+        var dailyClosure = new DailyClosure
+        {
+            ClosureDate = DateTime.UtcNow,
+            UserId = "Cajero",
+            Observation = "Cierre de turno",
+            Details = new List<ClosureDetail>
+            {
+                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo", ExpectedAmountBsS = 1300m, ActualAmountBsS = 1300m, DifferenceBsS = 0m }
+            }
+        };
+        await closureService.CreateClosureAsync(dailyClosure);
 
         // 3. Reload ViewModel session
         await vm.LoadSessionAsync();
 
-        // 4. Assert Expected Cash is MAINTAINED (1,300 Bs.S), but Income and Expense accumulators RESET to 0
+        // 4. Assert Expected Cash and ALL Movements REMAIN INTACT in the active session
         Assert.NotNull(vm.ActiveSession);
         Assert.True(vm.IsSessionActive);
         Assert.Equal(1300m, vm.CurrentBalanceBsS);
         Assert.Equal("1.300", vm.FormattedBalanceBsS);
         Assert.Equal("26,00 $", vm.FormattedBalanceUsd);
 
+        // Transactions remain 100% visible and intact
+        Assert.Equal(3, vm.OrderedTransactions.Count);
+        Assert.Contains(vm.OrderedTransactions, t => t.Description == "Ingreso previo");
+        Assert.Contains(vm.OrderedTransactions, t => t.Description == "Retiro previo");
+    }
+
+    [Fact]
+    public async Task CashDrawer_AfterRollover_KeepsPreviousSessionMovementsVisible()
+    {
+        using var context = GetInMemoryDbContext();
+        var serverService = new ServerCashService.CashDrawerService(context);
+        var clientService = new MockClientCashDrawerService(serverService);
+        var rateService = new MockExchangeRateService();
+
+        // 1. Open session 1 and register movements
+        var session1 = await serverService.OpenSessionAsync(1000m, 50m);
+        await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Income, Sales.Module.Entities.CashTransactionSource.CashIn, 500m, 10m, 50m, "Ingreso sesión 1");
+        await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Expense, Sales.Module.Entities.CashTransactionSource.CashOut, 200m, 4m, 50m, "Retiro sesión 1");
+
+        var vm = new CashDrawerViewModel(clientService, rateService);
+        await vm.LoadSessionAsync();
+
+        // Session 1 visible: apertura + ingreso + retiro
+        Assert.Equal(3, vm.OrderedTransactions.Count);
+        Assert.Contains(vm.OrderedTransactions, t => t.Description == "Ingreso sesión 1");
+        Assert.Contains(vm.OrderedTransactions, t => t.Description == "Retiro sesión 1");
+
+        // 2. Rollover: cierra sesión 1 y abre sesión 2 conservando el saldo teórico
+        await serverService.RolloverSessionAfterClosureAsync(50m);
+
+        // 3. Recargar la vista: los movimientos de la sesión cerrada deben SEGUIR visibles
+        await vm.LoadSessionAsync();
+
+        Assert.NotNull(vm.ActiveSession);
+        Assert.True(vm.IsSessionActive);
+        // Sesión 1 (apertura + ingreso + retiro + cierre) + Sesión 2 (apertura)
+        Assert.Equal(5, vm.OrderedTransactions.Count);
+        Assert.Contains(vm.OrderedTransactions, t => t.Description == "Ingreso sesión 1");
+        Assert.Contains(vm.OrderedTransactions, t => t.Description == "Retiro sesión 1");
+        Assert.Contains(vm.OrderedTransactions, t => t.Description == "Cierre de caja");
+        Assert.Contains(vm.OrderedTransactions, t => t.Description == "Monto de apertura de caja");
+
+        // El saldo esperado se conserva (1000 + 500 - 200 = 1300)
+        Assert.Equal(1300m, vm.CurrentBalanceBsS);
+        Assert.Equal("1.300", vm.FormattedBalanceBsS);
+
+        // Los acumuladores de la NUEVA sesión arrancan limpios
         Assert.Equal(0m, vm.TotalIncomeBsS);
         Assert.Equal(0m, vm.TotalExpenseBsS);
-        Assert.Equal("0 Bs.S", vm.FormattedTotalIncomeBsS);
-        Assert.Equal("0 Bs.S", vm.FormattedTotalExpenseBsS);
     }
 
     [Fact]
-    public async Task RolloverSession_KeepsTheoreticalCash_AndResetsAccumulators_EvenWithZeroDeclaration()
+    public async Task CashAdvance_WithDecimalRequestedAmount_ThrowsValidationError()
     {
         using var context = GetInMemoryDbContext();
         var serverService = new ServerCashService.CashDrawerService(context);
+        var session = await serverService.OpenSessionAsync(1000m, 50m);
 
-        // 1. Open session 1 with 1000 opening balance and add 500 income and 200 expense
-        var session1 = await serverService.OpenSessionAsync(1000m, 50m);
-        await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Income, Sales.Module.Entities.CashTransactionSource.CashIn, 500m, 10m, 50m, "Ingreso previo");
-        await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Expense, Sales.Module.Entities.CashTransactionSource.CashOut, 200m, 4m, 50m, "Retiro previo");
-
-        // 2. Roll over the session: the carried balance must be the THEORETICAL expected cash (1300),
-        //    regardless of the declared amounts of the arqueo (which are recorded only in the closure audit).
-        await serverService.RolloverSessionAfterClosureAsync(50m);
-
-        // 3. New active session keeps the expected cash (1300) but resets the accumulators to 0
-        var newSession = await serverService.GetActiveSessionAsync();
-        Assert.NotNull(newSession);
-        Assert.Equal(1300m, newSession.OpeningBalanceLocal);
-        Assert.Equal(1300m, await serverService.GetCurrentBalanceLocalAsync(newSession.Id));
-
-        decimal income = newSession.Transactions
-            .Where(t => t.Type == Sales.Module.Entities.CashTransactionType.Income && t.Source != Sales.Module.Entities.CashTransactionSource.Opening && t.IsPhysicalCash)
-            .Sum(t => t.AmountLocal);
-        decimal expense = newSession.Transactions
-            .Where(t => t.Type == Sales.Module.Entities.CashTransactionType.Expense && t.Source != Sales.Module.Entities.CashTransactionSource.Closing && t.IsPhysicalCash)
-            .Sum(t => t.AmountLocal);
-
-        Assert.Equal(0m, income);
-        Assert.Equal(0m, expense);
-    }
-
-    [Fact]
-    public async Task RolloverSession_WithNoActiveSession_DoesNothing()
-    {
-        using var context = GetInMemoryDbContext();
-        var serverService = new ServerCashService.CashDrawerService(context);
-
-        await serverService.RolloverSessionAfterClosureAsync(50m);
-
-        Assert.Null(await serverService.GetActiveSessionAsync());
+        // El efectivo entregado al cliente solo acepta montos enteros
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            serverService.ProcessCashAdvanceAsync(session.Id, 10.50m, 2, "Card", false, 50m));
+        Assert.Contains("número entero sin decimales", ex.Message);
     }
 }

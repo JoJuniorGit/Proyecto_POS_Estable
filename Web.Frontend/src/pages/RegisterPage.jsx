@@ -28,6 +28,7 @@ export default function RegisterPage() {
   const isAdmin = user?.role === 0 || user?.role === 'Admin' || user?.role === '0';
 
   const [session, setSession] = useState(null);
+  const [historyTransactions, setHistoryTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // Discrete filter states for movements
@@ -51,8 +52,12 @@ export default function RegisterPage() {
   const loadSession = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.get('/api/cashdrawer/active-session');
-      setSession(data);
+      const [sessionData, historyData] = await Promise.all([
+        api.get('/api/cashdrawer/active-session'),
+        api.get('/api/cashdrawer/history').catch(() => []),
+      ]);
+      setSession(sessionData);
+      setHistoryTransactions(historyData || []);
     } catch (err) {
       console.error('[RegisterPage] Error al obtener sesión de caja:', err);
     } finally {
@@ -86,8 +91,11 @@ export default function RegisterPage() {
     .sort((a, b) => new Date(b.transactionTimeLocal || b.transactionTime) - new Date(a.transactionTimeLocal || a.transactionTime))
     .slice(0, 7);
 
-  // Ordered physical transactions for the full movements grid (most recent first)
-  const orderedTransactions = [...transactions]
+  // Historial completo de movimientos físicos (sesión activa + sesiones anteriores):
+  // se conserva tras el cierre de caja para mantener la trazabilidad de auditoría.
+  // La tabla de movimientos usa este historial; las tarjetas de resumen (INGRESOS/EGRESOS/ESPERADO)
+  // siguen calculándose únicamente con la sesión activa, que inicia con acumuladores limpios.
+  const orderedTransactions = [...historyTransactions]
     .filter(t => t.isPhysicalCash)
     .sort((a, b) => new Date(b.transactionTimeLocal || b.transactionTime) - new Date(a.transactionTimeLocal || a.transactionTime));
 
@@ -447,7 +455,7 @@ export default function RegisterPage() {
               {filteredTransactions.length === 0 ? (
                 <div className="p-4 text-center text-muted border border-dashed rounded">
                   {orderedTransactions.length === 0 
-                    ? 'No se registran movimientos en la sesión activa.'
+                    ? 'No se registran movimientos de caja.'
                     : 'No se encontraron movimientos con los filtros seleccionados.'}
                 </div>
               ) : (

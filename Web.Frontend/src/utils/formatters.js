@@ -57,12 +57,14 @@ export function parseFormattedNumber(val) {
  * "125050" -> "1,250.50"
  * "50" -> "0.50"
  * "5" -> "0.05"
+ *
+ * With decimals=0 (modo entero): "125050" -> "125,050" (monto entero, sin centavos)
  */
-export function formatAtmInput(rawValue) {
+export function formatAtmInput(rawValue, decimals = 2) {
   const digits = String(rawValue || '').replace(/\D/g, '');
   if (!digits) return '';
-  const num = parseInt(digits, 10) / 100;
-  return formatNumberEs(num, 2);
+  const num = parseInt(digits, 10) / (decimals > 0 ? 100 : 1);
+  return formatNumberEs(num, decimals);
 }
 
 /**

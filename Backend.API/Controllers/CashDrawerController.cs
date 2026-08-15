@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using System.Threading.Tasks;
@@ -58,6 +59,31 @@ public class CashDrawerController : ControllerBase
         }
 
         return Ok(session);
+    }
+
+    /// <summary>
+    /// Historial persistente de movimientos de caja: devuelve los movimientos físicos más recientes
+    /// de TODAS las sesiones (activa y anteriores), para que la vista de caja conserve la trazabilidad
+    /// de las sesiones cerradas junto con los movimientos de la sesión siguiente.
+    /// </summary>
+    [HttpGet("history")]
+    public async Task<ActionResult<IEnumerable<CashTransaction>>> GetHistory([FromQuery] int limit = 300)
+    {
+        var transactions = await _cashDrawerService.GetHistoryAsync(limit);
+
+        var tzId = await _settingsService.GetSettingAsync("SelectedTimeZoneId");
+        var tz = Sales.Module.Helpers.TimeZoneHelper.GetTimeZone(tzId);
+
+        foreach (var tx in transactions)
+        {
+            tx.TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(tx.TransactionTime, tz);
+            if (tx.Sale != null && tx.Sale.InvoiceNumber.HasValue)
+            {
+                tx.Description = $"Factura N° {tx.Sale.InvoiceNumber.Value}";
+            }
+        }
+
+        return Ok(transactions);
     }
 
     [HttpPost("open")]

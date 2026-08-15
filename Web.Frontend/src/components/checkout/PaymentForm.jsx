@@ -1,104 +1,74 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { formatNumberEs } from '../../utils/formatters';
 
 export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAddPayment }) {
   const [selectedMethodId, setSelectedMethodId] = useState('');
-  const [cents, setCents] = useState(0);
-  const [isFreshFocus, setIsFreshFocus] = useState(true);
+  const [amountText, setAmountText] = useState('');
   const [reference, setReference] = useState('');
+  const inputRef = useRef(null);
 
-  // Seleccionar automáticamente el primer método y prellenar el monto con el saldo restante
+  // Seleccionar automáticamente el primer método activo
   useEffect(() => {
     if (methods && methods.length > 0 && !selectedMethodId) {
       setSelectedMethodId(methods[0].id.toString());
     }
   }, [methods, selectedMethodId]);
 
+  const selectedMethod = methods.find((m) => m.id.toString() === selectedMethodId);
+  const isCashSelected = !!selectedMethod?.isCash;
+
+  // Prellenar el monto al cambiar saldo restante o método de pago
   useEffect(() => {
     if (remainingBsS > 0) {
-      setCents(Math.round(remainingBsS * 100));
+      setAmountText(isCashSelected ? Math.round(remainingBsS).toString() : remainingBsS.toFixed(2));
     } else {
-      setCents(0);
+      setAmountText('');
     }
-    setIsFreshFocus(true);
-  }, [remainingBsS]);
+  }, [remainingBsS, isCashSelected]);
 
-  const selectedMethod = methods.find((m) => m.id.toString() === selectedMethodId);
-  const parsedAmount = cents / 100;
-  const displayAmount = formatNumberEs(parsedAmount);
-  const usdPreview = exchangeRate > 0 ? (parsedAmount / exchangeRate).toFixed(2) : '0.00';
+  // Normalización del texto (soporta punto y coma decimal)
+  const normalizedText = amountText.replace(',', '.').trim();
+  const parsedAmount = parseFloat(normalizedText);
+  const isValidNum = !isNaN(parsedAmount) && parsedAmount > 0 && isFinite(parsedAmount);
 
-  const handleKeyDown = (e) => {
-    // Permitir teclas de navegación sin modificar estado
-    if (['Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'].includes(e.key)) {
-      return;
+  // Verificación de número entero o terminación en .00 (ej: 10, 12.00, 15.00)
+  const isIntegerOrZeroDecimal = isValidNum && Math.abs(parsedAmount - Math.round(parsedAmount)) < 0.0001;
+
+  // Validación de monto:
+  // - Para efectivo: acepta enteros o .00 (ej: 10, 12.00, 15.00), pero rechaza centavos (ej: 15.01)
+  // - Para otros métodos: acepta cualquier monto decimal válido (ej: 15.01, 15.00, 15)
+  const isAmountValid = isCashSelected ? (isValidNum && isIntegerOrZeroDecimal) : isValidNum;
+  const hasDecimalError = isCashSelected && isValidNum && !isIntegerOrZeroDecimal;
+
+  // Integración con el mensaje de validación nativo de HTML5 (Validation Bubble)
+  useEffect(() => {
+    if (!inputRef.current) return;
+
+    if (hasDecimalError) {
+      inputRef.current.setCustomValidity(
+        'El pago en efectivo solo acepta números enteros o terminados en .00 (ej: 10 o 10.00). Montos con centavos como 15.01 no son permitidos.'
+      );
+    } else if (amountText && !isValidNum) {
+      inputRef.current.setCustomValidity('Ingrese un monto válido mayor a 0.');
+    } else {
+      inputRef.current.setCustomValidity('');
     }
+  }, [hasDecimalError, amountText, isValidNum]);
 
-    // Bloquear explícitamente caracteres no numéricos o símbolos inválidos
-    if (['e', 'E', '+', '-', '.', ','].includes(e.key)) {
-      e.preventDefault();
-      return;
-    }
-
-    if (e.key === 'Backspace') {
-      e.preventDefault();
-      if (isFreshFocus) {
-        setCents(0);
-        setIsFreshFocus(false);
-      } else {
-        setCents((prev) => Math.floor(prev / 10));
-      }
-      return;
-    }
-
-    if (e.key === 'Delete') {
-      e.preventDefault();
-      setCents(0);
-      setIsFreshFocus(false);
-      return;
-    }
-
-    if (/^[0-9]$/.test(e.key)) {
-      e.preventDefault();
-      const digit = parseInt(e.key, 10);
-      if (isFreshFocus) {
-        setCents(digit);
-        setIsFreshFocus(false);
-      } else {
-        setCents((prev) => {
-          const next = prev * 10 + digit;
-          return next > 999999999 ? prev : next;
-        });
-      }
-      return;
-    }
-
-    // Prevenir cualquier otro caracter tipiado que no sean modificadores de sistema (Ctrl/Cmd)
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      e.preventDefault();
-    }
-  };
-
-  const handlePaste = (e) => {
-    e.preventDefault();
-    const pastedData = e.clipboardData.getData('text');
-    const rawDigits = pastedData.replace(/\D/g, '');
-    if (rawDigits) {
-      const parsedCents = parseInt(rawDigits, 10);
-      setCents(parsedCents > 999999999 ? 999999999 : parsedCents);
-      setIsFreshFocus(false);
-    }
-  };
-
-  const handleFocus = (e) => {
-    setIsFreshFocus(true);
-    e.target.select();
-  };
+  const finalAmountBsS = isValidNum ? (isCashSelected ? Math.round(parsedAmount) : parsedAmount) : 0;
+  const usdPreview = exchangeRate > 0 ? (finalAmountBsS / exchangeRate).toFixed(2) : '0.00';
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!selectedMethod || parsedAmount <= 0) return;
+
+    // Disparar la burbuja de validación nativa de HTML5 si el campo es inválido
+    if (inputRef.current && !inputRef.current.checkValidity()) {
+      inputRef.current.reportValidity();
+      return;
+    }
+
+    if (!selectedMethod || !isAmountValid || finalAmountBsS <= 0) return;
 
     if (selectedMethod.requiresReference && !reference.trim()) {
       alert(`El método de pago (${selectedMethod.name}) requiere un número de referencia.`);
@@ -109,7 +79,7 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
       methodId: selectedMethod.id,
       methodName: selectedMethod.name,
       isCash: selectedMethod.isCash,
-      amountBsS: parsedAmount,
+      amountBsS: finalAmountBsS,
       amountUsd: parseFloat(usdPreview),
       reference: reference.trim() || null,
     });
@@ -118,7 +88,7 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
   };
 
   return (
-    <form className="payment-form" onSubmit={handleSubmit}>
+    <form className="payment-form" onSubmit={handleSubmit} noValidate={false}>
       <div className="form-group">
         <label className="form-label">Método de Pago</label>
         <select
@@ -138,15 +108,31 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
         <div className="form-group flex-1">
           <label className="form-label">Monto (Bs.S)</label>
           <input
+            ref={inputRef}
             type="text"
-            inputMode="numeric"
-            className="form-input font-bold"
-            value={displayAmount}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            onFocus={handleFocus}
-            onChange={() => {}}
+            inputMode="decimal"
+            className={`form-input font-bold ${hasDecimalError ? 'is-invalid' : ''}`}
+            placeholder={isCashSelected ? '10 o 10.00' : '0.00'}
+            value={amountText}
+            onChange={(e) => setAmountText(e.target.value)}
+            onFocus={(e) => e.target.select()}
           />
+          {isCashSelected && (
+            <small
+              className="form-text"
+              style={{
+                display: 'block',
+                marginTop: '4px',
+                fontSize: '0.75rem',
+                color: hasDecimalError ? '#ef4444' : 'var(--text-muted)',
+                fontWeight: hasDecimalError ? 600 : 400
+              }}
+            >
+              {hasDecimalError
+                ? 'El pago en efectivo solo acepta números enteros (ej: 10 o 10.00). Montos con centavos como 15.01 no son permitidos.'
+                : 'El pago en efectivo acepta números enteros (ej: 10 o 10.00).'}
+            </small>
+          )}
         </div>
 
         <div className="form-group flex-1">
@@ -172,7 +158,7 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
       <button
         type="submit"
         className="btn btn-outline btn-block"
-        disabled={parsedAmount <= 0}
+        disabled={!isAmountValid}
       >
         <Plus size={16} /> Agregar Pago
       </button>

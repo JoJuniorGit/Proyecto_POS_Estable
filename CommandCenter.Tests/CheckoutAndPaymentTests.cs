@@ -143,6 +143,108 @@ public class CheckoutAndPaymentTests
     }
 
     [Fact]
+    public async Task Checkout_WithCashPaymentContainingCents_ThrowsValidationError()
+    {
+        using var context = GetInMemoryDbContext();
+        var (service, _) = CreateSalesService(context);
+
+        var sale = new Sale
+        {
+            Id = 20,
+            TotalUSD = 100m,
+            Subtotal = 100m,
+            AppliedRate = 50m,
+            TotalBsS = 5000m,
+            SubtotalBsS = 5000m,
+            Status = SaleStatus.Pending
+        };
+        context.Sales.Add(sale);
+
+        context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo", IsCash = true });
+        await context.SaveChangesAsync();
+
+        // Efectivo con centavos (2500.50 Bs.S) debe ser rechazado por la API
+        var payments = new List<PaymentInfo>
+        {
+            new PaymentInfo(1, 50m, 2500.50m, null)
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteSaleAsync(sale.Id, 50m, payments));
+        Assert.Contains("solo acepta montos enteros", ex.Message);
+    }
+
+    [Fact]
+    public async Task Checkout_WithCashPaymentIntegerAmount_SavesSuccessfully()
+    {
+        using var context = GetInMemoryDbContext();
+        var (service, _) = CreateSalesService(context);
+
+        var sale = new Sale
+        {
+            Id = 21,
+            TotalUSD = 100m,
+            Subtotal = 100m,
+            AppliedRate = 50m,
+            TotalBsS = 5000m,
+            SubtotalBsS = 5000m,
+            Status = SaleStatus.Pending
+        };
+        context.Sales.Add(sale);
+
+        context.PaymentMethods.AddRange(
+            new PaymentMethod { Id = 1, Name = "Efectivo", IsCash = true },
+            new PaymentMethod { Id = 2, Name = "Punto de Venta", IsCash = false }
+        );
+        await context.SaveChangesAsync();
+
+        // Efectivo con monto entero (2500 Bs.S) + electrónico con decimales (2500.50 Bs.S) deben aceptarse
+        var payments = new List<PaymentInfo>
+        {
+            new PaymentInfo(1, 50m, 2500m, null),
+            new PaymentInfo(2, 50.01m, 2500.50m, null)
+        };
+
+        int invoiceNum = await service.CompleteSaleAsync(sale.Id, 50m, payments);
+
+        var savedSale = await context.Sales.Include(s => s.Payments).FirstAsync(s => s.Id == sale.Id);
+        Assert.Equal(SaleStatus.Completed, savedSale.Status);
+        Assert.Equal(2, savedSale.Payments.Count);
+        Assert.True(invoiceNum > 0);
+    }
+
+    [Fact]
+    public async Task AddPaymentToHoldSale_WithCashPaymentContainingCents_ThrowsValidationError()
+    {
+        using var context = GetInMemoryDbContext();
+        var (service, _) = CreateSalesService(context);
+
+        var sale = new Sale
+        {
+            Id = 22,
+            TotalUSD = 100m,
+            Subtotal = 100m,
+            AppliedRate = 50m,
+            TotalBsS = 5000m,
+            SubtotalBsS = 5000m,
+            Status = SaleStatus.OnHold
+        };
+        context.Sales.Add(sale);
+        context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo", IsCash = true });
+        await context.SaveChangesAsync();
+
+        var request = new AddPaymentRequestDto
+        {
+            PaymentMethodId = 1,
+            AmountBsS = 10.50m,
+            AmountUSD = 0.21m,
+            ExchangeRate = 50m
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddPaymentToHoldSaleAsync(sale.Id, request));
+        Assert.Contains("solo acepta montos enteros", ex.Message);
+    }
+
+    [Fact]
     public void Checkout_WithInvariantCultureDecimalParsing_ParsesCorrectly()
     {
         Assert.Equal(150.50m, CheckoutViewModel.ParseAmount("150.50"));

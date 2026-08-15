@@ -186,20 +186,23 @@ public partial class CashDrawerViewModel : ObservableObject
         try
         {
             ActiveSession = await _cash_drawer_service.GetActiveSessionAsync();
+
+            // Historial persistente: movimientos físicos de TODAS las sesiones (activa y cerradas),
+            // para conservar la trazabilidad de las sesiones previas tras el cierre de caja.
+            var history = await _cash_drawer_service.GetHistoryAsync();
+            _allPhysicalTransactions.Clear();
+            if (history != null && history.Count > 0)
+            {
+                _allPhysicalTransactions.AddRange(history);
+            }
+
             if (ActiveSession != null)
             {
                 CurrentBalanceBsS = await _cash_drawer_service.GetCurrentBalanceLocalAsync(ActiveSession.Id);
                 RecentIncomes.Clear();
-                _allPhysicalTransactions.Clear();
                 if (ActiveSession.Transactions != null)
                 {
-                    var sortedPhysical = ActiveSession.Transactions
-                        .Where(t => t.IsPhysicalCash)
-                        .OrderByDescending(t => t.TransactionTimeLocal)
-                        .ToList();
-                    _allPhysicalTransactions.AddRange(sortedPhysical);
-
-                    // Requirement 1: Display ONLY the last 10 received incomes
+                    // Requirement 1: Display ONLY the last 10 received incomes of the ACTIVE session
                     var recentIncomesList = ActiveSession.Transactions
                         .Where(t => t.Type == CashTransactionType.Income && t.Source != CashTransactionSource.Opening && t.IsPhysicalCash)
                         .OrderByDescending(t => t.TransactionTimeLocal)
@@ -211,17 +214,14 @@ public partial class CashDrawerViewModel : ObservableObject
                         RecentIncomes.Add(inc);
                     }
                 }
-                CurrentPage = 1;
-                UpdatePaginatedTransactions();
             }
             else
             {
                 CurrentBalanceBsS = 0;
                 RecentIncomes.Clear();
-                _allPhysicalTransactions.Clear();
-                CurrentPage = 1;
-                UpdatePaginatedTransactions();
             }
+            CurrentPage = 1;
+            UpdatePaginatedTransactions();
             UpdateFormattedBalances();
         }
         catch (Exception _ex)

@@ -324,6 +324,14 @@ public class SalesService : ISalesService
                         amountLocal = Math.Round(amountUsd * exchange_rate, 2, MidpointRounding.AwayFromZero);
                     }
 
+                    var _payment_method = await _context.PaymentMethods.FindAsync(_p.PaymentMethodId);
+
+                    // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
+                    if (_payment_method != null && _payment_method.IsCash && amountLocal % 1 != 0)
+                    {
+                        throw new InvalidOperationException("El método de pago en efectivo solo acepta montos enteros.");
+                    }
+
                     _logger?.LogInformation("[CURRENCY CONVERSION DEBUG] Método: {Method}, Monto Bs.S: {BsS}, Tasa AppliedRate: {Rate}, Monto USD Calculado: {Usd}", _p.PaymentMethodId, amountLocal, exchange_rate, amountUsd);
 
                     var _payment_entity = new SalePayment
@@ -338,12 +346,9 @@ public class SalesService : ISalesService
                     };
                     _sale.Payments.Add(_payment_entity);
 
-                    if (amountUsd > 0)
+                    if (amountUsd > 0 && _payment_method != null && _payment_method.IsCash)
                     {
-                        var _payment_method = await _context.PaymentMethods.FindAsync(_p.PaymentMethodId);
-                        if (_payment_method != null && _payment_method.IsCash)
-                        {
-                            var _cash_tx = new CashTransaction
+                        var _cash_tx = new CashTransaction
                             {
                                 SessionId = _active_session.Id,
                                 Type = CashTransactionType.Income,
@@ -359,7 +364,6 @@ public class SalesService : ISalesService
                         }
                     }
                 }
-            }
 
             // 1. Defensive Aggregated Total Validation:
             if (_sale.Payments.Sum(p => p.Amount) <= 0 && !_sale.IsZeroAmountOrder)
@@ -660,6 +664,13 @@ public class SalesService : ISalesService
         decimal amountUsd = request.AmountUSD > 0 
             ? request.AmountUSD 
             : (rate > 0 ? request.AmountBsS / rate : 0);
+
+        // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
+        var method = await _context.PaymentMethods.FindAsync(request.PaymentMethodId);
+        if (method != null && method.IsCash && request.AmountBsS % 1 != 0)
+        {
+            throw new InvalidOperationException("El método de pago en efectivo solo acepta montos enteros.");
+        }
 
         var paymentEntity = new SalePayment
         {

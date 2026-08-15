@@ -154,6 +154,12 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
   const initialUsd = exchangeRate > 0 ? initialBs / exchangeRate : 0;
   const remainingDebtUsd = Math.max(0, saleTotalUSD - (enableInitialPayment ? initialUsd : 0));
 
+  // El efectivo solo acepta montos enteros (sin centavos)
+  const selectedMethod = paymentMethods.find((m) => String(m.id) === String(paymentMethodId));
+  const isCashSelected = !!selectedMethod?.isCash;
+  const finalInitialBs = isCashSelected ? Math.trunc(initialBs) : initialBs;
+  const finalInitialUsd = exchangeRate > 0 ? finalInitialBs / exchangeRate : 0;
+
   const handleConfirm = () => {
     if (!selectedCustomer) {
       setError('Debes seleccionar o registrar un cliente obligatoriamente.');
@@ -170,11 +176,11 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
     }
 
     let initialPaymentObj = null;
-    if (enableInitialPayment && initialBs > 0) {
+    if (enableInitialPayment && finalInitialBs > 0) {
       initialPaymentObj = {
         paymentMethodId: parseInt(paymentMethodId),
-        amountBsS: initialBs,
-        amountUSD: initialUsd,
+        amountBsS: finalInitialBs,
+        amountUSD: finalInitialUsd,
         exchangeRate: exchangeRate,
         referenceNumber: referenceNumber,
       };
@@ -387,13 +393,23 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
                     id="initial-payment-bss"
                     name="initialPaymentBsS"
                     type="number"
-                    step="0.01"
+                    step={isCashSelected ? 1 : 0.01}
+                    min="1"
                     className="form-control"
                     placeholder="Monto en Bolívares"
                     value={initialPaymentBsS}
                     onChange={(e) => setInitialPaymentBsS(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (isCashSelected && ['.', ',', 'e', 'E', '+', '-'].includes(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
                   />
-                  <span className="form-text text-muted">Equivale a: ${initialUsd.toFixed(2)} USD</span>
+                  {isCashSelected ? (
+                    <span className="form-text" style={{ color: 'var(--accent-primary, #6366f1)' }}>El pago en efectivo solo acepta montos enteros.</span>
+                  ) : (
+                    <span className="form-text text-muted">Equivale a: ${initialUsd.toFixed(2)} USD</span>
+                  )}
                 </div>
 
                 <div className="flex-1 form-group mb-0" style={{ minWidth: '200px' }}>
@@ -444,7 +460,7 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
             type="button" 
             className="btn btn-primary flex-2" 
             onClick={handleConfirm} 
-            disabled={!selectedCustomer}
+            disabled={!selectedCustomer || (enableInitialPayment && isCashSelected && initialBs % 1 !== 0)}
           >
             <Check size={18} /> {mode === 'hold' ? 'Confirmar y Guardar en Espera' : 'Confirmar Cliente'}
           </button>

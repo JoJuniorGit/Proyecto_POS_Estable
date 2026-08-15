@@ -167,6 +167,10 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
   };
 
   const selectedMethod = paymentMethods.find(m => m.id.toString() === paymentMethodId);
+  const isCashSelected = !!selectedMethod?.isCash;
+  // El efectivo solo acepta montos enteros (sin centavos): se normaliza antes de enviar.
+  const finalPaymentBsS = isCashSelected ? Math.trunc(initialBsS) : initialBsS;
+  const finalPaymentUsd = exchangeRate > 0 ? finalPaymentBsS / exchangeRate : 0;
 
   const handleConfirmHold = async () => {
     if (!selectedCustomer) {
@@ -188,10 +192,10 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
     setError(null);
 
     try {
-      const initialPaymentsList = (enablePayment && initialBsS > 0) ? [{
+      const initialPaymentsList = (enablePayment && finalPaymentBsS > 0) ? [{
         paymentMethodId: parseInt(paymentMethodId, 10),
-        amountBsS: initialBsS,
-        amountUSD: parseFloat(initialUsd.toFixed(2)),
+        amountBsS: finalPaymentBsS,
+        amountUSD: parseFloat(finalPaymentUsd.toFixed(2)),
         exchangeRate: exchangeRate,
         referenceNumber: reference.trim() || null
       }] : null;
@@ -470,6 +474,11 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
                   onChange={() => {}}
                   style={fieldStyle}
                 />
+                {isCashSelected && (
+                  <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: '2px', textAlign: 'center', color: 'var(--accent-primary, #6366f1)' }}>
+                    El pago en efectivo solo acepta montos enteros.
+                  </div>
+                )}
                 <div className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px', textAlign: 'center' }}>
                   ≈ {formatUSD(initialUsd)} (Tasa: {formatNumberEs(exchangeRate)} Bs/$)
                 </div>
@@ -534,7 +543,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
           <button
             type="button"
             onClick={handleConfirmHold}
-            disabled={!selectedCustomer || submitting}
+            disabled={!selectedCustomer || submitting || (enablePayment && isCashSelected && cents % 100 !== 0)}
             style={{
               height: '42px',
               padding: '0 24px',

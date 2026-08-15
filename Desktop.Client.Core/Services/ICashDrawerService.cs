@@ -35,6 +35,12 @@ public interface ICashDrawerService
     Task<CashDrawerSessionDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate);
     Task<decimal> GetCurrentBalanceLocalAsync(int sessionId);
     Task<CashTransactionDto> AddTransactionAsync(int sessionId, decimal amountLocal, CashTransactionType type, CashTransactionSource source, string description, decimal exchangeRate);
+
+    /// <summary>
+    /// Historial persistente de movimientos de caja (físicos) de TODAS las sesiones: activa y cerradas,
+    /// ordenado por fecha descendente. Permite conservar la trazabilidad tras el cierre de caja.
+    /// </summary>
+    Task<System.Collections.Generic.List<CashTransactionDto>> GetHistoryAsync(int limit = 300);
     Task<CashAdvanceResultClientDto?> ProcessCashAdvanceAsync(
         int sessionId,
         decimal requestedAmountLocal,

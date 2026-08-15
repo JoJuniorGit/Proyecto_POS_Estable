@@ -40,6 +40,13 @@ public interface ICashDrawerService
         int? referenceId = null,
         bool isPhysicalCash = true);
     Task<decimal> GetCurrentBalanceLocalAsync(int sessionId);
+
+    /// <summary>
+    /// Historial persistente de movimientos de caja: devuelve los movimientos físicos más recientes
+    /// de TODAS las sesiones (activa y anteriores), para conservar la trazabilidad de las sesiones
+    /// cerradas junto con los movimientos de la sesión siguiente.
+    /// </summary>
+    Task<System.Collections.Generic.List<CashTransaction>> GetHistoryAsync(int limit = 300);
     Task<CashAdvanceResultDto> ProcessCashAdvanceAsync(
         int sessionId,
         decimal requestedAmountLocal,

@@ -10,28 +10,30 @@ export default function AtmAmountInput({
   disabled = false,
   autoFocus = false,
   prefix = '',
+  allowDecimals = true,
   ...props
 }) {
   const [displayValue, setDisplayValue] = useState('');
+  const decimals = allowDecimals ? 2 : 0;
 
   useEffect(() => {
     if (value === '' || value === null || value === undefined) {
       setDisplayValue('');
     } else if (typeof value === 'number') {
-      setDisplayValue(formatNumberEs(value, 2));
+      setDisplayValue(formatNumberEs(value, decimals));
     } else {
       const num = parseFormattedNumber(value);
       if (!isNaN(num) && num > 0) {
-        setDisplayValue(formatNumberEs(num, 2));
+        setDisplayValue(formatNumberEs(num, decimals));
       } else {
         setDisplayValue(value);
       }
     }
-  }, [value]);
+  }, [value, decimals]);
 
   const handleChange = (e) => {
     const rawText = e.target.value;
-    const formatted = formatAtmInput(rawText);
+    const formatted = formatAtmInput(rawText, decimals);
     const numeric = parseFormattedNumber(formatted);
     setDisplayValue(formatted);
     if (onChange) {
@@ -43,7 +45,7 @@ export default function AtmAmountInput({
     if (e.key === 'Backspace' && displayValue) {
       const digits = displayValue.replace(/\D/g, '');
       const newDigits = digits.slice(0, -1);
-      const formatted = formatAtmInput(newDigits);
+      const formatted = formatAtmInput(newDigits, decimals);
       const numeric = parseFormattedNumber(formatted);
       setDisplayValue(formatted);
       if (onChange) {
@@ -77,7 +79,7 @@ export default function AtmAmountInput({
       )}
       <input
         type="text"
-        inputMode="decimal"
+        inputMode={allowDecimals ? 'decimal' : 'numeric'}
         className={`atm-amount-input ${className}`}
         value={displayValue}
         onChange={handleChange}
