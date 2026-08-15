@@ -93,11 +93,12 @@ public class SalesService : ISalesService
         return int.Parse(contentStr);
     }
 
-    public async Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int page_size, System.DateTime? start_date = null, System.DateTime? end_date = null, System.Threading.CancellationToken cancellation_token = default)
+    public async Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int page_size, System.DateTime? start_date = null, System.DateTime? end_date = null, string? search = null, System.Threading.CancellationToken cancellation_token = default)
     {
         var _url = $"api/sales/history?page={page}&pageSize={page_size}";
         if (start_date.HasValue) _url += $"&startDate={start_date.Value:O}";
         if (end_date.HasValue) _url += $"&endDate={end_date.Value:O}";
+        if (!string.IsNullOrWhiteSpace(search)) _url += $"&search={System.Uri.EscapeDataString(search.Trim())}";
 
         var _response = await _http_client.GetAsync(_url, cancellation_token);
         _response.EnsureSuccessStatusCode();

@@ -24,21 +24,26 @@ try
     AppLogger.LogStart("Backend API initialization starting...");
 
     var builder = WebApplication.CreateBuilder(args);
-    builder.WebHost.UseUrls("http://0.0.0.0:5000");
 
     // HTTPS (contexto seguro requerido por el escáner de cámara desde dispositivos de la red local).
     // Usa el certificado autofirmado pos-https.pfx si existe (ver scripts/create-https-cert.ps1).
     // Si el certificado falta, el servidor continúa sirviendo solo HTTP sin romper el arranque.
-    // Nota: ConfigureKestrel REEMPLAZA los endpoints por URL, por eso se definen aquí ambos
-    // (HTTP 5000 + HTTPS 5001) para no perder el HTTP cuando el certificado existe.
     var httpsCert = LoadHttpsCertificate();
+
+    // Limpia la configuración de 'urls' para evitar la advertencia de Kestrel (Overriding address(es)) al definir ListenAnyIP.
+    builder.Configuration["urls"] = null;
+
+    builder.WebHost.ConfigureKestrel(kestrel =>
+    {
+        kestrel.ListenAnyIP(5000);
+        if (httpsCert != null)
+        {
+            kestrel.ListenAnyIP(5001, listen => listen.UseHttps(httpsCert));
+        }
+    });
+
     if (httpsCert != null)
     {
-        builder.WebHost.ConfigureKestrel(kestrel =>
-        {
-            kestrel.ListenAnyIP(5000);
-            kestrel.ListenAnyIP(5001, listen => listen.UseHttps(httpsCert));
-        });
         AppLogger.LogStart("HTTPS habilitado en https://0.0.0.0:5001 (certificado autofirmado)");
     }
     else

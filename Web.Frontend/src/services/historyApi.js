@@ -7,10 +7,11 @@ import { api } from './api';
  * @param {string} [startDate]
  * @param {string} [endDate]
  */
-export async function getSalesHistory(page = 1, pageSize = 20, startDate, endDate) {
+export async function getSalesHistory(page = 1, pageSize = 20, startDate, endDate, search) {
   let query = `/api/sales/history?page=${page}&pageSize=${pageSize}`;
   if (startDate) query += `&startDate=${encodeURIComponent(startDate)}`;
   if (endDate) query += `&endDate=${encodeURIComponent(endDate)}`;
+  if (search) query += `&search=${encodeURIComponent(search)}`;
   return await api.get(query);
 }
 

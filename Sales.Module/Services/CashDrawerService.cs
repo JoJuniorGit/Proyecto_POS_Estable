@@ -40,7 +40,18 @@ public class CashDrawerService : ICashDrawerService
         var session = await GetActiveSessionAsync();
         if (session != null) return session;
 
-        return await OpenSessionAsync(0, currentExchangeRate);
+        var lastSession = await _context.CashDrawerSessions
+            .Include(s => s.Transactions)
+            .OrderByDescending(s => s.ClosedAt ?? s.OpenedAt)
+            .FirstOrDefaultAsync();
+
+        decimal carryOverBalance = 0;
+        if (lastSession != null)
+        {
+            carryOverBalance = lastSession.ClosingBalanceLocal ?? await GetCurrentBalanceLocalAsync(lastSession.Id);
+        }
+
+        return await OpenSessionAsync(carryOverBalance, currentExchangeRate);
     }
 
     public async Task<CashDrawerSession> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate)
@@ -99,6 +110,20 @@ public class CashDrawerService : ICashDrawerService
 
         await _context.SaveChangesAsync();
         return session;
+    }
+
+    public async Task RolloverSessionAfterClosureAsync(decimal currentExchangeRate)
+    {
+        var activeSession = await GetActiveSessionAsync();
+        if (activeSession == null) return;
+
+        // Conservar el saldo esperado en caja: se arrastra el saldo teórico (apertura + ingresos - egresos)
+        // de la sesión que se cierra, sin depender de los montos declarados del arqueo (que solo quedan
+        // registrados en el cierre para su auditoría).
+        decimal carryOverBalance = await GetCurrentBalanceLocalAsync(activeSession.Id);
+
+        await CloseSessionAsync(carryOverBalance, currentExchangeRate);
+        await OpenSessionAsync(carryOverBalance, currentExchangeRate);
     }
 
     public async Task<CashTransaction> AddTransactionAsync(

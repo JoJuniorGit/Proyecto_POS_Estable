@@ -21,7 +21,7 @@ public interface ISalesService
     Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<PaymentInfo> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false);
     Task<SaleHistoryDto> ConfirmPickupAsync(int saleId);
     Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync();
-    Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, System.DateTime? startDate, System.DateTime? endDate);
+    Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, System.DateTime? startDate, System.DateTime? endDate, string? search = null);
     Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId);
 
     // OnHold / Customer Methods

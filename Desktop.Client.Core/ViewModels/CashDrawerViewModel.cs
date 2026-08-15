@@ -147,13 +147,18 @@ public partial class CashDrawerViewModel : ObservableObject
             }
         });
 
+        WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.ShiftClosedMessage>(this, (_r, _m) =>
+        {
+            Application.Current.Dispatcher.Invoke(() => _ = RefreshAsync());
+        });
+
         _ = LoadSessionAsync();
     }
 
     private void UpdateFormattedBalances()
     {
         var rate = _exchange_rate_service.CurrentRate;
-        var balanceLocal = ActiveSession != null ? CurrentBalanceBsS : 0;
+        var balanceLocal = CurrentBalanceBsS;
         FormattedBalanceBsS = balanceLocal.ToString("N0");
         FormattedBalanceUsd = (rate > 0 ? balanceLocal / rate : 0).ToString("N2") + " $";
 
@@ -163,12 +168,17 @@ public partial class CashDrawerViewModel : ObservableObject
                 .Where(t => t.Type == CashTransactionType.Income && t.Source != CashTransactionSource.Opening && t.IsPhysicalCash)
                 .Sum(t => t.AmountLocal);
             TotalExpenseBsS = ActiveSession.Transactions
-                .Where(t => t.Type == CashTransactionType.Expense && t.IsPhysicalCash)
+                .Where(t => t.Type == CashTransactionType.Expense && t.Source != CashTransactionSource.Closing && t.IsPhysicalCash)
                 .Sum(t => t.AmountLocal);
-
-            FormattedTotalIncomeBsS = TotalIncomeBsS.ToString("N0") + " Bs.S";
-            FormattedTotalExpenseBsS = TotalExpenseBsS.ToString("N0") + " Bs.S";
         }
+        else
+        {
+            TotalIncomeBsS = 0;
+            TotalExpenseBsS = 0;
+        }
+
+        FormattedTotalIncomeBsS = TotalIncomeBsS.ToString("N0") + " Bs.S";
+        FormattedTotalExpenseBsS = TotalExpenseBsS.ToString("N0") + " Bs.S";
     }
 
     public async Task LoadSessionAsync()

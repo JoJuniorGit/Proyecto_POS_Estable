@@ -31,7 +31,7 @@ echo   Starting POS System
 echo ==========================================
 
 echo [1/3] Launching Backend API...
-start "Backend API" cmd /k "cd /d %~dp0 && dotnet run --project Backend.API\Backend.API.csproj --urls http://*:%PORT%"
+start "Backend API" cmd /k "cd /d %~dp0 && dotnet run --project Backend.API\Backend.API.csproj"
 
 echo Waiting for API (polling localhost:%PORT%)...
 :wait

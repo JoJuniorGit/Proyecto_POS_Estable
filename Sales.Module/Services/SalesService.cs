@@ -872,15 +872,51 @@ public class SalesService : ISalesService
     }
 
 
-    public async Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, DateTime? startDate, DateTime? endDate)
+    public async Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, DateTime? startDate, DateTime? endDate, string? search = null)
     {
         var query = _context.Sales
             .Include(s => s.Cashier)
             .Include(s => s.Customer)
             .Where(s => s.Status == SaleStatus.Completed);
 
-        if (startDate.HasValue) query = query.Where(s => s.Date >= startDate.Value);
-        if (endDate.HasValue) query = query.Where(s => s.Date <= endDate.Value);
+        // La columna Date es "timestamp with time zone" (UTC): Npgsql rechaza parámetros
+        // DateTime con Kind != Utc. Los clientes envían fechas sin zona horaria (YYYY-MM-DD
+        // o medianoche local), por lo que se interpretan como hora local del servidor y se
+        // convierten a UTC antes de comparar.
+        DateTime ToUtc(DateTime value)
+            => value.Kind == DateTimeKind.Utc
+                ? value
+                : TimeZoneInfo.ConvertTimeToUtc(
+                    DateTime.SpecifyKind(value, DateTimeKind.Unspecified), TimeZoneInfo.Local);
+
+        // Se calculan ANTES del árbol de expresión (una función local no puede
+        // referenciarse dentro de la lambda que EF Core traduce a SQL).
+        DateTime? startUtc = startDate.HasValue ? ToUtc(startDate.Value) : null;
+        // La fecha fin es inclusiva de TODO el día seleccionado: la venta pertenece al día
+        // si su fecha es anterior a la medianoche local del día siguiente (convertida a UTC).
+        DateTime? endExclusiveUtc = endDate.HasValue ? ToUtc(endDate.Value.Date.AddDays(1)) : null;
+
+        if (startUtc.HasValue) query = query.Where(s => s.Date >= startUtc.Value);
+        if (endExclusiveUtc.HasValue) query = query.Where(s => s.Date < endExclusiveUtc.Value);
+
+        // Búsqueda multicampo: coincidencia de texto (insensible a mayúsculas) simultánea
+        // en N° de factura, cliente (nombre o cédula) y cajero (nombre, nombre completo o cédula).
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            var lowerTerm = term.ToLower();
+            var isNumericTerm = int.TryParse(term, out var invoiceMatch);
+
+            query = query.Where(s =>
+                (s.CustomerName != null && s.CustomerName.ToLower().Contains(lowerTerm)) ||
+                (s.CustomerCedula != null && s.CustomerCedula.ToLower().Contains(lowerTerm)) ||
+                (s.Cashier != null &&
+                 ((s.Cashier.Name != null && s.Cashier.Name.ToLower().Contains(lowerTerm)) ||
+                  (s.Cashier.FullName != null && s.Cashier.FullName.ToLower().Contains(lowerTerm)) ||
+                  (s.Cashier.Cedula != null && s.Cashier.Cedula.ToLower().Contains(lowerTerm)))) ||
+                (s.InvoiceNumber != null && s.InvoiceNumber.Value.ToString().Contains(term)) ||
+                (isNumericTerm && s.InvoiceNumber == invoiceMatch));
+        }
 
         int totalCount = await query.CountAsync();
 

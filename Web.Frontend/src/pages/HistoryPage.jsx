@@ -10,8 +10,16 @@ export default function HistoryPage() {
   const { exchangeRate } = useExchangeRate();
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  // Filtro inicial: solo el día en curso (la tabla oculta los días anteriores
+  // hasta que el usuario cambie manualmente el rango). Fecha local en formato YYYY-MM-DD.
+  const todayIso = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [startDate, setStartDate] = useState(todayIso);
+  const [endDate, setEndDate] = useState(todayIso);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -25,7 +33,7 @@ export default function HistoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getSalesHistory(pageToFetch, PAGE_SIZE, startDate, endDate);
+      const data = await getSalesHistory(pageToFetch, PAGE_SIZE, startDate, endDate, debouncedSearch);
       const items = data?.items || data?.Items || (Array.isArray(data) ? data : []);
       const total = data?.totalCount ?? data?.TotalCount ?? items.length;
 
@@ -37,7 +45,17 @@ export default function HistoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, startDate, endDate]);
+  }, [currentPage, startDate, endDate, debouncedSearch]);
+
+  // Búsqueda multicampo con debounce: al escribir, la vista se actualiza sola
+  // (300 ms) y vuelve a la primera página.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   useEffect(() => {
     fetchHistory();
@@ -99,6 +117,18 @@ export default function HistoryPage() {
       {/* ── Filtros de Fecha ── */}
       <div className="card mb-4 p-3" style={{ marginBottom: '20px' }}>
         <div className="history-filter-row">
+          <div className="form-group mb-0 history-filter-item" style={{ flex: 2, minWidth: '200px' }}>
+            <label className="form-label text-xs font-medium text-muted">Buscar (Factura / Cliente / Cajero)</label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="N° de factura, cliente o cajero..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{ width: '100%' }}
+            />
+          </div>
+
           <div className="form-group mb-0 history-filter-item">
             <label className="form-label text-xs font-medium text-muted">Fecha Inicio</label>
             <input

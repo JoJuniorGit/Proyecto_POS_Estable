@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using Desktop.Client.Services;
 using System;
 using System.Collections.ObjectModel;
@@ -271,7 +272,8 @@ public partial class DailyClosureViewModel : ObservableObject
 
             await _closure_service.CreateClosureAsync(request);
             IsSaved = true;
-            _dialogService.ShowInfo("Éxito de Cierre", "Cierre diario procesado y guardado exitosamente. Comprobantes guardados automáticamente en Descargas y en Documentos\\Registro de cierres.\n\nLos montos acumulados han sido reiniciados a 0.00 Bs.S para el nuevo turno.");
+            CommunityToolkit.Mvvm.Messaging.WeakReferenceMessenger.Default.Send(new Desktop.Client.Messages.ShiftClosedMessage());
+            _dialogService.ShowInfo("Éxito de Cierre", "Cierre diario procesado y guardado exitosamente. Comprobantes guardados automáticamente en Descargas y en Documentos\\Registro de cierres.\n\nLos acumuladores de ingresos y egresos han sido reiniciados a 0.00 Bs.S para el nuevo turno.");
             await LoadExpectedTotalsAsync();
         }
         catch (Exception ex)

@@ -124,6 +124,41 @@ public partial class SalesHistoryViewModel : ObservableObject
         }
     }
 
+    private string _search_text = string.Empty;
+    public string SearchText
+    {
+        get => _search_text;
+        set
+        {
+            if (SetProperty(ref _search_text, value))
+            {
+                _ = DebounceSearchAsync(value);
+            }
+        }
+    }
+
+    private CancellationTokenSource? _search_debounce_cts;
+
+    private async Task DebounceSearchAsync(string term)
+    {
+        // Búsqueda multicampo con debounce: al escribir, se espera 300 ms y se
+        // recarga desde la primera página con el término aplicado.
+        _search_debounce_cts?.Cancel();
+        _search_debounce_cts = new CancellationTokenSource();
+        var token = _search_debounce_cts.Token;
+        try
+        {
+            await Task.Delay(300, token);
+            if (token.IsCancellationRequested) return;
+            CurrentPage = 1;
+            await LoadHistoryAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // Debounce cancelado por un tipeo más reciente — se ignora.
+        }
+    }
+
     private int _current_page = 1;
     public int CurrentPage
     {
@@ -169,6 +204,12 @@ public partial class SalesHistoryViewModel : ObservableObject
     public SalesHistoryViewModel(ISalesService sales_service)
     {
         _sales_service = sales_service;
+
+        // Filtro inicial: solo el día en curso. Se asignan los campos directamente
+        // (no las propiedades) para no disparar LoadHistoryAsync antes de que el
+        // servicio esté listo; la carga inicial la dispara EnsureLoadedAsync.
+        _start_date = DateTime.Today;
+        _end_date = DateTime.Today;
 
         WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (_r, _m) =>
         {
@@ -223,7 +264,7 @@ public partial class SalesHistoryViewModel : ObservableObject
 
         try
         {
-            var (_items, _total) = await _sales_service.GetSalesHistoryAsync(CurrentPage, PageSize, StartDate, EndDate, _token);
+            var (_items, _total) = await _sales_service.GetSalesHistoryAsync(CurrentPage, PageSize, StartDate, EndDate, SearchText, _token);
 
             if (!_token.IsCancellationRequested)
             {

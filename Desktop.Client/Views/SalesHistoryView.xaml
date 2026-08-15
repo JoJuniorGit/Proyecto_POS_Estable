@@ -106,14 +106,25 @@
         <materialDesign:Card Grid.Row="1" Margin="0,0,0,16" Padding="16,12" UniformCornerRadius="8" Background="{DynamicResource MaterialDesignPaper}">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Fecha Inicio -->
+                <!-- Buscador multicampo: N° de factura / Cliente / Cajero -->
                 <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
+                    <TextBlock Text="Buscar (Factura / Cliente / Cajero)" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,4"/>
+                    <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             materialDesign:HintAssist.Hint="N° de factura, cliente o cajero..."
+                             materialDesign:TextFieldAssist.HasClearButton="True"
+                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                             Width="280" Height="40" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Fecha Inicio -->
+                <StackPanel Grid.Column="1" Margin="0,0,16,0" VerticalAlignment="Center">
                     <TextBlock Text="Fecha Inicio" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,4"/>
                     <DatePicker SelectedDate="{Binding StartDate, UpdateSourceTrigger=PropertyChanged}" 
                                 Style="{DynamicResource MaterialDesignOutlinedDatePicker}"
@@ -121,7 +132,7 @@
                 </StackPanel>
 
                 <!-- Fecha Fin -->
-                <StackPanel Grid.Column="1" Margin="0,0,16,0" VerticalAlignment="Center">
+                <StackPanel Grid.Column="2" Margin="0,0,16,0" VerticalAlignment="Center">
                     <TextBlock Text="Fecha Fin" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,4"/>
                     <DatePicker SelectedDate="{Binding EndDate, UpdateSourceTrigger=PropertyChanged}" 
                                 Style="{DynamicResource MaterialDesignOutlinedDatePicker}"
@@ -129,7 +140,7 @@
                 </StackPanel>
 
                 <!-- Botón Principal Buscar -->
-                <StackPanel Grid.Column="2" VerticalAlignment="Bottom">
+                <StackPanel Grid.Column="3" VerticalAlignment="Bottom">
                     <Button Content="Buscar"
                             Command="{Binding LoadHistoryCommand}"
                             Style="{DynamicResource MaterialDesignRaisedButton}"
@@ -147,7 +158,7 @@
                 </StackPanel>
 
                 <!-- Indicador de Carga -->
-                <ProgressBar Grid.Column="3" 
+                <ProgressBar Grid.Column="4" 
                              IsIndeterminate="True" 
                              Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
                              HorizontalAlignment="Right" VerticalAlignment="Center" Width="36" Height="36" Margin="16,0,0,0" />

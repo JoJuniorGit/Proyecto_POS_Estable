@@ -105,6 +105,8 @@ public class ShiftsController : ControllerBase
                 });
             }
 
+            using var dbTransaction = await _salesContext.Database.BeginTransactionAsync();
+
             // Persistir cierre de caja de forma secuencial en la Base de Datos
             var dailyClosure = new DailyClosure
             {
@@ -122,6 +124,12 @@ public class ShiftsController : ControllerBase
             };
 
             var savedClosure = await _dailyClosureService.CreateClosureAsync(dailyClosure);
+
+            // Al cerrar el turno, se cierra la sesión anterior y se inicia una nueva conservando el saldo esperado
+            // en caja (saldo teórico acumulado) pero reiniciando a 0 los acumuladores de ingresos y egresos de la sesión.
+            await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate);
+
+            await dbTransaction.CommitAsync();
 
             var report = new ShiftReportDto
             {

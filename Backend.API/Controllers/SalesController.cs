@@ -280,9 +280,9 @@ public class SalesController : ControllerBase
     }
 
     [HttpGet("history")]
-    public async Task<ActionResult> GetHistory([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] System.DateTime? startDate = null, [FromQuery] System.DateTime? endDate = null)
+    public async Task<ActionResult> GetHistory([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] System.DateTime? startDate = null, [FromQuery] System.DateTime? endDate = null, [FromQuery] string? search = null)
     {
-        var (_items, _total_count) = await _salesService.GetSalesHistoryAsync(page, pageSize, startDate, endDate);
+        var (_items, _total_count) = await _salesService.GetSalesHistoryAsync(page, pageSize, startDate, endDate, search);
         return Ok(new { Items = _items, TotalCount = _total_count });
     }
 

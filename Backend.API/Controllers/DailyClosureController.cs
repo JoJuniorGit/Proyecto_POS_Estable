@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
+using Inventory.Module.Data;
+using Core.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,10 +17,46 @@ namespace Backend.API.Controllers;
 public class DailyClosureController : ControllerBase
 {
     private readonly IDailyClosureService _closureService;
+    private readonly ICashDrawerService _cashDrawerService;
+    private readonly InventoryDbContext _inventoryContext;
+    private readonly ISystemSettingsService _settingsService;
+    private readonly SalesDbContext _salesContext;
 
-    public DailyClosureController(IDailyClosureService closureService)
+    public DailyClosureController(
+        IDailyClosureService closureService,
+        ICashDrawerService cashDrawerService,
+        InventoryDbContext inventoryContext,
+        ISystemSettingsService settingsService,
+        SalesDbContext salesContext)
     {
         _closureService = closureService;
+        _cashDrawerService = cashDrawerService;
+        _inventoryContext = inventoryContext;
+        _settingsService = settingsService;
+        _salesContext = salesContext;
+    }
+
+    private async Task<decimal> GetTodayExchangeRateAsync()
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var record = await _inventoryContext.ExchangeRateHistory
+            .FirstOrDefaultAsync(r => r.Date == today);
+
+        if (record == null)
+        {
+            record = await _inventoryContext.ExchangeRateHistory
+                .OrderByDescending(r => r.Date)
+                .FirstOrDefaultAsync();
+        }
+
+        if (record != null && record.Rate > 0)
+            return record.Rate;
+
+        var rateStr = await _settingsService.GetSettingAsync("CurrentExchangeRate") ?? "1.0";
+        if (decimal.TryParse(rateStr, out decimal parsedRate) && parsedRate > 0)
+            return parsedRate;
+
+        return 1.0m;
     }
 
     [HttpGet("expected-totals")]
@@ -45,7 +85,18 @@ public class DailyClosureController : ControllerBase
                 }).ToList()
             };
 
+            decimal exchangeRate = await GetTodayExchangeRateAsync();
+
+            using var dbTransaction = await _salesContext.Database.BeginTransactionAsync();
+
             var result = await _closureService.CreateClosureAsync(closure);
+
+            // Al cerrar el turno, se cierra la sesión anterior y se inicia una nueva conservando el saldo esperado
+            // en caja (saldo teórico acumulado) pero reiniciando a 0 los acumuladores de ingresos y egresos de la sesión.
+            await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate);
+
+            await dbTransaction.CommitAsync();
+
             return Ok(result);
         }
         catch (Exception ex)

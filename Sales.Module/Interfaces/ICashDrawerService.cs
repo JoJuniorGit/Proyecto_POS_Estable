@@ -21,6 +21,14 @@ public interface ICashDrawerService
     Task<CashDrawerSession> GetOrCreateActiveSessionAsync(decimal currentExchangeRate);
     Task<CashDrawerSession> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate);
     Task<CashDrawerSession> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate);
+
+    /// <summary>
+    /// Cierra la sesión activa y abre una nueva conservando el saldo esperado en caja (saldo teórico acumulado:
+    /// apertura + ingresos - egresos de la sesión que se cierra, independiente de los montos declarados del arqueo)
+    /// pero reiniciando a 0 los acumuladores de ingresos y egresos de la sesión.
+    /// </summary>
+    Task RolloverSessionAfterClosureAsync(decimal currentExchangeRate);
+
     Task<CashTransaction> AddTransactionAsync(
         int sessionId,
         CashTransactionType type,
