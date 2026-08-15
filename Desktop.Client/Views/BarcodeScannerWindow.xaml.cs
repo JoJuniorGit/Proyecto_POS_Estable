@@ -308,12 +308,14 @@ public partial class BarcodeScannerWindow : Window
                 title: info.Name, titleBrush: null,
                 subtitle: $"{code}  •  {format}  •  {price}");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             if (seq != _resultSeq || _isClosed) return;
+            // Error de lectura: no se pudo resolver el código; se muestra el código
+            // escaneado como referencia, igual que en el estado "Producto no encontrado".
             ShowResultCard(PackIconKind.CloseCircle, ResultErrorBrush,
-                title: "Error de consulta", titleBrush: ResultErrorBrush,
-                subtitle: ex.Message);
+                title: "No se pudo leer el código", titleBrush: ResultErrorBrush,
+                subtitle: code);
         }
     }
 

@@ -12,7 +12,7 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct }, ref) {
   const searchRef = useRef(null);
   const { exchangeRate } = useExchangeRate();
 
-  // Permite que el escáner de código de barras deje un código no encontrado en la búsqueda.
+  // Permite que la página POS limpie el buscador tras cada escaneo de código de barras.
   useImperativeHandle(ref, () => ({
     setQuery: (text) => {
       setQuery(text);

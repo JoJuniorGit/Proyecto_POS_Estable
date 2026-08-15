@@ -37,19 +37,20 @@ export default function PosPage({ onOpenCheckout, onOpenHold }) {
   };
 
   // Código escaneado con la cámara: se resuelve por SKU exacto y se agrega
-  // directamente al carrito. Si el código no existe (o es un avance de efectivo),
-  // se deja en la barra de búsqueda para que el cajero decida.
+  // directamente al carrito. El resultado (encontrado / no encontrado / error)
+  // se informa en la tarjeta del modal de escaneo; el buscador se limpia tras
+  // CADA intento para que el cajero quede listo para el siguiente código.
   const handleScannedCode = async (code) => {
     try {
       const product = await getProductBySku(code);
       if (product?.id && !product.isCashAdvance) {
         await addItem(product, 1);
-        return;
       }
     } catch (err) {
       console.error('[PosPage] Error resolviendo código escaneado:', err);
+    } finally {
+      searchBarRef.current?.setQuery('');
     }
-    searchBarRef.current?.setQuery(code);
   };
 
   return (

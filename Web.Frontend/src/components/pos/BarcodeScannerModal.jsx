@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/library';
-import { Loader2, CameraOff, ShieldAlert } from 'lucide-react';
+import { Loader2, CameraOff, ShieldAlert, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
 import Modal from '../ui/Modal';
+import { getProductBySku } from '../../services/productsApi';
 import './BarcodeScannerModal.css';
 
 // La API de cámara solo existe en contextos seguros: HTTPS, localhost o loopback (127.0.0.1).
@@ -18,9 +19,11 @@ const SAME_CODE_COOLDOWN_MS = 1800;
 // Pausa mínima entre intentos de decodificación fallidos (ritmo ~16 intentos/seg, sin saturar la CPU).
 const ATTEMPT_PACING_MS = 60;
 
-export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned }) {
+export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned, resolveProduct = getProductBySku }) {
   const videoRef = useRef(null);
   const onCodeScannedRef = useRef(onCodeScanned);
+  const resolveProductRef = useRef(resolveProduct);
+  const resultSeqRef = useRef(0);
   const lastCodeRef = useRef(null);
   const lastHitAtRef = useRef(0);
   // true mientras la cámara sigue viendo un código (se actualiza en CADA fotograma,
@@ -30,11 +33,22 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned }) 
 
   const [starting, setStarting] = useState(false);
   const [status, setStatus] = useState({ type: 'info', text: '' });
+  const [result, setResult] = useState(null);
 
-  // Keep the latest callback without restarting the camera.
+  // Keep the latest callbacks without restarting the camera.
   useEffect(() => {
     onCodeScannedRef.current = onCodeScanned;
-  }, [onCodeScanned]);
+    resolveProductRef.current = resolveProduct;
+  }, [onCodeScanned, resolveProduct]);
+
+  // Al cerrar el modal: limpiar la tarjeta de resultado e invalidar cualquier
+  // consulta de producto aún en vuelo (el resultado obsoleto se descarta).
+  useEffect(() => {
+    if (!isOpen) {
+      resultSeqRef.current += 1;
+      setResult(null);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -88,6 +102,52 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned }) 
       }
       setStatus({ type: 'ok', text: `Código copiado: ${trimmed}` });
       onCodeScannedRef.current?.(trimmed);
+
+      // Indicación visual del resultado (espejo del escáner de escritorio):
+      // resuelve el producto por SKU exacto y pinta la tarjeta según el estado.
+      void showProductResult(trimmed);
+    };
+
+    // Resuelve el código contra el catálogo (SKU exacto) y actualiza la tarjeta
+    // de resultado. Los resultados obsoletos (llegaron tarde o el modal se cerró)
+    // se descartan comparando el número de secuencia.
+    const showProductResult = async (code) => {
+      const seq = ++resultSeqRef.current;
+      try {
+        let info = null;
+        const resolver = resolveProductRef.current;
+        if (resolver) {
+          try {
+            info = await resolver(code);
+          } catch (err) {
+            // Espejo del cliente de escritorio: SKU inexistente (404) o no numérico
+            // (400) se tratan como "no encontrado", no como un error de lectura.
+            if (!(err instanceof Error) || !/^Error (400|404):/.test(err.message)) throw err;
+            info = null;
+          }
+        }
+
+        if (seq !== resultSeqRef.current) return;
+
+        if (!info) {
+          setResult({ key: seq, kind: 'notfound', title: 'Producto no encontrado', subtitle: code });
+          return;
+        }
+        if (!info.isActive) {
+          setResult({ key: seq, kind: 'inactive', title: 'Producto inactivo', subtitle: `${code}  •  ${info.name}` });
+          return;
+        }
+        if (info.isCashAdvance) {
+          setResult({ key: seq, kind: 'cashadvance', title: info.name, subtitle: `${code}  •  Sistema — requiere captura manual` });
+          return;
+        }
+
+        const price = Number(info.priceBsS) > 0 ? `Bs.S ${Number(info.priceBsS).toFixed(2)}` : `USD ${Number(info.priceUSD).toFixed(2)}`;
+        setResult({ key: seq, kind: 'found', title: info.name, subtitle: `${code}  •  ${price}` });
+      } catch {
+        if (seq !== resultSeqRef.current) return;
+        setResult({ key: seq, kind: 'error', title: 'No se pudo leer el código', subtitle: code });
+      }
     };
 
     const start = async () => {
@@ -157,6 +217,18 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned }) 
 
         {!starting && status.type !== 'error' && <div className="scanner-frame" />}
       </div>
+
+      {result && (
+        <div className={`scanner-result scanner-result--${result.kind}`} key={result.key}>
+          {result.kind === 'found' && <CheckCircle2 size={20} />}
+          {(result.kind === 'notfound' || result.kind === 'cashadvance') && <AlertCircle size={20} />}
+          {(result.kind === 'inactive' || result.kind === 'error') && <XCircle size={20} />}
+          <div className="scanner-result-body">
+            <span className="scanner-result-title">{result.title}</span>
+            {result.subtitle && <span className="scanner-result-subtitle">{result.subtitle}</span>}
+          </div>
+        </div>
+      )}
 
       <div className={`scanner-status ${status.type}`}>{status.text}</div>
 
