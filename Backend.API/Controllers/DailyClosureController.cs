@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
@@ -12,6 +13,7 @@ using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class DailyClosureController : ControllerBase

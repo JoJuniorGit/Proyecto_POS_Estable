@@ -97,6 +97,7 @@ try
 
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+    builder.Services.AddScoped<ITokenService, TokenService>();
     builder.Services.AddScoped<IInventoryService, InventoryService>();
     builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
     builder.Services.AddScoped<Sales.Module.Interfaces.ISalesService, Sales.Module.Services.SalesService>();
@@ -116,6 +117,38 @@ try
     builder.Services.AddSignalR();
 
     builder.Services.Configure<Core.Configuration.SystemSettingsOptions>(builder.Configuration.GetSection(Core.Configuration.SystemSettingsOptions.SectionName));
+
+    // JWT Authentication configuration
+    var jwtKey = builder.Configuration["JWT_SETTINGS_KEY"] 
+              ?? builder.Configuration["JwtSettings:Key"] 
+              ?? Environment.GetEnvironmentVariable("JWT_SETTINGS_KEY") 
+              ?? "POS_System_Default_Development_Secret_Key_At_Least_32_Chars!";
+    var jwtIssuer = builder.Configuration["JwtSettings:Issuer"] ?? "SolucionesPos";
+    var jwtAudience = builder.Configuration["JwtSettings:Audience"] ?? "PosClient";
+
+    builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.RequireHttpsMetadata = false;
+        options.SaveToken = true;
+        options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(jwtKey)),
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = jwtAudience,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+    builder.Services.AddAuthorization();
 
     builder.Services.AddControllers().AddJsonOptions(x =>
     {
@@ -160,6 +193,9 @@ try
 
     // Version Compatibility Handshake Middleware
     app.UseMiddleware<Backend.API.Middleware.VersionCheckMiddleware>();
+
+    app.UseAuthentication();
+    app.UseAuthorization();
 
     app.MapControllers();
     app.MapHub<ExchangeRateHub>("/hubs/exchange-rate");

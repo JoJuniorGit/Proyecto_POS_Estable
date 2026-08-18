@@ -18,6 +18,9 @@ public partial class UserSession : ObservableObject
     [NotifyPropertyChangedFor(nameof(UserRoleDisplay))]
     private UserDto? _currentUser;
 
+    [ObservableProperty]
+    private string? _token;
+
     public bool IsLoggedIn => CurrentUser != null;
     public bool IsAdmin => CurrentUser != null && CurrentUser.Role == UserRole.Admin;
     public bool IsCashier => CurrentUser != null && CurrentUser.Role == UserRole.Cashier;
@@ -31,15 +34,17 @@ public partial class UserSession : ObservableObject
 
     public event Action? SessionChanged;
 
-    public void SetUser(UserDto user)
+    public void SetUser(UserDto user, string? token = null)
     {
         CurrentUser = user;
+        Token = token;
         SessionChanged?.Invoke();
     }
 
     public void Logout()
     {
         CurrentUser = null;
+        Token = null;
         SessionChanged?.Invoke();
     }
 }

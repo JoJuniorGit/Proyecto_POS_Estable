@@ -35,14 +35,24 @@
                     <TextBlock Text="{Binding ErrorMessage}" Foreground="#EE5353" FontSize="12" TextWrapping="Wrap" HorizontalAlignment="Center"/>
                 </Border>
 
-                <!-- Input Field -->
+                <!-- Input Field: Cedula -->
                 <TextBox Text="{Binding Cedula, UpdateSourceTrigger=PropertyChanged}"
                          materialDesign:HintAssist.Hint="Número de Cédula"
                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                         FontSize="22" FontWeight="Bold" HorizontalContentAlignment="Center"
-                         MaxLength="12" Margin="0,0,0,16"
+                         FontSize="20" FontWeight="Bold" HorizontalContentAlignment="Center"
+                         MaxLength="12" Margin="0,0,0,12"
                          KeyDown="TextBox_KeyDown">
                 </TextBox>
+
+                <!-- Input Field: Password -->
+                <PasswordBox x:Name="PasswordInput"
+                             materialDesign:HintAssist.Hint="Contraseña"
+                             Style="{StaticResource MaterialDesignOutlinedPasswordBox}"
+                             FontSize="20" FontWeight="Bold" HorizontalContentAlignment="Center"
+                             Margin="0,0,0,16"
+                             PasswordChanged="PasswordInput_PasswordChanged"
+                             KeyDown="PasswordInput_KeyDown">
+                </PasswordBox>
 
                 <!-- Onscreen Numpad for Touchscreen / Easy Entry -->
                 <UniformGrid Rows="4" Columns="3" Margin="0,0,0,20">

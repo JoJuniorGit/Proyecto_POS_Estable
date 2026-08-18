@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Sales.Module.Interfaces;
 using Sales.Module.Data;
@@ -12,6 +13,7 @@ using System.Linq;
 
 namespace Backend.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/shifts")]
 public class ShiftsController : ControllerBase

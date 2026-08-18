@@ -15,9 +15,9 @@ public class UserService : IUserService
         _httpClient = httpClient;
     }
 
-    public async Task<LoginResultDto?> LoginAsync(string cedula)
+    public async Task<LoginResultDto?> LoginAsync(string cedula, string password)
     {
-        var response = await _httpClient.PostAsJsonAsync("api/auth/login", new LoginRequest { Cedula = cedula });
+        var response = await _httpClient.PostAsJsonAsync("api/auth/login", new LoginRequest { Cedula = cedula, Password = password });
         if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
         {
             var body = await response.Content.ReadAsStringAsync();
@@ -39,7 +39,7 @@ public class UserService : IUserService
             throw new System.Exception(msg);
         }
 
-        return new LoginResultDto { User = await response.Content.ReadFromJsonAsync<UserDto>() };
+        return await response.Content.ReadFromJsonAsync<LoginResultDto>();
     }
 
     public async Task<bool> ChangePasswordAsync(string cedula, string currentPassword, string newPassword)

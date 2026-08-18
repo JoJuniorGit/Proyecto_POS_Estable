@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Core.DTOs;
 using Sales.Module.DTOs;
@@ -8,6 +9,7 @@ using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class SalesController : ControllerBase

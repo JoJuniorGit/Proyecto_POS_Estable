@@ -18,6 +18,11 @@ public class UserSessionHeaderHandler : DelegatingHandler
         request.Headers.Remove("X-Client-Version");
         request.Headers.Add("X-Client-Version", "1.0.0");
 
+        if (!string.IsNullOrWhiteSpace(_userSession.Token))
+        {
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _userSession.Token);
+        }
+
         if (_userSession.CurrentUser != null)
         {
             request.Headers.Remove("X-User-Role");
@@ -27,6 +32,23 @@ public class UserSessionHeaderHandler : DelegatingHandler
             request.Headers.Add("X-User-Id", _userSession.CurrentUser.Id.ToString());
         }
 
-        return await base.SendAsync(request, cancellationToken);
+        var response = await base.SendAsync(request, cancellationToken);
+
+        // If the token expired or user is unauthorized (and not during login attempt), reset session cleanly
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized && 
+            request.RequestUri?.AbsolutePath.Contains("api/auth/login") != true)
+        {
+            var app = System.Windows.Application.Current;
+            if (app != null && !app.Dispatcher.CheckAccess())
+            {
+                app.Dispatcher.Invoke(() => _userSession.Logout());
+            }
+            else
+            {
+                _userSession.Logout();
+            }
+        }
+
+        return response;
     }
 }

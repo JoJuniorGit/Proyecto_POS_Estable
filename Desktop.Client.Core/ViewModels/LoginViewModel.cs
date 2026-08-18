@@ -16,6 +16,9 @@ public partial class LoginViewModel : ObservableObject
     private string _cedula = string.Empty;
 
     [ObservableProperty]
+    private string _password = string.Empty;
+
+    [ObservableProperty]
     private string _errorMessage = string.Empty;
 
     [ObservableProperty]
@@ -39,15 +42,21 @@ public partial class LoginViewModel : ObservableObject
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(Password))
+        {
+            ErrorMessage = "Ingrese su contraseña.";
+            return;
+        }
+
         IsLoading = true;
         ErrorMessage = string.Empty;
 
         try
         {
-            var result = await _userService.LoginAsync(Cedula.Trim());
+            var result = await _userService.LoginAsync(Cedula.Trim(), Password);
             if (result == null)
             {
-                ErrorMessage = "Cédula no encontrada o usuario inactivo.";
+                ErrorMessage = "Cédula o contraseña incorrecta.";
                 return;
             }
 
@@ -59,13 +68,14 @@ public partial class LoginViewModel : ObservableObject
 
             if (result.User != null)
             {
-                _userSession.SetUser(result.User);
+                _userSession.SetUser(result.User, result.Token);
                 Cedula = string.Empty;
+                Password = string.Empty;
                 LoginSuccess?.Invoke();
             }
             else
             {
-                ErrorMessage = "Cédula no encontrada o usuario inactivo.";
+                ErrorMessage = "Cédula o contraseña incorrecta.";
             }
         }
         catch (Exception ex)
@@ -99,11 +109,12 @@ public partial class LoginViewModel : ObservableObject
             await _userService.ChangePasswordAsync(cedula, dialogResult.Value.currentPassword, dialogResult.Value.newPassword);
 
             // Reintentar el login con la nueva contraseña.
-            var retry = await _userService.LoginAsync(cedula);
+            var retry = await _userService.LoginAsync(cedula, dialogResult.Value.newPassword);
             if (retry?.User != null)
             {
-                _userSession.SetUser(retry.User);
+                _userSession.SetUser(retry.User, retry.Token);
                 Cedula = string.Empty;
+                Password = string.Empty;
                 LoginSuccess?.Invoke();
             }
             else
@@ -136,6 +147,7 @@ public partial class LoginViewModel : ObservableObject
     private void Clear()
     {
         Cedula = string.Empty;
+        Password = string.Empty;
         ErrorMessage = string.Empty;
     }
 }

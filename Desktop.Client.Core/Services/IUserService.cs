@@ -6,7 +6,7 @@ namespace Desktop.Client.Services;
 
 public interface IUserService
 {
-    Task<LoginResultDto?> LoginAsync(string cedula);
+    Task<LoginResultDto?> LoginAsync(string cedula, string password);
     Task<bool> ChangePasswordAsync(string cedula, string currentPassword, string newPassword);
     Task<List<UserDto>> GetUsersAsync();
     Task<UserDto?> CreateUserAsync(CreateUserDto dto);

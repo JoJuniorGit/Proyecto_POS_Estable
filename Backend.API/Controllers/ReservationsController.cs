@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Core.Interfaces;
 using Backend.API.DTOs;
@@ -6,6 +7,7 @@ using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class ReservationsController : ControllerBase

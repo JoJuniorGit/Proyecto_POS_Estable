@@ -1,11 +1,13 @@
 using Core.Entities;
 using Inventory.Module.Data;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Backend.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/exchange-rate")]
 public class ExchangeRateController : ControllerBase

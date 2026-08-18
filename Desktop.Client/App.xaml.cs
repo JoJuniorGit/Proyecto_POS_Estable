@@ -88,20 +88,24 @@ public partial class App : Application
         builder.Services.AddTransient<UserSessionHeaderHandler>();
         builder.Services.AddTransient<ResilienceHandler>();
 
+        var baseAddressStr = builder.Configuration["BackendSettings:BaseAddress"] ?? "http://localhost:5000/";
+        if (!baseAddressStr.EndsWith("/")) baseAddressStr += "/";
+        var baseAddressUri = new Uri(baseAddressStr);
+
         // Register HealthPollingService with dedicated HttpClient (without ResilienceHandler loop)
         builder.Services.AddHttpClient<IHealthPollingService, HealthPollingService>(client =>
         {
-            client.BaseAddress = new Uri("http://localhost:5000/");
+            client.BaseAddress = baseAddressUri;
         });
 
         builder.Services.AddHttpClient<IProductService, ProductService>(client =>
         {
-            client.BaseAddress = new Uri("http://localhost:5000/");
+            client.BaseAddress = baseAddressUri;
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
         builder.Services.AddHttpClient("SalesApi", client =>
         {
-            client.BaseAddress = new Uri("http://localhost:5000/");
+            client.BaseAddress = baseAddressUri;
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
         builder.Services.AddSingleton<ISalesService>(sp => 
@@ -112,12 +116,12 @@ public partial class App : Application
 
         builder.Services.AddHttpClient<IPaymentService, PaymentService>(client =>
         {
-            client.BaseAddress = new Uri("http://localhost:5000/");
+            client.BaseAddress = baseAddressUri;
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
         builder.Services.AddHttpClient("ExchangeRateApi", client =>
         {
-            client.BaseAddress = new Uri("http://localhost:5000/");
+            client.BaseAddress = baseAddressUri;
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
         builder.Services.AddSingleton<IExchangeRateService>(sp => 
@@ -128,7 +132,7 @@ public partial class App : Application
 
         builder.Services.AddHttpClient<IUserService, UserService>(client =>
         {
-            client.BaseAddress = new Uri("http://localhost:5000/");
+            client.BaseAddress = baseAddressUri;
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
         builder.Services.AddTransient<LoginViewModel>();
@@ -157,27 +161,27 @@ public partial class App : Application
         // Register new Cash Drawer Service
         builder.Services.AddHttpClient<ICashDrawerService, CashDrawerService>(client =>
         {
-            client.BaseAddress = new Uri("http://localhost:5000/");
+            client.BaseAddress = baseAddressUri;
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
         builder.Services.AddHttpClient<ISettingsService, SettingsService>(client =>
         {
-            client.BaseAddress = new Uri("http://localhost:5000/");
+            client.BaseAddress = baseAddressUri;
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
         builder.Services.AddHttpClient<IDailyClosureClientService, DailyClosureClientService>(client =>
         {
-            client.BaseAddress = new Uri("http://localhost:5000/");
+            client.BaseAddress = baseAddressUri;
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
         builder.Services.AddHttpClient<IVersionCheckService, VersionCheckService>(client =>
         {
-            client.BaseAddress = new Uri("http://localhost:5000/");
+            client.BaseAddress = baseAddressUri;
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
         builder.Services.AddHttpClient<IProductImportService, ProductImportService>(client =>
         {
-            client.BaseAddress = new Uri("http://localhost:5000/");
+            client.BaseAddress = baseAddressUri;
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
         builder.Services.AddTransient<DailyClosureViewModel>();

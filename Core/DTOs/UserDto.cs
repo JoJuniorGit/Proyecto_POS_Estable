@@ -7,6 +7,8 @@ public class LoginRequest
 {
     [Required]
     public string Cedula { get; set; } = string.Empty;
+
+    public string Password { get; set; } = string.Empty;
 }
 
 public class ChangePasswordRequest
@@ -26,6 +28,7 @@ public class LoginResultDto
     public UserDto? User { get; set; }
     public bool RequiresPasswordChange { get; set; }
     public string? Message { get; set; }
+    public string? Token { get; set; }
 }
 
 public class UserDto

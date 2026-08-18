@@ -21,4 +21,23 @@ public partial class LoginView : UserControl
             }
         }
     }
+
+    private void PasswordInput_PasswordChanged(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (DataContext is LoginViewModel vm && sender is PasswordBox pb)
+        {
+            vm.Password = pb.Password;
+        }
+    }
+
+    private void PasswordInput_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            if (DataContext is LoginViewModel vm && vm.LoginCommand.CanExecute(null))
+            {
+                vm.LoginCommand.Execute(null);
+            }
+        }
+    }
 }

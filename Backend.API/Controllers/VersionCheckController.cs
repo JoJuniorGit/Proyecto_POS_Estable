@@ -1,10 +1,12 @@
 using System;
 using Core.Configuration;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
 namespace Backend.API.Controllers;
 
+[AllowAnonymous]
 [ApiController]
 [Route("api/system")]
 public class VersionCheckController : ControllerBase

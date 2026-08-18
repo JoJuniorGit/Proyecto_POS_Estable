@@ -33,8 +33,22 @@ public class ExchangeRateService : IExchangeRateService
     {
         _httpClient = httpClient;
 
+        var baseAddress = httpClient.BaseAddress ?? new Uri("http://localhost:5000/");
+        var hubUri = new Uri(baseAddress, "hubs/exchange-rate");
+
         _hubConnection = new HubConnectionBuilder()
-            .WithUrl("http://localhost:5000/hubs/exchange-rate")
+            .WithUrl(hubUri, options =>
+            {
+                options.HttpMessageHandlerFactory = handler =>
+                {
+                    if (handler is HttpClientHandler clientHandler)
+                    {
+                        // For local network / self-signed certificate setups, avoid connection rejection
+                        clientHandler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+                    }
+                    return handler;
+                };
+            })
             .WithAutomaticReconnect()
             .Build();
 

@@ -1,10 +1,12 @@
 using Core.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Backend.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class SettingsController : ControllerBase
