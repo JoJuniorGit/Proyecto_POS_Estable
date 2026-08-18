@@ -17,4 +17,5 @@ public class User : BaseEntity
     public UserRole Role { get; set; } = UserRole.Cashier;
     public string? PhoneNumber { get; set; } // For Drivers
     public bool IsActive { get; set; } = true;
+    public bool MustChangePassword { get; set; } = false;
 }

@@ -164,59 +164,110 @@ try
     app.MapControllers();
     app.MapHub<ExchangeRateHub>("/hubs/exchange-rate");
 
-    // Ensure Seed Data and Migrations
+    // Ensure Database Exists, Migrations and Seed Data (fail-fast: abort startup on any failure)
     using (var scope = app.Services.CreateScope())
     {
+        var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var _salesDb = scope.ServiceProvider.GetRequiredService<Sales.Module.Data.SalesDbContext>();
         var _invDb = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
-        var systemSettingsOptions = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<Core.Configuration.SystemSettingsOptions>>().Value;
 
-        bool isDbConnected = false;
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            var criticalMsg = "[ERROR CRÍTICO] No se encontró la cadena de conexión ConnectionStrings:DefaultConnection. " +
+                "Establezca la variable de entorno ConnectionStrings__DefaultConnection (o el appsettings) antes de arrancar.";
+            Console.WriteLine(criticalMsg);
+            AppLogger.LogDbError(criticalMsg, "Program.ConnectionString");
+            Environment.ExitCode = 1;
+            return; // NO seguir arrancando: evita servir peticiones que devuelven 503
+        }
+
+        // 1) Probar conexión contra la BD de mantenimiento "postgres" para distinguir
+        //    credenciales incorrectas de base de datos inexistente.
+        var csb = new NpgsqlConnectionStringBuilder(connectionString);
+        var dbName = csb.Database;
+        if (string.IsNullOrWhiteSpace(dbName))
+        {
+            var criticalMsg = "[ERROR CRÍTICO] La cadena de conexión no especifica la base de datos (Database).";
+            Console.WriteLine(criticalMsg);
+            AppLogger.LogDbError(criticalMsg, "Program.DatabaseName");
+            Environment.ExitCode = 1;
+            return;
+        }
+
+        var maintenanceCs = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            Database = "postgres"
+        }.ConnectionString;
+
         try
         {
-            AppLogger.LogStart("Testing PostgreSQL Database Connection (CanConnectAsync)...");
-            isDbConnected = _invDb.Database.CanConnect();
-            if (!isDbConnected)
+            AppLogger.LogStart($"Probing PostgreSQL maintenance database (postgres) for {dbName}...");
+            using var probe = new NpgsqlConnection(maintenanceCs);
+            probe.Open();
+
+            // 2) Crear la base de datos si no existe (idempotente).
+            using (var cmd = probe.CreateCommand())
             {
-                var criticalMsg = "[ERROR CRÍTICO] Las credenciales de PostgreSQL en appsettings.json son incorrectas. La aplicación no puede comunicarse con la base de datos.";
-                Console.WriteLine(criticalMsg);
-                AppLogger.LogDbError(criticalMsg, "Program.CanConnect");
-            }
-            else
-            {
-                AppLogger.LogStart("PostgreSQL Database Connection successful.");
+                cmd.CommandText = "SELECT 1 FROM pg_database WHERE datname = @db";
+                cmd.Parameters.AddWithValue("db", dbName);
+                var exists = cmd.ExecuteScalar() != null;
+                if (!exists)
+                {
+                    AppLogger.LogStart($"[START] Creando base de datos {dbName}...");
+                    using var create = probe.CreateCommand();
+                    create.CommandText = $"CREATE DATABASE \"{dbName}\"";
+                    create.ExecuteNonQuery();
+                }
             }
         }
         catch (System.Exception connEx)
         {
-            var criticalMsg = $"[ERROR CRÍTICO] Las credenciales de PostgreSQL en appsettings.json son incorrectas o el servicio no responde: {connEx.Message}";
+            var criticalMsg = "[ERROR CRÍTICO] No se pudo conectar a PostgreSQL. " +
+                "Verifique que el servicio de BD esté activo y que la variable de entorno " +
+                $"ConnectionStrings__DefaultConnection (o el appsettings) sea correcta. {connEx.Message}";
             Console.WriteLine(criticalMsg);
-            AppLogger.LogDbError(connEx, "Program.CanConnectException");
+            AppLogger.LogDbError(connEx, "Program.ProbePostgres");
+            Environment.ExitCode = 1;
+            return; // NO seguir arrancando: evita servir peticiones que devuelven 503
         }
 
-        if (isDbConnected)
+        // 3) Aplicar migraciones (crea el esquema y __EFMigrationsHistory). Abortar si fallan.
+        try
         {
+            AppLogger.LogStart("Running EF Core Database Migrations...");
+            _invDb.Database.Migrate();
+            _salesDb.Database.Migrate();
+
+            // Defensive schema check: Ensure DisplayOrder column exists in PaymentMethods table
             try
             {
-                AppLogger.LogStart("Running EF Core Database Migrations...");
-                _invDb.Database.Migrate();
-                _salesDb.Database.Migrate();
-
-                // Defensive schema check: Ensure DisplayOrder column exists in PaymentMethods table
-                try
-                {
-                    _salesDb.Database.ExecuteSqlRaw(@"ALTER TABLE ""PaymentMethods"" ADD COLUMN IF NOT EXISTS ""DisplayOrder"" integer NOT NULL DEFAULT 0;");
-                    _salesDb.Database.ExecuteSqlRaw(@"ALTER TABLE ""CashTransactions"" ADD COLUMN IF NOT EXISTS ""IsPhysicalCash"" boolean NOT NULL DEFAULT true;");
-                }
-                catch { }
-
-                AppLogger.LogStart("EF Core Database Migrations applied successfully.");
+                _salesDb.Database.ExecuteSqlRaw(@"ALTER TABLE ""PaymentMethods"" ADD COLUMN IF NOT EXISTS ""DisplayOrder"" integer NOT NULL DEFAULT 0;");
+                _salesDb.Database.ExecuteSqlRaw(@"ALTER TABLE ""CashTransactions"" ADD COLUMN IF NOT EXISTS ""IsPhysicalCash"" boolean NOT NULL DEFAULT true;");
             }
-            catch (System.Exception ex)
-            {
-                AppLogger.LogDbError(ex, "Database.Migrate");
-                Console.WriteLine("Error running database migrations: " + ex.Message);
-            }
+            catch { }
+
+            AppLogger.LogStart("EF Core Database Migrations applied successfully.");
+        }
+        catch (System.Exception ex)
+        {
+            var criticalMsg = "[ERROR CRÍTICO] Error ejecutando las migraciones de base de datos. Abortando el arranque. " + ex.Message;
+            Console.WriteLine(criticalMsg);
+            AppLogger.LogDbError(ex, "Database.Migrate");
+            Environment.ExitCode = 1;
+            return;
+        }
+
+        // 4) Seed del admin: la contraseña semilla debe venir de la configuración / variable de entorno.
+        var seedPassword = config["SystemSettings:AdminSeedPassword"];
+        if (string.IsNullOrWhiteSpace(seedPassword))
+        {
+            var criticalMsg = "[ERROR CRÍTICO] Falta SystemSettings__AdminSeedPassword. " +
+                "Establezca la variable de entorno del servicio antes de arrancar.";
+            Console.WriteLine(criticalMsg);
+            AppLogger.LogDbError(criticalMsg, "Program.SeedPassword");
+            Environment.ExitCode = 1;
+            return;
+        }
 
         try
         {
@@ -239,9 +290,10 @@ try
                     Name = "Administrador",
                     Username = "V-12345678",
                     FullName = "Administrador",
-                    PasswordHash = systemSettingsOptions.AdminSeedPassword,
+                    PasswordHash = seedPassword,
                     Role = Core.Entities.UserRole.Admin,
-                    IsActive = true
+                    IsActive = true,
+                    MustChangePassword = true
                 };
                 _salesDb.Users.Add(user123);
                 _salesDb.SaveChanges();
@@ -303,10 +355,12 @@ try
         }
         catch (System.Exception ex)
         {
+            var criticalMsg = "[ERROR CRÍTICO] Error sembrando los datos iniciales. Abortando el arranque. " + ex.Message;
+            Console.WriteLine(criticalMsg);
             AppLogger.LogCrash(ex, "SeedDataInitialization");
-            Console.WriteLine("Error seeding initial data: " + ex.Message);
+            Environment.ExitCode = 1;
+            return;
         }
-    }
     }
 
     AppLogger.LogStart("Backend API started successfully listening on configured ports.");

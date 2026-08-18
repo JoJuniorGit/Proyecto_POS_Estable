@@ -5,11 +5,18 @@ namespace Desktop.Client.Services;
 
 public interface IDialogService
 {
+    /// <summary>
+    /// true si hay un diálogo modal abierto en este momento (ventana ShowDialog o DialogHost).
+    /// Lo usa MainWindow para advertir antes de cerrar con información posiblemente sin guardar.
+    /// </summary>
+    bool HasOpenModalDialog { get; }
+
     bool ShowConfirm(string title, string message);
     void ShowError(string title, string message);
     void ShowWarning(string title, string message);
     void ShowInfo(string title, string message);
     Task<string?> ShowTextInputAsync(string prompt, string hint);
+    Task<(bool success, string currentPassword, string newPassword)?> ShowChangePasswordDialogAsync();
     decimal? ShowCashAdvanceDialog();
     void ShowSuccessDialog(string message);
     Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title);

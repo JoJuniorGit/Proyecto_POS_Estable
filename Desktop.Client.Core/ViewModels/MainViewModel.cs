@@ -1,11 +1,12 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Desktop.Client.Services;
+using System;
 using System.Threading.Tasks;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class MainViewModel : ObservableObject
+public partial class MainViewModel : ObservableObject, IDisposable
 {
     private string _title = "Point of Sale";
     public string Title
@@ -94,6 +95,40 @@ public partial class MainViewModel : ObservableObject
         _dialog_service?.ShowInterruptedTransactionDialog(
             "Cerrar Venta",
             "La conexión con el servidor se interrumpió durante la operación. La red ha sido restablecida. Por favor, verifique el estado de caja y presione el botón de cobro nuevamente.");
+    }
+
+    public void Dispose()
+    {
+        // Detener el sondeo de salud y liberar suscripciones.
+        _healthPollingService.OnHealthRecovered -= OnHealthRecovered;
+        try { _healthPollingService.StopPolling(); } catch { }
+
+        // Disponer los ViewModels hijo que implementan IDisposable (cancela sus CTSes y
+        // libera las suscripciones a eventos globales). El contenedor DI invoca este Dispose
+        // al finalizar la aplicación (_host.Dispose() en App.OnExit).
+        var viewModels = new object[]
+        {
+            _login_view_model,
+            _pos_view_model,
+            _inventory_view_model,
+            _sales_history_view_model,
+            _pending_orders_view_model,
+            _pending_pickups_view_model,
+            _settings_view_model,
+            _exchange_rate_view_model,
+            _cash_drawer_view_model,
+            _import_products_view_model,
+            _daily_closure_view_model,
+            _users_management_view_model
+        };
+
+        foreach (var vm in viewModels)
+        {
+            if (vm is IDisposable disposable)
+            {
+                try { disposable.Dispose(); } catch { }
+            }
+        }
     }
 
     private void OnLoginSuccess()

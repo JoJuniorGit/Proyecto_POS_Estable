@@ -509,6 +509,8 @@ internal class MockExchangeRateService : Desktop.Client.Services.IExchangeRateSe
 
 internal class StubDialogService : Desktop.Client.Services.IDialogService
 {
+    public bool HasOpenModalDialog => false;
+
     public bool ShowErrorCalled { get; private set; }
     public string LastTitle { get; private set; } = string.Empty;
     public string LastMessage { get; private set; } = string.Empty;
@@ -523,6 +525,7 @@ internal class StubDialogService : Desktop.Client.Services.IDialogService
     public void ShowWarning(string title, string message) { }
     public void ShowInfo(string title, string message) { }
     public Task<string?> ShowTextInputAsync(string prompt, string hint) => Task.FromResult<string?>(null);
+    public Task<(bool success, string currentPassword, string newPassword)?> ShowChangePasswordDialogAsync() => Task.FromResult<(bool success, string currentPassword, string newPassword)?>(null);
     public decimal? ShowCashAdvanceDialog() => null;
     public void ShowSuccessDialog(string message) { }
     public Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title) => Task.FromResult<(bool success, decimal amount, string reason)?>(null);

@@ -208,12 +208,12 @@ public class DailyClosureService : IDailyClosureService
             string downloadsDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
             if (!System.IO.Directory.Exists(downloadsDir))
             {
-                downloadsDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                downloadsDir = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
             }
 
-            // Documents\Registro de cierres folder path
-            string documentsDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            string closureDir = System.IO.Path.Combine(documentsDir, "Registro de cierres");
+            // CommonApplicationData\Registro de cierres folder path
+            string commonAppDataDir = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            string closureDir = System.IO.Path.Combine(commonAppDataDir, "Registro de cierres");
 
             System.IO.Directory.CreateDirectory(downloadsDir);
             System.IO.Directory.CreateDirectory(closureDir);

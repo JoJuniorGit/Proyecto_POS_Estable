@@ -12,6 +12,18 @@ namespace Desktop.Client.Views
         public PosView()
         {
             InitializeComponent();
+            Unloaded += PosView_Unloaded;
+        }
+
+        private void PosView_Unloaded(object sender, RoutedEventArgs e)
+        {
+            // Cierra la ventana flotante del escáner si quedó abierta (defensa contra ventanas
+            // huérfanas al salir del módulo POS o al cerrarse la ventana principal).
+            if (_scannerWindow != null)
+            {
+                try { _scannerWindow.Close(); } catch { }
+                _scannerWindow = null;
+            }
         }
 
         private void UserControl_PreviewKeyDown(object sender, KeyEventArgs e)

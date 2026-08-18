@@ -12,6 +12,18 @@ namespace Desktop.Client;
 
 public partial class App : Application
 {
+    /// <summary>
+    /// true cuando el cierre de la aplicación ya está en curso (usuario confirmó, apagado del
+    /// sistema o error fatal). Suprime la confirmación de cierre en MainWindow.OnClosing.
+    /// </summary>
+    public static bool IsShutdownRequested { get; set; }
+
+    /// <summary>
+    /// Motivo por el que se inició el cierre de la aplicación (para el log en OnExit):
+    /// ventana cerrada, apagado del sistema, error fatal o cierre confirmado con diálogo abierto.
+    /// </summary>
+    public static string ShutdownReason { get; set; } = string.Empty;
+
     private IHost? _host;
     private readonly string _crashPath = GetCrashPath();
 
@@ -34,12 +46,19 @@ public partial class App : Application
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+        SessionEnding += (s, e) =>
+        {
+            IsShutdownRequested = true;
+            ShutdownReason = "Apagado del sistema operativo (sesión de Windows finalizando)";
+        };
     }
 
     private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
     {
         try { File.AppendAllText(_crashPath, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] UI Exception: " + e.Exception.Message + "\n" + e.Exception.StackTrace + "\n\n"); } catch { }
         e.Handled = true;
+        IsShutdownRequested = true;
+        ShutdownReason = "Error fatal (excepción de UI)";
         Shutdown();
     }
 
@@ -204,6 +223,7 @@ public partial class App : Application
                 var lockoutVm = new ViewModels.VersionLockoutViewModel("1.0.0", checkResult.MinimumClientVersion, checkResult.UpdateServerUrl);
                 var lockoutDialog = new Views.VersionLockoutDialog(lockoutVm);
                 lockoutDialog.ShowDialog();
+                ShutdownReason = "Versión del cliente no compatible";
                 Shutdown();
                 return;
             }
@@ -221,7 +241,18 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        Core.Logging.AppLogger.LogStart("WPF Desktop Client shutting down.");
+        IsShutdownRequested = true;
+        if (string.IsNullOrEmpty(ShutdownReason)) ShutdownReason = "Cierre de la ventana principal";
+        Core.Logging.AppLogger.LogStart($"WPF Desktop Client shutting down. Motivo: {ShutdownReason}");
+
+        // Detener el sondeo de salud antes de disponer el contenedor DI, para que ningún
+        // bucle de polling quede vivo durante el cierre.
+        try
+        {
+            _host?.Services.GetService<IHealthPollingService>()?.StopPolling();
+        }
+        catch { }
+
         _host?.Dispose();
         base.OnExit(e);
     }

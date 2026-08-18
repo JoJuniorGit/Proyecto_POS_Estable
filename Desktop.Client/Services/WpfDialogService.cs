@@ -14,6 +14,26 @@ public class WpfDialogService : IDialogService
     private readonly IProductService? _productService;
     private readonly ILogger<WpfDialogService>? _logger;
 
+    // Contador de diálogos modales abiertos (ventanas ShowDialog y DialogHost). Todos los
+    // diálogos se abren desde esta clase, así que este contador cubre la app completa.
+    private int _openModalCount;
+
+    /// <summary>true si hay un diálogo modal abierto (ventana ShowDialog o DialogHost).</summary>
+    public bool HasOpenModalDialog => _openModalCount > 0;
+
+    private IDisposable TrackModal()
+    {
+        _openModalCount++;
+        return new ModalScope(this);
+    }
+
+    private sealed class ModalScope : IDisposable
+    {
+        private readonly WpfDialogService _owner;
+        public ModalScope(WpfDialogService owner) => _owner = owner;
+        public void Dispose() => _owner._openModalCount--;
+    }
+
     public WpfDialogService(IClientStateService clientState, ISalesService? salesService = null, IProductService? productService = null, ILogger<WpfDialogService>? logger = null)
     {
         _clientState = clientState ?? throw new ArgumentNullException(nameof(clientState));
@@ -47,6 +67,7 @@ public class WpfDialogService : IDialogService
             return false;
         }
 
+        using var _ = TrackModal();
         bool? dialogResult = false;
         if (Application.Current.Dispatcher.CheckAccess())
         {
@@ -98,6 +119,7 @@ public class WpfDialogService : IDialogService
             return;
         }
 
+        using var _ = TrackModal();
         if (Application.Current.Dispatcher.CheckAccess())
         {
             var dialog = new CustomDialogWindow(title, message, type);
@@ -116,9 +138,40 @@ public class WpfDialogService : IDialogService
     public async System.Threading.Tasks.Task<string?> ShowTextInputAsync(string prompt, string hint)
     {
         if (Application.Current == null) return null;
+        using var _ = TrackModal();
         var inputDialog = new TextInputDialog(prompt, hint);
         var result = await MaterialDesignThemes.Wpf.DialogHost.Show(inputDialog, "RootDialog");
         return result as string;
+    }
+
+    public System.Threading.Tasks.Task<(bool success, string currentPassword, string newPassword)?> ShowChangePasswordDialogAsync()
+    {
+        if (Application.Current == null)
+            return System.Threading.Tasks.Task.FromResult<(bool, string, string)?>(null);
+
+        (bool success, string currentPassword, string newPassword)? result = null;
+
+        using var _ = TrackModal();
+        Action openDialog = () =>
+        {
+            var dialog = new ChangePasswordDialog
+            {
+                Owner = Application.Current.MainWindow
+            };
+            if (dialog.ShowDialog() == true)
+            {
+                result = (true, dialog.CurrentPassword, dialog.NewPassword);
+            }
+            else
+            {
+                result = (false, string.Empty, string.Empty);
+            }
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.FromResult(result);
     }
 
     public decimal? ShowCashAdvanceDialog()
@@ -126,6 +179,7 @@ public class WpfDialogService : IDialogService
         if (Application.Current == null) return null;
 
         decimal? resultAmount = null;
+        using var _ = TrackModal();
         Action openDialog = () =>
         {
             var dialog = new CashAdvanceDialog();
@@ -152,6 +206,7 @@ public class WpfDialogService : IDialogService
     public void ShowSuccessDialog(string message)
     {
         if (Application.Current == null) return;
+        using var _ = TrackModal();
         Action openDialog = () =>
         {
             var dialog = new SuccessDialogWindow(message)
@@ -174,6 +229,7 @@ public class WpfDialogService : IDialogService
     public async System.Threading.Tasks.Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title)
     {
         if (Application.Current == null) return null;
+        using var _ = TrackModal();
         var dialog = new CashTransactionDialog(title);
         var result = await MaterialDesignThemes.Wpf.DialogHost.Show(dialog, "RootDialog");
         if (result is bool success && success)
@@ -186,6 +242,7 @@ public class WpfDialogService : IDialogService
     public bool? ShowProductDialog(ViewModels.ProductDialogViewModel dialogVm)
     {
         if (Application.Current == null) return null;
+        using var _ = TrackModal();
         bool? res = null;
         Action openDialog = () =>
         {
@@ -203,6 +260,7 @@ public class WpfDialogService : IDialogService
     public (bool success, int quantityChange, string reason) ShowAdjustStockDialog(Core.DTOs.ProductDto product)
     {
         if (Application.Current == null) return (false, 0, string.Empty);
+        using var _ = TrackModal();
         bool success = false;
         int qtyChange = 0;
         string reason = string.Empty;
@@ -228,6 +286,7 @@ public class WpfDialogService : IDialogService
     public void ShowInterruptedTransactionDialog(string title, string message)
     {
         if (Application.Current == null) return;
+        using var _ = TrackModal();
         Action openDialog = () =>
         {
             var vm = new ViewModels.InterruptedTransactionViewModel(title, message);
@@ -248,6 +307,7 @@ public class WpfDialogService : IDialogService
         await vm.InitializeAsync();
 
         CustomerDto? result = null;
+        using var _ = TrackModal();
         Action openDialog = () =>
         {
             var dialog = new CustomerPickerDialog(vm);
@@ -271,6 +331,7 @@ public class WpfDialogService : IDialogService
 
         (bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)? result = null;
 
+        using var _ = TrackModal();
         Action openDialog = () =>
         {
             var vm = new ViewModels.CashAdvanceRegisterViewModel(paymentMethods, availableCashLocal);
@@ -297,6 +358,7 @@ public class WpfDialogService : IDialogService
         bool confirmed = false;
         System.Collections.Generic.IEnumerable<UpdateSaleItemDto>? modifiedItems = null;
 
+        using var _ = TrackModal();
         Action openDialog = () =>
         {
             var dialog = new EditSaleDialog();

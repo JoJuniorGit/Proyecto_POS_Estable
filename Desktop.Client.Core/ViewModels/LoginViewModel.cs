@@ -9,6 +9,7 @@ namespace Desktop.Client.ViewModels;
 public partial class LoginViewModel : ObservableObject
 {
     private readonly IUserService _userService;
+    private readonly IDialogService _dialogService;
     private readonly UserSession _userSession;
 
     [ObservableProperty]
@@ -22,9 +23,10 @@ public partial class LoginViewModel : ObservableObject
 
     public event Action? LoginSuccess;
 
-    public LoginViewModel(IUserService userService, UserSession userSession)
+    public LoginViewModel(IUserService userService, IDialogService dialogService, UserSession userSession)
     {
         _userService = userService;
+        _dialogService = dialogService;
         _userSession = userSession;
     }
 
@@ -42,10 +44,22 @@ public partial class LoginViewModel : ObservableObject
 
         try
         {
-            var user = await _userService.LoginAsync(Cedula.Trim());
-            if (user != null)
+            var result = await _userService.LoginAsync(Cedula.Trim());
+            if (result == null)
             {
-                _userSession.SetUser(user);
+                ErrorMessage = "Cédula no encontrada o usuario inactivo.";
+                return;
+            }
+
+            if (result.RequiresPasswordChange)
+            {
+                await HandlePasswordChangeAsync();
+                return;
+            }
+
+            if (result.User != null)
+            {
+                _userSession.SetUser(result.User);
                 Cedula = string.Empty;
                 LoginSuccess?.Invoke();
             }
@@ -61,6 +75,45 @@ public partial class LoginViewModel : ObservableObject
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private async Task HandlePasswordChangeAsync()
+    {
+        var dialogResult = await _dialogService.ShowChangePasswordDialogAsync();
+        if (dialogResult == null)
+        {
+            ErrorMessage = "No se pudo abrir el diálogo de cambio de contraseña.";
+            return;
+        }
+
+        if (!dialogResult.Value.success)
+        {
+            ErrorMessage = "Debe cambiar su contraseña antes de continuar.";
+            return;
+        }
+
+        try
+        {
+            var cedula = Cedula.Trim();
+            await _userService.ChangePasswordAsync(cedula, dialogResult.Value.currentPassword, dialogResult.Value.newPassword);
+
+            // Reintentar el login con la nueva contraseña.
+            var retry = await _userService.LoginAsync(cedula);
+            if (retry?.User != null)
+            {
+                _userSession.SetUser(retry.User);
+                Cedula = string.Empty;
+                LoginSuccess?.Invoke();
+            }
+            else
+            {
+                ErrorMessage = "Contraseña actualizada. Vuelva a iniciar sesión.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = "No se pudo cambiar la contraseña: " + ex.Message;
         }
     }
 

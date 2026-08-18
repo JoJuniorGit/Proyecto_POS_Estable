@@ -15,16 +15,48 @@ public class UserService : IUserService
         _httpClient = httpClient;
     }
 
-    public async Task<UserDto?> LoginAsync(string cedula)
+    public async Task<LoginResultDto?> LoginAsync(string cedula)
     {
         var response = await _httpClient.PostAsJsonAsync("api/auth/login", new LoginRequest { Cedula = cedula });
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            var err = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(body);
+            if (err != null && err.TryGetValue("requiresPasswordChange", out var requiresChangeValue) &&
+                requiresChangeValue is bool requiresChange && requiresChange)
+            {
+                string msg = err.TryGetValue("message", out var messageValue)
+                    ? messageValue?.ToString() ?? string.Empty
+                    : "Debe cambiar su contraseña antes de continuar.";
+                return new LoginResultDto { RequiresPasswordChange = true, Message = msg };
+            }
+        }
+
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
             string msg = err != null && err.ContainsKey("message") ? err["message"] : "Error al iniciar sesión.";
             throw new System.Exception(msg);
         }
-        return await response.Content.ReadFromJsonAsync<UserDto>();
+
+        return new LoginResultDto { User = await response.Content.ReadFromJsonAsync<UserDto>() };
+    }
+
+    public async Task<bool> ChangePasswordAsync(string cedula, string currentPassword, string newPassword)
+    {
+        var response = await _httpClient.PostAsJsonAsync("api/auth/change-password", new ChangePasswordRequest
+        {
+            Cedula = cedula,
+            CurrentPassword = currentPassword,
+            NewPassword = newPassword
+        });
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+            string msg = err != null && err.ContainsKey("message") ? err["message"] : "No se pudo cambiar la contraseña.";
+            throw new System.Exception(msg);
+        }
+        return true;
     }
 
     public async Task<List<UserDto>> GetUsersAsync()

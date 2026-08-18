@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
 using Core.DTOs;
+using Backend.API.Services;
 using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
@@ -39,6 +40,15 @@ public class AuthController : ControllerBase
             return Unauthorized(new { Message = "El usuario está inactivo en el sistema." });
         }
 
+        if (user.MustChangePassword)
+        {
+            return StatusCode(403, new
+            {
+                RequiresPasswordChange = true,
+                Message = "Debe cambiar su contraseña antes de continuar."
+            });
+        }
+
         var dto = new UserDto
         {
             Id = user.Id,
@@ -49,5 +59,33 @@ public class AuthController : ControllerBase
         };
 
         return Ok(dto);
+    }
+
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Cedula) ||
+            string.IsNullOrWhiteSpace(request.CurrentPassword) ||
+            string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            return BadRequest(new { Message = "Cédula, contraseña actual y nueva contraseña son requeridas." });
+        }
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Cedula == request.Cedula.Trim());
+        if (user == null)
+        {
+            return NotFound(new { Message = "Usuario no encontrado con esa Cédula." });
+        }
+
+        if (!PasswordHasher.VerifyPassword(request.CurrentPassword, user.PasswordHash))
+        {
+            return Unauthorized(new { Message = "La contraseña actual es incorrecta." });
+        }
+
+        user.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
+        user.MustChangePassword = false;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { Message = "Contraseña actualizada correctamente." });
     }
 }
