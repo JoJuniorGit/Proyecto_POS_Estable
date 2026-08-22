@@ -56,19 +56,24 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
   const remainingBsS = Math.max(0, targetTotalBsS - paidBsS);
   const remainingUsd = Math.max(0, targetTotalUSD - paidUsd);
 
-  const isFullLiquidation = remainingUsd <= 0.05;
+  const hasValidPayments = payments.length > 0 && payments.every((p) => (p.amountBsS > 0 || p.amountUsd > 0));
+  const isFullLiquidation = hasValidPayments && remainingUsd <= 0.05;
 
   // Ajuste de redondeo si la diferencia en USD es < 0.01
   const roundingAdjustment = remainingUsd <= 0.01 ? paidBsS - targetTotalBsS : 0;
 
-  // En cobro normal del POS se exige 100% liquidadas. En Cuentas Abiertas (overrideSale) se permiten abonos si hay al menos 1 pago.
-  const canFinalize = overrideSale ? (payments.length > 0 || isFullLiquidation) : isFullLiquidation;
+  // Venta normal POS: requiere al menos 1 pago y saldo cubierto. Cuentas Abiertas (overrideSale): permite abonos parciales con al menos 1 pago.
+  const canFinalize = hasValidPayments && (overrideSale ? true : isFullLiquidation);
 
   const custName = (activeSale?.customerName || '').toLowerCase();
   const isDefaultCust = !activeSale?.customerId || custName.includes('consumidor final') || custName.includes('general');
   const pendingPickupError = (isPendingPickup && isDefaultCust)
     ? 'Para registrar un apartado pagado (Mercancía en Custodia), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono). Asigne un cliente a la venta antes de continuar.'
     : null;
+
+  const noPaymentsNotice = !hasValidPayments
+    ? 'Agregue al menos un método de pago presionando "+ Agregar Pago" para procesar el cobro.'
+    : (!overrideSale && !isFullLiquidation ? 'El monto acumulado aún no cubre el 100% del total de la venta.' : null);
 
   const displayError = error || pendingPickupError;
 
@@ -81,7 +86,10 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
   };
 
   const handleFinalizeSale = async () => {
-    if (!activeSale?.id || !canFinalize) return;
+    if (!activeSale?.id || !canFinalize || !hasValidPayments) {
+      setError('Debe agregar al menos un método de pago con monto válido antes de continuar.');
+      return;
+    }
 
     // Validación de Cliente para Mercancía en Custodia (Pendiente por Retirar)
     if (isPendingPickup && isDefaultCust) {
@@ -198,11 +206,15 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
       )}
 
       <div className="checkout-footer">
-        {displayError && (
+        {displayError ? (
           <div className="alert alert-danger mb-3" style={{ fontSize: '0.85rem', lineHeight: '1.4', padding: '10px 14px', borderRadius: '8px' }}>
             {displayError}
           </div>
-        )}
+        ) : (noPaymentsNotice && (
+          <div className="alert alert-warning mb-3" style={{ fontSize: '0.85rem', lineHeight: '1.4', padding: '10px 14px', borderRadius: '8px' }}>
+            {noPaymentsNotice}
+          </div>
+        ))}
 
         <button
           type="button"
