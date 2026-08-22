@@ -1,14 +1,21 @@
 import { useState, useEffect } from 'react';
 
-export default function QuantityInput({ item, onUpdateQty, style }) {
-  const [localVal, setLocalVal] = useState(String(item?.quantity ?? ''));
+export default function QuantityInput({ item, value, onUpdateQty, onChange, style }) {
+  const currentQty = item?.quantity !== undefined && item?.quantity !== null ? item.quantity : (value !== undefined && value !== null ? value : '');
+  const itemId = item?.id ?? item?.productId ?? 0;
+  const [localVal, setLocalVal] = useState(String(currentQty ?? ''));
 
   useEffect(() => {
-    // Synchronize local input state when item quantity changes externally (e.g. + / - buttons or server response)
-    if (item?.quantity !== undefined && item?.quantity !== null && item?.quantity !== '') {
-      setLocalVal(String(item.quantity));
+    // Synchronize local input state when quantity changes externally
+    if (currentQty !== undefined && currentQty !== null && currentQty !== '') {
+      setLocalVal(String(currentQty));
     }
-  }, [item?.quantity]);
+  }, [currentQty]);
+
+  const fireQtyChange = (newQty) => {
+    if (onUpdateQty) onUpdateQty(itemId, newQty);
+    if (onChange) onChange(newQty);
+  };
 
   const handleChange = (e) => {
     const inputStr = e.target.value;
@@ -16,6 +23,7 @@ export default function QuantityInput({ item, onUpdateQty, style }) {
     // 1. Allow blank string while user erases to type a new value
     if (inputStr === '') {
       setLocalVal('');
+      if (onChange) onChange('');
       return;
     }
 
@@ -32,7 +40,7 @@ export default function QuantityInput({ item, onUpdateQty, style }) {
     const parsedFloat = parseFloat(normalized);
     if (!isNaN(parsedFloat) && parsedFloat > 0) {
       const rounded = Math.round(parsedFloat * 1000) / 1000;
-      onUpdateQty(item.id, rounded);
+      fireQtyChange(rounded);
     }
   };
 
@@ -40,10 +48,10 @@ export default function QuantityInput({ item, onUpdateQty, style }) {
     const defaultQty = 1;
 
     if (!localVal || localVal === '.' || localVal === ',') {
-      const fallbackVal = item?.quantity > 0 ? item.quantity : defaultQty;
+      const fallbackVal = (typeof currentQty === 'number' && currentQty > 0) ? currentQty : defaultQty;
       setLocalVal(String(fallbackVal));
-      if (item?.quantity !== fallbackVal) {
-        onUpdateQty(item.id, fallbackVal);
+      if (currentQty !== fallbackVal) {
+        fireQtyChange(fallbackVal);
       }
       return;
     }
@@ -53,11 +61,11 @@ export default function QuantityInput({ item, onUpdateQty, style }) {
 
     if (isNaN(parsed) || parsed <= 0) {
       setLocalVal(String(defaultQty));
-      onUpdateQty(item.id, defaultQty);
+      fireQtyChange(defaultQty);
     } else {
       const rounded = Math.round(parsed * 1000) / 1000;
       setLocalVal(String(rounded));
-      onUpdateQty(item.id, rounded);
+      fireQtyChange(rounded);
     }
   };
 

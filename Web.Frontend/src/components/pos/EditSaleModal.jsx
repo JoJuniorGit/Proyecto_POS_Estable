@@ -166,9 +166,8 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
                           type="button"
                           className="qty-btn"
                           onClick={() => {
-                            const newQty = Math.round((item.quantity - step) * 1000) / 1000;
-                            if (newQty > 0) handleUpdateQuantity(idx, newQty);
-                            else handleRemoveItem(idx);
+                            const newQty = Math.max(step, Math.round((item.quantity - step) * 1000) / 1000);
+                            handleUpdateQuantity(idx, newQty);
                           }}
                           title="Disminuir cantidad"
                         >
@@ -176,6 +175,10 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
                         </button>
                         <QuantityInput
                           item={item}
+                          value={item.quantity}
+                          isFractional={item.isFractional}
+                          unitOfMeasure={item.unitOfMeasure}
+                          onChange={(newQty) => handleUpdateQuantity(idx, newQty)}
                           onUpdateQty={(_, newQty) => handleUpdateQuantity(idx, newQty)}
                         />
                         <button
@@ -223,7 +226,6 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
           <span>El nuevo total ({formatUSD(newTotalUSD)}) no puede ser menor a lo ya abonado por el cliente ({formatUSD(totalPaidUSD)}).</span>
         </div>
       )}
-
 
       {/* Resumen Financiero */}
       <div 

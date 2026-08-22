@@ -658,6 +658,92 @@ public class OnHoldSalesTests
         Assert.Single(pendingSales[0].Items);
         Assert.Equal(1.33m, pendingSales[0].Items[0].Quantity);
     }
+
+    [Fact]
+    public async Task CancelSaleAsync_WithoutPayments_ChangesStatusToCancelled()
+    {
+        using var context = GetInMemoryDbContext();
+        var mockInventory = new Mock<IInventoryService>();
+        var mockMediator = new Mock<IMediator>();
+        var mockCashDrawer = new Mock<ICashDrawerService>();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        var sale = new Sale { Id = 1, TotalUSD = 50m, Status = SaleStatus.OnHold, DeliveryStatus = SaleDeliveryStatus.PendingPickup };
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
+        await service.CancelSaleAsync(1);
+
+        var updatedSale = await context.Sales.FindAsync(1);
+        Assert.NotNull(updatedSale);
+        Assert.Equal(SaleStatus.Cancelled, updatedSale.Status);
+    }
+
+    [Fact]
+    public async Task CancelSaleAsync_WithPayments_ThrowsInvalidOperationException()
+    {
+        using var context = GetInMemoryDbContext();
+        var mockInventory = new Mock<IInventoryService>();
+        var mockMediator = new Mock<IMediator>();
+        var mockCashDrawer = new Mock<ICashDrawerService>();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        var paymentMethod = new PaymentMethod { Id = 1, Name = "Efectivo USD", IsActive = true };
+        context.PaymentMethods.Add(paymentMethod);
+
+        var sale = new Sale { Id = 1, TotalUSD = 50m, Status = SaleStatus.OnHold, DeliveryStatus = SaleDeliveryStatus.PendingPickup };
+        sale.Payments.Add(new SalePayment { Id = 1, SaleId = 1, PaymentMethodId = 1, Amount = 10m, AmountBsS = 7800m });
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelSaleAsync(1));
+        Assert.Contains("abonos acumulados", ex.Message);
+    }
+
+    [Fact]
+    public async Task CancelSaleAsync_DeliveredOrder_ThrowsInvalidOperationException()
+    {
+        using var context = GetInMemoryDbContext();
+        var mockInventory = new Mock<IInventoryService>();
+        var mockMediator = new Mock<IMediator>();
+        var mockCashDrawer = new Mock<ICashDrawerService>();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        var sale = new Sale { Id = 1, TotalUSD = 50m, Status = SaleStatus.OnHold, DeliveryStatus = SaleDeliveryStatus.Delivered };
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelSaleAsync(1));
+        Assert.Contains("entregado al cliente", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetPendingSalesAsync_ExcludesCancelledSales()
+    {
+        using var context = GetInMemoryDbContext();
+        var mockInventory = new Mock<IInventoryService>();
+        var mockMediator = new Mock<IMediator>();
+        var mockCashDrawer = new Mock<ICashDrawerService>();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        var saleOnHold = new Sale { Id = 1, TotalUSD = 50m, Status = SaleStatus.OnHold };
+        var saleCancelled = new Sale { Id = 2, TotalUSD = 30m, Status = SaleStatus.Cancelled };
+        context.Sales.AddRange(saleOnHold, saleCancelled);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
+        var pendingSales = (await service.GetPendingSalesAsync()).ToList();
+
+        Assert.Single(pendingSales);
+        Assert.Equal(1, pendingSales[0].Id);
+    }
 }
 
 

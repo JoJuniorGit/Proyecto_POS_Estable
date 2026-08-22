@@ -143,3 +143,11 @@ export async function updateSaleItems(saleId, items) {
     items
   });
 }
+
+/**
+ * Anula / elimina una venta en espera.
+ * @param {number} saleId
+ */
+export async function cancelSale(saleId) {
+  return await api.post(`/api/sales/${saleId}/cancel`);
+}

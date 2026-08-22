@@ -7,7 +7,8 @@ export default function CustomerSelectorCard({
   isPendingPickup = false,
   forceExpand = false,
   onSelectCustomer,
-  disabled = false
+  disabled = false,
+  readOnly = false
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [query, setQuery] = useState('');
@@ -34,7 +35,7 @@ export default function CustomerSelectorCard({
 
   // Auto-expandir cuando se marca Mercancía en Custodia y el cliente es Consumidor Final
   useEffect(() => {
-    if (forceExpand || (isPendingPickup && isDefaultCust)) {
+    if (!readOnly && (forceExpand || (isPendingPickup && isDefaultCust))) {
       setIsExpanded(true);
       setIsDropdownOpen(true);
       loadCustomers('');
@@ -42,7 +43,7 @@ export default function CustomerSelectorCard({
         if (searchInputRef.current) searchInputRef.current.focus();
       }, 80);
     }
-  }, [forceExpand, isPendingPickup, isDefaultCust]);
+  }, [forceExpand, isPendingPickup, isDefaultCust, readOnly]);
 
   // Manejar tecla Escape para cerrar dropdown
   useEffect(() => {
@@ -70,7 +71,7 @@ export default function CustomerSelectorCard({
   };
 
   const handleToggleExpand = () => {
-    if (disabled) return;
+    if (disabled || readOnly) return;
     const nextState = !isExpanded;
     setIsExpanded(nextState);
     setError(null);
@@ -176,7 +177,11 @@ export default function CustomerSelectorCard({
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div className="text-xs text-muted font-medium">Cliente Asignado:</div>
-            <div className="font-bold text-sm text-truncate text-primary" style={{ lineHeight: '1.2' }}>
+            <div
+              className="font-bold text-sm text-primary"
+              style={{ lineHeight: '1.2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '280px' }}
+              title={isDefaultCust ? 'Consumidor Final (V-00000000)' : `${currentCustomer.name || currentCustomer.customerName}`}
+            >
               {isDefaultCust
                 ? 'Consumidor Final (V-00000000)'
                 : `${currentCustomer.name || currentCustomer.customerName} ${currentCustomer.cedulaOrRif || currentCustomer.customerCedula ? `(${currentCustomer.cedulaOrRif || currentCustomer.customerCedula})` : ''}`}
@@ -184,36 +189,39 @@ export default function CustomerSelectorCard({
           </div>
         </div>
 
-        <button
-          type="button"
-          disabled={disabled || saving}
-          onClick={handleToggleExpand}
-          className="btn btn-sm btn-outline-secondary flex-align-center gap-1"
-          style={{
-            fontSize: '0.8rem',
-            padding: '4px 10px',
-            borderRadius: '6px',
-            borderColor: isWarningHighlight ? '#f59e0b' : undefined,
-            color: isWarningHighlight ? '#f59e0b' : undefined,
-            flexShrink: 0
-          }}
-        >
-          {saving ? (
-            <Loader2 className="animate-spin" size={14} />
-          ) : isExpanded ? (
-            <>
-              Cerrar <ChevronUp size={14} />
-            </>
-          ) : isDefaultCust ? (
-            <>
-              + Asignar Cliente <ChevronDown size={14} />
-            </>
-          ) : (
-            <>
-              ✏️ Cambiar <ChevronDown size={14} />
-            </>
-          )}
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            disabled={disabled || saving}
+            onClick={handleToggleExpand}
+            className="btn btn-sm btn-outline-secondary d-inline-flex flex-align-center gap-1"
+            style={{
+              fontSize: '0.8rem',
+              padding: '4px 10px',
+              borderRadius: '6px',
+              borderColor: isWarningHighlight ? '#f59e0b' : 'var(--border)',
+              color: isWarningHighlight ? '#f59e0b' : 'var(--text-primary)',
+              backgroundColor: 'var(--bg-card, rgba(255, 255, 255, 0.04))',
+              flexShrink: 0
+            }}
+          >
+            {saving ? (
+              <Loader2 className="animate-spin" size={14} />
+            ) : isExpanded ? (
+              <>
+                <span>Cerrar</span> <ChevronUp size={14} />
+              </>
+            ) : isDefaultCust ? (
+              <>
+                <span>+ Asignar Cliente</span> <ChevronDown size={14} />
+              </>
+            ) : (
+              <>
+                <span>✏️ Cambiar</span> <ChevronDown size={14} />
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Alerta si es necesario asignar cliente para Mercancía en Custodia */}
@@ -225,7 +233,7 @@ export default function CustomerSelectorCard({
 
       {/* Buscador Colapsable */}
       {isExpanded && (
-        <div className="mt-3 pt-3 border-top" style={{ borderColor: 'var(--border)' }}>
+        <div className="mt-3 pt-3 border-top" style={{ borderColor: 'var(--border)', position: 'relative' }}>
           {error && (
             <div className="alert alert-danger mb-2 py-1 px-2 text-xs" style={{ borderRadius: '6px' }}>
               {error}
@@ -233,7 +241,7 @@ export default function CustomerSelectorCard({
           )}
 
           {!isCreatingCustomer ? (
-            <div>
+            <div style={{ position: 'relative' }}>
               <div className="d-flex gap-2 mb-2" style={{ position: 'relative' }}>
                 <div style={{ position: 'relative', flex: 1 }}>
                   <input
@@ -247,9 +255,9 @@ export default function CustomerSelectorCard({
                     style={{
                       paddingLeft: '32px',
                       paddingRight: '28px',
-                      backgroundColor: 'var(--bg-input)',
+                      backgroundColor: 'var(--bg-input, #111827)',
                       color: 'var(--text-primary)',
-                      borderColor: 'var(--border)'
+                      borderColor: 'var(--border-hover, #4b5563)'
                     }}
                   />
                   <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -267,35 +275,49 @@ export default function CustomerSelectorCard({
                 <button
                   type="button"
                   onClick={() => setIsCreatingCustomer(true)}
-                  className="btn btn-sm btn-outline-primary d-inline-flex flex-align-center gap-1"
-                  style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', flexShrink: 0 }}
+                  className="btn btn-sm btn-primary d-inline-flex flex-align-center gap-1"
+                  style={{
+                    fontSize: '0.8rem',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                    fontWeight: '600',
+                    backgroundColor: 'var(--accent-primary, #6366f1)',
+                    color: '#ffffff',
+                    borderColor: 'transparent'
+                  }}
                 >
                   <UserPlus size={14} /> + Crear
                 </button>
               </div>
 
-              {/* Lista de Resultados Desplegable */}
+              {/* Lista de Resultados Desplegable Flotante (Floating Dropdown Overlay) */}
               {isDropdownOpen && (
                 <div
-                  className="custom-scrollbar mt-1"
+                  className="custom-scrollbar"
                   style={{
-                    maxHeight: '180px',
+                    position: 'absolute',
+                    top: 'calc(100% + 4px)',
+                    left: 0,
+                    right: 0,
+                    zIndex: 60,
+                    maxHeight: '200px',
                     overflowY: 'auto',
-                    backgroundColor: 'var(--bg-card, var(--bg-surface))',
-                    border: '1px solid var(--border)',
-                    borderRadius: '8px'
+                    backgroundColor: 'var(--bg-surface, #1f2937)',
+                    border: '1px solid var(--border-hover, #4b5563)',
+                    borderRadius: '10px',
+                    boxShadow: '0 16px 36px rgba(0, 0, 0, 0.65)'
                   }}
                 >
                   {loadingCustomers ? (
-                    <div className="text-center py-2 text-xs text-muted d-flex flex-align-center justify-center gap-1">
+                    <div className="text-center py-3 text-xs text-muted d-flex flex-align-center justify-center gap-1">
                       <Loader2 className="animate-spin" size={14} /> Buscando clientes...
                     </div>
                   ) : customers.length === 0 ? (
-                    <div className="text-center py-2 text-xs text-muted">
+                    <div className="text-center py-3 text-xs text-muted">
                       No se encontraron clientes coincidentes.
                     </div>
                   ) : (
-                    customers.map((c) => {
+                    (query.trim() ? customers : customers.slice(0, 8)).map((c) => {
                       const isChosen = currentCustomer?.id === c.id;
                       return (
                         <div
@@ -304,16 +326,25 @@ export default function CustomerSelectorCard({
                           className="d-flex justify-between flex-align-center px-3 py-2 text-left"
                           style={{
                             cursor: 'pointer',
+                            padding: '10px 14px',
                             backgroundColor: isChosen ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
                             borderBottom: '1px solid var(--border)',
                             transition: 'background-color 0.15s ease'
                           }}
-                          onMouseEnter={(e) => { if (!isChosen) e.currentTarget.style.backgroundColor = 'var(--bg-hover, rgba(255,255,255,0.05))'; }}
+                          onMouseEnter={(e) => { if (!isChosen) e.currentTarget.style.backgroundColor = 'var(--bg-hover, rgba(255,255,255,0.06))'; }}
                           onMouseLeave={(e) => { if (!isChosen) e.currentTarget.style.backgroundColor = 'transparent'; }}
                         >
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div className="font-bold text-sm text-primary text-truncate">{c.name}</div>
-                            <div className="text-xs text-muted">{c.cedulaOrRif} {c.phone ? `• ${c.phone}` : ''}</div>
+                            <div
+                              className="font-bold text-sm text-primary text-truncate"
+                              style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}
+                              title={c.name}
+                            >
+                              {c.name}
+                            </div>
+                            <div className="text-xs text-muted" style={{ marginTop: '2px' }}>
+                              {c.cedulaOrRif} {c.phone ? `• ${c.phone}` : ''}
+                            </div>
                           </div>
                           {isChosen && <Check size={16} className="text-primary flex-shrink-0 ml-2" />}
                         </div>
@@ -325,17 +356,8 @@ export default function CustomerSelectorCard({
             </div>
           ) : (
             /* Formulario de Creación de Cliente */
-            <form onSubmit={handleCreateCustomerSubmit} className="p-2 border rounded" style={{ backgroundColor: 'var(--bg-input)', borderColor: 'var(--border)' }}>
-              <div className="d-flex justify-between flex-align-center mb-2">
-                <span className="font-bold text-xs text-primary">➕ Registrar Nuevo Cliente</span>
-                <button
-                  type="button"
-                  onClick={() => setIsCreatingCustomer(false)}
-                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-                >
-                  <X size={14} />
-                </button>
-              </div>
+            <form onSubmit={handleCreateCustomerSubmit} className="p-3 border rounded" style={{ backgroundColor: 'var(--bg-card, rgba(17, 24, 39, 0.6))', borderColor: 'var(--border-hover, #4b5563)' }}>
+              <div className="font-bold text-xs text-primary mb-2">➕ Registrar Nuevo Cliente</div>
 
               <div className="d-flex gap-2 mb-2">
                 <input
@@ -344,6 +366,7 @@ export default function CustomerSelectorCard({
                   placeholder="Cédula / RIF (ej. V-12345678)"
                   value={newCustomer.cedulaOrRif}
                   onChange={(e) => setNewCustomer({ ...newCustomer, cedulaOrRif: e.target.value })}
+                  style={{ backgroundColor: 'var(--bg-input, #111827)', borderColor: 'var(--border-hover, #4b5563)', color: 'var(--text-primary)' }}
                   required
                 />
                 <input
@@ -352,17 +375,19 @@ export default function CustomerSelectorCard({
                   placeholder="Nombre completo"
                   value={newCustomer.name}
                   onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
+                  style={{ backgroundColor: 'var(--bg-input, #111827)', borderColor: 'var(--border-hover, #4b5563)', color: 'var(--text-primary)' }}
                   required
                 />
               </div>
 
-              <div className="d-flex gap-2 mb-2">
+              <div className="d-flex gap-2 mb-3">
                 <input
                   type="text"
                   className="form-input text-xs"
                   placeholder="Teléfono (Opcional)"
                   value={newCustomer.phone}
                   onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
+                  style={{ backgroundColor: 'var(--bg-input, #111827)', borderColor: 'var(--border-hover, #4b5563)', color: 'var(--text-primary)' }}
                 />
               </div>
 
@@ -370,6 +395,15 @@ export default function CustomerSelectorCard({
                 <button
                   type="button"
                   className="btn btn-xs btn-outline-secondary"
+                  style={{
+                    padding: '5px 14px',
+                    borderRadius: '6px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid var(--border-hover, #4b5563)',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem'
+                  }}
                   onClick={() => setIsCreatingCustomer(false)}
                 >
                   Cancelar
@@ -378,6 +412,7 @@ export default function CustomerSelectorCard({
                   type="submit"
                   disabled={saving}
                   className="btn btn-xs btn-primary d-inline-flex flex-align-center gap-1"
+                  style={{ padding: '5px 14px', fontSize: '0.8rem' }}
                 >
                   {saving ? <Loader2 className="animate-spin" size={12} /> : <Check size={12} />}
                   Guardar y Asignar

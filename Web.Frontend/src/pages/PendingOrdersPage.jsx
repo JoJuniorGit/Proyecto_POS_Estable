@@ -1,20 +1,26 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getPendingSales, completeSale, addPaymentToHoldSale } from '../services/salesApi';
+import { getPendingSales, completeSale, addPaymentToHoldSale, cancelSale } from '../services/salesApi';
 import { getActivePaymentMethods } from '../services/paymentApi';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 import CheckoutModal from '../components/checkout/CheckoutModal';
 import EditSaleModal from '../components/pos/EditSaleModal';
 import SuccessScreen from '../components/checkout/SuccessScreen';
+import Modal from '../components/ui/Modal';
 import { formatNumberEs, formatBsS, formatUSD, formatQuantity } from '../utils/formatters';
-import { Search, Loader2, Clock, ChevronRight, ChevronDown, RefreshCw, CheckCircle, ShieldCheck, Edit2, User } from 'lucide-react';
+import { Search, Loader2, Clock, ChevronRight, ChevronDown, RefreshCw, CheckCircle, ShieldCheck, Edit2, User, Trash2, AlertTriangle } from 'lucide-react';
 import './PendingOrdersPage.css';
 
 export default function PendingOrdersPage({ onNavigate }) {
+  const { user } = useAuth();
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedSaleId, setExpandedSaleId] = useState(null);
+  const [selectedSaleId, setSelectedSaleId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showConfirmCancel, setShowConfirmCancel] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [completedLiquidation, setCompletedLiquidation] = useState(null);
   
@@ -56,11 +62,39 @@ export default function PendingOrdersPage({ onNavigate }) {
   }, [loadPendingData, exchangeRate]);
 
   const toggleExpand = (id) => {
+    setSelectedSaleId(id);
     setExpandedSaleId(prev => prev === id ? null : id);
   };
 
   const handleEditSale = (sale) => {
+    setSelectedSaleId(sale.id);
     setSelectedSaleForEdit(sale);
+  };
+
+  const selectedSale = sales.find(s => s.id === selectedSaleId) || sales.find(s => s.id === expandedSaleId);
+  const isUserAdminOrManager = user?.role === 'Admin' || user?.role === 'Manager' || user?.role === 0 || user?.role === '0';
+  const selectedSaleTotalPaidUSD = selectedSale?.totalPaidUSD || (selectedSale?.payments?.reduce((acc, p) => acc + (p.amount || 0), 0)) || 0;
+  const hasPayments = selectedSaleTotalPaidUSD > 0 || (selectedSale?.payments && selectedSale.payments.length > 0);
+  const canCancelSelectedSale = selectedSale && isUserAdminOrManager && !hasPayments;
+
+  const handleConfirmCancelSale = async () => {
+    if (!selectedSale || !canCancelSelectedSale) return;
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await cancelSale(selectedSale.id);
+      setShowConfirmCancel(false);
+      setSelectedSaleId(null);
+      if (expandedSaleId === selectedSale.id) setExpandedSaleId(null);
+      await loadPendingData();
+    } catch (err) {
+      console.error('[PendingOrdersPage] Error al anular pedido:', err);
+      const msg = err.response?.data?.message || err.response?.data || err.message || 'Error al anular el pedido.';
+      setError(typeof msg === 'string' ? msg : 'Error al anular el pedido.');
+      setShowConfirmCancel(false);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const filteredSales = sales.filter(s => {
@@ -85,9 +119,42 @@ export default function PendingOrdersPage({ onNavigate }) {
           </p>
         </div>
 
-        <button className="btn btn-outline flex-align-center gap-2" onClick={loadPendingData} disabled={loading}>
-          <RefreshCw size={16} className={loading ? 'spin' : ''} /> Actualizar
-        </button>
+        <div className="d-flex gap-2 flex-wrap flex-align-center">
+          {selectedSale ? (
+            <button
+              className="btn btn-danger flex-align-center gap-2 font-bold"
+              onClick={() => setShowConfirmCancel(true)}
+              disabled={!canCancelSelectedSale || isDeleting}
+              style={{
+                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.35)',
+                transition: 'all 0.2s ease',
+                padding: '8px 16px',
+                fontSize: '0.875rem'
+              }}
+              title={hasPayments ? "No se puede anular un pedido con abonos acumulados" : (!isUserAdminOrManager ? "Requiere rol de Administrador o Gerente" : `Anular pedido #${selectedSale.id}`)}
+            >
+              <Trash2 size={16} /> Anular Pedido #{selectedSale.id}
+            </button>
+          ) : (
+            <button
+              className="btn btn-danger flex-align-center gap-2 font-bold"
+              disabled={true}
+              style={{
+                opacity: 0.4,
+                cursor: 'not-allowed',
+                padding: '8px 16px',
+                fontSize: '0.875rem'
+              }}
+              title="Seleccione un pedido en la lista para anularlo"
+            >
+              <Trash2 size={16} /> Anular Pedido
+            </button>
+          )}
+
+          <button className="btn btn-outline flex-align-center gap-2" onClick={loadPendingData} disabled={loading}>
+            <RefreshCw size={16} className={loading ? 'spin' : ''} /> Actualizar
+          </button>
+        </div>
       </div>
 
       {/* ── 2. Controles de Búsqueda y Tasa BCV ── */}
@@ -425,7 +492,7 @@ export default function PendingOrdersPage({ onNavigate }) {
           isOpen={!!selectedSaleForCheckout}
           onClose={() => setSelectedSaleForCheckout(null)}
           overrideSale={selectedSaleForCheckout}
-          onCompleteSale={async (paymentList, roundingAdjustment) => {
+          onCompleteSale={async (paymentList, roundingAdjustment, isPendingPickup) => {
             try {
               const targetSaleId = selectedSaleForCheckout.id;
               const currentPaidUsd = selectedSaleForCheckout.totalPaidUSD || 0;
@@ -435,17 +502,28 @@ export default function PendingOrdersPage({ onNavigate }) {
               const isFullyCompleted = remainingDebtAfterUsd <= 0.05;
 
               if (isFullyCompleted) {
-                const invoiceNumber = await completeSale(targetSaleId, exchangeRate, paymentList, roundingAdjustment);
+                const invoiceNumber = await completeSale(targetSaleId, exchangeRate, paymentList, roundingAdjustment, null, isPendingPickup);
                 setSelectedSaleForCheckout(null);
                 await loadPendingData();
+                window.dispatchEvent(new CustomEvent('pendingPickupsUpdated'));
 
-                setCompletedLiquidation({
-                  invoiceNumber: invoiceNumber > 0 ? invoiceNumber : targetSaleId,
-                  title: "¡Cuenta Liquidada con Éxito!",
-                  badgeText: `Factura N° ${invoiceNumber > 0 ? invoiceNumber.toString().padStart(6, '0') : targetSaleId}`,
-                  message: "La factura fue completada en su totalidad y el inventario ha sido descontado correctamente.",
-                  buttonText: "Aceptar"
-                });
+                if (isPendingPickup) {
+                  setCompletedLiquidation({
+                    invoiceNumber: invoiceNumber > 0 ? invoiceNumber : targetSaleId,
+                    title: "¡Pedido Pagado y Enviado a Retiros Pendientes!",
+                    badgeText: `Factura N° ${invoiceNumber > 0 ? invoiceNumber.toString().padStart(6, '0') : targetSaleId}`,
+                    message: "La factura fue pagada al 100% y los productos quedaron resguardados en custodia para su retiro físico posterior.",
+                    buttonText: "Aceptar"
+                  });
+                } else {
+                  setCompletedLiquidation({
+                    invoiceNumber: invoiceNumber > 0 ? invoiceNumber : targetSaleId,
+                    title: "¡Cuenta Liquidada con Éxito!",
+                    badgeText: `Factura N° ${invoiceNumber > 0 ? invoiceNumber.toString().padStart(6, '0') : targetSaleId}`,
+                    message: "La factura fue completada en su totalidad y el inventario ha sido descontado correctamente.",
+                    buttonText: "Aceptar"
+                  });
+                }
               } else {
                 for (const p of paymentList) {
                   await addPaymentToHoldSale(targetSaleId, {
@@ -495,6 +573,30 @@ export default function PendingOrdersPage({ onNavigate }) {
           exchangeRate={exchangeRate}
           onSuccess={loadPendingData}
         />
+      )}
+
+      {/* Modal de Confirmación Estilizado para Anulación desde la Sección */}
+      {showConfirmCancel && selectedSale && (
+        <Modal isOpen={true} onClose={() => setShowConfirmCancel(false)} title="Confirmar Anulación de Pedido" maxWidth="440px" centerTitle={true}>
+          <div className="text-center py-2">
+            <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px auto' }}>
+              <AlertTriangle size={24} />
+            </div>
+            <h3 className="font-bold text-base mb-2 text-primary">¿Está seguro de que desea anular el Pedido #{selectedSale.id}?</h3>
+            <p className="text-xs text-muted mb-4" style={{ lineHeight: '1.5' }}>
+              Esta acción anulará el pedido sin descontar caja y liberará las reservas asociadas. Esta acción no se puede deshacer.
+            </p>
+            <div className="d-flex justify-center gap-3">
+              <button type="button" className="btn btn-outline" onClick={() => setShowConfirmCancel(false)} disabled={isDeleting}>
+                Cancelar
+              </button>
+              <button type="button" className="btn btn-danger d-inline-flex flex-align-center gap-1" onClick={handleConfirmCancelSale} disabled={isDeleting}>
+                {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                Sí, Anular Pedido
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

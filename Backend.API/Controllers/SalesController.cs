@@ -153,6 +153,29 @@ public class SalesController : ControllerBase
         return Ok(_pending);
     }
 
+    [HttpPost("{id}/cancel")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> CancelSale(int id)
+    {
+        try
+        {
+            await _salesService.CancelSaleAsync(id);
+            return Ok(new { message = $"Pedido #{id} anulado exitosamente." });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.Collections.Generic.KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (System.Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("customers")]
     public async Task<ActionResult> GetCustomers(
         [FromQuery] string? query = null,

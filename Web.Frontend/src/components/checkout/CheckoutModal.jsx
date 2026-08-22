@@ -9,7 +9,7 @@ import { useExchangeRate } from '../../context/ExchangeRateContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatBsS, formatUSD } from '../../utils/formatters';
 import CustomerSelectorCard from './CustomerSelectorCard';
-import { Check, Loader2 } from 'lucide-react';
+import { Check, Loader2, PackageCheck } from 'lucide-react';
 
 export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale = null, onCompleteSale = null }) {
   const { currentSale, totalBsS: cartTotalBsS, totalUSD: cartTotalUSD, resetCart, updateCustomer } = useCart();
@@ -68,9 +68,11 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
   const custName = (activeSale?.customerName || '').toLowerCase();
   const isDefaultCust = !activeSale?.customerId || activeSale?.customer?.isDefault || custName.includes('consumidor final') || custName.includes('general');
 
+  const isCustodyAllowed = isFullLiquidation && !isDefaultCust;
+  const effectiveIsPendingPickup = isPendingPickup && isCustodyAllowed;
+
   // Venta normal POS: requiere al menos 1 pago y saldo cubierto. Cuentas Abiertas (overrideSale): permite abonos parciales con al menos 1 pago.
-  // Mercancía en custodia: exige obligatoriamente cliente identificado.
-  const canFinalize = hasValidPayments && (overrideSale ? true : isFullLiquidation) && (!isPendingPickup || !isDefaultCust);
+  const canFinalize = hasValidPayments && (overrideSale ? true : isFullLiquidation) && (!isPendingPickup || isCustodyAllowed);
 
   const handleSelectCustomer = async (cust) => {
     if (!cust?.id) return;
@@ -125,7 +127,7 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
       }));
 
       if (onCompleteSale) {
-        await onCompleteSale(rawPayments, roundingAdjustment, isPendingPickup);
+        await onCompleteSale(rawPayments, roundingAdjustment, effectiveIsPendingPickup);
       } else {
         const invoiceNumber = await completeSale(
           activeSale.id,
@@ -133,7 +135,7 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
           rawPayments,
           roundingAdjustment,
           user?.id,
-          isPendingPickup
+          effectiveIsPendingPickup
         );
 
         // Limpiar carrito e iniciar nueva venta (solo en venta normal del POS)
@@ -163,9 +165,10 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
     >
       <CustomerSelectorCard
         currentCustomer={activeSale?.customer || (activeSale?.customerName ? { id: activeSale.customerId, name: activeSale.customerName, cedulaOrRif: activeSale.customerCedula } : null)}
-        isPendingPickup={isPendingPickup}
+        isPendingPickup={effectiveIsPendingPickup}
         onSelectCustomer={handleSelectCustomer}
         disabled={isProcessing}
+        readOnly={!!overrideSale}
       />
 
       <div className="checkout-summary-box">
@@ -198,34 +201,43 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
         <PaymentList payments={payments} onRemovePayment={handleRemovePayment} />
       </div>
 
-      {!overrideSale && (
-        <div className="checkout-section mt-3">
-          <div
-            style={{
-              padding: '12px 14px',
-              borderRadius: '8px',
-              border: isPendingPickup ? '1px solid #f59e0b' : '1px solid var(--border)',
-              backgroundColor: isPendingPickup ? 'rgba(245, 158, 11, 0.08)' : 'var(--bg-surface)',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <label className="flex-align-center gap-2 cursor-pointer font-bold" style={{ fontSize: '0.9rem', color: isPendingPickup ? '#f59e0b' : 'var(--text-primary)' }}>
-              <input
-                type="checkbox"
-                checked={isPendingPickup}
-                onChange={(e) => setIsPendingPickup(e.target.checked)}
-                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-              />
-              <span>📦 Mercancía en Custodia (Pendiente por Retirar)</span>
-            </label>
-            {isPendingPickup && (
-              <div className="text-xs text-muted mt-2 pl-6" style={{ lineHeight: '1.4' }}>
-                El cliente cancela la factura al 100% en caja y deja los productos resguardados en el local para su retiro posterior. El inventario se descuenta inmediatamente. Se requiere cliente identificado.
-              </div>
-            )}
-          </div>
+      <div className="checkout-section mt-3">
+        <div
+          style={{
+            padding: '12px 14px',
+            borderRadius: '8px',
+            border: isPendingPickup ? '1px solid #f59e0b' : '1px solid var(--border)',
+            backgroundColor: isPendingPickup ? 'rgba(245, 158, 11, 0.08)' : 'var(--bg-surface)',
+            transition: 'all 0.2s ease',
+            opacity: (!isFullLiquidation || isDefaultCust) ? 0.8 : 1
+          }}
+        >
+          <label className="flex-align-center gap-2 cursor-pointer font-bold" style={{ fontSize: '0.9rem', color: isPendingPickup ? '#f59e0b' : 'var(--text-primary)' }}>
+            <input
+              type="checkbox"
+              checked={isPendingPickup}
+              disabled={!isFullLiquidation || isDefaultCust}
+              onChange={(e) => setIsPendingPickup(e.target.checked)}
+              style={{ width: '18px', height: '18px', cursor: (!isFullLiquidation || isDefaultCust) ? 'not-allowed' : 'pointer' }}
+            />
+            <span>📦 Mercancía en Custodia (Pendiente por Retirar)</span>
+          </label>
+
+          {!isFullLiquidation ? (
+            <div className="text-xs text-warning mt-2 pl-6" style={{ color: '#f59e0b', lineHeight: '1.4' }}>
+              ⚠️ Requiere pagar el 100% de la venta para poder enviar a Retiros Pendientes.
+            </div>
+          ) : isDefaultCust ? (
+            <div className="text-xs text-warning mt-2 pl-6" style={{ color: '#f59e0b', lineHeight: '1.4' }}>
+              ⚠️ Requiere seleccionar un cliente real (Nombre, Cédula y Teléfono) para activar la entrega posterior.
+            </div>
+          ) : isPendingPickup && (
+            <div className="text-xs text-muted mt-2 pl-6" style={{ lineHeight: '1.4' }}>
+              El cliente cancela la factura al 100% en caja y deja los productos resguardados en el local para su retiro posterior. El inventario se descuenta inmediatamente.
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       <div className="checkout-footer">
         {displayError ? (
@@ -240,7 +252,7 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
 
         <button
           type="button"
-          className="btn btn-primary btn-lg btn-block"
+          className={`btn ${effectiveIsPendingPickup ? 'btn-warning' : 'btn-primary'} btn-lg btn-block`}
           disabled={!canFinalize || isProcessing || (isPendingPickup && isDefaultCust)}
           onClick={handleFinalizeSale}
         >
@@ -250,7 +262,19 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
             </>
           ) : (
             <>
-              <Check size={20} /> Cobrar y Finalizar
+              {effectiveIsPendingPickup ? (
+                <>
+                  <PackageCheck size={20} /> Cobrar y Enviar a Retiros Pendientes
+                </>
+              ) : overrideSale && !isFullLiquidation ? (
+                <>
+                  <Check size={20} /> Registrar Abono
+                </>
+              ) : (
+                <>
+                  <Check size={20} /> Cobrar y Finalizar
+                </>
+              )}
             </>
           )}
         </button>

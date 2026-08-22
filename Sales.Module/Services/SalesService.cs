@@ -256,10 +256,18 @@ public class SalesService : ISalesService
     public async Task CancelSaleAsync(int sale_id)
     {
         var _sale = await GetSaleEntityAsync(sale_id);
-        if (_sale.Status == SaleStatus.Completed) throw new InvalidOperationException("Cannot cancel a completed sale.");
+        if (_sale.Status == SaleStatus.Completed) 
+            throw new InvalidOperationException("No se puede anular una venta que ya ha sido completada.");
+        if (_sale.Status == SaleStatus.Cancelled) 
+            throw new InvalidOperationException("La venta ya se encuentra anulada.");
+        if (_sale.Payments != null && _sale.Payments.Any()) 
+            throw new InvalidOperationException("No se puede anular un pedido que posee abonos acumulados. Reembolse o reversa los abonos antes de anular.");
+        if (_sale.DeliveryStatus == SaleDeliveryStatus.Delivered) 
+            throw new InvalidOperationException("No se puede anular un pedido que ya ha sido entregado al cliente.");
 
         _sale.Status = SaleStatus.Cancelled;
         await _context.SaveChangesAsync();
+        _logger?.LogInformation("Pedido #{SaleId} fue anulado exitosamente.", sale_id);
     }
 
     public async Task<int> CompleteSaleAsync(int sale_id, decimal exchange_rate, IEnumerable<PaymentInfo> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false)
@@ -311,9 +319,18 @@ public class SalesService : ISalesService
             if (remainingBalanceUsd < -0.05m)
                 throw new InvalidOperationException($"El abono (${totalPaidUsd:F2}) supera el total de la factura (${_sale.TotalUSD:F2}). Ajuste el cobro.");
 
-            if (isPendingPickup && remainingBalanceUsd > 0.05m)
+            if (isPendingPickup)
             {
-                throw new InvalidOperationException("Para registrar un apartado en custodia (Mercancía Pendiente por Retirar), la venta debe estar pagada al 100% (saldo restante $0.00).");
+                if (remainingBalanceUsd > 0.05m)
+                {
+                    throw new InvalidOperationException("Para registrar un apartado en custodia (Mercancía Pendiente por Retirar), la venta debe estar pagada al 100% (saldo restante $0.00).");
+                }
+
+                bool isDefaultCust = _sale.CustomerId == null || _sale.Customer == null || _sale.Customer.IsDefault || (_sale.CustomerName != null && _sale.CustomerName.ToLower().Contains("consumidor final"));
+                if (isDefaultCust)
+                {
+                    throw new InvalidOperationException("Para registrar un apartado en custodia (Mercancía Pendiente por Retirar), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono).");
+                }
             }
 
             var _active_session = await _cashDrawerService.GetOrCreateActiveSessionAsync(exchange_rate);
