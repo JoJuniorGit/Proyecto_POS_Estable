@@ -27,7 +27,7 @@ const summaryRowStyle = {
   width: '100%',
 };
 
-export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer, saleTotalUSD, exchangeRate, onSuccess }) {
+export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer, saleTotalUSD, saleTotalBsS = 0, exchangeRate, onSuccess }) {
   const [query, setQuery] = useState('');
   const [customers, setCustomers] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
@@ -140,7 +140,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
   const initialBsS = cents / 100;
   const initialUsd = exchangeRate > 0 ? initialBsS / exchangeRate : 0;
   const remainingUsd = Math.max(0, saleTotalUSD - (enablePayment ? initialUsd : 0));
-  const remainingBsS = remainingUsd * exchangeRate;
+  const remainingBsS = Math.max(0, (saleTotalBsS > 0 ? saleTotalBsS : remainingUsd * exchangeRate) - (enablePayment ? initialBsS : 0));
 
   const handleKeyDown = (e) => {
     if (['Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'].includes(e.key)) return;

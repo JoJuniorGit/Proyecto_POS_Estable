@@ -6,7 +6,7 @@ import { useCart } from '../context/CartContext';
 import CheckoutModal from '../components/checkout/CheckoutModal';
 import EditSaleModal from '../components/pos/EditSaleModal';
 import SuccessScreen from '../components/checkout/SuccessScreen';
-import { formatNumberEs, formatBsS, formatUSD } from '../utils/formatters';
+import { formatNumberEs, formatBsS, formatUSD, formatQuantity } from '../utils/formatters';
 import { Search, Loader2, Clock, ChevronRight, ChevronDown, RefreshCw, CheckCircle, ShieldCheck, Edit2, User } from 'lucide-react';
 import './PendingOrdersPage.css';
 
@@ -46,7 +46,14 @@ export default function PendingOrdersPage({ onNavigate }) {
 
   useEffect(() => {
     loadPendingData();
-  }, [loadPendingData]);
+
+    const handleRefreshSignal = () => loadPendingData();
+    window.addEventListener('onHoldSalesUpdated', handleRefreshSignal);
+
+    return () => {
+      window.removeEventListener('onHoldSalesUpdated', handleRefreshSignal);
+    };
+  }, [loadPendingData, exchangeRate]);
 
   const toggleExpand = (id) => {
     setExpandedSaleId(prev => prev === id ? null : id);
@@ -225,7 +232,7 @@ export default function PendingOrdersPage({ onNavigate }) {
                                     {sale.items.map(item => (
                                       <tr key={item.id} style={{ borderBottom: '1px dashed var(--border)' }}>
                                         <td style={{ padding: '6px 0' }}>{item.displayProductName || (item.unitOfMeasure && item.unitOfMeasure !== 'Und' ? `${item.productName} (${item.unitOfMeasure})` : item.productName)}</td>
-                                        <td className="text-right text-nowrap">{item.isFractional ? item.quantity.toFixed(3) : item.quantity}</td>
+                                        <td className="text-right text-nowrap">{formatQuantity(item.quantity)}</td>
                                         <td className="amount-bss text-right text-nowrap">{formatBsS(item.unitPriceBsS)}</td>
                                         <td className="amount-bss text-right text-nowrap font-semibold">{formatBsS(item.subtotalBsS)}</td>
                                       </tr>
@@ -284,7 +291,8 @@ export default function PendingOrdersPage({ onNavigate }) {
               const isExpanded = expandedSaleId === sale.id;
               const totalPaidUsd = sale.totalPaidUSD || 0;
               const remainingUsd = sale.remainingBalanceUSD || 0;
-              const remainingBsS = remainingUsd * exchangeRate;
+              const totalPaidBsS = (sale.payments || []).reduce((acc, p) => acc + (p.amountBsS > 0 ? p.amountBsS : (p.amount || 0) * (p.exchangeRate || exchangeRate)), 0);
+              const remainingBsS = Math.max(0, (sale.totalBsS !== undefined && sale.totalBsS > 0 ? sale.totalBsS : remainingUsd * exchangeRate) - totalPaidBsS);
 
               return (
                 <div key={sale.id} className="pending-mobile-card">
@@ -377,7 +385,7 @@ export default function PendingOrdersPage({ onNavigate }) {
                           <div key={item.id} className="d-flex flex-between align-start border-bottom" style={{ padding: '4px 0' }}>
                             <div style={{ minWidth: 0, marginRight: '12px' }}>
                               <div><strong>{item.displayProductName || item.productName}</strong></div>
-                              <div className="text-xs text-muted">{item.isFractional ? item.quantity.toFixed(3) : item.quantity} x {formatBsS(item.unitPriceBsS)}</div>
+                              <div className="text-xs text-muted">{formatQuantity(item.quantity)} x {formatBsS(item.unitPriceBsS)}</div>
                             </div>
                             <div className="font-bold amount-bss text-right text-nowrap flex-shrink-0" style={{ marginLeft: 'auto' }}>{formatBsS(item.subtotalBsS)}</div>
                           </div>

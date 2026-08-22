@@ -257,12 +257,12 @@ public class WpfDialogService : IDialogService
         return res;
     }
 
-    public (bool success, int quantityChange, string reason) ShowAdjustStockDialog(Core.DTOs.ProductDto product)
+    public (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(Core.DTOs.ProductDto product)
     {
-        if (Application.Current == null) return (false, 0, string.Empty);
+        if (Application.Current == null) return (false, 0m, string.Empty);
         using var _ = TrackModal();
         bool success = false;
-        int qtyChange = 0;
+        decimal qtyChange = 0m;
         string reason = string.Empty;
 
         Action openDialog = () =>

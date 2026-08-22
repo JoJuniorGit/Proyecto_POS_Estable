@@ -56,6 +56,16 @@ public class CashDrawerService : ICashDrawerService
 
     public async Task<CashDrawerSession> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate)
     {
+        if (openingBalanceLocal < 0)
+        {
+            throw new ArgumentException("El saldo inicial de apertura de caja no puede ser negativo.", nameof(openingBalanceLocal));
+        }
+
+        if (currentExchangeRate <= 0)
+        {
+            throw new ArgumentException("La tasa de cambio para apertura de caja debe ser mayor a cero.", nameof(currentExchangeRate));
+        }
+
         if (await GetActiveSessionAsync() != null)
         {
             throw new InvalidOperationException("There is already an active cash drawer session.");
@@ -87,6 +97,16 @@ public class CashDrawerService : ICashDrawerService
 
     public async Task<CashDrawerSession> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate)
     {
+        if (actualClosingBalanceLocal < 0)
+        {
+            throw new ArgumentException("El saldo final de arqueo de caja no puede ser negativo.", nameof(actualClosingBalanceLocal));
+        }
+
+        if (currentExchangeRate <= 0)
+        {
+            throw new ArgumentException("La tasa de cambio para cierre de caja debe ser mayor a cero.", nameof(currentExchangeRate));
+        }
+
         var session = await GetActiveSessionAsync();
         if (session == null)
         {

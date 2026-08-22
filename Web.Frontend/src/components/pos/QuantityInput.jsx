@@ -19,39 +19,25 @@ export default function QuantityInput({ item, onUpdateQty, style }) {
       return;
     }
 
-    const isFrac = item?.isFractional;
+    // Allow digits, max 1 decimal separator (. or ,), max 3 decimals for all products
+    if (!/^\d*[,.]?\d{0,3}$/.test(inputStr)) return;
+    setLocalVal(inputStr);
 
-    if (!isFrac) {
-      // Non-fractional: strictly digits '0'-'9'
-      if (!/^\d*$/.test(inputStr)) return;
-      setLocalVal(inputStr);
+    // Partial inputs like "." or "," or "1." should stay in local state without firing backend call yet
+    if (inputStr === '.' || inputStr === ',' || inputStr.endsWith('.') || inputStr.endsWith(',')) {
+      return;
+    }
 
-      const parsedInt = parseInt(inputStr, 10);
-      if (!isNaN(parsedInt) && parsedInt > 0) {
-        onUpdateQty(item.id, parsedInt);
-      }
-    } else {
-      // Fractional: digits, max 1 decimal separator (. or ,), max 3 decimals
-      if (!/^\d*[,.]?\d{0,3}$/.test(inputStr)) return;
-      setLocalVal(inputStr);
-
-      // Partial inputs like "." or "," or "1." should stay in local state without firing backend call yet
-      if (inputStr === '.' || inputStr === ',' || inputStr.endsWith('.') || inputStr.endsWith(',')) {
-        return;
-      }
-
-      const normalized = inputStr.replace(',', '.');
-      const parsedFloat = parseFloat(normalized);
-      if (!isNaN(parsedFloat) && parsedFloat > 0) {
-        const rounded = Math.round(parsedFloat * 1000) / 1000;
-        onUpdateQty(item.id, rounded);
-      }
+    const normalized = inputStr.replace(',', '.');
+    const parsedFloat = parseFloat(normalized);
+    if (!isNaN(parsedFloat) && parsedFloat > 0) {
+      const rounded = Math.round(parsedFloat * 1000) / 1000;
+      onUpdateQty(item.id, rounded);
     }
   };
 
   const handleBlur = () => {
-    const isFrac = item?.isFractional;
-    const defaultQty = isFrac ? 0.001 : 1;
+    const defaultQty = 1;
 
     if (!localVal || localVal === '.' || localVal === ',') {
       const fallbackVal = item?.quantity > 0 ? item.quantity : defaultQty;
@@ -63,13 +49,13 @@ export default function QuantityInput({ item, onUpdateQty, style }) {
     }
 
     const normalized = localVal.replace(',', '.');
-    const parsed = isFrac ? parseFloat(normalized) : parseInt(normalized, 10);
+    const parsed = parseFloat(normalized);
 
     if (isNaN(parsed) || parsed <= 0) {
       setLocalVal(String(defaultQty));
       onUpdateQty(item.id, defaultQty);
     } else {
-      const rounded = isFrac ? Math.round(parsed * 1000) / 1000 : parsed;
+      const rounded = Math.round(parsed * 1000) / 1000;
       setLocalVal(String(rounded));
       onUpdateQty(item.id, rounded);
     }

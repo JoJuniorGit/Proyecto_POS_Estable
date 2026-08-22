@@ -95,6 +95,10 @@ public class DailyClosureService : IDailyClosureService
         // Recalculate differences to enforce domain rule
         foreach (var detail in closure.Details)
         {
+            if (detail.ActualAmountBsS < 0)
+            {
+                throw new ArgumentException($"El monto declarado para '{detail.PaymentMethodName}' no puede ser negativo.", nameof(closure));
+            }
             detail.DifferenceBsS = detail.ActualAmountBsS - detail.ExpectedAmountBsS;
         }
 

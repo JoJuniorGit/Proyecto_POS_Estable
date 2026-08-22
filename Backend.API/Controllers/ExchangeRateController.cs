@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.SignalR;
+using Sales.Module.Interfaces;
+using Backend.API.Hubs;
 
 namespace Backend.API.Controllers;
 
@@ -14,11 +16,19 @@ public class ExchangeRateController : ControllerBase
 {
     private readonly InventoryDbContext _context;
     private readonly Core.Interfaces.ICurrentUserService _currentUserService;
+    private readonly ISalesService _salesService;
+    private readonly IHubContext<ExchangeRateHub> _hubContext;
 
-    public ExchangeRateController(InventoryDbContext context, Core.Interfaces.ICurrentUserService currentUserService)
+    public ExchangeRateController(
+        InventoryDbContext context,
+        Core.Interfaces.ICurrentUserService currentUserService,
+        ISalesService salesService,
+        IHubContext<ExchangeRateHub> hubContext)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _salesService = salesService;
+        _hubContext = hubContext;
     }
 
     /// <summary>
@@ -87,13 +97,21 @@ public class ExchangeRateController : ControllerBase
 
         await _context.SaveChangesAsync();
 
+        // Recalculate OnHold sales with the new exchange rate
+        await _salesService.RecalculateOnHoldSalesAsync(request.Value);
+
+        // Broadcast rate update and OnHold sales refresh signal to all connected clients
+        await _hubContext.Clients.All.SendAsync("ReceiveRateUpdate", request.Value);
+        await _hubContext.Clients.All.SendAsync("OnHoldSalesUpdated");
+
         return Ok(new { Value = request.Value, Date = today, UpdatedAt = DateTime.UtcNow });
     }
+
     /// <summary>
     /// Forces a manual scrape of the BCV website and upserts today's exchange rate.
     /// </summary>
     [HttpPost("sync-bcv")]
-    public async Task<ActionResult> SyncBcv([FromServices] Backend.API.Services.BcvScraperService scraperService, [FromServices] Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub> hubContext)
+    public async Task<ActionResult> SyncBcv([FromServices] Backend.API.Services.BcvScraperService scraperService)
     {
         if (!_currentUserService.CanMutateExchangeRate)
         {
@@ -126,8 +144,12 @@ public class ExchangeRateController : ControllerBase
 
         await _context.SaveChangesAsync();
 
+        // Recalculate OnHold sales with the new exchange rate
+        await _salesService.RecalculateOnHoldSalesAsync(rate.Value);
+
         // Broadcast to clients
-        await hubContext.Clients.All.SendAsync("ReceiveRateUpdate", rate.Value);
+        await _hubContext.Clients.All.SendAsync("ReceiveRateUpdate", rate.Value);
+        await _hubContext.Clients.All.SendAsync("OnHoldSalesUpdated");
 
         return Ok(new { Value = rate.Value, Date = today, UpdatedAt = DateTime.UtcNow });
     }

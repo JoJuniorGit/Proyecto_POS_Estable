@@ -496,6 +496,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
         if (IsProcessing) return;
         if (Cart.CurrentSale == null) return;
 
+        await Cart.FlushAllQuantitiesAsync();
+
         if (!Cart.CartItems.Any())
         {
             MessageBox.Show("Cart is empty. Please add items before checking out.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -528,6 +530,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
     {
         if (IsProcessing) return;
         if (Cart.CurrentSale == null) return;
+
+        await Cart.FlushAllQuantitiesAsync();
 
         if (!Cart.CartItems.Any())
         {

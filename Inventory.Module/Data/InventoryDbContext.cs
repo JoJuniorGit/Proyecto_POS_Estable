@@ -30,7 +30,11 @@ public class InventoryDbContext : DbContext
         modelBuilder.Entity<Product>().Property(p => p.SKU).IsRequired().HasMaxLength(50);
         modelBuilder.Entity<Product>(entity =>
         {
-            entity.HasIndex(p => p.SKU).IsUnique();
+            entity.HasIndex(p => p.SKU)
+                .IsUnique()
+                .HasFilter("\"IsDeleted\" = false");
+
+            entity.HasIndex(p => new { p.IsActive, p.IsDeleted });
         });
 
         // Precision and conversion configurations
@@ -47,16 +51,25 @@ public class InventoryDbContext : DbContext
         modelBuilder.Entity<Product>().Property(p => p.CostPriceUSD).HasPrecision(18, 2);
         modelBuilder.Entity<Product>().Property(p => p.ProfitMarginRetail).HasPrecision(18, 2);
         modelBuilder.Entity<Product>().Property(p => p.ProfitMarginWholesale).HasPrecision(18, 2);
-        modelBuilder.Entity<Product>().Property(p => p.MinWholesaleQuantity).HasPrecision(18, 3);
+        modelBuilder.Entity<Product>().Property(p => p.MinWholesaleQuantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
         modelBuilder.Entity<Product>().Property(p => p.Cost).HasPrecision(18, 2);
         modelBuilder.Entity<Product>().Property(p => p.ProfitPercentage).HasPrecision(18, 2);
+        modelBuilder.Entity<Product>().Property(p => p.StockQuantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+        modelBuilder.Entity<Product>().Property(p => p.ReservedQuantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+        modelBuilder.Entity<Product>().Property(p => p.LowStockThreshold).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+        modelBuilder.Entity<Product>().Property(p => p.PriceBsS).HasPrecision(18, 2);
+        modelBuilder.Entity<Product>().Property(p => p.LastConversionRate).HasPrecision(18, 4);
+
         modelBuilder.Entity<StockMovement>().HasKey(m => m.Id);
         modelBuilder.Entity<StockMovement>().HasOne(m => m.Product).WithMany().HasForeignKey(m => m.ProductId);
+        modelBuilder.Entity<StockMovement>().Property(m => m.QuantityChange).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+        modelBuilder.Entity<StockMovement>().Property(m => m.NewStockLevel).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
 
         modelBuilder.Entity<Product>().Property(p => p.RowVersion).IsRowVersion();
 
         modelBuilder.Entity<StockReservation>().HasKey(r => r.Id);
         modelBuilder.Entity<StockReservation>().HasOne(r => r.Product).WithMany().HasForeignKey(r => r.ProductId);
+        modelBuilder.Entity<StockReservation>().Property(r => r.Quantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
 
         // SystemSetting: Key-value store for app configuration
         modelBuilder.Entity<SystemSetting>(entity =>

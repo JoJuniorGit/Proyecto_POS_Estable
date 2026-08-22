@@ -7,8 +7,8 @@ public class StockMovement : BaseEntity
     public int ProductId { get; set; }
     public Product Product { get; set; } = null!;
 
-    public int QuantityChange { get; set; }
-    public int NewStockLevel { get; set; }
+    public decimal QuantityChange { get; set; }
+    public decimal NewStockLevel { get; set; }
     public string Reason { get; set; } = string.Empty;
     public DateTime MovementDate { get; set; } = DateTime.UtcNow;
 

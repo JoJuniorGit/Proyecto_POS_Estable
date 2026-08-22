@@ -9,7 +9,7 @@ public class ReserveStockDto
     public int ProductId { get; set; }
 
     [Required]
-    public int Quantity { get; set; }
+    public decimal Quantity { get; set; }
 
     [Required]
     public int DurationSeconds { get; set; }

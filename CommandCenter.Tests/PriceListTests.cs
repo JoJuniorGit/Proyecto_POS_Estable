@@ -593,7 +593,7 @@ public class PriceListTests
     }
 
     [Fact]
-    public async Task AddSaleItem_WithNonFractionalProduct_RejectsDecimalQuantity()
+    public async Task AddSaleItem_WithNonFractionalProduct_AcceptsDecimalQuantity()
     {
         using var context = GetInMemoryDbContext();
         var product = new Product { Id = 102, Name = "Refresco", PriceUSD = 2m, IsFractional = false, UnitOfMeasure = UnitOfMeasureType.Und };
@@ -605,8 +605,9 @@ public class PriceListTests
 
         var service = new SalesService(context, mockInv.Object, Mock.Of<IMediator>(), Mock.Of<ICashDrawerService>(), Mock.Of<ISystemSettingsService>());
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddItemAsync(1, 102, 1.5m, 40m));
-        Assert.Contains("no admite cantidades fraccionadas o decimales", ex.Message, StringComparison.OrdinalIgnoreCase);
+        var result = await service.AddItemAsync(1, 102, 1.5m, 40m);
+        Assert.Single(result.Items);
+        Assert.Equal(1.5m, result.Items[0].Quantity);
     }
 
     [Fact]
@@ -648,7 +649,7 @@ public class PriceListTests
     }
 
     [Fact]
-    public async Task UpdateSaleItems_WithNonFractionalProduct_RejectsDecimalQuantity()
+    public async Task UpdateSaleItems_WithNonFractionalProduct_AcceptsDecimalQuantity()
     {
         using var context = GetInMemoryDbContext();
         var product = new Product { Id = 105, Name = "Aceite", PriceUSD = 3m, IsFractional = false };
@@ -668,8 +669,9 @@ public class PriceListTests
             }
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateSaleItemsAsync(1, req));
-        Assert.Contains("no admite cantidades fraccionadas o decimales", ex.Message, StringComparison.OrdinalIgnoreCase);
+        var result = await service.UpdateSaleItemsAsync(1, req);
+        Assert.Single(result.Items);
+        Assert.Equal(2.75m, result.Items[0].Quantity);
     }
 
     [Fact]

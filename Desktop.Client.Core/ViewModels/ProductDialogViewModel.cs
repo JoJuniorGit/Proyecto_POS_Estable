@@ -95,12 +95,12 @@ public partial class ProductDialogViewModel : ObservableValidator
     private bool _isUpdatingPrices;
 
     [ObservableProperty]
-    [Range(0, int.MaxValue, ErrorMessage = "Stock Quantity must be non-negative")]
-    private int _stockQuantity;
+    [Range(0, double.MaxValue, ErrorMessage = "Stock Quantity must be non-negative")]
+    private decimal _stockQuantity;
 
     [ObservableProperty]
-    [Range(0, int.MaxValue, ErrorMessage = "Low Stock Threshold must be non-negative")]
-    private int _lowStockThreshold;
+    [Range(0, double.MaxValue, ErrorMessage = "Low Stock Threshold must be non-negative")]
+    private decimal _lowStockThreshold;
 
     [ObservableProperty]
     private string _unitOfMeasure = "Unit";

@@ -11,6 +11,7 @@ import {
   updateSaleCustomer,
   updatePriceList,
 } from '../services/salesApi';
+import { getLineAmounts } from '../utils/formatters';
 
 const CartContext = createContext();
 
@@ -221,12 +222,15 @@ export function CartProvider({ children }) {
   };
 
   const items = currentSale?.items || [];
-  const subtotalUSD = currentSale?.subtotal || items.reduce((acc, item) => acc + (item.subtotal || 0), 0);
-  const totalUSD = currentSale?.totalUSD || subtotalUSD;
+  const subtotalUSD = currentSale?.subtotal ?? items.reduce((acc, item) => acc + (item.subtotal || 0), 0);
+  const totalUSD = currentSale?.totalUSD ?? subtotalUSD;
   const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale?.appliedRate || 1);
-  const isEditableStatus = currentSale?.status === 'Pending' || currentSale?.status === 'OnHold';
-  const totalBsS = isEditableStatus ? totalUSD * rateToUse : (currentSale?.totalBsS || totalUSD * rateToUse);
-  const subtotalBsS = isEditableStatus ? subtotalUSD * rateToUse : (currentSale?.subtotalBsS || subtotalUSD * rateToUse);
+
+  // Sum exact item subtotals in Bs.S to ensure TOTAL matches the sum of the "Subtotal Bs.S" column
+  const itemsSubtotalBsS = items.reduce((acc, item) => acc + getLineAmounts(item, rateToUse).subtotalBsS, 0);
+
+  const subtotalBsS = (currentSale?.subtotalBsS > 0) ? currentSale.subtotalBsS : itemsSubtotalBsS;
+  const totalBsS = (currentSale?.totalBsS > 0) ? currentSale.totalBsS : itemsSubtotalBsS;
 
   return (
     <CartContext.Provider

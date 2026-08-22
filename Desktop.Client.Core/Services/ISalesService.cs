@@ -76,7 +76,7 @@ public class SaleItemHistoryDto
 {
     public int Id { get; set; }
     public string ProductName { get; set; } = string.Empty;
-    public int Quantity { get; set; }
+    public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal UnitPriceBsS { get; set; }
     public decimal SubtotalBsS { get; set; }
@@ -85,6 +85,7 @@ public class SaleItemHistoryDto
 public interface ISalesService
 {
     SaleDto? CurrentSale { get; }
+    Task<SaleDto> GetSaleAsync(int saleId);
     Task<SaleDto> StartSaleAsync(int? cashierId = null);
     Task<SaleDto> AddItemAsync(int sale_id, int product_id, decimal quantity, decimal exchange_rate, decimal? custom_unit_price_usd = null, decimal? custom_unit_price_bs_s = null);
     Task<SaleDto> RemoveItemAsync(int sale_id, int item_id, decimal exchange_rate);

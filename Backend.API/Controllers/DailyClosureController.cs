@@ -23,19 +23,22 @@ public class DailyClosureController : ControllerBase
     private readonly InventoryDbContext _inventoryContext;
     private readonly ISystemSettingsService _settingsService;
     private readonly SalesDbContext _salesContext;
+    private readonly ICurrentUserService _currentUserService;
 
     public DailyClosureController(
         IDailyClosureService closureService,
         ICashDrawerService cashDrawerService,
         InventoryDbContext inventoryContext,
         ISystemSettingsService settingsService,
-        SalesDbContext salesContext)
+        SalesDbContext salesContext,
+        ICurrentUserService currentUserService)
     {
         _closureService = closureService;
         _cashDrawerService = cashDrawerService;
         _inventoryContext = inventoryContext;
         _settingsService = settingsService;
         _salesContext = salesContext;
+        _currentUserService = currentUserService;
     }
 
     private async Task<decimal> GetTodayExchangeRateAsync()
@@ -73,10 +76,16 @@ public class DailyClosureController : ControllerBase
     {
         try
         {
+            var authenticatedUserId = _currentUserService.UserId 
+                ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? User.Identity?.Name 
+                ?? request.UserId 
+                ?? "Admin";
+
             var closure = new DailyClosure
             {
-                ClosureDate = request.ClosureDate,
-                UserId = request.UserId,
+                ClosureDate = request.ClosureDate != default ? request.ClosureDate : DateTime.UtcNow,
+                UserId = authenticatedUserId,
                 Observation = request.Observation,
                 Details = request.Details.Select(d => new ClosureDetail
                 {

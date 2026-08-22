@@ -24,6 +24,7 @@ public class ShiftsController : ControllerBase
     private readonly ISystemSettingsService _settingsService;
     private readonly InventoryDbContext _inventoryContext;
     private readonly SalesDbContext _salesContext;
+    private readonly ICurrentUserService _currentUserService;
 
     public ShiftsController(
         ICashDrawerService cashDrawerService,
@@ -31,7 +32,8 @@ public class ShiftsController : ControllerBase
         IPaymentMethodService paymentMethodService,
         ISystemSettingsService settingsService,
         InventoryDbContext inventoryContext,
-        SalesDbContext salesContext)
+        SalesDbContext salesContext,
+        ICurrentUserService currentUserService)
     {
         _cashDrawerService = cashDrawerService;
         _dailyClosureService = dailyClosureService;
@@ -39,6 +41,7 @@ public class ShiftsController : ControllerBase
         _settingsService = settingsService;
         _inventoryContext = inventoryContext;
         _salesContext = salesContext;
+        _currentUserService = currentUserService;
     }
 
     private async Task<decimal> GetTodayExchangeRateAsync()

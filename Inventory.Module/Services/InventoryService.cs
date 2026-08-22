@@ -32,9 +32,31 @@ public class InventoryService : IInventoryService
         return await _context.Products.AsNoTracking().ToListAsync();
     }
 
+    public async Task<decimal> GetTodayExchangeRateAsync()
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var record = await _context.ExchangeRateHistory.FirstOrDefaultAsync(r => r.Date == today);
+        if (record != null && record.Rate > 0) return record.Rate;
+
+        var lastRecord = await _context.ExchangeRateHistory.OrderByDescending(r => r.Date).FirstOrDefaultAsync();
+        return lastRecord?.Rate ?? 0m;
+    }
+
+    public async Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds)
+    {
+        var idList = productIds.Distinct().ToList();
+        if (!idList.Any()) return new List<Product>();
+        return await _context.Products.AsNoTracking().Where(p => idList.Contains(p.Id)).ToListAsync();
+    }
+
     public async Task<Product?> GetProductByIdAsync(int id)
     {
         return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id);
+    }
+
+    public async Task<Product?> GetCashAdvanceProductAsync()
+    {
+        return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.IsCashAdvance && !p.IsDeleted && p.IsActive);
     }
 
     public async Task<Product?> GetProductBySkuAsync(string sku)
@@ -213,10 +235,15 @@ public class InventoryService : IInventoryService
         }
     }
 
-    public async Task UpdateStockAsync(int productId, int quantityChange, string reason)
+    public async Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null)
     {
         var product = await _context.Products.FindAsync(productId);
         if (product == null) throw new KeyNotFoundException($"Product {productId} not found");
+
+        if (quantityChange < 0 && (product.StockQuantity + quantityChange) < 0)
+        {
+            throw new InvalidOperationException($"Stock insuficiente para el producto '{product.Name}' (SKU: {product.SKU}). Stock actual: {product.StockQuantity}, deducción requerida: {Math.Abs(quantityChange)}.");
+        }
 
         product.StockQuantity += quantityChange;
 
@@ -227,7 +254,8 @@ public class InventoryService : IInventoryService
             QuantityChange = quantityChange,
             NewStockLevel = product.StockQuantity,
             Reason = reason,
-            MovementDate = DateTime.UtcNow
+            MovementDate = DateTime.UtcNow,
+            UserId = _currentUserService?.UserId ?? userId
         };
 
         _context.StockMovements.Add(movement);
@@ -236,7 +264,7 @@ public class InventoryService : IInventoryService
         await _context.SaveChangesAsync();
     }
 
-    public async Task<int> ReserveStockAsync(int productId, int quantity, TimeSpan duration)
+    public async Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration)
     {
         var product = await _context.Products.FindAsync(productId);
         if (product == null) throw new KeyNotFoundException($"Product {productId} not found");
@@ -728,7 +756,14 @@ public class InventoryService : IInventoryService
     private static string EscapeCsvField(string? field)
     {
         if (string.IsNullOrEmpty(field)) return "";
-        if (field.Contains(";") || field.Contains("\"") || field.Contains("\n"))
+
+        // Neutralize CSV/Excel Formula Injection (CWE-1236)
+        if (field.StartsWith('=') || field.StartsWith('+') || field.StartsWith('-') || field.StartsWith('@') || field.StartsWith('\t') || field.StartsWith('\r'))
+        {
+            field = "'" + field;
+        }
+
+        if (field.Contains(";") || field.Contains("\"") || field.Contains("\n") || field.Contains("\r"))
         {
             return "\"" + field.Replace("\"", "\"\"") + "\"";
         }

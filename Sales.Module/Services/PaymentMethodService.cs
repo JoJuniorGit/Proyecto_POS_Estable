@@ -63,6 +63,7 @@ public class PaymentMethodService : IPaymentMethodService
         existing.IsActive = method.IsActive;
         existing.RequiresReference = method.RequiresReference;
         existing.DisplayOrder = method.DisplayOrder;
+        existing.IsCash = method.IsCash;
 
         await _context.SaveChangesAsync();
         return existing;

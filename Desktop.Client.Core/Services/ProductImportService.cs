@@ -160,8 +160,8 @@ public class ProductImportService : IProductImportService
                         bool hasWholesale = ParseBoolValue(row, propertyColumnIndices, "HasWholesale", "Enable Wholesale", "HabilitarMayorista");
                         bool isFractional = ParseBoolValue(row, propertyColumnIndices, "IsFractional", "Is Fractional", "EsFraccionable");
 
-                        bool parseStock = TryParseInt(row, propertyColumnIndices, out var stock, "StockQuantity", "Current Stock", "StockActual", "Stock");
-                        bool parseLowStock = TryParseInt(row, propertyColumnIndices, out var lowStock, "LowStockThreshold", "Low Stock Threshold", "UmbralMinimo");
+                        bool parseStock = TryParseDecimal(row, propertyColumnIndices, out var stock, "StockQuantity", "Current Stock", "StockActual", "Stock");
+                        bool parseLowStock = TryParseDecimal(row, propertyColumnIndices, out var lowStock, "LowStockThreshold", "Low Stock Threshold", "UmbralMinimo");
 
                         dto.CostPriceUSD = parseCost ? Math.Max(0m, cost) : 0m;
                         dto.ProfitMarginRetail = parseRetailMargin ? Math.Max(0m, retailMargin) : 0m;
@@ -169,8 +169,8 @@ public class ProductImportService : IProductImportService
                         dto.MinWholesaleQuantity = parseMinWholesaleQty ? Math.Max(0m, minWholesaleQty) : 6.000m;
                         dto.HasWholesale = hasWholesale;
                         dto.IsFractional = isFractional;
-                        dto.StockQuantity = parseStock ? Math.Max(0, stock) : 0;
-                        dto.LowStockThreshold = parseLowStock ? Math.Max(0, lowStock) : 5;
+                        dto.StockQuantity = parseStock ? Math.Max(0m, stock) : 0m;
+                        dto.LowStockThreshold = parseLowStock ? Math.Max(0m, lowStock) : 5m;
                         dto.UnitOfMeasure = dto.IsFractional ? "Kg" : "Und";
                         dto.IsActive = true;
 
@@ -316,8 +316,8 @@ public class ProductImportService : IProductImportService
             dto.HasWholesale = GetCsvBool("HasWholesale", "Enable Wholesale", "HabilitarMayorista");
 
             dto.IsFractional = GetCsvBool("IsFractional", "Is Fractional", "EsFraccionable");
-            dto.StockQuantity = Math.Max(0, GetCsvInt("StockQuantity", "Current Stock", "StockActual", "Stock"));
-            dto.LowStockThreshold = Math.Max(0, GetCsvInt("LowStockThreshold", "Low Stock Threshold", "UmbralMinimo"));
+            dto.StockQuantity = Math.Max(0m, GetCsvDec("StockQuantity", "Current Stock", "StockActual", "Stock"));
+            dto.LowStockThreshold = Math.Max(0m, GetCsvDec("LowStockThreshold", "Low Stock Threshold", "UmbralMinimo"));
             dto.UnitOfMeasure = dto.IsFractional ? "Kg" : "Und";
             dto.IsActive = true;
 

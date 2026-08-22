@@ -154,7 +154,8 @@
                               BorderThickness="0"
                               Background="Transparent"
                               SelectionUnit="FullRow"
-                              behaviors:DataGridFocusBehavior.KeepFocusOnSelection="True">
+                              behaviors:DataGridFocusBehavior.KeepFocusOnSelection="True"
+                              CellEditEnding="DataGrid_CellEditEnding">
                         <DataGrid.InputBindings>
                             <KeyBinding Key="Add" Command="{Binding Cart.IncreaseQuantityCommand}" CommandParameter="{Binding Cart.SelectedSaleItem}" />
                             <KeyBinding Key="OemPlus" Command="{Binding Cart.IncreaseQuantityCommand}" CommandParameter="{Binding Cart.SelectedSaleItem}" />

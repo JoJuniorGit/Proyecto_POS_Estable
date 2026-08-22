@@ -13,10 +13,10 @@ public class ProductQuickInfoDto
     public bool IsFractional { get; set; }
     public Core.Entities.UnitOfMeasureType UnitOfMeasure { get; set; } = Core.Entities.UnitOfMeasureType.Und;
     public decimal MinWholesaleQuantity { get; set; } = 6.000m;
-    public int StockQuantity { get; set; }
+    public decimal StockQuantity { get; set; }
     public bool IsCashAdvance { get; set; }
     public bool IsActive { get; set; }
     public decimal ProfitPercentage { get; set; }
-    public int ReservedQuantity { get; set; }
-    public int AvailableQuantity => StockQuantity - ReservedQuantity;
+    public decimal ReservedQuantity { get; set; }
+    public decimal AvailableQuantity => StockQuantity - ReservedQuantity;
 }

@@ -7,15 +7,18 @@ namespace Core.Interfaces;
 public interface IInventoryService
 {
     Task<List<Product>> GetAllProductsAsync();
+    Task<decimal> GetTodayExchangeRateAsync();
+    Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds);
     Task<Product?> GetProductByIdAsync(int id);
+    Task<Product?> GetCashAdvanceProductAsync();
     Task<Product?> GetProductBySkuAsync(string sku);
     Task<Product> CreateProductAsync(Product product);
     Task UpdateProductAsync(Product product);
     Task SetProductStatusAsync(int id, bool isActive, bool isDeleted);
     Task<string> DeleteProductAsync(int id, bool forceHardDelete = false);
     Task RestoreProductAsync(int id);
-    Task UpdateStockAsync(int productId, int quantityChange, string reason); // +/- quantity
-    Task<int> ReserveStockAsync(int productId, int quantity, TimeSpan duration);
+    Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null); // +/- quantity
+    Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration);
     Task ConfirmReservationAsync(int reservationId, string reason);
     Task CancelReservationAsync(int reservationId);
     Task<Core.DTOs.ProductQuickInfoDto?> GetProductQuickInfoAsync(string sku);

@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Admin")]
 [ApiController]
 [Route("api/[controller]")]
 public class UsersController : ControllerBase
@@ -20,6 +20,17 @@ public class UsersController : ControllerBase
     public UsersController(SalesDbContext db)
     {
         _db = db;
+    }
+
+    private int? GetCurrentUserId()
+    {
+        var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                   ?? User.FindFirst("sub")?.Value;
+        if (int.TryParse(idClaim, out int currentUserId))
+        {
+            return currentUserId;
+        }
+        return null;
     }
 
     [HttpGet]
@@ -72,6 +83,8 @@ public class UsersController : ControllerBase
             return BadRequest(new { Message = "Ya existe un usuario registrado con esa Cédula." });
         }
 
+        string rawPassword = !string.IsNullOrWhiteSpace(dto.Password) ? dto.Password.Trim() : cedulaClean;
+
         var user = new User
         {
             Cedula = cedulaClean,
@@ -79,7 +92,9 @@ public class UsersController : ControllerBase
             FullName = dto.Name.Trim(),
             Username = cedulaClean,
             Role = dto.Role,
-            IsActive = true
+            PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(rawPassword),
+            IsActive = true,
+            MustChangePassword = true
         };
 
         _db.Users.Add(user);
@@ -107,12 +122,10 @@ public class UsersController : ControllerBase
             return BadRequest(new { Message = "El Administrador principal del sistema no puede ser desactivado." });
         }
 
-        if (Request.Headers.TryGetValue("X-User-Id", out var userIdHeader) && int.TryParse(userIdHeader, out int currentUserId))
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId.HasValue && id == currentUserId.Value && !dto.IsActive)
         {
-            if (id == currentUserId && !dto.IsActive)
-            {
-                return BadRequest(new { Message = "No puede desactivar su propia cuenta de usuario en sesión." });
-            }
+            return BadRequest(new { Message = "No puede desactivar su propia cuenta de usuario en sesión." });
         }
 
         var cedulaClean = dto.Cedula.Trim();
@@ -151,12 +164,10 @@ public class UsersController : ControllerBase
             return BadRequest(new { Message = "El Administrador principal del sistema no puede ser desactivado." });
         }
 
-        if (Request.Headers.TryGetValue("X-User-Id", out var userIdHeader) && int.TryParse(userIdHeader, out int currentUserId))
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId.HasValue && id == currentUserId.Value)
         {
-            if (id == currentUserId)
-            {
-                return BadRequest(new { Message = "No puede desactivar su propia cuenta de usuario en sesión." });
-            }
+            return BadRequest(new { Message = "No puede desactivar su propia cuenta de usuario en sesión." });
         }
 
         user.IsActive = false;
@@ -188,12 +199,10 @@ public class UsersController : ControllerBase
             return BadRequest(new { Message = "El Administrador principal del sistema no puede ser eliminado." });
         }
 
-        if (Request.Headers.TryGetValue("X-User-Id", out var userIdHeader) && int.TryParse(userIdHeader, out int currentUserId))
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId.HasValue && id == currentUserId.Value)
         {
-            if (id == currentUserId)
-            {
-                return BadRequest(new { Message = "No puede eliminar su propia cuenta de usuario en sesión." });
-            }
+            return BadRequest(new { Message = "No puede eliminar su propia cuenta de usuario en sesión." });
         }
 
         var sales = await _db.Sales.Where(s => s.CashierId == id).ToListAsync();

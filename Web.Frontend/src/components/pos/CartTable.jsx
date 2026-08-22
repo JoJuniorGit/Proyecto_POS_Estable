@@ -2,7 +2,7 @@ import { Plus, Minus, Trash2 } from 'lucide-react';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import QuantityInput from './QuantityInput';
 import { useCart } from '../../context/CartContext';
-import { formatBsS } from '../../utils/formatters';
+import { formatBsS, getLineAmounts } from '../../utils/formatters';
 
 export default function CartTable({ items, selectedItemId, onSelectItem, onUpdateQty, onRemoveItem }) {
   const { exchangeRate } = useExchangeRate();
@@ -23,12 +23,7 @@ export default function CartTable({ items, selectedItemId, onSelectItem, onUpdat
         </thead>
         <tbody>
           {items.map((item) => {
-            const unitBsS = item.unitPrice > 0
-              ? item.unitPrice * exchangeRate
-              : (item.unitPriceBsS || 0);
-            const subtotalBsS = item.unitPrice > 0
-              ? item.subtotal * exchangeRate
-              : (item.subtotalBsS || 0);
+            const { unitBsS, subtotalBsS } = getLineAmounts(item, currentSale?.appliedRate || exchangeRate);
 
             const isSelected = selectedItemId === item.id;
             const isWholesaleApplied = isWholesaleMode && item.quantity >= 6;

@@ -23,7 +23,7 @@ public partial class ProductItemViewModel : ObservableObject
     private decimal _cost;
 
     [ObservableProperty]
-    private int _stockQuantity;
+    private decimal _stockQuantity;
 
     [ObservableProperty]
     private bool _isActive;

@@ -530,7 +530,7 @@ internal class StubDialogService : Desktop.Client.Services.IDialogService
     public void ShowSuccessDialog(string message) { }
     public Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title) => Task.FromResult<(bool success, decimal amount, string reason)?>(null);
     public bool? ShowProductDialog(Desktop.Client.ViewModels.ProductDialogViewModel dialogVm) => false;
-    public (bool success, int quantityChange, string reason) ShowAdjustStockDialog(Core.DTOs.ProductDto product) => (false, 0, string.Empty);
+    public (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(Core.DTOs.ProductDto product) => (false, 0m, string.Empty);
     public void ShowInterruptedTransactionDialog(string title, string message) { }
     public Task<Core.DTOs.CustomerDto?> ShowCustomerPickerAsync() => Task.FromResult<Core.DTOs.CustomerDto?>(null);
     public Task<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?> ShowCashAdvanceRegisterDialogAsync(List<Desktop.Client.Services.PaymentMethodDto> paymentMethods, decimal availableCashLocal) => Task.FromResult<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?>(null);

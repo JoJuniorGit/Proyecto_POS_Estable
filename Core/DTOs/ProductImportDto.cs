@@ -18,8 +18,8 @@ public class ProductImportDto
     public bool IsFractional { get; set; } = false;
     public string UnitOfMeasure { get; set; } = "Und";
 
-    public int StockQuantity { get; set; }
-    public int LowStockThreshold { get; set; } = 5;
+    public decimal StockQuantity { get; set; }
+    public decimal LowStockThreshold { get; set; } = 5m;
 
     public bool IsActive { get; set; } = true;
 

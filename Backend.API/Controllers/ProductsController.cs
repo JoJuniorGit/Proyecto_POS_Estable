@@ -29,6 +29,8 @@ public class ProductsController : ControllerBase
         [FromQuery] int pageSize = 50,
         System.Threading.CancellationToken token = default)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
         return await _inventoryService.GetProductsPagedAsync(filter, page, pageSize, statusFilter: status, token: token);
     }
 
@@ -172,6 +174,11 @@ public class StatusUpdateDto
     [HttpPost("{id}/adjust-stock")]
     public async Task<IActionResult> AdjustStock(int id, [FromBody] DTOs.AdjustStockDto dto)
     {
+        if (!_currentUserService.CanMutateCatalog)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "No tiene permisos para realizar ajustes manuales de inventario.");
+        }
+
         try
         {
             await _inventoryService.UpdateStockAsync(id, dto.QuantityChange, dto.Reason);
@@ -180,6 +187,10 @@ public class StatusUpdateDto
         catch (System.Collections.Generic.KeyNotFoundException)
         {
             return NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { Message = ex.Message });
         }
     }
 

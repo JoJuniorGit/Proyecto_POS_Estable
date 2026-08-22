@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { getSalesHistory, getSaleHistoryDetail } from '../services/historyApi';
 import { Search, Loader2, Calendar, ChevronRight, ChevronLeft, ChevronDown, RefreshCw, CheckCircle, Clock, XCircle, FileText } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
-import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime } from '../utils/formatters';
+import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime, formatQuantity } from '../utils/formatters';
 
 const PAGE_SIZE = 25;
 
@@ -317,7 +317,7 @@ export default function HistoryPage() {
                                     {(detailState.data.items || []).map((item) => (
                                       <tr key={item.id}>
                                         <td className="font-medium" style={{ padding: '6px' }}>{item.productName}</td>
-                                        <td className="text-right font-mono" style={{ padding: '6px' }}>{item.quantity}</td>
+                                        <td className="text-right font-mono" style={{ padding: '6px' }}>{formatQuantity(item.quantity)}</td>
                                         <td className="text-right font-mono font-bold" style={{ padding: '6px' }}>{formatBsS(item.subtotalBsS)}</td>
                                       </tr>
                                     ))}
@@ -479,7 +479,7 @@ export default function HistoryPage() {
                                           {(detailState.data.items || []).map((item) => (
                                             <tr key={item.id}>
                                               <td className="font-medium">{item.productName}</td>
-                                              <td className="text-right font-mono">{item.quantity}</td>
+                                               <td className="text-right font-mono">{formatQuantity(item.quantity)}</td>
                                               <td className="text-right font-mono">{formatBsS(item.unitPriceBsS)}</td>
                                               <td className="text-right font-mono font-bold">{formatBsS(item.subtotalBsS)}</td>
                                             </tr>

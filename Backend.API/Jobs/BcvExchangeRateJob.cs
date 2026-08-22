@@ -92,8 +92,13 @@ public class BcvExchangeRateJob : BackgroundService
                     await dbContext.SaveChangesAsync(cancellationToken);
                     _logger.LogInformation("System exchange rate updated to {Rate}", rate.Value);
 
+                    // Recalculate OnHold sales
+                    var salesService = scope.ServiceProvider.GetRequiredService<Sales.Module.Interfaces.ISalesService>();
+                    await salesService.RecalculateOnHoldSalesAsync(rate.Value);
+
                     // Broadcast to clients via SignalR
                     await hubContext.Clients.All.SendAsync("ReceiveRateUpdate", rate.Value, cancellationToken);
+                    await hubContext.Clients.All.SendAsync("OnHoldSalesUpdated", cancellationToken);
                 }
                 else
                 {

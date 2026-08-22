@@ -186,4 +186,34 @@ public class AuthenticationTests
         Assert.StartsWith("PBKDF2$", updatedUser.PasswordHash);
         Assert.True(PasswordHasher.VerifyPassword(legacyPassword, updatedUser.PasswordHash));
     }
+
+    [Fact]
+    public async Task Login_WithEmptyPasswordHash_ReturnsUnauthorized()
+    {
+        using var db = GetInMemorySalesDbContext();
+        var config = GetMockConfiguration();
+        var tokenService = new TokenService(config);
+
+        var user = new User
+        {
+            Id = 4,
+            Cedula = "V-66666666",
+            Name = "Dave EmptyHash",
+            PasswordHash = "", // Empty password hash
+            Role = UserRole.Cashier,
+            IsActive = true
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var controller = new AuthController(db, tokenService);
+        var response = await controller.Login(new LoginRequest
+        {
+            Cedula = "V-66666666",
+            Password = "AnyRandomPassword123!"
+        });
+
+        var unauthResult = Assert.IsType<UnauthorizedObjectResult>(response.Result);
+        Assert.NotNull(unauthResult.Value);
+    }
 }

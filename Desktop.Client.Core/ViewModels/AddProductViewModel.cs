@@ -35,8 +35,8 @@ public partial class AddProductViewModel : ObservableValidator
     private decimal _cost;
 
     [ObservableProperty]
-    [Range(0, int.MaxValue, ErrorMessage = "Stock cannot be negative")]
-    private int _stockQuantity;
+    [Range(0, double.MaxValue, ErrorMessage = "Stock cannot be negative")]
+    private decimal _stockQuantity;
 
     [ObservableProperty]
     private string _description = string.Empty;
@@ -50,8 +50,8 @@ public partial class AddProductViewModel : ObservableValidator
     private decimal _profitPercentage;
 
     [ObservableProperty]
-    [Range(0, int.MaxValue, ErrorMessage = "Threshold cannot be negative")]
-    private int _lowStockThreshold;
+    [Range(0, double.MaxValue, ErrorMessage = "Threshold cannot be negative")]
+    private decimal _lowStockThreshold;
 
     [ObservableProperty]
     private bool _isLoading;

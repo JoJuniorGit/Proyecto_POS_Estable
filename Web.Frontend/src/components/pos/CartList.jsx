@@ -1,6 +1,7 @@
 import { Plus, Minus, Trash2 } from 'lucide-react';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import QuantityInput from './QuantityInput';
+import { getLineAmounts } from '../../utils/formatters';
 
 export default function CartList({ items, selectedItemId, onSelectItem, onUpdateQty, onRemoveItem }) {
   const { exchangeRate } = useExchangeRate();
@@ -8,12 +9,7 @@ export default function CartList({ items, selectedItemId, onSelectItem, onUpdate
   return (
     <div className="cart-list-mobile">
       {items.map((item) => {
-        const unitBsS = item.unitPrice > 0
-          ? item.unitPrice * exchangeRate
-          : (item.unitPriceBsS || 0);
-        const subtotalBsS = item.unitPrice > 0
-          ? item.subtotal * exchangeRate
-          : (item.subtotalBsS || 0);
+        const { unitBsS, subtotalBsS } = getLineAmounts(item, exchangeRate);
 
         const isSelected = selectedItemId === item.id;
 

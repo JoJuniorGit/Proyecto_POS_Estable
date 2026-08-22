@@ -26,12 +26,17 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
   
   // Saldo base a cobrar (en USD)
   const targetTotalUSD = overrideSale 
-    ? (overrideSale.remainingBalanceUSD !== undefined ? overrideSale.remainingBalanceUSD : overrideSale.totalUSD)
+    ? (overrideSale.remainingBalanceUSD !== undefined ? overrideSale.remainingBalanceUSD : Math.max(0, (overrideSale.totalUSD || 0) - (overrideSale.totalPaidUSD || 0)))
     : cartTotalUSD;
 
-  // Saldo base en Bs.S usando la tasa vigente del contexto
+  // Saldo base en Bs.S usando la tasa vigente del contexto y el total real de la venta
   const rateToUse = exchangeRate > 0 ? exchangeRate : (activeSale?.appliedRate || 1);
-  const targetTotalBsS = overrideSale ? targetTotalUSD * rateToUse : cartTotalBsS;
+  const paidPreviousBsS = overrideSale 
+    ? (overrideSale.payments || []).reduce((acc, p) => acc + (p.amountBsS > 0 ? p.amountBsS : (p.amount || 0) * (p.exchangeRate || rateToUse)), 0) 
+    : 0;
+  const targetTotalBsS = overrideSale 
+    ? Math.max(0, (overrideSale.totalBsS !== undefined && overrideSale.totalBsS > 0 ? overrideSale.totalBsS : targetTotalUSD * rateToUse) - paidPreviousBsS)
+    : cartTotalBsS;
 
   // Cargar métodos de pago activos
   useEffect(() => {

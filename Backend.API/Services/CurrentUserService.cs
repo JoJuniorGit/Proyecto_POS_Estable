@@ -25,13 +25,6 @@ public class CurrentUserService : ICurrentUserService
                 return role;
             }
 
-            // 2. Temporary fallback for unauthenticated / legacy requests
-            var headerRole = _httpContextAccessor.HttpContext?.Request.Headers["X-User-Role"].ToString();
-            if (!string.IsNullOrEmpty(headerRole) && Enum.TryParse<UserRole>(headerRole, true, out var legacyRole))
-            {
-                return legacyRole;
-            }
-
             return null;
         }
     }
@@ -40,7 +33,7 @@ public class CurrentUserService : ICurrentUserService
     {
         get
         {
-            // 1. Prioritize JWT Claims
+            // Resolve identity strictly from JWT Claims
             var idClaim = _httpContextAccessor.HttpContext?.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
                        ?? _httpContextAccessor.HttpContext?.User?.FindFirst("sub")?.Value;
             if (!string.IsNullOrEmpty(idClaim))
@@ -48,12 +41,12 @@ public class CurrentUserService : ICurrentUserService
                 return idClaim;
             }
 
-            // 2. Temporary fallback for unauthenticated / legacy requests
-            return _httpContextAccessor.HttpContext?.Request.Headers["X-User-Id"].ToString();
+            return null;
         }
     }
 
-    public bool CanMutateCatalog => UserRole == null || UserRole != Core.Entities.UserRole.Cashier;
-    public bool CanMutateSettings => UserRole == null || UserRole != Core.Entities.UserRole.Cashier;
-    public bool CanMutateExchangeRate => UserRole == null || UserRole != Core.Entities.UserRole.Cashier;
+    // Deny-by-default: only explicitly allowed roles have mutation rights
+    public bool CanMutateCatalog => UserRole == Core.Entities.UserRole.Admin;
+    public bool CanMutateSettings => UserRole == Core.Entities.UserRole.Admin;
+    public bool CanMutateExchangeRate => UserRole == Core.Entities.UserRole.Admin;
 }

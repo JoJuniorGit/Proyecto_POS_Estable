@@ -157,44 +157,48 @@ namespace Desktop.Client.Views
         {
             if (string.IsNullOrEmpty(text)) return true;
 
-            if (!isFractional)
+            int separatorCount = 0;
+            int separatorIndex = -1;
+
+            for (int i = 0; i < text.Length; i++)
             {
-                // Non-fractional products: strictly numeric '0'-'9'
-                foreach (char c in text)
+                char c = text[i];
+                if (c == '.' || c == ',')
                 {
-                    if (c < '0' || c > '9') return false;
+                    separatorCount++;
+                    separatorIndex = i;
+                    if (separatorCount > 1) return false;
                 }
-                return true;
+                else if (c < '0' || c > '9')
+                {
+                    return false;
+                }
             }
-            else
+
+            // Max 3 decimal digits
+            if (separatorIndex >= 0)
             {
-                // Fractional products: '0'-'9' and single decimal separator (. or ,)
-                int separatorCount = 0;
-                int separatorIndex = -1;
+                int decimalDigits = text.Length - 1 - separatorIndex;
+                if (decimalDigits > 3) return false;
+            }
 
-                for (int i = 0; i < text.Length; i++)
+            return true;
+        }
+
+        private void DataGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+        {
+            if (e.Row.DataContext is ViewModels.CartItemViewModel itemVm && DataContext is ViewModels.PosViewModel posVm)
+            {
+                if (e.EditingElement is TextBox tb)
                 {
-                    char c = text[i];
-                    if (c == '.' || c == ',')
+                    string text = tb.Text;
+                    if (decimal.TryParse(text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal q) ||
+                        decimal.TryParse(text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.CurrentCulture, out q))
                     {
-                        separatorCount++;
-                        separatorIndex = i;
-                        if (separatorCount > 1) return false;
-                    }
-                    else if (c < '0' || c > '9')
-                    {
-                        return false;
+                        decimal rounded = System.Math.Round(q, 3, System.MidpointRounding.AwayFromZero);
+                        _ = posVm.Cart.CommitItemQuantityAsync(itemVm.Id, rounded);
                     }
                 }
-
-                // Max 3 decimal digits
-                if (separatorIndex >= 0)
-                {
-                    int decimalDigits = text.Length - 1 - separatorIndex;
-                    if (decimalDigits > 3) return false;
-                }
-
-                return true;
             }
         }
     }

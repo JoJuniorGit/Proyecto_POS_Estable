@@ -15,27 +15,23 @@ namespace Backend.API.Controllers;
 public class SalesController : ControllerBase
 {
     private readonly ISalesService _salesService;
+    private readonly Core.Interfaces.ICurrentUserService _currentUserService;
 
-    public SalesController(ISalesService salesService)
+    public SalesController(ISalesService salesService, Core.Interfaces.ICurrentUserService currentUserService)
     {
         _salesService = salesService;
+        _currentUserService = currentUserService;
     }
 
     [HttpPost("start")]
     public async Task<ActionResult<SaleDto>> StartSale([FromQuery] int? cashierId = null)
     {
-        var _sale = await _salesService.StartSaleAsync(cashierId);
-        return Ok(_sale);
-    }
+        int? effectiveCashierId = _currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid) 
+            ? uid 
+            : cashierId;
 
-    [HttpDelete("wipe-all-records")]
-    public async Task<ActionResult> WipeAllRecords([FromServices] Sales.Module.Data.SalesDbContext _db)
-    {
-        await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.ExecuteSqlRawAsync(
-            _db.Database, "TRUNCATE TABLE \"Sales\" CASCADE");
-        await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.ExecuteSqlRawAsync(
-            _db.Database, "TRUNCATE TABLE \"CashDrawerSessions\" CASCADE");
-        return Ok("All sales and cash sessions wiped.");
+        var _sale = await _salesService.StartSaleAsync(effectiveCashierId);
+        return Ok(_sale);
     }
 
     [HttpGet("{id}")]
@@ -164,6 +160,9 @@ public class SalesController : ControllerBase
         [FromQuery] int pageSize = 20,
         [FromQuery] bool recentOnly = false)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
         var (items, totalCount) = await _salesService.GetCustomersAsync(query, page, pageSize, recentOnly);
         Response.Headers["X-Total-Count"] = totalCount.ToString();
         return Ok(new { items, totalCount, page, pageSize });
@@ -246,8 +245,12 @@ public class SalesController : ControllerBase
     {
         try
         {
+            int? effectiveCashierId = _currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid)
+                ? uid
+                : request.CashierId;
+
             var _payment_infos = request.Payments.Select(p => new PaymentInfo(p.PaymentMethodId, p.Amount, p.AmountBsS > 0 ? p.AmountBsS : p.AmountLocal, p.ReferenceNumber));
-            int _real_id = await _salesService.CompleteSaleAsync(id, request.ExchangeRate, _payment_infos, request.RoundingAdjustment, request.CashierId, request.IsPendingPickup);
+            int _real_id = await _salesService.CompleteSaleAsync(id, request.ExchangeRate, _payment_infos, request.RoundingAdjustment, effectiveCashierId, request.IsPendingPickup);
             return Ok(_real_id);
         }
         catch (System.Exception ex)
@@ -284,6 +287,9 @@ public class SalesController : ControllerBase
     [HttpGet("history")]
     public async Task<ActionResult> GetHistory([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] System.DateTime? startDate = null, [FromQuery] System.DateTime? endDate = null, [FromQuery] string? search = null)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
         var (_items, _total_count) = await _salesService.GetSalesHistoryAsync(page, pageSize, startDate, endDate, search);
         return Ok(new { Items = _items, TotalCount = _total_count });
     }

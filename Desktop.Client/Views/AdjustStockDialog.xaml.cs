@@ -7,7 +7,7 @@ namespace Desktop.Client.Views;
 
 public partial class AdjustStockDialog : Window
 {
-    public int QuantityChange { get; private set; }
+    public decimal QuantityChange { get; private set; }
     public string Reason { get; private set; } = string.Empty;
 
     public AdjustStockDialog(ProductDto product)
@@ -19,14 +19,15 @@ public partial class AdjustStockDialog : Window
 
     private void NumberValidationTextBox(object sender, TextCompositionEventArgs e)
     {
-        // Require absolute positive number visually
-        Regex regex = new Regex("[^0-9]+");
+        // Allow digits and decimal separator
+        Regex regex = new Regex(@"[^0-9.,]+");
         e.Handled = regex.IsMatch(e.Text);
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        if (int.TryParse(QuantityInput.Text, out int absoluteQty) && absoluteQty > 0)
+        var rawText = QuantityInput.Text.Replace(',', '.');
+        if (decimal.TryParse(rawText, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal absoluteQty) && absoluteQty > 0)
         {
             if (string.IsNullOrWhiteSpace(ReasonInput.Text) || ReasonInput.Text.Trim().Length < 3)
             {
@@ -44,7 +45,7 @@ public partial class AdjustStockDialog : Window
         }
         else
         {
-            MessageBox.Show("Por favor ingrese una cantidad entera positiva mayor a 0.", "Error de Validación", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Por favor ingrese una cantidad positiva mayor a 0.", "Error de Validación", MessageBoxButton.OK, MessageBoxImage.Warning);
             QuantityInput.Focus();
         }
     }

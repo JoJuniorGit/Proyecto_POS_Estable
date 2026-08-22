@@ -40,7 +40,7 @@ function MainApp() {
   const [completedHoldSuccess, setCompletedHoldSuccess] = useState(null);
 
   const { exchangeRate } = useExchangeRate();
-  const { currentSale, totalUSD, resetCart } = useCart();
+  const { currentSale, totalUSD, totalBsS, resetCart } = useCart();
 
   useEffect(() => {
     function handleHashChange() {
@@ -142,6 +142,7 @@ function MainApp() {
         saleId={currentSale?.id}
         currentCustomer={currentSale?.customer || (currentSale?.customerName && currentSale?.customerName !== 'Consumidor Final' ? { id: currentSale.customerId, name: currentSale.customerName, cedulaOrRif: currentSale.customerCedula, creditLimitUSD: currentSale.customerCreditLimitUSD || 0 } : null)}
         saleTotalUSD={totalUSD}
+        saleTotalBsS={totalBsS}
         exchangeRate={exchangeRate}
         onSuccess={handleHoldSuccess}
       />

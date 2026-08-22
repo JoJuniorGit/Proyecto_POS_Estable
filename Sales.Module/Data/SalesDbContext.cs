@@ -96,12 +96,27 @@ public class SalesDbContext : DbContext
         modelBuilder.Entity<Sale>().Property(s => s.TotalBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<Sale>().Property(s => s.SubtotalBsS).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<Sale>().Property(s => s.RoundingAdjustment).HasColumnType("decimal(18,2)");
-        modelBuilder.Entity<SaleItem>().Property(i => i.Quantity).HasColumnType("decimal(18,3)");
+        modelBuilder.Entity<SaleItem>().Property(i => i.Quantity).HasColumnType("numeric(18,3)");
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitPrice).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<SaleItem>().Property(i => i.Subtotal).HasColumnType("decimal(18,4)");
 
         modelBuilder.Entity<Sale>()
             .HasIndex(s => s.Date);
+
+        modelBuilder.Entity<Sale>()
+            .HasIndex(s => new { s.Status, s.Date });
+
+        modelBuilder.Entity<Sale>()
+            .HasIndex(s => new { s.Status, s.DeliveryStatus });
+
+        modelBuilder.Entity<Sale>()
+            .HasIndex(s => s.CustomerId);
+
+        modelBuilder.Entity<Sale>()
+            .HasIndex(s => s.CashierId);
+
+        modelBuilder.Entity<SalePayment>()
+            .HasIndex(p => p.PaymentMethodId);
 
         modelBuilder.Entity<Sale>()
             .HasIndex(s => s.InvoiceNumber)
@@ -120,6 +135,12 @@ public class SalesDbContext : DbContext
             .WithOne(t => t.Session)
             .HasForeignKey(t => t.SessionId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<CashDrawerSession>()
+            .HasIndex(s => s.Status);
+
+        modelBuilder.Entity<CashTransaction>()
+            .HasIndex(t => new { t.SessionId, t.TransactionTime });
 
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningBalanceLocal).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningExchangeRate).HasColumnType("decimal(18,2)");

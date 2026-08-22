@@ -137,8 +137,13 @@ public class CashDrawerController : ControllerBase
                 return BadRequest(new { Message = "Acceso denegado: Únicamente los usuarios administradores pueden realizar operaciones manuales de ingreso (CASH IN) o retiro (CASH OUT) en la caja." });
             }
 
+            if (request.ExchangeRate <= 0)
+            {
+                return BadRequest(new { Message = "La tasa de cambio (ExchangeRate) debe ser mayor a cero." });
+            }
+
             // Convert purely integer local cash strictly to USD equivalent for standard tracking
-            decimal amountUsd = request.AmountLocal / request.ExchangeRate;
+            decimal amountUsd = Math.Round(request.AmountLocal / request.ExchangeRate, 2, MidpointRounding.AwayFromZero);
             
             var transaction = await _cashDrawerService.AddTransactionAsync(
                         request.SessionId,
@@ -188,10 +193,14 @@ public class CashDrawerController : ControllerBase
     {
         try
         {
-            int? cashierId = request.CashierId;
-            if (!cashierId.HasValue && Request.Headers.TryGetValue("X-User-Id", out var headerUserId) && int.TryParse(headerUserId, out int parsedId))
+            int? cashierId = null;
+            if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int parsedAuthId))
             {
-                cashierId = parsedId;
+                cashierId = parsedAuthId;
+            }
+            else
+            {
+                cashierId = request.CashierId;
             }
 
             string userName = !string.IsNullOrWhiteSpace(request.UserName)

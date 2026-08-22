@@ -30,16 +30,16 @@ public class Product : BaseEntity
     public decimal PriceBsS { get; set; } // The "tagged" price in local currency
     public decimal LastConversionRate { get; set; } // The rate used to calculate PriceBsS
     public decimal Cost { get; set; }
-    public int StockQuantity { get; set; }
+    public decimal StockQuantity { get; set; }
     public decimal ProfitPercentage { get; set; }
-    public int LowStockThreshold { get; set; }
+    public decimal LowStockThreshold { get; set; }
     public bool IsActive { get; set; } = true;
     public bool IsDeleted { get; set; } = false;
     
     // Identifies the product used for requesting physical cash from the register
     public bool IsCashAdvance { get; set; } = false;
 
-    public int ReservedQuantity { get; set; }
+    public decimal ReservedQuantity { get; set; }
 
     [System.ComponentModel.DataAnnotations.Timestamp]
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();

@@ -27,11 +27,18 @@ export function ExchangeRateProvider({ children }) {
     initRate();
 
     // Conectar SignalR
-    connectRateHub((newRate) => {
-      if (isMounted) {
-        setExchangeRate(newRate);
+    connectRateHub(
+      (newRate) => {
+        if (isMounted) {
+          setExchangeRate(newRate);
+        }
+      },
+      () => {
+        if (isMounted) {
+          window.dispatchEvent(new CustomEvent('onHoldSalesUpdated'));
+        }
       }
-    });
+    );
 
     return () => {
       isMounted = false;

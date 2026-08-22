@@ -71,6 +71,25 @@ public class SalesService : ISalesService
             .FirstOrDefaultAsync(s => s.Id == sale_id);
 
         if (_sale == null) throw new KeyNotFoundException($"Sale {sale_id} not found.");
+
+        if (_sale.Status == SaleStatus.OnHold && _inventoryService != null)
+        {
+            try
+            {
+                var todayRate = await _inventoryService.GetTodayExchangeRateAsync();
+                if (todayRate > 0 && _sale.AppliedRate != todayRate)
+                {
+                    _sale.AppliedRate = todayRate;
+                    await RecalculateTotalAsync(_sale);
+                    await _context.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to auto-recalculate OnHold sale {SaleId} in GetSaleAsync.", sale_id);
+            }
+        }
+
         return MapToDto(_sale);
     }
 
@@ -89,21 +108,12 @@ public class SalesService : ISalesService
 
     private async Task<decimal> ValidateAndAdjustQuantityForProductAsync(int productId, decimal quantity)
     {
-        if (quantity <= 0m) return quantity;
-
-        var product = await _inventoryService.GetProductByIdAsync(productId);
-        if (product != null)
+        if (quantity <= 0m)
         {
-            if (!product.IsFractional && (quantity % 1m != 0m))
-            {
-                throw new InvalidOperationException($"El producto '{product.Name}' no admite cantidades fraccionadas o decimales.");
-            }
-            if (product.IsFractional)
-            {
-                return Math.Round(quantity, 3, MidpointRounding.AwayFromZero);
-            }
+            throw new ArgumentException("La cantidad debe ser mayor a cero.", nameof(quantity));
         }
-        return quantity;
+
+        return Math.Round(quantity, 3, MidpointRounding.AwayFromZero);
     }
 
     public async Task<SaleDto> AddItemAsync(int sale_id, int product_id, decimal quantity, decimal exchange_rate, decimal? custom_unit_price_usd = null, decimal? custom_unit_price_local = null)
@@ -111,6 +121,15 @@ public class SalesService : ISalesService
         var _sale = await GetSaleEntityAsync(sale_id);
         if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("Cannot modify a completed sale.");
+
+        if (custom_unit_price_usd.HasValue && custom_unit_price_usd.Value < 0m)
+        {
+            throw new ArgumentException("El precio no puede ser negativo.", nameof(custom_unit_price_usd));
+        }
+        if (custom_unit_price_local.HasValue && custom_unit_price_local.Value < 0m)
+        {
+            throw new ArgumentException("El precio en moneda local no puede ser negativo.", nameof(custom_unit_price_local));
+        }
 
         quantity = await ValidateAndAdjustQuantityForProductAsync(product_id, quantity);
 
@@ -166,7 +185,7 @@ public class SalesService : ISalesService
             _sale.Items.Add(_item);
         }
 
-        RecalculateTotal(_sale);
+        await RecalculateTotalAsync(_sale);
         ValidateHoldSaleTotal(_sale);
 
         await _context.SaveChangesAsync();
@@ -186,7 +205,7 @@ public class SalesService : ISalesService
         {
             _sale.Items.Remove(_item);
             _context.SaleItems.Remove(_item);
-            RecalculateTotal(_sale);
+            await RecalculateTotalAsync(_sale);
             ValidateHoldSaleTotal(_sale);
             await _context.SaveChangesAsync();
         }
@@ -215,7 +234,7 @@ public class SalesService : ISalesService
                 quantity = await ValidateAndAdjustQuantityForProductAsync(_item.ProductId, quantity);
                 _item.Quantity = quantity;
             }
-            RecalculateTotal(_sale);
+            await RecalculateTotalAsync(_sale);
             ValidateHoldSaleTotal(_sale);
             await _context.SaveChangesAsync();
         }
@@ -229,7 +248,7 @@ public class SalesService : ISalesService
             throw new InvalidOperationException("Cannot modify a completed sale.");
 
         _sale.AppliedRate = exchange_rate;
-        RecalculateTotal(_sale);
+        await RecalculateTotalAsync(_sale);
         await _context.SaveChangesAsync();
         return MapToDto(_sale);
     }
@@ -278,7 +297,7 @@ public class SalesService : ISalesService
             }
 
             _sale.AppliedRate = exchange_rate;
-            RecalculateTotal(_sale);
+            await RecalculateTotalAsync(_sale);
 
             _sale.RoundingAdjustment = roundingAdjustment;
 
@@ -393,7 +412,7 @@ public class SalesService : ISalesService
             _sale.DeliveryStatus = isPendingPickup ? SaleDeliveryStatus.PendingPickup : SaleDeliveryStatus.Delivered;
             _sale.Date = DateTime.UtcNow;
             _sale.AppliedRate = exchange_rate;
-            RecalculateTotal(_sale);
+            await RecalculateTotalAsync(_sale);
             _sale.FinalPaidAmountBsS = _sale.Payments.Sum(p => p.AmountBsS);
 
             _logger?.LogInformation("[EF CORE ENTITY DEBUG] Persistiendo Sale ID: {SaleId}. Entidades SalePayment reales: {@Payments}", _sale.Id, _sale.Payments);
@@ -522,7 +541,7 @@ public class SalesService : ISalesService
         if (request.ExchangeRate > 0)
         {
             _sale.AppliedRate = request.ExchangeRate;
-            RecalculateTotal(_sale);
+            await RecalculateTotalAsync(_sale);
         }
 
         var paymentsToProcess = new List<AddPaymentRequestDto>();
@@ -557,7 +576,7 @@ public class SalesService : ISalesService
         _sale.CustomerName = customer.Name;
         _sale.CustomerCedula = customer.CedulaOrRif;
 
-        if (remainingBalanceUsd <= 0.05m)
+        if (totalPaidUsd > 0 && _sale.TotalUSD > 0 && remainingBalanceUsd <= 0.05m && totalPaidUsd >= (_sale.TotalUSD - 0.05m))
         {
             // Se cubrió el 100% mediante los pagos iniciales -> Completar y generar factura
             var lastInvoice = await _context.Sales
@@ -648,7 +667,7 @@ public class SalesService : ISalesService
             _sale.Items.Add(newItem);
         }
 
-        RecalculateTotal(_sale);
+        await RecalculateTotalAsync(_sale);
         await _context.SaveChangesAsync();
 
         return MapToDto(_sale);
@@ -665,6 +684,17 @@ public class SalesService : ISalesService
             ? request.AmountUSD 
             : (rate > 0 ? request.AmountBsS / rate : 0);
 
+        if (amountUsd <= 0 && request.AmountBsS <= 0)
+        {
+            throw new ArgumentException("El monto del abono debe ser mayor a cero.");
+        }
+
+        decimal currentPaidUsd = _sale.Payments.Sum(p => p.Amount);
+        if (currentPaidUsd + amountUsd > _sale.TotalUSD + 0.05m)
+        {
+            throw new InvalidOperationException("El monto del abono excede el total pendiente de la venta.");
+        }
+
         // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
         var method = await _context.PaymentMethods.FindAsync(request.PaymentMethodId);
         if (method != null && method.IsCash && request.AmountBsS % 1 != 0)
@@ -676,8 +706,8 @@ public class SalesService : ISalesService
         {
             SaleId = _sale.Id,
             PaymentMethodId = request.PaymentMethodId,
-            Amount = Math.Round(amountUsd, 2),
-            AmountBsS = request.AmountBsS,
+            Amount = Math.Round(amountUsd, 2, MidpointRounding.AwayFromZero),
+            AmountBsS = Math.Round(request.AmountBsS, 2, MidpointRounding.AwayFromZero),
             ExchangeRate = rate,
             ReferenceNumber = request.ReferenceNumber,
             CreatedAt = DateTime.UtcNow
@@ -691,6 +721,22 @@ public class SalesService : ISalesService
 
     public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync()
     {
+        if (_inventoryService != null)
+        {
+            try
+            {
+                var todayRate = await _inventoryService.GetTodayExchangeRateAsync();
+                if (todayRate > 0)
+                {
+                    await RecalculateOnHoldSalesAsync(todayRate);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to auto-recalculate OnHold sales in GetPendingSalesAsync.");
+            }
+        }
+
         var sales = await _context.Sales
             .Include(s => s.Customer)
             .Include(s => s.Items)
@@ -702,6 +748,31 @@ public class SalesService : ISalesService
             .ToListAsync();
 
         return sales.Select(s => MapToDto(s));
+    }
+
+    /// <inheritdoc />
+    public async Task<int> RecalculateOnHoldSalesAsync(decimal newExchangeRate)
+    {
+        if (newExchangeRate <= 0)
+            return 0;
+
+        var onHoldSales = await _context.Sales
+            .Include(s => s.Items)
+            .Include(s => s.Payments)
+            .Where(s => s.Status == SaleStatus.OnHold)
+            .ToListAsync();
+
+        if (!onHoldSales.Any())
+            return 0;
+
+        foreach (var sale in onHoldSales)
+        {
+            sale.AppliedRate = newExchangeRate;
+            await RecalculateTotalAsync(sale);
+        }
+
+        await _context.SaveChangesAsync();
+        return onHoldSales.Count;
     }
 
     public async Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(
@@ -1045,22 +1116,46 @@ public class SalesService : ISalesService
     {
         if (sale.Items != null && sale.Items.Any())
         {
+            var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
+            var products = new Dictionary<int, Product>();
+
+            if (_inventoryService != null)
+            {
+                var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
+                if (fetched != null && fetched.Count > 0)
+                {
+                    products = fetched.ToDictionary(p => p.Id);
+                }
+                else
+                {
+                    // Fallback para stubs/mocks en pruebas que únicamente configuran GetProductByIdAsync
+                    foreach (var id in productIds)
+                    {
+                        var p = await _inventoryService.GetProductByIdAsync(id);
+                        if (p != null)
+                        {
+                            products[p.Id] = p;
+                        }
+                    }
+                }
+            }
+
             foreach (var item in sale.Items)
             {
-                // Regla 1: Refresco exhaustivo y fallback de DB para producto desconectado
-                var product = await _inventoryService.GetProductByIdAsync(item.ProductId);
+                // Regla 1: Lookup O(1) desde el batch fetch
+                products.TryGetValue(item.ProductId, out var product);
                 if (product != null)
                 {
                     item.IsFractional = product.IsFractional;
                     item.UnitOfMeasure = product.UnitOfMeasure;
 
-                    // Regla 2: Fallback anti-precio cero y umbral de 6 unidades
+                    // Regla 2: Fallback anti-precio cero y umbral mayorista
                     var wholesalePrice = (product.PriceWholesaleUSD > 0) 
                         ? product.PriceWholesaleUSD 
                         : (product.PriceRetailUSD > 0 ? product.PriceRetailUSD : product.PriceUSD);
                     var retailPrice = (product.PriceRetailUSD > 0) ? product.PriceRetailUSD : product.PriceUSD;
 
-                    var minWholesaleQty = product.MinWholesaleQuantity > 0 ? product.MinWholesaleQuantity : 6;
+                    var minWholesaleQty = product.MinWholesaleQuantity > 0 ? product.MinWholesaleQuantity : 6m;
 
                     if (string.Equals(sale.PriceListType, "Wholesale", StringComparison.OrdinalIgnoreCase) && product.HasWholesale && item.Quantity >= minWholesaleQty)
                     {
@@ -1094,11 +1189,6 @@ public class SalesService : ISalesService
             sale.TotalBsS = Math.Round(sale.TotalUSD * sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
             sale.SubtotalBsS = sale.TotalBsS;
         }
-    }
-
-    private void RecalculateTotal(Sale sale)
-    {
-        RecalculateTotalAsync(sale).GetAwaiter().GetResult();
     }
 
     private void ValidateHoldSaleTotal(Sale sale)
@@ -1204,9 +1294,7 @@ public class SalesService : ISalesService
         {
             try
             {
-                var allProducts = await _inventoryService.GetAllProductsAsync();
-                var p = allProducts.FirstOrDefault(x => x.IsCashAdvance && x.IsActive)
-                        ?? allProducts.FirstOrDefault(x => x.IsCashAdvance);
+                var p = await _inventoryService.GetCashAdvanceProductAsync();
 
                 if (p != null)
                 {

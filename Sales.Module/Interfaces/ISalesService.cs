@@ -37,6 +37,13 @@ public interface ISalesService
     Task<CustomerDto> UpdateCustomerAsync(int id, UpdateCustomerDto request);
     Task DeleteCustomerAsync(int id);
 
+    /// <summary>
+    /// Recalculates prices and totals for all OnHold sales using the new exchange rate.
+    /// Updates both USD prices from the catalog and BsS conversion.
+    /// Existing payments (abonos) are NOT modified.
+    /// </summary>
+    Task<int> RecalculateOnHoldSalesAsync(decimal newExchangeRate);
+
     Task<Sale> CreateCashAdvanceSaleAsync(
         decimal requestedAmountLocal,
         decimal commissionAmountLocal,

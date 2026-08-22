@@ -192,7 +192,7 @@
                                             </DataGridTemplateColumn.Header>
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <TextBlock Text="{Binding Quantity, StringFormat='{}{0:N0}'}" HorizontalAlignment="Center" TextAlignment="Center" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding Quantity, StringFormat='{}{0:0.###}'}" HorizontalAlignment="Center" TextAlignment="Center" VerticalAlignment="Center"/>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>

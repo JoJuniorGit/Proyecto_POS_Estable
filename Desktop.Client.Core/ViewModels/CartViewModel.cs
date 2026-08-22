@@ -37,6 +37,23 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         {
             CurrentSale = m.Value;
         });
+
+        // Reactive sync: When OnHold sales are recalculated on server, refresh if current sale is OnHold
+        WeakReferenceMessenger.Default.Register<OnHoldSalesRefreshMessage>(this, async (r, m) =>
+        {
+            if (CurrentSale != null && CurrentSale.Status == "OnHold")
+            {
+                try
+                {
+                    var updated = await _sales_service.GetSaleAsync(CurrentSale.Id);
+                    CurrentSale = updated;
+                }
+                catch
+                {
+                    // Ignore transient network errors during background refresh
+                }
+            }
+        });
     }
 
     private ObservableCollection<CartItemViewModel> _cart_items = new();
@@ -132,7 +149,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
                 bool isHistorical = CurrentSale.Status != "Pending";
                 foreach (var item in CurrentSale.Items)
                 {
-                    CartItems.Add(new CartItemViewModel(item, RecalculateTotals, rateToUse, isHistorical));
+                    CartItems.Add(new CartItemViewModel(item, RecalculateTotals, rateToUse, isHistorical, CommitItemQuantityAsync));
                 }
 
                 RecalculateTotals();
@@ -179,13 +196,42 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
 
     /// <summary>
     /// Mass notification pattern to refresh all prices when the exchange rate changes.
-    /// Skips update if the cart is displaying a historical sale with a frozen AppliedRate.
+    /// Skips update if the cart is displaying a historical sale (Completed/Cancelled) with a frozen AppliedRate.
+    /// Re-fetches OnHold sales from server to get accurate recalculated totals and items.
     /// </summary>
     public void UpdateAllPrices(decimal newRate)
     {
-        // Guard: Do NOT overwrite historical snapshot rates with the live rate.
-        if (CurrentSale != null && CurrentSale.Status != "Pending")
-            return;
+        if (CurrentSale != null)
+        {
+            if (CurrentSale.Status == "OnHold")
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var updated = await _sales_service.GetSaleAsync(CurrentSale.Id);
+                        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                        if (dispatcher != null && !dispatcher.CheckAccess())
+                        {
+                            dispatcher.Invoke(() => CurrentSale = updated);
+                        }
+                        else
+                        {
+                            CurrentSale = updated;
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore transient network issues
+                    }
+                });
+                return;
+            }
+
+            // Guard: Do NOT overwrite completed or cancelled sale rates.
+            if (CurrentSale.Status != "Pending")
+                return;
+        }
 
         foreach (var item in CartItems)
         {
@@ -248,6 +294,67 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         catch (System.Exception ex)
         {
             MessageBox.Show($"Error removing item: {ex.Message}");
+        }
+    }
+
+    public async Task CommitItemQuantityAsync(int itemId, decimal newQty)
+    {
+        if (CurrentSale == null) return;
+        try
+        {
+            if (newQty <= 0m)
+            {
+                var itemToRemove = CartItems.FirstOrDefault(i => i.Id == itemId);
+                if (itemToRemove != null)
+                {
+                    await RemoveItem(itemToRemove);
+                }
+                return;
+            }
+
+            var updated = await _sales_service.UpdateItemQuantityAsync(CurrentSale.Id, itemId, newQty, _exchange_rate_service.CurrentRate);
+            
+            var existingVm = CartItems.FirstOrDefault(i => i.Id == itemId);
+            if (existingVm != null)
+            {
+                var updatedItem = updated.Items.FirstOrDefault(i => i.Id == itemId);
+                if (updatedItem != null)
+                {
+                    existingVm.Model.Quantity = updatedItem.Quantity;
+                    existingVm.Model.Subtotal = updatedItem.Subtotal;
+                    existingVm.Model.UnitPriceBsS = updatedItem.UnitPriceBsS;
+                    existingVm.Model.SubtotalBsS = updatedItem.SubtotalBsS;
+                    existingVm.NotifyRecalculation();
+                }
+            }
+
+            _current_sale = updated;
+            RecalculateTotals();
+        }
+        catch (System.Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[CartViewModel] CommitItemQuantityAsync error: {ex.Message}");
+        }
+    }
+
+    public async Task FlushAllQuantitiesAsync()
+    {
+        if (CurrentSale == null) return;
+        try
+        {
+            foreach (var item in CartItems.ToList())
+            {
+                if (item.Model.Quantity > 0m)
+                {
+                    await _sales_service.UpdateItemQuantityAsync(CurrentSale.Id, item.Id, item.Model.Quantity, _exchange_rate_service.CurrentRate);
+                }
+            }
+            var reloaded = await _sales_service.GetSaleAsync(CurrentSale.Id);
+            CurrentSale = reloaded;
+        }
+        catch (System.Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[CartViewModel] FlushAllQuantitiesAsync error: {ex.Message}");
         }
     }
 

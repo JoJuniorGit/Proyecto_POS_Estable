@@ -21,7 +21,7 @@ public interface IDialogService
     void ShowSuccessDialog(string message);
     Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title);
     bool? ShowProductDialog(ViewModels.ProductDialogViewModel dialogVm);
-    (bool success, int quantityChange, string reason) ShowAdjustStockDialog(ProductDto product);
+    (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(ProductDto product);
     void ShowInterruptedTransactionDialog(string title, string message);
     Task<CustomerDto?> ShowCustomerPickerAsync();
     Task<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?> ShowCashAdvanceRegisterDialogAsync(System.Collections.Generic.List<PaymentMethodDto> paymentMethods, decimal availableCashLocal);

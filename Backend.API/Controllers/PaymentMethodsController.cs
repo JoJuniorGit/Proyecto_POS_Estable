@@ -46,6 +46,7 @@ public class PaymentMethodsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateMethod([FromBody] PaymentMethod method)
     {
         if (!ModelState.IsValid)
@@ -56,6 +57,7 @@ public class PaymentMethodsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateMethod(int id, [FromBody] PaymentMethod method)
     {
         if (id != method.Id)
@@ -73,6 +75,7 @@ public class PaymentMethodsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteMethod(int id)
     {
         await _paymentService.DeleteAsync(id);

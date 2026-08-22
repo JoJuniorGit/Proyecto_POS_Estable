@@ -1,8 +1,17 @@
 /**
- * Utility helper functions for currency & number formatting
- * Thousands separator: ',' (comma)
- * Decimal separator: '.' (dot)
+ * Formats product quantity (integer or fractional up to 3 decimals without trailing zeroes)
+ * 1.000 -> "1"
+ * 1.500 -> "1.5"
+ * 1.750 -> "1.75"
  */
+export function formatQuantity(qty) {
+  if (qty === null || qty === undefined || isNaN(qty)) return '0';
+  const num = typeof qty === 'number' ? qty : parseFloat(qty);
+  if (isNaN(num)) return '0';
+  return num % 1 === 0 ? num.toString() : num.toFixed(3).replace(/\.?0+$/, '');
+}
+
+
 
 /**
  * Formats a numeric value: 1250.5 -> "1,250.50"
@@ -83,4 +92,33 @@ export function formatTime(value) {
   if (!value) return '';
   const d = new Date(value);
   return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * Calculates exact line amounts in Bs.S and USD for cart/order items,
+ * prioritizing persistent local currency values (unitPriceBsS, subtotalBsS)
+ * and falling back gracefully when not available.
+ * 
+ * @param {object} item
+ * @param {number} fallbackExchangeRate
+ * @returns {{ unitBsS: number, subtotalBsS: number, unitUSD: number, subtotalUSD: number }}
+ */
+export function getLineAmounts(item, fallbackExchangeRate = 1) {
+  if (!item) return { unitBsS: 0, subtotalBsS: 0, unitUSD: 0, subtotalUSD: 0 };
+  
+  const qty = Number(item.quantity) || 0;
+  const rate = Number(item.appliedRate || fallbackExchangeRate || 1);
+  
+  const unitUSD = Number(item.unitPrice) || 0;
+  const subtotalUSD = item.subtotal !== undefined ? Number(item.subtotal) : (qty * unitUSD);
+  
+  const unitBsS = Number(item.unitPriceBsS) > 0 
+    ? Number(item.unitPriceBsS) 
+    : (unitUSD > 0 ? unitUSD * rate : 0);
+    
+  const subtotalBsS = Number(item.subtotalBsS) > 0 
+    ? Number(item.subtotalBsS) 
+    : (unitBsS > 0 ? qty * unitBsS : subtotalUSD * rate);
+    
+  return { unitBsS, subtotalBsS, unitUSD, subtotalUSD };
 }

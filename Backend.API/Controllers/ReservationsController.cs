@@ -22,12 +22,18 @@ public class ReservationsController : ControllerBase
     [HttpPost("reserve")]
     public async Task<IActionResult> ReserveStock([FromBody] ReserveStockDto dto)
     {
+        if (dto.Quantity <= 0)
+        {
+            return BadRequest(new { Message = "La cantidad a reservar debe ser mayor a cero." });
+        }
+
         try
         {
+            var clampedDuration = Math.Clamp(dto.DurationSeconds, 30, 86400); // 30 seconds to 24 hours max
             var reservationId = await _inventoryService.ReserveStockAsync(
                 dto.ProductId,
                 dto.Quantity,
-                TimeSpan.FromSeconds(dto.DurationSeconds)
+                TimeSpan.FromSeconds(clampedDuration)
             );
             return Ok(new { ReservationId = reservationId });
         }

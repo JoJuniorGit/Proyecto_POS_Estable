@@ -121,8 +121,20 @@ try
     // JWT Authentication configuration
     var jwtKey = builder.Configuration["JWT_SETTINGS_KEY"] 
               ?? builder.Configuration["JwtSettings:Key"] 
-              ?? Environment.GetEnvironmentVariable("JWT_SETTINGS_KEY") 
-              ?? "POS_System_Default_Development_Secret_Key_At_Least_32_Chars!";
+              ?? Environment.GetEnvironmentVariable("JWT_SETTINGS_KEY");
+
+    if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
+    {
+        if (builder.Environment.IsDevelopment())
+        {
+            jwtKey = "POS_System_Default_Development_Secret_Key_At_Least_32_Chars!";
+        }
+        else
+        {
+            throw new InvalidOperationException("CRITICAL: JWT Secret Key (JWT_SETTINGS_KEY or JwtSettings:Key) must be configured in production and must be at least 32 characters long.");
+        }
+    }
+
     var jwtIssuer = builder.Configuration["JwtSettings:Issuer"] ?? "SolucionesPos";
     var jwtAudience = builder.Configuration["JwtSettings:Audience"] ?? "PosClient";
 
@@ -158,23 +170,81 @@ try
     builder.Services.AddOpenApi();
     builder.Services.AddHostedService<Backend.API.Jobs.StockMovementArchiverJob>();
 
-    // CORS: permitir acceso desde cualquier dispositivo en la red local (incluyendo SignalR con credenciales)
+    // Rate Limiting (H-15)
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status429TooManyRequests;
+
+        options.AddPolicy("AuthRateLimit", httpContext =>
+            System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                }));
+
+        options.AddPolicy("GeneralApiRateLimit", httpContext =>
+            System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 200,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                }));
+    });
+
+    // CORS Hardening (H-01): Allow configured origins and local LAN/loopback clients
+    var allowedOriginsConfig = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+    var allowedOriginsSet = new HashSet<string>(allowedOriginsConfig, StringComparer.OrdinalIgnoreCase);
+
     builder.Services.AddCors(options =>
     {
         options.AddDefaultPolicy(policy =>
         {
-            policy.SetIsOriginAllowed(_ => true)
-                  .AllowAnyMethod()
-                  .AllowAnyHeader()
-                  .AllowCredentials();
+            policy.SetIsOriginAllowed(origin =>
+            {
+                if (string.IsNullOrWhiteSpace(origin)) return false;
+                if (allowedOriginsSet.Contains(origin)) return true;
+
+                if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                {
+                    var host = uri.Host;
+                    // Allow localhost / loopback
+                    if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.Equals("127.0.0.1") || host.Equals("::1"))
+                        return true;
+
+                    // Allow Private Intranet Subnets (RFC-1918) for POS LAN network
+                    if (System.Net.IPAddress.TryParse(host, out var ip))
+                    {
+                        var bytes = ip.GetAddressBytes();
+                        if (bytes.Length == 4)
+                        {
+                            if (bytes[0] == 10) return true; // 10.0.0.0/8
+                            if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true; // 172.16.0.0/12
+                            if (bytes[0] == 192 && bytes[1] == 168) return true; // 192.168.0.0/16
+                        }
+                    }
+                }
+                return false;
+            })
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
         });
     });
-
 
     var app = builder.Build();
 
     // Global Unhandled Exception & DB Resilience Middleware
     app.UseMiddleware<Backend.API.Middleware.GlobalExceptionHandlerMiddleware>();
+
+    // Security Headers (M-07)
+    app.UseMiddleware<Backend.API.Middleware.SecurityHeadersMiddleware>();
 
     // Serve static files for integrated React Frontend build (wwwroot)
     app.UseDefaultFiles();
@@ -190,6 +260,7 @@ try
     }
 
     app.UseCors();
+    app.UseRateLimiter();
 
     // Version Compatibility Handshake Middleware
     app.UseMiddleware<Backend.API.Middleware.VersionCheckMiddleware>();
@@ -274,13 +345,62 @@ try
             _invDb.Database.Migrate();
             _salesDb.Database.Migrate();
 
-            // Defensive schema check: Ensure DisplayOrder column exists in PaymentMethods table
+            // Defensive schema check & migration: Ensure columns are properly typed in PostgreSQL
             try
             {
+                AppLogger.LogStart("Verifying and adjusting database column precision (numeric 18,3)...");
+
                 _salesDb.Database.ExecuteSqlRaw(@"ALTER TABLE ""PaymentMethods"" ADD COLUMN IF NOT EXISTS ""DisplayOrder"" integer NOT NULL DEFAULT 0;");
                 _salesDb.Database.ExecuteSqlRaw(@"ALTER TABLE ""CashTransactions"" ADD COLUMN IF NOT EXISTS ""IsPhysicalCash"" boolean NOT NULL DEFAULT true;");
+
+                // 1. Sales module: SaleItems.Quantity -> numeric(18,3)
+                _salesDb.Database.ExecuteSqlRaw(@"
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' AND table_name = 'SaleItems' AND column_name = 'Quantity' AND data_type <> 'numeric'
+    ) THEN
+        ALTER TABLE ""SaleItems"" ALTER COLUMN ""Quantity"" TYPE numeric(18,3);
+        RAISE NOTICE 'Column SaleItems.Quantity altered to numeric(18,3)';
+    END IF;
+END $$;");
+
+                // 2. Inventory module: Parent table (Products) first
+                _invDb.Database.ExecuteSqlRaw(@"
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'StockQuantity' AND data_type <> 'numeric') THEN
+        ALTER TABLE ""Products"" ALTER COLUMN ""StockQuantity"" TYPE numeric(18,3);
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'ReservedQuantity' AND data_type <> 'numeric') THEN
+        ALTER TABLE ""Products"" ALTER COLUMN ""ReservedQuantity"" TYPE numeric(18,3);
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'LowStockThreshold' AND data_type <> 'numeric') THEN
+        ALTER TABLE ""Products"" ALTER COLUMN ""LowStockThreshold"" TYPE numeric(18,3);
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'MinWholesaleQuantity' AND data_type <> 'numeric') THEN
+        ALTER TABLE ""Products"" ALTER COLUMN ""MinWholesaleQuantity"" TYPE numeric(18,3);
+    END IF;
+
+    -- Child tables: StockMovements, StockReservations
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StockMovements' AND column_name = 'QuantityChange' AND data_type <> 'numeric') THEN
+        ALTER TABLE ""StockMovements"" ALTER COLUMN ""QuantityChange"" TYPE numeric(18,3);
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StockMovements' AND column_name = 'NewStockLevel' AND data_type <> 'numeric') THEN
+        ALTER TABLE ""StockMovements"" ALTER COLUMN ""NewStockLevel"" TYPE numeric(18,3);
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StockReservations' AND column_name = 'Quantity' AND data_type <> 'numeric') THEN
+        ALTER TABLE ""StockReservations"" ALTER COLUMN ""Quantity"" TYPE numeric(18,3);
+    END IF;
+END $$;");
+
+                AppLogger.LogStart("Database column precision verification completed successfully.");
             }
-            catch { }
+            catch (System.Exception schemaEx)
+            {
+                AppLogger.LogDbError(schemaEx, "Program.DefensiveSchemaCheck");
+            }
 
             AppLogger.LogStart("EF Core Database Migrations applied successfully.");
         }
@@ -326,7 +446,7 @@ try
                     Name = "Administrador",
                     Username = "V-12345678",
                     FullName = "Administrador",
-                    PasswordHash = seedPassword,
+                    PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(seedPassword),
                     Role = Core.Entities.UserRole.Admin,
                     IsActive = true,
                     MustChangePassword = true

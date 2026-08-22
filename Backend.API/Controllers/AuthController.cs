@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
 using Core.DTOs;
@@ -10,6 +11,7 @@ using System.Threading.Tasks;
 namespace Backend.API.Controllers;
 
 [AllowAnonymous]
+[EnableRateLimiting("AuthRateLimit")]
 [ApiController]
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
@@ -53,18 +55,13 @@ public class AuthController : ControllerBase
             return Unauthorized(new { Message = "El usuario está inactivo en el sistema." });
         }
 
-        bool passwordMatches = false;
         if (string.IsNullOrWhiteSpace(user.PasswordHash))
         {
-            if (request.Password == "Admin123!" || !string.IsNullOrWhiteSpace(request.Password))
-            {
-                passwordMatches = true;
-            }
+            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Cédula '{request.Cedula}' no tiene contraseña configurada.");
+            return Unauthorized(new { Message = "El usuario no tiene una contraseña configurada. Contacte al administrador." });
         }
-        else
-        {
-            passwordMatches = !string.IsNullOrWhiteSpace(request.Password) && PasswordHasher.VerifyPassword(request.Password, user.PasswordHash);
-        }
+
+        bool passwordMatches = !string.IsNullOrWhiteSpace(request.Password) && PasswordHasher.VerifyPassword(request.Password, user.PasswordHash);
 
         if (!passwordMatches)
         {
@@ -72,8 +69,8 @@ public class AuthController : ControllerBase
             return Unauthorized(new { Message = "Contraseña incorrecta." });
         }
 
-        // Auto-upgrade legacy plain-text or newly initialized password to PBKDF2 hash on successful login
-        if (string.IsNullOrWhiteSpace(user.PasswordHash) || !user.PasswordHash.StartsWith("PBKDF2$", StringComparison.Ordinal))
+        // Auto-upgrade legacy plain-text password to PBKDF2 hash on successful login
+        if (!user.PasswordHash.StartsWith("PBKDF2$", StringComparison.Ordinal))
         {
             user.PasswordHash = PasswordHasher.HashPassword(request.Password);
             await _db.SaveChangesAsync();

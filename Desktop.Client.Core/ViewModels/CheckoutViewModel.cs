@@ -65,9 +65,13 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
     public decimal CurrentExchangeRate { get; }
 
-    // ── Amounts in Bs.S (standardized via PricingHelper) ──
-    public decimal TotalAmountLocal => PricingHelper.ToBsS(TotalUSD, CurrentExchangeRate);
-    public decimal SubtotalLocal => PricingHelper.ToBsS(_sale.Subtotal, CurrentExchangeRate);
+    // ── Amounts in Bs.S (standardized via PricingHelper and persistent TotalBsS) ──
+    public decimal TotalAmountLocal => IsOverrideMode
+        ? System.Math.Max(0m, (OverrideSale!.TotalBsS > 0m
+            ? OverrideSale.TotalBsS - OverrideSale.Payments.Sum(p => p.AmountBsS > 0m ? p.AmountBsS : (p.Amount * (p.ExchangeRate > 0m ? p.ExchangeRate : CurrentExchangeRate)))
+            : PricingHelper.ToBsS(TotalUSD, CurrentExchangeRate)))
+        : (_sale.TotalBsS > 0m ? _sale.TotalBsS : PricingHelper.ToBsS(TotalUSD, CurrentExchangeRate));
+    public decimal SubtotalLocal => _sale.SubtotalBsS > 0m ? _sale.SubtotalBsS : PricingHelper.ToBsS(_sale.Subtotal, CurrentExchangeRate);
 
     // ── Paid ──
     public decimal PaidAmountUsd => Payments.Sum(p => p.AmountUsd);

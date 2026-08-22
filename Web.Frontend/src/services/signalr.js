@@ -6,9 +6,14 @@ let connection = null;
 /**
  * Conecta al Hub de SignalR para recibir actualizaciones de la tasa de cambio en tiempo real.
  * @param {function(number): void} onRateUpdate - Callback ejecutado al recibir una nueva tasa
+ * @param {function(): void} [onHoldSalesUpdated] - Callback ejecutado cuando se recalculan las ventas en espera
  */
-export async function connectRateHub(onRateUpdate) {
+export async function connectRateHub(onRateUpdate, onHoldSalesUpdated) {
   if (connection) {
+    if (onHoldSalesUpdated) {
+      connection.off('OnHoldSalesUpdated');
+      connection.on('OnHoldSalesUpdated', () => onHoldSalesUpdated());
+    }
     return connection;
   }
 
@@ -23,6 +28,12 @@ export async function connectRateHub(onRateUpdate) {
   connection.on('ReceiveRateUpdate', (newRate) => {
     if (typeof newRate === 'number' && onRateUpdate) {
       onRateUpdate(newRate);
+    }
+  });
+
+  connection.on('OnHoldSalesUpdated', () => {
+    if (onHoldSalesUpdated) {
+      onHoldSalesUpdated();
     }
   });
 

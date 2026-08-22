@@ -3,7 +3,7 @@ import Modal from '../ui/Modal';
 import SearchBar from './SearchBar';
 import QuantityInput from './QuantityInput';
 import { updateSaleItems } from '../../services/salesApi';
-import { formatBsS, formatUSD } from '../../utils/formatters';
+import { formatBsS, formatUSD, getLineAmounts } from '../../utils/formatters';
 import { Trash2, AlertTriangle, Save, Loader2, Plus, Minus } from 'lucide-react';
 
 export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onSuccess }) {
@@ -21,7 +21,9 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
         unitOfMeasure: i.unitOfMeasure,
         quantity: i.quantity,
         unitPrice: i.unitPrice || 0,
-        subtotal: (i.quantity || 1) * (i.unitPrice || 0)
+        unitPriceBsS: i.unitPriceBsS,
+        subtotal: (i.quantity || 1) * (i.unitPrice || 0),
+        subtotalBsS: i.subtotalBsS
       })));
     } else {
       setItems([]);
@@ -68,10 +70,9 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       });
       return;
     }
-    const isFrac = items[idx]?.isFractional;
-    const rawNum = isFrac ? parseFloat(newQty) : parseInt(newQty, 10);
-    const qty = isNaN(rawNum) ? (isFrac ? 0.001 : 1) : rawNum;
-    const roundedQty = isFrac ? Math.round(qty * 1000) / 1000 : qty;
+    const rawNum = parseFloat(newQty);
+    const qty = isNaN(rawNum) ? 1 : rawNum;
+    const roundedQty = Math.round(qty * 1000) / 1000;
     setItems(prev => {
       const updated = [...prev];
       updated[idx] = {
@@ -91,7 +92,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
   const totalPaidUSD = sale?.totalPaidUSD || (sale?.payments?.reduce((acc, p) => acc + (p.amount || 0), 0)) || 0;
   const newTotalUSD = items.reduce((acc, i) => acc + (i.quantity * i.unitPrice), 0);
   const rateToUse = sale?.appliedRate || exchangeRate || 1;
-  const newTotalBsS = newTotalUSD * rateToUse;
+  const newTotalBsS = items.reduce((acc, i) => acc + getLineAmounts(i, rateToUse).subtotalBsS, 0);
   const newRemainingBalanceUSD = Math.max(0, newTotalUSD - totalPaidUSD);
 
   // Validaciones
@@ -152,8 +153,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
             </thead>
             <tbody>
               {items.map((item, idx) => {
-                const unitBsS = item.unitPrice * rateToUse;
-                const subtotalBsS = item.subtotal * rateToUse;
+                const { unitBsS, subtotalBsS } = getLineAmounts(item, rateToUse);
                 const step = !item.isFractional ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
 
                 return (

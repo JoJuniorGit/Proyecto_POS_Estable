@@ -19,12 +19,12 @@ public class ProductDto
     public string UnitOfMeasureStr => UnitOfMeasure.ToString();
     public decimal PriceBsS { get; set; }
     public decimal Cost { get; set; }
-    public int StockQuantity { get; set; }
+    public decimal StockQuantity { get; set; }
     public decimal ProfitPercentage { get; set; }
-    public int LowStockThreshold { get; set; }
+    public decimal LowStockThreshold { get; set; }
     public bool IsCashAdvance { get; set; }
     public bool IsActive { get; set; } = true;
     public bool IsDeleted { get; set; } = false;
-    public int ReservedQuantity { get; set; }
-    public int AvailableQuantity => StockQuantity - ReservedQuantity;
+    public decimal ReservedQuantity { get; set; }
+    public decimal AvailableQuantity => StockQuantity - ReservedQuantity;
 }

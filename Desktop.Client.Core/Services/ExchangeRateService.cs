@@ -57,6 +57,21 @@ public class ExchangeRateService : IExchangeRateService, IDisposable
             await UpdateRateLocallyAsync(newRate);
         });
 
+        _hubConnection.On("OnHoldSalesUpdated", () =>
+        {
+            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    WeakReferenceMessenger.Default.Send(new OnHoldSalesRefreshMessage());
+                });
+            }
+            else
+            {
+                WeakReferenceMessenger.Default.Send(new OnHoldSalesRefreshMessage());
+            }
+        });
+
         _ = InitializeAsync();
     }
 

@@ -386,7 +386,7 @@
                                    Margin="0,0,0,12">
                             <controls:PerformantDataGrid.Columns>
                                 <DataGridTextColumn Header="PRODUCTO" Binding="{Binding ProductName}" Width="*" HeaderStyle="{StaticResource StandardHeaderStyle}"/>
-                                <DataGridTextColumn Header="CANT." Binding="{Binding Quantity}" Width="80" HeaderStyle="{StaticResource StandardHeaderStyle}"/>
+                                <DataGridTextColumn Header="CANT." Binding="{Binding Quantity, StringFormat={}{0:0.###}}" Width="80" HeaderStyle="{StaticResource StandardHeaderStyle}"/>
                                 <DataGridTextColumn Header="P. UNIDAD" Binding="{Binding UnitPriceBsS, StringFormat={}{0:N2}}" Width="110" HeaderStyle="{StaticResource RightAlignedHeaderStyle}" ElementStyle="{StaticResource RightAlignedElementStyle}"/>
                                 <DataGridTextColumn Header="SUBTOTAL BS.S" Binding="{Binding SubtotalBsS, StringFormat={}{0:N2}}" Width="130" HeaderStyle="{StaticResource RightAlignedHeaderStyle}" ElementStyle="{StaticResource RightAlignedElementStyle}" FontWeight="Bold"/>
                             </controls:PerformantDataGrid.Columns>

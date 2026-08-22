@@ -36,6 +36,18 @@ public class SalesService : ISalesService
         WeakReferenceMessenger.Default.Send(new CurrentSaleChangedMessage(sale));
     }
 
+    public async Task<SaleDto> GetSaleAsync(int saleId)
+    {
+        var response = await _http_client.GetAsync($"api/sales/{saleId}");
+        response.EnsureSuccessStatusCode();
+        var sale = await response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception($"Sale #{saleId} not found.");
+        if (CurrentSale?.Id == saleId)
+        {
+            SetCurrentSale(sale);
+        }
+        return sale;
+    }
+
     public async Task<SaleDto> StartSaleAsync(int? cashierId = null)
     {
         string url = cashierId.HasValue ? $"api/sales/start?cashierId={cashierId.Value}" : "api/sales/start";

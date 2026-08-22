@@ -87,7 +87,7 @@ public class ProductService : IProductService
 
     private class DeleteResultResponse { public string? Result { get; set; } }
 
-    public async Task AdjustStockAsync(int productId, int quantityChange, string reason)
+    public async Task AdjustStockAsync(int productId, decimal quantityChange, string reason)
     {
         var dto = new { QuantityChange = quantityChange, Reason = reason };
         var response = await _httpClient.PostAsJsonAsync($"api/products/{productId}/adjust-stock", dto);

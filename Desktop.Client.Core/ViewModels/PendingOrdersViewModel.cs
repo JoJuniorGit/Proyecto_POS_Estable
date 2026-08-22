@@ -1,5 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using Desktop.Client.Messages;
 using Desktop.Client.Services;
 using Core.DTOs;
 using System;
@@ -68,10 +70,30 @@ public partial class PendingOrdersViewModel : ObservableObject
         _userSession = userSession;
 
         PendingSales.CollectionChanged += (_, _) => OnPropertyChanged(nameof(FilteredPendingSales));
+
+        WeakReferenceMessenger.Default.Register<OnHoldSalesRefreshMessage>(this, async (r, m) =>
+        {
+            var vm = (PendingOrdersViewModel)r;
+            if (vm._userSession == null || vm._userSession.IsLoggedIn)
+            {
+                await vm.EnsureLoadedAsync();
+            }
+        });
+
+        WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, async (r, m) =>
+        {
+            var vm = (PendingOrdersViewModel)r;
+            if (vm._userSession == null || vm._userSession.IsLoggedIn)
+            {
+                await vm.EnsureLoadedAsync();
+            }
+        });
     }
 
     public async Task EnsureLoadedAsync()
     {
+        if (_userSession != null && !_userSession.IsLoggedIn) return;
+
         IsLoading = true;
         SuccessMessage = null;
         try
@@ -83,6 +105,10 @@ public partial class PendingOrdersViewModel : ObservableObject
             PendingSales.Clear();
             foreach (var item in list.OrderByDescending(s => s.Date))
                 PendingSales.Add(item);
+        }
+        catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            // Ignore 401 Unauthorized when session is not logged in yet or token expired
         }
         catch (Exception ex)
         {
