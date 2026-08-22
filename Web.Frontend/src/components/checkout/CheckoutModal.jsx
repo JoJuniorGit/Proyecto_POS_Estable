@@ -3,15 +3,16 @@ import Modal from '../ui/Modal';
 import PaymentForm from './PaymentForm';
 import PaymentList from './PaymentList';
 import { getActivePaymentMethods } from '../../services/paymentApi';
-import { completeSale } from '../../services/salesApi';
+import { completeSale, updateSaleCustomer } from '../../services/salesApi';
 import { useCart } from '../../context/CartContext';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatBsS, formatUSD } from '../../utils/formatters';
+import CustomerSelectorCard from './CustomerSelectorCard';
 import { Check, Loader2 } from 'lucide-react';
 
 export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale = null, onCompleteSale = null }) {
-  const { currentSale, totalBsS: cartTotalBsS, totalUSD: cartTotalUSD, resetCart } = useCart();
+  const { currentSale, totalBsS: cartTotalBsS, totalUSD: cartTotalUSD, resetCart, updateCustomer } = useCart();
   const { exchangeRate } = useExchangeRate();
   const { user } = useAuth();
 
@@ -20,9 +21,10 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
   const [isPendingPickup, setIsPendingPickup] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
+  const [selectedSaleCustomer, setSelectedSaleCustomer] = useState(null);
 
-  // Determinar la venta a procesar
-  const activeSale = overrideSale || currentSale;
+  // Determinar la venta a procesar (priorizando actualización local en la sesión de cobro)
+  const activeSale = selectedSaleCustomer || overrideSale || currentSale;
   
   // Saldo base a cobrar (en USD)
   const targetTotalUSD = overrideSale 
@@ -47,6 +49,7 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
       setPayments([]);
       setIsPendingPickup(false);
       setError(null);
+      setSelectedSaleCustomer(null);
     }
   }, [isOpen]);
 
@@ -62,13 +65,25 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
   // Ajuste de redondeo si la diferencia en USD es < 0.01
   const roundingAdjustment = remainingUsd <= 0.01 ? paidBsS - targetTotalBsS : 0;
 
-  // Venta normal POS: requiere al menos 1 pago y saldo cubierto. Cuentas Abiertas (overrideSale): permite abonos parciales con al menos 1 pago.
-  const canFinalize = hasValidPayments && (overrideSale ? true : isFullLiquidation);
-
   const custName = (activeSale?.customerName || '').toLowerCase();
-  const isDefaultCust = !activeSale?.customerId || custName.includes('consumidor final') || custName.includes('general');
+  const isDefaultCust = !activeSale?.customerId || activeSale?.customer?.isDefault || custName.includes('consumidor final') || custName.includes('general');
+
+  // Venta normal POS: requiere al menos 1 pago y saldo cubierto. Cuentas Abiertas (overrideSale): permite abonos parciales con al menos 1 pago.
+  // Mercancía en custodia: exige obligatoriamente cliente identificado.
+  const canFinalize = hasValidPayments && (overrideSale ? true : isFullLiquidation) && (!isPendingPickup || !isDefaultCust);
+
+  const handleSelectCustomer = async (cust) => {
+    if (!cust?.id) return;
+    if (overrideSale) {
+      const updated = await updateSaleCustomer(overrideSale.id, cust.id);
+      setSelectedSaleCustomer(updated);
+    } else {
+      await updateCustomer(cust.id);
+    }
+  };
+
   const pendingPickupError = (isPendingPickup && isDefaultCust)
-    ? 'Para registrar un apartado pagado (Mercancía en Custodia), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono). Asigne un cliente a la venta antes de continuar.'
+    ? 'Para registrar un apartado pagado (Mercancía en Custodia), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono). Use el selector de la parte superior.'
     : null;
 
   const noPaymentsNotice = !hasValidPayments
@@ -146,6 +161,13 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
       maxWidth="560px"
       centerTitle={true}
     >
+      <CustomerSelectorCard
+        currentCustomer={activeSale?.customer || (activeSale?.customerName ? { id: activeSale.customerId, name: activeSale.customerName, cedulaOrRif: activeSale.customerCedula } : null)}
+        isPendingPickup={isPendingPickup}
+        onSelectCustomer={handleSelectCustomer}
+        disabled={isProcessing}
+      />
+
       <div className="checkout-summary-box">
         <div className="checkout-summary-row">
           <span>{overrideSale ? "Saldo Pendiente:" : "Total Venta:"}</span>
