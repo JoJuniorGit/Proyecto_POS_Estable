@@ -152,7 +152,10 @@ public partial class CashDrawerViewModel : ObservableObject
             Application.Current.Dispatcher.Invoke(() => _ = RefreshAsync());
         });
 
-        _ = LoadSessionAsync();
+        if (_user_session == null || _user_session.IsLoggedIn)
+        {
+            _ = LoadSessionAsync();
+        }
     }
 
     private void UpdateFormattedBalances()
@@ -183,6 +186,8 @@ public partial class CashDrawerViewModel : ObservableObject
 
     public async Task LoadSessionAsync()
     {
+        if (_user_session != null && !_user_session.IsLoggedIn) return;
+
         try
         {
             ActiveSession = await _cash_drawer_service.GetActiveSessionAsync();

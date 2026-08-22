@@ -20,22 +20,25 @@ public class UserService : IUserService
         var response = await _httpClient.PostAsJsonAsync("api/auth/login", new LoginRequest { Cedula = cedula, Password = password });
         if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
         {
-            var body = await response.Content.ReadAsStringAsync();
-            var err = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(body);
-            if (err != null && err.TryGetValue("requiresPasswordChange", out var requiresChangeValue) &&
-                requiresChangeValue is bool requiresChange && requiresChange)
+            try
             {
-                string msg = err.TryGetValue("message", out var messageValue)
-                    ? messageValue?.ToString() ?? string.Empty
-                    : "Debe cambiar su contraseña antes de continuar.";
-                return new LoginResultDto { RequiresPasswordChange = true, Message = msg };
+                var body = await response.Content.ReadAsStringAsync();
+                var err = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(body);
+                if (err != null && err.TryGetValue("requiresPasswordChange", out var requiresChangeValue) &&
+                    requiresChangeValue is bool requiresChange && requiresChange)
+                {
+                    string msg = err.TryGetValue("message", out var messageValue)
+                        ? messageValue?.ToString() ?? string.Empty
+                        : "Debe cambiar su contraseña antes de continuar.";
+                    return new LoginResultDto { RequiresPasswordChange = true, Message = msg };
+                }
             }
+            catch { }
         }
 
         if (!response.IsSuccessStatusCode)
         {
-            var err = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
-            string msg = err != null && err.ContainsKey("message") ? err["message"] : "Error al iniciar sesión.";
+            string msg = await ExtractErrorMessageAsync(response, "Error al iniciar sesión.");
             throw new System.Exception(msg);
         }
 
@@ -52,11 +55,56 @@ public class UserService : IUserService
         });
         if (!response.IsSuccessStatusCode)
         {
-            var err = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
-            string msg = err != null && err.ContainsKey("message") ? err["message"] : "No se pudo cambiar la contraseña.";
+            string msg = await ExtractErrorMessageAsync(response, "No se pudo cambiar la contraseña.");
             throw new System.Exception(msg);
         }
         return true;
+    }
+
+    private static async Task<string> ExtractErrorMessageAsync(HttpResponseMessage response, string fallback)
+    {
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            return "Cédula o contraseña incorrecta.";
+        }
+        if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+        {
+            return "El servidor backend no está disponible o la conexión fue interrumpida.";
+        }
+
+        try
+        {
+            if (response.Content != null)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                if (!string.IsNullOrWhiteSpace(body))
+                {
+                    try
+                    {
+                        using var json = System.Text.Json.JsonDocument.Parse(body);
+                        if (json.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+                        {
+                            if (json.RootElement.TryGetProperty("message", out var msgProp) ||
+                                json.RootElement.TryGetProperty("Message", out msgProp))
+                            {
+                                var text = msgProp.GetString();
+                                if (!string.IsNullOrWhiteSpace(text)) return text;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        if (!body.Contains("<html", StringComparison.OrdinalIgnoreCase) && body.Length < 300)
+                        {
+                            return body;
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+
+        return fallback;
     }
 
     public async Task<List<UserDto>> GetUsersAsync()

@@ -59,23 +59,52 @@ public class HealthPollingServiceTests
     }
 
     [Fact]
-    public void StopPolling_IsIdempotent_AndRestartUsesFreshToken()
+    public async Task HealthRecovery_ResetsFatalErrorState_OnClientStateService()
+    {
+        var clientState = new ClientStateService();
+        clientState.TryActivateFatalError();
+        Assert.True(clientState.IsFatalErrorActive);
+
+        var okHandler = new SuccessHealthHandler();
+        using var client = new HttpClient(okHandler) { BaseAddress = new Uri("http://localhost:5000/") };
+        using var service = new HealthPollingService(client, clientState);
+
+        bool eventFired = false;
+        service.OnHealthRecovered += (_, _) => eventFired = true;
+
+        service.StartPolling();
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (service.IsPollingActive && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(50);
+        }
+
+        Assert.False(clientState.IsFatalErrorActive);
+        Assert.True(eventFired);
+        Assert.False(service.IsPollingActive);
+    }
+
+    [Fact]
+    public void ConcurrentStartStop_MaintainsConsistency()
     {
         using var client = new HttpClient(new CountingHandler()) { BaseAddress = new Uri("http://localhost:5000/") };
         using var service = new HealthPollingService(client);
 
-        service.StartPolling();
-        service.StopPolling();
-        service.StopPolling(); // segunda llamada: no-op, no debe lanzar
-        Assert.False(service.IsPollingActive);
+        Parallel.For(0, 50, _ =>
+        {
+            service.StartPolling();
+            service.StopPolling();
+        });
 
-        // Reinicio con CTS fresco: no debe lanzar ObjectDisposedException.
-        service.StartPolling();
-        Assert.True(service.IsPollingActive);
-        service.StopPolling();
         Assert.False(service.IsPollingActive);
+    }
 
-        service.Dispose(); // seguro y sin excepciones
-        Assert.False(service.IsPollingActive);
+    private sealed class SuccessHealthHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+        }
     }
 }

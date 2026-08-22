@@ -11,7 +11,7 @@ using System.Windows;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class InventoryViewModel : ObservableObject
+public partial class InventoryViewModel : ObservableObject, IDisposable
 {
     private readonly Desktop.Client.Services.IProductService _product_service;
     private readonly Desktop.Client.Services.IExchangeRateService _exchange_rate_service;
@@ -122,10 +122,10 @@ public partial class InventoryViewModel : ObservableObject
     }
 
     public decimal CurrentRate => _exchange_rate_service.CurrentRate;
-    public UserSession UserSession { get; }
+    public UserSession? UserSession { get; }
     private readonly IDialogService? _dialog_service;
     
-    public InventoryViewModel(Desktop.Client.Services.IProductService product_service, Desktop.Client.Services.IExchangeRateService exchange_rate_service, Desktop.Client.Services.UserSession userSession, IDialogService? dialog_service = null)
+    public InventoryViewModel(Desktop.Client.Services.IProductService product_service, Desktop.Client.Services.IExchangeRateService exchange_rate_service, Desktop.Client.Services.UserSession? userSession = null, IDialogService? dialog_service = null)
     {
         _product_service = product_service;
         _exchange_rate_service = exchange_rate_service;
@@ -146,7 +146,18 @@ public partial class InventoryViewModel : ObservableObject
             await MergeProductsAsync();
         });
 
-        _ = LoadDataAsync(false);
+        if (UserSession == null || UserSession.IsLoggedIn)
+        {
+            _ = LoadDataAsync(false);
+        }
+    }
+
+    public async Task EnsureLoadedAsync()
+    {
+        if ((UserSession == null || UserSession.IsLoggedIn) && !Products.Any())
+        {
+            await LoadDataAsync(false);
+        }
     }
 
     private async Task TaskWithDelay(int ms, System.Threading.CancellationToken token)
@@ -156,9 +167,16 @@ public partial class InventoryViewModel : ObservableObject
 
     private async Task RestartSearchTimerAsync()
     {
-        _cancellation_token_source?.Cancel();
-        _cancellation_token_source = new System.Threading.CancellationTokenSource();
-        var token = _cancellation_token_source.Token;
+        var newCts = new System.Threading.CancellationTokenSource();
+        var oldCts = System.Threading.Interlocked.Exchange(ref _cancellation_token_source, newCts);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+
+        var token = newCts.Token;
 
         try
         {
@@ -191,6 +209,7 @@ public partial class InventoryViewModel : ObservableObject
 
     private async Task LoadDataAsync(bool incremental, int? targetPage = null, System.Threading.CancellationToken token = default)
     {
+        if (UserSession != null && !UserSession.IsLoggedIn) return;
         if (IsSearching) return;
         
         try
@@ -210,8 +229,25 @@ public partial class InventoryViewModel : ObservableObject
                 CurrentPage++;
             }
 
+            if (_exchange_rate_service.CurrentRate <= 0)
+            {
+                await _exchange_rate_service.GetCurrentRateAsync();
+            }
+
             var result = await _product_service.GetPagedAsync(SearchText, CurrentPage, PageSize, statusFilter: SelectedStatusFilter, token: token);
             
+            // Build ProductItemViewModel instances on background thread to prevent UI thread stutter
+            var newItems = new System.Collections.Generic.List<ProductItemViewModel>();
+            foreach (var dto in result.Items)
+            {
+                var itemVm = new ProductItemViewModel(dto, _exchange_rate_service, OnProductItemChanged);
+                itemVm.NotifyCurrencyChanged(SelectedCurrency);
+                newItems.Add(itemVm);
+            }
+
+            var totalPages = result.TotalCount > 0 ? (int)Math.Ceiling((double)result.TotalCount / PageSize) : 1;
+            var pageSummary = $"Página {CurrentPage} de {totalPages} ({result.TotalCount} productos)";
+
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
             {
                 if (!incremental)
@@ -219,19 +255,15 @@ public partial class InventoryViewModel : ObservableObject
                     Products.Clear();
                 }
 
-                foreach (var dto in result.Items)
+                foreach (var item in newItems)
                 {
-                    var itemVm = new ProductItemViewModel(dto, _exchange_rate_service, OnProductItemChanged);
-                    itemVm.NotifyCurrencyChanged(SelectedCurrency);
-                    Products.Add(itemVm);
+                    Products.Add(item);
                 }
-
 
                 HasMore = result.HasMore;
                 TotalCount = result.TotalCount;
-                TotalPages = result.TotalCount > 0 ? (int)Math.Ceiling((double)result.TotalCount / PageSize) : 1;
-                PageSummary = $"Página {CurrentPage} de {TotalPages} ({TotalCount} productos)";
-
+                TotalPages = totalPages;
+                PageSummary = pageSummary;
             });
         }
         catch (OperationCanceledException) { }
@@ -245,7 +277,6 @@ public partial class InventoryViewModel : ObservableObject
         }
     }
 
-
     private async Task MergeProductsAsync(System.Threading.CancellationToken token = default)
     {
         if (IsSearching) return;
@@ -256,10 +287,22 @@ public partial class InventoryViewModel : ObservableObject
 
             var result = await _product_service.GetPagedAsync(SearchText, _currentPage, PageSize, statusFilter: SelectedStatusFilter, token: token);
 
+            var fetchedDict = result.Items.ToDictionary(dto => dto.SKU, dto => dto);
+            var existingSkus = Products.Select(p => p.SKU).ToHashSet();
+            var newItemsToAdd = new System.Collections.Generic.List<ProductItemViewModel>();
+
+            foreach (var dto in result.Items)
+            {
+                if (!existingSkus.Contains(dto.SKU))
+                {
+                    var itemVm = new ProductItemViewModel(dto, _exchange_rate_service, OnProductItemChanged);
+                    itemVm.NotifyCurrencyChanged(SelectedCurrency);
+                    newItemsToAdd.Add(itemVm);
+                }
+            }
+
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
             {
-                var fetchedDict = result.Items.ToDictionary(dto => dto.SKU, dto => dto);
-
                 // 1. Update existing items in place
                 foreach (var item in Products.ToList())
                 {
@@ -269,14 +312,10 @@ public partial class InventoryViewModel : ObservableObject
                     }
                 }
 
-                // 2. Add new items that are not yet present in the current Products collection
-                var existingSkus = Products.Select(p => p.SKU).ToHashSet();
-                foreach (var dto in result.Items)
+                // 2. Add new items
+                foreach (var newItem in newItemsToAdd)
                 {
-                    if (!existingSkus.Contains(dto.SKU))
-                    {
-                        Products.Add(new ProductItemViewModel(dto, _exchange_rate_service, OnProductItemChanged));
-                    }
+                    Products.Add(newItem);
                 }
 
                 HasMore = result.HasMore;
@@ -291,6 +330,19 @@ public partial class InventoryViewModel : ObservableObject
         {
             IsSearching = false;
         }
+    }
+
+    public void Dispose()
+    {
+        var oldCts = System.Threading.Interlocked.Exchange(ref _cancellation_token_source, null);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+
+        WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 
     private async void OnProductItemChanged(ProductItemViewModel item)

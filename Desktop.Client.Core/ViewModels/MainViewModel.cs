@@ -38,6 +38,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly UsersManagementViewModel _users_management_view_model;
 
     private readonly IHealthPollingService _healthPollingService;
+    private readonly IExchangeRateService? _exchange_rate_service;
     private readonly IDialogService? _dialog_service;
 
     public MainViewModel(
@@ -55,7 +56,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         DailyClosureViewModel daily_closure_view_model,
         UsersManagementViewModel users_management_view_model,
         IHealthPollingService healthPollingService,
-        IDialogService? dialog_service = null)
+        IDialogService? dialog_service = null,
+        IExchangeRateService? exchange_rate_service = null)
     {
         UserSession = userSession;
         _login_view_model = login_view_model;
@@ -72,6 +74,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _users_management_view_model = users_management_view_model;
         _healthPollingService = healthPollingService;
         _dialog_service = dialog_service;
+        _exchange_rate_service = exchange_rate_service;
 
         _healthPollingService.OnHealthRecovered += OnHealthRecovered;
         _login_view_model.LoginSuccess += OnLoginSuccess;
@@ -131,8 +134,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void OnLoginSuccess()
+    private async void OnLoginSuccess()
     {
+        if (_exchange_rate_service != null)
+        {
+            try
+            {
+                await _exchange_rate_service.GetCurrentRateAsync();
+            }
+            catch { }
+        }
         NavigateToPos();
     }
 
@@ -158,6 +169,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (!UserSession.IsLoggedIn) return;
         Title = "POINT OF SALE";
         CurrentViewModel = _pos_view_model;
+        _ = _pos_view_model.InitializeForSessionAsync();
     }
 
     [RelayCommand]
@@ -166,6 +178,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (!UserSession.IsLoggedIn) return;
         Title = "INVENTORY";
         CurrentViewModel = _inventory_view_model;
+        _ = _inventory_view_model.EnsureLoadedAsync();
     }
 
     [RelayCommand]
@@ -201,6 +214,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (!UserSession.IsLoggedIn) return;
         Title = "SYSTEM SETTINGS";
         CurrentViewModel = _settings_view_model;
+        _ = _settings_view_model.EnsureLoadedAsync();
     }
 
     [RelayCommand]
@@ -209,6 +223,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (!UserSession.IsLoggedIn) return;
         Title = "EXCHANGE RATE";
         CurrentViewModel = _exchange_rate_view_model;
+        _ = _exchange_rate_view_model.LoadAllCommand.ExecuteAsync(null);
     }
 
     [RelayCommand]

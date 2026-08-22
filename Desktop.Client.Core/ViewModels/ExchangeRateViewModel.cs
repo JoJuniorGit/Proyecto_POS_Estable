@@ -53,18 +53,24 @@ public partial class ExchangeRateViewModel : ObservableObject
     }
 
     public ObservableCollection<Services.ExchangeRateHistoryDto> History { get; } = new();
-    public Services.UserSession UserSession { get; }
+    public Services.UserSession? UserSession { get; }
 
-    public ExchangeRateViewModel(Services.IExchangeRateService exchange_rate_service, Services.UserSession userSession)
+    public ExchangeRateViewModel(Services.IExchangeRateService exchange_rate_service, Services.UserSession? userSession = null)
     {
         _exchange_rate_service = exchange_rate_service;
         UserSession = userSession;
-        _ = LoadAllAsync();
+
+        if (UserSession == null || UserSession.IsLoggedIn)
+        {
+            _ = LoadAllAsync();
+        }
     }
 
     [RelayCommand]
     private async Task LoadAllAsync()
     {
+        if (UserSession != null && !UserSession.IsLoggedIn) return;
+
         IsLoading = true;
         StatusMessage = null;
         try

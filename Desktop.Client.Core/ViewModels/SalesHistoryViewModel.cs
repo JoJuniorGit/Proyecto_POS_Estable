@@ -143,9 +143,16 @@ public partial class SalesHistoryViewModel : ObservableObject
     {
         // Búsqueda multicampo con debounce: al escribir, se espera 300 ms y se
         // recarga desde la primera página con el término aplicado.
-        _search_debounce_cts?.Cancel();
-        _search_debounce_cts = new CancellationTokenSource();
-        var token = _search_debounce_cts.Token;
+        var newCts = new CancellationTokenSource();
+        var oldCts = Interlocked.Exchange(ref _search_debounce_cts, newCts);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+
+        var token = newCts.Token;
         try
         {
             await Task.Delay(300, token);
@@ -255,9 +262,16 @@ public partial class SalesHistoryViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadHistoryAsync()
     {
-        _search_cts?.Cancel();
-        _search_cts = new CancellationTokenSource();
-        var _token = _search_cts.Token;
+        var newCts = new CancellationTokenSource();
+        var oldCts = Interlocked.Exchange(ref _search_cts, newCts);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+
+        var _token = newCts.Token;
 
         IsLoading = true;
         ErrorMessage = null;
@@ -322,8 +336,14 @@ public partial class SalesHistoryViewModel : ObservableObject
 
     private async Task LoadSelectedSaleDetailsWithDebounceAsync(SaleHistoryDto? _selected_sale_item)
     {
-        // Cancel old request but do NOT Dispose — old tasks may still reference the token.
-        _selection_cts?.Cancel();
+        var newCts = new CancellationTokenSource();
+        var oldCts = Interlocked.Exchange(ref _selection_cts, newCts);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
 
         if (_selected_sale_item is null)
         {
@@ -331,9 +351,7 @@ public partial class SalesHistoryViewModel : ObservableObject
             return;
         }
 
-        var _current_selection_cts = new CancellationTokenSource();
-        _selection_cts = _current_selection_cts;
-        var _token = _current_selection_cts.Token;
+        var _token = newCts.Token;
         var _sale_id = _selected_sale_item.Id;
 
         // Immediately blank detail panel so user sees a clean loading state

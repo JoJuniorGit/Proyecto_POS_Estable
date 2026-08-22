@@ -29,11 +29,13 @@ public class ResilienceRetriesExhaustedException : Exception
 public class ResilienceHandler : DelegatingHandler
 {
     private readonly IHealthPollingService _healthPollingService;
+    private readonly IClientStateService? _clientStateService;
     private const int MaxRetries = 3;
 
-    public ResilienceHandler(IHealthPollingService healthPollingService)
+    public ResilienceHandler(IHealthPollingService healthPollingService, IClientStateService? clientStateService = null)
     {
         _healthPollingService = healthPollingService;
+        _clientStateService = clientStateService;
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -41,10 +43,26 @@ public class ResilienceHandler : DelegatingHandler
         var requestUri = request.RequestUri?.ToString() ?? string.Empty;
         var method = request.Method.Method;
 
-        // Exempt /health endpoint from retry policy
-        if (requestUri.EndsWith("/health", StringComparison.OrdinalIgnoreCase))
+        bool isExemptEndpoint = requestUri.EndsWith("/health", StringComparison.OrdinalIgnoreCase) ||
+                                requestUri.Contains("/api/auth/", StringComparison.OrdinalIgnoreCase) ||
+                                requestUri.Contains("/api/version/", StringComparison.OrdinalIgnoreCase) ||
+                                requestUri.Contains("/api/exchange-rate/today", StringComparison.OrdinalIgnoreCase);
+
+        // Exempt health, auth, and version check endpoints from retry policy and circuit breaker fail-fast
+        if (isExemptEndpoint)
         {
             return await base.SendAsync(request, cancellationToken);
+        }
+
+        // Circuit Breaker Fail-Fast: if the system is in active fatal error mode, short-circuit immediately
+        if (_clientStateService?.IsFatalErrorActive == true)
+        {
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {
+                ReasonPhrase = "Circuit breaker active – backend unavailable",
+                RequestMessage = request,
+                Content = new StringContent("{\"message\":\"El servidor backend no está disponible temporalmente (cortacircuitos activo).\"}", System.Text.Encoding.UTF8, "application/json")
+            };
         }
 
         HttpResponseMessage? response = null;
@@ -54,21 +72,26 @@ public class ResilienceHandler : DelegatingHandler
         {
             try
             {
-                // Re-clone request content for retries if needed
                 response = await base.SendAsync(request, cancellationToken);
 
-                if (response.StatusCode != HttpStatusCode.ServiceUnavailable)
+                // Only 5xx errors (infrastructure/server failures) trigger retry policy.
+                // 2xx, 3xx, and 4xx (business/validation errors) return immediately without triggering the circuit breaker.
+                if ((int)response.StatusCode < 500)
                 {
-                    // Success or non-503 status code: return directly
                     return response;
                 }
 
-                // Check for Fast-Fail DB Auth Error
-                var contentString = await response.Content.ReadAsStringAsync(cancellationToken);
-                if (IsFatalDbAuthError(contentString))
+                // Buffer stream so reading does not exhaust the body for caller or subsequent inspections
+                if (response.Content != null)
                 {
-                    ClientStateLogger.LogFatalDbAuth();
-                    throw new FatalDbAuthenticationException("Fallo crítico de credenciales en PostgreSQL. Se aborta la auto-recuperación.");
+                    await response.Content.LoadIntoBufferAsync();
+                    var contentString = await response.Content.ReadAsStringAsync(cancellationToken);
+                    if (IsFatalDbAuthError(contentString))
+                    {
+                        ClientStateLogger.LogFatalDbAuth();
+                        _clientStateService?.TryActivateFatalError();
+                        throw new FatalDbAuthenticationException("Fallo crítico de credenciales en PostgreSQL. Se aborta la auto-recuperación.");
+                    }
                 }
 
                 // Log transient retry
@@ -97,8 +120,9 @@ public class ResilienceHandler : DelegatingHandler
             }
         }
 
-        // Retries Exhausted: Transition to HealthPollingService exclusively
+        // Retries Exhausted: Activate fatal error state and transition to HealthPollingService exclusively
         ClientStateLogger.LogRetriesExhausted(requestUri, method);
+        _clientStateService?.TryActivateFatalError();
         _healthPollingService.StartPolling();
 
         if (response != null)
@@ -106,7 +130,12 @@ public class ResilienceHandler : DelegatingHandler
             return response;
         }
 
-        throw new ResilienceRetriesExhaustedException(requestUri, method, $"Reintentos agotados para la petición {method} {requestUri}. Transicionando a sondeo de salud.");
+        return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+        {
+            ReasonPhrase = "Reintentos agotados – backend no disponible",
+            RequestMessage = request,
+            Content = new StringContent("{\"message\":\"Reintentos agotados. El servidor backend no responde.\"}", System.Text.Encoding.UTF8, "application/json")
+        };
     }
 
     private static bool IsFatalDbAuthError(string content)

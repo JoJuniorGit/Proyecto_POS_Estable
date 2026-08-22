@@ -84,7 +84,7 @@ public class SaleItemHistoryDto
 
 public interface ISalesService
 {
-    SaleDto? CurrentSale { get; set; }
+    SaleDto? CurrentSale { get; }
     Task<SaleDto> StartSaleAsync(int? cashierId = null);
     Task<SaleDto> AddItemAsync(int sale_id, int product_id, decimal quantity, decimal exchange_rate, decimal? custom_unit_price_usd = null, decimal? custom_unit_price_bs_s = null);
     Task<SaleDto> RemoveItemAsync(int sale_id, int item_id, decimal exchange_rate);

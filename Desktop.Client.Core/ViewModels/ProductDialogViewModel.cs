@@ -314,9 +314,16 @@ public partial class ProductDialogViewModel : ObservableValidator
             return;
         }
 
-        _skuCancellationTokenSource?.Cancel();
-        _skuCancellationTokenSource = new CancellationTokenSource();
-        var token = _skuCancellationTokenSource.Token;
+        var newCts = new CancellationTokenSource();
+        var oldCts = Interlocked.Exchange(ref _skuCancellationTokenSource, newCts);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+
+        var token = newCts.Token;
 
         try
         {
@@ -382,8 +389,10 @@ public partial class ProductDialogViewModel : ObservableValidator
         ResultProduct.PriceWholesaleUSD = HasWholesale ? PriceWholesaleUSD : PriceRetailUSD;
         ResultProduct.MinWholesaleQuantity = MinWholesaleQuantity > 0m ? MinWholesaleQuantity : 6.000m;
         ResultProduct.IsFractional = IsFractional;
-        ResultProduct.UnitOfMeasure = UnitOfMeasureType;
-        ResultProduct.PriceBsS = PriceRetailBsS;
+        decimal rate = _exchangeRateService.CurrentRate;
+        ResultProduct.PriceBsS = (rate > 0 && PriceRetailUSD > 0)
+            ? Math.Round(PriceRetailUSD * rate, 2, MidpointRounding.AwayFromZero)
+            : (PriceRetailBsS > 0 ? PriceRetailBsS : (_initialProduct?.PriceBsS ?? 0m));
 
         ResultProduct.LowStockThreshold = LowStockThreshold;
         ResultProduct.IsCashAdvance = IsCashAdvance;

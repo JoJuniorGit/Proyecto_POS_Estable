@@ -70,11 +70,29 @@ public partial class ProductItemViewModel : ObservableObject
     public string WholesalePriceColor => HasRealWholesale ? "#6366F1" : "#D97706";
 
 
-    public string DisplayRetailPrice => SelectedCurrency == "USD" ? $"${PriceUSD:N2}" : $"Bs.S {PriceBsS:N2}";
+    public string DisplayRetailPrice
+    {
+        get
+        {
+            if (SelectedCurrency == "USD") return $"${PriceUSD:N2}";
+            decimal bss = PriceBsS > 0 
+                ? PriceBsS 
+                : (_exchangeRateService.CurrentRate > 0 ? Math.Round(PriceUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0m);
+            return $"Bs.S {bss:N2}";
+        }
+    }
 
-    public string DisplayWholesalePrice => SelectedCurrency == "USD" 
-        ? $"${EffectivePriceWholesaleUSD:N2}" 
-        : $"Bs.S {EffectivePriceWholesaleBsS:N2}";
+    public string DisplayWholesalePrice
+    {
+        get
+        {
+            if (SelectedCurrency == "USD") return $"${EffectivePriceWholesaleUSD:N2}";
+            decimal bss = EffectivePriceWholesaleBsS > 0 
+                ? EffectivePriceWholesaleBsS 
+                : (_exchangeRateService.CurrentRate > 0 ? Math.Round(EffectivePriceWholesaleUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0m);
+            return $"Bs.S {bss:N2}";
+        }
+    }
 
     public ProductItemViewModel(ProductDto dto, Services.IExchangeRateService exchangeRateService, Action<ProductItemViewModel> onChanged)
     {
@@ -89,10 +107,12 @@ public partial class ProductItemViewModel : ObservableObject
         _stockQuantity = dto.StockQuantity;
         _profitPercentage = dto.ProfitPercentage;
         _priceUSD = dto.PriceUSD;
-        _priceBsS = dto.PriceBsS > 0 ? dto.PriceBsS : Math.Round(dto.PriceUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero);
+        _priceBsS = dto.PriceBsS > 0 ? dto.PriceBsS : (_exchangeRateService.CurrentRate > 0 ? Math.Round(dto.PriceUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0m);
         
         _priceWholesaleUSD = dto.PriceWholesaleUSD;
-        _priceWholesaleBsS = dto.PriceWholesaleUSD > 0 ? Math.Round(dto.PriceWholesaleUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0;
+        _priceWholesaleBsS = dto.PriceWholesaleUSD > 0 
+            ? (_exchangeRateService.CurrentRate > 0 ? Math.Round(dto.PriceWholesaleUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0m) 
+            : 0m;
         _minWholesaleQuantity = dto.MinWholesaleQuantity;
         _hasWholesale = dto.HasWholesale || dto.PriceWholesaleUSD > 0;
         _unitOfMeasureStr = dto.UnitOfMeasureStr;
@@ -144,10 +164,14 @@ public partial class ProductItemViewModel : ObservableObject
             StockQuantity = dto.StockQuantity;
             ProfitPercentage = dto.ProfitPercentage;
             PriceUSD = dto.PriceUSD;
-            PriceBsS = dto.PriceBsS > 0 ? dto.PriceBsS : Math.Round(dto.PriceUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero);
+            PriceBsS = dto.PriceBsS > 0 
+                ? dto.PriceBsS 
+                : (_exchangeRateService.CurrentRate > 0 ? Math.Round(dto.PriceUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0m);
 
             PriceWholesaleUSD = dto.PriceWholesaleUSD;
-            PriceWholesaleBsS = dto.PriceWholesaleUSD > 0 ? Math.Round(dto.PriceWholesaleUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0;
+            PriceWholesaleBsS = dto.PriceWholesaleUSD > 0 
+                ? (_exchangeRateService.CurrentRate > 0 ? Math.Round(dto.PriceWholesaleUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0m) 
+                : 0m;
             MinWholesaleQuantity = dto.MinWholesaleQuantity;
             HasWholesale = dto.HasWholesale || dto.PriceWholesaleUSD > 0;
             UnitOfMeasureStr = dto.UnitOfMeasureStr;

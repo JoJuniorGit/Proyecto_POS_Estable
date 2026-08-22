@@ -3,27 +3,47 @@ using System.Net.Http.Json;
 using System.Threading.Tasks;
 using Core.DTOs;
 using System.Collections.Generic;
+using CommunityToolkit.Mvvm.Messaging;
+using Desktop.Client.Messages;
 
 namespace Desktop.Client.Services;
 
 public class SalesService : ISalesService
 {
     private readonly HttpClient _http_client;
+    private readonly object _saleLock = new object();
+    private SaleDto? _currentSale;
 
     public SalesService(HttpClient http_client)
     {
         _http_client = http_client;
     }
 
-    public SaleDto? CurrentSale { get; set; }
+    public SaleDto? CurrentSale
+    {
+        get
+        {
+            lock (_saleLock) return _currentSale;
+        }
+    }
+
+    private void SetCurrentSale(SaleDto? sale)
+    {
+        lock (_saleLock)
+        {
+            _currentSale = sale;
+        }
+        WeakReferenceMessenger.Default.Send(new CurrentSaleChangedMessage(sale));
+    }
 
     public async Task<SaleDto> StartSaleAsync(int? cashierId = null)
     {
         string url = cashierId.HasValue ? $"api/sales/start?cashierId={cashierId.Value}" : "api/sales/start";
         var _response = await _http_client.PostAsync(url, null);
         _response.EnsureSuccessStatusCode();
-        CurrentSale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to start sale.");
-        return CurrentSale;
+        var sale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to start sale.");
+        SetCurrentSale(sale);
+        return sale;
     }
 
     public async Task<SaleDto> AddItemAsync(int sale_id, int product_id, decimal quantity, decimal exchange_rate, decimal? custom_unit_price_usd = null, decimal? custom_unit_price_bs_s = null)
@@ -36,16 +56,18 @@ public class SalesService : ISalesService
             var msg = err?["message"]?.ToString() ?? err?["Message"]?.ToString() ?? "Failed to add item.";
             throw new System.InvalidOperationException(msg);
         }
-        CurrentSale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to add item.");
-        return CurrentSale;
+        var sale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to add item.");
+        SetCurrentSale(sale);
+        return sale;
     }
 
     public async Task<SaleDto> RemoveItemAsync(int sale_id, int item_id, decimal exchange_rate)
     {
         var _response = await _http_client.DeleteAsync($"api/sales/{sale_id}/items/{item_id}?exchangeRate={exchange_rate}");
         _response.EnsureSuccessStatusCode();
-        CurrentSale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to remove item.");
-        return CurrentSale;
+        var sale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to remove item.");
+        SetCurrentSale(sale);
+        return sale;
     }
 
     public async Task<SaleDto> UpdateItemQuantityAsync(int sale_id, int item_id, decimal quantity, decimal exchange_rate)
@@ -58,16 +80,18 @@ public class SalesService : ISalesService
             var msg = err?["message"]?.ToString() ?? err?["Message"]?.ToString() ?? "Failed to update item quantity.";
             throw new System.InvalidOperationException(msg);
         }
-        CurrentSale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to update item quantity.");
-        return CurrentSale;
+        var sale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to update item quantity.");
+        SetCurrentSale(sale);
+        return sale;
     }
 
     public async Task<SaleDto> UpdateExchangeRateAsync(int sale_id, decimal exchange_rate)
     {
         var _response = await _http_client.PutAsync($"api/sales/{sale_id}/exchange-rate?exchangeRate={exchange_rate}", null);
         _response.EnsureSuccessStatusCode();
-        CurrentSale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to update exchange rate.");
-        return CurrentSale;
+        var sale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to update exchange rate.");
+        SetCurrentSale(sale);
+        return sale;
     }
 
     public async Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType)
@@ -80,8 +104,9 @@ public class SalesService : ISalesService
             var msg = err?["message"]?.ToString() ?? err?["Message"]?.ToString() ?? "Error al actualizar lista de precios.";
             throw new System.InvalidOperationException(msg);
         }
-        CurrentSale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to update price list.");
-        return CurrentSale;
+        var sale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to update price list.");
+        SetCurrentSale(sale);
+        return sale;
     }
 
     public async Task<int> CompleteSaleAsync(int sale_id, decimal exchange_rate, IEnumerable<SalePaymentDto> payments, decimal rounding_adjustment = 0, int? cashierId = null, bool isPendingPickup = false)
@@ -125,7 +150,7 @@ public class SalesService : ISalesService
             throw new System.Exception(err);
         }
         var sale = await response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to hold sale.");
-        CurrentSale = sale;
+        SetCurrentSale(sale);
         return sale;
     }
 
@@ -137,7 +162,9 @@ public class SalesService : ISalesService
             var err = await response.Content.ReadAsStringAsync();
             throw new System.Exception(err);
         }
-        return await response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to add payment.");
+        var sale = await response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to add payment.");
+        SetCurrentSale(sale);
+        return sale;
     }
 
     public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync()
@@ -227,7 +254,7 @@ public class SalesService : ISalesService
             throw new System.Exception(err);
         }
         var sale = await response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to update sale customer.");
-        CurrentSale = sale;
+        SetCurrentSale(sale);
         return sale;
     }
 

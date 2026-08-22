@@ -30,6 +30,10 @@ export async function apiFetch(endpoint, options = {}) {
   if (userStr) {
     try {
       const u = JSON.parse(userStr);
+      const token = u?.token || u?.Token || localStorage.getItem('pos_token');
+      if (token) {
+        userHeaders['Authorization'] = `Bearer ${token}`;
+      }
       if (u?.id) userHeaders['X-User-Id'] = String(u.id);
       if (u?.role !== undefined) userHeaders['X-User-Role'] = String(u.role);
     } catch {}
@@ -59,12 +63,31 @@ export async function apiFetch(endpoint, options = {}) {
   }
 
   if (!response.ok) {
-    let errorMessage = `Error ${response.status}: ${response.statusText}`;
+    let errorMessage = response.status === 401
+      ? 'Cédula o contraseña incorrecta.'
+      : `Error ${response.status}: ${response.statusText}`;
+
     try {
       const errorBody = await response.text();
-      if (errorBody) errorMessage = errorBody;
-    } catch {
-      // Si no se puede leer el body, usamos el mensaje por defecto
+      if (errorBody) {
+        try {
+          const jsonErr = JSON.parse(errorBody);
+          if (jsonErr.message) errorMessage = jsonErr.message;
+          else if (jsonErr.Message) errorMessage = jsonErr.Message;
+          else if (jsonErr.requiresPasswordChange) {
+            const err = new Error(jsonErr.message || 'Debe cambiar su contraseña antes de continuar.');
+            err.requiresPasswordChange = true;
+            throw err;
+          }
+        } catch (e) {
+          if (e.requiresPasswordChange) throw e;
+          if (!errorBody.includes('<html') && errorBody.length < 300) {
+            errorMessage = errorBody;
+          }
+        }
+      }
+    } catch (e) {
+      if (e.requiresPasswordChange) throw e;
     }
     throw new Error(errorMessage);
   }

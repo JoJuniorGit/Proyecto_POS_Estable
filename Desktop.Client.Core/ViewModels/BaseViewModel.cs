@@ -34,24 +34,33 @@ public abstract class BaseViewModel : ObservableObject, IDisposable
         {
             _cts.Cancel();
         }
-        catch { }
+        catch (ObjectDisposedException) { }
+        catch (AggregateException) { }
     }
 
     private async void OnFatalErrorResetInternal()
     {
         if (_disposed) return;
+
+        var newCts = new CancellationTokenSource();
+        var oldCts = Interlocked.Exchange(ref _cts, newCts);
         try
         {
-            _cts?.Dispose();
-            _cts = new CancellationTokenSource();
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+        catch (AggregateException) { }
 
+        try
+        {
             int jitterMs = _jitterProvider.GetJitterDelayMs(500, 2000);
             if (jitterMs > 0)
             {
-                await Task.Delay(jitterMs, _cts.Token);
+                await Task.Delay(jitterMs, newCts.Token);
             }
 
-            await OnResumeAfterRecoveryAsync(_cts.Token);
+            await OnResumeAfterRecoveryAsync(newCts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -100,12 +109,16 @@ public abstract class BaseViewModel : ObservableObject, IDisposable
             _clientState.FatalErrorActivated -= OnFatalErrorActivatedInternal;
             _clientState.FatalErrorReset -= OnFatalErrorResetInternal;
 
+            CommunityToolkit.Mvvm.Messaging.WeakReferenceMessenger.Default.UnregisterAll(this);
+
+            var oldCts = Interlocked.Exchange(ref _cts, new CancellationTokenSource());
             try
             {
-                _cts.Cancel();
-                _cts.Dispose();
+                oldCts?.Cancel();
+                oldCts?.Dispose();
             }
-            catch { }
+            catch (ObjectDisposedException) { }
+            catch (AggregateException) { }
         }
 
         _disposed = true;

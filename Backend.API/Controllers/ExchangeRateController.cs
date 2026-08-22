@@ -24,6 +24,7 @@ public class ExchangeRateController : ControllerBase
     /// <summary>
     /// Returns today's exchange rate, or 0 if none has been set.
     /// </summary>
+    [AllowAnonymous]
     [HttpGet("today")]
     public async Task<ActionResult> GetToday()
     {
@@ -40,6 +41,7 @@ public class ExchangeRateController : ControllerBase
     /// <summary>
     /// Returns the complete exchange rate history sorted by date descending.
     /// </summary>
+    [AllowAnonymous]
     [HttpGet("history")]
     public async Task<ActionResult> GetHistory()
     {

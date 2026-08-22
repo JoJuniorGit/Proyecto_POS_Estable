@@ -48,21 +48,36 @@ public partial class SettingsViewModel : ObservableObject
 
     private readonly IDialogService? _dialog_service;
 
-    public SettingsViewModel(IPaymentService payment_service, ISettingsService settings_service, UserSession userSession, IDialogService? dialog_service = null)
+    public SettingsViewModel(IPaymentService payment_service, ISettingsService settings_service, UserSession? userSession = null, IDialogService? dialog_service = null)
     {
         _payment_service = payment_service;
         _settings_service = settings_service;
         UserSession = userSession;
         _dialog_service = dialog_service;
-        _ = LoadMethodsAsync();
-        _ = LoadTimeZonesAsync();
+
+        if (UserSession == null || UserSession.IsLoggedIn)
+        {
+            _ = LoadMethodsAsync();
+            _ = LoadTimeZonesAsync();
+        }
     }
 
-    public UserSession UserSession { get; }
+    public async Task EnsureLoadedAsync()
+    {
+        if (UserSession == null || UserSession.IsLoggedIn)
+        {
+            await LoadMethodsAsync();
+            await LoadTimeZonesAsync();
+        }
+    }
+
+    public UserSession? UserSession { get; }
 
     [RelayCommand]
     private async Task LoadMethodsAsync()
     {
+        if (UserSession != null && !UserSession.IsLoggedIn) return;
+
         IsLoading = true;
         ErrorMessage = string.Empty;
         PaymentMethods.Clear();

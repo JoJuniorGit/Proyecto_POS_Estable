@@ -17,7 +17,7 @@ namespace Desktop.Client.Services;
 /// Unified service for managing exchange rates. Handles API interaction, 
 /// persistence, and real-time SignalR updates.
 /// </summary>
-public class ExchangeRateService : IExchangeRateService
+public class ExchangeRateService : IExchangeRateService, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly HubConnection _hubConnection;
@@ -201,6 +201,11 @@ public class ExchangeRateService : IExchangeRateService
         }
         _semaphore.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    public void Dispose()
+    {
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     private class ExchangeRateResponse

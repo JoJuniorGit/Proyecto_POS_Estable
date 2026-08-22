@@ -16,7 +16,7 @@ namespace Desktop.Client.ViewModels;
 /// ViewModel dedicated to managing the shopping cart state and operations.
 /// Subscribes to exchange rate changes to provide real-time price updates.
 /// </summary>
-public partial class CartViewModel : ObservableObject
+public partial class CartViewModel : ObservableObject, System.IDisposable
 {
     private readonly ISalesService _sales_service;
     private readonly IExchangeRateService _exchange_rate_service;
@@ -30,6 +30,12 @@ public partial class CartViewModel : ObservableObject
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
         {
             UpdateAllPrices(m.Value);
+        });
+
+        // Reactive sync: When active sale changes in SalesService, update Cart state
+        WeakReferenceMessenger.Default.Register<CurrentSaleChangedMessage>(this, (r, m) =>
+        {
+            CurrentSale = m.Value;
         });
     }
 
@@ -243,5 +249,10 @@ public partial class CartViewModel : ObservableObject
         {
             MessageBox.Show($"Error removing item: {ex.Message}");
         }
+    }
+
+    public void Dispose()
+    {
+        WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 }

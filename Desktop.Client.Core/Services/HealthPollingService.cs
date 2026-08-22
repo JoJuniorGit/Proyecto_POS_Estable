@@ -17,6 +17,7 @@ public interface IHealthPollingService
 public class HealthPollingService : IHealthPollingService, IDisposable
 {
     private readonly HttpClient _httpClient;
+    private readonly IClientStateService? _clientStateService;
     private CancellationTokenSource? _cts;
     private readonly object _lock = new object();
     private bool _isPollingActive;
@@ -35,36 +36,51 @@ public class HealthPollingService : IHealthPollingService, IDisposable
 
     public event EventHandler? OnHealthRecovered;
 
-    public HealthPollingService(HttpClient httpClient)
+    public HealthPollingService(HttpClient httpClient, IClientStateService? clientStateService = null)
     {
         _httpClient = httpClient;
+        _clientStateService = clientStateService;
     }
 
     public void StartPolling()
     {
+        CancellationTokenSource localCts;
+        CancellationToken token;
         lock (_lock)
         {
             if (_isPollingActive) return;
             _isPollingActive = true;
             _cts = new CancellationTokenSource();
+            localCts = _cts;
+            token = localCts.Token;
         }
 
-        var token = _cts.Token;
-        Task.Run(() => PollLoopAsync(token), token);
+        try
+        {
+            Task.Run(() => PollLoopAsync(localCts, token), token);
+        }
+        catch (ObjectDisposedException) { }
+        catch (OperationCanceledException) { }
     }
 
-    private async Task PollLoopAsync(CancellationToken cancellationToken)
+    private async Task PollLoopAsync(CancellationTokenSource originCts, CancellationToken cancellationToken)
     {
         ClientStateLogger.LogInfo("Health polling loop started in background (polling /health every 3s).");
 
         while (!cancellationToken.IsCancellationRequested)
         {
+            lock (_lock)
+            {
+                if (_cts != originCts || !_isPollingActive) break;
+            }
+
             try
             {
                 var response = await _httpClient.GetAsync("health", cancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
                     ClientStateLogger.LogHealthRecovery();
+                    _clientStateService?.ResetFatalError();
                     StopPolling();
                     OnHealthRecovered?.Invoke(this, EventArgs.Empty);
                     break;
@@ -91,7 +107,10 @@ public class HealthPollingService : IHealthPollingService, IDisposable
 
         lock (_lock)
         {
-            _isPollingActive = false;
+            if (_cts == originCts)
+            {
+                _isPollingActive = false;
+            }
         }
     }
 
@@ -101,14 +120,15 @@ public class HealthPollingService : IHealthPollingService, IDisposable
         {
             if (!_isPollingActive && _cts == null) return;
             _isPollingActive = false;
-            try
-            {
-                _cts?.Cancel();
-                _cts?.Dispose();
-            }
-            catch { }
-            _cts = null;
         }
+
+        var oldCts = Interlocked.Exchange(ref _cts, null);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
     }
 
     public void Dispose()

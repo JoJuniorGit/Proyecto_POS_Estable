@@ -56,20 +56,23 @@ public partial class DailyClosureViewModel : ObservableObject
 {
     private readonly IDailyClosureClientService _closure_service;
     private readonly IDialogService _dialogService;
-    public UserSession UserSession { get; }
+    public UserSession? UserSession { get; }
 
-    public bool CanToggleBlindClosing => UserSession.IsAdmin;
+    public bool CanToggleBlindClosing => UserSession?.IsAdmin == true;
 
-    public DailyClosureViewModel(IDailyClosureClientService closure_service, IDialogService dialogService, UserSession userSession)
+    public DailyClosureViewModel(IDailyClosureClientService closure_service, IDialogService dialogService, UserSession? userSession = null)
     {
         _closure_service = closure_service;
         _dialogService = dialogService;
         UserSession = userSession;
 
         // Forced true for cashiers, default false for admins
-        _is_blind_closing = UserSession.IsCashier;
+        _is_blind_closing = UserSession?.IsCashier == true;
 
-        _ = LoadExpectedTotalsAsync();
+        if (UserSession == null || UserSession.IsLoggedIn)
+        {
+            _ = LoadExpectedTotalsAsync();
+        }
     }
 
     public ObservableCollection<ClosureDetailRow> DetailRows { get; } = new();
@@ -155,6 +158,8 @@ public partial class DailyClosureViewModel : ObservableObject
     [RelayCommand]
     public async Task LoadExpectedTotalsAsync()
     {
+        if (UserSession != null && !UserSession.IsLoggedIn) return;
+
         IsLoading = true;
         IsSaved = false;
         try
@@ -185,7 +190,7 @@ public partial class DailyClosureViewModel : ObservableObject
 
     private string BuildConfirmationMessage()
     {
-        var userName = UserSession.CurrentUser?.Name ?? UserSession.CurrentUser?.Cedula ?? "Usuario";
+        var userName = UserSession?.CurrentUser?.Name ?? UserSession?.CurrentUser?.Cedula ?? "Usuario";
         var dateStr = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
 
         if (IsBlindClosing)
@@ -199,59 +204,62 @@ public partial class DailyClosureViewModel : ObservableObject
             sb.AppendLine("DESGLOSE DE MONTOS DECLARADOS:");
             foreach (var row in DetailRows)
             {
-                sb.AppendLine($"  • {row.PaymentMethodName}: Bs.S {row.ActualAmountBsS:N2}");
+                sb.AppendLine($"• {row.PaymentMethodName}: {row.ActualAmountBsS:N2} Bs.S");
             }
-            sb.AppendLine("------------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO: Bs.S {TotalActualBsS:N2}");
+            sb.AppendLine("-----------------------------------");
+            sb.AppendLine($"TOTAL DECLARADO: {TotalActualBsS:N2} Bs.S");
             if (!string.IsNullOrWhiteSpace(Observation))
             {
                 sb.AppendLine($"Observaciones: {Observation}");
             }
-            sb.AppendLine();
-            sb.AppendLine("¿Confirma guardar este cierre de caja?");
+            sb.AppendLine("\n¿Desea confirmar y registrar este arqueo a ciegas?");
             return sb.ToString();
         }
         else
         {
-            // Admin Mode - FULL AUDIT BREAKDOWN
+            // Admin Mode (Detailed)
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("=== AUDITORÍA DE CIERRE DIARIO ===");
+            sb.AppendLine("=== RESUMEN DE CIERRE DIARIO (AUDITORÍA) ===");
             sb.AppendLine($"Fecha: {dateStr}");
             sb.AppendLine($"Administrador: {userName}");
             sb.AppendLine();
-            sb.AppendLine("DESGLOSE POR MÉTODO DE PAGO:");
+            sb.AppendLine("DETALLE POR MÉTODO DE PAGO:");
             foreach (var row in DetailRows)
             {
-                sb.AppendLine($"  • {row.PaymentMethodName}: Declarado Bs.S {row.ActualAmountBsS:N2} | Esperado Bs.S {row.ExpectedAmountBsS:N2} | Dif: Bs.S {row.DifferenceBsS:N2}");
+                var diffSign = row.DifferenceBsS >= 0 ? "+" : "";
+                sb.AppendLine($"• {row.PaymentMethodName}:");
+                sb.AppendLine($"    Esperado:  {row.ExpectedAmountBsS:N2} Bs.S");
+                sb.AppendLine($"    Declarado: {row.ActualAmountBsS:N2} Bs.S");
+                sb.AppendLine($"    Diferencia: {diffSign}{row.DifferenceBsS:N2} Bs.S");
             }
-            sb.AppendLine("------------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO:  Bs.S {TotalActualBsS:N2}");
-            sb.AppendLine($"TOTAL ESPERADO:   Bs.S {TotalExpectedBsS:N2}");
-            sb.AppendLine($"DIFERENCIA TOTAL: Bs.S {TotalDifferenceBsS:N2} ({DifferenceStatusLabel})");
+            sb.AppendLine("-----------------------------------");
+            sb.AppendLine($"TOTAL ESPERADO:  {TotalExpectedBsS:N2} Bs.S");
+            sb.AppendLine($"TOTAL DECLARADO: {TotalActualBsS:N2} Bs.S");
+            var totalDiffSign = TotalDifferenceBsS >= 0 ? "+" : "";
+            sb.AppendLine($"DIFERENCIA NETA: {totalDiffSign}{TotalDifferenceBsS:N2} Bs.S ({DifferenceStatusLabel})");
             if (!string.IsNullOrWhiteSpace(Observation))
             {
                 sb.AppendLine($"Observaciones: {Observation}");
             }
-            sb.AppendLine();
-            sb.AppendLine("¿Confirma guardar este cierre de caja en la base de datos?");
+            sb.AppendLine("\n¿Desea confirmar y registrar este cierre contable?");
             return sb.ToString();
         }
     }
 
     [RelayCommand]
-    private async Task ConfirmClosureAsync()
+    private async Task ConfirmAndSaveClosure()
     {
         if (!DetailRows.Any())
         {
-            _dialogService.ShowWarning("Advertencia", "No hay métodos de pago disponibles para cerrar.");
+            _dialogService.ShowWarning("Advertencia", "No hay datos de métodos de pago para procesar el cierre.");
             return;
         }
 
-        string confirmPrompt = BuildConfirmationMessage();
-        if (!_dialogService.ShowConfirm("Confirmar Cierre Diario", confirmPrompt))
-        {
-            return;
-        }
+        string confirmMessage = BuildConfirmationMessage();
+        string dialogTitle = IsBlindClosing ? "Confirmar Arqueo a Ciegas" : "Confirmar Cierre Diario (Admin)";
+
+        bool confirmed = _dialogService.ShowConfirm(dialogTitle, confirmMessage);
+        if (!confirmed) return;
 
         IsLoading = true;
         try
@@ -259,7 +267,7 @@ public partial class DailyClosureViewModel : ObservableObject
             var request = new Services.CreateClosureRequest
             {
                 ClosureDate = DateTime.UtcNow,
-                UserId = UserSession.CurrentUser?.Name ?? UserSession.CurrentUser?.Cedula ?? "Admin",
+                UserId = UserSession?.CurrentUser?.Name ?? UserSession?.CurrentUser?.Cedula ?? "Admin",
                 Observation = Observation,
                 Details = DetailRows.Select(r => new Services.CreateClosureDetailRequest
                 {
@@ -295,7 +303,7 @@ public partial class DailyClosureViewModel : ObservableObject
             return;
         }
 
-        var userName = UserSession.CurrentUser?.Name ?? UserSession.CurrentUser?.Cedula ?? "Usuario";
+        var userName = UserSession?.CurrentUser?.Name ?? UserSession?.CurrentUser?.Cedula ?? "Usuario";
         var dateStr = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
 
         var sb = new System.Text.StringBuilder();

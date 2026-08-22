@@ -200,9 +200,16 @@ public partial class CustomerPickerViewModel : ObservableObject
         {
             if (SetProperty(ref _searchQuery, value))
             {
-                _searchCts?.Cancel();
-                _searchCts = new CancellationTokenSource();
-                StartDebouncedSearch(value, _searchCts.Token);
+                var newCts = new CancellationTokenSource();
+                var oldCts = Interlocked.Exchange(ref _searchCts, newCts);
+                try
+                {
+                    oldCts?.Cancel();
+                    oldCts?.Dispose();
+                }
+                catch (ObjectDisposedException) { }
+
+                StartDebouncedSearch(value, newCts.Token);
             }
         }
     }

@@ -13,7 +13,7 @@ namespace Desktop.Client.ViewModels;
 /// <summary>
 /// Orchestrates the POS UI, including product search and coordination with the Cart logic.
 /// </summary>
-public partial class PosViewModel : ObservableObject
+public partial class PosViewModel : ObservableObject, IDisposable
 {
     private readonly ISalesService _sales_service;
     private readonly IProductService _product_service;
@@ -112,12 +112,37 @@ public partial class PosViewModel : ObservableObject
             await ((PosViewModel)r).ReloadPaymentMethodsAsync();
         });
 
-        _ = LoadPaymentMethodsAsync();
-        _ = StartNewSaleAsync();
+        if (_user_session == null || _user_session.IsLoggedIn)
+        {
+            _ = InitializeForSessionAsync();
+        }
+    }
+
+    public async Task InitializeForSessionAsync()
+    {
+        if (_user_session != null && !_user_session.IsLoggedIn) return;
+
+        if (CurrentExchangeRate <= 0)
+        {
+            await _exchange_rate_service.GetCurrentRateAsync();
+            OnPropertyChanged(nameof(CurrentExchangeRate));
+        }
+
+        if (ActivePaymentMethods.Count == 0)
+        {
+            await LoadPaymentMethodsAsync();
+        }
+
+        if (Cart.CurrentSale == null)
+        {
+            await StartNewSaleAsync();
+        }
     }
 
     private async Task LoadPaymentMethodsAsync()
     {
+        if (_user_session != null && !_user_session.IsLoggedIn) return;
+
         int _max_retries = 3;
         int _delay_ms = 2000;
 
@@ -140,6 +165,8 @@ public partial class PosViewModel : ObservableObject
             }
             catch (System.Exception _ex)
             {
+                if (_user_session != null && !_user_session.IsLoggedIn) return;
+
                 if (_attempt == _max_retries)
                 {
                     MessageBox.Show($"Failed to load payment configurations after {_max_retries} attempts: {_ex.Message}");
@@ -161,6 +188,8 @@ public partial class PosViewModel : ObservableObject
 
     private async Task StartNewSaleAsync()
     {
+        if (_user_session != null && !_user_session.IsLoggedIn) return;
+
         System.Diagnostics.Debug.WriteLine("[POS] StartNewSaleAsync: calling StartSaleAsync...");
         IsProcessing = true;
         try
@@ -183,9 +212,16 @@ public partial class PosViewModel : ObservableObject
 
     private async Task ExecuteSearchAsync()
     {
-        _cancellation_token_source?.Cancel();
-        _cancellation_token_source = new System.Threading.CancellationTokenSource();
-        var _token = _cancellation_token_source.Token;
+        var newCts = new System.Threading.CancellationTokenSource();
+        var oldCts = System.Threading.Interlocked.Exchange(ref _cancellation_token_source, newCts);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+
+        var _token = newCts.Token;
 
         var _term = SearchText ?? string.Empty;
         var _dispatcher = System.Windows.Application.Current.Dispatcher;
@@ -208,6 +244,9 @@ public partial class PosViewModel : ObservableObject
 
         try
         {
+            // 300ms debounce to prevent overwhelming the server during fast typing
+            await Task.Delay(300, _token);
+
             IsSearching = true;
             var _results = await _product_service.GetSuggestionsAsync(_term, true, _token);
 
@@ -248,6 +287,19 @@ public partial class PosViewModel : ObservableObject
                 RunOnUI(() => IsSearching = false);
             }
         }
+    }
+
+    public void Dispose()
+    {
+        var oldCts = System.Threading.Interlocked.Exchange(ref _cancellation_token_source, null);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+
+        WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 
     [RelayCommand]

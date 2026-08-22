@@ -336,15 +336,26 @@ try
                 AppLogger.LogStart("[Seed] Created and activated user V-12345678");
             }
 
-            // Ensure ALL Admin users in the system are ALWAYS active on startup
-            var disabledAdmins = _salesDb.Users.Where(u => u.Role == Core.Entities.UserRole.Admin && !u.IsActive).ToList();
-            if (disabledAdmins.Any())
+            // Ensure ALL Admin users in the system are ALWAYS active on startup and have valid password
+            var allAdmins = _salesDb.Users.Where(u => u.Role == Core.Entities.UserRole.Admin).ToList();
+            bool modifiedAdmins = false;
+            foreach (var admin in allAdmins)
             {
-                foreach (var admin in disabledAdmins)
+                if (!admin.IsActive)
                 {
                     admin.IsActive = true;
+                    modifiedAdmins = true;
                     AppLogger.LogStart($"[Seed] Reactivated Admin user: {admin.Username} ({admin.Cedula})");
                 }
+                if (string.IsNullOrWhiteSpace(admin.PasswordHash))
+                {
+                    admin.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(seedPassword);
+                    modifiedAdmins = true;
+                    AppLogger.LogStart($"[Seed] Set seed password hash for Admin user: {admin.Username} ({admin.Cedula})");
+                }
+            }
+            if (modifiedAdmins)
+            {
                 _salesDb.SaveChanges();
             }
 
