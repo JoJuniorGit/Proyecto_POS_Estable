@@ -15,6 +15,7 @@
         Background="{DynamicResource MaterialDesignPaper}"
         FontFamily="{DynamicResource MaterialDesignFont}"
         Title="{Binding Title}" Height="660" Width="1024"
+        Icon="Assets/app.ico"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}">
 
     <Window.Resources>

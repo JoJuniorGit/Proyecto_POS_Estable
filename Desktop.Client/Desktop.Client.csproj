@@ -36,8 +36,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <StartupObject>Desktop.Client.Program</StartupObject>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <GenerateTemporaryTargetAssemblyDebuggingInformation>false</GenerateTemporaryTargetAssemblyDebuggingInformation>
     <AlwaysCompileMarkupFilesInSeparateDomain>false</AlwaysCompileMarkupFilesInSeparateDomain>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
+    <Resource Include="Assets\app.png" />
+  </ItemGroup>
 
 </Project>
