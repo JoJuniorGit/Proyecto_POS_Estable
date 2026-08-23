@@ -204,6 +204,12 @@
                                  Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                  Margin="0,0,0,16"/>
 
+                        <PasswordBox x:Name="UserPasswordBox"
+                                     materialDesign:HintAssist.Hint="Contraseña (Opcional, por defecto Cédula)"
+                                     Style="{StaticResource MaterialDesignOutlinedPasswordBox}"
+                                     Margin="0,0,0,16"
+                                     PasswordChanged="UserPasswordBox_PasswordChanged"/>
+
                         <ComboBox ItemsSource="{Binding Roles}"
                                   SelectedItem="{Binding Role}"
                                   materialDesign:HintAssist.Hint="Rol del Usuario *"

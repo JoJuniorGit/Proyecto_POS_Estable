@@ -33,6 +33,9 @@ public partial class UsersManagementViewModel : ObservableObject
     private string _name = string.Empty;
 
     [ObservableProperty]
+    private string _password = string.Empty;
+
+    [ObservableProperty]
     private UserRole _role = UserRole.Cashier;
 
     [ObservableProperty]
@@ -106,6 +109,7 @@ public partial class UsersManagementViewModel : ObservableObject
         IsEditing = false;
         Cedula = string.Empty;
         Name = string.Empty;
+        Password = string.Empty;
         Role = UserRole.Cashier;
         IsActive = true;
     }
@@ -116,6 +120,12 @@ public partial class UsersManagementViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(Cedula) || string.IsNullOrWhiteSpace(Name))
         {
             StatusMessage = "Cédula y Nombre son obligatorios.";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Password) && Password.Trim().Length < 4)
+        {
+            StatusMessage = "La contraseña personalizada debe tener al menos 4 caracteres.";
             return;
         }
 
@@ -154,6 +164,7 @@ public partial class UsersManagementViewModel : ObservableObject
                 {
                     Cedula = Cedula.Trim(),
                     Name = Name.Trim(),
+                    Password = string.IsNullOrWhiteSpace(Password) ? null : Password.Trim(),
                     Role = Role
                 };
                 var created = await _userService.CreateUserAsync(createDto);

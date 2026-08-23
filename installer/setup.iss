@@ -68,6 +68,7 @@ const
   ServiceName = 'PosBackendService';
   FirewallRuleHttp = 'Sistema POS - Backend API (TCP 5000)';
   FirewallRuleLegacy = 'Sistema POS - Backend API (TCP 5000/5001)';
+  DefaultJwtSecretKey = 'ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795';
 
 var
   DbPage: TInputQueryWizardPage;
@@ -171,8 +172,13 @@ begin
       '    "AdminSeedPassword": "' + AdminPage.Values[1] + '",' + #13#10;
   JsonContent := JsonContent +
     '    "BusinessName": "' + AdminPage.Values[2] + '"' + #13#10 +
-    '  }' + #13#10 +
-    '}';
+    '  }';
+  if IncludeSecrets then
+    JsonContent := JsonContent + ',' + #13#10 +
+      '  "JwtSettings": {' + #13#10 +
+      '    "Key": "' + DefaultJwtSecretKey + '"' + #13#10 +
+      '  }';
+  JsonContent := JsonContent + #13#10 + '}';
 
   SaveStringToFile(ConfigFile, JsonContent, False);
 end;
@@ -198,11 +204,11 @@ begin
 end;
 
 // Registra o actualiza el servicio PosBackendService sin fallar en reinstalaciones,
-// y reaplica siempre las variables de entorno (ConnectionStrings__DefaultConnection y
-// SystemSettings__AdminSeedPassword) vía AppEnvironmentExtra de NSSM (INSTALLATION.md §3.5, §5).
+// y reaplica siempre las variables de entorno (ConnectionStrings__DefaultConnection,
+// SystemSettings__AdminSeedPassword y JWT_SETTINGS_KEY) vía AppEnvironmentExtra de NSSM (INSTALLATION.md §3.5, §5 y JWT_Key.md).
 procedure RegisterOrUpdateService(UseNssm: Boolean);
 var
-  AppExe, AppDir, ConnEnv, SeedEnv, ConnString: String;
+  AppExe, AppDir, ConnEnv, SeedEnv, JwtEnv, ConnString: String;
   Code: Integer;
 begin
   AppExe := ExpandConstant('{app}\BackendAPI\Backend.API.exe');
@@ -211,6 +217,7 @@ begin
     DbPage.Values[2] + ';Username=' + DbPage.Values[3] + ';Password=' + DbPage.Values[4];
   ConnEnv := 'ConnectionStrings__DefaultConnection=' + ConnString;
   SeedEnv := 'SystemSettings__AdminSeedPassword=' + AdminPage.Values[1];
+  JwtEnv := 'JWT_SETTINGS_KEY=' + DefaultJwtSecretKey;
 
   if UseNssm then
   begin
@@ -220,7 +227,7 @@ begin
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Application "' + AppExe + '"');
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppDirectory "' + AppDir + '"');
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Start SERVICE_AUTO_START');
-      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedEnv + '"');
+      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedEnv + '" "' + JwtEnv + '"');
       Code := RunCmd(AppDir + '\nssm.exe', 'restart ' + ServiceName);
     end
     else
@@ -230,7 +237,7 @@ begin
       begin
         RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppDirectory "' + AppDir + '"');
         RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Start SERVICE_AUTO_START');
-        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedEnv + '"');
+        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedEnv + '" "' + JwtEnv + '"');
         Code := RunCmd(AppDir + '\nssm.exe', 'start ' + ServiceName);
       end;
     end;
