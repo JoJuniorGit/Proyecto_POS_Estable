@@ -344,8 +344,13 @@ public class SalesService : ISalesService
                 _sale.InvoiceNumber = (_last_invoice ?? 0) + 1;
             }
 
-            if (payments != null)
+            if (payments != null && payments.Any())
             {
+                var paymentMethodIds = payments.Select(p => p.PaymentMethodId).Distinct().ToList();
+                var paymentMethodsDict = await _context.PaymentMethods
+                    .Where(pm => paymentMethodIds.Contains(pm.Id))
+                    .ToDictionaryAsync(pm => pm.Id);
+
                 foreach (var _p in payments)
                 {
                     decimal amountUsd = _p.Amount;
@@ -360,7 +365,7 @@ public class SalesService : ISalesService
                         amountLocal = Math.Round(amountUsd * exchange_rate, 2, MidpointRounding.AwayFromZero);
                     }
 
-                    var _payment_method = await _context.PaymentMethods.FindAsync(_p.PaymentMethodId);
+                    paymentMethodsDict.TryGetValue(_p.PaymentMethodId, out var _payment_method);
 
                     // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
                     if (_payment_method != null && _payment_method.IsCash && amountLocal % 1 != 0)
@@ -774,6 +779,7 @@ public class SalesService : ISalesService
         }
 
         var sales = await _context.Sales
+            .AsNoTracking()
             .Include(s => s.Customer)
             .Include(s => s.Items)
             .Include(s => s.Payments)
