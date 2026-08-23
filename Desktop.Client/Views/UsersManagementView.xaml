@@ -211,7 +211,7 @@
                             <PasswordBox x:Name="UserPasswordBox"
                                          materialDesign:HintAssist.Hint="{Binding PasswordHint}"
                                          Style="{StaticResource MaterialDesignOutlinedPasswordBox}"
-                                         Padding="0,0,36,0"
+                                         Padding="16,14,48,14"
                                          Visibility="{Binding IsPasswordVisible, Converter={StaticResource InverseBoolToVis}, FallbackValue=Visible}"
                                          PasswordChanged="UserPasswordBox_PasswordChanged"/>
 
@@ -219,14 +219,14 @@
                                      Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
                                      materialDesign:HintAssist.Hint="{Binding PasswordHint}"
                                      Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                     Padding="0,0,36,0"
+                                     Padding="16,14,48,14"
                                      Visibility="{Binding IsPasswordVisible, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}"/>
 
                             <Button Style="{DynamicResource MaterialDesignToolButton}"
                                     Command="{Binding TogglePasswordVisibilityCommand}"
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Center"
-                                    Width="32" Height="32" Margin="0,0,6,0"
+                                    Width="32" Height="32" Margin="0,0,8,0"
                                     ToolTip="Mostrar / Ocultar Contraseña">
                                 <materialDesign:PackIcon Width="20" Height="20" Foreground="#64748B">
                                     <materialDesign:PackIcon.Style>

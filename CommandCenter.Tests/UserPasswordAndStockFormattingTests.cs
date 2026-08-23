@@ -317,4 +317,30 @@ public class UserPasswordAndStockFormattingTests
         vm.SelectedUser = new UserDto { Id = 2, Cedula = "V-22222222", Name = "User Two" };
         Assert.False(vm.IsPasswordVisible);
     }
+
+    [Fact]
+    public void LoginViewModel_TogglePasswordVisibility_TogglesVisibilityState()
+    {
+        var mockUserService = new Mock<IUserService>();
+        var mockDialogService = new Mock<IDialogService>();
+        var userSession = new UserSession();
+
+        var vm = new LoginViewModel(mockUserService.Object, mockDialogService.Object, userSession);
+
+        Assert.False(vm.IsPasswordVisible);
+
+        // Toggle on
+        vm.TogglePasswordVisibilityCommand.Execute(null);
+        Assert.True(vm.IsPasswordVisible);
+
+        // Toggle off
+        vm.TogglePasswordVisibilityCommand.Execute(null);
+        Assert.False(vm.IsPasswordVisible);
+
+        // Reset on Clear
+        vm.TogglePasswordVisibilityCommand.Execute(null);
+        Assert.True(vm.IsPasswordVisible);
+        vm.ClearCommand.Execute(null);
+        Assert.False(vm.IsPasswordVisible);
+    }
 }

@@ -4,9 +4,16 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:Desktop.Client.Converters"
              mc:Ignorable="d" 
              d:DesignHeight="600" d:DesignWidth="800"
              Background="{DynamicResource MaterialDesignPaper}">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis"/>
+    </UserControl.Resources>
+
     <Grid>
         <Border HorizontalAlignment="Center" 
                 VerticalAlignment="Center"
@@ -44,15 +51,47 @@
                          KeyDown="TextBox_KeyDown">
                 </TextBox>
 
-                <!-- Input Field: Password -->
-                <PasswordBox x:Name="PasswordInput"
+                <!-- Input Field: Password con Botón de Ojo (Mostrar / Ocultar) -->
+                <Grid Margin="0,0,0,16">
+                    <PasswordBox x:Name="PasswordInput"
+                                 materialDesign:HintAssist.Hint="Contraseña"
+                                 Style="{StaticResource MaterialDesignOutlinedPasswordBox}"
+                                 FontSize="20" FontWeight="Bold" HorizontalContentAlignment="Center"
+                                 Padding="48,12,48,12"
+                                 Visibility="{Binding IsPasswordVisible, Converter={StaticResource InverseBoolToVis}, FallbackValue=Visible}"
+                                 PasswordChanged="PasswordInput_PasswordChanged"
+                                 KeyDown="PasswordInput_KeyDown"/>
+
+                    <TextBox x:Name="PasswordTextInput"
+                             Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
                              materialDesign:HintAssist.Hint="Contraseña"
-                             Style="{StaticResource MaterialDesignOutlinedPasswordBox}"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
                              FontSize="20" FontWeight="Bold" HorizontalContentAlignment="Center"
-                             Margin="0,0,0,16"
-                             PasswordChanged="PasswordInput_PasswordChanged"
-                             KeyDown="PasswordInput_KeyDown">
-                </PasswordBox>
+                             Padding="48,12,48,12"
+                             Visibility="{Binding IsPasswordVisible, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}"
+                             KeyDown="TextBox_KeyDown"/>
+
+                    <Button Style="{DynamicResource MaterialDesignToolButton}"
+                            Command="{Binding TogglePasswordVisibilityCommand}"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Width="36" Height="36" Margin="0,0,8,0"
+                            ToolTip="Mostrar / Ocultar Contraseña">
+                        <materialDesign:PackIcon Width="22" Height="22" Foreground="#64748B">
+                            <materialDesign:PackIcon.Style>
+                                <Style TargetType="materialDesign:PackIcon">
+                                    <Setter Property="Kind" Value="EyeOutline"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsPasswordVisible}" Value="True">
+                                            <Setter Property="Kind" Value="EyeOffOutline"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </materialDesign:PackIcon.Style>
+                        </materialDesign:PackIcon>
+                    </Button>
+                </Grid>
 
                 <!-- Onscreen Numpad for Touchscreen / Easy Entry -->
                 <UniformGrid Rows="4" Columns="3" Margin="0,0,0,20">

@@ -19,6 +19,15 @@ public partial class LoginViewModel : ObservableObject
     private string _password = string.Empty;
 
     [ObservableProperty]
+    private bool _isPasswordVisible;
+
+    [RelayCommand]
+    private void TogglePasswordVisibility()
+    {
+        IsPasswordVisible = !IsPasswordVisible;
+    }
+
+    [ObservableProperty]
     private string _errorMessage = string.Empty;
 
     [ObservableProperty]
@@ -71,6 +80,7 @@ public partial class LoginViewModel : ObservableObject
                 _userSession.SetUser(result.User, result.Token);
                 Cedula = string.Empty;
                 Password = string.Empty;
+                IsPasswordVisible = false;
                 LoginSuccess?.Invoke();
             }
             else
@@ -148,6 +158,7 @@ public partial class LoginViewModel : ObservableObject
     {
         Cedula = string.Empty;
         Password = string.Empty;
+        IsPasswordVisible = false;
         ErrorMessage = string.Empty;
     }
 }
