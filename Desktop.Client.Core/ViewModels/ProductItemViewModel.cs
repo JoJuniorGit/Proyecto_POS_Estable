@@ -65,6 +65,14 @@ public partial class ProductItemViewModel : ObservableObject
 
     public bool IsStockCritical => StockQuantity <= 0;
 
+    public string FormattedStockQuantity => StockQuantity.ToString("#,##0.###", System.Globalization.CultureInfo.CurrentCulture);
+
+    partial void OnStockQuantityChanged(decimal value)
+    {
+        OnPropertyChanged(nameof(FormattedStockQuantity));
+        OnPropertyChanged(nameof(IsStockCritical));
+    }
+
     public string FormattedMinWholesaleQuantityStr => ((int)Math.Round(EffectiveMinWholesaleQuantity, MidpointRounding.AwayFromZero)).ToString();
 
     public string WholesalePriceColor => HasRealWholesale ? "#6366F1" : "#D97706";
@@ -185,6 +193,7 @@ public partial class ProductItemViewModel : ObservableObject
             OnPropertyChanged(nameof(EffectiveMinWholesaleQuantity));
             OnPropertyChanged(nameof(FormattedMinWholesaleQuantityStr));
             OnPropertyChanged(nameof(IsStockCritical));
+            OnPropertyChanged(nameof(FormattedStockQuantity));
             OnPropertyChanged(nameof(WholesalePriceColor));
             OnPropertyChanged(nameof(DisplayRetailPrice));
             OnPropertyChanged(nameof(DisplayWholesalePrice));

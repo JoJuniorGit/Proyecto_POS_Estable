@@ -13,7 +13,7 @@ public partial class AdjustStockDialog : Window
     public AdjustStockDialog(ProductDto product)
     {
         InitializeComponent();
-        CurrentStockText.Text = $"Disponible actual: {product.StockQuantity} {product.UnitOfMeasure}";
+        CurrentStockText.Text = $"Disponible actual: {product.StockQuantity.ToString("#,##0.###", System.Globalization.CultureInfo.CurrentCulture)} {product.UnitOfMeasure}";
         QuantityInput.Focus();
     }
 

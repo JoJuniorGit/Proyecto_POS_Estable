@@ -266,7 +266,7 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </Border.Style>
-                                        <TextBlock Text="{Binding StockQuantity}" FontWeight="Bold" FontSize="12">
+                                        <TextBlock Text="{Binding FormattedStockQuantity}" FontWeight="Bold" FontSize="12">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Foreground" Value="#0369A1"/>
