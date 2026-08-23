@@ -77,7 +77,7 @@ public class ResilienceHandlerTests
     {
         var clientState = new ClientStateService();
         var innerHandler = new MockInnerHandler { ResponseStatusCode = HttpStatusCode.InternalServerError, ResponseBody = "Internal Server Error" };
-        var healthPollingMock = new HealthPollingService(new HttpClient(new MockInnerHandler()) { BaseAddress = new Uri("http://localhost:5000/") });
+        var healthPollingMock = new HealthPollingService(new HttpClient(new MockInnerHandler { ResponseStatusCode = HttpStatusCode.ServiceUnavailable }) { BaseAddress = new Uri("http://localhost:5000/") });
         var resilienceHandler = new ResilienceHandler(healthPollingMock, clientState)
         {
             InnerHandler = innerHandler
