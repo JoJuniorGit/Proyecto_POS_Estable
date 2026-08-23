@@ -1,7 +1,10 @@
+using Core.Constants;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -11,14 +14,22 @@ namespace Sales.Module.Services;
 public class PaymentMethodService : IPaymentMethodService
 {
     private readonly SalesDbContext _context;
+    private readonly IMemoryCache? _cache;
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
 
-    public PaymentMethodService(SalesDbContext context)
+    public PaymentMethodService(SalesDbContext context, IMemoryCache? cache = null)
     {
         _context = context;
+        _cache = cache;
     }
 
     public async Task<IEnumerable<PaymentMethod>> GetActiveMethodsAsync()
     {
+        if (_cache != null && _cache.TryGetValue(CacheKeys.ActivePaymentMethods, out IEnumerable<PaymentMethod>? cached) && cached != null)
+        {
+            return cached;
+        }
+
         var methods = await _context.PaymentMethods
             .AsNoTracking()
             .Where(p => p.IsActive)
@@ -26,18 +37,29 @@ public class PaymentMethodService : IPaymentMethodService
             .ThenBy(p => p.Name)
             .ToListAsync();
 
-        return methods ?? Enumerable.Empty<PaymentMethod>();
+        var result = methods ?? (IEnumerable<PaymentMethod>)Enumerable.Empty<PaymentMethod>();
+
+        _cache?.Set(CacheKeys.ActivePaymentMethods, result, CacheDuration);
+        return result;
     }
 
     public async Task<IEnumerable<PaymentMethod>> GetAllAsync()
     {
+        if (_cache != null && _cache.TryGetValue(CacheKeys.AllPaymentMethods, out IEnumerable<PaymentMethod>? cached) && cached != null)
+        {
+            return cached;
+        }
+
         var methods = await _context.PaymentMethods
             .AsNoTracking()
             .OrderBy(p => p.DisplayOrder)
             .ThenBy(p => p.Name)
             .ToListAsync();
 
-        return methods ?? Enumerable.Empty<PaymentMethod>();
+        var result = methods ?? (IEnumerable<PaymentMethod>)Enumerable.Empty<PaymentMethod>();
+
+        _cache?.Set(CacheKeys.AllPaymentMethods, result, CacheDuration);
+        return result;
     }
 
     public async Task<PaymentMethod> GetByIdAsync(int id)
@@ -51,6 +73,7 @@ public class PaymentMethodService : IPaymentMethodService
     {
         _context.PaymentMethods.Add(method);
         await _context.SaveChangesAsync();
+        InvalidateCache();
         return method;
     }
 
@@ -66,6 +89,7 @@ public class PaymentMethodService : IPaymentMethodService
         existing.IsCash = method.IsCash;
 
         await _context.SaveChangesAsync();
+        InvalidateCache();
         return existing;
     }
 
@@ -77,6 +101,13 @@ public class PaymentMethodService : IPaymentMethodService
         {
             existing.IsActive = false;
             await _context.SaveChangesAsync();
+            InvalidateCache();
         }
+    }
+
+    private void InvalidateCache()
+    {
+        _cache?.Remove(CacheKeys.ActivePaymentMethods);
+        _cache?.Remove(CacheKeys.AllPaymentMethods);
     }
 }
