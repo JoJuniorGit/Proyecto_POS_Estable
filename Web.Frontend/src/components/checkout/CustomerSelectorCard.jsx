@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { User, Search, UserPlus, X, ChevronDown, ChevronUp, Loader2, Check } from 'lucide-react';
 import { getCustomers, createCustomer } from '../../services/customerApi';
+import useDebounce from '../../hooks/useDebounce';
 
 export default function CustomerSelectorCard({
   currentCustomer,
@@ -12,6 +13,7 @@ export default function CustomerSelectorCard({
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [query, setQuery] = useState('');
+  const debouncedQuery = useDebounce(query, 300);
   const [customers, setCustomers] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -70,6 +72,12 @@ export default function CustomerSelectorCard({
     }
   };
 
+  useEffect(() => {
+    if (isExpanded) {
+      loadCustomers(debouncedQuery);
+    }
+  }, [debouncedQuery]);
+
   const handleToggleExpand = () => {
     if (disabled || readOnly) return;
     const nextState = !isExpanded;
@@ -77,7 +85,7 @@ export default function CustomerSelectorCard({
     setError(null);
     if (nextState) {
       setIsDropdownOpen(true);
-      loadCustomers('');
+      loadCustomers(query);
       setTimeout(() => {
         if (searchInputRef.current) searchInputRef.current.focus();
       }, 80);
@@ -91,7 +99,6 @@ export default function CustomerSelectorCard({
     const val = e.target.value;
     setQuery(val);
     setIsDropdownOpen(true);
-    loadCustomers(val);
   };
 
   const handleChooseCustomer = async (cust) => {

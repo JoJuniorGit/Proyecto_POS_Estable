@@ -3,12 +3,14 @@ import { api } from '../services/api';
 import { Package, Search, Loader2, RefreshCw, ChevronLeft, ChevronRight, Tag, DollarSign } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD } from '../utils/formatters';
+import useDebounce from '../hooks/useDebounce';
 
 export default function CatalogPage() {
   const { exchangeRate } = useExchangeRate();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   
   // Filtro de Moneda: "Bs.S" por defecto al entrar al catálogo
   const [currency, setCurrency] = useState('Bs.S');
@@ -44,18 +46,16 @@ export default function CatalogPage() {
   }, []);
 
   useEffect(() => {
-    loadProducts(search, 1);
-  }, []);
+    loadProducts(debouncedSearch, 1);
+  }, [debouncedSearch, loadProducts]);
 
   const handleSearchChange = (e) => {
-    const val = e.target.value;
-    setSearch(val);
-    loadProducts(val, 1);
+    setSearch(e.target.value);
   };
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    loadProducts(search, 1);
+    loadProducts(debouncedSearch, 1);
   };
 
   const handlePrevPage = () => {
