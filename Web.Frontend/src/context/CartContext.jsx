@@ -31,6 +31,9 @@ export function CartProvider({ children }) {
       const sale = await startSale(user?.id);
       setCurrentSale(sale);
       setSelectedItemId(null);
+      if (sale?.id) {
+        sessionStorage.setItem('active_pos_sale_id', String(sale.id));
+      }
       return sale;
     } catch (err) {
       console.error('[CartContext] Error al crear nueva venta:', err);
@@ -48,6 +51,9 @@ export function CartProvider({ children }) {
       const sale = await getSale(saleId);
       setCurrentSale(sale);
       setSelectedItemId(null);
+      if (sale?.id) {
+        sessionStorage.setItem('active_pos_sale_id', String(sale.id));
+      }
       return sale;
     } catch (err) {
       console.error('[CartContext] Error cargando venta para edición:', err);
@@ -57,9 +63,25 @@ export function CartProvider({ children }) {
     }
   };
 
-  // Al montar, iniciar venta
+  // Al montar, restaurar venta activa de la sesión o crear una nueva
   useEffect(() => {
-    createNewSale();
+    const restoreOrStartSale = async () => {
+      const savedSaleId = sessionStorage.getItem('active_pos_sale_id');
+      if (savedSaleId) {
+        try {
+          const sale = await getSale(Number(savedSaleId));
+          if (sale && (sale.status === 'Pending' || sale.status === 'OnHold')) {
+            setCurrentSale(sale);
+            return;
+          }
+        } catch {
+          sessionStorage.removeItem('active_pos_sale_id');
+        }
+      }
+      createNewSale();
+    };
+
+    restoreOrStartSale();
   }, [createNewSale]);
 
   // Si cambia la tasa global de cambio y hay venta pendiente o en espera, notificar al backend o actualizar
