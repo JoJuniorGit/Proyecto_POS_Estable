@@ -289,4 +289,32 @@ public class UserPasswordAndStockFormattingTests
         Assert.False(vm.IsEditing);
         Assert.Equal("Contraseña (Opcional, por defecto Cédula)", vm.PasswordHint);
     }
+
+    [Fact]
+    public void UsersManagementViewModel_TogglePasswordVisibility_TogglesVisibilityState()
+    {
+        var mockUserService = new Mock<IUserService>();
+        var userSession = new UserSession();
+        var mockSalesService = new Mock<ISalesService>();
+        var mockDialogService = new Mock<IDialogService>();
+        var customerVm = new CustomerManagementViewModel(mockSalesService.Object, userSession, mockDialogService.Object);
+
+        var vm = new UsersManagementViewModel(mockUserService.Object, userSession, customerVm);
+
+        Assert.False(vm.IsPasswordVisible);
+
+        // Toggle on
+        vm.TogglePasswordVisibilityCommand.Execute(null);
+        Assert.True(vm.IsPasswordVisible);
+
+        // Toggle off
+        vm.TogglePasswordVisibilityCommand.Execute(null);
+        Assert.False(vm.IsPasswordVisible);
+
+        // Reset on selection change
+        vm.TogglePasswordVisibilityCommand.Execute(null);
+        Assert.True(vm.IsPasswordVisible);
+        vm.SelectedUser = new UserDto { Id = 2, Cedula = "V-22222222", Name = "User Two" };
+        Assert.False(vm.IsPasswordVisible);
+    }
 }

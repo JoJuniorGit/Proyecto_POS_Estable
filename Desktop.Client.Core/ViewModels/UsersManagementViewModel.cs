@@ -47,6 +47,15 @@ public partial class UsersManagementViewModel : ObservableObject
     [ObservableProperty]
     private bool _isEditing;
 
+    [ObservableProperty]
+    private bool _isPasswordVisible;
+
+    [RelayCommand]
+    private void TogglePasswordVisibility()
+    {
+        IsPasswordVisible = !IsPasswordVisible;
+    }
+
     public string PasswordHint => IsEditing 
         ? "Contraseña (Dejar en blanco para conservar actual)" 
         : "Contraseña (Opcional, por defecto Cédula)";
@@ -100,6 +109,7 @@ public partial class UsersManagementViewModel : ObservableObject
             Role = value.Role;
             IsActive = value.IsActive;
             Password = string.Empty;
+            IsPasswordVisible = false;
         }
         else
         {
@@ -120,6 +130,7 @@ public partial class UsersManagementViewModel : ObservableObject
         Cedula = string.Empty;
         Name = string.Empty;
         Password = string.Empty;
+        IsPasswordVisible = false;
         Role = UserRole.Cashier;
         IsActive = true;
     }

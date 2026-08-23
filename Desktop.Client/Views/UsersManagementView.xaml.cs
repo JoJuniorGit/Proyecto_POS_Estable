@@ -27,11 +27,14 @@ public partial class UsersManagementView : UserControl
 
     private void Vm_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(UsersManagementViewModel.Password) && sender is UsersManagementViewModel vm)
+        if (sender is UsersManagementViewModel vm)
         {
-            if (string.IsNullOrEmpty(vm.Password) && UserPasswordBox != null && UserPasswordBox.Password != string.Empty)
+            if (e.PropertyName == nameof(UsersManagementViewModel.Password))
             {
-                UserPasswordBox.Password = string.Empty;
+                if (UserPasswordBox != null && UserPasswordBox.Password != (vm.Password ?? string.Empty))
+                {
+                    UserPasswordBox.Password = vm.Password ?? string.Empty;
+                }
             }
         }
     }
