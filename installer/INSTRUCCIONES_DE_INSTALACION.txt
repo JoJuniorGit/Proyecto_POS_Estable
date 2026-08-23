@@ -42,10 +42,12 @@ Paso 3: Configuración de Conexión a PostgreSQL
   - Contraseña Postgres: Introduzca la clave de su usuario postgres.
 
 Paso 4: Configuración del Administrador Inicial del Negocio
-  Defina los datos de su cuenta principal de administración:
-  - Usuario Administrador: Nombre del primer usuario (ejemplo: Admin).
-  - Contraseña Administrador: Clave de acceso (ejemplo: Admin123!).
-  - Nombre del Negocio: El nombre comercial de su establecimiento para los comprobantes.
+  Defina los datos de su cuenta principal de administración personalizada:
+  - Usuario Administrador: Nombre del primer usuario (ejemplo: admin, gerente, etc.).
+  - Nombre Completo / Personal: Nombre personal del responsable (ejemplo: Administrador Principal).
+  - Contraseña Administrador: Clave de acceso elegida (mínimo 4 caracteres).
+  - Confirmar Contraseña: Vuelva a escribir la clave exactamente igual para verificarla.
+  - Nombre del Negocio: El nombre comercial de su establecimiento para comprobantes y reportes.
 
 Paso 5: Servidor de Actualizaciones
   - Deje la URL predeterminada (http://localhost:5000/updates/) salvo que su soporte técnico le indique una ruta personalizada en su red local.

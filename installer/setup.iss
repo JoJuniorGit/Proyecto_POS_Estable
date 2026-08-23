@@ -124,14 +124,19 @@ begin
   // Página 2: Credenciales Semilla del Administrador
   AdminPage := CreateInputQueryPage(DbPage.ID,
     'Configuración Inicial de Administrador', 'Credenciales del primer usuario Administrador',
-    'Especifique las credenciales para la cuenta de administración inicial del sistema.');
-  AdminPage.Add('Usuario Administrador:', False);
+    'Defina las credenciales de acceso para la cuenta de administración inicial del sistema.' + #13#10 +
+    'El usuario podrá iniciar sesión inmediatamente con estas credenciales.');
+  AdminPage.Add('Usuario Administrador (ej: admin, gerente):', False);
+  AdminPage.Add('Nombre Completo / Personal:', False);
   AdminPage.Add('Contraseña Administrador:', True);
+  AdminPage.Add('Confirmar Contraseña:', True);
   AdminPage.Add('Nombre del Negocio:', False);
 
-  AdminPage.Values[0] := 'Admin';
-  AdminPage.Values[1] := 'Admin123!';
-  AdminPage.Values[2] := 'Mi Negocio POS';
+  AdminPage.Values[0] := 'admin';
+  AdminPage.Values[1] := 'Administrador Principal';
+  AdminPage.Values[2] := '';
+  AdminPage.Values[3] := '';
+  AdminPage.Values[4] := 'Mi Negocio POS';
 
   // Página 3: Servidor de Actualizaciones Centralizado
   UpdatePage := CreateInputQueryPage(AdminPage.ID,
@@ -139,6 +144,62 @@ begin
     'Ingrese la URL del servidor de parches y actualizaciones en la red.');
   UpdatePage.Add('URL Servidor de Actualizaciones:', False);
   UpdatePage.Values[0] := 'http://localhost:5000/updates/';
+end;
+
+// Función auxiliar: escapa comillas dobles en un valor para uso en líneas de comandos.
+function EscapeQuotes(const S: String): String;
+var
+  I: Integer;
+  Result2: String;
+begin
+  Result2 := '';
+  for I := 1 to Length(S) do
+  begin
+    if S[I] = '"' then
+      Result2 := Result2 + '\"'
+    else
+      Result2 := Result2 + S[I];
+  end;
+  Result := Result2;
+end;
+
+// Validación de la página AdminPage antes de avanzar al siguiente paso.
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Username, Password, Confirm: String;
+begin
+  Result := True;
+
+  if CurPageID = AdminPage.ID then
+  begin
+    Username := Trim(AdminPage.Values[0]);
+    Password := AdminPage.Values[2];
+    Confirm  := AdminPage.Values[3];
+
+    if Username = '' then
+    begin
+      MsgBox('El campo "Usuario Administrador" es obligatorio. Por favor ingrese un nombre de usuario.',
+        mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+
+    if Length(Password) < 4 then
+    begin
+      MsgBox('La contraseña debe tener al menos 4 caracteres.',
+        mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+
+    if Password <> Confirm then
+    begin
+      MsgBox('Las contraseñas no coinciden. Por favor verifique que ambos campos sean idénticos.',
+        mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
 end;
 
 // Escribe appsettings.Production.json SIN secretos cuando el servicio usa NSSM
@@ -157,6 +218,7 @@ begin
     ConnString := 'Host=' + DbPage.Values[0] + ';Port=' + DbPage.Values[1] + ';Database=' +
       DbPage.Values[2] + ';Username=' + DbPage.Values[3] + ';Password=' + DbPage.Values[4];
 
+  // Nota: AdminPage.Values[0]=Username, [1]=FullName, [2]=Password, [3]=Confirm, [4]=BusinessName
   JsonContent := '{' + #13#10;
   if IncludeSecrets then
     JsonContent := JsonContent +
@@ -168,12 +230,13 @@ begin
     '    "MinimumClientVersion": "1.0.0",' + #13#10 +
     '    "ServerVersion": "1.0.0",' + #13#10 +
     '    "UpdateServerUrl": "' + UpdatePage.Values[0] + '",' + #13#10 +
-    '    "AdminSeedUsername": "' + AdminPage.Values[0] + '",' + #13#10;
+    '    "AdminSeedUsername": "' + Trim(AdminPage.Values[0]) + '",' + #13#10 +
+    '    "AdminSeedName": "' + Trim(AdminPage.Values[1]) + '",' + #13#10;
   if IncludeSecrets then
     JsonContent := JsonContent +
-      '    "AdminSeedPassword": "' + AdminPage.Values[1] + '",' + #13#10;
+      '    "AdminSeedPassword": "' + AdminPage.Values[2] + '",' + #13#10;
   JsonContent := JsonContent +
-    '    "BusinessName": "' + AdminPage.Values[2] + '"' + #13#10 +
+    '    "BusinessName": "' + AdminPage.Values[4] + '"' + #13#10 +
     '  }';
   if IncludeSecrets then
     JsonContent := JsonContent + ',' + #13#10 +
@@ -207,10 +270,10 @@ end;
 
 // Registra o actualiza el servicio PosBackendService sin fallar en reinstalaciones,
 // y reaplica siempre las variables de entorno (ConnectionStrings__DefaultConnection,
-// SystemSettings__AdminSeedPassword y JWT_SETTINGS_KEY) vía AppEnvironmentExtra de NSSM (INSTALLATION.md §3.5, §5 y JWT_Key.md).
+// SystemSettings__* y JWT_SETTINGS_KEY) vía AppEnvironmentExtra de NSSM (INSTALLATION.md §3.5, §5 y JWT_Key.md).
 procedure RegisterOrUpdateService(UseNssm: Boolean);
 var
-  AppExe, AppDir, ConnEnv, SeedEnv, JwtEnv, ConnString: String;
+  AppExe, AppDir, ConnEnv, SeedUserEnv, SeedNameEnv, SeedPassEnv, BusinessEnv, JwtEnv, ConnString: String;
   Code: Integer;
 begin
   AppExe := ExpandConstant('{app}\BackendAPI\Backend.API.exe');
@@ -218,7 +281,10 @@ begin
   ConnString := 'Host=' + DbPage.Values[0] + ';Port=' + DbPage.Values[1] + ';Database=' +
     DbPage.Values[2] + ';Username=' + DbPage.Values[3] + ';Password=' + DbPage.Values[4];
   ConnEnv := 'ConnectionStrings__DefaultConnection=' + ConnString;
-  SeedEnv := 'SystemSettings__AdminSeedPassword=' + AdminPage.Values[1];
+  SeedUserEnv := 'SystemSettings__AdminSeedUsername=' + Trim(AdminPage.Values[0]);
+  SeedNameEnv := 'SystemSettings__AdminSeedName=' + Trim(AdminPage.Values[1]);
+  SeedPassEnv := 'SystemSettings__AdminSeedPassword=' + EscapeQuotes(AdminPage.Values[2]);
+  BusinessEnv := 'SystemSettings__BusinessName=' + Trim(AdminPage.Values[4]);
   JwtEnv := 'JWT_SETTINGS_KEY=' + DefaultJwtSecretKey;
 
   if UseNssm then
@@ -229,7 +295,7 @@ begin
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Application "' + AppExe + '"');
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppDirectory "' + AppDir + '"');
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Start SERVICE_AUTO_START');
-      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedEnv + '" "' + JwtEnv + '"');
+      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedUserEnv + '" "' + SeedNameEnv + '" "' + SeedPassEnv + '" "' + BusinessEnv + '" "' + JwtEnv + '"');
       Code := RunCmd(AppDir + '\nssm.exe', 'restart ' + ServiceName);
     end
     else
@@ -239,7 +305,7 @@ begin
       begin
         RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppDirectory "' + AppDir + '"');
         RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Start SERVICE_AUTO_START');
-        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedEnv + '" "' + JwtEnv + '"');
+        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedUserEnv + '" "' + SeedNameEnv + '" "' + SeedPassEnv + '" "' + BusinessEnv + '" "' + JwtEnv + '"');
         Code := RunCmd(AppDir + '\nssm.exe', 'start ' + ServiceName);
       end;
     end;

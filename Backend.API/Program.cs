@@ -430,7 +430,13 @@ END $$;");
             return;
         }
 
-        // 4) Seed del admin: la contraseña semilla debe venir de la configuración / variable de entorno.
+        // 4) Seed del admin: el usuario y la contraseña semilla vienen de la configuración / variables de entorno.
+        var seedUsername = !string.IsNullOrWhiteSpace(config["SystemSettings:AdminSeedUsername"])
+            ? config["SystemSettings:AdminSeedUsername"]!.Trim()
+            : "admin";
+        var seedName = !string.IsNullOrWhiteSpace(config["SystemSettings:AdminSeedName"])
+            ? config["SystemSettings:AdminSeedName"]!.Trim()
+            : "Administrador";
         var seedPassword = config["SystemSettings:AdminSeedPassword"];
         if (string.IsNullOrWhiteSpace(seedPassword))
         {
@@ -444,33 +450,43 @@ END $$;");
 
         try
         {
-            // Ensure user V-12345678, V-00000000 or Admin username is ALWAYS active on startup
-            var targetUser123 = _salesDb.Users.FirstOrDefault(u => u.Cedula == "V-12345678");
-            if (targetUser123 != null)
+            var seedLower = seedUsername.ToLower();
+            var targetAdmin = _salesDb.Users.FirstOrDefault(u => 
+                u.Username.ToLower() == seedLower || 
+                u.Cedula.ToLower() == seedLower ||
+                (u.Role == Core.Entities.UserRole.Admin && (u.Username == "V-12345678" || u.Cedula == "V-12345678")));
+
+            if (targetAdmin != null)
             {
-                if (!targetUser123.IsActive)
+                if (!targetAdmin.IsActive)
                 {
-                    targetUser123.IsActive = true;
-                    _salesDb.SaveChanges();
-                    AppLogger.LogStart("[Seed] Reactivated user V-12345678");
+                    targetAdmin.IsActive = true;
+                    AppLogger.LogStart($"[Seed] Reactivated Admin user: {targetAdmin.Username} ({targetAdmin.Cedula})");
                 }
+                if (string.IsNullOrWhiteSpace(targetAdmin.PasswordHash))
+                {
+                    targetAdmin.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(seedPassword);
+                    targetAdmin.MustChangePassword = false;
+                    AppLogger.LogStart($"[Seed] Set password hash for Admin user: {targetAdmin.Username}");
+                }
+                _salesDb.SaveChanges();
             }
             else
             {
-                var user123 = new Core.Entities.User
+                var newAdmin = new Core.Entities.User
                 {
-                    Cedula = "V-12345678",
-                    Name = "Administrador",
-                    Username = "V-12345678",
-                    FullName = "Administrador",
+                    Cedula = seedUsername,
+                    Username = seedUsername,
+                    Name = seedName,
+                    FullName = seedName,
                     PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(seedPassword),
                     Role = Core.Entities.UserRole.Admin,
                     IsActive = true,
-                    MustChangePassword = true
+                    MustChangePassword = false // Clave elegida explícitamente en el instalador
                 };
-                _salesDb.Users.Add(user123);
+                _salesDb.Users.Add(newAdmin);
                 _salesDb.SaveChanges();
-                AppLogger.LogStart("[Seed] Created and activated user V-12345678");
+                AppLogger.LogStart($"[Seed] Created customized admin user: {seedUsername} ({seedName})");
             }
 
             // Ensure ALL Admin users in the system are ALWAYS active on startup and have valid password
