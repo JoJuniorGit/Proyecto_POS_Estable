@@ -205,7 +205,7 @@
                                  Margin="0,0,0,16"/>
 
                         <PasswordBox x:Name="UserPasswordBox"
-                                     materialDesign:HintAssist.Hint="Contraseña (Opcional, por defecto Cédula)"
+                                     materialDesign:HintAssist.Hint="{Binding PasswordHint}"
                                      Style="{StaticResource MaterialDesignOutlinedPasswordBox}"
                                      Margin="0,0,0,16"
                                      PasswordChanged="UserPasswordBox_PasswordChanged"/>

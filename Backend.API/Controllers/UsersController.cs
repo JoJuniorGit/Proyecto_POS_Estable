@@ -83,7 +83,23 @@ public class UsersController : ControllerBase
             return BadRequest(new { Message = "Ya existe un usuario registrado con esa Cédula." });
         }
 
-        string rawPassword = !string.IsNullOrWhiteSpace(dto.Password) ? dto.Password.Trim() : cedulaClean;
+        string rawPassword;
+        bool mustChange;
+        if (!string.IsNullOrWhiteSpace(dto.Password))
+        {
+            var trimmedPass = dto.Password.Trim();
+            if (trimmedPass.Length < 4)
+            {
+                return BadRequest(new { Message = "La contraseña personalizada debe tener al menos 4 caracteres." });
+            }
+            rawPassword = trimmedPass;
+            mustChange = false;
+        }
+        else
+        {
+            rawPassword = cedulaClean;
+            mustChange = true;
+        }
 
         var user = new User
         {
@@ -94,7 +110,7 @@ public class UsersController : ControllerBase
             Role = dto.Role,
             PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(rawPassword),
             IsActive = true,
-            MustChangePassword = true
+            MustChangePassword = mustChange
         };
 
         _db.Users.Add(user);
@@ -133,6 +149,17 @@ public class UsersController : ControllerBase
         if (existingCedula)
         {
             return BadRequest(new { Message = "La Cédula especificada ya pertenece a otro usuario." });
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.Password))
+        {
+            var trimmedPass = dto.Password.Trim();
+            if (trimmedPass.Length < 4)
+            {
+                return BadRequest(new { Message = "La nueva contraseña debe tener al menos 4 caracteres." });
+            }
+            user.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(trimmedPass);
+            user.MustChangePassword = false;
         }
 
         user.Cedula = cedulaClean;

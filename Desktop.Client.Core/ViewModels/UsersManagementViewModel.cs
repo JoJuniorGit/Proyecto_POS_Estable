@@ -47,6 +47,15 @@ public partial class UsersManagementViewModel : ObservableObject
     [ObservableProperty]
     private bool _isEditing;
 
+    public string PasswordHint => IsEditing 
+        ? "Contraseña (Dejar en blanco para conservar actual)" 
+        : "Contraseña (Opcional, por defecto Cédula)";
+
+    partial void OnIsEditingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(PasswordHint));
+    }
+
     public Array Roles => Enum.GetValues(typeof(UserRole));
 
     public UsersManagementViewModel(
@@ -90,6 +99,7 @@ public partial class UsersManagementViewModel : ObservableObject
             Name = value.Name;
             Role = value.Role;
             IsActive = value.IsActive;
+            Password = string.Empty;
         }
         else
         {
@@ -152,6 +162,7 @@ public partial class UsersManagementViewModel : ObservableObject
                 {
                     Cedula = Cedula.Trim(),
                     Name = Name.Trim(),
+                    Password = string.IsNullOrWhiteSpace(Password) ? null : Password.Trim(),
                     Role = Role,
                     IsActive = isMainAdmin ? true : IsActive
                 };
