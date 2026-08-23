@@ -19,16 +19,26 @@ public class StockMovementArchiverJob : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<StockMovementArchiverJob> _logger;
 
-    // Run every 24 hours
-    private readonly TimeSpan _period = TimeSpan.FromHours(24);
+    private readonly TimeSpan _period;
+    private readonly TimeSpan _retentionPeriod;
 
-    // Retention policy: Keep records for 1 year
-    private readonly TimeSpan _retentionPeriod = TimeSpan.FromDays(365);
-
-    public StockMovementArchiverJob(IServiceProvider serviceProvider, ILogger<StockMovementArchiverJob> logger)
+    public StockMovementArchiverJob(
+        IServiceProvider serviceProvider,
+        ILogger<StockMovementArchiverJob> logger,
+        Microsoft.Extensions.Configuration.IConfiguration? configuration = null)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
+
+        int intervalHours = configuration != null && int.TryParse(configuration["Archiver:IntervalHours"], out var hours) && hours > 0
+            ? hours
+            : 24;
+        _period = TimeSpan.FromHours(intervalHours);
+
+        int retentionDays = configuration != null && int.TryParse(configuration["Archiver:RetentionDays"], out var days) && days > 0
+            ? days
+            : 365;
+        _retentionPeriod = TimeSpan.FromDays(retentionDays);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
