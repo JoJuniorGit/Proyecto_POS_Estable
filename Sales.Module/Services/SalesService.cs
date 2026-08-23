@@ -632,15 +632,34 @@ public class SalesService : ISalesService
         decimal newTotalUsd = 0;
         var newItemsList = new List<SaleItem>();
 
-        if (request?.Items != null)
+        if (request?.Items != null && request.Items.Any())
         {
+            var productIds = request.Items.Where(i => i.Quantity > 0m).Select(i => i.ProductId).Distinct().ToList();
+            var productsDict = new Dictionary<int, Product>();
+            if (_inventoryService != null && productIds.Any())
+            {
+                var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
+                if (fetched != null && fetched.Count > 0)
+                {
+                    productsDict = fetched.ToDictionary(p => p.Id);
+                }
+                else
+                {
+                    foreach (var id in productIds)
+                    {
+                        var p = await _inventoryService.GetProductByIdAsync(id);
+                        if (p != null) productsDict[p.Id] = p;
+                    }
+                }
+            }
+
             foreach (var reqItem in request.Items)
             {
                 if (reqItem.Quantity <= 0m) continue;
 
                 decimal adjustedQty = await ValidateAndAdjustQuantityForProductAsync(reqItem.ProductId, reqItem.Quantity);
 
-                var product = await _inventoryService.GetProductByIdAsync(reqItem.ProductId);
+                productsDict.TryGetValue(reqItem.ProductId, out var product);
                 string productName = product != null ? product.Name : $"Producto #{reqItem.ProductId}";
                 decimal unitPriceUsd = reqItem.UnitPrice > 0 ? reqItem.UnitPrice : (product != null ? product.PriceUSD : 0);
                 decimal subtotalUsd = Math.Round(unitPriceUsd * adjustedQty, 2, MidpointRounding.AwayFromZero);
