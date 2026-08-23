@@ -239,6 +239,13 @@ try
         });
     });
 
+    builder.Services.AddResponseCompression(options =>
+    {
+        options.EnableForHttps = true;
+        options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
+        options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
+    });
+
     var app = builder.Build();
 
     // Global Unhandled Exception & DB Resilience Middleware
@@ -246,6 +253,9 @@ try
 
     // Security Headers (M-07)
     app.UseMiddleware<Backend.API.Middleware.SecurityHeadersMiddleware>();
+
+    // HTTP Response Compression (Brotli/Gzip)
+    app.UseResponseCompression();
 
     // Serve static files for integrated React Frontend build (wwwroot)
     app.UseDefaultFiles();
