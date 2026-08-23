@@ -252,7 +252,7 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
 
         <button
           type="button"
-          className={`btn ${effectiveIsPendingPickup ? 'btn-warning' : 'btn-primary'} btn-lg btn-block`}
+          className="btn btn-primary btn-lg btn-block"
           disabled={!canFinalize || isProcessing || (isPendingPickup && isDefaultCust)}
           onClick={handleFinalizeSale}
         >
