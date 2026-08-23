@@ -44,14 +44,22 @@ public class Program
         }
         finally
         {
-            if (createdNew && _singleInstanceMutex != null)
+            ReleaseSingleInstanceMutex();
+            Environment.Exit(0);
+        }
+    }
+
+    public static void ReleaseSingleInstanceMutex()
+    {
+        if (_singleInstanceMutex != null)
+        {
+            try
             {
-                try
-                {
-                    _singleInstanceMutex.ReleaseMutex();
-                }
-                catch { }
+                _singleInstanceMutex.ReleaseMutex();
+                _singleInstanceMutex.Dispose();
+                _singleInstanceMutex = null;
             }
+            catch { }
         }
     }
 }

@@ -76,6 +76,7 @@ public partial class App : Application
         {
             try { File.AppendAllText(_crashPath, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] AppDomain Exception: " + ex.Message + "\n" + ex.StackTrace + "\n\n"); } catch { }
         }
+        try { Environment.Exit(1); } catch { }
     }
 
     private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
@@ -257,15 +258,77 @@ public partial class App : Application
         if (string.IsNullOrEmpty(ShutdownReason)) ShutdownReason = "Cierre de la ventana principal";
         Core.Logging.AppLogger.LogStart($"WPF Desktop Client shutting down. Motivo: {ShutdownReason}");
 
-        // Detener el sondeo de salud antes de disponer el contenedor DI, para que ningún
-        // bucle de polling quede vivo durante el cierre.
+        if (_host != null)
+        {
+            try
+            {
+                Core.Logging.AppLogger.LogStart("Deteniendo servicio de sondeo de salud...");
+                var healthService = _host.Services.GetService<IHealthPollingService>();
+                if (healthService != null)
+                {
+                    healthService.StopPolling();
+                    Core.Logging.AppLogger.LogStart("Servicio de sondeo de salud detenido con éxito.");
+                }
+                else
+                {
+                    Core.Logging.AppLogger.LogStart("Advertencia: IHealthPollingService no encontrado en el contenedor DI.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogCrash(ex, "App.OnExit.StopHealthPolling");
+            }
+
+            try
+            {
+                Core.Logging.AppLogger.LogStart("Disponiendo servicio de tasa de cambio y cerrando SignalR...");
+                var exchangeRateService = _host.Services.GetService<IExchangeRateService>();
+                if (exchangeRateService is IDisposable disposableExchange)
+                {
+                    disposableExchange.Dispose();
+                    Core.Logging.AppLogger.LogStart("Servicio de tasa de cambio dispuesto con éxito.");
+                }
+                else
+                {
+                    Core.Logging.AppLogger.LogStart("Advertencia: IExchangeRateService no encontrado o no es IDisposable.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogCrash(ex, "App.OnExit.DisposeExchangeRate");
+            }
+
+            try
+            {
+                Core.Logging.AppLogger.LogStart("Deteniendo Generic Host...");
+                _host.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+                Core.Logging.AppLogger.LogStart("Generic Host detenido con éxito.");
+            }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogCrash(ex, "App.OnExit.StopHost");
+            }
+
+            try
+            {
+                _host.Dispose();
+                Core.Logging.AppLogger.LogStart("Generic Host dispuesto con éxito.");
+            }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogCrash(ex, "App.OnExit.DisposeHost");
+            }
+        }
+
         try
         {
-            _host?.Services.GetService<IHealthPollingService>()?.StopPolling();
+            Program.ReleaseSingleInstanceMutex();
         }
         catch { }
 
-        _host?.Dispose();
         base.OnExit(e);
+
+        // Garantizar que el proceso del sistema operativo desaparezca de inmediato
+        Environment.Exit(e.ApplicationExitCode);
     }
 }

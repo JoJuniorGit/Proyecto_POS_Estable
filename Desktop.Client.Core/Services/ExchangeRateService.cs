@@ -17,12 +17,13 @@ namespace Desktop.Client.Services;
 /// Unified service for managing exchange rates. Handles API interaction, 
 /// persistence, and real-time SignalR updates.
 /// </summary>
-public class ExchangeRateService : IExchangeRateService, IDisposable
+public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly HubConnection _hubConnection;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private decimal _currentRate;
+    private int _isDisposed;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -210,17 +211,45 @@ public class ExchangeRateService : IExchangeRateService, IDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _isDisposed, 1) != 0) return;
+
         if (_hubConnection != null)
         {
-            await _hubConnection.DisposeAsync();
+            try
+            {
+                await _hubConnection.StopAsync();
+            }
+            catch { }
+
+            try
+            {
+                await _hubConnection.DisposeAsync();
+            }
+            catch { }
         }
-        _semaphore.Dispose();
+
+        try
+        {
+            _semaphore.Dispose();
+        }
+        catch { }
+
         GC.SuppressFinalize(this);
     }
 
     public void Dispose()
     {
-        DisposeAsync().AsTask().GetAwaiter().GetResult();
+        if (Volatile.Read(ref _isDisposed) != 0) return;
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            DisposeAsync().AsTask().Wait(cts.Token);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception) { }
+
+        GC.SuppressFinalize(this);
     }
 
     private class ExchangeRateResponse

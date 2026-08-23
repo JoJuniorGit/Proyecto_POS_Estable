@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Windows;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
@@ -57,6 +57,6 @@ public partial class MainWindow : Window
         // Red de seguridad: con ShutdownMode=OnMainWindowClose esto es redundante, pero
         // garantiza el apagado completo de la aplicación (y de cualquier ventana restante,
         // como el escáner) aunque el modo de cierre cambie en el futuro.
-        Application.Current.Shutdown();
+        Application.Current?.Shutdown();
     }
 }
