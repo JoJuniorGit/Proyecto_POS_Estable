@@ -133,7 +133,7 @@
                                   SelectionMode="Single"
                                   Style="{StaticResource MaterialDesignDataGrid}">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Cédula" Binding="{Binding Cedula}" Width="120" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Usuario" Binding="{Binding Cedula}" Width="120" FontWeight="SemiBold"/>
                                 <DataGridTextColumn Header="Nombre" Binding="{Binding Name}" Width="*"/>
                                 <DataGridTextColumn Header="Rol" Binding="{Binding Role}" Width="100"/>
                                 <DataGridTemplateColumn Header="Estado" Width="90">
@@ -197,7 +197,7 @@
                         </DockPanel>
 
                         <TextBox Text="{Binding Cedula, UpdateSourceTrigger=PropertyChanged}"
-                                 materialDesign:HintAssist.Hint="Cédula de Identidad *"
+                                 materialDesign:HintAssist.Hint="Usuario *"
                                  Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                  Margin="0,0,0,16"/>
 

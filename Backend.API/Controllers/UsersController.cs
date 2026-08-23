@@ -73,14 +73,15 @@ public class UsersController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(dto.Cedula) || string.IsNullOrWhiteSpace(dto.Name))
         {
-            return BadRequest(new { Message = "Cédula y Nombre son campos requeridos." });
+            return BadRequest(new { Message = "Usuario y Nombre son campos requeridos." });
         }
 
-        var cedulaClean = dto.Cedula.Trim();
-        var existing = await _db.Users.AnyAsync(u => u.Cedula == cedulaClean);
+        var usernameClean = dto.Cedula.Trim();
+        var usernameLower = usernameClean.ToLower();
+        var existing = await _db.Users.AnyAsync(u => u.Cedula.ToLower() == usernameLower || u.Username.ToLower() == usernameLower);
         if (existing)
         {
-            return BadRequest(new { Message = "Ya existe un usuario registrado con esa Cédula." });
+            return BadRequest(new { Message = "Ya existe un usuario registrado con ese nombre de usuario." });
         }
 
         string rawPassword;
@@ -97,16 +98,16 @@ public class UsersController : ControllerBase
         }
         else
         {
-            rawPassword = cedulaClean;
+            rawPassword = usernameClean;
             mustChange = true;
         }
 
         var user = new User
         {
-            Cedula = cedulaClean,
+            Cedula = usernameClean,
             Name = dto.Name.Trim(),
             FullName = dto.Name.Trim(),
-            Username = cedulaClean,
+            Username = usernameClean,
             Role = dto.Role,
             PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(rawPassword),
             IsActive = true,
@@ -132,7 +133,9 @@ public class UsersController : ControllerBase
         var user = await _db.Users.FindAsync(id);
         if (user == null) return NotFound();
 
-        bool isMainAdmin = user.Cedula == "V-00000000" || user.Cedula == "V-12345678" || user.Username == "Admin";
+        bool isMainAdmin = user.Cedula.Equals("V-00000000", StringComparison.OrdinalIgnoreCase) || 
+                           user.Cedula.Equals("V-12345678", StringComparison.OrdinalIgnoreCase) || 
+                           user.Username.Equals("Admin", StringComparison.OrdinalIgnoreCase);
         if (isMainAdmin && !dto.IsActive)
         {
             return BadRequest(new { Message = "El Administrador principal del sistema no puede ser desactivado." });
@@ -144,11 +147,12 @@ public class UsersController : ControllerBase
             return BadRequest(new { Message = "No puede desactivar su propia cuenta de usuario en sesión." });
         }
 
-        var cedulaClean = dto.Cedula.Trim();
-        var existingCedula = await _db.Users.AnyAsync(u => u.Cedula == cedulaClean && u.Id != id);
-        if (existingCedula)
+        var usernameClean = dto.Cedula.Trim();
+        var usernameLower = usernameClean.ToLower();
+        var existingUser = await _db.Users.AnyAsync(u => (u.Cedula.ToLower() == usernameLower || u.Username.ToLower() == usernameLower) && u.Id != id);
+        if (existingUser)
         {
-            return BadRequest(new { Message = "La Cédula especificada ya pertenece a otro usuario." });
+            return BadRequest(new { Message = "El nombre de usuario especificado ya pertenece a otro usuario." });
         }
 
         if (!string.IsNullOrWhiteSpace(dto.Password))
@@ -162,7 +166,8 @@ public class UsersController : ControllerBase
             user.MustChangePassword = false;
         }
 
-        user.Cedula = cedulaClean;
+        user.Cedula = usernameClean;
+        user.Username = usernameClean;
         user.Name = dto.Name.Trim();
         user.FullName = dto.Name.Trim();
         user.Role = dto.Role;

@@ -40,6 +40,10 @@ public class SalesDbContext : DbContext
             .HasIndex(u => u.Cedula)
             .IsUnique();
 
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.Username)
+            .IsUnique();
+
         modelBuilder.Entity<User>().HasData(
             new User
             {

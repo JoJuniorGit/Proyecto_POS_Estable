@@ -30,34 +30,35 @@ public class AuthController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.Cedula))
         {
-            return BadRequest(new { Message = "La Cédula es requerida." });
+            return BadRequest(new { Message = "El usuario es requerido." });
         }
 
-        var searchCedula = request.Cedula.Trim();
-        var withV = searchCedula.StartsWith("V-", StringComparison.OrdinalIgnoreCase) ? searchCedula : "V-" + searchCedula;
-        var digitsOnly = System.Text.RegularExpressions.Regex.Replace(searchCedula, @"[^\d]", "");
+        var searchInput = request.Cedula.Trim();
+        var searchLower = searchInput.ToLower();
+        var withV = searchInput.StartsWith("V-", StringComparison.OrdinalIgnoreCase) ? searchLower : "v-" + searchLower;
+        var digitsOnly = System.Text.RegularExpressions.Regex.Replace(searchInput, @"[^\d]", "");
 
         var user = await _db.Users
-            .FirstOrDefaultAsync(u => u.Cedula == searchCedula || 
-                                      u.Cedula == withV || 
-                                      u.Username == searchCedula ||
-                                      (digitsOnly.Length > 0 && (u.Cedula == "V-" + digitsOnly || u.Cedula == digitsOnly)));
+            .FirstOrDefaultAsync(u => u.Username.ToLower() == searchLower || 
+                                      u.Cedula.ToLower() == searchLower || 
+                                      u.Cedula.ToLower() == withV || 
+                                      (digitsOnly.Length > 0 && (u.Cedula.ToLower() == "v-" + digitsOnly || u.Cedula == digitsOnly)));
 
         if (user == null)
         {
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Cédula '{request.Cedula}' no encontrada.");
-            return NotFound(new { Message = "Usuario no encontrado con esa Cédula." });
+            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Usuario '{request.Cedula}' no encontrado.");
+            return NotFound(new { Message = "Usuario no encontrado." });
         }
 
         if (!user.IsActive)
         {
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Cédula '{request.Cedula}': Usuario inactivo.");
+            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{request.Cedula}': Usuario inactivo.");
             return Unauthorized(new { Message = "El usuario está inactivo en el sistema." });
         }
 
         if (string.IsNullOrWhiteSpace(user.PasswordHash))
         {
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Cédula '{request.Cedula}' no tiene contraseña configurada.");
+            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Usuario '{request.Cedula}' no tiene contraseña configurada.");
             return Unauthorized(new { Message = "El usuario no tiene una contraseña configurada. Contacte al administrador." });
         }
 
@@ -65,7 +66,7 @@ public class AuthController : ControllerBase
 
         if (!passwordMatches)
         {
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Cédula '{request.Cedula}': Contraseña incorrecta.");
+            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{request.Cedula}': Contraseña incorrecta.");
             return Unauthorized(new { Message = "Contraseña incorrecta." });
         }
 
@@ -74,7 +75,7 @@ public class AuthController : ControllerBase
         {
             user.PasswordHash = PasswordHasher.HashPassword(request.Password);
             await _db.SaveChangesAsync();
-            AppLogger.LogStart($"[AUTH] Contraseña migrada exitosamente a PBKDF2 para Cédula '{request.Cedula}'.");
+            AppLogger.LogStart($"[AUTH] Contraseña migrada exitosamente a PBKDF2 para Usuario '{request.Cedula}'.");
         }
 
         if (user.MustChangePassword)
@@ -111,20 +112,21 @@ public class AuthController : ControllerBase
             string.IsNullOrWhiteSpace(request.CurrentPassword) ||
             string.IsNullOrWhiteSpace(request.NewPassword))
         {
-            return BadRequest(new { Message = "Cédula, contraseña actual y nueva contraseña son requeridas." });
+            return BadRequest(new { Message = "Usuario, contraseña actual y nueva contraseña son requeridos." });
         }
 
-        var searchCedula = request.Cedula.Trim();
-        var withV = searchCedula.StartsWith("V-", StringComparison.OrdinalIgnoreCase) ? searchCedula : "V-" + searchCedula;
-        var digitsOnly = System.Text.RegularExpressions.Regex.Replace(searchCedula, @"[^\d]", "");
+        var searchInput = request.Cedula.Trim();
+        var searchLower = searchInput.ToLower();
+        var withV = searchInput.StartsWith("V-", StringComparison.OrdinalIgnoreCase) ? searchLower : "v-" + searchLower;
+        var digitsOnly = System.Text.RegularExpressions.Regex.Replace(searchInput, @"[^\d]", "");
 
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Cedula == searchCedula || 
-                                                           u.Cedula == withV || 
-                                                           u.Username == searchCedula ||
-                                                           (digitsOnly.Length > 0 && (u.Cedula == "V-" + digitsOnly || u.Cedula == digitsOnly)));
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Username.ToLower() == searchLower || 
+                                                           u.Cedula.ToLower() == searchLower || 
+                                                           u.Cedula.ToLower() == withV || 
+                                                           (digitsOnly.Length > 0 && (u.Cedula.ToLower() == "v-" + digitsOnly || u.Cedula == digitsOnly)));
         if (user == null)
         {
-            return NotFound(new { Message = "Usuario no encontrado con esa Cédula." });
+            return NotFound(new { Message = "Usuario no encontrado." });
         }
 
         if (!PasswordHasher.VerifyPassword(request.CurrentPassword, user.PasswordHash))

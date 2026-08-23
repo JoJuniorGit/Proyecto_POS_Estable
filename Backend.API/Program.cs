@@ -363,6 +363,12 @@ try
 
                 _salesDb.Database.ExecuteSqlRaw(@"ALTER TABLE ""PaymentMethods"" ADD COLUMN IF NOT EXISTS ""DisplayOrder"" integer NOT NULL DEFAULT 0;");
                 _salesDb.Database.ExecuteSqlRaw(@"ALTER TABLE ""CashTransactions"" ADD COLUMN IF NOT EXISTS ""IsPhysicalCash"" boolean NOT NULL DEFAULT true;");
+                _salesDb.Database.ExecuteSqlRaw(@"
+                    UPDATE ""Users""
+                    SET ""Username"" = COALESCE(NULLIF(TRIM(""Username""), ''), NULLIF(TRIM(""Cedula""), ''), 'user_' || ""Id""::text)
+                    WHERE ""Username"" IS NULL OR TRIM(""Username"") = '';
+                    CREATE UNIQUE INDEX IF NOT EXISTS ""ix_users_username_lower"" ON ""Users"" (LOWER(""Username""));
+                ");
 
                 // 1. Sales module: SaleItems.Quantity -> numeric(18,3)
                 _salesDb.Database.ExecuteSqlRaw(@"

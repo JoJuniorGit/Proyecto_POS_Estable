@@ -31,7 +31,7 @@
                            FontSize="20" FontWeight="Bold" 
                            HorizontalAlignment="Center" 
                            Foreground="{DynamicResource MaterialDesignBody}"/>
-                <TextBlock Text="Ingrese su Cédula de Identidad para continuar" 
+                <TextBlock Text="Ingrese su Usuario para continuar" 
                            FontSize="12" Foreground="{DynamicResource NavTextMutedBrush}" 
                            HorizontalAlignment="Center" Margin="0,4,0,24"/>
 
@@ -42,12 +42,12 @@
                     <TextBlock Text="{Binding ErrorMessage}" Foreground="#EE5353" FontSize="12" TextWrapping="Wrap" HorizontalAlignment="Center"/>
                 </Border>
 
-                <!-- Input Field: Cedula -->
+                <!-- Input Field: Username -->
                 <TextBox Text="{Binding Cedula, UpdateSourceTrigger=PropertyChanged}"
-                         materialDesign:HintAssist.Hint="Número de Cédula"
+                         materialDesign:HintAssist.Hint="Usuario"
                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                          FontSize="20" FontWeight="Bold" HorizontalContentAlignment="Center"
-                         MaxLength="12" Margin="0,0,0,12"
+                         MaxLength="50" Margin="0,0,0,12"
                          KeyDown="TextBox_KeyDown">
                 </TextBox>
 

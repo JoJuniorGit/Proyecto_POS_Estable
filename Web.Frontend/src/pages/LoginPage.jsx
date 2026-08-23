@@ -20,7 +20,7 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!cedula.trim()) {
-      setError('Por favor ingrese su número de cédula.');
+      setError('Por favor ingrese su usuario.');
       return;
     }
     if (!password) {
@@ -40,7 +40,7 @@ export default function LoginPage() {
       if (err.requiresPasswordChange) {
         setMustChange(true);
       } else {
-        setError(err.message || 'Cédula o contraseña incorrecta.');
+        setError(err.message || 'Usuario o contraseña incorrectos.');
       }
     } finally {
       setLoading(false);
@@ -177,7 +177,7 @@ export default function LoginPage() {
             <input
               type="text"
               className="login-input with-icon"
-              placeholder="Número de Cédula (ej: 12345678)"
+              placeholder="Usuario (ej: admin o cajero)"
               value={cedula}
               onChange={(e) => setCedula(e.target.value)}
               disabled={loading}

@@ -47,7 +47,7 @@ public partial class LoginViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(Cedula))
         {
-            ErrorMessage = "Ingrese un número de Cédula válido.";
+            ErrorMessage = "Por favor ingrese su usuario.";
             return;
         }
 
@@ -65,7 +65,7 @@ public partial class LoginViewModel : ObservableObject
             var result = await _userService.LoginAsync(Cedula.Trim(), Password);
             if (result == null)
             {
-                ErrorMessage = "Cédula o contraseña incorrecta.";
+                ErrorMessage = "Usuario o contraseña incorrectos.";
                 return;
             }
 
@@ -85,7 +85,7 @@ public partial class LoginViewModel : ObservableObject
             }
             else
             {
-                ErrorMessage = "Cédula o contraseña incorrecta.";
+                ErrorMessage = "Usuario o contraseña incorrectos.";
             }
         }
         catch (Exception ex)

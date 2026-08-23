@@ -58,7 +58,7 @@ public partial class UsersManagementViewModel : ObservableObject
 
     public string PasswordHint => IsEditing 
         ? "Contraseña (Dejar en blanco para conservar actual)" 
-        : "Contraseña (Opcional, por defecto Cédula)";
+        : "Contraseña (Opcional, por defecto Usuario)";
 
     partial void OnIsEditingChanged(bool value)
     {
@@ -140,7 +140,7 @@ public partial class UsersManagementViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(Cedula) || string.IsNullOrWhiteSpace(Name))
         {
-            StatusMessage = "Cédula y Nombre son obligatorios.";
+            StatusMessage = "Usuario y Nombre son obligatorios.";
             return;
         }
 
@@ -265,7 +265,7 @@ public partial class UsersManagementViewModel : ObservableObject
         }
 
         var confirm = System.Windows.MessageBox.Show(
-            $"¿Está seguro de que desea eliminar PERMANENTEMENTE al usuario '{target.Name}' ({target.Cedula})?\n\nEsta acción eliminará el usuario de la base de datos de forma definitiva.",
+            $"¿Está seguro de que desea eliminar PERMANENTEMENTE al usuario '{target.Name}' (Usuario: {target.Cedula})?\n\nEsta acción eliminará el usuario de la base de datos de forma definitiva.",
             "Confirmar Eliminación Definitiva",
             System.Windows.MessageBoxButton.YesNo,
             System.Windows.MessageBoxImage.Warning);

@@ -276,7 +276,7 @@ public class UserPasswordAndStockFormattingTests
 
         // Initial state (Creating)
         Assert.False(vm.IsEditing);
-        Assert.Equal("Contraseña (Opcional, por defecto Cédula)", vm.PasswordHint);
+        Assert.Equal("Contraseña (Opcional, por defecto Usuario)", vm.PasswordHint);
 
         // State when selecting a user (Editing)
         vm.SelectedUser = new UserDto { Id = 1, Cedula = "V-12345678", Name = "Test User" };
@@ -287,7 +287,7 @@ public class UserPasswordAndStockFormattingTests
         // State when clicking NewUser command
         vm.NewUserCommand.Execute(null);
         Assert.False(vm.IsEditing);
-        Assert.Equal("Contraseña (Opcional, por defecto Cédula)", vm.PasswordHint);
+        Assert.Equal("Contraseña (Opcional, por defecto Usuario)", vm.PasswordHint);
     }
 
     [Fact]
@@ -342,5 +342,145 @@ public class UserPasswordAndStockFormattingTests
         Assert.True(vm.IsPasswordVisible);
         vm.ClearCommand.Execute(null);
         Assert.False(vm.IsPasswordVisible);
+    }
+
+    [Fact]
+    public async Task CreateUser_WithCustomAlphanumericUsername_Succeeds()
+    {
+        using var context = GetInMemoryDbContext();
+        var controller = CreateControllerWithAdminUser(context);
+
+        var dto = new CreateUserDto
+        {
+            Cedula = "cajero_central",
+            Name = "Carlos Cajero",
+            Password = "SecurePass2026"
+        };
+
+        var result = await controller.CreateUser(dto);
+        var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
+        var userDto = Assert.IsType<UserDto>(createdResult.Value);
+
+        var savedUser = await context.Users.FindAsync(userDto.Id);
+        Assert.NotNull(savedUser);
+        Assert.Equal("cajero_central", savedUser.Username);
+        Assert.Equal("cajero_central", savedUser.Cedula);
+        Assert.Equal("Carlos Cajero", savedUser.Name);
+    }
+
+    [Fact]
+    public async Task CreateUser_WithDuplicateUsernameCaseInsensitive_ReturnsBadRequest()
+    {
+        using var context = GetInMemoryDbContext();
+        var existing = new User
+        {
+            Id = 5,
+            Cedula = "Admin_Tarde",
+            Username = "Admin_Tarde",
+            Name = "Admin Existente",
+            PasswordHash = PasswordHasher.HashPassword("Pass1234"),
+            IsActive = true
+        };
+        context.Users.Add(existing);
+        await context.SaveChangesAsync();
+
+        var controller = CreateControllerWithAdminUser(context);
+
+        // Attempt to create duplicate with different casing: "admin_tarde"
+        var dto = new CreateUserDto
+        {
+            Cedula = "admin_tarde",
+            Name = "Nuevo Admin Duplicado",
+            Password = "Password999"
+        };
+
+        var result = await controller.CreateUser(dto);
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.NotNull(badRequest.Value);
+    }
+
+    [Fact]
+    public async Task Login_WithCaseInsensitiveUsername_Succeeds()
+    {
+        using var context = GetInMemoryDbContext();
+        var user = new User
+        {
+            Id = 20,
+            Cedula = "Supervisor_General",
+            Username = "Supervisor_General",
+            Name = "Supervisor",
+            FullName = "Supervisor",
+            PasswordHash = PasswordHasher.HashPassword("ExactPassword123!"),
+            IsActive = true
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var mockTokenService = new Mock<ITokenService>();
+        mockTokenService.Setup(t => t.GenerateToken(It.IsAny<User>())).Returns("fake-jwt-token");
+
+        var authController = new AuthController(context, mockTokenService.Object);
+
+        // Login with lowercase "supervisor_general"
+        var request = new LoginRequest
+        {
+            Cedula = "supervisor_general",
+            Password = "ExactPassword123!"
+        };
+
+        var result = await authController.Login(request);
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var loginResult = Assert.IsType<LoginResultDto>(okResult.Value);
+        Assert.NotNull(loginResult.Token);
+        Assert.Equal("Supervisor_General", loginResult.User?.Cedula);
+    }
+
+    [Fact]
+    public async Task Login_WithWrongCasePassword_FailsCaseSensitive()
+    {
+        using var context = GetInMemoryDbContext();
+        var user = new User
+        {
+            Id = 21,
+            Cedula = "cajero_uno",
+            Username = "cajero_uno",
+            Name = "Cajero Uno",
+            FullName = "Cajero Uno",
+            PasswordHash = PasswordHasher.HashPassword("CaseSensitivePass1"),
+            IsActive = true
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var mockTokenService = new Mock<ITokenService>();
+        var authController = new AuthController(context, mockTokenService.Object);
+
+        // Login with all lowercase password (mismatch case)
+        var request = new LoginRequest
+        {
+            Cedula = "cajero_uno",
+            Password = "casesensitivepass1" // Lowercase mismatch
+        };
+
+        var result = await authController.Login(request);
+        Assert.IsType<UnauthorizedObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task LoginViewModel_EmptyUsername_SetsUsuarioErrorMessage()
+    {
+        var mockUserService = new Mock<IUserService>();
+        var mockDialogService = new Mock<IDialogService>();
+        var userSession = new UserSession();
+
+        var vm = new LoginViewModel(mockUserService.Object, mockDialogService.Object, userSession)
+        {
+            Cedula = "",
+            Password = "password123"
+        };
+
+        await vm.LoginCommand.ExecuteAsync(null);
+
+        Assert.Equal("Por favor ingrese su usuario.", vm.ErrorMessage);
     }
 }
