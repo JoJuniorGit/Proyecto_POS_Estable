@@ -62,15 +62,7 @@ public class SalesService : ISalesService
 
     public async Task<SaleDto> GetSaleAsync(int sale_id)
     {
-        var _sale = await _context.Sales
-            .Include(s => s.Items)
-            .Include(s => s.Customer)
-            .Include(s => s.Payments)
-                .ThenInclude(p => p.PaymentMethod)
-            .Include(s => s.Cashier)
-            .FirstOrDefaultAsync(s => s.Id == sale_id);
-
-        if (_sale == null) throw new KeyNotFoundException($"Sale {sale_id} not found.");
+        var _sale = await GetSaleEntityAsync(sale_id, includeCashier: true);
 
         if (_sale.Status == SaleStatus.OnHold && _inventoryService != null)
         {
@@ -93,14 +85,17 @@ public class SalesService : ISalesService
         return MapToDto(_sale);
     }
 
-    private async Task<Sale> GetSaleEntityAsync(int sale_id)
+    private async Task<Sale> GetSaleEntityAsync(int sale_id, bool includeCashier = false)
     {
-        var _sale = await _context.Sales
+        var query = _context.Sales
             .Include(s => s.Items)
             .Include(s => s.Customer)
             .Include(s => s.Payments)
-                .ThenInclude(p => p.PaymentMethod)
-            .FirstOrDefaultAsync(s => s.Id == sale_id);
+                .ThenInclude(p => p.PaymentMethod);
+
+        var _sale = includeCashier
+            ? await query.Include(s => s.Cashier).FirstOrDefaultAsync(s => s.Id == sale_id)
+            : await query.FirstOrDefaultAsync(s => s.Id == sale_id);
 
         if (_sale == null) throw new KeyNotFoundException($"Sale {sale_id} not found.");
         return _sale;
@@ -826,6 +821,7 @@ public class SalesService : ISalesService
         if (recentOnly)
         {
             var recentCustomerIds = await _context.Sales
+                .AsNoTracking()
                 .Where(s => s.CustomerId.HasValue)
                 .GroupBy(s => s.CustomerId!.Value)
                 .OrderByDescending(g => g.Max(s => s.Date))
@@ -834,6 +830,7 @@ public class SalesService : ISalesService
                 .ToListAsync();
 
             var recentCustomers = await _context.Customers
+                .AsNoTracking()
                 .Where(c => recentCustomerIds.Contains(c.Id))
                 .ToListAsync();
 
@@ -841,6 +838,7 @@ public class SalesService : ISalesService
             {
                 var existingIds = recentCustomers.Select(c => c.Id).ToList();
                 var additional = await _context.Customers
+                    .AsNoTracking()
                     .Where(c => !existingIds.Contains(c.Id))
                     .OrderByDescending(c => c.Id)
                     .Take(3 - recentCustomers.Count)
@@ -869,7 +867,7 @@ public class SalesService : ISalesService
             return (ordered, ordered.Count);
         }
 
-        var q = _context.Customers.AsQueryable();
+        var q = _context.Customers.AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(query))
         {
