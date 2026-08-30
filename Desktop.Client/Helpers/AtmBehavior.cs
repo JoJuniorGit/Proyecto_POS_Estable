@@ -11,7 +11,8 @@ public enum AtmMode
 {
     None,
     Currency,
-    Percentage
+    Percentage,
+    Quantity
 }
 
 public static class AtmBehavior
@@ -54,6 +55,18 @@ public static class AtmBehavior
     public static void SetRecalculateTrigger(DependencyObject obj, string value) => obj.SetValue(RecalculateTriggerProperty, value);
     #endregion
 
+    #region IsFirstEditAfterFocus Attached Property
+    public static readonly DependencyProperty IsFirstEditAfterFocusProperty =
+        DependencyProperty.RegisterAttached(
+            "IsFirstEditAfterFocus",
+            typeof(bool),
+            typeof(AtmBehavior),
+            new PropertyMetadata(false));
+
+    public static bool GetIsFirstEditAfterFocus(DependencyObject obj) => (bool)obj.GetValue(IsFirstEditAfterFocusProperty);
+    public static void SetIsFirstEditAfterFocus(DependencyObject obj, bool value) => obj.SetValue(IsFirstEditAfterFocusProperty, value);
+    #endregion
+
     private static void OnModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is not TextBox tb) return;
@@ -62,6 +75,7 @@ public static class AtmBehavior
         tb.PreviewKeyDown -= TextBox_PreviewKeyDown;
         tb.GotFocus -= TextBox_GotFocus;
         tb.LostFocus -= TextBox_LostFocus;
+        tb.PreviewMouseLeftButtonDown -= TextBox_PreviewMouseLeftButtonDown;
         DataObject.RemovePastingHandler(tb, TextBox_Pasting);
 
         AtmMode newMode = (AtmMode)e.NewValue;
@@ -71,6 +85,7 @@ public static class AtmBehavior
             tb.PreviewKeyDown += TextBox_PreviewKeyDown;
             tb.GotFocus += TextBox_GotFocus;
             tb.LostFocus += TextBox_LostFocus;
+            tb.PreviewMouseLeftButtonDown += TextBox_PreviewMouseLeftButtonDown;
             DataObject.AddPastingHandler(tb, TextBox_Pasting);
 
             // Format initial display
@@ -112,7 +127,16 @@ public static class AtmBehavior
         if (e.Key == Key.Back || e.Key == Key.Delete)
         {
             e.Handled = true;
-            ProcessBackspace(tb);
+            if (tb.SelectionLength > 0 || GetIsFirstEditAfterFocus(tb))
+            {
+                SetIsFirstEditAfterFocus(tb, false);
+                UpdateValue(tb, 0m);
+                tb.Select(tb.Text.Length, 0);
+            }
+            else
+            {
+                ProcessBackspace(tb);
+            }
         }
         else if (e.Key == Key.Space)
         {
@@ -120,10 +144,20 @@ public static class AtmBehavior
         }
     }
 
+    private static void TextBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is TextBox tb && !tb.IsKeyboardFocusWithin)
+        {
+            e.Handled = true;
+            tb.Focus();
+        }
+    }
+
     private static void TextBox_GotFocus(object sender, RoutedEventArgs e)
     {
         if (sender is TextBox tb)
         {
+            SetIsFirstEditAfterFocus(tb, true);
             tb.SelectAll();
         }
     }
@@ -131,6 +165,8 @@ public static class AtmBehavior
     private static void TextBox_LostFocus(object sender, RoutedEventArgs e)
     {
         if (sender is not TextBox tb) return;
+
+        SetIsFirstEditAfterFocus(tb, false);
 
         // Ensure display format is clean at rest
         decimal currentVal = GetValue(tb);
@@ -166,10 +202,21 @@ public static class AtmBehavior
         }
     }
 
-    private static void ProcessDigit(TextBox tb, int digit)
+    public static void ProcessDigit(TextBox tb, int digit)
     {
-        decimal currentVal = GetValue(tb);
-        long cents = (long)Math.Round(currentVal * 100m, MidpointRounding.AwayFromZero);
+        bool isReset = tb.SelectionLength > 0 || GetIsFirstEditAfterFocus(tb);
+        SetIsFirstEditAfterFocus(tb, false);
+
+        long cents;
+        if (isReset)
+        {
+            cents = 0;
+        }
+        else
+        {
+            decimal currentVal = GetValue(tb);
+            cents = (long)Math.Round(currentVal * 100m, MidpointRounding.AwayFromZero);
+        }
 
         if (cents < 999999999L)
         {
@@ -178,10 +225,12 @@ public static class AtmBehavior
 
         decimal newDecimal = cents / 100m;
         UpdateValue(tb, newDecimal);
+        tb.Select(tb.Text.Length, 0);
     }
 
-    private static void ProcessBackspace(TextBox tb)
+    public static void ProcessBackspace(TextBox tb)
     {
+        SetIsFirstEditAfterFocus(tb, false);
         decimal currentVal = GetValue(tb);
         long cents = (long)Math.Round(currentVal * 100m, MidpointRounding.AwayFromZero);
 
@@ -189,9 +238,10 @@ public static class AtmBehavior
 
         decimal newDecimal = cents / 100m;
         UpdateValue(tb, newDecimal);
+        tb.Select(tb.Text.Length, 0);
     }
 
-    private static void UpdateValue(TextBox tb, decimal newDecimal)
+    public static void UpdateValue(TextBox tb, decimal newDecimal)
     {
         _isInternalUpdate = true;
         try
@@ -205,10 +255,10 @@ public static class AtmBehavior
         }
     }
 
-    private static void FormatAndDisplay(TextBox tb, decimal val)
+    public static void FormatAndDisplay(TextBox tb, decimal val)
     {
         AtmMode mode = GetMode(tb);
-        if (mode == AtmMode.Currency)
+        if (mode == AtmMode.Currency || mode == AtmMode.Quantity)
         {
             tb.Text = val.ToString("N2", CultureInfo.InvariantCulture);
         }
