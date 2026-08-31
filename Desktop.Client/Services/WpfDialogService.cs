@@ -37,6 +37,7 @@ public class WpfDialogService : IDialogService
     private readonly IConnectionManager? _connectionManager;
     private readonly ISubnetScannerService? _scannerService;
     private readonly System.Net.Http.IHttpClientFactory? _httpClientFactory;
+    private readonly IExchangeRateService? _exchangeRateService;
 
     public WpfDialogService(
         IClientStateService clientState, 
@@ -45,7 +46,8 @@ public class WpfDialogService : IDialogService
         ILogger<WpfDialogService>? logger = null,
         IConnectionManager? connectionManager = null,
         ISubnetScannerService? scannerService = null,
-        System.Net.Http.IHttpClientFactory? httpClientFactory = null)
+        System.Net.Http.IHttpClientFactory? httpClientFactory = null,
+        IExchangeRateService? exchangeRateService = null)
     {
         _clientState = clientState ?? throw new ArgumentNullException(nameof(clientState));
         _salesService = salesService!;
@@ -54,6 +56,7 @@ public class WpfDialogService : IDialogService
         _connectionManager = connectionManager;
         _scannerService = scannerService;
         _httpClientFactory = httpClientFactory;
+        _exchangeRateService = exchangeRateService;
     }
 
 
@@ -439,6 +442,35 @@ public class WpfDialogService : IDialogService
             }
             var dr = dialog.ShowDialog();
             result = dr == true;
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.FromResult(result);
+    }
+
+    public System.Threading.Tasks.Task<ProductDto?> ShowVariantSelectionDialogAsync(ProductQuickInfoDto parentProduct)
+    {
+        if (Application.Current == null || _productService == null)
+            return System.Threading.Tasks.Task.FromResult<ProductDto?>(null);
+
+        ProductDto? result = null;
+        using var _ = TrackModal();
+        Action openDialog = () =>
+        {
+            var exchangeRateService = _exchangeRateService ?? new ExchangeRateService(new System.Net.Http.HttpClient());
+            var vm = new ViewModels.VariantSelectionViewModel(_productService, exchangeRateService, parentProduct);
+            var dialog = new VariantSelectionDialog(vm);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+            var dr = dialog.ShowDialog();
+            if (dr == true)
+            {
+                result = vm.SelectedVariant;
+            }
         };
 
         if (Application.Current.Dispatcher.CheckAccess()) openDialog();

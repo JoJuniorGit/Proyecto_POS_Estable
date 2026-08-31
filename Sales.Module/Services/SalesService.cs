@@ -176,6 +176,11 @@ public class SalesService : ISalesService
             var _product = await _inventoryService.GetProductByIdAsync(product_id);
             if (_product == null) throw new KeyNotFoundException($"Product {product_id} not found.");
 
+            if (_product.IsGroupHeader)
+            {
+                throw new InvalidOperationException($"El producto '{_product.Name}' es un grupo de variantes. Debe seleccionar una variante específica para la venta.");
+            }
+
             decimal _gross_price = custom_unit_price_usd ?? _product.PriceUSD;
             decimal _gross_price_bs_s = custom_unit_price_local ?? _product.PriceBsS;
 

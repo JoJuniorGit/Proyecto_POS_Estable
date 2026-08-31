@@ -760,7 +760,10 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             IsCashAdvance = p.IsCashAdvance,
             IsActive = p.IsActive,
             IsDeleted = p.IsDeleted,
-            ReservedQuantity = p.ReservedQuantity
+            ReservedQuantity = p.ReservedQuantity,
+            IsGroupHeader = p.IsGroupHeader,
+            ParentProductId = p.ParentProductId,
+            GroupKey = p.GroupKey
         };
     }
 

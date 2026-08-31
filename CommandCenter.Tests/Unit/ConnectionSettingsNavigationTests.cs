@@ -16,6 +16,7 @@ public class ConnectionSettingsNavigationTests
     private readonly Mock<ISettingsService> _mockSettingsService = new();
     private readonly Mock<IDialogService> _mockDialogService = new();
     private readonly Mock<IConnectionManager> _mockConnectionManager = new();
+    private readonly Mock<IUserService> _mockUserService = new();
     private readonly UserSession _userSession = new();
 
     public ConnectionSettingsNavigationTests()
@@ -216,5 +217,38 @@ public class ConnectionSettingsNavigationTests
             usersVm,
             mockHealth.Object,
             _mockDialogService.Object);
+    }
+
+    [Fact]
+    public void LoginViewModel_ConnectionStatus_UpdatesAutomatically_OnStatusEvent()
+    {
+        // Arrange
+        _mockConnectionManager.SetupGet(c => c.CurrentServerAddress).Returns("http://localhost:5000/");
+        _mockConnectionManager.SetupGet(c => c.Status).Returns(ConnectionStatus.Connecting);
+
+        var loginVm = new LoginViewModel(
+            _mockUserService.Object,
+            _mockDialogService.Object,
+            _userSession,
+            _mockConnectionManager.Object);
+
+        Assert.Equal("Conectando...", loginVm.ServerStatusText);
+        Assert.False(loginVm.IsServerConnected);
+
+        // Act - Simulate server discovered/connected
+        _mockConnectionManager.SetupGet(c => c.Status).Returns(ConnectionStatus.Connected);
+        _mockConnectionManager.SetupGet(c => c.CurrentServerAddress).Returns("http://192.168.1.100:5000/");
+
+        _mockConnectionManager.Raise(m => m.ConnectionStatusChanged += null,
+            new ConnectionStatusEventArgs
+            {
+                ServerAddress = "http://192.168.1.100:5000/",
+                Status = ConnectionStatus.Connected
+            });
+
+        // Assert
+        Assert.True(loginVm.IsServerConnected);
+        Assert.Contains("Conectado", loginVm.ServerStatusText);
+        Assert.Equal("192.168.1.100:5000", loginVm.ServerAddressText);
     }
 }

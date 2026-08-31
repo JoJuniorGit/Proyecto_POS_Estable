@@ -221,6 +221,20 @@ public class StatusUpdateDto
         return Ok(results);
     }
 
+    [HttpGet("{id}/variants")]
+    public async Task<ActionResult<List<Core.DTOs.ProductDto>>> GetVariants(int id)
+    {
+        var variants = await _inventoryService.GetVariantOptionsAsync(id);
+        return Ok(variants);
+    }
+
+    [HttpGet("parents")]
+    public async Task<ActionResult<List<Core.DTOs.ProductDto>>> GetParents()
+    {
+        var parents = await _inventoryService.GetParentProductsAsync();
+        return Ok(parents);
+    }
+
     [HttpPost("bulk-import")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> BulkImport([FromBody] Core.DTOs.BulkImportRequestDto request, System.Threading.CancellationToken cancellationToken)

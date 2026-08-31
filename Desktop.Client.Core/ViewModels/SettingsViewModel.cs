@@ -395,8 +395,20 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     private void OnConnectionStatusChanged(object? sender, ConnectionStatusEventArgs e)
     {
-        CurrentServerAddress = e.ServerAddress;
-        UpdateConnectionStatusDisplay(e.Status);
+        void Apply()
+        {
+            CurrentServerAddress = e.ServerAddress;
+            UpdateConnectionStatusDisplay(e.Status);
+        }
+
+        if (System.Windows.Application.Current != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+        {
+            System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(Apply));
+        }
+        else
+        {
+            Apply();
+        }
     }
 
     private void UpdateConnectionStatusDisplay(ConnectionStatus status)

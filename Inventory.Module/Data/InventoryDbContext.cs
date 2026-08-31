@@ -28,6 +28,7 @@ public class InventoryDbContext : DbContext
 
         modelBuilder.Entity<Product>().Property(p => p.Name).IsRequired().HasMaxLength(200);
         modelBuilder.Entity<Product>().Property(p => p.SKU).IsRequired().HasMaxLength(50);
+        modelBuilder.Entity<Product>().Property(p => p.GroupKey).HasMaxLength(50);
         modelBuilder.Entity<Product>(entity =>
         {
             entity.HasIndex(p => p.SKU)
@@ -41,6 +42,22 @@ public class InventoryDbContext : DbContext
             entity.HasIndex(p => new { p.IsActive, p.IsDeleted, p.Name })
                 .HasDatabaseName("IX_Products_Active_Deleted_Name")
                 .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
+
+            entity.HasOne(p => p.ParentProduct)
+                .WithMany(p => p.Variants)
+                .HasForeignKey(p => p.ParentProductId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(p => new { p.ParentProductId, p.IsActive, p.IsDeleted })
+                .HasDatabaseName("IX_Products_Parent_Active_Deleted")
+                .HasFilter("\"ParentProductId\" IS NOT NULL");
+
+            entity.HasIndex(p => new { p.IsGroupHeader, p.IsActive, p.IsDeleted, p.Name })
+                .HasDatabaseName("IX_Products_GroupActiveName");
+
+            entity.HasIndex(p => p.GroupKey)
+                .HasDatabaseName("IX_Products_GroupKey")
+                .HasFilter("\"GroupKey\" IS NOT NULL AND \"IsDeleted\" = false");
         });
 
         // Precision and conversion configurations

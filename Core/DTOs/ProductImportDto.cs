@@ -23,6 +23,10 @@ public class ProductImportDto
 
     public bool IsActive { get; set; } = true;
 
+    // Grouping & Variants Import Fields
+    public string ProductType { get; set; } = "Normal"; // "Grupo" | "Variante" | "Normal"
+    public string? GroupNameOrKey { get; set; }
+
     // Legacy Aliases for backwards compatibility
     public decimal Cost { get => CostPriceUSD; set => CostPriceUSD = value; }
     public decimal ProfitPercentage { get => ProfitMarginRetail; set => ProfitMarginRetail = value; }

@@ -17,7 +17,13 @@
             <converters:BoolToStatusConverter x:Key="BoolToStatusConverter"/>
             <converters:BoolToFormTitleConverter x:Key="BoolToFormTitleConverter"/>
             <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter"/>
+            <converters:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisConverter"/>
+            <converters:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis"/>
+            <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+            <converters:InverseBooleanConverter x:Key="InverseBoolConverter"/>
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+            <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

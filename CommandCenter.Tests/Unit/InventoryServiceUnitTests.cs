@@ -187,4 +187,90 @@ public class InventoryServiceUnitTests
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.CreateProductAsync(product));
     }
+
+    [Fact]
+    public async Task InventoryService_CreateCashAdvance_EnforcesUnd_AndRejectsGroupHeaderOrParent()
+    {
+        var (service, context, _) = CreateService(canMutateCatalog: true);
+
+        // 1. Valid Cash Advance creation forces Und, non-fractional, and 0 stock
+        var advanceProduct = new Product
+        {
+            SKU = "1001",
+            Name = "Retiro Efectivo",
+            IsCashAdvance = true,
+            IsFractional = true,
+            UnitOfMeasure = UnitOfMeasureType.Kg,
+            StockQuantity = 500m,
+            LowStockThreshold = 10m
+        };
+
+        var created = await service.CreateProductAsync(advanceProduct);
+
+        Assert.True(created.IsCashAdvance);
+        Assert.False(created.IsFractional);
+        Assert.Equal(UnitOfMeasureType.Und, created.UnitOfMeasure);
+        Assert.Equal(0m, created.StockQuantity);
+        Assert.Equal(0m, created.LowStockThreshold);
+        Assert.Equal(0m, created.ReservedQuantity);
+
+        // 2. Reject if IsGroupHeader is true
+        var groupAdvance = new Product
+        {
+            SKU = "1002",
+            Name = "Grupo Invalido",
+            IsCashAdvance = true,
+            IsGroupHeader = true
+        };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateProductAsync(groupAdvance));
+
+        // 3. Reject if ParentProductId is set
+        var parentProduct = new Product
+        {
+            SKU = "1003",
+            Name = "Padre Valido",
+            IsGroupHeader = true
+        };
+        context.Products.Add(parentProduct);
+        await context.SaveChangesAsync();
+
+        var variantAdvance = new Product
+        {
+            SKU = "1004",
+            Name = "Variante Invalida",
+            IsCashAdvance = true,
+            ParentProductId = parentProduct.Id
+        };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateProductAsync(variantAdvance));
+    }
+
+    [Fact]
+    public async Task InventoryService_AdjustAndReserveStock_WithCashAdvanceProduct_RejectsOrBypassesStockChanges()
+    {
+        var (service, context, _) = CreateService(canMutateCatalog: true);
+
+        var advanceProduct = new Product
+        {
+            SKU = "2001",
+            Name = "Servicio Retiro",
+            IsCashAdvance = true,
+            StockQuantity = 0m
+        };
+        context.Products.Add(advanceProduct);
+        await context.SaveChangesAsync();
+
+        // 1. AdjustStock throws InvalidOperationException
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateStockAsync(advanceProduct.Id, 10m, "Ajuste manual indebido"));
+
+        // 2. ReserveStockAsync returns 0 (bypassed) without exception
+        var reservationId = await service.ReserveStockAsync(advanceProduct.Id, 1m, TimeSpan.FromMinutes(10));
+        Assert.Equal(0, reservationId);
+
+        // Verify stock remains 0
+        var reloaded = await context.Products.FindAsync(advanceProduct.Id);
+        Assert.NotNull(reloaded);
+        Assert.Equal(0m, reloaded.StockQuantity);
+        Assert.Equal(0m, reloaded.ReservedQuantity);
+    }
 }

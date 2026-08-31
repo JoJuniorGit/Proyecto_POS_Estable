@@ -33,12 +33,15 @@ try
     // Limpia la configuración de 'urls' para evitar la advertencia de Kestrel (Overriding address(es)) al definir ListenAnyIP.
     builder.Configuration["urls"] = null;
 
+    int httpPort = int.TryParse(Environment.GetEnvironmentVariable("PORT") ?? Environment.GetEnvironmentVariable("ASPNETCORE_HTTP_PORT"), out int p) ? p : 5000;
+    int httpsPort = httpPort + 1;
+
     builder.WebHost.ConfigureKestrel(kestrel =>
     {
-        kestrel.ListenAnyIP(5000);
+        kestrel.ListenAnyIP(httpPort);
         if (httpsCert != null)
         {
-            kestrel.ListenAnyIP(5001, listen => listen.UseHttps(httpsCert));
+            kestrel.ListenAnyIP(httpsPort, listen => listen.UseHttps(httpsCert));
         }
     });
 

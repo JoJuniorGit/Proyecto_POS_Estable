@@ -38,9 +38,16 @@ public interface ISubnetScannerService
 
 public class SubnetScannerService : ISubnetScannerService
 {
-    private static readonly HttpClient SharedScannerClient = new HttpClient
+    private static readonly HttpClient SharedScannerClient = new HttpClient(new SocketsHttpHandler
     {
-        Timeout = TimeSpan.FromSeconds(2)
+        ConnectTimeout = TimeSpan.FromSeconds(3),
+        SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+        {
+            RemoteCertificateValidationCallback = (sender, cert, chain, errors) => true
+        }
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(4)
     };
 
     private static readonly string[] VirtualKeywords = new[]
@@ -54,21 +61,41 @@ public class SubnetScannerService : ISubnetScannerService
     private List<DiscoveredServer> _lastScanResults = new();
     private readonly object _lock = new object();
 
-    public async Task<DiscoveredServer?> ProbeSingleHostAsync(string hostOrIp, int port = 5000, int timeoutMs = 600, CancellationToken ct = default)
+    public async Task<DiscoveredServer?> ProbeSingleHostAsync(string hostOrIp, int port = 5000, int timeoutMs = 1500, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(hostOrIp)) return null;
 
-        var cleanHost = hostOrIp.Trim();
-        if (cleanHost.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-            cleanHost = cleanHost.Substring(7);
-        if (cleanHost.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            cleanHost = cleanHost.Substring(8);
-        if (cleanHost.Contains(":"))
-            cleanHost = cleanHost.Split(':')[0];
-        if (cleanHost.EndsWith("/"))
-            cleanHost = cleanHost.TrimEnd('/');
+        var raw = hostOrIp.Trim();
+        var scheme = "http";
+        if (raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            scheme = "https";
+            raw = raw.Substring(8);
+        }
+        else if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        {
+            scheme = "http";
+            raw = raw.Substring(7);
+        }
 
-        var targetUrl = $"http://{cleanHost}:{port}/api/health";
+        int targetPort = port;
+        string cleanHost = raw;
+        if (cleanHost.Contains("/"))
+        {
+            cleanHost = cleanHost.Substring(0, cleanHost.IndexOf('/'));
+        }
+
+        if (cleanHost.Contains(":"))
+        {
+            var parts = cleanHost.Split(':');
+            cleanHost = parts[0];
+            if (parts.Length > 1 && int.TryParse(parts[1], out int parsedPort))
+            {
+                targetPort = parsedPort;
+            }
+        }
+
+        var targetUrl = $"{scheme}://{cleanHost}:{targetPort}/api/health";
         var sw = Stopwatch.StartNew();
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -79,30 +106,35 @@ public class SubnetScannerService : ISubnetScannerService
             using var response = await SharedScannerClient.GetAsync(targetUrl, cts.Token).ConfigureAwait(false);
             sw.Stop();
 
-            var content = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(content) && content.Contains("Proyecto_POS_Server"))
+            if (response.IsSuccessStatusCode)
             {
+                var content = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
                 var machine = cleanHost;
                 var version = "1.0.0";
                 var status = "Healthy";
+                var service = "Proyecto_POS_Server";
 
-                try
+                if (!string.IsNullOrWhiteSpace(content))
                 {
-                    using var doc = JsonDocument.Parse(content);
-                    var root = doc.RootElement;
-                    if (root.TryGetProperty("machineName", out var mElem)) machine = mElem.GetString() ?? cleanHost;
-                    if (root.TryGetProperty("version", out var vElem)) version = vElem.GetString() ?? "1.0.0";
-                    if (root.TryGetProperty("status", out var sElem)) status = sElem.GetString() ?? "Healthy";
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(content);
+                        var root = doc.RootElement;
+                        if (root.TryGetProperty("machineName", out var mElem)) machine = mElem.GetString() ?? cleanHost;
+                        if (root.TryGetProperty("service", out var srvElem)) service = srvElem.GetString() ?? "Proyecto_POS_Server";
+                        if (root.TryGetProperty("version", out var vElem)) version = vElem.GetString() ?? "1.0.0";
+                        if (root.TryGetProperty("status", out var sElem)) status = sElem.GetString() ?? "Healthy";
+                    }
+                    catch { }
                 }
-                catch { }
 
                 return new DiscoveredServer
                 {
                     IpAddress = cleanHost,
-                    Port = port,
-                    BaseUrl = $"http://{cleanHost}:{port}/",
+                    Port = targetPort,
+                    BaseUrl = $"{scheme}://{cleanHost}:{targetPort}/",
                     MachineName = machine,
-                    Service = "Proyecto_POS_Server",
+                    Service = service,
                     Version = version,
                     IsHealthy = status.Equals("Healthy", StringComparison.OrdinalIgnoreCase),
                     ResponseTimeMs = sw.ElapsedMilliseconds

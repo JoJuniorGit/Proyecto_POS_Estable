@@ -25,6 +25,8 @@ public interface IInventoryService
     Task<Core.DTOs.ProductQuickInfoDto?> GetProductQuickInfoAsync(string sku);
     Task<List<Core.DTOs.ProductQuickInfoDto>> GetSuggestionsAsync(string filter, bool activeOnly, System.Threading.CancellationToken token);
     Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetProductsPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default);
+    Task<List<Core.DTOs.ProductDto>> GetVariantOptionsAsync(int parentProductId);
+    Task<List<Core.DTOs.ProductDto>> GetParentProductsAsync();
 
     Task<(int added, int updated)> BulkImportProductsAsync(IEnumerable<Core.DTOs.ProductImportDto> products, bool overwriteMerge, System.Threading.CancellationToken cancellationToken = default);
     Task<byte[]> ExportProductsAsync(string format, bool activeOnly, string? filter = null, System.Threading.CancellationToken cancellationToken = default);

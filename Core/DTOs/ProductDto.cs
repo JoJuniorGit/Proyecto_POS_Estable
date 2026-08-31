@@ -27,4 +27,12 @@ public class ProductDto
     public bool IsDeleted { get; set; } = false;
     public decimal ReservedQuantity { get; set; }
     public decimal AvailableQuantity => StockQuantity - ReservedQuantity;
+
+    // Parent/Group and Variant Properties
+    public int? ParentProductId { get; set; }
+    public bool IsGroupHeader { get; set; }
+    public string? GroupKey { get; set; }
+    public int VariantCount { get; set; }
+    public decimal ConsolidatedStock { get; set; }
+    public List<ProductDto>? Variants { get; set; }
 }

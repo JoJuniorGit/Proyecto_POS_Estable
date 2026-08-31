@@ -19,7 +19,6 @@ public class Product : BaseEntity
     [StringLength(100, MinimumLength = 1, ErrorMessage = "El nombre no puede exceder 100 caracteres.")]
     public string Name { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "El código SKU es obligatorio.")]
     [StringLength(50, ErrorMessage = "El SKU no puede exceder 50 caracteres.")]
     public string SKU { get; set; } = string.Empty; // Barcode
 
@@ -73,6 +72,16 @@ public class Product : BaseEntity
     public bool IsCashAdvance { get; set; } = false;
 
     public decimal ReservedQuantity { get; set; }
+
+    // Parent/Group and Variant Properties
+    public int? ParentProductId { get; set; }
+    public Product? ParentProduct { get; set; }
+    public ICollection<Product> Variants { get; set; } = new List<Product>();
+
+    public bool IsGroupHeader { get; set; } = false;
+
+    [StringLength(50)]
+    public string? GroupKey { get; set; }
 
     [Timestamp]
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();

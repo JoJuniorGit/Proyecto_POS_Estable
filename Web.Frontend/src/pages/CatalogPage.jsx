@@ -285,7 +285,7 @@ export default function CatalogPage() {
                   // Regla 3: Tono Naranja (#D97706) si hereda detal, Violeta/Primario (#6366f1) si aplica descuento
                   const wholesaleColor = hasRealWholesale ? 'var(--primary-color, #6366f1)' : '#D97706';
 
-                  const stockQty = p.stockQuantity ?? p.stock ?? 0;
+                  const stockQty = p.isGroupHeader ? (p.consolidatedStock ?? 0) : (p.stockQuantity ?? p.stock ?? 0);
                   const unitStr = p.unitOfMeasureStr || (p.unitOfMeasure !== undefined && p.unitOfMeasure !== 0 ? p.unitOfMeasure : 'Und');
 
                   // Formato según Moneda seleccionada
@@ -295,7 +295,16 @@ export default function CatalogPage() {
                   return (
                     <tr key={p.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                       <td style={{ padding: '14px' }} className="font-mono text-muted">{p.sku || '-'}</td>
-                      <td style={{ padding: '14px' }} className="font-medium">{p.name}</td>
+                      <td style={{ padding: '14px' }} className="font-medium">
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span>{p.name}</span>
+                          {p.isGroupHeader && (
+                            <span className="badge-variant-group">
+                              {p.variantCount > 0 ? `${p.variantCount} variantes` : 'Grupo'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td style={{ padding: '14px', textAlign: 'right', whiteSpace: 'nowrap' }} className="font-mono font-bold">
                         {displayRetail}
                       </td>
@@ -322,9 +331,22 @@ export default function CatalogPage() {
                       )}
 
                       <td style={{ padding: '14px', textAlign: 'center' }}>
-                        <span className={`badge ${stockQty > 0 ? 'badge-success' : 'badge-danger'}`}>
-                          {stockQty} {unitStr !== 'Und' ? unitStr : ''}
-                        </span>
+                        {p.isCashAdvance ? (
+                          <span className="badge" style={{ backgroundColor: '#EDE9FE', color: '#6D28D9', border: '1px solid #DDD6FE', fontWeight: 600 }}>
+                            Servicio
+                          </span>
+                        ) : (
+                          <>
+                            <span className={`badge ${stockQty > 0 ? 'badge-success' : 'badge-danger'}`} title={p.isGroupHeader ? 'Stock total consolidado' : undefined}>
+                              {stockQty} {unitStr !== 'Und' ? unitStr : ''}
+                            </span>
+                            {p.isGroupHeader && (
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                (Consolidado)
+                              </div>
+                            )}
+                          </>
+                        )}
                       </td>
                     </tr>
                   );
@@ -345,7 +367,7 @@ export default function CatalogPage() {
               const minQty = Math.round(hasRealWholesale ? (p.minWholesaleQuantity || 1) : 1);
               const wholesaleColor = hasRealWholesale ? 'var(--primary-color, #6366f1)' : '#D97706';
 
-              const stockQty = p.stockQuantity ?? p.stock ?? 0;
+              const stockQty = p.isGroupHeader ? (p.consolidatedStock ?? 0) : (p.stockQuantity ?? p.stock ?? 0);
               const unitStr = p.unitOfMeasureStr || (p.unitOfMeasure !== undefined && p.unitOfMeasure !== 0 ? p.unitOfMeasure : 'Und');
 
               const displayRetail = currency === 'USD' ? formatUSD(retailUSD) : formatBsS(retailBsS);
@@ -358,14 +380,27 @@ export default function CatalogPage() {
                     <span className="font-mono text-xs text-muted">
                       SKU: <strong>{p.sku || '-'}</strong>
                     </span>
-                    <span className={`badge ${stockQty > 0 ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '0.8rem', padding: '4px 10px', borderRadius: '12px' }}>
-                      Stock: {stockQty} {unitStr}
-                    </span>
+                    {p.isCashAdvance ? (
+                      <span className="badge" style={{ backgroundColor: '#EDE9FE', color: '#6D28D9', border: '1px solid #DDD6FE', fontSize: '0.8rem', padding: '4px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                        Servicio
+                      </span>
+                    ) : (
+                      <span className={`badge ${stockQty > 0 ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '0.8rem', padding: '4px 10px', borderRadius: '12px' }}>
+                        {p.isGroupHeader ? `Total: ${stockQty}` : `Stock: ${stockQty}`} {unitStr}
+                      </span>
+                    )}
                   </div>
 
                   {/* Renglón 2: PRODUCTO en texto grande y negrita */}
                   <div className="catalog-mobile-card-title" style={{ color: 'var(--text-primary)', fontSize: '1.05rem', fontWeight: 700 }}>
-                    {p.name || p.productName || '-'}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span>{p.name || p.productName || '-'}</span>
+                      {p.isGroupHeader && (
+                        <span className="badge-variant-group">
+                          {p.variantCount > 0 ? `${p.variantCount} variantes` : 'Grupo'}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Renglón 3: PRECIO DETAL en Moneda seleccionada */}

@@ -63,9 +63,21 @@ public partial class ProductItemViewModel : ObservableObject
 
     public decimal EffectiveMinWholesaleQuantity => HasRealWholesale ? (MinWholesaleQuantity > 0 ? MinWholesaleQuantity : 1m) : 1m;
 
-    public bool IsStockCritical => StockQuantity <= 0;
+    public bool IsCashAdvance => _dto.IsCashAdvance;
+    public bool IsGroupHeader => _dto.IsGroupHeader;
+    public decimal ConsolidatedStock => _dto.ConsolidatedStock;
 
-    public string FormattedStockQuantity => StockQuantity.ToString("#,##0.###", System.Globalization.CultureInfo.CurrentCulture);
+    public bool IsStockCritical => !IsCashAdvance && !IsGroupHeader && StockQuantity <= 0;
+
+    public string FormattedStockQuantity
+    {
+        get
+        {
+            if (IsCashAdvance) return "Servicio";
+            if (IsGroupHeader) return $"{ConsolidatedStock:#,##0.###} (Consolidado)";
+            return StockQuantity.ToString("#,##0.###", System.Globalization.CultureInfo.CurrentCulture);
+        }
+    }
 
     partial void OnStockQuantityChanged(decimal value)
     {
@@ -102,11 +114,11 @@ public partial class ProductItemViewModel : ObservableObject
         }
     }
 
-    public ProductItemViewModel(ProductDto dto, Services.IExchangeRateService exchangeRateService, Action<ProductItemViewModel> onChanged)
+    public ProductItemViewModel(ProductDto dto, Services.IExchangeRateService exchangeRateService, Action<ProductItemViewModel>? onChanged = null)
     {
         _dto = dto;
         _exchangeRateService = exchangeRateService;
-        _onChanged = onChanged;
+        _onChanged = onChanged ?? (_ => {});
         
         // Initial values
         _name = dto.Name;
@@ -164,6 +176,9 @@ public partial class ProductItemViewModel : ObservableObject
             _dto.UnitOfMeasure = dto.UnitOfMeasure;
             _dto.LowStockThreshold = dto.LowStockThreshold;
             _dto.IsCashAdvance = dto.IsCashAdvance;
+            _dto.IsGroupHeader = dto.IsGroupHeader;
+            _dto.ConsolidatedStock = dto.ConsolidatedStock;
+            _dto.ParentProductId = dto.ParentProductId;
             _dto.ReservedQuantity = dto.ReservedQuantity;
 
             Name = dto.Name;
@@ -189,6 +204,9 @@ public partial class ProductItemViewModel : ObservableObject
 
             OnPropertyChanged(nameof(IsInactive));
             OnPropertyChanged(nameof(StatusLabel));
+            OnPropertyChanged(nameof(IsCashAdvance));
+            OnPropertyChanged(nameof(IsGroupHeader));
+            OnPropertyChanged(nameof(ConsolidatedStock));
             OnPropertyChanged(nameof(HasRealWholesale));
             OnPropertyChanged(nameof(EffectiveMinWholesaleQuantity));
             OnPropertyChanged(nameof(FormattedMinWholesaleQuantityStr));

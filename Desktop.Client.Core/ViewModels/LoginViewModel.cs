@@ -96,6 +96,7 @@ public partial class LoginViewModel : ObservableObject
                 UpdateConnectionDisplay();
             };
             UpdateConnectionDisplay();
+            _ = _connectionManager.InitializeAsync();
         }
     }
 
@@ -103,26 +104,38 @@ public partial class LoginViewModel : ObservableObject
     {
         if (_connectionManager == null) return;
 
-        IsServerConnected = _connectionManager.Status == ConnectionStatus.Connected;
-        IsScanningServer = _connectionManager.Status == ConnectionStatus.Scanning;
-
-        var addr = _connectionManager.CurrentServerAddress;
-        if (Uri.TryCreate(addr, UriKind.Absolute, out var uri))
+        void ApplyUpdate()
         {
-            ServerAddressText = $"{uri.Host}:{uri.Port}";
+            IsServerConnected = _connectionManager.Status == ConnectionStatus.Connected;
+            IsScanningServer = _connectionManager.Status == ConnectionStatus.Scanning;
+
+            var addr = _connectionManager.CurrentServerAddress;
+            if (Uri.TryCreate(addr, UriKind.Absolute, out var uri))
+            {
+                ServerAddressText = $"{uri.Host}:{uri.Port}";
+            }
+            else
+            {
+                ServerAddressText = addr;
+            }
+
+            ServerStatusText = _connectionManager.Status switch
+            {
+                ConnectionStatus.Connected => $"Conectado: {ServerAddressText}",
+                ConnectionStatus.Scanning => "Buscando servidor POS...",
+                ConnectionStatus.Connecting => "Conectando...",
+                _ => $"Sin conexión ({ServerAddressText})"
+            };
+        }
+
+        if (System.Windows.Application.Current != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+        {
+            System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(ApplyUpdate));
         }
         else
         {
-            ServerAddressText = addr;
+            ApplyUpdate();
         }
-
-        ServerStatusText = _connectionManager.Status switch
-        {
-            ConnectionStatus.Connected => $"Conectado: {ServerAddressText}",
-            ConnectionStatus.Scanning => "Buscando servidor POS...",
-            ConnectionStatus.Connecting => "Conectando...",
-            _ => $"Sin conexión ({ServerAddressText})"
-        };
     }
 
     [RelayCommand]

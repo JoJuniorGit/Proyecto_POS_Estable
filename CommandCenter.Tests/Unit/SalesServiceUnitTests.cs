@@ -306,4 +306,43 @@ public class SalesServiceUnitTests
         Assert.NotNull(detail.PickupDate);
         mediatorMock.Verify(m => m.Publish(It.IsAny<SaleMadeEvent>(), default), Times.Never);
     }
+
+    [Fact]
+    public async Task CompleteSale_WithCashAdvanceProduct_DoesNotDeductStockOrThrow()
+    {
+        var (service, context, inventoryMock, _, _) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var advProduct = new Product
+        {
+            Id = 99,
+            SKU = "ADV-001",
+            Name = "Adelanto de Efectivo",
+            IsCashAdvance = true,
+            StockQuantity = 0m,
+            IsActive = true
+        };
+
+        inventoryMock.Setup(i => i.GetProductByIdAsync(99)).ReturnsAsync(advProduct);
+        inventoryMock.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(50m);
+
+        var sale = await service.StartSaleAsync();
+        var itemAdded = await service.AddItemAsync(sale.Id, 99, 1, 50m, custom_unit_price_usd: 10m, custom_unit_price_local: 500m);
+        Assert.NotNull(itemAdded);
+
+        var payments = new List<PaymentInfo>
+        {
+            new PaymentInfo(1, 10m, 500m, null)
+        };
+
+        int invoiceNum = await service.CompleteSaleAsync(sale.Id, 50m, payments);
+        Assert.True(invoiceNum > 0);
+
+        var completed = await context.Sales.FindAsync(sale.Id);
+        Assert.NotNull(completed);
+        Assert.Equal(SaleStatus.Completed, completed.Status);
+
+        // Verify that stock is not deducted for cash advance products
+        inventoryMock.Verify(i => i.UpdateStockAsync(99, It.IsAny<decimal>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
 }

@@ -405,6 +405,8 @@ dist_installer/
 installer/Output/
 Web.Frontend/dist/
 Web.Frontend/build/
+publish/
+publish_backend/
 crash*.txt
 build_output.txt
 .env

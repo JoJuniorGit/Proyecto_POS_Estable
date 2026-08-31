@@ -34,11 +34,14 @@ public interface IConnectionManager
     void NotifyConnectionRestored();
 }
 
-public class ConnectionManager : IConnectionManager
+public class ConnectionManager : IConnectionManager, IDisposable
 {
     private readonly IClientSettingsStore _settingsStore;
     private readonly ISubnetScannerService _scannerService;
     private readonly object _lock = new object();
+    private Timer? _heartbeatTimer;
+    private int _isProbing;
+    private bool _disposed;
 
     public ConnectionStatus Status { get; private set; } = ConnectionStatus.Connecting;
     public string CurrentServerAddress { get; private set; } = "http://localhost:5000/";
@@ -54,6 +57,66 @@ public class ConnectionManager : IConnectionManager
         var settings = _settingsStore.LoadSettings();
         CurrentServerAddress = settings.ServerBaseAddress;
         CurrentMachineName = settings.LastKnownServerMachineName;
+
+        // Iniciar inmediatamente sondeo en segundo plano y temporizador periódico cada 4 segundos
+        StartHeartbeat();
+        _ = InitializeAsync();
+    }
+
+    private void StartHeartbeat()
+    {
+        _heartbeatTimer?.Dispose();
+        _heartbeatTimer = new Timer(OnHeartbeatTick, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4));
+    }
+
+    private async void OnHeartbeatTick(object? state)
+    {
+        if (_disposed || Status == ConnectionStatus.Scanning) return;
+        if (Interlocked.CompareExchange(ref _isProbing, 1, 0) != 0) return;
+
+        try
+        {
+            var probe = await _scannerService.ProbeSingleHostAsync(CurrentServerAddress, 5000, 800);
+            if (probe != null && probe.IsHealthy)
+            {
+                if (Status != ConnectionStatus.Connected || CurrentMachineName != probe.MachineName)
+                {
+                    lock (_lock)
+                    {
+                        Status = ConnectionStatus.Connected;
+                        CurrentMachineName = probe.MachineName;
+                    }
+                    RaiseStatusChanged();
+                }
+            }
+            else
+            {
+                if (Status == ConnectionStatus.Connected)
+                {
+                    lock (_lock)
+                    {
+                        Status = ConnectionStatus.Disconnected;
+                    }
+                    RaiseStatusChanged("Conexión perdida con el servidor.");
+                }
+                else if (Status == ConnectionStatus.Connecting)
+                {
+                    lock (_lock)
+                    {
+                        Status = ConnectionStatus.Disconnected;
+                    }
+                    RaiseStatusChanged("No se pudo conectar con el servidor.");
+                }
+            }
+        }
+        catch
+        {
+            // Ignorar excepciones transitorias en el temporizador
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isProbing, 0);
+        }
     }
 
     public async Task<bool> InitializeAsync()
@@ -63,11 +126,14 @@ public class ConnectionManager : IConnectionManager
         CurrentMachineName = settings.LastKnownServerMachineName;
 
         // Probar si el servidor actual responde
-        var probe = await _scannerService.ProbeSingleHostAsync(CurrentServerAddress, 5000, 600);
+        var probe = await _scannerService.ProbeSingleHostAsync(CurrentServerAddress, 5000, 800);
         if (probe != null && probe.IsHealthy)
         {
-            Status = ConnectionStatus.Connected;
-            CurrentMachineName = probe.MachineName;
+            lock (_lock)
+            {
+                Status = ConnectionStatus.Connected;
+                CurrentMachineName = probe.MachineName;
+            }
             RaiseStatusChanged();
             return true;
         }
@@ -78,7 +144,10 @@ public class ConnectionManager : IConnectionManager
             return await AutoRecoverAsync();
         }
 
-        Status = ConnectionStatus.Disconnected;
+        lock (_lock)
+        {
+            Status = ConnectionStatus.Disconnected;
+        }
         RaiseStatusChanged("No se pudo conectar con el servidor configurado.");
         return false;
     }
@@ -177,5 +246,12 @@ public class ConnectionManager : IConnectionManager
             MachineName = CurrentMachineName,
             ErrorMessage = error
         });
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _heartbeatTimer?.Dispose();
+        _heartbeatTimer = null;
     }
 }

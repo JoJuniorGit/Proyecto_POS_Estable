@@ -396,6 +396,10 @@
                                                 <Setter Property="BorderBrush" Value="#BAE6FD"/>
                                                 <Setter Property="BorderThickness" Value="1"/>
                                                 <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsCashAdvance}" Value="True">
+                                                        <Setter Property="Background" Value="#EDE9FE"/>
+                                                        <Setter Property="BorderBrush" Value="#DDD6FE"/>
+                                                    </DataTrigger>
                                                     <DataTrigger Binding="{Binding IsStockCritical}" Value="True">
                                                         <Setter Property="Background" Value="#FEE2E2"/>
                                                         <Setter Property="BorderBrush" Value="#FCA5A5"/>
@@ -408,6 +412,9 @@
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Foreground" Value="#0369A1"/>
                                                     <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsCashAdvance}" Value="True">
+                                                            <Setter Property="Foreground" Value="#6D28D9"/>
+                                                        </DataTrigger>
                                                         <DataTrigger Binding="{Binding IsStockCritical}" Value="True">
                                                             <Setter Property="Foreground" Value="#DC2626"/>
                                                         </DataTrigger>

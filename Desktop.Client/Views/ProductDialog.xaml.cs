@@ -21,6 +21,7 @@ namespace Desktop.Client.Views
 
         private void NumberValidationTextBox(object sender, System.Windows.Input.TextCompositionEventArgs e)
         {
+            if (ViewModel?.IsGroupHeader == true) return;
             System.Text.RegularExpressions.Regex regex = new System.Text.RegularExpressions.Regex("[^0-9]+");
             e.Handled = regex.IsMatch(e.Text);
         }

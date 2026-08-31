@@ -19,4 +19,10 @@ public class ProductQuickInfoDto
     public decimal ProfitPercentage { get; set; }
     public decimal ReservedQuantity { get; set; }
     public decimal AvailableQuantity => StockQuantity - ReservedQuantity;
+
+    // Parent/Group and Variant Properties
+    public int? ParentProductId { get; set; }
+    public bool IsGroupHeader { get; set; }
+    public int VariantCount { get; set; }
+    public decimal ConsolidatedStock { get; set; }
 }

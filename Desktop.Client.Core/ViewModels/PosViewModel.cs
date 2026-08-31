@@ -362,6 +362,29 @@ public partial class PosViewModel : ObservableObject, IDisposable
 
         if (_value != null && _value.Id > 0 && Cart.CurrentSale != null)
         {
+            if (_value.IsGroupHeader)
+            {
+                var variant = await (_dialog_service?.ShowVariantSelectionDialogAsync(_value) ?? Task.FromResult<ProductDto?>(null));
+                if (variant == null)
+                {
+                    SelectedSuggestion = null;
+                    return;
+                }
+
+                _value = new Core.DTOs.ProductQuickInfoDto
+                {
+                    Id = variant.Id,
+                    Name = variant.Name,
+                    SKU = variant.SKU,
+                    PriceUSD = variant.PriceUSD,
+                    PriceRetailUSD = variant.PriceRetailUSD,
+                    PriceWholesaleUSD = variant.PriceWholesaleUSD,
+                    PriceBsS = variant.PriceBsS,
+                    StockQuantity = variant.StockQuantity,
+                    IsActive = variant.IsActive
+                };
+            }
+
             decimal? _custom_price_usd = null;
             decimal? _custom_price_local = null;
 
@@ -436,13 +459,31 @@ public partial class PosViewModel : ObservableObject, IDisposable
         try
         {
             var results = await _product_service.GetSuggestionsAsync(trimmedCode, true, System.Threading.CancellationToken.None);
-            var product = results.FirstOrDefault(p => p.SKU == trimmedCode);
+            var product = results.FirstOrDefault(p => p.SKU == trimmedCode) ?? results.FirstOrDefault();
 
-            // Unknown code, or a cash-advance item (which requires its own dialog):
-            // nothing to add — the scanner window already shows "Producto no encontrado".
+            // Unknown code, or a cash-advance item:
             if (product == null || product.Id <= 0 || product.IsCashAdvance)
             {
                 return;
+            }
+
+            if (product.IsGroupHeader)
+            {
+                var variant = await (_dialog_service?.ShowVariantSelectionDialogAsync(product) ?? Task.FromResult<ProductDto?>(null));
+                if (variant == null) return;
+
+                product = new Core.DTOs.ProductQuickInfoDto
+                {
+                    Id = variant.Id,
+                    Name = variant.Name,
+                    SKU = variant.SKU,
+                    PriceUSD = variant.PriceUSD,
+                    PriceRetailUSD = variant.PriceRetailUSD,
+                    PriceWholesaleUSD = variant.PriceWholesaleUSD,
+                    PriceBsS = variant.PriceBsS,
+                    StockQuantity = variant.StockQuantity,
+                    IsActive = variant.IsActive
+                };
             }
 
             IsProcessing = true;

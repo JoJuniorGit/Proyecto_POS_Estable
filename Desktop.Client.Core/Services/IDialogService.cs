@@ -28,6 +28,7 @@ public interface IDialogService
     Task<(bool confirmed, System.Collections.Generic.IEnumerable<UpdateSaleItemDto>? modifiedItems)> ShowEditSaleDialogAsync(SaleDto sale, decimal exchangeRate);
     Task ShowPairingQrDialogAsync();
     Task<bool> ShowServerConnectionDialogAsync();
+    Task<ProductDto?> ShowVariantSelectionDialogAsync(ProductQuickInfoDto parentProduct);
 }
 
 

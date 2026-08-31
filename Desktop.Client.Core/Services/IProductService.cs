@@ -17,5 +17,6 @@ public interface IProductService
     Task<Core.DTOs.ProductQuickInfoDto?> GetQuickInfoAsync(string sku);
     Task<List<Core.DTOs.ProductQuickInfoDto>> GetSuggestionsAsync(string filter, bool activeOnly, System.Threading.CancellationToken token);
     Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default);
-
+    Task<List<Core.DTOs.ProductDto>> GetVariantsAsync(int parentProductId);
+    Task<List<Core.DTOs.ProductDto>> GetParentsAsync();
 }

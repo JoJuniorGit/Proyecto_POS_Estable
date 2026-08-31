@@ -9,6 +9,7 @@ import CartList from '../components/pos/CartList';
 import SummaryPanel from '../components/pos/SummaryPanel';
 import CustomerModal from '../components/pos/CustomerModal';
 import BarcodeScannerModal from '../components/pos/BarcodeScannerModal';
+import VariantSelectorModal from '../components/pos/VariantSelectorModal';
 import { getProductBySku } from '../services/productsApi';
 import { Edit2, ScanLine, Keyboard } from 'lucide-react';
 
@@ -20,6 +21,7 @@ export default function PosPage({
 }) {
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [variantParentProduct, setVariantParentProduct] = useState(null);
   const searchBarRef = useRef(null);
   const { exchangeRate, syncBcvRate } = useExchangeRate();
   const {
@@ -42,12 +44,15 @@ export default function PosPage({
     ? 'customer'
     : isScannerOpen
     ? 'scanner'
+    : variantParentProduct
+    ? 'variant'
     : null;
 
   usePosHotkeys({
     activeModal,
     onCloseActiveModal: () => {
-      if (isCustomerModalOpen) setIsCustomerModalOpen(false);
+      if (variantParentProduct) setVariantParentProduct(null);
+      else if (isCustomerModalOpen) setIsCustomerModalOpen(false);
       else if (isScannerOpen) setIsScannerOpen(false);
       else if (onCloseExternalModal) onCloseExternalModal();
     },
@@ -101,7 +106,11 @@ export default function PosPage({
   });
 
   const handleSelectProduct = (product) => {
-    addItem(product, 1);
+    if (product?.isGroupHeader) {
+      setVariantParentProduct(product);
+    } else {
+      addItem(product, 1);
+    }
   };
 
   const handleSelectCustomer = async (customerId) => {
@@ -113,7 +122,11 @@ export default function PosPage({
     try {
       const product = await getProductBySku(code);
       if (product?.id && !product.isCashAdvance) {
-        await addItem(product, 1);
+        if (product.isGroupHeader) {
+          setVariantParentProduct(product);
+        } else {
+          await addItem(product, 1);
+        }
       }
     } catch (err) {
       console.error('[PosPage] Error resolviendo código escaneado:', err);
@@ -283,6 +296,15 @@ export default function PosPage({
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onCodeScanned={handleScannedCode}
+      />
+
+      {/* Modal para Selección de Sabores / Variantes */}
+      <VariantSelectorModal
+        isOpen={!!variantParentProduct}
+        parentProduct={variantParentProduct}
+        onClose={() => setVariantParentProduct(null)}
+        onSelectVariant={(variant) => addItem(variant, 1)}
+        exchangeRate={exchangeRate}
       />
     </div>
   );

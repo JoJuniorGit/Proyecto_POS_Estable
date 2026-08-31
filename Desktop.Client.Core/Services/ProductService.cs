@@ -28,7 +28,8 @@ public class ProductService : IProductService
             var err = await response.Content.ReadAsStringAsync();
             throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
         }
-        return await response.Content.ReadFromJsonAsync<Product>();
+        var rawJson = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<Product>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
     }
 
     public async Task<Product> CreateAsync(Product product)
@@ -39,8 +40,9 @@ public class ProductService : IProductService
             var err = await response.Content.ReadAsStringAsync();
             throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
         }
-        return await response.Content.ReadFromJsonAsync<Product>()
-               ?? throw new System.Exception("No se pudo deserializar el producto devuelto.");
+        var rawJson = await response.Content.ReadAsStringAsync();
+        var created = System.Text.Json.JsonSerializer.Deserialize<Product>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        return created ?? throw new System.Exception("No se pudo deserializar el producto devuelto.");
     }
 
     public async Task UpdateAsync(Product product)
@@ -142,5 +144,31 @@ public class ProductService : IProductService
         }
         return await _httpClient.GetFromJsonAsync<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>>(url, token)
                ?? new Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>();
+    }
+
+    public async Task<List<Core.DTOs.ProductDto>> GetVariantsAsync(int parentProductId)
+    {
+        try
+        {
+            return await _httpClient.GetFromJsonAsync<List<Core.DTOs.ProductDto>>($"api/products/{parentProductId}/variants")
+                   ?? new List<Core.DTOs.ProductDto>();
+        }
+        catch
+        {
+            return new List<Core.DTOs.ProductDto>();
+        }
+    }
+
+    public async Task<List<Core.DTOs.ProductDto>> GetParentsAsync()
+    {
+        try
+        {
+            return await _httpClient.GetFromJsonAsync<List<Core.DTOs.ProductDto>>("api/products/parents")
+                   ?? new List<Core.DTOs.ProductDto>();
+        }
+        catch
+        {
+            return new List<Core.DTOs.ProductDto>();
+        }
     }
 }
