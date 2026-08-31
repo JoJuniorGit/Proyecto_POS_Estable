@@ -6,6 +6,7 @@ using Core.Events;
 using Inventory.Module.Data;
 using Inventory.Module.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Inventory.Module.EventHandlers;
 
@@ -13,11 +14,16 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
 {
     private readonly Core.Interfaces.IInventoryService _inventoryService;
     private readonly InventoryDbContext _context;
+    private readonly ILogger<InventorySaleMadeEventHandler>? _logger;
 
-    public InventorySaleMadeEventHandler(Core.Interfaces.IInventoryService inventoryService, InventoryDbContext context)
+    public InventorySaleMadeEventHandler(
+        Core.Interfaces.IInventoryService inventoryService, 
+        InventoryDbContext context,
+        ILogger<InventorySaleMadeEventHandler>? logger = null)
     {
         _inventoryService = inventoryService;
         _context = context;
+        _logger = logger;
     }
 
     public async Task Handle(SaleMadeEvent notification, CancellationToken cancellationToken)
@@ -35,7 +41,7 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
 
                 if (alreadyProcessed)
                 {
-                    Console.WriteLine($"[Inventory] Idempotency notice: Stock deduction for Product {item.ProductId} in Sale {notification.SaleId} already processed. Skipping.");
+                    _logger?.LogInformation("[InventoryHandler] Deducción ya procesada previamente para producto {ProductId} en Venta #{SaleId}. Omitiendo.", item.ProductId, notification.SaleId);
                     continue;
                 }
 
@@ -44,14 +50,13 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Inventory] Failed to deduct stock for Product {item.ProductId} in Sale {notification.SaleId}: {ex.Message}");
+                _logger?.LogWarning(ex, "[InventoryHandler] Fallo temporal al deducir stock para producto {ProductId} en Venta #{SaleId}. Reintentando...", item.ProductId, notification.SaleId);
 
                 bool success = false;
                 for (int i = 0; i < 3; i++)
                 {
                     try
                     {
-                        Console.WriteLine($"[Inventory] Retrying stock deduction for Product {item.ProductId}...");
                         await Task.Delay(500, cancellationToken);
                         await _inventoryService.UpdateStockAsync(item.ProductId, -item.Quantity, reason);
                         success = true;
@@ -62,7 +67,7 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
 
                 if (!success)
                 {
-                    Console.WriteLine($"[Inventory] CRITICAL: Failed all retries for stock deduction of Product {item.ProductId}, Sale {notification.SaleId}.");
+                    _logger?.LogCritical("[InventoryHandler] CRÍTICO: Fallaron todos los reintentos para deducir stock del producto {ProductId} en Venta #{SaleId}.", item.ProductId, notification.SaleId);
                 }
             }
         }

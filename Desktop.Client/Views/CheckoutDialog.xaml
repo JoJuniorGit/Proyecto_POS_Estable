@@ -182,13 +182,21 @@
 
         <!-- Footer Actions -->
         <StackPanel Grid.Row="3">
+            <TextBlock Text="{Binding ValidationHelperMessage}"
+                       Foreground="#E65100"
+                       FontWeight="SemiBold"
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,8"
+                       Visibility="{Binding ValidationHelperMessage, Converter={StaticResource StringToVisibilityConverter}}"/>
+
             <TextBlock Text="{Binding PendingPickupErrorMessage}"
                        Foreground="Red"
                        FontWeight="SemiBold"
                        FontSize="12"
                        TextWrapping="Wrap"
-                       Margin="0,0,0,10"
-                       Visibility="{Binding PendingPickupErrorMessage, Converter={StaticResource BoolToVis}}"/>
+                       Margin="0,0,0,8"
+                       Visibility="{Binding PendingPickupErrorMessage, Converter={StaticResource StringToVisibilityConverter}}"/>
 
             <Grid>
                 <Button Content="CANCEL" 

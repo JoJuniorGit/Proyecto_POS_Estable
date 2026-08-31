@@ -3,6 +3,7 @@ import { Search, X } from 'lucide-react';
 import { getProductSuggestions } from '../../services/productsApi';
 import SuggestionList from './SuggestionList';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
+import { useDebounce } from '../../hooks/useDebounce';
 
 const SearchBar = forwardRef(function SearchBar({ onSelectProduct }, ref) {
   const [query, setQuery] = useState('');
@@ -12,6 +13,8 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct }, ref) {
   const searchRef = useRef(null);
   const inputRef = useRef(null);
   const { exchangeRate } = useExchangeRate();
+
+  const debouncedQuery = useDebounce(query, 300);
 
   // Permite que la página POS limpie el buscador o le dé foco con F2.
   useImperativeHandle(ref, () => ({
@@ -29,36 +32,36 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct }, ref) {
     },
   }));
 
-  // Debounce search API calls
+  // Cancelar peticiones fetch en vuelo al cambiar la búsqueda debounced
   useEffect(() => {
-    if (!query.trim()) {
+    if (!debouncedQuery.trim()) {
       setSuggestions([]);
       setIsOpen(false);
       return;
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const results = await getProductSuggestions(query, controller.signal);
+    setLoading(true);
+
+    getProductSuggestions(debouncedQuery, controller.signal)
+      .then((results) => {
         setSuggestions(results || []);
         setIsOpen(true);
-      } catch (err) {
+      })
+      .catch((err) => {
         if (err.name !== 'AbortError') {
           console.error('[SearchBar] Error en búsqueda:', err);
           setSuggestions([]);
         }
-      } finally {
+      })
+      .finally(() => {
         setLoading(false);
-      }
-    }, 300);
+      });
 
     return () => {
-      clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [debouncedQuery]);
 
   // Handle outside click to close dropdown
   useEffect(() => {
@@ -76,6 +79,11 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct }, ref) {
     setQuery('');
     setSuggestions([]);
     setIsOpen(false);
+
+    // Re-enfocar el campo de búsqueda inmediatamente sólo si no hay un modal abriéndose/abierto
+    if (!document.querySelector('.modal-backdrop, .modal, [role="dialog"]')) {
+      inputRef.current?.focus();
+    }
   };
 
   const handleKeyDown = (e) => {

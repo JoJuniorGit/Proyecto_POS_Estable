@@ -164,7 +164,10 @@ try
 
     builder.Services.AddAuthorization();
 
-    builder.Services.AddControllers().AddJsonOptions(x =>
+    builder.Services.AddControllers(options =>
+    {
+        options.Filters.Add<Backend.API.Filters.ModelStateValidationFilter>();
+    }).AddJsonOptions(x =>
     {
         x.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
     });
@@ -276,6 +279,9 @@ try
 
     // Version Compatibility Handshake Middleware
     app.UseMiddleware<Backend.API.Middleware.VersionCheckMiddleware>();
+
+    // Security Audit Middleware for 401 & 403 events
+    app.UseMiddleware<Backend.API.Middleware.SecurityAuditMiddleware>();
 
     app.UseAuthentication();
     app.UseAuthorization();

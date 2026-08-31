@@ -500,17 +500,23 @@ public partial class PosViewModel : ObservableObject, IDisposable
 
         if (!Cart.CartItems.Any())
         {
-            MessageBox.Show("Cart is empty. Please add items before checking out.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (_dialog_service != null)
+                _dialog_service.ShowWarning("Validación", "El carrito está vacío. Por favor agregue productos antes de cobrar.");
+            else
+                MessageBox.Show("El carrito está vacío. Por favor agregue productos antes de cobrar.", "Validación", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (CurrentExchangeRate <= 0)
         {
-            MessageBox.Show("Cannot proceed to checkout. Please set a valid Exchange Rate in the top header.", "Missing Rate", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (_dialog_service != null)
+                _dialog_service.ShowWarning("Tasa Requerida", "No se puede proceder al cobro. Por favor establezca una tasa de cambio válida en el encabezado.");
+            else
+                MessageBox.Show("No se puede proceder al cobro. Por favor establezca una tasa de cambio válida en el encabezado.", "Tasa Requerida", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        var _checkout_vm = new CheckoutViewModel(Cart.CurrentSale, ActivePaymentMethods, _sales_service, CurrentExchangeRate, _user_session);
+        var _checkout_vm = new CheckoutViewModel(Cart.CurrentSale, ActivePaymentMethods, _sales_service, CurrentExchangeRate, _user_session, override_sale: null, dialog_service: _dialog_service);
         var _result = await MaterialDesignThemes.Wpf.DialogHost.Show(_checkout_vm, "RootDialog");
 
         if (_result is int _real_invoice)

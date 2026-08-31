@@ -266,10 +266,16 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
                 <>
                   <PackageCheck size={20} /> Cobrar y Enviar a Retiros Pendientes
                 </>
-              ) : overrideSale && !isFullLiquidation ? (
-                <>
-                  <Check size={20} /> Registrar Abono
-                </>
+              ) : overrideSale ? (
+                isFullLiquidation ? (
+                  <>
+                    <Check size={20} /> Liquidar Cuenta
+                  </>
+                ) : (
+                  <>
+                    <Check size={20} /> Registrar Abono
+                  </>
+                )
               ) : (
                 <>
                   <Check size={20} /> Cobrar y Finalizar

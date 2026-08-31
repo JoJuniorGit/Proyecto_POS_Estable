@@ -9,9 +9,11 @@
              xmlns:id="clr-namespace:CommunityToolkit.Mvvm.Input;assembly=CommunityToolkit.Mvvm"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:converters="clr-namespace:Desktop.Client.Converters"
+             xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="600" d:DesignWidth="1000">
     <UserControl.Resources>
+        <helpers:BindingProxy x:Key="Proxy" Data="{Binding}" />
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <converters:CurrencyMultiplierConverter x:Key="CurrencyMultiplierConverter" />
         <Style x:Key="PrimaryTabRadioButton" TargetType="RadioButton" BasedOn="{StaticResource MaterialDesignTabRadioButton}">
@@ -534,10 +536,11 @@
                         </DataGridTemplateColumn>
 
                         <!-- 1 & 2. Precio Mayor Dinámico (Encabezado Explícito, Alineado a la Derecha, Naranja si hereda detal) -->
-                        <DataGridTemplateColumn Header="{Binding DataContext.WholesalePriceHeader, RelativeSource={RelativeSource AncestorType=UserControl}, FallbackValue='Precio Mayor (Bs.S)'}" HeaderStyle="{StaticResource RightAlignedHeader}" Width="Auto" MinWidth="140">
-                            <DataGridTemplateColumn.Visibility>
-                                <Binding Path="DataContext.ShowWholesale" RelativeSource="{RelativeSource AncestorType=UserControl}" Converter="{StaticResource BooleanToVisibilityConverter}"/>
-                            </DataGridTemplateColumn.Visibility>
+                        <DataGridTemplateColumn Header="{Binding Data.WholesalePriceHeader, Source={StaticResource Proxy}, FallbackValue='Precio Mayor (Bs.S)'}" 
+                                                Visibility="{Binding Data.ShowWholesale, Source={StaticResource Proxy}, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                HeaderStyle="{StaticResource RightAlignedHeader}" 
+                                                Width="Auto" 
+                                                MinWidth="140">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0">
@@ -551,10 +554,11 @@
                         </DataGridTemplateColumn>
 
                         <!-- 4. Cantidad Mínima Mayor (Formateado de Unidades Enteras sin Decimales + Etiqueta Atenuada) -->
-                        <DataGridTemplateColumn Header="Cant. Mín. Mayor" HeaderStyle="{StaticResource CenterAlignedHeader}" Width="Auto" MinWidth="115">
-                            <DataGridTemplateColumn.Visibility>
-                                <Binding Path="DataContext.ShowWholesale" RelativeSource="{RelativeSource AncestorType=UserControl}" Converter="{StaticResource BooleanToVisibilityConverter}"/>
-                            </DataGridTemplateColumn.Visibility>
+                        <DataGridTemplateColumn Header="Cant. Mín. Mayor" 
+                                                Visibility="{Binding Data.ShowWholesale, Source={StaticResource Proxy}, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                HeaderStyle="{StaticResource CenterAlignedHeader}" 
+                                                Width="Auto" 
+                                                MinWidth="115">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">

@@ -145,7 +145,8 @@ public partial class PendingOrdersViewModel : ObservableObject
                 sales_service: _salesService,
                 current_exchange_rate: CurrentExchangeRate,
                 user_session: _userSession,
-                override_sale: sale);
+                override_sale: sale,
+                dialog_service: _dialogService);
 
             var result = await DialogHost.Show(checkoutVm, "RootDialog");
 

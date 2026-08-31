@@ -134,7 +134,7 @@ public class CashDrawerController : ControllerBase
             if ((request.Source == CashTransactionSource.CashIn || request.Source == CashTransactionSource.CashOut || request.Source == CashTransactionSource.ManualAdjustment) &&
                 _currentUserService.UserRole.HasValue && _currentUserService.UserRole.Value == Core.Entities.UserRole.Cashier)
             {
-                return BadRequest(new { Message = "Acceso denegado: Únicamente los usuarios administradores pueden realizar operaciones manuales de ingreso (CASH IN) o retiro (CASH OUT) en la caja." });
+                return StatusCode(StatusCodes.Status403Forbidden, new { Message = "Acceso denegado: Únicamente los usuarios administradores pueden realizar operaciones manuales de ingreso (CASH IN) o retiro (CASH OUT) en la caja." });
             }
 
             if (request.ExchangeRate <= 0)

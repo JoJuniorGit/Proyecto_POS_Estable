@@ -39,6 +39,7 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("exchange-rate")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult> SetExchangeRate([FromBody] SetExchangeRateRequest request)
     {
         if (!_currentUserService.CanMutateSettings)
@@ -80,6 +81,7 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("timezone")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult> SetTimeZone([FromBody] SetTimeZoneRequest request)
     {
         if (!_currentUserService.CanMutateSettings)

@@ -221,3 +221,325 @@ Al final de cada fase, realizar una revisión con stakeholders y ajustar priorid
 ✅ Conclusión
 Este plan de pulido y estabilización permite consolidar el sistema POS existente antes de pensar en ampliaciones. Al enfocarse en la confiabilidad, experiencia de usuario y seguridad, se construye una base sólida que soportará futuras funcionalidades sin comprometer la operación diaria.
 
+
+/**/**/**/**/**/**/**/**/**/**/
+/**/**/**/**/**/**/**/**/**/**/
+
+Plan de Implementación — Fase 1: Auditoría y Corrección de UX Crítica
+Objetivo
+Identificar y resolver los puntos de fricción más comunes en la operación diaria del POS, priorizando la fluidez del cajero y la reducción de errores operativos. No se añadirán nuevas funcionalidades; solo se estabilizará y mejorará la experiencia existente.
+
+Alcance
+Backend API: Solo ajustes mínimos necesarios para corregir comportamientos de UX (mensajes de error, estados de endpoints, etc.).
+
+Cliente Web (React): CheckoutModal, DailyClosure/RegisterClosePage, búsquedas (SearchBar, CustomerModal, ProductSearch), navegación y modales.
+
+Cliente Escritorio (WPF): CheckoutDialog, DailyClosureView, búsquedas, atajos de teclado y manejo de ventanas.
+
+1. Flujo de Cobro (CheckoutModal / CheckoutDialog)
+1.1 Revisar estados del botón "Cobrar y Finalizar"
+Contexto
+El botón debe habilitarse solo cuando el cobro es válido y según el contexto:
+
+Venta normal: exige pagos que cubran el total (100% liquidación).
+
+Cuenta Abierta (overrideSale): permite abonos parciales, pero exige al menos un pago válido.
+
+Mercancía en Custodia: exige cliente real y saldo cubierto.
+
+Tareas detalladas
+Auditar la lógica actual en:
+
+Web.Frontend/src/components/checkout/CheckoutModal.jsx
+
+Desktop.Client.Core/ViewModels/CheckoutViewModel.cs
+
+Definir una matriz de estados clara:
+
+Contexto	Pagos válidos	Saldo restante	Cliente real (si custodia)	Botón habilitado
+Venta normal	No	—	—	No
+Venta normal	Sí	> 0.05	—	No
+Venta normal	Sí	<= 0.05	—	Sí
+Cuenta Abierta	No	—	—	No
+Cuenta Abierta	Sí	> 0	—	Sí (abono parcial)
+Cuenta Abierta	Sí	0	—	Sí (liquidación)
+Custodia	Sí	0	No	No
+Custodia	Sí	0	Sí	Sí
+Implementar o ajustar la propiedad computada canFinalize en ambos clientes.
+
+Web: const canFinalize = hasValidPayments && (overrideSale ? true : isFullLiquidation) && (!isPendingPickup || !isDefaultCustomer);
+
+WPF: propiedad CanFinalize => HasValidPayments && (IsOverrideMode ? true : IsFullLiquidation) && (!IsPendingPickup || !IsDefaultCustomer);
+
+Sincronizar mensajes de ayuda:
+
+Si no hay pagos → "Agregue al menos un método de pago".
+
+Si falta saldo en venta normal → "El monto no cubre el total de la venta".
+
+Si falta cliente en custodia → "Se requiere un cliente identificado para mercancía en custodia".
+
+Verificación
+□ En venta normal sin pagos, botón deshabilitado.
+□ Con pago total, habilitado.
+□ En cuenta abierta, abono parcial habilitado.
+□ En custodia sin cliente, deshabilitado y mensaje visible.
+□ Al cambiar de contexto, el botón se actualiza inmediatamente.
+1.2 Validar mensajes de error claros y accionables
+Problemas comunes
+Mensajes genéricos del backend difíciles de interpretar.
+
+Falta de traducción consistente (mezcla de inglés/español).
+
+Errores que no indican cómo resolverlos.
+
+Tareas
+Mapear todos los errores posibles del flujo de cobro:
+
+Rechazo Defensivo: El total acumulado de los métodos de pago es <= 0
+
+No se puede cambiar cliente en venta completada
+
+Saldo insuficiente en caja
+
+Tasa de cambio inválida
+
+Uniformar formato de mensajes:
+
+Incluir un título claro (Error al procesar pago, Cliente no válido, etc.)
+
+Cuerpo con acción recomendada.
+
+Usar el componente de diálogo correspondiente (IDialogService.ShowError en WPF, setError en Web).
+
+Revisar backend (SalesService.cs, CashDrawerService.cs) para que las excepciones contengan mensajes orientados al usuario, no solo al desarrollador.
+
+Centralizar los textos en constantes o recursos para facilitar su mantenimiento.
+
+Verificación
+□ Provocar al menos 5 errores distintos y comprobar que cada mensaje indique causa y acción.
+□ No aparecen mensajes técnicos como NullReferenceException.
+1.3 Teclado numérico ATM en todos los campos monetarios
+Contexto
+El teclado ATM ya existe, pero puede no estar aplicado uniformemente. Campos afectados:
+
+CheckoutModal: monto por método de pago.
+
+CustomerModal: límite de crédito.
+
+EditSaleModal: precios unitarios (si son editables).
+
+DailyClosure: montos declarados.
+
+Tareas
+Inventariar campos monetarios en Web y WPF.
+
+Asegurar que usen el componente ATM (AtmBehavior en WPF, CurrencyInput/useAtmKeypad en Web).
+
+Verificar comportamiento:
+
+Primer dígito reemplaza valor anterior.
+
+Backspace divide entre 10.
+
+Máximo 2 decimales.
+
+No permite caracteres no numéricos.
+
+Corregir cualquier campo que aún use entrada libre o type="number" nativo.
+
+Verificación
+□ Probar cada campo monetario: escribir 1500 → muestra 15.00.
+□ Backspace → 1.50.
+□ No se puede escribir letras ni más de dos decimales.
+□ En pantalla táctil, el teclado virtual no interfiere.
+1.4 Cambio de cliente no borre pagos ya ingresados
+Problema
+Al cambiar de cliente dentro del flujo de cobro, es común que el formulario se resetee y se pierdan los pagos.
+
+Tareas
+En Web (CheckoutModal.jsx): separar el estado del cliente del estado de pagos.
+
+const [payments, setPayments] = useState([])
+
+const [customer, setCustomer] = useState(...)
+
+Al actualizar cliente, no tocar payments.
+
+En WPF (CheckoutViewModel.cs): mantener ObservableCollection<PaymentEntry> Payments y no reinicializarla al cambiar CurrentCustomer.
+
+Añadir prueba manual:
+
+Iniciar cobro, agregar pago de 50 Bs.S.
+
+Cambiar cliente.
+
+Verificar que el pago sigue en la lista y el saldo restante no cambió.
+
+Verificación
+□ Los pagos se conservan al cambiar cliente.
+□ Solo los datos del cliente se actualizan.
+□ El botón de finalización sigue habilitado correctamente.
+2. Cierre de Caja (DailyClosure / RegisterClosePage)
+2.1 Revisar flujo en Web y WPF
+Contexto
+El cierre de caja involucra:
+
+Total esperado vs declarado.
+
+Diferencias.
+
+Guardado automático de comprobantes.
+
+Reinicio de acumuladores.
+
+Preservación del historial.
+
+Tareas
+Verificar flujo completo en ambas plataformas:
+
+Abrir cierre.
+
+Ver totales esperados.
+
+Ingresar montos declarados.
+
+Confirmar cierre.
+
+Verificar guardado de comprobantes (Descargas y Registro de cierres).
+
+Comprobar que los acumuladores se reinicien tras el cierre, pero el historial de movimientos permanezca.
+
+Revisar DailyClosureService.cs y CashDrawerService.cs para asegurar atomicidad y manejo de errores.
+
+Asegurar paridad entre RegisterClosePage.jsx (Web) y DailyClosureView.xaml.cs (WPF).
+
+Verificación
+□ Después del cierre, los KPIs de ingresos/egresos muestran 0.
+□ El historial sigue mostrando las transacciones de la sesión anterior.
+□ Los comprobantes se generan en las dos rutas configuradas.
+□ Si falla el guardado de comprobante, el cierre no se revierte.
+2.2 Corregir inconsistencia entre Cierre Z y gaveta física
+Problema
+El total físico esperado puede no coincidir con lo declarado debido a:
+
+Adelantos en efectivo no considerados.
+
+Pagos electrónicos contabilizados como efectivo.
+
+Comisiones de adelanto.
+
+Tareas
+Revisar el cálculo del Cierre Z en DailyClosureService.cs:
+
+TotalAdvancesReceivedCashLocal
+
+TotalPaidWithAdvancesLocal
+
+TotalIncomeCash / TotalExpenseCash
+
+Validar que solo se sume al físico el efectivo real (IsCash == true).
+
+Probar escenarios mixtos:
+
+Venta con pago en efectivo y transferencia.
+
+Adelanto en efectivo con comisión electrónica.
+
+Pago de factura con saldo a favor.
+
+Corregir cualquier descuadre y documentar la fórmula final.
+
+Verificación
+□ Después de cada escenario, el total esperado coincide con el dinero físico en gaveta.
+□ Las diferencias son 0 cuando los montos declarados son correctos.
+□ El reporte muestra claramente los distintos rubros.
+3. Búsquedas y Filtros
+3.1 Unificar debounce y limpiado de query
+Contexto
+Los buscadores actuales pueden tener debounce inconsistente o no limpiar la consulta al seleccionar un resultado.
+
+Tareas
+Crear/actualizar hook useDebounce en Web.
+
+const debouncedValue = useDebounce(searchText, 300);
+
+Usarlo en SearchBar, CustomerModal, CatalogPage, PendingOrdersPage.
+
+En WPF, asegurar que todos los ViewModels con búsqueda usen CancellationTokenSource y Task.Delay(300) para debounce.
+
+Limpiar query al seleccionar cliente/producto, en ambas plataformas.
+
+Mantener foco en el campo de búsqueda después de agregar un producto.
+
+Verificación
+□ Escribir rápidamente en el buscador no genera múltiples peticiones.
+□ Al seleccionar un resultado, la query se limpia.
+□ El campo queda listo para una nueva búsqueda inmediata.
+3.2 Dropdown flotante en pantallas táctiles
+Problema
+En tabletas o móviles, el dropdown puede ser difícil de usar o cerrarse accidentalmente.
+
+Tareas
+Revisar CustomerModal y SearchBar para:
+
+position: absolute con z-index adecuado.
+
+max-height y scroll interno.
+
+Cierre al hacer clic fuera.
+
+Tamaño táctil de los elementos (mínimo 48px de alto).
+
+Probar en emulación móvil (DevTools) y en dispositivo real.
+
+Verificación
+□ El dropdown se abre correctamente en pantalla táctil.
+□ Los elementos se pueden seleccionar con el dedo sin dificultad.
+□ Se cierra limpiamente al tocar fuera.
+4. Navegación entre Módulos
+4.1 Atajos de teclado (F1, F2, Escape)
+Contexto
+Los atajos de teclado homologados son cruciales para la velocidad del cajero.
+
+Tareas
+Revisar implementación actual en:
+
+Web.Frontend/src/hooks/usePosHotkeys.js
+
+Desktop.Client/Views/PosView.xaml.cs
+
+Asegurar que F1 (cobrar), F2 (buscar producto), F3 (cliente), F4 (espera), Escape (cerrar/limpiar) funcionen correctamente.
+
+Proteger contra conflictos con campos de texto y modales abiertos.
+
+Verificación
+□ Presionar F2 enfoca el buscador sin importar dónde esté el foco.
+□ Escape cierra primero el modal activo, luego limpia búsqueda.
+□ No hay acciones accidentales al escribir en inputs.
+4.2 Ventanas huérfanas al cerrar la principal
+Contexto
+Al cerrar MainWindow, deben cerrarse todas las ventanas secundarias.
+
+Tareas
+Verificar ShutdownMode="OnMainWindowClose" en App.xaml.
+
+En MainWindow.OnClosed, llamar a Application.Current.Shutdown().
+
+Revisar ventanas no modales como BarcodeScannerWindow y cerrarlas explícitamente en OnClosed.
+
+Asegurar que los servicios de background (HealthPollingService, ExchangeRateService) se detengan correctamente.
+
+Verificación
+□ Abrir ventana del escáner y cerrar principal → todo se cierra.
+□ Abrir diálogo modal, cerrar principal desde barra de tareas → todo se cierra.
+□ El proceso Desktop.Client.exe desaparece del Administrador de tareas.
+Criterios de Aceptación Finales de la Fase 1
+□ El cajero puede completar una venta y un cierre de caja sin errores visibles ni pasos innecesarios.
+□ Los buscadores responden de forma consistente y rápida en Web y WPF.
+□ No hay diálogos modales que bloqueen la operación sin razón.
+□ Todos los atajos de teclado homologados funcionan correctamente.
+□ No quedan ventanas huérfanas al cerrar la aplicación.
+□ Los mensajes de error son claros y accionables.
+
+

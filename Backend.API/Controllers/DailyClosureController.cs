@@ -117,6 +117,7 @@ public class DailyClosureController : ControllerBase
     }
 
     [HttpGet("{id}")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult> GetClosure(int id)
     {
         var closure = await _closureService.GetClosureAsync(id);

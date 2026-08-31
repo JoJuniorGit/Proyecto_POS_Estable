@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 
 /**
- * Hook de debounce para retrasar la actualización de un valor hasta que el usuario deje de escribir.
+ * Hook reutilizable para debounce de valores (300ms por defecto).
+ * Retrasa la actualización del valor devuelto hasta que pase el tiempo especificado sin cambios.
+ *
  * @param {any} value - El valor a retrasar.
- * @param {number} delay - El tiempo en milisegundos a esperar (por defecto 300ms).
- * @returns {any} El valor debounced.
+ * @param {number} delay - Tiempo en milisegundos (por defecto 300ms).
+ * @returns {any} El valor con debounce aplicado.
  */
 export function useDebounce(value, delay = 300) {
   const [debouncedValue, setDebouncedValue] = useState(value);

@@ -221,6 +221,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpPost("customers")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<CustomerDto>> CreateCustomer([FromBody] CreateCustomerDto request)
     {
         try
@@ -235,6 +236,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpPut("customers/{id}")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<CustomerDto>> UpdateCustomer(int id, [FromBody] UpdateCustomerDto request)
     {
         try
@@ -249,6 +251,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpDelete("customers/{id}")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult> DeleteCustomer(int id)
     {
         try

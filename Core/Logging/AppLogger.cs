@@ -23,10 +23,16 @@ public static class AppLogger
     public static string StartLogPath => Path.Combine(_logsDir, "start.log");
     public static string CrashLogPath => Path.Combine(_logsDir, "crash.log");
     public static string DbErrorsLogPath => Path.Combine(_logsDir, "db-errors.log");
+    public static string SecurityAuditLogPath => Path.Combine(_logsDir, "security-audit.log");
 
     public static void LogStart(string message)
     {
         WriteLog(StartLogPath, "START", message);
+    }
+
+    public static void LogSecurityAudit(string message)
+    {
+        WriteLog(SecurityAuditLogPath, "SECURITY-AUDIT", message);
     }
 
     public static void LogCrash(Exception ex, string context = "General")

@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Core.Logging;
 
 namespace Desktop.Client.Services;
 
@@ -57,6 +58,7 @@ public class UserSessionHeaderHandler : DelegatingHandler
         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized && 
             request.RequestUri?.AbsolutePath.Contains("api/auth/login") != true)
         {
+            ClientStateLogger.LogWarning("[AUTH] Sesión expirada o token inválido (HTTP 401). Forzando cierre de sesión.", "UserSessionHeaderHandler");
             var app = System.Windows.Application.Current;
             if (app != null && !app.Dispatcher.CheckAccess())
             {

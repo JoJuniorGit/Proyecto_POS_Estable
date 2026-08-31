@@ -43,14 +43,18 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
             : OverrideSale.TotalUSD - OverrideSale.TotalPaidUSD))
         : TotalUSD;
 
-    public string FinalizeSaleButtonLabel => IsOverrideMode ? "LIQUIDAR / ABONAR" : "FINALIZAR VENTA";
+    public string FinalizeSaleButtonLabel => (IsPendingPickup && IsCustodyAllowed)
+        ? "COBRAR Y ENVIAR A RETIRO"
+        : IsOverrideMode
+            ? (IsFullLiquidation ? "LIQUIDAR CUENTA" : "REGISTRAR ABONO")
+            : "COBRAR Y FINALIZAR";
+
     public string CheckoutTitle => IsOverrideMode
         ? $"Liquidar / Abonar — Pedido #{OverrideSale!.Id}"
         : "Checkout";
 
     private decimal _total_usd;
     public decimal TotalUSD
-
     {
         get => _total_usd;
         set
@@ -164,6 +168,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
     }
 
     private readonly UserSession? _user_session;
+    private readonly IDialogService? _dialog_service;
 
     public CheckoutViewModel(
         SaleDto sale,
@@ -171,11 +176,13 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         ISalesService sales_service,
         decimal current_exchange_rate,
         UserSession? user_session = null,
-        SaleDto? override_sale = null)
+        SaleDto? override_sale = null,
+        IDialogService? dialog_service = null)
     {
         _sale = sale;
         _sales_service = sales_service;
         _user_session = user_session;
+        _dialog_service = dialog_service;
         CurrentExchangeRate = current_exchange_rate;
         AvailableMethods = available_methods;
         OverrideSale = override_sale;
@@ -198,7 +205,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
     {
         if (SelectedMethod == null)
         {
-            MessageBox.Show("Por favor seleccione un método de pago antes de agregar el pago.", "Método Requerido", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowWarning("Método Requerido", "Por favor seleccione un método de pago antes de agregar el pago.");
             return;
         }
 
@@ -221,7 +228,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         // Validation: prevent overpayment (with small tolerance)
         if (amount_usd > RemainingBalanceUsd + 0.05m) 
         {
-            MessageBox.Show("Cannot overpay the remaining balance.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowWarning("Monto Excedido", "El monto ingresado excede el saldo restante de la venta.");
             return;
         }
 
@@ -231,7 +238,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
         if (SelectedMethod.RequiresReference && string.IsNullOrWhiteSpace(CurrentReference))
         {
-            MessageBox.Show($"The selected payment method ({SelectedMethod.Name}) requires a Reference Number.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowWarning("Referencia Requerida", $"El método de pago '{SelectedMethod.Name}' requiere ingresar un número de referencia.");
             return;
         }
 
@@ -240,6 +247,30 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
         CurrentReference = string.Empty;
         RecalculateBalances();
+    }
+
+    private void ShowWarning(string title, string message)
+    {
+        if (_dialog_service != null)
+        {
+            _dialog_service.ShowWarning(title, message);
+        }
+        else if (Application.Current != null)
+        {
+            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void ShowError(string title, string message)
+    {
+        if (_dialog_service != null)
+        {
+            _dialog_service.ShowError(title, message);
+        }
+        else if (Application.Current != null)
+        {
+            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     [RelayCommand]
@@ -264,6 +295,19 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         FocusAmountInput = true;
     }
 
+    public void UpdateCustomer(int? customerId, string? customerName)
+    {
+        _sale.CustomerId = customerId;
+        _sale.CustomerName = customerName;
+        OnPropertyChanged(nameof(IsDefaultCustomer));
+        OnPropertyChanged(nameof(IsCustodyAllowed));
+        OnPropertyChanged(nameof(PendingPickupErrorMessage));
+        OnPropertyChanged(nameof(CanFinalize));
+        OnPropertyChanged(nameof(FinalizeSaleButtonLabel));
+        OnPropertyChanged(nameof(ValidationHelperMessage));
+        FinalizeSaleCommand.NotifyCanExecuteChanged();
+    }
+
     private void RecalculateBalances()
     {
         OnPropertyChanged(nameof(PaidAmountUsd));
@@ -271,6 +315,12 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         OnPropertyChanged(nameof(RemainingBalanceUsd));
         OnPropertyChanged(nameof(RemainingBalanceLocal));
         OnPropertyChanged(nameof(RoundingAdjustment));
+        OnPropertyChanged(nameof(HasValidPayments));
+        OnPropertyChanged(nameof(IsFullLiquidation));
+        OnPropertyChanged(nameof(IsCustodyAllowed));
+        OnPropertyChanged(nameof(CanFinalize));
+        OnPropertyChanged(nameof(FinalizeSaleButtonLabel));
+        OnPropertyChanged(nameof(ValidationHelperMessage));
         
         SetAmountToRemainingBalance();
         FinalizeSaleCommand.NotifyCanExecuteChanged();
@@ -315,7 +365,38 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
             if (SetProperty(ref _is_pending_pickup, value))
             {
                 OnPropertyChanged(nameof(PendingPickupErrorMessage));
+                OnPropertyChanged(nameof(IsCustodyAllowed));
+                OnPropertyChanged(nameof(CanFinalize));
+                OnPropertyChanged(nameof(FinalizeSaleButtonLabel));
+                OnPropertyChanged(nameof(ValidationHelperMessage));
+                FinalizeSaleCommand.NotifyCanExecuteChanged();
             }
+        }
+    }
+
+    public bool HasValidPayments => Payments.Any(p => p.AmountBsS > 0 || p.AmountUsd > 0);
+    public bool IsFullLiquidation => HasValidPayments && RemainingBalanceUsd <= 0.05m;
+    public bool IsDefaultCustomer => !_sale.CustomerId.HasValue 
+        || string.IsNullOrWhiteSpace(_sale.CustomerName) 
+        || _sale.CustomerName.ToLower().Contains("consumidor final") 
+        || _sale.CustomerName.ToLower().Contains("general");
+    public bool IsCustodyAllowed => IsFullLiquidation && !IsDefaultCustomer;
+
+    public bool CanFinalize => HasValidPayments && 
+        (IsOverrideMode ? true : IsFullLiquidation) && 
+        (!IsPendingPickup || IsCustodyAllowed);
+
+    public string? ValidationHelperMessage
+    {
+        get
+        {
+            if (!HasValidPayments)
+                return "Agregue al menos un método de pago antes de continuar.";
+            if (!IsOverrideMode && !IsFullLiquidation)
+                return "El monto acumulado aún no cubre el 100% del total de la venta.";
+            if (IsPendingPickup && !IsCustodyAllowed)
+                return "Para registrar un apartado pagado (Mercancía en Custodia), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono). Asigne un cliente a la venta antes de continuar.";
+            return null;
         }
     }
 
@@ -324,8 +405,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         get
         {
             if (!IsPendingPickup) return null;
-            var custName = (_sale.CustomerName ?? string.Empty).ToLower();
-            if (!_sale.CustomerId.HasValue || custName.Contains("consumidor final") || custName.Contains("general"))
+            if (IsDefaultCustomer)
             {
                 return "Para registrar un apartado pagado (Mercancía en Custodia), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono). Asigne un cliente a la venta antes de continuar.";
             }
@@ -333,11 +413,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         }
     }
 
-    /// In override mode: allow proceeding with any payment amount (partial or full abono).
-    /// In normal mode: require balance fully settled.
-    private bool CanFinalizeSale() => IsOverrideMode
-        ? Payments.Any()
-        : (RemainingBalanceUsd <= 0.05m && Payments.Any());
+    private bool CanFinalizeSale() => CanFinalize;
 
     [RelayCommand(CanExecute = nameof(CanFinalizeSale))]
     private async Task FinalizeSale()
@@ -346,7 +422,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
         if (IsPendingPickup && !string.IsNullOrEmpty(PendingPickupErrorMessage))
         {
-            MessageBox.Show(PendingPickupErrorMessage, "Cliente Requerido", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowWarning("Cliente Requerido", PendingPickupErrorMessage);
             return;
         }
 
@@ -410,7 +486,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         }
         catch (System.Exception ex)
         {
-            MessageBox.Show($"Error al procesar: {ex.Message}");
+            ShowError("Error al Procesar Cobro", $"Error al procesar el cobro: {ex.Message}. Verifique la conexión con el servidor e intente nuevamente.");
         }
         finally
         {

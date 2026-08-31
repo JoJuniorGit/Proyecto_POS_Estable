@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Core.Entities;
 
 public enum UnitOfMeasureType
@@ -13,26 +15,57 @@ public enum UnitOfMeasureType
 
 public class Product : BaseEntity
 {
+    [Required(ErrorMessage = "El nombre del producto es obligatorio.")]
+    [StringLength(100, MinimumLength = 1, ErrorMessage = "El nombre no puede exceder 100 caracteres.")]
     public string Name { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "El código SKU es obligatorio.")]
+    [StringLength(50, ErrorMessage = "El SKU no puede exceder 50 caracteres.")]
     public string SKU { get; set; } = string.Empty; // Barcode
+
     public string Description { get; set; } = string.Empty;
+
+    [Range(0, 1000000, ErrorMessage = "El precio no puede ser negativo.")]
     public decimal PriceUSD { get; set; }
+
+    [Range(0, 1000000, ErrorMessage = "El precio al detal no puede ser negativo.")]
     public decimal PriceRetailUSD { get; set; }
+
+    [Range(0, 1000000, ErrorMessage = "El precio al mayor no puede ser negativo.")]
     public decimal PriceWholesaleUSD { get; set; }
+
+    [Range(0, 1000000, ErrorMessage = "El costo no puede ser negativo.")]
     public decimal CostPriceUSD { get; set; }
+
+    [Range(0, 1000, ErrorMessage = "El margen al detal debe estar entre 0% y 1000%.")]
     public decimal ProfitMarginRetail { get; set; }
+
+    [Range(0, 1000, ErrorMessage = "El margen al mayor debe estar entre 0% y 1000%.")]
     public decimal ProfitMarginWholesale { get; set; }
+
+    [Range(0, 1000000, ErrorMessage = "La cantidad mínima mayorista no puede ser negativa.")]
     public decimal MinWholesaleQuantity { get; set; } = 6.000m;
+
     public bool HasWholesale { get; set; } = false;
     public bool IsFractional { get; set; } = false;
     public UnitOfMeasureType UnitOfMeasure { get; set; } = UnitOfMeasureType.Und;
     public string UnitOfMeasureStr => UnitOfMeasure.ToString();
+
     public decimal PriceBsS { get; set; } // The "tagged" price in local currency
     public decimal LastConversionRate { get; set; } // The rate used to calculate PriceBsS
+
+    [Range(0, 1000000, ErrorMessage = "El costo no puede ser negativo.")]
     public decimal Cost { get; set; }
+
+    [Range(0, 1000000, ErrorMessage = "El stock no puede ser negativo.")]
     public decimal StockQuantity { get; set; }
+
+    [Range(0, 1000, ErrorMessage = "El porcentaje de ganancia debe estar entre 0% y 1000%.")]
     public decimal ProfitPercentage { get; set; }
+
+    [Range(0, 1000000, ErrorMessage = "El umbral de stock bajo no puede ser negativo.")]
     public decimal LowStockThreshold { get; set; }
+
     public bool IsActive { get; set; } = true;
     public bool IsDeleted { get; set; } = false;
     
@@ -41,6 +74,6 @@ public class Product : BaseEntity
 
     public decimal ReservedQuantity { get; set; }
 
-    [System.ComponentModel.DataAnnotations.Timestamp]
+    [Timestamp]
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 }

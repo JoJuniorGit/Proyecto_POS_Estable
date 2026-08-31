@@ -200,7 +200,17 @@ public class SalesService : ISalesService
         {
             _sale.Items.Remove(_item);
             _context.SaleItems.Remove(_item);
-            await RecalculateTotalAsync(_sale);
+            if (_sale.Items.Count == 0)
+            {
+                _sale.Subtotal = 0;
+                _sale.SubtotalBsS = 0;
+                _sale.TotalUSD = 0;
+                _sale.TotalBsS = 0;
+            }
+            else
+            {
+                await RecalculateTotalAsync(_sale);
+            }
             ValidateHoldSaleTotal(_sale);
             await _context.SaveChangesAsync();
         }
@@ -223,13 +233,24 @@ public class SalesService : ISalesService
             {
                 _sale.Items.Remove(_item);
                 _context.SaleItems.Remove(_item);
+                if (_sale.Items.Count == 0)
+                {
+                    _sale.Subtotal = 0;
+                    _sale.SubtotalBsS = 0;
+                    _sale.TotalUSD = 0;
+                    _sale.TotalBsS = 0;
+                }
+                else
+                {
+                    await RecalculateTotalAsync(_sale);
+                }
             }
             else
             {
                 quantity = await ValidateAndAdjustQuantityForProductAsync(_item.ProductId, quantity);
                 _item.Quantity = quantity;
+                await RecalculateTotalAsync(_sale);
             }
-            await RecalculateTotalAsync(_sale);
             ValidateHoldSaleTotal(_sale);
             await _context.SaveChangesAsync();
         }
@@ -312,7 +333,10 @@ public class SalesService : ISalesService
             decimal remainingBalanceUsd = Math.Round(_sale.TotalUSD - totalPaidUsd, 2, MidpointRounding.AwayFromZero);
 
             if (remainingBalanceUsd < -0.05m)
-                throw new InvalidOperationException($"El abono (${totalPaidUsd:F2}) supera el total de la factura (${_sale.TotalUSD:F2}). Ajuste el cobro.");
+            {
+                _logger?.LogInformation("[SalesService] Sobrepago/Vuelto registrado en venta #{SaleId}. Total factura: ${Total:F2}, Total abonado: ${Paid:F2}. Continuando liquidación.",
+                    _sale.Id, _sale.TotalUSD, totalPaidUsd);
+            }
 
             if (isPendingPickup)
             {
@@ -443,9 +467,10 @@ public class SalesService : ISalesService
 
             return _sale.InvoiceNumber.Value;
         }
-        catch
+        catch (Exception ex)
         {
             await _transaction.RollbackAsync();
+            _logger?.LogError(ex, "[SalesService] Error al completar venta #{SaleId}. Transacción revertida.", sale_id);
             throw;
         }
     }
@@ -569,8 +594,8 @@ public class SalesService : ISalesService
         {
             decimal rate = payment.ExchangeRate > 0 ? payment.ExchangeRate : _sale.AppliedRate;
             decimal amountUsd = payment.AmountUSD > 0 
-                ? payment.AmountUSD 
-                : (rate > 0 ? payment.AmountBsS / rate : 0);
+                ? Math.Round(payment.AmountUSD, 2, MidpointRounding.AwayFromZero) 
+                : (rate > 0 ? Math.Round(payment.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
 
             var initialPaymentEntity = new SalePayment
             {
@@ -596,20 +621,53 @@ public class SalesService : ISalesService
         if (totalPaidUsd > 0 && _sale.TotalUSD > 0 && remainingBalanceUsd <= 0.05m && totalPaidUsd >= (_sale.TotalUSD - 0.05m))
         {
             // Se cubrió el 100% mediante los pagos iniciales -> Completar y generar factura
-            var lastInvoice = await _context.Sales
-                .Where(s => s.InvoiceNumber.HasValue)
-                .MaxAsync(s => (int?)s.InvoiceNumber);
+            IDbContextTransaction? txn = null;
+            if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
+            {
+                txn = await _context.Database.BeginTransactionAsync();
+            }
+            try
+            {
+                var lastInvoice = await _context.Sales
+                    .Where(s => s.InvoiceNumber.HasValue)
+                    .MaxAsync(s => (int?)s.InvoiceNumber);
 
-            _sale.InvoiceNumber = (lastInvoice ?? 0) + 1;
-            _sale.Status = SaleStatus.Completed;
-            _sale.Date = DateTime.UtcNow;
-            _sale.FinalPaidAmountBsS = _sale.Payments.Sum(p => p.AmountBsS);
+                _sale.InvoiceNumber = (lastInvoice ?? 0) + 1;
+                _sale.Status = SaleStatus.Completed;
+                _sale.Date = DateTime.UtcNow;
+                _sale.FinalPaidAmountBsS = _sale.Payments.Sum(p => p.AmountBsS);
 
-            await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync();
 
-            var itemsSnapshot = _sale.Items.Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity)).ToList();
-            var saleMadeEvent = new SaleMadeEvent(_sale.Id, _sale.Date, itemsSnapshot);
-            await _mediator.Publish(saleMadeEvent);
+                if (txn != null)
+                {
+                    await txn.CommitAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                if (txn != null)
+                {
+                    await txn.RollbackAsync();
+                }
+                _logger?.LogError(ex, "[SalesService] Error al completar venta en espera #{SaleId} al 100%. Transacción revertida.", saleId);
+                throw;
+            }
+            finally
+            {
+                txn?.Dispose();
+            }
+
+            try
+            {
+                var itemsSnapshot = _sale.Items.Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity)).ToList();
+                var saleMadeEvent = new SaleMadeEvent(_sale.Id, _sale.Date, itemsSnapshot);
+                await _mediator.Publish(saleMadeEvent);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[SalesService] Eventual consistency warning: Falló publicación de SaleMadeEvent para Venta #{SaleId}. La venta ya fue confirmada.", _sale.Id);
+            }
         }
         else
         {
@@ -717,8 +775,8 @@ public class SalesService : ISalesService
 
         decimal rate = request.ExchangeRate > 0 ? request.ExchangeRate : _sale.AppliedRate;
         decimal amountUsd = request.AmountUSD > 0 
-            ? request.AmountUSD 
-            : (rate > 0 ? request.AmountBsS / rate : 0);
+            ? Math.Round(request.AmountUSD, 2, MidpointRounding.AwayFromZero) 
+            : (rate > 0 ? Math.Round(request.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
 
         if (amountUsd <= 0 && request.AmountBsS <= 0)
         {
@@ -738,21 +796,69 @@ public class SalesService : ISalesService
             throw new InvalidOperationException("El método de pago en efectivo solo acepta montos enteros.");
         }
 
-        var paymentEntity = new SalePayment
+        IDbContextTransaction? dbTransaction = null;
+        if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
         {
-            SaleId = _sale.Id,
-            PaymentMethodId = request.PaymentMethodId,
-            Amount = Math.Round(amountUsd, 2, MidpointRounding.AwayFromZero),
-            AmountBsS = Math.Round(request.AmountBsS, 2, MidpointRounding.AwayFromZero),
-            ExchangeRate = rate,
-            ReferenceNumber = request.ReferenceNumber,
-            CreatedAt = DateTime.UtcNow
-        };
+            dbTransaction = await _context.Database.BeginTransactionAsync();
+        }
 
-        _context.SalePayments.Add(paymentEntity);
+        try
+        {
+            var paymentEntity = new SalePayment
+            {
+                SaleId = _sale.Id,
+                PaymentMethodId = request.PaymentMethodId,
+                Amount = Math.Round(amountUsd, 2, MidpointRounding.AwayFromZero),
+                AmountBsS = Math.Round(request.AmountBsS, 2, MidpointRounding.AwayFromZero),
+                ExchangeRate = rate,
+                ReferenceNumber = request.ReferenceNumber,
+                CreatedAt = DateTime.UtcNow
+            };
 
-        await _context.SaveChangesAsync();
-        return MapToDto(_sale);
+            _context.SalePayments.Add(paymentEntity);
+
+            // Si es efectivo y monto positivo, registrar en sesión activa de caja
+            if (method != null && method.IsCash && amountUsd > 0 && _cashDrawerService != null)
+            {
+                var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(rate);
+                var cashTx = new CashTransaction
+                {
+                    SessionId = activeSession.Id,
+                    Type = CashTransactionType.Income,
+                    Source = CashTransactionSource.SalePayment,
+                    AmountUsd = amountUsd,
+                    ExchangeRate = rate,
+                    AmountLocal = Math.Round(request.AmountBsS, 2, MidpointRounding.AwayFromZero),
+                    IsPhysicalCash = true,
+                    Description = $"Abono Venta #{saleId}",
+                    TransactionTime = DateTime.UtcNow,
+                    SaleId = _sale.Id
+                };
+                _context.CashTransactions.Add(cashTx);
+            }
+
+            await _context.SaveChangesAsync();
+
+            if (dbTransaction != null)
+            {
+                await dbTransaction.CommitAsync();
+            }
+
+            return MapToDto(_sale);
+        }
+        catch (Exception ex)
+        {
+            if (dbTransaction != null)
+            {
+                await dbTransaction.RollbackAsync();
+            }
+            _logger?.LogError(ex, "[SalesService] Error al registrar abono en venta #{SaleId}. Transacción revertida.", saleId);
+            throw;
+        }
+        finally
+        {
+            dbTransaction?.Dispose();
+        }
     }
 
     public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync()

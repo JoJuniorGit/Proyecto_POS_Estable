@@ -208,27 +208,34 @@ public class DailyClosureService : IDailyClosureService
             string pdfFileName = $"Cierre_{dateStamp}.pdf";
             string txtFileName = $"Cierre_{dateStamp}.txt";
 
-            // Downloads folder path with fallback
+            // 1. Carpeta Downloads
             string downloadsDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
             if (!System.IO.Directory.Exists(downloadsDir))
             {
                 downloadsDir = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
             }
 
-            // CommonApplicationData\Registro de cierres folder path
+            // 2. Carpeta Mis Documentos\Registro de cierres
+            string docsDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            string closureDocsDir = System.IO.Path.Combine(docsDir, "Registro de cierres");
+
+            // 3. Carpeta CommonApplicationData\Registro de cierres
             string commonAppDataDir = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
-            string closureDir = System.IO.Path.Combine(commonAppDataDir, "Registro de cierres");
+            string closureCommonDir = System.IO.Path.Combine(commonAppDataDir, "Registro de cierres");
 
-            System.IO.Directory.CreateDirectory(downloadsDir);
-            System.IO.Directory.CreateDirectory(closureDir);
+            try { System.IO.Directory.CreateDirectory(downloadsDir); } catch { }
+            try { System.IO.Directory.CreateDirectory(closureDocsDir); } catch { }
+            try { System.IO.Directory.CreateDirectory(closureCommonDir); } catch { }
 
-            // Write PDF copies
-            System.IO.File.WriteAllBytes(System.IO.Path.Combine(downloadsDir, pdfFileName), pdfBytes);
-            System.IO.File.WriteAllBytes(System.IO.Path.Combine(closureDir, pdfFileName), pdfBytes);
+            // Guardar copias en PDF
+            try { System.IO.File.WriteAllBytes(System.IO.Path.Combine(downloadsDir, pdfFileName), pdfBytes); } catch { }
+            try { System.IO.File.WriteAllBytes(System.IO.Path.Combine(closureDocsDir, pdfFileName), pdfBytes); } catch { }
+            try { System.IO.File.WriteAllBytes(System.IO.Path.Combine(closureCommonDir, pdfFileName), pdfBytes); } catch { }
 
-            // Write TXT copies
-            System.IO.File.WriteAllText(System.IO.Path.Combine(downloadsDir, txtFileName), txtContent);
-            System.IO.File.WriteAllText(System.IO.Path.Combine(closureDir, txtFileName), txtContent);
+            // Guardar copias en TXT
+            try { System.IO.File.WriteAllText(System.IO.Path.Combine(downloadsDir, txtFileName), txtContent); } catch { }
+            try { System.IO.File.WriteAllText(System.IO.Path.Combine(closureDocsDir, txtFileName), txtContent); } catch { }
+            try { System.IO.File.WriteAllText(System.IO.Path.Combine(closureCommonDir, txtFileName), txtContent); } catch { }
         }
         catch (Exception ex)
         {

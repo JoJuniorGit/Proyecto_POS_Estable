@@ -52,6 +52,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<Product>> Create(Product product)
     {
         if (!_currentUserService.CanMutateCatalog)
@@ -83,6 +84,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> Update(int id, Product product)
     {
         if (!_currentUserService.CanMutateCatalog)
@@ -114,6 +116,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPut("{id}/status")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> SetStatus(int id, [FromBody] StatusUpdateDto dto)
     {
         if (!_currentUserService.CanMutateCatalog)
@@ -132,6 +135,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPost("{id}/restore")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> Restore(int id)
     {
         if (!_currentUserService.CanMutateCatalog)
@@ -150,6 +154,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> Delete(int id, [FromQuery] bool hardDelete = false)
     {
         if (!_currentUserService.CanMutateCatalog)
@@ -174,6 +179,7 @@ public class StatusUpdateDto
 }
 
     [HttpPost("{id}/adjust-stock")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> AdjustStock(int id, [FromBody] DTOs.AdjustStockDto dto)
     {
         if (!_currentUserService.CanMutateCatalog)
@@ -216,6 +222,7 @@ public class StatusUpdateDto
     }
 
     [HttpPost("bulk-import")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> BulkImport([FromBody] Core.DTOs.BulkImportRequestDto request, System.Threading.CancellationToken cancellationToken)
     {
         if (!_currentUserService.CanMutateCatalog)
@@ -238,6 +245,7 @@ public class StatusUpdateDto
     }
 
     [HttpGet("export")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> ExportProducts([FromQuery] string format = "xlsx", [FromQuery] bool activeOnly = true, [FromQuery] string? filter = null, System.Threading.CancellationToken cancellationToken = default)
     {
         if (!_currentUserService.CanMutateCatalog)
@@ -264,6 +272,7 @@ public class StatusUpdateDto
     }
 
     [HttpGet("export-template")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> ExportTemplate([FromQuery] string format = "xlsx", System.Threading.CancellationToken cancellationToken = default)
     {
         if (!_currentUserService.CanMutateCatalog)

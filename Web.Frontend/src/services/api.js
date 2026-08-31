@@ -129,6 +129,16 @@ export async function apiFetch(endpoint, options = {}) {
   }
 
   if (!response.ok) {
+    if (response.status === 401 && !endpoint.includes('api/auth/login')) {
+      try {
+        localStorage.removeItem('pos_user');
+        localStorage.removeItem('pos_token');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('pos_unauthorized'));
+        }
+      } catch {}
+    }
+
     let errorMessage = response.status === 401
       ? 'Cédula o contraseña incorrecta.'
       : `Error ${response.status}: ${response.statusText}`;

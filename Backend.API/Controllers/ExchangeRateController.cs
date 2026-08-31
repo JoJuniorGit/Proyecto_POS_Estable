@@ -67,6 +67,7 @@ public class ExchangeRateController : ControllerBase
     /// Upserts today's exchange rate. One record per day; overwrites if already set.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult> UpsertRate([FromBody] UpsertExchangeRateRequest request)
     {
         if (!_currentUserService.CanMutateExchangeRate)
@@ -111,6 +112,7 @@ public class ExchangeRateController : ControllerBase
     /// Forces a manual scrape of the BCV website and upserts today's exchange rate.
     /// </summary>
     [HttpPost("sync-bcv")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult> SyncBcv([FromServices] Backend.API.Services.BcvScraperService scraperService)
     {
         if (!_currentUserService.CanMutateExchangeRate)
