@@ -3,6 +3,7 @@ import { getSalesHistory, getSaleHistoryDetail } from '../services/historyApi';
 import { Search, Loader2, Calendar, ChevronRight, ChevronLeft, ChevronDown, RefreshCw, CheckCircle, Clock, XCircle, FileText } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime, formatQuantity } from '../utils/formatters';
+import Pagination from '../components/ui/Pagination';
 
 const PAGE_SIZE = 25;
 
@@ -552,61 +553,14 @@ export default function HistoryPage() {
 
       {/* ── Controles de Paginación (25 Pedidos por Página) ── */}
       {totalCount > 0 && (
-        <div
-          className="card mt-4 d-flex flex-wrap flex-align-center justify-between gap-3"
-          style={{ borderRadius: '12px' }}
-        >
-          <div className="text-sm text-muted font-medium">
-            Mostrando <span className="font-bold color-primary">{((currentPage - 1) * PAGE_SIZE) + 1}</span> a{' '}
-            <span className="font-bold color-primary">{Math.min(currentPage * PAGE_SIZE, totalCount)}</span> de{' '}
-            <span className="font-bold color-primary">{totalCount}</span> pedidos
-          </div>
-
-          <div className="d-flex flex-align-center" style={{ gap: '6px' }}>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              disabled={currentPage === 1 || loading}
-              onClick={() => handlePageChange(currentPage - 1)}
-              style={{ padding: '6px 12px', fontSize: '0.825rem', gap: '4px' }}
-            >
-              <ChevronLeft size={16} /> Anterior
-            </button>
-
-            <div className="d-flex flex-align-center" style={{ gap: '4px', margin: '0 4px' }}>
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
-                .map((p, idx, arr) => {
-                  const prev = arr[idx - 1];
-                  const showEllipsis = prev && p - prev > 1;
-                  return (
-                    <React.Fragment key={p}>
-                      {showEllipsis && <span className="text-muted px-1" style={{ fontSize: '0.8rem' }}>...</span>}
-                      <button
-                        type="button"
-                        className={`btn btn-sm ${p === currentPage ? 'btn-primary' : 'btn-outline'}`}
-                        style={{ minWidth: '34px', height: '32px', padding: '2px 8px', fontWeight: p === currentPage ? 700 : 500 }}
-                        onClick={() => handlePageChange(p)}
-                        disabled={loading}
-                      >
-                        {p}
-                      </button>
-                    </React.Fragment>
-                  );
-                })}
-            </div>
-
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              disabled={currentPage >= totalPages || loading}
-              onClick={() => handlePageChange(currentPage + 1)}
-              style={{ padding: '6px 12px', fontSize: '0.825rem', gap: '4px' }}
-            >
-              Siguiente <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalCount={totalCount}
+          onPageChange={handlePageChange}
+          loading={loading}
+          itemLabel="pedidos"
+        />
       )}
     </div>
   );

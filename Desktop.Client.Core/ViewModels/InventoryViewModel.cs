@@ -11,6 +11,12 @@ using System.Windows;
 
 namespace Desktop.Client.ViewModels;
 
+public class PageNumberItem
+{
+    public int PageNumber { get; set; }
+    public bool IsActive { get; set; }
+}
+
 public partial class InventoryViewModel : ObservableObject, IDisposable
 {
     private readonly Desktop.Client.Services.IProductService _product_service;
@@ -87,6 +93,15 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _pageSummary = "Página 1 de 1 (0 productos)";
 
+    [ObservableProperty]
+    private string _targetPageInput = "1";
+
+    public ObservableCollection<PageNumberItem> PageNumbers { get; } = new();
+
+    public bool CanGoFirst => CurrentPage > 1 && TotalPages > 1;
+    public bool CanGoPrevious => CurrentPage > 1 && TotalPages > 1;
+    public bool CanGoNext => CurrentPage < TotalPages && TotalPages > 1;
+    public bool CanGoLast => CurrentPage < TotalPages && TotalPages > 1;
 
     [ObservableProperty]
     private bool _hasMore;
@@ -104,9 +119,18 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private async Task FirstPage()
+    {
+        if (CanGoFirst)
+        {
+            await LoadDataAsync(false, targetPage: 1);
+        }
+    }
+
+    [RelayCommand]
     private async Task PreviousPage()
     {
-        if (CurrentPage > 1)
+        if (CanGoPrevious)
         {
             await LoadDataAsync(false, targetPage: CurrentPage - 1);
         }
@@ -115,10 +139,89 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task NextPage()
     {
-        if (CurrentPage < TotalPages)
+        if (CanGoNext)
         {
             await LoadDataAsync(false, targetPage: CurrentPage + 1);
         }
+    }
+
+    [RelayCommand]
+    private async Task LastPage()
+    {
+        if (CanGoLast)
+        {
+            await LoadDataAsync(false, targetPage: TotalPages);
+        }
+    }
+
+    [RelayCommand]
+    private async Task GoToPage(int page)
+    {
+        if (page >= 1 && page <= TotalPages && page != CurrentPage)
+        {
+            await LoadDataAsync(false, targetPage: page);
+        }
+    }
+
+    [RelayCommand]
+    private async Task SubmitGoToPage()
+    {
+        if (int.TryParse(TargetPageInput, out int target) && TotalPages > 0)
+        {
+            int clamped = Math.Clamp(target, 1, TotalPages);
+            if (clamped != CurrentPage)
+            {
+                await LoadDataAsync(false, targetPage: clamped);
+            }
+            else
+            {
+                TargetPageInput = CurrentPage.ToString();
+            }
+        }
+        else
+        {
+            TargetPageInput = CurrentPage > 0 ? CurrentPage.ToString() : "1";
+        }
+    }
+
+    public void UpdatePageNumbers()
+    {
+        PageNumbers.Clear();
+
+        if (TotalPages <= 0 || TotalCount == 0)
+        {
+            CurrentPage = 0;
+            PageSummary = "Página 0 de 0 (0 productos)";
+            TargetPageInput = "0";
+            NotifyPaginationCanExecute();
+            return;
+        }
+
+        if (CurrentPage <= 0) CurrentPage = 1;
+        if (CurrentPage > TotalPages) CurrentPage = TotalPages;
+
+        int startPage = Math.Max(1, CurrentPage - 2);
+        int endPage = Math.Min(TotalPages, CurrentPage + 2);
+
+        for (int p = startPage; p <= endPage; p++)
+        {
+            PageNumbers.Add(new PageNumberItem
+            {
+                PageNumber = p,
+                IsActive = (p == CurrentPage)
+            });
+        }
+
+        TargetPageInput = CurrentPage.ToString();
+        NotifyPaginationCanExecute();
+    }
+
+    public void NotifyPaginationCanExecute()
+    {
+        OnPropertyChanged(nameof(CanGoFirst));
+        OnPropertyChanged(nameof(CanGoPrevious));
+        OnPropertyChanged(nameof(CanGoNext));
+        OnPropertyChanged(nameof(CanGoLast));
     }
 
     public decimal CurrentRate => _exchange_rate_service.CurrentRate;
@@ -245,10 +348,12 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 newItems.Add(itemVm);
             }
 
-            var totalPages = result.TotalCount > 0 ? (int)Math.Ceiling((double)result.TotalCount / PageSize) : 1;
-            var pageSummary = $"Página {CurrentPage} de {totalPages} ({result.TotalCount} productos)";
+            var totalPages = result.TotalCount > 0 ? (int)Math.Ceiling((double)result.TotalCount / PageSize) : 0;
+            var pageSummary = totalPages > 0
+                ? $"Página {CurrentPage} de {totalPages} ({result.TotalCount} productos)"
+                : "Página 0 de 0 (0 productos)";
 
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            void UpdateState()
             {
                 if (!incremental)
                 {
@@ -264,7 +369,17 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 TotalCount = result.TotalCount;
                 TotalPages = totalPages;
                 PageSummary = pageSummary;
-            });
+                UpdatePageNumbers();
+            }
+
+            if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(UpdateState);
+            }
+            else
+            {
+                UpdateState();
+            }
         }
         catch (OperationCanceledException) { }
         catch (System.Exception ex)

@@ -4,6 +4,7 @@ import { Package, Search, Loader2, RefreshCw, ChevronLeft, ChevronRight, Tag, Do
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD } from '../utils/formatters';
 import useDebounce from '../hooks/useDebounce';
+import Pagination from '../components/ui/Pagination';
 
 export default function CatalogPage() {
   const { exchangeRate } = useExchangeRate();
@@ -322,32 +323,15 @@ export default function CatalogPage() {
             })}
           </div>
 
-          {/* ── 5. BARRA DE PAGINACIÓN DE 25 ELEMENTOS (Ambas Versiones) ── */}
-          <div className="catalog-pagination-bar card p-3">
-            <button
-              type="button"
-              className="btn btn-outline btn-sm flex-align-center gap-1"
-              onClick={handlePrevPage}
-              disabled={currentPage <= 1 || loading}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-            >
-              <ChevronLeft size={16} /> Anterior
-            </button>
-
-            <span className="font-medium text-sm text-center" style={{ padding: '0 8px' }}>
-              Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> <span className="text-muted">({totalCount} productos)</span>
-            </span>
-
-            <button
-              type="button"
-              className="btn btn-outline btn-sm flex-align-center gap-1"
-              onClick={handleNextPage}
-              disabled={currentPage >= totalPages || loading}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-            >
-              Siguiente <ChevronRight size={16} />
-            </button>
-          </div>
+          {/* ── 5. BARRA DE PAGINACIÓN AVANZADA CENTRADA (Ambas Versiones) ── */}
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalCount={totalCount}
+            onPageChange={(p) => loadProducts(debouncedSearch, p)}
+            loading={loading}
+            itemLabel="productos"
+          />
         </>
       )}
     </div>
