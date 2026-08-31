@@ -99,6 +99,7 @@ try
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
     builder.Services.AddScoped<ITokenService, TokenService>();
+    builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
     builder.Services.AddScoped<IInventoryService, InventoryService>();
     builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
     builder.Services.AddScoped<Sales.Module.Interfaces.ISalesService, Sales.Module.Services.SalesService>();

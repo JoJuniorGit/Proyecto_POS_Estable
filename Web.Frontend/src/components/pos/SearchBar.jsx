@@ -10,12 +10,22 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct }, ref) {
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const searchRef = useRef(null);
+  const inputRef = useRef(null);
   const { exchangeRate } = useExchangeRate();
 
-  // Permite que la página POS limpie el buscador tras cada escaneo de código de barras.
+  // Permite que la página POS limpie el buscador o le dé foco con F2.
   useImperativeHandle(ref, () => ({
     setQuery: (text) => {
       setQuery(text);
+    },
+    focus: () => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    },
+    clear: () => {
+      setQuery('');
+      setSuggestions([]);
+      setIsOpen(false);
     },
   }));
 
@@ -81,9 +91,10 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct }, ref) {
       <div className="search-input-wrapper">
         <Search className="search-icon" size={18} />
         <input
+          ref={inputRef}
           type="text"
           className="search-input"
-          placeholder="Buscar producto por nombre o código (SKU)..."
+          placeholder="Buscar producto por nombre o código (F2)..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => query.trim() && setIsOpen(true)}

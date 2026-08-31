@@ -1,19 +1,85 @@
 /**
- * Servicio API base — Wrapper sobre fetch nativo.
- *
- * La URL base se lee de la variable de entorno VITE_API_URL definida en .env.
- * Esto permite que dispositivos móviles en la red local se conecten al backend
- * usando el hostname o IP de la PC servidor.
- *
- * Ejemplo .env:
- *   VITE_API_URL=http://laptop:5000
- *   VITE_API_URL=http://192.168.1.15:5000
+ * Resuelve la URL base del Backend dinámicamente con la siguiente precedencia:
+ * 1. Parámetro en URL (?api=... o ?server=...) al escanear QR -> Guarda en localStorage y limpia la URL.
+ * 2. Valor guardado en localStorage ('pos_custom_api_url').
+ * 3. Variable de entorno VITE_API_URL.
+ * 4. Modo desarrollo Vite (puerto 5173 o dev): http://${hostname}:5000.
+ * 5. Modo Kestrel integrado: window.location.origin.
+ * 6. Fallback general: http://localhost:5000.
  */
+function resolveBaseUrl() {
+  if (typeof window === 'undefined') {
+    return 'http://localhost:5000';
+  }
 
-const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-const defaultBaseUrl = `http://${hostname}:5000`;
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramApi = urlParams.get('api') || urlParams.get('server') || urlParams.get('backend');
+    if (paramApi) {
+      let normalized = paramApi.trim();
+      if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+        normalized = `http://${normalized}`;
+      }
+      if (normalized.endsWith('/')) {
+        normalized = normalized.slice(0, -1);
+      }
+      localStorage.setItem('pos_custom_api_url', normalized);
 
-const BASE_URL = import.meta.env.VITE_API_URL || defaultBaseUrl;
+      // Limpiar los parámetros de la URL sin recargar la página
+      urlParams.delete('api');
+      urlParams.delete('server');
+      urlParams.delete('backend');
+      urlParams.delete('paired');
+      const newQuery = urlParams.toString();
+      const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '') + window.location.hash;
+      window.history.replaceState({}, document.title, newUrl);
+
+      return normalized;
+    }
+  } catch {}
+
+  const stored = localStorage.getItem('pos_custom_api_url');
+  if (stored) {
+    return stored;
+  }
+
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+
+  const hostname = window.location.hostname || 'localhost';
+  const port = window.location.port;
+
+  // Si estamos en Vite dev server (ej. 5173), el backend corre en el puerto 5000
+  if (port === '5173' || (import.meta.env.DEV && port !== '5000')) {
+    return `http://${hostname}:5000`;
+  }
+
+  // Si se sirve directamente desde el servidor Kestrel integrado
+  if (window.location.origin && window.location.origin.startsWith('http')) {
+    return window.location.origin;
+  }
+
+  return `http://${hostname}:5000`;
+}
+
+let CURRENT_BASE_URL = resolveBaseUrl();
+
+export function setCustomBaseUrl(url) {
+  if (typeof window === 'undefined') return;
+  if (!url) {
+    localStorage.removeItem('pos_custom_api_url');
+    CURRENT_BASE_URL = resolveBaseUrl();
+  } else {
+    let normalized = url.trim();
+    if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+      normalized = `http://${normalized}`;
+    }
+    if (normalized.endsWith('/')) normalized = normalized.slice(0, -1);
+    localStorage.setItem('pos_custom_api_url', normalized);
+    CURRENT_BASE_URL = normalized;
+  }
+}
 
 
 /**
@@ -23,7 +89,7 @@ const BASE_URL = import.meta.env.VITE_API_URL || defaultBaseUrl;
  * @returns {Promise<any>} - La respuesta parseada como JSON, o null para 204 No Content.
  */
 export async function apiFetch(endpoint, options = {}) {
-  const url = `${BASE_URL}${endpoint}`;
+  const url = `${CURRENT_BASE_URL}${endpoint}`;
 
   const userStr = localStorage.getItem('pos_user');
   let userHeaders = {};
@@ -131,5 +197,5 @@ export const api = {
  * la URL del hub sin duplicar la configuración.
  */
 export function getBaseUrl() {
-  return BASE_URL;
+  return CURRENT_BASE_URL;
 }

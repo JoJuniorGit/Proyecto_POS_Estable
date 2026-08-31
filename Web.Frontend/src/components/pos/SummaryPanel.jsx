@@ -99,7 +99,7 @@ export default function SummaryPanel({ onCheckout, onHold }) {
           ) : (
             <>
               <CreditCard size={20} />
-              COBRAR
+              COBRAR (F1)
             </>
           )}
         </button>
@@ -111,7 +111,7 @@ export default function SummaryPanel({ onCheckout, onHold }) {
           onClick={onHold}
         >
           <Clock size={18} />
-          GUARDAR EN ESPERA
+          GUARDAR EN ESPERA (F4)
         </button>
       </div>
     </div>

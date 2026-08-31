@@ -81,6 +81,15 @@ function MainApp() {
     handleNavigate('pending');
   };
 
+  const isExternalModalOpen = isCheckoutOpen || isHoldModalOpen || Boolean(completedInvoice) || Boolean(completedHoldSuccess);
+
+  const handleCloseExternalModal = () => {
+    if (isCheckoutOpen) setIsCheckoutOpen(false);
+    if (isHoldModalOpen) setIsHoldModalOpen(false);
+    if (completedInvoice) setCompletedInvoice(null);
+    if (completedHoldSuccess) setCompletedHoldSuccess(null);
+  };
+
   const renderView = () => {
     switch (currentView) {
       case 'pos':
@@ -88,6 +97,8 @@ function MainApp() {
           <PosPage
             onOpenCheckout={() => setIsCheckoutOpen(true)}
             onOpenHold={() => setIsHoldModalOpen(true)}
+            isExternalModalOpen={isExternalModalOpen}
+            onCloseExternalModal={handleCloseExternalModal}
           />
         );
       case 'catalog':
@@ -111,6 +122,8 @@ function MainApp() {
           <PosPage
             onOpenCheckout={() => setIsCheckoutOpen(true)}
             onOpenHold={() => setIsHoldModalOpen(true)}
+            isExternalModalOpen={isExternalModalOpen}
+            onCloseExternalModal={handleCloseExternalModal}
           />
         );
     }

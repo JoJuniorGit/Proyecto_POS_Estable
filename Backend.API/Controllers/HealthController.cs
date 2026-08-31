@@ -31,6 +31,9 @@ public class HealthController : ControllerBase
                 return Ok(new
                 {
                     status = "Healthy",
+                    service = "Proyecto_POS_Server",
+                    machineName = Environment.MachineName,
+                    version = "1.0.0",
                     database = "Connected",
                     timestamp = DateTime.UtcNow.ToString("o")
                 });
@@ -39,6 +42,9 @@ public class HealthController : ControllerBase
             return StatusCode((int)HttpStatusCode.ServiceUnavailable, new
             {
                 status = "Unhealthy",
+                service = "Proyecto_POS_Server",
+                machineName = Environment.MachineName,
+                version = "1.0.0",
                 database = "Disconnected",
                 message = "La conexión con la base de datos PostgreSQL no está disponible.",
                 timestamp = DateTime.UtcNow.ToString("o")
@@ -49,6 +55,9 @@ public class HealthController : ControllerBase
             return StatusCode((int)HttpStatusCode.ServiceUnavailable, new
             {
                 status = "Unhealthy",
+                service = "Proyecto_POS_Server",
+                machineName = Environment.MachineName,
+                version = "1.0.0",
                 database = "Error",
                 message = ex.Message,
                 timestamp = DateTime.UtcNow.ToString("o")

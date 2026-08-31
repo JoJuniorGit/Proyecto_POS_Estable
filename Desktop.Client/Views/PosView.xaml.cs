@@ -28,7 +28,7 @@ namespace Desktop.Client.Views
 
         private void UserControl_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.F3)
+            if (e.Key == Key.F2)
             {
                 e.Handled = true;
                 FocusSearch();
@@ -42,7 +42,11 @@ namespace Desktop.Client.Views
 
         private void FocusSearch()
         {
-            SearchInput.Focus();
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                SearchInput.Focus();
+                SearchInput.SelectAll();
+            }), System.Windows.Threading.DispatcherPriority.Input);
         }
 
         /// <summary>

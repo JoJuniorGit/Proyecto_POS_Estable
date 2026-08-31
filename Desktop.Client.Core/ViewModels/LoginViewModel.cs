@@ -11,6 +11,7 @@ public partial class LoginViewModel : ObservableObject
     private readonly IUserService _userService;
     private readonly IDialogService _dialogService;
     private readonly UserSession _userSession;
+    private readonly IConnectionManager? _connectionManager;
 
     [ObservableProperty]
     private string _cedula = string.Empty;
@@ -21,10 +22,56 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty]
     private bool _isPasswordVisible;
 
+    [ObservableProperty]
+    private string _serverStatusText = "Conectando...";
+
+    [ObservableProperty]
+    private bool _isServerConnected = true;
+
+    [ObservableProperty]
+    private bool _isScanningServer;
+
+    [ObservableProperty]
+    private string _serverAddressText = "localhost:5000";
+
     [RelayCommand]
     private void TogglePasswordVisibility()
     {
         IsPasswordVisible = !IsPasswordVisible;
+    }
+
+    [RelayCommand]
+    private async Task OpenServerSettingsAsync()
+    {
+        await _dialogService.ShowServerConnectionDialogAsync();
+        UpdateConnectionDisplay();
+    }
+
+    [RelayCommand]
+    private async Task OpenPairingQrAsync()
+    {
+        await _dialogService.ShowPairingQrDialogAsync();
+    }
+
+    [RelayCommand]
+    private async Task SearchServerAsync()
+    {
+        if (_connectionManager == null) return;
+        IsScanningServer = true;
+        ServerStatusText = "Buscando caja principal en la red...";
+        try
+        {
+            var recovered = await _connectionManager.AutoRecoverAsync();
+            if (!recovered)
+            {
+                await _dialogService.ShowServerConnectionDialogAsync();
+            }
+        }
+        finally
+        {
+            IsScanningServer = false;
+            UpdateConnectionDisplay();
+        }
     }
 
     [ObservableProperty]
@@ -35,11 +82,47 @@ public partial class LoginViewModel : ObservableObject
 
     public event Action? LoginSuccess;
 
-    public LoginViewModel(IUserService userService, IDialogService dialogService, UserSession userSession)
+    public LoginViewModel(IUserService userService, IDialogService dialogService, UserSession userSession, IConnectionManager? connectionManager = null)
     {
         _userService = userService;
         _dialogService = dialogService;
         _userSession = userSession;
+        _connectionManager = connectionManager;
+
+        if (_connectionManager != null)
+        {
+            _connectionManager.ConnectionStatusChanged += (s, e) =>
+            {
+                UpdateConnectionDisplay();
+            };
+            UpdateConnectionDisplay();
+        }
+    }
+
+    private void UpdateConnectionDisplay()
+    {
+        if (_connectionManager == null) return;
+
+        IsServerConnected = _connectionManager.Status == ConnectionStatus.Connected;
+        IsScanningServer = _connectionManager.Status == ConnectionStatus.Scanning;
+
+        var addr = _connectionManager.CurrentServerAddress;
+        if (Uri.TryCreate(addr, UriKind.Absolute, out var uri))
+        {
+            ServerAddressText = $"{uri.Host}:{uri.Port}";
+        }
+        else
+        {
+            ServerAddressText = addr;
+        }
+
+        ServerStatusText = _connectionManager.Status switch
+        {
+            ConnectionStatus.Connected => $"Conectado: {ServerAddressText}",
+            ConnectionStatus.Scanning => "Buscando servidor POS...",
+            ConnectionStatus.Connecting => "Conectando...",
+            _ => $"Sin conexión ({ServerAddressText})"
+        };
     }
 
     [RelayCommand]

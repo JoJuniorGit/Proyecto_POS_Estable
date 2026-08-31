@@ -1,5 +1,7 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import { useCart } from '../context/CartContext';
+import { useExchangeRate } from '../context/ExchangeRateContext';
+import { usePosHotkeys } from '../hooks/usePosHotkeys';
 import SearchBar from '../components/pos/SearchBar';
 import EmptyCart from '../components/pos/EmptyCart';
 import CartTable from '../components/pos/CartTable';
@@ -8,12 +10,18 @@ import SummaryPanel from '../components/pos/SummaryPanel';
 import CustomerModal from '../components/pos/CustomerModal';
 import BarcodeScannerModal from '../components/pos/BarcodeScannerModal';
 import { getProductBySku } from '../services/productsApi';
-import { Edit2, ScanLine } from 'lucide-react';
+import { Edit2, ScanLine, Keyboard } from 'lucide-react';
 
-export default function PosPage({ onOpenCheckout, onOpenHold }) {
+export default function PosPage({
+  onOpenCheckout,
+  onOpenHold,
+  isExternalModalOpen = false,
+  onCloseExternalModal,
+}) {
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const searchBarRef = useRef(null);
+  const { exchangeRate, syncBcvRate } = useExchangeRate();
   const {
     currentSale,
     items,
@@ -24,8 +32,73 @@ export default function PosPage({ onOpenCheckout, onOpenHold }) {
     removeItem,
     updateCustomer,
     createNewSale,
+    changePriceList,
     error,
   } = useCart();
+
+  const activeModal = isExternalModalOpen
+    ? 'external'
+    : isCustomerModalOpen
+    ? 'customer'
+    : isScannerOpen
+    ? 'scanner'
+    : null;
+
+  usePosHotkeys({
+    activeModal,
+    onCloseActiveModal: () => {
+      if (isCustomerModalOpen) setIsCustomerModalOpen(false);
+      else if (isScannerOpen) setIsScannerOpen(false);
+      else if (onCloseExternalModal) onCloseExternalModal();
+    },
+    onEscapeBackground: () => {
+      searchBarRef.current?.clear();
+      setSelectedItemId(null);
+    },
+    onCheckout: () => {
+      if (items.length > 0) onOpenCheckout();
+    },
+    onSearchFocus: () => {
+      searchBarRef.current?.focus();
+    },
+    onChangeCustomer: () => {
+      if (currentSale?.id) setIsCustomerModalOpen(true);
+    },
+    onHold: () => {
+      if (items.length > 0) onOpenHold();
+    },
+    onSyncRate: async () => {
+      try {
+        await syncBcvRate();
+      } catch (err) {
+        console.error('[PosPage] Error al sincronizar tasa con F5:', err);
+      }
+    },
+    onTogglePriceList: () => {
+      const nextType = currentSale?.priceListType === 'Wholesale' ? 'Retail' : 'Wholesale';
+      changePriceList(nextType);
+    },
+    onClearCart: () => {
+      if (items.length > 0 && window.confirm('¿Desea limpiar el carrito e iniciar una nueva venta?')) {
+        createNewSale();
+      }
+    },
+    onDeleteItem: () => {
+      if (selectedItemId) removeItem(selectedItemId);
+    },
+    onIncreaseQuantity: () => {
+      if (selectedItemId) {
+        const item = items.find((i) => i.id === selectedItemId);
+        if (item) updateQuantity(item.id, item.quantity + 1);
+      }
+    },
+    onDecreaseQuantity: () => {
+      if (selectedItemId) {
+        const item = items.find((i) => i.id === selectedItemId);
+        if (item && item.quantity > 1) updateQuantity(item.id, item.quantity - 1);
+      }
+    },
+  });
 
   const handleSelectProduct = (product) => {
     addItem(product, 1);
@@ -36,10 +109,6 @@ export default function PosPage({ onOpenCheckout, onOpenHold }) {
     setIsCustomerModalOpen(false);
   };
 
-  // Código escaneado con la cámara: se resuelve por SKU exacto y se agrega
-  // directamente al carrito. El resultado (encontrado / no encontrado / error)
-  // se informa en la tarjeta del modal de escaneo; el buscador se limpia tras
-  // CADA intento para que el cajero quede listo para el siguiente código.
   const handleScannedCode = async (code) => {
     try {
       const product = await getProductBySku(code);
@@ -178,6 +247,42 @@ export default function PosPage({ onOpenCheckout, onOpenHold }) {
         {/* Columna Derecha: Panel de Resumen y Cobro */}
         <div className="pos-right-column">
           <SummaryPanel onCheckout={onOpenCheckout} onHold={onOpenHold} />
+        </div>
+      </div>
+
+      {/* Barra de Atajos Rápidos POS (Visible en Desktop) */}
+      <div 
+        className="desktop-only" 
+        style={{
+          marginTop: '1rem',
+          padding: '0.5rem 1rem',
+          backgroundColor: 'var(--bg-surface, #1e293b)',
+          border: '1px solid var(--border, rgba(148, 163, 184, 0.15))',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.6rem',
+          fontSize: '0.75rem',
+          color: 'var(--text-muted, #94a3b8)',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '600', color: 'var(--text-main, #f8fafc)' }}>
+          <Keyboard size={14} /> Atajos POS:
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F1</kbd> Cobrar</span>
+          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F2</kbd> Buscar</span>
+          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F3</kbd> Cliente</span>
+          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F4</kbd> Espera</span>
+          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F5</kbd> Tasa BCV</span>
+          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F7</kbd> Detal/Mayor</span>
+          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F8</kbd> Cancelar Venta</span>
+          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>+/-</kbd> Cantidad</span>
+          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>Supr</kbd> Eliminar</span>
+          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>Esc</kbd> Limpiar</span>
         </div>
       </div>
 

@@ -26,6 +26,8 @@ public interface IDialogService
     Task<CustomerDto?> ShowCustomerPickerAsync();
     Task<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?> ShowCashAdvanceRegisterDialogAsync(System.Collections.Generic.List<PaymentMethodDto> paymentMethods, decimal availableCashLocal);
     Task<(bool confirmed, System.Collections.Generic.IEnumerable<UpdateSaleItemDto>? modifiedItems)> ShowEditSaleDialogAsync(SaleDto sale, decimal exchangeRate);
+    Task ShowPairingQrDialogAsync();
+    Task<bool> ShowServerConnectionDialogAsync();
 }
 
 

@@ -535,6 +535,8 @@ internal class StubDialogService : Desktop.Client.Services.IDialogService
     public Task<Core.DTOs.CustomerDto?> ShowCustomerPickerAsync() => Task.FromResult<Core.DTOs.CustomerDto?>(null);
     public Task<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?> ShowCashAdvanceRegisterDialogAsync(List<Desktop.Client.Services.PaymentMethodDto> paymentMethods, decimal availableCashLocal) => Task.FromResult<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?>(null);
     public Task<(bool confirmed, IEnumerable<Desktop.Client.Services.UpdateSaleItemDto>? modifiedItems)> ShowEditSaleDialogAsync(Core.DTOs.SaleDto sale, decimal exchangeRate) => Task.FromResult<(bool confirmed, IEnumerable<Desktop.Client.Services.UpdateSaleItemDto>? modifiedItems)>((false, null));
+    public Task ShowPairingQrDialogAsync() => Task.CompletedTask;
+    public Task<bool> ShowServerConnectionDialogAsync() => Task.FromResult(false);
 }
 
 

@@ -34,12 +34,26 @@ public class WpfDialogService : IDialogService
         public void Dispose() => _owner._openModalCount--;
     }
 
-    public WpfDialogService(IClientStateService clientState, ISalesService? salesService = null, IProductService? productService = null, ILogger<WpfDialogService>? logger = null)
+    private readonly IConnectionManager? _connectionManager;
+    private readonly ISubnetScannerService? _scannerService;
+    private readonly System.Net.Http.IHttpClientFactory? _httpClientFactory;
+
+    public WpfDialogService(
+        IClientStateService clientState, 
+        ISalesService? salesService = null, 
+        IProductService? productService = null, 
+        ILogger<WpfDialogService>? logger = null,
+        IConnectionManager? connectionManager = null,
+        ISubnetScannerService? scannerService = null,
+        System.Net.Http.IHttpClientFactory? httpClientFactory = null)
     {
         _clientState = clientState ?? throw new ArgumentNullException(nameof(clientState));
         _salesService = salesService!;
         _productService = productService;
         _logger = logger;
+        _connectionManager = connectionManager;
+        _scannerService = scannerService;
+        _httpClientFactory = httpClientFactory;
     }
 
 
@@ -376,6 +390,61 @@ public class WpfDialogService : IDialogService
         else Application.Current.Dispatcher.Invoke(openDialog);
 
         return System.Threading.Tasks.Task.FromResult((confirmed, modifiedItems));
+    }
+
+    public System.Threading.Tasks.Task ShowPairingQrDialogAsync()
+    {
+        if (Application.Current == null)
+            return System.Threading.Tasks.Task.CompletedTask;
+
+        using var _ = TrackModal();
+        Action openDialog = () =>
+        {
+            var serverAddr = _connectionManager?.CurrentServerAddress ?? "http://localhost:5000/";
+            var httpClient = _httpClientFactory != null 
+                ? _httpClientFactory.CreateClient("SalesApi")
+                : new System.Net.Http.HttpClient { BaseAddress = new Uri(serverAddr) };
+
+            var vm = new ViewModels.PairingQrViewModel(httpClient);
+            var dialog = new PairingQrDialog(vm);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+            dialog.ShowDialog();
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    public System.Threading.Tasks.Task<bool> ShowServerConnectionDialogAsync()
+    {
+        if (Application.Current == null)
+            return System.Threading.Tasks.Task.FromResult(false);
+
+        bool result = false;
+        using var _ = TrackModal();
+        Action openDialog = () =>
+        {
+            var connMgr = _connectionManager ?? new ConnectionManager(new ClientSettingsStore(), new SubnetScannerService());
+            var scanner = _scannerService ?? new SubnetScannerService();
+            var vm = new ViewModels.ServerConnectionViewModel(connMgr, scanner);
+            var dialog = new ServerConnectionDialog(vm);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+            var dr = dialog.ShowDialog();
+            result = dr == true;
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.FromResult(result);
     }
 }
 

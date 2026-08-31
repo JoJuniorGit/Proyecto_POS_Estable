@@ -91,13 +91,22 @@ public partial class App : Application
 
         // Service Registration
         builder.Services.AddSingleton<IClientStateService, ClientStateService>();
+        builder.Services.AddSingleton<IClientSettingsStore, ClientSettingsStore>();
+        builder.Services.AddSingleton<ISubnetScannerService, SubnetScannerService>();
+        builder.Services.AddSingleton<IConnectionManager, ConnectionManager>();
         builder.Services.AddSingleton<IDialogService, WpfDialogService>();
         builder.Services.AddSingleton<IJitterProvider, ProductionJitterProvider>();
         builder.Services.AddSingleton<UserSession>();
         builder.Services.AddTransient<UserSessionHeaderHandler>();
         builder.Services.AddTransient<ResilienceHandler>();
 
-        var baseAddressStr = builder.Configuration["BackendSettings:BaseAddress"] ?? "http://localhost:5000/";
+        var settingsStore = new ClientSettingsStore();
+        var clientSettings = settingsStore.LoadSettings();
+        var baseAddressStr = clientSettings.ServerBaseAddress;
+        if (string.IsNullOrWhiteSpace(baseAddressStr) || baseAddressStr == "http://localhost:5000/")
+        {
+            baseAddressStr = builder.Configuration["BackendSettings:BaseAddress"] ?? "http://localhost:5000/";
+        }
         if (!baseAddressStr.EndsWith("/")) baseAddressStr += "/";
         var baseAddressUri = new Uri(baseAddressStr);
 
@@ -145,6 +154,8 @@ public partial class App : Application
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
         builder.Services.AddTransient<LoginViewModel>();
+        builder.Services.AddTransient<PairingQrViewModel>();
+        builder.Services.AddTransient<ServerConnectionViewModel>();
         builder.Services.AddTransient<CustomerManagementViewModel>();
         builder.Services.AddTransient<UsersManagementViewModel>();
 

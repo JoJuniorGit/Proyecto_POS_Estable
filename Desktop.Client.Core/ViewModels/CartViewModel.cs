@@ -166,8 +166,8 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             }
         }
 
-        var dispatcher = System.Windows.Application.Current.Dispatcher;
-        if (dispatcher.CheckAccess())
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.CheckAccess())
             DoUpdate();
         else
             dispatcher.Invoke(DoUpdate);

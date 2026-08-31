@@ -224,11 +224,11 @@ public partial class PosViewModel : ObservableObject, IDisposable
         var _token = newCts.Token;
 
         var _term = SearchText ?? string.Empty;
-        var _dispatcher = System.Windows.Application.Current.Dispatcher;
+        var _dispatcher = System.Windows.Application.Current?.Dispatcher;
 
         void RunOnUI(Action action)
         {
-            if (_dispatcher.CheckAccess()) action();
+            if (_dispatcher == null || _dispatcher.CheckAccess()) action();
             else _dispatcher.Invoke(action);
         }
 
@@ -611,5 +611,50 @@ public partial class PosViewModel : ObservableObject, IDisposable
         {
             IsProcessing = false;
         }
+    }
+
+    [RelayCommand]
+    private async Task TogglePriceListAsync()
+    {
+        if (Cart.CurrentSale == null || IsProcessing) return;
+        string nextType = Cart.IsWholesalePriceList ? "Retail" : "Wholesale";
+        await Cart.SetPriceListAsync(nextType);
+    }
+
+    [RelayCommand]
+    private async Task ClearCartAsync()
+    {
+        if (Cart.CurrentSale == null || !Cart.CartItems.Any() || IsProcessing) return;
+
+        bool confirmed = _dialog_service != null
+            ? _dialog_service.ShowConfirm("Cancelar Venta (F8)", "¿Está seguro de que desea cancelar la venta actual y limpiar el carrito?")
+            : MessageBox.Show("¿Está seguro de que desea cancelar la venta actual y limpiar el carrito?", "Cancelar Venta (F8)", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+        if (confirmed)
+        {
+            await StartNewSaleAsync();
+        }
+    }
+
+    [RelayCommand]
+    private void CancelOrClear()
+    {
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            SearchText = string.Empty;
+            Suggestions.Clear();
+            HasSuggestions = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task SyncExchangeRateAsync()
+    {
+        try
+        {
+            await _exchange_rate_service.SyncBcvAsync();
+            OnPropertyChanged(nameof(CurrentExchangeRate));
+        }
+        catch { }
     }
 }

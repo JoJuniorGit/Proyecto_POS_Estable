@@ -20,7 +20,12 @@
 
     <UserControl.InputBindings>
         <KeyBinding Key="F1" Command="{Binding CheckoutCommand}" />
-        <KeyBinding Key="F2" Command="{Binding HoldOrderCommand}" />
+        <KeyBinding Key="F3" Command="{Binding ChangeCustomerCommand}" />
+        <KeyBinding Key="F4" Command="{Binding HoldOrderCommand}" />
+        <KeyBinding Key="F5" Command="{Binding SyncExchangeRateCommand}" />
+        <KeyBinding Key="F7" Command="{Binding TogglePriceListCommand}" />
+        <KeyBinding Key="F8" Command="{Binding ClearCartCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding CancelOrClearCommand}" />
     </UserControl.InputBindings>
 
     
@@ -424,13 +429,13 @@
                                 </Button.Style>
                                 <StackPanel Orientation="Horizontal">
                                     <materialDesign:PackIcon Kind="ClipboardClock" Width="18" Height="18" VerticalAlignment="Center"/>
-                                    <TextBlock Text="EN ESPERA (F2)" Margin="6,0,0,0" VerticalAlignment="Center" FontSize="13" FontWeight="Bold"/>
+                                    <TextBlock Text="EN ESPERA (F4)" Margin="6,0,0,0" VerticalAlignment="Center" FontSize="13" FontWeight="Bold"/>
                                 </StackPanel>
                             </Button>
 
                             <!-- CHECKOUT (F1) -->
                             <Button Grid.Column="2"
-                                    Content="CHECKOUT (F1)" 
+                                    Content="COBRAR (F1)" 
                                     Command="{Binding CheckoutCommand}" 
                                     Height="50"
                                     FontSize="17" FontWeight="Bold">
@@ -464,32 +469,62 @@
             </Border>
         </Grid>
 
-        <!-- Footer -->
-        <Border Grid.Row="1" Background="{DynamicResource MaterialDesignPaper}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="0,1,0,0" Padding="10">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Opacity="0.7">
-                <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
-                    <Border Background="#EEE" CornerRadius="3" Padding="5,2" Margin="0,0,5,0">
-                        <TextBlock Text="F3" FontWeight="Bold" FontSize="11"/>
+        <!-- Footer: Hotkeys Legend -->
+        <Border Grid.Row="1" Background="{DynamicResource MaterialDesignPaper}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="0,1,0,0" Padding="10,6">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Opacity="0.85">
+                <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                    <Border Background="#2563EB" CornerRadius="3" Padding="5,2" Margin="0,0,4,0">
+                        <TextBlock Text="F1" FontWeight="Bold" FontSize="11" Foreground="White"/>
                     </Border>
-                    <TextBlock Text="Search" VerticalAlignment="Center" FontSize="12"/>
+                    <TextBlock Text="Cobrar" VerticalAlignment="Center" FontSize="11"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
-                    <Border Background="#EEE" CornerRadius="3" Padding="5,2" Margin="0,0,5,0">
-                        <TextBlock Text="+/-" FontWeight="Bold" FontSize="11"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                    <Border Background="#EEE" CornerRadius="3" Padding="5,2" Margin="0,0,4,0">
+                        <TextBlock Text="F2" FontWeight="Bold" FontSize="11" Foreground="#333"/>
                     </Border>
-                    <TextBlock Text="Qty" VerticalAlignment="Center" FontSize="12"/>
+                    <TextBlock Text="Buscar" VerticalAlignment="Center" FontSize="11"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
-                    <Border Background="#EEE" CornerRadius="3" Padding="5,2" Margin="0,0,5,0">
-                        <TextBlock Text="DblClick" FontWeight="Bold" FontSize="11"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                    <Border Background="#EEE" CornerRadius="3" Padding="5,2" Margin="0,0,4,0">
+                        <TextBlock Text="F3" FontWeight="Bold" FontSize="11" Foreground="#333"/>
                     </Border>
-                    <TextBlock Text="Edit Qty" VerticalAlignment="Center" FontSize="12"/>
+                    <TextBlock Text="Cliente" VerticalAlignment="Center" FontSize="11"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                    <Border Background="#EEE" CornerRadius="3" Padding="5,2" Margin="0,0,4,0">
+                        <TextBlock Text="F4" FontWeight="Bold" FontSize="11" Foreground="#333"/>
+                    </Border>
+                    <TextBlock Text="Espera" VerticalAlignment="Center" FontSize="11"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                    <Border Background="#EEE" CornerRadius="3" Padding="5,2" Margin="0,0,4,0">
+                        <TextBlock Text="F7" FontWeight="Bold" FontSize="11" Foreground="#333"/>
+                    </Border>
+                    <TextBlock Text="Lista Precios" VerticalAlignment="Center" FontSize="11"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                    <Border Background="#EEE" CornerRadius="3" Padding="5,2" Margin="0,0,4,0">
+                        <TextBlock Text="F8" FontWeight="Bold" FontSize="11" Foreground="#333"/>
+                    </Border>
+                    <TextBlock Text="Cancelar" VerticalAlignment="Center" FontSize="11"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                    <Border Background="#EEE" CornerRadius="3" Padding="5,2" Margin="0,0,4,0">
+                        <TextBlock Text="+/-" FontWeight="Bold" FontSize="11" Foreground="#333"/>
+                    </Border>
+                    <TextBlock Text="Cantidad" VerticalAlignment="Center" FontSize="11"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                    <Border Background="#EEE" CornerRadius="3" Padding="5,2" Margin="0,0,4,0">
+                        <TextBlock Text="Supr" FontWeight="Bold" FontSize="11" Foreground="#333"/>
+                    </Border>
+                    <TextBlock Text="Eliminar" VerticalAlignment="Center" FontSize="11"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <Border Background="#EEE" CornerRadius="3" Padding="5,2" Margin="0,0,5,0">
-                        <TextBlock Text="Esc" FontWeight="Bold" FontSize="11"/>
+                    <Border Background="#EEE" CornerRadius="3" Padding="5,2" Margin="0,0,4,0">
+                        <TextBlock Text="Esc" FontWeight="Bold" FontSize="11" Foreground="#333"/>
                     </Border>
-                    <TextBlock Text="Close/Cancel" VerticalAlignment="Center" FontSize="12"/>
+                    <TextBlock Text="Limpiar" VerticalAlignment="Center" FontSize="11"/>
                 </StackPanel>
             </StackPanel>
         </Border>

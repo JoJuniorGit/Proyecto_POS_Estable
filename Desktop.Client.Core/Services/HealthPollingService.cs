@@ -18,6 +18,7 @@ public class HealthPollingService : IHealthPollingService, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly IClientStateService? _clientStateService;
+    private readonly IConnectionManager? _connectionManager;
     private CancellationTokenSource? _cts;
     private readonly object _lock = new object();
     private bool _isPollingActive;
@@ -36,10 +37,11 @@ public class HealthPollingService : IHealthPollingService, IDisposable
 
     public event EventHandler? OnHealthRecovered;
 
-    public HealthPollingService(HttpClient httpClient, IClientStateService? clientStateService = null)
+    public HealthPollingService(HttpClient httpClient, IClientStateService? clientStateService = null, IConnectionManager? connectionManager = null)
     {
         _httpClient = httpClient;
         _clientStateService = clientStateService;
+        _connectionManager = connectionManager;
     }
 
     public void StartPolling()
@@ -75,6 +77,7 @@ public class HealthPollingService : IHealthPollingService, IDisposable
     private async Task PollLoopAsync(CancellationTokenSource originCts, CancellationToken cancellationToken)
     {
         ClientStateLogger.LogInfo("Health polling loop started in background (polling /health every 3s).");
+        int consecutiveFailures = 0;
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -90,9 +93,15 @@ public class HealthPollingService : IHealthPollingService, IDisposable
                 {
                     ClientStateLogger.LogHealthRecovery();
                     _clientStateService?.ResetFatalError();
+                    _connectionManager?.NotifyConnectionRestored();
+                    consecutiveFailures = 0;
                     StopPolling();
                     OnHealthRecovered?.Invoke(this, EventArgs.Empty);
                     break;
+                }
+                else
+                {
+                    consecutiveFailures++;
                 }
             }
             catch (OperationCanceledException)
@@ -101,7 +110,16 @@ public class HealthPollingService : IHealthPollingService, IDisposable
             }
             catch (Exception)
             {
-                // Continued outage: silently wait next retry
+                consecutiveFailures++;
+            }
+
+            if (consecutiveFailures == 3)
+            {
+                _connectionManager?.NotifyConnectionFailed("Sin respuesta del servidor tras múltiples intentos.");
+                if (_connectionManager != null)
+                {
+                    _ = _connectionManager.AutoRecoverAsync(cancellationToken);
+                }
             }
 
             try

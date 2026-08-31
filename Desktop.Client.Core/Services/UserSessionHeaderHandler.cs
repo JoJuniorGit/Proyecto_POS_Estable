@@ -7,14 +7,33 @@ namespace Desktop.Client.Services;
 public class UserSessionHeaderHandler : DelegatingHandler
 {
     private readonly UserSession _userSession;
+    private readonly IConnectionManager? _connectionManager;
 
-    public UserSessionHeaderHandler(UserSession userSession)
+    public UserSessionHeaderHandler(UserSession userSession, IConnectionManager? connectionManager = null)
     {
         _userSession = userSession;
+        _connectionManager = connectionManager;
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        if (_connectionManager != null && request.RequestUri != null && 
+            Uri.TryCreate(_connectionManager.CurrentServerAddress, UriKind.Absolute, out var currentServerUri))
+        {
+            if (request.RequestUri.Host != currentServerUri.Host || 
+                request.RequestUri.Port != currentServerUri.Port || 
+                request.RequestUri.Scheme != currentServerUri.Scheme)
+            {
+                var uriBuilder = new System.UriBuilder(request.RequestUri)
+                {
+                    Scheme = currentServerUri.Scheme,
+                    Host = currentServerUri.Host,
+                    Port = currentServerUri.Port
+                };
+                request.RequestUri = uriBuilder.Uri;
+            }
+        }
+
         request.Headers.Remove("X-Client-Version");
         request.Headers.Add("X-Client-Version", "1.0.0");
 

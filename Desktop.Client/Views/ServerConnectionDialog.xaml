@@ -1,0 +1,147 @@
+<Window x:Class="Desktop.Client.Views.ServerConnectionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        mc:Ignorable="d"
+        Title="Configuración de Servidor POS" 
+        Height="540" Width="680"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize">
+
+    <Border CornerRadius="14" 
+            Background="{DynamicResource MaterialDesignPaper}" 
+            BorderBrush="{DynamicResource PrimaryHueMidBrush}" 
+            BorderThickness="1.5"
+            Effect="{DynamicResource MaterialDesignShadowDepth4}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <Border Grid.Row="0" Background="{DynamicResource PrimaryHueMidBrush}" CornerRadius="12,12,0,0" Padding="18,12">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="ServerNetwork" Width="26" Height="26" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="CONFIGURACIÓN DE SERVIDOR POS" FontSize="16" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <Button HorizontalAlignment="Right" Style="{StaticResource MaterialDesignFlatButton}" 
+                            Foreground="White" Width="36" Height="36" Padding="0" Click="Cancel_Click">
+                        <materialDesign:PackIcon Kind="Close" Width="20" Height="20"/>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- Body -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,16">
+                <StackPanel>
+                    <TextBlock Text="¿Cómo opera esta máquina en su negocio?" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBody}" Margin="0,0,0,12"/>
+
+                    <!-- Mode Selectors -->
+                    <Border Background="{DynamicResource MaterialDesignCard}" CornerRadius="8" Padding="14,10" Margin="0,0,0,14">
+                        <StackPanel>
+                            <RadioButton IsChecked="{Binding IsLocalServerMode}" 
+                                         Content="Caja Principal / Esta Máquina (Ejecuta el servidor y la base de datos localmente)"
+                                         FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBlock Text="Usa http://localhost:5000/. Recomendado para el equipo servidor principal." 
+                                       FontSize="11" Foreground="{DynamicResource NavTextMutedBrush}" Margin="28,0,0,0"/>
+
+                            <Separator Margin="0,10,0,10"/>
+
+                            <RadioButton IsChecked="{Binding IsRemoteServerMode}" 
+                                         Content="Terminal Secundaria / Satélite (Conecta a otra PC Caja Principal en la red local)"
+                                         FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBlock Text="Recomendado para segundas cajas, oficinas administrativas o puntos de cobro auxiliares." 
+                                       FontSize="11" Foreground="{DynamicResource NavTextMutedBrush}" Margin="28,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Server Address Input & Actions -->
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBox Text="{Binding ServerAddress, UpdateSourceTrigger=PropertyChanged}"
+                                 materialDesign:HintAssist.Hint="Dirección IP o Nombre del Servidor (ej. 192.168.1.50 o CAJA-PRINCIPAL)"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                 FontSize="13" Margin="0,0,8,0"/>
+
+                        <Button Grid.Column="1" Command="{Binding TestConnectionCommand}" 
+                                Style="{StaticResource MaterialDesignOutlinedButton}" 
+                                Height="40" Margin="0,0,8,0" Padding="12,0">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="LanCheck" Width="16" Height="16" Margin="0,0,4,0"/>
+                                <TextBlock Text="Probar"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button Grid.Column="2" Command="{Binding ScanNetworkCommand}" 
+                                Style="{StaticResource MaterialDesignRaisedButton}" 
+                                Height="40" Padding="12,0">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="Radar" Width="16" Height="16" Margin="0,0,4,0"/>
+                                <TextBlock Text="Buscar en Red"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <!-- Progress Bar when Scanning -->
+                    <StackPanel Visibility="{Binding IsScanning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ProgressBar Value="{Binding ScanProgress}" Maximum="100" Height="6" Margin="0,0,0,6" IsIndeterminate="{Binding ScanProgress, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+                        <TextBlock Text="Buscando cajas principales en la subred local..." FontSize="11" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,8"/>
+                    </StackPanel>
+
+                    <!-- Discovered Servers List -->
+                    <TextBlock Text="Servidores detectados en la red:" FontSize="12" FontWeight="Bold" Margin="0,4,0,6"/>
+                    <Border Background="{DynamicResource MaterialDesignCard}" CornerRadius="8" BorderBrush="#30808080" BorderThickness="1" MinHeight="100" MaxHeight="140" Margin="0,0,0,12">
+                        <ListBox ItemsSource="{Binding DiscoveredServers}" 
+                                 SelectedItem="{Binding SelectedServer}"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="4,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <materialDesign:PackIcon Kind="Server" Width="20" Height="20" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding DisplayTitle}" FontWeight="Bold" FontSize="12"/>
+                                            <TextBlock Text="{Binding BaseUrl}" FontSize="10" Foreground="{DynamicResource NavTextMutedBrush}"/>
+                                        </StackPanel>
+                                        <Border Grid.Column="2" Background="#1500AA00" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding ResponseTimeMs, StringFormat='{}{0} ms'}" FontSize="10" Foreground="#008800" FontWeight="Bold"/>
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+
+                    <!-- Status Messages -->
+                    <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource PrimaryHueMidBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                    <TextBlock Text="{Binding ErrorMessage}" Foreground="#EE5353" FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Footer -->
+            <Border Grid.Row="2" Background="{DynamicResource MaterialDesignCard}" CornerRadius="0,0,12,12" Padding="18,12">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource MaterialDesignOutlinedButton}" Content="Cancelar" Width="100" Margin="0,0,10,0" Click="Cancel_Click"/>
+                    <Button Style="{StaticResource MaterialDesignRaisedButton}" Command="{Binding SaveAndConnectCommand}" Content="Guardar y Conectar" Width="170"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
