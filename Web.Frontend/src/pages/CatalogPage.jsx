@@ -44,6 +44,13 @@ export default function CatalogPage() {
       setTotalCount(total);
       setTotalPages(pages);
       setCurrentPage(page);
+
+      // Auto-scroll al inicio de la tabla/vista
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      const mainContent = document.querySelector('.app-content') || document.querySelector('.catalog-page');
+      if (mainContent) {
+        mainContent.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     } catch (err) {
       console.error('[CatalogPage] Error cargando catálogo:', err);
     } finally {

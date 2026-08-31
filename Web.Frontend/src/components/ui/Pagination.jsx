@@ -163,6 +163,8 @@ export default function Pagination({
           min="1"
           max={Math.max(1, totalPages)}
           value={goToPage}
+          onFocus={(e) => e.target.select()}
+          onClick={(e) => e.target.select()}
           onChange={(e) => setGoToPage(e.target.value)}
           disabled={totalPages <= 0 || loading}
           className="form-control form-control-sm"

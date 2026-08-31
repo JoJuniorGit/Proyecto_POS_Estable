@@ -52,7 +52,16 @@ public class HealthPollingService : IHealthPollingService, IDisposable
             _isPollingActive = true;
             _cts = new CancellationTokenSource();
             localCts = _cts;
-            token = localCts.Token;
+            try
+            {
+                token = localCts.Token;
+            }
+            catch (ObjectDisposedException)
+            {
+                _isPollingActive = false;
+                _cts = null;
+                return;
+            }
         }
 
         try
@@ -92,7 +101,7 @@ public class HealthPollingService : IHealthPollingService, IDisposable
             }
             catch (Exception)
             {
-                // Continued outage: log debug or silently wait
+                // Continued outage: silently wait next retry
             }
 
             try
@@ -116,13 +125,15 @@ public class HealthPollingService : IHealthPollingService, IDisposable
 
     public void StopPolling()
     {
+        CancellationTokenSource? oldCts;
         lock (_lock)
         {
             if (!_isPollingActive && _cts == null) return;
             _isPollingActive = false;
+            oldCts = _cts;
+            _cts = null;
         }
 
-        var oldCts = Interlocked.Exchange(ref _cts, null);
         try
         {
             oldCts?.Cancel();

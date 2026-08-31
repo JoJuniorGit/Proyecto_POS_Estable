@@ -191,7 +191,8 @@
                     BorderThickness="1"
                     CornerRadius="8"
                     Padding="2">
-                <DataGrid ItemsSource="{Binding Products}" 
+                <DataGrid x:Name="ProductsDataGrid"
+                          ItemsSource="{Binding Products}" 
                           AutoGenerateColumns="False" 
                           CanUserAddRows="False"
                           GridLinesVisibility="Horizontal"
@@ -748,8 +749,11 @@
                     <!-- Búsqueda Exacta: Ir a Página -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="Ir a:" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,0" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                        <TextBox Text="{Binding TargetPageInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                        <TextBox x:Name="TargetPageTextBox"
+                                 Text="{Binding TargetPageInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
                                  PreviewTextInput="NumberValidationTextBox"
+                                 GotFocus="TargetPageInput_GotFocus"
+                                 PreviewMouseLeftButtonDown="TargetPageInput_PreviewMouseLeftButtonDown"
                                  Width="48" Height="30"
                                  FontSize="12" FontWeight="Bold"
                                  HorizontalContentAlignment="Center"
