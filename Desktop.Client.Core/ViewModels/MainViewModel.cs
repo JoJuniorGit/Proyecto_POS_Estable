@@ -260,4 +260,38 @@ public partial class MainViewModel : ObservableObject, IDisposable
         CurrentViewModel = _users_management_view_model;
         _ = _users_management_view_model.EnsureLoadedAsync();
     }
+
+    private bool _is_dialog_open;
+
+    [RelayCommand]
+    private async Task OpenPairingQrAsync()
+    {
+        if (_dialog_service == null || _is_dialog_open) return;
+
+        _is_dialog_open = true;
+        try
+        {
+            await _dialog_service.ShowPairingQrDialogAsync();
+        }
+        finally
+        {
+            _is_dialog_open = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task OpenServerConnectionAsync()
+    {
+        if (_dialog_service == null || _is_dialog_open) return;
+
+        _is_dialog_open = true;
+        try
+        {
+            await _dialog_service.ShowServerConnectionDialogAsync();
+        }
+        finally
+        {
+            _is_dialog_open = false;
+        }
+    }
 }

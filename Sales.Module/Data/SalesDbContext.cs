@@ -29,7 +29,17 @@ public class SalesDbContext : DbContext
         // Customer configuration
         modelBuilder.Entity<Customer>()
             .HasIndex(c => c.CedulaOrRif)
-            .IsUnique();
+            .IsUnique()
+            .HasDatabaseName("IX_Customers_CedulaOrRif");
+
+        modelBuilder.Entity<Customer>()
+            .HasIndex(c => c.Name)
+            .HasDatabaseName("IX_Customers_Name");
+
+        modelBuilder.Entity<Customer>()
+            .HasIndex(c => new { c.IsActive, c.Name })
+            .HasDatabaseName("IX_Customers_Active_Name")
+            .HasFilter("\"IsActive\" = true");
 
         modelBuilder.Entity<Customer>()
             .Property(c => c.CreditLimitUSD)
@@ -119,6 +129,14 @@ public class SalesDbContext : DbContext
         modelBuilder.Entity<Sale>()
             .HasIndex(s => s.CashierId);
 
+        modelBuilder.Entity<SaleItem>()
+            .HasIndex(i => i.SaleId)
+            .HasDatabaseName("IX_SaleItems_SaleId");
+
+        modelBuilder.Entity<SalePayment>()
+            .HasIndex(p => p.SaleId)
+            .HasDatabaseName("IX_SalePayments_SaleId");
+
         modelBuilder.Entity<SalePayment>()
             .HasIndex(p => p.PaymentMethodId);
 
@@ -142,6 +160,14 @@ public class SalesDbContext : DbContext
 
         modelBuilder.Entity<CashDrawerSession>()
             .HasIndex(s => s.Status);
+
+        modelBuilder.Entity<CashTransaction>()
+            .HasIndex(t => t.SessionId)
+            .HasDatabaseName("IX_CashTransactions_SessionId");
+
+        modelBuilder.Entity<CashTransaction>()
+            .HasIndex(t => t.TransactionTime)
+            .HasDatabaseName("IX_CashTransactions_TransactionTime");
 
         modelBuilder.Entity<CashTransaction>()
             .HasIndex(t => new { t.SessionId, t.TransactionTime });

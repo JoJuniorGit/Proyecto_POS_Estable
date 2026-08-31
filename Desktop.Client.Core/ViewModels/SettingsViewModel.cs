@@ -11,10 +11,14 @@ using System.Linq;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class SettingsViewModel : ObservableObject
+public partial class SettingsViewModel : ObservableObject, IDisposable
 {
     private readonly IPaymentService _payment_service;
     private readonly ISettingsService _settings_service;
+    private readonly IConnectionManager? _connection_manager;
+    private EventHandler<ConnectionStatusEventArgs>? _connection_status_handler;
+    private bool _is_dialog_open;
+    private bool _disposed;
 
     private bool _is_loading;
     public bool IsLoading
@@ -29,6 +33,15 @@ public partial class SettingsViewModel : ObservableObject
         get => _error_message;
         set => SetProperty(ref _error_message, value);
     }
+
+    [ObservableProperty]
+    private string _currentServerAddress = "http://localhost:5000/";
+
+    [ObservableProperty]
+    private string _connectionStatusText = "Conectado";
+
+    [ObservableProperty]
+    private string _connectionStatusColor = "#27AE60";
 
     public ObservableCollection<PaymentMethodDto> PaymentMethods { get; } = new();
     public ObservableCollection<TimeZoneInfo> AvailableTimeZones { get; } = new();
@@ -48,12 +61,27 @@ public partial class SettingsViewModel : ObservableObject
 
     private readonly IDialogService? _dialog_service;
 
-    public SettingsViewModel(IPaymentService payment_service, ISettingsService settings_service, UserSession? userSession = null, IDialogService? dialog_service = null)
+    public SettingsViewModel(
+        IPaymentService payment_service,
+        ISettingsService settings_service,
+        UserSession? userSession = null,
+        IDialogService? dialog_service = null,
+        IConnectionManager? connection_manager = null)
     {
         _payment_service = payment_service;
         _settings_service = settings_service;
         UserSession = userSession;
         _dialog_service = dialog_service;
+        _connection_manager = connection_manager;
+
+        if (_connection_manager != null)
+        {
+            CurrentServerAddress = _connection_manager.CurrentServerAddress;
+            UpdateConnectionStatusDisplay(_connection_manager.Status);
+
+            _connection_status_handler = OnConnectionStatusChanged;
+            _connection_manager.ConnectionStatusChanged += _connection_status_handler;
+        }
 
         if (UserSession == null || UserSession.IsLoggedIn)
         {
@@ -325,6 +353,95 @@ public partial class SettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             MessageBox.Show($"Failed to save timezone: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task OpenServerConnectionAsync()
+    {
+        if (_dialog_service == null || _is_dialog_open) return;
+
+        _is_dialog_open = true;
+        try
+        {
+            var saved = await _dialog_service.ShowServerConnectionDialogAsync();
+            if (saved && _connection_manager != null)
+            {
+                CurrentServerAddress = _connection_manager.CurrentServerAddress;
+                UpdateConnectionStatusDisplay(_connection_manager.Status);
+            }
+        }
+        finally
+        {
+            _is_dialog_open = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task OpenPairingQrAsync()
+    {
+        if (_dialog_service == null || _is_dialog_open) return;
+
+        _is_dialog_open = true;
+        try
+        {
+            await _dialog_service.ShowPairingQrDialogAsync();
+        }
+        finally
+        {
+            _is_dialog_open = false;
+        }
+    }
+
+    private void OnConnectionStatusChanged(object? sender, ConnectionStatusEventArgs e)
+    {
+        CurrentServerAddress = e.ServerAddress;
+        UpdateConnectionStatusDisplay(e.Status);
+    }
+
+    private void UpdateConnectionStatusDisplay(ConnectionStatus status)
+    {
+        switch (status)
+        {
+            case ConnectionStatus.Connected:
+                ConnectionStatusText = "Conectado";
+                ConnectionStatusColor = "#27AE60"; // Verde esmeralda
+                break;
+            case ConnectionStatus.Connecting:
+                ConnectionStatusText = "Conectando...";
+                ConnectionStatusColor = "#F39C12"; // Ámbar
+                break;
+            case ConnectionStatus.Scanning:
+                ConnectionStatusText = "Buscando servidor...";
+                ConnectionStatusColor = "#F39C12"; // Ámbar
+                break;
+            case ConnectionStatus.Disconnected:
+            default:
+                ConnectionStatusText = "Desconectado";
+                ConnectionStatusColor = "#E74C3C"; // Rojo coral
+                break;
+        }
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                if (_connection_manager != null && _connection_status_handler != null)
+                {
+                    _connection_manager.ConnectionStatusChanged -= _connection_status_handler;
+                    _connection_status_handler = null;
+                }
+            }
+            _disposed = true;
         }
     }
 }

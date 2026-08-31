@@ -71,14 +71,20 @@
                                    FontSize="11" Foreground="{DynamicResource NavTextMutedBrush}" 
                                    TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,8"/>
 
-                        <!-- Interface Selector -->
+                        <!-- Interface Selector & HTTPS Toggle -->
                         <StackPanel Grid.Row="3">
                             <TextBlock Text="Adaptador de Red:" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource NavTextMutedBrush}"/>
                             <ComboBox ItemsSource="{Binding AvailableInterfaces}" 
                                       SelectedItem="{Binding SelectedInterface}"
                                       DisplayMemberPath="DisplayName"
-                                      FontSize="11" Margin="0,2,0,0"
+                                      FontSize="11" Margin="0,2,0,6"
                                       Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
+                            
+                            <CheckBox IsChecked="{Binding UseHttps}" 
+                                      ToolTip="Habilita HTTPS (Puerto 5001) para permitir el uso del escáner por cámara en teléfonos y tablets."
+                                      FontSize="11" Margin="0,2,0,0">
+                                <TextBlock Text="Usar HTTPS (Puerto 5001)" FontWeight="Medium"/>
+                            </CheckBox>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -147,8 +153,8 @@
                                     </Grid.ColumnDefinitions>
                                     <materialDesign:PackIcon Kind="LanConnect" Width="22" Height="22" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                     <StackPanel Grid.Column="1">
-                                        <TextBlock Text="Puerto de Servicio HTTP" FontSize="10" Foreground="{DynamicResource NavTextMutedBrush}"/>
-                                        <TextBlock Text="{Binding HttpPort, StringFormat='{}{0} (Predeterminado)'}" FontSize="13" FontWeight="Bold"/>
+                                        <TextBlock Text="Puerto de Servicio Activo" FontSize="10" Foreground="{DynamicResource NavTextMutedBrush}"/>
+                                        <TextBlock Text="{Binding ActivePort}" FontSize="13" FontWeight="Bold"/>
                                     </StackPanel>
                                 </Grid>
                             </Border>

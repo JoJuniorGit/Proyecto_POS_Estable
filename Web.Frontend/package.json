@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
+    "test": "node --test src/services/api.test.js",
     "lint": "oxlint",
     "preview": "vite preview"
   },

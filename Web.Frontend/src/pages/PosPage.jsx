@@ -250,41 +250,25 @@ export default function PosPage({
         </div>
       </div>
 
-      {/* Barra de Atajos Rápidos POS (Visible en Desktop) */}
-      <div 
-        className="desktop-only" 
-        style={{
-          marginTop: '1rem',
-          padding: '0.5rem 1rem',
-          backgroundColor: 'var(--bg-surface, #1e293b)',
-          border: '1px solid var(--border, rgba(148, 163, 184, 0.15))',
-          borderRadius: '8px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '0.6rem',
-          fontSize: '0.75rem',
-          color: 'var(--text-muted, #94a3b8)',
-          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '600', color: 'var(--text-main, #f8fafc)' }}>
-          <Keyboard size={14} /> Atajos POS:
+      {/* Barra de Atajos Rápidos POS (Fija al pie en Desktop, Oculta en Móvil) */}
+      <footer className="pos-shortcuts-bar">
+        <div className="pos-shortcuts-title">
+          <Keyboard size={15} className="color-primary" />
+          <span>Atajos POS:</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F1</kbd> Cobrar</span>
-          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F2</kbd> Buscar</span>
-          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F3</kbd> Cliente</span>
-          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F4</kbd> Espera</span>
-          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F5</kbd> Tasa BCV</span>
-          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F7</kbd> Detal/Mayor</span>
-          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>F8</kbd> Cancelar Venta</span>
-          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>+/-</kbd> Cantidad</span>
-          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>Supr</kbd> Eliminar</span>
-          <span><kbd style={{ backgroundColor: 'var(--bg-app, #0f172a)', border: '1px solid var(--border)', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', color: 'var(--text-main, #f8fafc)' }}>Esc</kbd> Limpiar</span>
+        <div className="pos-shortcuts-list">
+          <span className="pos-shortcut-item"><kbd className="pos-shortcut-kbd">F1</kbd> Cobrar</span>
+          <span className="pos-shortcut-item"><kbd className="pos-shortcut-kbd">F2</kbd> Buscar</span>
+          <span className="pos-shortcut-item"><kbd className="pos-shortcut-kbd">F3</kbd> Cliente</span>
+          <span className="pos-shortcut-item"><kbd className="pos-shortcut-kbd">F4</kbd> Espera</span>
+          <span className="pos-shortcut-item"><kbd className="pos-shortcut-kbd">F5</kbd> Tasa BCV</span>
+          <span className="pos-shortcut-item"><kbd className="pos-shortcut-kbd">F7</kbd> Detal/Mayor</span>
+          <span className="pos-shortcut-item"><kbd className="pos-shortcut-kbd">F8</kbd> Cancelar Venta</span>
+          <span className="pos-shortcut-item"><kbd className="pos-shortcut-kbd">+/-</kbd> Cantidad</span>
+          <span className="pos-shortcut-item"><kbd className="pos-shortcut-kbd">Supr</kbd> Eliminar</span>
+          <span className="pos-shortcut-item"><kbd className="pos-shortcut-kbd">Esc</kbd> Limpiar</span>
         </div>
-      </div>
+      </footer>
 
       {/* Modal para Seleccionar Cliente */}
       <CustomerModal 

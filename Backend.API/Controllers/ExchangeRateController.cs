@@ -17,17 +17,20 @@ public class ExchangeRateController : ControllerBase
     private readonly InventoryDbContext _context;
     private readonly Core.Interfaces.ICurrentUserService _currentUserService;
     private readonly ISalesService _salesService;
+    private readonly Core.Interfaces.IInventoryService _inventoryService;
     private readonly IHubContext<ExchangeRateHub> _hubContext;
 
     public ExchangeRateController(
         InventoryDbContext context,
         Core.Interfaces.ICurrentUserService currentUserService,
         ISalesService salesService,
+        Core.Interfaces.IInventoryService inventoryService,
         IHubContext<ExchangeRateHub> hubContext)
     {
         _context = context;
         _currentUserService = currentUserService;
         _salesService = salesService;
+        _inventoryService = inventoryService;
         _hubContext = hubContext;
     }
 
@@ -98,6 +101,9 @@ public class ExchangeRateController : ControllerBase
 
         await _context.SaveChangesAsync();
 
+        // Invalidate today's cached exchange rate
+        _inventoryService.InvalidateTodayExchangeRateCache();
+
         // Recalculate OnHold sales with the new exchange rate
         await _salesService.RecalculateOnHoldSalesAsync(request.Value);
 
@@ -145,6 +151,9 @@ public class ExchangeRateController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
+
+        // Invalidate today's cached exchange rate
+        _inventoryService.InvalidateTodayExchangeRateCache();
 
         // Recalculate OnHold sales with the new exchange rate
         await _salesService.RecalculateOnHoldSalesAsync(rate.Value);

@@ -1,81 +1,127 @@
 /**
  * Resuelve la URL base del Backend dinámicamente con la siguiente precedencia:
- * 1. Parámetro en URL (?api=... o ?server=...) al escanear QR -> Guarda en localStorage y limpia la URL.
- * 2. Valor guardado en localStorage ('pos_custom_api_url').
- * 3. Variable de entorno VITE_API_URL.
- * 4. Modo desarrollo Vite (puerto 5173 o dev): http://${hostname}:5000.
- * 5. Modo Kestrel integrado: window.location.origin.
- * 6. Fallback general: http://localhost:5000.
+ * 1. Modo Kestrel integrado en puerto 5000 o 5001 -> window.location.origin.
+ * 2. Parámetro en URL (?api=... o ?server=...) al escanear QR -> Sanitiza y guarda en localStorage.
+ * 3. Valor guardado en localStorage ('pos_custom_api_url') -> Sanitiza si la página está en HTTPS para evitar Mixed Content.
+ * 4. Variable de entorno VITE_API_URL (si está configurada).
+ * 5. Modo desarrollo Vite (puerto 5173 u otros) -> http://${hostname}:5000 o https://${hostname}:5001 según protocolo.
+ * 6. Fallback general: window.location.origin o http://${hostname}:5000.
  */
-function resolveBaseUrl() {
+export function resolveBaseUrl() {
   if (typeof window === 'undefined') {
     return 'http://localhost:5000';
   }
 
+  const isHttps = window.location?.protocol === 'https:';
+  const origin = window.location?.origin;
+  const hostname = window.location?.hostname || 'localhost';
+  const port = window.location?.port ? String(window.location.port) : '';
+
+  // 1. Si se sirve directamente desde el servidor Kestrel integrado en 5000 o 5001
+  if (port === '5000' || port === '5001') {
+    return origin || (isHttps ? `https://${hostname}:5001` : `http://${hostname}:5000`);
+  }
+
+  // 2. Parámetro en URL (?api=... o ?server=...)
   try {
-    const urlParams = new URLSearchParams(window.location.search);
+    const search = window.location?.search || '';
+    const urlParams = new URLSearchParams(search);
     const paramApi = urlParams.get('api') || urlParams.get('server') || urlParams.get('backend');
     if (paramApi) {
       let normalized = paramApi.trim();
       if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-        normalized = `http://${normalized}`;
+        normalized = isHttps ? `https://${normalized}` : `http://${normalized}`;
       }
       if (normalized.endsWith('/')) {
         normalized = normalized.slice(0, -1);
       }
-      localStorage.setItem('pos_custom_api_url', normalized);
+      // Sanitización: si la página es HTTPS pero el param trajo http:// o :5000, actualizar protocolo y mapear :5000 -> :5001
+      if (isHttps) {
+        if (normalized.startsWith('http://')) {
+          normalized = normalized.replace(/^http:\/\//i, 'https://');
+        }
+        if (normalized.endsWith(':5000')) {
+          normalized = normalized.replace(/:5000$/, ':5001');
+        }
+      }
+
+      try {
+        localStorage.setItem('pos_custom_api_url', normalized);
+      } catch {}
 
       // Limpiar los parámetros de la URL sin recargar la página
-      urlParams.delete('api');
-      urlParams.delete('server');
-      urlParams.delete('backend');
-      urlParams.delete('paired');
-      const newQuery = urlParams.toString();
-      const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '') + window.location.hash;
-      window.history.replaceState({}, document.title, newUrl);
+      if (window.history?.replaceState && window.location?.pathname) {
+        urlParams.delete('api');
+        urlParams.delete('server');
+        urlParams.delete('backend');
+        urlParams.delete('paired');
+        const newQuery = urlParams.toString();
+        const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '') + (window.location.hash || '');
+        window.history.replaceState({}, (typeof document !== 'undefined' ? document.title : ''), newUrl);
+      }
 
       return normalized;
     }
   } catch {}
 
-  const stored = localStorage.getItem('pos_custom_api_url');
-  if (stored) {
-    return stored;
+  // 3. Sanitización de valor almacenado en localStorage
+  try {
+    let stored = localStorage.getItem('pos_custom_api_url');
+    if (stored) {
+      let sanitized = stored.trim();
+      if (isHttps && sanitized.startsWith('http://')) {
+        sanitized = sanitized.replace(/^http:\/\//i, 'https://').replace(/:5000$/, ':5001');
+        localStorage.setItem('pos_custom_api_url', sanitized);
+      }
+      return sanitized;
+    }
+  } catch {}
+
+  // 4. Variables de entorno (con guard seguro para Node/Jest/Vitest/Vite)
+  const isDev = typeof import.meta !== 'undefined' && import.meta.env?.DEV;
+  const viteApiUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_API_URL : undefined;
+  if (viteApiUrl) {
+    return viteApiUrl;
   }
 
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
+  // 5. Servidor de desarrollo Vite (ej. puerto 5173 o puerto no Kestrel)
+  if (port === '5173' || (isDev && port !== '5000' && port !== '5001')) {
+    return isHttps ? `https://${hostname}:5001` : `http://${hostname}:5000`;
   }
 
-  const hostname = window.location.hostname || 'localhost';
-  const port = window.location.port;
-
-  // Si estamos en Vite dev server (ej. 5173), el backend corre en el puerto 5000
-  if (port === '5173' || (import.meta.env.DEV && port !== '5000')) {
-    return `http://${hostname}:5000`;
+  // 6. Si hay origin válido en Kestrel u otro servidor
+  if (origin && origin.startsWith('http')) {
+    return origin;
   }
 
-  // Si se sirve directamente desde el servidor Kestrel integrado
-  if (window.location.origin && window.location.origin.startsWith('http')) {
-    return window.location.origin;
-  }
-
-  return `http://${hostname}:5000`;
+  return isHttps ? `https://${hostname}:5001` : `http://${hostname}:5000`;
 }
 
 let CURRENT_BASE_URL = resolveBaseUrl();
 
 export function setCustomBaseUrl(url) {
   if (typeof window === 'undefined') return;
+  const isHttps = window.location?.protocol === 'https:';
+
   if (!url) {
     localStorage.removeItem('pos_custom_api_url');
     CURRENT_BASE_URL = resolveBaseUrl();
   } else {
     let normalized = url.trim();
     if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-      normalized = `http://${normalized}`;
+      normalized = isHttps ? `https://${normalized}` : `http://${normalized}`;
     }
     if (normalized.endsWith('/')) normalized = normalized.slice(0, -1);
+
+    if (isHttps) {
+      if (normalized.startsWith('http://')) {
+        normalized = normalized.replace(/^http:\/\//i, 'https://');
+      }
+      if (normalized.endsWith(':5000')) {
+        normalized = normalized.replace(/:5000$/, ':5001');
+      }
+    }
+
     localStorage.setItem('pos_custom_api_url', normalized);
     CURRENT_BASE_URL = normalized;
   }

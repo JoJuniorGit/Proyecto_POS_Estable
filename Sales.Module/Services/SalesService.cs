@@ -5,6 +5,7 @@ using Core.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Sales.Module.Data;
 using Sales.Module.DTOs;
@@ -25,8 +26,17 @@ public class SalesService : ISalesService
     private readonly ICashDrawerService _cashDrawerService;
     private readonly ISystemSettingsService _settingsService;
     private readonly Microsoft.Extensions.Logging.ILogger<SalesService>? _logger;
+    private readonly IMemoryCache? _cache;
+    private const string DefaultCustomerCacheKey = "default_customer_cache";
 
-    public SalesService(SalesDbContext context, IInventoryService inventoryService, IMediator mediator, ICashDrawerService cashDrawerService, ISystemSettingsService settingsService, Microsoft.Extensions.Logging.ILogger<SalesService>? logger = null)
+    public SalesService(
+        SalesDbContext context,
+        IInventoryService inventoryService,
+        IMediator mediator,
+        ICashDrawerService cashDrawerService,
+        ISystemSettingsService settingsService,
+        Microsoft.Extensions.Logging.ILogger<SalesService>? logger = null,
+        IMemoryCache? cache = null)
     {
         _context = context;
         _inventoryService = inventoryService;
@@ -34,6 +44,7 @@ public class SalesService : ISalesService
         _cashDrawerService = cashDrawerService;
         _settingsService = settingsService;
         _logger = logger;
+        _cache = cache;
     }
 
     public async Task<SaleDto> StartSaleAsync(int? cashierId = null)
@@ -499,6 +510,8 @@ public class SalesService : ISalesService
     public async Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync()
     {
         var _sales = await _context.Sales
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(s => s.Customer)
             .Include(s => s.Items)
             .Where(s => s.Status == SaleStatus.Completed && s.DeliveryStatus == SaleDeliveryStatus.PendingPickup)
@@ -529,13 +542,24 @@ public class SalesService : ISalesService
             }).ToList()
         });
     }
+
     public async Task<CustomerDto> GetDefaultCustomerAsync()
     {
-        var defaultCustomer = await _context.Customers.FirstOrDefaultAsync(c => c.IsDefault)
-                           ?? await _context.Customers.FirstOrDefaultAsync(c => c.Id == 1);
+        if (_cache != null && _cache.TryGetValue(DefaultCustomerCacheKey, out CustomerDto? cachedCustomer) && cachedCustomer != null)
+        {
+            return cachedCustomer;
+        }
+
+        var defaultCustomer = await _context.Customers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.IsDefault)
+            ?? await _context.Customers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == 1);
+
         if (defaultCustomer == null) throw new KeyNotFoundException("Cliente por defecto no encontrado.");
         
-        return new CustomerDto
+        var dto = new CustomerDto
         {
             Id = defaultCustomer.Id,
             CedulaOrRif = defaultCustomer.CedulaOrRif,
@@ -545,6 +569,9 @@ public class SalesService : ISalesService
             IsActive = defaultCustomer.IsActive,
             IsDefault = defaultCustomer.IsDefault
         };
+
+        _cache?.Set(DefaultCustomerCacheKey, dto, TimeSpan.FromHours(1));
+        return dto;
     }
 
     public async Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId)
@@ -881,6 +908,7 @@ public class SalesService : ISalesService
 
         var sales = await _context.Sales
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(s => s.Customer)
             .Include(s => s.Items)
             .Include(s => s.Payments)
@@ -1066,6 +1094,11 @@ public class SalesService : ISalesService
 
         await _context.SaveChangesAsync();
 
+        if (customer.IsDefault || id == 1)
+        {
+            _cache?.Remove(DefaultCustomerCacheKey);
+        }
+
         return new CustomerDto
         {
             Id = customer.Id,
@@ -1092,17 +1125,19 @@ public class SalesService : ISalesService
         bool hasSales = await _context.Sales.AnyAsync(s => s.CustomerId == id);
         if (hasSales)
         {
-            throw new InvalidOperationException($"El cliente '{customer.Name}' ({customer.CedulaOrRif}) tiene ventas registradas en el sistema. No se puede eliminar físicamente; utilice la opción de desactivar (poner Inactivo).");
+            throw new InvalidOperationException("No se puede eliminar el cliente porque tiene ventas o transacciones asociadas.");
         }
 
         _context.Customers.Remove(customer);
         await _context.SaveChangesAsync();
+        _cache?.Remove(DefaultCustomerCacheKey);
     }
 
 
     public async Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, DateTime? startDate, DateTime? endDate, string? search = null)
     {
         var query = _context.Sales
+            .AsNoTracking()
             .Include(s => s.Cashier)
             .Include(s => s.Customer)
             .Where(s => s.Status == SaleStatus.Completed);
@@ -1176,6 +1211,8 @@ public class SalesService : ISalesService
     public async Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId)
     {
         var _sale = await _context.Sales
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(s => s.Items)
             .Include(s => s.Payments)
                 .ThenInclude(p => p.PaymentMethod)

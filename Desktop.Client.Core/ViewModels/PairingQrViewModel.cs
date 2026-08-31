@@ -147,6 +147,9 @@ public partial class PairingQrViewModel : ObservableObject
         }
     }
 
+    [ObservableProperty]
+    private int _activePort = 5000;
+
     partial void OnUseHttpsChanged(bool value)
     {
         UpdateUrls();
@@ -156,6 +159,7 @@ public partial class PairingQrViewModel : ObservableObject
     {
         var scheme = UseHttps ? "https" : "http";
         var port = UseHttps ? HttpsPort : HttpPort;
+        ActivePort = port;
         FullUrl = $"{scheme}://{IpAddress}:{port}";
         QrPayload = $"{FullUrl}/?paired=true";
     }

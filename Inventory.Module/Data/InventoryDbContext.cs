@@ -32,9 +32,15 @@ public class InventoryDbContext : DbContext
         {
             entity.HasIndex(p => p.SKU)
                 .IsUnique()
-                .HasFilter("\"IsDeleted\" = false");
+                .HasFilter("\"IsDeleted\" = false")
+                .HasDatabaseName("IX_Products_SKU");
 
-            entity.HasIndex(p => new { p.IsActive, p.IsDeleted });
+            entity.HasIndex(p => p.Name)
+                .HasDatabaseName("IX_Products_Name");
+
+            entity.HasIndex(p => new { p.IsActive, p.IsDeleted, p.Name })
+                .HasDatabaseName("IX_Products_Active_Deleted_Name")
+                .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
         });
 
         // Precision and conversion configurations

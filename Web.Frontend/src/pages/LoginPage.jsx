@@ -40,7 +40,17 @@ export default function LoginPage() {
       if (err.requiresPasswordChange) {
         setMustChange(true);
       } else {
-        setError(err.message || 'Usuario o contraseña incorrectos.');
+        const msg = err.message || '';
+        if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('fetch')) {
+          const isHttps = typeof window !== 'undefined' && window.location?.protocol === 'https:';
+          if (isHttps) {
+            setError('No se pudo conectar con el servidor seguro (HTTPS). Si es su primera vez en este dispositivo, asegúrese de haber aceptado la advertencia del certificado de seguridad en el navegador.');
+          } else {
+            setError('No se pudo conectar con el servidor POS. Verifique que el servidor backend esté en ejecución y en la misma red local.');
+          }
+        } else {
+          setError(msg || 'Usuario o contraseña incorrectos.');
+        }
       }
     } finally {
       setLoading(false);

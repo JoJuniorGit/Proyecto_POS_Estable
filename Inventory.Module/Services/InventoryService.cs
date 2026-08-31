@@ -2,6 +2,7 @@ using Core.Entities;
 using Core.Interfaces;
 using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -12,11 +13,14 @@ public class InventoryService : IInventoryService
 {
     private readonly InventoryDbContext _context;
     private readonly ICurrentUserService? _currentUserService;
+    private readonly IMemoryCache? _cache;
+    private const string ExchangeRateCacheKey = "bcv_rate_today";
 
-    public InventoryService(InventoryDbContext context, ICurrentUserService? currentUserService = null)
+    public InventoryService(InventoryDbContext context, ICurrentUserService? currentUserService = null, IMemoryCache? cache = null)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _cache = cache;
     }
 
     private void EnsureCatalogMutationPermission()
@@ -34,12 +38,34 @@ public class InventoryService : IInventoryService
 
     public async Task<decimal> GetTodayExchangeRateAsync()
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var record = await _context.ExchangeRateHistory.FirstOrDefaultAsync(r => r.Date == today);
-        if (record != null && record.Rate > 0) return record.Rate;
+        if (_cache != null && _cache.TryGetValue(ExchangeRateCacheKey, out decimal cachedRate) && cachedRate > 0)
+        {
+            return cachedRate;
+        }
 
-        var lastRecord = await _context.ExchangeRateHistory.OrderByDescending(r => r.Date).FirstOrDefaultAsync();
-        return lastRecord?.Rate ?? 0m;
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var record = await _context.ExchangeRateHistory.AsNoTracking().FirstOrDefaultAsync(r => r.Date == today);
+        decimal rate = 0m;
+        if (record != null && record.Rate > 0)
+        {
+            rate = record.Rate;
+        }
+        else
+        {
+            var lastRecord = await _context.ExchangeRateHistory.AsNoTracking().OrderByDescending(r => r.Date).FirstOrDefaultAsync();
+            rate = lastRecord?.Rate ?? 0m;
+        }
+
+        if (rate > 0)
+        {
+            _cache?.Set(ExchangeRateCacheKey, rate, TimeSpan.FromMinutes(10));
+        }
+        return rate;
+    }
+
+    public void InvalidateTodayExchangeRateCache()
+    {
+        _cache?.Remove(ExchangeRateCacheKey);
     }
 
     public async Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds)

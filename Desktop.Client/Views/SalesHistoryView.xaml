@@ -78,9 +78,9 @@
                         Margin="0,0,8,0">
                     <Button.ContentTemplate>
                         <DataTemplate>
-                            <StackPanel Orientation="Horizontal">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <materialDesign:PackIcon Kind="Refresh" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Actualizar" VerticalAlignment="Center"/>
+                                <TextBlock Text="Actualizar" VerticalAlignment="Center" FontWeight="SemiBold"/>
                             </StackPanel>
                         </DataTemplate>
                     </Button.ContentTemplate>
@@ -91,8 +91,9 @@
                         CommandParameter="{x:Static Dock.Right}"
                         Style="{DynamicResource MaterialDesignIconButton}"
                         ToolTip="Abrir Menú Principal"
+                        Height="36" Width="36"
                         VerticalAlignment="Center">
-                    <materialDesign:PackIcon Kind="Menu" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                    <materialDesign:PackIcon Kind="Menu" Width="22" Height="22" Foreground="{DynamicResource MaterialDesignBody}"/>
                 </Button>
             </StackPanel>
 
@@ -103,8 +104,8 @@
         </DockPanel>
 
         <!-- Filtros de Fecha con Etiquetas Superiores y Botón Buscar -->
-        <materialDesign:Card Grid.Row="1" Margin="0,0,0,16" Padding="16,12" UniformCornerRadius="8" Background="{DynamicResource MaterialDesignPaper}">
-            <Grid>
+        <materialDesign:Card Grid.Row="1" Margin="0,0,0,16" Padding="16,14" UniformCornerRadius="8" Background="{DynamicResource MaterialDesignPaper}">
+            <Grid VerticalAlignment="Bottom">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
@@ -114,42 +115,41 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Buscador multicampo: N° de factura / Cliente / Cajero -->
-                <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
-                    <TextBlock Text="Buscar (Factura / Cliente / Cajero)" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,4"/>
+                <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Bottom">
+                    <TextBlock Text="Buscar (Factura / Cliente / Cajero)" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBody}" Margin="0,0,0,6"/>
                     <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                              materialDesign:HintAssist.Hint="N° de factura, cliente o cajero..."
                              materialDesign:TextFieldAssist.HasClearButton="True"
                              Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                             Width="280" Height="40" VerticalAlignment="Center"/>
+                             HorizontalAlignment="Stretch" Height="42" Padding="10,6" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- Fecha Inicio -->
-                <StackPanel Grid.Column="1" Margin="0,0,16,0" VerticalAlignment="Center">
-                    <TextBlock Text="Fecha Inicio" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,4"/>
+                <StackPanel Grid.Column="1" Margin="0,0,16,0" VerticalAlignment="Bottom">
+                    <TextBlock Text="Fecha Inicio" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBody}" Margin="0,0,0,6"/>
                     <DatePicker SelectedDate="{Binding StartDate, UpdateSourceTrigger=PropertyChanged}" 
                                 Style="{DynamicResource MaterialDesignOutlinedDatePicker}"
-                                Width="160" Height="40"/>
+                                Width="160" Height="42" Padding="10,6" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- Fecha Fin -->
-                <StackPanel Grid.Column="2" Margin="0,0,16,0" VerticalAlignment="Center">
-                    <TextBlock Text="Fecha Fin" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,4"/>
+                <StackPanel Grid.Column="2" Margin="0,0,16,0" VerticalAlignment="Bottom">
+                    <TextBlock Text="Fecha Fin" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBody}" Margin="0,0,0,6"/>
                     <DatePicker SelectedDate="{Binding EndDate, UpdateSourceTrigger=PropertyChanged}" 
                                 Style="{DynamicResource MaterialDesignOutlinedDatePicker}"
-                                Width="160" Height="40"/>
+                                Width="160" Height="42" Padding="10,6" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- Botón Principal Buscar -->
                 <StackPanel Grid.Column="3" VerticalAlignment="Bottom">
-                    <Button Content="Buscar"
-                            Command="{Binding LoadHistoryCommand}"
+                    <Button Command="{Binding LoadHistoryCommand}"
                             Style="{DynamicResource MaterialDesignRaisedButton}"
-                            Height="40"
-                            Padding="16,0">
+                            Height="42"
+                            Padding="20,0">
                         <Button.ContentTemplate>
                             <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <materialDesign:PackIcon Kind="Magnify" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon Kind="Magnify" Width="18" Height="18" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                     <TextBlock Text="Buscar" VerticalAlignment="Center" FontWeight="Bold"/>
                                 </StackPanel>
                             </DataTemplate>

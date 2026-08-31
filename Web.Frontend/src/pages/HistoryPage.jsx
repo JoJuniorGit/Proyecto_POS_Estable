@@ -115,44 +115,44 @@ export default function HistoryPage() {
         </div>
       </div>
 
-      {/* ── Filtros de Fecha ── */}
-      <div className="card mb-4 p-3" style={{ marginBottom: '20px' }}>
+      {/* ── Filtros de Fecha y Búsqueda ── */}
+      <div className="card mb-4 history-filter-card">
         <div className="history-filter-row">
-          <div className="form-group mb-0 history-filter-item" style={{ flex: 2, minWidth: '200px' }}>
-            <label className="form-label text-xs font-medium text-muted">Buscar (Factura / Cliente / Cajero)</label>
-            <input
-              type="text"
-              className="form-control"
-              placeholder="N° de factura, cliente o cajero..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{ width: '100%' }}
-            />
+          <div className="history-filter-item history-search-col">
+            <label className="history-filter-label">Buscar (Factura / Cliente / Cajero)</label>
+            <div className="history-input-with-icon">
+              <Search size={16} className="history-input-icon" />
+              <input
+                type="text"
+                className="history-filter-input history-search-input"
+                placeholder="N° de factura, cliente o cajero..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
           </div>
 
-          <div className="form-group mb-0 history-filter-item">
-            <label className="form-label text-xs font-medium text-muted">Fecha Inicio</label>
+          <div className="history-filter-item history-date-col">
+            <label className="history-filter-label">Fecha Inicio</label>
             <input
               type="date"
-              className="form-control"
+              className="history-filter-input history-date-input"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              style={{ width: '100%' }}
             />
           </div>
 
-          <div className="form-group mb-0 history-filter-item">
-            <label className="form-label text-xs font-medium text-muted">Fecha Fin</label>
+          <div className="history-filter-item history-date-col">
+            <label className="history-filter-label">Fecha Fin</label>
             <input
               type="date"
-              className="form-input"
+              className="history-filter-input history-date-input"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              style={{ width: '100%' }}
             />
           </div>
 
-          <div className="form-group mb-0 history-filter-item history-filter-btn-group">
+          <div className="history-filter-btn-group">
             <button type="button" className="btn btn-primary history-search-btn" onClick={handleSearchClick}>
               <Search size={16} /> Buscar
             </button>

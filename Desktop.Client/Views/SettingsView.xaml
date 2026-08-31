@@ -18,6 +18,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -31,7 +32,7 @@
 
                     <StackPanel Grid.Column="0">
                         <TextBlock Text="Configuración del Sistema" Style="{DynamicResource MaterialDesignHeadline4TextBlock}" FontWeight="Bold"/>
-                        <TextBlock Text="Gestione las preferencias globales, zona horaria y los métodos de pago aceptados en el Punto de Venta." 
+                        <TextBlock Text="Gestione las preferencias globales, conectividad de red, zona horaria y los métodos de pago aceptados." 
                                    Style="{DynamicResource MaterialDesignBody1TextBlock}" Opacity="0.7" Margin="0,4,0,0"/>
                     </StackPanel>
 
@@ -61,8 +62,98 @@
                 </Border>
             </StackPanel>
 
-            <!-- SECCIÓN 1: ZONA HORARIA GLOBAL -->
+            <!-- SECCIÓN 1: CONECTIVIDAD Y RED LOCAL -->
             <Border Grid.Row="1" Background="{DynamicResource MaterialDesignPaper}" 
+                    BorderBrush="{DynamicResource MaterialDesignDivider}" 
+                    BorderThickness="1" 
+                    CornerRadius="10" 
+                    Padding="20" 
+                    Margin="0,0,0,20">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,16">
+                        <materialDesign:PackIcon Kind="ServerNetwork" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="Conectividad y Red Local" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Tarjeta 1: Servidor Backend Activo -->
+                        <Border Grid.Column="0" Background="{DynamicResource MaterialDesignBackground}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,10,0">
+                            <DockPanel LastChildFill="True">
+                                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                                    <DockPanel LastChildFill="False" Margin="0,0,0,6">
+                                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="LanConnect" Width="20" Height="20" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Servidor Backend" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
+                                        </StackPanel>
+
+                                        <!-- Badge Estado de Conexión con Color Dinámico -->
+                                        <Border DockPanel.Dock="Right" Background="{Binding ConnectionStatusColor}" CornerRadius="10" Padding="8,2" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Ellipse Width="6" Height="6" Fill="White" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding ConnectionStatusText}" Foreground="White" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DockPanel>
+                                    <TextBlock Text="Dirección actual del servidor POS en la red local:" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,6"/>
+                                    <Border Background="{DynamicResource MaterialDesignPaper}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="4" Padding="10,6">
+                                        <TextBlock Text="{Binding CurrentServerAddress}" FontWeight="SemiBold" FontFamily="Consolas, Monospace" FontSize="12" Foreground="{DynamicResource MaterialDesignBody}"/>
+                                    </Border>
+                                </StackPanel>
+
+                                <Button DockPanel.Dock="Bottom"
+                                        Command="{Binding OpenServerConnectionCommand}"
+                                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                        Height="38"
+                                        HorizontalAlignment="Left"
+                                        Padding="14,0">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <materialDesign:PackIcon Kind="CogOutline" Width="18" Height="18" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Cambiar Servidor / Escanear" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- Tarjeta 2: Emparejamiento Móvil / Web QR -->
+                        <Border Grid.Column="1" Background="{DynamicResource MaterialDesignBackground}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="10,0,0,0">
+                            <DockPanel LastChildFill="True">
+                                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                        <materialDesign:PackIcon Kind="QrcodeScan" Width="20" Height="20" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Emparejamiento Móvil / Web" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Conecte teléfonos, tablets o terminales web escaneando el código QR de sincronización local:" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                </StackPanel>
+
+                                <Button DockPanel.Dock="Bottom"
+                                        Command="{Binding OpenPairingQrCommand}"
+                                        Style="{DynamicResource MaterialDesignRaisedButton}"
+                                        Height="38"
+                                        HorizontalAlignment="Left"
+                                        Padding="14,0">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <materialDesign:PackIcon Kind="QrcodeScan" Width="18" Height="18" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Ver Código QR de Emparejamiento" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- SECCIÓN 2: ZONA HORARIA GLOBAL -->
+            <Border Grid.Row="2" Background="{DynamicResource MaterialDesignPaper}" 
                     BorderBrush="{DynamicResource MaterialDesignDivider}" 
                     BorderThickness="1" 
                     CornerRadius="10" 
@@ -85,8 +176,8 @@
                 </StackPanel>
             </Border>
 
-            <!-- SECCIÓN 2: ADMINISTRACIÓN DE MÉTODOS DE PAGO -->
-            <Border Grid.Row="2" Background="{DynamicResource MaterialDesignPaper}" 
+            <!-- SECCIÓN 3: ADMINISTRACIÓN DE MÉTODOS DE PAGO -->
+            <Border Grid.Row="3" Background="{DynamicResource MaterialDesignPaper}" 
                     BorderBrush="{DynamicResource MaterialDesignDivider}" 
                     BorderThickness="1" 
                     CornerRadius="10" 

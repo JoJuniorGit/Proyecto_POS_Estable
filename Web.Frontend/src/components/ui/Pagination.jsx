@@ -62,124 +62,112 @@ export default function Pagination({
     );
 
   return (
-    <div
-      className="catalog-pagination-bar card p-3"
-      style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: '8px',
-        flexWrap: 'wrap',
-        marginTop: '16px',
-        width: '100%'
-      }}
-    >
-      {/* Resumen */}
-      <span className="font-medium text-sm text-center" style={{ padding: '0 8px', whiteSpace: 'nowrap' }}>
+    <div className="pagination-container card">
+      {/* Fila 1 (Información): Resumen de Página y Total de Elementos */}
+      <div className="pagination-info">
         {summaryText}
-      </span>
-
-      {/* Botón Primera Página (<<) */}
-      <button
-        type="button"
-        className="btn btn-outline btn-sm"
-        onClick={() => handlePageClick(1)}
-        disabled={!canGoFirst || loading}
-        title="Primera Página"
-        style={{ minWidth: '32px', height: '32px', padding: '0 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-      >
-        <ChevronsLeft size={16} />
-      </button>
-
-      {/* Botón Página Anterior (<) */}
-      <button
-        type="button"
-        className="btn btn-outline btn-sm"
-        onClick={() => handlePageClick(currentPage - 1)}
-        disabled={!canGoPrevious || loading}
-        title="Página Anterior"
-        style={{ minWidth: '32px', height: '32px', padding: '0 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-      >
-        <ChevronLeft size={16} />
-      </button>
-
-      {/* Botones Numéricos Relativos */}
-      <div style={{ display: 'inline-flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
-        {pageNumbers.map((p) => {
-          const isActive = p === currentPage;
-          return (
-            <button
-              key={p}
-              type="button"
-              className={`btn btn-sm ${isActive ? 'btn-primary' : 'btn-outline'}`}
-              onClick={() => handlePageClick(p)}
-              disabled={loading}
-              style={{
-                minWidth: '34px',
-                height: '32px',
-                padding: '2px 8px',
-                fontWeight: isActive ? 700 : 500,
-                boxShadow: isActive ? '0 2px 4px rgba(99, 102, 241, 0.3)' : 'none'
-              }}
-            >
-              {p}
-            </button>
-          );
-        })}
       </div>
 
-      {/* Botón Página Siguiente (>) */}
-      <button
-        type="button"
-        className="btn btn-outline btn-sm"
-        onClick={() => handlePageClick(currentPage + 1)}
-        disabled={!canGoNext || loading}
-        title="Página Siguiente"
-        style={{ minWidth: '32px', height: '32px', padding: '0 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-      >
-        <ChevronRight size={16} />
-      </button>
+      {/* Controles: Botones de Navegación y Salto Rápido en la misma fila horizontal */}
+      <div className="pagination-controls-row">
+        {/* Grupo de Navegación (<<, <, Números, >, >>) */}
+        <div className="pagination-nav-group">
+          {/* Botón Primera Página (<<) */}
+          <button
+            type="button"
+            className="btn btn-outline pagination-btn"
+            onClick={() => handlePageClick(1)}
+            disabled={!canGoFirst || loading}
+            title="Primera Página"
+            aria-label="Primera Página"
+          >
+            <ChevronsLeft size={16} />
+          </button>
 
-      {/* Botón Última Página (>>) */}
-      <button
-        type="button"
-        className="btn btn-outline btn-sm"
-        onClick={() => handlePageClick(totalPages)}
-        disabled={!canGoLast || loading}
-        title="Última Página"
-        style={{ minWidth: '32px', height: '32px', padding: '0 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-      >
-        <ChevronsRight size={16} />
-      </button>
+          {/* Botón Página Anterior (<) */}
+          <button
+            type="button"
+            className="btn btn-outline pagination-btn"
+            onClick={() => handlePageClick(currentPage - 1)}
+            disabled={!canGoPrevious || loading}
+            title="Página Anterior"
+            aria-label="Página Anterior"
+          >
+            <ChevronLeft size={16} />
+          </button>
 
-      {/* Separador vertical */}
-      <div style={{ width: '1px', height: '22px', backgroundColor: 'var(--border-color, #e2e8f0)', margin: '0 4px' }} />
+          {/* Botones Numéricos de Página (El número activo queda en el medio de < y >) */}
+          <div className="pagination-numbers">
+            {pageNumbers.map((p) => {
+              const isActive = p === currentPage;
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  className={`btn pagination-btn pagination-number-btn ${isActive ? 'btn-primary active font-bold' : 'btn-outline'}`}
+                  onClick={() => handlePageClick(p)}
+                  disabled={loading}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  {p}
+                </button>
+              );
+            })}
+          </div>
 
-      {/* Búsqueda Exacta: Ir a Página */}
-      <form onSubmit={handleGoSubmit} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-        <span className="text-xs text-muted" style={{ whiteSpace: 'nowrap' }}>Ir a:</span>
-        <input
-          type="number"
-          min="1"
-          max={Math.max(1, totalPages)}
-          value={goToPage}
-          onFocus={(e) => e.target.select()}
-          onClick={(e) => e.target.select()}
-          onChange={(e) => setGoToPage(e.target.value)}
-          disabled={totalPages <= 0 || loading}
-          className="form-control form-control-sm"
-          style={{ width: '56px', height: '32px', textAlign: 'center', fontWeight: 600, padding: '2px 4px' }}
-        />
-        <button
-          type="submit"
-          className="btn btn-primary btn-sm"
-          disabled={totalPages <= 0 || loading}
-          title="Ir a página"
-          style={{ minWidth: '32px', height: '32px', padding: '0 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <ArrowRight size={14} />
-        </button>
-      </form>
+          {/* Botón Página Siguiente (>) */}
+          <button
+            type="button"
+            className="btn btn-outline pagination-btn"
+            onClick={() => handlePageClick(currentPage + 1)}
+            disabled={!canGoNext || loading}
+            title="Página Siguiente"
+            aria-label="Página Siguiente"
+          >
+            <ChevronRight size={16} />
+          </button>
+
+          {/* Botón Última Página (>>) */}
+          <button
+            type="button"
+            className="btn btn-outline pagination-btn"
+            onClick={() => handlePageClick(totalPages)}
+            disabled={!canGoLast || loading}
+            title="Última Página"
+            aria-label="Última Página"
+          >
+            <ChevronsRight size={16} />
+          </button>
+        </div>
+
+        {/* Separador vertical para escritorio */}
+        <div className="pagination-divider desktop-only" />
+
+        {/* Salto Rápido: Bloque 'Ir a' */}
+        <form onSubmit={handleGoSubmit} className="pagination-goto-form">
+          <span className="pagination-goto-label">Ir a:</span>
+          <input
+            type="number"
+            min="1"
+            max={Math.max(1, totalPages)}
+            value={goToPage}
+            onFocus={(e) => e.target.select()}
+            onClick={(e) => e.target.select()}
+            onChange={(e) => setGoToPage(e.target.value)}
+            disabled={totalPages <= 0 || loading}
+            className="form-control form-control-sm pagination-goto-input"
+          />
+          <button
+            type="submit"
+            className="btn btn-primary pagination-btn pagination-goto-btn"
+            disabled={totalPages <= 0 || loading}
+            title="Ir a página"
+            aria-label="Ir a página"
+          >
+            <ArrowRight size={14} />
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

@@ -288,6 +288,7 @@ try
 
     app.MapControllers();
     app.MapHub<ExchangeRateHub>("/hubs/exchange-rate");
+    app.MapFallbackToFile("index.html");
 
     // Ensure Database Exists, Migrations and Seed Data (fail-fast: abort startup on any failure)
     using (var scope = app.Services.CreateScope())
