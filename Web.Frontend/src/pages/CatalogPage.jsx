@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
-import { Package, Search, Loader2, RefreshCw, ChevronLeft, ChevronRight, Tag, DollarSign } from 'lucide-react';
+import { Package, Search, Loader2, RefreshCw, ChevronLeft, ChevronRight, Tag, DollarSign, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD } from '../utils/formatters';
 import useDebounce from '../hooks/useDebounce';
@@ -19,17 +19,22 @@ export default function CatalogPage() {
   // Botón desactivado por defecto al entrar al catálogo
   const [showWholesale, setShowWholesale] = useState(false);
 
+  // Ordenamiento dinámico
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDescending, setSortDescending] = useState(false);
+
   // Paginación de 25 elementos por página
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const pageSize = 25;
 
-  const loadProducts = useCallback(async (filter = '', page = 1) => {
+  const loadProducts = useCallback(async (filter = '', page = 1, sort = sortBy, desc = sortDescending) => {
     setLoading(true);
     try {
       const filterParam = filter ? `&filter=${encodeURIComponent(filter)}` : '';
-      const data = await api.get(`/api/products?page=${page}&pageSize=${pageSize}${filterParam}`);
+      const sortParam = sort ? `&sortBy=${encodeURIComponent(sort)}&isDescending=${desc}` : '';
+      const data = await api.get(`/api/products?page=${page}&pageSize=${pageSize}${filterParam}${sortParam}`);
       
       const items = data?.items || (Array.isArray(data) ? data : []);
       const total = data?.totalCount ?? items.length;
@@ -44,11 +49,32 @@ export default function CatalogPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sortBy, sortDescending]);
 
   useEffect(() => {
-    loadProducts(debouncedSearch, 1);
-  }, [debouncedSearch, loadProducts]);
+    loadProducts(debouncedSearch, 1, sortBy, sortDescending);
+  }, [debouncedSearch, sortBy, sortDescending, loadProducts]);
+
+  const handleSort = useCallback((column) => {
+    let newDesc = false;
+    if (sortBy === column) {
+      newDesc = !sortDescending;
+      setSortDescending(newDesc);
+    } else {
+      setSortBy(column);
+      setSortDescending(false);
+    }
+    loadProducts(debouncedSearch, 1, column, newDesc);
+  }, [sortBy, sortDescending, debouncedSearch, loadProducts]);
+
+  const renderSortIcon = (column) => {
+    if (sortBy !== column) {
+      return <ArrowUpDown size={14} className="text-muted" style={{ opacity: 0.35, marginLeft: '5px', verticalAlign: 'middle' }} />;
+    }
+    return sortDescending
+      ? <ArrowDown size={14} className="color-primary" style={{ marginLeft: '5px', verticalAlign: 'middle' }} />
+      : <ArrowUp size={14} className="color-primary" style={{ marginLeft: '5px', verticalAlign: 'middle' }} />;
+  };
 
   const handleSearchChange = (e) => {
     setSearch(e.target.value);
@@ -124,6 +150,32 @@ export default function CatalogPage() {
             </select>
           </div>
 
+          {/* ── 2. Selector de Ordenamiento ── */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span className="text-xs text-muted font-medium" style={{ whiteSpace: 'nowrap' }}>Ordenar:</span>
+            <select
+              className="form-control form-control-sm"
+              value={`${sortBy}_${sortDescending ? 'desc' : 'asc'}`}
+              onChange={(e) => {
+                const [col, dir] = e.target.value.split('_');
+                const isDesc = dir === 'desc';
+                setSortBy(col);
+                setSortDescending(isDesc);
+                loadProducts(debouncedSearch, 1, col, isDesc);
+              }}
+              style={{ padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', minWidth: '130px' }}
+            >
+              <option value="name_asc">Nombre (A-Z)</option>
+              <option value="name_desc">Nombre (Z-A)</option>
+              <option value="price_asc">Precio (Menor a Mayor)</option>
+              <option value="price_desc">Precio (Mayor a Menor)</option>
+              <option value="stock_asc">Stock (Menor a Mayor)</option>
+              <option value="stock_desc">Stock (Mayor a Menor)</option>
+              <option value="sku_asc">SKU (Menos dígitos)</option>
+              <option value="sku_desc">SKU (Más dígitos)</option>
+            </select>
+          </div>
+
           {/* Botón para mostrar / ocultar Precios al Mayor (Desactivado por defecto) */}
           <button
             type="button"
@@ -138,9 +190,9 @@ export default function CatalogPage() {
 
       {/* ── Estado de Carga / Sin Resultados ── */}
       {loading ? (
-        <div className="p-5 text-center text-muted" style={{ padding: '60px', textAlign: 'center' }}>
-          <Loader2 className="animate-spin mb-2 mx-auto" size={32} />
-          <div>Cargando catálogo de productos...</div>
+        <div className="card p-5 text-center flex-column flex-align-center justify-center gap-3" style={{ padding: '60px', textAlign: 'center' }}>
+          <Loader2 size={36} className="animate-spin color-primary mx-auto" />
+          <p className="text-muted font-medium">Cargando productos del catálogo...</p>
         </div>
       ) : products.length === 0 ? (
         <div className="card p-5 text-center text-muted" style={{ padding: '40px', textAlign: 'center' }}>
@@ -157,10 +209,32 @@ export default function CatalogPage() {
             <table className="cart-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary, rgba(255,255,255,0.03))' }}>
-                  <th style={{ padding: '14px', width: '120px' }}>SKU</th>
-                  <th style={{ padding: '14px' }}>Producto</th>
-                  <th style={{ padding: '14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    Precio Detal ({currency})
+                  <th 
+                    style={{ padding: '14px', width: '130px', cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('sku')}
+                    title="Ordenar por cantidad de dígitos del código de barras"
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      SKU {renderSortIcon('sku')}
+                    </div>
+                  </th>
+                  <th 
+                    style={{ padding: '14px', cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('name')}
+                    title="Ordenar alfabéticamente por nombre"
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      Producto {renderSortIcon('name')}
+                    </div>
+                  </th>
+                  <th 
+                    style={{ padding: '14px', textAlign: 'right', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('price')}
+                    title="Ordenar por precio al detal"
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                      Precio Detal ({currency}) {renderSortIcon('price')}
+                    </div>
                   </th>
                   
                   {/* Columnas dinámicas de Precio al Mayor */}
@@ -175,7 +249,15 @@ export default function CatalogPage() {
                     </>
                   )}
 
-                  <th style={{ padding: '14px', textAlign: 'center', width: '100px' }}>Stock</th>
+                  <th 
+                    style={{ padding: '14px', textAlign: 'center', width: '110px', cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('stock')}
+                    title="Ordenar por cantidad en stock"
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                      Stock {renderSortIcon('stock')}
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>

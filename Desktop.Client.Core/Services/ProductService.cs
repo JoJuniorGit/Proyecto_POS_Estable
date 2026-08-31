@@ -129,12 +129,16 @@ public class ProductService : IProductService
         }
     }
 
-    public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, System.Threading.CancellationToken token = default)
+    public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default)
     {
         var url = $"api/products?filter={System.Uri.EscapeDataString(filter ?? string.Empty)}&page={page}&pageSize={pageSize}";
         if (!string.IsNullOrWhiteSpace(statusFilter))
         {
             url += $"&status={System.Uri.EscapeDataString(statusFilter)}";
+        }
+        if (!string.IsNullOrWhiteSpace(sortBy))
+        {
+            url += $"&sortBy={System.Uri.EscapeDataString(sortBy)}&isDescending={isDescending}";
         }
         return await _httpClient.GetFromJsonAsync<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>>(url, token)
                ?? new Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>();

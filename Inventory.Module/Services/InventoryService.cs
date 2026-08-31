@@ -380,7 +380,7 @@ public class InventoryService : IInventoryService
             .ToListAsync(token);
     }
 
-    public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetProductsPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, System.Threading.CancellationToken token = default)
+    public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetProductsPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default)
     {
         IQueryable<Product> query = _context.Products.AsNoTracking();
 
@@ -409,8 +409,32 @@ public class InventoryService : IInventoryService
 
         var totalCount = await query.CountAsync(token);
 
+        query = (sortBy?.ToLower().Trim()) switch
+        {
+            "name" => isDescending 
+                ? query.OrderByDescending(p => p.Name) 
+                : query.OrderBy(p => p.Name),
+
+            "price" or "priceretail" => isDescending 
+                ? query.OrderByDescending(p => p.PriceRetailUSD > 0 ? p.PriceRetailUSD : p.PriceUSD).ThenByDescending(p => p.Name)
+                : query.OrderBy(p => p.PriceRetailUSD > 0 ? p.PriceRetailUSD : p.PriceUSD).ThenBy(p => p.Name),
+
+            "cost" or "costprice" => isDescending 
+                ? query.OrderByDescending(p => p.CostPriceUSD > 0 ? p.CostPriceUSD : p.Cost).ThenByDescending(p => p.Name)
+                : query.OrderBy(p => p.CostPriceUSD > 0 ? p.CostPriceUSD : p.Cost).ThenBy(p => p.Name),
+
+            "stock" or "stockquantity" => isDescending 
+                ? query.OrderByDescending(p => p.StockQuantity).ThenByDescending(p => p.Name)
+                : query.OrderBy(p => p.StockQuantity).ThenBy(p => p.Name),
+
+            "sku" or "barcode" => isDescending 
+                ? query.OrderByDescending(p => (p.SKU ?? "").Length).ThenByDescending(p => p.SKU)
+                : query.OrderBy(p => (p.SKU ?? "").Length).ThenBy(p => p.SKU),
+
+            _ => isDescending ? query.OrderByDescending(p => p.Name) : query.OrderBy(p => p.Name)
+        };
+
         var items = await query
-            .OrderBy(p => p.Name)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(p => new Core.DTOs.ProductDto

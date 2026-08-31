@@ -16,6 +16,6 @@ public interface IProductService
     Task AdjustStockAsync(int productId, decimal quantityChange, string reason);
     Task<Core.DTOs.ProductQuickInfoDto?> GetQuickInfoAsync(string sku);
     Task<List<Core.DTOs.ProductQuickInfoDto>> GetSuggestionsAsync(string filter, bool activeOnly, System.Threading.CancellationToken token);
-    Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, System.Threading.CancellationToken token = default);
+    Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default);
 
 }

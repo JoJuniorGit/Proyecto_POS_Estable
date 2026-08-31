@@ -119,6 +119,8 @@ public class InventoryPaginationTests
             It.IsAny<int>(),
             It.IsAny<int>(),
             It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<bool>(),
             It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PagedResultDto<ProductDto>
             {
@@ -158,6 +160,8 @@ public class InventoryPaginationTests
             It.IsAny<int>(),
             It.IsAny<int>(),
             It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<bool>(),
             It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PagedResultDto<ProductDto>
             {

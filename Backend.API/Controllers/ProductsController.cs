@@ -25,13 +25,15 @@ public class ProductsController : ControllerBase
     public async Task<ActionResult<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>>> GetAll(
         [FromQuery] string? filter,
         [FromQuery] string? status,
+        [FromQuery] string? sortBy,
+        [FromQuery] bool isDescending = false,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         System.Threading.CancellationToken token = default)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
-        return await _inventoryService.GetProductsPagedAsync(filter, page, pageSize, statusFilter: status, token: token);
+        return await _inventoryService.GetProductsPagedAsync(filter, page, pageSize, statusFilter: status, sortBy: sortBy, isDescending: isDescending, token: token);
     }
 
     [HttpGet("{id}")]

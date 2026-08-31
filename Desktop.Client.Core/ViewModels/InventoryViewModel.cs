@@ -96,12 +96,48 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _targetPageInput = "1";
 
+    [ObservableProperty]
+    private string _sortBy = "name";
+
+    [ObservableProperty]
+    private bool _isSortDescending = false;
+
+    public bool IsSortedByName => SortBy.Equals("name", System.StringComparison.OrdinalIgnoreCase);
+    public bool IsSortedBySku => SortBy.Equals("sku", System.StringComparison.OrdinalIgnoreCase);
+    public bool IsSortedByStock => SortBy.Equals("stock", System.StringComparison.OrdinalIgnoreCase);
+    public bool IsSortedByCost => SortBy.Equals("cost", System.StringComparison.OrdinalIgnoreCase);
+    public bool IsSortedByPrice => SortBy.Equals("price", System.StringComparison.OrdinalIgnoreCase);
+
     public ObservableCollection<PageNumberItem> PageNumbers { get; } = new();
 
     public bool CanGoFirst => CurrentPage > 1 && TotalPages > 1;
     public bool CanGoPrevious => CurrentPage > 1 && TotalPages > 1;
     public bool CanGoNext => CurrentPage < TotalPages && TotalPages > 1;
     public bool CanGoLast => CurrentPage < TotalPages && TotalPages > 1;
+
+    [RelayCommand]
+    public async Task Sort(string column)
+    {
+        if (string.IsNullOrWhiteSpace(column)) return;
+
+        if (SortBy.Equals(column, System.StringComparison.OrdinalIgnoreCase))
+        {
+            IsSortDescending = !IsSortDescending;
+        }
+        else
+        {
+            SortBy = column.ToLower().Trim();
+            IsSortDescending = false;
+        }
+
+        OnPropertyChanged(nameof(IsSortedByName));
+        OnPropertyChanged(nameof(IsSortedBySku));
+        OnPropertyChanged(nameof(IsSortedByStock));
+        OnPropertyChanged(nameof(IsSortedByCost));
+        OnPropertyChanged(nameof(IsSortedByPrice));
+
+        await LoadDataAsync(false, targetPage: 1);
+    }
 
     [ObservableProperty]
     private bool _hasMore;
@@ -337,7 +373,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 await _exchange_rate_service.GetCurrentRateAsync();
             }
 
-            var result = await _product_service.GetPagedAsync(SearchText, CurrentPage, PageSize, statusFilter: SelectedStatusFilter, token: token);
+            var result = await _product_service.GetPagedAsync(SearchText, CurrentPage, PageSize, statusFilter: SelectedStatusFilter, sortBy: SortBy, isDescending: IsSortDescending, token: token);
             
             // Build ProductItemViewModel instances on background thread to prevent UI thread stutter
             var newItems = new System.Collections.Generic.List<ProductItemViewModel>();
