@@ -75,7 +75,7 @@ public class NetworkDiscoveryService : INetworkDiscoveryService
             PrimaryHttpUrl = httpUrl,
             PrimaryHttpsUrl = httpsUrl,
             NetworkInterfaces = interfaces,
-            QrPayload = $"{httpUrl}/?paired=true"
+            QrPayload = $"{httpsUrl}/?paired=true"
         };
     }
 

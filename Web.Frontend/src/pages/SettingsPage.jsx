@@ -12,10 +12,10 @@ export default function SettingsPage() {
   const [newMethodRequiresRef, setNewMethodRequiresRef] = useState(false);
   const [message, setMessage] = useState(null);
 
-  // Estados para Emparejamiento QR
+  // Estados para Emparejamiento QR (por defecto HTTPS / Puerto 5001 para permitir uso de cámara en móviles)
   const [pairingInfo, setPairingInfo] = useState(null);
   const [selectedInterface, setSelectedInterface] = useState(null);
-  const [useHttps, setUseHttps] = useState(typeof window !== 'undefined' && window.location?.protocol === 'https:');
+  const [useHttps, setUseHttps] = useState(true);
   const [loadingPairing, setLoadingPairing] = useState(false);
   const [copiedIp, setCopiedIp] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);

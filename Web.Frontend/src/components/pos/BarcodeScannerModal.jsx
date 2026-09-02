@@ -13,22 +13,24 @@ import {
   Plus,
   Minus,
   Sparkles,
-  Barcode
+  Barcode,
+  Wand2
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { getProductBySku } from '../../services/productsApi';
 import { isValidBarcode } from '../../utils/barcodeValidator';
 import { playScanSuccess, playScanWarning, playScanError, closeAudioContext } from '../../utils/soundEffects';
 import { checkBarcodeDetectorSupport, createNativeBarcodeDetector } from '../../utils/nativeBarcodeScanner';
+import { isLaptopOrDesktopEnvironment, processMultiPassLaptopFrame } from '../../utils/laptopVisionEnhancer';
 import './BarcodeScannerModal.css';
 
 const INSECURE_CONTEXT_MESSAGE =
   'La cámara requiere una conexión segura (HTTPS o localhost). Esta página se abrió con http:// y una IP de red. ' +
-  'Abra el sistema en esta PC con http://localhost:5000, o configure HTTPS para usarlo desde otros dispositivos.';
+  'Abra el sistema en esta PC con https://localhost:5001, o configure HTTPS para usarlo desde otros dispositivos.';
 
 const MIN_GLOBAL_INTERVAL_MS = 150;
 const SAME_CODE_COOLDOWN_MS = 2000;
-const ATTEMPT_PACING_MS = 60;
+const ATTEMPT_PACING_MS = 50;
 
 export default function BarcodeScannerModal({ 
   isOpen, 
@@ -40,6 +42,7 @@ export default function BarcodeScannerModal({
 }) {
   const videoRef = useRef(null);
   const hudCanvasRef = useRef(null);
+  const filterCanvasRef = useRef(null);
   const onCodeScannedRef = useRef(onCodeScanned);
   const resolveProductRef = useRef(resolveProduct);
   const resultSeqRef = useRef(0);
@@ -50,16 +53,21 @@ export default function BarcodeScannerModal({
   const activeStreamRef = useRef(null);
   const zxingReaderRef = useRef(null);
   const nativeActiveRef = useRef(false);
+  const laptopVisionActiveRef = useRef(false);
   const sessionCancelTokenRef = useRef(0);
   const hudAnimRef = useRef(null);
   const boundingBoxRef = useRef(null);
   const boundingBoxTimerRef = useRef(null);
+
+  // Detección exclusiva de entorno: Solo en Laptop/PC
+  const isLaptop = useMemo(() => isLaptopOrDesktopEnvironment(), []);
 
   const [starting, setStarting] = useState(false);
   const [status, setStatus] = useState({ type: 'info', text: '' });
   const [result, setResult] = useState(null);
   const [cooldownKey, setCooldownKey] = useState(0);
   const [recentScannedProductIds, setRecentScannedProductIds] = useState([]);
+  const [laptopEnhancement, setLaptopEnhancement] = useState(true);
   
   // Controles de Hardware
   const [hasTorch, setHasTorch] = useState(false);
@@ -91,8 +99,9 @@ export default function BarcodeScannerModal({
     // 1. Invalidar token de sesión activa
     sessionCancelTokenRef.current += 1;
 
-    // 2. Detener bucle nativo
+    // 2. Detener bucles de procesamiento
     nativeActiveRef.current = false;
+    laptopVisionActiveRef.current = false;
 
     // 3. Resetear y destruir lector ZXing
     if (zxingReaderRef.current) {
@@ -178,23 +187,37 @@ export default function BarcodeScannerModal({
 
       ctx.clearRect(0, 0, width, height);
 
-      // 1. Línea láser animada
-      laserY += laserDir * 2.2;
+      // 1. Recuadro guía de enfoque óptimo para Laptop
+      if (isLaptop) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 6]);
+        const rw = width * 0.7;
+        const rh = height * 0.6;
+        const rx = (width - rw) / 2;
+        const ry = (height - rh) / 2;
+        ctx.strokeRect(rx, ry, rw, rh);
+        ctx.restore();
+      }
+
+      // 2. Línea láser animada
+      laserY += laserDir * 2.5;
       if (laserY > height - 10) laserDir = -1;
       if (laserY < 10) laserDir = 1;
 
       ctx.save();
-      ctx.strokeStyle = 'rgba(16, 185, 129, 0.85)';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.9)';
+      ctx.lineWidth = 2.5;
       ctx.shadowColor = '#10b981';
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = 12;
       ctx.beginPath();
-      ctx.moveTo(width * 0.15, laserY);
-      ctx.lineTo(width * 0.85, laserY);
+      ctx.moveTo(width * 0.12, laserY);
+      ctx.lineTo(width * 0.88, laserY);
       ctx.stroke();
       ctx.restore();
 
-      // 2. Bounding Box sobre el código detectado
+      // 3. Bounding Box sobre el código detectado
       if (boundingBoxRef.current && boundingBoxRef.current.length >= 4) {
         const pts = boundingBoxRef.current;
         ctx.save();
@@ -223,7 +246,7 @@ export default function BarcodeScannerModal({
     return () => {
       if (hudAnimRef.current) cancelAnimationFrame(hudAnimRef.current);
     };
-  }, [isOpen]);
+  }, [isOpen, isLaptop]);
 
   const triggerBoundingBox = useCallback((cornerPoints) => {
     if (cornerPoints && cornerPoints.length >= 4) {
@@ -356,13 +379,13 @@ export default function BarcodeScannerModal({
 
       // 2. Detener stream previo
       stopActiveStream();
-      sessionCancelTokenRef.current = currentToken; // Restaurar token tras stop
+      sessionCancelTokenRef.current = currentToken;
 
-      // 3. Solicitar stream de video
+      // 3. Solicitar stream de video en Máxima Resolución (1080p ideal / 720p min)
       const constraints = {
         video: targetDeviceId 
-          ? { deviceId: { exact: targetDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-          : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+          ? { deviceId: { exact: targetDeviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30 } }
+          : { facingMode: { ideal: 'environment' }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30 } }
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -394,14 +417,14 @@ export default function BarcodeScannerModal({
         applyHardwareCapabilities(track, true);
       }
 
-      // 4. Determinar si usar BarcodeDetector Nativo o ZXing Fallback
+      // 4. Móvil: Si soporta BarcodeDetector nativo por hardware (GPU/NPU)
       const isNativeSupported = await checkBarcodeDetectorSupport();
       if (sessionCancelTokenRef.current !== currentToken) {
         stopActiveStream();
         return;
       }
 
-      if (isNativeSupported) {
+      if (isNativeSupported && !isLaptop) {
         const nativeDetector = createNativeBarcodeDetector();
         if (nativeDetector) {
           setEngineType('native');
@@ -438,7 +461,7 @@ export default function BarcodeScannerModal({
         }
       }
 
-      // Fallback: ZXing Library Reader (Reutilizando el stream ya abierto sin abrir un segundo stream de cámara)
+      // Fallback: ZXing Library Reader con TRY_HARDER y Pipeline Multi-Pass
       setEngineType('zxing');
       const hints = new Map();
       hints.set(DecodeHintType.POSSIBLE_FORMATS, [
@@ -451,23 +474,63 @@ export default function BarcodeScannerModal({
         BarcodeFormat.ITF,
         BarcodeFormat.CODABAR,
       ]);
+      hints.set(DecodeHintType.TRY_HARDER, true);
 
       const reader = new BrowserMultiFormatReader(hints, 0);
       reader.timeBetweenDecodingAttempts = ATTEMPT_PACING_MS;
       zxingReaderRef.current = reader;
 
       if (videoRef.current && activeStreamRef.current) {
-        reader.decodeFromStream(
-          activeStreamRef.current,
-          videoRef.current,
-          (zxingResult) => {
-            if (!zxingResult || !zxingResult.getText || !zxingResult.getText().trim()) {
-              codeVisibleRef.current = false;
-              return;
+        if (isLaptop && laptopEnhancement && filterCanvasRef.current) {
+          // Bucle de Visión Multi-Pass de Alta Efectividad para Laptops
+          laptopVisionActiveRef.current = true;
+          let passCounter = 0;
+
+          const runLaptopVisionLoop = () => {
+            if (!laptopVisionActiveRef.current || sessionCancelTokenRef.current !== currentToken || !videoRef.current || !activeStreamRef.current) return;
+
+            try {
+              if (videoRef.current.readyState >= 2 && filterCanvasRef.current) {
+                // Ciclar entre 4 variantes de procesamiento por fotograma:
+                // 0: Sauvola Adaptativa Local, 1: 1D Horizontal Sharpen, 2: HD Raw Crop, 3: Invertido
+                const currentPass = passCounter % 4;
+                passCounter++;
+
+                processMultiPassLaptopFrame(videoRef.current, filterCanvasRef.current, currentPass);
+                
+                try {
+                  const zxingResult = reader.decode(filterCanvasRef.current);
+                  if (zxingResult && zxingResult.getText && zxingResult.getText().trim()) {
+                    handleDecodedCode(zxingResult.getText().trim());
+                  }
+                } catch {
+                  codeVisibleRef.current = false;
+                }
+              }
+            } catch {
+              // Siguiente ciclo
             }
-            handleDecodedCode(zxingResult.getText().trim());
-          }
-        );
+
+            if (laptopVisionActiveRef.current && sessionCancelTokenRef.current === currentToken) {
+              setTimeout(runLaptopVisionLoop, ATTEMPT_PACING_MS);
+            }
+          };
+
+          runLaptopVisionLoop();
+        } else {
+          // Lectura directa desde stream
+          reader.decodeFromStream(
+            activeStreamRef.current,
+            videoRef.current,
+            (zxingResult) => {
+              if (!zxingResult || !zxingResult.getText || !zxingResult.getText().trim()) {
+                codeVisibleRef.current = false;
+                return;
+              }
+              handleDecodedCode(zxingResult.getText().trim());
+            }
+          );
+        }
       }
 
       setStarting(false);
@@ -531,8 +594,28 @@ export default function BarcodeScannerModal({
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Escanear código de barras" maxWidth="540px">
       <div className="scanner-container">
+        {/* Canvas de procesamiento oculto para filtros de laptop */}
+        <canvas ref={filterCanvasRef} style={{ display: 'none' }} />
+
         {/* Controles Flotantes Superiores */}
         <div className="scanner-controls-top">
+          {/* Botón de Realce Óptico exclusivo para Laptops */}
+          {isLaptop && (
+            <button
+              type="button"
+              className={`scanner-icon-btn ${laptopEnhancement ? 'active' : ''}`}
+              onClick={() => {
+                setLaptopEnhancement((v) => !v);
+                startScanningSession(currentDeviceId);
+              }}
+              title={laptopEnhancement ? 'Desactivar Realce Óptico Laptop' : 'Activar Realce Óptico Laptop (Sauvola + Sharpen + Zoom)'}
+              aria-label="Realce Óptico Laptop"
+              aria-pressed={laptopEnhancement}
+            >
+              <Wand2 size={18} />
+            </button>
+          )}
+
           {videoDevices.length > 1 && (
             <button
               type="button"
@@ -573,6 +656,13 @@ export default function BarcodeScannerModal({
         <div className="scanner-video-wrap">
           <video ref={videoRef} className="scanner-video" muted playsInline />
           <canvas ref={hudCanvasRef} className="scanner-hud-canvas" />
+
+          {/* Guía de distancia focal para webcam de laptop */}
+          {isLaptop && !starting && status.type !== 'error' && (
+            <div className="scanner-focus-hint">
+              💡 Distancia recomendada: 30 a 40 cm de la pantalla
+            </div>
+          )}
 
           {starting && (
             <div className="scanner-overlay">
@@ -674,6 +764,7 @@ export default function BarcodeScannerModal({
         <div className={`scanner-status ${status.type}`}>
           {status.text}
           {engineType === 'native' && <span className="scanner-engine-badge">GPU Nativo</span>}
+          {isLaptop && laptopEnhancement && <span className="scanner-engine-badge">Sauvola + Sharpen 1D Activo</span>}
         </div>
 
         <p className="scanner-privacy">
