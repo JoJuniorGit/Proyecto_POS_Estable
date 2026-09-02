@@ -37,7 +37,7 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
                 // Idempotency check: verify if this sale stock deduction was already processed
                 var alreadyProcessed = await _context.StockMovements
                     .AsNoTracking()
-                    .AnyAsync(sm => sm.ProductId == item.ProductId && sm.Reason == reason, cancellationToken);
+                    .AnyAsync(sm => sm.Reason.Contains(reason) && (sm.ProductId == item.ProductId || sm.Reason.Contains("Variante:")), cancellationToken);
 
                 if (alreadyProcessed)
                 {
@@ -45,8 +45,8 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
                     continue;
                 }
 
-                // We use negative quantity to deduct stock without fractional truncation
-                await _inventoryService.UpdateStockAsync(item.ProductId, -item.Quantity, reason);
+                // We use negative quantity to deduct stock without fractional truncation, allowing negative stock on sales
+                await _inventoryService.UpdateStockAsync(item.ProductId, -item.Quantity, reason, allowNegativeStock: true);
             }
             catch (Exception ex)
             {
@@ -58,7 +58,7 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
                     try
                     {
                         await Task.Delay(500, cancellationToken);
-                        await _inventoryService.UpdateStockAsync(item.ProductId, -item.Quantity, reason);
+                        await _inventoryService.UpdateStockAsync(item.ProductId, -item.Quantity, reason, allowNegativeStock: true);
                         success = true;
                         break;
                     }

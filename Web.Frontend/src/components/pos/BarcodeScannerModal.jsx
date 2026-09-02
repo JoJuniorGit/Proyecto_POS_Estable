@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { BrowserMultiFormatReader } from '@zxing/library';
-import { Loader2, CameraOff, ShieldAlert, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
+import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } from '@zxing/library';
+import { Loader2, CameraOff, ShieldAlert, CheckCircle2, AlertCircle, XCircle, Flashlight, FlashlightOff } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { getProductBySku } from '../../services/productsApi';
+import { isValidBarcode } from '../../utils/barcodeValidator';
+import { playScanSuccess, playScanWarning, playScanError } from '../../utils/soundEffects';
 import './BarcodeScannerModal.css';
 
 // La API de cámara solo existe en contextos seguros: HTTPS, localhost o loopback (127.0.0.1).
@@ -34,6 +36,9 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned, re
   const [starting, setStarting] = useState(false);
   const [status, setStatus] = useState({ type: 'info', text: '' });
   const [result, setResult] = useState(null);
+  const [cooldownKey, setCooldownKey] = useState(0);
+  const [hasTorch, setHasTorch] = useState(false);
+  const [torchActive, setTorchActive] = useState(false);
 
   // Keep the latest callbacks without restarting the camera.
   useEffect(() => {
@@ -66,6 +71,12 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned, re
       }
 
       const trimmed = result.getText().trim();
+
+      // Restricción estricta: Ignorar QR, URLs y texto arbitrario
+      if (!isValidBarcode(trimmed)) {
+        return;
+      }
+
       const now = Date.now();
 
       // Debounce global entre registros consecutivos.
@@ -74,6 +85,7 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned, re
       // Enfriamiento SOLO para el mismo código: si el mismo producto se vuelve a
       // presentar dentro de 1.8 s se ignora. Un código distinto entra al instante.
       if (lastCodeRef.current === trimmed && now - lastHitAtRef.current < SAME_CODE_COOLDOWN_MS) {
+        setCooldownKey(now);
         if (now - lastSuppressedWarnAtRef.current > 500) {
           lastSuppressedWarnAtRef.current = now;
           setStatus({ type: 'warn', text: 'Código repetido — espere un momento antes de volver a escanearlo' });
@@ -85,6 +97,7 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned, re
       // volver a agregar el producto sin querer. Solo se re-escanea si el código
       // sale de la vista (al menos un fotograma sin él) o aparece otro distinto.
       if (lastCodeRef.current === trimmed && codeVisibleRef.current) {
+        setCooldownKey(now);
         if (now - lastSuppressedWarnAtRef.current > 500) {
           lastSuppressedWarnAtRef.current = now;
           setStatus({ type: 'warn', text: 'Código repetido — retírelo de la vista para escanearlo de nuevo' });
@@ -95,6 +108,7 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned, re
       lastCodeRef.current = trimmed;
       lastHitAtRef.current = now;
       codeVisibleRef.current = true;
+      setCooldownKey(0);
 
       // Copy to clipboard (best effort — requires a secure context).
       if (navigator.clipboard?.writeText) {
@@ -130,22 +144,27 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned, re
         if (seq !== resultSeqRef.current) return;
 
         if (!info) {
+          playScanWarning();
           setResult({ key: seq, kind: 'notfound', title: 'Producto no encontrado', subtitle: code });
           return;
         }
         if (!info.isActive) {
+          playScanError();
           setResult({ key: seq, kind: 'inactive', title: 'Producto inactivo', subtitle: `${code}  •  ${info.name}` });
           return;
         }
         if (info.isCashAdvance) {
+          playScanWarning();
           setResult({ key: seq, kind: 'cashadvance', title: info.name, subtitle: `${code}  •  Sistema — requiere captura manual` });
           return;
         }
 
+        playScanSuccess();
         const price = Number(info.priceBsS) > 0 ? `Bs.S ${Number(info.priceBsS).toFixed(2)}` : `USD ${Number(info.priceUSD).toFixed(2)}`;
         setResult({ key: seq, kind: 'found', title: info.name, subtitle: `${code}  •  ${price}` });
       } catch {
         if (seq !== resultSeqRef.current) return;
+        playScanError();
         setResult({ key: seq, kind: 'error', title: 'No se pudo leer el código', subtitle: code });
       }
     };
@@ -162,9 +181,22 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned, re
       }
 
       try {
+        // Restringir decodificación exclusivamente a formatos de códigos de barras estándar (1D)
+        const hints = new Map();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.UPC_A,
+          BarcodeFormat.UPC_E,
+          BarcodeFormat.CODE_128,
+          BarcodeFormat.CODE_39,
+          BarcodeFormat.ITF,
+          BarcodeFormat.CODABAR,
+        ]);
+
         // Segundo argumento = 0: sin pausa de 500 ms tras cada código detectado,
         // para permitir escanear varios productos uno tras otro rápidamente.
-        reader = new BrowserMultiFormatReader(null, 0);
+        reader = new BrowserMultiFormatReader(hints, 0);
         reader.timeBetweenDecodingAttempts = ATTEMPT_PACING_MS;
 
         // Resolución de captura limitada: decodificar fotogramas más pequeños es
@@ -175,6 +207,19 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned, re
           (result) => handleDecoded(result),
         );
         if (disposed) return;
+
+        // Comprobar si la cámara soporta linterna (Torch)
+        try {
+          const stream = videoRef.current?.srcObject;
+          const track = stream?.getVideoTracks?.()[0];
+          const capabilities = track?.getCapabilities?.();
+          if (capabilities?.torch) {
+            setHasTorch(true);
+          }
+        } catch {
+          // Ignorar si getCapabilities no está soportado
+        }
+
         setStarting(false);
         setStatus({ type: 'info', text: 'Apunte la cámara a un código de barras…' });
       } catch (err) {
@@ -188,6 +233,8 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned, re
 
     return () => {
       disposed = true;
+      setHasTorch(false);
+      setTorchActive(false);
       try {
         reader?.reset();
       } catch {
@@ -196,10 +243,36 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned, re
     };
   }, [isOpen]);
 
+  const toggleTorch = async () => {
+    try {
+      const stream = videoRef.current?.srcObject;
+      const track = stream?.getVideoTracks?.()[0];
+      if (track) {
+        const nextState = !torchActive;
+        await track.applyConstraints({ advanced: [{ torch: nextState }] });
+        setTorchActive(nextState);
+      }
+    } catch (err) {
+      console.warn('[Scanner] No se pudo cambiar estado de linterna:', err);
+    }
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Escanear código de barras" maxWidth="520px">
       <div className="scanner-video-wrap">
         <video ref={videoRef} className="scanner-video" muted playsInline />
+
+        {hasTorch && (
+          <button
+            type="button"
+            className={`scanner-torch-btn ${torchActive ? 'active' : ''}`}
+            onClick={toggleTorch}
+            title={torchActive ? 'Apagar linterna' : 'Encender linterna'}
+            aria-label="Linterna"
+          >
+            {torchActive ? <FlashlightOff size={18} /> : <Flashlight size={18} />}
+          </button>
+        )}
 
         {starting && (
           <div className="scanner-overlay">
@@ -226,6 +299,11 @@ export default function BarcodeScannerModal({ isOpen, onClose, onCodeScanned, re
           <div className="scanner-result-body">
             <span className="scanner-result-title">{result.title}</span>
             {result.subtitle && <span className="scanner-result-subtitle">{result.subtitle}</span>}
+            {cooldownKey > 0 && (
+              <div className="scanner-cooldown-bar" key={cooldownKey}>
+                <div className="scanner-cooldown-fill" />
+              </div>
+            )}
           </div>
         </div>
       )}

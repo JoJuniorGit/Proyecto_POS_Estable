@@ -14,7 +14,7 @@
         TextOptions.TextRenderingMode="Auto"        
         Background="{DynamicResource MaterialDesignPaper}"
         FontFamily="{DynamicResource MaterialDesignFont}"
-        Title="{Binding DialogTitle}" Height="680" Width="720"
+        Title="{Binding DialogTitle}" Height="720" Width="800"
         WindowStartupLocation="CenterScreen" ResizeMode="CanResize">
     
     <Window.Resources>
@@ -24,6 +24,20 @@
         <converters:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisConverter"/>
         <converters:InverseBooleanConverter x:Key="InverseBoolConverter"/>
         <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+
+        <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="materialDesign:HintAssist.IsFloating" Value="True"/>
+        </Style>
+
+        <Style TargetType="ComboBox" BasedOn="{StaticResource MaterialDesignOutlinedComboBox}">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="materialDesign:HintAssist.IsFloating" Value="True"/>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="25">
@@ -55,277 +69,401 @@
                     <ColumnDefinition Width="20" /> <!-- Spacing -->
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
+                <!-- LEFT COLUMN: Basic Info & Categorization -->
+                <StackPanel Grid.Column="0">
+                    <!-- 1. Tarjeta de Información Básica -->
+                    <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="6" Padding="16,14,16,16" Margin="0,0,0,16" BorderThickness="1" BorderBrush="{DynamicResource PrimaryHueLightBrush}">
+                        <StackPanel>
+                            <TextBlock Text="Información Básica" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,14"/>
+                            
+                            <!-- 1.1 Nombre del Producto -->
+                            <Grid Margin="0,0,0,20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="36"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <materialDesign:PackIcon Grid.Column="0" Kind="PackageVariantClosed" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="0,14,0,0" Width="22" Height="22" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                <StackPanel Grid.Column="1">
+                                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" 
+                                             materialDesign:HintAssist.Hint="Nombre del Producto *" 
+                                             materialDesign:HintAssist.IsFloating="True"
+                                             Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
+                                             TabIndex="1"/>
+                                    <TextBlock Text="ej. Coca Cola 2L" Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
+                                </StackPanel>
+                            </Grid>
 
-            <!-- LEFT COLUMN: Basic Info & Categorization -->
-            <StackPanel Grid.Column="0">
-                <TextBlock Text="Basic Information" Style="{DynamicResource MaterialDesignSubtitle2TextBlock}" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,15"/>
-                
-                <Grid Margin="0,0,0,20">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <materialDesign:PackIcon Kind="PackageVariantClosed" VerticalAlignment="Center" Margin="0,0,10,0" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}"/>
-                        <TextBlock Text="Product Name" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesignBody}"/>
-                    </StackPanel>
-                    <TextBox Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Name *" materialDesign:HintAssist.HelperText="e.g. Coca Cola 2L" Style="{DynamicResource MaterialDesignOutlinedTextBox}" TabIndex="1"/>
-                </Grid>
+                            <!-- 1.2 SKU / Código de Barras -->
+                            <Grid Margin="0,0,0,20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="36"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <materialDesign:PackIcon Grid.Column="0" Kind="Barcode" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="0,14,0,0" Width="22" Height="22" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                <StackPanel Grid.Column="1">
+                                    <TextBox Text="{Binding Sku, UpdateSourceTrigger=PropertyChanged}" PreviewTextInput="NumberValidationTextBox" 
+                                             materialDesign:HintAssist.Hint="Código de Barras / SKU *" 
+                                             materialDesign:HintAssist.IsFloating="True"
+                                             Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
+                                             TabIndex="2"/>
+                                    <TextBlock Text="Número entero (solo dígitos 0-9)" Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
+                                    <TextBlock Text="{Binding SkuVerificationMessage}" Foreground="{DynamicResource PrimaryHueMidBrush}" FontSize="10" Margin="4,2,0,0" Visibility="{Binding IsSkuVerifying, Converter={StaticResource BoolToVisConverter}}"/>
+                                    <TextBlock Text="{Binding SkuVerificationMessage}" Foreground="Red" FontSize="10" Margin="4,2,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsSkuVerifying}" Value="False" />
+                                                            <Condition Binding="{Binding IsSkuValid}" Value="False" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
 
-                <Grid Margin="0,0,0,20">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <materialDesign:PackIcon Kind="Barcode" VerticalAlignment="Center" Margin="0,0,10,0" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}"/>
-                        <TextBlock Text="SKU / Barcode" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesignBody}"/>
-                    </StackPanel>
-                    <StackPanel Grid.Column="1">
-                        <TextBox Text="{Binding Sku, UpdateSourceTrigger=PropertyChanged}" PreviewTextInput="NumberValidationTextBox" materialDesign:HintAssist.Hint="Código de Barras / SKU *" materialDesign:HintAssist.HelperText="Número entero (solo dígitos 0-9)" Style="{DynamicResource MaterialDesignOutlinedTextBox}" TabIndex="2"/>
-                        <TextBlock Text="{Binding SkuVerificationMessage}" Foreground="{DynamicResource PrimaryHueMidBrush}" FontSize="10" Visibility="{Binding IsSkuVerifying, Converter={StaticResource BoolToVisConverter}}"/>
-                        <TextBlock Text="{Binding SkuVerificationMessage}" Foreground="Red" FontSize="10">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Style.Triggers>
-                                        <MultiDataTrigger>
-                                            <MultiDataTrigger.Conditions>
-                                                <Condition Binding="{Binding IsSkuVerifying}" Value="False" />
-                                                <Condition Binding="{Binding IsSkuValid}" Value="False" />
-                                            </MultiDataTrigger.Conditions>
-                                            <Setter Property="Visibility" Value="Visible" />
-                                        </MultiDataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </StackPanel>
-                </Grid>
+                            <!-- 1.3 Descripción / Detalles -->
+                            <Grid Margin="0,0,0,20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="36"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <materialDesign:PackIcon Grid.Column="0" Kind="TextSubject" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="0,14,0,0" Width="22" Height="22" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                <StackPanel Grid.Column="1">
+                                    <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" 
+                                             materialDesign:HintAssist.Hint="Descripción / Detalles" 
+                                             materialDesign:HintAssist.IsFloating="True"
+                                             Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
+                                             AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" 
+                                             TabIndex="3"/>
+                                    <TextBlock Text="Texto opcional" Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
+                                </StackPanel>
+                            </Grid>
 
-                <Grid Margin="0,0,0,20">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Top" Margin="0,15,0,0">
-                        <materialDesign:PackIcon Kind="TextSubject" VerticalAlignment="Center" Margin="0,0,10,0" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}"/>
-                        <TextBlock Text="Description" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesignBody}"/>
-                    </StackPanel>
-                    <TextBox Grid.Column="1" Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Details" materialDesign:HintAssist.HelperText="Optional text" Style="{DynamicResource MaterialDesignOutlinedTextBox}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" TabIndex="3"/>
-                </Grid>
+                            <!-- 1.4 Unidad de Medida -->
+                            <Grid Margin="0,0,0,20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="36"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <materialDesign:PackIcon Grid.Column="0" Kind="ScaleBalance" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="0,14,0,0" Width="22" Height="22" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                <StackPanel Grid.Column="1">
+                                    <ComboBox ItemsSource="{Binding UnitOfMeasureTypes}" SelectedItem="{Binding UnitOfMeasureType}" 
+                                              IsEnabled="{Binding CanEditPricing}" 
+                                              materialDesign:HintAssist.Hint="Unidad de Medida" 
+                                              materialDesign:HintAssist.IsFloating="True"
+                                              Style="{DynamicResource MaterialDesignOutlinedComboBox}" 
+                                              TabIndex="4"/>
+                                    <TextBlock Text="Und, Kg, Grs, Lt, etc." Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
+                                </StackPanel>
+                            </Grid>
 
-                <Grid Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <materialDesign:PackIcon Kind="ScaleBalance" VerticalAlignment="Center" Margin="0,0,10,0" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}"/>
-                        <TextBlock Text="Unidad de Medida" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesignBody}"/>
-                    </StackPanel>
-                    <ComboBox Grid.Column="1" ItemsSource="{Binding UnitOfMeasureTypes}" SelectedItem="{Binding UnitOfMeasureType}" IsEnabled="{Binding CanEditPricing}" materialDesign:HintAssist.Hint="Unidad" materialDesign:HintAssist.HelperText="Und, Kg, Grs, Lt, etc." Style="{DynamicResource MaterialDesignOutlinedComboBox}" TabIndex="4"/>
-                </Grid>
-
-                <Grid Margin="0,10,0,10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    
-                    <StackPanel Grid.Column="1">
-                        <CheckBox Content="Es Grupo de Variantes / Padre (Agrupa sabores)" 
-                                  IsChecked="{Binding IsGroupHeader, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
-                                  FontWeight="Bold" 
-                                  Foreground="{DynamicResource PrimaryHueMidBrush}" 
-                                  Margin="0,0,0,8" 
-                                  ToolTip="{Binding GroupHeaderToolTip}"
-                                  AutomationProperties.HelpText="{Binding GroupHeaderToolTip}"
-                                  IsEnabled="{Binding CanEditGroupHeader}"/>
-                        <CheckBox Content="Producto Fraccionable (Venta por peso/granel)" IsChecked="{Binding IsFractional, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,8" IsEnabled="{Binding CanEditFractional}"/>
-                        <CheckBox Content="Es Servicio de Adelanto de Efectivo (Retira de gaveta)" IsChecked="{Binding IsCashAdvance, UpdateSourceTrigger=PropertyChanged}" ToolTip="Este producto habilita el servicio de entrega de dinero en efectivo en el POS" IsEnabled="{Binding IsGroupHeader, Converter={StaticResource InverseBoolConverter}}" Visibility="{Binding IsCreateMode, Converter={StaticResource BoolToVisConverter}}"/>
-                    </StackPanel>
-                </Grid>
-
-                <!-- Parent Product Selection (for Variants) -->
-                <Grid Margin="0,0,0,15" Visibility="{Binding IsGroupHeader, Converter={StaticResource InverseBoolToVisConverter}}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <materialDesign:PackIcon Kind="FamilyTree" VerticalAlignment="Center" Margin="0,0,10,0" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}"/>
-                        <TextBlock Text="Producto Padre" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesignBody}"/>
-                    </StackPanel>
-                    <ComboBox Grid.Column="1" 
-                              ItemsSource="{Binding ParentProducts}" 
-                              SelectedItem="{Binding SelectedParentProduct}"
-                              IsEnabled="{Binding CanSelectParentProduct}"
-                              DisplayMemberPath="Name"
-                              materialDesign:HintAssist.Hint="Ninguno (Producto Independiente)" 
-                              materialDesign:HintAssist.HelperText="Hereda precios y costos automáticamente" 
-                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"/>
-                </Grid>
-            </StackPanel>
-
-            <!-- RIGHT COLUMN: Pricing & Inventory -->
-            <StackPanel Grid.Column="2">
-                <TextBlock Text="Costo &amp; Precios" Style="{DynamicResource MaterialDesignSubtitle2TextBlock}" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,10"/>
-
-                <!-- 1. Costo Base USD -->
-                <Grid Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="130"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Costo Base ($ USD)" VerticalAlignment="Center" FontWeight="SemiBold"/>
-                    <TextBox Grid.Column="1" 
-                             helpers:AtmBehavior.Mode="Currency"
-                             helpers:AtmBehavior.Value="{Binding CostPriceUSD, Mode=TwoWay}"
-                             helpers:AtmBehavior.RecalculateTrigger="Cost"
-                             IsEnabled="{Binding CanEditPricing}"
-                             materialDesign:HintAssist.Hint="0.00 $" 
-                             Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
-                             TabIndex="5"/>
-                </Grid>
-
-                <!-- 2. Sección Detal -->
-                <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="6" Padding="10" Margin="0,0,0,12" BorderThickness="1" BorderBrush="{DynamicResource PrimaryHueLightBrush}">
-                    <StackPanel>
-                        <TextBlock Text="Venta Al Detal" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,8"/>
-                        <Grid Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="10"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" 
-                                     helpers:AtmBehavior.Mode="Percentage"
-                                     helpers:AtmBehavior.Value="{Binding ProfitMarginRetail, Mode=TwoWay}"
-                                     helpers:AtmBehavior.RecalculateTrigger="MarginRetail"
-                                     IsEnabled="{Binding CanEditPricing}"
-                                     materialDesign:HintAssist.Hint="Margen %" 
-                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
-                                     TabIndex="6"/>
-                            <TextBox Grid.Column="2" 
-                                     helpers:AtmBehavior.Mode="Currency"
-                                     helpers:AtmBehavior.Value="{Binding PriceRetailUSD, Mode=TwoWay}"
-                                     helpers:AtmBehavior.RecalculateTrigger="PriceRetail"
-                                     IsEnabled="{Binding CanEditPricing}"
-                                     materialDesign:HintAssist.Hint="Precio Detal $" 
-                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
-                                     TabIndex="7"/>
-                        </Grid>
-                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                            <TextBlock Text="Equivalente Bs.S: " FontSize="11" Opacity="0.7"/>
-                            <TextBlock Text="{Binding PriceRetailBsS, StringFormat='Bs.S {0:N2}'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                            <!-- 1.5 Producto Padre Selection (para Variantes) -->
+                            <Grid Margin="0,0,0,4" Visibility="{Binding IsGroupHeader, Converter={StaticResource InverseBoolToVisConverter}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="36"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <materialDesign:PackIcon Grid.Column="0" Kind="FamilyTree" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="0,14,0,0" Width="22" Height="22" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                <StackPanel Grid.Column="1">
+                                    <ComboBox ItemsSource="{Binding ParentProducts}" 
+                                              SelectedItem="{Binding SelectedParentProduct}"
+                                              IsEnabled="{Binding CanSelectParentProduct}"
+                                              DisplayMemberPath="Name"
+                                              materialDesign:HintAssist.Hint="Producto Padre (Opcional)" 
+                                              materialDesign:HintAssist.IsFloating="True"
+                                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"/>
+                                    <TextBlock Text="Hereda precios y costos automáticamente" Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
+                                </StackPanel>
+                            </Grid>
                         </StackPanel>
-                    </StackPanel>
-                </Border>
+                    </Border>
 
-                <!-- 3. Sección Mayor -->
-                <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="6" Padding="10" Margin="0,0,0,15" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}">
-                    <StackPanel>
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Venta Al Mayor" FontWeight="Bold" Foreground="#10B981" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                            <CheckBox Grid.Column="1" Content="Habilitar Precio al Mayor" IsChecked="{Binding HasWholesale}" IsEnabled="{Binding CanEditPricing}" HorizontalAlignment="Right" FontWeight="SemiBold" Foreground="#10B981"/>
-                        </Grid>
-                        <Grid Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="10"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" 
-                                     helpers:AtmBehavior.Mode="Percentage"
-                                     helpers:AtmBehavior.Value="{Binding ProfitMarginWholesale, Mode=TwoWay}"
-                                     helpers:AtmBehavior.RecalculateTrigger="MarginWholesale"
-                                     IsEnabled="{Binding CanEditWholesale}" 
-                                     materialDesign:HintAssist.Hint="Margen Mayor %" 
-                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
-                                     TabIndex="8"/>
-                            <TextBox Grid.Column="2" 
-                                     helpers:AtmBehavior.Mode="Currency"
-                                     helpers:AtmBehavior.Value="{Binding PriceWholesaleUSD, Mode=TwoWay}"
-                                     helpers:AtmBehavior.RecalculateTrigger="PriceWholesale"
-                                     IsEnabled="{Binding CanEditWholesale}" 
-                                     materialDesign:HintAssist.Hint="Precio Mayor $" 
-                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
-                                     TabIndex="9"/>
-                        </Grid>
-                        <Grid Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Cant. Mínima" VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold"/>
-                            <TextBox Grid.Column="1" 
-                                     helpers:AtmBehavior.Mode="Quantity"
-                                     helpers:AtmBehavior.Value="{Binding MinWholesaleQuantity, Mode=TwoWay}"
-                                     IsEnabled="{Binding CanEditWholesale}" 
-                                     materialDesign:HintAssist.Hint="Mín. Mayor (ej. 6)" 
-                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
-                                     TabIndex="10"/>
-                        </Grid>
-                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                            <TextBlock Text="Equivalente Bs.S: " FontSize="11" Opacity="0.7"/>
-                            <TextBlock Text="{Binding PriceWholesaleBsS, StringFormat='Bs.S {0:N2}'}" FontSize="12" FontWeight="Bold" Foreground="#10B981"/>
+                    <!-- 2. Tarjeta de Propiedades Especiales y Variantes -->
+                    <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="6" Padding="16,14,16,16" Margin="0,0,0,16" BorderThickness="1" BorderBrush="{DynamicResource PrimaryHueLightBrush}">
+                        <StackPanel>
+                            <TextBlock Text="Propiedades Especiales" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,8"/>
+
+                            <CheckBox IsChecked="{Binding IsGroupHeader, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                      FontWeight="Bold" 
+                                      Foreground="{DynamicResource PrimaryHueMidBrush}" 
+                                      Margin="0,0,0,6" 
+                                      ToolTip="{Binding GroupHeaderToolTip}"
+                                      AutomationProperties.HelpText="{Binding GroupHeaderToolTip}"
+                                      IsEnabled="{Binding CanEditGroupHeader}">
+                                <TextBlock Text="Agrupador de Presentaciones" TextWrapping="Wrap"/>
+                            </CheckBox>
+                            
+                            <!-- Sub-opciones de Grupo -->
+                            <StackPanel Margin="22,0,0,6" Visibility="{Binding IsGroupHeader, Converter={StaticResource BoolToVisConverter}}">
+                                <CheckBox IsChecked="{Binding IsStockShared, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          IsEnabled="{Binding CanEditStockShared}"
+                                          FontWeight="SemiBold"
+                                          ToolTip="Todas las presentaciones descontarán unidades del mismo total."
+                                          Margin="0,0,0,6">
+                                    <TextBlock Text="Inventario compartido (Stock centralizado)" TextWrapping="Wrap"/>
+                                </CheckBox>
+                                <CheckBox IsChecked="{Binding HasIndependentPricing, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          IsEnabled="{Binding CanEditIndependentPricing}"
+                                          FontWeight="SemiBold"
+                                          ToolTip="Permite asignar un costo y precio de venta distinto a cada opción."
+                                          Margin="0,0,0,4">
+                                    <TextBlock Text="Precios individuales por presentación" TextWrapping="Wrap"/>
+                                </CheckBox>
+                            </StackPanel>
+
+                            <CheckBox IsChecked="{Binding IsFractional, UpdateSourceTrigger=PropertyChanged}" 
+                                      FontWeight="SemiBold" 
+                                      ToolTip="Habilita la venta usando decimales o peso (Ej. 1,5 Kg)."
+                                      Margin="0,0,0,6" 
+                                      IsEnabled="{Binding CanEditFractional}">
+                                <TextBlock Text="Permitir venta fraccionada (a granel)" TextWrapping="Wrap"/>
+                            </CheckBox>
+
+                            <CheckBox IsChecked="{Binding IsCashAdvance, UpdateSourceTrigger=PropertyChanged}" 
+                                      ToolTip="Este producto habilita el servicio de entrega de dinero en efectivo en el POS" 
+                                      IsEnabled="{Binding IsGroupHeader, Converter={StaticResource InverseBoolConverter}}" 
+                                      Visibility="{Binding IsCreateMode, Converter={StaticResource BoolToVisConverter}}">
+                                <TextBlock Text="Es Servicio de Adelanto de Efectivo (Retira de gaveta)" TextWrapping="Wrap"/>
+                            </CheckBox>
                         </StackPanel>
-                    </StackPanel>
-                </Border>
-
-                <!-- Stock & Alert Section (For physical products) -->
-                <StackPanel Visibility="{Binding ShowStockInputs, Converter={StaticResource BoolToVisConverter}}">
-                    <!-- Creation Mode: Stock Inicial + Alerta Mínimo -->
-                    <Grid Margin="0,0,0,10" Visibility="{Binding IsCreateMode, Converter={StaticResource BoolToVisConverter}}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="10"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBox Grid.Column="0" 
-                                 helpers:AtmBehavior.Mode="Quantity"
-                                 helpers:AtmBehavior.Value="{Binding StockQuantity, Mode=TwoWay}"
-                                 materialDesign:HintAssist.Hint="Stock Inicial" 
-                                 Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
-                                 TabIndex="11"/>
-                        <TextBox Grid.Column="2" 
-                                 helpers:AtmBehavior.Mode="Quantity"
-                                 helpers:AtmBehavior.Value="{Binding LowStockThreshold, Mode=TwoWay}"
-                                 materialDesign:HintAssist.Hint="Alerta Mínimo" 
-                                 Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
-                                 TabIndex="12"/>
-                    </Grid>
-
-                    <!-- Edit Mode: Solo Alerta Mínimo -->
-                    <Grid Margin="0,0,0,10" Visibility="{Binding IsEditMode, Converter={StaticResource BoolToVisConverter}}">
-                        <TextBox helpers:AtmBehavior.Mode="Quantity"
-                                 helpers:AtmBehavior.Value="{Binding LowStockThreshold, Mode=TwoWay}"
-                                 materialDesign:HintAssist.Hint="Alerta Mínimo" 
-                                 Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
-                                 TabIndex="11"/>
-                    </Grid>
+                    </Border>
                 </StackPanel>
 
-                <!-- Informational banner when IsCashAdvance is true -->
-                <Border Background="#EDE9FE" BorderBrush="#DDD6FE" BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="0,0,0,10" Visibility="{Binding IsCashAdvance, Converter={StaticResource BoolToVisConverter}}">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <materialDesign:PackIcon Kind="InformationOutline" Foreground="#6D28D9" VerticalAlignment="Center" Margin="0,0,8,0" Width="20" Height="20"/>
-                        <TextBlock Text="Este producto es un Servicio de Adelanto de Efectivo (no requiere inventario numérico)." Foreground="#6D28D9" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <!-- RIGHT COLUMN: Pricing & Inventory -->
+                <StackPanel Grid.Column="2">
+                    <!-- Banner Informativo: Precios Individuales por Presentación -->
+                    <Border Background="#F5F3FF" BorderBrush="#DDD6FE" BorderThickness="1" CornerRadius="8" Padding="14,14" Margin="0,0,0,16" Visibility="{Binding ShowIndependentPricingNotice, Converter={StaticResource BoolToVisConverter}}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <materialDesign:PackIcon Kind="TagMultiple" Foreground="#7C3AED" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Text="Precios Individuales por Presentación" FontWeight="Bold" Foreground="#7C3AED" VerticalAlignment="Center" FontSize="13"/>
+                            </StackPanel>
+                            <TextBlock Text="Este producto agrupa presentaciones con costos y precios individuales. Las tarifas no se definen en el agrupador padre, sino en cada una de sus variantes." 
+                                       TextWrapping="Wrap" Foreground="#5B21B6" FontSize="12" LineHeight="16"/>
+                            <Button Content="Administrar Variantes"
+                                    Command="{Binding ManageVariantsCommand}"
+                                    Visibility="{Binding ShowManageVariantsButton, Converter={StaticResource BoolToVisConverter}}"
+                                    Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                    Margin="0,12,0,0"
+                                    HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Contenedor de Precios y Costos -->
+                    <StackPanel Visibility="{Binding ShowPricingInputs, Converter={StaticResource BoolToVisConverter}}">
+                        <!-- 1. Costo Base USD -->
+                        <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="6" Padding="14,12,14,16" Margin="0,0,0,16" BorderThickness="1" BorderBrush="{DynamicResource PrimaryHueLightBrush}">
+                            <StackPanel>
+                                <TextBlock Text="Costo de Adquisición" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,8"/>
+                                <TextBox helpers:AtmBehavior.Mode="Currency"
+                                         helpers:AtmBehavior.Value="{Binding CostPriceUSD, Mode=TwoWay}"
+                                         helpers:AtmBehavior.RecalculateTrigger="Cost"
+                                         IsEnabled="{Binding CanEditPricing}"
+                                         materialDesign:HintAssist.Hint="Costo Base ($ USD) *" 
+                                         materialDesign:HintAssist.IsFloating="True"
+                                         Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
+                                         TabIndex="5"/>
+                                <TextBlock Text="Costo unitario de compra o adquisición" Foreground="#64748B" FontSize="11" Margin="4,6,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 2. Sección Detal -->
+                        <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="6" Padding="14,12,14,16" Margin="0,0,0,16" BorderThickness="1" BorderBrush="{DynamicResource PrimaryHueLightBrush}">
+                            <StackPanel>
+                                <TextBlock Text="Venta Al Detal" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,8"/>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="10"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" 
+                                             helpers:AtmBehavior.Mode="Percentage"
+                                             helpers:AtmBehavior.Value="{Binding ProfitMarginRetail, Mode=TwoWay}"
+                                             helpers:AtmBehavior.RecalculateTrigger="MarginRetail"
+                                             IsEnabled="{Binding CanEditPricing}"
+                                             materialDesign:HintAssist.Hint="Margen %" 
+                                             materialDesign:HintAssist.IsFloating="True"
+                                             Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
+                                             TabIndex="6"/>
+                                    <TextBox Grid.Column="2" 
+                                             helpers:AtmBehavior.Mode="Currency"
+                                             helpers:AtmBehavior.Value="{Binding PriceRetailUSD, Mode=TwoWay}"
+                                             helpers:AtmBehavior.RecalculateTrigger="PriceRetail"
+                                             IsEnabled="{Binding CanEditPricing}"
+                                             materialDesign:HintAssist.Hint="Precio Detal $" 
+                                             materialDesign:HintAssist.IsFloating="True"
+                                             Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
+                                             TabIndex="7"/>
+                                </Grid>
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <TextBlock Text="Equivalente: " FontSize="11" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding PriceRetailBsS, StringFormat='Bs.S {0:N2}'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 3. Sección Mayor -->
+                        <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="6" Padding="14,12,14,16" Margin="0,0,0,16" BorderThickness="1" BorderBrush="{DynamicResource PrimaryHueLightBrush}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Venta Al Mayor" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding HasWholesale}" IsEnabled="{Binding CanEditPricing}" HorizontalAlignment="Right" FontWeight="SemiBold">
+                                        <TextBlock Text="Habilitar Precio al Mayor"/>
+                                    </CheckBox>
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="10"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" 
+                                             helpers:AtmBehavior.Mode="Percentage"
+                                             helpers:AtmBehavior.Value="{Binding ProfitMarginWholesale, Mode=TwoWay}"
+                                             helpers:AtmBehavior.RecalculateTrigger="MarginWholesale"
+                                             IsEnabled="{Binding CanEditWholesale}" 
+                                             materialDesign:HintAssist.Hint="Margen Mayor %" 
+                                             materialDesign:HintAssist.IsFloating="True"
+                                             Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
+                                             TabIndex="8"/>
+                                    <TextBox Grid.Column="2" 
+                                             helpers:AtmBehavior.Mode="Currency"
+                                             helpers:AtmBehavior.Value="{Binding PriceWholesaleUSD, Mode=TwoWay}"
+                                             helpers:AtmBehavior.RecalculateTrigger="PriceWholesale"
+                                             IsEnabled="{Binding CanEditWholesale}" 
+                                             materialDesign:HintAssist.Hint="Precio Mayor $" 
+                                             materialDesign:HintAssist.IsFloating="True"
+                                             Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
+                                             TabIndex="9"/>
+                                </Grid>
+                                <TextBox helpers:AtmBehavior.Mode="Quantity"
+                                         helpers:AtmBehavior.Value="{Binding MinWholesaleQuantity, Mode=TwoWay}"
+                                         IsEnabled="{Binding CanEditWholesale}" 
+                                         materialDesign:HintAssist.Hint="Cantidad Mínima al Mayor (ej. 6)" 
+                                         materialDesign:HintAssist.IsFloating="True"
+                                         Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
+                                         Margin="0,0,0,6"
+                                         TabIndex="10"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <TextBlock Text="Equivalente: " FontSize="11" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding PriceWholesaleBsS, StringFormat='Bs.S {0:N2}'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                </Border>
-            </StackPanel>
-        </Grid>
+
+                    <!-- 4. Stock & Inventario (Para productos físicos) -->
+                    <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="6" Padding="14,12,14,16" Margin="0,0,0,16" BorderThickness="1" BorderBrush="{DynamicResource PrimaryHueLightBrush}" Visibility="{Binding ShowStockInputs, Converter={StaticResource BoolToVisConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="Stock &amp; Inventario" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,8"/>
+
+                            <!-- Creation Mode: Stock Inicial + Alerta Mínimo -->
+                            <Grid Margin="0,0,0,4" Visibility="{Binding IsCreateMode, Converter={StaticResource BoolToVisConverter}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBox helpers:AtmBehavior.Mode="Quantity"
+                                             helpers:AtmBehavior.Value="{Binding StockQuantity, Mode=TwoWay}"
+                                             materialDesign:HintAssist.Hint="Stock Inicial" 
+                                             materialDesign:HintAssist.IsFloating="True"
+                                             Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
+                                             TabIndex="11"/>
+                                    <TextBlock Text="Cantidad actual" Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBox helpers:AtmBehavior.Mode="Quantity"
+                                             helpers:AtmBehavior.Value="{Binding LowStockThreshold, Mode=TwoWay}"
+                                             materialDesign:HintAssist.Hint="Alerta Mínimo" 
+                                             materialDesign:HintAssist.IsFloating="True"
+                                             Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
+                                             TabIndex="12"/>
+                                    <TextBlock Text="Umbral de aviso" Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Edit Mode: Alerta Mínimo (col 0) + Stock Actual de Solo Lectura (col 2) -->
+                            <Grid Margin="0,0,0,4" Visibility="{Binding IsEditMode, Converter={StaticResource BoolToVisConverter}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBox helpers:AtmBehavior.Mode="Quantity"
+                                             helpers:AtmBehavior.Value="{Binding LowStockThreshold, Mode=TwoWay}"
+                                             materialDesign:HintAssist.Hint="Alerta Mínimo" 
+                                             materialDesign:HintAssist.IsFloating="True"
+                                             Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
+                                             TabIndex="11"/>
+                                    <TextBlock Text="Umbral de aviso" Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
+                                </StackPanel>
+                                <Border Grid.Column="2" Background="#F1F5F9" CornerRadius="6" BorderThickness="0" Padding="12,6" Height="52" VerticalAlignment="Top">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <materialDesign:PackIcon Kind="PackageVariantClosed" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,8,0" Width="20" Height="20"/>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="Stock Actual (Solo Lectura)" FontSize="10" Foreground="#64748B" FontWeight="SemiBold"/>
+                                            <TextBlock Text="{Binding CurrentStockDisplay}" FontSize="13" FontWeight="Bold" Foreground="#334155"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 4.1 Factor de Conversión (Para variantes con stock compartido) -->
+                    <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="6" Padding="14,12,14,16" Margin="0,0,0,16" BorderThickness="1" BorderBrush="#0284C7" Visibility="{Binding ShowConversionFactorInput, Converter={StaticResource BoolToVisConverter}}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <materialDesign:PackIcon Kind="SwapHorizontal" Foreground="#0284C7" VerticalAlignment="Center" Margin="0,0,6,0" Width="18" Height="18"/>
+                                <TextBlock Text="Factor de Conversión (Equivalencia Base)" FontWeight="Bold" Foreground="#0284C7" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBox helpers:AtmBehavior.Mode="Quantity"
+                                     helpers:AtmBehavior.Value="{Binding ConversionFactor, Mode=TwoWay}"
+                                     materialDesign:HintAssist.Hint="Unidades Base del Padre *" 
+                                     materialDesign:HintAssist.IsFloating="True"
+                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
+                                     TabIndex="11"/>
+                            <TextBlock Text="Cant. que descuenta del padre al vender 1 unidad de esta variante (ej. 30)" Foreground="#64748B" FontSize="11" Margin="4,6,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Banner informativo de Adelanto de Efectivo -->
+                    <Border Background="#EDE9FE" BorderBrush="#DDD6FE" BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="0,0,0,10" Visibility="{Binding IsCashAdvance, Converter={StaticResource BoolToVisConverter}}">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="InformationOutline" Foreground="#6D28D9" VerticalAlignment="Center" Margin="0,0,8,0" Width="20" Height="20"/>
+                            <TextBlock Text="Este producto es un Servicio de Adelanto de Efectivo (no requiere inventario numérico)." Foreground="#6D28D9" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
         </ScrollViewer>
 
         <!-- FOOTER: Actions -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
-            <Button Content="Cerrar" Command="{Binding CancelCommand}" Style="{DynamicResource MaterialDesignFlatButton}" Margin="0,0,20,0" IsCancel="True" TabIndex="11"/>
-            <Button Content="Save" Command="{Binding SaveCommand}" IsEnabled="{Binding UserSession.CanMutateCatalog}" Style="{DynamicResource MaterialDesignRaisedButton}" IsDefault="True" TabIndex="10"/>
-        </StackPanel>
+        <Grid Grid.Row="2" Margin="0,20,0,0">
+            <Button Content="Administrar Variantes" 
+                    Command="{Binding ManageVariantsCommand}" 
+                    Visibility="{Binding ShowManageVariantsButton, Converter={StaticResource BoolToVisConverter}}"
+                    Style="{DynamicResource MaterialDesignOutlinedButton}" 
+                    HorizontalAlignment="Left" TabIndex="14"/>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Cancelar" Command="{Binding CancelCommand}" Style="{DynamicResource MaterialDesignFlatButton}" Margin="0,0,15,0" IsCancel="True" TabIndex="13"/>
+                <Button Content="Guardar" Command="{Binding SaveCommand}" IsEnabled="{Binding UserSession.CanMutateCatalog}" Style="{DynamicResource MaterialDesignRaisedButton}" IsDefault="True" TabIndex="12"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>

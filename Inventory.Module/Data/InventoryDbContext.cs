@@ -55,6 +55,21 @@ public class InventoryDbContext : DbContext
             entity.HasIndex(p => new { p.IsGroupHeader, p.IsActive, p.IsDeleted, p.Name })
                 .HasDatabaseName("IX_Products_GroupActiveName");
 
+            entity.Property(p => p.IsStockShared).HasDefaultValue(false);
+            entity.Property(p => p.HasIndependentPricing).HasDefaultValue(false);
+            entity.Property(p => p.ConversionFactor).HasPrecision(18, 4).HasDefaultValue(1.0000m);
+
+            if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+            {
+                entity.Property(p => p.RowVersion).HasDefaultValue(new byte[] { 1 });
+            }
+
+            entity.ToTable(t => {
+                t.HasCheckConstraint("CK_Products_Variant_Flags",
+                    "(\"IsGroupHeader\" = TRUE AND \"ParentProductId\" IS NULL) OR (\"IsStockShared\" = FALSE AND \"HasIndependentPricing\" = FALSE)");
+                t.HasCheckConstraint("CK_Products_ConversionFactor", "\"ConversionFactor\" > 0");
+            });
+
             entity.HasIndex(p => p.GroupKey)
                 .HasDatabaseName("IX_Products_GroupKey")
                 .HasFilter("\"GroupKey\" IS NOT NULL AND \"IsDeleted\" = false");
@@ -92,6 +107,7 @@ public class InventoryDbContext : DbContext
 
         modelBuilder.Entity<StockReservation>().HasKey(r => r.Id);
         modelBuilder.Entity<StockReservation>().HasOne(r => r.Product).WithMany().HasForeignKey(r => r.ProductId);
+        modelBuilder.Entity<StockReservation>().HasOne(r => r.SourceProduct).WithMany().HasForeignKey(r => r.SourceProductId).OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<StockReservation>().Property(r => r.Quantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
 
         // SystemSetting: Key-value store for app configuration

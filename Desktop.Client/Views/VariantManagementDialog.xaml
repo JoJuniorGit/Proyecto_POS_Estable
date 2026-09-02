@@ -1,0 +1,284 @@
+<Window x:Class="Desktop.Client.Views.VariantManagementDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
+        xmlns:converters="clr-namespace:Desktop.Client.Converters"
+        mc:Ignorable="d"
+        Title="Administrar Variantes del Grupo" 
+        Height="580" Width="940"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize">
+
+    <Window.Resources>
+        <helpers:BindingProxy x:Key="Proxy" Data="{Binding}" />
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
+        <converters:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisConverter"/>
+        <converters:InverseBooleanConverter x:Key="InverseBoolConverter"/>
+
+        <!-- Header style for right-aligned numeric columns -->
+        <Style x:Key="RightAlignedHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
+            <Setter Property="HorizontalContentAlignment" Value="Right"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#475569"/>
+        </Style>
+
+        <!-- Header style for centered columns -->
+        <Style x:Key="CenterAlignedHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#475569"/>
+        </Style>
+
+        <!-- Header style for left-aligned columns -->
+        <Style x:Key="LeftAlignedHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#475569"/>
+        </Style>
+    </Window.Resources>
+
+    <Border CornerRadius="12" 
+            Background="White" 
+            BorderBrush="{DynamicResource PrimaryHueLightBrush}" 
+            BorderThickness="1.5"
+            Effect="{DynamicResource MaterialDesignShadowDepth4}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- 1. Header with High Contrast and Accessible Colors -->
+            <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1" CornerRadius="12,12,0,0" Padding="20,14">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Background="#F3E8FF" CornerRadius="8" Width="40" Height="40" VerticalAlignment="Center" Margin="0,0,14,0">
+                            <materialDesign:PackIcon Kind="FormatListBulletedType" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{Binding HeaderInfo}" FontSize="17" FontWeight="Bold" Foreground="#1E293B"/>
+                            <TextBlock Text="Gestión en lote de variantes, precios e inventario" FontSize="12" Foreground="#64748B" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <Button HorizontalAlignment="Right" Style="{StaticResource MaterialDesignFlatButton}" 
+                            Foreground="#64748B" Width="36" Height="36" Padding="0" Click="Close_Click">
+                        <materialDesign:PackIcon Kind="Close" Width="20" Height="20"/>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- 2. Group Info Bar (Non-colliding 2-column Grid) -->
+            <Border Grid.Row="1" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" Padding="16,12" Margin="16,12,16,0" CornerRadius="8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                            <materialDesign:PackIcon Kind="Warehouse" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{DynamicResource PrimaryHueMidBrush}" Width="18" Height="18"/>
+                            <TextBlock Text="{Binding StockModeDescription}" FontWeight="SemiBold" FontSize="12" Foreground="#334155" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="CurrencyUsd" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{DynamicResource PrimaryHueMidBrush}" Width="18" Height="18"/>
+                            <TextBlock Text="{Binding PricingModeDescription}" FontWeight="SemiBold" FontSize="12" Foreground="#334155" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Button Grid.Column="1" 
+                            Command="{Binding AddVariantCommand}" 
+                            Style="{StaticResource MaterialDesignRaisedButton}" 
+                            VerticalAlignment="Center"
+                            Height="34" Padding="14,0">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="Plus" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="Agregar Variante" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- 3. DataGrid of Variants -->
+            <Grid Grid.Row="2" Margin="16,12,16,10">
+                <DataGrid ItemsSource="{Binding Variants}" 
+                          AutoGenerateColumns="False" 
+                          CanUserAddRows="False"
+                          CanUserDeleteRows="False"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="Horizontal"
+                          HorizontalGridLinesBrush="#E2E8F0"
+                          AlternatingRowBackground="#F8FAFC"
+                          RowHeight="38"
+                          Background="White"
+                          BorderThickness="1"
+                          BorderBrush="#E2E8F0">
+                    <DataGrid.Columns>
+                        <!-- SKU -->
+                        <DataGridTextColumn Header="SKU" Binding="{Binding SKU}" IsReadOnly="True" Width="85" HeaderStyle="{StaticResource LeftAlignedHeader}">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                    <Setter Property="Foreground" Value="#64748B"/>
+                                    <Setter Property="FontFamily" Value="Consolas, monospace"/>
+                                    <Setter Property="Padding" Value="6,0,0,0"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <!-- Nombre / Sabor -->
+                        <DataGridTemplateColumn Header="Nombre / Sabor" Width="*" HeaderStyle="{StaticResource LeftAlignedHeader}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" 
+                                             VerticalAlignment="Center"
+                                             BorderThickness="0,0,0,1" 
+                                             BorderBrush="#CBD5E1" 
+                                             Padding="4,2"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        
+                        <!-- Activo -->
+                        <DataGridTemplateColumn Header="Activo" Width="65" HeaderStyle="{StaticResource CenterAlignedHeader}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding IsActive, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <!-- Costo ($) -->
+                        <DataGridTemplateColumn Header="Costo ($)" Width="95" HeaderStyle="{StaticResource RightAlignedHeader}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Grid VerticalAlignment="Center">
+                                        <!-- Editable mode: subtle underline -->
+                                        <TextBox Text="{Binding CostPriceUSD, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" 
+                                                 Visibility="{Binding CanEditPrices, Converter={StaticResource BoolToVisConverter}}"
+                                                 HorizontalAlignment="Stretch" TextAlignment="Right"
+                                                 BorderThickness="0,0,0,1" BorderBrush="#94A3B8" Padding="2,2"/>
+                                        <!-- Read-only mode: clean text, no underline, muted slate -->
+                                        <TextBlock Text="{Binding CostPriceUSD, StringFormat={}{0:N2}}" 
+                                                   Visibility="{Binding CanEditPrices, Converter={StaticResource InverseBoolToVisConverter}}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Center" 
+                                                   Foreground="#64748B" Padding="0,0,4,0"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <!-- Margen % -->
+                        <DataGridTemplateColumn Header="Margen %" Width="90" HeaderStyle="{StaticResource RightAlignedHeader}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Grid VerticalAlignment="Center">
+                                        <!-- Editable mode -->
+                                        <TextBox Text="{Binding ProfitMarginRetail, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" 
+                                                 Visibility="{Binding CanEditPrices, Converter={StaticResource BoolToVisConverter}}"
+                                                 HorizontalAlignment="Stretch" TextAlignment="Right"
+                                                 BorderThickness="0,0,0,1" BorderBrush="#94A3B8" Padding="2,2"/>
+                                        <!-- Read-only mode -->
+                                        <TextBlock Text="{Binding ProfitMarginRetail, StringFormat={}{0:N2}%}" 
+                                                   Visibility="{Binding CanEditPrices, Converter={StaticResource InverseBoolToVisConverter}}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Center" 
+                                                   Foreground="#64748B" Padding="0,0,4,0"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <!-- Precio ($) -->
+                        <DataGridTemplateColumn Header="Precio ($)" Width="100" HeaderStyle="{StaticResource RightAlignedHeader}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Grid VerticalAlignment="Center">
+                                        <!-- Editable mode -->
+                                        <TextBox Text="{Binding PriceRetailUSD, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" 
+                                                 Visibility="{Binding CanEditPrices, Converter={StaticResource BoolToVisConverter}}"
+                                                 FontWeight="Bold"
+                                                 HorizontalAlignment="Stretch" TextAlignment="Right"
+                                                 BorderThickness="0,0,0,1" BorderBrush="#94A3B8" Padding="2,2"/>
+                                        <!-- Read-only mode -->
+                                        <TextBlock Text="{Binding PriceRetailUSD, StringFormat={}{0:N2}}" 
+                                                   Visibility="{Binding CanEditPrices, Converter={StaticResource InverseBoolToVisConverter}}"
+                                                   FontWeight="Bold"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Center" 
+                                                   Foreground="#334155" Padding="0,0,4,0"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <!-- Precio (Bs.S) -->
+                        <DataGridTextColumn Header="Precio (Bs.S)" Binding="{Binding PriceRetailBsS, StringFormat={}{0:N2}}" IsReadOnly="True" Width="110" HeaderStyle="{StaticResource RightAlignedHeader}">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="HorizontalAlignment" Value="Right"/>
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                                    <Setter Property="Padding" Value="0,0,6,0"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <!-- Factor Base (Shared Stock) -->
+                        <DataGridTemplateColumn Header="Factor Base" Width="100" HeaderStyle="{StaticResource RightAlignedHeader}"
+                                                Visibility="{Binding Source={StaticResource Proxy}, Path=Data.IsStockShared, Converter={StaticResource BoolToVisConverter}}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Grid VerticalAlignment="Center">
+                                        <TextBox Text="{Binding ConversionFactor, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N4}}" 
+                                                 Visibility="{Binding CanEditConversionFactor, Converter={StaticResource BoolToVisConverter}}"
+                                                 HorizontalAlignment="Stretch" TextAlignment="Right"
+                                                 BorderThickness="0,0,0,1" BorderBrush="#0284C7" Padding="2,2"/>
+                                        <TextBlock Text="{Binding ConversionFactor, StringFormat={}{0:N4}}" 
+                                                   Visibility="{Binding CanEditConversionFactor, Converter={StaticResource InverseBoolToVisConverter}}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Center" 
+                                                   Foreground="#64748B" Padding="0,0,4,0"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <!-- Estado / Modificado -->
+                        <DataGridTemplateColumn Header="Estado" Width="85" HeaderStyle="{StaticResource CenterAlignedHeader}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border Background="#FEF3C7" CornerRadius="4" Padding="6,2" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Visibility="{Binding IsModified, Converter={StaticResource BoolToVisConverter}}">
+                                        <TextBlock Text="Editado" Foreground="#D97706" FontWeight="Bold" FontSize="11"/>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+
+            <!-- 4. Footer -->
+            <Border Grid.Row="3" Padding="20,12" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" CornerRadius="0,0,12,12">
+                <Grid>
+                    <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" Foreground="#64748B" FontSize="12"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Style="{StaticResource MaterialDesignFlatButton}" Margin="0,0,12,0"
+                                Content="Cerrar" Click="Close_Click"/>
+                        <Button Style="{StaticResource MaterialDesignRaisedButton}"
+                                Command="{Binding SaveBatchCommand}"
+                                IsEnabled="{Binding IsSaving, Converter={StaticResource InverseBoolConverter}}"
+                                Content="Guardar Cambios"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

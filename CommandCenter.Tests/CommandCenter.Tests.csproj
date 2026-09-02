@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <ProjectReference Include="..\Backend.API\Backend.API.csproj" />
     <ProjectReference Include="..\Desktop.Client\Desktop.Client.csproj" />
     <ProjectReference Include="..\Desktop.Client.Core\Desktop.Client.Core.csproj" />

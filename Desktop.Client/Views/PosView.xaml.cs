@@ -1,22 +1,42 @@
+using System;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using Desktop.Client.Helpers;
 
 namespace Desktop.Client.Views
 {
     public partial class PosView : UserControl
     {
         private BarcodeScannerWindow? _scannerWindow;
+        private KeyboardWedgeScannerListener? _scannerListener;
 
         public PosView()
         {
             InitializeComponent();
+            Loaded += PosView_Loaded;
             Unloaded += PosView_Unloaded;
+        }
+
+        private void PosView_Loaded(object sender, RoutedEventArgs e)
+        {
+            _scannerListener?.Dispose();
+            _scannerListener = new KeyboardWedgeScannerListener(async code =>
+            {
+                if (DataContext is ViewModels.PosViewModel vm)
+                {
+                    await vm.AddProductByCodeAsync(code);
+                }
+            });
+            _scannerListener.Attach(this);
         }
 
         private void PosView_Unloaded(object sender, RoutedEventArgs e)
         {
+            _scannerListener?.Dispose();
+            _scannerListener = null;
+
             // Cierra la ventana flotante del escáner si quedó abierta (defensa contra ventanas
             // huérfanas al salir del módulo POS o al cerrarse la ventana principal).
             if (_scannerWindow != null)

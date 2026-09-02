@@ -190,4 +190,124 @@ public class InventoryPaginationTests
         await vm.LastPageCommand.ExecuteAsync(null);
         Assert.Equal(10, vm.CurrentPage);
     }
+
+    [Fact]
+    public async Task SearchText_WhenClearedOrEmpty_ReloadsFullCatalogAndResetsPageToOne()
+    {
+        var vm = CreateViewModel();
+
+        var catalogItems = new List<ProductDto>
+        {
+            new ProductDto { Id = 1, Name = "Arroz 1Kg", SKU = "1001", StockQuantity = 50m },
+            new ProductDto { Id = 2, Name = "Harina Pan", SKU = "1002", StockQuantity = 30m },
+            new ProductDto { Id = 3, Name = "Aceite 1L", SKU = "1003", StockQuantity = 20m }
+        };
+
+        var filteredItems = new List<ProductDto>
+        {
+            new ProductDto { Id = 1, Name = "Arroz 1Kg", SKU = "1001", StockQuantity = 50m }
+        };
+
+        _productServiceMock.Setup(s => s.GetPagedAsync(
+            It.Is<string?>(f => f == "Arroz"),
+            It.IsAny<int>(),
+            It.IsAny<int>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PagedResultDto<ProductDto>
+            {
+                TotalCount = 1,
+                Items = filteredItems
+            });
+
+        _productServiceMock.Setup(s => s.GetPagedAsync(
+            It.Is<string?>(f => string.IsNullOrEmpty(f)),
+            1,
+            It.IsAny<int>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PagedResultDto<ProductDto>
+            {
+                TotalCount = 3,
+                Items = catalogItems
+            });
+
+        // 1. Simular búsqueda de producto
+        vm.SearchText = "Arroz";
+        await Task.Delay(100); // Esperar debounce
+
+        Assert.Single(vm.Products);
+        Assert.Equal("Arroz 1Kg", vm.Products[0].Name);
+
+        // 2. Simular borrado con la "x" (SearchText = "")
+        vm.SearchText = string.Empty;
+        await Task.Delay(100); // Esperar recarga y reset
+
+        Assert.Equal(3, vm.Products.Count);
+        Assert.Equal(1, vm.CurrentPage);
+        Assert.Equal(3, vm.TotalCount);
+        Assert.Equal("Página 1 de 1 (3 productos)", vm.PageSummary);
+    }
+
+    [Fact]
+    public async Task SearchText_WhenClearedAfterZeroResults_RestoresFullCatalog()
+    {
+        var vm = CreateViewModel();
+
+        var catalogItems = new List<ProductDto>
+        {
+            new ProductDto { Id = 1, Name = "Producto A", SKU = "1001", StockQuantity = 10m },
+            new ProductDto { Id = 2, Name = "Producto B", SKU = "1002", StockQuantity = 20m }
+        };
+
+        // Búsqueda sin resultados
+        _productServiceMock.Setup(s => s.GetPagedAsync(
+            It.Is<string?>(f => f == "inexistente"),
+            It.IsAny<int>(),
+            It.IsAny<int>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PagedResultDto<ProductDto>
+            {
+                TotalCount = 0,
+                Items = new List<ProductDto>()
+            });
+
+        // Catálogo completo al estar vacío el filtro
+        _productServiceMock.Setup(s => s.GetPagedAsync(
+            It.Is<string?>(f => string.IsNullOrEmpty(f)),
+            1,
+            It.IsAny<int>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PagedResultDto<ProductDto>
+            {
+                TotalCount = 2,
+                Items = catalogItems
+            });
+
+        // 1. Buscar algo que devuelve 0 productos
+        vm.SearchText = "inexistente";
+        await Task.Delay(100);
+
+        Assert.Empty(vm.Products);
+        Assert.Equal(0, vm.TotalCount);
+
+        // 2. Borrar con la "x"
+        vm.SearchText = "";
+        await Task.Delay(100);
+
+        // 3. Debe mostrar la lista completa reiniciada
+        Assert.Equal(2, vm.Products.Count);
+        Assert.Equal(2, vm.TotalCount);
+        Assert.Equal(1, vm.CurrentPage);
+    }
 }

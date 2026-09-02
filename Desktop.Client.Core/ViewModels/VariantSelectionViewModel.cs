@@ -85,7 +85,7 @@ public partial class VariantSelectionViewModel : ObservableObject
     private void SelectVariant(ProductDto? variant)
     {
         var target = variant ?? CurrentSelectedVariant;
-        if (target != null && target.StockQuantity > 0)
+        if (target != null)
         {
             SelectedVariant = target;
             RequestClose?.Invoke(true);

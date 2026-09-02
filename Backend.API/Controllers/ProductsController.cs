@@ -51,6 +51,11 @@ public class ProductsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Crea un nuevo producto, grupo o variante.
+    /// Para variantes de grupos con stock compartido (IsStockShared = true), ConversionFactor define las unidades base a descontar.
+    /// Para productos no compartidos o grupos, ConversionFactor se normaliza automáticamente a 1.0000.
+    /// </summary>
     [HttpPost]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<Product>> Create(Product product)
@@ -83,6 +88,10 @@ public class ProductsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Actualiza un producto existente.
+    /// Si ConversionFactor se omite o es menor o igual a 0 en una variante con stock compartido, se conserva el valor existente.
+    /// </summary>
     [HttpPut("{id}")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> Update(int id, Product product)
@@ -178,23 +187,45 @@ public class StatusUpdateDto
     public bool IsDeleted { get; set; }
 }
 
+    /// <summary>
+    /// Realiza un ajuste manual de stock para un producto según la modalidad de inventario.
+    /// </summary>
+    /// <remarks>
+    /// Restricciones de Inventario:
+    /// - Productos Eliminados/Archivados: Rechazado (400 Bad Request).
+    /// - Grupos con Stock Individual: Rechazado (el stock es la suma consolidada de sus variantes).
+    /// - Variantes con Stock Compartido: Rechazado (el stock pertenece al pool central del producto padre).
+    /// - Servicios / Adelantos de Efectivo: Rechazado (no manejan inventario físico).
+    /// </remarks>
+    /// <response code="204">Ajuste procesado exitosamente.</response>
+    /// <response code="400">Si la modalidad de inventario no permite ajustes directos o los datos son inválidos.</response>
+    /// <response code="403">Si el usuario no tiene permisos de mutación de catálogo.</response>
+    /// <response code="404">Si el producto no existe.</response>
     [HttpPost("{id}/adjust-stock")]
     [Authorize(Roles = "Admin,Manager")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> AdjustStock(int id, [FromBody] DTOs.AdjustStockDto dto)
     {
         if (!_currentUserService.CanMutateCatalog)
         {
-            return StatusCode(StatusCodes.Status403Forbidden, "No tiene permisos para realizar ajustes manuales de inventario.");
+            return StatusCode(StatusCodes.Status403Forbidden, Core.Constants.InventoryMessages.UnauthorizedAdjustment);
         }
 
         try
         {
-            await _inventoryService.UpdateStockAsync(id, dto.QuantityChange, dto.Reason);
+            await _inventoryService.AdjustStockAsync(id, dto.QuantityChange, dto.Reason);
             return NoContent();
         }
         catch (System.Collections.Generic.KeyNotFoundException)
         {
             return NotFound();
+        }
+        catch (System.UnauthorizedAccessException unEx)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, unEx.Message);
         }
         catch (InvalidOperationException ex)
         {

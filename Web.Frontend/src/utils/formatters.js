@@ -122,3 +122,31 @@ export function getLineAmounts(item, fallbackExchangeRate = 1) {
     
   return { unitBsS, subtotalBsS, unitUSD, subtotalUSD };
 }
+
+/**
+ * Formats a product's price for catalog views, returning '—' if it's a group header with independent pricing.
+ * @param {object} product
+ * @param {boolean} isWholesale
+ * @param {string} currency 'Bs.S' | 'USD'
+ * @param {number} exchangeRate
+ * @returns {string}
+ */
+export function formatProductDisplayPrice(product, isWholesale = false, currency = 'Bs.S', exchangeRate = 1) {
+  if (!product) return '—';
+  if (product.isGroupHeader && product.hasIndependentPricing) {
+    return '—';
+  }
+
+  const retailUSD = product.priceUSD || 0;
+  const retailBsS = product.priceUSD > 0 ? product.priceUSD * exchangeRate : (product.priceBsS || 0);
+
+  if (!isWholesale) {
+    return currency === 'USD' ? formatUSD(retailUSD) : formatBsS(retailBsS);
+  }
+
+  const hasRealWholesale = (product.hasWholesale || product.priceWholesaleUSD > 0) && product.priceWholesaleUSD > 0 && product.priceWholesaleUSD < retailUSD;
+  const wholesaleUSD = hasRealWholesale ? product.priceWholesaleUSD : retailUSD;
+  const wholesaleBsS = hasRealWholesale ? product.priceWholesaleUSD * exchangeRate : retailBsS;
+
+  return currency === 'USD' ? formatUSD(wholesaleUSD) : formatBsS(wholesaleBsS);
+}

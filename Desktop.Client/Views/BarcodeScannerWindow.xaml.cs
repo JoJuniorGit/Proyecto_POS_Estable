@@ -44,12 +44,27 @@ public partial class BarcodeScannerWindow : Window
 
     private readonly BarcodeScannerService _scannerService = new();
     private readonly OcrService? _ocrService;
+    private readonly IScannerFeedbackService _feedbackService;
     private readonly Action<string>? _onValueReady;
     private readonly Func<string, Task<Core.DTOs.ProductQuickInfoDto?>>? _productResolver;
     private readonly BarcodeReaderBitmapSource _barcodeReader = new()
     {
         AutoRotate = true,
-        Options = { TryHarder = false }
+        Options =
+        {
+            TryHarder = false,
+            PossibleFormats = new System.Collections.Generic.List<BarcodeFormat>
+            {
+                BarcodeFormat.EAN_13,
+                BarcodeFormat.EAN_8,
+                BarcodeFormat.UPC_A,
+                BarcodeFormat.UPC_E,
+                BarcodeFormat.CODE_128,
+                BarcodeFormat.CODE_39,
+                BarcodeFormat.ITF,
+                BarcodeFormat.CODABAR
+            }
+        }
     };
 
     private CancellationTokenSource? _captureCts;
@@ -68,13 +83,16 @@ public partial class BarcodeScannerWindow : Window
     /// <param name="productResolver">Resolves a scanned code to its product (exact SKU).
     /// When provided, the window shows the product name / "not found" / "inactive" states
     /// on the result card; when null, it falls back to a neutral "code copied" card.</param>
+    /// <param name="feedbackService">Audio/haptic feedback service for differentiated cues.</param>
     public BarcodeScannerWindow(
         Action<string>? onValueReady = null,
-        Func<string, Task<Core.DTOs.ProductQuickInfoDto?>>? productResolver = null)
+        Func<string, Task<Core.DTOs.ProductQuickInfoDto?>>? productResolver = null,
+        IScannerFeedbackService? feedbackService = null)
     {
         InitializeComponent();
         _onValueReady = onValueReady;
         _productResolver = productResolver;
+        _feedbackService = feedbackService ?? new ScannerFeedbackService();
         _ocrService = OcrService.TryCreate();
         HistoryList.ItemsSource = History;
 
@@ -214,12 +232,20 @@ public partial class BarcodeScannerWindow : Window
         _isProcessing = true;
         try
         {
-            var bgra = BarcodeScannerService.ToBgra32(bitmap);
+            var roi = BarcodeScannerService.ExtractRoi(bitmap);
+            var bgra = BarcodeScannerService.ToBgra32(roi);
             var result = _barcodeReader.Decode(bgra);
 
             if (result != null && !string.IsNullOrWhiteSpace(result.Text))
             {
                 var code = result.Text.Trim();
+
+                // Restricción estricta: Ignorar QR, URLs y texto arbitrario
+                if (!Core.Helpers.BarcodeValidator.IsValidBarcode(code))
+                {
+                    return;
+                }
+
                 var now = DateTime.Now;
 
                 // Enfriamiento SOLO para el mismo código: si el mismo producto se vuelve
@@ -235,9 +261,16 @@ public partial class BarcodeScannerWindow : Window
                 if (!sameCodeWithinCooldown)
                 {
                     _lastCopyAt = now;
+                    CooldownProgress.Visibility = Visibility.Collapsed;
                     HandleValueReady(code, $"Code copied: {code}  ({result.BarcodeFormat})");
-                    SystemSounds.Asterisk.Play();
                     _ = ShowProductResultAsync(code, result.BarcodeFormat.ToString());
+                }
+                else
+                {
+                    // Feedback visual del cooldown activo
+                    CooldownProgress.Visibility = Visibility.Visible;
+                    CooldownProgress.BeginAnimation(System.Windows.Controls.Primitives.RangeBase.ValueProperty,
+                        new DoubleAnimation(100.0, 0.0, TimeSpan.FromSeconds(SameCodeCooldownSeconds)));
                 }
             }
         }
@@ -272,6 +305,7 @@ public partial class BarcodeScannerWindow : Window
             if (_productResolver == null)
             {
                 // Standalone mode (no POS context): neutral card with the raw code.
+                _feedbackService.PlaySuccess();
                 ShowResultCard(PackIconKind.Barcode, ResultNeutralBrush,
                     title: code, titleBrush: null,
                     subtitle: $"Format: {format}");
@@ -280,6 +314,7 @@ public partial class BarcodeScannerWindow : Window
 
             if (info == null)
             {
+                _feedbackService.PlayNotFound();
                 ShowResultCard(PackIconKind.AlertCircle, ResultWarnBrush,
                     title: "Producto no encontrado", titleBrush: ResultWarnBrush,
                     subtitle: code);
@@ -288,6 +323,7 @@ public partial class BarcodeScannerWindow : Window
 
             if (!info.IsActive)
             {
+                _feedbackService.PlayError();
                 ShowResultCard(PackIconKind.CloseCircle, ResultErrorBrush,
                     title: "Producto inactivo", titleBrush: ResultErrorBrush,
                     subtitle: $"{code}  •  {info.Name}");
@@ -296,6 +332,7 @@ public partial class BarcodeScannerWindow : Window
 
             if (info.IsCashAdvance)
             {
+                _feedbackService.PlayNotFound();
                 ShowResultCard(PackIconKind.AlertCircle, ResultWarnBrush,
                     title: info.Name, titleBrush: ResultWarnBrush,
                     subtitle: $"{code}  •  Sistema — requiere captura manual");
@@ -303,6 +340,7 @@ public partial class BarcodeScannerWindow : Window
             }
 
             // Found and active: show the product name and price in green.
+            _feedbackService.PlaySuccess();
             string price = info.PriceBsS > 0 ? $"Bs.S {info.PriceBsS:N2}" : $"USD {info.PriceUSD:N2}";
             ShowResultCard(PackIconKind.CheckCircle, ResultFoundBrush,
                 title: info.Name, titleBrush: null,
@@ -313,6 +351,7 @@ public partial class BarcodeScannerWindow : Window
             if (seq != _resultSeq || _isClosed) return;
             // Error de lectura: no se pudo resolver el código; se muestra el código
             // escaneado como referencia, igual que en el estado "Producto no encontrado".
+            _feedbackService.PlayError();
             ShowResultCard(PackIconKind.CloseCircle, ResultErrorBrush,
                 title: "No se pudo leer el código", titleBrush: ResultErrorBrush,
                 subtitle: code);
@@ -451,6 +490,10 @@ public partial class BarcodeScannerWindow : Window
             _captureCts?.Cancel();
             _captureCts?.Dispose();
             _scannerService.Dispose();
+            if (_feedbackService is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
         }
         catch { }
     }

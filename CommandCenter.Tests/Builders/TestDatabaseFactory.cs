@@ -30,6 +30,18 @@ public static class TestDatabaseFactory
         return new InventoryDbContext(options);
     }
 
+    public static (InventoryDbContext context, Microsoft.Data.Sqlite.SqliteConnection connection) CreateSqliteInventoryDbContext()
+    {
+        var connection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=:memory:");
+        connection.Open();
+        var options = new DbContextOptionsBuilder<InventoryDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        var context = new InventoryDbContext(options);
+        context.Database.EnsureCreated();
+        return (context, connection);
+    }
+
     public static async Task SeedStandardSalesDataAsync(SalesDbContext context)
     {
         if (!await context.Customers.AnyAsync(c => c.IsDefault || c.Id == 1))

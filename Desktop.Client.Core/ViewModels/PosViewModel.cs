@@ -299,6 +299,12 @@ public partial class PosViewModel : ObservableObject, IDisposable
         }
         catch (ObjectDisposedException) { }
 
+        try
+        {
+            _scannerLock.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+
         WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 
@@ -432,6 +438,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
         }
     }
 
+    private readonly System.Threading.SemaphoreSlim _scannerLock = new(1, 1);
+
     /// <summary>
     /// Adds a scanned barcode (or any code coming from the camera tool) directly to the cart.
     /// Resolves the product by exact SKU match; unknown codes / cash-advance items are not
@@ -444,68 +452,88 @@ public partial class PosViewModel : ObservableObject, IDisposable
         if (string.IsNullOrWhiteSpace(code)) return;
         var trimmedCode = code.Trim();
 
-        // Lazy-start the sale, mirroring AddSelectedSuggestionAsync.
-        if (Cart.CurrentSale == null)
+        // Restringir lectura exclusivamente a códigos de barras válidos (ignorar QR / URLs / texto largo)
+        if (!Core.Helpers.BarcodeValidator.IsValidBarcode(trimmedCode))
         {
-            await StartNewSaleAsync();
-
-            if (Cart.CurrentSale == null)
-            {
-                MessageBox.Show("Could not start a sale session. Please check that the server is running and try again.", "Connection Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
+            SearchText = string.Empty;
+            return;
         }
 
+        await _scannerLock.WaitAsync();
         try
         {
-            var results = await _product_service.GetSuggestionsAsync(trimmedCode, true, System.Threading.CancellationToken.None);
-            var product = results.FirstOrDefault(p => p.SKU == trimmedCode) ?? results.FirstOrDefault();
-
-            // Unknown code, or a cash-advance item:
-            if (product == null || product.Id <= 0 || product.IsCashAdvance)
+            // Lazy-start the sale, mirroring AddSelectedSuggestionAsync.
+            if (Cart.CurrentSale == null)
             {
-                return;
-            }
+                await StartNewSaleAsync();
 
-            if (product.IsGroupHeader)
-            {
-                var variant = await (_dialog_service?.ShowVariantSelectionDialogAsync(product) ?? Task.FromResult<ProductDto?>(null));
-                if (variant == null) return;
-
-                product = new Core.DTOs.ProductQuickInfoDto
+                if (Cart.CurrentSale == null)
                 {
-                    Id = variant.Id,
-                    Name = variant.Name,
-                    SKU = variant.SKU,
-                    PriceUSD = variant.PriceUSD,
-                    PriceRetailUSD = variant.PriceRetailUSD,
-                    PriceWholesaleUSD = variant.PriceWholesaleUSD,
-                    PriceBsS = variant.PriceBsS,
-                    StockQuantity = variant.StockQuantity,
-                    IsActive = variant.IsActive
-                };
+                    MessageBox.Show("Could not start a sale session. Please check that the server is running and try again.", "Connection Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
             }
 
-            IsProcessing = true;
             try
             {
-                Cart.CurrentSale = await _sales_service.AddItemAsync(Cart.CurrentSale.Id, product.Id, 1, CurrentExchangeRate, null, null);
+                var results = await _product_service.GetSuggestionsAsync(trimmedCode, true, System.Threading.CancellationToken.None);
+                var product = results.FirstOrDefault(p => p.SKU == trimmedCode) ?? results.FirstOrDefault();
+
+                // Unknown code, or a cash-advance item:
+                if (product == null || product.Id <= 0 || product.IsCashAdvance)
+                {
+                    return;
+                }
+
+                if (product.IsGroupHeader)
+                {
+                    var variant = await (_dialog_service?.ShowVariantSelectionDialogAsync(product) ?? Task.FromResult<ProductDto?>(null));
+                    if (variant == null) return;
+
+                    product = new Core.DTOs.ProductQuickInfoDto
+                    {
+                        Id = variant.Id,
+                        Name = variant.Name,
+                        SKU = variant.SKU,
+                        PriceUSD = variant.PriceUSD,
+                        PriceRetailUSD = variant.PriceRetailUSD,
+                        PriceWholesaleUSD = variant.PriceWholesaleUSD,
+                        PriceBsS = variant.PriceBsS,
+                        StockQuantity = variant.StockQuantity,
+                        IsActive = variant.IsActive
+                    };
+                }
+
+                IsProcessing = true;
+                try
+                {
+                    Cart.CurrentSale = await _sales_service.AddItemAsync(Cart.CurrentSale.Id, product.Id, 1, CurrentExchangeRate, null, null);
+                }
+                catch (System.Exception ex)
+                {
+                    MessageBox.Show($"Error adding item: {ex.Message}");
+                }
+                finally
+                {
+                    IsProcessing = false;
+                }
+            }
+            catch (System.Net.Http.HttpRequestException ex)
+            {
+                MessageBox.Show($"Error de conexión al consultar el código: {ex.Message}", "Error de Red", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            catch (System.OperationCanceledException)
+            {
+                // Operación cancelada por timeout o token
             }
             catch (System.Exception ex)
             {
-                MessageBox.Show($"Error adding item: {ex.Message}");
+                MessageBox.Show($"Error looking up the scanned code: {ex.Message}");
             }
-            finally
-            {
-                IsProcessing = false;
-            }
-        }
-        catch (System.Exception ex)
-        {
-            MessageBox.Show($"Error looking up the scanned code: {ex.Message}");
         }
         finally
         {
+            _scannerLock.Release();
             // La caja de búsqueda se limpia tras CADA intento de escaneo, sin importar el
             // resultado (producto encontrado, no encontrado o error de lectura).
             SearchText = string.Empty;
@@ -520,13 +548,14 @@ public partial class PosViewModel : ObservableObject, IDisposable
     public async Task<Core.DTOs.ProductQuickInfoDto?> ResolveScannedCodeAsync(string code)
     {
         if (string.IsNullOrWhiteSpace(code)) return null;
+        var trimmed = code.Trim();
+        if (!Core.Helpers.BarcodeValidator.IsValidBarcode(trimmed)) return null;
         try
         {
-            return await _product_service.GetQuickInfoAsync(code.Trim());
+            return await _product_service.GetQuickInfoAsync(trimmed);
         }
-        catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        catch
         {
-            // SKU no numérico: el endpoint quick-check lo rechaza; no es un producto del catálogo.
             return null;
         }
     }

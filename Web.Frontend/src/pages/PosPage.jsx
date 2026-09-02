@@ -2,6 +2,7 @@ import { useRef, useState, useMemo } from 'react';
 import { useCart } from '../context/CartContext';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { usePosHotkeys } from '../hooks/usePosHotkeys';
+import { useScannerTrap } from '../hooks/useScannerTrap';
 import SearchBar from '../components/pos/SearchBar';
 import EmptyCart from '../components/pos/EmptyCart';
 import CartTable from '../components/pos/CartTable';
@@ -11,6 +12,7 @@ import CustomerModal from '../components/pos/CustomerModal';
 import BarcodeScannerModal from '../components/pos/BarcodeScannerModal';
 import VariantSelectorModal from '../components/pos/VariantSelectorModal';
 import { getProductBySku } from '../services/productsApi';
+import { isValidBarcode } from '../utils/barcodeValidator';
 import { Edit2, ScanLine, Keyboard } from 'lucide-react';
 
 export default function PosPage({
@@ -23,6 +25,7 @@ export default function PosPage({
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [variantParentProduct, setVariantParentProduct] = useState(null);
   const searchBarRef = useRef(null);
+  const abortControllerRef = useRef(null);
   const { exchangeRate, syncBcvRate } = useExchangeRate();
   const {
     currentSale,
@@ -119,8 +122,20 @@ export default function PosPage({
   };
 
   const handleScannedCode = async (code) => {
+    if (!isValidBarcode(code)) {
+      searchBarRef.current?.setQuery('');
+      return;
+    }
+
+    // Cancelar cualquier consulta previa pendiente
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
-      const product = await getProductBySku(code);
+      const product = await getProductBySku(code, controller.signal);
+      if (controller.signal.aborted) return;
+
       if (product?.id && !product.isCashAdvance) {
         if (product.isGroupHeader) {
           setVariantParentProduct(product);
@@ -129,11 +144,19 @@ export default function PosPage({
         }
       }
     } catch (err) {
+      if (err?.name === 'AbortError' || controller.signal.aborted) {
+        return;
+      }
       console.error('[PosPage] Error resolviendo código escaneado:', err);
     } finally {
-      searchBarRef.current?.setQuery('');
+      if (!controller.signal.aborted) {
+        searchBarRef.current?.setQuery('');
+      }
     }
   };
+
+  // Captura global de lecturas de pistolas de código de barras físicas (USB/Bluetooth)
+  useScannerTrap(handleScannedCode);
 
   return (
     <div className="pos-page">

@@ -40,7 +40,12 @@ export default function SuggestionList({ suggestions, isLoading, onSelectSuggest
               <span className="suggestion-sku">SKU: {item.sku || '-'}</span>
             </div>
             <div className="suggestion-price-stock">
-              <span className="suggestion-price">Bs.S {priceBsS.toFixed(2)}</span>
+              <span 
+                className="suggestion-price"
+                title={item.isGroupHeader && item.hasIndependentPricing ? 'Este producto agrupador posee costos y precios individuales por variante' : undefined}
+              >
+                {item.isGroupHeader && item.hasIndependentPricing ? 'Precios indiv.' : `Bs.S ${priceBsS.toFixed(2)}`}
+              </span>
               <span 
                 className={`suggestion-stock ${item.isCashAdvance ? 'service' : ((item.consolidatedStock ?? item.stockQuantity) <= 0 ? 'out' : '')}`}
                 style={item.isCashAdvance ? { backgroundColor: '#EDE9FE', color: '#6D28D9', border: '1px solid #DDD6FE', padding: '2px 8px', borderRadius: '8px', fontWeight: 600 } : undefined}

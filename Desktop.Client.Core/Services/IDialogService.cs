@@ -29,6 +29,7 @@ public interface IDialogService
     Task ShowPairingQrDialogAsync();
     Task<bool> ShowServerConnectionDialogAsync();
     Task<ProductDto?> ShowVariantSelectionDialogAsync(ProductQuickInfoDto parentProduct);
+    Task ShowVariantManagementDialogAsync(ProductDto parentProduct);
 }
 
 

@@ -174,6 +174,9 @@ public class ProductImportService : IProductImportService
                         dto.UnitOfMeasure = dto.IsFractional ? "Kg" : "Und";
                         dto.IsActive = true;
 
+                        bool parseConvFactor = TryParseDecimal(row, propertyColumnIndices, out var convFactor, "ConversionFactor", "FactorConversion", "Equivalencia", "Factor");
+                        dto.ConversionFactor = parseConvFactor && convFactor > 0 ? convFactor : 1.0000m;
+
                         // Financial Logic (Calculated from cost and profit margin)
                         dto.PriceRetailUSD = dto.CostPriceUSD > 0 && dto.ProfitMarginRetail > 0
                             ? Math.Ceiling(dto.CostPriceUSD * (1m + dto.ProfitMarginRetail / 100m) * 100m) / 100m
@@ -280,16 +283,6 @@ public class ProductImportService : IProductImportService
                 return 0m;
             }
 
-            int GetCsvInt(params string[] props)
-            {
-                foreach (var prop in props)
-                {
-                    if (propertyColumnIndices.TryGetValue(prop, out int c) && c < parts.Length && decimal.TryParse(parts[c], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal decVal))
-                        return Convert.ToInt32(Math.Round(decVal));
-                }
-                return 0;
-            }
-
             bool GetCsvBool(params string[] props)
             {
                 foreach (var prop in props)
@@ -338,12 +331,28 @@ public class ProductImportService : IProductImportService
                 dto.MinWholesaleQuantity = 0.000m;
             }
 
+            dto.ProductType = GetCsvStr("ProductType", "TipoProducto", "Tipo");
+            if (string.IsNullOrWhiteSpace(dto.ProductType)) dto.ProductType = "Normal";
+
+            dto.GroupNameOrKey = GetCsvStr("GroupNameOrKey", "GrupoPadre", "Grupo", "Padre");
+            dto.IsStockShared = GetCsvBool("IsStockShared", "StockCompartido", "StockPool");
+            dto.HasIndependentPricing = GetCsvBool("HasIndependentPricing", "PreciosIndependientes", "PrecioIndependiente");
+
+            decimal csvConvFactor = GetCsvDec("ConversionFactor", "FactorConversion", "Equivalencia", "Factor");
+            dto.ConversionFactor = csvConvFactor > 0 ? csvConvFactor : 1.0000m;
+
+            bool isGroup = string.Equals(dto.ProductType, "Grupo", StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(dto.ProductType, "Group", StringComparison.OrdinalIgnoreCase);
+
             if (string.IsNullOrWhiteSpace(dto.Name)) errors.Add("El nombre no puede estar vacío.");
             if (string.IsNullOrWhiteSpace(dto.SKU))
             {
-                errors.Add("El SKU/Código de barras no puede estar vacío.");
+                if (!isGroup)
+                {
+                    errors.Add("El SKU/Código de barras no puede estar vacío.");
+                }
             }
-            else if (!System.Text.RegularExpressions.Regex.IsMatch(dto.SKU.Trim(), @"^\d+$"))
+            else if (!isGroup && !System.Text.RegularExpressions.Regex.IsMatch(dto.SKU.Trim(), @"^\d+$"))
             {
                 errors.Add("El SKU/Código de barras debe ser estrictamente un número entero (solo dígitos 0-9).");
             }

@@ -90,8 +90,24 @@ public class InventoryService : IInventoryService
         return await _context.Products.FirstOrDefaultAsync(p => p.SKU == sku);
     }
 
-    private void ValidateAndCalculateProductPrices(Product product)
+    private static void ValidateAndCalculateProductPrices(Product product)
     {
+        // Agrupador con Precios Individuales: No posee precios propios; cada variante define su costo/precio
+        if (product.IsGroupHeader && product.HasIndependentPricing)
+        {
+            product.CostPriceUSD = 0m;
+            product.Cost = 0m;
+            product.ProfitMarginRetail = 0m;
+            product.ProfitPercentage = 0m;
+            product.PriceRetailUSD = 0m;
+            product.PriceUSD = 0m;
+            product.PriceBsS = 0m;
+            product.HasWholesale = false;
+            product.ProfitMarginWholesale = 0m;
+            product.PriceWholesaleUSD = 0m;
+            return;
+        }
+
         if (product.MinWholesaleQuantity <= 0m)
         {
             product.MinWholesaleQuantity = 6.000m;
@@ -194,20 +210,40 @@ public class InventoryService : IInventoryService
             product.StockQuantity = 0m;
             product.ReservedQuantity = 0m;
             product.LowStockThreshold = 0m;
+            product.IsStockShared = false;
+            product.HasIndependentPricing = false;
+            product.ConversionFactor = 1.0000m;
         }
         else if (product.IsGroupHeader)
         {
+            product.ConversionFactor = 1.0000m;
             if (string.IsNullOrWhiteSpace(product.SKU))
             {
                 product.SKU = $"GRP-{DateTime.UtcNow.Ticks}";
             }
             product.ParentProductId = null;
-            product.StockQuantity = 0m;
             product.ReservedQuantity = 0m;
-            product.LowStockThreshold = 0m;
+            if (!product.IsStockShared)
+            {
+                product.StockQuantity = 0m;
+                product.LowStockThreshold = 0m;
+            }
             if (string.IsNullOrWhiteSpace(product.GroupKey))
             {
                 product.GroupKey = product.Name.Trim();
+            }
+            if (product.HasIndependentPricing)
+            {
+                product.CostPriceUSD = 0m;
+                product.Cost = 0m;
+                product.ProfitMarginRetail = 0m;
+                product.ProfitPercentage = 0m;
+                product.PriceRetailUSD = 0m;
+                product.PriceUSD = 0m;
+                product.PriceBsS = 0m;
+                product.HasWholesale = false;
+                product.ProfitMarginWholesale = 0m;
+                product.PriceWholesaleUSD = 0m;
             }
         }
         else if (product.ParentProductId.HasValue)
@@ -218,19 +254,47 @@ public class InventoryService : IInventoryService
                 throw new InvalidOperationException("El producto padre especificado no existe o ha sido eliminado.");
             }
 
-            // Inherit pricing and configuration from parent
-            product.PriceRetailUSD = parent.PriceRetailUSD;
-            product.PriceWholesaleUSD = parent.PriceWholesaleUSD;
-            product.CostPriceUSD = parent.CostPriceUSD;
-            product.ProfitMarginRetail = parent.ProfitMarginRetail;
-            product.ProfitMarginWholesale = parent.ProfitMarginWholesale;
-            product.HasWholesale = parent.HasWholesale;
-            product.IsFractional = parent.IsFractional;
-            product.UnitOfMeasure = parent.UnitOfMeasure;
-            product.MinWholesaleQuantity = parent.MinWholesaleQuantity;
-            product.PriceUSD = parent.PriceRetailUSD;
-            product.Cost = parent.CostPriceUSD;
-            product.ProfitPercentage = parent.ProfitMarginRetail;
+            product.IsGroupHeader = false;
+            product.IsStockShared = false;
+            product.HasIndependentPricing = false;
+
+            if (parent.IsStockShared)
+            {
+                product.StockQuantity = 0m;
+                product.ReservedQuantity = 0m;
+                product.LowStockThreshold = 0m;
+                if (product.ConversionFactor < 0.0001m || product.ConversionFactor > 1_000_000m)
+                {
+                    throw new InvalidOperationException(Core.Constants.InventoryMessages.ConversionFactorOutOfRange);
+                }
+            }
+            else
+            {
+                product.ConversionFactor = 1.0000m;
+            }
+
+            if (!parent.HasIndependentPricing)
+            {
+                // Inherit pricing and configuration from parent
+                product.PriceRetailUSD = parent.PriceRetailUSD;
+                product.PriceWholesaleUSD = parent.PriceWholesaleUSD;
+                product.CostPriceUSD = parent.CostPriceUSD;
+                product.ProfitMarginRetail = parent.ProfitMarginRetail;
+                product.ProfitMarginWholesale = parent.ProfitMarginWholesale;
+                product.HasWholesale = parent.HasWholesale;
+                product.IsFractional = parent.IsFractional;
+                product.UnitOfMeasure = parent.UnitOfMeasure;
+                product.MinWholesaleQuantity = parent.MinWholesaleQuantity;
+                product.PriceUSD = parent.PriceRetailUSD;
+                product.Cost = parent.CostPriceUSD;
+                product.ProfitPercentage = parent.ProfitMarginRetail;
+            }
+        }
+        else
+        {
+            product.IsStockShared = false;
+            product.HasIndependentPricing = false;
+            product.ConversionFactor = 1.0000m;
         }
 
         ValidateProductSku(product.SKU, product.IsGroupHeader);
@@ -254,6 +318,20 @@ public class InventoryService : IInventoryService
         var existing = await _context.Products.FindAsync(product.Id);
         if (existing == null) throw new KeyNotFoundException($"Product {product.Id} not found");
 
+        var entry = _context.Entry(existing);
+        bool originalIsGroupHeader = entry.OriginalValues.GetValue<bool>(nameof(Product.IsGroupHeader));
+        bool originalIsStockShared = entry.OriginalValues.GetValue<bool>(nameof(Product.IsStockShared));
+        bool originalHasIndependentPricing = entry.OriginalValues.GetValue<bool>(nameof(Product.HasIndependentPricing));
+        decimal originalConversionFactor = entry.OriginalValues.GetValue<decimal>(nameof(Product.ConversionFactor));
+
+        if (originalIsGroupHeader)
+        {
+            if (product.IsStockShared != originalIsStockShared || product.HasIndependentPricing != originalHasIndependentPricing)
+            {
+                throw new InvalidOperationException("No se permite cambiar las banderas de Stock Compartido o Precios Independientes en un grupo existente.");
+            }
+        }
+
         if (!product.IsGroupHeader)
         {
             int activeVariants = await _context.Products.CountAsync(p => p.ParentProductId == product.Id && !p.IsDeleted);
@@ -261,6 +339,8 @@ public class InventoryService : IInventoryService
             {
                 throw new InvalidOperationException($"No se puede desmarcar el grupo '{product.Name}' porque tiene {activeVariants} variantes asociadas. Desvincule o elimine las variantes primero.");
             }
+            product.IsStockShared = false;
+            product.HasIndependentPricing = false;
         }
 
         if (product.IsCashAdvance)
@@ -279,20 +359,40 @@ public class InventoryService : IInventoryService
             product.StockQuantity = 0m;
             product.ReservedQuantity = 0m;
             product.LowStockThreshold = 0m;
+            product.IsStockShared = false;
+            product.HasIndependentPricing = false;
+            product.ConversionFactor = 1.0000m;
         }
         else if (product.IsGroupHeader)
         {
+            product.ConversionFactor = 1.0000m;
             if (string.IsNullOrWhiteSpace(product.SKU))
             {
                 product.SKU = existing.SKU;
             }
             product.ParentProductId = null;
-            product.StockQuantity = 0m;
             product.ReservedQuantity = 0m;
-            product.LowStockThreshold = 0m;
+            if (!product.IsStockShared)
+            {
+                product.StockQuantity = 0m;
+                product.LowStockThreshold = 0m;
+            }
             if (string.IsNullOrWhiteSpace(product.GroupKey))
             {
                 product.GroupKey = product.Name.Trim();
+            }
+            if (product.HasIndependentPricing)
+            {
+                product.CostPriceUSD = 0m;
+                product.Cost = 0m;
+                product.ProfitMarginRetail = 0m;
+                product.ProfitPercentage = 0m;
+                product.PriceRetailUSD = 0m;
+                product.PriceUSD = 0m;
+                product.PriceBsS = 0m;
+                product.HasWholesale = false;
+                product.ProfitMarginWholesale = 0m;
+                product.PriceWholesaleUSD = 0m;
             }
         }
         else if (product.ParentProductId.HasValue)
@@ -300,20 +400,52 @@ public class InventoryService : IInventoryService
             var parent = await _context.Products.FindAsync(product.ParentProductId.Value);
             if (parent != null && !parent.IsDeleted)
             {
-                // Inherit pricing from parent
-                product.PriceRetailUSD = parent.PriceRetailUSD;
-                product.PriceWholesaleUSD = parent.PriceWholesaleUSD;
-                product.CostPriceUSD = parent.CostPriceUSD;
-                product.ProfitMarginRetail = parent.ProfitMarginRetail;
-                product.ProfitMarginWholesale = parent.ProfitMarginWholesale;
-                product.HasWholesale = parent.HasWholesale;
-                product.IsFractional = parent.IsFractional;
-                product.UnitOfMeasure = parent.UnitOfMeasure;
-                product.MinWholesaleQuantity = parent.MinWholesaleQuantity;
-                product.PriceUSD = parent.PriceRetailUSD;
-                product.Cost = parent.CostPriceUSD;
-                product.ProfitPercentage = parent.ProfitMarginRetail;
+                product.IsGroupHeader = false;
+                product.IsStockShared = false;
+                product.HasIndependentPricing = false;
+
+                if (parent.IsStockShared)
+                {
+                    product.StockQuantity = 0m;
+                    product.ReservedQuantity = 0m;
+                    product.LowStockThreshold = 0m;
+                    decimal factor = product.ConversionFactor > 0 ? product.ConversionFactor : (originalConversionFactor > 0 ? originalConversionFactor : 1.0000m);
+                    if (factor < 0.0001m || factor > 1_000_000m)
+                    {
+                        throw new InvalidOperationException(Core.Constants.InventoryMessages.ConversionFactorOutOfRange);
+                    }
+                    product.ConversionFactor = factor;
+                }
+                else
+                {
+                    product.ConversionFactor = 1.0000m;
+                }
+
+                if (!parent.HasIndependentPricing)
+                {
+                    // Inherit pricing from parent
+                    product.PriceRetailUSD = parent.PriceRetailUSD;
+                    product.PriceWholesaleUSD = parent.PriceWholesaleUSD;
+                    product.CostPriceUSD = parent.CostPriceUSD;
+                    product.ProfitMarginRetail = parent.ProfitMarginRetail;
+                    product.ProfitMarginWholesale = parent.ProfitMarginWholesale;
+                    product.HasWholesale = parent.HasWholesale;
+                    product.IsFractional = parent.IsFractional;
+                    product.UnitOfMeasure = parent.UnitOfMeasure;
+                    product.MinWholesaleQuantity = parent.MinWholesaleQuantity;
+                    product.PriceUSD = parent.PriceRetailUSD;
+                    product.Cost = parent.CostPriceUSD;
+                    product.ProfitPercentage = parent.ProfitMarginRetail;
+                }
             }
+            else
+            {
+                product.ConversionFactor = 1.0000m;
+            }
+        }
+        else
+        {
+            product.ConversionFactor = 1.0000m;
         }
 
         ValidateProductSku(product.SKU, product.IsGroupHeader);
@@ -324,52 +456,57 @@ public class InventoryService : IInventoryService
             product.RowVersion = existing.RowVersion;
         }
 
+        await using var tx = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync() : null;
+
         _context.Entry(existing).CurrentValues.SetValues(product);
         existing.UpdatedAt = DateTime.UtcNow;
-
         await _context.SaveChangesAsync();
 
-        // If updating a parent product, propagate prices/costs to all active variants in batch
-        if (product.IsGroupHeader && _context.Database.IsRelational())
+        // If updating a parent product with HasIndependentPricing == false, propagate prices/costs to all active variants in batch
+        if (product.IsGroupHeader && !product.HasIndependentPricing)
         {
-            await _context.Products
-                .Where(p => p.ParentProductId == product.Id && !p.IsDeleted)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(p => p.PriceRetailUSD, product.PriceRetailUSD)
-                    .SetProperty(p => p.PriceWholesaleUSD, product.PriceWholesaleUSD)
-                    .SetProperty(p => p.CostPriceUSD, product.CostPriceUSD)
-                    .SetProperty(p => p.ProfitMarginRetail, product.ProfitMarginRetail)
-                    .SetProperty(p => p.ProfitMarginWholesale, product.ProfitMarginWholesale)
-                    .SetProperty(p => p.HasWholesale, product.HasWholesale)
-                    .SetProperty(p => p.IsFractional, product.IsFractional)
-                    .SetProperty(p => p.UnitOfMeasure, product.UnitOfMeasure)
-                    .SetProperty(p => p.MinWholesaleQuantity, product.MinWholesaleQuantity)
-                    .SetProperty(p => p.PriceUSD, product.PriceRetailUSD)
-                    .SetProperty(p => p.Cost, product.CostPriceUSD)
-                    .SetProperty(p => p.ProfitPercentage, product.ProfitMarginRetail)
-                    .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
-        }
-        else if (product.IsGroupHeader)
-        {
-            // In-memory or non-relational fallback
-            var variants = await _context.Products.Where(p => p.ParentProductId == product.Id && !p.IsDeleted).ToListAsync();
-            foreach (var v in variants)
+            if (_context.Database.IsRelational())
             {
-                v.PriceRetailUSD = product.PriceRetailUSD;
-                v.PriceWholesaleUSD = product.PriceWholesaleUSD;
-                v.CostPriceUSD = product.CostPriceUSD;
-                v.ProfitMarginRetail = product.ProfitMarginRetail;
-                v.ProfitMarginWholesale = product.ProfitMarginWholesale;
-                v.HasWholesale = product.HasWholesale;
-                v.IsFractional = product.IsFractional;
-                v.UnitOfMeasure = product.UnitOfMeasure;
-                v.MinWholesaleQuantity = product.MinWholesaleQuantity;
-                v.PriceUSD = product.PriceRetailUSD;
-                v.Cost = product.CostPriceUSD;
-                v.ProfitPercentage = product.ProfitMarginRetail;
-                v.UpdatedAt = DateTime.UtcNow;
+                await _context.Products
+                    .Where(p => p.ParentProductId == product.Id && !p.IsDeleted)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(p => p.PriceRetailUSD, product.PriceRetailUSD)
+                        .SetProperty(p => p.PriceWholesaleUSD, product.PriceWholesaleUSD)
+                        .SetProperty(p => p.CostPriceUSD, product.CostPriceUSD)
+                        .SetProperty(p => p.ProfitMarginRetail, product.ProfitMarginRetail)
+                        .SetProperty(p => p.ProfitMarginWholesale, product.ProfitMarginWholesale)
+                        .SetProperty(p => p.HasWholesale, product.HasWholesale)
+                        .SetProperty(p => p.MinWholesaleQuantity, product.MinWholesaleQuantity)
+                        .SetProperty(p => p.PriceUSD, product.PriceRetailUSD)
+                        .SetProperty(p => p.Cost, product.CostPriceUSD)
+                        .SetProperty(p => p.ProfitPercentage, product.ProfitMarginRetail)
+                        .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
             }
-            await _context.SaveChangesAsync();
+            else
+            {
+                // In-memory or non-relational fallback
+                var variants = await _context.Products.Where(p => p.ParentProductId == product.Id && !p.IsDeleted).ToListAsync();
+                foreach (var v in variants)
+                {
+                    v.PriceRetailUSD = product.PriceRetailUSD;
+                    v.PriceWholesaleUSD = product.PriceWholesaleUSD;
+                    v.CostPriceUSD = product.CostPriceUSD;
+                    v.ProfitMarginRetail = product.ProfitMarginRetail;
+                    v.ProfitMarginWholesale = product.ProfitMarginWholesale;
+                    v.HasWholesale = product.HasWholesale;
+                    v.MinWholesaleQuantity = product.MinWholesaleQuantity;
+                    v.PriceUSD = product.PriceRetailUSD;
+                    v.Cost = product.CostPriceUSD;
+                    v.ProfitPercentage = product.ProfitMarginRetail;
+                    v.UpdatedAt = DateTime.UtcNow;
+                }
+                await _context.SaveChangesAsync();
+            }
+        }
+
+        if (tx != null)
+        {
+            await tx.CommitAsync();
         }
     }
 
@@ -438,38 +575,173 @@ public class InventoryService : IInventoryService
         }
     }
 
-    public async Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null)
+    public static decimal ApplyConversion(decimal quantity, decimal factor, bool isDeduction)
     {
-        var product = await _context.Products.FindAsync(productId);
-        if (product == null) throw new KeyNotFoundException($"Product {productId} not found");
+        decimal raw = quantity * (factor > 0 ? factor : 1.0000m);
+        return Math.Round(raw, 4, MidpointRounding.AwayFromZero);
+    }
 
-        if (product.IsCashAdvance)
+    public async Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, bool allowNegativeStock = false)
+    {
+        if (quantityChange == 0) return;
+
+        await using var tx = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync() : null;
+
+        var productData = await _context.Products
+            .AsNoTracking()
+            .Where(p => p.Id == productId)
+            .Select(p => new
+            {
+                p.Id,
+                p.Name,
+                p.SKU,
+                p.IsCashAdvance,
+                p.ConversionFactor,
+                ParentId = p.ParentProductId,
+                ParentIsStockShared = p.ParentProduct != null && p.ParentProduct.IsStockShared,
+                ParentName = p.ParentProduct != null ? p.ParentProduct.Name : null,
+                ParentSKU = p.ParentProduct != null ? p.ParentProduct.SKU : null
+            })
+            .FirstOrDefaultAsync();
+
+        if (productData == null) throw new KeyNotFoundException($"Product {productId} not found");
+
+        if (productData.IsCashAdvance)
         {
-            throw new InvalidOperationException($"El producto '{product.Name}' es un servicio de adelanto de efectivo y no maneja inventario físico.");
+            throw new InvalidOperationException($"El producto '{productData.Name}' es un servicio de adelanto de efectivo y no maneja inventario físico.");
         }
 
-        if (quantityChange < 0 && (product.StockQuantity + quantityChange) < 0)
+        int targetProductId = productId;
+        decimal factor = 1.0000m;
+        decimal effectiveQuantityChange = quantityChange;
+        string movementReason = reason;
+
+        if (productData.ParentId.HasValue && productData.ParentIsStockShared)
         {
-            throw new InvalidOperationException($"Stock insuficiente para el producto '{product.Name}' (SKU: {product.SKU}). Stock actual: {product.StockQuantity}, deducción requerida: {Math.Abs(quantityChange)}.");
+            targetProductId = productData.ParentId.Value;
+            factor = productData.ConversionFactor > 0 ? productData.ConversionFactor : 1.0000m;
+            effectiveQuantityChange = ApplyConversion(quantityChange, factor, quantityChange < 0);
+            movementReason = $"Variante: {productData.Name} (SKU: {productData.SKU}, Factor: {factor:G29}) | {reason}";
         }
 
-        product.StockQuantity += quantityChange;
+        decimal newStockLevel;
 
-        // Log movement
+        if (_context.Database.IsRelational())
+        {
+            if (effectiveQuantityChange < 0 && !allowNegativeStock)
+            {
+                // Conditional decrement preventing negative stock
+                int rows = await _context.Products
+                    .Where(p => p.Id == targetProductId && (p.StockQuantity + effectiveQuantityChange) >= 0)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(p => p.StockQuantity, p => p.StockQuantity + effectiveQuantityChange)
+                        .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
+
+                if (rows == 0)
+                {
+                    var targetProd = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == targetProductId);
+                    if (targetProd == null) throw new KeyNotFoundException($"Product {targetProductId} not found");
+                    throw new InvalidOperationException($"Stock insuficiente para el producto '{targetProd.Name}' (SKU: {targetProd.SKU}). Stock actual: {targetProd.StockQuantity}, deducción requerida: {Math.Abs(effectiveQuantityChange)}.");
+                }
+            }
+            else
+            {
+                // Unconditional increment or sale deduction allowing negative stock
+                int rows = await _context.Products
+                    .Where(p => p.Id == targetProductId)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(p => p.StockQuantity, p => p.StockQuantity + effectiveQuantityChange)
+                        .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
+
+                if (rows == 0) throw new KeyNotFoundException($"Product {targetProductId} not found");
+            }
+
+            var updatedTarget = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == targetProductId);
+            newStockLevel = updatedTarget?.StockQuantity ?? 0m;
+        }
+        else
+        {
+            // In-Memory Database execution for unit tests
+            var targetProd = await _context.Products.FindAsync(targetProductId);
+            if (targetProd == null) throw new KeyNotFoundException($"Product {targetProductId} not found");
+
+            if (effectiveQuantityChange < 0 && !allowNegativeStock && (targetProd.StockQuantity + effectiveQuantityChange) < 0)
+            {
+                throw new InvalidOperationException($"Stock insuficiente para el producto '{targetProd.Name}' (SKU: {targetProd.SKU}). Stock actual: {targetProd.StockQuantity}, deducción requerida: {Math.Abs(effectiveQuantityChange)}.");
+            }
+
+            targetProd.StockQuantity += effectiveQuantityChange;
+            targetProd.UpdatedAt = DateTime.UtcNow;
+            newStockLevel = targetProd.StockQuantity;
+            await _context.SaveChangesAsync();
+        }
+
+        // Add StockMovement record
         var movement = new StockMovement
         {
-            ProductId = productId,
-            QuantityChange = quantityChange,
-            NewStockLevel = product.StockQuantity,
-            Reason = reason,
+            ProductId = targetProductId,
+            QuantityChange = effectiveQuantityChange,
+            NewStockLevel = newStockLevel,
+            Reason = movementReason,
             MovementDate = DateTime.UtcNow,
             UserId = _currentUserService?.UserId ?? userId
         };
 
         _context.StockMovements.Add(movement);
-        product.UpdatedAt = DateTime.UtcNow;
-
         await _context.SaveChangesAsync();
+
+        if (tx != null)
+        {
+            await tx.CommitAsync();
+        }
+    }
+
+    public async Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null)
+    {
+        EnsureCatalogMutationPermission();
+        if (quantityChange == 0) return;
+
+        var product = await _context.Products
+            .AsNoTracking()
+            .Where(p => p.Id == productId)
+            .Select(p => new
+            {
+                p.Id,
+                p.Name,
+                p.SKU,
+                p.IsDeleted,
+                p.IsCashAdvance,
+                p.IsGroupHeader,
+                p.IsStockShared,
+                ParentId = p.ParentProductId,
+                ParentIsStockShared = p.ParentProduct != null && p.ParentProduct.IsStockShared,
+                ParentName = p.ParentProduct != null ? p.ParentProduct.Name : null
+            })
+            .FirstOrDefaultAsync();
+
+        if (product == null) throw new KeyNotFoundException($"Product {productId} not found");
+
+        if (product.IsDeleted)
+        {
+            throw new InvalidOperationException(Core.Constants.InventoryMessages.DeletedProductStockAdjustmentBlocked);
+        }
+
+        if (product.IsCashAdvance)
+        {
+            throw new InvalidOperationException(Core.Constants.InventoryMessages.CashAdvanceStockAdjustmentBlocked);
+        }
+
+        if (product.IsGroupHeader && !product.IsStockShared)
+        {
+            throw new InvalidOperationException(Core.Constants.InventoryMessages.GroupIndividualStockAdjustmentBlocked);
+        }
+
+        if (product.ParentId.HasValue && product.ParentIsStockShared)
+        {
+            throw new InvalidOperationException(Core.Constants.InventoryMessages.VariantSharedStockAdjustmentBlocked);
+        }
+
+        await UpdateStockAsync(productId, quantityChange, $"Ajuste Manual: {reason}", userId, allowNegativeStock: false);
     }
 
     public async Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration)
@@ -482,18 +754,35 @@ public class InventoryService : IInventoryService
             return 0; // Bypass reservation for Cash Advance / services
         }
 
+        var targetProduct = product;
+        int? sourceProductId = null;
+        decimal effectiveQuantity = quantity;
+
+        if (product.ParentProductId.HasValue)
+        {
+            var parent = await _context.Products.FindAsync(product.ParentProductId.Value);
+            if (parent != null && parent.IsStockShared)
+            {
+                targetProduct = parent;
+                sourceProductId = product.Id;
+                decimal factor = product.ConversionFactor > 0 ? product.ConversionFactor : 1.0000m;
+                effectiveQuantity = ApplyConversion(quantity, factor, isDeduction: true);
+            }
+        }
+
         // Check availability
-        if ((product.StockQuantity - product.ReservedQuantity) < quantity)
+        if ((targetProduct.StockQuantity - targetProduct.ReservedQuantity) < effectiveQuantity)
         {
             throw new InvalidOperationException("Not enough stock available.");
         }
 
-        product.ReservedQuantity += quantity;
+        targetProduct.ReservedQuantity += effectiveQuantity;
 
         var reservation = new StockReservation
         {
-            ProductId = productId,
-            Quantity = quantity,
+            ProductId = targetProduct.Id,
+            SourceProductId = sourceProductId,
+            Quantity = effectiveQuantity,
             ExpiryDate = DateTime.UtcNow.Add(duration),
             IsConfirmed = false
         };
@@ -523,7 +812,7 @@ public class InventoryService : IInventoryService
         if (reservation == null) throw new KeyNotFoundException("Reservation not found.");
         if (reservation.IsConfirmed) return; // Already confirmed
 
-        // Reduce stock and reserved quantity
+        // Reduce stock and reserved quantity on the target entity (parent or product)
         reservation.Product.StockQuantity -= reservation.Quantity;
         reservation.Product.ReservedQuantity -= reservation.Quantity;
         reservation.IsConfirmed = true;
@@ -538,7 +827,7 @@ public class InventoryService : IInventoryService
             MovementDate = DateTime.UtcNow
         };
         _context.StockMovements.Add(movement);
-        _context.StockReservations.Remove(reservation); // Cleanup or keep as history? Plan said delete.
+        _context.StockReservations.Remove(reservation);
 
         await _context.SaveChangesAsync();
     }
@@ -591,10 +880,14 @@ public class InventoryService : IInventoryService
                     IsActive = p.IsActive,
                     ProfitPercentage = p.ProfitPercentage,
                     ParentProductId = p.ParentProductId,
+                    ParentIsStockShared = p.ParentProduct != null && p.ParentProduct.IsStockShared,
                     IsGroupHeader = p.IsGroupHeader,
-                    VariantCount = p.IsGroupHeader ? p.Variants.Count(v => v.IsActive && !v.IsDeleted) : 0,
+                    IsStockShared = p.IsStockShared,
+                    HasIndependentPricing = p.HasIndependentPricing,
+                    ConversionFactor = p.ConversionFactor,
+                    VariantCount = p.IsGroupHeader ? p.Variants.Count(v => !v.IsDeleted) : 0,
                     ConsolidatedStock = p.IsGroupHeader
-                        ? (p.Variants.Where(v => v.IsActive && !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m)
+                        ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                         : p.StockQuantity
                 })
                 .FirstOrDefaultAsync(token);
@@ -629,10 +922,14 @@ public class InventoryService : IInventoryService
                 IsActive = p.IsActive,
                 ProfitPercentage = p.ProfitPercentage,
                 ParentProductId = p.ParentProductId,
+                ParentIsStockShared = p.ParentProduct != null && p.ParentProduct.IsStockShared,
                 IsGroupHeader = p.IsGroupHeader,
-                VariantCount = p.IsGroupHeader ? p.Variants.Count(v => v.IsActive && !v.IsDeleted) : 0,
+                IsStockShared = p.IsStockShared,
+                HasIndependentPricing = p.HasIndependentPricing,
+                ConversionFactor = p.ConversionFactor,
+                VariantCount = p.IsGroupHeader ? p.Variants.Count(v => !v.IsDeleted) : 0,
                 ConsolidatedStock = p.IsGroupHeader
-                    ? (p.Variants.Where(v => v.IsActive && !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m)
+                    ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                     : p.StockQuantity
             })
             .Take(10)
@@ -722,12 +1019,17 @@ public class InventoryService : IInventoryService
                 IsDeleted = p.IsDeleted,
                 ReservedQuantity = p.ReservedQuantity,
                 ParentProductId = p.ParentProductId,
+                ParentIsStockShared = p.ParentProduct != null && p.ParentProduct.IsStockShared,
                 IsGroupHeader = p.IsGroupHeader,
+                IsStockShared = p.IsStockShared,
+                HasIndependentPricing = p.HasIndependentPricing,
+                ConversionFactor = p.ConversionFactor,
                 GroupKey = p.GroupKey,
-                VariantCount = p.IsGroupHeader ? p.Variants.Count(v => v.IsActive && !v.IsDeleted) : 0,
+                VariantCount = p.IsGroupHeader ? p.Variants.Count(v => !v.IsDeleted) : 0,
                 ConsolidatedStock = p.IsGroupHeader
-                    ? (p.Variants.Where(v => v.IsActive && !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m)
-                    : p.StockQuantity
+                    ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
+                    : p.StockQuantity,
+                RowVersion = p.RowVersion
             })
             .ToListAsync(token);
 
@@ -741,6 +1043,11 @@ public class InventoryService : IInventoryService
 
     public async Task<List<Core.DTOs.ProductDto>> GetVariantOptionsAsync(int parentProductId)
     {
+        var parent = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == parentProductId);
+        bool isStockShared = parent?.IsStockShared ?? false;
+        decimal parentStock = parent?.StockQuantity ?? 0m;
+        bool hasIndepPricing = parent?.HasIndependentPricing ?? false;
+
         return await _context.Products
             .AsNoTracking()
             .Where(p => p.ParentProductId == parentProductId && !p.IsDeleted && p.IsActive)
@@ -762,17 +1069,22 @@ public class InventoryService : IInventoryService
                 IsFractional = p.IsFractional,
                 PriceBsS = p.PriceBsS,
                 Cost = p.Cost,
-                StockQuantity = p.StockQuantity,
+                StockQuantity = isStockShared ? parentStock : p.StockQuantity,
                 ProfitPercentage = p.ProfitPercentage,
                 UnitOfMeasure = p.UnitOfMeasure,
                 LowStockThreshold = p.LowStockThreshold,
                 IsActive = p.IsActive,
                 IsDeleted = p.IsDeleted,
-                ReservedQuantity = p.ReservedQuantity,
+                ReservedQuantity = isStockShared ? (parent != null ? parent.ReservedQuantity : 0m) : p.ReservedQuantity,
                 ParentProductId = p.ParentProductId,
+                ParentIsStockShared = isStockShared,
                 IsGroupHeader = p.IsGroupHeader,
+                IsStockShared = isStockShared,
+                HasIndependentPricing = hasIndepPricing,
+                ConversionFactor = p.ConversionFactor,
                 GroupKey = p.GroupKey,
-                ConsolidatedStock = p.StockQuantity
+                ConsolidatedStock = isStockShared ? parentStock : p.StockQuantity,
+                RowVersion = p.RowVersion
             })
             .ToListAsync();
     }
@@ -807,9 +1119,15 @@ public class InventoryService : IInventoryService
                 IsActive = p.IsActive,
                 IsDeleted = p.IsDeleted,
                 IsGroupHeader = p.IsGroupHeader,
+                IsStockShared = p.IsStockShared,
+                HasIndependentPricing = p.HasIndependentPricing,
+                ConversionFactor = p.ConversionFactor,
                 GroupKey = p.GroupKey,
-                VariantCount = p.Variants.Count(v => v.IsActive && !v.IsDeleted),
-                ConsolidatedStock = p.Variants.Where(v => v.IsActive && !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m
+                VariantCount = p.Variants.Count(v => !v.IsDeleted),
+                ConsolidatedStock = p.IsStockShared 
+                    ? p.StockQuantity 
+                    : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m),
+                RowVersion = p.RowVersion
             })
             .ToListAsync();
     }
@@ -835,9 +1153,12 @@ public class InventoryService : IInventoryService
                 ProfitPercentage = p.ProfitPercentage,
                 ParentProductId = p.ParentProductId,
                 IsGroupHeader = p.IsGroupHeader,
-                VariantCount = p.IsGroupHeader ? p.Variants.Count(v => v.IsActive && !v.IsDeleted) : 0,
+                IsStockShared = p.IsStockShared,
+                HasIndependentPricing = p.HasIndependentPricing,
+                ConversionFactor = p.ConversionFactor,
+                VariantCount = p.IsGroupHeader ? p.Variants.Count(v => !v.IsDeleted) : 0,
                 ConsolidatedStock = p.IsGroupHeader
-                    ? (p.Variants.Where(v => v.IsActive && !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m)
+                    ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                     : p.StockQuantity
             })
             .FirstOrDefaultAsync();
@@ -901,31 +1222,74 @@ public class InventoryService : IInventoryService
                             existingProduct.HasWholesale = hasWholesale;
                             existingProduct.IsFractional = isFractional;
                             existingProduct.UnitOfMeasure = unitEnum;
-                            existingProduct.StockQuantity = 0m;
-                            existingProduct.LowStockThreshold = 0m;
                             existingProduct.ParentProductId = null;
+                            if (existingProduct.IsStockShared)
+                            {
+                                existingProduct.StockQuantity = Math.Max(0, dto.StockQuantity);
+                                existingProduct.LowStockThreshold = Math.Max(0, dto.LowStockThreshold);
+                            }
+                            else
+                            {
+                                existingProduct.StockQuantity = 0m;
+                                existingProduct.LowStockThreshold = 0m;
+                            }
                             if (groupKey != null) groupDictionary[groupKey] = existingProduct;
                         }
                         else
                         {
+                            existingProduct.IsStockShared = false;
+                            existingProduct.HasIndependentPricing = false;
+
                             if (isVariant && !string.IsNullOrWhiteSpace(dto.GroupNameOrKey) && groupDictionary.TryGetValue(dto.GroupNameOrKey.Trim(), out var parentGrp))
                             {
                                 existingProduct.ParentProductId = parentGrp.Id > 0 ? parentGrp.Id : (int?)null;
-                                existingProduct.CostPriceUSD = parentGrp.CostPriceUSD;
-                                existingProduct.Cost = parentGrp.CostPriceUSD;
-                                existingProduct.ProfitMarginRetail = parentGrp.ProfitMarginRetail;
-                                existingProduct.ProfitPercentage = parentGrp.ProfitMarginRetail;
-                                existingProduct.PriceRetailUSD = parentGrp.PriceRetailUSD;
-                                existingProduct.PriceUSD = parentGrp.PriceRetailUSD;
-                                existingProduct.ProfitMarginWholesale = parentGrp.ProfitMarginWholesale;
-                                existingProduct.PriceWholesaleUSD = parentGrp.PriceWholesaleUSD;
-                                existingProduct.MinWholesaleQuantity = parentGrp.MinWholesaleQuantity;
-                                existingProduct.HasWholesale = parentGrp.HasWholesale;
-                                existingProduct.IsFractional = parentGrp.IsFractional;
-                                existingProduct.UnitOfMeasure = parentGrp.UnitOfMeasure;
+                                if (!parentGrp.HasIndependentPricing)
+                                {
+                                    existingProduct.CostPriceUSD = parentGrp.CostPriceUSD;
+                                    existingProduct.Cost = parentGrp.CostPriceUSD;
+                                    existingProduct.ProfitMarginRetail = parentGrp.ProfitMarginRetail;
+                                    existingProduct.ProfitPercentage = parentGrp.ProfitMarginRetail;
+                                    existingProduct.PriceRetailUSD = parentGrp.PriceRetailUSD;
+                                    existingProduct.PriceUSD = parentGrp.PriceRetailUSD;
+                                    existingProduct.ProfitMarginWholesale = parentGrp.ProfitMarginWholesale;
+                                    existingProduct.PriceWholesaleUSD = parentGrp.PriceWholesaleUSD;
+                                    existingProduct.MinWholesaleQuantity = parentGrp.MinWholesaleQuantity;
+                                    existingProduct.HasWholesale = parentGrp.HasWholesale;
+                                    existingProduct.IsFractional = parentGrp.IsFractional;
+                                    existingProduct.UnitOfMeasure = parentGrp.UnitOfMeasure;
+                                }
+                                else
+                                {
+                                    existingProduct.CostPriceUSD = cost;
+                                    existingProduct.Cost = cost;
+                                    existingProduct.ProfitMarginRetail = marginRetail;
+                                    existingProduct.ProfitPercentage = marginRetail;
+                                    existingProduct.PriceRetailUSD = priceRetail;
+                                    existingProduct.PriceUSD = priceRetail;
+                                    existingProduct.ProfitMarginWholesale = marginWholesale;
+                                    existingProduct.PriceWholesaleUSD = priceWholesale;
+                                    existingProduct.MinWholesaleQuantity = minWholesaleQty;
+                                    existingProduct.HasWholesale = hasWholesale;
+                                    existingProduct.IsFractional = isFractional;
+                                    existingProduct.UnitOfMeasure = unitEnum;
+                                }
+
+                                if (parentGrp.IsStockShared)
+                                {
+                                    existingProduct.StockQuantity = 0m;
+                                    existingProduct.LowStockThreshold = 0m;
+                                    existingProduct.ConversionFactor = dto.ConversionFactor > 0 ? dto.ConversionFactor : 1.0000m;
+                                }
+                                else
+                                {
+                                    existingProduct.StockQuantity = Math.Max(0, dto.StockQuantity);
+                                    existingProduct.LowStockThreshold = Math.Max(0, dto.LowStockThreshold);
+                                    existingProduct.ConversionFactor = 1.0000m;
+                                }
                             }
                             else
                             {
+                                existingProduct.ConversionFactor = 1.0000m;
                                 existingProduct.CostPriceUSD = cost;
                                 existingProduct.Cost = cost;
                                 existingProduct.ProfitMarginRetail = marginRetail;
@@ -938,10 +1302,9 @@ public class InventoryService : IInventoryService
                                 existingProduct.HasWholesale = hasWholesale;
                                 existingProduct.IsFractional = isFractional;
                                 existingProduct.UnitOfMeasure = unitEnum;
+                                existingProduct.StockQuantity = Math.Max(0, dto.StockQuantity);
+                                existingProduct.LowStockThreshold = Math.Max(0, dto.LowStockThreshold);
                             }
-
-                            existingProduct.LowStockThreshold = Math.Max(0, dto.LowStockThreshold);
-                            existingProduct.StockQuantity = Math.Max(0, dto.StockQuantity);
                         }
 
                         existingProduct.UpdatedAt = DateTime.UtcNow;
@@ -963,6 +1326,8 @@ public class InventoryService : IInventoryService
 
                     if (isGroup)
                     {
+                        newProduct.IsStockShared = dto.IsStockShared;
+                        newProduct.HasIndependentPricing = dto.HasIndependentPricing;
                         newProduct.CostPriceUSD = cost;
                         newProduct.Cost = cost;
                         newProduct.ProfitMarginRetail = marginRetail;
@@ -975,31 +1340,74 @@ public class InventoryService : IInventoryService
                         newProduct.HasWholesale = hasWholesale;
                         newProduct.IsFractional = isFractional;
                         newProduct.UnitOfMeasure = unitEnum;
-                        newProduct.StockQuantity = 0m;
-                        newProduct.LowStockThreshold = 0m;
                         newProduct.ParentProductId = null;
+                        if (dto.IsStockShared)
+                        {
+                            newProduct.StockQuantity = Math.Max(0, dto.StockQuantity);
+                            newProduct.LowStockThreshold = Math.Max(0, dto.LowStockThreshold);
+                        }
+                        else
+                        {
+                            newProduct.StockQuantity = 0m;
+                            newProduct.LowStockThreshold = 0m;
+                        }
                         if (groupKey != null) groupDictionary[groupKey] = newProduct;
                     }
                     else
                     {
+                        newProduct.IsStockShared = false;
+                        newProduct.HasIndependentPricing = false;
+
                         if (isVariant && !string.IsNullOrWhiteSpace(dto.GroupNameOrKey) && groupDictionary.TryGetValue(dto.GroupNameOrKey.Trim(), out var parentGrp))
                         {
                             newProduct.ParentProduct = parentGrp;
-                            newProduct.CostPriceUSD = parentGrp.CostPriceUSD;
-                            newProduct.Cost = parentGrp.CostPriceUSD;
-                            newProduct.ProfitMarginRetail = parentGrp.ProfitMarginRetail;
-                            newProduct.ProfitPercentage = parentGrp.ProfitMarginRetail;
-                            newProduct.PriceRetailUSD = parentGrp.PriceRetailUSD;
-                            newProduct.PriceUSD = parentGrp.PriceRetailUSD;
-                            newProduct.ProfitMarginWholesale = parentGrp.ProfitMarginWholesale;
-                            newProduct.PriceWholesaleUSD = parentGrp.PriceWholesaleUSD;
-                            newProduct.MinWholesaleQuantity = parentGrp.MinWholesaleQuantity;
-                            newProduct.HasWholesale = parentGrp.HasWholesale;
-                            newProduct.IsFractional = parentGrp.IsFractional;
-                            newProduct.UnitOfMeasure = parentGrp.UnitOfMeasure;
+                            if (!parentGrp.HasIndependentPricing)
+                            {
+                                newProduct.CostPriceUSD = parentGrp.CostPriceUSD;
+                                newProduct.Cost = parentGrp.CostPriceUSD;
+                                newProduct.ProfitMarginRetail = parentGrp.ProfitMarginRetail;
+                                newProduct.ProfitPercentage = parentGrp.ProfitMarginRetail;
+                                newProduct.PriceRetailUSD = parentGrp.PriceRetailUSD;
+                                newProduct.PriceUSD = parentGrp.PriceRetailUSD;
+                                newProduct.ProfitMarginWholesale = parentGrp.ProfitMarginWholesale;
+                                newProduct.PriceWholesaleUSD = parentGrp.PriceWholesaleUSD;
+                                newProduct.MinWholesaleQuantity = parentGrp.MinWholesaleQuantity;
+                                newProduct.HasWholesale = parentGrp.HasWholesale;
+                                newProduct.IsFractional = parentGrp.IsFractional;
+                                newProduct.UnitOfMeasure = parentGrp.UnitOfMeasure;
+                            }
+                            else
+                            {
+                                newProduct.CostPriceUSD = cost;
+                                newProduct.Cost = cost;
+                                newProduct.ProfitMarginRetail = marginRetail;
+                                newProduct.ProfitPercentage = marginRetail;
+                                newProduct.PriceRetailUSD = priceRetail;
+                                newProduct.PriceUSD = priceRetail;
+                                newProduct.ProfitMarginWholesale = marginWholesale;
+                                newProduct.PriceWholesaleUSD = priceWholesale;
+                                newProduct.MinWholesaleQuantity = minWholesaleQty;
+                                newProduct.HasWholesale = hasWholesale;
+                                newProduct.IsFractional = isFractional;
+                                newProduct.UnitOfMeasure = unitEnum;
+                            }
+
+                            if (parentGrp.IsStockShared)
+                            {
+                                newProduct.StockQuantity = 0m;
+                                newProduct.LowStockThreshold = 0m;
+                                newProduct.ConversionFactor = dto.ConversionFactor > 0 ? dto.ConversionFactor : 1.0000m;
+                            }
+                            else
+                            {
+                                newProduct.StockQuantity = Math.Max(0, dto.StockQuantity);
+                                newProduct.LowStockThreshold = Math.Max(0, dto.LowStockThreshold);
+                                newProduct.ConversionFactor = 1.0000m;
+                            }
                         }
                         else
                         {
+                            newProduct.ConversionFactor = 1.0000m;
                             newProduct.CostPriceUSD = cost;
                             newProduct.Cost = cost;
                             newProduct.ProfitMarginRetail = marginRetail;
@@ -1012,10 +1420,9 @@ public class InventoryService : IInventoryService
                             newProduct.HasWholesale = hasWholesale;
                             newProduct.IsFractional = isFractional;
                             newProduct.UnitOfMeasure = unitEnum;
+                            newProduct.StockQuantity = Math.Max(0, dto.StockQuantity);
+                            newProduct.LowStockThreshold = Math.Max(0, dto.LowStockThreshold);
                         }
-
-                        newProduct.StockQuantity = Math.Max(0, dto.StockQuantity);
-                        newProduct.LowStockThreshold = Math.Max(0, dto.LowStockThreshold);
                     }
 
                     _context.Products.Add(newProduct);

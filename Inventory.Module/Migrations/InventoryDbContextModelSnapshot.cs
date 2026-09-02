@@ -50,6 +50,12 @@ namespace Inventory.Module.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<decimal>("ConversionFactor")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasDefaultValue(1.0000m);
+
                     b.Property<decimal>("Cost")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -69,6 +75,11 @@ namespace Inventory.Module.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<bool>("HasIndependentPricing")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<bool>("HasWholesale")
                         .HasColumnType("boolean");
 
@@ -86,6 +97,11 @@ namespace Inventory.Module.Migrations
 
                     b.Property<bool>("IsGroupHeader")
                         .HasColumnType("boolean");
+
+                    b.Property<bool>("IsStockShared")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<decimal>("LastConversionRate")
                         .HasPrecision(18, 4)
@@ -186,7 +202,12 @@ namespace Inventory.Module.Migrations
                     b.HasIndex("IsGroupHeader", "IsActive", "IsDeleted", "Name")
                         .HasDatabaseName("IX_Products_GroupActiveName");
 
-                    b.ToTable("Products");
+                    b.ToTable("Products", t =>
+                        {
+                            t.HasCheckConstraint("CK_Products_ConversionFactor", "\"ConversionFactor\" > 0");
+
+                            t.HasCheckConstraint("CK_Products_Variant_Flags", "(\"IsGroupHeader\" = TRUE AND \"ParentProductId\" IS NULL) OR (\"IsStockShared\" = FALSE AND \"HasIndependentPricing\" = FALSE)");
+                        });
                 });
 
             modelBuilder.Entity("Core.Entities.StockMovement", b =>
@@ -258,12 +279,17 @@ namespace Inventory.Module.Migrations
                     b.Property<string>("ReferenceId")
                         .HasColumnType("text");
 
+                    b.Property<int?>("SourceProductId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
                     b.HasIndex("ProductId");
+
+                    b.HasIndex("SourceProductId");
 
                     b.ToTable("StockReservations");
                 });
@@ -316,7 +342,14 @@ namespace Inventory.Module.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Core.Entities.Product", "SourceProduct")
+                        .WithMany()
+                        .HasForeignKey("SourceProductId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Product");
+
+                    b.Navigation("SourceProduct");
                 });
 
             modelBuilder.Entity("Core.Entities.Product", b =>

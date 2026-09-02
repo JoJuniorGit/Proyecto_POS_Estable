@@ -7,6 +7,13 @@ $ErrorActionPreference = "Stop"
 $rootDir = Split-Path -Path $PSScriptRoot -Parent
 Set-Location $rootDir
 
+# Matar procesos que bloquean DLLs en bin/ y obj/
+$processes = @("Desktop.Client", "Backend.API", "VBCSCompiler")
+foreach ($proc in $processes) {
+    Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue
+}
+Start-Sleep -Milliseconds 300
+
 Write-Host "[1/5] Limpiando carpetas de salida preexistentes..." -ForegroundColor Cyan
 if (Test-Path "$rootDir\publish") { Remove-Item "$rootDir\publish" -Recurse -Force }
 if (Test-Path "$rootDir\dist_installer") { Remove-Item "$rootDir\dist_installer" -Recurse -Force }
@@ -15,14 +22,10 @@ New-Item -ItemType Directory -Path "$rootDir\publish\BackendAPI" | Out-Null
 New-Item -ItemType Directory -Path "$rootDir\publish\DesktopClient" | Out-Null
 New-Item -ItemType Directory -Path "$rootDir\publish\UpdaterService" | Out-Null
 
-Write-Host "[2/5] Compilando React Web.Frontend e integrando en Backend.API/wwwroot..." -ForegroundColor Cyan
+Write-Host "[2/5] Compilando React Web.Frontend en Backend.API/wwwroot..." -ForegroundColor Cyan
 Set-Location "$rootDir\Web.Frontend"
 if (Test-Path "package.json") {
     npm run build
-    $wwwroot = "$rootDir\Backend.API\wwwroot"
-    if (Test-Path $wwwroot) { Remove-Item $wwwroot -Recurse -Force }
-    New-Item -ItemType Directory -Path $wwwroot | Out-Null
-    Copy-Item -Path "$rootDir\Web.Frontend\dist\*" -Destination $wwwroot -Recurse -Force
 }
 Set-Location $rootDir
 

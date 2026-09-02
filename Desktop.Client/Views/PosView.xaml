@@ -56,6 +56,7 @@
                     </Grid.ColumnDefinitions>
 
                     <TextBox x:Name="SearchInput" Grid.Column="0"
+                             Tag="PosSearchBox"
                              materialDesign:HintAssist.Hint="Enter the desired product"
                              materialDesign:TextFieldAssist.HasClearButton="True"
                              Style="{DynamicResource MaterialDesignFloatingHintTextBox}"

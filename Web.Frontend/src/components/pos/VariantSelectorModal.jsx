@@ -110,7 +110,17 @@ export default function VariantSelectorModal({ isOpen, onClose, parentProduct, o
                   >
                     <div className="variant-card-header">
                       <span className="variant-name">{v.name}</span>
-                      <span className="variant-sku">SKU: {v.sku}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span className="variant-sku">SKU: {v.sku}</span>
+                        {v.isStockShared && (
+                          <span style={{ fontSize: '0.75rem', fontWeight: '600', color: '#0284C7', background: '#E0F2FE', padding: '1px 6px', borderRadius: '4px' }}>
+                            x{v.conversionFactor || 1} base
+                          </span>
+                        )}
+                      </div>
+                      <span className="variant-card-price" style={{ fontWeight: 'bold', color: 'var(--primary-color, #2563EB)', marginTop: '4px', fontSize: '0.95rem' }}>
+                        {formatUSD(v.priceRetailUSD || basePriceUSD)}
+                      </span>
                     </div>
                     <div className="variant-card-footer">
                       <span className={`variant-stock-badge ${isOutOfStock ? 'out' : ''}`}>

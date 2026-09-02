@@ -169,7 +169,7 @@
                             <materialDesign:PackIcon Kind="CurrencyUsd" Width="16" Height="16" VerticalAlignment="Center" Foreground="#059669"/>
                             <TextBlock Margin="4,0,0,0" FontSize="13" VerticalAlignment="Center">
                                 <Run Text="Tasa BCV: "/>
-                                <Run Text="{Binding CurrentExchangeRate, StringFormat='{}{0:N2} Bs/$'}" FontWeight="Bold" Foreground="#059669"/>
+                                <Run Text="{Binding CurrentExchangeRate, Mode=OneWay, StringFormat='{}{0:N2} Bs/$'}" FontWeight="Bold" Foreground="#059669"/>
                             </TextBlock>
                         </StackPanel>
                     </Border>

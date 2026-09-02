@@ -183,6 +183,35 @@ public sealed class BarcodeScannerService : IDisposable
     }
 
     /// <summary>
+    /// Recorta la región de interés central (ROI) del fotograma para decodificación óptica de alto rendimiento.
+    /// Para resoluciones estándar (>= 640px) aplica 60% de ancho y 50% de alto (reduciendo 70% del área procesada).
+    /// Para cámaras de baja resolución (< 640px) aplica 80% de ancho y 70% de alto para evitar truncamiento.
+    /// </summary>
+    public static BitmapSource ExtractRoi(BitmapSource source)
+    {
+        int width = source.PixelWidth;
+        int height = source.PixelHeight;
+
+        if (width <= 0 || height <= 0) return source;
+
+        double widthRatio = width < 640 ? 0.80 : 0.60;
+        double heightRatio = width < 640 ? 0.70 : 0.50;
+
+        int cropW = Math.Max(1, (int)Math.Round(width * widthRatio));
+        int cropH = Math.Max(1, (int)Math.Round(height * heightRatio));
+        int cropX = Math.Max(0, (width - cropW) / 2);
+        int cropY = Math.Max(0, (height - cropH) / 2);
+
+        // Protección contra desbordamiento
+        if (cropX + cropW > width) cropW = width - cropX;
+        if (cropY + cropH > height) cropH = height - cropY;
+
+        var cropped = new CroppedBitmap(source, new System.Windows.Int32Rect(cropX, cropY, cropW, cropH));
+        cropped.Freeze();
+        return cropped;
+    }
+
+    /// <summary>
     /// Converts the frame to Bgra32 so ZXing's BitmapSource luminance source handles it safely.
     /// </summary>
     public static BitmapSource ToBgra32(BitmapSource source)

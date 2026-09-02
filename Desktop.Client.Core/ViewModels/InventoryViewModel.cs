@@ -299,6 +299,8 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         }
     }
 
+    private readonly System.Threading.SemaphoreSlim _load_lock = new(1, 1);
+
     private async Task TaskWithDelay(int ms, System.Threading.CancellationToken token)
     {
         await Task.Delay(ms, token);
@@ -319,13 +321,23 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
 
         try
         {
-            // Requirement logic: Only search after 2 characters or if empty
-            if (SearchText.Length > 0 && SearchText.Length < 2)
+            var text = _search_text?.Trim() ?? string.Empty;
+
+            // Requisito: Cuando se borra el contenido (por ejemplo con la 'x' o borrando el texto),
+            // se reinicia inmediatamente mostrando la lista completa desde la página 1.
+            if (string.IsNullOrEmpty(text))
+            {
+                await LoadDataAsync(false, targetPage: 1, token: token);
+                return;
+            }
+
+            // Solo buscar con 2 o más caracteres
+            if (text.Length < 2)
             {
                 return; 
             }
 
-            // 40ms Debounce
+            // 40ms Debounce para escritura rápida
             await Task.Delay(40, token);
             
             await LoadDataAsync(false, targetPage: 1, token: token);
@@ -349,7 +361,15 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     private async Task LoadDataAsync(bool incremental, int? targetPage = null, System.Threading.CancellationToken token = default)
     {
         if (UserSession != null && !UserSession.IsLoggedIn) return;
-        if (IsSearching) return;
+
+        try
+        {
+            await _load_lock.WaitAsync(token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
         
         try
         {
@@ -373,7 +393,8 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 await _exchange_rate_service.GetCurrentRateAsync();
             }
 
-            var result = await _product_service.GetPagedAsync(SearchText, CurrentPage, PageSize, statusFilter: SelectedStatusFilter, sortBy: SortBy, isDescending: IsSortDescending, token: token);
+            var queryText = string.IsNullOrWhiteSpace(SearchText) ? null : SearchText.Trim();
+            var result = await _product_service.GetPagedAsync(queryText, CurrentPage, PageSize, statusFilter: SelectedStatusFilter, sortBy: SortBy, isDescending: IsSortDescending, token: token);
             
             // Build ProductItemViewModel instances on background thread to prevent UI thread stutter
             var newItems = new System.Collections.Generic.List<ProductItemViewModel>();
@@ -425,18 +446,32 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         finally
         {
             IsSearching = false;
+            try
+            {
+                _load_lock.Release();
+            }
+            catch (ObjectDisposedException) { }
+            catch (System.Threading.SemaphoreFullException) { }
         }
     }
 
     private async Task MergeProductsAsync(System.Threading.CancellationToken token = default)
     {
-        if (IsSearching) return;
+        try
+        {
+            await _load_lock.WaitAsync(token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
 
         try
         {
             IsSearching = true;
 
-            var result = await _product_service.GetPagedAsync(SearchText, _currentPage, PageSize, statusFilter: SelectedStatusFilter, token: token);
+            var queryText = string.IsNullOrWhiteSpace(SearchText) ? null : SearchText.Trim();
+            var result = await _product_service.GetPagedAsync(queryText, _currentPage, PageSize, statusFilter: SelectedStatusFilter, token: token);
 
             var fetchedDict = result.Items.ToDictionary(dto => dto.SKU, dto => dto);
             var existingSkus = Products.Select(p => p.SKU).ToHashSet();
@@ -452,7 +487,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 }
             }
 
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            void UpdateMerge()
             {
                 // 1. Update existing items in place
                 foreach (var item in Products.ToList())
@@ -470,7 +505,16 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 }
 
                 HasMore = result.HasMore;
-            });
+            }
+
+            if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(UpdateMerge);
+            }
+            else
+            {
+                UpdateMerge();
+            }
         }
         catch (OperationCanceledException) { }
         catch (System.Exception ex)
@@ -480,6 +524,12 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         finally
         {
             IsSearching = false;
+            try
+            {
+                _load_lock.Release();
+            }
+            catch (ObjectDisposedException) { }
+            catch (System.Threading.SemaphoreFullException) { }
         }
     }
 
@@ -490,6 +540,12 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         {
             oldCts?.Cancel();
             oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+
+        try
+        {
+            _load_lock.Dispose();
         }
         catch (ObjectDisposedException) { }
 
@@ -617,7 +673,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     private async Task OpenAddProduct()
     {
         if (_dialog_service == null) return;
-        var _dialogVm = new ProductDialogViewModel(_product_service, _exchange_rate_service, null, UserSession);
+        var _dialogVm = new ProductDialogViewModel(_product_service, _exchange_rate_service, null, UserSession, _dialog_service);
         
         if (_dialog_service.ShowProductDialog(_dialogVm) == true)
         {
@@ -652,7 +708,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            var _dialogVm = new ProductDialogViewModel(_product_service, _exchange_rate_service, product, UserSession);
+            var _dialogVm = new ProductDialogViewModel(_product_service, _exchange_rate_service, product, UserSession, _dialog_service);
             
             if (_dialog_service.ShowProductDialog(_dialogVm) == true)
             {
@@ -678,6 +734,11 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     private async Task AdjustStock(ProductItemViewModel item)
     {
         if (_dialog_service == null) return;
+        if (!item.CanAdjustStock)
+        {
+            _dialog_service.ShowWarning("Ajuste no permitido", item.AdjustStockToolTip);
+            return;
+        }
         try
         {
             var product = await _product_service.GetByIdAsync(item.Id);

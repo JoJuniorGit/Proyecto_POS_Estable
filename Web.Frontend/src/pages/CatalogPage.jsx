@@ -288,9 +288,11 @@ export default function CatalogPage() {
                   const stockQty = p.isGroupHeader ? (p.consolidatedStock ?? 0) : (p.stockQuantity ?? p.stock ?? 0);
                   const unitStr = p.unitOfMeasureStr || (p.unitOfMeasure !== undefined && p.unitOfMeasure !== 0 ? p.unitOfMeasure : 'Und');
 
+                  const isIndepParent = p.isGroupHeader && p.hasIndependentPricing;
+
                   // Formato según Moneda seleccionada
-                  const displayRetail = currency === 'USD' ? formatUSD(retailUSD) : formatBsS(retailBsS);
-                  const displayWholesale = currency === 'USD' ? formatUSD(wholesaleUSD) : formatBsS(wholesaleBsS);
+                  const displayRetail = isIndepParent ? '—' : (currency === 'USD' ? formatUSD(retailUSD) : formatBsS(retailBsS));
+                  const displayWholesale = isIndepParent ? '—' : (currency === 'USD' ? formatUSD(wholesaleUSD) : formatBsS(wholesaleBsS));
 
                   return (
                     <tr key={p.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -299,32 +301,44 @@ export default function CatalogPage() {
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           <span>{p.name}</span>
                           {p.isGroupHeader && (
-                            <span className="badge-variant-group">
-                              {p.variantCount > 0 ? `${p.variantCount} variantes` : 'Grupo'}
-                            </span>
+                            <>
+                              <span className="badge-variant-group">
+                                {p.variantCount > 0 ? `${p.variantCount} variantes` : 'Grupo'}
+                              </span>
+                              {p.isStockShared && (
+                                <span className="badge" title="Todas las presentaciones descuentan del stock centralizado del padre" style={{ backgroundColor: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0', fontSize: '0.72rem', padding: '2px 6px', borderRadius: '4px' }}>
+                                  Stock Compartido
+                                </span>
+                              )}
+                              {p.hasIndependentPricing && (
+                                <span className="badge" title="Cada presentación define su costo y precio individual" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', fontSize: '0.72rem', padding: '2px 6px', borderRadius: '4px' }}>
+                                  Precios Indep.
+                                </span>
+                              )}
+                            </>
                           )}
                         </div>
                       </td>
-                      <td style={{ padding: '14px', textAlign: 'right', whiteSpace: 'nowrap' }} className="font-mono font-bold">
+                      <td style={{ padding: '14px', textAlign: 'right', whiteSpace: 'nowrap' }} className="font-mono font-bold" title={isIndepParent ? 'Precios individuales definidos en cada variante' : undefined}>
                         {displayRetail}
                       </td>
 
                       {/* Celdas dinámicas de Precio al Mayor */}
                       {showWholesale && (
                         <>
-                          <td style={{ padding: '14px', textAlign: 'right', whiteSpace: 'nowrap', backgroundColor: 'rgba(99, 102, 241, 0.03)' }} className="font-bold font-mono">
-                            <span style={{ color: wholesaleColor }}>
+                          <td style={{ padding: '14px', textAlign: 'right', whiteSpace: 'nowrap', backgroundColor: 'rgba(99, 102, 241, 0.03)' }} className="font-bold font-mono" title={isIndepParent ? 'Precios individuales definidos en cada variante' : undefined}>
+                            <span style={{ color: isIndepParent ? 'inherit' : wholesaleColor }}>
                               {displayWholesale}
                             </span>
-                            {!hasRealWholesale && (
+                            {!isIndepParent && !hasRealWholesale && (
                               <span style={{ fontSize: '0.72rem', color: '#D97706', marginLeft: '5px', fontWeight: 500 }}>
                                 (Detal)
                               </span>
                             )}
                           </td>
                           <td style={{ padding: '14px', textAlign: 'center', backgroundColor: 'rgba(99, 102, 241, 0.03)' }} className="font-bold">
-                            <span style={{ color: hasRealWholesale ? 'inherit' : '#D97706' }}>
-                              {minQty} {unitStr}
+                            <span style={{ color: (isIndepParent || hasRealWholesale) ? 'inherit' : '#D97706' }}>
+                              {isIndepParent ? '—' : `${minQty} ${unitStr}`}
                             </span>
                           </td>
                         </>
@@ -337,7 +351,12 @@ export default function CatalogPage() {
                           </span>
                         ) : (
                           <>
-                            <span className={`badge ${stockQty > 0 ? 'badge-success' : 'badge-danger'}`} title={p.isGroupHeader ? 'Stock total consolidado' : undefined}>
+                            <span 
+                              className={`badge ${stockQty > 0 ? 'badge-success' : 'badge-danger'}`} 
+                              title={p.isGroupHeader 
+                                ? (p.isStockShared ? 'Inventario centralizado en el producto padre' : 'Suma consolidada de todas las presentaciones') 
+                                : (p.parentProductId && p.parentIsStockShared ? 'Inventario centralizado del producto padre' : 'Inventario disponible')}
+                            >
                               {stockQty} {unitStr !== 'Und' ? unitStr : ''}
                             </span>
                             {p.isGroupHeader && (
@@ -396,9 +415,21 @@ export default function CatalogPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                       <span>{p.name || p.productName || '-'}</span>
                       {p.isGroupHeader && (
-                        <span className="badge-variant-group">
-                          {p.variantCount > 0 ? `${p.variantCount} variantes` : 'Grupo'}
-                        </span>
+                        <>
+                          <span className="badge-variant-group">
+                            {p.variantCount > 0 ? `${p.variantCount} variantes` : 'Grupo'}
+                          </span>
+                          {p.isStockShared && (
+                            <span className="badge" style={{ backgroundColor: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0', fontSize: '0.72rem', padding: '2px 6px', borderRadius: '4px' }}>
+                              Stock Compartido
+                            </span>
+                          )}
+                          {p.hasIndependentPricing && (
+                            <span className="badge" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', fontSize: '0.72rem', padding: '2px 6px', borderRadius: '4px' }}>
+                              Precios Indep.
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

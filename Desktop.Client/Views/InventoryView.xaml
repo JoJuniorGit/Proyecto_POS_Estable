@@ -64,24 +64,44 @@
             </StackPanel>
         </Border>
 
-        <!-- BARRA SUPERIOR: Búsqueda, Filtros y Botones de Acción Lado a Lado -->
+        <!-- BARRA SUPERIOR RESPONSIVA: Buscador (Izq), Pestañas (Centro), Acciones y Moneda (Der) -->
         <Grid Grid.Row="1" Margin="0,0,0,12">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/> <!-- Buscador y Spinner -->
+                <ColumnDefinition Width="*"/>    <!-- Pestañas de estado con espacio elástico -->
+                <ColumnDefinition Width="Auto"/> <!-- Moneda, Separador y Botones -->
             </Grid.ColumnDefinitions>
             
-            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,15,0">
+            <!-- 1. Buscador con Indicador de Búsqueda -->
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBox x:Name="SearchInput"
                          materialDesign:HintAssist.Hint="Buscar producto o SKU (mín. 2 carac)..."
                          materialDesign:TextFieldAssist.HasClearButton="True"
                          Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
                          Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                          GotFocus="SearchInput_GotFocus"
-                         Width="260"
-                         Margin="0,0,15,0"/>
+                         VerticalAlignment="Center"
+                         Width="250"/>
+                <ProgressBar Value="0"
+                             IsIndeterminate="True"
+                             VerticalAlignment="Center"
+                             Width="18" Height="18"
+                             Margin="8,0,0,0">
+                    <ProgressBar.Style>
+                        <Style TargetType="ProgressBar" BasedOn="{StaticResource MaterialDesignCircularProgressBar}">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSearching}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ProgressBar.Style>
+                </ProgressBar>
+            </StackPanel>
 
-                <!-- Pestañas de Filtro de Estado -->
+            <!-- 2. Pestañas de Filtro de Estado (Espacio Flexible) -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="20,0,15,0">
                 <RadioButton Content="Activos" 
                              Style="{StaticResource PrimaryTabRadioButton}" 
                              IsChecked="True" 
@@ -103,29 +123,11 @@
                              Command="{Binding SetStatusFilterCommand}" 
                              CommandParameter="all"/>
             </StackPanel>
-
-            <ProgressBar Value="0"
-                         IsIndeterminate="True"
-                         HorizontalAlignment="Right"
-                         VerticalAlignment="Center"
-                         Width="20" Height="20"
-                         Margin="0,0,180,0">
-                <ProgressBar.Style>
-                    <Style TargetType="ProgressBar" BasedOn="{StaticResource MaterialDesignCircularProgressBar}">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsSearching}" Value="True">
-                                <Setter Property="Visibility" Value="Visible"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </ProgressBar.Style>
-            </ProgressBar>
             
-            <!-- BOTONES DE ACCIÓN Y SELECTORES -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                <!-- 1. Selector de Moneda (Bs.S por defecto) -->
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+            <!-- 3. Botones de Acción y Selectores a la Derecha -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                <!-- Selector de Moneda -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="Moneda:" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,0,6,0" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                     <ComboBox SelectedValue="{Binding SelectedCurrency, Mode=TwoWay}"
                               SelectedValuePath="Content"
@@ -137,6 +139,9 @@
                         <ComboBoxItem Content="USD"/>
                     </ComboBox>
                 </StackPanel>
+
+                <!-- Separador Visual Elegante -->
+                <Border Width="1" Background="#CBD5E1" Margin="12,4"/>
 
                 <!-- Botón Precios al Mayor (Desactivado por defecto) -->
                 <Button Command="{Binding ToggleWholesaleCommand}"
@@ -199,6 +204,7 @@
                           CanUserAddRows="False"
                           GridLinesVisibility="Horizontal"
                           HeadersVisibility="Column"
+                          HorizontalScrollBarVisibility="Disabled"
                           ColumnHeaderHeight="42"
                           RowHeight="42"
                           BorderThickness="0"
@@ -220,11 +226,10 @@
                     </DataGrid.RowStyle>
 
                     <DataGrid.Columns>
-                        <!-- 1. Nombre del Producto -->
+                        <!-- 1. Nombre del Producto (Absorbe todo el espacio elástico sobrante) -->
                         <DataGridTemplateColumn HeaderStyle="{StaticResource LeftAlignedHeader}" 
                                                 Width="*" 
-                                                MinWidth="160" 
-                                                MaxWidth="350">
+                                                MinWidth="180">
                             <DataGridTemplateColumn.HeaderTemplate>
                                 <DataTemplate>
                                     <Grid Background="Transparent" Cursor="Hand">
@@ -276,8 +281,8 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- 1. SKU / Código con Insignia Estilizada -->
-                        <DataGridTemplateColumn HeaderStyle="{StaticResource LeftAlignedHeader}" Width="Auto" MinWidth="110">
+                        <!-- 2. SKU / Código con Insignia Estilizada -->
+                        <DataGridTemplateColumn HeaderStyle="{StaticResource LeftAlignedHeader}" Width="140">
                             <DataGridTemplateColumn.HeaderTemplate>
                                 <DataTemplate>
                                     <Grid Background="Transparent" Cursor="Hand" ToolTip="Ordenar por longitud de código de barras">
@@ -341,8 +346,8 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- 5. Cantidad / Stock con Alerta Visual Roja si Stock <= 0 -->
-                        <DataGridTemplateColumn HeaderStyle="{StaticResource CenterAlignedHeader}" Width="95">
+                        <!-- 3. Cantidad / Stock con Alerta Visual Roja si Stock <= 0 -->
+                        <DataGridTemplateColumn HeaderStyle="{StaticResource CenterAlignedHeader}" Width="110">
                             <DataGridTemplateColumn.HeaderTemplate>
                                 <DataTemplate>
                                     <Grid Background="Transparent" Cursor="Hand">
@@ -408,7 +413,7 @@
                                             </Style>
                                         </Border.Style>
                                         <TextBlock Text="{Binding FormattedStockQuantity}" FontWeight="Bold" FontSize="12">
-                                            <TextBlock.Style>
+                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Foreground" Value="#0369A1"/>
                                                     <Style.Triggers>
@@ -427,8 +432,8 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- 2. Costo USD (Alineado a la Derecha) -->
-                        <DataGridTemplateColumn HeaderStyle="{StaticResource RightAlignedHeader}" Width="Auto" MinWidth="105">
+                        <!-- 4. Costo USD (Alineado a la Derecha) -->
+                        <DataGridTemplateColumn HeaderStyle="{StaticResource RightAlignedHeader}" Width="120">
                             <DataGridTemplateColumn.HeaderTemplate>
                                 <DataTemplate>
                                     <Grid Background="Transparent" Cursor="Hand">
@@ -475,16 +480,16 @@
                             </DataGridTemplateColumn.HeaderTemplate>
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding Cost, StringFormat='${0:N2}'}" 
-                                               HorizontalAlignment="Right"
-                                               VerticalAlignment="Center" 
-                                               Margin="0,0,10,0"/>
+                                    <TextBlock Text="{Binding DisplayCost}" 
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center" 
+                                                Margin="0,0,10,0"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- 1 & 2. Precio Detal Dinámico (Encabezado Explícito y Alineado a la Derecha) -->
-                        <DataGridTemplateColumn HeaderStyle="{StaticResource RightAlignedHeader}" Width="Auto" MinWidth="135">
+                        <!-- 5. Precio Detal Dinámico (Encabezado Explícito y Alineado a la Derecha) -->
+                        <DataGridTemplateColumn HeaderStyle="{StaticResource RightAlignedHeader}" Width="150">
                             <DataGridTemplateColumn.HeaderTemplate>
                                 <DataTemplate>
                                     <Grid Background="Transparent" Cursor="Hand">
@@ -532,40 +537,38 @@
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding DisplayRetailPrice}" 
-                                               Foreground="#059669" 
-                                               FontWeight="Bold" 
-                                               FontSize="13"
-                                               HorizontalAlignment="Right"
-                                               VerticalAlignment="Center" 
-                                               Margin="0,0,14,0"/>
+                                                Foreground="#059669" 
+                                                FontWeight="Bold" 
+                                                FontSize="13"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center" 
+                                                Margin="0,0,14,0"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- 1 & 2. Precio Mayor Dinámico (Encabezado Explícito, Alineado a la Derecha, Naranja si hereda detal) -->
+                        <!-- 6. Precio Mayor Dinámico (Encabezado Explícito, Alineado a la Derecha, Naranja si hereda detal) -->
                         <DataGridTemplateColumn Header="{Binding Data.WholesalePriceHeader, Source={StaticResource Proxy}, FallbackValue='Precio Mayor (Bs.S)'}" 
                                                 Visibility="{Binding Data.ShowWholesale, Source={StaticResource Proxy}, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                 HeaderStyle="{StaticResource RightAlignedHeader}" 
-                                                Width="Auto" 
-                                                MinWidth="140">
+                                                Width="150">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0">
                                         <TextBlock Text="{Binding DisplayWholesalePrice}" 
-                                                   Foreground="{Binding WholesalePriceColor}" 
-                                                   FontWeight="Bold" 
-                                                   FontSize="13"/>
+                                                    Foreground="{Binding WholesalePriceColor}" 
+                                                    FontWeight="Bold" 
+                                                    FontSize="13"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- 4. Cantidad Mínima Mayor (Formateado de Unidades Enteras sin Decimales + Etiqueta Atenuada) -->
+                        <!-- 7. Cantidad Mínima Mayor (Formateado de Unidades Enteras sin Decimales + Etiqueta Atenuada) -->
                         <DataGridTemplateColumn Header="Cant. Mín. Mayor" 
                                                 Visibility="{Binding Data.ShowWholesale, Source={StaticResource Proxy}, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                 HeaderStyle="{StaticResource CenterAlignedHeader}" 
-                                                Width="Auto" 
-                                                MinWidth="115">
+                                                Width="125">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
@@ -577,7 +580,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- 3. Acciones (Unificadas en Gris Neutro + Efecto Hover por Acción) -->
+                        <!-- 8. Acciones (Unificadas en Gris Neutro + Efecto Hover por Acción) -->
                         <DataGridTemplateColumn Header="Acciones" HeaderStyle="{StaticResource CenterAlignedHeader}" Width="Auto">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -586,7 +589,8 @@
                                         <Button Command="{Binding DataContext.AdjustStockCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
                                                 CommandParameter="{Binding}"
                                                 Visibility="{Binding DataContext.UserSession.CanMutateCatalog, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                ToolTip="Ajustar Inventario">
+                                                IsEnabled="{Binding CanAdjustStock}"
+                                                ToolTip="{Binding AdjustStockToolTip}">
                                             <Button.Style>
                                                 <Style TargetType="Button" BasedOn="{StaticResource ActionIconButton}">
                                                     <Style.Triggers>

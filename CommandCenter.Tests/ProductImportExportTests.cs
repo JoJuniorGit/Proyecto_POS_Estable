@@ -538,6 +538,7 @@ internal class StubDialogService : Desktop.Client.Services.IDialogService
     public Task ShowPairingQrDialogAsync() => Task.CompletedTask;
     public Task<bool> ShowServerConnectionDialogAsync() => Task.FromResult(false);
     public Task<Core.DTOs.ProductDto?> ShowVariantSelectionDialogAsync(Core.DTOs.ProductQuickInfoDto parentProduct) => Task.FromResult<Core.DTOs.ProductDto?>(null);
+    public Task ShowVariantManagementDialogAsync(Core.DTOs.ProductDto parentProduct) => Task.CompletedTask;
 }
 
 

@@ -18,7 +18,8 @@ public interface IInventoryService
     Task SetProductStatusAsync(int id, bool isActive, bool isDeleted);
     Task<string> DeleteProductAsync(int id, bool forceHardDelete = false);
     Task RestoreProductAsync(int id);
-    Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null); // +/- quantity
+    Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, bool allowNegativeStock = false); // +/- quantity
+    Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null);
     Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration);
     Task ConfirmReservationAsync(int reservationId, string reason);
     Task CancelReservationAsync(int reservationId);
