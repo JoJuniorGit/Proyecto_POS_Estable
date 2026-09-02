@@ -197,6 +197,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
             var _newSale = await _sales_service.StartSaleAsync(_user_session?.CurrentUser?.Id);
             System.Diagnostics.Debug.WriteLine($"[POS] StartNewSaleAsync: sale started OK, Id={_newSale.Id}");
             Cart.CurrentSale = _newSale;
+            RecentScannedProducts.Clear();
             System.Diagnostics.Debug.WriteLine($"[POS] StartNewSaleAsync: Cart.CurrentSale set. IsNull={Cart.CurrentSale == null}");
         }
         catch (System.Exception _ex)
@@ -438,14 +439,18 @@ public partial class PosViewModel : ObservableObject, IDisposable
         }
     }
 
+    public ObservableCollection<RecentScannedItemViewModel> RecentScannedProducts { get; } = new();
+
+    private string? _lastScannedCode;
+    private DateTime _lastScannedTime = DateTime.MinValue;
+    private const int SameCodeCooldownMs = 2000;
+
     private readonly System.Threading.SemaphoreSlim _scannerLock = new(1, 1);
 
     /// <summary>
     /// Adds a scanned barcode (or any code coming from the camera tool) directly to the cart.
     /// Resolves the product by exact SKU match; unknown codes / cash-advance items are not
-    /// added (the scanner window reports the outcome on its result card). The search box is
-    /// always cleared after the attempt — found, not found or error — so the cashier is
-    /// ready for the next scan.
+    /// added. Cooldown de 2.0s exactos para el mismo código y panel de últimos 3 productos escaneados.
     /// </summary>
     public async Task AddProductByCodeAsync(string code)
     {
@@ -458,6 +463,16 @@ public partial class PosViewModel : ObservableObject, IDisposable
             SearchText = string.Empty;
             return;
         }
+
+        // Cooldown de 2.0 segundos exactos para el mismo producto
+        var now = DateTime.UtcNow;
+        if (_lastScannedCode == trimmedCode && (now - _lastScannedTime).TotalMilliseconds < SameCodeCooldownMs)
+        {
+            SearchText = string.Empty;
+            return;
+        }
+        _lastScannedCode = trimmedCode;
+        _lastScannedTime = now;
 
         await _scannerLock.WaitAsync();
         try
@@ -508,6 +523,38 @@ public partial class PosViewModel : ObservableObject, IDisposable
                 try
                 {
                     Cart.CurrentSale = await _sales_service.AddItemAsync(Cart.CurrentSale.Id, product.Id, 1, CurrentExchangeRate, null, null);
+
+                    // Actualizar panel reactivo de los últimos 3 productos escaneados
+                    var existingRecent = RecentScannedProducts.FirstOrDefault(r => r.ProductId == product.Id);
+                    if (existingRecent != null)
+                    {
+                        RecentScannedProducts.Remove(existingRecent);
+                        RecentScannedProducts.Insert(0, existingRecent);
+                    }
+                    else
+                    {
+                        var recentVm = new RecentScannedItemViewModel(
+                            product.Id,
+                            product.SKU,
+                            product.Name,
+                            product.PriceBsS,
+                            product.PriceUSD,
+                            Cart,
+                            async (saleDetailId, newQty) =>
+                            {
+                                if (Cart.CurrentSale != null)
+                                {
+                                    Cart.CurrentSale = await _sales_service.UpdateItemQuantityAsync(Cart.CurrentSale.Id, saleDetailId, newQty, CurrentExchangeRate);
+                                    foreach (var r in RecentScannedProducts) r.Refresh();
+                                }
+                            });
+                        RecentScannedProducts.Insert(0, recentVm);
+                        while (RecentScannedProducts.Count > 3)
+                        {
+                            RecentScannedProducts.RemoveAt(RecentScannedProducts.Count - 1);
+                        }
+                    }
+                    foreach (var r in RecentScannedProducts) r.Refresh();
                 }
                 catch (System.Exception ex)
                 {

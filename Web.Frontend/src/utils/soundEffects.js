@@ -104,3 +104,20 @@ export function triggerHapticFeedback(pattern = [60]) {
     // Ignorar si el navegador bloquea vibraciones
   }
 }
+
+/**
+ * Libera los recursos del AudioContext al cerrar el modal de escaneo.
+ */
+export async function closeAudioContext() {
+  if (audioCtx) {
+    try {
+      if (audioCtx.state !== 'closed') {
+        await audioCtx.close();
+      }
+    } catch {
+      // Ignorar fallos al cerrar
+    } finally {
+      audioCtx = null;
+    }
+  }
+}

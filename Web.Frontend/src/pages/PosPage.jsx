@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from 'react';
+import { useRef, useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { usePosHotkeys } from '../hooks/usePosHotkeys';
@@ -319,6 +319,8 @@ export default function PosPage({
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onCodeScanned={handleScannedCode}
+        currentSale={currentSale}
+        onUpdateQuantity={updateQuantity}
       />
 
       {/* Modal para Selección de Sabores / Variantes */}
