@@ -64,10 +64,9 @@ export default function PendingOrdersPage() {
   };
 
   const selectedSale = sales.find(s => s.id === selectedSaleId) || sales.find(s => s.id === expandedSaleId);
-  const isUserAdminOrManager = user?.role === 'Admin' || user?.role === 'Manager' || user?.role === 0 || user?.role === '0';
   const selectedSaleTotalPaidUSD = selectedSale?.totalPaidUSD || (selectedSale?.payments?.reduce((acc, p) => acc + (p.amount || 0), 0)) || 0;
   const hasPayments = selectedSaleTotalPaidUSD > 0 || (selectedSale?.payments && selectedSale.payments.length > 0);
-  const canCancelSelectedSale = selectedSale && isUserAdminOrManager && !hasPayments;
+  const canCancelSelectedSale = Boolean(selectedSale && !hasPayments);
 
   const handleConfirmCancelSale = async () => {
     if (!selectedSale || !canCancelSelectedSale) return;
@@ -79,6 +78,7 @@ export default function PendingOrdersPage() {
       setSelectedSaleId(null);
       if (expandedSaleId === selectedSale.id) setExpandedSaleId(null);
       await loadPendingData();
+      window.dispatchEvent(new CustomEvent('onHoldSalesUpdated'));
     } catch (err) {
       console.error('[PendingOrdersPage] Error al anular pedido:', err);
       const msg = err.response?.data?.message || err.response?.data || err.message || 'Error al anular el pedido.';
@@ -123,7 +123,7 @@ export default function PendingOrdersPage() {
                 padding: '8px 16px',
                 fontSize: '0.875rem'
               }}
-              title={hasPayments ? "No se puede anular un pedido con abonos acumulados" : (!isUserAdminOrManager ? "Requiere rol de Administrador o Gerente" : `Anular pedido #${selectedSale.id}`)}
+              title={hasPayments ? "No se puede anular un pedido con abonos acumulados" : `Anular pedido #${selectedSale.id}`}
             >
               <Trash2 size={16} /> Anular Pedido #{selectedSale.id}
             </button>

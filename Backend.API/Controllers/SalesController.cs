@@ -154,7 +154,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpPost("{id}/cancel")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<IActionResult> CancelSale(int id)
     {
         try

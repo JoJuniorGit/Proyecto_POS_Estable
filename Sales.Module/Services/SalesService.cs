@@ -63,7 +63,7 @@ public class SalesService : ISalesService
             CustomerId = defaultCustomer.Id,
             CustomerName = defaultCustomer.Name,
             CustomerCedula = defaultCustomer.CedulaOrRif,
-            DeliveryStatus = SaleDeliveryStatus.Delivered
+            DeliveryStatus = SaleDeliveryStatus.PendingPickup
         };
 
         _context.Sales.Add(_sale);
@@ -303,7 +303,7 @@ public class SalesService : ISalesService
             throw new InvalidOperationException("La venta ya se encuentra anulada.");
         if (_sale.Payments != null && _sale.Payments.Any()) 
             throw new InvalidOperationException("No se puede anular un pedido que posee abonos acumulados. Reembolse o reversa los abonos antes de anular.");
-        if (_sale.DeliveryStatus == SaleDeliveryStatus.Delivered) 
+        if (_sale.DeliveryStatus == SaleDeliveryStatus.Delivered && _sale.PickupDate.HasValue) 
             throw new InvalidOperationException("No se puede anular un pedido que ya ha sido entregado al cliente.");
 
         _sale.Status = SaleStatus.Cancelled;
@@ -726,6 +726,7 @@ public class SalesService : ISalesService
         else
         {
             _sale.Status = SaleStatus.OnHold;
+            _sale.DeliveryStatus = SaleDeliveryStatus.PendingPickup;
             await _context.SaveChangesAsync();
         }
 
