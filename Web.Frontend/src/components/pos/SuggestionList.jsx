@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react';
+import { formatNumberEs } from '../../utils/formatters';
 
 export default function SuggestionList({ suggestions, isLoading, onSelectSuggestion, exchangeRate }) {
   if (isLoading) {
@@ -49,7 +50,7 @@ export default function SuggestionList({ suggestions, isLoading, onSelectSuggest
                 ) : (
                   <>
                     <span className="price-currency-symbol">Bs.S </span>
-                    {priceBsS.toFixed(2)}
+                    {formatNumberEs(priceBsS)}
                   </>
                 )}
               </span>

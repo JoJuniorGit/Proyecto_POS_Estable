@@ -53,4 +53,15 @@ describe('formatters.js formatProductDisplayPrice', () => {
     const retailUSD = formatProductDisplayPrice(variant, false, 'USD', 40.0);
     assert.strictEqual(retailUSD, '$ 3.00');
   });
+
+  it('4. Formats numbers with commas and decimals correctly using formatNumberEs', async () => {
+    const { formatNumberEs } = await import('./formatters.js');
+    assert.strictEqual(formatNumberEs(120), '120.00');
+    assert.strictEqual(formatNumberEs(2450.5), '2,450.50');
+    assert.strictEqual(formatNumberEs(1000000), '1,000,000.00');
+    assert.strictEqual(formatNumberEs(0), '0.00');
+    assert.strictEqual(formatNumberEs(null), '0.00');
+    assert.strictEqual(formatNumberEs(undefined), '0.00');
+    assert.strictEqual(formatNumberEs('2450.5'), '2,450.50');
+  });
 });
