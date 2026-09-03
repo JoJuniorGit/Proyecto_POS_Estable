@@ -22,6 +22,7 @@ import { isValidBarcode } from '../../utils/barcodeValidator';
 import { playScanSuccess, playScanWarning, playScanError, closeAudioContext } from '../../utils/soundEffects';
 import { checkBarcodeDetectorSupport, createNativeBarcodeDetector } from '../../utils/nativeBarcodeScanner';
 import { isLaptopOrDesktopEnvironment, processMultiPassLaptopFrame } from '../../utils/laptopVisionEnhancer';
+import { formatBsS, formatUSD } from '../../utils/formatters';
 import './BarcodeScannerModal.css';
 
 const INSECURE_CONTEXT_MESSAGE =
@@ -309,7 +310,7 @@ export default function BarcodeScannerModal({
       }
 
       playScanSuccess();
-      const price = Number(info.priceBsS) > 0 ? `Bs.S ${Number(info.priceBsS).toFixed(2)}` : `USD ${Number(info.priceUSD).toFixed(2)}`;
+      const price = Number(info.priceBsS) > 0 ? formatBsS(Number(info.priceBsS)) : formatUSD(Number(info.priceUSD));
       
       // Actualizar la lista de los últimos 3 productos distintos escaneados
       setRecentScannedProductIds((prev) => [info.id, ...prev.filter((id) => id !== info.id)].slice(0, 3));
@@ -718,7 +719,7 @@ export default function BarcodeScannerModal({
                   <div className="scanner-recent-info">
                     <span className="scanner-recent-name">{item.productName}</span>
                     <span className="scanner-recent-price">
-                      {Number(item.unitPriceBsS) > 0 ? `Bs.S ${Number(item.unitPriceBsS).toFixed(2)}` : `USD ${Number(item.unitPrice).toFixed(2)}`}
+                      {Number(item.unitPriceBsS) > 0 ? formatBsS(Number(item.unitPriceBsS)) : formatUSD(Number(item.unitPrice))}
                     </span>
                   </div>
                   <div className="scanner-qty-stepper">
