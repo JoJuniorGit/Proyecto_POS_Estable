@@ -11,13 +11,11 @@ describe('useMobileBackGuard Navigation & Modal Interception Logic Tests', () =>
       onCloseModal: () => { modalClosed = true; return true; },
       hasItems: true,
       isConfirmExitOpen: false,
+      allowExit: false,
     };
 
     const simulatePopState = (state) => {
-      if (state.isConfirmExitOpen) {
-        state.isConfirmExitOpen = false;
-        return { action: 'cancelled_confirm', stayedOnPos: true };
-      }
+      if (state.allowExit) return { action: 'exit_allowed', stayedOnPos: false };
 
       if (state.activeModal) {
         const closed = state.onCloseModal?.();
@@ -30,7 +28,7 @@ describe('useMobileBackGuard Navigation & Modal Interception Logic Tests', () =>
       if (state.hasItems) {
         confirmCalled = true;
         state.isConfirmExitOpen = true;
-        return { action: 'opened_custom_confirm', stayedOnPos: true };
+        return { action: 'guard_re_injected', stayedOnPos: true };
       }
 
       return { action: 'normal_back', stayedOnPos: false };
@@ -47,7 +45,6 @@ describe('useMobileBackGuard Navigation & Modal Interception Logic Tests', () =>
   test('2. Protects payment modal when >= 1 payment is registered (prevents involuntary exit and re-pushes history state)', () => {
     let discardConfirmShown = false;
 
-    // Simulate CheckoutModal with 1 payment registered
     const mockPayments = [{ methodId: 1, amountUsd: 10, amountBsS: 500 }];
 
     const mockCheckoutModal = {
@@ -65,13 +62,15 @@ describe('useMobileBackGuard Navigation & Modal Interception Logic Tests', () =>
       onCloseModal: () => mockCheckoutModal.requestClose(),
       hasItems: true,
       isConfirmExitOpen: false,
+      allowExit: false,
     };
 
     const simulatePopState = (state) => {
+      if (state.allowExit) return { action: 'exit_allowed', stayedOnPos: false };
+
       if (state.activeModal) {
         const closed = state.onCloseModal?.();
         if (closed === false) {
-          // Guard re-pushes modal state to keep history in sync for Android gestures
           return { action: 'modal_close_prevented', stayedOnPos: true, rePushModal: true };
         }
         return { action: 'closed_modal', stayedOnPos: true };
@@ -87,80 +86,101 @@ describe('useMobileBackGuard Navigation & Modal Interception Logic Tests', () =>
     assert.strictEqual(result.stayedOnPos, true);
   });
 
-  test('3. Opens custom POS ConfirmModal (no window.confirm) when Back is pressed with items in cart', () => {
+  test('3. First Back attempt with items in cart opens custom ConfirmModal and re-injects history guard', () => {
+    let pushedStateCount = 0;
+
     const mockState = {
       activeModal: null,
       onCloseModal: () => {},
       hasItems: true,
       isConfirmExitOpen: false,
+      allowExit: false,
     };
 
     const simulatePopState = (state) => {
+      if (state.allowExit) return { action: 'exit_allowed', stayedOnPos: false };
+
       if (state.activeModal) {
         state.onCloseModal?.();
         return { action: 'closed_modal', stayedOnPos: true };
       }
 
       if (state.hasItems) {
+        pushedStateCount++;
         state.isConfirmExitOpen = true;
-        return { action: 'opened_custom_confirm', stayedOnPos: true };
+        return { action: 'guard_re_injected', stayedOnPos: true };
       }
 
       return { action: 'normal_back', stayedOnPos: false };
     };
 
     const result = simulatePopState(mockState);
-    assert.strictEqual(result.action, 'opened_custom_confirm');
+    assert.strictEqual(result.action, 'guard_re_injected');
     assert.strictEqual(mockState.isConfirmExitOpen, true, 'Custom ConfirmModal state must be true');
+    assert.strictEqual(pushedStateCount, 1, 'History guard must be re-injected');
     assert.strictEqual(result.stayedOnPos, true);
   });
 
-  test('4. Android 10+ Edge Gesture: Swiping back while custom ConfirmModal is open dismisses dialog and keeps user on POS', () => {
+  test('4. Resists consecutive Back attempts: Every consecutive Back press re-injects history protection and maintains ConfirmModal open', () => {
+    let pushedStateCount = 0;
+
     const mockState = {
       activeModal: null,
       onCloseModal: () => {},
       hasItems: true,
-      isConfirmExitOpen: true, // Custom confirm is already open
+      isConfirmExitOpen: true, // ConfirmModal already open from previous attempt
+      allowExit: false,
     };
 
     const simulatePopState = (state) => {
-      // Swiping back while confirm modal is open cancels the modal
-      if (state.isConfirmExitOpen) {
-        state.isConfirmExitOpen = false;
-        return { action: 'cancelled_confirm_via_gesture', stayedOnPos: true, restoreCartGuard: true };
+      if (state.allowExit) return { action: 'exit_allowed', stayedOnPos: false };
+
+      if (state.activeModal) {
+        state.onCloseModal?.();
+        return { action: 'closed_modal', stayedOnPos: true };
       }
 
+      // Unbreakable barrier: each attempt re-injects protection and keeps modal visible
       if (state.hasItems) {
+        pushedStateCount++;
         state.isConfirmExitOpen = true;
-        return { action: 'opened_custom_confirm', stayedOnPos: true };
+        return { action: 'guard_re_injected', stayedOnPos: true };
       }
 
       return { action: 'normal_back', stayedOnPos: false };
     };
 
-    const result = simulatePopState(mockState);
-    assert.strictEqual(result.action, 'cancelled_confirm_via_gesture');
-    assert.strictEqual(mockState.isConfirmExitOpen, false, 'Confirm dialog must be closed on second back gesture');
-    assert.strictEqual(result.restoreCartGuard, true, 'Cart guard must be re-armed in history');
-    assert.strictEqual(result.stayedOnPos, true);
+    // Attempt 2 (consecutive)
+    const result2 = simulatePopState(mockState);
+    assert.strictEqual(result2.action, 'guard_re_injected');
+    assert.strictEqual(mockState.isConfirmExitOpen, true, 'ConfirmModal must remain firmly open on 2nd attempt');
+    assert.strictEqual(result2.stayedOnPos, true, 'User must not leave POS on 2nd attempt');
+
+    // Attempt 3 (consecutive)
+    const result3 = simulatePopState(mockState);
+    assert.strictEqual(result3.action, 'guard_re_injected');
+    assert.strictEqual(mockState.isConfirmExitOpen, true, 'ConfirmModal must remain open on 3rd attempt');
+    assert.strictEqual(result3.stayedOnPos, true, 'User must not leave POS on 3rd attempt');
+
+    assert.strictEqual(pushedStateCount, 2, 'Two consecutive guard entries must have been re-injected');
   });
 
-  test('5. Confirmed exit from custom ConfirmModal triggers navigation', () => {
+  test('5. Confirmed exit from custom ConfirmModal sets allowExit and triggers navigation', () => {
+    let allowExit = false;
+    let isConfirmExitOpen = true;
     let navigatedBack = false;
 
-    const handleConfirmExit = (setOpen, onNavigate) => {
-      setOpen(false);
-      onNavigate();
+    const handleConfirmExit = () => {
+      allowExit = true;
+      isConfirmExitOpen = false;
+      navigatedBack = true;
     };
 
-    let isOpen = true;
-    handleConfirmExit(
-      (val) => { isOpen = val; },
-      () => { navigatedBack = true; }
-    );
+    handleConfirmExit();
 
-    assert.strictEqual(isOpen, false);
-    assert.strictEqual(navigatedBack, true);
+    assert.strictEqual(allowExit, true, 'allowExit flag must be true');
+    assert.strictEqual(isConfirmExitOpen, false, 'Modal must close');
+    assert.strictEqual(navigatedBack, true, 'Navigation back must be invoked');
   });
 
   test('6. Allows normal navigation without prompt when cart is empty and no modals are open', () => {
@@ -169,9 +189,12 @@ describe('useMobileBackGuard Navigation & Modal Interception Logic Tests', () =>
       onCloseModal: () => {},
       hasItems: false,
       isConfirmExitOpen: false,
+      allowExit: false,
     };
 
     const simulatePopState = (state) => {
+      if (state.allowExit) return { action: 'exit_allowed', stayedOnPos: false };
+
       if (state.activeModal) {
         state.onCloseModal?.();
         return { action: 'closed_modal', stayedOnPos: true };
@@ -179,7 +202,7 @@ describe('useMobileBackGuard Navigation & Modal Interception Logic Tests', () =>
 
       if (state.hasItems) {
         state.isConfirmExitOpen = true;
-        return { action: 'opened_custom_confirm', stayedOnPos: true };
+        return { action: 'guard_re_injected', stayedOnPos: true };
       }
 
       return { action: 'normal_back', stayedOnPos: false };
@@ -191,9 +214,9 @@ describe('useMobileBackGuard Navigation & Modal Interception Logic Tests', () =>
     assert.strictEqual(result.stayedOnPos, false);
   });
 
-  test('7. Beforeunload listener arms browser protection when cart has items', () => {
-    const handleBeforeUnload = (hasItems, event) => {
-      if (hasItems) {
+  test('7. Beforeunload listener arms browser protection when cart has items and exit is not allowed', () => {
+    const handleBeforeUnload = (hasItems, allowExit, event) => {
+      if (hasItems && !allowExit) {
         const msg = '¿Seguro que desea abandonar la página? Se perderá el carrito actual';
         event.preventDefault();
         event.returnValue = msg;
@@ -208,18 +231,18 @@ describe('useMobileBackGuard Navigation & Modal Interception Logic Tests', () =>
       preventDefault() { this.prevented = true; }
     };
 
-    const msg = handleBeforeUnload(true, fakeEventWithItems);
+    const msg = handleBeforeUnload(true, false, fakeEventWithItems);
     assert.strictEqual(fakeEventWithItems.prevented, true);
     assert.ok(msg.includes('Se perderá el carrito actual'));
 
-    const fakeEventEmpty = {
+    const fakeEventExitAllowed = {
       prevented: false,
       returnValue: '',
       preventDefault() { this.prevented = true; }
     };
 
-    const emptyResult = handleBeforeUnload(false, fakeEventEmpty);
-    assert.strictEqual(fakeEventEmpty.prevented, false);
-    assert.strictEqual(emptyResult, undefined);
+    const allowedResult = handleBeforeUnload(true, true, fakeEventExitAllowed);
+    assert.strictEqual(fakeEventExitAllowed.prevented, false);
+    assert.strictEqual(allowedResult, undefined);
   });
 });
