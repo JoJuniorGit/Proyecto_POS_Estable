@@ -1,4 +1,5 @@
 using Core.Entities;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -12,18 +13,22 @@ public interface IInventoryService
     Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds);
     Task<Product?> GetProductByIdAsync(int id);
     Task<Product?> GetCashAdvanceProductAsync();
-    Task<Product?> GetProductBySkuAsync(string sku);
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    Task<Product?> GetProductBySkuAsync(string sku, bool useCache = true);
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    Task<Core.DTOs.ProductQuickInfoDto?> GetProductQuickInfoAsync(string sku, bool useCache = true);
+    void InvalidateProductSkuCache(string sku);
+    void InvalidateAllProductCaches();
     Task<Product> CreateProductAsync(Product product);
     Task UpdateProductAsync(Product product);
     Task SetProductStatusAsync(int id, bool isActive, bool isDeleted);
     Task<string> DeleteProductAsync(int id, bool forceHardDelete = false);
     Task RestoreProductAsync(int id);
-    Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, bool allowNegativeStock = false); // +/- quantity
+    Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, bool allowNegativeStock = false);
     Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null);
     Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration);
     Task ConfirmReservationAsync(int reservationId, string reason);
     Task CancelReservationAsync(int reservationId);
-    Task<Core.DTOs.ProductQuickInfoDto?> GetProductQuickInfoAsync(string sku);
     Task<List<Core.DTOs.ProductQuickInfoDto>> GetSuggestionsAsync(string filter, bool activeOnly, System.Threading.CancellationToken token);
     Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetProductsPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default);
     Task<List<Core.DTOs.ProductDto>> GetVariantOptionsAsync(int parentProductId);

@@ -98,7 +98,10 @@ try
         options.UseNpgsql(connectionString, npgsql => npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery))
                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
-    builder.Services.AddMemoryCache();
+    builder.Services.AddMemoryCache(options =>
+    {
+        options.SizeLimit = builder.Configuration.GetValue<int>("MemoryCache:SizeLimit", 10000);
+    });
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
     builder.Services.AddScoped<ITokenService, TokenService>();
@@ -119,6 +122,7 @@ try
     // BCV Services
     builder.Services.AddHttpClient<BcvScraperService>();
     builder.Services.AddHostedService<Backend.API.Jobs.BcvExchangeRateJob>();
+    builder.Services.AddHostedService<Backend.API.Services.CacheMetricsLoggerService>();
     builder.Services.AddSignalR();
 
     builder.Services.Configure<Core.Configuration.SystemSettingsOptions>(builder.Configuration.GetSection(Core.Configuration.SystemSettingsOptions.SectionName));

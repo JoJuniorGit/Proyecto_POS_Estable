@@ -111,7 +111,25 @@
                                                         </Style.Triggers>
                                                     </Style>
                                                 </StackPanel.Style>
-                                                <TextBlock Text="{Binding PriceBsS, StringFormat='{}{0:N2}'}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,10,0"/>
+                                                <TextBlock FontWeight="Bold" FontSize="13" Margin="0,0,10,0">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="{Binding PriceBsS, StringFormat='{}{0:N2}'}"/>
+                                                            <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                                                            <Style.Triggers>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding IsGroupHeader}" Value="True"/>
+                                                                        <Condition Binding="{Binding HasIndependentPricing}" Value="True"/>
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Text" Value="Precios indiv."/>
+                                                                    <Setter Property="Foreground" Value="Gray"/>
+                                                                    <Setter Property="FontStyle" Value="Italic"/>
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
                                             </StackPanel>
                                         </StackPanel>
                                     </DataTemplate>
@@ -143,6 +161,10 @@
                               CanUserAddRows="False"
                               GridLinesVisibility="Horizontal"
                               HeadersVisibility="Column"
+                              VirtualizingStackPanel.IsVirtualizing="True"
+                              VirtualizingStackPanel.VirtualizationMode="Recycling"
+                              VirtualizingPanel.ScrollUnit="Pixel"
+                              ScrollViewer.IsDeferredScrollingEnabled="False"
                               BorderThickness="0"
                               Background="Transparent"
                               SelectionUnit="FullRow"

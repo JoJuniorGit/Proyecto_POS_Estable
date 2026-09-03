@@ -76,7 +76,7 @@ export default function CustomerSelectorCard({
     if (isExpanded) {
       loadCustomers(debouncedQuery);
     }
-  }, [debouncedQuery]);
+  }, [debouncedQuery, isExpanded]);
 
   const handleToggleExpand = () => {
     if (disabled || readOnly) return;

@@ -207,6 +207,10 @@
                           HorizontalScrollBarVisibility="Disabled"
                           ColumnHeaderHeight="42"
                           RowHeight="42"
+                          VirtualizingStackPanel.IsVirtualizing="True"
+                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                          VirtualizingPanel.ScrollUnit="Pixel"
+                          ScrollViewer.IsDeferredScrollingEnabled="False"
                           BorderThickness="0"
                           Background="Transparent"
                           Margin="0">

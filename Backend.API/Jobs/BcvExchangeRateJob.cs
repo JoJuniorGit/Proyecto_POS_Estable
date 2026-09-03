@@ -92,6 +92,9 @@ public class BcvExchangeRateJob : BackgroundService
                     await dbContext.SaveChangesAsync(cancellationToken);
                     _logger.LogInformation("System exchange rate updated to {Rate}", rate.Value);
 
+                    var inventoryService = scope.ServiceProvider.GetRequiredService<Core.Interfaces.IInventoryService>();
+                    inventoryService.InvalidateTodayExchangeRateCache();
+
                     // Recalculate OnHold sales
                     var salesService = scope.ServiceProvider.GetRequiredService<Sales.Module.Interfaces.ISalesService>();
                     await salesService.RecalculateOnHoldSalesAsync(rate.Value);

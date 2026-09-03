@@ -58,7 +58,15 @@ public class InventoryService : IInventoryService
 
         if (rate > 0)
         {
-            _cache?.Set(ExchangeRateCacheKey, rate, TimeSpan.FromMinutes(10));
+            try
+            {
+                _cache?.Set(ExchangeRateCacheKey, rate, new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
+                    Size = 1
+                });
+            }
+            catch { }
         }
         return rate;
     }
@@ -85,9 +93,61 @@ public class InventoryService : IInventoryService
         return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.IsCashAdvance && !p.IsDeleted && p.IsActive);
     }
 
-    public async Task<Product?> GetProductBySkuAsync(string sku)
+    private static MemoryCacheEntryOptions CreateProductCacheOptions() => new MemoryCacheEntryOptions
     {
-        return await _context.Products.FirstOrDefaultAsync(p => p.SKU == sku);
+        SlidingExpiration = TimeSpan.FromSeconds(15),
+        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5),
+        Size = 1,
+        Priority = CacheItemPriority.High
+    };
+
+    public void InvalidateProductSkuCache(string? sku)
+    {
+        if (!string.IsNullOrWhiteSpace(sku))
+        {
+            var normalized = sku.Trim().ToUpperInvariant();
+            _cache?.Remove($"product_sku_{normalized}");
+            _cache?.Remove($"product_quick_{normalized}");
+        }
+    }
+
+    public void InvalidateAllProductCaches()
+    {
+        _cache?.Remove(ExchangeRateCacheKey);
+    }
+
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    public async Task<Product?> GetProductBySkuAsync(string sku, bool useCache = true)
+    {
+        if (string.IsNullOrWhiteSpace(sku)) return null;
+        var normalized = sku.Trim().ToUpperInvariant();
+
+        if (!useCache || _cache == null)
+        {
+            return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == sku);
+        }
+
+        var cacheKey = $"product_sku_{normalized}";
+        if (_cache.TryGetValue(cacheKey, out Product? cachedProduct) && cachedProduct != null)
+        {
+            Core.Metrics.CacheMetrics.RecordHit();
+            return cachedProduct;
+        }
+
+        Core.Metrics.CacheMetrics.RecordMiss();
+        try
+        {
+            var product = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == sku);
+            if (product != null)
+            {
+                _cache.Set(cacheKey, product, CreateProductCacheOptions());
+            }
+            return product;
+        }
+        catch
+        {
+            throw;
+        }
     }
 
     private static void ValidateAndCalculateProductPrices(Product product)
@@ -308,6 +368,8 @@ public class InventoryService : IInventoryService
 
         _context.Products.Add(product);
         await _context.SaveChangesAsync();
+        InvalidateProductSkuCache(product.SKU);
+        if (product.ParentProduct != null) InvalidateProductSkuCache(product.ParentProduct.SKU);
         return product;
     }
 
@@ -508,6 +570,12 @@ public class InventoryService : IInventoryService
         {
             await tx.CommitAsync();
         }
+
+        InvalidateProductSkuCache(product.SKU);
+        if (product.IsGroupHeader || product.ParentProductId != null)
+        {
+            InvalidateAllProductCaches();
+        }
     }
 
     public async Task SetProductStatusAsync(int id, bool isActive, bool isDeleted)
@@ -520,6 +588,8 @@ public class InventoryService : IInventoryService
             product.IsDeleted = isDeleted;
             product.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+            InvalidateProductSkuCache(product.SKU);
+            if (product.IsGroupHeader) InvalidateAllProductCaches();
         }
     }
 
@@ -545,13 +615,14 @@ public class InventoryService : IInventoryService
             }
         }
 
+        string result = "archived";
         if (forceHardDelete)
         {
             try
             {
                 _context.Products.Remove(product);
                 await _context.SaveChangesAsync();
-                return "hard_deleted";
+                result = "hard_deleted";
             }
             catch
             {
@@ -561,7 +632,7 @@ public class InventoryService : IInventoryService
                 product.IsDeleted = true;
                 product.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
-                return "archived";
+                result = "archived";
             }
         }
         else
@@ -571,8 +642,12 @@ public class InventoryService : IInventoryService
             product.IsDeleted = true;
             product.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
-            return "archived";
+            result = "archived";
         }
+
+        InvalidateProductSkuCache(product.SKU);
+        if (product.IsGroupHeader || product.ParentProductId != null) InvalidateAllProductCaches();
+        return result;
     }
 
     public static decimal ApplyConversion(decimal quantity, decimal factor, bool isDeduction)
@@ -694,6 +769,13 @@ public class InventoryService : IInventoryService
         {
             await tx.CommitAsync();
         }
+
+        InvalidateProductSkuCache(productData.SKU);
+        if (!string.IsNullOrWhiteSpace(productData.ParentSKU))
+        {
+            InvalidateProductSkuCache(productData.ParentSKU);
+        }
+        InvalidateAllProductCaches();
     }
 
     public async Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null)
@@ -792,6 +874,7 @@ public class InventoryService : IInventoryService
         try
         {
             await _context.SaveChangesAsync();
+            InvalidateProductSkuCache(targetProduct.SKU);
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -830,6 +913,7 @@ public class InventoryService : IInventoryService
         _context.StockReservations.Remove(reservation);
 
         await _context.SaveChangesAsync();
+        InvalidateProductSkuCache(reservation.Product.SKU);
     }
 
     public async Task CancelReservationAsync(int reservationId)
@@ -846,6 +930,7 @@ public class InventoryService : IInventoryService
         _context.StockReservations.Remove(reservation);
 
         await _context.SaveChangesAsync();
+        InvalidateProductSkuCache(reservation.Product.SKU);
     }
 
     public async Task<List<Core.DTOs.ProductQuickInfoDto>> GetSuggestionsAsync(string filter, bool activeOnly, System.Threading.CancellationToken token)
@@ -1132,7 +1217,41 @@ public class InventoryService : IInventoryService
             .ToListAsync();
     }
 
-    public async Task<Core.DTOs.ProductQuickInfoDto?> GetProductQuickInfoAsync(string sku)
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    public async Task<Core.DTOs.ProductQuickInfoDto?> GetProductQuickInfoAsync(string sku, bool useCache = true)
+    {
+        if (string.IsNullOrWhiteSpace(sku)) return null;
+        var normalized = sku.Trim().ToUpperInvariant();
+
+        if (!useCache || _cache == null)
+        {
+            return await FetchProductQuickInfoFromDbAsync(sku);
+        }
+
+        var cacheKey = $"product_quick_{normalized}";
+        if (_cache.TryGetValue(cacheKey, out Core.DTOs.ProductQuickInfoDto? cachedDto) && cachedDto != null)
+        {
+            Core.Metrics.CacheMetrics.RecordHit();
+            return cachedDto;
+        }
+
+        Core.Metrics.CacheMetrics.RecordMiss();
+        try
+        {
+            var dto = await FetchProductQuickInfoFromDbAsync(sku);
+            if (dto != null)
+            {
+                _cache.Set(cacheKey, dto, CreateProductCacheOptions());
+            }
+            return dto;
+        }
+        catch
+        {
+            throw;
+        }
+    }
+
+    private async Task<Core.DTOs.ProductQuickInfoDto?> FetchProductQuickInfoFromDbAsync(string sku)
     {
         return await _context.Products
             .AsNoTracking()
@@ -1437,6 +1556,7 @@ public class InventoryService : IInventoryService
                 await transaction.CommitAsync(cancellationToken);
             }
 
+            InvalidateAllProductCaches();
             return (added, updated);
         }
         catch (Exception)

@@ -22,40 +22,40 @@ public partial class MainViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _current_view_model, value);
     }
 
-    public UserSession UserSession { get; }
+    public UserSession? UserSession { get; }
 
-    private readonly LoginViewModel _login_view_model;
-    private readonly PosViewModel _pos_view_model;
-    private readonly InventoryViewModel _inventory_view_model;
-    private readonly SalesHistoryViewModel _sales_history_view_model;
-    private readonly PendingOrdersViewModel _pending_orders_view_model;
-    private readonly PendingPickupsViewModel _pending_pickups_view_model;
-    private readonly SettingsViewModel _settings_view_model;
-    private readonly ExchangeRateViewModel _exchange_rate_view_model;
-    private readonly CashDrawerViewModel _cash_drawer_view_model;
-    private readonly ImportProductsViewModel _import_products_view_model;
-    private readonly DailyClosureViewModel _daily_closure_view_model;
-    private readonly UsersManagementViewModel _users_management_view_model;
+    private readonly LoginViewModel? _login_view_model;
+    private readonly PosViewModel? _pos_view_model;
+    private readonly InventoryViewModel? _inventory_view_model;
+    private readonly SalesHistoryViewModel? _sales_history_view_model;
+    private readonly PendingOrdersViewModel? _pending_orders_view_model;
+    private readonly PendingPickupsViewModel? _pending_pickups_view_model;
+    private readonly SettingsViewModel? _settings_view_model;
+    private readonly ExchangeRateViewModel? _exchange_rate_view_model;
+    private readonly CashDrawerViewModel? _cash_drawer_view_model;
+    private readonly ImportProductsViewModel? _import_products_view_model;
+    private readonly DailyClosureViewModel? _daily_closure_view_model;
+    private readonly UsersManagementViewModel? _users_management_view_model;
 
-    private readonly IHealthPollingService _healthPollingService;
+    private readonly IHealthPollingService? _healthPollingService;
     private readonly IExchangeRateService? _exchange_rate_service;
     private readonly IDialogService? _dialog_service;
 
     public MainViewModel(
-        UserSession userSession,
-        LoginViewModel login_view_model,
-        PosViewModel pos_view_model,
-        InventoryViewModel inventory_view_model,
-        SalesHistoryViewModel sales_history_view_model,
-        PendingOrdersViewModel pending_orders_view_model,
-        PendingPickupsViewModel pending_pickups_view_model,
-        SettingsViewModel settings_view_model,
-        ExchangeRateViewModel exchange_rate_view_model,
-        CashDrawerViewModel cash_drawer_view_model,
-        ImportProductsViewModel import_products_view_model,
-        DailyClosureViewModel daily_closure_view_model,
-        UsersManagementViewModel users_management_view_model,
-        IHealthPollingService healthPollingService,
+        UserSession? userSession,
+        LoginViewModel? login_view_model,
+        PosViewModel? pos_view_model,
+        InventoryViewModel? inventory_view_model,
+        SalesHistoryViewModel? sales_history_view_model,
+        PendingOrdersViewModel? pending_orders_view_model,
+        PendingPickupsViewModel? pending_pickups_view_model,
+        SettingsViewModel? settings_view_model,
+        ExchangeRateViewModel? exchange_rate_view_model,
+        CashDrawerViewModel? cash_drawer_view_model,
+        ImportProductsViewModel? import_products_view_model,
+        DailyClosureViewModel? daily_closure_view_model,
+        UsersManagementViewModel? users_management_view_model,
+        IHealthPollingService? healthPollingService = null,
         IDialogService? dialog_service = null,
         IExchangeRateService? exchange_rate_service = null)
     {
@@ -76,19 +76,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _dialog_service = dialog_service;
         _exchange_rate_service = exchange_rate_service;
 
-        _healthPollingService.OnHealthRecovered += OnHealthRecovered;
-        _login_view_model.LoginSuccess += OnLoginSuccess;
-        UserSession.SessionChanged += OnSessionChanged;
+        if (_healthPollingService != null) _healthPollingService.OnHealthRecovered += OnHealthRecovered;
+        if (_login_view_model != null) _login_view_model.LoginSuccess += OnLoginSuccess;
+        if (UserSession != null) UserSession.SessionChanged += OnSessionChanged;
 
-        // Default: If not logged in, show Login view
-        if (!UserSession.IsLoggedIn)
+        if (UserSession != null && !UserSession.IsLoggedIn)
         {
-            _current_view_model = _login_view_model;
+            _current_view_model = _login_view_model ?? new object();
             _title = "INICIO DE SESIÓN";
         }
         else
         {
-            _current_view_model = _pos_view_model;
+            _current_view_model = _pos_view_model ?? new object();
             _title = "POINT OF SALE";
         }
     }
@@ -102,14 +101,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
-        // Detener el sondeo de salud y liberar suscripciones.
-        _healthPollingService.OnHealthRecovered -= OnHealthRecovered;
-        try { _healthPollingService.StopPolling(); } catch { }
+        if (_healthPollingService != null)
+        {
+            _healthPollingService.OnHealthRecovered -= OnHealthRecovered;
+            try { _healthPollingService.StopPolling(); } catch { }
+        }
+        if (_login_view_model != null)
+        {
+            _login_view_model.LoginSuccess -= OnLoginSuccess;
+        }
+        if (UserSession != null)
+        {
+            UserSession.SessionChanged -= OnSessionChanged;
+        }
 
         // Disponer los ViewModels hijo que implementan IDisposable (cancela sus CTSes y
         // libera las suscripciones a eventos globales). El contenedor DI invoca este Dispose
         // al finalizar la aplicación (_host.Dispose() en App.OnExit).
-        var viewModels = new object[]
+        var viewModels = new object?[]
         {
             _login_view_model,
             _pos_view_model,
@@ -150,23 +159,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void OnSessionChanged()
     {
         OnPropertyChanged(nameof(UserSession));
-        if (!UserSession.IsLoggedIn)
+        if (UserSession == null || !UserSession.IsLoggedIn)
         {
             Title = "INICIO DE SESIÓN";
-            CurrentViewModel = _login_view_model;
+            CurrentViewModel = _login_view_model ?? new object();
         }
     }
 
     [RelayCommand]
     private void Logout()
     {
-        UserSession.Logout();
+        UserSession?.Logout();
     }
 
     [RelayCommand]
     private void NavigateToPos()
     {
-        if (!UserSession.IsLoggedIn) return;
+        if (UserSession == null || !UserSession.IsLoggedIn || _pos_view_model == null) return;
         Title = "POINT OF SALE";
         CurrentViewModel = _pos_view_model;
         _ = _pos_view_model.InitializeForSessionAsync();
@@ -175,7 +184,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToInventory()
     {
-        if (!UserSession.IsLoggedIn) return;
+        if (UserSession == null || !UserSession.IsLoggedIn || _inventory_view_model == null) return;
         Title = "INVENTORY";
         CurrentViewModel = _inventory_view_model;
         _ = _inventory_view_model.EnsureLoadedAsync();
@@ -184,7 +193,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToSalesHistory()
     {
-        if (!UserSession.IsLoggedIn) return;
+        if (UserSession == null || !UserSession.IsLoggedIn || _sales_history_view_model == null) return;
         Title = "SALES HISTORY";
         CurrentViewModel = _sales_history_view_model;
         _ = _sales_history_view_model.EnsureLoadedAsync();
@@ -193,7 +202,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToPendingOrders()
     {
-        if (!UserSession.IsLoggedIn) return;
+        if (UserSession == null || !UserSession.IsLoggedIn || _pending_orders_view_model == null) return;
         Title = "CUENTAS ABIERTAS (EN ESPERA)";
         CurrentViewModel = _pending_orders_view_model;
         _ = _pending_orders_view_model.EnsureLoadedAsync();
@@ -202,7 +211,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToPendingPickups()
     {
-        if (!UserSession.IsLoggedIn) return;
+        if (UserSession == null || !UserSession.IsLoggedIn || _pending_pickups_view_model == null) return;
         Title = "RETIROS PENDIENTES";
         CurrentViewModel = _pending_pickups_view_model;
         _ = _pending_pickups_view_model.EnsureLoadedAsync();
@@ -211,7 +220,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToSettings()
     {
-        if (!UserSession.IsLoggedIn) return;
+        if (UserSession == null || !UserSession.IsLoggedIn || _settings_view_model == null) return;
         Title = "SYSTEM SETTINGS";
         CurrentViewModel = _settings_view_model;
         _ = _settings_view_model.EnsureLoadedAsync();
@@ -220,7 +229,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToExchangeRate()
     {
-        if (!UserSession.IsLoggedIn) return;
+        if (UserSession == null || !UserSession.IsLoggedIn || _exchange_rate_view_model == null) return;
         Title = "EXCHANGE RATE";
         CurrentViewModel = _exchange_rate_view_model;
         _ = _exchange_rate_view_model.LoadAllCommand.ExecuteAsync(null);
@@ -229,7 +238,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToCashDrawer()
     {
-        if (!UserSession.IsLoggedIn) return;
+        if (UserSession == null || !UserSession.IsLoggedIn || _cash_drawer_view_model == null) return;
         Title = "REGISTER / CASH DRAWER";
         CurrentViewModel = _cash_drawer_view_model;
         _ = _cash_drawer_view_model.LoadSessionAsync();
@@ -238,7 +247,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToImportProducts()
     {
-        if (!UserSession.IsLoggedIn) return;
+        if (UserSession == null || !UserSession.IsLoggedIn || _import_products_view_model == null) return;
         Title = "IMPORT PRODUCTS";
         CurrentViewModel = _import_products_view_model;
     }
@@ -246,7 +255,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToDailyClosure()
     {
-        if (!UserSession.IsLoggedIn) return;
+        if (UserSession == null || !UserSession.IsLoggedIn || _daily_closure_view_model == null) return;
         Title = "DAILY CLOSING";
         CurrentViewModel = _daily_closure_view_model;
         _ = _daily_closure_view_model.LoadExpectedTotalsAsync();
@@ -255,43 +264,48 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToUsersManagement()
     {
-        if (!UserSession.IsLoggedIn || !UserSession.IsAdmin) return;
+        if (UserSession == null || !UserSession.IsLoggedIn || !UserSession.IsAdmin || _users_management_view_model == null) return;
         Title = "GESTIÓN DE USUARIOS";
         CurrentViewModel = _users_management_view_model;
         _ = _users_management_view_model.EnsureLoadedAsync();
     }
 
-    private bool _is_dialog_open;
+    private bool _isAnyModalOpen;
+    public bool IsAnyModalOpen
+    {
+        get => _isAnyModalOpen;
+        set => SetProperty(ref _isAnyModalOpen, value);
+    }
 
     [RelayCommand]
     private async Task OpenPairingQrAsync()
     {
-        if (_dialog_service == null || _is_dialog_open) return;
+        if (_dialog_service == null || IsAnyModalOpen) return;
 
-        _is_dialog_open = true;
+        IsAnyModalOpen = true;
         try
         {
             await _dialog_service.ShowPairingQrDialogAsync();
         }
         finally
         {
-            _is_dialog_open = false;
+            IsAnyModalOpen = false;
         }
     }
 
     [RelayCommand]
     private async Task OpenServerConnectionAsync()
     {
-        if (_dialog_service == null || _is_dialog_open) return;
+        if (_dialog_service == null || IsAnyModalOpen) return;
 
-        _is_dialog_open = true;
+        IsAnyModalOpen = true;
         try
         {
             await _dialog_service.ShowServerConnectionDialogAsync();
         }
         finally
         {
-            _is_dialog_open = false;
+            IsAnyModalOpen = false;
         }
     }
 }

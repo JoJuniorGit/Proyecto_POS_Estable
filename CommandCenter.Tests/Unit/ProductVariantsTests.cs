@@ -2479,6 +2479,40 @@ public class ProductVariantsTests
         Assert.IsType<NotFoundResult>(result404);
     }
 
+    [Fact]
+    public void ProductQuickInfoDto_DisplayPrice_ShowsPreciosIndivWhenIndependentPricingEnabled()
+    {
+        var dto = new ProductQuickInfoDto
+        {
+            Id = 1,
+            Name = "Camisa Polo",
+            IsGroupHeader = true,
+            HasIndependentPricing = true,
+            PriceBsS = 1000m,
+            PriceUSD = 20m
+        };
+
+        Assert.Equal("Precios indiv.", dto.DisplayPriceBsS);
+        Assert.Equal("Precios indiv.", dto.DisplayPriceUSD);
+    }
+
+    [Fact]
+    public void ProductQuickInfoDto_DisplayPrice_ShowsNormalPriceWhenPricingIsShared()
+    {
+        var dto = new ProductQuickInfoDto
+        {
+            Id = 2,
+            Name = "Refresco Sabores",
+            IsGroupHeader = true,
+            HasIndependentPricing = false,
+            PriceBsS = 150.50m,
+            PriceUSD = 3.00m
+        };
+
+        Assert.Equal("150.50", dto.DisplayPriceBsS);
+        Assert.Equal("$3.00", dto.DisplayPriceUSD);
+    }
+
     #endregion
 }
 

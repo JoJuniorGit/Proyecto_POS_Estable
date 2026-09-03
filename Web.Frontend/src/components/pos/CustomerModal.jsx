@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Modal from '../ui/Modal';
 import { getCustomers, createCustomer } from '../../services/customerApi';
 import { Search, UserPlus, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
@@ -24,7 +24,6 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
   const [enableInitialPayment, setEnableInitialPayment] = useState(false);
   const [initialPaymentBsS, setInitialPaymentBsS] = useState('');
   const [paymentMethodId, setPaymentMethodId] = useState('');
-  const [referenceNumber, setReferenceNumber] = useState('');
 
   useEffect(() => {
     if (paymentMethods && paymentMethods.length > 0 && !paymentMethodId) {
@@ -32,14 +31,7 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
     }
   }, [paymentMethods, paymentMethodId]);
 
-  useEffect(() => {
-    if (isOpen) {
-      loadCustomers('');
-      setError(null);
-    }
-  }, [isOpen]);
-
-  const loadCustomers = async (searchQuery) => {
+  const loadCustomers = useCallback(async (searchQuery) => {
     setLoading(true);
     try {
       const data = await getCustomers(searchQuery);
@@ -48,12 +40,19 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
       } else {
         setCustomers(data || []);
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      setError('Error al cargar la lista de clientes.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [mode]);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadCustomers('');
+      setError(null);
+    }
+  }, [isOpen, loadCustomers]);
 
   const handleSearchChange = (e) => {
     const val = e.target.value;

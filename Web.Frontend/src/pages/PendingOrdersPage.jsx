@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getPendingSales, completeSale, addPaymentToHoldSale, cancelSale } from '../services/salesApi';
-import { getActivePaymentMethods } from '../services/paymentApi';
 import { useExchangeRate } from '../context/ExchangeRateContext';
-import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import CheckoutModal from '../components/checkout/CheckoutModal';
 import EditSaleModal from '../components/pos/EditSaleModal';
@@ -12,7 +10,7 @@ import { formatNumberEs, formatBsS, formatUSD, formatQuantity } from '../utils/f
 import { Search, Loader2, Clock, ChevronRight, ChevronDown, RefreshCw, CheckCircle, ShieldCheck, Edit2, User, Trash2, AlertTriangle } from 'lucide-react';
 import './PendingOrdersPage.css';
 
-export default function PendingOrdersPage({ onNavigate }) {
+export default function PendingOrdersPage() {
   const { user } = useAuth();
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,8 +23,6 @@ export default function PendingOrdersPage({ onNavigate }) {
   const [completedLiquidation, setCompletedLiquidation] = useState(null);
   
   const { exchangeRate } = useExchangeRate();
-  const { loadExistingSale } = useCart();
-  const [paymentMethods, setPaymentMethods] = useState([]);
 
   // Modals state
   const [selectedSaleForCheckout, setSelectedSaleForCheckout] = useState(null);
@@ -36,12 +32,8 @@ export default function PendingOrdersPage({ onNavigate }) {
     setLoading(true);
     setError(null);
     try {
-      const [pendingData, methodsData] = await Promise.all([
-        getPendingSales(),
-        getActivePaymentMethods(),
-      ]);
-      setSales(pendingData);
-      setPaymentMethods(methodsData);
+      const pendingData = await getPendingSales();
+      setSales(pendingData || []);
     } catch (err) {
       console.error(err);
       setError('No se pudieron cargar las cuentas abiertas.');
@@ -201,7 +193,6 @@ export default function PendingOrdersPage({ onNavigate }) {
                   <th>ID / Fecha</th>
                   <th>Cliente</th>
                   <th style={{ textAlign: 'right' }}>Total Factura</th>
-                  <th>Estado</th>
                   <th style={{ textAlign: 'right' }}>Acciones</th>
                 </tr>
               </thead>
@@ -243,18 +234,12 @@ export default function PendingOrdersPage({ onNavigate }) {
                         </td>
 
                         <td className="text-right text-nowrap">
-                          <div className="amount-bss font-bold" style={{ fontSize: '0.95rem' }}>
+                          <div className="amount-bss font-bold total-bss-highlight" style={{ fontSize: '0.95rem', color: '#ef4444' }}>
                             {formatBsS(sale.totalBsS)}
                           </div>
                           <div className="amount-usd" style={{ fontSize: '0.8em' }}>
                             {formatUSD(sale.totalUSD)}
                           </div>
-                        </td>
-
-                        <td>
-                          <span className="badge badge-warning" style={{ backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b', padding: '4px 10px', borderRadius: '12px', fontSize: '0.85em' }}>
-                            En Espera
-                          </span>
                         </td>
 
                         <td className="text-right" onClick={(e) => e.stopPropagation()}>
@@ -264,7 +249,7 @@ export default function PendingOrdersPage({ onNavigate }) {
                               onClick={() => setSelectedSaleForCheckout(sale)}
                               style={{ gap: '4px' }}
                             >
-                              <CheckCircle size={14} /> {remainingUsd <= 0.05 ? 'Cerrar / Entregar' : 'Liquidar / Abonar'}
+                              <CheckCircle size={14} /> Cobrar
                             </button>
 
                             <button
@@ -280,7 +265,7 @@ export default function PendingOrdersPage({ onNavigate }) {
                       {/* Expanded Detail Desktop */}
                       {isExpanded && (
                         <tr className="history-detail-row">
-                          <td colSpan="5" className="history-detail-cell" style={{ borderTop: '1px dashed rgba(99, 102, 241, 0.25)' }}>
+                          <td colSpan="4" className="history-detail-cell" style={{ borderTop: '1px dashed rgba(99, 102, 241, 0.25)' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                               
                               {/* Products Section */}
@@ -374,10 +359,6 @@ export default function PendingOrdersPage({ onNavigate }) {
                         {new Date(sale.date).toLocaleDateString()} {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
-
-                    <span className="badge badge-warning" style={{ backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8em' }}>
-                      En Espera
-                    </span>
                   </div>
 
                   {/* Customer Info Box */}
@@ -401,7 +382,7 @@ export default function PendingOrdersPage({ onNavigate }) {
                   <div className="pending-mobile-card-summary">
                     <div>
                       <div className="text-xs text-muted mb-1">Total Factura</div>
-                      <div className="font-bold amount-bss">{formatBsS(sale.totalBsS)}</div>
+                      <div className="font-bold amount-bss total-bss-highlight" style={{ color: '#ef4444' }}>{formatBsS(sale.totalBsS)}</div>
                       <div className="text-xs amount-usd">{formatUSD(sale.totalUSD)}</div>
                     </div>
                     <div>
@@ -422,7 +403,7 @@ export default function PendingOrdersPage({ onNavigate }) {
                       onClick={() => setSelectedSaleForCheckout(sale)}
                       style={{ height: '44px', fontSize: '0.95rem' }}
                     >
-                      <CheckCircle size={18} /> {remainingUsd <= 0.05 ? 'Cerrar / Entregar Cuenta' : 'Liquidar / Abonar Cuenta'}
+                      <CheckCircle size={18} /> Cobrar
                     </button>
 
                     <div className="d-flex gap-2">

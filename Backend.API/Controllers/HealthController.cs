@@ -9,7 +9,6 @@ using Sales.Module.Data;
 namespace Backend.API.Controllers;
 
 [ApiController]
-[AllowAnonymous]
 public class HealthController : ControllerBase
 {
     private readonly SalesDbContext _salesDb;
@@ -19,6 +18,7 @@ public class HealthController : ControllerBase
         _salesDb = salesDb;
     }
 
+    [AllowAnonymous]
     [HttpGet("health")]
     [HttpGet("api/health")]
     public async Task<IActionResult> CheckHealth()
@@ -63,5 +63,19 @@ public class HealthController : ControllerBase
                 timestamp = DateTime.UtcNow.ToString("o")
             });
         }
+    }
+
+    [HttpGet("api/health/metrics")]
+    [Authorize(Roles = "Admin,Manager")]
+    public IActionResult GetMetrics()
+    {
+        var (hits, misses, hitRate) = Core.Metrics.CacheMetrics.GetSnapshot();
+        return Ok(new
+        {
+            cacheHits = hits,
+            cacheMisses = misses,
+            hitRatePercentage = Math.Round(hitRate, 2),
+            timestamp = DateTime.UtcNow.ToString("o")
+        });
     }
 }

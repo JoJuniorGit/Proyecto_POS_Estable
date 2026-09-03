@@ -7,7 +7,7 @@ import { completeSale, updateSaleCustomer } from '../../services/salesApi';
 import { useCart } from '../../context/CartContext';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import { useAuth } from '../../context/AuthContext';
-import { formatBsS, formatUSD } from '../../utils/formatters';
+import { formatBsS } from '../../utils/formatters';
 import CustomerSelectorCard from './CustomerSelectorCard';
 import { Check, Loader2, PackageCheck } from 'lucide-react';
 

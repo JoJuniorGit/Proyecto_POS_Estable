@@ -25,10 +25,14 @@ public class PaymentMethodService : IPaymentMethodService
 
     public async Task<IEnumerable<PaymentMethod>> GetActiveMethodsAsync()
     {
-        if (_cache != null && _cache.TryGetValue(CacheKeys.ActivePaymentMethods, out IEnumerable<PaymentMethod>? cached) && cached != null)
+        try
         {
-            return cached;
+            if (_cache != null && _cache.TryGetValue(CacheKeys.ActivePaymentMethods, out IEnumerable<PaymentMethod>? cached) && cached != null)
+            {
+                return cached;
+            }
         }
+        catch { }
 
         var methods = await _context.PaymentMethods
             .AsNoTracking()
@@ -39,16 +43,29 @@ public class PaymentMethodService : IPaymentMethodService
 
         var result = methods ?? (IEnumerable<PaymentMethod>)Enumerable.Empty<PaymentMethod>();
 
-        _cache?.Set(CacheKeys.ActivePaymentMethods, result, CacheDuration);
+        try
+        {
+            _cache?.Set(CacheKeys.ActivePaymentMethods, result, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = CacheDuration,
+                Size = 1
+            });
+        }
+        catch { }
+
         return result;
     }
 
     public async Task<IEnumerable<PaymentMethod>> GetAllAsync()
     {
-        if (_cache != null && _cache.TryGetValue(CacheKeys.AllPaymentMethods, out IEnumerable<PaymentMethod>? cached) && cached != null)
+        try
         {
-            return cached;
+            if (_cache != null && _cache.TryGetValue(CacheKeys.AllPaymentMethods, out IEnumerable<PaymentMethod>? cached) && cached != null)
+            {
+                return cached;
+            }
         }
+        catch { }
 
         var methods = await _context.PaymentMethods
             .AsNoTracking()
@@ -58,7 +75,16 @@ public class PaymentMethodService : IPaymentMethodService
 
         var result = methods ?? (IEnumerable<PaymentMethod>)Enumerable.Empty<PaymentMethod>();
 
-        _cache?.Set(CacheKeys.AllPaymentMethods, result, CacheDuration);
+        try
+        {
+            _cache?.Set(CacheKeys.AllPaymentMethods, result, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = CacheDuration,
+                Size = 1
+            });
+        }
+        catch { }
+
         return result;
     }
 

@@ -550,10 +550,14 @@ public class SalesService : ISalesService
 
     public async Task<CustomerDto> GetDefaultCustomerAsync()
     {
-        if (_cache != null && _cache.TryGetValue(DefaultCustomerCacheKey, out CustomerDto? cachedCustomer) && cachedCustomer != null)
+        try
         {
-            return cachedCustomer;
+            if (_cache != null && _cache.TryGetValue(DefaultCustomerCacheKey, out CustomerDto? cachedCustomer) && cachedCustomer != null)
+            {
+                return cachedCustomer;
+            }
         }
+        catch { }
 
         var defaultCustomer = await _context.Customers
             .AsNoTracking()
@@ -575,7 +579,16 @@ public class SalesService : ISalesService
             IsDefault = defaultCustomer.IsDefault
         };
 
-        _cache?.Set(DefaultCustomerCacheKey, dto, TimeSpan.FromHours(1));
+        try
+        {
+            _cache?.Set(DefaultCustomerCacheKey, dto, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1),
+                Size = 1
+            });
+        }
+        catch { }
+
         return dto;
     }
 

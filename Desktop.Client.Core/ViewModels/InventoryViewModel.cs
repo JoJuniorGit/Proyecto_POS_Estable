@@ -827,5 +827,4 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             GroupKey = p.GroupKey
         };
     }
-
 }

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useExchangeRate } from './ExchangeRateContext';
 import { useAuth } from './AuthContext';
 import {
@@ -13,7 +13,8 @@ import {
 } from '../services/salesApi';
 import { getLineAmounts } from '../utils/formatters';
 
-const CartContext = createContext();
+const CartStateContext = createContext(null);
+const CartActionsContext = createContext(null);
 
 export function CartProvider({ children }) {
   const { exchangeRate } = useExchangeRate();
@@ -44,7 +45,7 @@ export function CartProvider({ children }) {
   }, [user?.id]);
 
   // Cargar venta existente (para editar pedido en espera)
-  const loadExistingSale = async (saleId) => {
+  const loadExistingSale = useCallback(async (saleId) => {
     setLoading(true);
     setError(null);
     try {
@@ -61,7 +62,7 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Al montar, restaurar venta activa de la sesión o crear una nueva
   useEffect(() => {
@@ -95,7 +96,7 @@ export function CartProvider({ children }) {
     }
   }, [exchangeRate, currentSale?.id, currentSale?.status]);
 
-  const validateOnHoldRules = (prospectiveTotalUSD) => {
+  const validateOnHoldRules = useCallback((prospectiveTotalUSD) => {
     if (currentSale?.status !== 'OnHold') return true;
     const totalPaidUSD = currentSale.totalPaidUSD || (currentSale.payments?.reduce((acc, p) => acc + (p.amount || 0), 0)) || 0;
     if (prospectiveTotalUSD < (totalPaidUSD - 0.01)) {
@@ -103,17 +104,46 @@ export function CartProvider({ children }) {
       return false;
     }
     return true;
-  };
+  }, [currentSale?.status, currentSale?.totalPaidUSD, currentSale?.payments]);
+
+  // Eliminar ítem
+  const removeItem = useCallback(async (itemId) => {
+    if (!currentSale?.id) return;
+
+    if (currentSale.status === 'OnHold') {
+      const currentItems = currentSale.items || [];
+      const prospectiveItems = currentItems.filter(i => i.id !== itemId);
+      const prospectiveTotal = prospectiveItems.reduce((acc, i) => acc + i.subtotal, 0);
+      if (!validateOnHoldRules(prospectiveTotal)) {
+        return;
+      }
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale.appliedRate || 1);
+      const updatedSale = await removeItemFromSale(currentSale.id, itemId, rateToUse);
+      setCurrentSale(updatedSale);
+      if (selectedItemId === itemId) {
+        setSelectedItemId(null);
+      }
+    } catch (err) {
+      console.error('[CartContext] Error eliminando item:', err);
+      setError(err.message || 'Error al eliminar producto del carrito');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentSale?.id, currentSale?.status, currentSale?.items, currentSale?.appliedRate, exchangeRate, selectedItemId, validateOnHoldRules]);
 
   // Agregar ítem al carrito
-  const addItem = async (product, quantity = 1) => {
+  const addItem = useCallback(async (product, quantity = 1) => {
     let sale = currentSale;
     if (!sale || (sale.status !== 'Pending' && sale.status !== 'OnHold')) {
       sale = await createNewSale();
     }
     if (!sale?.id) return;
 
-    // Validar límite de crédito en pedidos en espera
     if (sale.status === 'OnHold') {
       const price = product.priceUSD || product.unitPriceUSD || 0;
       const currentTotal = (sale.items || []).reduce((acc, i) => acc + (i.subtotal || 0), 0);
@@ -135,10 +165,10 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentSale, createNewSale, exchangeRate, validateOnHoldRules]);
 
   // Cambiar cantidad
-  const updateQuantity = async (itemId, newQuantity) => {
+  const updateQuantity = useCallback(async (itemId, newQuantity) => {
     if (!currentSale?.id) return;
 
     if (newQuantity === '' || newQuantity === null || newQuantity === undefined || typeof newQuantity !== 'number' || isNaN(newQuantity)) {
@@ -170,40 +200,10 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  };
-
-  // Eliminar ítem
-  const removeItem = async (itemId) => {
-    if (!currentSale?.id) return;
-
-    if (currentSale.status === 'OnHold') {
-      const currentItems = currentSale.items || [];
-      const prospectiveItems = currentItems.filter(i => i.id !== itemId);
-      const prospectiveTotal = prospectiveItems.reduce((acc, i) => acc + i.subtotal, 0);
-      if (!validateOnHoldRules(prospectiveTotal)) {
-        return;
-      }
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale.appliedRate || 1);
-      const updatedSale = await removeItemFromSale(currentSale.id, itemId, rateToUse);
-      setCurrentSale(updatedSale);
-      if (selectedItemId === itemId) {
-        setSelectedItemId(null);
-      }
-    } catch (err) {
-      console.error('[CartContext] Error eliminando item:', err);
-      setError(err.message || 'Error al eliminar producto del carrito');
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [currentSale?.id, currentSale?.status, currentSale?.items, currentSale?.appliedRate, exchangeRate, removeItem, validateOnHoldRules]);
 
   // Cambiar lista de precios ("Retail" | "Wholesale")
-  const changePriceList = async (priceListType) => {
+  const changePriceList = useCallback(async (priceListType) => {
     if (!currentSale?.id) return;
     setLoading(true);
     setError(null);
@@ -219,15 +219,15 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentSale?.id]);
 
   // Limpiar carrito / Iniciar nueva venta
-  const resetCart = async () => {
+  const resetCart = useCallback(async () => {
     await createNewSale();
-  };
+  }, [createNewSale]);
 
   // Actualizar cliente de la venta
-  const updateCustomer = async (customerId) => {
+  const updateCustomer = useCallback(async (customerId) => {
     if (!currentSale?.id) return;
     setLoading(true);
     setError(null);
@@ -241,52 +241,69 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentSale?.id]);
 
   const items = currentSale?.items || [];
   const subtotalUSD = currentSale?.subtotal ?? items.reduce((acc, item) => acc + (item.subtotal || 0), 0);
   const totalUSD = currentSale?.totalUSD ?? subtotalUSD;
   const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale?.appliedRate || 1);
 
-  // Sum exact item subtotals in Bs.S to ensure TOTAL matches the sum of the "Subtotal Bs.S" column
   const itemsSubtotalBsS = items.reduce((acc, item) => acc + getLineAmounts(item, rateToUse).subtotalBsS, 0);
-
   const subtotalBsS = (currentSale?.subtotalBsS > 0) ? currentSale.subtotalBsS : itemsSubtotalBsS;
   const totalBsS = (currentSale?.totalBsS > 0) ? currentSale.totalBsS : itemsSubtotalBsS;
 
+  const stateValue = useMemo(() => ({
+    currentSale,
+    items,
+    selectedItemId,
+    setSelectedItemId,
+    loading,
+    error,
+    setError,
+    subtotalUSD,
+    totalUSD,
+    subtotalBsS,
+    totalBsS,
+  }), [currentSale, items, selectedItemId, loading, error, subtotalUSD, totalUSD, subtotalBsS, totalBsS]);
+
+  const actionsValue = useMemo(() => ({
+    addItem,
+    updateQuantity,
+    removeItem,
+    resetCart,
+    createNewSale,
+    loadExistingSale,
+    updateCustomer,
+    changePriceList,
+  }), [addItem, updateQuantity, removeItem, resetCart, createNewSale, loadExistingSale, updateCustomer, changePriceList]);
+
   return (
-    <CartContext.Provider
-      value={{
-        currentSale,
-        items,
-        selectedItemId,
-        setSelectedItemId,
-        loading,
-        error,
-        setError,
-        subtotalUSD,
-        totalUSD,
-        subtotalBsS,
-        totalBsS,
-        addItem,
-        updateQuantity,
-        removeItem,
-        resetCart,
-        createNewSale,
-        loadExistingSale,
-        updateCustomer,
-        changePriceList,
-      }}
-    >
-      {children}
-    </CartContext.Provider>
+    <CartStateContext.Provider value={stateValue}>
+      <CartActionsContext.Provider value={actionsValue}>
+        {children}
+      </CartActionsContext.Provider>
+    </CartStateContext.Provider>
   );
 }
 
-export function useCart() {
-  const context = useContext(CartContext);
+export function useCartState() {
+  const context = useContext(CartStateContext);
   if (!context) {
-    throw new Error('useCart debe ser usado dentro de un CartProvider');
+    throw new Error('useCartState debe ser usado dentro de un CartProvider');
   }
   return context;
+}
+
+export function useCartActions() {
+  const context = useContext(CartActionsContext);
+  if (!context) {
+    throw new Error('useCartActions debe ser usado dentro de un CartProvider');
+  }
+  return context;
+}
+
+export function useCart() {
+  const state = useCartState();
+  const actions = useCartActions();
+  return { ...state, ...actions };
 }

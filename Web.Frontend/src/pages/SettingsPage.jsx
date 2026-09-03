@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { getAllPaymentMethods } from '../services/paymentApi';
 import { BrowserQRCodeSvgWriter } from '@zxing/library';
-import { Settings, CreditCard, Plus, Save, Loader2, Check, X, QrCode, Server, Wifi, Copy, RefreshCw } from 'lucide-react';
+import { Settings, CreditCard, Plus, Loader2, Check, QrCode, Server, Wifi, Copy, RefreshCw } from 'lucide-react';
 
 export default function SettingsPage() {
   const [methods, setMethods] = useState([]);

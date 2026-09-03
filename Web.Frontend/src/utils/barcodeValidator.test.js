@@ -4,6 +4,7 @@ import { isValidBarcode, validateGs1Mod10Checksum } from './barcodeValidator.js'
 
 describe('barcodeValidator.js isValidBarcode & validateGs1Mod10Checksum', () => {
   it('1. Accepts valid standard 1D barcodes and valid GS1 Mod10 checksums', () => {
+    assert.strictEqual(validateGs1Mod10Checksum('7591001002009'), true);
     // Valid EAN-13
     assert.strictEqual(isValidBarcode('7591001002009'), true);
     assert.strictEqual(isValidBarcode('5901234123457'), true);

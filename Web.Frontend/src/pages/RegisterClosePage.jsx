@@ -280,7 +280,6 @@ export default function RegisterClosePage() {
                 {(zReport.details || []).map((d, idx) => {
                   const isSurplus = d.difference > 0.05;
                   const isShortage = d.difference < -0.05;
-                  const statusText = isSurplus ? 'Sobrante' : isShortage ? 'Faltante' : 'Cuadrado';
 
                   const diffColor = isSurplus
                     ? '#22c55e'

@@ -29,4 +29,7 @@ public class ProductQuickInfoDto
     public decimal ConversionFactor { get; set; } = 1.0000m;
     public int VariantCount { get; set; }
     public decimal ConsolidatedStock { get; set; }
+
+    public string DisplayPriceBsS => (IsGroupHeader && HasIndependentPricing) ? "Precios indiv." : PriceBsS.ToString("N2", System.Globalization.CultureInfo.InvariantCulture);
+    public string DisplayPriceUSD => (IsGroupHeader && HasIndependentPricing) ? "Precios indiv." : $"${PriceUSD.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)}";
 }

@@ -645,6 +645,11 @@ input:focus, select:focus, textarea:focus {
   color: var(--danger);
 }
 
+.suggestion-stock.na {
+  color: var(--text-muted, #94A3B8);
+  font-weight: 500;
+}
+
 /* EmptyCart */
 .empty-cart-container {
   display: flex;
@@ -3191,14 +3196,48 @@ input::placeholder {
 .variant-modal-title-box {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
-.variant-modal-title-box h3 {
+.variant-modal-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.variant-header-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  flex-shrink: 0;
+}
+
+.variant-header-icon {
+  color: #A78BFA;
+}
+
+.variant-modal-title-row h3 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 1.2rem;
   color: var(--text-primary, #f8fafc);
   font-weight: 700;
+}
+
+.variant-modal-multi-price-badge {
+  font-size: 0.8rem;
+  color: #94A3B8;
+  font-weight: 500;
+  background: rgba(148, 163, 184, 0.12);
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  display: inline-block;
+  width: fit-content;
 }
 
 .variant-modal-price-tag {
@@ -3208,9 +3247,9 @@ input::placeholder {
 }
 
 .variant-modal-price-tag .price-usd {
-  font-size: 1.1rem;
+  font-size: 1.15rem;
   font-weight: 800;
-  color: #10b981;
+  color: #34D399;
 }
 
 .variant-modal-price-tag .price-bss {
@@ -3227,7 +3266,7 @@ input::placeholder {
 
 .variant-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 12px;
   max-height: 55vh;
   overflow-y: auto;
@@ -3238,41 +3277,59 @@ input::placeholder {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 10px;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
   background: var(--bg-card, #0f172a);
-  border: 1px solid var(--border, #334155);
+  border: 1.5px solid var(--border, #334155);
   cursor: pointer;
   text-align: left;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   color: var(--text-primary, #f8fafc);
+  outline: none;
+  position: relative;
+  user-select: none;
 }
 
 .variant-card:hover:not(:disabled) {
-  border-color: var(--primary-color, #6366f1);
-  background: rgba(99, 102, 241, 0.08);
+  border-color: #8B5CF6;
+  background: rgba(139, 92, 246, 0.12);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.25);
+}
+
+.variant-card:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
 }
 
 .variant-card:disabled,
 .variant-card.out-of-stock {
-  opacity: 0.55;
+  opacity: 0.45;
   cursor: not-allowed;
-  filter: grayscale(0.6);
+  filter: grayscale(0.7);
+  border-color: #1E293B;
 }
 
 .variant-card-header {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .variant-name {
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--text-primary, #f8fafc);
+  line-height: 1.3;
+}
+
+.variant-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
 }
 
 .variant-sku {
@@ -3281,35 +3338,89 @@ input::placeholder {
   font-family: monospace;
 }
 
+.variant-factor-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #38BDF8;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.variant-card-price {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  margin-top: 6px;
+  letter-spacing: 0.01em;
+}
+
 .variant-card-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .variant-stock-badge {
   font-size: 0.75rem;
   font-weight: 600;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: 6px;
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
+  background: rgba(52, 211, 153, 0.15);
+  color: #34D399;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .variant-stock-badge.out {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  background: rgba(248, 113, 113, 0.15);
+  color: #F87171;
+}
+
+.variant-stock-icon {
+  flex-shrink: 0;
 }
 
 .variant-select-cta {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #C084FC;
+  transition: color 0.15s ease;
+}
+
+.variant-card:hover:not(:disabled) .variant-select-cta {
+  color: #E9D5FF;
+}
+
+.variant-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 1rem;
+}
+
+.variant-btn-cancel {
+  padding: 8px 22px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid #475569;
+  color: #CBD5E1;
+  font-size: 0.9rem;
   font-weight: 600;
-  color: var(--primary-color, #6366f1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.variant-btn-cancel:hover {
+  background: rgba(148, 163, 184, 0.15);
+  border-color: #94A3B8;
+  color: #FFFFFF;
 }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldCheck, DollarSign, Calculator, AlertCircle } from 'lucide-react';
+import { X, ShieldCheck, Calculator, AlertCircle } from 'lucide-react';
 import AtmAmountInput from '../ui/AtmAmountInput';
 import { formatBsS, formatUSD, formatNumberEs } from '../../utils/formatters';
 

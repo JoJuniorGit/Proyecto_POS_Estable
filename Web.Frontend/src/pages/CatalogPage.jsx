@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
-import { Package, Search, Loader2, RefreshCw, ChevronLeft, ChevronRight, Tag, DollarSign, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Package, Search, Loader2, RefreshCw, Tag, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD } from '../utils/formatters';
 import useDebounce from '../hooks/useDebounce';
@@ -90,18 +90,6 @@ export default function CatalogPage() {
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     loadProducts(debouncedSearch, 1);
-  };
-
-  const handlePrevPage = () => {
-    if (currentPage > 1) {
-      loadProducts(search, currentPage - 1);
-    }
-  };
-
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      loadProducts(search, currentPage + 1);
-    }
   };
 
   return (
