@@ -11,51 +11,84 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
 
+  const rateToUse = Number(sale?.appliedRate || exchangeRate || 1);
+
   useEffect(() => {
     if (sale?.items) {
-      setItems(sale.items.map(i => ({
-        productId: i.productId,
-        productName: i.productName,
-        displayProductName: i.displayProductName || (i.unitOfMeasure && i.unitOfMeasure !== 'Und' ? `${i.productName} (${i.unitOfMeasure})` : i.productName),
-        isFractional: i.isFractional,
-        unitOfMeasure: i.unitOfMeasure,
-        quantity: i.quantity,
-        unitPrice: i.unitPrice || 0,
-        unitPriceBsS: i.unitPriceBsS,
-        subtotal: (i.quantity || 1) * (i.unitPrice || 0),
-        subtotalBsS: i.subtotalBsS
-      })));
+      setItems(sale.items.map(i => {
+        const unitPriceUSD = Number(i.unitPrice ?? i.unitPriceUSD ?? 0);
+        const qty = Number(i.quantity) || 1;
+        const unitPriceBsS = Number(i.unitPriceBsS) > 0 ? Number(i.unitPriceBsS) : Math.round(unitPriceUSD * rateToUse * 100) / 100;
+        const isFractional = Boolean(
+          i.isFractional ||
+          i.isFractionable ||
+          i.IsFractional ||
+          i.IsFractionable ||
+          (i.unitOfMeasure && i.unitOfMeasure !== 'Und' && i.unitOfMeasure !== 0)
+        );
+
+        return {
+          productId: i.productId,
+          productName: i.productName,
+          displayProductName: i.displayProductName || (i.unitOfMeasure && i.unitOfMeasure !== 'Und' ? `${i.productName} (${i.unitOfMeasure})` : i.productName),
+          isFractional,
+          unitOfMeasure: i.unitOfMeasure || 'Und',
+          quantity: qty,
+          unitPrice: unitPriceUSD,
+          unitPriceBsS: unitPriceBsS,
+          subtotal: Math.round(qty * unitPriceUSD * 100) / 100,
+          subtotalBsS: Math.round(qty * unitPriceBsS * 100) / 100
+        };
+      }));
     } else {
       setItems([]);
     }
     setError(null);
-  }, [sale]);
+  }, [sale, exchangeRate]);
 
   const handleAddProduct = (prod) => {
     if (!prod) return;
-    const price = prod.priceUSD || prod.unitPriceUSD || 0;
+    const price = Number(prod.priceUSD || prod.unitPriceUSD || prod.priceRetailUSD || 0);
+    const isFrac = Boolean(
+      prod.isFractional ||
+      prod.isFractionable ||
+      prod.IsFractional ||
+      prod.IsFractionable ||
+      (prod.unitOfMeasure && prod.unitOfMeasure !== 'Und' && prod.unitOfMeasure !== 0)
+    );
+    const unitOfMeasure = prod.unitOfMeasure || 'Und';
+    const unitBsS = Math.round(price * rateToUse * 100) / 100;
+
     setItems(prev => {
       const existingIdx = prev.findIndex(i => i.productId === prod.id);
       if (existingIdx >= 0) {
         const updated = [...prev];
-        const step = !updated[existingIdx].isFractional ? 1 : (updated[existingIdx].unitOfMeasure === 'Grs' || updated[existingIdx].unitOfMeasure === 'Ml' ? 100 : updated[existingIdx].unitOfMeasure === 'Lb' ? 0.25 : 0.100);
-        const newQty = Math.round((updated[existingIdx].quantity + step) * 1000) / 1000;
+        const current = updated[existingIdx];
+        const step = !current.isFractional ? 1 : (current.unitOfMeasure === 'Grs' || current.unitOfMeasure === 'Ml' ? 100 : current.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
+        const newQty = Math.round(((Number(current.quantity) || 0) + step) * 1000) / 1000;
+        const currentUnitBsS = Number(current.unitPriceBsS) > 0 ? Number(current.unitPriceBsS) : Math.round((current.unitPrice || 0) * rateToUse * 100) / 100;
+
         updated[existingIdx] = {
-          ...updated[existingIdx],
+          ...current,
           quantity: newQty,
-          subtotal: newQty * updated[existingIdx].unitPrice
+          unitPriceBsS: currentUnitBsS,
+          subtotal: Math.round(newQty * current.unitPrice * 100) / 100,
+          subtotalBsS: Math.round(newQty * currentUnitBsS * 100) / 100
         };
         return updated;
       } else {
+        const initialQty = isFrac && (unitOfMeasure === 'Grs' || unitOfMeasure === 'Ml') ? 100 : (isFrac && unitOfMeasure === 'Lb' ? 0.25 : (isFrac ? 0.100 : 1));
         return [...prev, {
           productId: prod.id,
           productName: prod.name,
-          displayProductName: prod.displayProductName || (prod.unitOfMeasure && prod.unitOfMeasure !== 'Und' ? `${prod.name} (${prod.unitOfMeasure})` : prod.name),
-          isFractional: prod.isFractional,
-          unitOfMeasure: prod.unitOfMeasure,
-          quantity: 1,
+          displayProductName: prod.displayProductName || (unitOfMeasure !== 'Und' ? `${prod.name} (${unitOfMeasure})` : prod.name),
+          isFractional: isFrac,
+          unitOfMeasure: unitOfMeasure,
+          quantity: initialQty,
           unitPrice: price,
-          subtotal: price
+          unitPriceBsS: unitBsS,
+          subtotal: Math.round(initialQty * price * 100) / 100,
+          subtotalBsS: Math.round(initialQty * unitBsS * 100) / 100
         }];
       }
     });
@@ -70,17 +103,30 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       });
       return;
     }
-    const rawNum = parseFloat(newQty);
+    const rawNum = typeof newQty === 'number' ? newQty : parseFloat(String(newQty).replace(',', '.'));
     const targetItem = items[idx];
-    const isFrac = Boolean(targetItem?.isFractional);
+    const isFrac = Boolean(
+      targetItem?.isFractional ||
+      targetItem?.isFractionable ||
+      targetItem?.IsFractional ||
+      targetItem?.IsFractionable ||
+      (targetItem?.unitOfMeasure && targetItem.unitOfMeasure !== 'Und' && targetItem.unitOfMeasure !== 0)
+    );
     const qty = isNaN(rawNum) ? 1 : rawNum;
     const validatedQty = isFrac ? Math.round(qty * 1000) / 1000 : Math.max(1, Math.trunc(qty));
     setItems(prev => {
       const updated = [...prev];
+      const current = updated[idx];
+      const unitBsS = Number(current.unitPriceBsS) > 0 ? Number(current.unitPriceBsS) : Math.round((current.unitPrice || 0) * rateToUse * 100) / 100;
+      const subUSD = Math.round(validatedQty * (current.unitPrice || 0) * 100) / 100;
+      const subBsS = Math.round(validatedQty * unitBsS * 100) / 100;
+
       updated[idx] = {
-        ...updated[idx],
+        ...current,
         quantity: validatedQty,
-        subtotal: validatedQty * updated[idx].unitPrice
+        unitPriceBsS: unitBsS,
+        subtotal: subUSD,
+        subtotalBsS: subBsS
       };
       return updated;
     });
@@ -90,11 +136,13 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
     setItems(prev => prev.filter((_, i) => i !== idx));
   };
 
-  // Cálculos financieros
-  const totalPaidUSD = sale?.totalPaidUSD || (sale?.payments?.reduce((acc, p) => acc + (p.amount || 0), 0)) || 0;
-  const newTotalUSD = items.reduce((acc, i) => acc + (i.quantity * i.unitPrice), 0);
-  const rateToUse = sale?.appliedRate || exchangeRate || 1;
-  const newTotalBsS = items.reduce((acc, i) => acc + getLineAmounts(i, rateToUse).subtotalBsS, 0);
+  // Cálculos financieros reactivos en tiempo real
+  const totalPaidUSD = Number(sale?.totalPaidUSD || (sale?.payments?.reduce((acc, p) => acc + (p.amount || 0), 0)) || 0);
+  const newTotalUSD = items.reduce((acc, i) => acc + ((Number(i.quantity) || 0) * (Number(i.unitPrice) || 0)), 0);
+  const newTotalBsS = items.reduce((acc, i) => {
+    const unitBsS = Number(i.unitPriceBsS) > 0 ? Number(i.unitPriceBsS) : ((Number(i.unitPrice) || 0) * rateToUse);
+    return acc + ((Number(i.quantity) || 0) * unitBsS);
+  }, 0);
   const newRemainingBalanceUSD = Math.max(0, newTotalUSD - totalPaidUSD);
 
   // Validaciones
@@ -155,8 +203,17 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
             </thead>
             <tbody>
               {items.map((item, idx) => {
-                const { unitBsS, subtotalBsS } = getLineAmounts(item, rateToUse);
-                const step = !item.isFractional ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
+                const qty = Number(item.quantity) || 0;
+                const unitBsS = Number(item.unitPriceBsS) > 0 ? Number(item.unitPriceBsS) : Math.round(((Number(item.unitPrice) || 0) * rateToUse) * 100) / 100;
+                const subtotalBsS = Math.round(qty * unitBsS * 100) / 100;
+                const isFrac = Boolean(
+                  item.isFractional ||
+                  item.isFractionable ||
+                  item.IsFractional ||
+                  item.IsFractionable ||
+                  (item.unitOfMeasure && item.unitOfMeasure !== 'Und' && item.unitOfMeasure !== 0)
+                );
+                const step = !isFrac ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
 
                 return (
                   <tr key={idx} className="cart-row">
@@ -169,7 +226,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
                           className="qty-btn"
                           disabled={item.quantity <= step}
                           onClick={() => {
-                            const newQty = Math.max(step, Math.round((item.quantity - step) * 1000) / 1000);
+                            const newQty = Math.max(step, Math.round(((Number(item.quantity) || 0) - step) * 1000) / 1000);
                             handleUpdateQuantity(idx, newQty);
                           }}
                           title={item.quantity <= step ? "Cantidad mínima" : "Disminuir cantidad"}
@@ -177,9 +234,9 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
                           <Minus size={14} />
                         </button>
                         <QuantityInput
-                          item={item}
+                          item={{ ...item, isFractional: isFrac }}
                           value={item.quantity}
-                          isFractional={item.isFractional}
+                          isFractional={isFrac}
                           unitOfMeasure={item.unitOfMeasure}
                           onChange={(newQty) => handleUpdateQuantity(idx, newQty)}
                           onUpdateQty={(_, newQty) => handleUpdateQuantity(idx, newQty)}
@@ -188,7 +245,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
                           type="button"
                           className="qty-btn"
                           onClick={() => {
-                            const newQty = Math.round((item.quantity + step) * 1000) / 1000;
+                            const newQty = Math.round(((Number(item.quantity) || 0) + step) * 1000) / 1000;
                             handleUpdateQuantity(idx, newQty);
                           }}
                           title="Aumentar cantidad"

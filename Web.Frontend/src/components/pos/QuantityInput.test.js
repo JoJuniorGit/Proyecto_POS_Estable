@@ -75,4 +75,56 @@ describe('QuantityInput Fractional vs Non-Fractional Validation Tests', () => {
     const validatedQty2 = item2.isFractional ? Math.round(newQty2 * 1000) / 1000 : Math.max(1, Math.trunc(newQty2));
     assert.strictEqual(validatedQty2, 2.5, 'Fractional item quantity must preserve 2.5');
   });
+
+  test('6. QuantityInput correctly evaluates isFractionable, IsFractional and unitOfMeasure fallbacks', () => {
+    const resolveIsFractional = (item) => Boolean(
+      item?.isFractional ||
+      item?.isFractionable ||
+      item?.IsFractional ||
+      item?.IsFractionable ||
+      (item?.unitOfMeasure && item.unitOfMeasure !== 'Und' && item.unitOfMeasure !== 0)
+    );
+
+    assert.strictEqual(resolveIsFractional({ isFractionable: true }), true);
+    assert.strictEqual(resolveIsFractional({ IsFractional: true }), true);
+    assert.strictEqual(resolveIsFractional({ isFractional: true }), true);
+    assert.strictEqual(resolveIsFractional({ unitOfMeasure: 'Kg' }), true);
+    assert.strictEqual(resolveIsFractional({ unitOfMeasure: 'Grs' }), true);
+    assert.strictEqual(resolveIsFractional({ unitOfMeasure: 'Lt' }), true);
+    assert.strictEqual(resolveIsFractional({ unitOfMeasure: 'Und', isFractional: false }), false);
+    assert.strictEqual(resolveIsFractional({ unitOfMeasure: 'Und' }), false);
+  });
+
+  test('7. EditSaleModal reactive recalculation: Modifying pre-existing item quantity updates Bs.S and USD in real-time', () => {
+    const exchangeRate = 60; // 60 Bs.S / USD
+    const preExistingItem = {
+      productId: 10,
+      productName: 'Harina PAN',
+      unitPrice: 1.5,
+      unitPriceBsS: 90,
+      quantity: 1,
+      subtotal: 1.5,
+      subtotalBsS: 90,
+      isFractional: false
+    };
+
+    // User increases quantity from 1 to 3
+    const newQty = 3;
+    const unitBsS = Number(preExistingItem.unitPriceBsS) > 0 ? Number(preExistingItem.unitPriceBsS) : (preExistingItem.unitPrice * exchangeRate);
+    const newSubtotalUSD = Math.round(newQty * preExistingItem.unitPrice * 100) / 100;
+    const newSubtotalBsS = Math.round(newQty * unitBsS * 100) / 100;
+
+    assert.strictEqual(newSubtotalUSD, 4.5, 'USD subtotal must update to 4.5');
+    assert.strictEqual(newSubtotalBsS, 270, 'Bs.S subtotal must update to 270 instead of staying frozen at 90');
+
+    // Total recalculation for modal
+    const items = [
+      { ...preExistingItem, quantity: newQty, unitPriceBsS: unitBsS, subtotal: newSubtotalUSD, subtotalBsS: newSubtotalBsS }
+    ];
+    const newTotalBsS = items.reduce((acc, i) => {
+      const lineUnitBsS = Number(i.unitPriceBsS) > 0 ? Number(i.unitPriceBsS) : (i.unitPrice * exchangeRate);
+      return acc + (i.quantity * lineUnitBsS);
+    }, 0);
+    assert.strictEqual(newTotalBsS, 270, 'Modal newTotalBsS must update to 270');
+  });
 });

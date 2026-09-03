@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react';
 
 export default function QuantityInput({ item, value, isFractional: isFractionalProp, onUpdateQty, onChange, style }) {
-  const isFractional = Boolean(isFractionalProp ?? item?.isFractional);
+  const isFractional = Boolean(
+    isFractionalProp ?? (
+      item?.isFractional ||
+      item?.isFractionable ||
+      item?.IsFractional ||
+      item?.IsFractionable ||
+      (item?.unitOfMeasure && item.unitOfMeasure !== 'Und' && item.unitOfMeasure !== 0)
+    )
+  );
   const currentQty = item?.quantity !== undefined && item?.quantity !== null ? item.quantity : (value !== undefined && value !== null ? value : '');
   const itemId = item?.id ?? item?.productId ?? 0;
   const [localVal, setLocalVal] = useState(String(currentQty ?? ''));

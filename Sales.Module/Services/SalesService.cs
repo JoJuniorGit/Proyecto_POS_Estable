@@ -93,6 +93,7 @@ public class SalesService : ISalesService
             }
         }
 
+        await PopulateItemsMetadataAsync(_sale);
         return MapToDto(_sale);
     }
 
@@ -730,6 +731,7 @@ public class SalesService : ISalesService
             await _context.SaveChangesAsync();
         }
 
+        await PopulateItemsMetadataAsync(_sale);
         return MapToDto(_sale);
     }
 
@@ -945,6 +947,8 @@ public class SalesService : ISalesService
             .Where(s => s.Status == SaleStatus.OnHold)
             .OrderByDescending(s => s.Date)
             .ToListAsync();
+
+        await PopulateItemsMetadataAsync(sales);
 
         return sales.Select(s => MapToDto(s));
     }
@@ -1411,6 +1415,55 @@ public class SalesService : ISalesService
             {
                 throw new InvalidOperationException($"El nuevo total de la venta (${sale.TotalUSD:F2}) no puede ser menor al monto que ya ha sido abonado por el cliente (${totalPaidUsd:F2}).");
             }
+        }
+    }
+
+    private async Task PopulateItemsMetadataAsync(IEnumerable<Sale> sales)
+    {
+        if (_inventoryService == null || sales == null) return;
+
+        var allItems = sales.Where(s => s.Items != null).SelectMany(s => s.Items).ToList();
+        if (!allItems.Any()) return;
+
+        var productIds = allItems.Select(i => i.ProductId).Distinct().ToList();
+        var productsDict = new Dictionary<int, Product>();
+
+        try
+        {
+            var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
+            if (fetched != null && fetched.Count > 0)
+            {
+                productsDict = fetched.ToDictionary(p => p.Id);
+            }
+            else
+            {
+                foreach (var id in productIds)
+                {
+                    var p = await _inventoryService.GetProductByIdAsync(id);
+                    if (p != null) productsDict[p.Id] = p;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Error populating items metadata from inventory service.");
+        }
+
+        foreach (var item in allItems)
+        {
+            if (productsDict.TryGetValue(item.ProductId, out var prod) && prod != null)
+            {
+                item.IsFractional = prod.IsFractional;
+                item.UnitOfMeasure = prod.UnitOfMeasure;
+            }
+        }
+    }
+
+    private async Task PopulateItemsMetadataAsync(Sale sale)
+    {
+        if (sale != null)
+        {
+            await PopulateItemsMetadataAsync(new[] { sale });
         }
     }
 
