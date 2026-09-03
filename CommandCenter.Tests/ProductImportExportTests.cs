@@ -500,6 +500,8 @@ internal class MockProductImportServiceWithReadHeaderError : Desktop.Client.Serv
 internal class MockExchangeRateService : Desktop.Client.Services.IExchangeRateService
 {
     public decimal CurrentRate { get; set; } = 36.5m;
+    public DateTime? LastUpdated { get; set; } = DateTime.UtcNow;
+    public bool IsRateOutdated => false;
     public Task<(decimal Rate, DateTime? LastUpdated)> GetCurrentRateAsync() => Task.FromResult((CurrentRate, (DateTime?)DateTime.UtcNow));
     public Task SaveRateAsync(decimal rate) { CurrentRate = rate; return Task.CompletedTask; }
     public Task<List<Desktop.Client.Services.ExchangeRateHistoryDto>> GetHistoryAsync() => Task.FromResult(new List<Desktop.Client.Services.ExchangeRateHistoryDto>());

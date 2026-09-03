@@ -725,8 +725,13 @@ export default function BarcodeScannerModal({
                     <button
                       type="button"
                       className="scanner-qty-btn"
-                      onClick={() => onUpdateQuantity?.(item.id, Math.max(0, item.quantity - 1))}
-                      title="Disminuir cantidad"
+                      disabled={item.quantity <= 1}
+                      onClick={() => {
+                        if (item.quantity > 1) {
+                          onUpdateQuantity?.(item.id, item.quantity - 1);
+                        }
+                      }}
+                      title={item.quantity <= 1 ? "Cantidad mínima" : "Disminuir cantidad"}
                       aria-label="Disminuir cantidad"
                     >
                       <Minus size={13} />

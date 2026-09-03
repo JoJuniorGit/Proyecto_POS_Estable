@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import Modal from '../ui/Modal';
+import ConfirmModal from '../ui/ConfirmModal';
 import PaymentForm from './PaymentForm';
 import PaymentList from './PaymentList';
 import { getActivePaymentMethods } from '../../services/paymentApi';
@@ -11,7 +12,7 @@ import { formatBsS } from '../../utils/formatters';
 import CustomerSelectorCard from './CustomerSelectorCard';
 import { Check, Loader2, PackageCheck } from 'lucide-react';
 
-export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale = null, onCompleteSale = null }) {
+const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale = null, onCompleteSale = null }, ref) {
   const { currentSale, totalBsS: cartTotalBsS, totalUSD: cartTotalUSD, resetCart, updateCustomer } = useCart();
   const { exchangeRate } = useExchangeRate();
   const { user } = useAuth();
@@ -22,6 +23,21 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
   const [selectedSaleCustomer, setSelectedSaleCustomer] = useState(null);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
+  const handleRequestClose = useCallback(() => {
+    if (payments.length > 0) {
+      setShowDiscardConfirm(true);
+      return false;
+    }
+    onClose?.();
+    return true;
+  }, [payments.length, onClose]);
+
+  useImperativeHandle(ref, () => ({
+    requestClose: handleRequestClose,
+    hasPayments: payments.length > 0,
+  }), [handleRequestClose, payments.length]);
 
   // Determinar la venta a procesar (priorizando actualización local en la sesión de cobro)
   const activeSale = selectedSaleCustomer || overrideSale || currentSale;
@@ -156,13 +172,14 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
   };
 
   return (
-    <Modal 
-      isOpen={isOpen} 
-      onClose={onClose} 
-      title={overrideSale ? (isFullLiquidation ? "Liquidar Cuenta Completa" : "Liquidar / Registrar Abono a Cuenta") : "Cobranza"} 
-      maxWidth="560px"
-      centerTitle={true}
-    >
+    <>
+      <Modal 
+        isOpen={isOpen} 
+        onClose={handleRequestClose} 
+        title={overrideSale ? (isFullLiquidation ? "Liquidar Cuenta Completa" : "Liquidar / Registrar Abono a Cuenta") : "Cobranza"} 
+        maxWidth="560px"
+        centerTitle={true}
+      >
       <CustomerSelectorCard
         currentCustomer={activeSale?.customer || (activeSale?.customerName ? { id: activeSale.customerId, name: activeSale.customerName, cedulaOrRif: activeSale.customerCedula } : null)}
         isPendingPickup={effectiveIsPendingPickup}
@@ -286,5 +303,24 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale
         </button>
       </div>
     </Modal>
+
+    {/* Confirmación personalizada si intenta salir con al menos 1 pago registrado */}
+    <ConfirmModal
+      isOpen={showDiscardConfirm}
+      onClose={() => setShowDiscardConfirm(false)}
+      onConfirm={() => {
+        setShowDiscardConfirm(false);
+        setPayments([]);
+        onClose?.();
+      }}
+      title="¿Cancelar cobro en curso?"
+      message={`Tiene ${payments.length} pago(s) registrado(s) por un monto de $${paidUsd.toFixed(2)} USD (${formatBsS(paidBsS)}). Si sale ahora, se descartarán los pagos ingresados.`}
+      cancelText="Continuar Cobro"
+      confirmText="Descartar y Salir"
+      variant="danger"
+    />
+  </>
   );
-}
+});
+
+export default CheckoutModal;

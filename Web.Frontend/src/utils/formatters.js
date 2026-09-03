@@ -82,7 +82,7 @@ export function formatAtmInput(rawValue, decimals = 2) {
 export function formatDate(value) {
   if (!value) return '-';
   const d = new Date(value);
-  return isNaN(d.getTime()) ? '-' : d.toLocaleDateString('es-VE');
+  return isNaN(d.getTime()) ? '-' : d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 /**

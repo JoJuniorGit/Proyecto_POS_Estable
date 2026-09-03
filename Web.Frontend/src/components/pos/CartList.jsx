@@ -40,18 +40,26 @@ export default function CartList({ items, selectedItemId, onSelectItem, onUpdate
 
               <div className="cart-card-bottom">
                 <div className="qty-controls" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    type="button"
-                    className="qty-btn"
-                    onClick={() => {
-                      const step = !item.isFractional ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
-                      const newQty = Math.round((item.quantity - step) * 1000) / 1000;
-                      if (newQty > 0) onUpdateQty(item.id, newQty);
-                      else if (onRemoveItem) onRemoveItem(item.id);
-                    }}
-                  >
-                    <Minus size={14} />
-                  </button>
+                  {(() => {
+                    const step = !item.isFractional ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
+                    const isAtMin = item.quantity <= step;
+                    return (
+                      <button
+                        type="button"
+                        className="qty-btn"
+                        disabled={isAtMin}
+                        onClick={() => {
+                          const newQty = Math.round((item.quantity - step) * 1000) / 1000;
+                          if (newQty >= step) {
+                            onUpdateQty(item.id, newQty);
+                          }
+                        }}
+                        title={isAtMin ? "Cantidad mínima" : "Disminuir cantidad"}
+                      >
+                        <Minus size={14} />
+                      </button>
+                    );
+                  })()}
                   <QuantityInput item={item} onUpdateQty={onUpdateQty} style={{
                     width: '52px',
                     textAlign: 'center',

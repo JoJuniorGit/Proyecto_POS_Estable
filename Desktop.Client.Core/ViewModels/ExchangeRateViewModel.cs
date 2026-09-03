@@ -28,7 +28,25 @@ public partial class ExchangeRateViewModel : ObservableObject
     public DateTime? LastUpdated
     {
         get => _last_updated;
-        set => SetProperty(ref _last_updated, value);
+        set
+        {
+            if (SetProperty(ref _last_updated, value))
+            {
+                OnPropertyChanged(nameof(IsRateOutdated));
+                OnPropertyChanged(nameof(LastUpdatedLocalFormatted));
+            }
+        }
+    }
+
+    public bool IsRateOutdated => LastUpdated == null || (DateTime.UtcNow - LastUpdated.Value.ToUniversalTime()) > TimeSpan.FromHours(24);
+
+    public string LastUpdatedLocalFormatted => LastUpdated?.ToLocalTime().ToString("g") ?? "Nunca";
+
+    private bool _can_retry_sync;
+    public bool CanRetrySync
+    {
+        get => _can_retry_sync;
+        set => SetProperty(ref _can_retry_sync, value);
     }
 
     private bool _is_loading;
@@ -111,14 +129,15 @@ public partial class ExchangeRateViewModel : ObservableObject
 
             CurrentRate = _new_rate;
             LastUpdated = DateTime.UtcNow;
-            StatusMessage = "Exchange rate saved successfully.";
+            CanRetrySync = false;
+            StatusMessage = "Tasa de cambio guardada correctamente.";
 
             // Refresh history
             await RefreshHistoryAsync();
         }
         catch (System.Exception _ex)
         {
-            StatusMessage = $"Error saving: {_ex.Message}";
+            StatusMessage = $"Error al guardar: {_ex.Message}";
         }
         finally
         {
@@ -130,7 +149,8 @@ public partial class ExchangeRateViewModel : ObservableObject
     private async Task SyncBcvAsync()
     {
         IsSaving = true;
-        StatusMessage = "Syncing with BCV...";
+        StatusMessage = "Sincronizando con BCV...";
+        CanRetrySync = false;
         try
         {
             var (_rate, _last_updated_val) = await _exchange_rate_service.SyncBcvAsync();
@@ -139,7 +159,7 @@ public partial class ExchangeRateViewModel : ObservableObject
                 CurrentRate = _rate;
                 NewRateText = _rate.ToString("N2");
                 LastUpdated = _last_updated_val;
-                StatusMessage = "BCV Exchange rate synced successfully.";
+                StatusMessage = "Tasa BCV sincronizada correctamente.";
 
                 // Refresh history
                 await RefreshHistoryAsync();
@@ -147,7 +167,8 @@ public partial class ExchangeRateViewModel : ObservableObject
         }
         catch (System.Exception _ex)
         {
-            StatusMessage = $"Error syncing with BCV: {_ex.Message}";
+            CanRetrySync = true;
+            StatusMessage = $"{_ex.Message} Puede reintentar la sincronización o ingresar la tasa del día manualmente.";
         }
         finally
         {

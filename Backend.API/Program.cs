@@ -119,9 +119,8 @@ try
         cfg.RegisterServicesFromAssembly(typeof(Inventory.Module.Services.InventoryService).Assembly);
     });
 
-    // BCV Services
+    // BCV Services (Sincronización exclusivamente manual a demanda)
     builder.Services.AddHttpClient<BcvScraperService>();
-    builder.Services.AddHostedService<Backend.API.Jobs.BcvExchangeRateJob>();
     builder.Services.AddHostedService<Backend.API.Services.CacheMetricsLoggerService>();
     builder.Services.AddSignalR();
 

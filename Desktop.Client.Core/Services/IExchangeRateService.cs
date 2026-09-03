@@ -3,6 +3,8 @@ namespace Desktop.Client.Services;
 public interface IExchangeRateService : IAsyncDisposable
 {
     decimal CurrentRate { get; set; }
+    DateTime? LastUpdated { get; }
+    bool IsRateOutdated { get; }
     Task<(decimal Rate, DateTime? LastUpdated)> GetCurrentRateAsync();
     Task SaveRateAsync(decimal rate);
     Task<List<ExchangeRateHistoryDto>> GetHistoryAsync();

@@ -5,7 +5,7 @@ import { DollarSign, RefreshCw, Save, Loader2, History } from 'lucide-react';
 import { formatBsS, formatNumberEs } from '../utils/formatters';
 
 export default function ExchangeRatePage() {
-  const { exchangeRate, setExchangeRate } = useExchangeRate();
+  const { exchangeRate, setExchangeRate, lastUpdated, isRateOutdated } = useExchangeRate();
   const [newRateText, setNewRateText] = useState('');
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -71,7 +71,11 @@ export default function ExchangeRatePage() {
       }
     } catch (err) {
       console.error('[ExchangeRatePage] Error sincronizando BCV:', err);
-      setMessage({ type: 'danger', text: err.message || 'Error al conectar con BCV.' });
+      setMessage({
+        type: 'danger',
+        text: err.message || 'No se pudo sincronizar la tasa con el BCV. Verifique la conexión o ingrese la tasa manualmente.',
+        canRetry: true,
+      });
     } finally {
       setIsSyncing(false);
     }
@@ -81,9 +85,37 @@ export default function ExchangeRatePage() {
     <div className="exchange-page" style={{ maxWidth: '800px', margin: '0 auto' }}>
       <h2 className="page-title mb-4">Gestión de Tasa de Cambio</h2>
 
+      {/* Modo Manual Informativo */}
+      <div className="alert alert-info mb-3" style={{ fontSize: '0.875rem' }}>
+        ℹ️ La tasa de cambio opera en <strong>modo manual</strong>. Puede sincronizar con el BCV a demanda o ingresar la tasa oficial de la jornada directamente.
+      </div>
+
+      {/* Alerta de Desactualización (> 24h) */}
+      {isRateOutdated && (
+        <div className="alert alert-warning mb-3" style={{ fontSize: '0.875rem', borderColor: '#f59e0b' }}>
+          ⚠️ <strong>Tasa desactualizada:</strong> No se ha registrado actualización en más de 24 horas. Por favor sincronice con el BCV o establezca la tasa del día.
+        </div>
+      )}
+
       {message && (
         <div className={`alert alert-${message.type} mb-4`}>
-          {message.text}
+          <div>{message.text}</div>
+          {message.canRetry && (
+            <div className="mt-2 flex-align-center gap-2">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={handleSyncBcv}
+                disabled={isSyncing}
+              >
+                {isSyncing ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+                Reintentar Sincronización
+              </button>
+              <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+                o puede ingresar la tasa manualmente abajo
+              </span>
+            </div>
+          )}
         </div>
       )}
 

@@ -15,11 +15,12 @@ import {
 } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { useAuth } from '../context/AuthContext';
-import { formatBsS, formatUSD, formatNumberEs } from '../utils/formatters';
+import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime } from '../utils/formatters';
 
 import CashInModal from '../components/register/CashInModal';
 import CashOutModal from '../components/register/CashOutModal';
 import CashAdvanceModal from '../components/register/CashAdvanceModal';
+import Pagination from '../components/ui/Pagination';
 
 export default function RegisterPage() {
   const { exchangeRate } = useExchangeRate();
@@ -464,7 +465,7 @@ export default function RegisterPage() {
                     <table className="table table-hover w-100 m-0 cart-table history-main-table" style={{ minWidth: '780px' }}>
                       <thead className="sticky-header">
                         <tr className="bg-light">
-                          <th style={{ width: '100px', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--bg-surface)' }}>Hora</th>
+                          <th style={{ width: '125px', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--bg-surface)' }}>FECHA / HORA</th>
                           <th style={{ width: '105px', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--bg-surface)' }}>Tipo</th>
                           <th style={{ width: '135px', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--bg-surface)' }}>Origen</th>
                           <th style={{ minWidth: '180px', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--bg-surface)' }}>Concepto / Detalle</th>
@@ -484,9 +485,16 @@ export default function RegisterPage() {
 
                           return (
                             <tr key={tx.id || idx}>
-                              {/* Hora (Bloqueo de salto de línea) */}
-                              <td className="font-mono text-xs font-medium text-muted" style={{ whiteSpace: 'nowrap' }}>
-                                {formatTime(tx.transactionTimeLocal || tx.transactionTime)}
+                              {/* Fecha / Hora (Columna Apilada) */}
+                              <td style={{ whiteSpace: 'nowrap' }}>
+                                <div className="flex-col" style={{ lineHeight: '1.25' }}>
+                                  <span className="font-semibold text-xs" style={{ color: 'var(--text-primary)' }}>
+                                    {formatDate(tx.transactionTimeLocal || tx.transactionTime)}
+                                  </span>
+                                  <span className="text-muted font-mono" style={{ fontSize: '0.75rem' }}>
+                                    {formatTime(tx.transactionTimeLocal || tx.transactionTime)}
+                                  </span>
+                                </div>
                               </td>
 
                               {/* Tipo Badge */}
@@ -536,36 +544,19 @@ export default function RegisterPage() {
                     </table>
                   </div>
 
-                  {/* Pie de Paginación */}
-                  <div className="flex-between flex-align-center mt-3 pt-3 border-top text-xs flex-wrap gap-2 w-100">
-                    <span className="text-muted">
-                      Mostrando <strong>{startIndex + 1}</strong> a <strong>{Math.min(startIndex + ITEMS_PER_PAGE, filteredTransactions.length)}</strong> de <strong>{filteredTransactions.length}</strong> movimientos
-                    </span>
-
-                    {totalPages > 1 && (
-                      <div className="flex-align-center gap-1">
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm py-1 px-2 text-xs"
-                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                          disabled={currentPage === 1}
-                        >
-                          Anterior
-                        </button>
-                        <span className="px-2 font-semibold">
-                          Página {currentPage} de {totalPages}
-                        </span>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm py-1 px-2 text-xs"
-                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                          disabled={currentPage === totalPages}
-                        >
-                          Siguiente
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  {/* Pie de Paginación Estandarizado (Igual a Historial de Ventas) */}
+                  {filteredTransactions.length > 0 && (
+                    <div className="mt-3">
+                      <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        totalCount={filteredTransactions.length}
+                        onPageChange={(page) => setCurrentPage(page)}
+                        loading={loading}
+                        itemLabel="movimientos"
+                      />
+                    </div>
+                  )}
                 </>
               )}
             </div>

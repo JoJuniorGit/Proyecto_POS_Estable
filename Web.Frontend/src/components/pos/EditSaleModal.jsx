@@ -165,11 +165,12 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
                         <button
                           type="button"
                           className="qty-btn"
+                          disabled={item.quantity <= step}
                           onClick={() => {
                             const newQty = Math.max(step, Math.round((item.quantity - step) * 1000) / 1000);
                             handleUpdateQuantity(idx, newQty);
                           }}
-                          title="Disminuir cantidad"
+                          title={item.quantity <= step ? "Cantidad mínima" : "Disminuir cantidad"}
                         >
                           <Minus size={14} />
                         </button>

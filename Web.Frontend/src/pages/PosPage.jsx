@@ -4,6 +4,7 @@ import { useExchangeRate } from '../context/ExchangeRateContext';
 import { usePosHotkeys } from '../hooks/usePosHotkeys';
 import { useScannerTrap } from '../hooks/useScannerTrap';
 import { usePosModalFlow } from '../hooks/usePosModalFlow';
+import { useMobileBackGuard } from '../hooks/useMobileBackGuard';
 import SearchBar from '../components/pos/SearchBar';
 import EmptyCart from '../components/pos/EmptyCart';
 import CartTable from '../components/pos/CartTable';
@@ -12,6 +13,7 @@ import SummaryPanel from '../components/pos/SummaryPanel';
 import CustomerModal from '../components/pos/CustomerModal';
 import BarcodeScannerModal from '../components/pos/BarcodeScannerModal';
 import VariantSelectorModal from '../components/pos/VariantSelectorModal';
+import ConfirmModal from '../components/ui/ConfirmModal';
 import { getProductBySku } from '../services/productsApi';
 import { isValidBarcode } from '../utils/barcodeValidator';
 import { Edit2, ScanLine } from 'lucide-react';
@@ -93,17 +95,41 @@ export default function PosPage({
       if (selectedItemId) removeItem(selectedItemId);
     },
     onIncreaseQuantity: () => {
-      if (selectedItemId) {
-        const item = items.find((i) => i.id === selectedItemId);
-        if (item) updateQuantity(item.id, item.quantity + 1);
+      const targetId = selectedItemId || (items.length > 0 ? items[items.length - 1].id : null);
+      if (targetId) {
+        const item = items.find((i) => i.id === targetId);
+        if (item) {
+          const step = !item.isFractional ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
+          const newQty = Math.round((item.quantity + step) * 1000) / 1000;
+          updateQuantity(item.id, newQty);
+        }
       }
     },
     onDecreaseQuantity: () => {
-      if (selectedItemId) {
-        const item = items.find((i) => i.id === selectedItemId);
-        if (item && item.quantity > 1) updateQuantity(item.id, item.quantity - 1);
+      const targetId = selectedItemId || (items.length > 0 ? items[items.length - 1].id : null);
+      if (targetId) {
+        const item = items.find((i) => i.id === targetId);
+        if (item) {
+          const step = !item.isFractional ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
+          const newQty = Math.round((item.quantity - step) * 1000) / 1000;
+          if (newQty >= step) {
+            updateQuantity(item.id, newQty);
+          }
+        }
       }
     },
+  });
+
+  // Intercepción de navegación "Atrás" en móviles para cerrar modales y prevenir pérdida de carritos
+  const {
+    isConfirmExitOpen,
+    handleCancelExit,
+    handleConfirmExit,
+  } = useMobileBackGuard({
+    activeModal,
+    onCloseModal: handleCloseActiveModal,
+    hasItems: items.length > 0,
+    enabled: true,
   });
 
   const handleSelectProduct = (product) => {
@@ -303,6 +329,18 @@ export default function PosPage({
         onClose={() => setVariantParentProduct(null)}
         parentProduct={variantParentProduct}
         onSelectVariant={(variant) => addItem(variant, 1)}
+      />
+
+      {/* Modal de confirmación personalizada al intentar salir con productos en el carrito */}
+      <ConfirmModal
+        isOpen={isConfirmExitOpen}
+        onClose={handleCancelExit}
+        onConfirm={handleConfirmExit}
+        title="¿Abandonar venta actual?"
+        message="Tiene productos agregados en el carrito de compras. Si abandona la página ahora, se perderá la venta en curso."
+        cancelText="Continuar en POS"
+        confirmText="Salir del Sistema"
+        variant="warning"
       />
     </div>
   );

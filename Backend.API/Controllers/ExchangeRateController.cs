@@ -125,10 +125,30 @@ public class ExchangeRateController : ControllerBase
         {
             return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "El rol Cajero no tiene permisos para sincronizar la tasa de cambio.");
         }
-        var rate = await scraperService.GetOfficialUsdRateAsync();
-        if (!rate.HasValue)
+        decimal? rate;
+        try
         {
-            return StatusCode(500, "Failed to extract the official exchange rate from BCV.");
+            rate = await scraperService.GetOfficialUsdRateAsync();
+            if (!rate.HasValue)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new { Message = "No se pudo extraer la tasa oficial del BCV. Verifique el portal o ingrese la tasa manualmente." });
+            }
+        }
+        catch (TimeoutException ex)
+        {
+            return StatusCode(StatusCodes.Status504GatewayTimeout, new { Message = "Tiempo de espera agotado al conectar con el portal del BCV. Puede reintentar la sincronización o ingresar la tasa manualmente.", Detail = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { Message = "La estructura del portal del BCV ha cambiado o no contiene el formato esperado. Por favor, reintente o ingrese la tasa manualmente.", Detail = ex.Message });
+        }
+        catch (HttpRequestException ex)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { Message = "Error de red o conexión al consultar el portal del BCV. Verifique el acceso a internet o ingrese la tasa manualmente.", Detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new { Message = $"Error inesperado al sincronizar con el BCV: {ex.Message}" });
         }
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -152,13 +172,13 @@ public class ExchangeRateController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        // Invalidate today's cached exchange rate
+        // Invalidate today's cached exchange rate immediately
         _inventoryService.InvalidateTodayExchangeRateCache();
 
         // Recalculate OnHold sales with the new exchange rate
         await _salesService.RecalculateOnHoldSalesAsync(rate.Value);
 
-        // Broadcast to clients
+        // Broadcast to clients via SignalR
         await _hubContext.Clients.All.SendAsync("ReceiveRateUpdate", rate.Value);
         await _hubContext.Clients.All.SendAsync("OnHoldSalesUpdated");
 

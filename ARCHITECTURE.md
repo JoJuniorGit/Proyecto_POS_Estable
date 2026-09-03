@@ -122,7 +122,7 @@ Dependencias: `Core`, `Sales.Module`, `Inventory.Module`, `MediatR`, `Quartz`
 | `Controllers/` | AuthController, CashDrawerController, DailyClosureController, ExchangeRateController, HealthController, PaymentMethodsController, ProductsController, ReservationsController, SalesController, SettingsController, ShiftsController, UsersController, VersionCheckController | 13 controladores REST |
 | `Services/` | BcvScraperService, CurrentUserService, PasswordHasher, TokenService | Servicios auxiliares |
 | `Hubs/` | ExchangeRateHub | SignalR hub para tasas de cambio en tiempo real |
-| `Jobs/` | BcvExchangeRateJob, StockMovementArchiverJob | Tareas programadas (Quartz) |
+| `Jobs/` | StockMovementArchiverJob (BcvExchangeRateJob retirado a favor de modo manual) | Tareas programadas (Quartz / BackgroundService) |
 | `Middleware/` | GlobalExceptionHandlerMiddleware, VersionCheckMiddleware | Middleware de excepciones y versioning |
 | `DTOs/` | AdjustStockRequestDto, AdjustStockResultDto, BarcodeScanResultDto, CashDrawerOpenRequestDto, etc. | DTOs de API |
 
@@ -207,21 +207,23 @@ public record SaleItemSnapshot(
 
 **Handler:** `InventorySaleMadeEventHandler` descuenta stock con retry (3 intentos) y logging de fallos críticos.
 
-### 4.2 SignalR: ExchangeRateHub
+### 4.2 SignalR: ExchangeRateHub (Sincronización Manual y a Demanda)
 
 ```
-┌──────────────┐    Broadcast    ┌──────────────┐    Subscribe   ┌──────────────────┐
-│ BcvExchange  │ ──────────────►│ ExchangeRate │ ──────────────►│ Web Frontend     │
-│ RateJob      │                │ Hub          │                │ (ExchangeRateCtx)│
-│ (Quartz)     │                │              │                │ Desktop Client   │
-└──────────────┘                └──────────────┘                │ (ExchangeRateSvc)│
-                                                                └──────────────────┘
+┌──────────────────────┐    POST /sync-bcv    ┌──────────────┐    Broadcast    ┌──────────────────┐
+│ Administrador        │ ───────────────────► │ ExchangeRate │ ──────────────► │ Web Frontend     │
+│ (Input Manual o      │    POST /api/rate    │ Hub          │                 │ (ExchangeRateCtx)│
+│  Botón Sincronizar)  │ ◄─────────────────── │              │                 │ Desktop Client   │
+└──────────────────────┘   200 OK + Caché     └──────────────┘                 │ (ExchangeRateSvc)│
+                           Purge bcv_rate_today                                └──────────────────┘
 ```
 
 **Flujo:**
-1. `BcvExchangeRateJob` ejecuta cada X minutos (Quartz)
-2. Scraping de BCV → nueva tasa → `ExchangeRateHub.Clients.All.SendAsync("ReceiveRate", rate)`
-3. Web y Desktop reciben la actualización en tiempo real
+1. **Modo Exclusivamente Manual:** No existen tareas de fondo automáticas (`BcvExchangeRateJob` desactivado del contenedor de servicios).
+2. El administrador digita la tasa manualmente o presiona el botón **"Sincronizar BCV"** (`POST /api/exchange-rate/sync-bcv` con timeout configurable de 10s y mapeo de errores `502`/`504`).
+3. El backend persiste la tasa en `ExchangeRateHistory`, ejecuta `_inventoryService.InvalidateTodayExchangeRateCache()` (purgando la clave en memoria `bcv_rate_today`) y recalcula los pedidos en espera.
+4. `ExchangeRateHub.Clients.All.SendAsync("ReceiveRateUpdate", rate)` difunde el nuevo valor a todos los clientes Web y Desktop en tiempo real.
+5. **Consideración Multi-instancia:** En despliegues distribuidos multi-nodo, la invalidación de `IMemoryCache` local debe evolucionar a un bus distribuido de invalidación (ej. Redis Pub/Sub o IDistributedCache) para garantizar coherencia entre réplicas.
 
 ### 4.3 HealthPolling (Desktop Client)
 

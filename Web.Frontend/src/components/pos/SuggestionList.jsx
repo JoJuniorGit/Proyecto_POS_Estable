@@ -44,7 +44,14 @@ export default function SuggestionList({ suggestions, isLoading, onSelectSuggest
                 className="suggestion-price"
                 title={item.isGroupHeader && item.hasIndependentPricing ? 'Este producto agrupador posee costos y precios individuales por variante' : undefined}
               >
-                {item.isGroupHeader && item.hasIndependentPricing ? 'Precios indiv.' : `Bs.S ${priceBsS.toFixed(2)}`}
+                {item.isGroupHeader && item.hasIndependentPricing ? (
+                  'Precios indiv.'
+                ) : (
+                  <>
+                    <span className="price-currency-symbol">Bs.S </span>
+                    {priceBsS.toFixed(2)}
+                  </>
+                )}
               </span>
               <span 
                 className={`suggestion-stock ${

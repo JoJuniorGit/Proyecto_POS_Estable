@@ -234,8 +234,23 @@
                       Visibility="{Binding IsSessionActive, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:PerformantDataGrid.Columns>
                     
-                    <!-- Fecha / Hora -->
-                    <DataGridTextColumn Header="Fecha / Hora" Binding="{Binding TransactionTimeLocal, StringFormat={}{0:dd/MM/yyyy hh:mm tt}}" Width="150"/>
+                    <!-- FECHA / HORA (Columna Apilada) -->
+                    <DataGridTemplateColumn Header="FECHA / HORA" Width="130">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Vertical" VerticalAlignment="Center" Margin="0,2">
+                                    <TextBlock Text="{Binding TransactionTimeLocal, StringFormat={}{0:dd/MM/yyyy}}"
+                                               FontWeight="SemiBold"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource MaterialDesignBody}"/>
+                                    <TextBlock Text="{Binding TransactionTimeLocal, StringFormat={}{0:hh:mm tt}}"
+                                               FontSize="10"
+                                               Foreground="Gray"
+                                               Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                     
                     <!-- Tipo (Badge) -->
                     <DataGridTemplateColumn Header="Tipo" Width="100">
@@ -340,24 +355,26 @@
                                VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding TotalPhysicalTransactions, StringFormat={}Total registros: {0}}" VerticalAlignment="Center" Margin="0,0,16,0" FontSize="12" Foreground="Gray"/>
+
                         <Button Command="{Binding PreviousPageCommand}"
                                 Style="{DynamicResource MaterialDesignOutlinedButton}"
-                                Height="30" Padding="10,0" Margin="0,0,8,0">
+                                Height="32" Padding="8,0" Margin="0,0,6,0">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="ChevronLeft" Width="16" Height="16" VerticalAlignment="Center"/>
-                                <TextBlock Text="Anterior" Margin="4,0,0,0" VerticalAlignment="Center" FontSize="12"/>
+                                <TextBlock Text="Anterior" VerticalAlignment="Center" Margin="2,0,0,0"/>
                             </StackPanel>
                         </Button>
 
                         <TextBlock Text="{Binding CurrentPageDisplay}"
-                                   VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
-                                   Margin="6,0"/>
+                                   VerticalAlignment="Center" FontSize="12" FontWeight="Bold"
+                                   Margin="8,0"/>
 
                         <Button Command="{Binding NextPageCommand}"
                                 Style="{DynamicResource MaterialDesignOutlinedButton}"
-                                Height="30" Padding="10,0" Margin="8,0,0,0">
+                                Height="32" Padding="8,0" Margin="6,0,0,0">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Siguiente" Margin="0,0,4,0" VerticalAlignment="Center" FontSize="12"/>
+                                <TextBlock Text="Siguiente" VerticalAlignment="Center" Margin="0,0,2,0"/>
                                 <materialDesign:PackIcon Kind="ChevronRight" Width="16" Height="16" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>

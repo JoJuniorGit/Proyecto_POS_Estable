@@ -16,10 +16,23 @@ export function usePosModalFlow(isExternalModalOpen = false, onCloseExternalModa
     : null;
 
   const handleCloseActiveModal = useCallback(() => {
-    if (variantParentProduct) setVariantParentProduct(null);
-    else if (isCustomerModalOpen) setIsCustomerModalOpen(false);
-    else if (isScannerOpen) setIsScannerOpen(false);
-    else if (onCloseExternalModal) onCloseExternalModal();
+    if (variantParentProduct) {
+      setVariantParentProduct(null);
+      return true;
+    }
+    if (isCustomerModalOpen) {
+      setIsCustomerModalOpen(false);
+      return true;
+    }
+    if (isScannerOpen) {
+      setIsScannerOpen(false);
+      return true;
+    }
+    if (onCloseExternalModal) {
+      const res = onCloseExternalModal();
+      return res !== undefined ? res : true;
+    }
+    return false;
   }, [variantParentProduct, isCustomerModalOpen, isScannerOpen, onCloseExternalModal]);
 
   return {

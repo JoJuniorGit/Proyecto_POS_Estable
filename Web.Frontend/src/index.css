@@ -470,6 +470,18 @@ input:focus, select:focus, textarea:focus {
   border-radius: var(--radius-full);
 }
 
+.topbar-rate.rate-outdated {
+  border: 1px dashed #f59e0b;
+  color: #b45309;
+  background-color: rgba(245, 158, 11, 0.1);
+}
+
+:root[data-theme="dark"] .topbar-rate.rate-outdated {
+  border-color: #f59e0b;
+  color: #fbbf24;
+  background-color: rgba(245, 158, 11, 0.15);
+}
+
 .menu-btn {
   display: none;
   align-items: center;
@@ -762,6 +774,13 @@ input:focus, select:focus, textarea:focus {
 
 .qty-btn:hover {
   background-color: var(--bg-hover);
+}
+
+.qty-btn:disabled,
+.scanner-qty-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .qty-val {
@@ -1411,6 +1430,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* Layout helpers */
+.flex-col { display: flex; flex-direction: column; }
 .flex-between { display: flex; justify-content: space-between; }
 .flex-align-center { display: flex; align-items: center; }
 .flex-center { display: flex; align-items: center; justify-content: center; }
@@ -1462,6 +1482,10 @@ input:focus, select:focus, textarea:focus {
 @media (max-width: 768px) {
   .desktop-only { display: none; }
   .mobile-only { display: block; }
+
+  .suggestion-price .price-currency-symbol {
+    display: none;
+  }
 
   .grid-2 { grid-template-columns: 1fr; }
 

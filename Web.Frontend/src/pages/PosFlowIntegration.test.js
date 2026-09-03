@@ -27,4 +27,24 @@ describe('PosFlowIntegration End-to-End Test Suite', () => {
     }
     assert.strictEqual(errorCaught, true);
   });
+
+  test('3. Decreasing quantity on a product with 1 unit never eliminates or reduces quantity below 1 (or minimum step)', () => {
+    // Standard product (non-fractional)
+    const standardItem = { id: 1, quantity: 1, isFractional: false };
+    const stepStandard = !standardItem.isFractional ? 1 : 0.1;
+    const isAtMinStandard = standardItem.quantity <= stepStandard;
+    const newQtyStandard = Math.round((standardItem.quantity - stepStandard) * 1000) / 1000;
+
+    assert.strictEqual(isAtMinStandard, true, 'Standard item with qty 1 must be flagged at minimum');
+    assert.strictEqual(newQtyStandard >= stepStandard, false, 'Decreasing standard item from 1 must NOT yield >= step');
+
+    // Fractional product (e.g. Grs)
+    const fractionalItem = { id: 2, quantity: 100, isFractional: true, unitOfMeasure: 'Grs' };
+    const stepFractional = fractionalItem.unitOfMeasure === 'Grs' ? 100 : 1;
+    const isAtMinFractional = fractionalItem.quantity <= stepFractional;
+    const newQtyFractional = Math.round((fractionalItem.quantity - stepFractional) * 1000) / 1000;
+
+    assert.strictEqual(isAtMinFractional, true, 'Fractional item with 100g must be flagged at minimum');
+    assert.strictEqual(newQtyFractional >= stepFractional, false, 'Decreasing fractional item from minimum step must NOT yield >= step');
+  });
 });

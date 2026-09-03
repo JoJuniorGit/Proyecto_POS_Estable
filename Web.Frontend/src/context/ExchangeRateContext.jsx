@@ -6,6 +6,7 @@ const ExchangeRateContext = createContext();
 
 export function ExchangeRateProvider({ children }) {
   const [exchangeRate, setExchangeRate] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,6 +17,9 @@ export function ExchangeRateProvider({ children }) {
         const data = await api.get('/api/exchange-rate/today');
         if (isMounted && data?.value) {
           setExchangeRate(data.value);
+          if (data?.updatedAt || data?.UpdatedAt) {
+            setLastUpdated(data.updatedAt || data.UpdatedAt);
+          }
         }
       } catch (err) {
         console.warn('[ExchangeRate] Error al cargar la tasa inicial:', err.message);
@@ -31,6 +35,7 @@ export function ExchangeRateProvider({ children }) {
       (newRate) => {
         if (isMounted) {
           setExchangeRate(newRate);
+          setLastUpdated(new Date().toISOString());
         }
       },
       () => {
@@ -46,8 +51,10 @@ export function ExchangeRateProvider({ children }) {
     };
   }, []);
 
+  const isRateOutdated = !lastUpdated || (Date.now() - new Date(lastUpdated).getTime() > 24 * 60 * 60 * 1000);
+
   return (
-    <ExchangeRateContext.Provider value={{ exchangeRate, setExchangeRate, loading }}>
+    <ExchangeRateContext.Provider value={{ exchangeRate, setExchangeRate, lastUpdated, setLastUpdated, isRateOutdated, loading }}>
       {children}
     </ExchangeRateContext.Provider>
   );

@@ -51,19 +51,26 @@ export default function CartTable({ items, selectedItemId, onSelectItem, onUpdat
 
                 <td className="text-center" style={{ textAlign: 'center', verticalAlign: 'middle' }}>
                   <div className="qty-controls" style={{ display: 'inline-flex', margin: '0 auto' }} onClick={(e) => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      className="qty-btn"
-                      onClick={() => {
-                        const step = !item.isFractional ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
-                        const newQty = Math.round((item.quantity - step) * 1000) / 1000;
-                        if (newQty > 0) onUpdateQty(item.id, newQty);
-                        else if (onRemoveItem) onRemoveItem(item.id);
-                      }}
-                      title="Disminuir cantidad"
-                    >
-                      <Minus size={14} />
-                    </button>
+                    {(() => {
+                      const step = !item.isFractional ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
+                      const isAtMin = item.quantity <= step;
+                      return (
+                        <button
+                          type="button"
+                          className="qty-btn"
+                          disabled={isAtMin}
+                          onClick={() => {
+                            const newQty = Math.round((item.quantity - step) * 1000) / 1000;
+                            if (newQty >= step) {
+                              onUpdateQty(item.id, newQty);
+                            }
+                          }}
+                          title={isAtMin ? "Cantidad mínima (use el icono de eliminar para quitar del carrito)" : "Disminuir cantidad"}
+                        >
+                          <Minus size={14} />
+                        </button>
+                      );
+                    })()}
                     <QuantityInput item={item} onUpdateQty={onUpdateQty} />
                     <button
                       type="button"

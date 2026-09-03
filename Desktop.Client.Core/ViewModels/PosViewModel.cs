@@ -35,6 +35,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
     }
 
     public decimal CurrentExchangeRate => _exchange_rate_service.CurrentRate;
+    public bool IsRateOutdated => _exchange_rate_service.IsRateOutdated;
 
     public ObservableCollection<PaymentMethodDto> ActivePaymentMethods { get; } = new();
 
@@ -105,6 +106,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
         WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.ExchangeRateChangedMessage>(this, (r, m) =>
         {
             OnPropertyChanged(nameof(CurrentExchangeRate));
+            OnPropertyChanged(nameof(IsRateOutdated));
         });
 
         WeakReferenceMessenger.Default.Register<Desktop.Client.ViewModels.PaymentMethodsChangedMessage>(this, async (r, m) =>
@@ -126,6 +128,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
         {
             await _exchange_rate_service.GetCurrentRateAsync();
             OnPropertyChanged(nameof(CurrentExchangeRate));
+            OnPropertyChanged(nameof(IsRateOutdated));
         }
 
         if (ActivePaymentMethods.Count == 0)
@@ -777,6 +780,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
         {
             await _exchange_rate_service.SyncBcvAsync();
             OnPropertyChanged(nameof(CurrentExchangeRate));
+            OnPropertyChanged(nameof(IsRateOutdated));
         }
         catch { }
     }

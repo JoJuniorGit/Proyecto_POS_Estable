@@ -175,8 +175,10 @@ export function CartProvider({ children }) {
       return;
     }
 
+    // Regla de negocio POS: Reducir cantidad nunca debe eliminar el producto del carrito.
+    // Para eliminar un ítem, el usuario debe utilizar explícitamente la acción de eliminar (removeItem).
     if (newQuantity <= 0) {
-      return removeItem(itemId);
+      return;
     }
 
     if (currentSale.status === 'OnHold') {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ExchangeRateProvider, useExchangeRate } from './context/ExchangeRateContext';
 import { CartProvider, useCart } from './context/CartContext';
@@ -38,8 +38,9 @@ function MainApp() {
   const [isHoldModalOpen, setIsHoldModalOpen] = useState(false);
   const [completedInvoice, setCompletedInvoice] = useState(null);
   const [completedHoldSuccess, setCompletedHoldSuccess] = useState(null);
+  const checkoutRef = useRef(null);
 
-  const { exchangeRate } = useExchangeRate();
+  const { exchangeRate, isRateOutdated } = useExchangeRate();
   const { currentSale, totalUSD, totalBsS, resetCart } = useCart();
 
   useEffect(() => {
@@ -84,10 +85,27 @@ function MainApp() {
   const isExternalModalOpen = isCheckoutOpen || isHoldModalOpen || Boolean(completedInvoice) || Boolean(completedHoldSuccess);
 
   const handleCloseExternalModal = () => {
-    if (isCheckoutOpen) setIsCheckoutOpen(false);
-    if (isHoldModalOpen) setIsHoldModalOpen(false);
-    if (completedInvoice) setCompletedInvoice(null);
-    if (completedHoldSuccess) setCompletedHoldSuccess(null);
+    if (isCheckoutOpen) {
+      if (checkoutRef.current) {
+        const closed = checkoutRef.current.requestClose();
+        if (closed === false) return false;
+      }
+      setIsCheckoutOpen(false);
+      return true;
+    }
+    if (isHoldModalOpen) {
+      setIsHoldModalOpen(false);
+      return true;
+    }
+    if (completedInvoice) {
+      setCompletedInvoice(null);
+      return true;
+    }
+    if (completedHoldSuccess) {
+      setCompletedHoldSuccess(null);
+      return true;
+    }
+    return false;
   };
 
   const renderView = () => {
@@ -138,11 +156,13 @@ function MainApp() {
       currentView={currentView}
       onNavigate={handleNavigate}
       exchangeRate={exchangeRate}
+      isRateOutdated={isRateOutdated}
     >
       {renderView()}
 
       {/* Modal de Checkout / Cobro */}
       <CheckoutModal
+        ref={checkoutRef}
         isOpen={isCheckoutOpen}
         onClose={() => setIsCheckoutOpen(false)}
         onSuccess={handleCheckoutSuccess}
