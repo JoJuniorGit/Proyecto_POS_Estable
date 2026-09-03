@@ -191,17 +191,26 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       <div className="checkout-summary-box">
         <div className="checkout-summary-row">
           <span>{overrideSale ? "Saldo Pendiente:" : "Total Venta:"}</span>
-          <span className="font-bold">{formatBsS(targetTotalBsS || 0)}</span>
+          <div style={{ textAlign: 'right' }}>
+            <div className="font-bold color-primary" style={{ fontSize: '1.2rem' }}>{formatBsS(targetTotalBsS || 0)}</div>
+            <div className="text-xs text-muted font-medium">Ref: ${targetTotalUSD.toFixed(2)} USD</div>
+          </div>
         </div>
 
         <div className="checkout-summary-row text-success">
           <span>Total Pagado Ahora:</span>
-          <span className="font-bold">{formatBsS(paidBsS)}</span>
+          <div style={{ textAlign: 'right' }}>
+            <div className="font-bold" style={{ fontSize: '1.05rem' }}>{formatBsS(paidBsS)}</div>
+            <div className="text-xs text-muted font-medium">Ref: ${paidUsd.toFixed(2)} USD</div>
+          </div>
         </div>
 
         <div className="checkout-summary-row text-danger highlight">
           <span>Restante Tras Cobro:</span>
-          <span className="font-bold">{formatBsS(remainingBsS)}</span>
+          <div style={{ textAlign: 'right' }}>
+            <div className="font-bold" style={{ fontSize: '1.15rem' }}>{formatBsS(remainingBsS)}</div>
+            <div className="text-xs text-muted font-medium">Ref: ${remainingUsd.toFixed(2)} USD</div>
+          </div>
         </div>
       </div>
 

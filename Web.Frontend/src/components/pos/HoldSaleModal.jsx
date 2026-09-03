@@ -501,24 +501,42 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
           )}
         </div>
 
-        {/* Summary Box — label left, USD center, Bs.S right-aligned */}
+        {/* Summary Box — Bs.S destacado sobre USD */}
         <div className="checkout-summary-box mb-4">
           <div className="checkout-summary-row" style={summaryRowStyle}>
             <span>Total del Pedido:</span>
-            <span className="font-bold text-muted">{formatUSD(saleTotalUSD)}</span>
-            <span className="font-bold text-nowrap">{formatBsS(saleTotalUSD * exchangeRate)}</span>
+            <div style={{ textAlign: 'right' }}>
+              <div className="font-bold text-nowrap color-primary" style={{ fontSize: '1.15rem' }}>
+                {formatBsS(saleTotalUSD * exchangeRate)}
+              </div>
+              <div className="text-xs text-muted font-medium">
+                Ref: {formatUSD(saleTotalUSD)}
+              </div>
+            </div>
           </div>
           {enablePayment && initialBsS > 0 && (
             <div className="checkout-summary-row text-success" style={summaryRowStyle}>
               <span>Abono Inicial:</span>
-              <span className="font-bold text-muted">{formatUSD(initialUsd)}</span>
-              <span className="font-bold text-nowrap">{formatBsS(initialBsS)}</span>
+              <div style={{ textAlign: 'right' }}>
+                <div className="font-bold text-nowrap" style={{ fontSize: '1.05rem' }}>
+                  {formatBsS(initialBsS)}
+                </div>
+                <div className="text-xs text-muted font-medium">
+                  Ref: {formatUSD(initialUsd)}
+                </div>
+              </div>
             </div>
           )}
           <div className="checkout-summary-row highlight" style={summaryRowStyle}>
             <span>Deuda Restante Resultante:</span>
-            <span className="font-bold hold-sale-debt text-nowrap">{formatUSD(remainingUsd)}</span>
-            <span className="font-bold hold-sale-debt text-nowrap">{formatBsS(remainingBsS)}</span>
+            <div style={{ textAlign: 'right' }}>
+              <div className="font-bold hold-sale-debt text-nowrap" style={{ fontSize: '1.15rem' }}>
+                {formatBsS(remainingBsS)}
+              </div>
+              <div className="text-xs text-muted font-medium">
+                Ref: {formatUSD(remainingUsd)}
+              </div>
+            </div>
           </div>
         </div>
 

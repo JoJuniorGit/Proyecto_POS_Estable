@@ -81,6 +81,7 @@ export default function ConfirmModal({
             fontWeight: 700,
             marginBottom: '0.6rem',
             color: 'var(--text-primary)',
+            textAlign: 'center',
           }}
         >
           {title}

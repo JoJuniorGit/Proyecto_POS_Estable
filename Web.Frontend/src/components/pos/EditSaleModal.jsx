@@ -238,16 +238,16 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
         }}
       >
         <div className="flex-between mb-1">
-          <span className="text-muted">Nuevo Total USD / Bs.S:</span>
-          <span className="font-bold">{formatUSD(newTotalUSD)} <span className="color-primary">({formatBsS(newTotalBsS)})</span></span>
+          <span className="text-muted">Nuevo Total:</span>
+          <span className="font-bold"><span className="color-primary font-bold" style={{ fontSize: '1.05rem' }}>{formatBsS(newTotalBsS)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newTotalUSD)})</span></span>
         </div>
         <div className="flex-between mb-1">
           <span className="text-muted">Total Ya Abonado:</span>
-          <span className="font-bold text-success">{formatUSD(totalPaidUSD)}</span>
+          <span className="font-bold text-success"><span style={{ fontSize: '1.05rem' }}>{formatBsS(totalPaidUSD * rateToUse)}</span> <span className="text-muted text-xs font-normal">({formatUSD(totalPaidUSD)})</span></span>
         </div>
         <div className="flex-between mb-1">
           <span className="text-muted">Nuevo Saldo Restante:</span>
-          <span className="font-bold text-danger">{formatUSD(newRemainingBalanceUSD)}</span>
+          <span className="font-bold text-danger"><span style={{ fontSize: '1.05rem' }}>{formatBsS(newRemainingBalanceUSD * rateToUse)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newRemainingBalanceUSD)})</span></span>
         </div>
       </div>
 

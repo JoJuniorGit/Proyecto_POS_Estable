@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Modal from '../ui/Modal';
 import { getCustomers, createCustomer } from '../../services/customerApi';
 import { Search, UserPlus, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
+import { formatBsS } from '../../utils/formatters';
 
 const VALID_RIF_PREFIXES = ['V', 'E', 'J', 'G', 'P'];
 const VALID_PHONE_PREFIXES = [
@@ -472,15 +473,36 @@ export default function CustomerModal({
             <div className="checkout-summary-box" style={{ marginTop: '15px' }}>
               <div className="checkout-summary-row">
                 <span>Total Pedido:</span>
-                <span className="font-bold">${safeSaleTotalUSD.toFixed(2)}</span>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="font-bold text-primary" style={{ fontSize: '1.1rem' }}>
+                    {formatBsS(safeSaleTotalUSD * safeExchangeRate)}
+                  </div>
+                  <div className="text-xs text-muted">
+                    Ref: ${safeSaleTotalUSD.toFixed(2)} USD
+                  </div>
+                </div>
               </div>
               <div className="checkout-summary-row text-success">
                 <span>Abono Inicial:</span>
-                <span className="font-bold">-${initialUsd.toFixed(2)}</span>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="font-bold">
+                    {formatBsS(finalInitialBs)}
+                  </div>
+                  <div className="text-xs text-muted">
+                    Ref: -${initialUsd.toFixed(2)} USD
+                  </div>
+                </div>
               </div>
               <div className="checkout-summary-row highlight">
                 <span>Deuda Restante:</span>
-                <span className="font-bold">${remainingDebtUsd.toFixed(2)}</span>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="font-bold" style={{ fontSize: '1.1rem' }}>
+                    {formatBsS(remainingDebtUsd * safeExchangeRate)}
+                  </div>
+                  <div className="text-xs text-muted">
+                    Ref: ${remainingDebtUsd.toFixed(2)} USD
+                  </div>
+                </div>
               </div>
             </div>
           )}

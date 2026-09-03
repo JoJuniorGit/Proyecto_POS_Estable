@@ -13,7 +13,7 @@ const CheckoutHeader = React.memo(function CheckoutHeader({
       <div>
         <h3 className="text-xl font-bold text-white">Procesar Pago</h3>
         <p className="text-sm text-gray-400">
-          Total Venta: <span className="text-emerald-400 font-semibold">${targetTotalUSD.toFixed(2)} USD</span> ({formatBsS(targetTotalBsS)})
+          Total Venta: <span className="text-emerald-400 font-bold text-base">{formatBsS(targetTotalBsS)}</span> <span className="text-gray-400 text-xs font-normal">(${targetTotalUSD.toFixed(2)} USD)</span>
         </p>
       </div>
       <div className="w-full sm:w-auto">
