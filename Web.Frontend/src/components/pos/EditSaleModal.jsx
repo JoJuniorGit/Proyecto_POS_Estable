@@ -3,7 +3,7 @@ import Modal from '../ui/Modal';
 import SearchBar from './SearchBar';
 import QuantityInput from './QuantityInput';
 import { updateSaleItems } from '../../services/salesApi';
-import { formatBsS, formatUSD, getLineAmounts } from '../../utils/formatters';
+import { formatBsS, formatUSD, formatNumberEs, getLineAmounts } from '../../utils/formatters';
 import { Trash2, AlertTriangle, Save, Loader2, Plus, Minus } from 'lucide-react';
 
 export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onSuccess }) {
@@ -255,10 +255,10 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
                       </div>
                     </td>
 
-                    <td className="text-right">{formatBsS(unitBsS)}</td>
+                    <td className="text-right">{formatNumberEs(unitBsS)}</td>
 
                     <td className="text-right font-bold color-primary">
-                      {formatBsS(subtotalBsS)}
+                      {formatNumberEs(subtotalBsS)}
                     </td>
 
                     <td className="text-center">
