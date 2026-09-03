@@ -3,8 +3,9 @@ import { useExchangeRate } from '../../context/ExchangeRateContext';
 import QuantityInput from './QuantityInput';
 import { getLineAmounts } from '../../utils/formatters';
 
-export default function CartList({ items, selectedItemId, onSelectItem, onUpdateQty, onRemoveItem }) {
+export default function CartList({ items, selectedItemId, onSelectItem, onUpdateQty, onUpdateQuantity, onRemoveItem }) {
   const { exchangeRate } = useExchangeRate();
+  const updateQty = onUpdateQty || onUpdateQuantity;
 
   return (
     <div className="cart-list-mobile">
@@ -51,7 +52,7 @@ export default function CartList({ items, selectedItemId, onSelectItem, onUpdate
                         onClick={() => {
                           const newQty = Math.round((item.quantity - step) * 1000) / 1000;
                           if (newQty >= step) {
-                            onUpdateQty(item.id, newQty);
+                            updateQty?.(item.id, newQty);
                           }
                         }}
                         title={isAtMin ? "Cantidad mínima" : "Disminuir cantidad"}
@@ -60,7 +61,7 @@ export default function CartList({ items, selectedItemId, onSelectItem, onUpdate
                       </button>
                     );
                   })()}
-                  <QuantityInput item={item} onUpdateQty={onUpdateQty} style={{
+                  <QuantityInput item={item} onUpdateQty={updateQty} style={{
                     width: '52px',
                     textAlign: 'center',
                     border: '1px solid var(--border)',
@@ -77,7 +78,7 @@ export default function CartList({ items, selectedItemId, onSelectItem, onUpdate
                     onClick={() => {
                       const step = !item.isFractional ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
                       const newQty = Math.round((item.quantity + step) * 1000) / 1000;
-                      onUpdateQty(item.id, newQty);
+                      updateQty?.(item.id, newQty);
                     }}
                   >
                     <Plus size={14} />

@@ -4,10 +4,11 @@ import QuantityInput from './QuantityInput';
 import { useCart } from '../../context/CartContext';
 import { formatBsS, getLineAmounts } from '../../utils/formatters';
 
-export default function CartTable({ items, selectedItemId, onSelectItem, onUpdateQty, onRemoveItem }) {
+export default function CartTable({ items, selectedItemId, onSelectItem, onUpdateQty, onUpdateQuantity, onRemoveItem }) {
   const { exchangeRate } = useExchangeRate();
   const { currentSale } = useCart();
   const isWholesaleMode = (currentSale?.priceListType || '').toLowerCase() === 'wholesale';
+  const updateQty = onUpdateQty || onUpdateQuantity;
 
   return (
     <div className="cart-table-wrapper">
@@ -62,7 +63,7 @@ export default function CartTable({ items, selectedItemId, onSelectItem, onUpdat
                           onClick={() => {
                             const newQty = Math.round((item.quantity - step) * 1000) / 1000;
                             if (newQty >= step) {
-                              onUpdateQty(item.id, newQty);
+                              updateQty?.(item.id, newQty);
                             }
                           }}
                           title={isAtMin ? "Cantidad mínima (use el icono de eliminar para quitar del carrito)" : "Disminuir cantidad"}
@@ -71,14 +72,14 @@ export default function CartTable({ items, selectedItemId, onSelectItem, onUpdat
                         </button>
                       );
                     })()}
-                    <QuantityInput item={item} onUpdateQty={onUpdateQty} />
+                    <QuantityInput item={item} onUpdateQty={updateQty} />
                     <button
                       type="button"
                       className="qty-btn"
                       onClick={() => {
                         const step = !item.isFractional ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
                         const newQty = Math.round((item.quantity + step) * 1000) / 1000;
-                        onUpdateQty(item.id, newQty);
+                        updateQty?.(item.id, newQty);
                       }}
                       title="Aumentar cantidad"
                     >

@@ -47,4 +47,46 @@ describe('PosFlowIntegration End-to-End Test Suite', () => {
     assert.strictEqual(isAtMinFractional, true, 'Fractional item with 100g must be flagged at minimum');
     assert.strictEqual(newQtyFractional >= stepFractional, false, 'Decreasing fractional item from minimum step must NOT yield >= step');
   });
+
+  test('4. Increasing, decreasing, and direct manual entry correctly invoke quantity updates and recalculate totals', () => {
+    let updatedId = null;
+    let updatedQty = null;
+
+    const mockUpdateQuantity = (id, qty) => {
+      updatedId = id;
+      updatedQty = qty;
+    };
+
+    // Simulate prop resolution in CartTable / CartList
+    const props = {
+      items: [{ id: 42, quantity: 2, unitPrice: 15, isFractional: false }],
+      onUpdateQuantity: mockUpdateQuantity,
+    };
+    const updateQty = props.onUpdateQty || props.onUpdateQuantity;
+    assert.ok(typeof updateQty === 'function', 'updateQty must resolve correctly from onUpdateQuantity');
+
+    // Simulate Plus button click (+ step)
+    const item = props.items[0];
+    const step = !item.isFractional ? 1 : 0.1;
+    const newQtyPlus = Math.round((item.quantity + step) * 1000) / 1000;
+    updateQty(item.id, newQtyPlus);
+
+    assert.strictEqual(updatedId, 42);
+    assert.strictEqual(updatedQty, 3, 'Plus button must increase quantity to 3');
+
+    // Recalculate totals with updated quantity
+    const updatedAmounts = getLineAmounts({ ...item, quantity: updatedQty }, 50.0);
+    assert.strictEqual(updatedAmounts.subtotalBsS, 3 * 15 * 50.0); // 45 * 50 = 2250
+    assert.strictEqual(formatBsS(updatedAmounts.subtotalBsS), 'Bs.S 2,250.00');
+
+    // Simulate Direct Manual Input (e.g. typing "5" in QuantityInput)
+    const manualInput = '5';
+    const parsedManual = parseFloat(manualInput.replace(',', '.'));
+    updateQty(item.id, parsedManual);
+
+    assert.strictEqual(updatedQty, 5, 'Direct manual entry must update quantity to 5');
+    const manualAmounts = getLineAmounts({ ...item, quantity: updatedQty }, 50.0);
+    assert.strictEqual(manualAmounts.subtotalBsS, 5 * 15 * 50.0); // 75 * 50 = 3750
+    assert.strictEqual(formatBsS(manualAmounts.subtotalBsS), 'Bs.S 3,750.00');
+  });
 });

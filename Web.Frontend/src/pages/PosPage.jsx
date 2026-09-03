@@ -280,6 +280,7 @@ export default function PosPage({
                   items={items}
                   selectedItemId={selectedItemId}
                   onSelectItem={setSelectedItemId}
+                  onUpdateQty={updateQuantity}
                   onUpdateQuantity={updateQuantity}
                   onRemoveItem={removeItem}
                   exchangeRate={exchangeRate}
@@ -291,6 +292,7 @@ export default function PosPage({
                   items={items}
                   selectedItemId={selectedItemId}
                   onSelectItem={setSelectedItemId}
+                  onUpdateQty={updateQuantity}
                   onUpdateQuantity={updateQuantity}
                   onRemoveItem={removeItem}
                   exchangeRate={exchangeRate}

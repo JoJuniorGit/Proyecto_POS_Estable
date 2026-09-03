@@ -69,6 +69,12 @@ export default function QuantityInput({ item, value, onUpdateQty, onChange, styl
     }
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.target.blur();
+    }
+  };
+
   return (
     <input
       type="text"
@@ -77,6 +83,7 @@ export default function QuantityInput({ item, value, onUpdateQty, onChange, styl
       value={localVal}
       onChange={handleChange}
       onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
       onClick={(e) => {
         e.stopPropagation();
         e.target.select();
