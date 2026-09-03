@@ -213,9 +213,13 @@ export function CartProvider({ children }) {
       return;
     }
 
+    const currentItems = currentSale.items || [];
+    const targetItem = currentItems.find(i => i.id === itemId);
+    const isFrac = Boolean(targetItem?.isFractional);
+    const validatedQty = isFrac ? Math.round(newQuantity * 1000) / 1000 : Math.max(1, Math.trunc(newQuantity));
+
     if (currentSale.status === 'OnHold') {
-      const currentItems = currentSale.items || [];
-      const prospectiveItems = currentItems.map(i => i.id === itemId ? { ...i, quantity: newQuantity, subtotal: newQuantity * i.unitPrice } : i);
+      const prospectiveItems = currentItems.map(i => i.id === itemId ? { ...i, quantity: validatedQty, subtotal: validatedQty * i.unitPrice } : i);
       const prospectiveTotal = prospectiveItems.reduce((acc, i) => acc + i.subtotal, 0);
       if (!validateOnHoldRules(prospectiveTotal)) {
         return;
@@ -226,7 +230,7 @@ export function CartProvider({ children }) {
     setError(null);
     try {
       const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale.appliedRate || 1);
-      const updatedSale = await updateItemQuantity(currentSale.id, itemId, newQuantity, rateToUse);
+      const updatedSale = await updateItemQuantity(currentSale.id, itemId, validatedQty, rateToUse);
       setCurrentSale(updatedSale);
     } catch (err) {
       console.error('[CartContext] Error modificando cantidad:', err);

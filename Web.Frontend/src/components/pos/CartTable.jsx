@@ -72,7 +72,7 @@ export default function CartTable({ items, selectedItemId, onSelectItem, onUpdat
                         </button>
                       );
                     })()}
-                    <QuantityInput item={item} onUpdateQty={updateQty} />
+                    <QuantityInput item={item} isFractional={item.isFractional} onUpdateQty={updateQty} />
                     <button
                       type="button"
                       className="qty-btn"

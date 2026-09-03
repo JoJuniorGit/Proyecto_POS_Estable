@@ -119,6 +119,15 @@ public class SalesService : ISalesService
             throw new ArgumentException("La cantidad debe ser mayor a cero.", nameof(quantity));
         }
 
+        if (_inventoryService != null)
+        {
+            var product = await _inventoryService.GetProductByIdAsync(productId);
+            if (product != null && !product.IsFractional)
+            {
+                return Math.Max(1m, Math.Truncate(quantity));
+            }
+        }
+
         return Math.Round(quantity, 3, MidpointRounding.AwayFromZero);
     }
 

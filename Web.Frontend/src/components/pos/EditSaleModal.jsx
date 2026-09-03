@@ -71,14 +71,16 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       return;
     }
     const rawNum = parseFloat(newQty);
+    const targetItem = items[idx];
+    const isFrac = Boolean(targetItem?.isFractional);
     const qty = isNaN(rawNum) ? 1 : rawNum;
-    const roundedQty = Math.round(qty * 1000) / 1000;
+    const validatedQty = isFrac ? Math.round(qty * 1000) / 1000 : Math.max(1, Math.trunc(qty));
     setItems(prev => {
       const updated = [...prev];
       updated[idx] = {
         ...updated[idx],
-        quantity: roundedQty,
-        subtotal: roundedQty * updated[idx].unitPrice
+        quantity: validatedQty,
+        subtotal: validatedQty * updated[idx].unitPrice
       };
       return updated;
     });

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 
-export default function QuantityInput({ item, value, onUpdateQty, onChange, style }) {
+export default function QuantityInput({ item, value, isFractional: isFractionalProp, onUpdateQty, onChange, style }) {
+  const isFractional = Boolean(isFractionalProp ?? item?.isFractional);
   const currentQty = item?.quantity !== undefined && item?.quantity !== null ? item.quantity : (value !== undefined && value !== null ? value : '');
   const itemId = item?.id ?? item?.productId ?? 0;
   const [localVal, setLocalVal] = useState(String(currentQty ?? ''));
@@ -27,7 +28,19 @@ export default function QuantityInput({ item, value, onUpdateQty, onChange, styl
       return;
     }
 
-    // Allow digits, max 1 decimal separator (. or ,), max 3 decimals for all products
+    if (!isFractional) {
+      // Para productos NO fraccionables: SOLO dígitos enteros, sin puntos ni comas
+      if (!/^\d+$/.test(inputStr)) return;
+
+      setLocalVal(inputStr);
+      const parsedInt = parseInt(inputStr, 10);
+      if (!isNaN(parsedInt) && parsedInt > 0) {
+        fireQtyChange(parsedInt);
+      }
+      return;
+    }
+
+    // Para productos fraccionables: permitir dígitos y hasta 3 decimales (. o ,)
     if (!/^\d*[,.]?\d{0,3}$/.test(inputStr)) return;
     setLocalVal(inputStr);
 
@@ -48,7 +61,9 @@ export default function QuantityInput({ item, value, onUpdateQty, onChange, styl
     const defaultQty = 1;
 
     if (!localVal || localVal === '.' || localVal === ',') {
-      const fallbackVal = (typeof currentQty === 'number' && currentQty > 0) ? currentQty : defaultQty;
+      const fallbackVal = (typeof currentQty === 'number' && currentQty > 0)
+        ? (!isFractional ? Math.max(1, Math.trunc(currentQty)) : currentQty)
+        : defaultQty;
       setLocalVal(String(fallbackVal));
       if (currentQty !== fallbackVal) {
         fireQtyChange(fallbackVal);
@@ -62,6 +77,10 @@ export default function QuantityInput({ item, value, onUpdateQty, onChange, styl
     if (isNaN(parsed) || parsed <= 0) {
       setLocalVal(String(defaultQty));
       fireQtyChange(defaultQty);
+    } else if (!isFractional) {
+      const intVal = Math.max(1, Math.trunc(parsed));
+      setLocalVal(String(intVal));
+      fireQtyChange(intVal);
     } else {
       const rounded = Math.round(parsed * 1000) / 1000;
       setLocalVal(String(rounded));
@@ -70,6 +89,11 @@ export default function QuantityInput({ item, value, onUpdateQty, onChange, styl
   };
 
   const handleKeyDown = (e) => {
+    // Si el producto no es fraccionable, bloquear activamente las teclas de punto y coma
+    if (!isFractional && (e.key === '.' || e.key === ',' || e.key === 'Decimal')) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === 'Enter') {
       e.target.blur();
     }
@@ -78,7 +102,7 @@ export default function QuantityInput({ item, value, onUpdateQty, onChange, styl
   return (
     <input
       type="text"
-      inputMode="decimal"
+      inputMode={isFractional ? "decimal" : "numeric"}
       className="qty-val-input"
       value={localVal}
       onChange={handleChange}
