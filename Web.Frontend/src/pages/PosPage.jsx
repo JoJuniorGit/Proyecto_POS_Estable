@@ -141,8 +141,13 @@ export default function PosPage({
   };
 
   const handleSelectCustomer = async (customerId) => {
-    await updateCustomer(customerId);
-    setIsCustomerModalOpen(false);
+    try {
+      await updateCustomer(customerId);
+    } catch (err) {
+      console.error('[PosPage] Error al seleccionar cliente:', err);
+    } finally {
+      setIsCustomerModalOpen(false);
+    }
   };
 
   const handleScannedCode = async (code) => {
@@ -316,6 +321,9 @@ export default function PosPage({
         onClose={() => setIsCustomerModalOpen(false)}
         onSelectCustomer={handleSelectCustomer}
         currentCustomerId={currentSale?.customerId}
+        mode="select"
+        saleTotalUSD={currentSale?.totalUSD || 0}
+        exchangeRate={exchangeRate}
       />
 
       <BarcodeScannerModal
