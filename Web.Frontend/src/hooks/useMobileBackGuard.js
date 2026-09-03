@@ -6,9 +6,13 @@ import { useState, useEffect, useRef } from 'react';
  * Hook para interceptar la navegación nativa de "Atrás" en navegadores móviles tanto con
  * botón físico como con gestos de deslizamiento desde los bordes (Android 10+ / iOS).
  *
- * Protección Inquebrantable contra Intentos Consecutivos:
- * - Mientras haya productos en el carrito (hasItems = true), NINGÚN intento de retroceso
- *   (sea el primero, segundo o décimo consecutivo) permitirá la salida involuntaria del sistema.
+ * Protección Inquebrantable contra Intentos Consecutivos y Persistencia en Recargas:
+ * - Detecta de forma síncrona en el primer milisegundo de montaje si la sesión contiene productos
+ *   guardados (sessionStorage: active_pos_has_items), eliminando la brecha de vulnerabilidad
+ *   mientras los datos del carrito se hidratan del backend.
+ * - Mientras haya productos en el carrito (hasItems = true o cachedHasItems = true), NINGÚN
+ *   intento de retroceso (sea tras recargar la página, en el primer intento o en intentos consecutivos)
+ *   permitirá la salida involuntaria del sistema.
  * - Cada intento de retroceso re-inyecta inmediatamente la entrada de protección en el historial
  *   (history.pushState) y mantiene en pantalla el diálogo de confirmación personalizado del POS.
  * - La única vía para salir del sistema es pulsar explícitamente el botón "Salir del Sistema",
@@ -23,9 +27,13 @@ export function useMobileBackGuard({
 }) {
   const [isConfirmExitOpen, setIsConfirmExitOpen] = useState(false);
 
+  // Sincronización instantánea síncrona incluso tras recargas de página
+  const hasCachedItems = typeof window !== 'undefined' && sessionStorage.getItem('active_pos_has_items') === 'true';
+  const effectiveHasItems = hasItems || hasCachedItems;
+
   const activeModalRef = useRef(activeModal);
   const onCloseModalRef = useRef(onCloseModal);
-  const hasItemsRef = useRef(hasItems);
+  const hasItemsRef = useRef(effectiveHasItems);
   const enabledRef = useRef(enabled);
   const onConfirmExitRef = useRef(onConfirmExit);
   const isConfirmExitOpenRef = useRef(false);
@@ -33,7 +41,7 @@ export function useMobileBackGuard({
 
   activeModalRef.current = activeModal;
   onCloseModalRef.current = onCloseModal;
-  hasItemsRef.current = hasItems;
+  hasItemsRef.current = effectiveHasItems;
   enabledRef.current = enabled;
   onConfirmExitRef.current = onConfirmExit;
 
@@ -89,11 +97,11 @@ export function useMobileBackGuard({
     }
   }, [activeModal, enabled]);
 
-  // 2. Colchón de protección del carrito activo
+  // 2. Colchón de protección del carrito activo (blindado para recargas y reactividad continua)
   useEffect(() => {
     if (!enabled || typeof window === 'undefined' || !window.history) return;
 
-    if (hasItems) {
+    if (effectiveHasItems) {
       if (!cartGuardedRef.current) {
         window.history.pushState({ isPosGuard: true }, '');
         cartGuardedRef.current = true;
@@ -107,7 +115,7 @@ export function useMobileBackGuard({
         }
       }
     }
-  }, [hasItems, enabled]);
+  }, [effectiveHasItems, enabled]);
 
   // 3. Listener central de popstate y beforeunload
   useEffect(() => {
@@ -141,7 +149,7 @@ export function useMobileBackGuard({
 
       // Caso B: Si el carrito tiene productos (con o sin el diálogo de confirmación ya abierto)
       if (hasItemsRef.current) {
-        // Barrera inquebrantable contra intentos consecutivos:
+        // Barrera inquebrantable contra intentos consecutivos o tras recargas:
         // Cada intento de retroceso re-inyecta inmediatamente la protección en el historial
         window.history.pushState({ isPosGuard: true }, '');
         cartGuardedRef.current = true;

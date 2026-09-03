@@ -19,10 +19,38 @@ const CartActionsContext = createContext(null);
 export function CartProvider({ children }) {
   const { exchangeRate } = useExchangeRate();
   const { user } = useAuth();
-  const [currentSale, setCurrentSale] = useState(null);
+  const [currentSale, setCurrentSale] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const cached = sessionStorage.getItem('active_pos_sale_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && (parsed.status === 'Pending' || parsed.status === 'OnHold')) {
+            return parsed;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[CartContext] Error cargando caché de venta:', e);
+    }
+    return null;
+  });
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Sincronizar instantáneamente la venta activa en sessionStorage para persistencia síncrona en recargas
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (currentSale?.id && (currentSale.status === 'Pending' || currentSale.status === 'OnHold')) {
+      sessionStorage.setItem('active_pos_sale_id', String(currentSale.id));
+      sessionStorage.setItem('active_pos_sale_cache', JSON.stringify(currentSale));
+      sessionStorage.setItem('active_pos_has_items', (currentSale.items?.length > 0) ? 'true' : 'false');
+    } else if (!currentSale) {
+      sessionStorage.removeItem('active_pos_sale_cache');
+      sessionStorage.removeItem('active_pos_has_items');
+    }
+  }, [currentSale]);
 
   // Inicializar o crear nueva venta
   const createNewSale = useCallback(async () => {
@@ -34,6 +62,8 @@ export function CartProvider({ children }) {
       setSelectedItemId(null);
       if (sale?.id) {
         sessionStorage.setItem('active_pos_sale_id', String(sale.id));
+        sessionStorage.setItem('active_pos_sale_cache', JSON.stringify(sale));
+        sessionStorage.setItem('active_pos_has_items', (sale.items?.length > 0) ? 'true' : 'false');
       }
       return sale;
     } catch (err) {
@@ -77,6 +107,8 @@ export function CartProvider({ children }) {
           }
         } catch {
           sessionStorage.removeItem('active_pos_sale_id');
+          sessionStorage.removeItem('active_pos_sale_cache');
+          sessionStorage.removeItem('active_pos_has_items');
         }
       }
       createNewSale();

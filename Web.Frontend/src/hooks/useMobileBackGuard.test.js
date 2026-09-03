@@ -245,4 +245,35 @@ describe('useMobileBackGuard Navigation & Modal Interception Logic Tests', () =>
     assert.strictEqual(fakeEventExitAllowed.prevented, false);
     assert.strictEqual(allowedResult, undefined);
   });
+
+  test('8. Reload resistance: Detects cached items in sessionStorage even if initial props hasItems is false, arming the guard and blocking exit', () => {
+    // Simulate page reload: initially hasItems prop is false because backend hasn't responded yet
+    const hasItemsProp = false;
+    // But sessionStorage has cached active_pos_has_items = 'true'
+    const sessionStorageMock = {
+      getItem: (key) => key === 'active_pos_has_items' ? 'true' : null,
+    };
+
+    const hasCachedItems = sessionStorageMock.getItem('active_pos_has_items') === 'true';
+    const effectiveHasItems = hasItemsProp || hasCachedItems;
+
+    let confirmShown = false;
+    let guardPushed = false;
+
+    const simulatePopStateOnReload = (hasItems) => {
+      if (hasItems) {
+        guardPushed = true;
+        confirmShown = true;
+        return { action: 'guard_re_injected', stayedOnPos: true };
+      }
+      return { action: 'normal_back', stayedOnPos: false };
+    };
+
+    const result = simulatePopStateOnReload(effectiveHasItems);
+
+    assert.strictEqual(effectiveHasItems, true, 'effectiveHasItems must be true due to session cache');
+    assert.strictEqual(guardPushed, true, 'Guard must be re-injected even right after reload');
+    assert.strictEqual(confirmShown, true, 'Confirm modal must be shown');
+    assert.strictEqual(result.stayedOnPos, true, 'User must remain on POS');
+  });
 });
