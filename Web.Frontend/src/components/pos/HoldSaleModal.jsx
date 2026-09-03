@@ -563,7 +563,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
             }}
           >
             {submitting ? <Loader2 className="animate-spin" size={16} /> : <Clock size={16} />}
-            <span>CONFIRMAR Y GUARDAR EN ESPERA</span>
+            <span>Guardar</span>
           </button>
         </div>
       </div>

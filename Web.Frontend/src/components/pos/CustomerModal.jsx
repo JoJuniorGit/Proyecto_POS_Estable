@@ -499,7 +499,7 @@ export default function CustomerModal({
             onClick={handleConfirm} 
             disabled={!selectedCustomer || (enableInitialPayment && isCashSelected && initialBs % 1 !== 0)}
           >
-            <Check size={18} /> {mode === 'hold' ? 'Confirmar y Guardar en Espera' : 'Confirmar Cliente'}
+            <Check size={18} /> {mode === 'hold' ? 'Guardar' : 'Confirmar Cliente'}
           </button>
         </div>
       )}
