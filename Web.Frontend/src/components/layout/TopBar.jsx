@@ -1,4 +1,4 @@
-import { Menu, DollarSign, AlertTriangle } from 'lucide-react';
+import { Menu, AlertTriangle } from 'lucide-react';
 import ThemeToggle from '../ui/ThemeToggle';
 import { formatNumberEs } from '../../utils/formatters';
 
@@ -18,7 +18,6 @@ export default function TopBar({ title, exchangeRate, isRateOutdated, onMenuClic
             className={`topbar-rate ${isRateOutdated ? 'rate-outdated' : ''}`}
             title={isRateOutdated ? 'Tasa no actualizada en más de 24 horas. Se recomienda sincronizar o ingresar la tasa oficial.' : undefined}
           >
-            <DollarSign size={14} />
             Bs.S {formatNumberEs(exchangeRate)}
             {isRateOutdated && (
               <span className="rate-outdated-icon" title="Tasa desactualizada (>24h)">
