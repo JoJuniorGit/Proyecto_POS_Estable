@@ -89,13 +89,14 @@ public class ExchangeRateController : ControllerBase
         if (request.Value <= 0)
             return BadRequest("Exchange rate must be greater than zero.");
 
+        var roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(request.Value);
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
         var existing = await _context.ExchangeRateHistory
             .FirstOrDefaultAsync(r => r.Date == today);
 
         if (existing != null)
         {
-            existing.Rate = request.Value;
+            existing.Rate = roundedRate;
             existing.UpdatedAt = DateTime.UtcNow;
         }
         else
@@ -103,7 +104,7 @@ public class ExchangeRateController : ControllerBase
             _context.ExchangeRateHistory.Add(new ExchangeRateHistory
             {
                 Date = today,
-                Rate = request.Value,
+                Rate = roundedRate,
                 UpdatedAt = DateTime.UtcNow
             });
         }
@@ -114,13 +115,13 @@ public class ExchangeRateController : ControllerBase
         _inventoryService.InvalidateTodayExchangeRateCache();
 
         // Recalculate OnHold sales with the new exchange rate
-        await _salesService.RecalculateOnHoldSalesAsync(request.Value);
+        await _salesService.RecalculateOnHoldSalesAsync(roundedRate);
 
         // Broadcast rate update and OnHold sales refresh signal to all connected clients
-        await _hubContext.Clients.All.SendAsync("ReceiveRateUpdate", request.Value);
+        await _hubContext.Clients.All.SendAsync("ReceiveRateUpdate", roundedRate);
         await _hubContext.Clients.All.SendAsync("OnHoldSalesUpdated");
 
-        return Ok(new { Value = request.Value, Date = today, UpdatedAt = DateTime.UtcNow });
+        return Ok(new { Value = roundedRate, Date = today, UpdatedAt = DateTime.UtcNow });
     }
 
     /// <summary>
@@ -160,13 +161,14 @@ public class ExchangeRateController : ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError, new { Message = $"Error inesperado al sincronizar con el BCV: {ex.Message}" });
         }
 
+        var roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(rate.Value);
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
         var existing = await _context.ExchangeRateHistory
             .FirstOrDefaultAsync(r => r.Date == today);
 
         if (existing != null)
         {
-            existing.Rate = rate.Value;
+            existing.Rate = roundedRate;
             existing.UpdatedAt = DateTime.UtcNow;
         }
         else
@@ -174,7 +176,7 @@ public class ExchangeRateController : ControllerBase
             _context.ExchangeRateHistory.Add(new ExchangeRateHistory
             {
                 Date = today,
-                Rate = rate.Value,
+                Rate = roundedRate,
                 UpdatedAt = DateTime.UtcNow
             });
         }
@@ -185,13 +187,13 @@ public class ExchangeRateController : ControllerBase
         _inventoryService.InvalidateTodayExchangeRateCache();
 
         // Recalculate OnHold sales with the new exchange rate
-        await _salesService.RecalculateOnHoldSalesAsync(rate.Value);
+        await _salesService.RecalculateOnHoldSalesAsync(roundedRate);
 
         // Broadcast to clients via SignalR
-        await _hubContext.Clients.All.SendAsync("ReceiveRateUpdate", rate.Value);
+        await _hubContext.Clients.All.SendAsync("ReceiveRateUpdate", roundedRate);
         await _hubContext.Clients.All.SendAsync("OnHoldSalesUpdated");
 
-        return Ok(new { Value = rate.Value, Date = today, UpdatedAt = DateTime.UtcNow });
+        return Ok(new { Value = roundedRate, Date = today, UpdatedAt = DateTime.UtcNow });
     }
 }
 

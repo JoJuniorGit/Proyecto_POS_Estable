@@ -72,8 +72,8 @@ public class BcvExchangeRateJob : BackgroundService
                 return;
             }
 
-            // Explicit 2-decimal fiscal rounding
-            decimal roundedRate = Math.Round(rawRate.Value, 2, MidpointRounding.AwayFromZero);
+            // Ceiling rounding to 2 decimal places (redondeo hacia arriba: ej. 804.6301 -> 804.64)
+            decimal roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(rawRate.Value);
 
             // Resolve date according to Venezuela legal time zone (America/Caracas / UTC-4)
             var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();

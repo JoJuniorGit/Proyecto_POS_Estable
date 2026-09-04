@@ -149,7 +149,7 @@ public class ExchangeRateJobTests
     }
 
     [Fact]
-    public async Task BcvExchangeRateJob_WhenNewValidRateDetected_SavesWithFiscalRounding_AndEmitsSignalR()
+    public async Task BcvExchangeRateJob_WhenNewValidRateDetected_SavesWithCeilingRounding_AndEmitsSignalR()
     {
         // Arrange
         var contextOptions = new DbContextOptionsBuilder<InventoryDbContext>()
@@ -159,9 +159,9 @@ public class ExchangeRateJobTests
 
         var scraperLogger = new Mock<ILogger<BcvScraperService>>();
         var scraperMock = new Mock<BcvScraperService>(new HttpClient(), scraperLogger.Object, null!);
-        // Raw rate with precision: 805.1234 -> should be rounded to 805.12
+        // Raw rate with precision: 804.6301 -> should be rounded up to 804.64
         scraperMock.Setup(s => s.GetOfficialUsdRateAsync(It.IsAny<CancellationToken>()))
-                   .ReturnsAsync(805.1234m);
+                   .ReturnsAsync(804.6301m);
 
         var hubContextMock = new Mock<IHubContext<ExchangeRateHub>>();
         var hubClientsMock = new Mock<IHubClients>();
@@ -191,17 +191,29 @@ public class ExchangeRateJobTests
         var today = TimeZoneHelper.GetVenezuelaDate();
         var savedRecord = await dbContext.ExchangeRateHistory.FirstOrDefaultAsync(r => r.Date == today);
         Assert.NotNull(savedRecord);
-        Assert.Equal(805.12m, savedRecord.Rate);
+        Assert.Equal(804.64m, savedRecord.Rate);
 
         inventoryMock.Verify(i => i.InvalidateTodayExchangeRateCache(), Times.Once);
-        salesMock.Verify(s => s.RecalculateOnHoldSalesAsync(805.12m), Times.Once);
+        salesMock.Verify(s => s.RecalculateOnHoldSalesAsync(804.64m), Times.Once);
 
         clientProxyMock.Verify(
-            p => p.SendCoreAsync("ReceiveRateUpdate", It.Is<object[]>(o => (decimal)o[0] == 805.12m), It.IsAny<CancellationToken>()),
+            p => p.SendCoreAsync("ReceiveRateUpdate", It.Is<object[]>(o => (decimal)o[0] == 804.64m), It.IsAny<CancellationToken>()),
             Times.Once);
         clientProxyMock.Verify(
             p => p.SendCoreAsync("OnHoldSalesUpdated", It.IsAny<object[]>(), It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Theory]
+    [InlineData(804.6301, 804.64)]
+    [InlineData(804.6300, 804.63)]
+    [InlineData(805.1234, 805.13)]
+    [InlineData(800.0000, 800.00)]
+    [InlineData(36.4567, 36.46)]
+    public void PricingCalculator_RoundExchangeRateCeiling_RoundsUpToCent(decimal input, decimal expected)
+    {
+        var result = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(input);
+        Assert.Equal(expected, result);
     }
 
     [Fact]

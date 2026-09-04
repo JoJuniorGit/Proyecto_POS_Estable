@@ -225,7 +225,7 @@ public record SaleItemSnapshot(
 2. **Defensas del Scraper y Observabilidad:**
    - Si el scraper falla por conectividad o el portal del BCV retorna HTTP 502/504/timeout, el error es atrapado con log estructurado (`[BCV Scraper Audit]`), y la tasa activa se **preserva intacta** sin generar interrupción de caja.
    - Validación de Rango Razonable: Si el valor extraído es menor o igual a 0 o mayor o igual a 1,000,000, se descarta emitiendo advertencia de auditoría estructurada.
-   - Redondeo Fiscal: Se aplica redondeo explícito a 2 decimales (`MidpointRounding.AwayFromZero`) antes de persistir.
+   - Redondeo Hacia Arriba (Ceiling): Se aplica redondeo hacia arriba a 2 decimales (`PricingCalculator.RoundExchangeRateCeiling`: `Math.Ceiling(rate * 100) / 100`; ej. 804.6301 -> 804.64) antes de persistir y propagar.
 3. **Corte Diario y Zona Horaria Legal (Venezuela UTC-4):**
    - El sistema calcula la fecha de la jornada cambiaria mediante `Core.Helpers.TimeZoneHelper.GetVenezuelaDate()` (`America/Caracas` / `Venezuela Standard Time` / offset fijo UTC-4).
    - Esto previene que al cruzar las 8:00 PM (hora local), el sistema salte a la fecha UTC del día siguiente.

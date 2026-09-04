@@ -21,6 +21,15 @@ public static class PricingCalculator
     }
 
     /// <summary>
+    /// Rounds an exchange rate up to 2 decimal places (ceiling rounding).
+    /// Example: 804.6301 -> 804.64, 804.6300 -> 804.63.
+    /// </summary>
+    public static decimal RoundExchangeRateCeiling(decimal rate)
+    {
+        return Math.Ceiling(rate * 100m) / 100m;
+    }
+
+    /// <summary>
     /// Rounds an amount to cash precision (0 decimal places / integer).
     /// Chained from digital rounding to guarantee consistency.
     /// </summary>
