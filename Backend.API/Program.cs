@@ -180,6 +180,7 @@ try
 
     builder.Services.AddOpenApi();
     builder.Services.AddHostedService<Backend.API.Jobs.StockMovementArchiverJob>();
+    builder.Services.AddHostedService<Backend.API.Jobs.BcvExchangeRateJob>();
 
     // Rate Limiting (H-15)
     builder.Services.AddRateLimiter(options =>

@@ -33,7 +33,7 @@ public class BcvScraperService
         _httpClient.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
     }
 
-    public async Task<decimal?> GetOfficialUsdRateAsync(CancellationToken cancellationToken = default)
+    public virtual async Task<decimal?> GetOfficialUsdRateAsync(CancellationToken cancellationToken = default)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(_timeout);

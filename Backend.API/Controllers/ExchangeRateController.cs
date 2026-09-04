@@ -41,9 +41,18 @@ public class ExchangeRateController : ControllerBase
     [HttpGet("today")]
     public async Task<ActionResult> GetToday()
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
         var record = await _context.ExchangeRateHistory
             .FirstOrDefaultAsync(r => r.Date == today);
+
+        if (record == null)
+        {
+            // Fallback al último registro histórico válido hasta hoy (ignora registros futuros erróneos y cubre fines de semana/feriados)
+            record = await _context.ExchangeRateHistory
+                .Where(r => r.Date <= today)
+                .OrderByDescending(r => r.Date)
+                .FirstOrDefaultAsync();
+        }
 
         if (record == null)
             return Ok(new { Value = 0m, Date = today, UpdatedAt = (DateTime?)null });
@@ -80,7 +89,7 @@ public class ExchangeRateController : ControllerBase
         if (request.Value <= 0)
             return BadRequest("Exchange rate must be greater than zero.");
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
         var existing = await _context.ExchangeRateHistory
             .FirstOrDefaultAsync(r => r.Date == today);
 
@@ -151,7 +160,7 @@ public class ExchangeRateController : ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError, new { Message = $"Error inesperado al sincronizar con el BCV: {ex.Message}" });
         }
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
         var existing = await _context.ExchangeRateHistory
             .FirstOrDefaultAsync(r => r.Date == today);
 

@@ -85,9 +85,9 @@ export default function ExchangeRatePage() {
     <div className="exchange-page" style={{ maxWidth: '800px', margin: '0 auto' }}>
       <h2 className="page-title mb-4">Gestión de Tasa de Cambio</h2>
 
-      {/* Modo Manual Informativo */}
+      {/* Modo Híbrido Informativo */}
       <div className="alert alert-info mb-3" style={{ fontSize: '0.875rem' }}>
-        ℹ️ La tasa de cambio opera en <strong>modo manual</strong>. Puede sincronizar con el BCV a demanda o ingresar la tasa oficial de la jornada directamente.
+        ℹ️ El sistema sincroniza automáticamente con el BCV cada 2 horas. También puede sincronizar a demanda con el botón oficial o ingresar la tasa de la jornada manualmente.
       </div>
 
       {/* Alerta de Desactualización (> 24h) */}
@@ -141,12 +141,19 @@ export default function ExchangeRatePage() {
           </button>
         </div>
 
-        <div className="current-rate-display mb-4">
-          <DollarSign size={32} className="color-primary" />
-          <span className="current-rate-value">
-            Bs.S {exchangeRate > 0 ? formatNumberEs(exchangeRate) : '---'}
-          </span>
-          <span className="text-muted" style={{ fontSize: '0.9rem' }}>/ 1.00 USD</span>
+        <div className="current-rate-display mb-4" style={{ flexWrap: 'wrap', gap: '8px' }}>
+          <div className="flex-align-center gap-2">
+            <DollarSign size={32} className="color-primary" />
+            <span className="current-rate-value">
+              Bs.S {exchangeRate > 0 ? formatNumberEs(exchangeRate) : '---'}
+            </span>
+            <span className="text-muted" style={{ fontSize: '0.9rem' }}>/ 1.00 USD</span>
+          </div>
+          {lastUpdated && (
+            <span className="text-muted" style={{ fontSize: '0.8rem', marginLeft: 'auto' }}>
+              Última actualización: {new Date(lastUpdated).toLocaleString()}
+            </span>
+          )}
         </div>
 
         <form onSubmit={handleSaveManual} className="form-row align-end">

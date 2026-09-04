@@ -43,7 +43,7 @@ public class InventoryService : IInventoryService
             return cachedRate;
         }
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
         var record = await _context.ExchangeRateHistory.AsNoTracking().FirstOrDefaultAsync(r => r.Date == today);
         decimal rate = 0m;
         if (record != null && record.Rate > 0)
@@ -52,7 +52,7 @@ public class InventoryService : IInventoryService
         }
         else
         {
-            var lastRecord = await _context.ExchangeRateHistory.AsNoTracking().OrderByDescending(r => r.Date).FirstOrDefaultAsync();
+            var lastRecord = await _context.ExchangeRateHistory.AsNoTracking().Where(r => r.Date <= today).OrderByDescending(r => r.Date).FirstOrDefaultAsync();
             rate = lastRecord?.Rate ?? 0m;
         }
 

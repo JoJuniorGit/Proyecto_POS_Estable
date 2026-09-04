@@ -122,7 +122,7 @@ Dependencias: `Core`, `Sales.Module`, `Inventory.Module`, `MediatR`, `Quartz`
 | `Controllers/` | AuthController, CashDrawerController, DailyClosureController, ExchangeRateController, HealthController, PaymentMethodsController, ProductsController, ReservationsController, SalesController, SettingsController, ShiftsController, UsersController, VersionCheckController | 13 controladores REST |
 | `Services/` | BcvScraperService, CurrentUserService, PasswordHasher, TokenService | Servicios auxiliares |
 | `Hubs/` | ExchangeRateHub | SignalR hub para tasas de cambio en tiempo real |
-| `Jobs/` | StockMovementArchiverJob (BcvExchangeRateJob retirado a favor de modo manual) | Tareas programadas (Quartz / BackgroundService) |
+| `Jobs/` | StockMovementArchiverJob, BcvExchangeRateJob (Sincronización automática de tasa BCV cada 2 horas con scraping resiliente) | Tareas programadas (BackgroundService) |
 | `Middleware/` | GlobalExceptionHandlerMiddleware, VersionCheckMiddleware | Middleware de excepciones y versioning |
 | `DTOs/` | AdjustStockRequestDto, AdjustStockResultDto, BarcodeScanResultDto, CashDrawerOpenRequestDto, etc. | DTOs de API |
 
@@ -207,23 +207,34 @@ public record SaleItemSnapshot(
 
 **Handler:** `InventorySaleMadeEventHandler` descuenta stock con retry (3 intentos) y logging de fallos críticos.
 
-### 4.2 SignalR: ExchangeRateHub (Sincronización Manual y a Demanda)
+### 4.2 SignalR: ExchangeRateHub (Modelo Híbrido: Automático + Manual a Demanda)
 
 ```
 ┌──────────────────────┐    POST /sync-bcv    ┌──────────────┐    Broadcast    ┌──────────────────┐
-│ Administrador        │ ───────────────────► │ ExchangeRate │ ──────────────► │ Web Frontend     │
-│ (Input Manual o      │    POST /api/rate    │ Hub          │                 │ (ExchangeRateCtx)│
-│  Botón Sincronizar)  │ ◄─────────────────── │              │                 │ Desktop Client   │
+│ Administrador /      │ ───────────────────► │ ExchangeRate │ ──────────────► │ Web Frontend     │
+│ BcvExchangeRateJob   │    POST /api/rate    │ Hub          │                 │ (ExchangeRateCtx)│
+│ (Automático cada 2h) │ ◄─────────────────── │              │                 │ Desktop Client   │
 └──────────────────────┘   200 OK + Caché     └──────────────┘                 │ (ExchangeRateSvc)│
                            Purge bcv_rate_today                                └──────────────────┘
 ```
 
-**Flujo:**
-1. **Modo Exclusivamente Manual:** No existen tareas de fondo automáticas (`BcvExchangeRateJob` desactivado del contenedor de servicios).
-2. El administrador digita la tasa manualmente o presiona el botón **"Sincronizar BCV"** (`POST /api/exchange-rate/sync-bcv` con timeout configurable de 10s y mapeo de errores `502`/`504`).
-3. El backend persiste la tasa en `ExchangeRateHistory`, ejecuta `_inventoryService.InvalidateTodayExchangeRateCache()` (purgando la clave en memoria `bcv_rate_today`) y recalcula los pedidos en espera.
-4. `ExchangeRateHub.Clients.All.SendAsync("ReceiveRateUpdate", rate)` difunde el nuevo valor a todos los clientes Web y Desktop en tiempo real.
-5. **Consideración Multi-instancia:** En despliegues distribuidos multi-nodo, la invalidación de `IMemoryCache` local debe evolucionar a un bus distribuido de invalidación (ej. Redis Pub/Sub o IDistributedCache) para garantizar coherencia entre réplicas.
+**Flujo y Principios de Diseño:**
+1. **Modelo Híbrido Resiliente:**
+   - **Automático:** `BcvExchangeRateJob` se ejecuta en segundo plano cada 2 horas (`PeriodicTimer(TimeSpan.FromHours(2))`). Consulta el portal oficial del BCV respetando el timeout configurado en `appsettings.json` (`BcvSettings:TimeoutSeconds`, default 15s).
+   - **A Demanda / Manual:** El administrador puede sincronizar con el botón oficial (`POST /api/exchange-rate/sync-bcv`) o con la tecla rápida `F5` en el POS; o bien digitar manualmente la tasa de contingencia.
+2. **Defensas del Scraper y Observabilidad:**
+   - Si el scraper falla por conectividad o el portal del BCV retorna HTTP 502/504/timeout, el error es atrapado con log estructurado (`[BCV Scraper Audit]`), y la tasa activa se **preserva intacta** sin generar interrupción de caja.
+   - Validación de Rango Razonable: Si el valor extraído es menor o igual a 0 o mayor o igual a 1,000,000, se descarta emitiendo advertencia de auditoría estructurada.
+   - Redondeo Fiscal: Se aplica redondeo explícito a 2 decimales (`MidpointRounding.AwayFromZero`) antes de persistir.
+3. **Corte Diario y Zona Horaria Legal (Venezuela UTC-4):**
+   - El sistema calcula la fecha de la jornada cambiaria mediante `Core.Helpers.TimeZoneHelper.GetVenezuelaDate()` (`America/Caracas` / `Venezuela Standard Time` / offset fijo UTC-4).
+   - Esto previene que al cruzar las 8:00 PM (hora local), el sistema salte a la fecha UTC del día siguiente.
+   - Si no existe cotización para el día actual (fines de semana, feriados bancarios o inicio de jornada), `GET /api/exchange-rate/today` aplica fallback al último registro histórico válido hasta hoy (`Where(r => r.Date <= today).OrderByDescending(r => r.Date)`), garantizando que el sistema jamás devuelva `0` ni caiga en contingencia de `1`.
+4. **Propagación en Tiempo Real:**
+   - Ante cualquier cambio, se persiste en `ExchangeRateHistory`, se purga la clave en memoria `bcv_rate_today`, se recalculan las ventas en espera (`RecalculateOnHoldSalesAsync`) y se emite `ReceiveRateUpdate` y `OnHoldSalesUpdated` vía `ExchangeRateHub`.
+5. **Consideración Multi-instancia y Concurrencia:**
+   - La arquitectura actual asume una **única instancia primaria** del backend (`PosBackendService`) por punto de venta/sucursal física.
+   - Para futuros despliegues multi-nodo o clústeres balanceados, la ejecución concurrente de `BcvExchangeRateJob` debe coordinarse mediante un mecanismo de exclusión mutua distribuida (por ejemplo, PostgreSQL Session Advisory Locks `pg_try_advisory_lock` o un lease en base de datos) para evitar scraping redundante, y la invalidación de `IMemoryCache` debe transicionar a un bus distribuido (Redis / Npgsql Listen-Notify).
 
 ### 4.3 HealthPolling (Desktop Client)
 

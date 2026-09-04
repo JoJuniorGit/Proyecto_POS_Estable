@@ -208,7 +208,7 @@ public class PerformanceTests
     {
         using var context = TestDatabaseFactory.CreateInventoryDbContext("Perf_ExchangeRate_Cache_" + Guid.NewGuid());
         var cache = CreateMemoryCache();
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
 
         context.ExchangeRateHistory.Add(new ExchangeRateHistory
         {

@@ -140,7 +140,7 @@ public class InventoryServiceUnitTests
     {
         var (service, context, _) = CreateService();
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
         var yesterday = today.AddDays(-1);
 
         context.ExchangeRateHistory.AddRange(
