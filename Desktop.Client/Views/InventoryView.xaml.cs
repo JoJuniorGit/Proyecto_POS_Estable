@@ -95,5 +95,17 @@ namespace Desktop.Client.Views
             System.Text.RegularExpressions.Regex regex = new System.Text.RegularExpressions.Regex("[^0-9]+");
             e.Handled = regex.IsMatch(e.Text);
         }
+
+        private void UserControl_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.F5)
+            {
+                if (DataContext is InventoryViewModel vm && vm.RefreshCommand.CanExecute(null))
+                {
+                    e.Handled = true;
+                    vm.RefreshCommand.Execute(null);
+                }
+            }
+        }
     }
 }

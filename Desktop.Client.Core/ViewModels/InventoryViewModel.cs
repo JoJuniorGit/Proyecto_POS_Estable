@@ -148,6 +148,30 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isScanning;
 
+    [ObservableProperty]
+    private bool _isRefreshing;
+
+    [RelayCommand]
+    public async Task Refresh()
+    {
+        if (IsRefreshing) return;
+        IsRefreshing = true;
+        try
+        {
+            await _exchange_rate_service.GetCurrentRateAsync();
+            OnPropertyChanged(nameof(CurrentRate));
+            await LoadDataAsync(false, targetPage: CurrentPage > 0 ? CurrentPage : 1);
+        }
+        catch (System.Exception ex)
+        {
+            _dialog_service?.ShowError("Error de Actualización", $"No se pudo actualizar el catálogo: {ex.Message}");
+        }
+        finally
+        {
+            IsRefreshing = false;
+        }
+    }
+
     [RelayCommand]
     private void ToggleWholesale()
     {
