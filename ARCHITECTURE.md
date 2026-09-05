@@ -425,7 +425,7 @@ Request
   │
   ▼
 ┌─────────────────────────────────┐
-│ GlobalExceptionHandlerMiddleware│  ← Captura excepciones no manejadas
+│ GlobalExceptionHandlerMiddleware│  ← Captura excepciones no manejadas y estandariza respuestas RFC 7807
 ├─────────────────────────────────┤
 │ UseDefaultFiles + UseStaticFiles│  ← Sirve React build (wwwroot)
 ├─────────────────────────────────┤
@@ -442,6 +442,26 @@ Request
 │ MapHub<ExchangeRateHub>         │  ← SignalR endpoint
 └─────────────────────────────────┘
 ```
+
+### 7.1 Manejo Centralizado de Excepciones (RFC 7807 ProblemDetails)
+
+Toda excepción no controlada que ocurre en los controladores o servicios del Backend se intercepta en `GlobalExceptionHandlerMiddleware`, eliminando bloques `catch (Exception)` con texto plano en los controladores. Las respuestas siguen la especificación RFC 7807 e incluyen campos de compatibilidad dual para clientes WPF y Web:
+
+| Excepción / Origen | Código HTTP | Error Code | Mensaje / Detalle |
+|---|---|---|---|
+| `PostgresException` (SQLSTATE `23505`) | 409 Conflict | `UniqueConstraintViolation` | Mensaje amigable mapeado por restricción (código de barras, cédula, etc.) |
+| `PostgresException` (SQLSTATE `23502`) | 400 Bad Request | `NotNullConstraintViolation` | Notificación de campo obligatorio no nulo con nombre de columna |
+| `PostgresException` (SQLSTATE `23503`) | 400 Bad Request | `ForeignKeyViolation` | Mensaje de restricción de integridad referencial |
+| `PostgresException` (SQLSTATE `22001`, `23514`) | 400 Bad Request | `InvalidDataConstraintViolation` | Violación de formato o longitud en base de datos |
+| `PostgresException` (SQLSTATE `08*`, `28P01`) o `NpgsqlException` | 503 Service Unavailable | `DatabaseConnectionError` | Error de conexión / autenticación con PostgreSQL |
+| `KeyNotFoundException` | 404 Not Found | `NotFound` | Recurso no encontrado |
+| `UnauthorizedAccessException` | 403 Forbidden | `Forbidden` | Permisos insuficientes para la operación solicitada |
+| `ArgumentException` | 400 Bad Request | `BadRequest` | Argumentos inválidos en la solicitud de dominio |
+| `DbUpdateConcurrencyException` | 409 Conflict | `ConcurrencyConflict` | Conflicto de versión de fila en concurrencia optimista |
+| `InvalidOperationException` | 409 Conflict | `InvalidOperation` | Operación inválida en el estado actual del dominio |
+| `Exception` (cualquier otra no controlada) | 500 Internal Server Error | `InternalServerError` | Error interno inesperado (registrado en log forense) |
+
+Todos los payloads de error retornan: `type`, `title`, `status`, `error`, `message`, `Message`, `detail`, `instance`, `traceId`, `TraceId` (y `sqlState` cuando aplica).
 
 ---
 

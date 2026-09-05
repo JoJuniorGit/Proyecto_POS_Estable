@@ -45,7 +45,6 @@ public class GlobalExceptionHandlerMiddleware
 
             if (sqlState == "23505") // unique_violation
             {
-                context.Response.StatusCode = (int)HttpStatusCode.Conflict;
                 string friendlyMessage = postgresEx.ConstraintName switch
                 {
                     "IX_PaymentMethods_Name_Unique_NotDeleted" => "Ya existe un método de pago activo con el mismo nombre.",
@@ -57,77 +56,88 @@ public class GlobalExceptionHandlerMiddleware
                     _ => "El registro ya existe o infringe una restricción de unicidad en el sistema."
                 };
 
-                var conflictPayload = new
-                {
-                    type = "https://tools.ietf.org/html/rfc7231#section-6.5.8",
-                    title = "Conflicto de Unicidad",
-                    status = StatusCodes.Status409Conflict,
-                    error = "UniqueConstraintViolation",
-                    message = friendlyMessage,
-                    detail = friendlyMessage,
-                    instance = requestPath,
-                    traceId = System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier
-                };
-                await context.Response.WriteAsync(JsonSerializer.Serialize(conflictPayload));
+                await WriteProblemDetailsAsync(
+                    context,
+                    StatusCodes.Status409Conflict,
+                    "Conflicto de Unicidad",
+                    "https://tools.ietf.org/html/rfc7231#section-6.5.8",
+                    "UniqueConstraintViolation",
+                    friendlyMessage,
+                    friendlyMessage,
+                    requestPath,
+                    sqlState);
+                return;
+            }
+
+            if (sqlState == "23502") // not_null_violation
+            {
+                string columnInfo = string.IsNullOrWhiteSpace(postgresEx.ColumnName)
+                    ? "Un campo requerido"
+                    : $"El campo '{postgresEx.ColumnName}'";
+                string friendlyMessage = $"{columnInfo} es obligatorio y no puede ser nulo.";
+
+                await WriteProblemDetailsAsync(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "Bad Request",
+                    "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                    "NotNullConstraintViolation",
+                    friendlyMessage,
+                    friendlyMessage,
+                    requestPath,
+                    sqlState);
                 return;
             }
 
             if (sqlState == "23503") // foreign_key_violation
             {
-                context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
-                var fkPayload = new
-                {
-                    type = "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                    title = "Bad Request",
-                    status = StatusCodes.Status400BadRequest,
-                    error = "ForeignKeyViolation",
-                    message = "La operación referencia un registro inexistente o infringe una restricción de integridad.",
-                    detail = "La operación referencia un registro inexistente o infringe una restricción de integridad.",
-                    instance = requestPath,
-                    sqlState = sqlState
-                };
-                await context.Response.WriteAsync(JsonSerializer.Serialize(fkPayload));
+                string friendlyMessage = "La operación referencia un registro inexistente o infringe una restricción de integridad referencial.";
+                await WriteProblemDetailsAsync(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "Bad Request",
+                    "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                    "ForeignKeyViolation",
+                    friendlyMessage,
+                    friendlyMessage,
+                    requestPath,
+                    sqlState);
                 return;
             }
 
             if (sqlState == "22001" || sqlState == "23514") // string truncation or check violation
             {
-                context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
-                var constraintPayload = new
-                {
-                    type = "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                    title = "Bad Request",
-                    status = StatusCodes.Status400BadRequest,
-                    error = "InvalidDataConstraintViolation",
-                    message = "Los datos proporcionados violan restricciones de formato o longitud en la base de datos.",
-                    detail = "Los datos proporcionados violan restricciones de formato o longitud en la base de datos.",
-                    instance = requestPath,
-                    sqlState = sqlState
-                };
-                await context.Response.WriteAsync(JsonSerializer.Serialize(constraintPayload));
+                string friendlyMessage = "Los datos proporcionados violan restricciones de formato o longitud en la base de datos.";
+                await WriteProblemDetailsAsync(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "Bad Request",
+                    "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                    "InvalidDataConstraintViolation",
+                    friendlyMessage,
+                    friendlyMessage,
+                    requestPath,
+                    sqlState);
                 return;
             }
 
             // Connection or Authentication failures
             if (sqlState.StartsWith("08") || sqlState == "28P01")
             {
-                context.Response.StatusCode = (int)HttpStatusCode.ServiceUnavailable;
                 string detailMsg = sqlState == "28P01"
                     ? "Fallo de autenticación en PostgreSQL (Usuario/Contraseña incorrectos)."
                     : "Error de conexión con la base de datos PostgreSQL. Verifique que el servicio de base de datos esté activo y que las credenciales de conexión sean correctas.";
 
-                var connPayload = new
-                {
-                    type = "https://tools.ietf.org/html/rfc7231#section-6.6.4",
-                    title = "Service Unavailable",
-                    status = StatusCodes.Status503ServiceUnavailable,
-                    error = "DatabaseConnectionError",
-                    message = detailMsg,
-                    detail = detailMsg,
-                    instance = requestPath,
-                    sqlState = sqlState
-                };
-                await context.Response.WriteAsync(JsonSerializer.Serialize(connPayload));
+                await WriteProblemDetailsAsync(
+                    context,
+                    StatusCodes.Status503ServiceUnavailable,
+                    "Service Unavailable",
+                    "https://tools.ietf.org/html/rfc7231#section-6.6.4",
+                    "DatabaseConnectionError",
+                    detailMsg,
+                    detailMsg,
+                    requestPath,
+                    sqlState);
                 return;
             }
         }
@@ -137,127 +147,145 @@ public class GlobalExceptionHandlerMiddleware
         if (npgsqlEx != null)
         {
             AppLogger.LogDbError(exception, $"Request: {requestPath}");
-            context.Response.StatusCode = (int)HttpStatusCode.ServiceUnavailable;
             string message = "Error de conexión con la base de datos PostgreSQL. Verifique que el servicio de base de datos esté activo y que las credenciales de conexión sean correctas.";
-            var dbErrorPayload = new
-            {
-                type = "https://tools.ietf.org/html/rfc7231#section-6.6.4",
-                title = "Service Unavailable",
-                status = StatusCodes.Status503ServiceUnavailable,
-                error = "DatabaseConnectionError",
-                message = message,
-                detail = message,
-                instance = requestPath,
-                sqlState = (string?)null
-            };
-            await context.Response.WriteAsync(JsonSerializer.Serialize(dbErrorPayload));
+            await WriteProblemDetailsAsync(
+                context,
+                StatusCodes.Status503ServiceUnavailable,
+                "Service Unavailable",
+                "https://tools.ietf.org/html/rfc7231#section-6.6.4",
+                "DatabaseConnectionError",
+                message,
+                message,
+                requestPath,
+                null);
             return;
         }
 
         // 3. Known domain & business exceptions
         if (exception is KeyNotFoundException)
         {
-            context.Response.StatusCode = StatusCodes.Status404NotFound;
-            var notFoundPayload = new
-            {
-                type = "https://tools.ietf.org/html/rfc7231#section-6.5.4",
-                title = "Not Found",
-                status = StatusCodes.Status404NotFound,
-                error = "NotFound",
-                message = exception.Message,
-                detail = exception.Message,
-                instance = requestPath
-            };
-            await context.Response.WriteAsync(JsonSerializer.Serialize(notFoundPayload));
+            await WriteProblemDetailsAsync(
+                context,
+                StatusCodes.Status404NotFound,
+                "Not Found",
+                "https://tools.ietf.org/html/rfc7231#section-6.5.4",
+                "NotFound",
+                exception.Message,
+                exception.Message,
+                requestPath,
+                null);
             return;
         }
 
         if (exception is UnauthorizedAccessException)
         {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            var forbiddenPayload = new
-            {
-                type = "https://tools.ietf.org/html/rfc7231#section-6.5.3",
-                title = "Forbidden",
-                status = StatusCodes.Status403Forbidden,
-                error = "Forbidden",
-                message = exception.Message,
-                detail = exception.Message,
-                instance = requestPath
-            };
-            await context.Response.WriteAsync(JsonSerializer.Serialize(forbiddenPayload));
+            await WriteProblemDetailsAsync(
+                context,
+                StatusCodes.Status403Forbidden,
+                "Forbidden",
+                "https://tools.ietf.org/html/rfc7231#section-6.5.3",
+                "Forbidden",
+                exception.Message,
+                exception.Message,
+                requestPath,
+                null);
             return;
         }
 
         if (exception is ArgumentException)
         {
-            context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            var badRequestPayload = new
-            {
-                type = "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                title = "Bad Request",
-                status = StatusCodes.Status400BadRequest,
-                error = "BadRequest",
-                message = exception.Message,
-                detail = exception.Message,
-                instance = requestPath,
-                traceId = System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier
-            };
-            await context.Response.WriteAsync(JsonSerializer.Serialize(badRequestPayload));
+            await WriteProblemDetailsAsync(
+                context,
+                StatusCodes.Status400BadRequest,
+                "Bad Request",
+                "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                "BadRequest",
+                exception.Message,
+                exception.Message,
+                requestPath,
+                null);
             return;
         }
 
         if (exception is Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
         {
-            context.Response.StatusCode = StatusCodes.Status409Conflict;
-            var concurrencyPayload = new
-            {
-                type = "https://tools.ietf.org/html/rfc7231#section-6.5.8",
-                title = "Conflicto de Concurrencia",
-                status = StatusCodes.Status409Conflict,
-                error = "ConcurrencyConflict",
-                message = "El registro fue modificado concurrentemente por otro usuario o proceso. Por favor recargue e intente nuevamente.",
-                detail = "El registro fue modificado concurrentemente por otro usuario o proceso. Por favor recargue e intente nuevamente.",
-                instance = requestPath,
-                traceId = System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier
-            };
-            await context.Response.WriteAsync(JsonSerializer.Serialize(concurrencyPayload));
+            string msg = "El registro fue modificado concurrentemente por otro usuario o proceso. Por favor recargue e intente nuevamente.";
+            await WriteProblemDetailsAsync(
+                context,
+                StatusCodes.Status409Conflict,
+                "Conflicto de Concurrencia",
+                "https://tools.ietf.org/html/rfc7231#section-6.5.8",
+                "ConcurrencyConflict",
+                msg,
+                msg,
+                requestPath,
+                null);
             return;
         }
 
         if (exception is InvalidOperationException)
         {
-            context.Response.StatusCode = StatusCodes.Status409Conflict;
-            var invalidOpPayload = new
-            {
-                type = "https://tools.ietf.org/html/rfc7231#section-6.5.8",
-                title = "Conflicto de Operación",
-                status = StatusCodes.Status409Conflict,
-                error = "InvalidOperation",
-                message = exception.Message,
-                detail = exception.Message,
-                instance = requestPath,
-                traceId = System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier
-            };
-            await context.Response.WriteAsync(JsonSerializer.Serialize(invalidOpPayload));
+            await WriteProblemDetailsAsync(
+                context,
+                StatusCodes.Status409Conflict,
+                "Conflicto de Operación",
+                "https://tools.ietf.org/html/rfc7231#section-6.5.8",
+                "InvalidOperation",
+                exception.Message,
+                exception.Message,
+                requestPath,
+                null);
             return;
         }
 
         // 4. Non-database unhandled internal exception
         AppLogger.LogCrash(exception, $"Unhandled Exception in Request: {requestPath}");
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        var errorPayload = new
+        await WriteProblemDetailsAsync(
+            context,
+            StatusCodes.Status500InternalServerError,
+            "Internal Server Error",
+            "https://tools.ietf.org/html/rfc7231#section-6.6.1",
+            "InternalServerError",
+            "Ocurrió un error interno al procesar la solicitud.",
+            "Ocurrió un error interno no esperado al procesar la solicitud.",
+            requestPath,
+            null);
+    }
+
+    private static async Task WriteProblemDetailsAsync(
+        HttpContext context,
+        int statusCode,
+        string title,
+        string type,
+        string error,
+        string message,
+        string detail,
+        string requestPath,
+        string? sqlState = null)
+    {
+        context.Response.StatusCode = statusCode;
+        var traceId = System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier;
+
+        var payload = new Dictionary<string, object?>
         {
-            type = "https://tools.ietf.org/html/rfc7231#section-6.6.1",
-            title = "Internal Server Error",
-            status = StatusCodes.Status500InternalServerError,
-            error = "InternalServerError",
-            message = "Ocurrió un error interno al procesar la solicitud.",
-            detail = "Ocurrió un error interno no esperado al procesar la solicitud.",
-            instance = requestPath,
-            traceId = System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier
+            ["type"] = type,
+            ["title"] = title,
+            ["status"] = statusCode,
+            ["error"] = error,
+            ["message"] = message,
+            ["Message"] = message,
+            ["detail"] = detail,
+            ["instance"] = requestPath,
+            ["traceId"] = traceId,
+            ["TraceId"] = traceId
         };
-        await context.Response.WriteAsync(JsonSerializer.Serialize(errorPayload));
+
+        if (!string.IsNullOrEmpty(sqlState))
+        {
+            payload["sqlState"] = sqlState;
+        }
+
+        await context.Response.WriteAsync(JsonSerializer.Serialize(payload));
     }
 
     private static T? FindException<T>(Exception ex) where T : Exception

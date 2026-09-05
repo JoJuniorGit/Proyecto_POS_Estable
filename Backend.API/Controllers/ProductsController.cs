@@ -42,16 +42,9 @@ public class ProductsController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<Product>> GetById(int id)
     {
-        try
-        {
-            var product = await _inventoryService.GetProductByIdAsync(id);
-            if (product == null) return NotFound();
-            return product;
-        }
-        catch (System.Exception ex)
-        {
-            return StatusCode(500, $"Error al obtener producto: {ex.Message}");
-        }
+        var product = await _inventoryService.GetProductByIdAsync(id);
+        if (product == null) return NotFound();
+        return product;
     }
 
     /// <summary>
@@ -76,18 +69,9 @@ public class ProductsController : ControllerBase
         {
             return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
         }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateException dbEx)
-        {
-            var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-            return StatusCode(500, $"Database Error (Pending Migration or Constraint): {innerMessage}");
-        }
         catch (System.InvalidOperationException ex)
         {
             return BadRequest(ex.Message);
-        }
-        catch (System.Exception ex)
-        {
-            return StatusCode(500, $"Internal Server Error: {ex.Message}");
         }
     }
 
@@ -120,10 +104,6 @@ public class ProductsController : ControllerBase
         catch (System.InvalidOperationException ex)
         {
             return BadRequest(ex.Message);
-        }
-        catch (System.Exception ex)
-        {
-            return StatusCode(500, $"Error interno al actualizar producto: {ex.Message}");
         }
     }
 
@@ -410,10 +390,6 @@ public class StatusUpdateDto
         {
             return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
         }
-        catch (System.Exception ex)
-        {
-            return StatusCode(500, $"Internal Server Error: {ex.Message}");
-        }
     }
 
     [HttpGet("export")]
@@ -437,10 +413,6 @@ public class StatusUpdateDto
         {
             return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
         }
-        catch (System.Exception ex)
-        {
-            return StatusCode(500, $"Error al exportar productos: {ex.Message}");
-        }
     }
 
     [HttpGet("export-template")]
@@ -463,10 +435,6 @@ public class StatusUpdateDto
         catch (System.UnauthorizedAccessException unEx)
         {
             return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
-        }
-        catch (System.Exception ex)
-        {
-            return StatusCode(500, $"Error al generar plantilla: {ex.Message}");
         }
     }
 }

@@ -46,10 +46,6 @@ public class ReservationsController : ControllerBase
         {
             return NotFound(new { Message = ex.Message });
         }
-        catch (Exception ex)
-        {
-            return BadRequest(new { Message = ex.Message });
-        }
     }
 
     [HttpPost("confirm/{id}")]
@@ -63,10 +59,6 @@ public class ReservationsController : ControllerBase
         catch (System.Collections.Generic.KeyNotFoundException)
         {
             return NotFound();
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { Message = ex.Message });
         }
     }
 
