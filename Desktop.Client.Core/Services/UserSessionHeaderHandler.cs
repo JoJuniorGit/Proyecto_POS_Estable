@@ -49,15 +49,6 @@ public class UserSessionHeaderHandler : DelegatingHandler
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _userSession.Token);
         }
 
-        if (_userSession.CurrentUser != null)
-        {
-            request.Headers.Remove("X-User-Role");
-            request.Headers.Add("X-User-Role", _userSession.CurrentUser.Role.ToString());
-
-            request.Headers.Remove("X-User-Id");
-            request.Headers.Add("X-User-Id", _userSession.CurrentUser.Id.ToString());
-        }
-
         var response = await base.SendAsync(request, cancellationToken);
 
         // If the token expired or user is unauthorized (and not during login attempt), reset session cleanly

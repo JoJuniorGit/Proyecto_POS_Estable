@@ -15,17 +15,45 @@ class Program
         string targetDir = AppDomain.CurrentDomain.BaseDirectory;
         string serviceName = "PosBackendService";
         string packagePath = string.Empty;
+        string expectedHash = string.Empty;
 
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--targetDir" && i + 1 < args.Length) targetDir = args[i + 1];
             if (args[i] == "--serviceName" && i + 1 < args.Length) serviceName = args[i + 1];
             if (args[i] == "--package" && i + 1 < args.Length) packagePath = args[i + 1];
+            if (args[i] == "--hash" && i + 1 < args.Length) expectedHash = args[i + 1];
         }
 
         Console.WriteLine($"[Updater] Service Name: {serviceName}");
         Console.WriteLine($"[Updater] Target Directory: {targetDir}");
         Console.WriteLine($"[Updater] Package Path: {packagePath}");
+
+        // Step 0: SHA-256 Integrity Verification
+        if (!string.IsNullOrWhiteSpace(packagePath) && File.Exists(packagePath))
+        {
+            if (string.IsNullOrWhiteSpace(expectedHash) && File.Exists(packagePath + ".sha256"))
+            {
+                expectedHash = File.ReadAllText(packagePath + ".sha256").Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(expectedHash))
+            {
+                Console.WriteLine("[Updater] Verificando integridad SHA-256 del paquete de actualización...");
+                using var fs = File.OpenRead(packagePath);
+                using var sha256 = System.Security.Cryptography.SHA256.Create();
+                var hashBytes = sha256.ComputeHash(fs);
+                var actualHash = Convert.ToHexString(hashBytes);
+
+                if (!actualHash.Equals(expectedHash.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"[Updater] ERROR CRÍTICO DE INTEGRIDAD: Hash calculado ({actualHash}) no coincide con esperado ({expectedHash}). Cancelando actualización.");
+                    return;
+                }
+
+                Console.WriteLine($"[Updater] Verificación SHA-256 completada exitosamente ({actualHash}).");
+            }
+        }
 
         // Step 1: Graceful Shutdown of Windows Service
         Console.WriteLine("[Updater] Performing Graceful Shutdown of Backend Service...");

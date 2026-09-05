@@ -375,7 +375,11 @@ public partial class App : Application
         {
             try
             {
-                StopServicesAsync().GetAwaiter().GetResult();
+                var stopTask = StopServicesAsync();
+                if (!stopTask.Wait(TimeSpan.FromSeconds(3)))
+                {
+                    Core.Logging.AppLogger.LogStart("StopServicesAsync timed out during OnExit shutdown (3s limit).");
+                }
             }
             catch (Exception ex)
             {

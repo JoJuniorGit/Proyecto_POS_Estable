@@ -98,8 +98,8 @@ describe('api.js resolveBaseUrl & setCustomBaseUrl', () => {
     global.window = {
       location: {
         protocol: 'https:',
-        origin: 'https://192.168.1.50:5173',
-        hostname: '192.168.1.50',
+        origin: 'https://192.168.1.100:5173',
+        hostname: '192.168.1.100',
         port: '5173',
         search: '?server=192.168.1.100:5000',
         pathname: '/'

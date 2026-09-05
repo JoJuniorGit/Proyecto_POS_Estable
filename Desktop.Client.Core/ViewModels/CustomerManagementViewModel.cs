@@ -9,6 +9,7 @@ using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Core.Common;
 
 namespace Desktop.Client.ViewModels;
 
@@ -76,7 +77,7 @@ public partial class CustomerManagementViewModel : ObservableObject
                 }
                 catch (ObjectDisposedException) { }
 
-                StartDebouncedSearch(value, newCts.Token);
+                StartDebouncedSearchAsync(value, newCts.Token).SafeFireAndForget("CustomerManagement.DebouncedSearch");
             }
         }
     }
@@ -251,7 +252,7 @@ public partial class CustomerManagementViewModel : ObservableObject
     public bool CanGoToPreviousPage => CurrentPage > 1;
     public bool CanGoToNextPage => CurrentPage < TotalPages;
 
-    private async void StartDebouncedSearch(string query, CancellationToken token)
+    private async Task StartDebouncedSearchAsync(string query, CancellationToken token)
     {
         try
         {

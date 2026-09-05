@@ -11,6 +11,7 @@ using Backend.API.Services;
 using Core.Logging;
 
 using Core.Interfaces;
+using Core.Constants;
 
 namespace Backend.API.Controllers;
 
@@ -147,9 +148,7 @@ public class UsersController : ControllerBase
         var user = await _db.Users.FindAsync(id);
         if (user == null) return NotFound();
 
-        bool isMainAdmin = user.Cedula.Equals("V-00000000", StringComparison.OrdinalIgnoreCase) || 
-                           user.Cedula.Equals("V-12345678", StringComparison.OrdinalIgnoreCase) || 
-                           user.Username.Equals("Admin", StringComparison.OrdinalIgnoreCase);
+        bool isMainAdmin = SecurityConstants.IsRootAdmin(user.Cedula, user.Username);
         if (isMainAdmin && !dto.IsActive)
         {
             return BadRequest(new { Message = "El Administrador principal del sistema no puede ser desactivado." });
@@ -227,7 +226,7 @@ public class UsersController : ControllerBase
         var user = await _db.Users.FindAsync(id);
         if (user == null) return NotFound();
 
-        if (user.Cedula == "V-00000000" || user.Username == "Admin")
+        if (SecurityConstants.IsRootAdmin(user.Cedula, user.Username))
         {
             return BadRequest(new { Message = "El Administrador principal del sistema no puede ser desactivado." });
         }
@@ -268,7 +267,7 @@ public class UsersController : ControllerBase
         var user = await _db.Users.FindAsync(id);
         if (user == null) return NotFound();
 
-        if (user.Cedula == "V-00000000" || user.Username == "Admin")
+        if (SecurityConstants.IsRootAdmin(user.Cedula, user.Username))
         {
             return BadRequest(new { Message = "El Administrador principal del sistema no puede ser eliminado." });
         }

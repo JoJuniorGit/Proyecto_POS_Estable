@@ -58,77 +58,28 @@ public class SalesController : ControllerBase
     [HttpPost("{id}/items")]
     public async Task<ActionResult<SaleDto>> AddItem(int id, [FromBody] AddItemRequest request)
     {
-        try
+        bool isAuthorized = User.IsInRole("Admin") || User.IsInRole("Manager");
+        if ((request.CustomUnitPriceUsd.HasValue || request.CustomUnitPriceLocal.HasValue) && !isAuthorized)
         {
-            bool isAuthorized = User.IsInRole("Admin") || User.IsInRole("Manager");
-            if ((request.CustomUnitPriceUsd.HasValue || request.CustomUnitPriceLocal.HasValue) && !isAuthorized)
-            {
-                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor." });
-            }
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor." });
+        }
 
-            var _sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized);
-            return Ok(_sale);
-        }
-        catch (System.UnauthorizedAccessException ex)
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
-        }
-        catch (System.Collections.Generic.KeyNotFoundException ex)
-        {
-            return NotFound(new { message = ex.Message });
-        }
-        catch (System.ArgumentException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
+        var _sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized);
+        return Ok(_sale);
     }
 
     [HttpDelete("{id}/items/{itemId}")]
     public async Task<ActionResult<SaleDto>> RemoveItem(int id, int itemId, [FromQuery] decimal exchangeRate)
     {
-        try
-        {
-            var _sale = await _salesService.RemoveItemAsync(id, itemId, exchangeRate);
-            return Ok(_sale);
-        }
-        catch (System.Collections.Generic.KeyNotFoundException ex)
-        {
-            return NotFound(new { message = ex.Message });
-        }
-        catch (System.ArgumentException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
+        var _sale = await _salesService.RemoveItemAsync(id, itemId, exchangeRate);
+        return Ok(_sale);
     }
 
     [HttpPut("{id}/items/{itemId}")]
     public async Task<ActionResult<SaleDto>> UpdateItemQuantity(int id, int itemId, [FromBody] UpdateQuantityRequest request)
     {
-        try
-        {
-            var _sale = await _salesService.UpdateItemQuantityAsync(id, itemId, request.Quantity, request.ExchangeRate);
-            return Ok(_sale);
-        }
-        catch (System.Collections.Generic.KeyNotFoundException ex)
-        {
-            return NotFound(new { message = ex.Message });
-        }
-        catch (System.ArgumentException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
+        var _sale = await _salesService.UpdateItemQuantityAsync(id, itemId, request.Quantity, request.ExchangeRate);
+        return Ok(_sale);
     }
 
     [HttpPut("{id}/exchange-rate")]
@@ -481,18 +432,6 @@ public class SalesController : ControllerBase
                 }
             }
             return StatusCode(StatusCodes.Status409Conflict, new { message = "Operación concurrente en progreso para esta clave de idempotencia." });
-        }
-        catch (System.Collections.Generic.KeyNotFoundException ex)
-        {
-            return NotFound(new { message = ex.Message });
-        }
-        catch (System.ArgumentException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
         }
     }
 

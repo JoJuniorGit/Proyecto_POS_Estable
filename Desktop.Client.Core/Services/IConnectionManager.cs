@@ -69,7 +69,12 @@ public class ConnectionManager : IConnectionManager, IDisposable
         _heartbeatTimer = new Timer(OnHeartbeatTick, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4));
     }
 
-    private async void OnHeartbeatTick(object? state)
+    private void OnHeartbeatTick(object? state)
+    {
+        Core.Common.TaskExtensions.SafeFireAndForget(HeartbeatTickAsync(), "ConnectionManager.Heartbeat");
+    }
+
+    private async Task HeartbeatTickAsync()
     {
         if (_disposed || Status == ConnectionStatus.Scanning) return;
         if (Interlocked.CompareExchange(ref _isProbing, 1, 0) != 0) return;

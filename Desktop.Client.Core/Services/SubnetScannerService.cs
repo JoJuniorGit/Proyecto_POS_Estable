@@ -43,7 +43,20 @@ public class SubnetScannerService : ISubnetScannerService
         ConnectTimeout = TimeSpan.FromSeconds(3),
         SslOptions = new System.Net.Security.SslClientAuthenticationOptions
         {
-            RemoteCertificateValidationCallback = (sender, cert, chain, errors) => true
+            RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
+            {
+                if (errors == System.Net.Security.SslPolicyErrors.None)
+                {
+                    return true;
+                }
+
+                if (sender is System.Net.Http.HttpRequestMessage req && req.RequestUri != null)
+                {
+                    return IsPrivateOrLocalAddress(req.RequestUri.Host);
+                }
+
+                return false;
+            }
         }
     })
     {
@@ -273,5 +286,36 @@ public class SubnetScannerService : ISubnetScannerService
         catch { }
 
         return ips.Distinct().ToList();
+    }
+
+    public static bool IsPrivateOrLocalAddress(string host)
+    {
+        if (string.IsNullOrWhiteSpace(host)) return false;
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase)) return true;
+
+        if (System.Net.IPAddress.TryParse(host, out var ip))
+        {
+            if (System.Net.IPAddress.IsLoopback(ip)) return true;
+
+            var bytes = ip.GetAddressBytes();
+            if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            {
+                // 10.0.0.0/8
+                if (bytes[0] == 10) return true;
+                // 172.16.0.0/12
+                if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true;
+                // 192.168.0.0/16
+                if (bytes[0] == 192 && bytes[1] == 168) return true;
+                // 169.254.0.0/16 (Link Local)
+                if (bytes[0] == 169 && bytes[1] == 254) return true;
+            }
+            else if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+            {
+                // IPv6 link local (fe80::/10) or unique local (fc00::/7)
+                if (ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || (bytes[0] & 0xFE) == 0xFC) return true;
+            }
+        }
+
+        return false;
     }
 }

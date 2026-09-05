@@ -8,6 +8,7 @@ using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Linq;
+using Core.Common;
 
 namespace Desktop.Client.ViewModels;
 
@@ -67,7 +68,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedCurrencyFormat, value))
             {
-                OnSelectedCurrencyFormatChanged(value);
+                OnSelectedCurrencyFormatChangedAsync(value).SafeFireAndForget("Settings.CurrencyFormatChanged");
             }
         }
     }
@@ -86,7 +87,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selected_time_zone, value))
             {
-                OnSelectedTimeZoneChanged(value);
+                OnSelectedTimeZoneChangedAsync(value).SafeFireAndForget("Settings.TimeZoneChanged");
             }
         }
     }
@@ -411,7 +412,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async void OnSelectedTimeZoneChanged(TimeZoneInfo? value)
+    private async Task OnSelectedTimeZoneChangedAsync(TimeZoneInfo? value)
     {
         if (value == null) return;
         try
@@ -444,7 +445,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async void OnSelectedCurrencyFormatChanged(CurrencyFormatOption? option)
+    private async Task OnSelectedCurrencyFormatChangedAsync(CurrencyFormatOption? option)
     {
         if (option == null) return;
         try

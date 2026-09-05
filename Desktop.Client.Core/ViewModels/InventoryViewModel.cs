@@ -576,7 +576,12 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 
-    private async void OnProductItemChanged(ProductItemViewModel item)
+    private void OnProductItemChanged(ProductItemViewModel item)
+    {
+        Core.Common.TaskExtensions.SafeFireAndForget(OnProductItemChangedAsync(item), "InventoryViewModel.ProductItemChanged");
+    }
+
+    private async Task OnProductItemChangedAsync(ProductItemViewModel item)
     {
         try
         {

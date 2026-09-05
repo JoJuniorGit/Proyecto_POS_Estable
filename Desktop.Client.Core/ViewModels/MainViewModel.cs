@@ -147,7 +147,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async void OnLoginSuccess()
+    private void OnLoginSuccess()
+    {
+        Core.Common.TaskExtensions.SafeFireAndForget(OnLoginSuccessAsync(), "MainViewModel.OnLoginSuccess");
+    }
+
+    private async Task OnLoginSuccessAsync()
     {
         if (_exchange_rate_service != null)
         {

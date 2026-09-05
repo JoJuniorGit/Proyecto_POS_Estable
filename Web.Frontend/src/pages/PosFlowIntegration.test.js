@@ -14,7 +14,7 @@ describe('PosFlowIntegration End-to-End Test Suite', () => {
     const amounts = getLineAmounts(item, 50.0);
 
     assert.strictEqual(amounts.subtotalBsS, 1000.0);
-    assert.strictEqual(formatBsS(amounts.subtotalBsS), 'Bs.S 1,000.00');
+    assert.strictEqual(formatBsS(amounts.subtotalBsS), 'Bs.S 1.000,00');
   });
 
   test('2. Recovers gracefully on network failure mock', async () => {
@@ -77,7 +77,7 @@ describe('PosFlowIntegration End-to-End Test Suite', () => {
     // Recalculate totals with updated quantity
     const updatedAmounts = getLineAmounts({ ...item, quantity: updatedQty }, 50.0);
     assert.strictEqual(updatedAmounts.subtotalBsS, 3 * 15 * 50.0); // 45 * 50 = 2250
-    assert.strictEqual(formatBsS(updatedAmounts.subtotalBsS), 'Bs.S 2,250.00');
+    assert.strictEqual(formatBsS(updatedAmounts.subtotalBsS), 'Bs.S 2.250,00');
 
     // Simulate Direct Manual Input (e.g. typing "5" in QuantityInput)
     const manualInput = '5';
@@ -87,6 +87,6 @@ describe('PosFlowIntegration End-to-End Test Suite', () => {
     assert.strictEqual(updatedQty, 5, 'Direct manual entry must update quantity to 5');
     const manualAmounts = getLineAmounts({ ...item, quantity: updatedQty }, 50.0);
     assert.strictEqual(manualAmounts.subtotalBsS, 5 * 15 * 50.0); // 75 * 50 = 3750
-    assert.strictEqual(formatBsS(manualAmounts.subtotalBsS), 'Bs.S 3,750.00');
+    assert.strictEqual(formatBsS(manualAmounts.subtotalBsS), 'Bs.S 3.750,00');
   });
 });
