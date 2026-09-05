@@ -2038,6 +2038,12 @@ public class InventoryService : IInventoryService
     {
         if (_context.Database.IsRelational() && transaction != null)
         {
+            var txConn = transaction.Connection;
+            if (txConn != null && _context.Database.GetDbConnection() != txConn)
+            {
+                await _context.Database.CloseConnectionAsync();
+                _context.Database.SetDbConnection(txConn);
+            }
             await _context.Database.UseTransactionAsync(transaction, cancellationToken);
         }
     }

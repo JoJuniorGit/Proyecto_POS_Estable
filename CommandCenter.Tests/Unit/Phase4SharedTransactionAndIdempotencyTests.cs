@@ -17,6 +17,7 @@ using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Moq;
 using Sales.Module.Data;
 using Sales.Module.DTOs;
@@ -621,6 +622,31 @@ public class Phase4SharedTransactionAndIdempotencyTests
         var unchangedSale = await salesContext.Sales.FindAsync(100);
         Assert.NotNull(unchangedSale);
         Assert.Equal(SaleStatus.Pending, unchangedSale.Status);
+    }
+
+    [Fact]
+    public async Task EnrollInTransactionAsync_WhenConnectionDiffers_SwitchesConnectionAndEnrollsSuccessfully()
+    {
+        var (salesContext, salesConn) = TestDatabaseFactory.CreateSqliteSalesDbContext();
+        var (invContext, invConn) = TestDatabaseFactory.CreateSqliteInventoryDbContext();
+        using (salesConn)
+        using (salesContext)
+        using (invConn)
+        using (invContext)
+        {
+            var invService = new InventoryService(invContext);
+            await using var tx = await salesContext.Database.BeginTransactionAsync();
+            var rawTx = tx.GetDbTransaction();
+
+            // Antes de enrolar, la conexión de invContext es distinta de la de la transacción
+            Assert.NotEqual(invContext.Database.GetDbConnection(), rawTx.Connection);
+
+            // Enrolar debe cambiar la conexión de invContext y utilizar la transacción sin lanzar excepción
+            await invService.EnrollInTransactionAsync(rawTx);
+
+            Assert.Equal(invContext.Database.GetDbConnection(), rawTx.Connection);
+            Assert.NotNull(invContext.Database.CurrentTransaction);
+        }
     }
 
     #endregion
