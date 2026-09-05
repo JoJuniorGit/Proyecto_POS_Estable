@@ -1,0 +1,121 @@
+================================================================================
+REPORTE POR MÓDULO: CommandCenter.Tests (suite de pruebas)
+Fecha: 2026-09-04
+Cruce con docs/reporte.txt (análisis global).
+================================================================================
+
+--------------------------------------------------------------------------------
+REVISIÓN 2 (2026-09-04) — estado tras la remediación 08:19–08:51
+--------------------------------------------------------------------------------
+Archivos del módulo tocados en la ventana: CommandCenter.Tests/
+AuthenticationTests.cs (ampliado), PriceListTests.cs, Unit/
+InventoryCatalogRefreshTests.cs y NUEVO Unit/OutboxProcessorJobTests.cs.
+Pruebas nuevas verificadas:
+- AuthenticationTests: JwtToken_WithExplicitScope_ContainsScopeClaim
+  (pos:web/pos:desktop); TokenService_InProduction_WithWeakOrDevelopmentSecret_
+  ThrowsInvalidOperationException (fail-fast de la clave, cubre C1/R5 parcial);
+  Login_WithWebPlatform_SetsHttpOnlyCookieAndReturnsNullTokenInBody y
+  Login_WithDesktopPlatform_ReturnsBearerTokenInBody (cubren el nuevo flujo de
+  cookies, C4 parcial); Logout_RemovesPosJwtCookie;
+  NetworkDiscoveryService_WithAndWithoutHttps_SetsQrPayloadAccordingly
+  (cubre H-API-22).
+- OutboxProcessorJobTests: registro como hosted service; procesamiento
+  Pending -> Processed; payload inválido -> reintento con backoff;
+  5 reintentos -> DeadLetter; y CompleteSaleAsync_WithIdempotencyKey_
+  ReturnsExistingInvoice_WhenAlreadyCompleted (cubre A3 parcial).
+
+Impacto en hallazgos:
+- TST-3 -> 🟡 MEJORADO: ya hay tests para el alcance de A2/A3 parcial y del
+  outbox (backoff/DeadLetter), del fail-fast JWT y del scope/cookies; SIGUEN
+  faltando tests para: carrera real de InvoiceNumber en Postgres (dos
+  CompleteSale simultáneos), idempotencia del handler de inventario entre
+  ventas #1 y #11 (el fix de exact-match no tiene test propio), sobrepago sin
+  tope/vuelto, cierre con expected alterado por el cliente y expiración de
+  reservas.
+- TST-1 (InMemory/SQLite vs Postgres) -> ❌ VIGENTE y más relevante: los tests
+  del outbox usan InMemory (rama no-Npgsql del job, SELECT sin SKIP LOCKED),
+  por lo que la consulta FOR UPDATE SKIP LOCKED real de producción NO está
+  cubierta por tests.
+- TST-2/4/5 -> ❌ VIGENTES.
+- TST-6 (NUEVO, BAJO): el nuevo test de CompleteSale idempotente valida el
+  happy path (venta ya Completed) pero no el caso de dos solicitudes en
+  paralelo con la misma key (ver H-SAL-13): complementar con prueba de
+  concurrencia real.
+
+1. DESCRIPCIÓN Y ARQUITECTURA
+--------------------------------------------------------------------------------
+56 archivos de prueba (xUnit) organizados en: tests unitarios por servicio
+(InventoryServiceUnitTests, SalesServiceUnitTests, CashDrawerServiceUnitTests,
+DailyClosureServiceUnitTests, ExchangeRateJobTests...), de seguridad
+(SecurityTests, RbacPermissionTests, PasswordHasherUnitTests,
+SecurityHardeningSprint2Tests), de comportamiento (AtmBehavior, PosHotkeys,
+KeyboardWedgeScannerListener), de flujos (CheckoutAndPayment,
+OnHoldSales, PendingPickup, CashAdvance, PriceList, ProductVariants,
+FinancialRobustness, DataIntegrity), de rendimiento (Sprint/Phase*Performance)
+y de integración con PostgreSQL real (Integration/*) usando
+TEST_POSTGRES_CONNECTION en CI (.github/workflows/ci.yml). Incluye builders
+(ProductBuilder, SaleBuilder, CustomerBuilder, TestDatabaseFactory).
+
+2. HALLAZGOS ESPECÍFICOS DEL MÓDULO
+--------------------------------------------------------------------------------
+[TST-1] Tres proveedores de BD con semántica distinta.
+  TestDatabaseFactory usa EF InMemory (Sales), SQLite (Inventory) y Postgres
+  real (Integración). InMemory NO respeta constraints (índice único de
+  InvoiceNumber, filtros, numeric), ignora transacciones (con warning
+  desactivado a propósito: TransactionIgnoredWarning) y no ejecuta
+  ExecuteUpdate/Delete (rama relacional de UpdateStockAsync nunca se prueba
+  con InMemory). Los tests unitarios pueden dar verde con lógica que falla
+  en Postgres (p. ej., la carrera de MAX+1 de facturas NO se detecta en
+  InMemory). Usar Testcontainers/Postgres real para reglas de dinero y
+  restricciones; InMemory solo para ViewModels/servicios puros.
+
+[TST-2] Pruebas a nivel de controlador sin el pipeline real.
+  AuthenticationTests y otros instancian el controlador y llaman acciones
+  directamente (response.Result), saltándose middleware (autenticación,
+  rate limit, version check, filtros globales). Es útil para lógica, pero
+  los [Authorize] no se ejecutan en muchos casos: complementar con
+  WebApplicationFactory + TestServer para validar autorización de verdad.
+
+[TST-3] Cobertura desigual de los riesgos reales.
+  Hay excelentes pruebas de precios/stock/resiliencia, pero NO se encontraron
+  tests para: (a) carrera de InvoiceNumber (dos completarVenta simultáneos);
+  (b) idempotencia de InventorySaleMadeEventHandler entre ventas #1 y #11 con
+  el mismo producto; (c) sobrepago sin tope/vuelto; (d) reintento de POST en
+  ResilienceHandler (duplicación); (e) cierre con expected alterado por el
+  cliente; (f) expiración de reservas. Son exactamente los hallazgos A1-A3,
+  M6 y H-API-3 del análisis.
+
+[TST-4] Acoplamiento a detalle de implementación.
+  Varios tests (SecurityTests, RbacPermissionTests) verifican mensajes o
+  códigos HTTP literales que el refactor de "errores tipados" (H-API-6)
+  cambiaría; mantener la intención (403 vs 500) sin depender de strings.
+
+[TST-5] Pruebas de rendimiento sin umbrales claros.
+  Los archivos PerformanceTests/Phase* ejecutan operaciones y miden tiempo
+  sin umbrales documentados; si pasan por holgura, no protegen de regresiones.
+  Definir umbrales en ms y máquinas de referencia, o convertirlas en tests de
+  carga manuales.
+
+3. FORTALEZAS DEL MÓDULO
+--------------------------------------------------------------------------------
+- Cobertura amplia por dominio (flujos completos de venta, apartados, cierre,
+  adelantos, descuentos, variantes) y por capa.
+- Builders centralizados (ProductBuilder, SaleBuilder...) que hacen los tests
+  legibles.
+- Suite de integración real con PostgreSQL en CI (señal de madurez).
+- Pruebas de regresión de seguridad y de reglas de negocio críticas
+  (efectivo sin centavos, tasas, descuentos, precios mayor/detal).
+- Tests de UI/UX del POS (hotkeys, scanner, circuit breaker).
+
+4. RECOMENDACIONES
+--------------------------------------------------------------------------------
+- Postgres real (Testcontainers) para las reglas de dinero/constraints y
+  añadir los tests de (TST-3) que hoy faltan (prioridad A1/A2/A3).
+- Capa de pruebas de autorización con TestServer.
+- Separar tests de integración (lentos) de unitarios en CI (dos jobs).
+- Revisar umbrales de las pruebas de rendimiento.
+
+5. CRUCE CON docs/reporte.txt
+--------------------------------------------------------------------------------
+A1, A2, A3, A5, M6, B10 y H-API-3/H-API-6 de los reportes por módulo.
+================================================================================

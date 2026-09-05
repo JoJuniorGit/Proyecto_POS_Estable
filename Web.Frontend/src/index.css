@@ -3459,3 +3459,41 @@ input::placeholder {
   color: #FFFFFF;
 }
 
+/* ══════════════════════════════════════════════════════════
+   CONTENEDOR DE CÓDIGO QR CON FONDO BLANCO Y ALTO CONTRASTE
+   Garantiza legibilidad y escaneo óptimo en modo oscuro y claro
+   ══════════════════════════════════════════════════════════ */
+.qr-code-container {
+  background-color: #FFFFFF !important;
+  border-radius: var(--radius-md, 10px);
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  border: 1px solid #E2E8F0;
+  width: 224px;
+  height: 224px;
+  box-sizing: border-box;
+  margin: 0 auto 0.5rem auto;
+}
+
+.qr-code-container svg {
+  background-color: #FFFFFF !important;
+  display: block;
+  border-radius: 4px;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Soporte explícito para cuando data-theme="dark" esté activo */
+[data-theme="dark"] .qr-code-container {
+  background-color: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .qr-code-container svg {
+  background-color: #FFFFFF !important;
+}
+

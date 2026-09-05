@@ -164,4 +164,47 @@ public class CashDrawerServiceUnitTests
 
         Assert.Contains("Saldo de efectivo en caja insuficiente", ex.Message);
     }
+
+    [Fact]
+    public async Task AddTransactionAsync_PhysicalExpense_WhenInsufficientCash_ThrowsInvalidOperationException()
+    {
+        var (service, context) = CreateService();
+        var session = await service.OpenSessionAsync(200m, 50m);
+
+        // Intentar retirar 300 BsS cuando solo hay 200 BsS en la gaveta
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AddTransactionAsync(
+                sessionId: session.Id,
+                type: CashTransactionType.Expense,
+                source: CashTransactionSource.CashOut,
+                amountLocal: 300m,
+                amountUsd: 6m,
+                exchangeRate: 50m,
+                description: "Retiro de efectivo para gastos",
+                referenceId: null,
+                isPhysicalCash: true
+            ));
+
+        Assert.Contains("Saldo de efectivo en caja insuficiente", ex.Message);
+    }
+
+    [Fact]
+    public async Task AddTransactionAsync_WithZeroOrNegativeAmount_ThrowsArgumentException()
+    {
+        var (service, context) = CreateService();
+        var session = await service.OpenSessionAsync(500m, 50m);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.AddTransactionAsync(
+                sessionId: session.Id,
+                type: CashTransactionType.Income,
+                source: CashTransactionSource.CashIn,
+                amountLocal: -50m,
+                amountUsd: -1m,
+                exchangeRate: 50m,
+                description: "Monto inválido"
+            ));
+
+        Assert.Contains("mayor a cero", ex.Message);
+    }
 }

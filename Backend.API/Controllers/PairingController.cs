@@ -40,7 +40,11 @@ public class PairingController : ControllerBase
             });
         }
 
-        var info = _networkDiscoveryService.GetPairingInfo(httpPort: 5000, httpsPort: 5001);
+        bool isHttps = Request.IsHttps 
+            || System.IO.File.Exists(System.IO.Path.Combine(AppContext.BaseDirectory, "pos-https.pfx"))
+            || System.IO.File.Exists("pos-https.pfx");
+
+        var info = _networkDiscoveryService.GetPairingInfo(httpPort: 5000, httpsPort: 5001, isHttpsEnabled: isHttps);
         return Ok(info);
     }
 }

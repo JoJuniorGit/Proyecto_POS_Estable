@@ -169,6 +169,8 @@
         <controls:PerformantDataGrid Grid.Row="2" 
                   ItemsSource="{Binding Sales}" 
                   SelectedItem="{Binding SelectedSale}"
+                  SelectionUnit="FullRow"
+                  SelectionMode="Single"
                   AutoGenerateColumns="False" 
                   CanUserAddRows="False"
                   CanUserDeleteRows="False"
@@ -190,7 +192,21 @@
                                     HeaderStyle="{StaticResource StandardHeaderStyle}"
                                     Binding="{Binding InvoiceNumber, StringFormat={}N° {0:D6}}" 
                                     FontWeight="Bold" 
-                                    Width="120" />
+                                    Width="110" />
+
+                <!-- FECHA / HORA -->
+                <DataGridTemplateColumn Header="FECHA / HORA" 
+                                        HeaderStyle="{StaticResource StandardHeaderStyle}" 
+                                        Width="140">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel VerticalAlignment="Center" Margin="12,0,0,0">
+                                <TextBlock Text="{Binding DateLocal, StringFormat={}{0:dd/MM/yyyy}}" FontWeight="SemiBold" FontSize="12"/>
+                                <TextBlock Text="{Binding DateLocal, StringFormat={}{0:hh:mm tt}}" Foreground="Gray" FontSize="11"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 
                 <!-- CLIENTE -->
                 <DataGridTextColumn Header="CLIENTE" 
@@ -336,8 +352,12 @@
                             <Run Text="Detalle de Factura N° "/>
                             <Run Text="{Binding SelectedSale.InvoiceNumber, StringFormat={}{0:D6}}"/>
                             <Run Text=" — Emitida: " Foreground="Gray" FontWeight="Normal"/>
-                            <Run Text="{Binding SelectedSale.Date, StringFormat={}{0:dd/MM/yyyy HH:mm}}" Foreground="{DynamicResource PrimaryHueMidBrush}" FontWeight="Bold"/>
                         </TextBlock>
+                        <TextBlock Text="{Binding DetailDateLocalFormatted}" 
+                                   Style="{DynamicResource MaterialDesignSubtitle1TextBlock}" 
+                                   Foreground="{DynamicResource PrimaryHueMidBrush}" 
+                                   FontWeight="Bold" 
+                                   VerticalAlignment="Center"/>
                     </StackPanel>
                 </DockPanel>
 
@@ -378,6 +398,7 @@
                                    AutoGenerateColumns="False"
                                    CanUserAddRows="False"
                                    IsReadOnly="True"
+                                   EnableRowVirtualization="False"
                                    HeadersVisibility="Column"
                                    Background="Transparent"
                                    BorderThickness="0"
@@ -414,20 +435,29 @@
                                 </ItemsControl>
                             </StackPanel>
 
-                            <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Bottom">
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="Tasa Aplicada:" Margin="0,0,8,0" Foreground="Gray" VerticalAlignment="Center" FontSize="12"/>
-                                    <TextBlock Text="{Binding SelectedSale.AppliedRate, StringFormat={}{0:N2} Bs/$}" Foreground="Gray" FontWeight="Bold" VerticalAlignment="Center" FontSize="12"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="Total USD:" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="12"/>
-                                    <TextBlock Text="{Binding SelectedSale.TotalUSD, StringFormat={}${0:N2}}" FontWeight="Bold" VerticalAlignment="Center" FontSize="12"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Total Factura Bs.S:" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="14" FontWeight="Bold"/>
-                                    <TextBlock Text="{Binding SelectedSale.TotalBsS, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="16" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </StackPanel>
+                            <Grid Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Bottom" MinWidth="240" Margin="16,0,12,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" MaxWidth="160"/>
+                                    <ColumnDefinition Width="*" MinWidth="90"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Tasa Aplicada -->
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Tasa Aplicada:" TextTrimming="CharacterEllipsis" Foreground="Gray" VerticalAlignment="Center" FontSize="12" Margin="0,0,8,4"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DetailAppliedRate, StringFormat={}{0:N2} Bs/$}" Foreground="Gray" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" Margin="0,0,0,4"/>
+
+                                <!-- Total USD -->
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Total USD:" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="12" Margin="0,0,8,4"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DetailTotalUSD, StringFormat={}${0:N2}}" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" Margin="0,0,0,4"/>
+
+                                <!-- Total Factura Bs.S -->
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Total Factura Bs.S:" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="14" FontWeight="Bold" Margin="0,0,8,0"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DetailTotalBsS, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="16" Foreground="{DynamicResource PrimaryHueMidBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
                         </Grid>
                     </StackPanel>
                 </ScrollViewer>

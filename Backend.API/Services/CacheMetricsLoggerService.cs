@@ -19,12 +19,19 @@ public class CacheMetricsLoggerService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(15));
-        while (!stoppingToken.IsCancellationRequested && await timer.WaitForNextTickAsync(stoppingToken))
+        try
         {
-            var (hits, misses, hitRate) = CacheMetrics.GetSnapshot();
-            _logger.LogInformation(
-                "[L2 Cache Telemetry] Hits: {Hits} | Misses: {Misses} | Hit Rate: {HitRate:F2}%",
-                hits, misses, hitRate);
+            while (!stoppingToken.IsCancellationRequested && await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                var (hits, misses, hitRate) = CacheMetrics.GetSnapshot();
+                _logger.LogInformation(
+                    "[L2 Cache Telemetry] Hits: {Hits} | Misses: {Misses} | Hit Rate: {HitRate:F2}%",
+                    hits, misses, hitRate);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Graceful shutdown
         }
     }
 }

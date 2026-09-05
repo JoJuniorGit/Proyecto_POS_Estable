@@ -6,6 +6,7 @@ using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using System.Linq;
 using System.Threading.Tasks;
+using Backend.API.Attributes;
 
 namespace Backend.API.Controllers;
 
@@ -53,8 +54,18 @@ public class SalesController : ControllerBase
     {
         try
         {
-            var _sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal);
+            bool isAuthorized = User.IsInRole("Admin") || User.IsInRole("Manager");
+            if ((request.CustomUnitPriceUsd.HasValue || request.CustomUnitPriceLocal.HasValue) && !isAuthorized)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor." });
+            }
+
+            var _sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized);
             return Ok(_sale);
+        }
+        catch (System.UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
         }
         catch (System.Exception ex)
         {
@@ -123,8 +134,13 @@ public class SalesController : ControllerBase
     {
         try
         {
-            var _sale = await _salesService.UpdateSaleItemsAsync(id, request);
+            bool isAuthorized = User.IsInRole("Admin") || User.IsInRole("Manager");
+            var _sale = await _salesService.UpdateSaleItemsAsync(id, request, isAuthorized);
             return Ok(_sale);
+        }
+        catch (System.UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
         }
         catch (System.Exception ex)
         {
@@ -266,6 +282,7 @@ public class SalesController : ControllerBase
     }
 
 
+    [RequireSecurityStampValidation]
     [HttpPost("{id}/complete")]
     public async Task<ActionResult> CompleteSale(int id, [FromBody] CompleteSaleRequest request)
     {
@@ -275,12 +292,19 @@ public class SalesController : ControllerBase
                 ? uid
                 : request.CashierId;
 
+            string? idempotencyKey = Request?.Headers["Idempotency-Key"].ToString();
+            if (string.IsNullOrWhiteSpace(idempotencyKey))
+            {
+                idempotencyKey = null;
+            }
+
             var _payment_infos = request.Payments.Select(p => new PaymentInfo(p.PaymentMethodId, p.Amount, p.AmountBsS > 0 ? p.AmountBsS : p.AmountLocal, p.ReferenceNumber));
-            int _real_id = await _salesService.CompleteSaleAsync(id, request.ExchangeRate, _payment_infos, request.RoundingAdjustment, effectiveCashierId, request.IsPendingPickup);
+            int _real_id = await _salesService.CompleteSaleAsync(id, request.ExchangeRate, _payment_infos, request.RoundingAdjustment, effectiveCashierId, request.IsPendingPickup, idempotencyKey);
             return Ok(_real_id);
         }
         catch (System.Exception ex)
         {
+            Core.Logging.AppLogger.LogCrash(ex, $"SalesController.CompleteSale({id})");
             return BadRequest(ex.Message);
         }
     }
@@ -310,6 +334,14 @@ public class SalesController : ControllerBase
         return Ok(_pending);
     }
 
+    /// <summary>
+    /// Obtiene el historial paginado de ventas completadas con filtros opcionales de fecha y término de búsqueda.
+    /// </summary>
+    /// <param name="page">Número de página (base 1, por defecto 1).</param>
+    /// <param name="pageSize">Cantidad de registros por página (1 a 100, por defecto 20).</param>
+    /// <param name="startDate">Fecha inicial del filtro (formato 'yyyy-MM-dd' o ISO 8601). Se interpreta según la hora legal de Venezuela (UTC-4, VET) desde las 00:00:00 locales.</param>
+    /// <param name="endDate">Fecha final del filtro (formato 'yyyy-MM-dd' o ISO 8601). Se interpreta según la hora legal de Venezuela (UTC-4, VET) cubriendo hasta las 23:59:59.999 locales. Si se omite habiendo startDate, asume el día actual.</param>
+    /// <param name="search">Término de búsqueda multicampo (N° factura, cédula/nombre cliente o cajero).</param>
     [HttpGet("history")]
     public async Task<ActionResult> GetHistory([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] System.DateTime? startDate = null, [FromQuery] System.DateTime? endDate = null, [FromQuery] string? search = null)
     {

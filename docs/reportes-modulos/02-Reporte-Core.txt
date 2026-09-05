@@ -1,0 +1,131 @@
+================================================================================
+REPORTE POR MÓDULO: Core (librería compartida)
+Fecha: 2026-09-04
+Cruce con docs/reporte.txt (análisis global).
+================================================================================
+
+--------------------------------------------------------------------------------
+REVISIÓN 2 (2026-09-04) — estado tras la remediación 08:19–08:51
+--------------------------------------------------------------------------------
+Cambios del módulo en la ventana de remediación:
+- NUEVO Core/Entities/OutboxMessage.cs: entidad del outbox (Id, EventType,
+  Payload, CreatedAtUtc, ProcessedAtUtc, Status, RetryCount, NextRetryUtc,
+  ErrorMessage). Detalles a revisar: (a) define el enum OutboxStatus
+  (Pending/Processed/DeadLetter) pero la propiedad Status es un STRING con
+  literales duplicados -> el enum queda sin uso; (b) la DbSet se registra en
+  Sales.Module/Data/SalesDbContext.cs:24,212-223 -> la entidad "compartida"
+  crea dependencia del módulo de ventas hacia Core por el tipo; (c) el mensaje
+  solo transporta NOTIFICACIÓN (ver R3/R11 del global): no hay garantía de
+  efecto de negocio al procesarlo.
+- Core/DTOs/UserDto.cs: LoginRequest.Platform ("Web"/"Desktop") que el
+  servidor usa para decidir cookie vs bearer (ver R10: claim auto-declarado).
+
+Estado de hallazgos:
+- H-CORE-1..H-CORE-8 -> ❌ VIGENTES (sin cambios en este módulo).
+- H-CORE-9 (NUEVO, BAJO, R3): OutboxStatus (enum) vs Status string con
+  literales: elegir una sola representación (p. ej. enum + conversión al
+  persistir) para evitar que DeadLetter/Procesado se escriban con typos.
+- H-CORE-10 (NUEVO, BAJO): User sigue sin campos de lockout/último login
+  (H-CORE-3) y el JWT no lleva security stamp -> la revocación de sesiones
+  sigue imposible (cruza H-API-13 global); la desactivación de un usuario no
+  invalida tokens ya emitidos.
+
+1. DESCRIPCIÓN Y ARQUITECTURA
+--------------------------------------------------------------------------------
+Librería de clases compartida por Backend.API, Desktop.Client(.Core) y módulos.
+Contiene las entidades de dominio (Product, User, Customer, Sale-related en
+Core? NO: Sale/venta vive en Sales.Module), interfaces de servicio, DTOs,
+helpers (precios, zona horaria, barcode), configuración, constantes de caché,
+logging (AppLogger, ClientStateLogger) y métricas. ~1.256 líneas de código.
+
+Contenido por carpeta:
+- Entities: BaseEntity (Id, CreatedAt/UpdatedAt?), User, Product, Customer,
+  StockMovement, StockReservation, ExchangeRateHistory, Order (sin uso?),
+  SystemSetting.
+- Interfaces: ICurrentUserService, IInventoryService, ISystemSettingsService.
+- Helpers: PricingCalculator, TimeZoneHelper, BarcodeValidator.
+- Logging: AppLogger, ClientStateLogger. Metrics: CacheMetrics.
+- Configuration: SystemSettingsOptions. Constants: CacheKeys, InventoryMessages.
+
+2. HALLAZGOS ESPECÍFICOS DEL MÓDULO
+--------------------------------------------------------------------------------
+[H-CORE-1] Modelo de roles incompleto e inconsistente.
+  UserRole define solo Admin, Cashier y Driver; "Manager" NO existe, aunque la
+  API y el cliente lo referencian (ver H-API-1). Además existen controles que
+  tratan al sistema como "Admin vs Cajero" mientras el enum incluye "Driver"
+  (pendiente de Logistics, módulo vacío). Unificar el modelo de roles y
+  permisos ANTES de seguir agregando [Authorize(Roles=...)].
+
+[H-CORE-2] Secretos por defecto dentro de clases de configuración.
+  Core/Configuration/SystemSettingsOptions.cs define valores por defecto
+  "Admin", "Admin123!" (AdminSeedPassword) y URL de actualizaciones
+  http://localhost:5000/updates/. Aunque el seed real lee IConfiguration (y
+  lanza si falta la contraseña en producción), el default en el POCO es un
+  secreto hardcodeado que puede colarse si alguien enlaza las opciones
+  directamente. Eliminar el default del password (dejar vacío y validar).
+
+[H-CORE-3] Entidad User sin campos para endurecer autenticación.
+  No hay FailedLoginAttempts, LockoutEnd, LastPasswordChange, LastLogin ni
+  email. Implementar bloqueo por cuenta (A5 global) exige migrar estas
+  columnas. PasswordHash contiene el hash autodescriptivo "PBKDF2$..." (bien)
+  pero el hasher acepta comparación legacy en texto plano (ver PasswordHasher
+  en Backend.API) mientras existan filas legacy.
+
+[H-CORE-4] Logging duplicado, sin rotación y con doble lock.
+  Existen DOS loggers estáticos con la misma mecánica: AppLogger (start.log,
+  crash.log, db-errors.log, security-audit.log, warn.log) y ClientStateLogger
+  (client-resilience.log), cada uno con lock propio y File.AppendAllText por
+  línea (abre/cierra el archivo en cada escritura). Ninguno rota ni limita
+  tamaño: crecen indefinidamente en producción (M3 global). Unificar en un
+  solo servicio con rotación.
+
+[H-CORE-5] Claves de caché no centralizadas del todo.
+  CacheKeys.cs define solo 3 claves (payment methods y cash drawer session);
+  InventoryService mantiene sus propias claves con interpolación de strings
+  ("product_sku_{...}", "product_quick_{...}", "variant_options_{id}") y la
+  constante privada ExchangeRateCacheKey. Centralizar TODAS las claves en
+  CacheKeys para evitar colisiones/olvidos de invalidación.
+
+[H-CORE-6] TimeZoneHelper duplicado en Sales.Module/Helpers.
+  Core/Helpers/TimeZoneHelper.cs y Sales.Module/Helpers/TimeZoneHelper.cs
+  coexisten (el segundo con API GetTimeZone(id) para la zona seleccionada).
+  Riesgo de divergencia; mover la variante "SelectedTimeZoneId" a Core.
+
+[H-CORE-7] DTOs sin validación declarativa.
+  La mayoría de DTOs de Core son clases planas sin DataAnnotations; la
+  validación vive en controladores/servicios con ifs manuales repetidos (y a
+  veces olvidados). Product (entidad) sí trae [Required]/[Range]/[StringLength]
+  razonables. Definir DTOs de entrada con anotaciones y usar el filtro global.
+
+[H-CORE-8] Entidades "huérfanas" y acoplamiento.
+  Core/Entities/Order.cs parece sin uso real (buscar referencias antes de
+  asumir); Product mezcla muchas responsabilidades de variantes/precios
+  (decenas de propiedades), reflejando la lógica tipo "god" de InventoryService.
+  La entidad Product en Core la consumen también Sales (para cálculos),
+  generando dependencia de Sales.Module hacia datos de inventario que debería
+  llegar por DTO (ProductSnapshot en ventas atenúa esto).
+
+3. FORTALEZAS DEL MÓDULO
+--------------------------------------------------------------------------------
+- Dinero SIEMPRE en decimal y reglas de redondeo centralizadas
+  (PricingCalculator) con precisión digital/efectivo diferenciada.
+- TimeZoneHelper de Venezuela con resolución multiplataforma (IANA/Windows) y
+  fallback UTC-4.
+- BarcodeValidator robusto: formato 4-15 alfanuméricos, rechazo de QR/URLs y
+  checksum GS1 Mod10 para EAN/UPC (evita lecturas corruptas).
+- BaseEntity con CreatedAt/UpdatedAt consistente entre entidades.
+- CacheMetrics con Interlocked (thread-safe) y exponibles vía health/metrics.
+- InventoryMessages centraliza mensajes de validación de inventario.
+
+4. DEUDA TÉCNICA Y RECOMENDACIONES
+--------------------------------------------------------------------------------
+- Centralizar logging con rotación y niveles.
+- Definir un modelo único de roles/permisos (Core) consumido por API y UI.
+- Agregar columnas de seguridad a User (lockout, último login) con migración.
+- Quitar secretos por defecto de SystemSettingsOptions.
+- Consolidar TimeZoneHelper y CacheKeys en Core.
+
+5. CRUCE CON docs/reporte.txt
+--------------------------------------------------------------------------------
+A5, A6, M1, M2, M3, B2, B9, C3.
+================================================================================

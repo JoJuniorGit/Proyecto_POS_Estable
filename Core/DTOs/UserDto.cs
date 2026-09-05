@@ -9,6 +9,11 @@ public class LoginRequest
     public string Cedula { get; set; } = string.Empty;
 
     public string Password { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Plataforma de origen ("Web" o "Desktop"). Permite diferenciar el canal de entrega del token (Cookies vs Bearer).
+    /// </summary>
+    public string? Platform { get; set; }
 }
 
 public class ChangePasswordRequest

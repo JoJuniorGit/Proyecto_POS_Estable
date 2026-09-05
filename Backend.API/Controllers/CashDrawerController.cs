@@ -6,6 +6,7 @@ using Sales.Module.Interfaces;
 using System.Threading.Tasks;
 
 using Core.Interfaces;
+using Backend.API.Attributes;
 
 namespace Backend.API.Controllers;
 
@@ -32,35 +33,35 @@ public class CashDrawerController : ControllerBase
     }
 
     [HttpGet("active-session")]
-    public async Task<ActionResult<CashDrawerSession>> GetActiveSession()
+    public async Task<ActionResult<CashDrawerSession?>> GetActiveSession()
     {
-        var rate = decimal.Parse(await _settingsService.GetSettingAsync("CurrentExchangeRate") ?? "1.0");
-        var session = await _cashDrawerService.GetOrCreateActiveSessionAsync(rate);
-        await MapLocalTimesAsync(session);
-
-        if (session != null)
+        // H-API-19: Eliminación de efectos secundarios en GET (no crear sesión en base de datos al consultar)
+        var session = await _cashDrawerService.GetActiveSessionAsync();
+        if (session == null)
         {
-            var responseSession = new CashDrawerSession
-            {
-                Id = session.Id,
-                OpenedAt = session.OpenedAt,
-                OpenedAtLocal = session.OpenedAtLocal,
-                ClosedAt = session.ClosedAt,
-                ClosedAtLocal = session.ClosedAtLocal,
-                OpeningBalanceLocal = session.OpeningBalanceLocal,
-                ClosingBalanceLocal = session.ClosingBalanceLocal,
-                OpeningExchangeRate = session.OpeningExchangeRate,
-                ClosingExchangeRate = session.ClosingExchangeRate,
-                Status = session.Status,
-                Transactions = session.Transactions
-                    .Where(t => t.IsPhysicalCash)
-                    .OrderByDescending(t => t.TransactionTime)
-                    .ToList()
-            };
-            return Ok(responseSession);
+            return Ok(null);
         }
 
-        return Ok(session);
+        await MapLocalTimesAsync(session);
+
+        var responseSession = new CashDrawerSession
+        {
+            Id = session.Id,
+            OpenedAt = session.OpenedAt,
+            OpenedAtLocal = session.OpenedAtLocal,
+            ClosedAt = session.ClosedAt,
+            ClosedAtLocal = session.ClosedAtLocal,
+            OpeningBalanceLocal = session.OpeningBalanceLocal,
+            ClosingBalanceLocal = session.ClosingBalanceLocal,
+            OpeningExchangeRate = session.OpeningExchangeRate,
+            ClosingExchangeRate = session.ClosingExchangeRate,
+            Status = session.Status,
+            Transactions = session.Transactions
+                .Where(t => t.IsPhysicalCash)
+                .OrderByDescending(t => t.TransactionTime)
+                .ToList()
+        };
+        return Ok(responseSession);
     }
 
     /// <summary>
@@ -74,7 +75,7 @@ public class CashDrawerController : ControllerBase
         var transactions = await _cashDrawerService.GetHistoryAsync(limit);
 
         var tzId = await _settingsService.GetSettingAsync("SelectedTimeZoneId");
-        var tz = Sales.Module.Helpers.TimeZoneHelper.GetTimeZone(tzId);
+        var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
 
         foreach (var tx in transactions)
         {
@@ -88,7 +89,9 @@ public class CashDrawerController : ControllerBase
         return Ok(transactions);
     }
 
+    [RequireSecurityStampValidation]
     [HttpPost("open")]
+    [HttpPost("open-session")]
     public async Task<ActionResult<CashDrawerSession>> OpenSession([FromBody] OpenSessionRequest request)
     {
         try
@@ -103,6 +106,7 @@ public class CashDrawerController : ControllerBase
         }
     }
 
+    [RequireSecurityStampValidation]
     [HttpPost("close")]
     public async Task<ActionResult<CashDrawerSession>> CloseSession([FromBody] CloseSessionRequest request)
     {
@@ -125,16 +129,26 @@ public class CashDrawerController : ControllerBase
         return Ok(balance);
     }
 
+    [RequireSecurityStampValidation]
     [HttpPost("transaction")]
     public async Task<ActionResult<CashTransaction>> AddTransaction([FromBody] AddTransactionRequest request)
     {
         try
         {
-            // Permission check: only Admins can execute manual CashIn or CashOut transactions
-            if ((request.Source == CashTransactionSource.CashIn || request.Source == CashTransactionSource.CashOut || request.Source == CashTransactionSource.ManualAdjustment) &&
-                _currentUserService.UserRole.HasValue && _currentUserService.UserRole.Value == Core.Entities.UserRole.Cashier)
+            // Permission check: solo Administradores pueden realizar operaciones manuales de ingreso (CASH IN) o retiro (CASH OUT)
+            // Se bloquean explícitamente roles Cashier y Driver (H-API-17)
+            if (request.Source == CashTransactionSource.CashIn || request.Source == CashTransactionSource.CashOut || request.Source == CashTransactionSource.ManualAdjustment)
             {
-                return StatusCode(StatusCodes.Status403Forbidden, new { Message = "Acceso denegado: Únicamente los usuarios administradores pueden realizar operaciones manuales de ingreso (CASH IN) o retiro (CASH OUT) en la caja." });
+                if (_currentUserService.UserRole.HasValue && 
+                    (_currentUserService.UserRole.Value == Core.Entities.UserRole.Cashier || _currentUserService.UserRole.Value == Core.Entities.UserRole.Driver))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, new { Message = "Acceso denegado: Únicamente los usuarios administradores pueden realizar operaciones manuales de ingreso (CASH IN) o retiro (CASH OUT) en la caja." });
+                }
+            }
+
+            if (request.AmountLocal <= 0)
+            {
+                return BadRequest(new { Message = "El monto de la transacción debe ser mayor a cero." });
             }
 
             if (request.ExchangeRate <= 0)
@@ -157,7 +171,7 @@ public class CashDrawerController : ControllerBase
             );
             // Transaction Mapping logic
             var tzId = await _settingsService.GetSettingAsync("SelectedTimeZoneId");
-            var tz = Sales.Module.Helpers.TimeZoneHelper.GetTimeZone(tzId);
+            var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
             transaction.TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(transaction.TransactionTime, tz);
             return Ok(transaction);
         }
@@ -170,7 +184,7 @@ public class CashDrawerController : ControllerBase
     private async Task MapLocalTimesAsync(CashDrawerSession session)
     {
         var tzId = await _settingsService.GetSettingAsync("SelectedTimeZoneId");
-        var tz = Sales.Module.Helpers.TimeZoneHelper.GetTimeZone(tzId);
+        var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
 
         session.OpenedAtLocal = System.TimeZoneInfo.ConvertTimeFromUtc(session.OpenedAt, tz);
         if (session.ClosedAt.HasValue)
@@ -188,6 +202,7 @@ public class CashDrawerController : ControllerBase
         }
     }
 
+    [RequireSecurityStampValidation]
     [HttpPost("cash-advance")]
     public async Task<ActionResult<CashAdvanceResultDto>> ProcessCashAdvance([FromBody] CashAdvanceRequest request)
     {
@@ -218,7 +233,7 @@ public class CashDrawerController : ControllerBase
                 userName);
 
             var tzId = await _settingsService.GetSettingAsync("SelectedTimeZoneId");
-            var tz = Sales.Module.Helpers.TimeZoneHelper.GetTimeZone(tzId);
+            var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
             result.ExpenseTransaction.TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.ExpenseTransaction.TransactionTime, tz);
             result.IncomeTransaction.TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.IncomeTransaction.TransactionTime, tz);
 

@@ -374,4 +374,96 @@ public class ExchangeRateJobTests
         // Assert
         Assert.False(memoryCache.TryGetValue(cacheKey, out _), "bcv_rate_today should be purged from memory cache.");
     }
+
+    [Theory]
+    [InlineData("813,74", 813.74, true)]
+    [InlineData("813.74", 813.74, true)]
+    [InlineData("1,234.56", 1234.56, true)]
+    [InlineData("1.234,56", 1234.56, true)]
+    [InlineData("813", 813.0, true)]
+    [InlineData("  813.7400  ", 813.7400, true)]
+    [InlineData("0", 0, false)]
+    [InlineData("0.00", 0, false)]
+    [InlineData("-50.00", 0, false)]
+    [InlineData("invalid", 0, false)]
+    [InlineData("", 0, false)]
+    [InlineData(null, 0, false)]
+    public void ExchangeRateViewModel_TryParseRate_ParsesAccuratelyWithoutMultiplyingBy100(string? input, decimal expected, bool expectedSuccess)
+    {
+        bool success = Desktop.Client.ViewModels.ExchangeRateViewModel.TryParseRate(input, out decimal parsedRate);
+
+        Assert.Equal(expectedSuccess, success);
+        if (expectedSuccess)
+        {
+            Assert.Equal(expected, parsedRate);
+        }
+    }
+
+    [Fact]
+    public void ExchangeRateHistoryDto_UpdatedAtLocal_ConvertsUtcToVenezuelaTime()
+    {
+        // Instante en UTC: 2026-09-05 03:55:00 UTC
+        // En Venezuela (UTC-4), debe ser: 2026-09-04 23:55:00
+        var utcTime = new DateTime(2026, 9, 5, 3, 55, 0, DateTimeKind.Utc);
+        var dto = new Desktop.Client.Services.ExchangeRateHistoryDto
+        {
+            Date = new DateOnly(2026, 9, 4),
+            Rate = 813.74m,
+            UpdatedAt = utcTime
+        };
+
+        var localTime = dto.UpdatedAtLocal;
+
+        Assert.Equal(new DateTime(2026, 9, 4, 23, 55, 0), localTime);
+    }
+
+    [Fact]
+    public async Task ExchangeRateController_GetHistoryAndGetToday_IncludeUpdatedAtLocal()
+    {
+        // Arrange
+        var contextOptions = new DbContextOptionsBuilder<InventoryDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var dbContext = new InventoryDbContext(contextOptions);
+
+        var today = TimeZoneHelper.GetVenezuelaDate();
+        var utcNow = new DateTime(2026, 9, 5, 3, 55, 0, DateTimeKind.Utc);
+
+        dbContext.ExchangeRateHistory.Add(new ExchangeRateHistory
+        {
+            Date = today,
+            Rate = 813.74m,
+            UpdatedAt = utcNow
+        });
+        await dbContext.SaveChangesAsync();
+
+        var userMock = new Mock<ICurrentUserService>();
+        var salesMock = new Mock<ISalesService>();
+        var inventoryMock = new Mock<IInventoryService>();
+        var hubContextMock = new Mock<IHubContext<ExchangeRateHub>>();
+
+        var controller = new ExchangeRateController(
+            dbContext,
+            userMock.Object,
+            salesMock.Object,
+            inventoryMock.Object,
+            hubContextMock.Object);
+
+        // Act - GetToday
+        var todayResult = Assert.IsType<OkObjectResult>(await controller.GetToday());
+        var todayVal = todayResult.Value;
+        var updatedAtLocalProp = todayVal?.GetType().GetProperty("UpdatedAtLocal")?.GetValue(todayVal);
+        Assert.NotNull(updatedAtLocalProp);
+        var todayLocalTime = Assert.IsType<DateTime>(updatedAtLocalProp);
+        Assert.Equal(new DateTime(2026, 9, 4, 23, 55, 0), todayLocalTime);
+
+        // Act - GetHistory
+        var historyResult = Assert.IsType<OkObjectResult>(await controller.GetHistory());
+        var historyEnumerable = Assert.IsAssignableFrom<IEnumerable<object>>(historyResult.Value);
+        var firstItem = historyEnumerable.First();
+        var historyLocalProp = firstItem.GetType().GetProperty("UpdatedAtLocal")?.GetValue(firstItem);
+        Assert.NotNull(historyLocalProp);
+        var historyLocalTime = Assert.IsType<DateTime>(historyLocalProp);
+        Assert.Equal(new DateTime(2026, 9, 4, 23, 55, 0), historyLocalTime);
+    }
 }

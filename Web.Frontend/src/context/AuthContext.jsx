@@ -23,23 +23,19 @@ export function AuthProvider({ children }) {
 
     const data = await api.post('/api/auth/login', {
       cedula: cedula.trim(),
-      password: password
+      password: password,
+      platform: 'Web'
     });
 
     if (data?.requiresPasswordChange) {
       return { requiresPasswordChange: true, message: data.message };
     }
 
-    const sessionUser = {
-      ...(data.user || data),
-      token: data.token
-    };
+    const sessionUser = data.user || data;
 
     setUser(sessionUser);
     localStorage.setItem('pos_user', JSON.stringify(sessionUser));
-    if (data.token) {
-      localStorage.setItem('pos_token', data.token);
-    }
+    localStorage.removeItem('pos_token');
     return sessionUser;
   };
 
@@ -52,10 +48,14 @@ export function AuthProvider({ children }) {
     return res;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await api.post('/api/auth/logout');
+    } catch {}
     setUser(null);
     localStorage.removeItem('pos_user');
     localStorage.removeItem('pos_token');
+    sessionStorage.clear();
   };
 
   return (

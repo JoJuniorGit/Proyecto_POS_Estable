@@ -1,10 +1,8 @@
 <Project>
   <PropertyGroup>
-    <!-- Desactivar búsqueda y recolección de metadatos de Git / SourceLink en desarrollo local -->
-    <PublishRepositoryUrl>false</PublishRepositoryUrl>
-    <EmbedUntrackedSources>false</EmbedUntrackedSources>
-
-    <!-- Desactivar verificación de desbordamiento aritmético en desarrollo local para velocidad -->
-    <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <InformationalVersion>1.0.0</InformationalVersion>
   </PropertyGroup>
 </Project>

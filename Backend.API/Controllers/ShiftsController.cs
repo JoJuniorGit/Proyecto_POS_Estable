@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using System;
 using System.Linq;
+using Backend.API.Attributes;
 
 namespace Backend.API.Controllers;
 
@@ -46,13 +47,14 @@ public class ShiftsController : ControllerBase
 
     private async Task<decimal> GetTodayExchangeRateAsync()
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
         var record = await _inventoryContext.ExchangeRateHistory
             .FirstOrDefaultAsync(r => r.Date == today);
 
         if (record == null)
         {
             record = await _inventoryContext.ExchangeRateHistory
+                .Where(r => r.Date <= today)
                 .OrderByDescending(r => r.Date)
                 .FirstOrDefaultAsync();
         }
@@ -60,13 +62,10 @@ public class ShiftsController : ControllerBase
         if (record != null && record.Rate > 0)
             return record.Rate;
 
-        var rateStr = await _settingsService.GetSettingAsync("CurrentExchangeRate") ?? "1.0";
-        if (decimal.TryParse(rateStr, out decimal parsedRate) && parsedRate > 0)
-            return parsedRate;
-
         return 1.0m;
     }
 
+    [RequireSecurityStampValidation]
     [HttpPost("close")]
     public async Task<ActionResult> CloseShift([FromBody] CloseShiftRequest request)
     {
@@ -110,14 +109,42 @@ public class ShiftsController : ControllerBase
                 });
             }
 
+            // Identidad autoritativa de cajero por claims (H-API-2)
+            string cashierName = "Cajero Activo";
+            string cashierCedula = "V-00000000";
+
+            if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int authUserId))
+            {
+                var authUser = await _salesContext.Users.FindAsync(authUserId);
+                if (authUser != null)
+                {
+                    cashierName = authUser.Name;
+                    cashierCedula = authUser.Cedula ?? authUser.Username ?? "V-00000000";
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(User.Identity?.Name))
+            {
+                var authUser = await _salesContext.Users.FirstOrDefaultAsync(u => u.Username == User.Identity.Name);
+                if (authUser != null)
+                {
+                    cashierName = authUser.Name;
+                    cashierCedula = authUser.Cedula ?? authUser.Username ?? "V-00000000";
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(request.CashierName))
+            {
+                cashierName = request.CashierName;
+                cashierCedula = request.CashierCedula ?? "V-00000000";
+            }
+
             using var dbTransaction = await _salesContext.Database.BeginTransactionAsync();
 
             // Persistir cierre de caja de forma secuencial en la Base de Datos
             var dailyClosure = new DailyClosure
             {
                 ClosureDate = DateTime.UtcNow,
-                UserId = request.CashierName ?? "Cajero Activo",
-                Observation = request.CashierCedula ?? "V-00000000",
+                UserId = cashierName,
+                Observation = cashierCedula,
                 Details = details.Select(d => new ClosureDetail
                 {
                     PaymentMethodId = d.PaymentMethodId,
@@ -130,13 +157,16 @@ public class ShiftsController : ControllerBase
 
             var savedClosure = await _dailyClosureService.CreateClosureAsync(dailyClosure);
 
+            // Unificar con DailyClosure: rotar sesión de caja en el cierre de turno (H-API-15)
+            await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate);
+
             await dbTransaction.CommitAsync();
 
             var report = new ShiftReportDto
             {
                 ShiftId = savedClosure.Id,
-                CashierName = request.CashierName ?? "Cajero Activo",
-                CashierCedula = request.CashierCedula ?? "V-00000000",
+                CashierName = cashierName,
+                CashierCedula = cashierCedula,
                 ClosedAt = savedClosure.ClosureDate,
                 ExchangeRate = exchangeRate,
                 Details = details

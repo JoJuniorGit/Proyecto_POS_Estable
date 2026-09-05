@@ -1,0 +1,105 @@
+================================================================================
+REPORTE POR MÓDULO: Desktop.Client (capa WPF / UI de escritorio)
+Fecha: 2026-09-04
+Cruce con docs/reporte.txt (análisis global).
+================================================================================
+
+--------------------------------------------------------------------------------
+REVISIÓN 2 (2026-09-04) — estado tras la remediación 08:19–08:51
+--------------------------------------------------------------------------------
+Cambios del módulo en la ventana:
+- App.xaml.cs:99: registro en DI de ISecureTokenStorageService ->
+  SecureTokenStorageService (DPAPI). El token de sesión (que antes se
+  descartaba al cerrar o vivía solo en memoria) ahora se cifra al guardarse
+  vía UserSession (ver 06, H-DCC-11/R7: LoadToken nunca se invoca).
+- El resto del módulo (vistas, OnExit, versionado, mutex, wedge de escáner)
+  NO cambió en la ventana.
+
+Estado de hallazgos: H-WPF-1..H-WPF-8 -> ❌ VIGENTES (sin cambios).
+Cruce con global: C2, M4, M5, B3, B9 vigentes; B9 parcial (X-Client-Platform
+ahora sí se usa; X-Client-Version sigue fija).
+--------------------------------------------------------------------------------
+
+1. DESCRIPCIÓN Y ARQUITECTURA
+--------------------------------------------------------------------------------
+Proyecto WPF (net10.0-windows): App.xaml(.cs), MainWindow, ~27 vistas
+(XAML + code-behind, ~1.715 líneas de code-behind), comportamientos/converters
+de UI, helpers de scanner y diálogos. Inicia un Generic Host con DI, chequea
+versión contra el servidor y muestra bloqueo si es obsoleta. Mutex global de
+instancia única (Program.cs).
+
+2. HALLAZGOS ESPECÍFICOS DEL MÓDULO
+--------------------------------------------------------------------------------
+[H-WPF-1] Versión de cliente hardcodeada "1.0.0" en el flujo de arranque.
+  App.xaml.cs loguea y muestra "1.0.0" fija en VersionLockoutViewModel y
+  UserSessionHeaderHandler envía X-Client-Version "1.0.0". La versión del
+  ensamblado nunca se lee => al publicar 1.1.0 el servidor seguirá viendo
+  1.0.0 si no se toca el string. Fuente única: AssemblyInformationalVersion.
+
+[H-WPF-2] OnExit bloqueante en el hilo de UI.
+  App.OnExit ejecuta _host.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter()
+  .GetResult() y Dispose() dentro del dispatcher: si un servicio no responde,
+  la app se congela en el cierre (deadlock potencial con contexto de
+  sincronización). Usar OnExit asincrono con timeout y cancelación real.
+
+[H-WPF-3] Handlers de eventos async void en code-behind.
+  EditSaleDialog.TxtProductSearch_TextChanged, ImportProductsView.Grid_Drop y
+  otros son async void: excepciones no observadas pueden cerrar la app (M4).
+  Manejar try/catch o usar comandos/relay.
+
+[H-WPF-4] Credenciales: sin SecureString.
+  LoginView + LoginViewModel trabajan con Password en string y toggle de
+  visibilidad; la contraseña queda en memoria administrada (ver H-DCC-6).
+  Además no hay bloqueo local tras N intentos (depende 100% del servidor y de
+  la red).
+
+[H-WPF-5] Manejo de crashes con Environment.Exit(0) en finally.
+  Program.Main tiene finally { ReleaseSingleInstanceMutex(); Environment.Exit(0); }
+  incluso en éxito: mata cualquier cleanup pendiente y hace imposible
+  distinguir salidas anómalas. (El mutex global "Global\POS_Desktop_Client_
+  SingleInstance_Mutex" sin ACL limita a una instancia por SESIÓN de usuario;
+  si el servicio del backend se ejecuta como SYSTEM y el cliente como otro
+  usuario, la semántica es confusa pero funcional en caja.)
+
+[H-WPF-6] XAML/vistas con lógica de negocio residual.
+  Varias vistas muestran textos, habilitan botones o aplican formatos con
+  reglas de negocio en code-behind (converters, validación de decimales con
+  DecimalCentsBehavior/IntegerTextBoxBehavior en code-behind de vistas) en vez
+  de MVVM. Mantenibilidad media.
+
+[H-WPF-7] Accesibilidad y robustez de teclado no verificadas.
+  El POS depende de atajos F5 y scaners (KeyboardWedgeScannerListener,
+  AtmBehavior, PosHotkeys) y comportamientos como SearchKeyboardBehavior;
+  no hay pruebas de accesibilidad ni de contraste; revisar foco de
+  DataGrid/Omnibox tras cada diálogo.
+
+[H-WPF-8] Aplicación de caja con doble teclado/escáner.
+  KeyboardWedgeScannerListener emula escritura de teclado (wedge). Riesgo: un
+  escáner que escriba caracteres de control (p. ej. Enter) puede disparar
+  acciones; BarcodeValidator valida formato del lado servidor, pero validar
+  también en el wedge antes de inyectar teclas reduce errores.
+
+3. FORTALEZAS DEL MÓDULO
+--------------------------------------------------------------------------------
+- DI + Generic Host con ciclo de vida explícito y manejo de excepciones global
+  (AppDomain/Dispatcher/Task) que escribe en logs.
+- Mutex de instancia única evita doble POS en la misma máquina.
+- VersionLockout: si el cliente es obsoleto, no permite operar (aunque el
+  mecanismo dependa del autodeclarado, ver M5 global).
+- Behaviors de UI reutilizables (DataGridFocus, búsqueda por teclado,
+  comportamientos numéricos) y un DataGrid "Performant" propio.
+- Logging de crashes en logs/crash.log del directorio base.
+
+4. DEUDA TÉCNICA Y RECOMENDACIONES
+--------------------------------------------------------------------------------
+- Leer versión desde el ensamblado (H-WPF-1).
+- OnExit asincrono no bloqueante (H-WPF-2).
+- Eliminar async void de code-behind (H-WPF-3).
+- SecureString/credenciales con bloqueo local opcional (H-WPF-4).
+- Revisar Environment.Exit en finally y semántica del mutex (H-WPF-5).
+- Mover reglas de negocio residuales a ViewModels/validadores.
+
+5. CRUCE CON docs/reporte.txt
+--------------------------------------------------------------------------------
+C2 (HTTP por defecto), M4, M5, B3, B4 (start.bat), B9.
+================================================================================

@@ -6,7 +6,9 @@ using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Net.Http;
 using System.Threading.Tasks;
+using Core.Logging;
 
 namespace Desktop.Client.ViewModels;
 
@@ -68,11 +70,6 @@ public partial class DailyClosureViewModel : ObservableObject
 
         // Forced true for cashiers, default false for admins
         _is_blind_closing = UserSession?.IsCashier == true;
-
-        if (UserSession == null || UserSession.IsLoggedIn)
-        {
-            _ = LoadExpectedTotalsAsync();
-        }
     }
 
     public ObservableCollection<ClosureDetailRow> DetailRows { get; } = new();
@@ -177,6 +174,15 @@ public partial class DailyClosureViewModel : ObservableObject
             }
 
             RecalculateTotals();
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized || ex.Message.Contains("401"))
+        {
+            // El cierre de sesión y redirección a login son gestionados centralizadamente por UserSessionHeaderHandler.
+            ClientStateLogger.LogWarning("[DAILY_CLOSURE] Petición no autorizada al cargar totales esperados. La sesión fue cerrada.", nameof(DailyClosureViewModel));
+        }
+        catch (OperationCanceledException)
+        {
+            // Petición cancelada o reemplazada
         }
         catch (Exception ex)
         {

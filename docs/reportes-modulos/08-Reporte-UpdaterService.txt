@@ -1,0 +1,74 @@
+================================================================================
+REPORTE POR MÓDULO: UpdaterService (actualizador del backend)
+Fecha: 2026-09-04
+Cruce con docs/reporte.txt (análisis global).
+================================================================================
+
+--------------------------------------------------------------------------------
+REVISIÓN 2 (2026-09-04): SIN CAMBIOS en la ventana de remediación 08:19–08:51.
+UPD-1..UPD-6 -> ❌ VIGENTES (zip-slip, sin firma, sin rollback, sleeps fijos,
+sin logging a archivo, exclusión de configuración limitada). El nuevo
+instalador (Configure-PosService.ps1) mejora el registro del servicio, pero el
+actualizador sigue sin verificación de autenticidad ni guardas de extracción.
+--------------------------------------------------------------------------------
+
+1. DESCRIPCIÓN
+--------------------------------------------------------------------------------
+Ejecutable de consola (~120 líneas, Program.cs) que detiene el servicio Windows
+"PosBackendService" (nssm/sc), reemplaza los binarios desde un paquete ZIP y
+reinicia el servicio. Se invoca manualmente con --targetDir, --serviceName y
+--package.
+
+2. HALLAZGOS ESPECÍFICOS DEL MÓDULO
+--------------------------------------------------------------------------------
+[UPD-1] El paquete NO se firma ni se valida (M9 global).
+  El ZIP se descarga/aporta sin verificación de integridad ni firma
+  (Authenticode/hash), y se extrae en el directorio del servicio que se
+  ejecuta como sistema. Un paquete malicioso en la LAN (o una URL HTTP
+  suplantada) significa ejecución arbitraria como SYSTEM. Firmar y verificar.
+
+[UPD-2] Extracción sin protección contra path traversal (zip-slip).
+  Para cada entrada del ZIP hace Path.Combine(targetDir, entry.FullName) sin
+  comprobar que la ruta resultante quede dentro de targetDir. Un ZIP con
+  entradas ../... podría sobrescribir archivos fuera del servicio.
+  Validar con Path.GetFullPath + StartsWith(targetDir).
+
+[UPD-3] Errores parciales no detienen la actualización.
+  Cada ExtractToFile se envuelve en try/catch que solo imprime un Warning y
+  CONTINUA; si faltan archivos críticos, el servicio se reinicia igualmente
+  con una instalación corrupta. No hay rollback ni verificación de integridad
+  posterior (contar archivos/hash). Abortar y restaurar copia previa.
+
+[UPD-4] Dependencia dura de nssm con fallo silencioso.
+  Ejecuta "nssm stop/start"; si nssm no existe o el comando falla, RunCommand
+  solo imprime el error y el flujo continúa (el sleep de 3s no garantiza que
+  el servicio se haya detenido: los archivos pueden seguir bloqueados y la
+  extracción falla a medias). Verificar estado del servicio antes y después
+  (sc query) y reintentar con espera real.
+
+[UPD-5] Sin registro persistente ni telemetría.
+  Solo escribe en consola; si se ejecuta como tarea oculta nadie ve qué pasó.
+  Usar el logger del sistema (logs/updater.log) y código de salida claro.
+
+[UPD-6] Configuración preservada de forma limitada.
+  Solo excluye appsettings.Production.json/Development.json; cualquier otro
+  archivo de configuración o datos (certificados, .env, carpetas de datos) se
+  sobrescribe. Ampliar la lista de exclusión configurable.
+
+3. FORTALEZAS
+--------------------------------------------------------------------------------
+- Preserva los appsettings del usuario (evita perder la conexión a BD).
+- Parámetros por línea de comandos claros; detención "amable" previa.
+- Publicación self-contained con dotnet publish simple de mantener.
+
+4. RECOMENDACIONES
+--------------------------------------------------------------------------------
+- Firma del paquete + verificación de hash antes de extraer.
+- Guarda contra zip-slip (UPD-2) y rollback automático (UPD-3).
+- Verificación de estado del servicio (sc query) en vez de sleeps fijos.
+- Logging a archivo y códigos de salida.
+
+5. CRUCE CON docs/reporte.txt
+--------------------------------------------------------------------------------
+M9, C2 (descarga por HTTP).
+================================================================================

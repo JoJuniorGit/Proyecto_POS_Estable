@@ -1,0 +1,39 @@
+================================================================================
+REPORTE POR MÓDULO: Logistics.Module
+Fecha: 2026-09-04
+================================================================================
+
+--------------------------------------------------------------------------------
+REVISIÓN 2 (2026-09-04): SIN CAMBIOS en la ventana de remediación 08:19–08:51.
+El proyecto sigue vacío (solo .csproj) y los conceptos de entregas
+(DeliveryStatus, PendingPickup, ConfirmPickupAsync, rol Driver) siguen
+viviendo en Sales.Module/Core. LOG-1 y LOG-2 -> ❌ VIGENTES.
+--------------------------------------------------------------------------------
+
+1. ESTADO DEL MÓDULO
+--------------------------------------------------------------------------------
+El proyecto existe en la solución (Logistics.Module/Logistics.Module.csproj)
+pero NO contiene código de aplicación: solo el archivo de proyecto. No hay
+entidades, servicios, controladores ni migraciones.
+
+2. HALLAZGOS
+--------------------------------------------------------------------------------
+[LOG-1] Módulo vacío referenciado en la solución.
+  Peso muerto en builds/restores; sugiere una funcionalidad planificada
+  (repartos/entregas: existen "Driver" en UserRole y campos como
+  SaleDeliveryStatus y "PendingPickup"/"ConfirmPickup" en Sales que apuntan a
+  entregas) que quedó a medio camino. Decidir: implementar el alcance
+  logístico previsto (entregas/repartidores) o eliminar el proyecto.
+
+[LOG-2] Conceptos logísticos implementados fuera del módulo.
+  Sale.DeliveryStatus, PendingPickup, ConfirmPickupAsync y el rol Driver viven
+  en Sales.Module/Core sin módulo logístico real: si Logistics.Module se
+  implementa, habrá que migrar o reutilizar esos conceptos (riesgo de
+  duplicación de reglas).
+
+3. RECOMENDACIONES
+--------------------------------------------------------------------------------
+- Eliminar el proyecto vacío (o marcarlo como "planificado" en un README).
+- Antes de implementar, consolidar el modelo de entregas (DeliveryStatus,
+  Driver, pickups) en un solo lugar y definir su API.
+================================================================================

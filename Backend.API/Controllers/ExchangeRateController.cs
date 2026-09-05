@@ -54,10 +54,17 @@ public class ExchangeRateController : ControllerBase
                 .FirstOrDefaultAsync();
         }
 
-        if (record == null)
-            return Ok(new { Value = 0m, Date = today, UpdatedAt = (DateTime?)null });
+        var tz = await GetConfiguredTimeZoneAsync();
 
-        return Ok(new { Value = record.Rate, Date = record.Date, UpdatedAt = record.UpdatedAt });
+        if (record == null)
+            return Ok(new { Value = 0m, Date = today, UpdatedAt = (DateTime?)null, UpdatedAtLocal = (DateTime?)null });
+
+        var utc = record.UpdatedAt.Kind == DateTimeKind.Utc
+            ? record.UpdatedAt
+            : DateTime.SpecifyKind(record.UpdatedAt, DateTimeKind.Utc);
+        var local = TimeZoneInfo.ConvertTimeFromUtc(utc, tz);
+
+        return Ok(new { Value = record.Rate, Date = record.Date, UpdatedAt = record.UpdatedAt, UpdatedAtLocal = (DateTime?)local });
     }
 
     /// <summary>
@@ -67,12 +74,29 @@ public class ExchangeRateController : ControllerBase
     [HttpGet("history")]
     public async Task<ActionResult> GetHistory()
     {
+        var tz = await GetConfiguredTimeZoneAsync();
         var history = await _context.ExchangeRateHistory
             .OrderByDescending(r => r.Date)
             .Select(r => new { r.Date, r.Rate, r.UpdatedAt })
             .ToListAsync();
 
-        return Ok(history);
+        var result = history.Select(r =>
+        {
+            var utc = r.UpdatedAt.Kind == DateTimeKind.Utc
+                ? r.UpdatedAt
+                : DateTime.SpecifyKind(r.UpdatedAt, DateTimeKind.Utc);
+            var local = TimeZoneInfo.ConvertTimeFromUtc(utc, tz);
+
+            return new
+            {
+                r.Date,
+                r.Rate,
+                r.UpdatedAt,
+                UpdatedAtLocal = local
+            };
+        });
+
+        return Ok(result);
     }
 
     /// <summary>
@@ -86,8 +110,8 @@ public class ExchangeRateController : ControllerBase
         {
             return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "El rol Cajero no tiene permisos para actualizar la tasa de cambio.");
         }
-        if (request.Value <= 0)
-            return BadRequest("Exchange rate must be greater than zero.");
+        if (request.Value <= 0 || request.Value > 1_000_000m)
+            return BadRequest("Exchange rate must be greater than zero and less than or equal to 1,000,000.");
 
         var roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(request.Value);
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
@@ -121,7 +145,11 @@ public class ExchangeRateController : ControllerBase
         await _hubContext.Clients.All.SendAsync("ReceiveRateUpdate", roundedRate);
         await _hubContext.Clients.All.SendAsync("OnHoldSalesUpdated");
 
-        return Ok(new { Value = roundedRate, Date = today, UpdatedAt = DateTime.UtcNow });
+        var tz = await GetConfiguredTimeZoneAsync();
+        var nowUtc = DateTime.UtcNow;
+        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, tz);
+
+        return Ok(new { Value = roundedRate, Date = today, UpdatedAt = nowUtc, UpdatedAtLocal = nowLocal });
     }
 
     /// <summary>
@@ -161,6 +189,11 @@ public class ExchangeRateController : ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError, new { Message = $"Error inesperado al sincronizar con el BCV: {ex.Message}" });
         }
 
+        if (rate.Value <= 0 || rate.Value > 1_000_000m)
+        {
+            return BadRequest("La tasa extraída del BCV se encuentra fuera del rango válido (0, 1.000.000].");
+        }
+
         var roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(rate.Value);
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
         var existing = await _context.ExchangeRateHistory
@@ -193,7 +226,21 @@ public class ExchangeRateController : ControllerBase
         await _hubContext.Clients.All.SendAsync("ReceiveRateUpdate", roundedRate);
         await _hubContext.Clients.All.SendAsync("OnHoldSalesUpdated");
 
-        return Ok(new { Value = roundedRate, Date = today, UpdatedAt = DateTime.UtcNow });
+        var tz = await GetConfiguredTimeZoneAsync();
+        var nowUtc = DateTime.UtcNow;
+        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, tz);
+
+        return Ok(new { Value = roundedRate, Date = today, UpdatedAt = nowUtc, UpdatedAtLocal = nowLocal });
+    }
+
+    private async Task<TimeZoneInfo> GetConfiguredTimeZoneAsync()
+    {
+        var tzId = await _context.SystemSettings
+            .Where(s => s.Key == "SelectedTimeZoneId")
+            .Select(s => s.Value)
+            .FirstOrDefaultAsync();
+
+        return Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
     }
 }
 

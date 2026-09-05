@@ -34,10 +34,11 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
         {
             try
             {
-                // Idempotency check: verify if this sale stock deduction was already processed
+                // Idempotency check: exact reason/suffix match to prevent "Sale #1" false-matching "Sale #11" (H-INV-1)
                 var alreadyProcessed = await _context.StockMovements
                     .AsNoTracking()
-                    .AnyAsync(sm => sm.Reason.Contains(reason) && (sm.ProductId == item.ProductId || sm.Reason.Contains("Variante:")), cancellationToken);
+                    .AnyAsync(sm => (sm.Reason == reason || sm.Reason.EndsWith($"| {reason}")) 
+                                    && (sm.ProductId == item.ProductId || sm.Reason.StartsWith("Variante:")), cancellationToken);
 
                 if (alreadyProcessed)
                 {

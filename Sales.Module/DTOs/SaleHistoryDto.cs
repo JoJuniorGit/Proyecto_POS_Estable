@@ -8,6 +8,9 @@ public class SaleHistoryDto
     public int Id { get; set; }
     public int? InvoiceNumber { get; set; }
     public DateTime Date { get; set; }
+    public DateTime DateLocal => Date.Kind == DateTimeKind.Utc
+        ? Core.Helpers.TimeZoneHelper.ToVenezuelaTime(Date)
+        : Date;
     public decimal TotalUSD { get; set; }
     public decimal AppliedRate { get; set; }
     public decimal TotalBsS { get; set; }

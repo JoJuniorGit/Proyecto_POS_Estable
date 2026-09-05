@@ -20,8 +20,12 @@ public class DailyClosureService : IDailyClosureService
 
     public async Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc)
     {
-        var startOfDay = dateUtc.Date;
-        var endOfDay = startOfDay.AddDays(1);
+        // 1. Calcular ventana comercial de Venezuela en UTC (VET UTC-4, H-API-14)
+        var venDate = Core.Helpers.TimeZoneHelper.GetVenezuelaDate(dateUtc);
+        var tz = Core.Helpers.TimeZoneHelper.GetVenezuelaTimeZone();
+        var startOfDayLocal = venDate.ToDateTime(TimeOnly.MinValue);
+        var startOfDayUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(startOfDayLocal, DateTimeKind.Unspecified), tz);
+        var endOfDayUtc = startOfDayUtc.AddDays(1);
 
         // Fetch latest daily closure if any exists
         var lastClosure = await _context.DailyClosures
@@ -29,10 +33,10 @@ public class DailyClosureService : IDailyClosureService
             .OrderByDescending(dc => dc.ClosureDate)
             .FirstOrDefaultAsync();
 
-        // Effective start time: if last closure occurred today (or after startOfDay), count sales after last closure
-        var effectiveStartTime = (lastClosure != null && lastClosure.ClosureDate > startOfDay)
+        // Effective start time: if last closure occurred after startOfDayUtc, count sales after last closure
+        var effectiveStartTime = (lastClosure != null && lastClosure.ClosureDate > startOfDayUtc)
             ? lastClosure.ClosureDate
-            : startOfDay;
+            : startOfDayUtc;
 
         // Fetch all active payment methods ordered by priority
         var activeMethods = await _context.PaymentMethods
@@ -48,7 +52,7 @@ public class DailyClosureService : IDailyClosureService
             .Where(sp => sp.Sale != null
                 && sp.Sale.Status == SaleStatus.Completed
                 && sp.Sale.Date > effectiveStartTime
-                && sp.Sale.Date < endOfDay)
+                && sp.Sale.Date < endOfDayUtc)
             .GroupBy(sp => sp.PaymentMethodId)
             .Select(g => new { PaymentMethodId = g.Key, TotalBsS = g.Sum(sp => sp.AmountBsS) })
             .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS);
@@ -77,18 +81,27 @@ public class DailyClosureService : IDailyClosureService
             .ToListAsync();
 
         var existingMethodIds = closure.Details.Select(d => d.PaymentMethodId).ToHashSet();
-        foreach (var method in activeMethods)
+        if (existingMethodIds.Count < activeMethods.Count)
         {
-            if (!existingMethodIds.Contains(method.Id))
+            var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(closure.ClosureDate);
+            var expectedMap = expectedTotals.ToDictionary(e => e.PaymentMethodId, e => e.ExpectedAmountBsS);
+
+            foreach (var method in activeMethods)
             {
-                closure.Details.Add(new ClosureDetail
+                if (!existingMethodIds.Contains(method.Id))
                 {
-                    PaymentMethodId = method.Id,
-                    PaymentMethodName = method.Name,
-                    ExpectedAmountBsS = 0m,
-                    ActualAmountBsS = 0m,
-                    DifferenceBsS = 0m
-                });
+                    expectedMap.TryGetValue(method.Id, out decimal methodExpected);
+                    decimal actualAmount = method.IsCash ? 0m : methodExpected;
+
+                    closure.Details.Add(new ClosureDetail
+                    {
+                        PaymentMethodId = method.Id,
+                        PaymentMethodName = method.Name,
+                        ExpectedAmountBsS = methodExpected,
+                        ActualAmountBsS = actualAmount,
+                        DifferenceBsS = actualAmount - methodExpected
+                    });
+                }
             }
         }
 

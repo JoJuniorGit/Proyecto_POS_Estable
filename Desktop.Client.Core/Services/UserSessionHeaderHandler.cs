@@ -36,7 +36,13 @@ public class UserSessionHeaderHandler : DelegatingHandler
         }
 
         request.Headers.Remove("X-Client-Version");
-        request.Headers.Add("X-Client-Version", "1.0.0");
+        request.Headers.Add("X-Client-Version", Core.Common.AppVersionHelper.CurrentVersion);
+
+        // Cabecera meramente informativa y de telemetría/diagnóstico.
+        // ADVERTENCIA DE SEGURIDAD: La API NO debe usar esta cabecera para autorización.
+        // La autorización y el aislamiento de plataformas se basan 100% en los claims criptográficos (scope: pos:desktop).
+        request.Headers.Remove("X-Client-Platform");
+        request.Headers.Add("X-Client-Platform", "Desktop");
 
         if (!string.IsNullOrWhiteSpace(_userSession.Token))
         {

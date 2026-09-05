@@ -21,6 +21,7 @@ public class SalesDbContext : DbContext
     public DbSet<CashTransaction> CashTransactions { get; set; } = null!;
     public DbSet<DailyClosure> DailyClosures { get; set; } = null!;
     public DbSet<ClosureDetail> ClosureDetails { get; set; } = null!;
+    public DbSet<OutboxMessage> OutboxMessages { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -202,5 +203,23 @@ public class SalesDbContext : DbContext
             new PaymentMethod { Id = 1, Name = "Cash", IsActive = true, RequiresReference = false, IsCash = true },
             new PaymentMethod { Id = 2, Name = "Card", IsActive = true, RequiresReference = true, IsCash = false }
         );
+
+        // Sequence for consecutive invoice numbers (H-SAL-1 / A2)
+        modelBuilder.HasSequence<int>("factura_number_seq")
+            .StartsAt(1)
+            .IncrementsBy(1);
+
+        // OutboxMessages Configuration
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EventType).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Status).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.Payload).HasColumnType("jsonb").IsRequired();
+            entity.HasIndex(e => new { e.Status, e.NextRetryUtc })
+                .HasDatabaseName("IX_OutboxMessages_Status_NextRetryUtc");
+            entity.HasIndex(e => e.CreatedAtUtc)
+                .HasDatabaseName("IX_OutboxMessages_CreatedAtUtc");
+        });
     }
 }

@@ -22,6 +22,28 @@ export function resolveBaseUrl() {
     return origin || (isHttps ? `https://${hostname}:5001` : `http://${hostname}:5000`);
   }
 
+function isAllowedApiHost(hostname) {
+  if (!hostname) return false;
+  const h = hostname.toLowerCase();
+  if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
+  if (typeof window !== 'undefined' && window.location?.hostname && h === window.location.hostname.toLowerCase()) return true;
+
+  const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+  const match = h.match(ipv4Regex);
+  if (match) {
+    const octet1 = parseInt(match[1], 10);
+    const octet2 = parseInt(match[2], 10);
+    const octet3 = parseInt(match[3], 10);
+    const octet4 = parseInt(match[4], 10);
+    if (octet1 <= 255 && octet2 <= 255 && octet3 <= 255 && octet4 <= 255) {
+      if (octet1 === 10) return true;
+      if (octet1 === 172 && octet2 >= 16 && octet2 <= 31) return true;
+      if (octet1 === 192 && octet2 === 168) return true;
+    }
+  }
+  return false;
+}
+
   // 2. Parámetro en URL (?api=... o ?server=...)
   try {
     const search = window.location?.search || '';
@@ -45,22 +67,33 @@ export function resolveBaseUrl() {
         }
       }
 
+      // Validar host contra lista blanca LAN/Loopback (H-WEB-2)
+      let isAllowed = false;
       try {
-        localStorage.setItem('pos_custom_api_url', normalized);
-      } catch {}
-
-      // Limpiar los parámetros de la URL sin recargar la página
-      if (window.history?.replaceState && window.location?.pathname) {
-        urlParams.delete('api');
-        urlParams.delete('server');
-        urlParams.delete('backend');
-        urlParams.delete('paired');
-        const newQuery = urlParams.toString();
-        const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '') + (window.location.hash || '');
-        window.history.replaceState({}, (typeof document !== 'undefined' ? document.title : ''), newUrl);
+        const parsed = new URL(normalized);
+        isAllowed = isAllowedApiHost(parsed.hostname);
+      } catch {
+        isAllowed = false;
       }
 
-      return normalized;
+      if (isAllowed) {
+        try {
+          localStorage.setItem('pos_custom_api_url', normalized);
+        } catch {}
+
+        // Limpiar los parámetros de la URL sin recargar la página
+        if (window.history?.replaceState && window.location?.pathname) {
+          urlParams.delete('api');
+          urlParams.delete('server');
+          urlParams.delete('backend');
+          urlParams.delete('paired');
+          const newQuery = urlParams.toString();
+          const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '') + (window.location.hash || '');
+          window.history.replaceState({}, (typeof document !== 'undefined' ? document.title : ''), newUrl);
+        }
+
+        return normalized;
+      }
     }
   } catch {}
 
@@ -146,15 +179,15 @@ export async function apiFetch(endpoint, options = {}) {
       if (token) {
         userHeaders['Authorization'] = `Bearer ${token}`;
       }
-      if (u?.id) userHeaders['X-User-Id'] = String(u.id);
-      if (u?.role !== undefined) userHeaders['X-User-Role'] = String(u.role);
     } catch {}
   }
 
   const config = {
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      'X-Client-Platform': 'Web',
       'X-Client-Version': '1.0.0',
       ...userHeaders,
       ...options.headers,
@@ -179,6 +212,10 @@ export async function apiFetch(endpoint, options = {}) {
       try {
         localStorage.removeItem('pos_user');
         localStorage.removeItem('pos_token');
+        sessionStorage.clear();
+        if (!endpoint.includes('api/auth/logout')) {
+          fetch(`${getBaseUrl()}/api/auth/logout`, { credentials: 'include', method: 'POST' }).catch(() => {});
+        }
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('pos_unauthorized'));
         }

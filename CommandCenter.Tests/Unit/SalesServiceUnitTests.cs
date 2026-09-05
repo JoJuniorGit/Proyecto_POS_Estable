@@ -345,4 +345,251 @@ public class SalesServiceUnitTests
         // Verify that stock is not deducted for cash advance products
         inventoryMock.Verify(i => i.UpdateStockAsync(99, It.IsAny<decimal>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
+
+    [Fact]
+    public void GetUtcRange_CalculatesVenezuelaDayBoundsCorrectly()
+    {
+        var testDate = new DateTime(2026, 9, 4, 0, 0, 0, DateTimeKind.Unspecified);
+        var (startUtc, endExclusiveUtc) = Core.Helpers.TimeZoneHelper.GetUtcRange(testDate, testDate);
+
+        Assert.NotNull(startUtc);
+        Assert.NotNull(endExclusiveUtc);
+
+        // Venezuela is UTC-4: 2026-09-04 00:00:00 local is 2026-09-04 04:00:00 UTC
+        Assert.Equal(new DateTime(2026, 9, 4, 4, 0, 0, DateTimeKind.Utc), startUtc.Value);
+        // End of day is 2026-09-05 00:00:00 local, which is 2026-09-05 04:00:00 UTC
+        Assert.Equal(new DateTime(2026, 9, 5, 4, 0, 0, DateTimeKind.Utc), endExclusiveUtc.Value);
+    }
+
+    [Fact]
+    public void GetUtcRange_WithNullEndDate_DefaultsToEndOfToday()
+    {
+        var testDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Unspecified);
+        var (startUtc, endExclusiveUtc) = Core.Helpers.TimeZoneHelper.GetUtcRange(testDate, null, defaultEndDateToToday: true);
+
+        Assert.NotNull(startUtc);
+        Assert.NotNull(endExclusiveUtc);
+
+        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
+        var expectedTomorrowUtc = Core.Helpers.TimeZoneHelper.ToVenezuelaTime(DateTime.UtcNow).Date.AddDays(1);
+        var tz = Core.Helpers.TimeZoneHelper.GetVenezuelaTimeZone();
+        var expectedEndUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(expectedTomorrowUtc, DateTimeKind.Unspecified), tz);
+
+        Assert.Equal(expectedEndUtc, endExclusiveUtc.Value);
+    }
+
+    [Fact]
+    public async Task GetSalesHistoryAsync_IncludesLateNightSales_Between8pmAndMidnight()
+    {
+        var (service, context, _, _, _) = CreateService();
+
+        // 1. Venta nocturna a las 10:45 PM hora local (2026-09-04 22:45 VET = 2026-09-05 02:45 UTC)
+        var lateNightSale = new Sale
+        {
+            Id = 101,
+            InvoiceNumber = 216,
+            Date = new DateTime(2026, 9, 5, 2, 45, 0, DateTimeKind.Utc),
+            Status = SaleStatus.Completed,
+            TotalUSD = 10m,
+            TotalBsS = 500m,
+            FinalPaidAmountBsS = 500m,
+            AppliedRate = 50m
+        };
+
+        // 2. Venta matutina a las 10:00 AM hora local (2026-09-04 10:00 VET = 2026-09-04 14:00 UTC)
+        var morningSale = new Sale
+        {
+            Id = 102,
+            InvoiceNumber = 215,
+            Date = new DateTime(2026, 9, 4, 14, 0, 0, DateTimeKind.Utc),
+            Status = SaleStatus.Completed,
+            TotalUSD = 20m,
+            TotalBsS = 1000m,
+            FinalPaidAmountBsS = 1000m,
+            AppliedRate = 50m
+        };
+
+        // 3. Venta del día anterior (2026-09-03 23:55 VET = 2026-09-04 03:55 UTC)
+        var previousDaySale = new Sale
+        {
+            Id = 103,
+            InvoiceNumber = 214,
+            Date = new DateTime(2026, 9, 4, 3, 55, 0, DateTimeKind.Utc),
+            Status = SaleStatus.Completed,
+            TotalUSD = 5m,
+            TotalBsS = 250m,
+            FinalPaidAmountBsS = 250m,
+            AppliedRate = 50m
+        };
+
+        // 4. Venta del día posterior (2026-09-05 00:05 VET = 2026-09-05 04:05 UTC)
+        var nextDaySale = new Sale
+        {
+            Id = 104,
+            InvoiceNumber = 217,
+            Date = new DateTime(2026, 9, 5, 4, 5, 0, DateTimeKind.Utc),
+            Status = SaleStatus.Completed,
+            TotalUSD = 15m,
+            TotalBsS = 750m,
+            FinalPaidAmountBsS = 750m,
+            AppliedRate = 50m
+        };
+
+        context.Sales.AddRange(lateNightSale, morningSale, previousDaySale, nextDaySale);
+        await context.SaveChangesAsync();
+
+        // Filtrar por el día 4 de septiembre de 2026
+        var filterDate = new DateTime(2026, 9, 4);
+        var (items, totalCount) = await service.GetSalesHistoryAsync(1, 20, filterDate, filterDate);
+
+        var list = items.ToList();
+        Assert.Equal(2, totalCount);
+        Assert.Equal(2, list.Count);
+        Assert.Contains(list, s => s.InvoiceNumber == 216); // Venta nocturna incluida!
+        Assert.Contains(list, s => s.InvoiceNumber == 215); // Venta matutina incluida!
+        Assert.DoesNotContain(list, s => s.InvoiceNumber == 214); // Día anterior excluida!
+        Assert.DoesNotContain(list, s => s.InvoiceNumber == 217); // Día siguiente excluida!
+
+        // Comprobar que DateLocal devuelve la hora local de Venezuela (22:45 VET)
+        var retrievedLateNight = list.First(s => s.InvoiceNumber == 216);
+        Assert.Equal(22, retrievedLateNight.DateLocal.Hour);
+        Assert.Equal(45, retrievedLateNight.DateLocal.Minute);
+        Assert.Equal(4, retrievedLateNight.DateLocal.Day);
+        Assert.Equal(9, retrievedLateNight.DateLocal.Month);
+    }
+
+    [Fact]
+    public async Task GetSalesHistoryAsync_AgainstRealPostgreSql_ReturnsInvoicesFromTonight()
+    {
+        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION")
+            ?? "Host=localhost;Database=CommandCenterDb;Username=postgres;Password=123456";
+
+        var options = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseNpgsql(connStr)
+            .Options;
+        using var realContext = new SalesDbContext(options);
+
+        var inventoryMock = new Mock<IInventoryService>();
+        var mediatorMock = new Mock<IMediator>();
+        var cashDrawerMock = new Mock<ICashDrawerService>();
+        var settingsMock = new Mock<ISystemSettingsService>();
+
+        var realService = new SalesService(realContext, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsMock.Object);
+
+        // Consultar con filtro del 4 de septiembre de 2026
+        var filterDate = new DateTime(2026, 9, 4);
+        var (items, totalCount) = await realService.GetSalesHistoryAsync(1, 25, filterDate, filterDate);
+
+        Assert.True(totalCount >= 5, $"Se esperaban al menos 5 ventas de hoy en PostgreSQL real, pero se obtuvieron {totalCount}.");
+        var list = items.ToList();
+        Assert.Contains(list, s => s.InvoiceNumber == 216);
+        Assert.Contains(list, s => s.InvoiceNumber == 217);
+        Assert.Contains(list, s => s.InvoiceNumber == 218);
+        Assert.Contains(list, s => s.InvoiceNumber == 219);
+        Assert.Contains(list, s => s.InvoiceNumber == 220);
+
+        // Verificar hora local de factura 216 (emitida a las 22:28 VET)
+        var inv216 = list.First(s => s.InvoiceNumber == 216);
+        Assert.Equal(22, inv216.DateLocal.Hour);
+        Assert.Equal(4, inv216.DateLocal.Day);
+        Assert.Equal(9, inv216.DateLocal.Month);
+
+        // Verificar GetSaleHistoryDetailAsync para factura 218
+        var inv218 = list.First(s => s.InvoiceNumber == 218);
+        var detail218 = await realService.GetSaleHistoryDetailAsync(inv218.Id);
+        Assert.NotNull(detail218);
+        Assert.NotEmpty(detail218.Items);
+        Assert.NotEmpty(detail218.Payments);
+        Assert.True(detail218.AppliedRate > 0);
+        Assert.True(detail218.TotalUSD > 0);
+        Assert.True(detail218.TotalBsS > 0);
+
+        // Probar serialización/deserialización HTTP hacia Desktop.Client.Services.SaleHistoryDto
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var jsonStr = System.Text.Json.JsonSerializer.Serialize(detail218, jsonOptions);
+        var clientDto = System.Text.Json.JsonSerializer.Deserialize<Desktop.Client.Services.SaleHistoryDto>(jsonStr, jsonOptions);
+        Assert.NotNull(clientDto);
+        Assert.NotEmpty(clientDto.Items);
+        Assert.NotEmpty(clientDto.Payments);
+        Assert.Equal(detail218.AppliedRate, clientDto.AppliedRate);
+        Assert.Equal(detail218.TotalUSD, clientDto.TotalUSD);
+        Assert.Equal(detail218.TotalBsS, clientDto.TotalBsS);
+        Assert.Equal(detail218.InvoiceNumber, clientDto.InvoiceNumber);
+    }
+
+    [Fact]
+    public async Task SalesHistoryViewModel_WhenSelectedSaleChanges_PreloadsImmediately_ThenLoadsFullDetails()
+    {
+        var mockClientSalesService = new Mock<Desktop.Client.Services.ISalesService>();
+        var sampleDetail = new Desktop.Client.Services.SaleHistoryDto
+        {
+            Id = 218,
+            InvoiceNumber = 218,
+            AppliedRate = 813.74m,
+            TotalUSD = 0.81m,
+            TotalBsS = 659.13m,
+            Date = new DateTime(2026, 9, 4, 22, 44, 0, DateTimeKind.Utc),
+            Items = new List<Desktop.Client.Services.SaleItemHistoryDto>
+            {
+                new() { Id = 1, ProductName = "Papas Lays", Quantity = 1, UnitPrice = 0.81m, UnitPriceBsS = 659.13m, SubtotalBsS = 659.13m }
+            },
+            Payments = new List<Desktop.Client.Services.PaymentDetailDto>
+            {
+                new() { MethodName = "Punto de Venta", AmountBsS = 659.13m, Reference = "1234" }
+            }
+        };
+
+        mockClientSalesService.Setup(s => s.GetSaleHistoryDetailAsync(218, It.IsAny<System.Threading.CancellationToken>()))
+            .ReturnsAsync(sampleDetail);
+
+        // Inyección de dispatcher síncrono para pruebas unitarias sin dependencias de Application.Current
+        bool dispatcherInvoked = false;
+        Action<Action> testDispatcher = act =>
+        {
+            dispatcherInvoked = true;
+            act();
+        };
+
+        var vm = new Desktop.Client.ViewModels.SalesHistoryViewModel(mockClientSalesService.Object, testDispatcher);
+        var selectedItem = new Desktop.Client.Services.SaleHistoryDto
+        {
+            Id = 218,
+            InvoiceNumber = 218,
+            AppliedRate = 813.74m,
+            TotalUSD = 0.81m,
+            TotalBsS = 659.13m,
+            Date = new DateTime(2026, 9, 4, 22, 44, 0, DateTimeKind.Utc)
+        };
+
+        // 1. Asignar selección: verificar precarga inmediata
+        vm.SelectedSale = selectedItem;
+
+        Assert.Equal(813.74m, vm.DetailAppliedRate);
+        Assert.Equal(0.81m, vm.DetailTotalUSD);
+        Assert.Equal(659.13m, vm.DetailTotalBsS);
+        Assert.False(string.IsNullOrWhiteSpace(vm.DetailDateLocalFormatted));
+        Assert.Equal(0, vm.DetailSubtotalBsS); // Subtotal de items en 0 hasta recibir respuesta completa
+        Assert.True(dispatcherInvoked);
+
+        // 2. Esperar debounce de 200ms + llamada a la API
+        await Task.Delay(400);
+
+        Assert.NotEmpty(vm.SelectedSaleItems);
+        Assert.Single(vm.SelectedSaleItems);
+        Assert.Equal("Papas Lays", vm.SelectedSaleItems[0].ProductName);
+        Assert.NotEmpty(vm.SelectedSalePayments);
+        Assert.Equal(659.13m, vm.DetailSubtotalBsS);
+        Assert.Equal(813.74m, vm.DetailAppliedRate);
+        Assert.False(vm.IsDetailFetching);
+
+        // 3. Deseleccionar: verificar que se limpia todo el estado de detalle
+        vm.SelectedSale = null;
+        Assert.Empty(vm.SelectedSaleItems);
+        Assert.Empty(vm.SelectedSalePayments);
+        Assert.Equal(0, vm.DetailAppliedRate);
+        Assert.Equal(0, vm.DetailTotalUSD);
+        Assert.Equal(0, vm.DetailTotalBsS);
+        Assert.Equal(string.Empty, vm.DetailDateLocalFormatted);
+    }
 }
+

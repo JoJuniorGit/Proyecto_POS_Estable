@@ -238,14 +238,14 @@ public class InventoryPaginationTests
 
         // 1. Simular búsqueda de producto
         vm.SearchText = "Arroz";
-        await Task.Delay(100); // Esperar debounce
+        await Task.Delay(400); // Esperar debounce
 
         Assert.Single(vm.Products);
         Assert.Equal("Arroz 1Kg", vm.Products[0].Name);
 
         // 2. Simular borrado con la "x" (SearchText = "")
         vm.SearchText = string.Empty;
-        await Task.Delay(100); // Esperar recarga y reset
+        await Task.Delay(400); // Esperar recarga y reset
 
         Assert.Equal(3, vm.Products.Count);
         Assert.Equal(1, vm.CurrentPage);
@@ -296,14 +296,14 @@ public class InventoryPaginationTests
 
         // 1. Buscar algo que devuelve 0 productos
         vm.SearchText = "inexistente";
-        await Task.Delay(100);
+        await Task.Delay(250);
 
         Assert.Empty(vm.Products);
         Assert.Equal(0, vm.TotalCount);
 
         // 2. Borrar con la "x"
         vm.SearchText = "";
-        await Task.Delay(100);
+        await Task.Delay(250);
 
         // 3. Debe mostrar la lista completa reiniciada
         Assert.Equal(2, vm.Products.Count);

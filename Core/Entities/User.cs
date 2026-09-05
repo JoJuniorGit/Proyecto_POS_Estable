@@ -2,9 +2,10 @@ namespace Core.Entities;
 
 public enum UserRole
 {
-    Admin,
-    Cashier,
-    Driver
+    Cashier = 1,
+    Manager = 2,
+    Admin = 3,
+    Driver = 4
 }
 
 public class User : BaseEntity
@@ -18,4 +19,10 @@ public class User : BaseEntity
     public string? PhoneNumber { get; set; } // For Drivers
     public bool IsActive { get; set; } = true;
     public bool MustChangePassword { get; set; } = false;
+
+    // Phase 4: Token Revocation, Lockout & Security Audit
+    public string SecurityStamp { get; set; } = Guid.NewGuid().ToString("N");
+    public int AccessFailedCount { get; set; } = 0;
+    public DateTime? LockoutEndUtc { get; set; }
+    public DateTime? LastLoginUtc { get; set; }
 }

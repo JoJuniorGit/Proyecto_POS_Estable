@@ -8,7 +8,7 @@
         xmlns:converters="clr-namespace:Desktop.Client.Converters"
         mc:Ignorable="d"
         Title="Administrar Variantes del Grupo" 
-        Height="580" Width="940"
+        Height="640" Width="980"
         WindowStartupLocation="CenterOwner"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -50,6 +50,7 @@
             Effect="{DynamicResource MaterialDesignShadowDepth4}">
         <Grid>
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -94,21 +95,157 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <Button Grid.Column="1" 
-                            Command="{Binding AddVariantCommand}" 
-                            Style="{StaticResource MaterialDesignRaisedButton}" 
-                            VerticalAlignment="Center"
-                            Height="34" Padding="14,0">
-                        <StackPanel Orientation="Horizontal">
-                            <materialDesign:PackIcon Kind="Plus" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="Agregar Variante" VerticalAlignment="Center" FontWeight="SemiBold"/>
-                        </StackPanel>
-                    </Button>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Command="{Binding ToggleLinkingPanelCommand}" 
+                                Style="{StaticResource MaterialDesignOutlinedButton}" 
+                                Height="34" Padding="12,0" Margin="0,0,8,0">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="LinkVariant" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Vincular Existentes" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding AddVariantCommand}" 
+                                Style="{StaticResource MaterialDesignRaisedButton}" 
+                                Height="34" Padding="14,0">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="Plus" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Agregar Variante" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 2.1 Candidate Products Linking Panel -->
+            <Border Grid.Row="2" 
+                    Visibility="{Binding IsLinkingPanelOpen, Converter={StaticResource BoolToVisConverter}}"
+                    Background="#F8FAFC" 
+                    BorderBrush="#CBD5E1" 
+                    BorderThickness="1" 
+                    CornerRadius="8" 
+                    Margin="16,10,16,0" 
+                    Padding="14,10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Search Bar and Controls -->
+                    <Grid Grid.Row="0" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBox x:Name="SearchCandidatesBox"
+                                 Grid.Column="0"
+                                 Text="{Binding SearchCatalogText, UpdateSourceTrigger=PropertyChanged}"
+                                 materialDesign:HintAssist.Hint="Buscar producto existente por nombre o SKU..."
+                                 materialDesign:TextFieldAssist.HasClearButton="True"
+                                 FontSize="13"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,12,0"/>
+
+                        <ProgressBar Grid.Column="0" 
+                                     IsIndeterminate="True" 
+                                     Style="{StaticResource MaterialDesignCircularProgressBar}" 
+                                     Value="0" Width="18" Height="18"
+                                     HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,32,0"
+                                     Visibility="{Binding IsSearchingCatalog, Converter={StaticResource BoolToVisConverter}}"/>
+
+                        <Button Grid.Column="1"
+                                Style="{StaticResource MaterialDesignFlatButton}"
+                                Command="{Binding ToggleSelectAllCandidatesCommand}"
+                                Content="Marcar / Desmarcar Todos"
+                                FontSize="11" Height="28" Padding="8,0" Margin="0,0,8,0"
+                                VerticalAlignment="Center"/>
+
+                        <Button Grid.Column="2"
+                                Style="{StaticResource MaterialDesignFlatButton}"
+                                Command="{Binding ToggleLinkingPanelCommand}"
+                                Width="28" Height="28" Padding="0"
+                                ToolTip="Cerrar panel de vinculación"
+                                VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="Close" Width="16" Height="16"/>
+                        </Button>
+                    </Grid>
+
+                    <!-- Candidate Products List -->
+                    <Border Grid.Row="1" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" MaxHeight="140">
+                        <ListBox x:Name="CandidatesListBox"
+                                 ItemsSource="{Binding CandidateProducts}" 
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 SelectionMode="Single"
+                                 VirtualizingStackPanel.IsVirtualizing="True"
+                                 VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                 BorderThickness="0"
+                                 Padding="2">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
+                                    <Setter Property="Padding" Value="6,4"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid HorizontalAlignment="Stretch">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="100"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="90"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <CheckBox Grid.Column="0" 
+                                                  IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" 
+                                                  VerticalAlignment="Center" Margin="0,0,8,0"/>
+
+                                        <TextBlock Grid.Column="1" Text="{Binding SKU}" 
+                                                   FontFamily="Consolas, monospace" FontSize="11" Foreground="#64748B" 
+                                                   VerticalAlignment="Center"/>
+
+                                        <TextBlock Grid.Column="2" Text="{Binding Name}" 
+                                                   FontWeight="SemiBold" FontSize="12" Foreground="#1E293B" 
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+                                        <TextBlock Grid.Column="3" Text="{Binding PriceUSD, StringFormat={}${0:N2}}" 
+                                                   FontSize="11" Foreground="#0284C7" FontWeight="SemiBold" 
+                                                   HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"/>
+
+                                        <TextBlock Grid.Column="4" Text="{Binding StockQuantity, StringFormat={}Stock: {0:N0}}" 
+                                                   FontSize="11" Foreground="#16A34A" 
+                                                   HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+
+                    <!-- Bottom action bar inside panel -->
+                    <Grid Grid.Row="2" Margin="0,8,0,0">
+                        <TextBlock Text="Presione [Espacio] para marcar o desmarcar, [Enter] para confirmar vinculación." 
+                                   FontSize="11" Foreground="#64748B" VerticalAlignment="Center"/>
+
+                        <Button HorizontalAlignment="Right"
+                                Command="{Binding LinkSelectedCandidatesCommand}"
+                                IsEnabled="{Binding HasSelectedCandidates}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Height="30" Padding="14,0">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="LinkVariantPlus" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Vincular Seleccionados al Grupo" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
                 </Grid>
             </Border>
 
             <!-- 3. DataGrid of Variants -->
-            <Grid Grid.Row="2" Margin="16,12,16,10">
+            <Grid Grid.Row="3" Margin="16,12,16,10">
                 <DataGrid ItemsSource="{Binding Variants}" 
                           AutoGenerateColumns="False" 
                           CanUserAddRows="False"
@@ -261,12 +398,30 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
+
+                        <!-- Desvincular variante del grupo -->
+                        <DataGridTemplateColumn Header="Acción" Width="60" HeaderStyle="{StaticResource CenterAlignedHeader}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource MaterialDesignIconButton}"
+                                            Command="{Binding Source={StaticResource Proxy}, Path=Data.UnlinkVariantCommand}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="Desvincular variante del grupo"
+                                            AutomationProperties.Name="Desvincular variante del grupo"
+                                            Width="28" Height="28" Padding="0"
+                                            Foreground="#EF4444"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <materialDesign:PackIcon Kind="LinkOff" Width="18" Height="18"/>
+                                    </Button>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
             </Grid>
 
             <!-- 4. Footer -->
-            <Border Grid.Row="3" Padding="20,12" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" CornerRadius="0,0,12,12">
+            <Border Grid.Row="4" Padding="20,12" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" CornerRadius="0,0,12,12">
                 <Grid>
                     <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" Foreground="#64748B" FontSize="12"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

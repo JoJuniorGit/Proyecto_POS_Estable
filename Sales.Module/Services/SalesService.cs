@@ -14,6 +14,7 @@ using Sales.Module.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace Sales.Module.Services;
@@ -45,6 +46,24 @@ public class SalesService : ISalesService
         _settingsService = settingsService;
         _logger = logger;
         _cache = cache;
+    }
+
+    private async Task<int> GenerateNextInvoiceNumberAsync()
+    {
+        if (_context.Database.IsNpgsql())
+        {
+            var nextVal = await _context.Database
+                .SqlQueryRaw<long>("SELECT nextval('factura_number_seq') AS \"Value\"")
+                .FirstOrDefaultAsync();
+            return (int)nextVal;
+        }
+        else
+        {
+            var lastInvoice = await _context.Sales
+                .Where(s => s.InvoiceNumber.HasValue)
+                .MaxAsync(s => (int?)s.InvoiceNumber);
+            return (lastInvoice ?? 0) + 1;
+        }
     }
 
     public async Task<SaleDto> StartSaleAsync(int? cashierId = null)
@@ -113,30 +132,49 @@ public class SalesService : ISalesService
         return _sale;
     }
 
-    private async Task<decimal> ValidateAndAdjustQuantityForProductAsync(int productId, decimal quantity)
+    private static decimal ValidateAndAdjustQuantity(Product? product, decimal quantity)
     {
         if (quantity <= 0m)
         {
             throw new ArgumentException("La cantidad debe ser mayor a cero.", nameof(quantity));
         }
 
-        if (_inventoryService != null)
+        if (product != null && !product.IsFractional)
         {
-            var product = await _inventoryService.GetProductByIdAsync(productId);
-            if (product != null && !product.IsFractional)
-            {
-                return Math.Max(1m, Math.Truncate(quantity));
-            }
+            return Math.Max(1m, Math.Truncate(quantity));
         }
 
         return Math.Round(quantity, 3, MidpointRounding.AwayFromZero);
     }
 
-    public async Task<SaleDto> AddItemAsync(int sale_id, int product_id, decimal quantity, decimal exchange_rate, decimal? custom_unit_price_usd = null, decimal? custom_unit_price_local = null)
+    private async Task<decimal> ValidateAndAdjustQuantityForProductAsync(int productId, decimal quantity)
+    {
+        Product? product = null;
+        if (_inventoryService != null)
+        {
+            product = await _inventoryService.GetProductByIdAsync(productId);
+        }
+
+        return ValidateAndAdjustQuantity(product, quantity);
+    }
+
+    public async Task<SaleDto> AddItemAsync(int sale_id, int product_id, decimal quantity, decimal exchange_rate, decimal? custom_unit_price_usd = null, decimal? custom_unit_price_local = null, bool isPriceOverrideAuthorized = false)
     {
         var _sale = await GetSaleEntityAsync(sale_id);
         if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("Cannot modify a completed sale.");
+
+        Product? product = null;
+        if (_inventoryService != null)
+        {
+            product = await _inventoryService.GetProductByIdAsync(product_id);
+        }
+
+        bool isCashAdvance = product?.IsCashAdvance == true;
+        if ((custom_unit_price_usd.HasValue || custom_unit_price_local.HasValue) && !isPriceOverrideAuthorized && !isCashAdvance)
+        {
+            throw new UnauthorizedAccessException("Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor.");
+        }
 
         if (custom_unit_price_usd.HasValue && custom_unit_price_usd.Value < 0m)
         {
@@ -147,7 +185,7 @@ public class SalesService : ISalesService
             throw new ArgumentException("El precio en moneda local no puede ser negativo.", nameof(custom_unit_price_local));
         }
 
-        quantity = await ValidateAndAdjustQuantityForProductAsync(product_id, quantity);
+        quantity = ValidateAndAdjustQuantity(product, quantity);
 
         _sale.AppliedRate = exchange_rate;
 
@@ -312,13 +350,21 @@ public class SalesService : ISalesService
         _logger?.LogInformation("Pedido #{SaleId} fue anulado exitosamente.", sale_id);
     }
 
-    public async Task<int> CompleteSaleAsync(int sale_id, decimal exchange_rate, IEnumerable<PaymentInfo> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false)
+    public async Task<int> CompleteSaleAsync(int sale_id, decimal exchange_rate, IEnumerable<PaymentInfo> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null)
     {
+        var _sale = await GetSaleEntityAsync(sale_id);
+
+        // Idempotency check: if sale is already completed, return existing InvoiceNumber immediately
+        if (_sale.Status == SaleStatus.Completed && _sale.InvoiceNumber.HasValue)
+        {
+            _logger?.LogInformation("[SalesService] Idempotency: Venta #{SaleId} ya se encontraba completada con Factura N° {InvoiceNumber}. Retornando consecutivo.", sale_id, _sale.InvoiceNumber.Value);
+            return _sale.InvoiceNumber.Value;
+        }
+
         using var _transaction = await _context.Database.BeginTransactionAsync();
 
         try
         {
-            var _sale = await GetSaleEntityAsync(sale_id);
             if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold) 
                 throw new InvalidOperationException("Sale is not pending or on hold.");
 
@@ -358,12 +404,6 @@ public class SalesService : ISalesService
             decimal totalPaidUsd = Math.Round(existingPaidUsd + newPaymentsPaidUsd, 2, MidpointRounding.AwayFromZero);
             decimal remainingBalanceUsd = Math.Round(_sale.TotalUSD - totalPaidUsd, 2, MidpointRounding.AwayFromZero);
 
-            if (remainingBalanceUsd < -0.05m)
-            {
-                _logger?.LogInformation("[SalesService] Sobrepago/Vuelto registrado en venta #{SaleId}. Total factura: ${Total:F2}, Total abonado: ${Paid:F2}. Continuando liquidación.",
-                    _sale.Id, _sale.TotalUSD, totalPaidUsd);
-            }
-
             if (isPendingPickup)
             {
                 if (remainingBalanceUsd > 0.05m)
@@ -382,11 +422,7 @@ public class SalesService : ISalesService
 
             if (!_sale.InvoiceNumber.HasValue)
             {
-                var _last_invoice = await _context.Sales
-                    .Where(s => s.InvoiceNumber.HasValue)
-                    .MaxAsync(s => (int?)s.InvoiceNumber);
-
-                _sale.InvoiceNumber = (_last_invoice ?? 0) + 1;
+                _sale.InvoiceNumber = await GenerateNextInvoiceNumberAsync();
             }
 
             if (payments != null && payments.Any())
@@ -435,21 +471,50 @@ public class SalesService : ISalesService
                     if (amountUsd > 0 && _payment_method != null && _payment_method.IsCash)
                     {
                         var _cash_tx = new CashTransaction
-                            {
-                                SessionId = _active_session.Id,
-                                Type = CashTransactionType.Income,
-                                Source = CashTransactionSource.SalePayment,
-                                AmountUsd = amountUsd,
-                                ExchangeRate = exchange_rate,
-                                AmountLocal = amountLocal,
-                                Description = $"Factura N° {_sale.InvoiceNumber}",
-                                TransactionTime = DateTime.UtcNow,
-                                SaleId = _sale.Id
-                            };
-                            _context.CashTransactions.Add(_cash_tx);
-                        }
+                        {
+                            SessionId = _active_session.Id,
+                            Type = CashTransactionType.Income,
+                            Source = CashTransactionSource.SalePayment,
+                            AmountUsd = amountUsd,
+                            ExchangeRate = exchange_rate,
+                            AmountLocal = amountLocal,
+                            IsPhysicalCash = true,
+                            Description = $"Factura N° {_sale.InvoiceNumber}",
+                            TransactionTime = DateTime.UtcNow,
+                            SaleId = _sale.Id
+                        };
+                        _context.CashTransactions.Add(_cash_tx);
                     }
                 }
+            }
+
+            // H-SAL-3: Registro de vuelto como egreso (Expense) y validación de límites de sobrepago
+            if (remainingBalanceUsd < -0.05m)
+            {
+                decimal changeUsd = Math.Abs(remainingBalanceUsd);
+                if (changeUsd > 100m && changeUsd > _sale.TotalUSD)
+                {
+                    throw new InvalidOperationException($"El sobrepago o vuelto requerido (${changeUsd:F2} USD) excede los límites operacionales de seguridad.");
+                }
+
+                decimal changeBsS = Math.Round(changeUsd * exchange_rate, 2, MidpointRounding.AwayFromZero);
+                var _change_tx = new CashTransaction
+                {
+                    SessionId = _active_session.Id,
+                    Type = CashTransactionType.Expense,
+                    Source = CashTransactionSource.SalePayment,
+                    AmountUsd = changeUsd,
+                    ExchangeRate = exchange_rate,
+                    AmountLocal = changeBsS,
+                    IsPhysicalCash = true,
+                    Description = $"Vuelto Factura N° {_sale.InvoiceNumber}",
+                    TransactionTime = DateTime.UtcNow,
+                    SaleId = _sale.Id
+                };
+                _context.CashTransactions.Add(_change_tx);
+                _logger?.LogInformation("[SalesService] Vuelto registrado en caja: ${ChangeUsd} USD / Bs. {ChangeBsS} para Factura N° {InvoiceNumber}",
+                    changeUsd, changeBsS, _sale.InvoiceNumber);
+            }
 
             // 1. Defensive Aggregated Total Validation:
             if (_sale.Payments.Sum(p => p.Amount) <= 0 && !_sale.IsZeroAmountOrder)
@@ -482,14 +547,59 @@ public class SalesService : ISalesService
             await RecalculateTotalAsync(_sale);
             _sale.FinalPaidAmountBsS = _sale.Payments.Sum(p => p.AmountBsS);
 
+            // Synchronous Stock Deduction inside Transaction (H-SAL-2 / H-INV-1 / A1)
+            if (_inventoryService != null && _sale.Items != null)
+            {
+                foreach (var item in _sale.Items)
+                {
+                    await _inventoryService.UpdateStockAsync(
+                        item.ProductId,
+                        -item.Quantity,
+                        $"Sale #{_sale.InvoiceNumber.Value}",
+                        userId: cashierId?.ToString(),
+                        allowNegativeStock: true);
+                }
+            }
+
+            // Transactional Outbox Message creation (A1 / H-SAL-2)
+            var outboxPayload = JsonSerializer.Serialize(new
+            {
+                SaleId = _sale.Id,
+                InvoiceNumber = _sale.InvoiceNumber.Value,
+                Date = _sale.Date,
+                TotalUSD = _sale.TotalUSD,
+                TotalBsS = _sale.TotalBsS,
+                CashierId = _sale.CashierId,
+                IdempotencyKey = idempotencyKey,
+                Items = _sale.Items?.Select(i => new { i.ProductId, i.Quantity, i.UnitPrice, i.Subtotal }).ToList()
+            });
+
+            _context.OutboxMessages.Add(new OutboxMessage
+            {
+                Id = Guid.NewGuid(),
+                EventType = "SaleCompleted",
+                Payload = outboxPayload,
+                CreatedAtUtc = DateTime.UtcNow,
+                NextRetryUtc = DateTime.UtcNow,
+                Status = "Pending",
+                RetryCount = 0
+            });
+
             _logger?.LogInformation("[EF CORE ENTITY DEBUG] Persistiendo Sale ID: {SaleId}. Entidades SalePayment reales: {@Payments}", _sale.Id, _sale.Payments);
 
             await _context.SaveChangesAsync();
             await _transaction.CommitAsync();
 
-            var _items_snapshot = _sale.Items.Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity)).ToList();
-            var _sale_made_event = new SaleMadeEvent(_sale.Id, _sale.Date, _items_snapshot);
-            await _mediator.Publish(_sale_made_event);
+            try
+            {
+                var _items_snapshot = (_sale.Items ?? Enumerable.Empty<SaleItem>()).Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity)).ToList();
+                var _sale_made_event = new SaleMadeEvent(_sale.Id, _sale.Date, _items_snapshot);
+                await _mediator.Publish(_sale_made_event);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "[SalesService] Publicación de evento secundario SaleMadeEvent falló, pero la venta y el Outbox están garantizados en base de datos.");
+            }
 
             return _sale.InvoiceNumber.Value;
         }
@@ -645,25 +755,53 @@ public class SalesService : ISalesService
         if (request.InitialPayment != null) paymentsToProcess.Add(request.InitialPayment);
         if (request.InitialPayments != null && request.InitialPayments.Any()) paymentsToProcess.AddRange(request.InitialPayments);
 
-        foreach (var payment in paymentsToProcess)
+        if (paymentsToProcess.Any())
         {
-            decimal rate = payment.ExchangeRate > 0 ? payment.ExchangeRate : _sale.AppliedRate;
-            decimal amountUsd = payment.AmountUSD > 0 
-                ? Math.Round(payment.AmountUSD, 2, MidpointRounding.AwayFromZero) 
-                : (rate > 0 ? Math.Round(payment.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
+            var pMethodIds = paymentsToProcess.Select(p => p.PaymentMethodId).Distinct().ToList();
+            var pMethodsDict = await _context.PaymentMethods.Where(pm => pMethodIds.Contains(pm.Id)).ToDictionaryAsync(pm => pm.Id);
 
-            var initialPaymentEntity = new SalePayment
+            foreach (var payment in paymentsToProcess)
             {
-                SaleId = _sale.Id,
-                PaymentMethodId = payment.PaymentMethodId,
-                Amount = Math.Round(amountUsd, 2, MidpointRounding.AwayFromZero),
-                AmountBsS = payment.AmountBsS,
-                ExchangeRate = rate,
-                ReferenceNumber = payment.ReferenceNumber,
-                CreatedAt = DateTime.UtcNow
-            };
+                decimal rate = payment.ExchangeRate > 0 ? payment.ExchangeRate : _sale.AppliedRate;
+                decimal amountUsd = payment.AmountUSD > 0 
+                    ? Math.Round(payment.AmountUSD, 2, MidpointRounding.AwayFromZero) 
+                    : (rate > 0 ? Math.Round(payment.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
 
-            _sale.Payments.Add(initialPaymentEntity);
+                var initialPaymentEntity = new SalePayment
+                {
+                    SaleId = _sale.Id,
+                    PaymentMethodId = payment.PaymentMethodId,
+                    Amount = Math.Round(amountUsd, 2, MidpointRounding.AwayFromZero),
+                    AmountBsS = payment.AmountBsS,
+                    ExchangeRate = rate,
+                    ReferenceNumber = payment.ReferenceNumber,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _sale.Payments.Add(initialPaymentEntity);
+
+                // H-SAL-5: Asentar ingresos físicos en sesión activa de caja
+                if (amountUsd > 0 && pMethodsDict.TryGetValue(payment.PaymentMethodId, out var pMethod) && pMethod.IsCash && _cashDrawerService != null)
+                {
+                    var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(rate);
+                    if (activeSession != null)
+                    {
+                        _context.CashTransactions.Add(new CashTransaction
+                        {
+                            SessionId = activeSession.Id,
+                            Type = CashTransactionType.Income,
+                            Source = CashTransactionSource.SalePayment,
+                            AmountUsd = amountUsd,
+                            ExchangeRate = rate,
+                            AmountLocal = Math.Round(payment.AmountBsS, 2, MidpointRounding.AwayFromZero),
+                            IsPhysicalCash = true,
+                            Description = $"Abono Inicial Venta #{_sale.Id}",
+                            TransactionTime = DateTime.UtcNow,
+                            SaleId = _sale.Id
+                        });
+                    }
+                }
+            }
         }
 
         decimal totalPaidUsd = Math.Round(_sale.Payments.Sum(p => p.Amount), 2, MidpointRounding.AwayFromZero);
@@ -683,14 +821,42 @@ public class SalesService : ISalesService
             }
             try
             {
-                var lastInvoice = await _context.Sales
-                    .Where(s => s.InvoiceNumber.HasValue)
-                    .MaxAsync(s => (int?)s.InvoiceNumber);
-
-                _sale.InvoiceNumber = (lastInvoice ?? 0) + 1;
+                _sale.InvoiceNumber = await GenerateNextInvoiceNumberAsync();
                 _sale.Status = SaleStatus.Completed;
                 _sale.Date = DateTime.UtcNow;
                 _sale.FinalPaidAmountBsS = _sale.Payments.Sum(p => p.AmountBsS);
+
+                // Synchronous stock deduction
+                if (_inventoryService != null && _sale.Items != null)
+                {
+                    foreach (var item in _sale.Items)
+                    {
+                        await _inventoryService.UpdateStockAsync(
+                            item.ProductId,
+                            -item.Quantity,
+                            $"Sale #{_sale.InvoiceNumber.Value}",
+                            allowNegativeStock: true);
+                    }
+                }
+
+                // Outbox message
+                _context.OutboxMessages.Add(new OutboxMessage
+                {
+                    Id = Guid.NewGuid(),
+                    EventType = "SaleCompleted",
+                    Payload = JsonSerializer.Serialize(new
+                    {
+                        SaleId = _sale.Id,
+                        InvoiceNumber = _sale.InvoiceNumber.Value,
+                        Date = _sale.Date,
+                        TotalUSD = _sale.TotalUSD,
+                        TotalBsS = _sale.TotalBsS,
+                        CashierId = _sale.CashierId
+                    }),
+                    CreatedAtUtc = DateTime.UtcNow,
+                    NextRetryUtc = DateTime.UtcNow,
+                    Status = "Pending"
+                });
 
                 await _context.SaveChangesAsync();
 
@@ -721,7 +887,7 @@ public class SalesService : ISalesService
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "[SalesService] Eventual consistency warning: Falló publicación de SaleMadeEvent para Venta #{SaleId}. La venta ya fue confirmada.", _sale.Id);
+                _logger?.LogWarning(ex, "[SalesService] Publicación secundaria de SaleMadeEvent falló para Venta #{SaleId}, pero está respaldada en Outbox.", _sale.Id);
             }
         }
         else
@@ -735,7 +901,7 @@ public class SalesService : ISalesService
         return MapToDto(_sale);
     }
 
-    public async Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request)
+    public async Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false)
     {
         var _sale = await GetSaleEntityAsync(saleId);
         if (_sale.Status != SaleStatus.OnHold)
@@ -772,11 +938,18 @@ public class SalesService : ISalesService
             {
                 if (reqItem.Quantity <= 0m) continue;
 
-                decimal adjustedQty = await ValidateAndAdjustQuantityForProductAsync(reqItem.ProductId, reqItem.Quantity);
-
                 productsDict.TryGetValue(reqItem.ProductId, out var product);
+                decimal adjustedQty = ValidateAndAdjustQuantity(product, reqItem.Quantity);
+
                 string productName = product != null ? product.Name : $"Producto #{reqItem.ProductId}";
-                decimal unitPriceUsd = reqItem.UnitPrice > 0 ? reqItem.UnitPrice : (product != null ? product.PriceUSD : 0);
+                decimal catalogPrice = product != null ? product.PriceUSD : 0m;
+
+                if (product != null && !product.IsCashAdvance && reqItem.UnitPrice > 0 && reqItem.UnitPrice != catalogPrice && !isPriceOverrideAuthorized)
+                {
+                    throw new UnauthorizedAccessException($"Modificación de precio no autorizada para el producto '{productName}'. Se requiere autorización de Administrador o Supervisor.");
+                }
+
+                decimal unitPriceUsd = reqItem.UnitPrice > 0 ? reqItem.UnitPrice : catalogPrice;
                 decimal subtotalUsd = Math.Round(unitPriceUsd * adjustedQty, 2, MidpointRounding.AwayFromZero);
                 decimal unitPriceBsS = Math.Round(unitPriceUsd * _sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
                 decimal subtotalBsS = Math.Round(subtotalUsd * _sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
@@ -1175,21 +1348,11 @@ public class SalesService : ISalesService
             .Where(s => s.Status == SaleStatus.Completed);
 
         // La columna Date es "timestamp with time zone" (UTC): Npgsql rechaza parámetros
-        // DateTime con Kind != Utc. Los clientes envían fechas sin zona horaria (YYYY-MM-DD
-        // o medianoche local), por lo que se interpretan como hora local del servidor y se
-        // convierten a UTC antes de comparar.
-        DateTime ToUtc(DateTime value)
-            => value.Kind == DateTimeKind.Utc
-                ? value
-                : TimeZoneInfo.ConvertTimeToUtc(
-                    DateTime.SpecifyKind(value, DateTimeKind.Unspecified), TimeZoneInfo.Local);
-
-        // Se calculan ANTES del árbol de expresión (una función local no puede
-        // referenciarse dentro de la lambda que EF Core traduce a SQL).
-        DateTime? startUtc = startDate.HasValue ? ToUtc(startDate.Value) : null;
-        // La fecha fin es inclusiva de TODO el día seleccionado: la venta pertenece al día
-        // si su fecha es anterior a la medianoche local del día siguiente (convertida a UTC).
-        DateTime? endExclusiveUtc = endDate.HasValue ? ToUtc(endDate.Value.Date.AddDays(1)) : null;
+        // DateTime con Kind != Utc. Se utiliza TimeZoneHelper.GetUtcRange para convertir las
+        // fechas calendario locales de Venezuela (UTC-4) a límites exactos UTC de inicio y fin inclusivo del día,
+        // garantizando que todas las ventas nocturnas (después de las 8:00 PM VET) sean incluidas correctamente.
+        bool shouldDefaultEndDate = startDate.HasValue && !endDate.HasValue;
+        var (startUtc, endExclusiveUtc) = Core.Helpers.TimeZoneHelper.GetUtcRange(startDate, endDate, defaultEndDateToToday: shouldDefaultEndDate);
 
         if (startUtc.HasValue) query = query.Where(s => s.Date >= startUtc.Value);
         if (endExclusiveUtc.HasValue) query = query.Where(s => s.Date < endExclusiveUtc.Value);
@@ -1607,7 +1770,7 @@ public class SalesService : ISalesService
         string customerCedula = defaultCustomer?.CedulaOrRif ?? "V-00000000";
 
         // 4. Consecutivo de Facturación atómico en transacción
-        int nextInvoice = (await _context.Sales.MaxAsync(s => (int?)s.InvoiceNumber) ?? 0) + 1;
+        int nextInvoice = await GenerateNextInvoiceNumberAsync();
 
         decimal totalChargedLocal = requestedAmountLocal + commissionAmountLocal;
         decimal totalChargedUSD = exchangeRate > 0 ? Math.Round(totalChargedLocal / exchangeRate, 4) : 0m;

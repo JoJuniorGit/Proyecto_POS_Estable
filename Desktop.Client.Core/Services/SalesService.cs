@@ -121,20 +121,34 @@ public class SalesService : ISalesService
         return sale;
     }
 
-    public async Task<int> CompleteSaleAsync(int sale_id, decimal exchange_rate, IEnumerable<SalePaymentDto> payments, decimal rounding_adjustment = 0, int? cashierId = null, bool isPendingPickup = false)
+    public async Task<int> CompleteSaleAsync(int sale_id, decimal exchange_rate, IEnumerable<SalePaymentDto> payments, decimal rounding_adjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null)
     {
         var _request = new { ExchangeRate = exchange_rate, Payments = payments, RoundingAdjustment = rounding_adjustment, CashierId = cashierId, IsPendingPickup = isPendingPickup };
-        var _response = await _http_client.PostAsJsonAsync($"api/sales/{sale_id}/complete", _request);
-        _response.EnsureSuccessStatusCode();
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"api/sales/{sale_id}/complete")
+        {
+            Content = JsonContent.Create(_request)
+        };
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            httpRequest.Headers.Add("Idempotency-Key", idempotencyKey);
+        }
+        var _response = await _http_client.SendAsync(httpRequest);
+        if (!_response.IsSuccessStatusCode)
+        {
+            var errorContent = await _response.Content.ReadAsStringAsync();
+            throw new System.Exception(!string.IsNullOrWhiteSpace(errorContent) ? errorContent : $"Error del servidor ({(int)_response.StatusCode})");
+        }
         var contentStr = await _response.Content.ReadAsStringAsync();
-        return int.Parse(contentStr);
+        var invoiceNumber = int.Parse(contentStr);
+        WeakReferenceMessenger.Default.Send(new SaleCompletedNotificationMessage(invoiceNumber));
+        return invoiceNumber;
     }
 
     public async Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int page_size, System.DateTime? start_date = null, System.DateTime? end_date = null, string? search = null, System.Threading.CancellationToken cancellation_token = default)
     {
         var _url = $"api/sales/history?page={page}&pageSize={page_size}";
-        if (start_date.HasValue) _url += $"&startDate={start_date.Value:O}";
-        if (end_date.HasValue) _url += $"&endDate={end_date.Value:O}";
+        if (start_date.HasValue) _url += $"&startDate={start_date.Value:yyyy-MM-dd}";
+        if (end_date.HasValue) _url += $"&endDate={end_date.Value:yyyy-MM-dd}";
         if (!string.IsNullOrWhiteSpace(search)) _url += $"&search={System.Uri.EscapeDataString(search.Trim())}";
 
         var _response = await _http_client.GetAsync(_url, cancellation_token);

@@ -157,6 +157,21 @@ public class CashDrawerService : ICashDrawerService
         int? referenceId = null,
         bool isPhysicalCash = true)
     {
+        if (amountLocal <= 0 && source != CashTransactionSource.Closing && source != CashTransactionSource.Opening)
+        {
+            throw new ArgumentException("El monto de la transacción debe ser mayor a cero.", nameof(amountLocal));
+        }
+
+        // H-API-4 & H-API-17: Validar que los egresos físicos no sobregiren el saldo real de la caja
+        if (type == CashTransactionType.Expense && isPhysicalCash && source != CashTransactionSource.Closing)
+        {
+            var currentBalance = await GetCurrentBalanceLocalAsync(sessionId);
+            if (currentBalance < amountLocal)
+            {
+                throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para realizar el egreso. Disponible: {currentBalance:N2} Bs.S, Requerido: {amountLocal:N2} Bs.S.");
+            }
+        }
+
         var transaction = new CashTransaction
         {
             SessionId = sessionId,

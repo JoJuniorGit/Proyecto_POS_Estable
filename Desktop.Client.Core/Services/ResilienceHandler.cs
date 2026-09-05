@@ -65,10 +65,16 @@ public class ResilienceHandler : DelegatingHandler
             };
         }
 
+        // H-DCC-1: Only retry idempotent requests (GET, HEAD, or requests with an Idempotency-Key)
+        bool isIdempotent = request.Method == HttpMethod.Get ||
+                            request.Method == HttpMethod.Head ||
+                            request.Headers.Contains("Idempotency-Key");
+
+        int effectiveMaxRetries = isIdempotent ? MaxRetries : 1;
         HttpResponseMessage? response = null;
         Exception? lastException = null;
 
-        for (int attempt = 1; attempt <= MaxRetries; attempt++)
+        for (int attempt = 1; attempt <= effectiveMaxRetries; attempt++)
         {
             try
             {
@@ -94,12 +100,18 @@ public class ResilienceHandler : DelegatingHandler
                     }
                 }
 
-                // Log transient retry
-                ClientStateLogger.LogRetry(attempt, MaxRetries, requestUri, method);
-
-                if (attempt < MaxRetries)
+                // If not idempotent, do not retry non-safe mutations to avoid duplicates
+                if (!isIdempotent)
                 {
-                    int delayMs = (int)Math.Pow(2, attempt) * 1000; // 2s, 4s, 8s
+                    return response;
+                }
+
+                // Log transient retry
+                ClientStateLogger.LogRetry(attempt, effectiveMaxRetries, requestUri, method);
+
+                if (attempt < effectiveMaxRetries)
+                {
+                    int delayMs = (int)Math.Pow(2, attempt) * 1000 + Random.Shared.Next(100, 500); // 2s, 4s, 8s + jitter
                     await Task.Delay(delayMs, cancellationToken);
                 }
             }
@@ -110,11 +122,17 @@ public class ResilienceHandler : DelegatingHandler
             catch (Exception ex)
             {
                 lastException = ex;
-                ClientStateLogger.LogRetry(attempt, MaxRetries, requestUri, method);
 
-                if (attempt < MaxRetries)
+                if (!isIdempotent)
                 {
-                    int delayMs = (int)Math.Pow(2, attempt) * 1000;
+                    throw;
+                }
+
+                ClientStateLogger.LogRetry(attempt, effectiveMaxRetries, requestUri, method);
+
+                if (attempt < effectiveMaxRetries)
+                {
+                    int delayMs = (int)Math.Pow(2, attempt) * 1000 + Random.Shared.Next(100, 500);
                     await Task.Delay(delayMs, cancellationToken);
                 }
             }

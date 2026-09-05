@@ -30,6 +30,21 @@ public static class TestDatabaseFactory
         return new InventoryDbContext(options);
     }
 
+    public static bool IsPostgreSqlAvailable => !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION"));
+
+    public static SalesDbContext? CreatePostgreSqlSalesDbContext()
+    {
+        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connStr)) return null;
+
+        var options = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseNpgsql(connStr)
+            .Options;
+        var ctx = new SalesDbContext(options);
+        ctx.Database.EnsureCreated();
+        return ctx;
+    }
+
     public static (InventoryDbContext context, Microsoft.Data.Sqlite.SqliteConnection connection) CreateSqliteInventoryDbContext()
     {
         var connection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=:memory:");

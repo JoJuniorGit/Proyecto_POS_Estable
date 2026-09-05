@@ -122,7 +122,7 @@ public partial class EditSaleDialog : Window
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[EditSaleDialog] Search error: {ex.Message}");
+            Core.Logging.AppLogger.LogCrash(ex, "EditSaleDialog.TxtProductSearch_TextChanged");
             Dispatcher.Invoke(() => PopupSuggestions.IsOpen = false);
         }
     }

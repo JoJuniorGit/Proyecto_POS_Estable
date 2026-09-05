@@ -1,0 +1,377 @@
+
+
+1. Implementar controles de sesión para cerrar sesión al iniciar o cambiar contraseña del sistema, visualizar usuarios activos
+Objetivo: Fortalecer la seguridad y administración de la aplicación mediante la gestión centralizada de sesiones de usuario.
+
+Descripción detallada:
+
+Cierre de sesión automático al iniciar sesión en otro dispositivo:
+Cuando un usuario inicia sesión con sus credenciales en una nueva instancia o dispositivo, el sistema deberá invalidar de forma inmediata cualquier sesión activa previa asociada a ese mismo usuario. Esto previene accesos concurrentes no autorizados y garantiza que las credenciales no se utilicen simultáneamente en múltiples equipos sin control.
+
+Cierre de sesión forzado al cambiar la contraseña:
+Tras un cambio de contraseña exitoso, todas las sesiones activas del usuario deberán cerrarse automáticamente, incluyendo la actual. El sistema emitirá tokens de refresco inválidos y solicitará un nuevo inicio de sesión con la nueva contraseña. Esta medida evita que sesiones antiguas sigan operando con la contraseña anterior.
+
+Visualización de usuarios activos:
+Se implementará una vista administrativa que muestre:
+
+Usuario (nombre y rol).
+
+Fecha y hora de inicio de sesión.
+
+Dispositivo o dirección IP.
+
+Estado de la sesión (activa, inactiva, bloqueada).
+
+Opciones para cerrar sesión de forma remota (kick) o revocar todos los tokens de un usuario.
+
+Aspectos técnicos:
+
+Uso de JWT con lista de revocación o almacenamiento de sesiones en base de datos (tabla UserSessions).
+
+Middleware que valide la vigencia del token y su estado activo.
+
+Notificaciones en tiempo real mediante SignalR para informar al usuario si su sesión ha sido cerrada.
+
+Beneficios:
+
+Mayor control sobre accesos no deseados.
+
+Cumplimiento de políticas de seguridad corporativas.
+
+Facilidad para auditar sesiones activas.
+
+####################
+
+2. Mejorar comportamiento de cierre
+Objetivo: Asegurar que la aplicación se cierre de forma ordenada, guardando el estado crítico y liberando recursos adecuadamente.
+
+Descripción detallada:
+
+Guardado automático al cerrar:
+Antes de cerrar la aplicación (ya sea mediante la "X", Alt+F4, apagado del sistema o cierre forzado), se detectará si existen operaciones pendientes (por ejemplo, una venta en proceso, carrito con productos, formularios sin guardar). Si es así, se mostrará una confirmación al usuario.
+
+Manejo de ventanas modales:
+Si hay modales abiertos (checkout, escáner, selector de variantes), el cierre de la aplicación no deberá ejecutarse directamente, sino que primero se cerrarán los modales de manera ordenada o se preguntará al usuario.
+
+Persistencia del estado crítico:
+Se implementará un mecanismo de guardado temporal (por ejemplo, en sessionStorage, localStorage o archivos locales) para que, en caso de cierre accidental, el usuario pueda recuperar la venta pendiente al reabrir la aplicación.
+
+Liberación de recursos de hardware:
+Al cerrar, se liberarán de forma explícita recursos como:
+
+Cámara web (si está activa).
+
+AudioContext.
+
+Conexiones SignalR.
+
+Hilos de escaneo de teclado.
+
+Aspectos técnicos:
+
+Manejo de eventos beforeunload (Web) y Window.Closing / Application.Exit (WPF).
+
+Cancelación de tareas asíncronas con CancellationToken.
+
+Disposición de servicios IDisposable.
+
+Beneficios:
+
+Evita pérdida de información.
+
+Previene fugas de memoria y cuelgues.
+
+Mejora la experiencia general del usuario.
+
+####################
+
+3. Agregar soporte para ventas a crédito
+Objetivo: Permitir a clientes autorizados realizar compras sin pago inmediato, registrando la deuda y facilitando su posterior cobro.
+
+Descripción detallada:
+
+Registro de clientes con crédito:
+El sistema deberá permitir marcar clientes como "clientes de crédito" e indicar:
+
+Límite de crédito máximo.
+
+Plazo de pago (ej. 15, 30, 60 días).
+
+Condiciones especiales.
+
+Flujo de venta a crédito:
+
+En el módulo de cobro, se añadirá una opción "Venta a Crédito".
+
+Al seleccionarla, se verificará que el cliente tenga crédito disponible.
+
+Se registrará una cuenta por cobrar asociada a la venta.
+
+El inventario se descontará inmediatamente, pero el pago se registrará como pendiente.
+
+Gestión de cuentas por cobrar:
+
+Vista de deudas por cliente.
+
+Registro de abonos o pagos parciales/totales.
+
+Notificaciones de vencimiento.
+
+Control de crédito:
+
+Impedir ventas a crédito si el cliente excede su límite.
+
+Bloqueo temporal en caso de morosidad.
+
+Aspectos técnicos:
+
+Nuevas tablas: CreditSales, CustomerCredits, CreditPayments.
+
+Cambios en el flujo de cierre de venta para emitir comprobantes de crédito.
+
+Beneficios:
+
+Amplía las opciones de pago.
+
+Fideliza clientes.
+
+Mejora el control financiero.
+
+####################
+
+4. Agregar cálculo de ganancias diarias, semanales y mensuales
+Objetivo: Proporcionar una herramienta de análisis de rentabilidad que permita visualizar las ganancias en diferentes períodos.
+
+Descripción detallada:
+
+Definición de ganancia:
+Ganancia = Ingresos por ventas - Costos de productos vendidos - Gastos operativos (opcional). Se basará en los márgenes registrados y los costos unitarios.
+
+Indicadores:
+
+Ganancia bruta (ventas netas - costo de mercancía).
+
+Ganancia neta (descontando gastos adicionales, descuentos, devoluciones).
+
+Ticket promedio.
+
+Productos más rentables.
+
+Vistas:
+
+Panel con gráficos de barras/líneas comparativos.
+
+Tabla de detalle por día/semana/mes.
+
+Exportación a PDF/Excel.
+
+Filtros:
+
+Por período (hoy, semana actual, mes actual, rango personalizado).
+
+Por usuario/vendedor.
+
+Por categoría de producto.
+
+Aspectos técnicos:
+
+Cálculo en tiempo real o precalculado con jobs programados.
+
+Uso de SalesService para agregar datos.
+
+Caché de resultados para consultas rápidas.
+
+Beneficios:
+
+Toma de decisiones informada.
+
+Identificación de tendencias.
+
+Mejora de la rentabilidad.
+
+####################
+
+5. Soporte para edición múltiple de precios en el catálogo
+Objetivo: Permitir modificar masivamente precios y márgenes de un conjunto de productos sin tener que editarlos uno a uno.
+
+Descripción detallada:
+
+Selección múltiple:
+
+El catálogo incluirá casillas de verificación o selección por rango.
+
+Opciones para seleccionar todos los filtrados.
+
+Operaciones masivas:
+
+Cambiar precio de venta (Detal o Mayor) fijo.
+
+Aplicar porcentaje de incremento/decremento.
+
+Ajustar márgenes de ganancia.
+
+Actualizar costos.
+
+Vista previa:
+
+Mostrar una tabla comparativa "Antes vs Después" antes de confirmar.
+
+Validaciones:
+
+No permitir precios negativos.
+
+Respetar reglas de precios heredados en agrupadores si corresponde.
+
+Aspectos técnicos:
+
+Backend: BulkUpdatePricesAsync.
+
+Transacciones atómicas.
+
+Invalidación de caché de productos.
+
+Beneficios:
+
+Ahorro de tiempo.
+
+Consistencia en la actualización.
+
+Reduce errores manuales.
+
+####################
+
+6. Agregar sección de auditoría de ajustes de stock
+Objetivo: Mantener un registro detallado y consultable de todos los ajustes de inventario realizados manualmente o automáticamente.
+
+Descripción detallada:
+
+Registro de eventos:
+
+Fecha y hora.
+
+Usuario responsable.
+
+Producto afectado (SKU y nombre).
+
+Cantidad anterior y nueva.
+
+Motivo del ajuste (merma, entrada, corrección, venta).
+
+Tipo de ajuste (manual, importación, sistema).
+
+Filtros:
+
+Por rango de fechas.
+
+Por usuario.
+
+Por producto.
+
+Por tipo de ajuste.
+
+Exportación:
+
+PDF/Excel para auditorías externas.
+
+Protección:
+
+Solo usuarios con rol Admin o Manager pueden realizar ajustes; la consulta puede ser para Auditor.
+
+Aspectos técnicos:
+
+Tabla StockAdjustmentsAudit.
+
+Inserción automática en cada modificación de StockQuantity.
+
+Beneficios:
+
+Trazabilidad completa.
+
+Detección de irregularidades.
+
+Cumplimiento normativo.
+
+////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////
+
+7. Implementar categorías
+Objetivo: Organizar los productos en categorías jerárquicas para mejorar la navegación y el análisis.
+
+Descripción detallada:
+
+Estructura jerárquica:
+
+Categorías padre e hijas (ej. Alimentos > Lácteos > Quesos).
+
+Posibilidad de categorías múltiples por producto (opcional).
+
+Asignación:
+
+En el formulario de producto, seleccionar una o varias categorías.
+
+Importación masiva con columna de categoría.
+
+Filtros en catálogo:
+
+Sidebar con categorías.
+
+Búsqueda por categoría en POS.
+
+Informes:
+
+Ganancias por categoría.
+
+Rotación de inventario por categoría.
+
+Aspectos técnicos:
+
+Tabla Categories y tabla intermedia ProductCategories.
+
+Índices para consultas rápidas.
+
+Beneficios:
+
+Mejor organización.
+
+Facilita búsqueda.
+
+Análisis más granular.
+
+8. Estilizar los grupos de presentaciones para que se agrupen automáticamente visualmente
+Objetivo: Mejorar la visualización de productos agrupados (variantes) en el catálogo y en el punto de venta, agrupándolos visualmente bajo su producto padre.
+
+Descripción detallada:
+
+Agrupación visual en catálogo:
+
+Mostrar el producto padre como una fila principal expandible.
+
+Las variantes aparecerán como subfilas indentadas.
+
+Posibilidad de colapsar/expandir el grupo.
+
+Indicadores:
+
+Iconos o badges indicando el número de variantes.
+
+Si el grupo tiene stock compartido o precios independientes, mostrar badges correspondientes.
+
+Comportamiento en POS:
+
+Al buscar un producto padre, se mostrará automáticamente un selector con sus variantes.
+
+Al agregar una variante, se visualizará como "Padre - Variante".
+
+Aspectos técnicos:
+
+En WPF, uso de DataGrid con RowDetailsTemplate o ListCollectionView con agrupación.
+
+En React, agrupación lógica en el estado y renderizado condicional.
+
+Beneficios:
+
+Claridad visual.
+
+Menor confusión en productos similares.
+
+Mejora la experiencia del usuario.

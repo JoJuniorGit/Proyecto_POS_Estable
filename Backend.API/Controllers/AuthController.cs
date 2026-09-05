@@ -6,11 +6,12 @@ using Sales.Module.Data;
 using Core.DTOs;
 using Core.Logging;
 using Backend.API.Services;
+using System;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
-[AllowAnonymous]
 [EnableRateLimiting("AuthRateLimit")]
 [ApiController]
 [Route("api/[controller]")]
@@ -18,13 +19,16 @@ public class AuthController : ControllerBase
 {
     private readonly SalesDbContext _db;
     private readonly ITokenService _tokenService;
+    private readonly ISecurityStampValidator? _stampValidator;
 
-    public AuthController(SalesDbContext db, ITokenService tokenService)
+    public AuthController(SalesDbContext db, ITokenService tokenService, ISecurityStampValidator? stampValidator = null)
     {
         _db = db;
         _tokenService = tokenService;
+        _stampValidator = stampValidator;
     }
 
+    [AllowAnonymous]
     [HttpPost("login")]
     public async Task<ActionResult<LoginResultDto>> Login([FromBody] LoginRequest request)
     {
@@ -50,6 +54,14 @@ public class AuthController : ControllerBase
             return NotFound(new { Message = "Usuario no encontrado." });
         }
 
+        // Account lockout check (H-CORE-3)
+        if (user.LockoutEndUtc.HasValue && user.LockoutEndUtc.Value > DateTime.UtcNow)
+        {
+            var remainingMinutes = Math.Ceiling((user.LockoutEndUtc.Value - DateTime.UtcNow).TotalMinutes);
+            AppLogger.LogWarn($"[AUTH] Intento de acceso a cuenta bloqueada: Usuario '{request.Cedula}'. Bloqueada hasta {user.LockoutEndUtc.Value:O}.");
+            return StatusCode(423, new { Message = $"La cuenta está bloqueada temporalmente por múltiples intentos fallidos. Intente de nuevo en {remainingMinutes} minutos." });
+        }
+
         if (!user.IsActive)
         {
             AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{request.Cedula}': Usuario inactivo.");
@@ -66,17 +78,26 @@ public class AuthController : ControllerBase
 
         if (!passwordMatches)
         {
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{request.Cedula}': Contraseña incorrecta.");
+            user.AccessFailedCount++;
+            if (user.AccessFailedCount >= 5)
+            {
+                user.LockoutEndUtc = DateTime.UtcNow.AddMinutes(15);
+                AppLogger.LogWarn($"[AUTH] Usuario '{request.Cedula}' alcanzó 5 intentos fallidos. Cuenta bloqueada por 15 minutos.");
+            }
+            await _db.SaveChangesAsync();
+            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{request.Cedula}': Contraseña incorrecta (Intento {user.AccessFailedCount}/5).");
             return Unauthorized(new { Message = "Contraseña incorrecta." });
         }
 
-        // Auto-upgrade legacy plain-text password to PBKDF2 hash on successful login
-        if (!user.PasswordHash.StartsWith("PBKDF2$", StringComparison.Ordinal))
+        // Reset lockout counters on success
+        user.AccessFailedCount = 0;
+        user.LockoutEndUtc = null;
+        user.LastLoginUtc = DateTime.UtcNow;
+        if (string.IsNullOrWhiteSpace(user.SecurityStamp))
         {
-            user.PasswordHash = PasswordHasher.HashPassword(request.Password);
-            await _db.SaveChangesAsync();
-            AppLogger.LogStart($"[AUTH] Contraseña migrada exitosamente a PBKDF2 para Usuario '{request.Cedula}'.");
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
         }
+        await _db.SaveChangesAsync();
 
         if (user.MustChangePassword)
         {
@@ -87,7 +108,33 @@ public class AuthController : ControllerBase
             });
         }
 
-        var token = _tokenService.GenerateToken(user);
+        var platform = request.Platform;
+        if (string.IsNullOrWhiteSpace(platform) && Request?.Headers != null && Request.Headers.TryGetValue("X-Client-Platform", out var headerPlatform))
+        {
+            platform = headerPlatform.ToString();
+        }
+
+        bool isWeb = string.Equals(platform, "Web", StringComparison.OrdinalIgnoreCase);
+        var scope = isWeb ? "pos:web" : "pos:desktop";
+        var token = _tokenService.GenerateToken(user, scope);
+
+        if (isWeb && Response?.Cookies != null)
+        {
+            var host = Request?.Host.Host;
+            var isLocalOrHttps = (Request?.IsHttps ?? false)
+                || string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) 
+                || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase);
+
+            var cookieOptions = new Microsoft.AspNetCore.Http.CookieOptions
+            {
+                HttpOnly = true,
+                Secure = isLocalOrHttps,
+                SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict,
+                Path = "/",
+                Expires = DateTimeOffset.UtcNow.AddMinutes(120)
+            };
+            Response.Cookies.Append("pos_jwt", token, cookieOptions);
+        }
 
         var dto = new UserDto
         {
@@ -101,10 +148,40 @@ public class AuthController : ControllerBase
         return Ok(new LoginResultDto
         {
             User = dto,
-            Token = token
+            Token = isWeb ? null : token
         });
     }
 
+    [AllowAnonymous]
+    [HttpPost("logout")]
+    public IActionResult Logout()
+    {
+        var idClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value 
+                   ?? User.FindFirst("sub")?.Value;
+        if (int.TryParse(idClaim, out int uid))
+        {
+            _stampValidator?.InvalidateUserStamp(uid);
+        }
+
+        if (Response?.Cookies != null)
+        {
+            var host = Request?.Host.Host;
+            var isLocalOrHttps = (Request?.IsHttps ?? false)
+                || string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) 
+                || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase);
+
+            Response.Cookies.Delete("pos_jwt", new Microsoft.AspNetCore.Http.CookieOptions
+            {
+                HttpOnly = true,
+                Secure = isLocalOrHttps,
+                SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict,
+                Path = "/"
+            });
+        }
+        return Ok(new { Message = "Sesión cerrada correctamente." });
+    }
+
+    [AllowAnonymous]
     [HttpPost("change-password")]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
     {
@@ -136,8 +213,38 @@ public class AuthController : ControllerBase
 
         user.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
         user.MustChangePassword = false;
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+        _stampValidator?.InvalidateUserStamp(user.Id);
+        AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={user.Id}, Username={user.Username}, Reason=PasswordChange");
         await _db.SaveChangesAsync();
 
         return Ok(new { Message = "Contraseña actualizada correctamente." });
+    }
+
+    [Authorize]
+    [HttpGet("me")]
+    public async Task<ActionResult<UserDto>> GetMe()
+    {
+        var idClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value 
+                   ?? User.FindFirst("sub")?.Value;
+        if (!int.TryParse(idClaim, out int currentUserId))
+        {
+            return Unauthorized();
+        }
+
+        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == currentUserId);
+        if (user == null || !user.IsActive)
+        {
+            return Unauthorized();
+        }
+
+        return Ok(new UserDto
+        {
+            Id = user.Id,
+            Cedula = user.Cedula,
+            Name = string.IsNullOrWhiteSpace(user.Name) ? user.FullName : user.Name,
+            Role = user.Role,
+            IsActive = user.IsActive
+        });
     }
 }

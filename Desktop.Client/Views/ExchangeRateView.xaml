@@ -210,7 +210,7 @@
                     </DataGridTextColumn.ElementStyle>
                 </DataGridTextColumn>
                 <DataGridTextColumn Header="Last Updated" 
-                                    Binding="{Binding UpdatedAt, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}" 
+                                    Binding="{Binding UpdatedAtLocal, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}" 
                                     Width="*" MinWidth="140"
                                     ElementStyle="{DynamicResource MaterialDesignDataGridTextColumnStyle}"/>
             </controls:PerformantDataGrid.Columns>

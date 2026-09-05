@@ -16,11 +16,13 @@ public partial class MainWindow : Window
         _dialogService = dialogService;
     }
 
-    protected override void OnClosing(CancelEventArgs e)
+    private bool _isShuttingDown;
+
+    protected override async void OnClosing(CancelEventArgs e)
     {
         base.OnClosing(e);
 
-        if (App.IsShutdownRequested) return;
+        if (App.IsShutdownRequested && _isShuttingDown) return;
 
         // Si hay un diálogo modal abierto (ventana o DialogHost), avisar antes de cerrar
         // para evitar la pérdida accidental de información sin confirmar (p. ej. un adelanto a medio llenar).
@@ -46,8 +48,19 @@ public partial class MainWindow : Window
             App.ShutdownReason = "Cierre de la ventana principal";
         }
 
-        // El usuario confirmó el cierre: evita que el Shutdown posterior vuelva a preguntar.
-        App.IsShutdownRequested = true;
+        if (!_isShuttingDown)
+        {
+            e.Cancel = true;
+            _isShuttingDown = true;
+            App.IsShutdownRequested = true;
+
+            if (Application.Current is App app)
+            {
+                await app.StopServicesAsync();
+            }
+
+            Close();
+        }
     }
 
     protected override void OnClosed(EventArgs e)

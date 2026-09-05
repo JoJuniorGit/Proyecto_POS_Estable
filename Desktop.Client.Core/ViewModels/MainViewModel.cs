@@ -89,6 +89,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             _current_view_model = _pos_view_model ?? new object();
             _title = "POINT OF SALE";
+            if (_pos_view_model != null)
+            {
+                _ = _pos_view_model.InitializeForSessionAsync();
+            }
         }
     }
 
@@ -163,6 +167,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             Title = "INICIO DE SESIÓN";
             CurrentViewModel = _login_view_model ?? new object();
+        }
+        else if (ReferenceEquals(CurrentViewModel, _login_view_model))
+        {
+            NavigateToPos();
         }
     }
 

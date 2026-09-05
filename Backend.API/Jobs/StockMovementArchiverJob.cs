@@ -44,16 +44,23 @@ public class StockMovementArchiverJob : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(_period);
-        while (await timer.WaitForNextTickAsync(stoppingToken))
+        try
         {
-            try
+            while (await timer.WaitForNextTickAsync(stoppingToken))
             {
-                await ArchiveOldRecordsAsync(stoppingToken);
+                try
+                {
+                    await ArchiveOldRecordsAsync(stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "An error occurred while cleaning up old StockMovement records.");
+                }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "An error occurred while cleaning up old StockMovement records.");
-            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Graceful shutdown
         }
     }
 

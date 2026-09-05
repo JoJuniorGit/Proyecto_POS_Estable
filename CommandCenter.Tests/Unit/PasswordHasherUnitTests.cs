@@ -49,14 +49,15 @@ public class PasswordHasherUnitTests
     }
 
     [Fact]
-    public void VerifyPassword_WithLegacyPlainText_MatchesCorrectly()
+    public void VerifyPassword_WithLegacyPlainText_IsStrictlyRejected()
     {
         string plainTextSeed = "InitialAdminPass";
 
+        // H-API-23: Plain-text stored passwords without PBKDF2$ prefix are strictly rejected
         bool isValid = PasswordHasher.VerifyPassword("InitialAdminPass", plainTextSeed);
         bool isInvalid = PasswordHasher.VerifyPassword("WrongPass", plainTextSeed);
 
-        Assert.True(isValid);
+        Assert.False(isValid);
         Assert.False(isInvalid);
     }
 

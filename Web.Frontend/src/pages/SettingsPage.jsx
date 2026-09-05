@@ -69,6 +69,17 @@ export default function SettingsPage() {
     try {
       const writer = new BrowserQRCodeSvgWriter();
       const svg = writer.write(activePayload, 200, 200);
+      svg.style.backgroundColor = '#FFFFFF';
+      svg.style.display = 'block';
+      svg.style.borderRadius = '4px';
+
+      // Fondo blanco explícito dentro del árbol SVG para máxima compatibilidad y contraste
+      const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      bgRect.setAttribute('width', '100%');
+      bgRect.setAttribute('height', '100%');
+      bgRect.setAttribute('fill', '#FFFFFF');
+      svg.insertBefore(bgRect, svg.firstChild);
+
       qrRef.current.innerHTML = '';
       qrRef.current.appendChild(svg);
     } catch (err) {
@@ -191,8 +202,19 @@ export default function SettingsPage() {
               
               <div 
                 ref={qrRef} 
-                className="bg-white p-2 rounded-lg border flex-center mb-2" 
-                style={{ width: '216px', height: '216px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                className="qr-code-container mb-2" 
+                style={{ 
+                  backgroundColor: '#FFFFFF',
+                  width: '224px', 
+                  height: '224px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  padding: '12px',
+                  borderRadius: '10px',
+                  border: '1px solid #E2E8F0',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)'
+                }}
               />
 
               <p className="text-xs text-muted mb-3" style={{ maxWidth: '240px' }}>

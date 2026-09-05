@@ -55,4 +55,72 @@ public static class TimeZoneHelper
         }
         return TimeZoneInfo.ConvertTimeFromUtc(utcDateTime, GetVenezuelaTimeZone());
     }
+
+    /// <summary>
+    /// Obtiene el objeto TimeZoneInfo correspondiente al identificador provisto.
+    /// Si el identificador es nulo, vacío o no válido en el sistema, recurre de forma segura a la hora legal de Venezuela.
+    /// </summary>
+    public static TimeZoneInfo GetTimeZone(string? timeZoneId)
+    {
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+            return GetVenezuelaTimeZone();
+
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        }
+        catch
+        {
+            return GetVenezuelaTimeZone();
+        }
+    }
+
+    /// <summary>
+    /// Calcula los límites inclusivo y exclusivo en UTC correspondientes a un rango de fechas calendario
+    /// interpretadas en la zona horaria provista (por defecto, hora legal de Venezuela UTC-4).
+    /// Si <paramref name="endDate"/> es nulo y <paramref name="defaultEndDateToToday"/> es verdadero,
+    /// se asume la fecha de hoy en la zona horaria correspondiente para abarcar hasta el fin de la jornada actual.
+    /// </summary>
+    public static (DateTime? StartUtc, DateTime? EndExclusiveUtc) GetUtcRange(
+        DateTime? startDate,
+        DateTime? endDate,
+        TimeZoneInfo? timeZone = null,
+        bool defaultEndDateToToday = true)
+    {
+        var tz = timeZone ?? GetVenezuelaTimeZone();
+
+        DateTime ToLocalCalendarDate(DateTime dt)
+        {
+            if (dt.Kind == DateTimeKind.Utc)
+                return TimeZoneInfo.ConvertTimeFromUtc(dt, tz);
+            if (dt.Kind == DateTimeKind.Local)
+                return TimeZoneInfo.ConvertTime(dt, tz);
+            return dt;
+        }
+
+        DateTime? startUtc = null;
+        if (startDate.HasValue)
+        {
+            var local = ToLocalCalendarDate(startDate.Value);
+            var localMidnight = new DateTime(local.Year, local.Month, local.Day, 0, 0, 0, DateTimeKind.Unspecified);
+            startUtc = TimeZoneInfo.ConvertTimeToUtc(localMidnight, tz);
+        }
+
+        DateTime? effectiveEnd = endDate;
+        if (!effectiveEnd.HasValue && defaultEndDateToToday)
+        {
+            var today = GetVenezuelaDate();
+            effectiveEnd = new DateTime(today.Year, today.Month, today.Day, 0, 0, 0, DateTimeKind.Unspecified);
+        }
+
+        DateTime? endExclusiveUtc = null;
+        if (effectiveEnd.HasValue)
+        {
+            var local = ToLocalCalendarDate(effectiveEnd.Value);
+            var nextDayLocalMidnight = new DateTime(local.Year, local.Month, local.Day, 0, 0, 0, DateTimeKind.Unspecified).AddDays(1);
+            endExclusiveUtc = TimeZoneInfo.ConvertTimeToUtc(nextDayLocalMidnight, tz);
+        }
+
+        return (startUtc, endExclusiveUtc);
+    }
 }

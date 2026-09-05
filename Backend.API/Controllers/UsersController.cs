@@ -7,6 +7,8 @@ using Core.DTOs;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Backend.API.Services;
+using Core.Logging;
 
 namespace Backend.API.Controllers;
 
@@ -16,10 +18,12 @@ namespace Backend.API.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly SalesDbContext _db;
+    private readonly ISecurityStampValidator? _stampValidator;
 
-    public UsersController(SalesDbContext db)
+    public UsersController(SalesDbContext db, ISecurityStampValidator? stampValidator = null)
     {
         _db = db;
+        _stampValidator = stampValidator;
     }
 
     private int? GetCurrentUserId()
@@ -155,6 +159,7 @@ public class UsersController : ControllerBase
             return BadRequest(new { Message = "El nombre de usuario especificado ya pertenece a otro usuario." });
         }
 
+        bool credentialsOrRoleChanged = false;
         if (!string.IsNullOrWhiteSpace(dto.Password))
         {
             var trimmedPass = dto.Password.Trim();
@@ -164,6 +169,12 @@ public class UsersController : ControllerBase
             }
             user.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(trimmedPass);
             user.MustChangePassword = false;
+            credentialsOrRoleChanged = true;
+        }
+
+        if (user.Role != dto.Role || user.IsActive != (isMainAdmin ? true : dto.IsActive))
+        {
+            credentialsOrRoleChanged = true;
         }
 
         user.Cedula = usernameClean;
@@ -172,6 +183,13 @@ public class UsersController : ControllerBase
         user.FullName = dto.Name.Trim();
         user.Role = dto.Role;
         user.IsActive = isMainAdmin ? true : dto.IsActive;
+
+        if (credentialsOrRoleChanged)
+        {
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            _stampValidator?.InvalidateUserStamp(user.Id);
+            AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={user.Id}, Username={user.Username}, Reason=UserUpdated");
+        }
 
         await _db.SaveChangesAsync();
 
@@ -203,6 +221,9 @@ public class UsersController : ControllerBase
         }
 
         user.IsActive = false;
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+        _stampValidator?.InvalidateUserStamp(user.Id);
+        AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={user.Id}, Username={user.Username}, Reason=UserDeactivated");
         await _db.SaveChangesAsync();
 
         return Ok(new { Message = "Usuario desactivado exitosamente." });
@@ -215,6 +236,9 @@ public class UsersController : ControllerBase
         if (user == null) return NotFound();
 
         user.IsActive = true;
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+        _stampValidator?.InvalidateUserStamp(user.Id);
+        AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={user.Id}, Username={user.Username}, Reason=UserReactivated");
         await _db.SaveChangesAsync();
 
         return Ok(new { Message = "Usuario reactivado exitosamente." });
@@ -242,6 +266,9 @@ public class UsersController : ControllerBase
         {
             s.CashierId = null;
         }
+
+        _stampValidator?.InvalidateUserStamp(id);
+        AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={id}, Username={user.Username}, Reason=UserPermanentlyDeleted");
 
         _db.Users.Remove(user);
         await _db.SaveChangesAsync();
