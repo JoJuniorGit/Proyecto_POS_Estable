@@ -67,9 +67,17 @@ public class SalesController : ControllerBase
         {
             return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
         }
-        catch (System.Exception ex)
+        catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return BadRequest(ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (System.ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -81,9 +89,17 @@ public class SalesController : ControllerBase
             var _sale = await _salesService.RemoveItemAsync(id, itemId, exchangeRate);
             return Ok(_sale);
         }
-        catch (System.Exception ex)
+        catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return BadRequest(ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (System.ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -95,9 +111,17 @@ public class SalesController : ControllerBase
             var _sale = await _salesService.UpdateItemQuantityAsync(id, itemId, request.Quantity, request.ExchangeRate);
             return Ok(_sale);
         }
-        catch (System.Exception ex)
+        catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return BadRequest(ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (System.ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -109,9 +133,17 @@ public class SalesController : ControllerBase
             var _sale = await _salesService.UpdateExchangeRateAsync(id, exchangeRate);
             return Ok(_sale);
         }
-        catch (System.Exception ex)
+        catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return BadRequest(ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (System.ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -123,9 +155,17 @@ public class SalesController : ControllerBase
             var _sale = await _salesService.HoldSaleAsync(id, request);
             return Ok(_sale);
         }
-        catch (System.Exception ex)
+        catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return BadRequest(ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (System.ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -142,9 +182,17 @@ public class SalesController : ControllerBase
         {
             return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
         }
-        catch (System.Exception ex)
+        catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return BadRequest(ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (System.ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -156,9 +204,17 @@ public class SalesController : ControllerBase
             var _sale = await _salesService.AddPaymentToHoldSaleAsync(id, request);
             return Ok(_sale);
         }
-        catch (System.Exception ex)
+        catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return BadRequest(ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (System.ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -186,7 +242,7 @@ public class SalesController : ControllerBase
         {
             return NotFound(new { message = ex.Message });
         }
-        catch (System.Exception ex)
+        catch (System.ArgumentException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
@@ -230,9 +286,17 @@ public class SalesController : ControllerBase
             var _sale = await _salesService.UpdateSaleCustomerAsync(id, request.CustomerId);
             return Ok(_sale);
         }
-        catch (System.Exception ex)
+        catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return BadRequest(ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (System.ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -245,9 +309,13 @@ public class SalesController : ControllerBase
             var _customer = await _salesService.CreateCustomerAsync(request);
             return Ok(_customer);
         }
-        catch (System.Exception ex)
+        catch (System.ArgumentException ex)
         {
-            return BadRequest(ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -260,9 +328,17 @@ public class SalesController : ControllerBase
             var _customer = await _salesService.UpdateCustomerAsync(id, request);
             return Ok(_customer);
         }
-        catch (System.Exception ex)
+        catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return BadRequest(ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (System.ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -275,9 +351,17 @@ public class SalesController : ControllerBase
             await _salesService.DeleteCustomerAsync(id);
             return NoContent();
         }
-        catch (System.Exception ex)
+        catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return BadRequest(ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (System.ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -302,10 +386,17 @@ public class SalesController : ControllerBase
             int _real_id = await _salesService.CompleteSaleAsync(id, request.ExchangeRate, _payment_infos, request.RoundingAdjustment, effectiveCashierId, request.IsPendingPickup, idempotencyKey);
             return Ok(_real_id);
         }
-        catch (System.Exception ex)
+        catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            Core.Logging.AppLogger.LogCrash(ex, $"SalesController.CompleteSale({id})");
-            return BadRequest(ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (System.ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -321,9 +412,13 @@ public class SalesController : ControllerBase
         {
             return NotFound();
         }
-        catch (System.Exception ex)
+        catch (System.ArgumentException ex)
         {
-            return BadRequest(ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 

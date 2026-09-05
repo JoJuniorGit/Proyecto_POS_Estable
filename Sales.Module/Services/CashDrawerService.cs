@@ -195,18 +195,27 @@ public class CashDrawerService : ICashDrawerService
     public async Task<decimal> GetCurrentBalanceLocalAsync(int sessionId)
     {
         var session = await _context.CashDrawerSessions
-            .Include(s => s.Transactions)
-            .FirstOrDefaultAsync(s => s.Id == sessionId);
+            .AsNoTracking()
+            .Where(s => s.Id == sessionId)
+            .Select(s => new { s.OpeningBalanceLocal })
+            .FirstOrDefaultAsync();
 
         if (session == null) return 0;
 
-        var physicalIncomes = session.Transactions
-            .Where(t => t.Source != CashTransactionSource.Opening && t.Type == CashTransactionType.Income && t.IsPhysicalCash)
-            .Sum(t => t.AmountLocal);
+        var physicalIncomes = await _context.CashTransactions
+            .AsNoTracking()
+            .Where(t => t.SessionId == sessionId 
+                     && t.Source != CashTransactionSource.Opening 
+                     && t.Type == CashTransactionType.Income 
+                     && t.IsPhysicalCash)
+            .SumAsync(t => (decimal?)t.AmountLocal) ?? 0m;
 
-        var physicalExpenses = session.Transactions
-            .Where(t => t.Type == CashTransactionType.Expense && t.IsPhysicalCash)
-            .Sum(t => t.AmountLocal);
+        var physicalExpenses = await _context.CashTransactions
+            .AsNoTracking()
+            .Where(t => t.SessionId == sessionId 
+                     && t.Type == CashTransactionType.Expense 
+                     && t.IsPhysicalCash)
+            .SumAsync(t => (decimal?)t.AmountLocal) ?? 0m;
 
         return session.OpeningBalanceLocal + physicalIncomes - physicalExpenses;
     }

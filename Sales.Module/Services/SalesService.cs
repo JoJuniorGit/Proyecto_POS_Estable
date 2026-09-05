@@ -119,6 +119,7 @@ public class SalesService : ISalesService
     private async Task<Sale> GetSaleEntityAsync(int sale_id, bool includeCashier = false)
     {
         var query = _context.Sales
+            .AsSplitQuery()
             .Include(s => s.Items)
             .Include(s => s.Customer)
             .Include(s => s.Payments)
@@ -614,6 +615,7 @@ public class SalesService : ISalesService
     public async Task<SaleHistoryDto> ConfirmPickupAsync(int saleId)
     {
         var _sale = await _context.Sales
+            .AsSplitQuery()
             .Include(s => s.Customer)
             .Include(s => s.Items)
             .Include(s => s.Payments).ThenInclude(p => p.PaymentMethod)
@@ -1133,6 +1135,7 @@ public class SalesService : ISalesService
             return 0;
 
         var onHoldSales = await _context.Sales
+            .AsSplitQuery()
             .Include(s => s.Items)
             .Include(s => s.Payments)
             .Where(s => s.Status == SaleStatus.OnHold)
@@ -1458,6 +1461,7 @@ public class SalesService : ISalesService
         }
 
         var sale = await _context.Sales
+            .AsSplitQuery()
             .Include(s => s.Items)
             .Include(s => s.Payments)
                 .ThenInclude(p => p.PaymentMethod)

@@ -46,16 +46,27 @@ public class GlobalExceptionHandlerMiddleware
             if (sqlState == "23505") // unique_violation
             {
                 context.Response.StatusCode = (int)HttpStatusCode.Conflict;
+                string friendlyMessage = postgresEx.ConstraintName switch
+                {
+                    "IX_PaymentMethods_Name_Unique_NotDeleted" => "Ya existe un método de pago activo con el mismo nombre.",
+                    "IX_Users_Username" => "Ya existe un usuario registrado con ese nombre de usuario.",
+                    "IX_Users_Cedula" => "Ya existe un usuario registrado con esa cédula.",
+                    "IX_Products_Barcode" => "El código de barras ya está asignado a otro producto registrado.",
+                    "IX_Products_SKU" => "El código SKU ya está registrado en el inventario.",
+                    "IX_Customers_CedulaOrRif" => "Ya existe un cliente registrado con esta cédula o RIF.",
+                    _ => "El registro ya existe o infringe una restricción de unicidad en el sistema."
+                };
+
                 var conflictPayload = new
                 {
                     type = "https://tools.ietf.org/html/rfc7231#section-6.5.8",
-                    title = "Conflict",
+                    title = "Conflicto de Unicidad",
                     status = StatusCodes.Status409Conflict,
-                    error = "Conflict",
-                    message = "El registro ya existe o infringe una restricción de unicidad.",
-                    detail = "El registro ya existe o infringe una restricción de unicidad.",
+                    error = "UniqueConstraintViolation",
+                    message = friendlyMessage,
+                    detail = friendlyMessage,
                     instance = requestPath,
-                    sqlState = sqlState
+                    traceId = System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier
                 };
                 await context.Response.WriteAsync(JsonSerializer.Serialize(conflictPayload));
                 return;
@@ -189,9 +200,46 @@ public class GlobalExceptionHandlerMiddleware
                 error = "BadRequest",
                 message = exception.Message,
                 detail = exception.Message,
-                instance = requestPath
+                instance = requestPath,
+                traceId = System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier
             };
             await context.Response.WriteAsync(JsonSerializer.Serialize(badRequestPayload));
+            return;
+        }
+
+        if (exception is Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            context.Response.StatusCode = StatusCodes.Status409Conflict;
+            var concurrencyPayload = new
+            {
+                type = "https://tools.ietf.org/html/rfc7231#section-6.5.8",
+                title = "Conflicto de Concurrencia",
+                status = StatusCodes.Status409Conflict,
+                error = "ConcurrencyConflict",
+                message = "El registro fue modificado concurrentemente por otro usuario o proceso. Por favor recargue e intente nuevamente.",
+                detail = "El registro fue modificado concurrentemente por otro usuario o proceso. Por favor recargue e intente nuevamente.",
+                instance = requestPath,
+                traceId = System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier
+            };
+            await context.Response.WriteAsync(JsonSerializer.Serialize(concurrencyPayload));
+            return;
+        }
+
+        if (exception is InvalidOperationException)
+        {
+            context.Response.StatusCode = StatusCodes.Status409Conflict;
+            var invalidOpPayload = new
+            {
+                type = "https://tools.ietf.org/html/rfc7231#section-6.5.8",
+                title = "Conflicto de Operación",
+                status = StatusCodes.Status409Conflict,
+                error = "InvalidOperation",
+                message = exception.Message,
+                detail = exception.Message,
+                instance = requestPath,
+                traceId = System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier
+            };
+            await context.Response.WriteAsync(JsonSerializer.Serialize(invalidOpPayload));
             return;
         }
 
@@ -206,7 +254,8 @@ public class GlobalExceptionHandlerMiddleware
             error = "InternalServerError",
             message = "Ocurrió un error interno al procesar la solicitud.",
             detail = "Ocurrió un error interno no esperado al procesar la solicitud.",
-            instance = requestPath
+            instance = requestPath,
+            traceId = System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier
         };
         await context.Response.WriteAsync(JsonSerializer.Serialize(errorPayload));
     }
