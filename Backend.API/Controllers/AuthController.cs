@@ -23,6 +23,7 @@ public class AuthController : ControllerBase
     private readonly IPasswordPolicyService _passwordPolicyService;
     private readonly ISecurityStampValidator? _stampValidator;
 
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public AuthController(
         SalesDbContext db, 
         ITokenService tokenService, 
@@ -33,14 +34,6 @@ public class AuthController : ControllerBase
         _tokenService = tokenService;
         _passwordPolicyService = passwordPolicyService ?? new Core.Services.PasswordPolicyService();
         _stampValidator = stampValidator;
-    }
-
-    public AuthController(
-        SalesDbContext db,
-        ITokenService tokenService,
-        ISecurityStampValidator? stampValidator)
-        : this(db, tokenService, null, stampValidator)
-    {
     }
 
     [AllowAnonymous]

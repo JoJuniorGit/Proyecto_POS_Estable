@@ -59,7 +59,7 @@ public class Phase4SecurityHardeningTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService, validator);
+        var controller = new AuthController(db, tokenService, stampValidator: validator);
 
         // 4 failed attempts
         for (int i = 0; i < 4; i++)
@@ -109,7 +109,7 @@ public class Phase4SecurityHardeningTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService, validator);
+        var controller = new AuthController(db, tokenService, stampValidator: validator);
 
         var okRes = await controller.Login(new LoginRequest { Cedula = "V-87654321", Password = "CorrectPassword123!" });
         Assert.IsType<OkObjectResult>(okRes.Result);
