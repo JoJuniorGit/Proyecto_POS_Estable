@@ -30,16 +30,35 @@ public partial class App : Application
 
     private static string GetCrashPath()
     {
-        var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
-        while (dir != null)
+        try
         {
-            if (File.Exists(Path.Combine(dir.FullName, "start.bat")) || File.Exists(Path.Combine(dir.FullName, "Start.bat")))
+            // 1. En entorno de desarrollo (con start.bat presente), registrar en la raíz del proyecto
+            var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+            while (dir != null)
             {
-                return Path.Combine(dir.FullName, "crash.txt");
+                if (File.Exists(Path.Combine(dir.FullName, "start.bat")) || File.Exists(Path.Combine(dir.FullName, "Start.bat")))
+                {
+                    return Path.Combine(dir.FullName, "crash.txt");
+                }
+                dir = dir.Parent;
             }
-            dir = dir.Parent;
+
+            // 2. En producción, registrar en %LOCALAPPDATA% donde usuarios estándar tienen permisos completos de escritura
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!string.IsNullOrWhiteSpace(localAppData))
+            {
+                string logDir = Path.Combine(localAppData, "CommandCenterPOS", "Logs");
+                Directory.CreateDirectory(logDir);
+                return Path.Combine(logDir, "crash.txt");
+            }
         }
-        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.txt");
+        catch
+        {
+            // Ignorar y proceder al fallback
+        }
+
+        // 3. Fallback de emergencia a %TEMP% con ProcessId para evitar colisiones entre instancias concurrentes
+        return Path.Combine(Path.GetTempPath(), $"commandcenter_wpf_crash_{Environment.ProcessId}.txt");
     }
 
     public App()

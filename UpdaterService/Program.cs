@@ -32,38 +32,18 @@ class Program
         RunCommand("nssm", $"stop \"{serviceName}\"");
         Thread.Sleep(3000); // Give processes time to release file locks
 
-        // Step 2: Replace Binaries preserving appsettings.Production.json
+        // Step 2: Replace Binaries preserving appsettings.Production.json safely
         if (!string.IsNullOrWhiteSpace(packagePath) && File.Exists(packagePath))
         {
-            Console.WriteLine("[Updater] Extracting update package...");
-            using var archive = ZipFile.OpenRead(packagePath);
-            foreach (var entry in archive.Entries)
+            try
             {
-                if (string.IsNullOrWhiteSpace(entry.Name)) continue; // Directory entry
-
-                // PRESERVATION RULE: Never overwrite user configuration files
-                if (entry.Name.Equals("appsettings.Production.json", StringComparison.OrdinalIgnoreCase) ||
-                    entry.Name.Equals("appsettings.Development.json", StringComparison.OrdinalIgnoreCase))
-                {
-                    Console.WriteLine($"[Updater] Preserving user config file: {entry.Name}");
-                    continue;
-                }
-
-                string destinationPath = Path.Combine(targetDir, entry.FullName);
-                string? destDir = Path.GetDirectoryName(destinationPath);
-                if (destDir != null && !Directory.Exists(destDir))
-                {
-                    Directory.CreateDirectory(destDir);
-                }
-
-                try
-                {
-                    entry.ExtractToFile(destinationPath, overwrite: true);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[Updater] Warning extracting {entry.Name}: {ex.Message}");
-                }
+                UpdatePackageExtractor.Extract(packagePath, targetDir);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Updater] ERROR CRÍTICO durante la extracción del paquete: {ex.Message}");
+                // No iniciar el servicio con binarios corruptos o comprometidos
+                return;
             }
         }
 

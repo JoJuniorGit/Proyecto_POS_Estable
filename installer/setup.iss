@@ -108,10 +108,9 @@ end;
 function GetOrGenerateJwtKey: String;
 var
   ExistingKey: String;
-  I: Integer;
-  HexChars: String;
 begin
-  // Reutilizar clave existente si ya fue generada previamente y no es la conocida por defecto
+  // Si existiera una clave previa en instalaciones legacy, se respeta temporalmente;
+  // la generación criptográfica segura (CSPRNG 512 bits) y la protección ACL se delegan a Configure-PosService.ps1
   if RegQueryStringValue(HKEY_LOCAL_MACHINE, 'Software\POS', 'JwtSecretKey', ExistingKey) and 
      (Length(ExistingKey) >= 32) and 
      (ExistingKey <> 'ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795') then
@@ -120,14 +119,7 @@ begin
     Exit;
   end;
 
-  // Generar clave criptográfica pseudoaleatoria de 64 caracteres hexadecimales (256/512 bits)
-  HexChars := '0123456789abcdef';
   Result := '';
-  for I := 1 to 64 do
-    Result := Result + HexChars[Random(16) + 1];
-
-  // Persistir en registro de Windows para reinstalaciones
-  RegWriteStringValue(HKEY_LOCAL_MACHINE, 'Software\POS', 'JwtSecretKey', Result);
 end;
 
 procedure InitializeWizard;
@@ -384,8 +376,7 @@ begin
     ' -AdminSeedPassword "' + EscapeQuotes(AdminPage.Values[2]) + '"' +
     ' -AdminSeedUsername "' + Trim(AdminPage.Values[0]) + '"' +
     ' -AdminSeedName "' + Trim(AdminPage.Values[1]) + '"' +
-    ' -BusinessName "' + Trim(AdminPage.Values[4]) + '"' +
-    ' -JwtSecretKey "' + GetOrGenerateJwtKey + '"';
+    ' -BusinessName "' + Trim(AdminPage.Values[4]) + '"';
 
   Code := RunCmd('powershell.exe', PsParams);
   if Code <> 0 then

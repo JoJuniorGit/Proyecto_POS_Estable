@@ -275,4 +275,18 @@ public class UsersController : ControllerBase
 
         return Ok(new { Message = "Usuario eliminado permanentemente." });
     }
+
+    [HttpPost("{id}/unlock")]
+    public async Task<ActionResult> UnlockUser(int id)
+    {
+        var user = await _db.Users.FindAsync(id);
+        if (user == null) return NotFound(new { Message = "Usuario no encontrado." });
+
+        user.AccessFailedCount = 0;
+        user.LockoutEndUtc = null;
+        await _db.SaveChangesAsync();
+        AppLogger.LogSecurityAudit($"[USER_UNLOCKED] Usuario={user.Username} (Id={user.Id}) desbloqueado manualmente por Administrador.");
+
+        return Ok(new { Message = $"Cuenta de {user.Username} desbloqueada exitosamente." });
+    }
 }

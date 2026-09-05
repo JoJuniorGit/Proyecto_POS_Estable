@@ -610,18 +610,13 @@ END $$;");
 
             if (targetAdmin != null)
             {
-                if (!targetAdmin.IsActive)
-                {
-                    targetAdmin.IsActive = true;
-                    AppLogger.LogStart($"[Seed] Reactivated Admin user: {targetAdmin.Username} ({targetAdmin.Cedula})");
-                }
                 if (string.IsNullOrWhiteSpace(targetAdmin.PasswordHash))
                 {
                     targetAdmin.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(seedPassword);
                     targetAdmin.MustChangePassword = false;
                     AppLogger.LogStart($"[Seed] Set password hash for Admin user: {targetAdmin.Username}");
+                    _salesDb.SaveChanges();
                 }
-                _salesDb.SaveChanges();
             }
             else
             {
@@ -642,17 +637,11 @@ END $$;");
                 AppLogger.LogStart($"[Seed] Created customized admin user: {seedUsername} ({seedName})");
             }
 
-            // Ensure ALL Admin users in the system are ALWAYS active on startup and have valid password
+            // Ensure ALL Admin users in the system have valid security stamp and password hash if missing (never forcibly reactivate inactive admins)
             var allAdmins = _salesDb.Users.Where(u => u.Role == Core.Entities.UserRole.Admin).ToList();
             bool modifiedAdmins = false;
             foreach (var admin in allAdmins)
             {
-                if (!admin.IsActive)
-                {
-                    admin.IsActive = true;
-                    modifiedAdmins = true;
-                    AppLogger.LogStart($"[Seed] Reactivated Admin user: {admin.Username} ({admin.Cedula})");
-                }
                 if (string.IsNullOrWhiteSpace(admin.PasswordHash))
                 {
                     admin.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(seedPassword);

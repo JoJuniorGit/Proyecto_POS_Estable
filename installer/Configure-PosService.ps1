@@ -175,14 +175,23 @@ if ($merged.ContainsKey("SystemSettings__AdminSeedPassword") -and -not [string]:
     }
 }
 
-# C) Clave Secreta JWT (Criptográfica: Preservar a menos que se solicite rotación)
-if ($merged.ContainsKey("JWT_SETTINGS_KEY") -and -not [string]::IsNullOrWhiteSpace($merged["JWT_SETTINGS_KEY"]) -and (-not $RotateJwt)) {
-    Log "Conservando clave secreta JWT preexistente en el servicio."
+# C) Clave Secreta JWT (Criptográfica: Preservar en actualizaciones salvo rotación explícita)
+$existingJwt = if ($merged.ContainsKey("JWT_SETTINGS_KEY")) { $merged["JWT_SETTINGS_KEY"] } else { $null }
+$isExistingValid = (-not [string]::IsNullOrWhiteSpace($existingJwt)) -and 
+                   ($existingJwt.Length -ge 32) -and 
+                   ($existingJwt -ne "ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795")
+
+if ($isExistingValid -and (-not $RotateJwt)) {
+    Log "Conservando clave secreta JWT preexistente en el servicio (actualización detectada)."
 } else {
-    if (-not [string]::IsNullOrWhiteSpace($JwtSecretKey)) {
-        $merged["JWT_SETTINGS_KEY"] = $JwtSecretKey
-        Log "Asignando clave secreta JWT."
+    if ([string]::IsNullOrWhiteSpace($JwtSecretKey) -or $JwtSecretKey -eq "ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795") {
+        $bytes = New-Object byte[] 64
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        $JwtSecretKey = [System.BitConverter]::ToString($bytes).Replace("-", "").ToLower()
+        Log "Generada nueva clave criptográfica aleatoria de 512 bits para JWT."
     }
+    $merged["JWT_SETTINGS_KEY"] = $JwtSecretKey
+    Log "Asignando clave secreta JWT al servicio."
 }
 
 # D) Parámetros de Negocio y Usuario Semilla
@@ -204,6 +213,27 @@ if ($LASTEXITCODE -ne 0) {
     $msg = "Error crítico: 'nssm set $ServiceName AppEnvironmentExtra' falló con código $LASTEXITCODE"
     Log $msg "ERROR"
     throw $msg
+}
+
+# 4.1 Protección ACL del Registro (Restringir parámetros del servicio a SYSTEM y Administradores)
+try {
+    $serviceRegPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName\Parameters"
+    if (Test-Path $serviceRegPath) {
+        $acl = Get-Acl -Path $serviceRegPath
+        $acl.SetAccessRuleProtection($true, $false) # Bloquear herencia
+        $systemSid = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::LocalSystemSid, $null)
+        $adminSid = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+        
+        $ruleSystem = New-Object System.Security.AccessControl.RegistryAccessRule($systemSid, "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+        $ruleAdmin = New-Object System.Security.AccessControl.RegistryAccessRule($adminSid, "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+        
+        $acl.ResetAccessRule($ruleSystem)
+        $acl.AddAccessRule($ruleAdmin)
+        Set-Acl -Path $serviceRegPath -AclObject $acl
+        Log "Permisos ACL restringidos en $serviceRegPath a SYSTEM y Administradores."
+    }
+} catch {
+    Log "Aviso al aplicar ACL sobre el registro de NSSM: $($_.Exception.Message)" "WARN"
 }
 
 # ---------------------------------------------------------------------

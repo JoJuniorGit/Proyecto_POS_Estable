@@ -31,6 +31,7 @@
     <ProjectReference Include="..\Desktop.Client.Core\Desktop.Client.Core.csproj" />
     <ProjectReference Include="..\Inventory.Module\Inventory.Module.csproj" />
     <ProjectReference Include="..\Sales.Module\Sales.Module.csproj" />
+    <ProjectReference Include="..\UpdaterService\UpdaterService.csproj" />
   </ItemGroup>
 
 

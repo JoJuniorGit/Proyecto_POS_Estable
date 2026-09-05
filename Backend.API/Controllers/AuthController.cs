@@ -206,11 +206,34 @@ public class AuthController : ControllerBase
             return NotFound(new { Message = "Usuario no encontrado." });
         }
 
+        // 1. Validar si la cuenta está actualmente bloqueada
+        if (user.LockoutEndUtc.HasValue && user.LockoutEndUtc.Value > DateTime.UtcNow)
+        {
+            var remainingMinutes = Math.Max(1, Math.Ceiling((user.LockoutEndUtc.Value - DateTime.UtcNow).TotalMinutes));
+            AppLogger.LogWarn($"[AUTH] Intento de cambio de contraseña denegado: Usuario '{user.Username}' bloqueado temporalmente.");
+            return StatusCode(StatusCodes.Status423Locked, new 
+            { 
+                Message = $"Cuenta bloqueada temporalmente por múltiples intentos fallidos. Intente de nuevo en {remainingMinutes} minutos." 
+            });
+        }
+
+        // 2. Validar contraseña actual e incrementar contador de intentos fallidos
         if (!PasswordHasher.VerifyPassword(request.CurrentPassword, user.PasswordHash))
         {
+            user.AccessFailedCount++;
+            if (user.AccessFailedCount >= 5)
+            {
+                user.LockoutEndUtc = DateTime.UtcNow.AddMinutes(15);
+                AppLogger.LogSecurityAudit($"[ACCOUNT_LOCKED] Usuario={user.Username} bloqueado por 15 min tras fallos en change-password.");
+            }
+            await _db.SaveChangesAsync();
+            AppLogger.LogStart($"[AUTH] Intento fallido en change-password para Usuario '{user.Username}': Contraseña incorrecta (Intento {user.AccessFailedCount}/5).");
             return Unauthorized(new { Message = "La contraseña actual es incorrecta." });
         }
 
+        // 3. Restablecer contadores de bloqueo al tener éxito
+        user.AccessFailedCount = 0;
+        user.LockoutEndUtc = null;
         user.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
         user.MustChangePassword = false;
         user.SecurityStamp = Guid.NewGuid().ToString("N");
