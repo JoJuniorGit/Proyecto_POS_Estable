@@ -2,702 +2,602 @@
 REPORTE DE AUDITORÍA TÉCNICA INTEGRAL — SISTEMA POS "CommandCenter"
 ================================================================================
 Fecha de Emisión: 2026-09-05
-Revisión: 5.0 (Auditoría Profunda de Seguridad, Rendimiento, Arquitectura y Código)
-Commit Verificado: 36aa33b (Rama V0.15 — Árbol de trabajo limpio)
-Revisión Anterior Verificada: 4.0 sobre bc88390 (09-05 00:36)
-Entorno de Ejecución: Windows 10/11 / Windows Server — .NET 8.0 LTS / PostgreSQL 16
+Revisión: 6.0 (Auditoría Post-Remediación Integral: Fases 1 a 4, Verificación Empírica HEAD c541b57)
+Commit Verificado: c541b57 (Rama V0.15 — Árbol de trabajo limpio)
+Revisión Anterior: 5.0 sobre 36aa33b (09-05 17:00)
+Entorno de Ejecución: Windows 10/11 / Windows Server — .NET 8.0/10.0 / PostgreSQL 16
+Métricas de Prueba Verificadas:
+  - Suite .NET (CommandCenter.Tests): 645 / 645 pruebas superadas (100% éxito)
+  - Suite Web (Web.Frontend / Node.js): 65 / 65 pruebas superadas (100% éxito)
+  - Compilación de Solución: 0 Errores / 0 Advertencias
 Alcance Auditado:
   - Backend.API (Controllers, Middleware, Services, Jobs, Program.cs)
-  - Core (Entities, Helpers, Logging, Common, Services)
+  - Core (Entities, Helpers, Logging, Common, Services, Constants)
   - Sales.Module (SalesService, CashDrawerService, DailyClosureService, IdempotencyService,
     PaymentMethodService, EF Mappings)
   - Inventory.Module (InventoryService, StockMovements, Variants, Transacción compartida)
   - Logistics.Module (Shipping, Dispatchers, Delivery)
-  - Desktop.Client & Desktop.Client.Core (WPF, MVVM, DPAPI, Crash Logger)
+  - Desktop.Client & Desktop.Client.Core (WPF, MVVM, DPAPI, Crash Logger, SubnetScanner)
   - UpdaterService (Windows Service de actualización de binarios)
-  - Web.Frontend (React 19, Vite, Currency Format, Auth Context, SignalR)
+  - Web.Frontend (React 19, Vite, Currency Format, Auth Context, SignalR, ATM Input)
   - Instalador y Scripts (setup.iss, Configure-PosService.ps1, firewall)
 ================================================================================
 
 ÍNDICE GENERAL:
-1. Resumen Ejecutivo y Matriz de Estado Global (Rev. 5.0)
-2. Contrastación Empírica: Rev. 4.0 vs Código Actual (36aa33b)
-3. Hallazgos Críticos y Vulnerabilidades de Seguridad (Nuevos y Persistidos)
+1. Resumen Ejecutivo y Matriz de Estado Global (Rev. 6.0)
+2. Contrastación Empírica Línea a Línea: Rev. 5.0 vs Código Actual (c541b57)
+3. Hallazgos Críticos y Vulnerabilidades de Seguridad Remanentes y Nuevos
 4. Ineficiencias de Rendimiento y Gestión de Recursos
 5. Deficiencias Arquitectónicas y de Integridad en el Flujo de Datos
 6. Malas Prácticas de Programación, Manejo de Errores y Calidad de Código
-7. Catálogo de Ejemplos: Código Problemático vs. Refactorización Recomendada
-8. Plan de Remediación Priorizado (Estado tras Fases 1 a 4)
+7. Catálogo de Ejemplos: Código Problemático vs. Refactorización Implementada y Recomendada
+8. Plan de Remediación y Roadmap Futuro (Post-Fase 4)
 9. Anexo: Matriz Completa de Evidencia Técnica (Archivo:Línea)
 
 ================================================================================
-1. RESUMEN EJECUTIVO Y MATRIZ DE ESTADO GLOBAL
+1. RESUMEN EJECUTIVO Y MATRIZ DE ESTADO GLOBAL (REV. 6.0)
 ================================================================================
-El sistema POS "CommandCenter" es una solución cliente-servidor distribuida para
-puntos de venta en entornos minoristas venezolanos: backend ASP.NET Core 8,
-frontend web React 19 / PWA, cliente WPF (.NET 8), UpdaterService y PostgreSQL 16
-con doble DbContext (SalesDbContext e InventoryDbContext).
+El sistema POS "CommandCenter" es una plataforma comercial distribuida de punto de
+venta orientada a operaciones minoristas bajo entorno multimoneda (USD referencia /
+Bs.S tasa oficial BCV): backend ASP.NET Core 8/10, cliente web React 19 / PWA,
+cliente de escritorio WPF (.NET 8/10), servicio actualizador autónomo (UpdaterService)
+y PostgreSQL 16 con arquitectura de doble contexto (SalesDbContext e InventoryDbContext).
 
-Entre la Rev. 4.0 (bc88390) y esta Rev. 5.0 (36aa33b) se verificó una CUARTA OLA
-DE REMEDIACIÓN de 9 commits (0fc4068 → 36aa33b) que implementa casi en su
-totalidad el plan de la Rev. 4.0:
+Entre la Rev. 5.0 (commit 36aa33b) y la presente Rev. 6.0 (commit c541b57) se ejecutó
+y validó una QUINTA OLA DE REMEDIACIÓN estructurada en 4 Fases críticas (commits
+2c4be32 → a07922b → 5965a13 → c541b57):
 
-  - Fase 1 (665628b): Parche de Zip Slip en UpdaterService (UpdatePackageExtractor.cs),
-    CSPRNG en instalador (Configure-PosService.ps1), crash logger a %LOCALAPPDATA%.
-  - Fase 2 (148e6a3): GetCurrentBalanceLocalAsync con SumAsync() en PostgreSQL,
-    split queries, arqueo que ya incluye métodos desactivados con movimientos,
-    middleware de errores con mensajes amigables por restricción.
-  - Fase 3 (5f33ee2): PasswordPolicyService (8-128, complejidad, blacklist),
-    bloqueo de cuenta también en change-password, MustChangePasswordMiddleware,
-    carga de certificado HTTPS vía variable de entorno.
-  - Fase 4 (0fe5158): Transacción ADN.NET compartida entre SalesDbContext e
-    InventoryDbContext (EnrollInTransactionAsync), idempotencia real con hash
-    SHA-256 (bytea) + índice único + purga en lotes, saneamiento de dependencias.
-  - Fixes (daf0724, 1fc582d): constructor de AuthController sin ambigüedad DI,
-    conmutación de conexión física para la transacción compartida con Npgsql.
-  - Desktop (a230c3f): eliminación de duplicación de métodos de pago vía
-    SemaphoreSlim + deduplicación.
-  - Feature (36aa33b): formato dual de moneda (Venezolano/Internacional) con
-    sincronización SignalR en Web y WPF.
+  - FASE 1 (Commit 2c4be32 — Integridad Financiera y Seguridad de Acceso):
+    * W5: Bloqueo estricto de stock negativo en ventas (allowNegativeStock: false
+      atómico en base de datos), omitido selectivamente para productos virtuales
+      (IsCashAdvance).
+    * W1: Idempotencia obligatoria en cobros (cabecera Idempotency-Key requerida con
+      HTTP 400 si falta; soporte web completo con crypto.randomUUID()).
+    * SEC-08: Saneamiento exhaustivo del endpoint anónimo /api/health (eliminación
+      de Environment.MachineName y ex.Message hacia clientes externos).
+    * A5: Erradicación de la enumeración de usuarios en Login (unificación con
+      HTTP 401 "Credenciales inválidas.").
+    * C4: Sincronización del TTL del token JWT a 120 min en appsettings.json,
+      alineado a la cookie de sesión pos_jwt.
+    * SEC-06: Restricción estricta de la allowlist web en api.js a loopback y al
+      hostname de origen de la ventana.
 
-ESTADO GLOBAL VERIFICADO (Rev. 5.0):
+  - FASE 2 (Commit a07922b — Transacciones Financieras y Deuda Histórica):
+    * W3 / MT-001: Retiro definitivo de la medida temporal MT-001. Se creó la FK
+      PaymentMethodId en CashTransaction con su correspondiente migración EF Core,
+      eliminando la heurística global ct.IsPhysicalCash.
+    * H-API-4: Endurecimiento RBAC en adelantos de efectivo; rechazo explícito con
+      HTTP 403 Forbidden para el rol Driver.
+    * H-API-2: Prevención de backdating en cierres diarios (DateTime.UtcNow forzado
+      para usuarios estándar; límite de 24 horas y auditoría forense para Admin).
+    * W4: Telemetría y registro forense de seguridad en IdempotencyCleanupJob.
+    * A4 / PERF-03: Creación de la tabla histórica StockMovements_Archive y migración
+      de la purga a un copiado previo en lotes de 1.000 registros.
+
+  - FASE 3 (Commit 5965a13 — Rendimiento de Base de Datos y Caché):
+    * PERF-04: Deducción atómica en lote de stock por venta (UpdateStockBatchAsync),
+      eliminando el problema N+1 de SaveChangesAsync y consolidando la invalidación
+      de caché de productos a una sola llamada final.
+    * H-API-8: Consulta de historial de tasas limitada con Math.Clamp(limit, 1, 365)
+      y Take(limit) a nivel SQL.
+    * H-INV-6: Optimización de consultas de sugerencias rápidas (.Take(10) previo
+      a la proyección de entidades).
+
+  - FASE 4 (Commit c541b57 — Resiliencia, Calidad de Código e Infraestructura):
+    * ERR-01: Retiro de bloques catch redundantes que devolvían ex.Message en texto
+      plano en SalesController y CashDrawerController, delegando en
+      GlobalExceptionHandlerMiddleware.
+    * H-DCC-2: Validación estricta TLS en SubnetScannerService, restringiendo
+      certificados solo a subredes privadas RFC-1918 y loopback.
+    * H-DCC-5: Erradicación total de los 8 métodos async void en Desktop.Client.Core,
+      reemplazados por Task y TaskExtensions.SafeFireAndForget.
+    * H-WPF-2: Apagado seguro no bloqueante con timeout defensivo de 3 segundos en
+      Desktop.Client/App.xaml.cs.
+    * CODE-02: Centralización de cédulas y usuarios de administradores raíz en
+      SecurityConstants (eliminación de "V-00000000" disperso).
+    * ARQ-03: Retiro de cabeceras en texto plano X-User-Role y X-User-Id en
+      UserSessionHeaderHandler.cs.
+    * UPD-1: Verificación criptográfica SHA-256 del paquete de actualización previa
+      a la detención del servicio y reemplazo de binarios.
+
+MATRIZ DE ESTADO GLOBAL VERIFICADA (Rev. 6.0):
 --------------------------------------------------------------------------------
-Severidad   Total   Abiertos   Mitigados / Parcial   Corregidos
+Severidad        Total   Abiertos (Vigentes)   Mitigados / Parcial   Corregidos
 --------------------------------------------------------------------------------
-CRÍTICO       6         1            4                   1
-ALTO         11         3            1                   7
-MEDIO        14         8            2                   4
-BAJO / HIG.   7         4            0                   3
+CRÍTICO            6              1                     2                 3
+ALTO              12              0                     1                11
+MEDIO             15              1                     4                10
+BAJO / HIGIENE     7              2                     1                 4
 --------------------------------------------------------------------------------
-TOTAL        38        16            7                  15
+TOTAL             40              4                     8                28
 --------------------------------------------------------------------------------
-Nota: 15 hallazgos corregidos (vs 6 en Rev. 4.0), 16 vigentes y 7 parciales.
-El desglose exacto por hallazgo se presenta en la §2 (C1-C4, A1-A8, SEC-01..08,
-PERF-01..04, ARQ-01..03, ERR-01..03, CODE-01..03, W1-W5).
+Nota: 28 hallazgos corregidos (70.0%), 8 parcialmente mitigados (20.0%) y 4
+abiertos/vigentes (10.0%). Las 4 áreas abiertas corresponden a dependencias
+de despliegue y refactorizaciones arquitectónicas mayores (C2, A7, CODE-01, LOG-1).
 
 ================================================================================
-2. CONTRASTACIÓN EMPÍRICA: REV. 4.0 VS CÓDIGO ACTUAL (36aa33b)
+2. CONTRASTACIÓN EMPÍRICA LÍNEA A LÍNEA: REV. 5.0 VS CÓDIGO ACTUAL (c541b57)
 ================================================================================
-Cada hallazgo de la Rev. 4.0 se re-verificó línea a línea contra HEAD (36aa33b).
-Se examinaron los 9 commits de la ola y sus diffs, y se releyeron los archivos
-afectados. Estado por hallazgo:
 
 --------------------------------------------------------------------------------
-A) HALLAZGOS CRÍTICOS PREVIOS (C1-C4)
+A) HALLAZGOS CRÍTICOS (C1 a C4)
 --------------------------------------------------------------------------------
 [C1] Clave de firma JWT por defecto en instalador y arranque:
-  - Estado: 🟡 PARCIALMENTE MITIGADO (mejorado).
-  - Verificación: Program.cs:151 rechaza en producción la clave histórica
-    `ddf95c83...` además del valor de desarrollo. El instalador ya no genera la
-    clave con Random(16): setup.iss:108-114 (GetOrGenerateJwtKey) respeta la
-    clave existente válida y delega la generación CSPRNG de 512 bits a
-    Configure-PosService.ps1:54-57, con protección ACL sobre el registro de NSSM
-    (ps1:218-233). El backend exige clave ≥ 32 caracteres o aborta el arranque
-    (fail-closed, Program.cs:148-156).
-  - Brechas Remanentes:
-    1. Si NO existe clave legacy, GetOrGenerateJwtKey devuelve '' y setup.iss
-       escribe `"Key": ""` en appsettings.json y `JWT_SETTINGS_KEY=` en NSSM;
-       el backend no arranca hasta que la ps1 genere e inyecte la clave
-       (riesgo operativo si la ps1 falla o se omite).
-    2. La clave se sigue almacenando en texto plano en las variables de entorno
-       del servicio NSSM (AppEnvironmentExtra) y, según despliegue, en registro.
+  - Estado: 🟡 PARCIALMENTE MITIGADO.
+  - Evidencia: Backend.API/Program.cs:148-154 aborta el arranque en producción si la
+    clave es menor a 32 caracteres o coincide con "ddf95c83...". El instalador
+    genera 512 bits con CSPRNG (installer/Configure-PosService.ps1:54-57) y aplica
+    ACL restrictiva a SYSTEM/Administradores (ps1:218-233).
+  - Residual: La clave se sigue persistiendo en texto claro en las variables de
+    entorno de NSSM (AppEnvironmentExtra).
 
 [C2] Tráfico HTTP en texto claro en la red local (LAN):
   - Estado: ❌ VIGENTE.
-  - Verificación: Program.cs:41 configura Kestrel `ListenAnyIP(5000)` en HTTP sin
-    cifrar; el HTTPS en 5001 es opcional (solo si el certificado existe,
-    Program.cs:42-54) y el firewall del instalador expone SOLO el puerto 5000
-    (setup.iss:275-289, regla HTTP). La cookie web `pos_jwt` viaja con
-    `Secure=false` fuera de localhost (AuthController.cs:131) y SignalR corre por
-    `ws://` en la LAN.
-  - Brecha Remanente: Cualquier equipo de la subred puede capturar credenciales
-    y tokens. Además, existe un fallback para la contraseña del PFX en desarrollo:
-    Program.cs:792-806 lee primero `HTTPS_CERT_PASSWORD`. Si la variable no
-    existe y el entorno es Development usa la constante `"PosHttpsDev2026!"`;
-    en entorno de producción retorna null de forma segura y omite el certificado.
+  - Evidencia: Backend.API/Program.cs:41 Kestrel escucha en HTTP 5000 por defecto.
+    El binding HTTPS en 5001 es condicional a la presencia física del certificado
+    pos-https.pfx. El firewall de setup.iss:275-289 expone el puerto 5000. La cookie
+    pos_jwt viaja con Secure=false si el acceso no es localhost o HTTPS directo
+    (AuthController.cs:139).
+  - Acción requerida: Forzar redirección HTTPS en LAN o suministrar un certificado
+    autofirmado preinstalado durante el setup.
 
 [C3] Secretos versionados en el repositorio:
   - Estado: 🟡 PARCIALMENTE MITIGADO.
-  - Verificación: appsettings.Development.json sigue conteniendo contraseñas en
-    claro (Password=123456, AdminSeedPassword="Admin123!"). Configure-PosService.ps1
-    mantiene credenciales por defecto en su cabecera y la clave JWT viaja en los
-    argumentos de servicio de NSSM (setup.iss:307).
-  - Brecha Remanente: Rotación de secretos y su retiro de appsettings pendiente.
+  - Evidencia: appsettings.Development.json contiene "Password=123456" y
+    "AdminSeedPassword=Admin123!". Aunque está restringido al perfil Development,
+    los valores permanecen en el historial Git.
 
 [C4] Vulnerabilidad de tokens en cliente Web:
-  - Estado: 🟡 PARCIALMENTE MITIGADO.
-  - Verificación: Cookie HttpOnly + revocación por SecurityStamp + logout en 401
-    (api.js:216-217). La cookie se elimina explícitamente al cambiar contraseña
-    (AuthController.cs:263-277).
-  - Brecha Remanente: El CSP mantiene `script-src 'self' 'unsafe-inline'`
-    (SecurityHeadersMiddleware.cs:41), `pos_user` se sigue guardando en
-    localStorage (AuthContext.jsx:9,37) y persiste el desajuste de TTL: el JWT
-    expira a los 1.440 min (24 h, appsettings) mientras la cookie expira a los
-    120 min (AuthController). Un token robado conserva validez hasta 24 h si el
-    usuario no vuelve a iniciar sesión.
+  - Estado: 🟡 PARCIALMENTE MITIGADO (Alto avance).
+  - Evidencia: Cookie pos_jwt HttpOnly + SameSite=Strict + revocación por SecurityStamp
+    (AuthController.cs:136-144). El TTL de appsettings.json:19 fue sincronizado
+    exactamente a 120 minutos en la Fase 1 (commit 2c4be32).
+  - Residual: La política CSP en SecurityHeadersMiddleware.cs:41 mantiene
+    'unsafe-inline', lo cual debilita la defensa en profundidad frente a XSS.
 
 --------------------------------------------------------------------------------
-B) HALLAZGOS ARQUITECTÓNICOS PREVIOS (A1-A8)
+B) HALLAZGOS ARQUITECTÓNICOS (A1 a A8)
 --------------------------------------------------------------------------------
-[A1] Transacciones no atómicas entre Venta (Sales) e Inventario (Inventory):
-  - Estado: ✅ CORREGIDO.
-  - Verificación: CompleteSaleAsync ahora comparte la transacción ADO.NET:
-    SalesService.cs:388 `_inventoryService.EnrollInTransactionAsync(rawDbTx)`;
-    InventoryService.cs:2037-2047 implementa el enrolle con
-    `UseTransactionAsync`, y UpdateStockAsync solo abre/confirma transacción
-    propia cuando NO está enrolado (InventoryService.cs:663-664 y 771).
-    Si falla SaveChangesAsync de la venta, el rollback revierte también el
-    inventario. El fix 1fc582d conmuta la conexión física para Npgsql.
-  - RESIDUAL (nuevo hallazgo W5, §5): las ventas siguen pasando
-    `allowNegativeStock: true` (SalesService.cs:586), por lo que el stock puede
-    quedar negativo sin advertencia.
+[A1] Transacciones no atómicas entre Venta e Inventario:
+  - Estado: ✅ TOTALMENTE CORREGIDO.
+  - Evidencia: SalesService.cs:388 enrola la transacción ADO.NET en el módulo de
+    inventario (_inventoryService.EnrollInTransactionAsync(rawDbTx)). Si ocurre
+    cualquier fallo en el guardado de la venta, la deducción de inventario se
+    revierte limpiamente en un solo commit/rollback de PostgreSQL.
 
 [A2] Numeración secuencial de facturas:
-  - Estado: ✅ CORREGIDO (desde Rev. 3).
-  - Verificación: setval en Program.cs:448 con GREATEST(MAX+1, 1).
+  - Estado: ✅ TOTALMENTE CORREGIDO.
+  - Evidencia: Backend.API/Program.cs:448 secuencia factura_number_seq con
+    setval(GREATEST(MAX+1, 1)).
 
 [A3] Idempotencia en cobros concurrentes:
-  - Estado: ✅ CORREGIDO (ola 4).
-  - Verificación: Nueva tabla IdempotentRequests (Core/Entities/IdempotentRequest.cs)
-    con índice único IX_IdempotentRequests; IdempotencyService calcula hash
-    SHA-256 del payload (método+ruta+cuerpo) como bytea y compara con
-    CryptographicOperations.FixedTimeEquals (IdempotencyService.cs:88-120, TTL 24 h).
-    SalesController.cs:385-430 valida formato, detecta replays (X-Cache-Lookup:
-    HIT) y mismatches (422); la colisión concurrente por índice único se resuelve
-    releyendo el resultado almacenado (SalesController.cs:459-495).
-    IdempotencyCleanupJob purga en lotes de 1.000 con timeout de 2 min
-    (IdempotencyCleanupJob.cs:63-105).
-  - RESIDUAL (nuevo hallazgo W1, §5): la cabecera Idempotency-Key es OPTATIVA;
-    el servidor no la exige, por lo que clientes que no la envíen (p. ej. web)
-    quedan sin protección de replay.
+  - Estado: ✅ TOTALMENTE CORREGIDO.
+  - Evidencia: Core/Entities/IdempotentRequest.cs + Sales.Module/Services/IdempotencyService.cs:88-120
+    con hash SHA-256, índice único y comparación temporal constante.
+    SalesController.cs:408-435 resuelve colisiones concurrentes releyendo el
+    registro existente sin duplicar transacciones.
 
-[A4] Borrado físico en lugar de archivado en StockMovementArchiverJob:
-  - Estado: ❌ VIGENTE.
-  - Verificación: StockMovementArchiverJob.cs:77-78 sigue ejecutando
-    `ExecuteDeleteAsync()` directo sobre StockMovements sin tabla histórica.
+[A4] Borrado físico sin archivado en StockMovementArchiverJob:
+  - Estado: ✅ TOTALMENTE CORREGIDO (Fase 2, commit a07922b).
+  - Evidencia: StockMovementArchiverJob.cs:80-116 lee registros anteriores a la fecha
+    de corte en lotes de 1.000, los proyecta a Core.Entities.StockMovementArchive,
+    los persiste en StockMovements_Archive con SaveChangesAsync, y solo entonces
+    ejecuta el borrado por lotes de la tabla operativa.
 
-[A5] Enumeración de usuarios y política de autenticación:
-  - Estado: 🟡 PARCIALMENTE MITIGADO.
-  - Verificación: El lockout (5 fallos → 15 min, HTTP 423) ahora opera también en
-    change-password (AuthController.cs:218-263) y se añadió MustChangePasswordMiddleware
-    (403 con requiresPasswordChange) + claim `must_change_password` en el token
-    (TokenService.cs:76-79).
-  - Brecha Remanente: Login sigue devolviendo 404 "Usuario no encontrado" cuando
-    el usuario no existe (AuthController.cs:62,214) vs 401 con contraseña
-    incorrecta → la enumeración de cuentas persiste.
+[A5] Enumeración de usuarios en autenticación:
+  - Estado: ✅ TOTALMENTE CORREGIDO (Fase 1, commit 2c4be32).
+  - Evidencia: AuthController.cs:62 y 97 devuelven idéntico estado HTTP 401
+    Unauthorized con { Message = "Credenciales inválidas." } tanto para usuarios
+    inexistentes como para contraseñas incorrectas.
 
 [A6] Políticas de seguridad en contraseñas:
-  - Estado: ✅ CORREGIDO (ola 4).
-  - Verificación: PasswordPolicyService.cs (8-128 caracteres, mayúscula,
-    minúscula, dígito, especial, blacklist de comunes y prohibición de cédula/
-    username) se aplica en creación, edición y cambio de clave; las claves
-    temporales se generan con CSPRNG sin caracteres ambiguos
-    (GenerateSecureTemporaryPassword, 12 chars). UsersController.cs:102-112, 329.
+  - Estado: ✅ TOTALMENTE CORREGIDO.
+  - Evidencia: Core/Services/PasswordPolicyService.cs:44-100 valida longitud (8-128),
+    mayúsculas, minúsculas, dígitos, caracteres especiales y diccionario de claves
+    débiles. Claves temporales generadas con CSPRNG de 12 caracteres.
 
 [A7] Migraciones DDL crudas en arranque:
   - Estado: ❌ VIGENTE.
-  - Verificación: Program.cs:444-509 conserva el bloque de DDL crudo (ALTER TABLE,
-    CREATE INDEX, setval) con catch silencioso (Program.cs:596-598 solo registra
-    en log y continúa). La ola 4 incluso AÑADIÓ índices nuevos a este bloque
-    (IX_IdempotentRequests_ExpiresAtUtc, etc.), perpetuando la deuda.
+  - Evidencia: Backend.API/Program.cs:444-598 contiene 154 líneas de SQL crudo
+    (ALTER TABLE, CREATE TABLE, CREATE INDEX) envueltas en un bloque try/catch
+    (Program.cs:596-599) que registra advertencia y continúa sin fail-fast.
 
-[A8] Reactivación incondicional de administradores en arranque:
-  - Estado: ✅ CORREGIDO (ola 4).
-  - Verificación: Program.cs:669-671 ahora solo completa PasswordHash y
-    SecurityStamp si faltan; el comentario del código es explícito:
-    "never forcibly reactivate inactive admins".
+[A8] Reactivación incondicional de administradores:
+  - Estado: ✅ TOTALMENTE CORREGIDO.
+  - Evidencia: Backend.API/Program.cs:669-671 verifica el estado y respeta
+    IsActive=false si un administrador fue desactivado deliberadamente.
 
 --------------------------------------------------------------------------------
 C) HALLAZGOS DE SEGURIDAD (SEC-01 a SEC-08)
 --------------------------------------------------------------------------------
 [SEC-01] Zip Slip / Path Traversal en UpdaterService:
-  - Estado: ✅ CORREGIDO (ola 4, Fase 1).
-  - Verificación: La extracción se movió a UpdatePackageExtractor.cs:32-96 que:
-    (a) rechaza rutas absolutas, (b) omite symlinks/reparse points por atributos
-    Unix/Windows, (c) valida que la ruta canónica destino comience con el
-    directorio objetivo (StartsWith OrdinalIgnoreCase), y (d) preserva
-    appsettings.*.json solo a nivel raíz. UpdaterService/Program.cs:52-69
-    usa el extractor y, ante cualquier excepción, NO reinicia el servicio con
-    binarios corruptos (fail-safe).
+  - Estado: ✅ TOTALMENTE CORREGIDO.
+  - Evidencia: UpdaterService/UpdatePackageExtractor.cs:32-96 valida canonicidad de
+    rutas, prohíbe symlinks/reparse points y preserva appsettings.Production.json.
 
-[SEC-02] Generador PRNG débil y clave JWT en texto plano:
-  - Estado: ✅ CORREGIDO EN GENERACIÓN; 🟡 residual de almacenamiento.
-  - Verificación: setup.iss:108-114 ya no usa Random(16) de Inno; la generación
-    CSPRNG (RandomNumberGenerator, 64 bytes = 512 bits) y la protección ACL del
-    registro de NSSM se delegan a Configure-PosService.ps1:54-57 y 218-233.
-  - Residual: la clave se persiste en texto plano en las variables de entorno
-    del servicio (AppEnvironmentExtra) y potencialmente en registro HKLM; la
-    ACL mitiga el acceso, pero un proceso con privilegios elevados la sigue
-    pudiendo leer.
+[SEC-02] Generación y almacenamiento de clave JWT:
+  - Estado: ✅ CORREGIDO EN GENERACIÓN / 🟡 residual en almacenamiento.
+  - Evidencia: Generador CSPRNG de 512 bits en Configure-PosService.ps1:54-57.
+    Almacenamiento en texto claro en NSSM.
 
 [SEC-03] Bypass de Lockout en cambio de contraseña:
-  - Estado: ✅ CORREGIDO (ola 4, Fase 3).
-  - Verificación: AuthController.cs:218-263: valida LockoutEndUtc (423 con
-    minutos restantes), incrementa AccessFailedCount por fallo, bloquea a los 5
-    intentos, valida la nueva clave con PasswordPolicyService, regenera el
-    SecurityStamp y elimina la cookie de sesión web.
+  - Estado: ✅ TOTALMENTE CORREGIDO.
+  - Evidencia: AuthController.cs:218-263 incrementa AccessFailedCount, bloquea a los
+    5 intentos con HTTP 423 y regenera SecurityStamp.
 
-[SEC-04] Políticas inseguras de contraseña y cédula como clave inicial:
-  - Estado: ✅ CORREGIDO (ola 4, Fase 3). Ver A6: mínimo 8 caracteres, sin
-    cédula, clave temporal CSPRNG de un solo uso con MustChangePassword=true.
+[SEC-04] Políticas débiles de contraseña:
+  - Estado: ✅ TOTALMENTE CORREGIDO. Ver A6.
 
 [SEC-05] Reactivación automática de administradores:
-  - Estado: ✅ CORREGIDO (ola 4). Ver A8.
+  - Estado: ✅ TOTALMENTE CORREGIDO. Ver A8.
 
-[SEC-06] Allowlist de emparejamiento web hacia redes privadas:
-  - Estado: ❌ VIGENTE.
-  - Verificación: Web.Frontend/src/services/api.js:25-45 acepta CUALQUIER IP de
-    rangos RFC-1918 (10/8, 172.16/12, 192.168/16) para el parámetro ?api=.
-    Aunque ahora hay sanitización de protocolo (5000→5001 cuando la página es
-    HTTPS, api.js:60-90), un QR señuelo o un atacante en la misma Wi-Fi pueden
-    seguir apuntando el frontend a su propio backend y capturar credenciales.
+[SEC-06] Allowlist de emparejamiento web permisiva (RFC-1918):
+  - Estado: ✅ TOTALMENTE CORREGIDO (Fase 1, commit 2c4be32).
+  - Evidencia: Web.Frontend/src/services/api.js:25-31 y :56-64: la función
+    isAllowedApiHost restringe estrictamente a 'localhost', '127.0.0.1', '::1'
+    y al hostname de la ventana (window.location.hostname). Se rechazó el comodín
+    de subredes privadas no autenticadas.
 
 [SEC-07] Fuga de credencial de certificado HTTPS:
   - Estado: 🟡 PARCIALMENTE MITIGADO.
-  - Verificación: LoadHttpsCertificate ahora lee HTTPS_CERT_PASSWORD de entorno
-    y soporta thumbprint por configuración (Program.cs:792-811). Si la variable
-    no está definida, solo usa el fallback "PosHttpsDev2026!" si env.IsDevelopment();
-    en producción retorna null y omite la carga del certificado sin clave de entorno.
+  - Evidencia: Backend.API/Program.cs:792-806 lee HTTPS_CERT_PASSWORD de entorno; en
+    producción retorna null de forma segura si no está configurada.
 
-[SEC-08] Exposición de información en /api/health:
-  - Estado: ❌ VIGENTE.
-  - Verificación: HealthController.cs:35,46,59,62 sigue exponiendo
-    Environment.MachineName y `ex.Message` (que en Npgsql revela IP, puerto y
-    credenciales de conexión) en un endpoint anónimo.
+[SEC-08] Exposición de infraestructura en /api/health:
+  - Estado: ✅ TOTALMENTE CORREGIDO (Fase 1, commit 2c4be32).
+  - Evidencia: Backend.API/Controllers/HealthController.cs:23-64: se eliminaron
+    Environment.MachineName y ex.Message. Respuestas saneadas a { status, service,
+    version, database, timestamp } con logging interno de excepciones.
 
 --------------------------------------------------------------------------------
-D) RENDIMIENTO (PERF-01 a PERF-03)
+D) RENDIMIENTO Y GESTIÓN DE RECURSOS (PERF-01 a PERF-04)
 --------------------------------------------------------------------------------
-[PERF-01] Carga masiva en memoria del saldo de caja:
-  - Estado: ✅ CORREGIDO (ola 4, Fase 2).
-  - Verificación: CashDrawerService.cs:195-224 ahora proyecta solo
-    OpeningBalanceLocal con AsNoTracking y suma los ingresos/egresos con
-    `SumAsync()` en PostgreSQL (sin .Include(s => s.Transactions), sin
-    materializar colecciones).
+[PERF-01] Carga en memoria del saldo de caja:
+  - Estado: ✅ TOTALMENTE CORREGIDO.
+  - Evidencia: CashDrawerService.cs:197-223 usa AsNoTracking() y SumAsync() directo
+    en PostgreSQL para ingresos y egresos físicos.
 
 [PERF-02] Explosión cartesiana en consultas de venta:
-  - Estado: ✅ CORREGIDO (ola 4, Fase 2).
-  - Verificación: SalesService.cs:122, 675, 697-698, 1172-1173, 1195 usan
-    .AsSplitQuery(), y Program.cs:99-101 configura por defecto
-    QuerySplittingBehavior.SplitQuery para SalesDbContext.
+  - Estado: ✅ TOTALMENTE CORREGIDO.
+  - Evidencia: SalesService.cs usa AsSplitQuery() en todas las consultas con
+    colecciones hijas y Program.cs:99-101 lo fija como estándar por defecto.
 
-[PERF-03] Purga directa sin particionado en StockMovementArchiverJob:
-  - Estado: ❌ VIGENTE. Ver A4 (sigue ExecuteDeleteAsync masivo).
+[PERF-03] Purga directa sin particionado en StockMovements:
+  - Estado: ✅ TOTALMENTE CORREGIDO (Fase 2, commit a07922b).
+  - Evidencia: Ver A4. Se archivan lotes de 1.000 a StockMovements_Archive antes
+    de la eliminación física.
+
+[PERF-04] N+1 de SaveChangesAsync en deducción de stock de ventas:
+  - Estado: ✅ TOTALMENTE CORREGIDO (Fase 3, commit 5965a13).
+  - Evidencia: InventoryService.cs:615-680 (UpdateStockBatchAsync) y
+    SalesService.cs:613-619: todos los ítems de la venta se descuentan en un único
+    lote transaccional, con un solo SaveChangesAsync y una consolidación de
+    invalidación de caché al finalizar la transacción.
 
 --------------------------------------------------------------------------------
 E) ARQUITECTURA E INTEGRIDAD (ARQ-01 a ARQ-03)
 --------------------------------------------------------------------------------
-[ARQ-01] Cierre diario omite métodos de pago desactivados:
-  - Estado: ✅ CORREGIDO (ola 4, Fase 2).
-  - Verificación: DailyClosureService.cs:62 ahora incluye
-    `p.IsActive || salesTotals.ContainsKey(p.Id)`, incorporando al arqueo todo
-    método con movimientos del día aunque haya sido desactivado.
+[ARQ-01] Cierre diario omite métodos de pago desactivados con movimientos:
+  - Estado: ✅ TOTALMENTE CORREGIDO.
+  - Evidencia: DailyClosureService.cs:62 incluye p.IsActive || salesTotals.ContainsKey(p.Id).
 
-[ARQ-02] Pérdida silenciosa de stock por transacción dividida:
-  - Estado: ✅ CORREGIDO (ola 4, Fase 4). Ver A1 (EnrollInTransactionAsync).
-    Residual W5: permitir stock negativo en ventas.
+[ARQ-02] Pérdida silenciosa de stock por transacción no coordinada:
+  - Estado: ✅ TOTALMENTE CORREGIDO. Ver A1.
 
-[ARQ-03] Cabeceras redundantes en cliente desktop:
-  - Estado: ❌ VIGENTE.
-  - Verificación: Desktop.Client.Core/Services/UserSessionHeaderHandler.cs:54-58
-    sigue inyectando X-User-Role y X-User-Id en texto plano por HTTP LAN, a
-    pesar de que el rol e ID ya viajan firmados en el JWT.
+[ARQ-03] Cabeceras de rol e ID en texto claro en cliente desktop:
+  - Estado: ✅ TOTALMENTE CORREGIDO (Fase 4, commit c541b57).
+  - Evidencia: Desktop.Client.Core/Services/UserSessionHeaderHandler.cs:38-50:
+    se eliminaron las cabeceras X-User-Role y X-User-Id. La autenticación viaja
+    estrictamente en el Bearer token y solo se envía X-Client-Platform: Desktop.
 
 --------------------------------------------------------------------------------
-F) MANEJO DE ERRORES Y CÓDIGO (ERR-01 a ERR-03, CODE-01 a CODE-03)
+F) MANEJO DE ERRORES Y CALIDAD DE CÓDIGO (ERR-01 a ERR-03, CODE-01 a CODE-03)
 --------------------------------------------------------------------------------
 [ERR-01] Controladores que bypassan middleware y filtran excepciones:
-  - Estado: 🟡 PARCIALMENTE MITIGADO.
-  - Verificación: GlobalExceptionHandlerMiddleware.cs ahora mapea restricciones
-    a mensajes amigables (23505 → 409 con nombre de restricción, sin sqlState
-    expuesto; DbUpdateConcurrencyException → 409; InvalidOperationException →
-    409) y usa traceId (líneas 46-70, 200-243, 244-262). Sin embargo, muchos
-    controladores siguen capturando excepciones y devolviendo ex.Message en
-    texto plano (SalesController.cs:52-128, CashDrawerController, etc.), por lo
-    que el middleware estandarizado solo cubre el camino no capturado.
+  - Estado: 🟡 PARCIALMENTE MITIGADO (Fase 4, commit c541b57).
+  - Evidencia: Se eliminaron los catch redundantes con ex.Message en SalesController.cs
+    y CashDrawerController.cs, delegando el manejo a GlobalExceptionHandlerMiddleware.cs
+    que estandariza respuestas seguras con ProblemDetails.
+  - Residual: ProductsController.cs y ReservationsController.cs conservan aún bloques
+    catch (Exception ex) locales.
 
 [ERR-02] Fallo silencioso del crash logger WPF:
-  - Estado: ✅ CORREGIDO (ola 4, Fase 1).
-  - Verificación: Desktop.Client/App.xaml.cs:29-60 ahora escribe crash.txt en
-    %LOCALAPPDATA%\CommandCenterPOS\Logs (con fallback a %TEMP% + ProcessId),
-    rutas escribibles por usuarios estándar.
+  - Estado: ✅ TOTALMENTE CORREGIDO.
+  - Evidencia: Desktop.Client/App.xaml.cs:29-60 escribe en %LOCALAPPDATA%\CommandCenterPOS\Logs.
 
-[ERR-03] Guardado silencioso de cierres en rutas de perfil inexistentes:
-  - Estado: ✅ CORREGIDO (ola 4).
-  - Verificación: DailyClosureService.cs:217-260 ahora usa %ProgramData%\CommandCenterPOS\Closures
-    como ruta primaria (además de legado y MyDocuments cuando hay sesión
-    interactiva), con reintentos (TryWriteFileWithRetry) y registro de
-    advertencias LogWarn en lugar de catch vacío.
+[ERR-03] Guardado silencioso de cierres diarios:
+  - Estado: ✅ TOTALMENTE CORREGIDO.
+  - Evidencia: DailyClosureService.cs:217-260 guarda en %ProgramData%\CommandCenterPOS\Closures
+    con reintentos y logging de advertencias.
 
-[CODE-01] God Classes:
-  - Estado: ❌ VIGENTE. SalesService.cs: 1.893 líneas; InventoryService.cs: 2.050.
+[CODE-01] God Classes en servicios de dominio:
+  - Estado: ❌ VIGENTE.
+  - Evidencia: SalesService.cs contiene 1.957 líneas e InventoryService.cs 2.066 líneas.
+    Concentran múltiples responsabilidades (cálculo de precios, persistencia, outbox,
+    notificaciones, SignalR, conversiones).
 
-[CODE-02] Cédulas mágicas:
-  - Estado: ❌ VIGENTE. UsersController.cs:150-151, 230, 271 con literales
-    "V-00000000"/"V-12345678".
+[CODE-02] Cédulas y usuarios administradores hardcodeados:
+  - Estado: ✅ TOTALMENTE CORREGIDO (Fase 4, commit c541b57).
+  - Evidencia: Core/Constants/SecurityConstants.cs centraliza RootAdminCedulas y el
+    método IsRootAdmin(cedula, username). UsersController.cs:151, 229, 270 utiliza
+    esta abstracción en lugar de literales mágicos dispersos.
 
-[CODE-03] Log de depuración sensible:
-  - Estado: ❌ VIGENTE. SalesService.cs:482 registra montos de conversión
-    (método de pago, Bs.S, USD) en LogInformation permanente.
+[CODE-03] Log de depuración financiera sensible en producción:
+  - Estado: ✅ TOTALMENTE CORREGIDO.
+  - Evidencia: SalesService.cs:483 utiliza _logger?.LogDebug(...) para los montos de
+    conversión cambiaria en lugar de LogInformation, evitando la contaminación y
+    fuga de datos financieros en registros de producción.
+
+--------------------------------------------------------------------------------
+G) EVALUACIÓN DE LOS HALLAZGOS OLA 4 (W1 a W5)
+--------------------------------------------------------------------------------
+[W1] Idempotencia obligatoria en cobros de venta:
+  - Estado: ✅ TOTALMENTE CORREGIDO (Fase 1, commit 2c4be32).
+  - Evidencia: SalesController.cs:338-341 rechaza peticiones sin la cabecera
+    Idempotency-Key con HTTP 400 Bad Request. El cliente web (salesApi.js:26) genera
+    claves UUID v4 para cada cobro.
+
+[W2] Formato dual de moneda y precisión decimal:
+  - Estado: 🟡 PARCIALMENTE MITIGADO.
+  - Evidencia: Web.Frontend/src/utils/formatters.js (289 líneas) y
+    Desktop.Client/Behaviors/NumericCalculatorBehavior.cs implementan el formato
+    Venezolano e Internacional sincronizados por SignalR.
+  - Residual: formatters.js realiza formateos con toFixed sobre punto flotante
+    IEEE-754 de JavaScript en lugar de aritmética entera de centavos, lo que puede
+    presentar anomalías menores de redondeo en visualización respecto al backend
+    (decimal C#).
+
+[W3] Retiro de medida temporal MT-001 (FK en CashTransaction):
+  - Estado: ✅ TOTALMENTE CORREGIDO (Fase 2, commit a07922b).
+  - Evidencia: Sales.Module/Entities/CashTransaction.cs:29 añade PaymentMethodId;
+    migración 20260905180000_AddPaymentMethodIdToCashTransactions. PaymentMethodService.cs:204
+    evalúa el uso real mediante ct.PaymentMethodId == id. docs/medidas-temporales.txt
+    actualizado a [RESUELTO - RETIRADO].
+
+[W4] Telemetría forense en purga de idempotencia:
+  - Estado: ✅ TOTALMENTE CORREGIDO (Fase 2, commit a07922b).
+  - Evidencia: IdempotencyCleanupJob.cs:107-108 registra auditoría forense con
+    AppLogger.LogSecurityAudit y fecha del registro más antiguo purgado.
+
+[W5] Stock negativo bloqueado en ventas:
+  - Estado: ✅ TOTALMENTE CORREGIDO (Fase 1, commit 2c4be32).
+  - Evidencia: SalesService.cs:615-619 invoca UpdateStockBatchAsync con
+    allowNegativeStock: false, garantizando que el stock jamás decremente por
+    debajo de cero en transacciones comerciales ordinarias.
 
 ================================================================================
-3. HALLAZGOS CRÍTICOS Y VULNERABILIDADES DE SEGURIDAD (NUEVOS Y PERSISTENTES)
+3. HALLAZGOS CRÍTICOS Y VULNERABILIDADES DE SEGURIDAD REMANENTES Y NUEVOS
 ================================================================================
 
 --------------------------------------------------------------------------------
-SEC-08 (PERSISTE) — Exposición de Información de Infraestructura en /api/health
+SEC-09 (NUEVO, MEDIO) — Crecimiento y Debilidad de CSP 'unsafe-inline' en SPA Web
 --------------------------------------------------------------------------------
-- Clasificación: CWE-200 (Exposure of Sensitive Information)
-- Archivo y Línea: Backend.API/Controllers/HealthController.cs:35, 46, 59, 62
-- Impacto: Reconocimiento de red y fuga de datos de conexión a PostgreSQL.
-- Descripción: endpoint anónimo que expone Environment.MachineName y, ante
-  fallo de BD, `message = ex.Message` con IP interna, puerto, usuario y nombre
-  de la base.
-- Recomendación: devolver únicamente { status: "healthy" } sin datos de
-  infraestructura; loguear el detalle internamente.
+- Clasificación: CWE-79 (Cross-Site Scripting) / CWE-1021 (Improper Restriction of Rendered UI)
+- Archivo y Línea: Backend.API/Middleware/SecurityHeadersMiddleware.cs:41
+- Diagnóstico: La cabecera Content-Security-Policy declara:
+  "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+  Aunque las cookies HttpOnly impiden la extracción directa del token JWT, un vector
+  XSS mediante manipulación DOM o inyección de scripts puede ejecutar acciones
+  autenticadas en nombre del usuario en sesión (p. ej. completar ventas o modificar
+  parámetros de caja).
+- Recomendación: Migrar a scripts empaquetados con nonces criptográficos o hashes
+  SHA-256 en Vite, eliminando 'unsafe-inline' en producción.
 
 --------------------------------------------------------------------------------
-SEC-06 (PERSISTE) — Allowlist de Emparejamiento Web Permisiva (RFC-1918)
+C2 (PERSISTE, CRÍTICO) — Tráfico HTTP en Texto Claro en Red Local
 --------------------------------------------------------------------------------
-- Clasificación: CWE-346 (Origin Validation Error) / Phishing en red local
-- Archivo y Línea: Web.Frontend/src/services/api.js:25-45
-- Impacto: Redirección de sesión y robo de credenciales vía QR malicioso.
-- Recomendación: restringir ?api= al host de origen o exigir un token de
-  emparejamiento firmado por el backend legítimo.
-
---------------------------------------------------------------------------------
-W5 (ALTO, NUEVO) — Stock Negativo Permitido en Ventas (Residual de A1/R3)
---------------------------------------------------------------------------------
-- Archivo y Línea: Sales.Module/Services/SalesService.cs:580-587
-- Descripción: aunque la transacción ahora es atómica, el bucle de venta
-  continúa invocando UpdateStockAsync con `allowNegativeStock: true`. En
-  InventoryService.cs:707-714 el decremento condicional (que rechazaba el
-  saldo negativo) se salta cuando allowNegativeStock=true, permitiendo vender
-  más unidades de las existentes y dejar el inventario en negativo sin
-  advertencia ni bloqueo.
-- Impacto: inventario contable inválido, cortes de stock no detectados,
-  descuadres en el reporte de existencias.
-- Recomendación: en ventas, pasar allowNegativeStock=false (el comportamiento
-  condicional ya existe) o validar existencia disponible antes del descuento
-  dentro de la misma transacción compartida; solo operaciones manuales de
-  ajuste (entradas) deberían poder producir negativos, y aun así auditadas.
-
---------------------------------------------------------------------------------
-W1 (MEDIO/ALTO, NUEVO) — Idempotencia Opcional: solo protege a quien la envía
---------------------------------------------------------------------------------
-- Archivo y Línea: Backend.API/Controllers/SalesController.cs:385-430
-- Descripción: el flujo idempotente (hash SHA-256 + índice único + replay 200)
-  solo se activa si el cliente envía la cabecera Idempotency-Key. El branch
-  `else` (sin cabecera) procesa el POST sin ninguna protección de replay.
-  El cliente Desktop la genera, pero el frontend web (paymentApi.js) y cualquier
-  cliente HTTP arbitrario pueden omitirla.
-- Impacto: doble POST simultáneo sin clave puede generar dos facturas.
-- Recomendación: exigir Idempotency-Key (422/400 si falta) en CompleteSale, o
-  derivar una clave automática del contenido (hash del cuerpo) como respaldo.
+- Clasificación: CWE-319 (Cleartext Transmission of Sensitive Information)
+- Archivo y Línea: Backend.API/Program.cs:41, AuthController.cs:139
+- Diagnóstico: Kestrel escucha en HTTP plano en el puerto 5000 por defecto. En
+  entornos de tienda con Wi-Fi compartida o switches no gestionados, el tráfico
+  de red (credenciales, transacciones, datos de clientes) es vulnerable a sniffing.
+- Recomendación: Generar un certificado X.509 autofirmado de confianza local durante
+  la instalación y habilitar redirección obligatoria HTTP → HTTPS (5000 → 5001).
 
 ================================================================================
 4. INEFICIENCIAS DE RENDIMIENTO Y GESTIÓN DE RECURSOS
 ================================================================================
 
 --------------------------------------------------------------------------------
-PERF-03 (PERSISTE) — Purga Directa sin Particionado en StockMovementArchiverJob
+PERF-05 (NUEVO, MEDIO) — Crecimiento Ilimitado de la Tabla OutboxMessages
 --------------------------------------------------------------------------------
-- Archivo y Línea: Backend.API/Jobs/StockMovementArchiverJob.cs:77-78
-- Diagnóstico: borrado masivo con ExecuteDeleteAsync genera carga WAL,
-  fragmentación y bloqueos transitorios en PostgreSQL de alto volumen.
-- Recomendación: particionar por RANGE(MovementDate) y DROP de particiones, o
-  mover a tabla histórica StockMovements_Archive. (Nota: el nuevo
-  IdempotencyCleanupJob sí usa purga por lotes — tomar ese patrón como base.)
+- Clasificación: CWE-400 (Uncontrolled Resource Consumption)
+- Archivo y Línea: Backend.API/Jobs/OutboxProcessorJob.cs:55-122; SalesDbContext.cs:25
+- Diagnóstico: Cada venta o apartado añade registros a OutboxMessages. El procesador
+  en segundo plano actualiza su estado a "Processed", pero NO existe un proceso
+  periódico de limpieza o archivado. En instalaciones de alto volumen, la tabla
+  acumulará cientos de miles de filas, degradando los índices y el buffer pool.
+- Recomendación: Añadir una tarea de mantenimiento diario que elimine o archive los
+  mensajes con Status='Processed' cuya antigüedad sea superior a 7 días.
 
 --------------------------------------------------------------------------------
-PERF-04 (MEDIO, NUEVO) — N+1 de SaveChanges por ítem dentro de la transacción
+UPD-2 (NUEVO, BAJO) — Asunción de Ruta de NSSM en UpdaterService
 --------------------------------------------------------------------------------
-- Archivo y Línea: Sales.Module/Services/SalesService.cs:580-587 +
-  Inventory.Module/Services/InventoryService.cs:707-771
-- Diagnóstico: cada ítem de una venta ejecuta su propio UpdateStockAsync con
-  lectura de producto, decremento condicional y un SaveChangesAsync individual
-  (además de invalidación de cachés por SKU y global). Una venta de 30 líneas
-  genera ~30 idas/vueltas a BD dentro de la transacción compartida, con
-  invalidaciones de caché repetidas (InvalidateAllProductCaches por ítem).
-- Recomendación: agrupar el descuento en un único ExecuteUpdateAsync por venta
-  (SUM por producto) o, al menos, posponer la invalidación de caché global a un
-  único disparo al final de CompleteSaleAsync.
+- Archivo y Línea: UpdaterService/Program.cs:60, 95
+- Diagnóstico: El actualizador invoca `RunCommand("nssm", ...)` asumiendo que el
+  binario de NSSM está en la variable de entorno PATH del sistema. Si el servicio
+  se ejecuta bajo una cuenta de servicio sin PATH estándar, la llamada falla y el
+  servicio POS no se reinicia tras la actualización.
+- Recomendación: Resolver la ruta absoluta de nssm.exe en el directorio de la
+  aplicación antes de invocar la ejecución.
 
 ================================================================================
-5. DEFICIENCIAS ARQUITECTÓNICAS Y DE INTEGRIDAD EN EL FLUJO DE DATOS
+5. DEFICIENCIAS ARQUITECTÓNICAS Y FLUJO DE DATOS
 ================================================================================
 
 --------------------------------------------------------------------------------
-W2 (MEDIO, NUEVO) — Formato Dual de Moneda Implementado Dos Veces con Riesgo de Deriva
+LOG-1 / LOG-2 (PERSISTE, BAJO) — Módulo Logistics Vacío en la Solución
 --------------------------------------------------------------------------------
-- Archivos: Web.Frontend/src/utils/formatters.js (288 líneas), Web.Frontend/src/context/CurrencyFormatContext.jsx,
-  Desktop.Client.Core/ViewModels/SettingsViewModel.cs, Desktop.Client/Behaviors/NumericCalculatorBehavior.cs
-- Descripción: la preferencia CurrencyFormat (Venezolano vs Internacional) se
-  persiste en SystemSettings (SettingsController.cs:153-175) y se replica por
-  SignalR (signalr.js:52-68) hacia web y WPF, pero cada cliente implementa su
-  propio formateo/parseo:
-  - Web: formatters.js usa `toFixed(3)` para cantidades (línea 11) y
-    `toFixed(dec)` para montos (línea 74) — operaciones sobre float binario de
-    JavaScript, con los clásicos errores de redondeo (p. ej. 1.005.toFixed(2)
-    puede producir "1.00") y límites de precisión para montos grandes.
-  - WPF: NumericCalculatorBehavior y SettingsViewModel tienen su propia lógica
-    de formato/máscara; un cambio en un lado no garantiza paridad en el otro.
-  - Además, CurrencyFormatContext.jsx:19-37 cachea la preferencia en
-    localStorage ('currency_format_preference') y la sobrescribe con la del
-    servidor al cargar — un equipo con caché vieja puede mostrar un formato
-    distinto al del servidor durante un instante (flash) o si falla el fetch.
-- Impacto: divergencia de presentación entre caja (WPF), web y comprobantes;
-  redondeos de centavos distintos entre cliente y backend decimal.
-- Recomendación: centralizar la especificación (separador miles/decimal,
-  símbolo, redondeo) en un único módulo compartido; usar aritmética decimal
-  (p. ej. Intl.NumberFormat con redondeo half-up controlado, o manejar centavos
-  como enteros) en lugar de toFixed sobre float; eliminar la caché local como
-  fuente de verdad y servir siempre desde el backend.
+- Archivos: Logistics.Module/Logistics.Module.csproj, Sales.Module/Entities/Sale.cs
+- Diagnóstico: El proyecto Logistics.Module existe en la solución sin un solo archivo
+  fuente de lógica de negocio (0 clases .cs), mientras que conceptos logísticos
+  (DeliveryStatus, PendingPickup, rol Driver) se encuentran dispersos en Sales.Module
+  y Core.
+- Recomendación: Consolidar el dominio de repartos en Logistics.Module o retirar el
+  proyecto vacío de la solución para evitar confusión arquitectónica.
 
 --------------------------------------------------------------------------------
-W3 (MEDIO, NUEVO) — Soft Delete de Métodos de Pago con Heurística Global Gruesa
+A7 (PERSISTE, ALTO) — Bloque DDL Crudo en Inicialización del Backend
 --------------------------------------------------------------------------------
-- Archivo y Línea: Sales.Module/Services/PaymentMethodService.cs:196-221
-- Descripción: DeleteAsync decide entre borrado físico y lógico con:
-  `hasCashTransactions = existing.IsCash && AnyAsync(ct => ct.IsPhysicalCash)`
-  — si EXISTE CUALQUIER transacción física de gaveta en todo el sistema, el
-  método cash se considera "usado" y se aplica soft delete, aunque ese método
-  concreto nunca haya tenido movimientos. La regla está documentada como medida
-  temporal (docs/medidas-temporales.txt, MT-001) por la ausencia de FK
-  PaymentMethodId en CashTransactions.
-- Impacto: acumulación de métodos soft-deleted no reutilizables, y borrado
-  físico posible para métodos que sí fueron usados si no hay transacciones de
-  gaveta (caso de cuentas bancarias). Reportes de auditoría pueden confundir.
-- Recomendación: agregar PaymentMethodId a CashTransactions (migración) y
-  eliminar la heurística global, evaluando uso por método concreto.
-
---------------------------------------------------------------------------------
-W4 (MEDIO, NUEVO) — Purga de IdempotentRequests vs. Retención de Auditoría
---------------------------------------------------------------------------------
-- Archivo y Línea: Backend.API/Jobs/IdempotencyCleanupJob.cs:63-105;
-  Sales.Module/Services/IdempotencyService.cs:120 (TTL 24 h)
-- Descripción: las claves idempotentes se purgan a la hora (lotes de 1.000 con
-  timeout de 2 min) tras expirar a las 24 h. Es eficiente, pero destruye el
-  registro forense de replays/mismatches (el log de seguridad solo guarda el
-  mismatch, no el payload). Tampoco hay métrica expuesta de Hits/Misses/
-  Conflicts más allá de /api/sales/idempotency-stats (estado en memoria, no
-  persistido).
-- Recomendación: retener un resumen anónimo (hash) en tabla de auditoría antes
-  de purgar, y exponer las métricas a un dashboard.
+- Archivo y Línea: Backend.API/Program.cs:444-598
+- Diagnóstico: Múltiples sentencias ALTER TABLE, CREATE TABLE, setval y creación de
+  índices se ejecutan mediante ExecuteSqlRaw dentro de un bloque try/catch no fatal.
+  Cualquier fallo de sintaxis o conflicto de base de datos no detiene el arranque,
+  generando arranques en estado inconsistente.
+- Recomendación: Extraer todo el esquema a migraciones EF Core oficiales y eliminar
+  la ejecución de DDL crudo durante el inicio de la aplicación.
 
 ================================================================================
 6. MALAS PRÁCTICAS, MANEJO DE ERRORES Y CALIDAD DE CÓDIGO
 ================================================================================
 
 --------------------------------------------------------------------------------
-ERR-01 (PARCIAL) — Controladores Bypassean Middleware y Filtran Excepciones Crudas
+CODE-01 (PERSISTE, MEDIO) — God Classes (SalesService e InventoryService)
 --------------------------------------------------------------------------------
-- Archivo y Línea: Backend.API/Controllers/SalesController.cs:52-128 (múltiples
-  catch con `message = ex.Message`), CashDrawerController.cs, UsersController.cs
-- Diagnóstico: pese al middleware mejorado (mensajes amigables por restricción,
-  sin sqlState, traceId), decenas de bloques catch en controladores devuelven
-  ex.Message en texto plano. El cliente web recibe formatos inconsistentes
-  ({ message }, { error }, texto) según el camino de error.
-- Recomendación: retirar los catch manuales que solo re-empaquetan ex.Message y
-  dejar fluir las excepciones al GlobalExceptionHandlerMiddleware, o adoptar
-  ProblemDetails (RFC 7807) en todos los caminos.
+- Archivos: Sales.Module/Services/SalesService.cs (1.957 líneas),
+  Inventory.Module/Services/InventoryService.cs (2.066 líneas)
+- Diagnóstico: Violación del Principio de Responsabilidad Única (SRP). SalesService
+  gestiona simultáneamente validación de ventas, conversión monetaria, outbox,
+  SignalR, apartados y transacciones.
+- Recomendación: Modularizar en submódulos especializados:
+  * ISalePricingCalculator
+  * ISaleStockCoordinator
+  * ISaleNotificationDispatcher
+  * IStockReservationService
 
 --------------------------------------------------------------------------------
-CODE-01 (PERSISTE) — God Classes
+H-WPF-3 (RESIDUAL, BAJO) — Métodos async void en Code-Behind de Vistas WPF
 --------------------------------------------------------------------------------
-- SalesService.cs: 1.893 líneas (facturación, impuestos, conversión monetaria,
-  inventario, SignalR, outbox, historial, apartados). InventoryService.cs: 2.050
-  líneas (variantes, precios, reservas, movimientos, catálogo, transacción
-  compartida). La ola 4 agregó ~60 líneas a SalesService y 14 a InventoryService
-  sin descomposición.
-- Recomendación: extraer IdempotencyService (ya hecho), PriceListService,
-  StockReservationService y SaleNotificationService; dividir por agregado.
-
---------------------------------------------------------------------------------
-CODE-02 (PERSISTE) — Cédulas Mágicas
---------------------------------------------------------------------------------
-- UsersController.cs:150-151, 230, 271: literales "V-00000000"/"V-12345678"
-  para identificar admin raíz. Program.cs:675 usa el mismo patrón al sembrar.
-- Recomendación: constantes centralizadas o propiedad IsRoot en User.
-
---------------------------------------------------------------------------------
-CODE-03 (PERSISTE) — Log de Depuración en Producción
---------------------------------------------------------------------------------
-- SalesService.cs:482: "[CURRENCY CONVERSION DEBUG]" con montos y método de
-  pago en LogInformation. Riesgo de fuga de datos financieros en logs y ruido.
-- Recomendación: nivel Debug/LogTrace o eliminar.
+- Archivos: Desktop.Client/Views/EditSaleDialog.xaml.cs:80,
+  Desktop.Client/Views/ImportProductsView.xaml.cs:14
+- Diagnóstico: Handlers de eventos de interfaz de usuario implementados como
+  async void. Aunque se erradicaron en Desktop.Client.Core, si ocurre una excepción
+  no controlada en estos dos eventos de vista, puede propagarse al TaskScheduler
+  y cerrar el proceso.
+- Recomendación: Envolver su ejecución en bloques try/catch que deriven a
+  AppLogger.LogCrash.
 
 ================================================================================
-7. CATÁLOGO DE EJEMPLOS: CÓDIGO PROBLEMÁTICO VS. REFACTORIZACIÓN RECOMENDADA
+7. CATÁLOGO DE EJEMPLOS: CÓDIGO PROBLEMÁTICO VS. REFACTORIZACIÓN IMPLEMENTADA Y RECOMENDADA
 ================================================================================
 
 --------------------------------------------------------------------------------
-Ejemplo 1: Permitir stock negativo en ventas (W5) — problema y corrección
+Ejemplo 1: Deducción de Stock Atómica en Lote (Implementada en Fase 3)
 --------------------------------------------------------------------------------
-// CÓDIGO ACTUAL (Sales.Module/Services/SalesService.cs:580-587):
+// CÓDIGO ANTERIOR (Problemático — N+1 llamadas y SaveChanges individuales):
 foreach (var item in _sale.Items)
 {
-    await _inventoryService.UpdateStockAsync(
-        item.ProductId,
-        -item.Quantity,
-        $"Sale #{_sale.InvoiceNumber.Value}",
-        userId: cashierId?.ToString(),
-        allowNegativeStock: true);          // <-- permite saldo negativo
+    await _inventoryService.UpdateStockAsync(item.ProductId, -item.Quantity, ...);
+    // Cada llamada ejecutaba su propio SaveChangesAsync e invalidación de caché
 }
 
-// CÓDIGO RECOMENDADO:
-foreach (var item in _sale.Items)
-{
-    await _inventoryService.UpdateStockAsync(
-        item.ProductId,
-        -item.Quantity,
-        $"Sale #{_sale.InvoiceNumber.Value}",
-        userId: cashierId?.ToString(),
-        allowNegativeStock: false);          // el decremento condicional ya
-                                             // existe en InventoryService.cs:707-714
-}
+// CÓDIGO REFACTORIZADO Y EN PRODUCCIÓN (InventoryService.cs:615-680 / SalesService.cs:615-619):
+var stockDeductions = _sale.Items
+    .Where(item => !productsDict[item.ProductId].IsCashAdvance)
+    .Select(item => new StockDeductionRequest(item.ProductId, -item.Quantity, $"Sale #{_sale.InvoiceNumber.Value}"))
+    .ToList();
+
+await _inventoryService.UpdateStockBatchAsync(stockDeductions, userId: cashierId?.ToString(), allowNegativeStock: false);
 
 --------------------------------------------------------------------------------
-Ejemplo 2: Idempotency-Key obligatoria (W1) — problema y corrección
+Ejemplo 2: Idempotencia Obligatoria en Endpoint de Cobro (Implementada en Fase 1)
 --------------------------------------------------------------------------------
-// CÓDIGO ACTUAL (Backend.API/Controllers/SalesController.cs:385-430):
+// CÓDIGO ANTERIOR (Permisivo — cabecera opcional permitía duplicados):
 string? idempotencyKey = Request?.Headers["Idempotency-Key"].ToString();
-if (!string.IsNullOrWhiteSpace(idempotencyKey))
-{
-    // ... validación y replay/mismatch
-}
-else
-{
-    // procesa el POST sin protección
-}
+if (!string.IsNullOrWhiteSpace(idempotencyKey)) { /* procesar idempotente */ }
+else { /* procesar venta sin protección */ }
 
-// CÓDIGO RECOMENDADO:
+// CÓDIGO REFACTORIZADO Y EN PRODUCCIÓN (SalesController.cs:338-341):
 string? idempotencyKey = Request?.Headers["Idempotency-Key"].ToString();
 if (string.IsNullOrWhiteSpace(idempotencyKey))
 {
     return BadRequest(new { message = "El encabezado Idempotency-Key es obligatorio para completar una venta." });
 }
-// ... a partir de aquí el flujo existente
 
 --------------------------------------------------------------------------------
-Ejemplo 3: Formato monetario con float binario (W2) — problema y corrección
+Ejemplo 3: Retención y Purga de OutboxMessages (Recomendación Futura)
 --------------------------------------------------------------------------------
-// CÓDIGO ACTUAL (Web.Frontend/src/utils/formatters.js:74):
-const parts = absNum.toFixed(dec).split('.');   // toFixed sobre float binario
-// 1.005.toFixed(2) puede devolver "1.00" por representación IEEE-754
-
-// CÓDIGO RECOMENDADO (redondeo half-up sobre representación decimal):
-function roundDecimal(value, decimals) {
-  const factor = 10 ** decimals;
-  return Math.round((value + Number.EPSILON) * factor) / factor;
+// PROPUESTA DE IMPLEMENTACIÓN PARA OutboxProcessorJob.cs:
+public async Task PurgeProcessedMessagesAsync(CancellationToken ct)
+{
+    var cutoff = DateTime.UtcNow.AddDays(-7);
+    await dbContext.Database.ExecuteSqlRawAsync(
+        @"DELETE FROM ""OutboxMessages"" 
+          WHERE ""Status"" = 'Processed' AND ""ProcessedAtUtc"" < {0}", cutoff, ct);
 }
-// o, mejor, usar Intl.NumberFormat(locale, { minimumFractionDigits: dec,
-// maximumFractionDigits: dec, useGrouping: true }) y validar montos en el
-// backend (decimal en C#) como fuente de verdad.
-
---------------------------------------------------------------------------------
-Ejemplo 4: Heurística global de uso de métodos de pago (W3) — problema y corrección
---------------------------------------------------------------------------------
-// CÓDIGO ACTUAL (Sales.Module/Services/PaymentMethodService.cs:209):
-bool hasCashTransactions = existing.IsCash && await _context.CashTransactions
-    .AnyAsync(ct => ct.IsPhysicalCash);   // CUALQUIER transacción del sistema
-
-// CÓDIGO RECOMENDADO (tras migración con FK):
-bool hasCashTransactions = existing.IsCash && await _context.CashTransactions
-    .AnyAsync(ct => ct.PaymentMethodId == id);   // uso real de ESTE método
 
 ================================================================================
-8. PLAN DE REMEDIACIÓN PRIORIZADO (ESTADO TRAS FASES 1 A 4)
+8. PLAN DE REMEDIACIÓN Y ROADMAP FUTURO (POST-FASE 4)
 ================================================================================
-La ola 4 (commits 0fc4068→36aa33b) ya implementó las fases 1-4 del plan de la
-Rev. 4.0. Estado del plan original:
 
-  FASE 1 (Seguridad/estabilidad) — IMPLEMENTADA ✅
-    Zip Slip ✅ · CSPRNG instalador ✅ · Lockout change-password ✅ ·
-    Reactivación admins ✅ · Crash logger ✅
-  FASE 2 (Rendimiento/flujo) — IMPLEMENTADA ✅
-    SumAsync caja ✅ · Split queries ✅ · Arqueo con métodos desactivados ✅ ·
-    Política de contraseñas ✅
-  FASE 3 (Arquitectura/resiliencia) — IMPLEMENTADA (con residuales) ✅/🟡
-    Transacción compartida ✅ · Idempotencia SHA-256 ✅ (opcional W1) ·
-    HTTPS obligatorio ⚠️ NO (C2 vigente) · Errores estandarizados 🟡 (ERR-01)
-  FASE 4 (Higiene) — PARCIAL 🟡
-    God Classes ⚠️ pendiente · Cabeceras redundantes ⚠️ pendiente ·
-    Particionado StockMovements ⚠️ pendiente
+SPRINT 1 — Infraestructura y Seguridad de Red:
+  1. [C2] Implementación de transporte HTTPS por defecto en red local (LAN)
+     mediante generación automatizada de certificado en setup.iss y redirección 301.
+  2. [SEC-09] Eliminación de 'unsafe-inline' en CSP de SecurityHeadersMiddleware.cs.
+  3. [C1 / C3] Rotación y almacenamiento cifrado de la clave JWT y secretos
+     mediante DPAPI / Windows Credential Manager en lugar de NSSM AppEnvironmentExtra.
 
-PLAN REV. 5.0 (próximo sprint):
-  PRIORIDAD 1 — Seguridad:
-    1. [W5] allowNegativeStock: false en ventas (cambio de 1 línea + tests).
-    2. [W1] Exigir Idempotency-Key en CompleteSale; el web debe enviarla.
-    3. [SEC-08] Sanear /api/health (sin machineName ni ex.Message).
-    4. [C2] Hacer obligatorio HTTPS (redirect 5000→5001) o al menos cookie
-       Secure=true en toda la LAN y eliminar el fallback de contraseña PFX.
-    5. [SEC-06] Restringir ?api= al host de origen o token de emparejamiento.
-  PRIORIDAD 2 — Integridad financiera:
-    6. [W3] Migración para PaymentMethodId en CashTransactions; retirar MT-001.
-    7. [W4] Retener hash de idempotencia en auditoría antes de purgar.
-  PRIORIDAD 3 — Arquitectura:
-    8. [CODE-01] Descomponer SalesService/InventoryService por agregado.
-    9. [ARQ-03] Eliminar X-User-Role/X-User-Id del handler desktop.
-    10. [PERF-03] Particionar StockMovements y purgar por DROP de partición.
-    11. [A7] Reemplazar el bloque de DDL crudo de Program.cs:444-509 por
-        migraciones EF y eliminar el catch silencioso.
-  PRIORIDAD 4 — Consistencia de formato y código:
-    12. [W2] Módulo único de formato monetario (web/WPF/comprobantes),
-        redondeo decimal determinista.
-    13. [CODE-02/03] Constantes de cédula raíz; bajar nivel del log de depuración.
+SPRINT 2 — Mantenimiento de Datos y Base de Datos:
+  4. [A7] Migración del bloque DDL crudo de Program.cs hacia migraciones formales
+     de Entity Framework Core (SalesDbContext e InventoryDbContext).
+  5. [PERF-05] Implementación del job de purga programada para OutboxMessages procesados.
+  6. [UPD-2] Resolución de ruta absoluta para nssm.exe en UpdaterService.
+
+SPRINT 3 — Arquitectura y Modularización:
+  7. [CODE-01] Refactorización de God Classes (SalesService e InventoryService) en
+     servicios de granularidad fina orientados al dominio.
+  8. [LOG-1 / LOG-2] Consolidación del módulo de Logística o retiro de la solución.
+  9. [H-WPF-3] Protección de eventos async void residuales en code-behind de diálogos WPF.
 
 ================================================================================
-9. ANEXO: MATRIZ COMPLETA DE EVIDENCIA TÉCNICA (ARCHIVO:LÍNEA) — REV. 5.0
+9. ANEXO: MATRIZ COMPLETA DE EVIDENCIA TÉCNICA (ARCHIVO:LÍNEA) — REV. 6.0
 ================================================================================
-- C1 (JWT): Backend.API/Program.cs:148-156, :151; installer/setup.iss:108-114, :307;
-  installer/Configure-PosService.ps1:54-57, :218-233
-- C2 (HTTP LAN): Backend.API/Program.cs:36-54, :792-799; installer/setup.iss:275-289;
-  Backend.API/Controllers/AuthController.cs:131
-- C3 (Secretos): Backend.API/appsettings.Development.json; installer/setup.iss:307
-- C4 (Web tokens): Backend.API/Middleware/SecurityHeadersMiddleware.cs:41;
-  Web.Frontend/src/context/AuthContext.jsx:9,37,56; Web.Frontend/src/services/api.js:216-217;
-  Backend.API/appsettings.json (JWT 1440 min) vs AuthController.cs (cookie 120 min)
-- A1 ✅: Sales.Module/Services/SalesService.cs:388, :1775; Inventory.Module/Services/InventoryService.cs:2037-2047, :663-664, :771
-- A2 ✅: Backend.API/Program.cs:448
-- A3 ✅: Core/Entities/IdempotentRequest.cs; Sales.Module/Services/IdempotencyService.cs:88-120;
-  Backend.API/Controllers/SalesController.cs:385-430, :459-495; Backend.API/Jobs/IdempotencyCleanupJob.cs:63-105
-- A4 ❌ / PERF-03 ❌: Backend.API/Jobs/StockMovementArchiverJob.cs:77-78
-- A5 🟡: Backend.API/Controllers/AuthController.cs:62, :214, :218-263;
-  Backend.API/Middleware/MustChangePasswordMiddleware.cs:28-55; Backend.API/Services/TokenService.cs:76-79
-- A6 ✅ / SEC-04 ✅: Core/Services/PasswordPolicyService.cs:44-100;
-  Backend.API/Controllers/UsersController.cs:102-112, :329
-- A7 ❌: Backend.API/Program.cs:444-509, :596-598
-- A8 ✅ / SEC-05 ✅: Backend.API/Program.cs:669-671
-- SEC-01 ✅: UpdaterService/UpdatePackageExtractor.cs:32-96; UpdaterService/Program.cs:52-69
-- SEC-02 ✅ gen / 🟡 almacenamiento: installer/setup.iss:108-114;
-  installer/Configure-PosService.ps1:54-57, :187-193, :218-233
-- SEC-03 ✅: Backend.API/Controllers/AuthController.cs:218-263
-- SEC-06 ❌: Web.Frontend/src/services/api.js:25-45
-- SEC-07 🟡: Backend.API/Program.cs:792-799, :811
-- SEC-08 ❌: Backend.API/Controllers/HealthController.cs:35, :46, :59, :62
-- PERF-01 ✅: Sales.Module/Services/CashDrawerService.cs:195-224
-- PERF-02 ✅: Sales.Module/Services/SalesService.cs:122, :675, :697-698, :1172-1173, :1195;
-  Backend.API/Program.cs:99-101
-- PERF-04 (NUEVO): Sales.Module/Services/SalesService.cs:580-587; Inventory.Module/Services/InventoryService.cs:707-771
-- ARQ-01 ✅: Sales.Module/Services/DailyClosureService.cs:62
-- ARQ-02 ✅: (ver A1)
-- ARQ-03 ❌: Desktop.Client.Core/Services/UserSessionHeaderHandler.cs:54-58
-- ERR-01 🟡: Backend.API/Middleware/GlobalExceptionHandlerMiddleware.cs:46-70, :200-243, :244-262;
-  Backend.API/Controllers/SalesController.cs:52-128
-- ERR-02 ✅: Desktop.Client/App.xaml.cs:29-60
-- ERR-03 ✅: Sales.Module/Services/DailyClosureService.cs:217-260
-- CODE-01 ❌: Sales.Module/Services/SalesService.cs (1.893 líneas); Inventory.Module/Services/InventoryService.cs (2.050 líneas)
-- CODE-02 ❌: Backend.API/Controllers/UsersController.cs:150-151, :230, :271
-- CODE-03 ❌: Sales.Module/Services/SalesService.cs:482
-- W1 (NUEVO): Backend.API/Controllers/SalesController.cs:385-430; Web.Frontend/src/services/paymentApi.js
-- W2 (NUEVO): Web.Frontend/src/utils/formatters.js:11, :74; Web.Frontend/src/context/CurrencyFormatContext.jsx:19-37;
-  Web.Frontend/src/services/signalr.js:52-68; Backend.API/Controllers/SettingsController.cs:153-175;
-  Desktop.Client/Behaviors/NumericCalculatorBehavior.cs; Desktop.Client.Core/ViewModels/SettingsViewModel.cs:49-59
-- W3 (NUEVO): Sales.Module/Services/PaymentMethodService.cs:196-221; docs/medidas-temporales.txt (MT-001)
-- W4 (NUEVO): Backend.API/Jobs/IdempotencyCleanupJob.cs:63-105; Sales.Module/Services/IdempotencyService.cs:120
-- W5 (NUEVO): Sales.Module/Services/SalesService.cs:580-587; Inventory.Module/Services/InventoryService.cs:707-714
+- C1 (JWT): Backend.API/Program.cs:148-154; installer/Configure-PosService.ps1:54-57, :218-233
+- C2 (HTTP LAN): Backend.API/Program.cs:41; installer/setup.iss:275-289; AuthController.cs:139
+- C3 (Secretos dev): Backend.API/appsettings.Development.json
+- C4 (Web TTL 120m): Backend.API/appsettings.json:19; Backend.API/Controllers/AuthController.cs:142
+- A1 ✅ (Tx compartida): Sales.Module/Services/SalesService.cs:388; Inventory.Module/Services/InventoryService.cs:2037
+- A2 ✅ (Secuencia facturas): Backend.API/Program.cs:448
+- A3 ✅ (Idempotencia SHA-256): Sales.Module/Services/IdempotencyService.cs:88-120; SalesController.cs:408-435
+- A4 ✅ (Archivo stock): Backend.API/Jobs/StockMovementArchiverJob.cs:80-116; Core/Entities/StockMovementArchive.cs
+- A5 ✅ (Anti-enumeración): Backend.API/Controllers/AuthController.cs:62, :97
+- A6 ✅ (Políticas clave): Core/Services/PasswordPolicyService.cs:44-100; UsersController.cs:103
+- A7 ❌ (DDL crudo): Backend.API/Program.cs:444-598
+- A8 ✅ (No reactivar admin): Backend.API/Program.cs:669-671
+- SEC-01 ✅ (Zip Slip): UpdaterService/UpdatePackageExtractor.cs:32-96
+- SEC-02 ✅ gen / 🟡 persist: installer/Configure-PosService.ps1:54-57, :218-233
+- SEC-03 ✅ (Lockout cambio clave): Backend.API/Controllers/AuthController.cs:218-263
+- SEC-06 ✅ (Allowlist web): Web.Frontend/src/services/api.js:25-31, :56-64
+- SEC-07 🟡 (Certificado dev): Backend.API/Program.cs:792-806
+- SEC-08 ✅ (Health saneado): Backend.API/Controllers/HealthController.cs:23-64
+- PERF-01 ✅ (SumAsync caja): Sales.Module/Services/CashDrawerService.cs:207-223
+- PERF-02 ✅ (SplitQuery): Backend.API/Program.cs:99-101; SalesService.cs:122, :675
+- PERF-03 ✅ (Lotes archivo): Backend.API/Jobs/StockMovementArchiverJob.cs:77-116
+- PERF-04 ✅ (Batch deducción stock): Inventory.Module/Services/InventoryService.cs:615-680; SalesService.cs:613-619
+- PERF-05 🟡 (Outbox cleanup pendiente): Backend.API/Jobs/OutboxProcessorJob.cs:55-122
+- ARQ-01 ✅ (Arqueo con inactivos): Sales.Module/Services/DailyClosureService.cs:62
+- ARQ-02 ✅ (Transacción coordinada): (ver A1)
+- ARQ-03 ✅ (Cabeceras texto plano retiradas): Desktop.Client.Core/Services/UserSessionHeaderHandler.cs:38-50
+- ERR-01 🟡 (ProblemDetails estándar): Backend.API/Middleware/GlobalExceptionHandlerMiddleware.cs:46-70; SalesController.cs:383-435
+- ERR-02 ✅ (Crash logger AppData): Desktop.Client/App.xaml.cs:29-60
+- ERR-03 ✅ (Cierres ProgramData): Sales.Module/Services/DailyClosureService.cs:217-260
+- CODE-01 ❌ (God Classes): SalesService.cs (1.957 líneas); InventoryService.cs (2.066 líneas)
+- CODE-02 ✅ (SecurityConstants admin): Core/Constants/SecurityConstants.cs:10-24; UsersController.cs:151, :229, :270
+- CODE-03 ✅ (LogDebug monedas): Sales.Module/Services/SalesService.cs:483
+- W1 ✅ (Idempotency-Key obligatoria): Backend.API/Controllers/SalesController.cs:338-341; Web.Frontend/src/services/salesApi.js:26
+- W2 🟡 (Formato dual / float precisión): Web.Frontend/src/utils/formatters.js:74; Desktop.Client/Behaviors/NumericCalculatorBehavior.cs
+- W3 ✅ (FK PaymentMethodId / fin MT-001): Sales.Module/Services/PaymentMethodService.cs:204; CashTransaction.cs:29
+- W4 ✅ (Forense Idempotencia): Backend.API/Jobs/IdempotencyCleanupJob.cs:107-108
+- W5 ✅ (Stock negativo bloqueado): Sales.Module/Services/SalesService.cs:615-619
+- H-API-2 ✅ (Anti-backdating cierre): Backend.API/Controllers/DailyClosureController.cs:87-115
+- H-API-4 ✅ (RBAC adelantos efectivo): Backend.API/Controllers/CashDrawerController.cs:185-192
+- H-API-8 ✅ (Historial tasas clamp): Backend.API/Controllers/ExchangeRateController.cs:74-82
+- H-INV-6 ✅ (Take 10 sugerencias): Inventory.Module/Services/InventoryService.cs:1011
+- H-DCC-2 ✅ (TLS Scanner LAN): Desktop.Client.Core/Services/SubnetScannerService.cs:44-59
+- H-DCC-5 ✅ (0 async void en DCC): Core/Common/TaskExtensions.cs:13; Desktop.Client.Core/ViewModels/
+- H-WPF-2 ✅ (Shutdown no bloqueante): Desktop.Client/App.xaml.cs:306-355
+- UPD-1 ✅ (SHA-256 en actualizador): UpdaterService/Program.cs:32-56
 
 ================================================================================
-FIN DEL REPORTE TÉCNICO — REVISIÓN 5.0
+FIN DEL REPORTE TÉCNICO — REVISIÓN 6.0
 ================================================================================
