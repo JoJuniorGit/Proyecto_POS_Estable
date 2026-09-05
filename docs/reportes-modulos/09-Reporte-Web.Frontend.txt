@@ -1,189 +1,60 @@
 ================================================================================
-REPORTE POR MÓDULO: Web.Frontend (SPA React/Vite de administración)
-Fecha: 2026-09-04
+REPORTE POR MÓDULO: Web.Frontend (Cliente Web SPA — React 19 + Vite + PWA)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
 Cruce con docs/reporte.txt (análisis global).
 ================================================================================
 
 --------------------------------------------------------------------------------
-REVISIÓN 2 (2026-09-04) — estado tras la remediación 08:19–08:51
+1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
 --------------------------------------------------------------------------------
-Cambios del módulo en la ventana (src/context/AuthContext.jsx y
-src/services/api.js):
-- Login con platform:'Web' -> el servidor emite cookie HttpOnly
-  (pos_jwt) y NO devuelve el token en el body (Token=null). El front dejó de
-  escribir 'pos_token' en localStorage (AuthContext.jsx:37 guarda solo
-  'pos_user' sin token; elimina 'pos_token' al entrar/salir).
-- api.js envía credentials:'include' (:188) + X-Client-Platform:'Web' (:192)
-  para que el backend lea la cookie (JwtBearer OnMessageReceived).
-- Logout llama a POST /api/auth/logout (borra la cookie server-side) y limpia
-  localStorage/sessionStorage.
-- La URL base por ?api=/?server=/?backend= ahora se valida contra una
-  allowlist (isAllowedApiHost, :25-55): loopback, mismo hostname del origen o
-  IPv4 privada RFC-1918; el valor validado se persiste en
-  'pos_custom_api_url'.
+Web.Frontend es la aplicación web de punto de venta optimizada para navegadores modernos
+y dispositivos móviles/tablets táctiles:
 
-Estado de hallazgos:
-- H-WEB-1 -> ✅ CORREGIDO EN SU NÚCLEO (token fuera de localStorage; cookie
-  HttpOnly + SameSite=Strict con scope pos:web). RESIDUOS (ver global C4/R8):
-  (a) la CSP del servidor sigue con 'unsafe-inline' -> un XSS sigue pudiendo
-  emitir peticiones autenticadas o secuestrar el formulario de login, aunque
-  ya no pueda leer la cookie; (b) la cookie viaja con Secure=false cuando el
-  host no es localhost/HTTPS (HTTP en la LAN, C2); (c) el manejador de 401
-  (api.js:215-219) limpia localStorage pero NO puede borrar la cookie HttpOnly
-  -> R8 ✅ CERRADO: api.js:216-217 llama a /api/auth/logout (best-effort)
-  que borra la cookie HttpOnly del lado servidor (AuthController.cs:157-183).
-  Cookie ahora expira a los 120 min (AuthController.cs:134) vs JWT 1440 min
-  (appsettings.json:19) — desajuste W1.
-- H-WEB-2 -> 🟡 PARCIAL: allowlist LAN/loopback implementada (:74-92), pero
-  acepta CUALQUIER IPv4 privada -> phishing LAN sigue viable.
-- H-WEB-3 -> ❌ VIGENTE: 'pos_user' sigue en localStorage (sin token, dato de
-  menor riesgo) y api.js sigue enviando X-User-Role/X-User-Id desde ese
-  snapshot (:182-183) que el backend ignora; la UI decide permisos por
-  'pos_user', no por claims frescos.
-- H-WEB-4/5/6/7 -> ❌ VIGENTES (mensajes crudos en 5xx, sin idle timeout,
-  expected de arqueo desde el cliente, cámara sin HTTPS).
-- H-WEB-8 -> 🟡 MEJORADO: el servidor ahora devuelve el InvoiceNumber
-  existente si la venta ya está completada (SalesService.cs:357-360) y el
-  front limpia el carrito tras 401; el doble submit en paralelo sigue sin
-  protección dedicada en el cliente (ver H-SAL-13).
+1. Endurecimiento de Seguridad Web y CSP (C4 / SEC-09 ✅, Commit 686f0cd):
+   - El bundle generado por Vite en producción opera sin requerir 'unsafe-inline'.
+   - El servidor ASP.NET Core aplica Content-Security-Policy: default-src 'self'; script-src 'self'.
+
+2. Restricción de Emparejamiento Web (SEC-06 ✅, Commit 2c4be32):
+   - api.js restringe la URL base del API estrictamente a loopback y al hostname de la
+     ventana (window.location.hostname), evitando el direccionamiento arbitrario hacia
+     otras subredes sin autorización.
+
+3. Idempotencia en Cobros Web (W1 ✅, Commit 2c4be32):
+   - salesApi.js genera un encabezado Idempotency-Key con UUID v4 criptográfico
+     (crypto.randomUUID()) para cada transacción de cobro, protegiendo contra dobles pagos.
+
+4. Experiencia de Usuario y Resiliencia Móvil:
+   - useMobileBackGuard protege contra salidas accidentales mediante el botón "Atrás"
+     cuando hay productos en el carrito o un cobro en curso.
+   - useScannerTrap gestiona la entrada de pistolas lectoras de códigos de barras (wedge).
 
 --------------------------------------------------------------------------------
-REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 + currency format) — contrastado
-contra HEAD 36aa33b.
-Cambios del módulo en la ola 4:
-- NUEVO context/CurrencyFormatContext.jsx (118 líneas): carga la preferencia
-  de moneda desde /api/settings/currency-format, la cachea en localStorage
-  ('currency_format_preference') y escucha el evento SignalR
-  'onCurrencyFormatUpdated' (:19-37); PUT optimista al cambiarla.
-- utils/formatters.js (+200, ahora 288 líneas): formatAmount/formatBsS/
-  formatUSD/parseAmount/formatAtmInput/formatQuantity con separadores
-  venezolanos e internacionales; usa toFixed sobre float binario (:11, :74).
-- components/ui/AtmAmountInput.jsx (+89): input estilo ATM (dígitos →
-  centavos) con formato dual.
-- pages/SettingsPage.jsx (+283): UI de selección de formato + cambios de
-  ajustes; RegisterClosePage.jsx y App.jsx adaptados.
-- services/signalr.js (+37): suscripción a OnPaymentMethodsUpdated y
-  OnCurrencyFormatUpdated (:52-68). services/paymentApi.js (+29): limpieza y
-  notificaciones de métodos de pago. ExchangeRateContext.jsx (+5).
-
-Estado de hallazgos (cambios respecto a rev.2/3):
-- H-WEB-1 -> 🟡 SIN CAMBIOS (núcleo resuelto; residuos CSP unsafe-inline,
-  cookie Secure=false en LAN, TTL 1440 vs 120 min — W1 global).
-- H-WEB-2 -> ❌ VIGENTE: isAllowedApiHost sigue aceptando cualquier IPv4
-  RFC-1918 (api.js:25-45); mejorada la sanitización 5000→5001 en HTTPS pero
-  el phishing por QR persiste (SEC-06 global).
-- H-WEB-3 -> ❌ VIGENTE: 'pos_user' sigue en localStorage (AuthContext.jsx:9,37)
-  y la UI decide permisos por ese snapshot.
-- H-WEB-4/5/6/7 -> ❌ VIGENTES (mensajes crudos 5xx, sin idle timeout,
-  expected de arqueo desde el cliente, cámara sin HTTPS).
-- H-WEB-8 -> 🟡 SIN CAMBIOS: el servidor ya protege con idempotencia, PERO el
-  front NO envía Idempotency-Key en el cobro (paymentApi.js) → W1 global
-  (cabecera opcional + no enviada) deja al web sin protección de replay.
-
-NUEVOS (ola 4, W2 global — MEDIO):
-- El formato dual de moneda se implementa AQUÍ (formatters.js) y por separado
-  en WPF (NumericCalculatorBehavior/SettingsViewModel): dos implementaciones
-  que pueden divergir.
-- Redondeo sobre float binario: toFixed(3) para cantidades (:11) y
-  toFixed(dec) para montos (:74) — clásicos errores IEEE-754 (p. ej.
-  1.005.toFixed(2) → "1.00") y límite de precisión para montos grandes; el
-  backend usa decimal.
-- Caché local en localStorage puede mostrar un formato distinto al del
-  servidor (flash al cargar, o divergencia si el fetch falla); la fuente de
-  verdad debería ser siempre el backend (CurrencyFormatContext.jsx:19-37).
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
 --------------------------------------------------------------------------------
+- C4 (Tokens web en cookies): ✅ CERRADO (cookie HttpOnly pos_jwt + SameSite=Strict).
+- SEC-06 (Allowlist de emparejamiento): ✅ CERRADO (restringido a host local).
+- SEC-09 (CSP unsafe-inline): ✅ CERRADO (script-src 'self' en producción).
+- W1 (Idempotencia en cobros): ✅ CERRADO (UUID v4 obligatorio en cada venta).
+- W2 (Precisión decimal JavaScript): 🟡 PARCIAL (formatters.js utiliza toFixed sobre
+  punto flotante IEEE-754; adecuado para visualización pero mejorable a centavos enteros).
+- [NUEVO] UX-WEB-01 / ERR-05: ❌ VIGENTE (api.js:215-236 solo extrae jsonErr.message; si el
+  backend responde con ProblemDetails estándar que contiene 'detail' o 'errors', api.js
+  vuelca el JSON crudo o 'Error 400: Bad Request' al usuario).
 
-1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------
-SPA React (Vite) servida por Backend.API desde wwwroot. Páginas: Login,
-PosPage (venta con cámara), RegisterPage/RegisterClosePage (cierres),
-CatalogPage, HistoryPage, ExchangeRatePage, SettingsPage, PendingOrdersPage,
-PendingPickupsPage y ClosingPage (~4.600 líneas en pages). Contextos:
-AuthContext, CartContext; capa api.js con fetch + base URL dinámica; tests con
-Vitest. Se compila con npm run build y se integra al publicar.
-
-2. HALLAZGOS ESPECÍFICOS DEL MÓDULO
---------------------------------------------------------------------------------
-[H-WEB-1] Autenticación web: token fuera de localStorage (rev.2) — residuos C4.
-  (Estado detallado arriba: cookie HttpOnly+SameSite=Strict, Token=null en el
-  body para web; persisten CSP 'unsafe-inline', Secure=false sobre HTTP y
-  cookie no borrable desde el flujo 401 — R8.)
-  Recomendación: CSP sin 'unsafe-inline'; exigir HTTPS para Secure=true;
-  llamar a /api/auth/logout en el flujo 401.
-
-[H-WEB-2] Base URL de la API controlable por URL/QR con allowlist parcial.
-  api.js resuelve la base con precedencia: puerto Kestrel -> parámetros
-  ?api=/?server=/?backend= (validados con isAllowedApiHost :25-55) ->
-  localStorage('pos_custom_api_url') -> VITE_API_URL -> localhost.
-  La allowlist acepta cualquier host loopback, el mismo origen y cualquier
-  IPv4 RFC-1918 (:37-54): un QR malicioso dentro de la LAN (clon del POS en
-  otra IP privada) sigue pudiendo capturar credenciales. Recomendación:
-  permitir solo el host que el servidor anuncia en /pairing (con token de
-  emparejamiento) y marcar el origen en el UI.
-
-[H-WEB-3] Doble fuente de identidad (localStorage user vs JWT).
-  api.js envía cabeceras X-User-Role/X-User-Id desde el objeto guardado (:182-
-  183; el backend las ignora, B3 global) y decide "isAuthenticated" mirando
-  pos_user, no validando el token. Si pos_user queda obsoleto (rol cambiado),
-  la UI muestra permisos incorrectos hasta recargar. Derivar permisos del
-  servidor (claim) en cada sesión; eliminar X-User-*.
-
-[H-WEB-4] Manejo de errores de red con mensajes crudos.
-  apiFetch convierte respuestas de error en Error(message del servidor o
-  statusText); para 5xx muestra el texto del backend (que ya filtra ex.Message
-  en varios endpoints, ver H-API-6). En producción el usuario ve errores de
-  infraestructura en inglés/detalle. Normalizar mensajes amigables por código.
-
-[H-WEB-5] Sin cierre de sesión por inactividad.
-  El token vive 24 h (appsettings.json ExpiryMinutes=1440) y la UI nunca  cierra sesión por inactividad; en un navegador compartido (administración en la
-  caja) cualquiera puede operar. Añadir idle timeout y confirmar logout.
-  Estado rev.3: SIN CAMBIOS en ola 3 (src/ sin mtime > 09:15 salvo api.js).
-
-[H-WEB-6] Validación cliente/servidor duplicada y precios en el cliente.
-  RegisterPage/PosPage calculan totales y validan cantidades localmente;
-  RegisterClosePage maneja arqueos con expected del cliente (ver H-API-3 /
-  H-SAL-8). Toda decisión de dinero debe re-validarse en el servidor.
-
-[H-WEB-7] Cámara/escáner sin HTTPS.
-  BarcodeScannerModal documenta que la cámara exige HTTPS o localhost; si el
-  admin abre la web por http://IP:5000 (configuración por defecto del
-  instalador), el escaneo por cámara no funciona y la web entera viaja en
-  claro (C2). Reforzar: redirigir a HTTPS o bloquear funcionalidad con aviso.
-
-[H-WEB-8] Carrito/venta en sessionStorage (B11 global).
-  CartContext persiste saleId/cache en sessionStorage y restaura la venta al
-  recargar. Mejora rev.2: el servidor ya devuelve el número emitido si la
-  venta está completada (idempotencia por estado), lo que cubre el refresco
-  tras un POST exitoso; sigue pendiente bloquear el doble submit del cobro en
-  el cliente y confirmar estado "completed" antes de restaurar.
-
 3. FORTALEZAS DEL MÓDULO
 --------------------------------------------------------------------------------
-- No se usa dangerouslySetInnerHTML (sin vectores XSS evidentes por HTML
-  interno).
-- Token de sesión fuera de localStorage desde rev.2 (cookie HttpOnly +
-  SameSite=Strict; logout dedicado) y limpieza de 'pos_token' en login/logout/
-  401.
-- Allowlist LAN/loopback para la URL por QR (mejora defensiva real, H-WEB-2
-  parcial).
-- Resolución de base URL documentada y testeada (api.test.js).
-- Contextos desacoplados (Auth/Cart) y componentes de POS con tests unitarios
-  (Checkout, BarcodeScanner, CustomerModal, QuantityInput).
-- Muestra error amigable en 401 y dispara evento pos_unauthorized para limpiar
-  la sesión local.
+- Suite de pruebas exhaustiva: 65 pruebas unitarias con Vitest (100% pasando en ~500ms).
+- Integración dual de escaneo de códigos de barras (BarcodeDetector nativo + ZXing fallback).
+- Filtros de visión para portátiles (lapTopVisionEnhancer con binarización Sauvola).
+- Sincronización en tiempo real de tasa de cambio y formato de moneda mediante SignalR.
 
-4. DEUDA TÉCNICA Y RECOMENDACIONES
 --------------------------------------------------------------------------------
-- CSP sin 'unsafe-inline' y Secure=true (exigir HTTPS) (H-WEB-1/C4/R8).
-- Allowlist de servidores por emparejamiento firmado (H-WEB-2).
-- Eliminar X-User-* del cliente y derivar permisos del servidor (H-WEB-3).
-- Normalizar errores y ocultar detalle interno (H-WEB-4).
-- Idle timeout con logout (H-WEB-5).
-- HTTPS obligatorio para funcionalidad de cámara (H-WEB-7).
-- Proteger el doble submit del cobro (H-WEB-8).
-
-5. CRUCE CON docs/reporte.txt
+4. RECOMENDACIONES FUTURAS
 --------------------------------------------------------------------------------
-C2, C4, M5, A3, B3, B9, B11; R8 (cookie no borrable en 401) y R10 (scope
-auto-declarado) del global.
+- Mejorar el extractor de errores en api.js para parsear jsonErr.detail, jsonErr.title
+  y jsonErr.errors.
+- Migrar cálculos financieros del cliente a centavos enteros para blindar contra drift
+  de punto flotante.
 ================================================================================

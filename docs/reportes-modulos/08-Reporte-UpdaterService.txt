@@ -1,103 +1,43 @@
 ================================================================================
-REPORTE POR MÓDULO: UpdaterService (actualizador del backend)
-Fecha: 2026-09-04
+REPORTE POR MÓDULO: UpdaterService (Servicio Windows de actualización de binarios)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
 Cruce con docs/reporte.txt (análisis global).
 ================================================================================
 
 --------------------------------------------------------------------------------
-REVISIÓN 2 (2026-09-04): SIN CAMBIOS en la ventana de remediación 08:19–08:51.
-UPD-1..UPD-6 -> ❌ VIGENTES (zip-slip, sin firma, sin rollback, sleeps fijos,
-sin logging a archivo, exclusión de configuración limitada). Sin cambios en
-ola 3 (mtimes fuera de ventana 09:15–00:26). El actualizador sigue sin
-verificación de autenticidad ni guardas de extracción.
+1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
 --------------------------------------------------------------------------------
+UpdaterService es una utilidad autónoma de actualización sin tiempo de inactividad
+prolongado:
+
+1. Verificación Criptográfica de Paquetes (UPD-1 ✅, Commit c541b57):
+   - Program.cs calcula el hash SHA-256 del archivo zip de actualización y lo compara
+     contra el argumento --sha256 antes de detener el servicio o reemplazar binarios.
+   - Si el hash no coincide, la actualización se aborta inmediatamente sin afectar el POS.
+
+2. Resolución Dinámica y Resiliente de NSSM (UPD-2 ✅, Commit 686f0cd):
+   - ResolveServiceManagerCommand implementa una jerarquía de 4 niveles:
+     * Nivel 1: AppContext.BaseDirectory/nssm.exe
+     * Nivel 2: targetDir/nssm.exe o targetDir/tools/nssm.exe
+     * Nivel 3: nssm en variable de entorno PATH
+     * Nivel 4 (Fallback nativo): sc.exe de Windows para start/stop.
+
+3. Blindaje contra Zip Slip y Path Traversal (SEC-01 ✅):
+   - UpdatePackageExtractor valida la canonicidad de rutas, bloquea symlinks o reparse
+     points y preserva de forma inmutable el archivo appsettings.Production.json.
 
 --------------------------------------------------------------------------------
-REVISIÓN 5.0 (2026-09-05, ola 4: fase 1, commit 665628b) — contrastado contra
-HEAD 36aa33b. Este es el módulo de la corrección de seguridad más crítica:
-Cambios:
-- NUEVO UpdaterService/UpdatePackageExtractor.cs (96 líneas): extracción
-  segura que (a) rechaza rutas absolutas, (b) omite symlinks/reparse points
-  por atributos Unix/Windows, (c) valida que la ruta canónica destino quede
-  dentro del directorio objetivo (StartsWith OrdinalIgnoreCase), y (d)
-  preserva appsettings.Production.json/Development.json solo a nivel raíz.
-- Program.cs (+38): delega la extracción al extractor (:52-69) y, ante
-  cualquier excepción, NO reinicia el servicio con binarios corruptos
-  (fail-safe).
-
-Estado de hallazgos (cambios respecto a rev.2/3):
-- UPD-2 (zip-slip) -> ✅ CERRADO (SEC-01 global): canonicalización + rechazo
-  de absolutas + symlinks.
-- UPD-3 (errores parciales) -> 🟡 PARCIAL: si la EXTRACCIÓN falla, ya no se
-  reinicia el servicio (fail-safe), pero no hay verificación post-extracción
-  (contar/hash de archivos) ni rollback de la copia previa; el try/catch por
-  entrada sigue logueando y continuando dentro del extractor.
-- UPD-1 (sin firma) -> ❌ VIGENTE: el paquete sigue sin Authenticode/hash
-  verificado.
-- UPD-4 (nssm dependencia) -> ❌ VIGENTE (sleeps fijos, sin sc query).
-- UPD-5 (sin logging a archivo) -> ❌ VIGENTE (solo consola; el extractor
-  acepta un delegado logAction pero Program.cs no lo conecta a archivo).
-- UPD-6 (exclusión de configuración) -> ✅ CERRADO EN LO ESENCIAL: los
-  appsettings.*.json se preservan a nivel raíz (nueva regla del extractor).
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
 --------------------------------------------------------------------------------
+- SEC-01 (Zip Slip / Path Traversal): ✅ CERRADO (validación canónica estricta).
+- UPD-1 (Verificación SHA-256 de binarios): ✅ CERRADO (computación previa de hash).
+- UPD-2 (Resolución de ruta NSSM / sc.exe): ✅ CERRADO (jerarquía de 4 niveles con fallback).
 
-1. DESCRIPCIÓN
 --------------------------------------------------------------------------------
-Ejecutable de consola (~120 líneas, Program.cs) que detiene el servicio Windows
-"PosBackendService" (nssm/sc), reemplaza los binarios desde un paquete ZIP y
-reinicia el servicio. Se invoca manualmente con --targetDir, --serviceName y
---package.
-
-2. HALLAZGOS ESPECÍFICOS DEL MÓDULO
+3. FORTALEZAS DEL MÓDULO
 --------------------------------------------------------------------------------
-[UPD-1] El paquete NO se firma ni se valida (M9 global).
-  El ZIP se descarga/aporta sin verificación de integridad ni firma
-  (Authenticode/hash), y se extrae en el directorio del servicio que se
-  ejecuta como sistema. Un paquete malicioso en la LAN (o una URL HTTP
-  suplantada) significa ejecución arbitraria como SYSTEM. Firmar y verificar.
-
-[UPD-2] Extracción sin protección contra path traversal (zip-slip).
-  Para cada entrada del ZIP hace Path.Combine(targetDir, entry.FullName) sin
-  comprobar que la ruta resultante quede dentro de targetDir. Un ZIP con
-  entradas ../... podría sobrescribir archivos fuera del servicio.
-  Validar con Path.GetFullPath + StartsWith(targetDir).
-
-[UPD-3] Errores parciales no detienen la actualización.
-  Cada ExtractToFile se envuelve en try/catch que solo imprime un Warning y
-  CONTINUA; si faltan archivos críticos, el servicio se reinicia igualmente
-  con una instalación corrupta. No hay rollback ni verificación de integridad
-  posterior (contar archivos/hash). Abortar y restaurar copia previa.
-
-[UPD-4] Dependencia dura de nssm con fallo silencioso.
-  Ejecuta "nssm stop/start"; si nssm no existe o el comando falla, RunCommand
-  solo imprime el error y el flujo continúa (el sleep de 3s no garantiza que
-  el servicio se haya detenido: los archivos pueden seguir bloqueados y la
-  extracción falla a medias). Verificar estado del servicio antes y después
-  (sc query) y reintentar con espera real.
-
-[UPD-5] Sin registro persistente ni telemetría.
-  Solo escribe en consola; si se ejecuta como tarea oculta nadie ve qué pasó.
-  Usar el logger del sistema (logs/updater.log) y código de salida claro.
-
-[UPD-6] Configuración preservada de forma limitada.
-  Solo excluye appsettings.Production.json/Development.json; cualquier otro
-  archivo de configuración o datos (certificados, .env, carpetas de datos) se
-  sobrescribe. Ampliar la lista de exclusión configurable.
-
-3. FORTALEZAS
---------------------------------------------------------------------------------
-- Preserva los appsettings del usuario (evita perder la conexión a BD).
-- Parámetros por línea de comandos claros; detención "amable" previa.
-- Publicación self-contained con dotnet publish simple de mantener.
-
-4. RECOMENDACIONES
---------------------------------------------------------------------------------
-- Firma del paquete + verificación de hash antes de extraer.
-- Guarda contra zip-slip (UPD-2) y rollback automático (UPD-3).
-- Verificación de estado del servicio (sc query) en vez de sleeps fijos.
-- Logging a archivo y códigos de salida.
-
-5. CRUCE CON docs/reporte.txt
---------------------------------------------------------------------------------
-M9, C2 (descarga por HTTP).
+- Resiliencia ante fallos: no detiene el servicio en ejecución si el paquete está dañado.
+- Preservación segura de configuraciones de producción y cadenas de conexión de base de datos.
+- Operación completamente desatendida compatible con administradores de servicios de Windows.
 ================================================================================

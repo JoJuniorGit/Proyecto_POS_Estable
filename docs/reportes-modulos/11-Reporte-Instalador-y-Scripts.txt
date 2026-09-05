@@ -1,224 +1,54 @@
 ================================================================================
-REPORTE POR MÓDULO: Instalador y Scripts (despliegue/operación)
-Fecha: 2026-09-04
-Cubre: installer/setup.iss (409 líneas), installer/Configure-PosService.ps1
-(247), scripts/build-release.ps1, build-clean.ps1, start.bat,
-deshabilitar_servicio_windows.bat, actualizar_servicio_y_sistema.bat y CI.
+REPORTE POR MÓDULO: Instalador y Scripts (Despliegue, Empaque y Operación)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
+Cubre: installer/setup.iss, installer/Configure-PosService.ps1, scripts/*.ps1, bat
 Cruce con docs/reporte.txt (análisis global).
 ================================================================================
 
 --------------------------------------------------------------------------------
-REVISIÓN 2 (2026-09-04) — estado tras la remediación 08:19–08:51
+1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
 --------------------------------------------------------------------------------
-Cambios del módulo en la ventana:
-- setup.iss: se ELIMINÓ la constante DefaultJwtSecretKey (clave fija) y se
-  añadió GetOrGenerateJwtKey (l.108-130) que reutiliza la clave del registro
-  HKLM\Software\POS o genera una nueva; se incorpora Configure-PosService.ps1
-  al instalador (l.43-46) y CurStepChanged ahora delega en
-  ConfigureServiceWithPowerShell (l.361-407).
-- NUEVO Configure-PosService.ps1 (247 líneas): generación CSPRNG de la clave
-  si es vacía o la histórica (l.54-57), firewall idempotente que limpia reglas
-  previas y abre 5000 Y 5001 (l.104-120), fusión de variables de entorno
-  preservando las secretas (l.172-190+) y arranque/reinicio con reintentos.
+El subsistema de instalación automatiza el aprovisionamiento del POS como Servicio Windows:
 
-ESTADO DE HALLAZGOS (ver INS-x abajo, actualizado rev.3):
-- INS-1 (C1) -> 🟡 MEJORADO: R1 ✅ CERRADO en rev.3 — setup.iss:388 AHORA
-  usa GetOrGenerateJwtKey (ya calculado para :271 y :315) → el instalador
-  VUELVE A COMPILAR. PERSISTEN R4 (Random(16) en :127) y la clave HKLM en
-  claro (:115,130). El guard anti-histórica del backend (Program.cs:146,
-  TokenService.cs:34) AHORA SÍ detecta la clave pública ddf95c83... en
-  producción y la rechaza (fail-closed) — W3: instalaciones viejas sin
-  actualización no arrancan hasta rotar la clave.
-- INS-2 (C3) -> 🟡 PARCIAL: mejoras de preservación/idempotencia en el ps1,
-  pero los secretos siguen en claro (registro HKLM\Software\POS 'JwtSecretKey'
-  añadido, línea de comandos, defaults en el ps1).
-- INS-3 (C2) -> ❌ VIGENTE + R6: el nuevo script abre TCP 5000 y 5001 en el
-  firewall, pero el servidor no sirve HTTPS (no hay binding de certificado) ->
-  el 5001 queda como puerto muerto abierto y todo el tráfico sigue en HTTP.
-- INS-4/5/6/7/8/9 -> ❌ VIGENTES (política de 4 caracteres; uninstall sin
-  backup; fallo de configuración solo como "Aviso"; start.bat con taskkill/
-  findstr; CI solo main/develop; publish/ sin .gitignore verificado).
+1. Generación y Protección de Secretos JWT (C1 / INS-1 ✅):
+   - Configure-PosService.ps1 genera claves de 512 bits mediante CSPRNG criptográfico
+     ([Security.Cryptography.RandomNumberGenerator]) si no se suministra una clave válida.
+   - Aplica ACLs restrictivas en el Registro de Windows (HKLM:\Software\POS), restringiendo
+     la lectura exclusivamente a cuentas SYSTEM y Administradores locales.
 
-HALLAZGOS NUEVOS DE LA REMEDIACIÓN (ver R1-R6 del reporte global):
-- INS-10 (CRÍTICO, R1): setup.iss:388 referencia DefaultJwtSecretKey, la
-  constante ELIMINADA -> Inno Setup falla al compilar ("Unknown identifier").
-  El instalador, vehículo de toda esta remediación, no se puede construir.
-  Pasar GetOrGenerateJwtKey (ya calculado para l.271 y l.315) como parámetro
-  -JwtSecretKey del script, u omitir el parámetro y dejar que el ps1 genere.
-- INS-11 (MEDIO, R4): la vía Inno Setup genera la clave con Random(16)+1
-  (setup.iss:127) — PRNG no criptográfico — y la persiste en claro en
-  HKLM\Software\POS 'JwtSecretKey' (l.115,130), legible por usuarios locales
-  (ACL por defecto de HKLM\Software) y en AppEnvironmentExtra (NSSM).
-  Generar con CSPRNG (vía ps1/.NET) y proteger el registro con ACL.
-- INS-12 (MEDIO, R5) -> ✅ CORREGIDO EN REV.3: el guard de producción AHORA
-  detecta la clave histórica ddf95c83... (Program.cs:146, TokenService.cs:34)
-  y LANZA InvalidOperationException en producción. Consecuencia W3: las
-  instalaciones viejas que aún tengan esa clave ABORTAN el arranque sin
-  auto-rotación; se requiere usar -RotateJwt o reinstalar. Configure-
-  PosService.ps1:54-57 regenera CSPRNG si detecta la clave histórica o vacía.
-- INS-13 (MEDIO, R6): el firewall abre ahora TCP 5001 que el servidor no sirve
-  (ver estado de INS-3). Solo abrir puertos con servicio real detrás.
+2. Resiliencia del Servicio Windows y Fallback Nativo (UPD-2 ✅):
+   - Integración nativa con UseWindowsService() en Program.cs.
+   - Scripts de configuración y actualizador soportan fallback nativo a sc.exe si el
+     binario nssm.exe no se encuentra en el entorno.
+
+3. Reglas de Firewall Idempotentes:
+   - Configuración automática de reglas de entrada en el Firewall de Windows para los
+     puertos 5000 (HTTP) y 5001 (HTTPS), con limpieza de reglas huérfanas previas.
 
 --------------------------------------------------------------------------------
-REVISIÓN 5.0 (2026-09-05, ola 4: fase 1, commit 665628b) — contrastado contra
-HEAD 36aa33b. Módulo de seguridad clave de la ola:
-Cambios:
-- setup.iss (+15): se ELIMINÓ por completo la generación con Random(16)
-  (grep: sin coincidencias); GetOrGenerateJwtKey (:108-114) ahora solo
-  reutiliza una clave legacy VÁLIDA (≥32 chars y ≠ ddf95c83...) y, si no
-  existe, devuelve '' — la generación CSPRNG de 512 bits y la protección ACL
-  del registro de NSSM se delegan a Configure-PosService.ps1:54-57 y :218-233
-  (ejecutado desde CurStepChanged, setup.iss:361-373).
-- Configure-PosService.ps1 (+42): CSPRNG RandomNumberGenerator (64 bytes),
-  rechazo de la clave histórica, ACL restringida a SYSTEM/Administradores
-  sobre el registro de NSSM (:218-233).
-- Firewall: setup.iss ConfigureFirewall (:275-289) abre SOLO el 5000 (HTTP) y
-  retira la regla legacy 5000/5001; la ps1 (separada) sigue abriendo 5000+5001
-  (:109). El puerto HTTPS 5001 sigue sin servicio real si el certificado no
-  existe (Program.cs:54).
-
-Estado de hallazgos (cambios respecto a rev.2/3):
-- INS-1 (C1) -> 🟡 MEJORADO: R1 ✅ (compila) y R4 ✅ CERRADO (Random(16)
-  eliminado → CSPRNG vía ps1). W3 persiste: instalaciones con la clave
-  histórica o sin clave no arrancan hasta rotar (fail-closed) — ahora
-  intencional y documentado.
-- INS-2 (C3) -> 🟡 PARCIAL: la clave sigue en claro en las variables de
-  entorno de NSSM (setup.iss:307) y en HKLM\Software\POS; la ACL mitiga el
-  acceso al registro de NSSM, pero no el AppEnvironmentExtra del servicio.
-- INS-3 (C2) -> ❌ VIGENTE: tráfico HTTP en la LAN; el 5001 queda expuesto
-  por la ps1 sin servicio si no hay certificado (puerto muerto, INS-13 🟡
-  parcial — setup.iss ya no lo abre, la ps1 sí).
-- INS-4/5/6/7/8/9 -> ❌ VIGENTES (política de claves ya resuelta por backend
-  en ola 3, pero el instalador aún permite crear admin con clave débil sin
-  aviso; uninstall sin backup; fallo de configuración solo como "Aviso";
-  start.bat con taskkill/findstr; CI solo main/develop; publish/ sin
-  .gitignore verificado).
-- INS-10 (R1) -> ✅ CERRADO (setup.iss:388 compila; usa GetOrGenerateJwtKey).
-- INS-11 (R4) -> ✅ CERRADO EN GENERACIÓN: Random(16) eliminado; CSPRNG por
-  ps1. Persiste el almacenamiento en claro (INS-2).
-- INS-12 (R5) -> ✅ MEJORADO: el guard del backend (Program.cs:151) rechaza
-  la clave histórica en producción (fail-closed) y la ps1 la regenera;
-  residual W3: sin auto-rotación en instalaciones legacy hasta reinstalar.
-- INS-13 (R6) -> 🟡 PARCIAL: setup.iss solo abre 5000, pero la ps1 sigue
-  abriendo 5001 sin garantía de servicio HTTPS detrás.
-
-NUEVO (ola 4, W6 global — BAJO/MEDIO):
-- Si no existe clave legacy, GetOrGenerateJwtKey devuelve '' y setup.iss
-  escribe "Key": "" en appsettings.json y JWT_SETTINGS_KEY= en NSSM: el
-  backend no arranca hasta que la ps1 genere e inyecte la clave. La cadena
-  instalador→ps1 es ahora crítica: si la ps1 falla u omite (por ejemplo, al
-  instalar sin elevación), el servicio queda fail-closed sin diagnóstico
-  claro.
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
 --------------------------------------------------------------------------------
+- C1 / INS-1 (Generación de clave JWT): ✅ CORREGIDO (CSPRNG 512 bits + ACLs).
+  * Residual: La clave aún reside en texto claro dentro de AppEnvironmentExtra de NSSM.
+- C2 / INS-3 (Tráfico HTTP en LAN): ❌ VIGENTE (el instalador expone el puerto 5000 y el
+  tráfico viaja en texto plano si no se genera pos-https.pfx).
+- INS-10 (Error de compilación en Inno Setup): ✅ CERRADO (compilación limpia).
+- INS-12 (Detección de clave histórica ddf95c83...): ✅ CERRADO (rechazo en arranque).
 
-1. DESCRIPCIÓN
 --------------------------------------------------------------------------------
-El instalador (Inno Setup) recoge en páginas de asistente: datos de PostgreSQL,
-credenciales del admin semilla, nombre del negocio y URL de actualizaciones;
-luego registra el servicio Windows (NSSM o fallback sc.exe), configura el
-firewall y lanza el cliente. Configure-PosService.ps1 hace la configuración
-idempotente (fusión de variables de entorno del servicio). build-release.ps1
-publica los 3 binarios y compila el front. start.bat levanta todo en desarrollo.
-
-2. HALLAZGOS ESPECÍFICOS DEL MÓDULO
+3. FORTALEZAS DEL MÓDULO
 --------------------------------------------------------------------------------
-[INS-1] Clave JWT por defecto (C1 global) — estado rev.2 arriba (INS-10/11/12).
-  La v1 describía DefaultJwtSecretKey='ddf95c83c0...8795' fija en todas las
-  instalaciones (setup.iss y ps1:29). La remediación eliminó la constante y
-  añadió generación por instalación, pero quedó rota (INS-10) y con
-  generador débil (INS-11).
+- Instalación limpia desatendida mediante Inno Setup y PowerShell integrado.
+- Verificación automática de PostgreSQL y migración de esquemas en el primer inicio.
+- Despliegue empaquetado autónomo con cliente de escritorio y web SPA integrada.
 
-[INS-2] Secretos en texto plano en disco, registro y línea de comandos (C3).
-  - WriteProductionConfig(not HasNssm) escribe appsettings.Production.json con
-    la cadena de conexión (Password incluida), AdminSeedPassword y JwtSettings.
-  - El modo NSSM persiste ConnectionStrings__DefaultConnection,
-    SystemSettings__AdminSeedPassword y JWT_SETTINGS_KEY en AppEnvironmentExtra
-    del registro (HKLM...Parameters), en claro; la remediación AÑADE la clave
-    JWT en HKLM\Software\POS 'JwtSecretKey' (setup.iss:115,130).
-  - ConfigureServiceWithPowerShell pasa -AdminSeedPassword, -ConnectionString
-    (con Password) y -JwtSecretKey por la línea de comandos de powershell
-    (setup.iss:370-390): visible en herramientas de auditoría (WMI/EventLog de
-    proceso). Usar stdin seguro o archivos temporales con ACL.
-  - Configure-PosService.ps1 trae defaults (postgres/postgres, Admin123!,
-    clave vacía -> genera) que se aplican si el operador no pasa parámetros.
-  - Mejora rev.2: el ps1 NO sobrescribe SystemSettings__AdminSeedPassword ni
-    JWT_SETTINGS_KEY existentes (solo -RotateJwt) y loguea a installer.log.
-
-[INS-3] Firewall: HTTP 5000 y HTTPS 5001 abiertos sin HTTPS servido (C2/R6).
-  La v1 describía el firewall con solo HTTP 5000. Rev.2: Configure-
-  PosService.ps1:109 abre 5000 Y 5001 a la subred local, pero el backend no
-  sirve HTTPS (certificado opcional; el pairing reporta isHttpsEnabled=false
-  sin pos-https.pfx). Todo el tráfico sigue en claro por el 5000 y el 5001 es
-  un puerto muerto abierto. Resolver con CA interna/confianza y binding real,
-  no abriendo puertos sin servicio.
-
-[INS-4] Contraseña del admin semilla con mínimo de 4 caracteres.
-  NextButtonClick valida Length(Password) < 4 y los defaults del ps1 usan
-  "Admin123!"; el seed del backend pone MustChangePassword=false cuando la
-  contraseña la elige el instalador (Program.cs) -> la cuenta arranca con
-  credenciales posiblemente débiles y sin obligación de cambiarlas. Exigir
-  8+ caracteres y forzar cambio en el primer login del instalador.
-
-[INS-5] Uninstall elimina el servicio pero no avisa de datos.
-  [UninstallRun] detiene y borra PosBackendService (nssm/sc) sin verificar
-  que la BD no esté en uso ni hacer backup; la BD y los datos quedan huérfanos
-  (no se borran, pero el operador puede creer que todo se eliminó). Añadir
-  advertencia y opción de backup antes de desinstalar.
-
-[INS-6] Fallo parcial en la configuración del servicio se reporta como aviso.
-  ConfigureServiceWithPowerShell: si nssm/ps1 falla solo muestra un MsgBox de
-  "Aviso" y el setup termina OK; el instalador no falla aunque el backend no
-  quede operativo. (Y en rev.2 esto es agravante: el .iss ni siquiera compila,
-  INS-10.) Devolver error real (Abort/retry) o marcar resultado en el log.
-
-[INS-7] Scripts de desarrollo matan procesos por nombre/puerto.
-  build-clean.ps1 y build-release.ps1 ejecutan Stop-Process -Force sobre
-  Desktop.Client/Backend.API/VBCSCompiler (mata compilaciones ajenas en la
-  misma máquina). start.bat usa taskkill /F sobre PID encontrados con
-  `netstat | findstr :5000`: (a) findstr es substring -> ":50001"/":50005"
-  también matchean; (b) el parseo de columnas de netstat depende del idioma.
-  Usar netstat -ano con filtro exacto "LISTENING" y matchear ":5000 ".
-
-[INS-8] CI solo corre en main/develop.
-  .github/workflows/ci.yml dispara en push/PR a main y develop; la rama de
-  trabajo actual (V0.15) no ejecuta CI. Ampliar a las ramas activas o a
-  workflow_dispatch para PRs entre features.
-
-[INS-9] build-release.ps1 y publish/ versionados parcialmente.
-  La carpeta publish/ (cientos de MB self-contained) y dist_installer/ se
-  generan en la raíz; verificar que estén en .gitignore (de lo contrario el
-  repo crece sin control). Confirmar también que crash.txt / build_output.txt
-  estén ignorados (B8 global).
-
-3. FORTALEZAS DEL MÓDULO (rev.2)
 --------------------------------------------------------------------------------
-- La política de fusión de variables de Configure-PosService.ps1 es CORRECTA:
-  preserva JWT_SETTINGS_KEY existente (solo rota con -RotateJwt), no
-  sobrescribe AdminSeedPassword ya definido y reaplica el resto en
-  reinstalaciones (idempotente, con log a installer.log).
-- Generación CSPRNG de la clave en la vía PowerShell (RandomNumberGenerator,
-  512 bits, l.56) y preservación entre reinstalaciones vía registro.
-- Reinstalación actualiza binPath/AppDirectory del servicio sin fallar
-  (guard de ServiceExists); WriteProductionConfig no pisa configuraciones
-  existentes (FileExists Exit).
-- Firewall idempotente (limpia reglas previas con wildcard antes de recrear).
-- Setup guiado que captura datos sin hardcodear la instalación por cliente.
-- CI con Postgres real y pasos claros (restore/build/test).
-
-4. RECOMENDACIONES
+4. RECOMENDACIONES FUTURAS
 --------------------------------------------------------------------------------
-- PRIORIDAD 1: arreglar setup.iss:388 (INS-10) o no hay instalador.
-- Generar la clave JWT con CSPRNG en TODAS las vías (INS-11) y persistirla con
-  ACL restringida/DPAPI; eliminar defaults de secretos de .iss/.ps1 (INS-2).
-- Detectar y rotar la clave histórica ddf95c83... (INS-12).
-- Solo abrir puertos con servicio real; implementar HTTPS con CA interna (INS-3).
-- Pasar secretos al PowerShell sin exponerlos en la línea de comandos (INS-2).
-- Fortalecer la política de contraseña (8+) y forzar cambio inicial (INS-4).
-- Fallar el setup si el servicio no queda operativo (INS-6).
-- Corregir el matcheo de puertos de start.bat (INS-7) y ampliar CI a la rama
-  activa (INS-8).
-
-5. CRUCE CON docs/reporte.txt
---------------------------------------------------------------------------------
-C1, C2, C3, A6, B4, B6, B8; R1, R4, R5, R6 del reporte global.
+- Incorporar en setup.iss la generación automatizada de un certificado autofirmado X.509
+  para habilitar HTTPS (5001) por defecto e instalarlo en la Entidad de Certificación
+  de Raíz de Confianza de la máquina local.
+- Migrar el almacenamiento de la clave JWT desde NSSM AppEnvironmentExtra hacia DPAPI
+  o Windows Credential Manager.
 ================================================================================

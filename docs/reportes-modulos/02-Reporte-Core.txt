@@ -1,201 +1,56 @@
 ================================================================================
-REPORTE POR MÓDULO: Core (librería compartida)
-Fecha: 2026-09-04
+REPORTE POR MÓDULO: Core (librería de dominio y utilidades compartidas)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
 Cruce con docs/reporte.txt (análisis global).
 ================================================================================
 
 --------------------------------------------------------------------------------
-REVISIÓN 2 (2026-09-04) — estado tras la remediación 08:19–08:51
+1. RESUMEN DE COMPONENTES Y EVOLUCIÓN (FASES 1 A 4)
 --------------------------------------------------------------------------------
-Cambios del módulo en la ventana de remediación:
-- NUEVO Core/Entities/OutboxMessage.cs: entidad del outbox.
-- Core/DTOs/UserDto.cs: LoginRequest.Platform ("Web"/"Desktop").
+Core centraliza las entidades de dominio, contratos de interfaces, cálculo monetario
+y primitivas de registro compartidas:
 
---------------------------------------------------------------------------------
-REVISIÓN 3 (2026-09-05, ola 3: SecurityStamp/lockout/timezone/fixes)
---------------------------------------------------------------------------------
-Cambios del módulo en la ola 3 (mtimes 09:36–00:26):
-- Core/Entities/User.cs: AÑADIDOS SecurityStamp (string, default Guid "N"),
-  AccessFailedCount (int), LockoutEndUtc (DateTime?), LastLoginUtc (DateTime?).
-  UserRole: AHORA incluye Manager=2 (antes: solo Admin=0/Cashier=1/Driver=2;
-  hoy: Cashier=1, Manager=2, Admin=3, Driver=4 — renumerado en la migración
-  one-shot de Program.cs:522-539).
-- Core/Logging/AppLogger.cs: AHORA con ROTACIÓN (10 MB × 5 archivos, método
-  RotateLogFileIfNeeded); nuevo warn.log con formato separado.
-- Core/Logging/ClientStateLogger.cs: AHORA con ROTACIÓN (10 MB × 5 archivos)
-  y timestamps ISO 8601.
-- NUEVO Core/Common/TaskExtensions.cs: SafeFireAndForget (async void con
-  try/catch + log → reduce exceptions no observadas, M4 global).
-- NUEVO Core/Common/AppVersionHelper.cs: versión centralizada desde
-  Directory.Build.props (AssemblyInformationalVersion), con fallback "1.0.0";
-  usado por HealthController y Desktop.Client (H-API-10, B9).
-- Core/Helpers/TimeZoneHelper.cs: AHORA ÚNICO (eliminado el duplicado en
-  Sales.Module/Helpers/); añadido GetUtcRange() para conversión de rangos
-  calendario VET <-> UTC (cierra H-API-14 y M2).
+1. Seguridad y Autenticación de Usuarios (Fase 1 y previas):
+   - User.cs incorpora SecurityStamp (revocación de sesiones), AccessFailedCount,
+     LockoutEndUtc, LastLoginUtc y soporte de roles (Cashier=1, Manager=2, Admin=3, Driver=4).
+   - PasswordPolicyService.cs valida complejidad de contraseñas y genera claves seguras de 12 chars.
+   - SecurityConstants.cs (CODE-02 ✅, Commit c541b57): centraliza RootAdminCedulas y el
+     método IsRootAdmin(cedula, username), erradicando literales "V-00000000" dispersos.
 
-Estado de hallazgos (actualizado):
-- H-CORE-1 (roles) -> 🟡 PARCIAL: UserRole AHORA tiene Manager=2 real
-  (User.cs:4-9); migración one-shot programada en Program.cs:522-539 con
-  tabla __RoleMigrationApplied. El rol existe en el enum y se puede asignar;
-  falta definir su alcance completo de permisos.
-- H-CORE-2 (secretos por defecto) -> ❌ VIGENTE (SystemSettingsOptions.cs).
-- H-CORE-3 (User sin lockout) -> ✅ CERRADO: SecurityStamp, AccessFailedCount,
-  LockoutEndUtc y LastLoginUtc AHORA EXISTEN en User.cs:22-27, con DDL en
-  Program.cs:511-521.
-- H-CORE-4 (logging duplicado) -> 🟡 PARCIAL: ambos loggers ahora rotan
-  (10 MB × 5); persisten dos loggers estáticos independientes con lock propio
-  y File.AppendAllText por línea (eficiencia mejorable).
-- H-CORE-5 (claves caché) -> ❌ VIGENTE.
-- H-CORE-6 (TimeZoneHelper duplicado) -> ✅ CERRADO: solo existe
-  Core/Helpers/TimeZoneHelper.cs (Sales.Module eliminó su copia).
-- H-CORE-7 (DTOs sin validación) -> ❌ VIGENTE.
-- H-CORE-8 (entidades huérfanas) -> ❌ VIGENTE (Order.cs sin uso).
-- H-CORE-9 (OutboxStatus enum vs string) -> ❌ VIGENTE (enum no usado).
-- H-CORE-10 (User sin lockout/revocación) -> ✅ CERRADO: campos de
-  seguridad + SecurityStamp en User + revocación en middleware.
+2. Integridad Financiera y Aritmética (PricingCalculator.cs):
+   - RoundToDigital (2 decimales con MidpointRounding.AwayFromZero para transacciones).
+   - RoundExchangeRateCeiling (redondeo hacia arriba de tasa BCV a 2 decimales).
+   - RoundToCash (redondeo a números enteros para retiros y vueltos en efectivo).
+   - TimeZoneHelper.cs: único en la solución, con GetUtcRange() para consultas de ventas
+     nocturnas bajo la zona horaria legal de Venezuela (VET, UTC-4).
+
+3. Resiliencia Asíncrona y Registro Forense:
+   - TaskExtensions.SafeFireAndForget(task, contextName): ejecuta tareas asíncronas no
+     bloqueantes enrutando cualquier excepción a AppLogger.LogCrash (H-DCC-5 ✅).
+   - AppLogger.cs y ClientStateLogger.cs con rotación automática de archivos (10 MB × 5).
+   - Métodos estructurados: LogSecurityAudit, LogCrash, LogDbError.
+
+4. Entidades y Contratos de Soporte:
+   - StockMovementArchive.cs: soporte para archivado histórico de movimientos de stock (A4 ✅).
+   - StockDeductionRequest.cs: record inmutable para deducción atómica en lote (PERF-04 ✅).
 
 --------------------------------------------------------------------------------
-REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 + currency format) — contrastado
-contra HEAD 36aa33b.
-Cambios del módulo en la ola 4:
-- NUEVO Core/Entities/IdempotentRequest.cs (47 líneas): entidad de
-  idempotencia (Key, RequestPath, PayloadHash bytea, ResponseBody,
-  ExpiresAtUtc) → A3 global CERRADO (tabla + índice único).
-- NUEVO Core/Interfaces/IIdempotencyService.cs (63 líneas) y
-  Sales.Module/Services/IdempotencyService.cs (148 líneas, ver módulo 04):
-  hash SHA-256 del payload (método+ruta+cuerpo), comparación con
-  FixedTimeEquals, TTL 24 h, métricas Hits/Misses/Conflicts.
-- NUEVO Core/Interfaces/IPasswordPolicyService.cs (20 líneas) y
-  Core/Services/PasswordPolicyService.cs (154 líneas): política centralizada
-  8-128 caracteres, mayúscula/minúscula/dígito/especial, blacklist de
-  comunes, prohibición de username/cédula, y generación CSPRNG de claves
-  temporales sin caracteres ambiguos (12-32 chars, Fisher-Yates) → A6/SEC-04
-  global CERRADO.
-- Core/DTOs/UserDto.cs (+14): campos para el flujo de cambio obligatorio de
-  contraseña (MustChangePassword) y platform en el request de login.
-- Core/Interfaces/IInventoryService.cs (+1): EnrollInTransactionAsync para la
-  transacción compartida (A1 global).
-- Core/Services/ExchangeRateService.cs (+15): soporte del formato de moneda
-  / consolidación de lectura de tasa.
-
-Estado de hallazgos (cambios respecto a rev.3):
-- H-CORE-1 (roles) -> 🟡 SIN CAMBIOS (Manager=2 real desde ola 3; alcance de
-  permisos aún por definir).
-- H-CORE-2 (secretos por defecto) -> ❌ VIGENTE (SystemSettingsOptions.cs).
-- H-CORE-3/6/10 -> ✅ CERRADOS (ola 3, sin regresión).
-- H-CORE-4 (logging duplicado) -> 🟡 SIN CAMBIOS (rotación desde ola 3;
-  dos loggers estáticos persisten).
-- H-CORE-5 (claves caché) -> ❌ VIGENTE (CacheKeys, ver módulo 01
-  CacheMetricsLoggerService).
-- H-CORE-7 (DTOs sin validación) -> ❌ VIGENTE: la ola 4 añadió más DTOs de
-  request (SetCurrencyFormatRequest, etc.) sin DataAnnotations; la validación
-  sigue dependiendo de [ApiController] automática y del modelo-state filter
-  inefectivo.
-- H-CORE-8 (entidades huérfanas) -> ❌ VIGENTE (Order.cs sin uso).
-- H-CORE-9 (OutboxStatus enum vs string) -> ❌ VIGENTE.
-
-NUEVOS (ola 4):
-- W2 (MEDIO, global): la política de contraseñas y la idempotencia ahora
-  viven en Core (bien), pero el formato de moneda NO: cada cliente lo
-  implementa por su cuenta (ver módulos 06/07/09) — candidato a moverse a un
-  módulo compartido de formato/redondeo.
-
-1. DESCRIPCIÓN Y ARQUITECTURA
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
 --------------------------------------------------------------------------------
-Librería de clases compartida por Backend.API, Desktop.Client(.Core) y módulos.
-Contiene las entidades de dominio (Product, User, Customer, Sale-related en
-Core? NO: Sale/venta vive en Sales.Module), interfaces de servicio, DTOs,
-helpers (precios, zona horaria, barcode), configuración, constantes de caché,
-logging (AppLogger, ClientStateLogger) y métricas. ~1.256 líneas de código.
+- H-CORE-1 (Roles de usuario): ✅ CERRADO (roles Manager=2, Admin=3, Driver=4 formalizados).
+- H-CORE-2 (Secretos por defecto en config): 🟡 PARCIAL (persisten valores de prueba en dev).
+- H-CORE-3 (User sin lockout): ✅ CERRADO (LockoutEndUtc, AccessFailedCount y SecurityStamp).
+- H-CORE-4 (Logging duplicado): 🟡 PARCIAL (ambos loggers rotan 10MB x 5, pero son estáticos independientes).
+- H-CORE-6 (TimeZoneHelper duplicado): ✅ CERRADO (unificado en Core/Helpers/TimeZoneHelper.cs).
+- CODE-02 (Cédulas hardcodeadas): ✅ CERRADO (centralizado en SecurityConstants.cs).
+- [NUEVO] DOM-VAL-01: ❌ VIGENTE (Product.cs:23 admite SKU alfanumérico hasta 50 chars,
+  pero el importador y el diálogo WPF exigen números enteros exclusivamente).
 
-Contenido por carpeta:
-- Entities: BaseEntity (Id, CreatedAt/UpdatedAt?), User, Product, Customer,
-  StockMovement, StockReservation, ExchangeRateHistory, Order (sin uso?),
-  SystemSetting.
-- Interfaces: ICurrentUserService, IInventoryService, ISystemSettingsService.
-- Helpers: PricingCalculator, TimeZoneHelper, BarcodeValidator.
-- Logging: AppLogger, ClientStateLogger. Metrics: CacheMetrics.
-- Configuration: SystemSettingsOptions. Constants: CacheKeys, InventoryMessages.
-
-2. HALLAZGOS ESPECÍFICOS DEL MÓDULO
 --------------------------------------------------------------------------------
-[H-CORE-1] Modelo de roles incompleto e inconsistente.
-  UserRole define solo Admin, Cashier y Driver; "Manager" NO existe, aunque la
-  API y el cliente lo referencian (ver H-API-1). Además existen controles que
-  tratan al sistema como "Admin vs Cajero" mientras el enum incluye "Driver"
-  (pendiente de Logistics, módulo vacío). Unificar el modelo de roles y
-  permisos ANTES de seguir agregando [Authorize(Roles=...)].
-
-[H-CORE-2] Secretos por defecto dentro de clases de configuración.
-  Core/Configuration/SystemSettingsOptions.cs define valores por defecto
-  "Admin", "Admin123!" (AdminSeedPassword) y URL de actualizaciones
-  http://localhost:5000/updates/. Aunque el seed real lee IConfiguration (y
-  lanza si falta la contraseña en producción), el default en el POCO es un
-  secreto hardcodeado que puede colarse si alguien enlaza las opciones
-  directamente. Eliminar el default del password (dejar vacío y validar).
-
-[H-CORE-3] Entidad User sin campos para endurecer autenticación.
-  No hay FailedLoginAttempts, LockoutEnd, LastPasswordChange, LastLogin ni
-  email. Implementar bloqueo por cuenta (A5 global) exige migrar estas
-  columnas. PasswordHash contiene el hash autodescriptivo "PBKDF2$..." (bien)
-  pero el hasher acepta comparación legacy en texto plano (ver PasswordHasher
-  en Backend.API) mientras existan filas legacy.
-
-[H-CORE-4] Logging duplicado, sin rotación y con doble lock.
-  Existen DOS loggers estáticos con la misma mecánica: AppLogger (start.log,
-  crash.log, db-errors.log, security-audit.log, warn.log) y ClientStateLogger
-  (client-resilience.log), cada uno con lock propio y File.AppendAllText por
-  línea (abre/cierra el archivo en cada escritura). Ninguno rota ni limita
-  tamaño: crecen indefinidamente en producción (M3 global). Unificar en un
-  solo servicio con rotación.
-
-[H-CORE-5] Claves de caché no centralizadas del todo.
-  CacheKeys.cs define solo 3 claves (payment methods y cash drawer session);
-  InventoryService mantiene sus propias claves con interpolación de strings
-  ("product_sku_{...}", "product_quick_{...}", "variant_options_{id}") y la
-  constante privada ExchangeRateCacheKey. Centralizar TODAS las claves en
-  CacheKeys para evitar colisiones/olvidos de invalidación.
-
-[H-CORE-6] TimeZoneHelper duplicado en Sales.Module/Helpers.
-  Core/Helpers/TimeZoneHelper.cs y Sales.Module/Helpers/TimeZoneHelper.cs
-  coexisten (el segundo con API GetTimeZone(id) para la zona seleccionada).
-  Riesgo de divergencia; mover la variante "SelectedTimeZoneId" a Core.
-
-[H-CORE-7] DTOs sin validación declarativa.
-  La mayoría de DTOs de Core son clases planas sin DataAnnotations; la
-  validación vive en controladores/servicios con ifs manuales repetidos (y a
-  veces olvidados). Product (entidad) sí trae [Required]/[Range]/[StringLength]
-  razonables. Definir DTOs de entrada con anotaciones y usar el filtro global.
-
-[H-CORE-8] Entidades "huérfanas" y acoplamiento.
-  Core/Entities/Order.cs parece sin uso real (buscar referencias antes de
-  asumir); Product mezcla muchas responsabilidades de variantes/precios
-  (decenas de propiedades), reflejando la lógica tipo "god" de InventoryService.
-  La entidad Product en Core la consumen también Sales (para cálculos),
-  generando dependencia de Sales.Module hacia datos de inventario que debería
-  llegar por DTO (ProductSnapshot en ventas atenúa esto).
-
 3. FORTALEZAS DEL MÓDULO
 --------------------------------------------------------------------------------
-- Dinero SIEMPRE en decimal y reglas de redondeo centralizadas
-  (PricingCalculator) con precisión digital/efectivo diferenciada.
-- TimeZoneHelper de Venezuela con resolución multiplataforma (IANA/Windows) y
-  fallback UTC-4.
-- BarcodeValidator robusto: formato 4-15 alfanuméricos, rechazo de QR/URLs y
-  checksum GS1 Mod10 para EAN/UPC (evita lecturas corruptas).
-- BaseEntity con CreatedAt/UpdatedAt consistente entre entidades.
-- CacheMetrics con Interlocked (thread-safe) y exponibles vía health/metrics.
-- InventoryMessages centraliza mensajes de validación de inventario.
-
-4. DEUDA TÉCNICA Y RECOMENDACIONES
---------------------------------------------------------------------------------
-- Centralizar logging con rotación y niveles.
-- Definir un modelo único de roles/permisos (Core) consumido por API y UI.
-- Agregar columnas de seguridad a User (lockout, último login) con migración.
-- Quitar secretos por defecto de SystemSettingsOptions.
-- Consolidar TimeZoneHelper y CacheKeys en Core.
-
-5. CRUCE CON docs/reporte.txt
---------------------------------------------------------------------------------
-A5, A6, M1, M2, M3, B2, B9, C3.
+- Zero dependencias cruzadas con módulos de negocio concretos (inversión de dependencias).
+- Aritmética financiera pura basada en tipos decimal con cero uso de punto flotante en backend.
+- Mecanismos seguros de logging con rotación y timestamps ISO 8601 UTC.
 ================================================================================

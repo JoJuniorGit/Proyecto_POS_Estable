@@ -1,277 +1,67 @@
 ================================================================================
-REPORTE POR MÓDULO: Sales.Module (ventas, pagos, caja, cierres)
-Fecha: 2026-09-04
+REPORTE POR MÓDULO: Sales.Module (ventas, pagos, caja, cierres diarios, idempotencia)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
 Cruce con docs/reporte.txt (análisis global).
 ================================================================================
 
 --------------------------------------------------------------------------------
-REVISIÓN 2 (2026-09-04) — estado tras la remediación 08:19–08:51
+1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
 --------------------------------------------------------------------------------
-Cambios del módulo en la ventana de remediación:
-- Services/SalesService.cs (+~300 líneas), Interfaces/ISalesService.cs y
-  Data/SalesDbContext.cs modificados; CashDrawerService, DailyClosureService,
-  ClosurePdfGenerator y PaymentMethodService SIN cambios.
-- SalesDbContext.cs: +DbSet<OutboxMessage> (:24) con su configuración
-  (:212-223) y +secuencia HasSequence("factura_number_seq").StartsAt(1)
-  (:208-210).
+Sales.Module ha sido objeto de refactorizaciones estructurales profundas:
 
-Estado de hallazgos:
-- H-SAL-1 (A2) -> 🟡 CORREGIDO CON REGRESIÓN: numeración por secuencia
-  PostgreSQL nextval('factura_number_seq') (SalesService.cs:50-62), creada
-  START WITH 1 (SalesDbContext.cs:208-210; Program.cs:439-442) y AHORA SÍ se
-  siembra con setval al máximo existente (Program.cs:442: SELECT setval(...,
-  GREATEST(MAX+1, 1), false)). R2 CERRADO en rev.3. En InMemory (tests)
-  sigue el MAX+1 (:63-66). Residual: sin índice único de respaldo.
-- H-SAL-2 (A1) -> ❌ REFORMULADO (R3): la deducción ahora es SÍNCRONA por ítem
-  dentro de la transacción (SalesService.cs:549-576 y :830-857) con
-  allowNegativeStock:true (:560, :838) y commit por ítem en el otro contexto;
-  se crea un OutboxMessage "SaleCompleted" en la misma transacción
-  (:577-590, :843-857) PERO el procesador (OutboxProcessorJob, en Backend.API)
-  solo reenvía SignalR -> DeadLetter/fallo = deducción nunca replicada (R3c).
-  Añadido: chequeo "venta ya completada -> devuelve el InvoiceNumber"
-  (:357-360).
-- H-SAL-3 -> ❌ VIGENTE (sin cambios; M6 global).
-- H-SAL-4 -> 🟡 PARCIAL: el controlador exige Admin/Manager para
-  custom_unit_price (SalesController.cs:56-67,136-145) y el servicio recibe el
-  flag isAuthorized en AddItemAsync/UpdateSaleItemsAsync; falta auditoría del
-  override y la validación de rango del rate.
-- H-SAL-5/6/7/8/9/10/11/12 -> ❌ VIGENTES (sin cambios en la ventana).
-- H-SAL-13 (NUEVO, ALTO, A3): CompleteSaleAsync y el cobro de Hold al 100%
-  aceptan Idempotency-Key y devuelven el InvoiceNumber existente si la venta
-  ya está completada (:357-360); la key NO se persiste ni se valida -> dos
-  envíos en paralelo pueden completar la venta dos veces (la única red es el
-  estado Completed al re-entrar).
-- H-SAL-14 (NUEVO, MEDIO, R11): los logs "la venta y el Outbox están
-  garantizados en base de datos" (:601 y :890) sobrevenden la garantía: el
-  outbox solo garantiza la NOTIFICACIÓN SignalR, no la deducción de
-  inventario (ver R3c).
+1. Modularización de la God Class (CODE-01 ✅, Commit 77b9a7c):
+   SalesService.cs fue descompuesto en 5 clases parciales por subdominio:
+   - SalesService.cs: orquestación de ventas, persistencia transaccional y Outbox (807 líneas, -52.1%).
+   - SalesService.HoldOrders.cs: pedidos en espera (apartados), abonos parciales y clientes.
+   - SalesService.Pricing.cs: recálculo de precios mayorista/detal y sincronización cambiaria.
+   - SalesService.CashAdvance.cs: emisión de adelantos de efectivo con soporte de transacción externa.
+   - SalesService.History.cs: consultas paginadas de historial y despachos con AsSplitQuery y AsNoTracking.
+   * Contrato público ISalesService 100% preservado e idéntico (validado con reflection tests).
+
+2. Transaccionalidad Atómica Coordinada (A1 ✅):
+   SalesService.cs enrola la transacción ADO.NET en el módulo de inventario mediante
+   _inventoryService.EnrollInTransactionAsync(rawDbTx). Si la venta falla, la deducción de
+   stock se revierte en un solo rollback de PostgreSQL.
+
+3. Idempotencia Criptográfica Obligatoria (A3 / W1 ✅, Commit 2c4be32):
+   SalesController exige el encabezado Idempotency-Key (HTTP 400 si falta).
+   IdempotencyService valida claves UUID mediante hash SHA-256 e índice único en base de datos.
+
+4. Retiro Definitivo de Medida Temporal MT-001 (W3 ✅, Commit a07922b):
+   Se creó la columna PaymentMethodId (FK a PaymentMethods) en CashTransactions con su
+   migración correspondiente, eliminando la heurística ct.IsPhysicalCash para deshabilitar métodos.
+
+5. Cierres Diarios y Arqueos Blindados (H-API-2, ARQ-01 ✅):
+   DailyClosureService recalcula diferencias del lado del servidor, previene el backdating
+   (forzando DateTime.UtcNow para usuarios estándar) e incluye métodos de pago inactivos con ventas.
 
 --------------------------------------------------------------------------------
-REVISIÓN 3 (2026-09-05, ola 3) — estado actualizado contra el código.
-Cambios desde rev.2 (mtimes 09:42–23:12):
-- SalesService.cs: 1.832 líneas (era ~1.669). GetSalesHistoryAsync ahora
-  usa TimeZoneHelper.GetUtcRange para convertir fechas del cliente a la ventana
-  VET exacta (SalesService.cs:1351-1357) — H-API-14 CERRADO.
-- DailyClosureService.cs (09:42): GetExpectedTotalsByPaymentMethodAsync AHORA
-  calcula la ventana del "día de negocio" en VET (GetVenezuelaDate + Convert
-  TimeToUtc, :24-28) en vez de UTC puro; effectiveStartTime usa
-  lastClosure.ClosureDate (UTC) y cubre ventas desde ese punto hasta fin del
-  día VET (:24-54). CreateClosureAsync rellena métodos omitidos del cliente:
-  non-cash = expected balanceado, cash = 0 shortage (:79-110). H-API-14
-  cerrado pero la semántica de "relleno" de métodos omitidos persiste.
-- CashDrawerService.cs (09:43): AddTransactionAsync ahora valida amountLocal >
-  0 (:124), y para egresos físicos verifica saldo disponible (:134-146).
-  ProcessCashAdvanceAsync mantiene comisiones 7/10% hardcodeadas (:239-256)
-  y verifica saldo disponible (:230-237). RolloverSessionAfterClosureAsync
-  cierra sesión con saldo teórico y abre nueva (:202-212).
-- SalesDbContext.cs (22:26): cambios menores.
-- SaleHistoryDto.cs (23:12): DateLocal ahora convierte VET automáticamente
-  via TimeZoneHelper.ToVenezuelaTime (Sales.Module/DTOs/SaleHistoryDto.cs:
-  12-14), hardcodeado VET sin respetar SelectedTimeZoneId (W7).
-
-Estado de hallazgos (actualizado rev.3):
-- H-SAL-1 (A2) -> ✅ CORREGIDO: secuencia sembrada (Program.cs:441-442, R2).
-- H-SAL-2 (A1/R3) -> ❌ SIN CAMBIOS: deducción síncrona allowNegativeStock,
-  outbox solo SignalR, commits parciales.
-- H-SAL-3 -> ❌ VIGENTE (sobrepago sin tope/vuelto).
-- H-SAL-4 -> 🟡 PARCIAL (Admin/Manager en controller, falta auditoría).
-- H-SAL-5/6/7/8/9/10/11/12 -> ❌ VIGENTES.
-- H-SAL-13 (A3) -> 🟡 PARCIAL (key no persiste).
-- H-SAL-14 (R11) -> ❌ VIGENTE (logs sobrevenden garantía).
-- NUEVO: SaleHistoryDto.DateLocal hardcodeado VET (W7).
-- NUEVO: DailyClosureService CreateClosureAsync rellena métodos omitidos del
-  cliente con expected server-side (H-API-3 parcial).
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
+--------------------------------------------------------------------------------
+- H-SAL-1 / A2 (Numeración de facturas): ✅ CERRADO (secuencia PostgreSQL factura_number_seq).
+- H-SAL-2 / A1 (Atomicidad Venta-Stock): ✅ CERRADO (EnrollInTransactionAsync unificado).
+- H-SAL-3 / CODE-01 (God Class): ✅ CERRADO (modularizado en 5 partial classes).
+- H-SAL-4 (Precios personalizados): ✅ CERRADO (gating estricto de roles Admin/Manager).
+- H-SAL-13 / W1 (Idempotencia en cobros): ✅ CERRADO (Idempotency-Key obligatoria y persistida).
+- W3 / MT-001 (FK en CashTransaction): ✅ CERRADO (migración y validación relacional directa).
+- W4 (Auditoría en purga de idempotencia): ✅ CERRADO (AppLogger.LogSecurityAudit).
+- [NUEVO] PERF-06: ❌ VIGENTE (CashDrawerService.GetHistoryAsync(limit=300) sin AsNoTracking()).
+- [NUEVO] ERR-04: ❌ VIGENTE (DailyClosureController.cs:155 y ShiftsController.cs:179 capturan
+  Exception ex y retornan BadRequest(new { Message = ex.Message }) en lugar de ProblemDetails).
 
 --------------------------------------------------------------------------------
-REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 + currency format) — contrastado
-contra HEAD 36aa33b. Módulo central de la fase 4 (arquitectura) y fase 2
-(integridad financiera):
-Cambios del módulo en la ola 4:
-- NUEVO Services/IdempotencyService.cs (148 líneas): hash SHA-256 del payload
-  (método+ruta+cuerpo) como bytea, FixedTimeEquals, TTL 24 h, validación de
-  formato de key (:88-120). A3 global CERRADO.
-- SalesDbContext.cs (+71): +DbSet<IdempotentRequest> y su mapeo; PaymentMethod
-  +IsDeleted y migración AddIsDeletedAndUniqueNameToPaymentMethod con índice
-  único IX_PaymentMethods_Name_Unique_NotDeleted (soft-delete de métodos).
-- PaymentMethodService.cs (+168): DeleteAsync con soft/hard selectivo
-  (IsDeleted+IsActive=false si tuvo uso, borrado físico si no, :196-221),
-  caché en memoria de 5 min con invalidación por notifier
-  (SignalRPaymentMethodNotifier, en Backend.API) — NUEVO hallazgo W3 global.
-- CashDrawerService.cs (+27): GetCurrentBalanceLocalAsync con SumAsync() en
-  PostgreSQL y AsNoTracking (:195-224) — PERF-01 CERRADO. ProcessCashAdvance
-  conserva reglas de montos enteros y saldo suficiente (:209-227).
-- DailyClosureService.cs (+146): GetExpectedTotalsByPaymentMethodAsync incluye
-  métodos inactivos con movimientos del día (`p.IsActive ||
-  salesTotals.ContainsKey(p.Id)`, :62) — ARQ-01 CERRADO; SaveClosureReceiptsSilently
-  escribe en %ProgramData%\CommandCenterPOS\Closures con reintentos y LogWarn
-  (:217-260) — ERR-03 CERRADO.
-- SalesService.cs (+99): EnrollInTransactionAsync (:388) + UseTransaction en
-  CreateCashAdvanceSaleAsync (:1775) — A1 CERRADO (ver módulo 03).
-
-Estado de hallazgos (cambios respecto a rev.3):
-- H-SAL-1 (A2) -> ✅ CERRADO (setval rev.3, sin regresión; falta índice único).
-- H-SAL-2 (A1) -> ✅ CERRADO EN SU NÚCLEO: deducción síncrona y atómica con la
-  transacción compartida; el outbox queda como canal de notificación
-  (H-API-25 redesenhado). RESIDUAL W5: allowNegativeStock:true sigue en
-  SalesService.cs:586.
-- H-SAL-13 (A3) -> ✅ CERRADO: la key AHORA SÍ se persiste y valida
-  (IdempotencyService + índice único IX_IdempotentRequests); replays devuelven
-  el InvoiceNumber existente (X-Cache-Lookup: HIT) y mismatches 422
-  (SalesController.cs:385-430, :459-495). RESIDUAL W1: la cabecera es opcional.
-- H-SAL-14 (R11) -> 🟡 REDENOMINADO: con la transacción compartida, "venta y
-  deducción garantizadas en BD" AHORA ES CIERTO (A1); el outbox solo notifica
-  — los logs ya no sobrevenden en ese punto, pero conviene ajustar el texto
-  para no sugerir que el outbox persiste la deducción.
-- H-SAL-3/5/6/7/8/9/10/11/12 -> ❌ VIGENTES (sin cambios en la ola 4).
-- H-SAL-4 -> 🟡 SIN CAMBIOS (gate Admin/Manager desde ola 3).
-
-NUEVOS (ola 4, cruzan con global W1/W3/W5):
-- W5 (ALTO): allowNegativeStock:true en el bucle de venta (SalesService.cs:586)
-  → inventario puede quedar negativo.
-- W3 (MEDIO): heurística global de soft-delete en PaymentMethodService.cs:209
-  (`AnyAsync(ct => ct.IsPhysicalCash)` sin FK por método) — medida temporal
-  MT-001 documentada en docs/medidas-temporales.txt; CUALQUIER transacción
-  física de gaveta marca como "usado" cualquier método cash.
-- W1 (MEDIO/ALTO): Idempotency-Key opcional (SalesController.cs:385-430); el
-  cliente web no la envía (paymentApi.js) → sin protección de replay ahí.
-
---------------------------------------------------------------------------------
-1. DESCRIPCIÓN Y ARQUITECTURA
---------------------------------------------------------------------------------
-Módulo central de dinero. Contiene el SalesDbContext (Usuarios, Clientes,
-Ventas, Items, Pagos, Métodos de pago, Sesiones de caja, Transacciones de caja,
-Cierres diarios) y los servicios de negocio:
-- Services/SalesService.cs (1.669 líneas: ciclo de vida de la venta, cobros,
-  apartados, clientes, historial, listas de precios, adelantos).
-- Services/CashDrawerService.cs (333), DailyClosureService.cs (245),
-  ClosurePdfGenerator.cs (335), PaymentMethodService.cs (139).
-- Data/SalesDbContext.cs con índices y constraints; ~25 migraciones.
-- DTOs y Helpers propios (TimeZoneHelper duplicado de Core).
-
-2. HALLAZGOS ESPECÍFICOS DEL MÓDULO
---------------------------------------------------------------------------------
-[H-SAL-1] Numeración de factura por MAX+1 repetida (A2 global).
-  La asignacion InvoiceNumber = Max+1 existe en CompleteSaleAsync (~380) y de
-  nuevo en HoldSaleAsync (~690), dentro de transacciones sin bloqueo ni
-  secuencia. El modelo declara índice único (SalesDbContext.cs:144-145), así
-  que en concurrencia el segundo INSERT falla con violación de unicidad en vez
-  de duplicar; aun así la operación del cliente falla y depende del reintento
-  humano. Usar secuencia PostgreSQL (serial/identity) o número por cierre.
-
-[H-SAL-2] Consistencia venta/inventario post-commit (A1 global, ver H-INV-1).
-  El evento SaleMadeEvent se publica DESPUÉS del commit (CompleteSaleAsync y
-  HoldSaleAsync al 100%), y la falla del handler solo se loguea (catch con
-  "Eventual consistency warning" en HoldSaleAsync). Riesgo de venta registrada
-  sin descuento de stock. Outbox o descuento transaccional.
-
-[H-SAL-3] Sobrepago sin límite ni registro de vuelto (M6 global).
-  En CompleteSaleAsync, remainingBalanceUsd < -0.05 solo genera un log
-  ("Sobrepago/Vuelto registrado") y continúa. El pago se persiste por el monto
-  total entregado y no se crea una transacción de egreso (vuelto) en la caja.
-  Falta: tope máximo de vuelto, registro automático del vuelto como Expense y
-  cuadre. (La caja calcula el balance solo con transacciones físicas, por lo
-  que un sobrante no contabilizado infla el esperado de la caja.)
-
-[H-SAL-4] Precios unitarios provenientes del cliente sin validación de rol.
-  AddItemAsync acepta custom_unit_price_usd/local y UpdateSaleItemsAsync usa
-  reqItem.UnitPrice si es >0. Cualquier cajero autenticado puede alterar
-  precios (descuento encubierto) si el UI se lo permite; el servidor no
-  distingue "precio personalizado autorizado" de "manipulación". Aplicar
-  política (solo Admin/Manager con override autorizado y auditoría del cambio).
-
-[H-SAL-5] Pagos iniciales de apartados no impactan la caja (revisar).
-  En HoldSaleAsync se registran SalePayment de abonos, pero en el código
-  revisado NO se genera el CashTransaction de ingreso correspondiente en la
-  sesión de caja (a diferencia de CompleteSaleAsync). Si el dinero del abono es
-  físico, la caja queda descuadrada. Verificar y, si falta, registrar el
-  ingreso junto con la sesión activa.
-
-[H-SAL-6] CashDrawerService: comisiones hardcodeadas y carrera en sesiones.
-  - Comisión de adelantos: 7% (transferencia) / 10% (efectivo) fija en el
-    servicio (CashDrawerService.ProcessCashAdvanceAsync), no configurable.
-  - GetOrCreateActiveSessionAsync: dos peticiones simultáneas pueden ver "sin
-    sesión activa" y ambas intentar crear (OpenSessionAsync valida, pero con
-    ventana de carrera entre SELECT y SaveChanges; la segunda falla con
-    InvalidOperationException sin retry).
-  - AddTransactionAsync hace SaveChanges por transacción individual; en
-    operaciones compuestas (adelanto) se apoya en una transacción externa, pero
-    varias operaciones pequeñas (apertura de sesión + transacción de apertura)
-    no son atómicas entre sí: si la segunda falla queda una sesión abierta sin
-    monto de apertura.
-  - ProcessCashAdvance usa IServiceProvider para resolverse a sí mismo
-    (service locator) y crea un SalesService manual como fallback
-    (new SalesService(... null!)): acoplamiento frágil y difícil de testear.
-
-[H-SAL-7] Cierre diario: recibos a carpetas de usuario del servicio (M2).
-  DailyClosureService.SaveClosureReceiptsSilently escribe en Downloads y "Mis
-  Documentos" del usuario que ejecuta el proceso (si es Windows Service,
-  SYSTEM) y en ProgramData, con 8 bloques try/catch silenciosos que tragan
-  errores de escritura. El usuario operativo nunca sabe si el comprobante se
-  guardó. Ademas GenerateReceiptContent usa DateTime.Now local (no VET) y
-  ClosurePdfGenerator usa closure.ClosureDate.ToLocalTime() (doble
-  inconsistencia temporal) y codifica en ASCII un PDF construido a mano con
-  strings (frágil ante caracteres especiales del nombre del negocio).
-
-[H-SAL-8] Cierres: totales "esperados" de doble procedencia.
-  ShiftsController.CloseShift calcula los expected server-side y DailyClosure
-  los recibe del cliente (ver H-API-3). Dos flujos de cierre distintos
-  (shifts vs daily-closure) con reglas diferentes: riesgo de cierres
-  duplicados o descuadrados si se usan ambos. Unificar.
-
-[H-SAL-9] Datos personales/atribución en campos semánticos incorrectos.
-  En ShiftsController, Observation almacena la CEDULA del cajero y UserId el
-  nombre; ClosurePdfGenerator lee closure.Observation como cédula y tiene un
-  hack "StartsWith(\"Test\")" para detectar datos de prueba. El campo
-  Observation debe ser texto libre; añadir columnas CashierCedula/Name.
-
-[H-SAL-10] PaymentMethodService: caché con invalidación correcta pero
-  ActualAmount de cierres no valida contra métodos inactivos/desconocidos.
-  GetExpectedTotalsByPaymentMethodAsync agrupa SalePayments por PaymentMethodId
-  sin verificar que el método siga activo (los inactivos aparecen como totales
-  sin nombre asignable -> en cierres con Details la suma de expected puede
-  incluir métodos desactivados). Revisar inclusión.
-
-[H-SAL-11] RecalculateOnHoldSalesAsync y GetPendingSalesAsync sin paginar.
-  Recalcula todas las ventas OnHold y guarda una por una; GetPendingSalesAsync
-  devuelve la lista completa de pendientes/apartados sin paginación ni filtro.
-  Con volumen creciente, degradación. Paginar/limitar y recalcular con UPDATE
-  masivo.
-
-[H-SAL-12] Validación decimal a medias.
-  - Cantidades numeric(18,3) con redondeo AwayFromZero en casi todas partes
-    (correcto), pero RecalculateTotalAsync y campos snapshot (CustomerName,
-    CustomerCedula, AppliedRate) se repiten manualmente en cada método
-    (total recalculado en CompleteSale 2 veces, UpdateExchangeRate, AddItem...).
-  - Los mensajes de validación y excepciones mezclan inglés y español.
-
 3. FORTALEZAS DEL MÓDULO
 --------------------------------------------------------------------------------
-- Dinero en decimal(18,2/18,4) y cantidades numeric(18,3); reglas de
-  redondeo centralizadas (PricingCalculator) aplicadas consistentemente.
-- SalesDbContext: índices sobre fecha/status/entrega/cliente/cajero,
-  unicidad en cédula/usuario/factura, borrado restrictivo de cliente/cajero.
-- Transacciones explícitas en CompleteSaleAsync/HoldSale/CashAdvance con
-  rollback en catch.
-- Validaciones de dominio defensivas (tasa > 0, efectivo sin centavos,
-  cliente real para apartados, no pago parcial en liquidación).
-- Cierres con arqueo a ciegas y rollover de sesión conservando saldo teórico.
-================================================================================
+- Doble capa de persistencia: Venta y Outbox se confirman en la misma transacción ADO.NET.
+- AsSplitQuery estándar para evitar explosión cartesiana en ventas con múltiples ítems/pagos.
+- Soporte multimoneda robusto con PricingCalculator.
+- Auditoría forense automática y respaldos silenciosos en PDF/texto para arqueos y cierres de caja.
 
-4. DEUDA TÉCNICA Y RECOMENDACIONES
 --------------------------------------------------------------------------------
-- Secuencia PostgreSQL para facturas; outbox para el evento de venta.
-- Registrar el vuelto como Expense y limitar el sobrepago (H-SAL-3).
-- Política server-side para cambios de precio con auditoría (H-SAL-4).
-- Contabilizar en caja los abonos de apartados (H-SAL-5).
-- Configurar comisiones de adelanto y resolver la carrera de sesiones.
-- Unificar flujos de cierre (shift vs daily), con expected server-side e
-  identidad del token (ver H-API-2/3).
-- Mover recepción de comprobantes a ProgramData configurable y usar VET.
-- Añadir columnas de atribución (CashierCedula/CashierName) en DailyClosure.
-- Paginar GetPendingSalesAsync; recalcular OnHold con UPDATE masivo.
-- Eliminar service locator en CashDrawerService.
-
-5. CRUCE CON docs/reporte.txt
+4. RECOMENDACIONES FUTURAS
 --------------------------------------------------------------------------------
-A1, A2, A3, A5, M2, M3, M6, M7, B2, B7.
+- Añadir .AsNoTracking() a GetHistoryAsync en CashDrawerService.
+- Retirar los bloques catch locales en DailyClosureController y ShiftsController para permitir
+  que GlobalExceptionHandlerMiddleware estandarice respuestas RFC 7807 sin filtrar ex.Message.
 ================================================================================

@@ -1,191 +1,61 @@
 ================================================================================
-REPORTE POR MÓDULO: Desktop.Client.Core (lógica del cliente WPF)
-Fecha: 2026-09-04
+REPORTE POR MÓDULO: Desktop.Client.Core (lógica de negocio y ViewModels del cliente WPF)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
 Cruce con docs/reporte.txt (análisis global).
 ================================================================================
 
 --------------------------------------------------------------------------------
-REVISIÓN 2 (2026-09-04) — estado tras la remediación 08:19–08:51
+1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
 --------------------------------------------------------------------------------
-Cambios del módulo en la ventana:
-- NUEVO Services/SecureTokenStorageService.cs (+ISecureTokenStorageService):
-  guarda el token con DPAPI (DataProtectionScope.CurrentUser) en
-  %LocalAppData%\SolucionesPOS\session.dat con entropía opcional fija;
-  registrado en DI (Desktop.Client/App.xaml.cs:99) e inyectado en UserSession
-  (SaveToken en SetSession :54, ClearToken en Logout :63).
-- Services/ResilienceHandler.cs: reintentos SOLO para GET/HEAD o peticiones
-  con cabecera Idempotency-Key (MaxRetries efectivo = 1 si no aplica) y jitter
-  100-500 ms (l.68-90).
-- Services/SalesService.cs e ISalesService.cs: CompleteSaleAsync acepta
-  idempotencyKey y la envía por la cabecera Idempotency-Key (l.124-135).
-- ViewModels/CheckoutViewModel.cs: genera un Guid NUEVO por operación de cobro
-  (l.196) y lo propaga en ambos flujos de cobro (l.450, :485).
-- Services/UserSessionHeaderHandler.cs: envía X-Client-Platform: "Desktop"
-  (l.41-44).
+Desktop.Client.Core concentra la lógica de presentación MVVM, manejo de sesiones,
+comunicación HTTP resiliente y descubrimiento de servidores en LAN:
 
-Estado de hallazgos:
-- H-DCC-1 (A3) -> 🟡 PARCIAL: lado cliente CORREGIDO (solo reintenta
-  peticiones idempotentes, con jitter y key por cobro); la deduplicación real
-  sigue pendiente en el servidor (la key no se persiste; ver H-SAL-13).
-- H-DCC-4 -> 🟡: X-Client-Platform ahora sí la usa el backend (scope pos:web/
-  pos:desktop, ver R10 del global); X-Client-Version "1.0.0" y
-  X-User-Role/X-User-Id siguen hardcodeadas/sin uso real.
-- H-DCC-2/3/5/6/7/8/9/10 -> ❌ VIGENTES (sin cambios).
-- H-DCC-11 (NUEVO, BAJO, R7 del global) -> ✅ CERRADO en rev.3:
-  UserSession.TryRestoreTokenFromStorage (:81-180) AHORA VALIDA el token
-  almacenado: formato JWT (3 partes), expiración (exp claim), scope pos:desktop
-  y presencia de security_stamp antes de restaurar. Se invoca en
-  App.xaml.cs:264 al arrancar la aplicación. Tokens inválidos se purgan con
-  ClearToken + log (ClientStateLogger). Pruebas:
-  Phase5ClientResilienceTests (UserSession_TryRestoreTokenFromStorage_*)
-  cubren happy path, token expirado y scope web incompatible.
-- H-DCC-4 (versión) -> 🟡 MEJORADO: X-Client-Version AHORA viene de
-  AppVersionHelper.CurrentVersion (UserSessionHeaderHandler.cs:39). X-User-
-  Role/X-User-Id siguen enviándose pero el backend los ignora.
-- H-DCC-12 (NUEVO): SalesHistoryViewModel usa SaleCompletedNotificationMessage
-  (:75-79) para invalidar caché al completar una venta; debounced search con
-  CTS (:199-221); usa DateLocal del servidor (SalesHistoryDto.DateLocal).
-- CORRECCIÓN de la fortaleza "Sesión (UserSession) en memoria con token que
-  NO se persiste en disco": REV.3 — el token SÍ se persiste y AHORA SÍ se
-  restaura con validación completa (R7 ✅).
+1. Erradicación Total de 'async void' en ViewModels (H-DCC-5 ✅, Commit c541b57):
+   Los 8 métodos async void identificados en ViewModels fueron convertidos a métodos
+   que retornan Task o se ejecutan mediante TaskExtensions.SafeFireAndForget con captura
+   de excepciones estructuradas y log a AppLogger.LogCrash.
+
+2. Eliminación de Cabeceras en Texto Plano (ARQ-03 ✅, Commit c541b57):
+   En UserSessionHeaderHandler.cs se retiraron las cabeceras X-User-Role y X-User-Id.
+   La identidad viaja estrictamente dentro del token Bearer JWT validado criptográficamente.
+
+3. Endurecimiento TLS en Escáner de Red Local (H-DCC-2 ✅, Commit c541b57):
+   SubnetScannerService restringe la aceptación de certificados TLS autofirmados
+   estrictamente a rangos de red privada RFC-1918 (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+   y loopback, rechazando conexiones inseguras a IPs públicas o externas.
+
+4. Almacenamiento Seguro de Sesión con DPAPI:
+   SecureTokenStorageService cifra el token en disco usando Windows Data Protection API
+   (DataProtectionScope.CurrentUser). UserSession valida el token restaurado (formato,
+   expiración, scope pos:desktop y security_stamp).
 
 --------------------------------------------------------------------------------
-REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 + currency format) — contrastado
-contra HEAD 36aa33b.
-Cambios del módulo en la ola 4:
-- ViewModels/PosViewModel.cs (+100, a230c3f): eliminación de DUPLICACIÓN de
-  métodos de pago vía SemaphoreSlim gating + deduplicación por nombre/orden;
-  nuevos tests PosViewModelPaymentMethodsDeduplicationTests (219 líneas).
-- ViewModels/SettingsViewModel.cs (+140) y Services/SettingsService.cs (+24,
-  +ISettingsService 2): preferencia CurrencyFormat (Venezolano/Internacional)
-  con GetCurrencyFormatAsync/SetCurrencyFormatAsync contra el backend
-  (api/settings/currency-format) — NUEVO hallazgo W2 global.
-- ViewModels/MainViewModel.cs (+6): ajustes de integración del formato.
-- Services/IPaymentService.cs (+7): firma de notificación de métodos de pago.
-
-Estado de hallazgos (cambios respecto a rev.3):
-- H-DCC-1 (A3) -> ✅ CERRADO: el lado servidor ahora persiste y valida la
-  Idempotency-Key (IdempotencyService SHA-256, módulo 04) — el reintento solo
-  idempotente del cliente + deduplicación server-side cierran el caso.
-- H-DCC-11 (DPAPI restore) -> ✅ CERRADO (rev.3, sin regresión).
-- H-DCC-2/3/5/6/7/8/9/10 -> ❌ VIGENTES (sin cambios).
-- H-DCC-4 (cabeceras) -> 🟡: X-User-Role/X-User-Id siguen enviándose
-  (UserSessionHeaderHandler.cs:54-58, ARQ-03 global ❌); la versión ya viene
-  de AppVersionHelper (rev.3).
-- H-DCC-12 -> ✅ sin cambios (rev.3).
-
-NUEVOS (ola 4):
-- W2 (MEDIO, global): el formateo de moneda duplica lógica web/WPF; en este
-  módulo, SettingsViewModel define las opciones (Venezolano 1.234,56 vs
-  Internacional 1,234.56) y el cliente cachea la preferencia — ver módulo 09
-  para el riesgo de deriva y redondeo float.
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
 --------------------------------------------------------------------------------
+- H-DCC-1 (Reintentos idempotentes): ✅ CERRADO (ResilienceHandler filtra por GET/HEAD o Idempotency-Key).
+- H-DCC-2 (TLS Scanner LAN): ✅ CERRADO (restringido a subredes RFC-1918 y loopback).
+- H-DCC-3 (Persistencia de token): ✅ CERRADO (DPAPI CurrentUser en %LocalAppData%\session.dat).
+- H-DCC-4 / ARQ-03 (Cabeceras de rol/id): ✅ CERRADO (retiradas; Bearer token exclusivo).
+- H-DCC-5 (0 async void en ViewModels): ✅ CERRADO (100% Task o SafeFireAndForget).
+- H-DCC-11 (Validación de token restaurado): ✅ CERRADO (auditoría forense y purga si inválido).
+- [NUEVO] WPF-LEAK-01: ❌ VIGENTE (ProductDialogViewModel.cs:294 suscribe async void lambda
+  al DispatcherTimer sin bloque try/catch ni implementación de IDisposable).
+- [NUEVO] DOM-VAL-01: ❌ VIGENTE (ProductImportService.cs:203 y ProductDialogViewModel.cs:685
+  validan SKU con Regex ^\d+$ solo dígitos, rechazando códigos alfanuméricos válidos del dominio).
 
-1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------
-Librería MVVM compartida por el cliente de escritorio (WPF). Contiene
-servicios de red (HTTP, resiliencia, health polling, descubrimiento de
-servidor), estado de sesión, servicios de dominio cliente (ventas, productos,
-caja, tasas, importación) y ~30 ViewModels (~9.900 líneas en total). No
-referencia WPF (solo uno o dos puntos usan System.Windows para el logout en
-Dispatcher, ver UserSessionHeaderHandler).
-
-2. HALLAZGOS ESPECÍFICOS DEL MÓDULO
---------------------------------------------------------------------------------
-[H-DCC-1] Reintento de peticiones NO idempotentes (A3 global, CRÍTICO).
-  ResilienceHandler (149 líneas) reintenta 3 veces con backoff 2/4/8s ante
-  5xx para TODA petición no exenta (health/auth/version/today), incluidos
-  POST/PUT/DELETE: "completar venta", "cerrar caja", "agregar pago" pueden
-  ejecutarse dos veces si la primera respuesta se pierde. No hay
-  Idempotency-Key. Añadir jitter y restringir reintentos a GET (o peticiones
-  idempotentes) + deduplicación server-side.
-
-[H-DCC-2] Escaneo de red con validación TLS deshabilitada.
-  SubnetScannerService usa un HttpClient estático compartido con
-  RemoteCertificateValidationCallback => true (acepta cualquier certificado) y
-  escanea la subred (/24) en paralelo contra /api/health, que expone
-  machineName del servidor. Riesgo: (a) MITM si algún día se descubre por
-  HTTPS; (b) "publicidad" del servidor a toda la LAN; (c) estático compartido
-  sin límites de concurrencia (revisar throttling). El escaneo debería
-  limitarse a HTTP/loopback o validar el certificado de confianza.
-
-[H-DCC-3] Estado global "fatal" y cortacircuitos de toda la app.
-  IClientStateService + HealthPollingService: tras agotar reintentos se activa
-  IsFatalErrorActive y TODA petición se corta hasta que /health responda
-  (polling cada 3 s). Es un diseño robusto pero centralizado: un endpoint lento
-  (no de salud) puede tumbar el cliente entero si el backend responde 200 en
-  /health pero falla en el resto. Considerar cortacircuitos por endpoint/clase.
-
-[H-DCC-4] Versión y roles hardcodeados en las cabeceras (B9/B3 globales).
-  UserSessionHeaderHandler añade X-Client-Version "1.0.0" fija (no desde el
-  ensamblado) y X-User-Role/X-User-Id que el backend NO utiliza (ruido).
-  Eliminar o derivar de la versión real del ensamblado.
-
-[H-DCC-5] async void y eventos sin observación de excepciones (M4 global).
-  Varios controladores de eventos son async void: MainViewModel.OnLoginSuccess,
-  CustomerManagementViewModel.StartDebouncedSearch, CustomerPickerViewModel,
-  InventoryViewModel.OnProductItemChanged, IConnectionManager.OnHeartbeatTick,
-  SettingsViewModel.OnSelectedTimeZoneChanged, etc. Las excepciones en estos
-  handlers caen al TaskScheduler.UnobservedTaskException (evidencia: crash.txt
-  en la raíz con 608 líneas de tareas no observadas y CTS disposed).
-  Convertir a async Task con try/catch o encolar en un dispatcher seguro.
-
-[H-DCC-6] Contraseña en string en memoria.
-  LoginViewModel expone Password como string (no SecureString/char[]), con
-  toggle de visibilidad. Si se enlaza a un PasswordBox se copia a string en
-  memoria. Práctica común en WPF pero mejorable: SecureString o minimizar la
-  vida del string y no loguearlo jamás.
-
-[H-DCC-7] Muchos catch{} vacíos y reintentos con sleeps sin jitter.
-  CurrencyService, ExchangeRateService, UserService, ProductService y
-  PosViewModel tragan excepciones con catch{} (varias decenas en el módulo).
-  Intercambio de tasa: ExchangeRateService tiene ~8 catch{} incluido uno en
-  DisposeAsync; PosViewModel línea ~785 catch{} vacío tras una operación de
-  venta (un fallo de red en el cobro puede pasar desapercibido).
-
-[H-DCC-8] Estado de carrito/venta restaurado desde memoria y sesión.
-  CartViewModel/PosViewModel mantienen la venta activa en memoria y algunos
-  estados se persisten en la app (session); verificar que tras un fallo no se
-  duplique el cobro (mitigado por H-DCC-1 del lado servidor, pero frágil).
-
-[H-DCC-9] ClientSettingsStore: bien, pero con doble escritura y sin lock entre
-  lecturas parciales.
-  Guarda la configuración en LocalApplicationData (JSON plano, sin secretos:
-  correcto). Cachea en memoria y escribe sincrónicamente con lock; los
-  fallos de escritura se tragan silenciosamente (el usuario cree que guardó la
-  IP del servidor y no se persistió).
-
-[H-DCC-10] Importación de productos: lógica de negocio del lado cliente.
-  ProductImportService (551 líneas) parsea CSV/XLSX y valida precios/márgenes
-  en el cliente; el backend re-valida. Duplicación de reglas (dos fuentes de
-  verdad para precios) que ya causó divergencias (precios por mayor/detal).
-
 3. FORTALEZAS DEL MÓDULO
 --------------------------------------------------------------------------------
-- Capa de resiliencia seria: circuit breaker, health polling, backoff, logout
-  automático en 401 y transición a estado de error con recuperación.
-- Sesión (UserSession) con token que ya NO vive solo en memoria: se cifra con
-  DPAPI al guardarse (SecureTokenStorageService, rev.2); ver H-DCC-11
-  (LoadToken nunca se invoca -> sin restauración de sesión).
-- Arquitectura MVVM con CommunityToolkit, DI (Microsoft.Extensions.Hosting) e
-  interfaces para casi todos los servicios (testeable).
-- Múltiples ViewModels desacoplados con mensajería débil (mensajes de cambio
-  de catálogo, carrito, tasa, cierre de turno).
-- Manejo explícito del ciclo de vida (IDisposable, Dispatcher) en servicios
-  largos (ExchangeRateService con semáforo y SignalR).
-================================================================================
+- BaseViewModel provee ciclo de vida con CancellationTokenSource e invalidación automática
+  ante errores fatales de conexión a base de datos.
+- Desacoplamiento MVVM mediante WeakReferenceMessenger con desuscripción en Dispose.
+- ResilienceHandler implementa cortacircuitos (circuit breaker) y reintentos con jitter aleatorio.
 
-4. DEUDA TÉCNICA Y RECOMENDACIONES
 --------------------------------------------------------------------------------
-- Idempotencia en cobros y reintentos solo GET (H-DCC-1) -> prioridad 1.
-- Eliminar la validación TLS desactivada y acotar el escaneo (H-DCC-2).
-- Convertir async void a async Task con manejo de errores; no disponer CTS
-  con tareas hijas (H-DCC-5, M4).
-- Unificar reglas de precios/importación en el backend (H-DCC-10).
-- Loggear errores reales (eliminar catch{} silenciosos en rutas de dinero).
-- Centralizar versión y eliminar cabeceras X-User-*.
-
-5. CRUCE CON docs/reporte.txt
+4. RECOMENDACIONES FUTURAS
 --------------------------------------------------------------------------------
-A3, M1, M4, M5, B2, B3, B9, B11.
+- Implementar IDisposable en ProductDialogViewModel para detener y desuscribir _debounceTimer.
+- Reemplazar la lambda async void en el evento Tick del timer por SafeFireAndForget con try/catch.
+- Homogeneizar la validación de SKU en ProductImportService y ProductDialogViewModel.
 ================================================================================

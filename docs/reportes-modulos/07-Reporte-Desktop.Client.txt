@@ -1,134 +1,49 @@
 ================================================================================
-REPORTE POR MÓDULO: Desktop.Client (capa WPF / UI de escritorio)
-Fecha: 2026-09-04
+REPORTE POR MÓDULO: Desktop.Client (interfaz de usuario WPF y vistas)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
 Cruce con docs/reporte.txt (análisis global).
 ================================================================================
 
 --------------------------------------------------------------------------------
-REVISIÓN 2 (2026-09-04) — estado tras la remediación 08:19–08:51
+1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
 --------------------------------------------------------------------------------
-Cambios del módulo en la ventana:
-- App.xaml.cs:99: registro en DI de ISecureTokenStorageService ->
-  SecureTokenStorageService (DPAPI). El token de sesión (que antes se
-  descartaba al cerrar o vivía solo en memoria) ahora se cifra al guardarse
-  vía UserSession (ver 06, H-DCC-11/R7: LoadToken nunca se invoca).
-- El resto del módulo (vistas, OnExit, versionado, mutex, wedge de escáner)
-  NO cambió en la ventana.
+Desktop.Client contiene las vistas XAML, recursos visuales, converters y el punto de
+entrada de la aplicación de escritorio:
 
-Estado de hallazgos (rev.3):
-- H-WPF-1 (versión) -> 🟡 MEJORADO: App.xaml.cs:248 ahora usa
-  AppVersionHelper.CurrentVersion (derive de Directory.Build.props) en vez del
-  "1.0.0" hardcodeado; sin embargo Directory.Build.props sigue con Version=
-  1.0.0 — la fuente está centralizada pero el valor aún es "1.0.0".
-- H-WPF-2..H-WPF-8 -> ❌ VIGENTES (sin cambios significativos).
-Cruce con global: C2, M4, M5, B3, B9 parcial; B9 mejorado (AppVersionHelper
-ahora en server+desktop; web aún hardcodea '1.0.0').
+1. Blindaje de Handlers en Vistas XAML (H-WPF-3 ✅, Commit 686f0cd):
+   - EditSaleDialog.xaml.cs: TxtProductSearch_TextChanged envuelto en try/catch
+     capturando OperationCanceledException (debounce) y Exception general hacia
+     AppLogger.LogCrash. Manejo de cursor de espera mediante try/finally.
+   - ImportProductsView.xaml.cs: Grid_Drop envuelto en try/catch defensivo contra caídas
+     del hilo de la interfaz de usuario.
+
+2. Apagado Limpio y No Bloqueante (H-WPF-2 ✅, Commit c541b57):
+   - App.xaml.cs implementa un procedimiento de cierre con timeout defensivo de 3 segundos
+     que previene bloqueos del hilo principal o congelamientos del proceso al cerrar ventanas.
+
+3. Registro de Excepciones No Controladas (ERR-02 ✅):
+   - AppDomain.CurrentDomain.UnhandledException y DispatcherUnhandledException enrutan
+     los registros a %LOCALAPPDATA%\CommandCenterPOS\Logs con rotación automática.
+
+4. Virtualización de Rendimiento en Listados:
+   - ProductsDataGrid en InventoryView.xaml tiene activada la virtualización de interfaz:
+     VirtualizingStackPanel.IsVirtualizing="True", VirtualizationMode="Recycling",
+     VirtualizingPanel.ScrollUnit="Pixel", RowHeight="42".
 
 --------------------------------------------------------------------------------
-REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 + currency format) — contrastado
-contra HEAD 36aa33b.
-Cambios del módulo en la ola 4:
-- App.xaml.cs (+31): ERR-02 ✅ CERRADO — GetCrashPath ahora escribe en
-  %LOCALAPPDATA%\CommandCenterPOS\Logs\crash.txt (con fallback a %TEMP% +
-  ProcessId) en lugar de Program Files (App.xaml.cs:29-60).
-- Behaviors/NumericCalculatorBehavior.cs (+61) y Views/SettingsView.xaml
-  (+135): soporte del formato dual de moneda (W2 global) en la calculadora
-  numérica y la pantalla de configuración.
-
-Estado de hallazgos (cambios respecto a rev.3):
-- H-WPF-1 (versión) -> 🟡 SIN CAMBIOS (AppVersionHelper ya usado; valor sigue
-  1.0.0 en Directory.Build.props).
-- H-WPF-2 (OnExit bloqueante) -> ❌ VIGENTE.
-- H-WPF-3/4/5/6/7/8 -> ❌ VIGENTES (async void, Environment.Exit en finally,
-  escáner/TLS, etc.).
-- ERR-02 (crash logger) -> ✅ CERRADO (ver App.xaml.cs arriba).
-
-NUEVOS (ola 4):
-- W2 (MEDIO, global): la calculadora numérica (NumericCalculatorBehavior) y
-  SettingsView duplican la lógica de formato del web (formatters.js) — riesgo
-  de deriva en separadores/redondeo entre caja WPF y web; ver módulo 09.
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
 --------------------------------------------------------------------------------
+- ERR-02 (Crash logger): ✅ CERRADO (registros centralizados en AppData con rotación).
+- H-WPF-2 (Shutdown no bloqueante): ✅ CERRADO (timeout defensivo de 3s en App.xaml.cs).
+- H-WPF-3 (Async void en code-behind): ✅ CERRADO (try/catch + AppLogger.LogCrash en vistas).
+- [NUEVO] WPF-LEAK-02: 🟡 LEVE (SuccessDialogWindow.xaml.cs:17-20 suscribe _timer.Tick
+  pero no desuscribe el delegado en OnClosed).
 
-1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------
-Proyecto WPF (net10.0-windows): App.xaml(.cs), MainWindow, ~27 vistas
-(XAML + code-behind, ~1.715 líneas de code-behind), comportamientos/converters
-de UI, helpers de scanner y diálogos. Inicia un Generic Host con DI, chequea
-versión contra el servidor y muestra bloqueo si es obsoleta. Mutex global de
-instancia única (Program.cs).
-
-2. HALLAZGOS ESPECÍFICOS DEL MÓDULO
---------------------------------------------------------------------------------
-[H-WPF-1] Versión de cliente hardcodeada "1.0.0" en el flujo de arranque.
-  App.xaml.cs loguea y muestra "1.0.0" fija en VersionLockoutViewModel y
-  UserSessionHeaderHandler envía X-Client-Version "1.0.0". La versión del
-  ensamblado nunca se lee => al publicar 1.1.0 el servidor seguirá viendo
-  1.0.0 si no se toca el string. Fuente única: AssemblyInformationalVersion.
-
-[H-WPF-2] OnExit bloqueante en el hilo de UI.
-  App.OnExit ejecuta _host.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter()
-  .GetResult() y Dispose() dentro del dispatcher: si un servicio no responde,
-  la app se congela en el cierre (deadlock potencial con contexto de
-  sincronización). Usar OnExit asincrono con timeout y cancelación real.
-
-[H-WPF-3] Handlers de eventos async void en code-behind.
-  EditSaleDialog.TxtProductSearch_TextChanged, ImportProductsView.Grid_Drop y
-  otros son async void: excepciones no observadas pueden cerrar la app (M4).
-  Manejar try/catch o usar comandos/relay.
-
-[H-WPF-4] Credenciales: sin SecureString.
-  LoginView + LoginViewModel trabajan con Password en string y toggle de
-  visibilidad; la contraseña queda en memoria administrada (ver H-DCC-6).
-  Además no hay bloqueo local tras N intentos (depende 100% del servidor y de
-  la red).
-
-[H-WPF-5] Manejo de crashes con Environment.Exit(0) en finally.
-  Program.Main tiene finally { ReleaseSingleInstanceMutex(); Environment.Exit(0); }
-  incluso en éxito: mata cualquier cleanup pendiente y hace imposible
-  distinguir salidas anómalas. (El mutex global "Global\POS_Desktop_Client_
-  SingleInstance_Mutex" sin ACL limita a una instancia por SESIÓN de usuario;
-  si el servicio del backend se ejecuta como SYSTEM y el cliente como otro
-  usuario, la semántica es confusa pero funcional en caja.)
-
-[H-WPF-6] XAML/vistas con lógica de negocio residual.
-  Varias vistas muestran textos, habilitan botones o aplican formatos con
-  reglas de negocio en code-behind (converters, validación de decimales con
-  DecimalCentsBehavior/IntegerTextBoxBehavior en code-behind de vistas) en vez
-  de MVVM. Mantenibilidad media.
-
-[H-WPF-7] Accesibilidad y robustez de teclado no verificadas.
-  El POS depende de atajos F5 y scaners (KeyboardWedgeScannerListener,
-  AtmBehavior, PosHotkeys) y comportamientos como SearchKeyboardBehavior;
-  no hay pruebas de accesibilidad ni de contraste; revisar foco de
-  DataGrid/Omnibox tras cada diálogo.
-
-[H-WPF-8] Aplicación de caja con doble teclado/escáner.
-  KeyboardWedgeScannerListener emula escritura de teclado (wedge). Riesgo: un
-  escáner que escriba caracteres de control (p. ej. Enter) puede disparar
-  acciones; BarcodeValidator valida formato del lado servidor, pero validar
-  también en el wedge antes de inyectar teclas reduce errores.
-
 3. FORTALEZAS DEL MÓDULO
 --------------------------------------------------------------------------------
-- DI + Generic Host con ciclo de vida explícito y manejo de excepciones global
-  (AppDomain/Dispatcher/Task) que escribe en logs.
-- Mutex de instancia única evita doble POS en la misma máquina.
-- VersionLockout: si el cliente es obsoleto, no permite operar (aunque el
-  mecanismo dependa del autodeclarado, ver M5 global).
-- Behaviors de UI reutilizables (DataGridFocus, búsqueda por teclado,
-  comportamientos numéricos) y un DataGrid "Performant" propio.
-- Logging de crashes en logs/crash.log del directorio base.
-
-4. DEUDA TÉCNICA Y RECOMENDACIONES
---------------------------------------------------------------------------------
-- Leer versión desde el ensamblado (H-WPF-1).
-- OnExit asincrono no bloqueante (H-WPF-2).
-- Eliminar async void de code-behind (H-WPF-3).
-- SecureString/credenciales con bloqueo local opcional (H-WPF-4).
-- Revisar Environment.Exit en finally y semántica del mutex (H-WPF-5).
-- Mover reglas de negocio residuales a ViewModels/validadores.
-
-5. CRUCE CON docs/reporte.txt
---------------------------------------------------------------------------------
-C2 (HTTP por defecto), M4, M5, B3, B4 (start.bat), B9.
+- Estilos consistentes con Material Design in XAML y soporte para modo lectura condicional.
+- Comportamientos numéricos reactivos (NumericCalculatorBehavior) sincronizados.
+- Ventana de diálogo de edición de ventas con debouncing en búsqueda de productos.
 ================================================================================

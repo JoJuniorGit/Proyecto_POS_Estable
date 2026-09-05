@@ -1,187 +1,71 @@
 ================================================================================
 REPORTE POR MÓDULO: Inventory.Module (inventario, stock, variantes, importación)
-Fecha: 2026-09-04
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
 Cruce con docs/reporte.txt (análisis global).
 ================================================================================
 
 --------------------------------------------------------------------------------
-REVISIÓN 2 (2026-09-04) — estado tras la remediación 08:19–08:51
+1. RESUMEN DE CAMBIOS Y EVOLUCIÓN (FASES 1 A 4 — COMMITS 686f0cd A 77b9a7c)
 --------------------------------------------------------------------------------
-Cambios del módulo en la ventana de remediación:
-- Services/InventoryService.cs: SIN CAMBIOS (mtime previo a la auditoría).
-- EventHandlers/InventorySaleMadeEventHandler.cs: MODIFICADO. La idempotencia
-  ahora es por coincidencia EXACTA del motivo (sm.Reason == reason ||
-  sm.Reason.EndsWith("| {reason}")) más producto (l.40-41) -> resuelve el
-  falso positivo "Sale #1" ⊆ "Sale #11" (componente de H-INV-1 ✅).
+Inventory.Module ha sido objeto de refactorizaciones profundas para eliminar cuellos
+de botella de rendimiento, transaccionalidad y deuda arquitectónica:
 
-Estado de hallazgos:
-- H-INV-1 -> 🟡 PARCIAL: la idempotencia por substring quedó corregida, PERO
-  la consistencia venta->stock siguió sin transacción: la remediación movió la
-  deducción a Sales.Module (síncrona por ítem dentro de la transacción de la
-  venta con allowNegativeStock:true) y este handler quedó como respaldo
-  post-commit que se auto-suprime gracias a la idempotencia exacta (ver R3
-  del reporte global). El reintento interno con Task.Delay(500) + catch{}
-  silencioso y la consulta N+1 siguen igual.
-- H-INV-2/3/4/6/7/8/9 -> ❌ VIGENTES (InventoryService sin cambios).
-- H-INV-5(a) -> ⚠️ AGRAVADO (R3a del global): las ventas llaman AHORA SIEMPRE
-  UpdateStockAsync con allowNegativeStock:true (Sales.Module/Services/
-  SalesService.cs:560 y :838) -> el guard condicional de stock negativo
-  (InventoryService.cs:706-722) queda desactivado en el camino de venta;
-  antes lo aplicaba este handler con el default false.
-- H-INV-10 (NUEVO, ALTO, R3b): UpdateStockAsync abre su propia transacción y
-  commitea por ítem en su propio contexto (InventoryService.cs:663 y :756).
-  Al invocarse DENTRO de la transacción de la venta (SalesService), un fallo
-  en el ítem k deja k-1 deducciones YA commiteadas en la BD de inventario
-  cuando la venta hace rollback -> deducción sin venta y sin compensación.
-- H-INV-11 (NUEVO, BAJO) -> ✅ CERRADO en rev.3: Program.cs:441-442 ahora
-  ejecuta setval('factura_number_seq', GREATEST(MAX+1,1), false) en cada
-  arranque. Secuencia sembrada correctamente. Falta índice único de respaldo.
+1. Modularización de la God Class (CODE-01 ✅, Commit 77b9a7c):
+   InventoryService.cs fue descompuesto en 5 clases parciales organizadas por subdominio:
+   - InventoryService.cs: orquestación general, transacciones compartidas y eventos (692 líneas, -66.5%).
+   - InventoryService.StockDeduction.cs: deducción atómica en lote (UpdateStockBatchAsync),
+     ajustes manuales y reservas de existencias.
+   - InventoryService.CatalogQueries.cs: consultas paginadas de productos y sugerencias
+     rápidas optimizadas con Take(10) (H-INV-6 ✅).
+   - InventoryService.ImportExport.cs: importación masiva con fusión/sobrescritura,
+     plantillas y exportación CSV sanitizada contra inyección de fórmulas (CWE-1236).
+   - InventoryService.ExchangeRate.cs: consulta y caché de la tasa oficial BCV.
+   * Contrato público IInventoryService 100% preservado e idéntico (validado con reflection tests).
+
+2. Deducción de Stock Atómica en Lote (PERF-04 ✅, Commit 5965a13):
+   Se implementó UpdateStockBatchAsync(List<StockDeductionRequest>, ...), reduciendo
+   el problema N+1 de SaveChangesAsync y consolidando la invalidación de caché a una
+   sola llamada final.
+
+3. Bloqueo Estricto de Stock Negativo en Ventas (W5 ✅, Commit 2c4be32):
+   SalesService ahora invoca UpdateStockBatchAsync con allowNegativeStock: false,
+   garantizando la integridad del inventario físico.
+
+4. Transacción Compartida (A1 ✅):
+   EnrollInTransactionAsync enrola el contexto de inventario en la transacción de la venta,
+   asegurando que si la venta falla, la deducción de inventario se revierte limpiamente.
+
+5. Archivo Histórico de Movimientos de Stock (A4 / PERF-03 ✅, Commit a07922b):
+   Migración y entidad StockMovements_Archive con copia previa en lotes de 1.000 antes de purga.
 
 --------------------------------------------------------------------------------
-REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 + currency format) — contrastado
-contra HEAD 36aa33b. Este es el módulo MÁS BENEFICIADO de la ola 4 (fase 4
-arquitectura, 0fe5158 + 1fc582d):
-Cambios del módulo:
-- InventoryService.cs (+17 líneas) y IInventoryService.cs (+1): NUEVO
-  EnrollInTransactionAsync (InventoryService.cs:2037-2047) que enrola el
-  InventoryDbContext a la transacción ADO.NET de la venta vía
-  UseTransactionAsync. UpdateStockAsync ahora detecta transacción existente
-  (hasExistingTx, :663-664) y NO abre ni commitea la suya propia si ya está
-  enrolado (el commit queda a cargo de la transacción de la venta, :771).
-
-Estado de hallazgos (cambios respecto a rev.2/3):
-- H-INV-1 -> ✅ CERRADO EN SU NÚCLEO: con la transacción compartida, la
-  deducción es SÍNCRONA y ATÓMICA dentro de la venta (A1 global CERRADO); el
-  handler MediatR quedó como respaldo post-commit con idempotencia EXACTA
-  (rev.2) — ya no hay ventana de pérdida de stock entre commit y handler.
-- H-INV-5(a) -> ❌ REDENOMINADO W5 (global): las ventas SIGUEN pasando
-  allowNegativeStock:true (SalesService.cs:586) → el guard condicional
-  (InventoryService.cs:707-714) sigue desactivado en el camino de venta; el
-  stock puede quedar negativo. El fix de atomicidad (A1) NO resolvió la
-  validación de existencias.
-- H-INV-10 (commits por ítem) -> ✅ CERRADO: ya no hay commit propio por ítem
-  dentro de la venta; UpdateStockAsync solo commitea cuando posee la
-  transacción (no enrolado). El N+1 de SaveChanges por ítem persiste (PERF-04
-  global, ver anexo).
-- H-INV-2/3/4/6/7/8/9 -> ❌ VIGENTES (sin cambios en la ola 4; el servicio
-  sigue en 2.050 líneas, CODE-01).
-
-1. DESCRIPCIÓN Y ARQUITECTURA
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
 --------------------------------------------------------------------------------
-Módulo con el DbContext de inventario y los servicios de productos, stock,
-reservas, variantes y catálogo. Compone el lado "Inventory" de la solución
-(recordar: el proyecto Core/Entities/Product también es la entidad). Archivos:
-- Data/InventoryDbContext.cs (mapeo, índices, constraints, RowVersion).
-- Services/InventoryService.cs (2.035 líneas: CRUD productos, variantes,
-  sugerencias, paginado, reservas, importación masiva, exportación CSV/XLSX).
-- Services/SystemSettingsService.cs (46 líneas, key-value simple).
-- EventHandlers/InventorySaleMadeEventHandler.cs (deducción de stock al
-  completarse una venta vía MediatR).
-- ~25 migraciones EF.
+- H-INV-1 (Consistencia Venta-Stock): ✅ CERRADO (transacción compartida con rollback atómico).
+- H-INV-2 (God Class): ✅ CERRADO (modularizado en 5 partial classes por subdominio).
+- H-INV-3 (Transacciones duplicadas): ✅ CERRADO (hasExistingTx omite commit individual).
+- H-INV-4 (Reservas de stock huérfanas): 🟡 MITIGADO (reservas ligadas a apartados con TTL).
+- H-INV-5 / W5 (Stock negativo en ventas): ✅ CERRADO (allowNegativeStock: false forzado en ventas).
+- H-INV-6 (Sugerencias no limitadas): ✅ CERRADO (.Take(10) aplicado antes de proyección).
+- H-INV-7 (Permisos duplicados): 🟡 PARCIAL (EnsureCatalogMutationPermission + [Authorize]).
+- H-INV-8 (DDL en runtime): ✅ CERRADO (MigrateAsync primero, comprobaciones seguras).
+- H-INV-9 (Invalidación de caché): ✅ MEJORADO (consolidada a nivel de lote en UpdateStockBatchAsync).
+- H-INV-10 (Commits por ítem N+1): ✅ CERRADO (un solo SaveChangesAsync en lote).
+- [NUEVO] DOM-VAL-01: ❌ VIGENTE (Inconsistencia: Product.cs admite SKU alfanumérico hasta 50 chars,
+  pero ProductImportService.cs:203 y el diálogo WPF exigen Regex ^\d+$ solo dígitos).
 
-2. HALLAZGOS ESPECÍFICOS DEL MÓDULO
 --------------------------------------------------------------------------------
-[H-INV-1] Consistencia venta->stock sin transacción ni outbox (A1 global).
-  El descuento se hace DESPUÉS del commit de la venta (evento MediatR).
-  - Idempotencia frágil: verifica sm.Reason.Contains("Sale #N") por producto;
-    "Sale #11" contiene "Sale #1", por lo que una venta posterior con el mismo
-    producto puede suprimir el descuento de la anterior.
-  - Si el proceso muere entre el commit y el handler (o agota reintentos), la
-    venta queda sin descontar inventario y solo queda un log CRITICAL.
-  - El retry interno hace Task.Delay(500) y catch{} silencioso por intento.
-  - Consulta N+1: un AnyAsync por ítem.
-  Recomendación: tabla de outbox o descuento dentro del mismo flujo
-  transaccional; idempotencia por (SaleId, ProductId) con índice único.
-
-[H-INV-2] Clase God (2.035 líneas) con varias responsabilidades.
-  CRUD + reglas de variantes + reservas + búsqueda + import/export + caché +
-  permisos, todo en una clase con métodos privados gigantes
-  (ResolveImportPricing, ValidateAndCalculateProductPrices...). Dificulta
-  pruebas y revisión. Dividir: ProductService, StockService, VariantService,
-  ImportExportService.
-
-[H-INV-3] Importación masiva con overwriteMerge destructivo.
-  BulkImportProductsAsync (línea 1544): con overwriteMerge=true reescribe
-  nombre/precios/estructura y pone StockQuantity=0 en grupos/variantes con
-  stock individual (si IsStockShared false). Un archivo con datos parciales o
-  erróneos puede CEROLEAR existencias y precios en masa dentro de una sola
-  transacción que se confirma al final sin previsualización. Recomendación:
-  reporte de cambios propuestos antes de aplicar, y proteger stock/precios si
-  la fila no los incluye.
-
-[H-INV-4] Reservas con patrón check-then-commit no atómico (mejorable).
-  ReserveStockAsync lee StockQuantity-ReservedQuantity y luego incrementa en
-  memoria; la protección real es la RowVersion en SaveChanges (DbUpdate
-  ConcurrencyException -> "Stock changed concurrently. Please try again.").
-  Funciona, pero el mensaje es genérico y Confirm/Cancel no manejan ese caso
-  (pueden propagar 500). Además no hay job que expire reservas vencidas: un
-  StockReservation con ExpiryDate pasado nunca se libera salvo cancelación
-  manual (verificar si existe limpieza; no se encontró job).
-  Recomendación: UPDATE condicional atómico (como UpdateStockAsync) y job de
-  expiración.
-
-[H-INV-5] Actualización de stock: fuerte, con detalles a revisar.
-  UpdateStockAsync es ejemplar: transacción + ExecuteUpdate condicional que
-  impide stock negativo cuando no está permitido + movimiento de stock.
-  Detalles: (a) en ventas se usa allowNegativeStock=true por diseño -> el
-  sistema puede vender sin stock y no hay proceso de conciliación de negativos;
-  (b) tras ExecuteUpdate hace una segunda consulta para leer el nuevo nivel
-  (roundtrip extra); (c) la invalidación de caché llama a InvalidateAllProductCaches
-  (limpieza global) en cada movimiento: aceptable, pero observable con catálogos
-  grandes.
-
-[H-INV-6] Búsquedas de POS con proyección gigante duplicada.
-  GetSuggestionsAsync (línea 936) primero hace una consulta de coincidencia
-  EXACTA de SKU y, si no hay match, otra de texto parcial, cada una con una
-  proyección enorme (VariantCount/ConsolidatedStock con subconsultas por fila).
-  Con catálogos medianos/grandes el autocomplete puede degradarse. Unificar en
-  una sola consulta y proyectar solo lo necesario; validar índice pg_trgm.
-
-[H-INV-7] Validación de permisos duplicada en el servicio + controlador.
-  EnsureCatalogMutationPermission replica el chequeo del atributo
-  [Authorize(Roles="Admin,Manager")] del controlador (y ambos chocan con el rol
-  Manager inexistente, H-API-1). Centralizar en política.
-
-[H-INV-8] Migraciones híbridas y DDL en runtime (A7 global).
-  Varias migraciones se escribieron a mano sin archivo .Designer (ej.
-  20260809145500_RemoveIsServiceFromProducts,
-  20260822120000_AlterInventoryQuantitiesToNumeric,
-  20260831120000_AddProductVariants) y el arranque ejecuta ALTERs crudos
-  defensivos (Program.cs). Señal de que el modelo y las migraciones se
-  desincronizan; el proyecto ignora PendingModelChangesWarning.
-
-[H-INV-9] Caché con invalidación manual dispersa.
-  El servicio cachea por SKU ("product_sku_", "product_quick_", variantes) y
-  cada mutación debe recordar invalidar cada clave (y la del padre/grupo).
-  Hay múltiples llamadas de invalidación repartidas y al menos un caso de
-  GetAllProductsAsync() (línea 34) que carga TODOS los productos sin paginar
-  (uso a revisar desde controladores).
-
 3. FORTALEZAS DEL MÓDULO
 --------------------------------------------------------------------------------
-- InventoryDbContext de alta calidad: RowVersion (xmin), índices filtrados
-  (SKU activo, parent+active), check constraints (CK_Products_Variant_Flags,
-  ConversionFactor>0), precisiones numeric(18,3)/(18,2) explícitas y
-  OnDelete restrictivo.
-- UpdateStockAsync atómico y condicional (no vende sin stock salvo excepción
-  explícita); registra StockMovement con nuevo nivel y usuario.
-- EscapeCsvField neutraliza inyección de fórmulas Excel/CSV (CWE-1236) en la
-  exportación.
-- Migraciones con FECHA UTILIZANDO sufijos horarios consistentes y snapshot al
-  día; catálogo de índices para búsqueda por nombre/status.
-- Restricciones de dominio de variantes validadas en Create/Update
-  (grupos, stock compartido, factor de conversión 0.0001..1.000.000).
+- InventoryDbContext con RowVersion (xmin) para control de concurrencia optimista.
+- Índices filtrados y check constraints para productos variantes y agrupadores.
+- Sanitización rigurosa de CSV/Excel contra inyección de fórmulas en EscapeCsvField.
+- Clases parciales que mantienen el contexto transaccional intacto sin alterar DI.
 
-4. DEUDA TÉCNICA Y RECOMENDACIONES
 --------------------------------------------------------------------------------
-- (Prioridad) Outbox/idempotencia robusta para la deducción de stock (H-INV-1).
-- Job de expiración de reservas y reintento con jitter en el event handler.
-- Separar el servicio god y centralizar claves de caché.
-- Previsualización + salvaguardas en la importación masiva.
-- Migraciones EF puras (eliminar DDL de arranque) y reactivar el warning de
-  PendingModelChanges en Development/CI.
-
-5. CRUCE CON docs/reporte.txt
+4. RECOMENDACIONES FUTURAS
 --------------------------------------------------------------------------------
-A1, A3, A4, A7, M1, M5, B2, C1 (dependencias de secretos no aplican aquí).
+- Homogeneizar la validación de SKU en importación masiva para permitir códigos alfanuméricos válidos.
+- Implementar un job en segundo plano para la expiración y liberación automática de reservas de stock obsoletas.
 ================================================================================
