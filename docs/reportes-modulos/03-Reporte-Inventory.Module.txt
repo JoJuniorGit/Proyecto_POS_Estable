@@ -37,6 +37,35 @@ Estado de hallazgos:
   ejecuta setval('factura_number_seq', GREATEST(MAX+1,1), false) en cada
   arranque. Secuencia sembrada correctamente. Falta índice único de respaldo.
 
+--------------------------------------------------------------------------------
+REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 + currency format) — contrastado
+contra HEAD 36aa33b. Este es el módulo MÁS BENEFICIADO de la ola 4 (fase 4
+arquitectura, 0fe5158 + 1fc582d):
+Cambios del módulo:
+- InventoryService.cs (+17 líneas) y IInventoryService.cs (+1): NUEVO
+  EnrollInTransactionAsync (InventoryService.cs:2037-2047) que enrola el
+  InventoryDbContext a la transacción ADO.NET de la venta vía
+  UseTransactionAsync. UpdateStockAsync ahora detecta transacción existente
+  (hasExistingTx, :663-664) y NO abre ni commitea la suya propia si ya está
+  enrolado (el commit queda a cargo de la transacción de la venta, :771).
+
+Estado de hallazgos (cambios respecto a rev.2/3):
+- H-INV-1 -> ✅ CERRADO EN SU NÚCLEO: con la transacción compartida, la
+  deducción es SÍNCRONA y ATÓMICA dentro de la venta (A1 global CERRADO); el
+  handler MediatR quedó como respaldo post-commit con idempotencia EXACTA
+  (rev.2) — ya no hay ventana de pérdida de stock entre commit y handler.
+- H-INV-5(a) -> ❌ REDENOMINADO W5 (global): las ventas SIGUEN pasando
+  allowNegativeStock:true (SalesService.cs:586) → el guard condicional
+  (InventoryService.cs:707-714) sigue desactivado en el camino de venta; el
+  stock puede quedar negativo. El fix de atomicidad (A1) NO resolvió la
+  validación de existencias.
+- H-INV-10 (commits por ítem) -> ✅ CERRADO: ya no hay commit propio por ítem
+  dentro de la venta; UpdateStockAsync solo commitea cuando posee la
+  transacción (no enrolado). El N+1 de SaveChanges por ítem persiste (PERF-04
+  global, ver anexo).
+- H-INV-2/3/4/6/7/8/9 -> ❌ VIGENTES (sin cambios en la ola 4; el servicio
+  sigue en 2.050 líneas, CODE-01).
+
 1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------
 Módulo con el DbContext de inventario y los servicios de productos, stock,

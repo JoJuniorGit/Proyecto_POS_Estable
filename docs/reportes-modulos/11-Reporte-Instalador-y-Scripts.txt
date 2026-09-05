@@ -60,6 +60,57 @@ HALLAZGOS NUEVOS DE LA REMEDIACIÓN (ver R1-R6 del reporte global):
   (ver estado de INS-3). Solo abrir puertos con servicio real detrás.
 
 --------------------------------------------------------------------------------
+REVISIÓN 5.0 (2026-09-05, ola 4: fase 1, commit 665628b) — contrastado contra
+HEAD 36aa33b. Módulo de seguridad clave de la ola:
+Cambios:
+- setup.iss (+15): se ELIMINÓ por completo la generación con Random(16)
+  (grep: sin coincidencias); GetOrGenerateJwtKey (:108-114) ahora solo
+  reutiliza una clave legacy VÁLIDA (≥32 chars y ≠ ddf95c83...) y, si no
+  existe, devuelve '' — la generación CSPRNG de 512 bits y la protección ACL
+  del registro de NSSM se delegan a Configure-PosService.ps1:54-57 y :218-233
+  (ejecutado desde CurStepChanged, setup.iss:361-373).
+- Configure-PosService.ps1 (+42): CSPRNG RandomNumberGenerator (64 bytes),
+  rechazo de la clave histórica, ACL restringida a SYSTEM/Administradores
+  sobre el registro de NSSM (:218-233).
+- Firewall: setup.iss ConfigureFirewall (:275-289) abre SOLO el 5000 (HTTP) y
+  retira la regla legacy 5000/5001; la ps1 (separada) sigue abriendo 5000+5001
+  (:109). El puerto HTTPS 5001 sigue sin servicio real si el certificado no
+  existe (Program.cs:54).
+
+Estado de hallazgos (cambios respecto a rev.2/3):
+- INS-1 (C1) -> 🟡 MEJORADO: R1 ✅ (compila) y R4 ✅ CERRADO (Random(16)
+  eliminado → CSPRNG vía ps1). W3 persiste: instalaciones con la clave
+  histórica o sin clave no arrancan hasta rotar (fail-closed) — ahora
+  intencional y documentado.
+- INS-2 (C3) -> 🟡 PARCIAL: la clave sigue en claro en las variables de
+  entorno de NSSM (setup.iss:307) y en HKLM\Software\POS; la ACL mitiga el
+  acceso al registro de NSSM, pero no el AppEnvironmentExtra del servicio.
+- INS-3 (C2) -> ❌ VIGENTE: tráfico HTTP en la LAN; el 5001 queda expuesto
+  por la ps1 sin servicio si no hay certificado (puerto muerto, INS-13 🟡
+  parcial — setup.iss ya no lo abre, la ps1 sí).
+- INS-4/5/6/7/8/9 -> ❌ VIGENTES (política de claves ya resuelta por backend
+  en ola 3, pero el instalador aún permite crear admin con clave débil sin
+  aviso; uninstall sin backup; fallo de configuración solo como "Aviso";
+  start.bat con taskkill/findstr; CI solo main/develop; publish/ sin
+  .gitignore verificado).
+- INS-10 (R1) -> ✅ CERRADO (setup.iss:388 compila; usa GetOrGenerateJwtKey).
+- INS-11 (R4) -> ✅ CERRADO EN GENERACIÓN: Random(16) eliminado; CSPRNG por
+  ps1. Persiste el almacenamiento en claro (INS-2).
+- INS-12 (R5) -> ✅ MEJORADO: el guard del backend (Program.cs:151) rechaza
+  la clave histórica en producción (fail-closed) y la ps1 la regenera;
+  residual W3: sin auto-rotación en instalaciones legacy hasta reinstalar.
+- INS-13 (R6) -> 🟡 PARCIAL: setup.iss solo abre 5000, pero la ps1 sigue
+  abriendo 5001 sin garantía de servicio HTTPS detrás.
+
+NUEVO (ola 4, W6 global — BAJO/MEDIO):
+- Si no existe clave legacy, GetOrGenerateJwtKey devuelve '' y setup.iss
+  escribe "Key": "" en appsettings.json y JWT_SETTINGS_KEY= en NSSM: el
+  backend no arranca hasta que la ps1 genere e inyecte la clave. La cadena
+  instalador→ps1 es ahora crítica: si la ps1 falla u omite (por ejemplo, al
+  instalar sin elevación), el servicio queda fail-closed sin diagnóstico
+  claro.
+--------------------------------------------------------------------------------
+
 1. DESCRIPCIÓN
 --------------------------------------------------------------------------------
 El instalador (Inno Setup) recoge en páginas de asistente: datos de PostgreSQL,

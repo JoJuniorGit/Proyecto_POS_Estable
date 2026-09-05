@@ -54,6 +54,52 @@ Estado de hallazgos (actualizado):
 - H-CORE-10 (User sin lockout/revocación) -> ✅ CERRADO: campos de
   seguridad + SecurityStamp en User + revocación en middleware.
 
+--------------------------------------------------------------------------------
+REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 + currency format) — contrastado
+contra HEAD 36aa33b.
+Cambios del módulo en la ola 4:
+- NUEVO Core/Entities/IdempotentRequest.cs (47 líneas): entidad de
+  idempotencia (Key, RequestPath, PayloadHash bytea, ResponseBody,
+  ExpiresAtUtc) → A3 global CERRADO (tabla + índice único).
+- NUEVO Core/Interfaces/IIdempotencyService.cs (63 líneas) y
+  Sales.Module/Services/IdempotencyService.cs (148 líneas, ver módulo 04):
+  hash SHA-256 del payload (método+ruta+cuerpo), comparación con
+  FixedTimeEquals, TTL 24 h, métricas Hits/Misses/Conflicts.
+- NUEVO Core/Interfaces/IPasswordPolicyService.cs (20 líneas) y
+  Core/Services/PasswordPolicyService.cs (154 líneas): política centralizada
+  8-128 caracteres, mayúscula/minúscula/dígito/especial, blacklist de
+  comunes, prohibición de username/cédula, y generación CSPRNG de claves
+  temporales sin caracteres ambiguos (12-32 chars, Fisher-Yates) → A6/SEC-04
+  global CERRADO.
+- Core/DTOs/UserDto.cs (+14): campos para el flujo de cambio obligatorio de
+  contraseña (MustChangePassword) y platform en el request de login.
+- Core/Interfaces/IInventoryService.cs (+1): EnrollInTransactionAsync para la
+  transacción compartida (A1 global).
+- Core/Services/ExchangeRateService.cs (+15): soporte del formato de moneda
+  / consolidación de lectura de tasa.
+
+Estado de hallazgos (cambios respecto a rev.3):
+- H-CORE-1 (roles) -> 🟡 SIN CAMBIOS (Manager=2 real desde ola 3; alcance de
+  permisos aún por definir).
+- H-CORE-2 (secretos por defecto) -> ❌ VIGENTE (SystemSettingsOptions.cs).
+- H-CORE-3/6/10 -> ✅ CERRADOS (ola 3, sin regresión).
+- H-CORE-4 (logging duplicado) -> 🟡 SIN CAMBIOS (rotación desde ola 3;
+  dos loggers estáticos persisten).
+- H-CORE-5 (claves caché) -> ❌ VIGENTE (CacheKeys, ver módulo 01
+  CacheMetricsLoggerService).
+- H-CORE-7 (DTOs sin validación) -> ❌ VIGENTE: la ola 4 añadió más DTOs de
+  request (SetCurrencyFormatRequest, etc.) sin DataAnnotations; la validación
+  sigue dependiendo de [ApiController] automática y del modelo-state filter
+  inefectivo.
+- H-CORE-8 (entidades huérfanas) -> ❌ VIGENTE (Order.cs sin uso).
+- H-CORE-9 (OutboxStatus enum vs string) -> ❌ VIGENTE.
+
+NUEVOS (ola 4):
+- W2 (MEDIO, global): la política de contraseñas y la idempotencia ahora
+  viven en Core (bien), pero el formato de moneda NO: cada cliente lo
+  implementa por su cuenta (ver módulos 06/07/09) — candidato a moverse a un
+  módulo compartido de formato/redondeo.
+
 1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------
 Librería de clases compartida por Backend.API, Desktop.Client(.Core) y módulos.

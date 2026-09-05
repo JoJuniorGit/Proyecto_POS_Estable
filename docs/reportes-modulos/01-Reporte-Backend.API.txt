@@ -35,8 +35,9 @@ Estado resumido de los heredados (detalle por H-API abajo):
   persisten CSP 'unsafe-inline', transporte HTTP y sin revocación.
 - H-API-1/2/3/4/5/6/7/9/10/12/14/15/17/19/20/23 -> ❌ VIGENTES (sin cambios
   en este módulo durante la ventana).
-- H-API-8 -> 🟡 PARCIAL (rango superior añadido; DeleteMethod 204-no-op,
-  GetHistory sin clamp y ex.Message en Reservations vigentes).
+- H-API-8 -> 🟡 PARCIAL (rango superior añadido; DeleteMethod corregido
+  con soft/hard delete en servicio; GetHistory sin clamp y ex.Message en
+  Reservations vigentes).
 - H-API-11 (B5) -> ✅ CORREGIDO: MapControllers().RequireRateLimiting
   ("GeneralApiRateLimit") (Program.cs:325).
 - H-API-13 -> ❌ VIGENTE: sin revocación; la expiración la sigue fijando
@@ -74,8 +75,9 @@ UNIQUE INDEX on LOWER(Username), setval de secuencia de facturas).
 Estado de cada hallazgo:
 - C1 -> 🟡 MEJORADO: fail-fast incluye la clave HISTÓRICA ddf95c83...
   (TokenService.cs:34, Program.cs:146); R1 ✅ (setup.iss:388 compila).
-- C2 -> ❌ VIGENTE + W2 (pfx password "PosHttpsDev2026!" hardcodeada,
-  Program.cs:736). Cookie Secure=false en LAN.
+- C2 -> ❌ VIGENTE + W2 (pfx password "PosHttpsDev2026!" de fallback solo
+  en Development, Program.cs:797-806; en producción retorna null si falta
+  la variable). Cookie Secure=false en LAN.
 - C3 -> 🟡 SIN CAMBIOS (appsettings.Development secrets intactos).
 - C4 -> 🟡 MEJORADO: REVOCACIÓN RESUELTA (SecurityStamp); R8 ✅ (logout en
   401 via api.js:216-217); cookie 120 min (AuthController.cs:134) vs JWT
@@ -104,7 +106,8 @@ Estado de cada hallazgo:
 - H-API-8 (validación incompleta) -> 🟡 PARCIAL: ahora rango (0,1e6] en
   UpsertRate (:89) y SyncBcv (:164-168); SettingsController.SetExchangeRate
   (:56) también valida y escribe AMBAS fuentes (History + SystemSettings).
-  DeleteMethod 204 no-op persiste; GetHistory sin clamp.
+  DeleteMethod ya ejecuta soft/hard delete (404 si no existe, 409 si ya
+  eliminado); GetHistory sin clamp.
 - H-API-9 (anónimos) -> ❌ VIGENTE: /health anónimo + MachineName +
   ex.Message (HealthController.cs:24-62); /history anónimo (ExchangeRate.cs).
 - H-API-10 (versión) -> 🟡 MEJORADO: HealthController ahora usa
@@ -148,12 +151,91 @@ Estado de cada hallazgo:
 
 New security findings added:
 - W1: Cookie 120 min vs JWT 1440 min (TTL mismatch).
-- W2: PFX password "PosHttpsDev2026!" hardcodeada (Program.cs:736).
+- W2: PFX password "PosHttpsDev2026!" de prueba en Development (Program.cs:797-806; en producción retorna null).
 - W3: Fail-closed hist. key sin auto-rotación (Program.cs:146).
 - W4: DDL errors swallowed (Program.cs catch schemaEx).
 - W5: Role migration one-shot + old tokens lose role claim.
 - W6: Lockout exploitable as account DoS.
 - W7: DateLocal VET fixed ignoring SelectedTimeZoneId.
+--------------------------------------------------------------------------------
+REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 de remediación + currency format) —
+contrastado contra HEAD 36aa33b (9 commits: 0fc4068 payments, 665628b fase 1
+seguridad, 148e6a3 fase 2 integridad, 5f33ee2 fase 3 auth, 0fe5158 fase 4
+arquitectura, daf0724 DI AuthController, 1fc582d transacción Npgsql,
+a230c3f dedup métodos de pago desktop, 36aa33b formato dual moneda).
+
+Cambios del módulo en la ola 4:
+- Controllers/AuthController.cs: bloqueo de cuenta TAMBIÉN en change-password
+  (LockoutEndUtc + AccessFailedCount, :218-263), validación de la nueva clave
+  con PasswordPolicyService, rotación de SecurityStamp y borrado de cookie
+  pos_jwt; constructor unificado con [ActivatorUtilitiesConstructor] (daf0724).
+- Controllers/UsersController.cs: política centralizada (8-128 + complejidad,
+  :102-112) y claves temporales CSPRNG (GenerateSecureTemporaryPassword, :329).
+- Controllers/SalesController.cs (+278): flujo completo de idempotencia
+  SHA-256 bytea (:385-430) con replay (X-Cache-Lookup: HIT), mismatch (422),
+  y colisión por índice único resuelta releyendo el resultado (:459-495).
+- Controllers/SettingsController.cs (+74): GET/PUT /api/settings/currency-format
+  (:153-175, PUT Admin-only, controller [Authorize] a nivel de clase).
+- Middleware/GlobalExceptionHandlerMiddleware.cs (+63): mensajes amigables por
+  nombre de restricción (IX_PaymentMethods_Name_Unique_NotDeleted, IX_Users_*,
+  IX_Products_*…), traceId en vez de sqlState, DbUpdateConcurrencyException→409
+  y InvalidOperationException→409 (:46-70, :200-243, :244-262).
+- NUEVO Middleware/MustChangePasswordMiddleware.cs (59 líneas): 403 con
+  requiresPasswordChange=true si el claim del token lo exige; solo permite
+  change-password y logout (:28-55). TokenService.cs:76-79 añade el claim.
+- NUEVO Jobs/IdempotencyCleanupJob.cs (108 líneas): purga en lotes de 1.000
+  con timeout de 2 min y ciclo horario (:63-105).
+- NUEVO Services/SignalRPaymentMethodNotifier.cs (25 líneas) + DI
+  (Program.cs:117): notifica cambios de métodos de pago por el hub.
+- Program.cs (+108): registro de IIdempotencyService, MustChangePasswordMiddleware,
+  IdempotencyCleanupJob y SignalRPaymentMethodNotifier; LoadHttpsCertificate
+  ahora lee HTTPS_CERT_PASSWORD de entorno y thumbprint de configuración
+  (:792-811) — pero conserva el fallback hardcodeado (:799); DDL crudo creció
+  con índices de IdempotentRequests (:494-497) → A7 sigue vigente.
+
+Estado de hallazgos (cambios respecto a rev.3):
+- C1 -> 🟡 MEJORADO: R4 ✅ CERRADO — el instalador ya NO usa Random(16); la
+  generación CSPRNG (512 bits) y la ACL del registro se delegan a
+  Configure-PosService.ps1:54-57 y :218-233; setup.iss:108-114 solo reutiliza
+  clave legacy válida (rechaza la histórica ddf95c83...). Residual W6: si no
+  hay clave legacy, GetOrGenerateJwtKey devuelve '' y el backend no arranca
+  hasta que la ps1 inyecte la clave (fail-closed).
+- C2 -> ❌ VIGENTE + W2: HTTP 0.0.0.0:5000 (Program.cs:41), firewall solo 5000
+  (setup.iss:275-289) aunque la ps1 abre 5000+5001 (:109); fallback de clave
+  PFX solo en Development (Program.cs:797-806; en producción omite certificado).
+- C3 -> 🟡 SIN CAMBIOS (appsettings.Development.json con secretos en claro).
+- C4 -> 🟡: revocación y logout-en-401 ya resueltos (rev.3); persisten CSP
+  'unsafe-inline' (SecurityHeadersMiddleware.cs:41), pos_user en localStorage
+  y el desajuste TTL 1440 vs 120 min (W1).
+- H-API-1/2/3/4/5/7/8/9/10/12/14/15/19/23 -> ESTADO REV.3 MANTENIDO (sin
+  cambios en la ola 4).
+- H-API-6 (400 ex.Message) -> 🟡 PARCIAL: el middleware ya NO expone sqlState
+  y devuelve mensajes amigables; PERO los controladores siguen capturando y
+  devolviendo ex.Message (SalesController.cs:52-128 y otros) — ERR-01 global.
+- H-API-11/13/16/18/20/22/24 -> ✅ CERRADOS (rev.3, sin regresión en ola 4).
+- H-API-17 (egresos de caja) -> ✅ CERRADO en ola 4: CashDrawerController
+  bloquea explícitamente Cashier y Driver para CashIn/CashOut/ManualAdjustment
+  (:139-147); el adelanto de efectivo sigue sin gate de rol (H-API-4).
+- H-API-21 (CORS) -> 🟡 SIN CAMBIOS (allowlist 5000/5001/5173, Program.cs:263-276).
+- H-API-25 (outbox solo notifica) -> 🟡 REDISEÑADO: ya no es defecto — con la
+  transacción compartida (A1 ✅) la deducción es síncrona y atómica dentro de
+  la venta; el outbox queda como canal de notificación SignalR (R3c superado
+  por diseño). Los logs "garantizados en BD" (H-SAL-14) ahora son ciertos para
+  venta+deducción.
+- H-API-26 (políticas de scope sin uso) -> ❌ VIGENTE: las políticas
+  DesktopOnly/WebOnly/WebOrDesktop siguen definidas pero sin [Authorize(Policy)]
+  en ningún endpoint (la cookie/bearer por scope sí se usa en login).
+- H-API-27 (cookie no borrable en 401) -> ✅ CERRADO (rev.3): logout en
+  api.js:216-217 llama a /api/auth/logout.
+
+NUEVOS (ola 4, cruzan con global W1/W5 y §3):
+- W1 (MEDIO/ALTO): Idempotency-Key es OPCIONAL en CompleteSale
+  (SalesController.cs:385-430): sin cabecera, el POST no tiene protección de
+  replay — el web no la envía (paymentApi.js).
+- W5 (ALTO): las ventas siguen pasando allowNegativeStock:true
+  (SalesService.cs:586) → stock puede quedar negativo (residual de A1/R3).
+- W2 (MEDIO): formato dual de moneda con dos implementaciones (web
+  formatters.js + WPF) y redondeo toFixed sobre float binario; ver módulo 09.
 --------------------------------------------------------------------------------
 1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------
@@ -328,8 +410,9 @@ Inventario real del módulo (líneas por archivo, verificado con wc, Rev.3):
   - SetExchangeRate/UpsertRate validan solo >0 (ExchangeRate l.89, Settings
     l.42) sin rango superior, mientras el job BCV valida 0..1.000.000
     (BcvExchangeRateJob l.69): un valor absurdo manual se persiste.
-  - PaymentMethodsController.DeleteMethod devuelve 204 aunque el id no exista
-    (PaymentMethodService.DeleteAsync es no-op si no existe, l.123-134).
+  - PaymentMethodsController.DeleteMethod [CORREGIDO en ola 4]: ya no es no-op;
+    ejecuta soft/hard delete con PaymentMethodService.DeleteAsync y retorna 404 si
+    el id no existe o 409 si ya fue eliminado.
   - CashDrawerController.GetHistory no limita el parámetro limit (l.72): el
     servicio hace Take(limit) sin clamp (CashDrawerService l.199-207) → limit
     negativo lanza y limit enorme carga todo el histórico en memoria.

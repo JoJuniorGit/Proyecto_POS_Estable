@@ -44,10 +44,42 @@ Estado de hallazgos:
   Role/X-User-Id siguen enviándose pero el backend los ignora.
 - H-DCC-12 (NUEVO): SalesHistoryViewModel usa SaleCompletedNotificationMessage
   (:75-79) para invalidar caché al completar una venta; debounced search con
-  CTS (:199-221);珊珊珊 DateLocal del servidor (SalesHistoryDto.DateLocal).
+  CTS (:199-221); usa DateLocal del servidor (SalesHistoryDto.DateLocal).
 - CORRECCIÓN de la fortaleza "Sesión (UserSession) en memoria con token que
   NO se persiste en disco": REV.3 — el token SÍ se persiste y AHORA SÍ se
   restaura con validación completa (R7 ✅).
+
+--------------------------------------------------------------------------------
+REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 + currency format) — contrastado
+contra HEAD 36aa33b.
+Cambios del módulo en la ola 4:
+- ViewModels/PosViewModel.cs (+100, a230c3f): eliminación de DUPLICACIÓN de
+  métodos de pago vía SemaphoreSlim gating + deduplicación por nombre/orden;
+  nuevos tests PosViewModelPaymentMethodsDeduplicationTests (219 líneas).
+- ViewModels/SettingsViewModel.cs (+140) y Services/SettingsService.cs (+24,
+  +ISettingsService 2): preferencia CurrencyFormat (Venezolano/Internacional)
+  con GetCurrencyFormatAsync/SetCurrencyFormatAsync contra el backend
+  (api/settings/currency-format) — NUEVO hallazgo W2 global.
+- ViewModels/MainViewModel.cs (+6): ajustes de integración del formato.
+- Services/IPaymentService.cs (+7): firma de notificación de métodos de pago.
+
+Estado de hallazgos (cambios respecto a rev.3):
+- H-DCC-1 (A3) -> ✅ CERRADO: el lado servidor ahora persiste y valida la
+  Idempotency-Key (IdempotencyService SHA-256, módulo 04) — el reintento solo
+  idempotente del cliente + deduplicación server-side cierran el caso.
+- H-DCC-11 (DPAPI restore) -> ✅ CERRADO (rev.3, sin regresión).
+- H-DCC-2/3/5/6/7/8/9/10 -> ❌ VIGENTES (sin cambios).
+- H-DCC-4 (cabeceras) -> 🟡: X-User-Role/X-User-Id siguen enviándose
+  (UserSessionHeaderHandler.cs:54-58, ARQ-03 global ❌); la versión ya viene
+  de AppVersionHelper (rev.3).
+- H-DCC-12 -> ✅ sin cambios (rev.3).
+
+NUEVOS (ola 4):
+- W2 (MEDIO, global): el formateo de moneda duplica lógica web/WPF; en este
+  módulo, SettingsViewModel define las opciones (Venezolano 1.234,56 vs
+  Internacional 1,234.56) y el cliente cachea la preferencia — ver módulo 09
+  para el riesgo de deriva y redondeo float.
+--------------------------------------------------------------------------------
 
 1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------

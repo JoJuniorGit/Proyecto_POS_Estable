@@ -69,6 +69,52 @@ Impacto en hallazgos:
   paralelo con la misma key (ver H-SAL-13): complementar con prueba de
   concurrencia real.
 
+--------------------------------------------------------------------------------
+REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 + currency format) — contrastado
+contra HEAD 36aa33b. La ola 4 añadió suites extensas (más de 2.400 líneas de
+tests nuevos):
+- Unit/Phase1SecurityHardeningTests.cs (230): bloqueo de cuenta 423,
+  change-password con lockout, política de contraseñas, zip-slip del
+  UpdaterService (paths maliciosos rechazados), crash logger a LOCALAPPDATA.
+- Unit/Phase2FinancialAndIntegrityTests.cs (164): SumAsync del saldo de caja,
+  split queries, arqueo con métodos desactivados, mensajes amigables del
+  middleware (restricciones mapeadas, sin sqlState).
+- Unit/Phase3AuthenticationAndPolicyTests.cs (323): PasswordPolicyService
+  (longitud/complejidad/blacklist/cédula), MustChangePasswordMiddleware 403,
+  claim must_change_password en el token, HTTPS cert por env var.
+- Unit/Phase4SharedTransactionAndIdempotencyTests.cs (653): transacción
+  compartida (rollback de inventario si falla la venta), idempotencia SHA-256
+  (replay HIT, mismatch 422, colisión por índice único), purga por lotes del
+  IdempotencyCleanupJob, EnrollInTransactionAsync.
+- Integration/PostgresRealSharedTransactionTests.cs (56): transacción
+  compartida contra PostgreSQL REAL (Npgsql) — cubre 1fc582d.
+- Unit/PaymentMethodManagementTests.cs (318): soft/hard delete selectivo,
+  índice único IX_PaymentMethods_Name_Unique_NotDeleted, concurrencia xmin.
+- Unit/CurrencyFormatSettingsTests.cs (179): GET/PUT currency-format,
+  formatters.js (formatAmount/parseAmount ambos formatos).
+- Unit/PosViewModelPaymentMethodsDeduplicationTests.cs (219): SemaphoreSlim y
+  deduplicación de métodos de pago en el ViewModel desktop (a230c3f).
+- Integration/PaymentMethodSignalRIntegrationTests.cs (96): notificador
+  SignalR de cambios de métodos de pago.
+- Integration/UpdaterSecurityIntegrationTests.cs (169): extracción segura del
+  ZIP (rutas absolutas, ../, symlinks, preservación de configs).
+- GlobalExceptionHandlerMiddlewareTests.cs (+57): mapeo por nombre de
+  restricción y concurrencia.
+
+Impacto en hallazgos:
+- TST-3 -> 🟡 MEJORADO DE NUEVO: A1 (transacción compartida, incluida la
+  prueba Postgres REAL), A3 (idempotencia con colisión) y SEC-01 (zip-slip)
+  ya tienen cobertura directa. SIGUEN faltando: carrera real de InvoiceNumber
+  en Postgres, idempotencia exact-match #1/#11 del handler de inventario,
+  sobrepago/vuelto, expected alterado por el cliente y expiración de reservas.
+- TST-1 -> 🟡 MEJORADO: ya existe PostgresRealSharedTransactionTests y
+  PostgresRealIntegrationTests; pero el OutboxProcessorJob sigue probado solo
+  en InMemory (rama sin SKIP LOCKED).
+- TST-6 -> ✅ CERRADO EN GRAN PARTE: Phase4SharedTransactionAndIdempotencyTests
+  cubre la colisión concurrente con la misma key; aún no hay test de dos
+  CompleteSale paralelos en Postgres REAL sin key (W1).
+- TST-2/4/5 -> ❌ VIGENTES.
+
 1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------
 56 archivos de prueba (xUnit) organizados en: tests unitarios por servicio

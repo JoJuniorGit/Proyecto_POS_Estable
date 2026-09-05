@@ -48,6 +48,51 @@ Estado de hallazgos:
   protección dedicada en el cliente (ver H-SAL-13).
 
 --------------------------------------------------------------------------------
+REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 + currency format) — contrastado
+contra HEAD 36aa33b.
+Cambios del módulo en la ola 4:
+- NUEVO context/CurrencyFormatContext.jsx (118 líneas): carga la preferencia
+  de moneda desde /api/settings/currency-format, la cachea en localStorage
+  ('currency_format_preference') y escucha el evento SignalR
+  'onCurrencyFormatUpdated' (:19-37); PUT optimista al cambiarla.
+- utils/formatters.js (+200, ahora 288 líneas): formatAmount/formatBsS/
+  formatUSD/parseAmount/formatAtmInput/formatQuantity con separadores
+  venezolanos e internacionales; usa toFixed sobre float binario (:11, :74).
+- components/ui/AtmAmountInput.jsx (+89): input estilo ATM (dígitos →
+  centavos) con formato dual.
+- pages/SettingsPage.jsx (+283): UI de selección de formato + cambios de
+  ajustes; RegisterClosePage.jsx y App.jsx adaptados.
+- services/signalr.js (+37): suscripción a OnPaymentMethodsUpdated y
+  OnCurrencyFormatUpdated (:52-68). services/paymentApi.js (+29): limpieza y
+  notificaciones de métodos de pago. ExchangeRateContext.jsx (+5).
+
+Estado de hallazgos (cambios respecto a rev.2/3):
+- H-WEB-1 -> 🟡 SIN CAMBIOS (núcleo resuelto; residuos CSP unsafe-inline,
+  cookie Secure=false en LAN, TTL 1440 vs 120 min — W1 global).
+- H-WEB-2 -> ❌ VIGENTE: isAllowedApiHost sigue aceptando cualquier IPv4
+  RFC-1918 (api.js:25-45); mejorada la sanitización 5000→5001 en HTTPS pero
+  el phishing por QR persiste (SEC-06 global).
+- H-WEB-3 -> ❌ VIGENTE: 'pos_user' sigue en localStorage (AuthContext.jsx:9,37)
+  y la UI decide permisos por ese snapshot.
+- H-WEB-4/5/6/7 -> ❌ VIGENTES (mensajes crudos 5xx, sin idle timeout,
+  expected de arqueo desde el cliente, cámara sin HTTPS).
+- H-WEB-8 -> 🟡 SIN CAMBIOS: el servidor ya protege con idempotencia, PERO el
+  front NO envía Idempotency-Key en el cobro (paymentApi.js) → W1 global
+  (cabecera opcional + no enviada) deja al web sin protección de replay.
+
+NUEVOS (ola 4, W2 global — MEDIO):
+- El formato dual de moneda se implementa AQUÍ (formatters.js) y por separado
+  en WPF (NumericCalculatorBehavior/SettingsViewModel): dos implementaciones
+  que pueden divergir.
+- Redondeo sobre float binario: toFixed(3) para cantidades (:11) y
+  toFixed(dec) para montos (:74) — clásicos errores IEEE-754 (p. ej.
+  1.005.toFixed(2) → "1.00") y límite de precisión para montos grandes; el
+  backend usa decimal.
+- Caché local en localStorage puede mostrar un formato distinto al del
+  servidor (flash al cargar, o divergencia si el fetch falla); la fuente de
+  verdad debería ser siempre el backend (CurrencyFormatContext.jsx:19-37).
+--------------------------------------------------------------------------------
+
 1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------
 SPA React (Vite) servida por Backend.API desde wwwroot. Páginas: Login,

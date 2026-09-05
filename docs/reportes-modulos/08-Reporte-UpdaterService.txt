@@ -12,6 +12,35 @@ ola 3 (mtimes fuera de ventana 09:15–00:26). El actualizador sigue sin
 verificación de autenticidad ni guardas de extracción.
 --------------------------------------------------------------------------------
 
+--------------------------------------------------------------------------------
+REVISIÓN 5.0 (2026-09-05, ola 4: fase 1, commit 665628b) — contrastado contra
+HEAD 36aa33b. Este es el módulo de la corrección de seguridad más crítica:
+Cambios:
+- NUEVO UpdaterService/UpdatePackageExtractor.cs (96 líneas): extracción
+  segura que (a) rechaza rutas absolutas, (b) omite symlinks/reparse points
+  por atributos Unix/Windows, (c) valida que la ruta canónica destino quede
+  dentro del directorio objetivo (StartsWith OrdinalIgnoreCase), y (d)
+  preserva appsettings.Production.json/Development.json solo a nivel raíz.
+- Program.cs (+38): delega la extracción al extractor (:52-69) y, ante
+  cualquier excepción, NO reinicia el servicio con binarios corruptos
+  (fail-safe).
+
+Estado de hallazgos (cambios respecto a rev.2/3):
+- UPD-2 (zip-slip) -> ✅ CERRADO (SEC-01 global): canonicalización + rechazo
+  de absolutas + symlinks.
+- UPD-3 (errores parciales) -> 🟡 PARCIAL: si la EXTRACCIÓN falla, ya no se
+  reinicia el servicio (fail-safe), pero no hay verificación post-extracción
+  (contar/hash de archivos) ni rollback de la copia previa; el try/catch por
+  entrada sigue logueando y continuando dentro del extractor.
+- UPD-1 (sin firma) -> ❌ VIGENTE: el paquete sigue sin Authenticode/hash
+  verificado.
+- UPD-4 (nssm dependencia) -> ❌ VIGENTE (sleeps fijos, sin sc query).
+- UPD-5 (sin logging a archivo) -> ❌ VIGENTE (solo consola; el extractor
+  acepta un delegado logAction pero Program.cs no lo conecta a archivo).
+- UPD-6 (exclusión de configuración) -> ✅ CERRADO EN LO ESENCIAL: los
+  appsettings.*.json se preservan a nivel raíz (nueva regla del extractor).
+--------------------------------------------------------------------------------
+
 1. DESCRIPCIÓN
 --------------------------------------------------------------------------------
 Ejecutable de consola (~120 líneas, Program.cs) que detiene el servicio Windows

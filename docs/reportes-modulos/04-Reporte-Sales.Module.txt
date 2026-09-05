@@ -83,6 +83,59 @@ Estado de hallazgos (actualizado rev.3):
   cliente con expected server-side (H-API-3 parcial).
 
 --------------------------------------------------------------------------------
+REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 + currency format) — contrastado
+contra HEAD 36aa33b. Módulo central de la fase 4 (arquitectura) y fase 2
+(integridad financiera):
+Cambios del módulo en la ola 4:
+- NUEVO Services/IdempotencyService.cs (148 líneas): hash SHA-256 del payload
+  (método+ruta+cuerpo) como bytea, FixedTimeEquals, TTL 24 h, validación de
+  formato de key (:88-120). A3 global CERRADO.
+- SalesDbContext.cs (+71): +DbSet<IdempotentRequest> y su mapeo; PaymentMethod
+  +IsDeleted y migración AddIsDeletedAndUniqueNameToPaymentMethod con índice
+  único IX_PaymentMethods_Name_Unique_NotDeleted (soft-delete de métodos).
+- PaymentMethodService.cs (+168): DeleteAsync con soft/hard selectivo
+  (IsDeleted+IsActive=false si tuvo uso, borrado físico si no, :196-221),
+  caché en memoria de 5 min con invalidación por notifier
+  (SignalRPaymentMethodNotifier, en Backend.API) — NUEVO hallazgo W3 global.
+- CashDrawerService.cs (+27): GetCurrentBalanceLocalAsync con SumAsync() en
+  PostgreSQL y AsNoTracking (:195-224) — PERF-01 CERRADO. ProcessCashAdvance
+  conserva reglas de montos enteros y saldo suficiente (:209-227).
+- DailyClosureService.cs (+146): GetExpectedTotalsByPaymentMethodAsync incluye
+  métodos inactivos con movimientos del día (`p.IsActive ||
+  salesTotals.ContainsKey(p.Id)`, :62) — ARQ-01 CERRADO; SaveClosureReceiptsSilently
+  escribe en %ProgramData%\CommandCenterPOS\Closures con reintentos y LogWarn
+  (:217-260) — ERR-03 CERRADO.
+- SalesService.cs (+99): EnrollInTransactionAsync (:388) + UseTransaction en
+  CreateCashAdvanceSaleAsync (:1775) — A1 CERRADO (ver módulo 03).
+
+Estado de hallazgos (cambios respecto a rev.3):
+- H-SAL-1 (A2) -> ✅ CERRADO (setval rev.3, sin regresión; falta índice único).
+- H-SAL-2 (A1) -> ✅ CERRADO EN SU NÚCLEO: deducción síncrona y atómica con la
+  transacción compartida; el outbox queda como canal de notificación
+  (H-API-25 redesenhado). RESIDUAL W5: allowNegativeStock:true sigue en
+  SalesService.cs:586.
+- H-SAL-13 (A3) -> ✅ CERRADO: la key AHORA SÍ se persiste y valida
+  (IdempotencyService + índice único IX_IdempotentRequests); replays devuelven
+  el InvoiceNumber existente (X-Cache-Lookup: HIT) y mismatches 422
+  (SalesController.cs:385-430, :459-495). RESIDUAL W1: la cabecera es opcional.
+- H-SAL-14 (R11) -> 🟡 REDENOMINADO: con la transacción compartida, "venta y
+  deducción garantizadas en BD" AHORA ES CIERTO (A1); el outbox solo notifica
+  — los logs ya no sobrevenden en ese punto, pero conviene ajustar el texto
+  para no sugerir que el outbox persiste la deducción.
+- H-SAL-3/5/6/7/8/9/10/11/12 -> ❌ VIGENTES (sin cambios en la ola 4).
+- H-SAL-4 -> 🟡 SIN CAMBIOS (gate Admin/Manager desde ola 3).
+
+NUEVOS (ola 4, cruzan con global W1/W3/W5):
+- W5 (ALTO): allowNegativeStock:true en el bucle de venta (SalesService.cs:586)
+  → inventario puede quedar negativo.
+- W3 (MEDIO): heurística global de soft-delete en PaymentMethodService.cs:209
+  (`AnyAsync(ct => ct.IsPhysicalCash)` sin FK por método) — medida temporal
+  MT-001 documentada en docs/medidas-temporales.txt; CUALQUIER transacción
+  física de gaveta marca como "usado" cualquier método cash.
+- W1 (MEDIO/ALTO): Idempotency-Key opcional (SalesController.cs:385-430); el
+  cliente web no la envía (paymentApi.js) → sin protección de replay ahí.
+
+--------------------------------------------------------------------------------
 1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------
 Módulo central de dinero. Contiene el SalesDbContext (Usuarios, Clientes,

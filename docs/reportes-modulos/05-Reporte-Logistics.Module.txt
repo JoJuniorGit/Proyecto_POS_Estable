@@ -10,6 +10,14 @@ El proyecto sigue vacío (solo .csproj) y los conceptos de entregas
 viviendo en Sales.Module/Core. LOG-1 y LOG-2 -> ❌ VIGENTES.
 --------------------------------------------------------------------------------
 
+--------------------------------------------------------------------------------
+REVISIÓN 5.0 (2026-09-05, ola 4): SIN CAMBIOS. El proyecto sigue vacío (solo
+.csproj). La ola 4 tocó entregas/pickups solo en Sales.Module (ConfirmPickupAsync
+con AsSplitQuery en SalesService.cs:675) sin mover nada a este módulo.
+LOG-1 y LOG-2 -> ❌ VIGENTES. El rol Manager (ola 3) tampoco trajo módulo
+logístico.
+--------------------------------------------------------------------------------
+
 1. ESTADO DEL MÓDULO
 --------------------------------------------------------------------------------
 El proyecto existe en la solución (Logistics.Module/Logistics.Module.csproj)

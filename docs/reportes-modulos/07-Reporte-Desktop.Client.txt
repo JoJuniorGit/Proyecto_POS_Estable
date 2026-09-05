@@ -23,6 +23,30 @@ Estado de hallazgos (rev.3):
 - H-WPF-2..H-WPF-8 -> ❌ VIGENTES (sin cambios significativos).
 Cruce con global: C2, M4, M5, B3, B9 parcial; B9 mejorado (AppVersionHelper
 ahora en server+desktop; web aún hardcodea '1.0.0').
+
+--------------------------------------------------------------------------------
+REVISIÓN 5.0 (2026-09-05, ola 4: fases 1-4 + currency format) — contrastado
+contra HEAD 36aa33b.
+Cambios del módulo en la ola 4:
+- App.xaml.cs (+31): ERR-02 ✅ CERRADO — GetCrashPath ahora escribe en
+  %LOCALAPPDATA%\CommandCenterPOS\Logs\crash.txt (con fallback a %TEMP% +
+  ProcessId) en lugar de Program Files (App.xaml.cs:29-60).
+- Behaviors/NumericCalculatorBehavior.cs (+61) y Views/SettingsView.xaml
+  (+135): soporte del formato dual de moneda (W2 global) en la calculadora
+  numérica y la pantalla de configuración.
+
+Estado de hallazgos (cambios respecto a rev.3):
+- H-WPF-1 (versión) -> 🟡 SIN CAMBIOS (AppVersionHelper ya usado; valor sigue
+  1.0.0 en Directory.Build.props).
+- H-WPF-2 (OnExit bloqueante) -> ❌ VIGENTE.
+- H-WPF-3/4/5/6/7/8 -> ❌ VIGENTES (async void, Environment.Exit en finally,
+  escáner/TLS, etc.).
+- ERR-02 (crash logger) -> ✅ CERRADO (ver App.xaml.cs arriba).
+
+NUEVOS (ola 4):
+- W2 (MEDIO, global): la calculadora numérica (NumericCalculatorBehavior) y
+  SettingsView duplican la lógica de formato del web (formatters.js) — riesgo
+  de deriva en separadores/redondeo entre caja WPF y web; ver módulo 09.
 --------------------------------------------------------------------------------
 
 1. DESCRIPCIÓN Y ARQUITECTURA
