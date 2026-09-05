@@ -113,10 +113,29 @@ public partial class PosViewModel : ObservableObject, IDisposable
         {
             await ((PosViewModel)r).ReloadPaymentMethodsAsync();
         });
+    }
 
-        if (_user_session == null || _user_session.IsLoggedIn)
+    private readonly System.Threading.SemaphoreSlim _sessionInitializationGate = new(1, 1);
+
+    public void ResetSession()
+    {
+        Action clearAction = () =>
         {
-            _ = InitializeForSessionAsync();
+            ActivePaymentMethods.Clear();
+            Cart.CurrentSale = null;
+            Cart.CartItems.Clear();
+            RecentScannedProducts.Clear();
+            SearchText = string.Empty;
+            Suggestions.Clear();
+        };
+
+        if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
+        {
+            Application.Current.Dispatcher.Invoke(clearAction);
+        }
+        else
+        {
+            clearAction();
         }
     }
 
@@ -124,21 +143,31 @@ public partial class PosViewModel : ObservableObject, IDisposable
     {
         if (_user_session != null && !_user_session.IsLoggedIn) return;
 
-        if (CurrentExchangeRate <= 0)
+        await _sessionInitializationGate.WaitAsync();
+        try
         {
-            await _exchange_rate_service.GetCurrentRateAsync();
-            OnPropertyChanged(nameof(CurrentExchangeRate));
-            OnPropertyChanged(nameof(IsRateOutdated));
-        }
+            if (_user_session != null && !_user_session.IsLoggedIn) return;
 
-        if (ActivePaymentMethods.Count == 0)
-        {
-            await LoadPaymentMethodsAsync();
-        }
+            if (CurrentExchangeRate <= 0)
+            {
+                await _exchange_rate_service.GetCurrentRateAsync();
+                OnPropertyChanged(nameof(CurrentExchangeRate));
+                OnPropertyChanged(nameof(IsRateOutdated));
+            }
 
-        if (Cart.CurrentSale == null)
+            if (ActivePaymentMethods.Count == 0)
+            {
+                await LoadPaymentMethodsAsync();
+            }
+
+            if (Cart.CurrentSale == null)
+            {
+                await StartNewSaleAsync();
+            }
+        }
+        finally
         {
-            await StartNewSaleAsync();
+            _sessionInitializationGate.Release();
         }
     }
 
@@ -153,16 +182,32 @@ public partial class PosViewModel : ObservableObject, IDisposable
         {
             try
             {
-                var _methods = await _payment_service.GetActiveMethodsAsync();
+                var _methods = (await _payment_service.GetActiveMethodsAsync())?.ToList() ?? new List<PaymentMethodDto>();
                 if (!_methods.Any())
                 {
-                    MessageBox.Show("CRITICAL: There are no active payment methods configured in the system. Sales cannot be processed until the administrator adds at least one payment configuration in Settings.", "System Configuration Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    _dialog_service?.ShowError("Error de Configuración", "No hay métodos de pago activos configurados en el sistema. Las ventas no podrán procesarse hasta que el administrador agregue al menos una configuración.");
                     return;
                 }
 
-                foreach (var _m in _methods)
+                Action updateAction = () =>
                 {
-                    ActivePaymentMethods.Add(_m);
+                    ActivePaymentMethods.Clear();
+                    foreach (var _m in _methods)
+                    {
+                        if (!ActivePaymentMethods.Any(existing => existing.Id == _m.Id))
+                        {
+                            ActivePaymentMethods.Add(_m);
+                        }
+                    }
+                };
+
+                if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
+                {
+                    Application.Current.Dispatcher.Invoke(updateAction);
+                }
+                else
+                {
+                    updateAction();
                 }
                 return;
             }
@@ -172,7 +217,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
 
                 if (_attempt == _max_retries)
                 {
-                    MessageBox.Show($"Failed to load payment configurations after {_max_retries} attempts: {_ex.Message}");
+                    _dialog_service?.ShowError("Error de Conexión", $"Error al cargar métodos de pago tras {_max_retries} intentos: {_ex.Message}");
                 }
                 else
                 {
@@ -182,11 +227,18 @@ public partial class PosViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task ReloadPaymentMethodsAsync()
+    public async Task ReloadPaymentMethodsAsync()
     {
         _payment_service.InvalidateCache();
-        ActivePaymentMethods.Clear();
-        await LoadPaymentMethodsAsync();
+        await _sessionInitializationGate.WaitAsync();
+        try
+        {
+            await LoadPaymentMethodsAsync();
+        }
+        finally
+        {
+            _sessionInitializationGate.Release();
+        }
     }
 
     private async Task StartNewSaleAsync()
@@ -306,6 +358,12 @@ public partial class PosViewModel : ObservableObject, IDisposable
         try
         {
             _scannerLock.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+
+        try
+        {
+            _sessionInitializationGate.Dispose();
         }
         catch (ObjectDisposedException) { }
 

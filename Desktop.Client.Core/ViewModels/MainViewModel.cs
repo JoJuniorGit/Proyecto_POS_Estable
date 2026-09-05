@@ -167,16 +167,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             Title = "INICIO DE SESIÓN";
             CurrentViewModel = _login_view_model ?? new object();
-        }
-        else if (ReferenceEquals(CurrentViewModel, _login_view_model))
-        {
-            NavigateToPos();
+            _pos_view_model?.ResetSession();
         }
     }
 
     [RelayCommand]
     private void Logout()
     {
+        _pos_view_model?.ResetSession();
         UserSession?.Logout();
     }
 
