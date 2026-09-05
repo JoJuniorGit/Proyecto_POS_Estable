@@ -596,6 +596,7 @@ public class SalesService : ISalesService
                     }
                 }
 
+                var stockDeductions = new List<StockDeductionRequest>();
                 foreach (var item in _sale.Items)
                 {
                     if (productsDict.TryGetValue(item.ProductId, out var product) && product.IsCashAdvance)
@@ -603,10 +604,16 @@ public class SalesService : ISalesService
                         continue;
                     }
 
-                    await _inventoryService.UpdateStockAsync(
+                    stockDeductions.Add(new StockDeductionRequest(
                         item.ProductId,
                         -item.Quantity,
-                        $"Sale #{_sale.InvoiceNumber.Value}",
+                        $"Sale #{_sale.InvoiceNumber.Value}"));
+                }
+
+                if (stockDeductions.Count > 0)
+                {
+                    await _inventoryService.UpdateStockBatchAsync(
+                        stockDeductions,
                         userId: cashierId?.ToString(),
                         allowNegativeStock: false);
                 }
@@ -931,6 +938,7 @@ public class SalesService : ISalesService
                         }
                     }
 
+                    var stockDeductions = new List<StockDeductionRequest>();
                     foreach (var item in _sale.Items)
                     {
                         if (productsDict.TryGetValue(item.ProductId, out var product) && product.IsCashAdvance)
@@ -938,10 +946,16 @@ public class SalesService : ISalesService
                             continue;
                         }
 
-                        await _inventoryService.UpdateStockAsync(
+                        stockDeductions.Add(new StockDeductionRequest(
                             item.ProductId,
                             -item.Quantity,
-                            $"Sale #{_sale.InvoiceNumber.Value}",
+                            $"Sale #{_sale.InvoiceNumber.Value}"));
+                    }
+
+                    if (stockDeductions.Count > 0)
+                    {
+                        await _inventoryService.UpdateStockBatchAsync(
+                            stockDeductions,
                             allowNegativeStock: false);
                     }
                 }

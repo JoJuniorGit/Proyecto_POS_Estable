@@ -656,16 +656,18 @@ public class InventoryService : IInventoryService
         return Math.Round(raw, 4, MidpointRounding.AwayFromZero);
     }
 
-    public async Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, bool allowNegativeStock = false)
+    public async Task UpdateStockBatchAsync(IEnumerable<StockDeductionRequest> items, string? userId = null, bool allowNegativeStock = false)
     {
-        if (quantityChange == 0) return;
+        var itemList = items?.Where(i => i.QuantityChange != 0).ToList();
+        if (itemList == null || itemList.Count == 0) return;
 
         bool hasExistingTx = _context.Database.CurrentTransaction != null;
         await using var tx = (!hasExistingTx && _context.Database.IsRelational()) ? await _context.Database.BeginTransactionAsync() : null;
 
-        var productData = await _context.Products
+        var productIds = itemList.Select(i => i.ProductId).Distinct().ToList();
+        var productsData = await _context.Products
             .AsNoTracking()
-            .Where(p => p.Id == productId)
+            .Where(p => productIds.Contains(p.Id))
             .Select(p => new
             {
                 p.Id,
@@ -678,92 +680,101 @@ public class InventoryService : IInventoryService
                 ParentName = p.ParentProduct != null ? p.ParentProduct.Name : null,
                 ParentSKU = p.ParentProduct != null ? p.ParentProduct.SKU : null
             })
-            .FirstOrDefaultAsync();
+            .ToDictionaryAsync(p => p.Id);
 
-        if (productData == null) throw new KeyNotFoundException($"Product {productId} not found");
+        var movements = new List<StockMovement>();
+        var skusToInvalidate = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (productData.IsCashAdvance)
+        foreach (var item in itemList)
         {
-            throw new InvalidOperationException($"El producto '{productData.Name}' es un servicio de adelanto de efectivo y no maneja inventario físico.");
-        }
-
-        int targetProductId = productId;
-        decimal factor = 1.0000m;
-        decimal effectiveQuantityChange = quantityChange;
-        string movementReason = reason;
-
-        if (productData.ParentId.HasValue && productData.ParentIsStockShared)
-        {
-            targetProductId = productData.ParentId.Value;
-            factor = productData.ConversionFactor > 0 ? productData.ConversionFactor : 1.0000m;
-            effectiveQuantityChange = ApplyConversion(quantityChange, factor, quantityChange < 0);
-            movementReason = $"Variante: {productData.Name} (SKU: {productData.SKU}, Factor: {factor:G29}) | {reason}";
-        }
-
-        decimal newStockLevel;
-
-        if (_context.Database.IsRelational())
-        {
-            if (effectiveQuantityChange < 0 && !allowNegativeStock)
+            if (!productsData.TryGetValue(item.ProductId, out var productData))
             {
-                // Conditional decrement preventing negative stock
-                int rows = await _context.Products
-                    .Where(p => p.Id == targetProductId && (p.StockQuantity + effectiveQuantityChange) >= 0)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(p => p.StockQuantity, p => p.StockQuantity + effectiveQuantityChange)
-                        .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
+                throw new KeyNotFoundException($"Product {item.ProductId} not found");
+            }
 
-                if (rows == 0)
+            if (productData.IsCashAdvance)
+            {
+                throw new InvalidOperationException($"El producto '{productData.Name}' es un servicio de adelanto de efectivo y no maneja inventario físico.");
+            }
+
+            int targetProductId = item.ProductId;
+            decimal effectiveQuantityChange = item.QuantityChange;
+            string movementReason = item.Reason;
+
+            if (productData.ParentId.HasValue && productData.ParentIsStockShared)
+            {
+                targetProductId = productData.ParentId.Value;
+                decimal factor = productData.ConversionFactor > 0 ? productData.ConversionFactor : 1.0000m;
+                effectiveQuantityChange = ApplyConversion(item.QuantityChange, factor, item.QuantityChange < 0);
+                movementReason = $"Variante: {productData.Name} (SKU: {productData.SKU}, Factor: {factor:G29}) | {item.Reason}";
+            }
+
+            decimal newStockLevel;
+
+            if (_context.Database.IsRelational())
+            {
+                if (effectiveQuantityChange < 0 && !allowNegativeStock)
                 {
-                    var targetProd = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == targetProductId);
-                    if (targetProd == null) throw new KeyNotFoundException($"Product {targetProductId} not found");
-                    throw new InvalidOperationException($"Stock insuficiente para el producto '{targetProd.Name}' (SKU: {targetProd.SKU}). Stock actual: {targetProd.StockQuantity}, deducción requerida: {Math.Abs(effectiveQuantityChange)}.");
+                    // Conditional decrement preventing negative stock
+                    int rows = await _context.Products
+                        .Where(p => p.Id == targetProductId && (p.StockQuantity + effectiveQuantityChange) >= 0)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(p => p.StockQuantity, p => p.StockQuantity + effectiveQuantityChange)
+                            .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
+
+                    if (rows == 0)
+                    {
+                        var targetProd = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == targetProductId);
+                        if (targetProd == null) throw new KeyNotFoundException($"Product {targetProductId} not found");
+                        throw new InvalidOperationException($"Stock insuficiente para el producto '{targetProd.Name}' (SKU: {targetProd.SKU}). Stock actual: {targetProd.StockQuantity}, deducción requerida: {Math.Abs(effectiveQuantityChange)}.");
+                    }
                 }
+                else
+                {
+                    // Unconditional increment or sale deduction allowing negative stock
+                    int rows = await _context.Products
+                        .Where(p => p.Id == targetProductId)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(p => p.StockQuantity, p => p.StockQuantity + effectiveQuantityChange)
+                            .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
+
+                    if (rows == 0) throw new KeyNotFoundException($"Product {targetProductId} not found");
+                }
+
+                var updatedTarget = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == targetProductId);
+                newStockLevel = updatedTarget?.StockQuantity ?? 0m;
             }
             else
             {
-                // Unconditional increment or sale deduction allowing negative stock
-                int rows = await _context.Products
-                    .Where(p => p.Id == targetProductId)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(p => p.StockQuantity, p => p.StockQuantity + effectiveQuantityChange)
-                        .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
+                // In-Memory Database execution for unit tests
+                var targetProd = await _context.Products.FindAsync(targetProductId);
+                if (targetProd == null) throw new KeyNotFoundException($"Product {targetProductId} not found");
 
-                if (rows == 0) throw new KeyNotFoundException($"Product {targetProductId} not found");
+                if (effectiveQuantityChange < 0 && !allowNegativeStock && (targetProd.StockQuantity + effectiveQuantityChange) < 0)
+                {
+                    throw new InvalidOperationException($"Stock insuficiente para el producto '{targetProd.Name}' (SKU: {targetProd.SKU}). Stock actual: {targetProd.StockQuantity}, deducción requerida: {Math.Abs(effectiveQuantityChange)}.");
+                }
+
+                targetProd.StockQuantity += effectiveQuantityChange;
+                targetProd.UpdatedAt = DateTime.UtcNow;
+                newStockLevel = targetProd.StockQuantity;
             }
 
-            var updatedTarget = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == targetProductId);
-            newStockLevel = updatedTarget?.StockQuantity ?? 0m;
-        }
-        else
-        {
-            // In-Memory Database execution for unit tests
-            var targetProd = await _context.Products.FindAsync(targetProductId);
-            if (targetProd == null) throw new KeyNotFoundException($"Product {targetProductId} not found");
-
-            if (effectiveQuantityChange < 0 && !allowNegativeStock && (targetProd.StockQuantity + effectiveQuantityChange) < 0)
+            movements.Add(new StockMovement
             {
-                throw new InvalidOperationException($"Stock insuficiente para el producto '{targetProd.Name}' (SKU: {targetProd.SKU}). Stock actual: {targetProd.StockQuantity}, deducción requerida: {Math.Abs(effectiveQuantityChange)}.");
-            }
+                ProductId = targetProductId,
+                QuantityChange = effectiveQuantityChange,
+                NewStockLevel = newStockLevel,
+                Reason = movementReason,
+                MovementDate = DateTime.UtcNow,
+                UserId = _currentUserService?.UserId ?? userId
+            });
 
-            targetProd.StockQuantity += effectiveQuantityChange;
-            targetProd.UpdatedAt = DateTime.UtcNow;
-            newStockLevel = targetProd.StockQuantity;
-            await _context.SaveChangesAsync();
+            if (!string.IsNullOrWhiteSpace(productData.SKU)) skusToInvalidate.Add(productData.SKU);
+            if (!string.IsNullOrWhiteSpace(productData.ParentSKU)) skusToInvalidate.Add(productData.ParentSKU);
         }
 
-        // Add StockMovement record
-        var movement = new StockMovement
-        {
-            ProductId = targetProductId,
-            QuantityChange = effectiveQuantityChange,
-            NewStockLevel = newStockLevel,
-            Reason = movementReason,
-            MovementDate = DateTime.UtcNow,
-            UserId = _currentUserService?.UserId ?? userId
-        };
-
-        _context.StockMovements.Add(movement);
+        _context.StockMovements.AddRange(movements);
         await _context.SaveChangesAsync();
 
         if (tx != null)
@@ -771,12 +782,16 @@ public class InventoryService : IInventoryService
             await tx.CommitAsync();
         }
 
-        InvalidateProductSkuCache(productData.SKU);
-        if (!string.IsNullOrWhiteSpace(productData.ParentSKU))
+        foreach (var sku in skusToInvalidate)
         {
-            InvalidateProductSkuCache(productData.ParentSKU);
+            InvalidateProductSkuCache(sku);
         }
         InvalidateAllProductCaches();
+    }
+
+    public async Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, bool allowNegativeStock = false)
+    {
+        await UpdateStockBatchAsync(new[] { new StockDeductionRequest(productId, quantityChange, reason) }, userId, allowNegativeStock);
     }
 
     public async Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null)
@@ -993,6 +1008,7 @@ public class InventoryService : IInventoryService
 
         return await query
             .OrderBy(p => p.Name)
+            .Take(10)
             .Select(p => new Core.DTOs.ProductQuickInfoDto
             {
                 Id = p.Id,
@@ -1018,7 +1034,6 @@ public class InventoryService : IInventoryService
                     ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                     : p.StockQuantity
             })
-            .Take(10)
             .ToListAsync(token);
     }
 

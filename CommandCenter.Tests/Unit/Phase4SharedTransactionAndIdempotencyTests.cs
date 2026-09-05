@@ -569,8 +569,11 @@ public class Phase4SharedTransactionAndIdempotencyTests
             // Verificar que el servicio de inventario fue enrolado en la transacción
             mockInventory.Verify(i => i.EnrollInTransactionAsync(It.IsAny<System.Data.Common.DbTransaction>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
 
-            // Verificar que el stock fue actualizado dentro del flujo
-            mockInventory.Verify(i => i.UpdateStockAsync(10, -2, It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<bool>()), Times.Once);
+            // Verificar que el stock fue actualizado dentro del flujo (vía batch)
+            mockInventory.Verify(i => i.UpdateStockBatchAsync(
+                It.Is<IEnumerable<StockDeductionRequest>>(items => items.Any(it => it.ProductId == 10 && it.QuantityChange == -2m)),
+                It.IsAny<string?>(),
+                false), Times.Once);
 
             // Verificar que IdempotentRequest se persistió en la BD
             var savedIdemp = await salesContext.IdempotentRequests.FirstOrDefaultAsync(r => r.Key == "KEY-SHARED-TX");

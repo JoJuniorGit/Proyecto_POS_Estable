@@ -68,15 +68,16 @@ public class ExchangeRateController : ControllerBase
     }
 
     /// <summary>
-    /// Returns the complete exchange rate history sorted by date descending.
+    /// Returns the exchange rate history sorted by date descending, clamped to a maximum of 365 days.
     /// </summary>
-    [AllowAnonymous]
     [HttpGet("history")]
-    public async Task<ActionResult> GetHistory()
+    public async Task<ActionResult> GetHistory([FromQuery] int limit = 365)
     {
+        limit = Math.Clamp(limit, 1, 365);
         var tz = await GetConfiguredTimeZoneAsync();
         var history = await _context.ExchangeRateHistory
             .OrderByDescending(r => r.Date)
+            .Take(limit)
             .Select(r => new { r.Date, r.Rate, r.UpdatedAt })
             .ToListAsync();
 

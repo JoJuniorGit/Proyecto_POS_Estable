@@ -25,6 +25,7 @@ public interface IInventoryService
     Task<string> DeleteProductAsync(int id, bool forceHardDelete = false);
     Task RestoreProductAsync(int id);
     Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, bool allowNegativeStock = false);
+    Task UpdateStockBatchAsync(IEnumerable<StockDeductionRequest> items, string? userId = null, bool allowNegativeStock = false);
     Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null);
     Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration);
     Task ConfirmReservationAsync(int reservationId, string reason);
@@ -42,3 +43,5 @@ public interface IInventoryService
     Task<byte[]> GenerateTemplateAsync(string format, System.Threading.CancellationToken cancellationToken = default);
     Task EnrollInTransactionAsync(System.Data.Common.DbTransaction transaction, System.Threading.CancellationToken cancellationToken = default);
 }
+
+public record StockDeductionRequest(int ProductId, decimal QuantityChange, string Reason);

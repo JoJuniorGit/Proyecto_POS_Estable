@@ -104,10 +104,10 @@ public class InventoryCatalogRefreshTests
         typeof(InventoryViewModel)
             .GetProperty(nameof(InventoryViewModel.SearchText))?
             .SetValue(vm, "Cafe");
-        await Task.Delay(150);
+        await Task.Delay(300);
         while (vm.IsSearching)
         {
-            await Task.Delay(20);
+            await Task.Delay(50);
         }
 
         // Explicitly set CurrentPage to 2 (e.g. user navigated to page 2 of search results)
