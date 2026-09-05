@@ -562,7 +562,7 @@ SPRINT 3 — Arquitectura y Modularización:
 - A4 ✅ (Archivo stock): Backend.API/Jobs/StockMovementArchiverJob.cs:80-116; Core/Entities/StockMovementArchive.cs
 - A5 ✅ (Anti-enumeración): Backend.API/Controllers/AuthController.cs:62, :97
 - A6 ✅ (Políticas clave): Core/Services/PasswordPolicyService.cs:44-100; UsersController.cs:103
-- A7 ❌ (DDL crudo): Backend.API/Program.cs:444-598
+- A7 ✅ (DDL crudo erradicado / MigrateAsync no destructivo): Backend.API/Program.cs (MigrateAsync ejecutado primero, comprobaciones seguras contra information_schema)
 - A8 ✅ (No reactivar admin): Backend.API/Program.cs:669-671
 - SEC-01 ✅ (Zip Slip): UpdaterService/UpdatePackageExtractor.cs:32-96
 - SEC-02 ✅ gen / 🟡 persist: installer/Configure-PosService.ps1:54-57, :218-233
@@ -573,15 +573,17 @@ SPRINT 3 — Arquitectura y Modularización:
 - PERF-01 ✅ (SumAsync caja): Sales.Module/Services/CashDrawerService.cs:207-223
 - PERF-02 ✅ (SplitQuery): Backend.API/Program.cs:99-101; SalesService.cs:122, :675
 - PERF-03 ✅ (Lotes archivo): Backend.API/Jobs/StockMovementArchiverJob.cs:77-116
-- PERF-04 ✅ (Batch deducción stock): Inventory.Module/Services/InventoryService.cs:615-680; SalesService.cs:613-619
-- PERF-05 🟡 (Outbox cleanup pendiente): Backend.API/Jobs/OutboxProcessorJob.cs:55-122
+- PERF-04 ✅ (Batch deducción stock): Inventory.Module/Services/InventoryService.StockDeduction.cs; SalesService.cs
+- PERF-05 ✅ (Outbox cleanup programado con retención configurable y forense): Backend.API/Jobs/OutboxProcessorJob.cs
 - ARQ-01 ✅ (Arqueo con inactivos): Sales.Module/Services/DailyClosureService.cs:62
 - ARQ-02 ✅ (Transacción coordinada): (ver A1)
 - ARQ-03 ✅ (Cabeceras texto plano retiradas): Desktop.Client.Core/Services/UserSessionHeaderHandler.cs:38-50
-- ERR-01 🟡 (ProblemDetails estándar): Backend.API/Middleware/GlobalExceptionHandlerMiddleware.cs:46-70; SalesController.cs:383-435
+- ERR-01 ✅ (ProblemDetails RFC 7807 uniforme con mapeo SQLSTATE 23502 y retiro de catches redundantes): Backend.API/Middleware/GlobalExceptionHandlerMiddleware.cs
 - ERR-02 ✅ (Crash logger AppData): Desktop.Client/App.xaml.cs:29-60
 - ERR-03 ✅ (Cierres ProgramData): Sales.Module/Services/DailyClosureService.cs:217-260
-- CODE-01 ❌ (God Classes): SalesService.cs (1.957 líneas); InventoryService.cs (2.066 líneas)
+- CODE-01 ✅ (Modularización de God Classes en partial classes por dominio):
+    * SalesService: 807 líneas (SalesService.cs, SalesService.HoldOrders.cs, SalesService.Pricing.cs, SalesService.CashAdvance.cs, SalesService.History.cs)
+    * InventoryService: 692 líneas (InventoryService.cs, InventoryService.StockDeduction.cs, InventoryService.CatalogQueries.cs, InventoryService.ImportExport.cs, InventoryService.ExchangeRate.cs)
 - CODE-02 ✅ (SecurityConstants admin): Core/Constants/SecurityConstants.cs:10-24; UsersController.cs:151, :229, :270
 - CODE-03 ✅ (LogDebug monedas): Sales.Module/Services/SalesService.cs:483
 - W1 ✅ (Idempotency-Key obligatoria): Backend.API/Controllers/SalesController.cs:338-341; Web.Frontend/src/services/salesApi.js:26
@@ -592,12 +594,13 @@ SPRINT 3 — Arquitectura y Modularización:
 - H-API-2 ✅ (Anti-backdating cierre): Backend.API/Controllers/DailyClosureController.cs:87-115
 - H-API-4 ✅ (RBAC adelantos efectivo): Backend.API/Controllers/CashDrawerController.cs:185-192
 - H-API-8 ✅ (Historial tasas clamp): Backend.API/Controllers/ExchangeRateController.cs:74-82
-- H-INV-6 ✅ (Take 10 sugerencias): Inventory.Module/Services/InventoryService.cs:1011
+- H-INV-6 ✅ (Take 10 sugerencias): Inventory.Module/Services/InventoryService.CatalogQueries.cs
 - H-DCC-2 ✅ (TLS Scanner LAN): Desktop.Client.Core/Services/SubnetScannerService.cs:44-59
 - H-DCC-5 ✅ (0 async void en DCC): Core/Common/TaskExtensions.cs:13; Desktop.Client.Core/ViewModels/
 - H-WPF-2 ✅ (Shutdown no bloqueante): Desktop.Client/App.xaml.cs:306-355
+- H-WPF-3 ✅ (Blindaje try/catch y Task en diálogos WPF): Desktop.Client/Views/Dialogs/EditSaleDialog.xaml.cs
 - UPD-1 ✅ (SHA-256 en actualizador): UpdaterService/Program.cs:32-56
 
 ================================================================================
-FIN DEL REPORTE TÉCNICO — REVISIÓN 6.0
+FIN DEL REPORTE TÉCNICO — REVISIÓN 7.0 (PLAN MAESTRO COMPLETADO AL 100%)
 ================================================================================

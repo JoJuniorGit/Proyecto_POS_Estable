@@ -91,7 +91,7 @@ Dependencias: `Core`
 | Componente | Archivos | Descripción |
 |---|---|---|
 | `Entities/` | Sale, SaleItem, SalePayment, SaleDeliveryStatus, CashDrawerSession, CashTransaction, ClosureDetail, DailyClosure, PaymentMethod | Entidades de ventas/caja |
-| `Services/` | SalesService, CashDrawerService, DailyClosureService, PaymentMethodService, ClosurePdfGenerator | Servicios de negocio |
+| `Services/` | `SalesService` (orquestador transaccional particionado: `SalesService.cs`, `SalesService.HoldOrders.cs`, `SalesService.Pricing.cs`, `SalesService.CashAdvance.cs`, `SalesService.History.cs`), CashDrawerService, DailyClosureService, PaymentMethodService, ClosurePdfGenerator | Servicios de negocio modularizados en partial classes (<850 líneas/archivo) |
 | `Interfaces/` | ICashDrawerService, IDailyClosureService, IPaymentMethodService, ISalesService | Contratos |
 | `DTOs/` | PendingPickupDto, SaleHistoryDto, UpdateSaleItemsRequestDto | DTOs de ventas |
 | `Data/` | SalesDbContext | DbContext de ventas |
@@ -104,7 +104,7 @@ Dependencias: `Core`
 
 | Componente | Archivos | Descripción |
 |---|---|---|
-| `Services/` | InventoryService, SystemSettingsService | Servicios de inventario |
+| `Services/` | `InventoryService` (orquestador particionado: `InventoryService.cs`, `InventoryService.ExchangeRate.cs`, `InventoryService.StockDeduction.cs`, `InventoryService.CatalogQueries.cs`, `InventoryService.ImportExport.cs`), SystemSettingsService | Servicios de inventario modularizados en partial classes (<700 líneas/archivo) |
 | `Data/` | InventoryDbContext | DbContext de inventario |
 | `EventHandlers/` | InventorySaleMadeEventHandler | Consumidor de SaleMadeEvent (MediatR) |
 | `Migrations/` | 13 archivos | Migraciones EF Core de inventario |
