@@ -31,14 +31,23 @@ Estado de hallazgos:
   pos:desktop, ver R10 del global); X-Client-Version "1.0.0" y
   X-User-Role/X-User-Id siguen hardcodeadas/sin uso real.
 - H-DCC-2/3/5/6/7/8/9/10 -> ❌ VIGENTES (sin cambios).
-- H-DCC-11 (NUEVO, BAJO, R7 del global): SecureTokenStorageService.SaveToken
-  se invoca (UserSession.cs:54) pero LoadToken() (SecureTokenStorageService.
-  cs:56) NO se usa en ningún flujo -> no hay restauración de sesión al
-  reiniciar el cliente y el cifrado en reposo queda huérfano.
+- H-DCC-11 (NUEVO, BAJO, R7 del global) -> ✅ CERRADO en rev.3:
+  UserSession.TryRestoreTokenFromStorage (:81-180) AHORA VALIDA el token
+  almacenado: formato JWT (3 partes), expiración (exp claim), scope pos:desktop
+  y presencia de security_stamp antes de restaurar. Se invoca en
+  App.xaml.cs:264 al arrancar la aplicación. Tokens inválidos se purgan con
+  ClearToken + log (ClientStateLogger). Pruebas:
+  Phase5ClientResilienceTests (UserSession_TryRestoreTokenFromStorage_*)
+  cubren happy path, token expirado y scope web incompatible.
+- H-DCC-4 (versión) -> 🟡 MEJORADO: X-Client-Version AHORA viene de
+  AppVersionHelper.CurrentVersion (UserSessionHeaderHandler.cs:39). X-User-
+  Role/X-User-Id siguen enviándose pero el backend los ignora.
+- H-DCC-12 (NUEVO): SalesHistoryViewModel usa SaleCompletedNotificationMessage
+  (:75-79) para invalidar caché al completar una venta; debounced search con
+  CTS (:199-221);珊珊珊 DateLocal del servidor (SalesHistoryDto.DateLocal).
 - CORRECCIÓN de la fortaleza "Sesión (UserSession) en memoria con token que
-  NO se persiste en disco": ya no es exacta en rev.2 — el token SÍ se
-  persiste (cifrado con DPAPI) al iniciar sesión, pero nunca se vuelve a leer
-  (H-DCC-11).
+  NO se persiste en disco": REV.3 — el token SÍ se persiste y AHORA SÍ se
+  restaura con validación completa (R7 ✅).
 
 1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------

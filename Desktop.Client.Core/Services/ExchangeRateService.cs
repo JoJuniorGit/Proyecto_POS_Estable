@@ -77,6 +77,21 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             }
         });
 
+        _hubConnection.On("OnPaymentMethodsUpdated", () =>
+        {
+            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    WeakReferenceMessenger.Default.Send(new Desktop.Client.ViewModels.PaymentMethodsChangedMessage());
+                });
+            }
+            else
+            {
+                WeakReferenceMessenger.Default.Send(new Desktop.Client.ViewModels.PaymentMethodsChangedMessage());
+            }
+        });
+
         _ = InitializeAsync();
     }
 

@@ -22,8 +22,10 @@ entidades, servicios, controladores ni migraciones.
   Peso muerto en builds/restores; sugiere una funcionalidad planificada
   (repartos/entregas: existen "Driver" en UserRole y campos como
   SaleDeliveryStatus y "PendingPickup"/"ConfirmPickup" en Sales que apuntan a
-  entregas) que quedó a medio camino. Decidir: implementar el alcance
-  logístico previsto (entregas/repartidores) o eliminar el proyecto.
+  entregas) que quedó a medio camino. Decidir: implementarel alcance
+logístico previsto (entregas/repartidores) o eliminar el proyecto.
+Estado rev.3: SIN CAMBIOS (módulo vacío persiste; el rol Manager ahora existe
+pero no hay módulo logístico).
 
 [LOG-2] Conceptos logísticos implementados fuera del módulo.
   Sale.DeliveryStatus, PendingPickup, ConfirmPickupAsync y el rol Driver viven

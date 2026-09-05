@@ -161,6 +161,39 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private async Task TogglePaymentTypeAsync(PaymentMethodDto method)
+    {
+        if (method == null) return;
+        var original = method.IsCash;
+        try
+        {
+            method.IsCash = !method.IsCash;
+            var updated = await _payment_service.UpdateAsync(method);
+            var index = PaymentMethods.IndexOf(method);
+            if (index >= 0)
+            {
+                PaymentMethods[index] = new PaymentMethodDto
+                {
+                    Id = updated.Id,
+                    Name = updated.Name,
+                    IsActive = updated.IsActive,
+                    RequiresReference = updated.RequiresReference,
+                    IsCash = updated.IsCash,
+                    DisplayOrder = updated.DisplayOrder,
+                    IsDeleted = updated.IsDeleted
+                };
+            }
+            WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
+        }
+        catch (Exception ex)
+        {
+            method.IsCash = original;
+            MessageBox.Show($"Error al cambiar el tipo de método de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            await LoadMethodsAsync();
+        }
+    }
+
+    [RelayCommand]
     private async Task AddNewMethodAsync()
     {
         if (_dialog_service == null) return;
@@ -182,7 +215,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             {
                 Name = _newName,
                 IsActive = true,
-                RequiresReference = false
+                RequiresReference = false,
+                IsCash = false // Digital por defecto
             };
 
             var _created = await _payment_service.CreateAsync(_method);
@@ -192,6 +226,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         catch (Exception _ex)
         {
             MessageBox.Show($"Failed to create method: {_ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            await LoadMethodsAsync();
         }
     }
 
@@ -304,25 +339,25 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task DeleteMethodAsync(PaymentMethodDto method)
     {
-        var _result = MessageBox.Show($"Are you sure you want to deactivate '{method.Name}'?\n\nThis will keep historical sales intact but remove it from the Point of Sale screen.", "Confirm Deactivation", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (method == null) return;
+        var result = MessageBox.Show(
+            $"¿Está seguro de eliminar el método de pago '{method.Name}'?\n\nSi el método tiene transacciones históricas registradas, será archivado de forma segura sin afectar las ventas ni auditorías.",
+            "Confirmar Eliminación",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
 
-        if (_result == MessageBoxResult.Yes)
+        if (result == MessageBoxResult.Yes)
         {
             try
             {
                 await _payment_service.DeleteAsync(method.Id);
-                var _local = PaymentMethods.FirstOrDefault(p => p.Id == method.Id);
-                if (_local != null)
-                {
-                    _local.IsActive = false;
-                    var _index = PaymentMethods.IndexOf(_local);
-                    PaymentMethods[_index] = _local;
-                }
+                PaymentMethods.Remove(method);
                 WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
             }
-            catch (Exception _ex)
+            catch (Exception ex)
             {
-                MessageBox.Show($"Failed to deactivate method: {_ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Error al eliminar el método de pago: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                await LoadMethodsAsync();
             }
         }
     }

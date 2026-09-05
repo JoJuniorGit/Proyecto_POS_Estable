@@ -56,9 +56,105 @@ Estado resumido de los heredados (detalle por H-API abajo):
   (1.000.000 exacto admitido a mano y rechazado por el job).
 Hallazgos nuevos de la ventana: H-API-25 (outbox solo notifica, R3/R11),
 H-API-26 (políticas de scope sin uso, R10) y H-API-27 (cookie no borrable en
-401, R8) — se agregan al final de la sección 3.
---------------------------------------------------------------------------------
+401, R8) — se agregan al final de la sección 3.--------------------------------------------------------------------------------
+REVISIÓN 3 (2026-09-05, ola 3: SecurityStamp/lockout/timezone/fixes) —
+estado de cada hallazgo contra el código ACTUAL.
+Ventana de cambios (mtimes 09:36–00:26): Attributes/
+RequireSecurityStampValidationAttribute.cs (NUEVO), Middleware/
+SecurityStampValidationMiddleware.cs (NUEVO), Services/{ISecurityStampValidator.
+cs (NUEVO), SecurityStampValidator.cs (NUEVO), TokenService.cs, PasswordHasher.
+cs, CurrentUserService.cs, CacheMetricsLoggerService.cs}, Controllers/{Auth,
+Users,CashDrawer,DailyClosure,Settings,Shifts,Health,Sales,ExchangeRate}*.cs,
+Jobs/{OutboxProcessorJob,BcvExchangeRateJob,StockMovementArchiverJob}.cs,
+Program.cs (+150 líneas → 760 totales), appsettings.Development.json y
+wwwroot (bundle nuevo). Program.cs ahora ejecuta Database.Migrate() y DDL
+adicional (SecurityStamp, LockoutEndUtc, AccessFailedCount, role migration,
+UNIQUE INDEX on LOWER(Username), setval de secuencia de facturas).
 
+Estado de cada hallazgo:
+- C1 -> 🟡 MEJORADO: fail-fast incluye la clave HISTÓRICA ddf95c83...
+  (TokenService.cs:34, Program.cs:146); R1 ✅ (setup.iss:388 compila).
+- C2 -> ❌ VIGENTE + W2 (pfx password "PosHttpsDev2026!" hardcodeada,
+  Program.cs:736). Cookie Secure=false en LAN.
+- C3 -> 🟡 SIN CAMBIOS (appsettings.Development secrets intactos).
+- C4 -> 🟡 MEJORADO: REVOCACIÓN RESUELTA (SecurityStamp); R8 ✅ (logout en
+  401 via api.js:216-217); cookie 120 min (AuthController.cs:134) vs JWT
+  1440 min (appsettings.json:19) — W1. Persisten CSP unsafe-inline y
+  pos_user en localStorage.
+- H-API-1 (rol Manager) -> ✅ CORREGIDO: Manager=2 REAL en el enum
+  (Core/Entities/User.cs:4-9), migración one-shot (Program.cs:522-539);
+  CanMutateCatalog = Admin|Manager (CurrentUserService.cs:35).
+- H-API-2 (identidad spoofeable) -> 🟡 PARCIAL: claims-first con fallback a
+  request (ShiftsController.cs:113-131, DailyClosureController.cs:78-86);
+  ClosureDate sigue client-controlled (backdating posible).
+- H-API-3 (expected del cliente) -> 🟡 PARCIAL: DailyClosureController ahora
+  calcula expectedMap server-side (:93-98) e ignora ExpectedAmountBsS del
+  cliente; pero DailyClosureService.CreateClosureAsync (:79-110) rellena
+  métodos omitidos (non-cash = expected balanceado, cash = 0 shortage).
+- H-API-4 (adelanto sin rol) -> 🟡 PARCIAL: ProcessCashAdvance sigue sin
+  gate de rol en servicio, pero el controller (:201-227) ahora obtiene
+  cashierId de claims first. Fees 7/10% hardcodeadas.
+- H-API-5 (UTC vs VET) -> ✅ CORREGIDO: ShiftsController y
+  DailyClosureController ahora usan GetTodayExchangeRateAsync con VET
+  (TimeZoneHelper.GetVenezuelaDate, Shifts.cs:56-68, DailyClosure.cs:48-60).
+- H-API-6 (400 ex.Message) -> ❌ VIGENTE: BadRequest(ex.Message) en
+  Shifts:149, DailyClosure:115, CashDrawer (×4), SalesController y otros.
+- H-API-7 (duplicación) -> ❌ VIGENTE: UpsertRate/SyncBcv/Job ~30 líneas
+  repetidas; GetTodayExchangeRateAsync duplicada en Shifts y DailyClosure.
+- H-API-8 (validación incompleta) -> 🟡 PARCIAL: ahora rango (0,1e6] en
+  UpsertRate (:89) y SyncBcv (:164-168); SettingsController.SetExchangeRate
+  (:56) también valida y escribe AMBAS fuentes (History + SystemSettings).
+  DeleteMethod 204 no-op persiste; GetHistory sin clamp.
+- H-API-9 (anónimos) -> ❌ VIGENTE: /health anónimo + MachineName +
+  ex.Message (HealthController.cs:24-62); /history anónimo (ExchangeRate.cs).
+- H-API-10 (versión) -> 🟡 MEJORADO: HealthController ahora usa
+  AppVersionHelper.CurrentVersion (:43,:53,:64) en vez de "1.0.0".
+- H-API-11 (rate limit) -> ✅ CORREGIDO (Program.cs:327).
+- H-API-13 (revocación) -> ✅ CERRADO: SecurityStamp claim en token
+  (TokenService.cs:72) + middleware cada petición (10 s micro-cache,
+  SecurityStampValidator.cs:20-96) + DB inmediata en endpoints monetarios
+  ([RequireSecurityStampValidation]: Sales.cs:285, Shifts.cs:68,
+  DailyClosure.cs:72, CashDrawer.cs:92,109,132,205) + rotación en
+  change-password (AuthController.cs:216), update/deactivate (UsersController.
+  cs:189,224,239) + auditoría [AUDIT_SECURITY_STAMP_RESET].
+- H-API-16 (SPA 404) -> ✅ CORREGIDO (Program.cs:350-380, fallback con
+  404 problem+json para /api y /hubs).
+- H-API-17 (egresos) -> 🟡 PARCIAL: amountLocal > 0 (CashDrawerService.cs:
+  124), physical expense balance check (:134-146), role gate blocks
+  Cashier/Driver (:143-148) para CashIn/CashOut/ManualAdjustment; cash-advance
+  sigue abierto a cualquier rol incluyendo Driver.
+- H-API-18 (precio) -> ✅ CORREGIDO (controller): Admin/Manager en
+  AddItem/UpdateSaleItems (SalesController.cs:56-67,136-145) con flag
+  isAuthorized al servicio. UpdatePriceList y reservas sin gating.
+- H-API-19 (GET side effect) -> ✅ CORREGIDO: active-session retorna null
+  sin crear (CashDrawerController.cs:66-71).
+- H-API-20 (todo 503) -> ✅ CERRADO: GlobalExceptionHandler mapea
+  23505→409, 23503→400, 22001/23514→400, 08*/28P01→503, Npgsql→503,
+  500 genérico (GlobalExceptionHandlerMiddleware.cs:36-186). Persiste
+  sqlState en payload y ex.Message en 400/500 de controladores.
+- H-API-21 (CORS) -> 🟡 PARCIAL (acotado a puertos 5000/5001/5173,
+  Program.cs:256-289). A11: AllowCredentials siempre ON.
+- H-API-22 (pairing HTTPS) -> ✅ CORREGIDO (PairingController.cs:43-47).
+- H-API-23 (plaintext legacy) -> ✅ CERRADO: PasswordHasher rechaza no-
+  PBKDF2 (PasswordHasher.cs:37-49) + arranque migra legacy hashes
+  (Program.cs:540-548) con MustChangePassword=true.
+- H-API-24 (range) -> ✅ CORREGIDO: rango (0,1e6] en alta manual y sync;
+  R9 persiste (1e6 exacto: manual admite, job rechaza).
+- H-API-25 (outbox solo SignalR) -> ❌ VIGENTE (OutboxProcessorJob.cs:
+  123-146, R3/R11).
+- H-API-26 (scope sin uso) -> 🟡 VIGENTE (Program.cs:190-196, ninguna
+  política Authorize(Policy=...)). Revocación reduce impacto.
+- H-API-27 (cookie 401) -> ✅ CERRADO (api.js:216-217 llama logout).
+
+New security findings added:
+- W1: Cookie 120 min vs JWT 1440 min (TTL mismatch).
+- W2: PFX password "PosHttpsDev2026!" hardcodeada (Program.cs:736).
+- W3: Fail-closed hist. key sin auto-rotación (Program.cs:146).
+- W4: DDL errors swallowed (Program.cs catch schemaEx).
+- W5: Role migration one-shot + old tokens lose role claim.
+- W6: Lockout exploitable as account DoS.
+- W7: DateLocal VET fixed ignoring SelectedTimeZoneId.
+--------------------------------------------------------------------------------
 1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------
 Proyecto ASP.NET Core (Program.cs, ~710 líneas tras la remediación; la v1
@@ -70,20 +166,27 @@ autofirmado). Usa dos DbContext (SalesDbContext e InventoryDbContext) sobre la
 MISMA base PostgreSQL, JWT Bearer, SignalR (hub ExchangeRate), MediatR y cache
 en memoria.
 
-Inventario real del módulo (líneas por archivo, verificado con wc):
-- Program.cs (~710): Kestrel, CORS, rate limiting, JWT (fail-fast + cookie
-  pos_jwt), políticas de scope, seed, DDL defensivo, fallback SPA con 404.
-- 14 controladores (2.587 líneas): Auth 143, Users 251, Products 472, Sales 386,
+Inventario real del módulo (líneas por archivo, verificado con wc, Rev.3):
+- Program.cs (760): Kestrel, CORS, rate limiting, JWT (fail-fast incl. clave
+  histórica ddf95c83, cookie pos_jwt), políticas de scope, seed con
+  reactivación Admins, DDL defensivo (secuencia+setval, OutboxMessages, role
+  migration, Users hardening + UNIQUE INDEX), Database.Migrate(), fallback SPA
+  404 para /api:/hubs.
+- 14 controladores: Auth 250, Users 252, Products 472, Sales 386,
   Shifts 269, CashDrawer 266, DailyClosure 143, ExchangeRate 203, Settings 121,
   Health 81, Reservations 79, PaymentMethods 84, Pairing 46, VersionCheck 43.
-- 4 middleware: GlobalExceptionHandler, SecurityHeaders, SecurityAudit,
-  VersionCheck.
-- 3 jobs: BcvExchangeRateJob, StockMovementArchiverJob, OutboxProcessorJob
-  (NUEVO en la remediación, 08:51). 1 hub: ExchangeRateHub.
-- 1 filtro: ModelStateValidationFilter. 2 archivos de DTOs propios.
-- 7 servicios + 1 interfaz: TokenService(+ITokenService), PasswordHasher,
+- 5 middleware: GlobalExceptionHandler (224 líneas, mapeo PG→409/400/503),
+  SecurityHeaders, SecurityAudit, VersionCheck, SecurityStampValidation (NUEVO,
+  88 líneas).
+- 3 jobs: BcvExchangeRateJob (VET + ceiling + advisory lock),
+  StockMovementArchiverJob (configurable), OutboxProcessorJob (solo SignalR).
+  1 hub: ExchangeRateHub.
+- 1 filtro: ModelStateValidationFilter. 1 atributo NUEVO:
+  RequireSecurityStampValidationAttribute.
+- 9 servicios + 2 interfaces: TokenService(+ITokenService), PasswordHasher,
   CurrentUserService, BcvScraperService, CacheMetricsLoggerService,
-  NetworkDiscoveryService(+INetworkDiscoveryService). (La v1 decía "8 servicios".)
+  NetworkDiscoveryService(+INetworkDiscoveryService), SecurityStampValidator
+  (+ISecurityStampValidator) (NUEVOS en ola 3).
 
 2. HALLAZGOS HEREDADOS (ver docs/reporte.txt para detalle)
 --------------------------------------------------------------------------------
@@ -468,16 +571,28 @@ Inventario real del módulo (líneas por archivo, verificado con wc):
   hashes modernos (salvedad H-API-23 para legacy).
 - Health y VersionCheck exentos del control 426; fallback SPA con 404 real
   para /api y /hubs desde rev.2 (Program.cs:329-354).
-- NUEVAS (rev.2): fail-fast de la clave JWT en producción (TokenService.cs:
-  30-43; Program.cs:142-147); rate limit global de la API (Program.cs:325);
-  cookie pos_jwt HttpOnly+SameSite=Strict para la web con logout dedicado
-  (AuthController.cs:100-146) y lectura de cookie en JwtBearer (Program.cs:
-  175-185); CORS acotado a los puertos 5000/5001/5173 (Program.cs:254-276);
-  pairing que solo anuncia HTTPS si hay certificado (PairingController.cs:
-  43-47); rango (0,1.000.000] en alta manual y SyncBcv (ExchangeRate
-  Controller.cs:89-90,164-168); advisory lock BCV (BcvExchangeRateJob.cs:
-  52-53,74-84); job de outbox con SKIP LOCKED/backoff/DeadLetter (como
-  mecanismo de NOTIFICACIÓN; salvedad H-API-25).
+- NUEVAS (rev.2): fail-fast JWT, rate limit global, cookie HttpOnly+Strict,
+  CORS acotado a puertos, pairing HTTPS-aware, rango (0,1e6], advisory lock
+  BCV, outbox con SKIP LOCKED/backoff/DeadLetter.
+- NUEVAS (rev.3 — ola 3): REVOCACIÓN real de tokens vía SecurityStamp con
+  micro-caché de 10 s y verificación DB inmediata en endpoints monetarios
+  ([RequireSecurityStampValidation] en CompleteSale, CloseShift, CreateClosure,
+  CashDrawer open/close/transaction/cash-advance; SecurityStampValidator.cs,
+  SecurityStampValidationMiddleware.cs). BLOQUEO de cuenta (5 fallos → 15 min
+  HTTP 423, AuthController.cs:58-99; columnas AccessFailedCount/LockoutEndUtc
+  en DDL de arranque). Rol Manager REAL (enum + migración one-shot + permisos
+  CanMutateCatalog). GlobalExceptionHandler mapea PG 23505→409, 23503→400,
+  22001/23514→400, 08*/28P01→503 (ya no todo es 503). PasswordHasher estricto:
+  rechaza texto plano + migra hashes legacy en arranque (Program.cs:540-548).
+  Secuencia de facturas sembrada al MAX existente (Program.cs:441-442, R2).
+  Migraciones EF reales + Database.Migrate() (Program.cs:397-400). Clave JWT
+  histórica ddf95c83... rechazada en guard (Program.cs:146, TokenService.cs:34).
+  Timestamps en VET para expected-totals y historial de ventas. CashDrawer GET
+  sin side effects. Identity from claims first en cierres. Login con cookie
+  pos_jwt HttpOnly (Secure condicional) + Token=null para web. Logout vía
+  /api/auth/logout que invalida caché de stamp. AppLogger y ClientStateLogger
+  con rotación (10 MB × 5). AppVersionHelper centraliza versión. EF migrations
+  existen en Inventory.Module y Sales.Module.~20 suites de prueba nuevas.
 
 5. DEUDA TÉCNICA Y RECOMENDACIONES
 --------------------------------------------------------------------------------

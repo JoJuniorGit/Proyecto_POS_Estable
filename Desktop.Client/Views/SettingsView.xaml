@@ -267,8 +267,10 @@
                                             <!-- Mover Arriba -->
                                             <Button Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
                                                     CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
                                                     Style="{DynamicResource MaterialDesignIconButton}"
                                                     ToolTip="Subir Posición"
+                                                    AutomationProperties.Name="Subir posición del método"
                                                     Width="26" Height="26" Padding="0">
                                                 <materialDesign:PackIcon Kind="ArrowUp" Width="16" Height="16"/>
                                             </Button>
@@ -276,8 +278,10 @@
                                             <!-- Mover Abajo -->
                                             <Button Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
                                                     CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
                                                     Style="{DynamicResource MaterialDesignIconButton}"
                                                     ToolTip="Bajar Posición"
+                                                    AutomationProperties.Name="Bajar posición del método"
                                                     Width="26" Height="26" Padding="0">
                                                 <materialDesign:PackIcon Kind="ArrowDown" Width="16" Height="16"/>
                                             </Button>
@@ -300,9 +304,11 @@
                                             <!-- Botón Renombrar -->
                                             <Button Command="{Binding DataContext.RenameMethodCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
                                                     CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
                                                     Style="{DynamicResource MaterialDesignIconButton}"
                                                     Foreground="{DynamicResource PrimaryHueMidBrush}"
                                                     ToolTip="Renombrar Método"
+                                                    AutomationProperties.Name="Renombrar método de pago"
                                                     Width="26" Height="26" Padding="0">
                                                 <materialDesign:PackIcon Kind="Pencil" Width="15" Height="15"/>
                                             </Button>
@@ -311,36 +317,61 @@
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
-                            <!-- Columna Tipo (Efectivo vs Electrónico) -->
+                            <!-- Columna Tipo (Físico vs Digital interactivo) -->
                             <DataGridTemplateColumn Header="Tipo" Width="Auto">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <Border CornerRadius="4" Padding="6,2" HorizontalAlignment="Left" VerticalAlignment="Center">
-                                            <Border.Style>
-                                                <Style TargetType="Border">
-                                                    <Setter Property="Background" Value="#E2E8F0"/>
+                                        <Button Command="{Binding DataContext.TogglePaymentTypeCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                CommandParameter="{Binding}"
+                                                IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                ToolTip="Clic para alternar entre Físico y Digital"
+                                                Padding="8,3"
+                                                Height="28"
+                                                Cursor="Hand"
+                                                BorderThickness="1">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
+                                                    <Setter Property="Background" Value="#F1F5F9"/>
+                                                    <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                                                    <Setter Property="Foreground" Value="#475569"/>
+                                                    <Setter Property="AutomationProperties.Name" Value="Método Digital. Clic para cambiar a Físico."/>
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsCash}" Value="True">
                                                             <Setter Property="Background" Value="#DCFCE7"/>
+                                                            <Setter Property="BorderBrush" Value="#86EFAC"/>
+                                                            <Setter Property="Foreground" Value="#166534"/>
+                                                            <Setter Property="AutomationProperties.Name" Value="Método Físico. Clic para cambiar a Digital."/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
-                                            </Border.Style>
-                                            <TextBlock FontWeight="SemiBold" FontSize="11">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Text" Value="ELECTRÓNICO"/>
-                                                        <Setter Property="Foreground" Value="#475569"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsCash}" Value="True">
-                                                                <Setter Property="Text" Value="EFECTIVO"/>
-                                                                <Setter Property="Foreground" Value="#166534"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                        </Border>
+                                            </Button.Style>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,4,0">
+                                                    <materialDesign:PackIcon.Style>
+                                                        <Style TargetType="materialDesign:PackIcon">
+                                                            <Setter Property="Kind" Value="CreditCardOutline"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsCash}" Value="True">
+                                                                    <Setter Property="Kind" Value="CashMultiple"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </materialDesign:PackIcon.Style>
+                                                </materialDesign:PackIcon>
+                                                <TextBlock FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="DIGITAL"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsCash}" Value="True">
+                                                                    <Setter Property="Text" Value="EFECTIVO"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Button>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
@@ -352,6 +383,7 @@
                                         <CheckBox IsChecked="{Binding RequiresReference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
                                                   Command="{Binding DataContext.UpdateReferenceRequirementCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
                                                   CommandParameter="{Binding}"
+                                                  IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
                                                   HorizontalAlignment="Center"
                                                   Margin="0"/>
                                     </DataTemplate>
@@ -365,6 +397,7 @@
                                         <CheckBox IsChecked="{Binding IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   Command="{Binding DataContext.SetActiveStatusCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
                                                   CommandParameter="{Binding}"
+                                                  IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
                                                   ToolTip="Activar o desactivar este método en el POS"
                                                   HorizontalAlignment="Center"
                                                   Margin="0"/>
@@ -380,8 +413,10 @@
                                             <!-- Desactivar / Eliminar -->
                                             <Button Command="{Binding DataContext.DeleteMethodCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
                                                     CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
                                                     Style="{DynamicResource MaterialDesignIconButton}"
-                                                    ToolTip="Desactivar Método"
+                                                    ToolTip="Eliminar Método de Pago"
+                                                    AutomationProperties.Name="Eliminar Método de Pago"
                                                     Foreground="#DC2626"
                                                     Width="30" Height="30">
                                                 <materialDesign:PackIcon Kind="Delete" Width="18" Height="18"/>

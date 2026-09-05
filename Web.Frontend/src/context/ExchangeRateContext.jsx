@@ -42,6 +42,11 @@ export function ExchangeRateProvider({ children }) {
         if (isMounted) {
           window.dispatchEvent(new CustomEvent('onHoldSalesUpdated'));
         }
+      },
+      () => {
+        if (isMounted) {
+          window.dispatchEvent(new CustomEvent('onPaymentMethodsUpdated'));
+        }
       }
     );
 

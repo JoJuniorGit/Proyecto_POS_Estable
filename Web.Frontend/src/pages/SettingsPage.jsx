@@ -1,8 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
-import { getAllPaymentMethods } from '../services/paymentApi';
+import { 
+  getAllPaymentMethods, 
+  createPaymentMethod, 
+  updatePaymentMethod, 
+  deletePaymentMethod 
+} from '../services/paymentApi';
 import { BrowserQRCodeSvgWriter } from '@zxing/library';
-import { Settings, CreditCard, Plus, Loader2, Check, QrCode, Server, Wifi, Copy, RefreshCw } from 'lucide-react';
+import { Settings, CreditCard, Plus, Loader2, Check, QrCode, Server, Wifi, Copy, RefreshCw, Trash2 } from 'lucide-react';
 
 export default function SettingsPage() {
   const [methods, setMethods] = useState([]);
@@ -54,6 +59,14 @@ export default function SettingsPage() {
   useEffect(() => {
     loadMethods();
     loadPairingInfo();
+
+    const handleMethodsUpdated = () => {
+      loadMethods();
+    };
+    window.addEventListener('onPaymentMethodsUpdated', handleMethodsUpdated);
+    return () => {
+      window.removeEventListener('onPaymentMethodsUpdated', handleMethodsUpdated);
+    };
   }, []);
 
   // Cálculo de URL y payload activo
@@ -115,25 +128,57 @@ export default function SettingsPage() {
     }
   };
 
-  const handleToggleActive = async (method) => {
+  const handleToggleCash = async (method) => {
+    const updated = { ...method, isCash: !method.isCash };
+    setMethods((prev) => prev.map((m) => (m.id === method.id ? updated : m)));
     try {
-      const updated = { ...method, isActive: !method.isActive };
-      await api.put(`/api/paymentmethods/${method.id}`, updated);
-      setMethods((prev) => prev.map((m) => (m.id === method.id ? updated : m)));
+      await updatePaymentMethod(method.id, updated);
+      setMessage({ type: 'success', text: `Método "${method.name}" clasificado como ${updated.isCash ? 'Físico' : 'Digital'}.` });
+    } catch (err) {
+      console.error('[SettingsPage] Error actualizando tipo de método:', err);
+      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al cambiar tipo del método.' });
+      loadMethods();
+    }
+  };
+
+  const handleToggleActive = async (method) => {
+    const updated = { ...method, isActive: !method.isActive };
+    setMethods((prev) => prev.map((m) => (m.id === method.id ? updated : m)));
+    try {
+      await updatePaymentMethod(method.id, updated);
     } catch (err) {
       console.error('[SettingsPage] Error actualizando método:', err);
-      setMessage({ type: 'danger', text: 'Error al cambiar estado del método.' });
+      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al cambiar estado del método.' });
+      loadMethods();
     }
   };
 
   const handleToggleRef = async (method) => {
+    const updated = { ...method, requiresReference: !method.requiresReference };
+    setMethods((prev) => prev.map((m) => (m.id === method.id ? updated : m)));
     try {
-      const updated = { ...method, requiresReference: !method.requiresReference };
-      await api.put(`/api/paymentmethods/${method.id}`, updated);
-      setMethods((prev) => prev.map((m) => (m.id === method.id ? updated : m)));
+      await updatePaymentMethod(method.id, updated);
     } catch (err) {
       console.error('[SettingsPage] Error actualizando método:', err);
-      setMessage({ type: 'danger', text: 'Error al actualizar configuración de referencia.' });
+      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al actualizar configuración de referencia.' });
+      loadMethods();
+    }
+  };
+
+  const handleDeleteMethod = async (method) => {
+    const confirmed = window.confirm(
+      `¿Está seguro de eliminar el método de pago "${method.name}"?\n\nSi posee transacciones históricas registradas, será archivado de forma segura sin afectar reportes ni auditorías.`
+    );
+    if (!confirmed) return;
+
+    setMethods((prev) => prev.filter((m) => m.id !== method.id));
+    try {
+      await deletePaymentMethod(method.id);
+      setMessage({ type: 'success', text: `Método "${method.name}" eliminado correctamente.` });
+    } catch (err) {
+      console.error('[SettingsPage] Error eliminando método:', err);
+      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al eliminar método de pago.' });
+      loadMethods();
     }
   };
 
@@ -148,15 +193,16 @@ export default function SettingsPage() {
         isCash: newMethodIsCash,
         requiresReference: newMethodRequiresRef,
       };
-      await api.post('/api/paymentmethods', dto);
+      await createPaymentMethod(dto);
       setNewMethodName('');
       setNewMethodIsCash(false);
       setNewMethodRequiresRef(false);
-      setMessage({ type: 'success', text: 'Nuevo método de pago agregado.' });
+      setMessage({ type: 'success', text: 'Nuevo método de pago agregado correctamente.' });
       loadMethods();
     } catch (err) {
       console.error('[SettingsPage] Error agregando método:', err);
-      setMessage({ type: 'danger', text: 'Error al crear método de pago.' });
+      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al crear método de pago.' });
+      loadMethods();
     }
   };
 
@@ -325,29 +371,58 @@ export default function SettingsPage() {
           </div>
         ) : (
           <>
-            {/* ── Requisito 1, 2 y 3: Tarjetas Independientes para Vista Móvil con Etiquetas de Contexto ── */}
+            {/* ── Tarjetas Independientes para Vista Móvil con Etiquetas de Contexto ── */}
             <div className="settings-mobile-cards-view mb-4">
               {methods.map((m) => (
                 <div key={m.id} className="settings-method-card p-3 mb-3 border rounded-lg bg-surface shadow-xs">
                   
-                  {/* Fila 1: Encabezado de Tarjeta (Nombre a la izquierda, Estado a la extrema derecha) */}
+                  {/* Fila 1: Encabezado de Tarjeta (Nombre a la izquierda, Estado y Eliminar a la derecha) */}
                   <div className="flex-between flex-align-center mb-2.5 pb-2 border-bottom">
                     <span className="font-bold text-base color-primary">{m.name}</span>
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${m.isActive ? 'btn-primary' : 'btn-danger'} text-xs font-bold px-3`}
-                      onClick={() => handleToggleActive(m)}
-                      style={{ borderRadius: '14px', minWidth: '76px' }}
-                    >
-                      {m.isActive ? 'Activo' : 'Inactivo'}
-                    </button>
+                    <div className="flex-align-center gap-2">
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${m.isActive ? 'btn-primary' : 'btn-danger'} text-xs font-bold px-3`}
+                        onClick={() => handleToggleActive(m)}
+                        style={{ borderRadius: '14px', minWidth: '76px' }}
+                        title="Alternar estado activo"
+                        aria-label={`Alternar estado activo para ${m.name}`}
+                      >
+                        {m.isActive ? 'Activo' : 'Inactivo'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline text-danger p-1"
+                        onClick={() => handleDeleteMethod(m)}
+                        title="Eliminar método de pago"
+                        aria-label={`Eliminar método ${m.name}`}
+                        style={{ color: '#DC2626', borderColor: '#FCA5A5' }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Fila 2: Detalles Secundarios con Etiquetas de Contexto ("Tipo:" y "Requiere Ref.:") */}
+                  {/* Fila 2: Detalles Secundarios con Tipo interactivo y Requiere Ref */}
                   <div className="flex-between flex-align-center text-xs">
-                    <div className="flex-align-center gap-1">
+                    <div className="flex-align-center gap-1.5">
                       <span className="text-muted text-xs">Tipo:</span>
-                      <span className="font-medium">{m.isCash ? 'Efectivo' : 'Digital / Banco'}</span>
+                      <button
+                        type="button"
+                        className={`btn btn-xs ${m.isCash ? 'btn-success' : 'btn-outline'} text-xs font-bold`}
+                        onClick={() => handleToggleCash(m)}
+                        style={{
+                          borderRadius: '10px',
+                          padding: '2px 10px',
+                          backgroundColor: m.isCash ? '#DCFCE7' : 'transparent',
+                          color: m.isCash ? '#166534' : 'inherit',
+                          borderColor: m.isCash ? '#86EFAC' : 'var(--border)'
+                        }}
+                        title="Clic para cambiar entre Físico y Digital"
+                        aria-label={`Cambiar tipo de ${m.name}. Actualmente ${m.isCash ? 'Físico' : 'Digital'}`}
+                      >
+                        {m.isCash ? 'Físico' : 'Digital'}
+                      </button>
                     </div>
 
                     <div className="flex-align-center gap-1.5">
@@ -357,6 +432,8 @@ export default function SettingsPage() {
                         className={`btn btn-xs ${m.requiresReference ? 'btn-primary' : 'btn-outline'} text-xs font-bold`}
                         onClick={() => handleToggleRef(m)}
                         style={{ borderRadius: '10px', padding: '2px 10px' }}
+                        title="Alternar requerimiento de referencia"
+                        aria-label={`Alternar requerimiento de referencia para ${m.name}`}
                       >
                         {m.requiresReference ? 'Sí' : 'No'}
                       </button>
@@ -376,18 +453,38 @@ export default function SettingsPage() {
                     <th className="text-center">Tipo</th>
                     <th className="text-center">Requiere Referencia</th>
                     <th className="text-center">Estado</th>
+                    <th className="text-center">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {methods.map((m) => (
                     <tr key={m.id}>
                       <td className="font-medium">{m.name}</td>
-                      <td className="text-center">{m.isCash ? 'Efectivo' : 'Digital / Banco'}</td>
+                      <td className="text-center">
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${m.isCash ? 'btn-success' : 'btn-outline'} text-xs font-bold`}
+                          style={{
+                            borderRadius: '12px',
+                            padding: '3px 12px',
+                            backgroundColor: m.isCash ? '#DCFCE7' : 'transparent',
+                            color: m.isCash ? '#166534' : 'inherit',
+                            borderColor: m.isCash ? '#86EFAC' : 'var(--border)'
+                          }}
+                          onClick={() => handleToggleCash(m)}
+                          title="Clic para cambiar entre Físico y Digital"
+                          aria-label={`Cambiar tipo de método ${m.name}. Actualmente ${m.isCash ? 'Físico' : 'Digital'}`}
+                        >
+                          {m.isCash ? 'Físico' : 'Digital'}
+                        </button>
+                      </td>
                       <td className="text-center">
                         <button
                           type="button"
                           className={`btn btn-sm ${m.requiresReference ? 'btn-primary' : 'btn-outline'}`}
                           onClick={() => handleToggleRef(m)}
+                          title="Alternar requerimiento de referencia"
+                          aria-label={`Alternar requerimiento de referencia para ${m.name}`}
                         >
                           {m.requiresReference ? 'Sí' : 'No'}
                         </button>
@@ -397,8 +494,22 @@ export default function SettingsPage() {
                           type="button"
                           className={`btn btn-sm ${m.isActive ? 'btn-primary' : 'btn-danger'}`}
                           onClick={() => handleToggleActive(m)}
+                          title="Alternar activación en POS"
+                          aria-label={`Alternar activación para ${m.name}`}
                         >
                           {m.isActive ? 'Activo' : 'Inactivo'}
+                        </button>
+                      </td>
+                      <td className="text-center">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline text-danger p-1.5"
+                          onClick={() => handleDeleteMethod(m)}
+                          title="Eliminar método de pago"
+                          aria-label={`Eliminar método ${m.name}`}
+                          style={{ color: '#DC2626', borderColor: '#FCA5A5' }}
+                        >
+                          <Trash2 size={16} />
                         </button>
                       </td>
                     </tr>
@@ -426,13 +537,13 @@ export default function SettingsPage() {
             </div>
 
             <div className="form-group mb-0 flex-align-center" style={{ paddingBottom: '8px' }}>
-              <label className="form-label cursor-pointer flex-align-center gap-2 text-sm mb-0">
+              <label className="form-label cursor-pointer flex-align-center gap-2 text-sm mb-0" title="Desmarcado por defecto: se creará como Digital">
                 <input
                   type="checkbox"
                   checked={newMethodIsCash}
                   onChange={(e) => setNewMethodIsCash(e.target.checked)}
                 />
-                <span>Es Efectivo</span>
+                <span>Es Efectivo (Físico)</span>
               </label>
             </div>
 

@@ -21,9 +21,14 @@ Cambios del módulo en la ventana:
   previas y abre 5000 Y 5001 (l.104-120), fusión de variables de entorno
   preservando las secretas (l.172-190+) y arranque/reinicio con reintentos.
 
-ESTADO DE HALLAZGOS (ver INS-x abajo):
-- INS-1 (C1) -> 🟡 PARCIAL CON BLOQUEO NUEVO: ver R1 (¡el .iss NO compila!),
-  R4 (Random(16)) y R5 (clave histórica no cubierta por el guard del backend).
+ESTADO DE HALLAZGOS (ver INS-x abajo, actualizado rev.3):
+- INS-1 (C1) -> 🟡 MEJORADO: R1 ✅ CERRADO en rev.3 — setup.iss:388 AHORA
+  usa GetOrGenerateJwtKey (ya calculado para :271 y :315) → el instalador
+  VUELVE A COMPILAR. PERSISTEN R4 (Random(16) en :127) y la clave HKLM en
+  claro (:115,130). El guard anti-histórica del backend (Program.cs:146,
+  TokenService.cs:34) AHORA SÍ detecta la clave pública ddf95c83... en
+  producción y la rechaza (fail-closed) — W3: instalaciones viejas sin
+  actualización no arrancan hasta rotar la clave.
 - INS-2 (C3) -> 🟡 PARCIAL: mejoras de preservación/idempotencia en el ps1,
   pero los secretos siguen en claro (registro HKLM\Software\POS 'JwtSecretKey'
   añadido, línea de comandos, defaults en el ps1).
@@ -45,12 +50,12 @@ HALLAZGOS NUEVOS DE LA REMEDIACIÓN (ver R1-R6 del reporte global):
   HKLM\Software\POS 'JwtSecretKey' (l.115,130), legible por usuarios locales
   (ACL por defecto de HKLM\Software) y en AppEnvironmentExtra (NSSM).
   Generar con CSPRNG (vía ps1/.NET) y proteger el registro con ACL.
-- INS-12 (MEDIO, R5): la clave histórica ddf95c83... sigue como literal de
-  comparación en setup.iss:115-117 y Configure-PosService.ps1:54; el guard de
-  producción del backend solo detecta "Default_Development_Secret_Key"
-  (TokenService.cs:41) -> instalaciones viejas con la clave pública NO
-  detectadas: sus tokens siguen forjables hasta reinstalar/rotar. Añadir la
-  clave histórica a la lista de prohibidas del guard y forzar rotación.
+- INS-12 (MEDIO, R5) -> ✅ CORREGIDO EN REV.3: el guard de producción AHORA
+  detecta la clave histórica ddf95c83... (Program.cs:146, TokenService.cs:34)
+  y LANZA InvalidOperationException en producción. Consecuencia W3: las
+  instalaciones viejas que aún tengan esa clave ABORTAN el arranque sin
+  auto-rotación; se requiere usar -RotateJwt o reinstalar. Configure-
+  PosService.ps1:54-57 regenera CSPRNG si detecta la clave histórica o vacía.
 - INS-13 (MEDIO, R6): el firewall abre ahora TCP 5001 que el servidor no sirve
   (ver estado de INS-3). Solo abrir puertos con servicio real detrás.
 

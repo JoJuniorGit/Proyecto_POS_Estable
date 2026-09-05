@@ -21,8 +21,35 @@ Pruebas nuevas verificadas:
   (cubre H-API-22).
 - OutboxProcessorJobTests: registro como hosted service; procesamiento
   Pending -> Processed; payload inválido -> reintento con backoff;
-  5 reintentos -> DeadLetter; y CompleteSaleAsync_WithIdempotencyKey_
+  5 reintentos -> DeadLetter; y  CompleteSaleAsync_WithIdempotencyKey_
   ReturnsExistingInvoice_WhenAlreadyCompleted (cubre A3 parcial).
+- Unit/PasswordHasherUnitTests.cs (NUEVO, 6 tests): hash PBKDF2, verificacion,
+  case sensitivity, rechazo estricto de texto plano, hashes vacios/malformados.
+- Unit/Phase4SecurityHardeningTests.cs (NUEVO, 5 tests): lockout 423,
+  reseteo de contadores, SecurityStampValidator cache+invalidacion, rol Manager
+  permissions/display.
+- Unit/Phase5ClientResilienceTests.cs (NUEVO, 5 tests): restauracion DPAPI
+  (token valido/expirado/scope web), GlobalExceptionHandler mapeo de
+  excepciones, SafeFireAndForget.
+- Unit/Phase6ArchitecturalHygieneTests.cs (NUEVO, 3 tests): AppVersionHelper,
+  TimeZoneHelper con ID invalida, SettingsController sync de tasa.
+- Unit/SalesServiceUnitTests.cs (NUEVO, 7 tests): StartSale, AddItem,
+  RemoveItem, UpdateQuantity, PriceList, CancelSale, CompleteSale con
+  sobrepago.
+- Unit/ExchangeRateJobTests.cs (NUEVO, 7 tests): registro como hosted
+  service, fallo del scraper sin mutacion, rango invalido, ceiling rounding,
+  flujo hibrido job+controlador.
+- Unit/CashDrawerServiceUnitTests.cs (NUEVO, 7 tests): crea sesion, rechaza
+  doble apertura, close, balance fisico, cash advance entero/decimales/
+  saldo insuficiente.
+- Unit/DailyClosureServiceUnitTests.cs (NUEVO, 7 tests): metodos activos,
+  diferencias, monto negativo, recibos blind/admin, ventana nocturna VET,
+  metodos omitidos rellenados server-side.
+- InventoryPaginationTests.cs (NUEVO, 7 tests): paginacion, busqueda,
+  navegacion.
+- Integration/PostgresRealIntegrationTests.cs (NUEVO, 1 test): conexion
+  PostgreSQL real.
+Total de archivos en el modulo: ahora ~60+ (era 56).
 
 Impacto en hallazgos:
 - TST-3 -> 🟡 MEJORADO: ya hay tests para el alcance de A2/A3 parcial y del
@@ -103,9 +130,12 @@ TEST_POSTGRES_CONNECTION en CI (.github/workflows/ci.yml). Incluye builders
 - Builders centralizados (ProductBuilder, SaleBuilder...) que hacen los tests
   legibles.
 - Suite de integración real con PostgreSQL en CI (señal de madurez).
-- Pruebas de regresión de seguridad y de reglas de negocio críticas
+-  Pruebas de regresión de seguridad y de reglas de negocio críticas
   (efectivo sin centavos, tasas, descuentos, precios mayor/detal).
 - Tests de UI/UX del POS (hotkeys, scanner, circuit breaker).
+- Nuevas en ola 3 (rev.3): ~40 tests adicionales cubriendo lockout,
+  SecurityStampValidator, AppVersionHelper, TimeZoneHelper, sync de tasa,
+  cash-advance validaciones, cierres VET, paginación, y conexión PG real.
 
 4. RECOMENDACIONES
 --------------------------------------------------------------------------------

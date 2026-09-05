@@ -47,6 +47,13 @@ public partial class PaymentMethodDto : ObservableObject
         get => _display_order;
         set => SetProperty(ref _display_order, value);
     }
+
+    private bool _is_deleted = false;
+    public bool IsDeleted
+    {
+        get => _is_deleted;
+        set => SetProperty(ref _is_deleted, value);
+    }
 }
 
 public interface IPaymentService

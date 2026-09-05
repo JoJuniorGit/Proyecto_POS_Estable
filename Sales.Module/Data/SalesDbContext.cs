@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Entities;
 using Core.Entities;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Backend.API")]
 namespace Sales.Module.Data;
@@ -198,14 +199,30 @@ public class SalesDbContext : DbContext
         modelBuilder.Entity<ClosureDetail>().Property(cd => cd.ActualAmountBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<ClosureDetail>().Property(cd => cd.DifferenceBsS).HasColumnType("decimal(18,2)");
 
+        // PaymentMethods Configuration
+        modelBuilder.Entity<PaymentMethod>()
+            .Property(p => p.IsDeleted)
+            .HasDefaultValue(false);
+
+        modelBuilder.Entity<PaymentMethod>()
+            .Property<uint>("xmin")
+            .HasColumnType("xid")
+            .ValueGeneratedOnAddOrUpdate()
+            .IsConcurrencyToken();
+
         // Seed initial payment methods
         modelBuilder.Entity<PaymentMethod>().HasData(
-            new PaymentMethod { Id = 1, Name = "Cash", IsActive = true, RequiresReference = false, IsCash = true },
-            new PaymentMethod { Id = 2, Name = "Card", IsActive = true, RequiresReference = true, IsCash = false }
+            new PaymentMethod { Id = 1, Name = "Cash", IsActive = true, RequiresReference = false, IsCash = true, IsDeleted = false },
+            new PaymentMethod { Id = 2, Name = "Card", IsActive = true, RequiresReference = true, IsCash = false, IsDeleted = false }
         );
 
         // Sequence for consecutive invoice numbers (H-SAL-1 / A2)
         modelBuilder.HasSequence<int>("factura_number_seq")
+            .StartsAt(1)
+            .IncrementsBy(1);
+
+        // Sequence for atomic DisplayOrder assignment in payment methods
+        modelBuilder.HasSequence<int>("paymentmethod_displayorder_seq")
             .StartsAt(1)
             .IncrementsBy(1);
 

@@ -18,9 +18,10 @@ Cambios del módulo en la ventana de remediación:
 Estado de hallazgos:
 - H-SAL-1 (A2) -> 🟡 CORREGIDO CON REGRESIÓN: numeración por secuencia
   PostgreSQL nextval('factura_number_seq') (SalesService.cs:50-62), creada
-  START WITH 1 (SalesDbContext.cs:208-210; Program.cs:439) y SIN setval al
-  máximo existente -> en BD con facturas 1..N los números nuevos colisionan
-  desde 1 (R2 del global). En InMemory (tests) sigue el MAX+1 (:63-66).
+  START WITH 1 (SalesDbContext.cs:208-210; Program.cs:439-442) y AHORA SÍ se
+  siembra con setval al máximo existente (Program.cs:442: SELECT setval(...,
+  GREATEST(MAX+1, 1), false)). R2 CERRADO en rev.3. En InMemory (tests)
+  sigue el MAX+1 (:63-66). Residual: sin índice único de respaldo.
 - H-SAL-2 (A1) -> ❌ REFORMULADO (R3): la deducción ahora es SÍNCRONA por ítem
   dentro de la transacción (SalesService.cs:549-576 y :830-857) con
   allowNegativeStock:true (:560, :838) y commit por ítem en el otro contexto;
@@ -45,6 +46,43 @@ Estado de hallazgos:
   outbox solo garantiza la NOTIFICACIÓN SignalR, no la deducción de
   inventario (ver R3c).
 
+--------------------------------------------------------------------------------
+REVISIÓN 3 (2026-09-05, ola 3) — estado actualizado contra el código.
+Cambios desde rev.2 (mtimes 09:42–23:12):
+- SalesService.cs: 1.832 líneas (era ~1.669). GetSalesHistoryAsync ahora
+  usa TimeZoneHelper.GetUtcRange para convertir fechas del cliente a la ventana
+  VET exacta (SalesService.cs:1351-1357) — H-API-14 CERRADO.
+- DailyClosureService.cs (09:42): GetExpectedTotalsByPaymentMethodAsync AHORA
+  calcula la ventana del "día de negocio" en VET (GetVenezuelaDate + Convert
+  TimeToUtc, :24-28) en vez de UTC puro; effectiveStartTime usa
+  lastClosure.ClosureDate (UTC) y cubre ventas desde ese punto hasta fin del
+  día VET (:24-54). CreateClosureAsync rellena métodos omitidos del cliente:
+  non-cash = expected balanceado, cash = 0 shortage (:79-110). H-API-14
+  cerrado pero la semántica de "relleno" de métodos omitidos persiste.
+- CashDrawerService.cs (09:43): AddTransactionAsync ahora valida amountLocal >
+  0 (:124), y para egresos físicos verifica saldo disponible (:134-146).
+  ProcessCashAdvanceAsync mantiene comisiones 7/10% hardcodeadas (:239-256)
+  y verifica saldo disponible (:230-237). RolloverSessionAfterClosureAsync
+  cierra sesión con saldo teórico y abre nueva (:202-212).
+- SalesDbContext.cs (22:26): cambios menores.
+- SaleHistoryDto.cs (23:12): DateLocal ahora convierte VET automáticamente
+  via TimeZoneHelper.ToVenezuelaTime (Sales.Module/DTOs/SaleHistoryDto.cs:
+  12-14), hardcodeado VET sin respetar SelectedTimeZoneId (W7).
+
+Estado de hallazgos (actualizado rev.3):
+- H-SAL-1 (A2) -> ✅ CORREGIDO: secuencia sembrada (Program.cs:441-442, R2).
+- H-SAL-2 (A1/R3) -> ❌ SIN CAMBIOS: deducción síncrona allowNegativeStock,
+  outbox solo SignalR, commits parciales.
+- H-SAL-3 -> ❌ VIGENTE (sobrepago sin tope/vuelto).
+- H-SAL-4 -> 🟡 PARCIAL (Admin/Manager en controller, falta auditoría).
+- H-SAL-5/6/7/8/9/10/11/12 -> ❌ VIGENTES.
+- H-SAL-13 (A3) -> 🟡 PARCIAL (key no persiste).
+- H-SAL-14 (R11) -> ❌ VIGENTE (logs sobrevenden garantía).
+- NUEVO: SaleHistoryDto.DateLocal hardcodeado VET (W7).
+- NUEVO: DailyClosureService CreateClosureAsync rellena métodos omitidos del
+  cliente con expected server-side (H-API-3 parcial).
+
+--------------------------------------------------------------------------------
 1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------
 Módulo central de dinero. Contiene el SalesDbContext (Usuarios, Clientes,

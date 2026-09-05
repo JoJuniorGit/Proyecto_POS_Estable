@@ -33,9 +33,9 @@ Estado de hallazgos:
   Al invocarse DENTRO de la transacción de la venta (SalesService), un fallo
   en el ítem k deja k-1 deducciones YA commiteadas en la BD de inventario
   cuando la venta hace rollback -> deducción sin venta y sin compensación.
-- H-INV-11 (NUEVO, BAJO): ningún código hace setval() a la secuencia
-  factura_number_seq (creada START WITH 1, SalesDbContext.cs:208-210): en BD
-  con facturas previas los números colisionan desde 1 (R2 del global).
+- H-INV-11 (NUEVO, BAJO) -> ✅ CERRADO en rev.3: Program.cs:441-442 ahora
+  ejecuta setval('factura_number_seq', GREATEST(MAX+1,1), false) en cada
+  arranque. Secuencia sembrada correctamente. Falta índice único de respaldo.
 
 1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------

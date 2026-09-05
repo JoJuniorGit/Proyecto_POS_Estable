@@ -8,27 +8,51 @@ Cruce con docs/reporte.txt (análisis global).
 REVISIÓN 2 (2026-09-04) — estado tras la remediación 08:19–08:51
 --------------------------------------------------------------------------------
 Cambios del módulo en la ventana de remediación:
-- NUEVO Core/Entities/OutboxMessage.cs: entidad del outbox (Id, EventType,
-  Payload, CreatedAtUtc, ProcessedAtUtc, Status, RetryCount, NextRetryUtc,
-  ErrorMessage). Detalles a revisar: (a) define el enum OutboxStatus
-  (Pending/Processed/DeadLetter) pero la propiedad Status es un STRING con
-  literales duplicados -> el enum queda sin uso; (b) la DbSet se registra en
-  Sales.Module/Data/SalesDbContext.cs:24,212-223 -> la entidad "compartida"
-  crea dependencia del módulo de ventas hacia Core por el tipo; (c) el mensaje
-  solo transporta NOTIFICACIÓN (ver R3/R11 del global): no hay garantía de
-  efecto de negocio al procesarlo.
-- Core/DTOs/UserDto.cs: LoginRequest.Platform ("Web"/"Desktop") que el
-  servidor usa para decidir cookie vs bearer (ver R10: claim auto-declarado).
+- NUEVO Core/Entities/OutboxMessage.cs: entidad del outbox.
+- Core/DTOs/UserDto.cs: LoginRequest.Platform ("Web"/"Desktop").
 
-Estado de hallazgos:
-- H-CORE-1..H-CORE-8 -> ❌ VIGENTES (sin cambios en este módulo).
-- H-CORE-9 (NUEVO, BAJO, R3): OutboxStatus (enum) vs Status string con
-  literales: elegir una sola representación (p. ej. enum + conversión al
-  persistir) para evitar que DeadLetter/Procesado se escriban con typos.
-- H-CORE-10 (NUEVO, BAJO): User sigue sin campos de lockout/último login
-  (H-CORE-3) y el JWT no lleva security stamp -> la revocación de sesiones
-  sigue imposible (cruza H-API-13 global); la desactivación de un usuario no
-  invalida tokens ya emitidos.
+--------------------------------------------------------------------------------
+REVISIÓN 3 (2026-09-05, ola 3: SecurityStamp/lockout/timezone/fixes)
+--------------------------------------------------------------------------------
+Cambios del módulo en la ola 3 (mtimes 09:36–00:26):
+- Core/Entities/User.cs: AÑADIDOS SecurityStamp (string, default Guid "N"),
+  AccessFailedCount (int), LockoutEndUtc (DateTime?), LastLoginUtc (DateTime?).
+  UserRole: AHORA incluye Manager=2 (antes: solo Admin=0/Cashier=1/Driver=2;
+  hoy: Cashier=1, Manager=2, Admin=3, Driver=4 — renumerado en la migración
+  one-shot de Program.cs:522-539).
+- Core/Logging/AppLogger.cs: AHORA con ROTACIÓN (10 MB × 5 archivos, método
+  RotateLogFileIfNeeded); nuevo warn.log con formato separado.
+- Core/Logging/ClientStateLogger.cs: AHORA con ROTACIÓN (10 MB × 5 archivos)
+  y timestamps ISO 8601.
+- NUEVO Core/Common/TaskExtensions.cs: SafeFireAndForget (async void con
+  try/catch + log → reduce exceptions no observadas, M4 global).
+- NUEVO Core/Common/AppVersionHelper.cs: versión centralizada desde
+  Directory.Build.props (AssemblyInformationalVersion), con fallback "1.0.0";
+  usado por HealthController y Desktop.Client (H-API-10, B9).
+- Core/Helpers/TimeZoneHelper.cs: AHORA ÚNICO (eliminado el duplicado en
+  Sales.Module/Helpers/); añadido GetUtcRange() para conversión de rangos
+  calendario VET <-> UTC (cierra H-API-14 y M2).
+
+Estado de hallazgos (actualizado):
+- H-CORE-1 (roles) -> 🟡 PARCIAL: UserRole AHORA tiene Manager=2 real
+  (User.cs:4-9); migración one-shot programada en Program.cs:522-539 con
+  tabla __RoleMigrationApplied. El rol existe en el enum y se puede asignar;
+  falta definir su alcance completo de permisos.
+- H-CORE-2 (secretos por defecto) -> ❌ VIGENTE (SystemSettingsOptions.cs).
+- H-CORE-3 (User sin lockout) -> ✅ CERRADO: SecurityStamp, AccessFailedCount,
+  LockoutEndUtc y LastLoginUtc AHORA EXISTEN en User.cs:22-27, con DDL en
+  Program.cs:511-521.
+- H-CORE-4 (logging duplicado) -> 🟡 PARCIAL: ambos loggers ahora rotan
+  (10 MB × 5); persisten dos loggers estáticos independientes con lock propio
+  y File.AppendAllText por línea (eficiencia mejorable).
+- H-CORE-5 (claves caché) -> ❌ VIGENTE.
+- H-CORE-6 (TimeZoneHelper duplicado) -> ✅ CERRADO: solo existe
+  Core/Helpers/TimeZoneHelper.cs (Sales.Module eliminó su copia).
+- H-CORE-7 (DTOs sin validación) -> ❌ VIGENTE.
+- H-CORE-8 (entidades huérfanas) -> ❌ VIGENTE (Order.cs sin uso).
+- H-CORE-9 (OutboxStatus enum vs string) -> ❌ VIGENTE (enum no usado).
+- H-CORE-10 (User sin lockout/revocación) -> ✅ CERRADO: campos de
+  seguridad + SecurityStamp en User + revocación en middleware.
 
 1. DESCRIPCIÓN Y ARQUITECTURA
 --------------------------------------------------------------------------------

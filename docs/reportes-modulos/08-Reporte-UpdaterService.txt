@@ -7,9 +7,9 @@ Cruce con docs/reporte.txt (análisis global).
 --------------------------------------------------------------------------------
 REVISIÓN 2 (2026-09-04): SIN CAMBIOS en la ventana de remediación 08:19–08:51.
 UPD-1..UPD-6 -> ❌ VIGENTES (zip-slip, sin firma, sin rollback, sleeps fijos,
-sin logging a archivo, exclusión de configuración limitada). El nuevo
-instalador (Configure-PosService.ps1) mejora el registro del servicio, pero el
-actualizador sigue sin verificación de autenticidad ni guardas de extracción.
+sin logging a archivo, exclusión de configuración limitada). Sin cambios en
+ola 3 (mtimes fuera de ventana 09:15–00:26). El actualizador sigue sin
+verificación de autenticidad ni guardas de extracción.
 --------------------------------------------------------------------------------
 
 1. DESCRIPCIÓN

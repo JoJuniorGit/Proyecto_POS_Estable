@@ -15,9 +15,14 @@ Cambios del módulo en la ventana:
 - El resto del módulo (vistas, OnExit, versionado, mutex, wedge de escáner)
   NO cambió en la ventana.
 
-Estado de hallazgos: H-WPF-1..H-WPF-8 -> ❌ VIGENTES (sin cambios).
-Cruce con global: C2, M4, M5, B3, B9 vigentes; B9 parcial (X-Client-Platform
-ahora sí se usa; X-Client-Version sigue fija).
+Estado de hallazgos (rev.3):
+- H-WPF-1 (versión) -> 🟡 MEJORADO: App.xaml.cs:248 ahora usa
+  AppVersionHelper.CurrentVersion (derive de Directory.Build.props) en vez del
+  "1.0.0" hardcodeado; sin embargo Directory.Build.props sigue con Version=
+  1.0.0 — la fuente está centralizada pero el valor aún es "1.0.0".
+- H-WPF-2..H-WPF-8 -> ❌ VIGENTES (sin cambios significativos).
+Cruce con global: C2, M4, M5, B3, B9 parcial; B9 mejorado (AppVersionHelper
+ahora en server+desktop; web aún hardcodea '1.0.0').
 --------------------------------------------------------------------------------
 
 1. DESCRIPCIÓN Y ARQUITECTURA

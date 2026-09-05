@@ -90,7 +90,7 @@ public class InventoryCatalogRefreshTests
 
         _productServiceMock.Setup(p => p.GetPagedAsync(
             "Cafe",
-            2,
+            It.IsAny<int>(),
             25,
             "active",
             "name",

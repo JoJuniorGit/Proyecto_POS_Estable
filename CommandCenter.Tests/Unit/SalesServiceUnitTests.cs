@@ -459,6 +459,7 @@ public class SalesServiceUnitTests
     }
 
     [Fact]
+    [Trait("Category", "RequiresDocker")]
     public async Task GetSalesHistoryAsync_AgainstRealPostgreSql_ReturnsInvoicesFromTonight()
     {
         var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION")
