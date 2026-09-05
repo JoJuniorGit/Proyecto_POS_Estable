@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using Backend.API.Services;
 using Core.Logging;
 
+using Core.Interfaces;
+
 namespace Backend.API.Controllers;
 
 [Authorize(Roles = "Admin")]
@@ -18,18 +20,23 @@ namespace Backend.API.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly SalesDbContext _db;
+    private readonly IPasswordPolicyService _passwordPolicyService;
     private readonly ISecurityStampValidator? _stampValidator;
 
-    public UsersController(SalesDbContext db, ISecurityStampValidator? stampValidator = null)
+    public UsersController(
+        SalesDbContext db, 
+        IPasswordPolicyService? passwordPolicyService = null,
+        ISecurityStampValidator? stampValidator = null)
     {
         _db = db;
+        _passwordPolicyService = passwordPolicyService ?? new Core.Services.PasswordPolicyService();
         _stampValidator = stampValidator;
     }
 
     private int? GetCurrentUserId()
     {
-        var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                   ?? User.FindFirst("sub")?.Value;
+        var idClaim = User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                   ?? User?.FindFirst("sub")?.Value;
         if (int.TryParse(idClaim, out int currentUserId))
         {
             return currentUserId;
@@ -73,7 +80,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<UserDto>> CreateUser([FromBody] CreateUserDto dto)
+    public async Task<ActionResult<UserCreatedDto>> CreateUser([FromBody] CreateUserDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.Cedula) || string.IsNullOrWhiteSpace(dto.Name))
         {
@@ -92,17 +99,17 @@ public class UsersController : ControllerBase
         bool mustChange;
         if (!string.IsNullOrWhiteSpace(dto.Password))
         {
-            var trimmedPass = dto.Password.Trim();
-            if (trimmedPass.Length < 4)
+            var (isPolicyValid, policyError) = _passwordPolicyService.ValidatePassword(dto.Password, usernameClean);
+            if (!isPolicyValid)
             {
-                return BadRequest(new { Message = "La contraseña personalizada debe tener al menos 4 caracteres." });
+                return BadRequest(new { Message = policyError });
             }
-            rawPassword = trimmedPass;
+            rawPassword = dto.Password.Trim();
             mustChange = false;
         }
         else
         {
-            rawPassword = usernameClean;
+            rawPassword = _passwordPolicyService.GenerateSecureTemporaryPassword(12);
             mustChange = true;
         }
 
@@ -115,19 +122,22 @@ public class UsersController : ControllerBase
             Role = dto.Role,
             PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(rawPassword),
             IsActive = true,
-            MustChangePassword = mustChange
+            MustChangePassword = mustChange,
+            SecurityStamp = Guid.NewGuid().ToString("N")
         };
 
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetUser), new { id = user.Id }, new UserDto
+        return CreatedAtAction(nameof(GetUser), new { id = user.Id }, new UserCreatedDto
         {
             Id = user.Id,
             Cedula = user.Cedula,
             Name = user.Name,
             Role = user.Role,
-            IsActive = user.IsActive
+            IsActive = user.IsActive,
+            MustChangePassword = mustChange,
+            TemporaryPassword = mustChange ? rawPassword : null
         });
     }
 
@@ -162,12 +172,12 @@ public class UsersController : ControllerBase
         bool credentialsOrRoleChanged = false;
         if (!string.IsNullOrWhiteSpace(dto.Password))
         {
-            var trimmedPass = dto.Password.Trim();
-            if (trimmedPass.Length < 4)
+            var (isPolicyValid, policyError) = _passwordPolicyService.ValidatePassword(dto.Password, user.Username);
+            if (!isPolicyValid)
             {
-                return BadRequest(new { Message = "La nueva contraseña debe tener al menos 4 caracteres." });
+                return BadRequest(new { Message = policyError });
             }
-            user.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(trimmedPass);
+            user.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(dto.Password.Trim());
             user.MustChangePassword = false;
             credentialsOrRoleChanged = true;
         }
@@ -184,14 +194,22 @@ public class UsersController : ControllerBase
         user.Role = dto.Role;
         user.IsActive = isMainAdmin ? true : dto.IsActive;
 
+        await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync() : null;
         if (credentialsOrRoleChanged)
         {
             user.SecurityStamp = Guid.NewGuid().ToString("N");
+        }
+        await _db.SaveChangesAsync();
+        if (tx != null)
+        {
+            await tx.CommitAsync();
+        }
+
+        if (credentialsOrRoleChanged)
+        {
             _stampValidator?.InvalidateUserStamp(user.Id);
             AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={user.Id}, Username={user.Username}, Reason=UserUpdated");
         }
-
-        await _db.SaveChangesAsync();
 
         return Ok(new UserDto
         {
@@ -282,11 +300,56 @@ public class UsersController : ControllerBase
         var user = await _db.Users.FindAsync(id);
         if (user == null) return NotFound(new { Message = "Usuario no encontrado." });
 
+        if (!user.IsActive)
+        {
+            return BadRequest(new { Message = "No se puede desbloquear una cuenta de usuario inactiva o deshabilitada." });
+        }
+
         user.AccessFailedCount = 0;
         user.LockoutEndUtc = null;
         await _db.SaveChangesAsync();
-        AppLogger.LogSecurityAudit($"[USER_UNLOCKED] Usuario={user.Username} (Id={user.Id}) desbloqueado manualmente por Administrador.");
+
+        var adminId = GetCurrentUserId();
+        AppLogger.LogSecurityAudit($"[USER_UNLOCKED] TargetUserId={user.Id}, Username={user.Username}, UnlockedBy={adminId}, Timestamp={DateTime.UtcNow:O}");
 
         return Ok(new { Message = $"Cuenta de {user.Username} desbloqueada exitosamente." });
+    }
+
+    [HttpPost("{id}/reset-temporary-password")]
+    public async Task<ActionResult<ResetTemporaryPasswordResponseDto>> ResetTemporaryPassword(int id)
+    {
+        var user = await _db.Users.FindAsync(id);
+        if (user == null) return NotFound(new { Message = "Usuario no encontrado." });
+
+        if (!user.IsActive)
+        {
+            return BadRequest(new { Message = "No se puede restablecer la contraseña de un usuario inactivo o deshabilitado." });
+        }
+
+        var temporaryPassword = _passwordPolicyService.GenerateSecureTemporaryPassword(12);
+
+        await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync() : null;
+        user.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(temporaryPassword);
+        user.MustChangePassword = true;
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+        user.AccessFailedCount = 0;
+        user.LockoutEndUtc = null;
+        await _db.SaveChangesAsync();
+        if (tx != null)
+        {
+            await tx.CommitAsync();
+        }
+
+        _stampValidator?.InvalidateUserStamp(user.Id);
+
+        var adminId = GetCurrentUserId();
+        AppLogger.LogSecurityAudit($"[TEMP_PASSWORD_RESET] TargetUserId={user.Id}, Username={user.Username}, ResetBy={adminId}, Timestamp={DateTime.UtcNow:O}");
+
+        return Ok(new ResetTemporaryPasswordResponseDto
+        {
+            UserId = user.Id,
+            TemporaryPassword = temporaryPassword,
+            Message = "Contraseña temporal regenerada exitosamente. Debe ser cambiada en el próximo inicio de sesión."
+        });
     }
 }

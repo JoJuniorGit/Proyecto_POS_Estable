@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
 using Core.DTOs;
+using Core.Interfaces;
 using Core.Logging;
 using Backend.API.Services;
 using System;
@@ -19,13 +20,27 @@ public class AuthController : ControllerBase
 {
     private readonly SalesDbContext _db;
     private readonly ITokenService _tokenService;
+    private readonly IPasswordPolicyService _passwordPolicyService;
     private readonly ISecurityStampValidator? _stampValidator;
 
-    public AuthController(SalesDbContext db, ITokenService tokenService, ISecurityStampValidator? stampValidator = null)
+    public AuthController(
+        SalesDbContext db, 
+        ITokenService tokenService, 
+        IPasswordPolicyService? passwordPolicyService = null,
+        ISecurityStampValidator? stampValidator = null)
     {
         _db = db;
         _tokenService = tokenService;
+        _passwordPolicyService = passwordPolicyService ?? new Core.Services.PasswordPolicyService();
         _stampValidator = stampValidator;
+    }
+
+    public AuthController(
+        SalesDbContext db,
+        ITokenService tokenService,
+        ISecurityStampValidator? stampValidator)
+        : this(db, tokenService, null, stampValidator)
+    {
     }
 
     [AllowAnonymous]
@@ -231,17 +246,47 @@ public class AuthController : ControllerBase
             return Unauthorized(new { Message = "La contraseña actual es incorrecta." });
         }
 
-        // 3. Restablecer contadores de bloqueo al tener éxito
+        // 3. Validar la nueva contraseña frente a la política centralizada de seguridad
+        var (isPolicyValid, policyError) = _passwordPolicyService.ValidatePassword(request.NewPassword, user.Username);
+        if (!isPolicyValid)
+        {
+            return BadRequest(new { Message = policyError });
+        }
+
+        // 4. Actualización atómica/transaccional de credenciales y regeneración de SecurityStamp
+        await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync() : null;
         user.AccessFailedCount = 0;
         user.LockoutEndUtc = null;
         user.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
         user.MustChangePassword = false;
         user.SecurityStamp = Guid.NewGuid().ToString("N");
-        _stampValidator?.InvalidateUserStamp(user.Id);
-        AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={user.Id}, Username={user.Username}, Reason=PasswordChange");
         await _db.SaveChangesAsync();
+        if (tx != null)
+        {
+            await tx.CommitAsync();
+        }
 
-        return Ok(new { Message = "Contraseña actualizada correctamente." });
+        _stampValidator?.InvalidateUserStamp(user.Id);
+        AppLogger.LogSecurityAudit($"[PASSWORD_CHANGED] UserId={user.Id}, Username={user.Username}, Timestamp={DateTime.UtcNow:O}");
+
+        // 5. Revocación de sesión activa en Web (limpieza de cookie pos_jwt)
+        if (Response?.Cookies != null)
+        {
+            var host = Request?.Host.Host;
+            var isLocalOrHttps = (Request?.IsHttps ?? false)
+                || string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) 
+                || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase);
+
+            Response.Cookies.Delete("pos_jwt", new Microsoft.AspNetCore.Http.CookieOptions
+            {
+                HttpOnly = true,
+                Secure = isLocalOrHttps,
+                SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict,
+                Path = "/"
+            });
+        }
+
+        return Ok(new { Message = "Contraseña actualizada correctamente. Inicie sesión con su nueva clave." });
     }
 
     [Authorize]

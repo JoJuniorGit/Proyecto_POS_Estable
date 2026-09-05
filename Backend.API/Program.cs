@@ -26,9 +26,9 @@ try
     var builder = WebApplication.CreateBuilder(args);
 
     // HTTPS (contexto seguro requerido por el escáner de cámara desde dispositivos de la red local).
-    // Usa el certificado autofirmado pos-https.pfx si existe (ver scripts/create-https-cert.ps1).
+    // Intenta cargar el certificado HTTPS autofirmado para escuchar también en el puerto 5001.
     // Si el certificado falta, el servidor continúa sirviendo solo HTTP sin romper el arranque.
-    var httpsCert = LoadHttpsCertificate();
+    var httpsCert = LoadHttpsCertificate(builder.Configuration, builder.Environment);
 
     // Limpia la configuración de 'urls' para evitar la advertencia de Kestrel (Overriding address(es)) al definir ListenAnyIP.
     builder.Configuration["urls"] = null;
@@ -106,6 +106,8 @@ try
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
     builder.Services.AddScoped<ITokenService, TokenService>();
     builder.Services.AddScoped<ISecurityStampValidator, SecurityStampValidator>();
+    var customPasswordBlacklist = builder.Configuration.GetSection("SecuritySettings:PasswordBlacklist").Get<string[]>();
+    builder.Services.AddSingleton<Core.Interfaces.IPasswordPolicyService>(new Core.Services.PasswordPolicyService(customPasswordBlacklist));
     builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
     builder.Services.AddScoped<IInventoryService, InventoryService>();
     builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
@@ -324,6 +326,7 @@ try
     app.UseAuthentication();
     app.UseMiddleware<Backend.API.Middleware.SecurityStampValidationMiddleware>();
     app.UseAuthorization();
+    app.UseMiddleware<Backend.API.Middleware.MustChangePasswordMiddleware>();
 
     app.MapControllers().RequireRateLimiting("GeneralApiRateLimit");
     app.MapHub<ExchangeRateHub>("/hubs/exchange-rate");
@@ -613,8 +616,8 @@ END $$;");
                 if (string.IsNullOrWhiteSpace(targetAdmin.PasswordHash))
                 {
                     targetAdmin.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(seedPassword);
-                    targetAdmin.MustChangePassword = false;
-                    AppLogger.LogStart($"[Seed] Set password hash for Admin user: {targetAdmin.Username}");
+                    targetAdmin.MustChangePassword = true;
+                    AppLogger.LogStart($"[Seed] Set password hash for Admin user: {targetAdmin.Username} (MustChangePassword=true)");
                     _salesDb.SaveChanges();
                 }
             }
@@ -645,8 +648,9 @@ END $$;");
                 if (string.IsNullOrWhiteSpace(admin.PasswordHash))
                 {
                     admin.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(seedPassword);
+                    admin.MustChangePassword = true;
                     modifiedAdmins = true;
-                    AppLogger.LogStart($"[Seed] Set seed password hash for Admin user: {admin.Username} ({admin.Cedula})");
+                    AppLogger.LogStart($"[Seed] Set seed password hash for Admin user: {admin.Username} ({admin.Cedula}) with MustChangePassword=true");
                 }
                 if (string.IsNullOrWhiteSpace(admin.SecurityStamp))
                 {
@@ -719,11 +723,38 @@ catch (Exception fatalEx)
     throw;
 }
 
-// Devuelve el certificado HTTPS autofirmado (pos-https.pfx) si está disponible; si no, null.
-// Busca primero junto al ejecutable (modo servicio/publicado) y luego en el directorio actual.
-X509Certificate2? LoadHttpsCertificate()
+// Devuelve el certificado HTTPS si está disponible (vía Windows Certificate Store o pos-https.pfx); si no, null.
+// Nunca usa contraseñas hardcodeadas en producción; resuelve desde Store o HTTPS_CERT_PASSWORD.
+X509Certificate2? LoadHttpsCertificate(IConfiguration config, IHostEnvironment env)
 {
-    const string certPassword = "PosHttpsDev2026!";
+    // 1. Prioridad: Windows Certificate Store (Recomendado en Windows Server / Entornos Corporativos)
+    var thumbprint = (Environment.GetEnvironmentVariable("HTTPS_CERT_THUMBPRINT") 
+                      ?? config["SystemSettings:HttpsCertThumbprint"] 
+                      ?? config["Kestrel:Certificates:Default:Subject"])?.Replace(" ", "").ToUpperInvariant();
+
+    if (!string.IsNullOrWhiteSpace(thumbprint))
+    {
+        foreach (var location in new[] { StoreLocation.LocalMachine, StoreLocation.CurrentUser })
+        {
+            try
+            {
+                using var store = new X509Store(StoreName.My, location);
+                store.Open(OpenFlags.ReadOnly);
+                var matches = store.Certificates.Find(X509FindType.FindByThumbprint, thumbprint, validOnly: false);
+                if (matches.Count > 0)
+                {
+                    AppLogger.LogStart($"[HTTPS] Certificado cargado exitosamente desde Windows Certificate Store ({location}): {matches[0].Subject}");
+                    return matches[0];
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.LogStart($"[HTTPS] [AVISO] Error al consultar Windows Certificate Store ({location}): {ex.Message}");
+            }
+        }
+    }
+
+    // 2. Archivo .pfx local en directorio certs/
     var candidates = new[]
     {
         Path.Combine(AppContext.BaseDirectory, "certs", "pos-https.pfx"),
@@ -734,13 +765,30 @@ X509Certificate2? LoadHttpsCertificate()
     {
         if (File.Exists(candidate))
         {
+            string? certPassword = Environment.GetEnvironmentVariable("HTTPS_CERT_PASSWORD")
+                                ?? config["Kestrel:Certificates:Default:Password"];
+
+            if (string.IsNullOrEmpty(certPassword))
+            {
+                if (env.IsDevelopment())
+                {
+                    certPassword = "PosHttpsDev2026!";
+                    AppLogger.LogStart("[HTTPS] Entorno de desarrollo: usando contraseña de prueba predeterminada para pos-https.pfx.");
+                }
+                else
+                {
+                    AppLogger.LogStart($"[HTTPS] [AVISO] Se detectó el archivo {candidate} en entorno de producción pero no se configuró la variable de entorno HTTPS_CERT_PASSWORD. Por seguridad, se omite la carga sin clave de entorno.");
+                    return null;
+                }
+            }
+
             try
             {
                 return X509CertificateLoader.LoadPkcs12FromFile(candidate, certPassword);
             }
             catch (Exception ex)
             {
-                AppLogger.LogStart($"[AVISO] No se pudo cargar el certificado HTTPS ({candidate}): {ex.Message}");
+                AppLogger.LogStart($"[HTTPS] [AVISO] No se pudo cargar el certificado HTTPS ({candidate}): {ex.Message}");
                 return null;
             }
         }

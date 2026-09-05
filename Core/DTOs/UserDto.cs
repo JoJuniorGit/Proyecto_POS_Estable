@@ -72,3 +72,17 @@ public class UpdateUserDto
 
     public bool IsActive { get; set; } = true;
 }
+
+public class UserCreatedDto : UserDto
+{
+    public string? TemporaryPassword { get; set; }
+    public bool MustChangePassword { get; set; }
+}
+
+public class ResetTemporaryPasswordResponseDto
+{
+    public int UserId { get; set; }
+    public string TemporaryPassword { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+}
+
