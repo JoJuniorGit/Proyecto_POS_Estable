@@ -116,6 +116,8 @@ try
     builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodService, Sales.Module.Services.PaymentMethodService>();
     builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodNotifier, Backend.API.Services.SignalRPaymentMethodNotifier>();
     builder.Services.AddScoped<Sales.Module.Interfaces.IDailyClosureService, Sales.Module.Services.DailyClosureService>();
+    builder.Services.AddScoped<Core.Interfaces.IIdempotencyService, Sales.Module.Services.IdempotencyService>();
+    builder.Services.AddHostedService<Backend.API.Jobs.IdempotencyCleanupJob>();
 
     builder.Services.AddMediatR(cfg =>
     {
@@ -472,6 +474,28 @@ try
                     SET ""Username"" = COALESCE(NULLIF(TRIM(""Username""), ''), NULLIF(TRIM(""Cedula""), ''), 'user_' || ""Id""::text)
                     WHERE ""Username"" IS NULL OR TRIM(""Username"") = '';
                     CREATE UNIQUE INDEX IF NOT EXISTS ""ix_users_username_lower"" ON ""Users"" (LOWER(""Username""));
+                ");
+
+                _salesDb.Database.ExecuteSqlRaw(@"
+                    CREATE TABLE IF NOT EXISTS ""IdempotentRequests"" (
+                        ""Id"" serial PRIMARY KEY,
+                        ""Key"" character varying(128) NOT NULL,
+                        ""RequestPath"" character varying(256) NOT NULL,
+                        ""PayloadHash"" bytea NOT NULL,
+                        ""StatusCode"" integer NOT NULL,
+                        ""ResponseBody"" text NOT NULL,
+                        ""CreatedAtUtc"" timestamp with time zone NOT NULL,
+                        ""ExpiresAtUtc"" timestamp with time zone NOT NULL
+                    );
+
+                    CREATE UNIQUE INDEX IF NOT EXISTS ""IX_IdempotentRequests_Key_RequestPath"" 
+                        ON ""IdempotentRequests"" (""Key"", ""RequestPath"");
+
+                    CREATE INDEX IF NOT EXISTS ""IX_IdempotentRequests_ExpiresAtUtc"" 
+                        ON ""IdempotentRequests"" (""ExpiresAtUtc"");
+
+                    CREATE INDEX IF NOT EXISTS ""IX_IdempotentRequests_CreatedAtUtc"" 
+                        ON ""IdempotentRequests"" (""CreatedAtUtc"");
                 ");
 
                 // 1. Sales module: SaleItems.Quantity -> numeric(18,3)

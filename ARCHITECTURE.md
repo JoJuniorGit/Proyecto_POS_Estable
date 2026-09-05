@@ -614,35 +614,80 @@ dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --logger "trx;LogFile
 │                           FLUJO DE VENTA COMPLETA                           │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                               │
-│  1. POS Page                                                                 │
-│     └─► Agregar productos al cart (CartContext)                              │
+│  1. POS Page / Desktop POS View                                              │
+│     └─► Agregar productos al carrito (CartContext / POSViewModel)            │
 │         └─► Seleccionar cliente (CustomerSelector)                           │
-│             └─► Abrir CheckoutModal                                          │
+│             └─► Abrir CheckoutModal / PaymentDialog                          │
 │                                                                               │
 │  2. CheckoutModal                                                            │
-│     └─► Seleccionar método de pago                                           │
-│         └─► Ingresar monto (ATMInput / partial payment)                      │
+│     └─► Seleccionar métodos de pago (Mixto USD / Bs.S / Digital)             │
+│         └─► Generar/conservar Idempotency-Key UUID                           │
 │             └─► Confirmar venta                                              │
 │                                                                               │
-│  3. Backend API                                                              │
-│     └─► POST /api/sales                                                     │
-│         └─► SalesService.CreateSaleAsync()                                   │
-│             ├─► Crear Sale + SaleItems + SalePayments                        │
-│             ├─► Publish SaleMadeEvent (MediatR)                              │
-│             │   └─► InventorySaleMadeEventHandler                            │
-│             │       └─► InventoryService.UpdateStockAsync()                  │
-│             │           └─► StockMovement (descuento de stock)               │
-│             └─► Retornar InvoiceNumber                                        │
+│  3. Backend API: POST /api/sales/{id}/complete                               │
+│     ├─► Validar formato regex de Idempotency-Key                              │
+│     ├─► Calcular SHA-256 compuesto (Method + Path + Body) en bytea           │
+│     ├─► Consultar IdempotentRequests:                                         │
+│     │   ├─► HIT (mismo hash) ──► Retornar 200 OK cacheado (X-Cache-Lookup:HIT)│
+│     │   └─► MISMATCH ──────────► LogSecurityAudit + Retornar 422             │
+│     └─► MISS (nueva venta):                                                  │
+│         └─► SalesService.CompleteSaleAsync()                                 │
+│             ├─► ExecutionStrategy (reintentos ante deadlocks transitorios)   │
+│             ├─► Iniciar Transacción Compartida (IsolationLevel.ReadCommitted)│
+│             │   ├─► SalesDbContext.Database.BeginTransactionAsync()          │
+│             │   └─► InventoryDbContext.Database.UseTransactionAsync()        │
+│             ├─► Deducción síncrona de stock (InventoryService.UpdateStock)   │
+│             ├─► Persistir Sale, SalePayments, CashTransactions               │
+│             ├─► Persistir OutboxMessage ("SaleCompleted" para SignalR)       │
+│             ├─► Persistir IdempotentRequest (Key, Path, Hash, 200, Body)     │
+│             ├─► Commit Transaccional Atómico (Venta + Stock + Idempotencia)  │
+│             └─► Retornar InvoiceNumber                                       │
 │                                                                               │
 │  4. Response                                                                  │
-│     └─► SuccessScreen (mostrar factura)                                      │
-│         └─► Reset cart                                                       │
+│     └─► SuccessScreen / Modal de Factura (mostrar InvoiceNumber)             │
+│         └─► Reset cart y descarte de Idempotency-Key                         │
 │                                                                               │
-│  5. Real-time (opcional)                                                     │
-│     └─► SignalR: ExchangeRateHub actualiza tasa                              │
-│         └─► Productos recalculan precios en Bs.S                             │
+│  5. Background Jobs                                                          │
+│     ├─► OutboxProcessorJob: Notificación push SignalR (ReceiveSaleCompleted) │
+│     └─► IdempotencyCleanupJob: Purga por lotes de 1.000 filas (ExpiresAt<NOW)│
 │                                                                               │
 └─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Diagrama de Secuencia: Transacción Compartida e Idempotencia (Fase 4)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cajero as Cliente / Cajero (WPF o Web)
+    participant SC as SalesController
+    participant IS as IdempotencyService
+    participant SS as SalesService
+    participant SalesDB as SalesDbContext (PostgreSQL)
+    participant InvDB as InventoryDbContext (PostgreSQL)
+
+    Cajero->>SC: POST /api/sales/{id}/complete (Idempotency-Key + Body)
+    SC->>IS: ValidateIdempotencyAsync(key, path, method, payloadBytes)
+    alt Clave encontrada con mismo hash
+        IS-->>SC: IdempotentResult (Cached Response)
+        SC-->>Cajero: 200 OK (X-Cache-Lookup: HIT)
+    else Clave encontrada con hash diferente
+        IS-->>SC: Error (Payload Mismatch)
+        Note over SC: LogSecurityAudit (Key, Path, IP, Mismatch)
+        SC-->>Cajero: 422 Unprocessable Entity
+    else Clave nueva
+        SC->>SS: CompleteSaleAsync(saleId, ..., idempotencyKey, payloadHash)
+        Note over SS: ExecutionStrategy.ExecuteAsync
+        SS->>SalesDB: salesTx = await BeginTransactionAsync(ReadCommitted)
+        SS->>InvDB: await UseTransactionAsync(salesTx.GetDbTransaction())
+        SS->>InvDB: UpdateStockAsync() (en misma tx compartida, sin subtransacciones)
+        SS->>SalesDB: Insert Payments, CashTx, OutboxMessage
+        SS->>SalesDB: Insert IdempotentRequest (Key, Path, PayloadHash bytea, 200, Body)
+        SS->>SalesDB: await SaveChangesAsync()
+        SS->>SalesDB: await salesTx.CommitAsync() (persiste atómicamente Venta + Stock + Idempotencia)
+        SS-->>SC: InvoiceNumber
+        SC-->>Cajero: 200 OK (X-Cache-Lookup: MISS)
+    end
 ```
 
 ---

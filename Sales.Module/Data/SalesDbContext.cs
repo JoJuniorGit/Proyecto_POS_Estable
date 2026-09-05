@@ -23,6 +23,7 @@ public class SalesDbContext : DbContext
     public DbSet<DailyClosure> DailyClosures { get; set; } = null!;
     public DbSet<ClosureDetail> ClosureDetails { get; set; } = null!;
     public DbSet<OutboxMessage> OutboxMessages { get; set; } = null!;
+    public DbSet<IdempotentRequest> IdempotentRequests { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -204,11 +205,14 @@ public class SalesDbContext : DbContext
             .Property(p => p.IsDeleted)
             .HasDefaultValue(false);
 
-        modelBuilder.Entity<PaymentMethod>()
-            .Property<uint>("xmin")
-            .HasColumnType("xid")
-            .ValueGeneratedOnAddOrUpdate()
-            .IsConcurrencyToken();
+        if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            modelBuilder.Entity<PaymentMethod>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+        }
 
         // Seed initial payment methods
         modelBuilder.Entity<PaymentMethod>().HasData(
@@ -216,15 +220,17 @@ public class SalesDbContext : DbContext
             new PaymentMethod { Id = 2, Name = "Card", IsActive = true, RequiresReference = true, IsCash = false, IsDeleted = false }
         );
 
-        // Sequence for consecutive invoice numbers (H-SAL-1 / A2)
-        modelBuilder.HasSequence<int>("factura_number_seq")
-            .StartsAt(1)
-            .IncrementsBy(1);
+        // Sequences for consecutive invoice numbers (H-SAL-1 / A2) and atomic DisplayOrder (PostgreSQL)
+        if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            modelBuilder.HasSequence<int>("factura_number_seq")
+                .StartsAt(1)
+                .IncrementsBy(1);
 
-        // Sequence for atomic DisplayOrder assignment in payment methods
-        modelBuilder.HasSequence<int>("paymentmethod_displayorder_seq")
-            .StartsAt(1)
-            .IncrementsBy(1);
+            modelBuilder.HasSequence<int>("paymentmethod_displayorder_seq")
+                .StartsAt(1)
+                .IncrementsBy(1);
+        }
 
         // OutboxMessages Configuration
         modelBuilder.Entity<OutboxMessage>(entity =>
@@ -237,6 +243,42 @@ public class SalesDbContext : DbContext
                 .HasDatabaseName("IX_OutboxMessages_Status_NextRetryUtc");
             entity.HasIndex(e => e.CreatedAtUtc)
                 .HasDatabaseName("IX_OutboxMessages_CreatedAtUtc");
+        });
+
+        // IdempotentRequests Configuration
+        modelBuilder.Entity<IdempotentRequest>(entity =>
+        {
+            entity.ToTable("IdempotentRequests");
+            entity.HasKey(e => e.Id);
+            
+            // Índice único compuesto (Key, RequestPath)
+            entity.HasIndex(e => new { e.Key, e.RequestPath })
+                .IsUnique()
+                .HasDatabaseName("IX_IdempotentRequests_Key_RequestPath");
+                
+            // Índice secundario para optimizar la purga periódica
+            entity.HasIndex(e => e.ExpiresAtUtc)
+                .HasDatabaseName("IX_IdempotentRequests_ExpiresAtUtc");
+
+            // Índice secundario para auditoría y consultas
+            entity.HasIndex(e => e.CreatedAtUtc)
+                .HasDatabaseName("IX_IdempotentRequests_CreatedAtUtc");
+
+            entity.Property(e => e.Key)
+                .HasMaxLength(128)
+                .IsRequired();
+
+            entity.Property(e => e.RequestPath)
+                .HasMaxLength(256)
+                .IsRequired();
+
+            // Hash binario SHA-256 de 32 bytes (tipo bytea en PostgreSQL)
+            entity.Property(e => e.PayloadHash)
+                .HasColumnType("bytea")
+                .IsRequired();
+
+            entity.Property(e => e.ResponseBody)
+                .IsRequired();
         });
     }
 }

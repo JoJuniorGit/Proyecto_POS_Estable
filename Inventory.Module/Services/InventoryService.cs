@@ -660,7 +660,8 @@ public class InventoryService : IInventoryService
     {
         if (quantityChange == 0) return;
 
-        await using var tx = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync() : null;
+        bool hasExistingTx = _context.Database.CurrentTransaction != null;
+        await using var tx = (!hasExistingTx && _context.Database.IsRelational()) ? await _context.Database.BeginTransactionAsync() : null;
 
         var productData = await _context.Products
             .AsNoTracking()
@@ -2031,5 +2032,13 @@ public class InventoryService : IInventoryService
             return "\"" + field.Replace("\"", "\"\"") + "\"";
         }
         return field;
+    }
+
+    public async Task EnrollInTransactionAsync(System.Data.Common.DbTransaction transaction, System.Threading.CancellationToken cancellationToken = default)
+    {
+        if (_context.Database.IsRelational() && transaction != null)
+        {
+            await _context.Database.UseTransactionAsync(transaction, cancellationToken);
+        }
     }
 }

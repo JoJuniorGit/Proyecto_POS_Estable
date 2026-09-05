@@ -211,7 +211,7 @@ public class SalesService : ISalesService
                 _existing_item.Quantity += quantity;
                 var _product_info = (custom_unit_price_usd.HasValue && custom_unit_price_local.HasValue)
                     ? null
-                    : await _inventoryService.GetProductByIdAsync(product_id);
+                    : await _inventoryService!.GetProductByIdAsync(product_id);
 
                 decimal _gross_price = custom_unit_price_usd ?? _product_info?.PriceUSD ?? _existing_item.UnitPrice;
                 decimal _gross_price_bs_s = custom_unit_price_local ?? _product_info?.PriceBsS ?? _existing_item.UnitPriceBsS;
@@ -222,7 +222,7 @@ public class SalesService : ISalesService
         }
         else
         {
-            var _product = await _inventoryService.GetProductByIdAsync(product_id);
+            var _product = await _inventoryService!.GetProductByIdAsync(product_id);
             if (_product == null) throw new KeyNotFoundException($"Product {product_id} not found.");
 
             if (_product.IsGroupHeader)
@@ -351,23 +351,47 @@ public class SalesService : ISalesService
         _logger?.LogInformation("Pedido #{SaleId} fue anulado exitosamente.", sale_id);
     }
 
-    public async Task<int> CompleteSaleAsync(int sale_id, decimal exchange_rate, IEnumerable<PaymentInfo> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null)
+    public async Task<int> CompleteSaleAsync(
+        int sale_id, 
+        decimal exchange_rate, 
+        IEnumerable<PaymentInfo> payments, 
+        decimal roundingAdjustment = 0, 
+        int? cashierId = null, 
+        bool isPendingPickup = false, 
+        string? idempotencyKey = null,
+        byte[]? idempotencyPayloadHash = null,
+        System.Threading.CancellationToken cancellationToken = default)
     {
-        var _sale = await GetSaleEntityAsync(sale_id);
+        var correlationId = Guid.NewGuid().ToString("N");
+        _logger?.LogInformation("[TX_START] CorrelationId={CorrelationId}, SaleId={SaleId}, IsolationLevel=ReadCommitted", correlationId, sale_id);
 
-        // Idempotency check: if sale is already completed, return existing InvoiceNumber immediately
-        if (_sale.Status == SaleStatus.Completed && _sale.InvoiceNumber.HasValue)
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
-            _logger?.LogInformation("[SalesService] Idempotency: Venta #{SaleId} ya se encontraba completada con Factura N° {InvoiceNumber}. Retornando consecutivo.", sale_id, _sale.InvoiceNumber.Value);
-            return _sale.InvoiceNumber.Value;
-        }
+            cancellationToken.ThrowIfCancellationRequested();
+            var _sale = await GetSaleEntityAsync(sale_id);
 
-        using var _transaction = await _context.Database.BeginTransactionAsync();
+            // Idempotency check: if sale is already completed, return existing InvoiceNumber immediately
+            if (_sale.Status == SaleStatus.Completed && _sale.InvoiceNumber.HasValue)
+            {
+                _logger?.LogInformation("[SalesService] Idempotency: Venta #{SaleId} ya se encontraba completada con Factura N° {InvoiceNumber}. Retornando consecutivo.", sale_id, _sale.InvoiceNumber.Value);
+                return _sale.InvoiceNumber.Value;
+            }
 
-        try
-        {
-            if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold) 
-                throw new InvalidOperationException("Sale is not pending or on hold.");
+            await using var _transaction = _context.Database.IsRelational()
+                ? await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+                : null;
+
+            if (_transaction != null && _inventoryService != null)
+            {
+                var rawDbTx = _transaction.GetDbTransaction();
+                await _inventoryService.EnrollInTransactionAsync(rawDbTx, cancellationToken);
+            }
+
+            try
+            {
+                if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold) 
+                    throw new InvalidOperationException("Sale is not pending or on hold.");
 
             if (isPendingPickup)
             {
@@ -586,16 +610,36 @@ public class SalesService : ISalesService
                 RetryCount = 0
             });
 
+            // Persistencia de IdempotentRequest dentro de la transacción compartida si se proveyó clave y hash
+            if (!string.IsNullOrWhiteSpace(idempotencyKey) && idempotencyPayloadHash != null)
+            {
+                _context.IdempotentRequests.Add(new IdempotentRequest
+                {
+                    Key = idempotencyKey,
+                    RequestPath = $"/api/sales/{sale_id}/complete",
+                    PayloadHash = idempotencyPayloadHash,
+                    StatusCode = 200,
+                    ResponseBody = JsonSerializer.Serialize(_sale.InvoiceNumber.Value),
+                    CreatedAtUtc = DateTime.UtcNow,
+                    ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
+                });
+            }
+
             _logger?.LogInformation("[EF CORE ENTITY DEBUG] Persistiendo Sale ID: {SaleId}. Entidades SalePayment reales: {@Payments}", _sale.Id, _sale.Payments);
 
-            await _context.SaveChangesAsync();
-            await _transaction.CommitAsync();
+            await _context.SaveChangesAsync(cancellationToken);
+            if (_transaction != null)
+            {
+                await _transaction.CommitAsync(cancellationToken);
+            }
+
+            _logger?.LogInformation("[TX_COMMIT] CorrelationId={CorrelationId}, SaleId={SaleId}, InvoiceNumber={InvoiceNumber}", correlationId, sale_id, _sale.InvoiceNumber.Value);
 
             try
             {
                 var _items_snapshot = (_sale.Items ?? Enumerable.Empty<SaleItem>()).Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity)).ToList();
                 var _sale_made_event = new SaleMadeEvent(_sale.Id, _sale.Date, _items_snapshot);
-                await _mediator.Publish(_sale_made_event);
+                await _mediator.Publish(_sale_made_event, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -604,12 +648,25 @@ public class SalesService : ISalesService
 
             return _sale.InvoiceNumber.Value;
         }
-        catch (Exception ex)
+        catch (OperationCanceledException opEx)
         {
-            await _transaction.RollbackAsync();
-            _logger?.LogError(ex, "[SalesService] Error al completar venta #{SaleId}. Transacción revertida.", sale_id);
+            if (_transaction != null)
+            {
+                await _transaction.RollbackAsync(System.Threading.CancellationToken.None);
+            }
+            _logger?.LogWarning(opEx, "[TX_ROLLBACK] CorrelationId={CorrelationId}, SaleId={SaleId}, Reason=OperationCanceled", correlationId, sale_id);
             throw;
         }
+        catch (Exception ex)
+        {
+            if (_transaction != null)
+            {
+                await _transaction.RollbackAsync(System.Threading.CancellationToken.None);
+            }
+            _logger?.LogError(ex, "[TX_ROLLBACK] CorrelationId={CorrelationId}, SaleId={SaleId}, Reason={Reason}", correlationId, sale_id, ex.Message);
+            throw;
+        }
+        });
     }
 
     public async Task<SaleHistoryDto> ConfirmPickupAsync(int saleId)

@@ -57,6 +57,26 @@ public static class TestDatabaseFactory
         return (context, connection);
     }
 
+    public static (SalesDbContext context, Microsoft.Data.Sqlite.SqliteConnection connection) CreateSqliteSalesDbContext()
+    {
+        var connection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=:memory:");
+        connection.Open();
+        var options = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        var context = new SalesDbContext(options);
+        context.Database.EnsureCreated();
+        return (context, connection);
+    }
+
+    public static SalesDbContext CreateSqliteSalesDbContext(Microsoft.Data.Sqlite.SqliteConnection connection)
+    {
+        var options = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        return new SalesDbContext(options);
+    }
+
     public static async Task SeedStandardSalesDataAsync(SalesDbContext context)
     {
         if (!await context.Customers.AnyAsync(c => c.IsDefault || c.Id == 1))
