@@ -167,12 +167,12 @@ public class PaymentMethodManagementTests
     }
 
     [Fact]
-    public async Task DeleteAsync_WhenPhysicalCashAndHasPhysicalCashTransactions_PerformsSoftDelete_Per_MT001()
+    public async Task DeleteAsync_WhenMethodHasCashTransactions_PerformsSoftDelete()
     {
         using var context = CreateInMemoryDbContext();
         context.PaymentMethods.Add(new PaymentMethod { Id = 3, Name = "Efectivo Bolívares", IsDeleted = false, IsActive = true, IsCash = true });
-        // Simular transacción física de gaveta (IsPhysicalCash = true, regla MT-001)
-        context.CashTransactions.Add(new CashTransaction { Id = 301, SessionId = 1, AmountUsd = 10m, IsPhysicalCash = true, Description = "Ingreso inicial gaveta" });
+        // Simular transacción de caja asociada directamente al PaymentMethodId
+        context.CashTransactions.Add(new CashTransaction { Id = 301, SessionId = 1, PaymentMethodId = 3, AmountUsd = 10m, IsPhysicalCash = true, Description = "Ingreso inicial gaveta" });
         await context.SaveChangesAsync();
 
         var service = new PaymentMethodService(context);

@@ -155,7 +155,8 @@ public class CashDrawerService : ICashDrawerService
         decimal exchangeRate,
         string description,
         int? referenceId = null,
-        bool isPhysicalCash = true)
+        bool isPhysicalCash = true,
+        int? paymentMethodId = null)
     {
         if (amountLocal <= 0 && source != CashTransactionSource.Closing && source != CashTransactionSource.Opening)
         {
@@ -183,7 +184,8 @@ public class CashDrawerService : ICashDrawerService
             ExchangeRate = exchangeRate,
             Description = description,
             SaleId = referenceId,
-            IsPhysicalCash = isPhysicalCash
+            IsPhysicalCash = isPhysicalCash,
+            PaymentMethodId = paymentMethodId
         };
 
         _context.CashTransactions.Add(transaction);
@@ -281,7 +283,8 @@ public class CashDrawerService : ICashDrawerService
                 amountUsd: exchangeRate > 0 ? roundedRequested / exchangeRate : 0,
                 exchangeRate: exchangeRate,
                 description: $"Adelanto de Efectivo - {paymentMethodName} {commissionPercentage:0}% {activeUserName}",
-                isPhysicalCash: true
+                isPhysicalCash: true,
+                paymentMethodId: paymentMethodId
             );
 
             // 2. Ingreso contable por comisión (no físico, IsPhysicalCash = false)
@@ -293,7 +296,8 @@ public class CashDrawerService : ICashDrawerService
                 amountUsd: exchangeRate > 0 ? commissionAmountLocal / exchangeRate : 0,
                 exchangeRate: exchangeRate,
                 description: $"Comisión Adelanto ({commissionPercentage:0}% {paymentMethodName}) - {activeUserName}",
-                isPhysicalCash: false
+                isPhysicalCash: false,
+                paymentMethodId: paymentMethodId
             );
 
             Sale? createdSale = null;

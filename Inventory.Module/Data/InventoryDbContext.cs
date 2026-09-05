@@ -11,6 +11,7 @@ public class InventoryDbContext : DbContext
 
     public DbSet<Product> Products { get; set; }
     public DbSet<StockMovement> StockMovements { get; set; }
+    public DbSet<StockMovementArchive> StockMovements_Archive { get; set; }
     public DbSet<StockReservation> StockReservations { get; set; }
     public DbSet<SystemSetting> SystemSettings { get; set; }
     public DbSet<ExchangeRateHistory> ExchangeRateHistory { get; set; }
@@ -102,6 +103,16 @@ public class InventoryDbContext : DbContext
         modelBuilder.Entity<StockMovement>().HasOne(m => m.Product).WithMany().HasForeignKey(m => m.ProductId);
         modelBuilder.Entity<StockMovement>().Property(m => m.QuantityChange).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
         modelBuilder.Entity<StockMovement>().Property(m => m.NewStockLevel).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+
+        modelBuilder.Entity<StockMovementArchive>(entity =>
+        {
+            entity.HasKey(m => m.Id);
+            entity.ToTable("StockMovements_Archive");
+            entity.Property(m => m.QuantityChange).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+            entity.Property(m => m.NewStockLevel).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+            entity.HasIndex(m => m.OriginalMovementId).HasDatabaseName("IX_StockMovements_Archive_OriginalMovementId");
+            entity.HasIndex(m => m.MovementDate).HasDatabaseName("IX_StockMovements_Archive_MovementDate");
+        });
 
         modelBuilder.Entity<Product>().Property(p => p.RowVersion).IsRowVersion();
 

@@ -75,8 +75,17 @@ public class IdempotencyCleanupJob : BackgroundService
         cycleCts.CancelAfter(TimeSpan.FromMinutes(2));
 
         int totalPurged = 0;
+        DateTime? oldestExpired = null;
         try
         {
+            var now = DateTime.UtcNow;
+            var expiredQuery = dbContext.IdempotentRequests.AsNoTracking().Where(r => r.ExpiresAtUtc < now);
+            int pendingCount = await expiredQuery.CountAsync(cycleCts.Token).ConfigureAwait(false);
+            if (pendingCount > 0)
+            {
+                oldestExpired = await expiredQuery.MinAsync(r => (DateTime?)r.CreatedAtUtc, cycleCts.Token).ConfigureAwait(false);
+            }
+
             while (!cycleCts.Token.IsCancellationRequested)
             {
                 // Eliminación en lotes de 1.000 registros para prevenir contención en PostgreSQL
@@ -95,7 +104,8 @@ public class IdempotencyCleanupJob : BackgroundService
 
             if (totalPurged > 0)
             {
-                _logger.LogInformation("[IDEMPOTENCY_CLEANUP] Purga completada. Total registros eliminados: {TotalPurged}.", totalPurged);
+                _logger.LogInformation("[IDEMPOTENCY_CLEANUP] Purga completada. Total registros eliminados: {TotalPurged}. Registro más antiguo: {OldestExpired:O}.", totalPurged, oldestExpired);
+                Core.Logging.AppLogger.LogSecurityAudit($"[IDEMPOTENCY_PURGE] Se purgaron {totalPurged} registros expirados de idempotencia. Fecha de registro más antiguo: {oldestExpired:O}.");
             }
         }
         catch (OperationCanceledException) when (cycleCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)

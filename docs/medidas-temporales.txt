@@ -13,29 +13,16 @@ en el código fuente. Cada entrada documenta:
 REGISTRO DE ENTRADAS:
 --------------------------------------------------------------------------------
 
-[MT-001] Regla de Auditoría Conservadora: Relación PaymentMethod y CashTransactions
+[MT-001] [RESUELTO - RETIRADO] Regla de Auditoría Conservadora: Relación PaymentMethod y CashTransactions
 --------------------------------------------------------------------------------
 - Fecha de Registro: 2026-09-05
-- Módulos Afectados: Sales.Module (Entities/PaymentMethod.cs, Services/PaymentMethodService.cs)
+- Fecha de Resolución: 2026-09-05 (Fase 2 de Remediación Integral)
+- Módulos Afectados: Sales.Module (Entities/CashTransaction.cs, Entities/PaymentMethod.cs, Services/PaymentMethodService.cs)
 - Descripción:
-  Al evaluar si un método de pago puede ser eliminado físicamente (Hard Delete) o si
-  debe preservarse como Soft Delete (IsDeleted = true, IsActive = false), el sistema
-  evalúa:
-    bool hasCashTransactions = existing.IsCash && await _context.CashTransactions.AnyAsync(ct => ct.IsPhysicalCash);
-  Es decir, si el método es físico (IsCash = true) y existe CUALQUIER movimiento de
-  efectivo físico en gaveta (CashTransactions con IsPhysicalCash = true), el método
-  se considera formalmente "en uso" y se aplica Soft Delete.
-- Justificación:
-  Actualmente, la entidad CashTransaction no posee una clave foránea (FK) directa
-  PaymentMethodId; en su lugar, agrupa todos los movimientos de efectivo de gaveta
-  (aperturas, cierres, egresos, ingresos y adelantos) bajo el flag booleano IsPhysicalCash.
-  Para evitar que un administrador elimine por error el método de efectivo principal
-  dejando transacciones huérfanas o descuadrando el arqueo de gaveta, se adopta esta
-  regla conservadora de protección.
-- Plan de Resolución Definitiva:
-  En una fase futura de refactorización de caja, añadir la columna nullable
-  PaymentMethodId a la entidad CashTransaction con su correspondiente migración EF Core.
-  Una vez implementada dicha FK, refinar la consulta en PaymentMethodService para
-  verificar:
-    await _context.CashTransactions.AnyAsync(ct => ct.PaymentMethodId == id && ct.IsPhysicalCash);
+  Se añadió la columna `PaymentMethodId` (nullable `int`, con clave foránea a `PaymentMethods(Id)`)
+  en la entidad `CashTransaction` y la migración `20260905180000_AddPaymentMethodIdToCashTransactions`.
+- Estado:
+  RESUELTO Y RETIRADO. `PaymentMethodService.DeleteAsync` ahora evalúa directamente:
+    bool hasCashTransactions = await _context.CashTransactions.AnyAsync(ct => ct.PaymentMethodId == id);
+  eliminando la heurística temporal `ct.IsPhysicalCash`.
 --------------------------------------------------------------------------------

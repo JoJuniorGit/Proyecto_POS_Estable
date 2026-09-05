@@ -450,10 +450,11 @@ public class SalesService : ISalesService
                 _sale.InvoiceNumber = await GenerateNextInvoiceNumberAsync();
             }
 
+            var paymentMethodsDict = new Dictionary<int, PaymentMethod>();
             if (payments != null && payments.Any())
             {
                 var paymentMethodIds = payments.Select(p => p.PaymentMethodId).Distinct().ToList();
-                var paymentMethodsDict = await _context.PaymentMethods
+                paymentMethodsDict = await _context.PaymentMethods
                     .Where(pm => paymentMethodIds.Contains(pm.Id))
                     .ToDictionaryAsync(pm => pm.Id);
 
@@ -479,7 +480,7 @@ public class SalesService : ISalesService
                         throw new InvalidOperationException("El método de pago en efectivo solo acepta montos enteros.");
                     }
 
-                    _logger?.LogInformation("[CURRENCY CONVERSION DEBUG] Método: {Method}, Monto Bs.S: {BsS}, Tasa AppliedRate: {Rate}, Monto USD Calculado: {Usd}", _p.PaymentMethodId, amountLocal, exchange_rate, amountUsd);
+                    _logger?.LogDebug("[CURRENCY CONVERSION DEBUG] Método: {Method}, Monto Bs.S: {BsS}, Tasa AppliedRate: {Rate}, Monto USD Calculado: {Usd}", _p.PaymentMethodId, amountLocal, exchange_rate, amountUsd);
 
                     var _payment_entity = new SalePayment
                     {
@@ -506,7 +507,8 @@ public class SalesService : ISalesService
                             IsPhysicalCash = true,
                             Description = $"Factura N° {_sale.InvoiceNumber}",
                             TransactionTime = DateTime.UtcNow,
-                            SaleId = _sale.Id
+                            SaleId = _sale.Id,
+                            PaymentMethodId = _p.PaymentMethodId
                         };
                         _context.CashTransactions.Add(_cash_tx);
                     }
@@ -522,6 +524,8 @@ public class SalesService : ISalesService
                     throw new InvalidOperationException($"El sobrepago o vuelto requerido (${changeUsd:F2} USD) excede los límites operacionales de seguridad.");
                 }
 
+                int? cashMethodId = _sale.Payments.FirstOrDefault(p => paymentMethodsDict.TryGetValue(p.PaymentMethodId, out var pm) && pm.IsCash)?.PaymentMethodId;
+
                 decimal changeBsS = Math.Round(changeUsd * exchange_rate, 2, MidpointRounding.AwayFromZero);
                 var _change_tx = new CashTransaction
                 {
@@ -534,7 +538,8 @@ public class SalesService : ISalesService
                     IsPhysicalCash = true,
                     Description = $"Vuelto Factura N° {_sale.InvoiceNumber}",
                     TransactionTime = DateTime.UtcNow,
-                    SaleId = _sale.Id
+                    SaleId = _sale.Id,
+                    PaymentMethodId = cashMethodId
                 };
                 _context.CashTransactions.Add(_change_tx);
                 _logger?.LogInformation("[SalesService] Vuelto registrado en caja: ${ChangeUsd} USD / Bs. {ChangeBsS} para Factura N° {InvoiceNumber}",
@@ -877,7 +882,8 @@ public class SalesService : ISalesService
                             IsPhysicalCash = true,
                             Description = $"Abono Inicial Venta #{_sale.Id}",
                             TransactionTime = DateTime.UtcNow,
-                            SaleId = _sale.Id
+                            SaleId = _sale.Id,
+                            PaymentMethodId = payment.PaymentMethodId
                         });
                     }
                 }
@@ -1163,7 +1169,8 @@ public class SalesService : ISalesService
                     IsPhysicalCash = true,
                     Description = $"Abono Venta #{saleId}",
                     TransactionTime = DateTime.UtcNow,
-                    SaleId = _sale.Id
+                    SaleId = _sale.Id,
+                    PaymentMethodId = request.PaymentMethodId
                 };
                 _context.CashTransactions.Add(cashTx);
             }

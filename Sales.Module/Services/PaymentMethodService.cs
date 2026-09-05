@@ -201,12 +201,7 @@ public class PaymentMethodService : IPaymentMethodService
 
         bool hasSales = await _context.SalePayments.AnyAsync(sp => sp.PaymentMethodId == id);
         bool hasClosures = await _context.ClosureDetails.AnyAsync(cd => cd.PaymentMethodId == id);
-
-        // [MEDIDA TEMPORAL MT-001]: Regla conservadora de auditoría física de gaveta
-        // CashTransactions no posee clave foránea PaymentMethodId directa y modela la gaveta con IsPhysicalCash = true.
-        // Si el método es físico (IsCash = true) y existe cualquier movimiento físico en gaveta, se asume que fue utilizado y se aplica Soft Delete.
-        // Ver registro en docs/medidas-temporales.txt.
-        bool hasCashTransactions = existing.IsCash && await _context.CashTransactions.AnyAsync(ct => ct.IsPhysicalCash);
+        bool hasCashTransactions = await _context.CashTransactions.AnyAsync(ct => ct.PaymentMethodId == id);
 
         bool hasBeenUsed = hasSales || hasClosures || hasCashTransactions;
 

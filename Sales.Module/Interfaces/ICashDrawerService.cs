@@ -38,7 +38,8 @@ public interface ICashDrawerService
         decimal exchangeRate,
         string description,
         int? referenceId = null,
-        bool isPhysicalCash = true);
+        bool isPhysicalCash = true,
+        int? paymentMethodId = null);
     Task<decimal> GetCurrentBalanceLocalAsync(int sessionId);
 
     /// <summary>

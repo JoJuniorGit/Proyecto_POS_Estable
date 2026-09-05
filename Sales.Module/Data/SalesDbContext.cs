@@ -175,6 +175,16 @@ public class SalesDbContext : DbContext
         modelBuilder.Entity<CashTransaction>()
             .HasIndex(t => new { t.SessionId, t.TransactionTime });
 
+        modelBuilder.Entity<CashTransaction>()
+            .HasOne(t => t.PaymentMethod)
+            .WithMany()
+            .HasForeignKey(t => t.PaymentMethodId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<CashTransaction>()
+            .HasIndex(t => t.PaymentMethodId)
+            .HasDatabaseName("IX_CashTransactions_PaymentMethodId");
+
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningBalanceLocal).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningExchangeRate).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingBalanceLocal).HasColumnType("decimal(18,2)");

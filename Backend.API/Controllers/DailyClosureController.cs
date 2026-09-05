@@ -84,7 +84,35 @@ public class DailyClosureController : ControllerBase
                 ? authenticatedUserId
                 : (!string.IsNullOrWhiteSpace(request.UserId) ? request.UserId : "Admin");
 
-            var closureDate = request.ClosureDate != default ? request.ClosureDate : DateTime.UtcNow;
+            DateTime closureDate = DateTime.UtcNow;
+            if (request.ClosureDate != default)
+            {
+                var now = DateTime.UtcNow;
+                var requestedDateUtc = request.ClosureDate.Kind == DateTimeKind.Unspecified
+                    ? DateTime.SpecifyKind(request.ClosureDate, DateTimeKind.Utc)
+                    : request.ClosureDate.ToUniversalTime();
+
+                bool isAdmin = User.IsInRole("Admin");
+                if (isAdmin)
+                {
+                    if (requestedDateUtc > now.AddMinutes(5))
+                    {
+                        return BadRequest(new { message = "La fecha de cierre no puede ser en el futuro." });
+                    }
+                    if (now - requestedDateUtc > TimeSpan.FromHours(24))
+                    {
+                        return BadRequest(new { message = "No se permite registrar cierres con más de 24 horas de retroactividad." });
+                    }
+
+                    closureDate = requestedDateUtc;
+                    Core.Logging.AppLogger.LogSecurityAudit(
+                        $"[DAILY_CLOSURE_BACKDATE] Admin '{finalUserId}' registró un cierre con fecha retroactiva: {closureDate:O} (Actual: {now:O})");
+                }
+                else
+                {
+                    closureDate = now;
+                }
+            }
 
             // 2. Totales esperados autoritativos calculados server-side (H-API-3)
             var serverExpectedTotals = await _closureService.GetExpectedTotalsByPaymentMethodAsync(closureDate);

@@ -203,9 +203,15 @@ public class CashDrawerController : ControllerBase
     }
 
     [RequireSecurityStampValidation]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpPost("cash-advance")]
     public async Task<ActionResult<CashAdvanceResultDto>> ProcessCashAdvance([FromBody] CashAdvanceRequest request)
     {
+        if (User.IsInRole("Driver"))
+        {
+            return Forbid();
+        }
+
         try
         {
             int? cashierId = null;

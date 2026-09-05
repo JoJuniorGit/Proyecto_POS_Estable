@@ -64,6 +64,7 @@ public class CashTransactionDto
     public CashTransactionType Type { get; set; }
     public CashTransactionSource Source { get; set; }
     public bool IsPhysicalCash { get; set; } = true;
+    public int? PaymentMethodId { get; set; }
 
     public string SourceDisplay => Source switch
     {

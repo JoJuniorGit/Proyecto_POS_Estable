@@ -71,12 +71,74 @@ public class StockMovementArchiverJob : BackgroundService
 
         var cutoffDate = DateTime.UtcNow.Subtract(_retentionPeriod);
 
-        _logger.LogInformation("Starting StockMovement maintenance. Deleting records older than {CutoffDate}", cutoffDate);
+        _logger.LogInformation("Starting StockMovement maintenance. Archiving records older than {CutoffDate}", cutoffDate);
 
-        // Execute bulk delete safely directly on DB to avoid fetching thousands of entries into RAM
-        var oldRecords = context.StockMovements.Where(m => m.MovementDate < cutoffDate);
-        int deletedCount = await oldRecords.ExecuteDeleteAsync(stoppingToken);
+        int totalArchived = 0;
+        const int batchSize = 1000;
 
-        _logger.LogInformation("StockMovement maintenance completed. Removed {DeletedCount} old records.", deletedCount);
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            var batch = await context.StockMovements
+                .AsNoTracking()
+                .Where(m => m.MovementDate < cutoffDate)
+                .OrderBy(m => m.MovementDate)
+                .Take(batchSize)
+                .Select(m => new
+                {
+                    m.Id,
+                    m.ProductId,
+                    m.QuantityChange,
+                    m.NewStockLevel,
+                    m.Reason,
+                    m.MovementDate,
+                    m.UserId
+                })
+                .ToListAsync(stoppingToken);
+
+            if (batch.Count == 0)
+            {
+                break;
+            }
+
+            var archiveEntries = batch.Select(m => new Core.Entities.StockMovementArchive
+            {
+                OriginalMovementId = m.Id,
+                ProductId = m.ProductId,
+                QuantityChange = m.QuantityChange,
+                NewStockLevel = m.NewStockLevel,
+                Reason = m.Reason,
+                MovementDate = m.MovementDate,
+                UserId = m.UserId,
+                ArchivedAtUtc = DateTime.UtcNow
+            }).ToList();
+
+            context.StockMovements_Archive.AddRange(archiveEntries);
+            await context.SaveChangesAsync(stoppingToken);
+
+            var batchIds = batch.Select(m => m.Id).ToList();
+            if (context.Database.IsRelational())
+            {
+                await context.StockMovements
+                    .Where(m => batchIds.Contains(m.Id))
+                    .ExecuteDeleteAsync(stoppingToken);
+            }
+            else
+            {
+                var entitiesToDelete = await context.StockMovements
+                    .Where(m => batchIds.Contains(m.Id))
+                    .ToListAsync(stoppingToken);
+                context.StockMovements.RemoveRange(entitiesToDelete);
+                await context.SaveChangesAsync(stoppingToken);
+            }
+
+            totalArchived += batch.Count;
+            await Task.Delay(100, stoppingToken);
+        }
+
+        if (totalArchived > 0)
+        {
+            _logger.LogInformation("StockMovement maintenance completed. Archived and removed {TotalArchived} old records.", totalArchived);
+            Core.Logging.AppLogger.LogSecurityAudit($"[STOCK_MOVEMENT_ARCHIVE] Se archivaron y purgaron {totalArchived} movimientos de stock anteriores a {cutoffDate:O}.");
+        }
     }
 }
