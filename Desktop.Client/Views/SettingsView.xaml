@@ -19,6 +19,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -175,9 +176,60 @@
                               HorizontalAlignment="Left"/>
                 </StackPanel>
             </Border>
-
-            <!-- SECCIÓN 3: ADMINISTRACIÓN DE MÉTODOS DE PAGO -->
+ 
+            <!-- SECCIÓN 3: FORMATO NUMÉRICO Y DE MONEDA -->
             <Border Grid.Row="3" Background="{DynamicResource MaterialDesignPaper}" 
+                    BorderBrush="{DynamicResource MaterialDesignDivider}" 
+                    BorderThickness="1" 
+                    CornerRadius="10" 
+                    Padding="20" 
+                    Margin="0,0,0,20">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
+                        <materialDesign:PackIcon Kind="CurrencyUsd" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="Formato Numérico y de Moneda" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <TextBlock Text="Seleccione el estándar de formato y visualización para montos monetarios en todo el sistema."
+                               Style="{DynamicResource MaterialDesignCaptionTextBlock}" Opacity="0.7" Margin="34,0,0,14"/>
+
+                    <Grid Margin="34,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="340"/>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Selector de Formato -->
+                        <ComboBox Grid.Column="0"
+                                  ItemsSource="{Binding AvailableCurrencyFormats}" 
+                                  DisplayMemberPath="DisplayName"
+                                  SelectedItem="{Binding SelectedCurrencyFormat, Mode=TwoWay}"
+                                  IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                  materialDesign:HintAssist.Hint="Seleccionar Formato de Moneda"
+                                  Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                  VerticalAlignment="Center"/>
+
+                        <!-- Panel de Vista Previa -->
+                        <Border Grid.Column="2" 
+                                Background="{DynamicResource MaterialDesignBackground}" 
+                                BorderBrush="{DynamicResource MaterialDesignDivider}" 
+                                BorderThickness="1" 
+                                CornerRadius="8" 
+                                Padding="14,8">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <materialDesign:PackIcon Kind="EyeOutline" Width="18" Height="18" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Text="Vista Previa en Vivo: " FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <TextBlock Text="{Binding CurrencyFormatPreviewBsS}" FontWeight="Bold" FontFamily="Consolas, Monospace" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                <TextBlock Text="{Binding CurrencyFormatPreviewUSD}" FontWeight="Bold" FontFamily="Consolas, Monospace" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- SECCIÓN 4: ADMINISTRACIÓN DE MÉTODOS DE PAGO -->
+            <Border Grid.Row="4" Background="{DynamicResource MaterialDesignPaper}" 
                     BorderBrush="{DynamicResource MaterialDesignDivider}" 
                     BorderThickness="1" 
                     CornerRadius="10" 

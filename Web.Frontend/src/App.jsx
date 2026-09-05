@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ExchangeRateProvider, useExchangeRate } from './context/ExchangeRateContext';
+import { CurrencyFormatProvider } from './context/CurrencyFormatContext';
 import { CartProvider, useCart } from './context/CartContext';
 import Layout from './components/layout/Layout';
 import LoginPage from './pages/LoginPage';
@@ -207,9 +208,11 @@ export default function App() {
   return (
     <AuthProvider>
       <ExchangeRateProvider>
-        <CartProvider>
-          <MainApp />
-        </CartProvider>
+        <CurrencyFormatProvider>
+          <CartProvider>
+            <MainApp />
+          </CartProvider>
+        </CurrencyFormatProvider>
       </ExchangeRateProvider>
     </AuthProvider>
   );

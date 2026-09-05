@@ -543,3 +543,1530 @@ Criterios de Aceptación Finales de la Fase 1
 □ Los mensajes de error son claros y accionables.
 
 
+/**/**/**/**/**/**/**/**/**/**/
+/**/**/**/**/**/**/**/**/**/**/
+
+**Aprobado.** El plan de la **Fase 2** se ha detallado al máximo nivel para su implementación directa. A continuación, la expansión completa.
+
+---
+
+## Fase 2: Robustez de Flujos Financieros y Manejo de Errores
+
+### Objetivo
+Blindar las operaciones que involucran dinero e inventario, asegurando que ninguna transacción quede a medias ante un fallo de red o base de datos, y que los errores sean trazables sin exponer datos sensibles.
+
+### Alcance
+- **Backend API (ASP.NET Core + PostgreSQL + EF Core)**: `SalesService`, `CashDrawerService`, `DailyClosureService`, `CustomerAdvanceService`.
+- **Cliente Web (React)**: `CheckoutModal`, `ResilienceHandler`, `HealthPollingService` (lado cliente si aplica).
+- **Cliente Escritorio (WPF)**: `CheckoutViewModel`, `SalesService`, `CashDrawerViewModel`, `HealthPollingService`.
+
+---
+
+## 1. Transacciones de Venta y Abonos
+
+### 1.1 Revisar `CompleteSaleAsync`
+
+#### Contexto
+`CompleteSaleAsync` es el método que finaliza una venta (normal o cuenta abierta), registra pagos, actualiza inventario y puede disparar eventos de cierre de caja.
+
+#### Tareas detalladas
+
+##### Paso 1: Auditoría de atomicidad
+- Verificar que el método utilice una **única transacción de base de datos** (`BeginTransactionAsync`) para todas las operaciones:
+  - Crear `Sale`/actualizar estado.
+  - Añadir `SalePayment`.
+  - Actualizar `Stock`/`ReservedQuantity`.
+  - Registrar `CashTransaction` si el pago es en efectivo.
+
+- Si no existe una transacción, implementarla:
+
+```csharp
+await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+try
+{
+    // 1. Validar totales
+    // 2. Registrar pagos
+    // 3. Descontar inventario
+    // 4. Actualizar sesión de caja
+    await _context.SaveChangesAsync(cancellationToken);
+    await transaction.CommitAsync(cancellationToken);
+}
+catch (Exception ex)
+{
+    await transaction.RollbackAsync(cancellationToken);
+    _logger.LogError(ex, "Error al completar venta {SaleId}", saleId);
+    throw new InvalidOperationException("No se pudo completar la venta. Todos los cambios fueron revertidos.", ex);
+}
+```
+
+##### Paso 2: Validación de totales y pagos
+- Antes de guardar, verificar:
+  - `sale.Payments.Sum(p => p.Amount) > 0` (ya implementado).
+  - `RemainingBalanceUsd <= 0.05` para venta normal; para cuentas abiertas, permitir abonos parciales pero nunca superar el saldo.
+
+- Añadir validación de sobrepago:
+
+```csharp
+if (TotalPaidUsd > TotalUsd + 0.05m)
+    throw new InvalidOperationException("El monto pagado excede el total de la venta.");
+```
+
+##### Paso 3: Limpieza de líneas en cero
+- Antes de persistir, eliminar `SalePayment` con `Amount <= 0` usando `Remove` (no reasignar la colección):
+
+```csharp
+var zeroPayments = _sale.Payments.Where(p => p.Amount <= 0).ToList();
+foreach (var p in zeroPayments)
+    _sale.Payments.Remove(p);
+```
+
+##### Paso 4: Manejo de excepciones
+- Capturar `DbUpdateException`, `PostgresException` y `InvalidOperationException`.
+- Si ocurre un fallo, **rollback completo** y lanzar una excepción controlada con mensaje descriptivo.
+
+#### Criterios de aceptación
+- [ ] Una venta completada persiste en una sola transacción: si falla cualquiera de los pasos, no se guarda nada.
+- [ ] Los pagos con monto 0 no se almacenan.
+- [ ] Sobrepagos se rechazan con mensaje claro.
+- [ ] El inventario se descuenta exactamente una vez.
+
+---
+
+### 1.2 Revisar `AddPaymentToHoldSaleAsync`
+
+#### Contexto
+Método para registrar abonos parciales en cuentas abiertas sin cerrar la venta.
+
+#### Tareas detalladas
+
+##### Paso 1: Validación de estado
+- Verificar que la venta esté en estado `OnHold` y no `Completed` ni `Cancelled`.
+- Si la venta es de tipo anticipo (`IsAdvancePayment`), validar que el abono no exceda el saldo a favor.
+
+##### Paso 2: Conversión de moneda
+- Si el abono se hace en Bs.S, convertirlo a USD usando la tasa actual de la venta (`AppliedRate`) o la tasa BCV del día. Utilizar `Math.Round(..., 2, MidpointRounding.AwayFromZero)` solo para el monto final, no para conversiones intermedias.
+
+##### Paso 3: Registro del pago
+- Añadir un `SalePayment` con:
+  - `SaleId`
+  - `PaymentMethodId`
+  - `Amount` (USD)
+  - `AmountBsS` (si aplica)
+  - `ExchangeRate` (tasa del momento)
+  - `CreatedAt = DateTime.UtcNow`
+
+##### Paso 4: Actualización del saldo
+- Recalcular `TotalPaidUsd` y `RemainingBalanceUsd`.
+- No cambiar el estado a `Completed` salvo que el saldo quede en 0 (opcional según regla de negocio).
+
+##### Paso 5: Manejo de errores
+- Si falla el guardado, revertir cualquier cambio y lanzar excepción con mensaje.
+- Registrar `[TRANSACTION]` en logs con montos y usuario.
+
+#### Criterios de aceptación
+- [ ] Los abonos parciales quedan registrados y el saldo pendiente se actualiza correctamente.
+- [ ] No se puede abonar más de lo adeudado.
+- [ ] La venta permanece `OnHold` tras un abono parcial.
+- [ ] Si el pago es en efectivo, se actualiza la sesión de caja.
+
+---
+
+### 1.3 Revisar `CreateCreditInvoiceAsync`
+
+#### Contexto
+Crea una factura entregada a crédito con descuento inmediato de inventario.
+
+#### Tareas detalladas
+
+##### Paso 1: Transacción compartida
+- Verificar que se use `UseTransaction` para en listar `InventoryDbContext` en la misma transacción que `SalesDbContext` (como ya está implementado).
+
+##### Paso 2: Validación de cliente e ítems
+- Rechazar si el cliente es `Consumidor Final`.
+- Rechazar si no hay ítems.
+- Validar que los productos existan y tengan stock disponible.
+
+##### Paso 3: Descuento de inventario directo
+- Descontar stock dentro de la misma transacción, evitando `SaleMadeEvent` duplicado.
+- Confirmar que no se publica `SaleMadeEvent` en este flujo (ya corregido).
+
+##### Paso 4: Resolución de precios
+- Si `UnitPrice` es nulo, usar precio del catálogo según lista y umbral mayorista; si viene manual, respetarlo sin redondeo de techo.
+
+##### Paso 5: Abonos iniciales
+- Registrar pagos iniciales en `SalePayment` y `CashTransaction` si es efectivo.
+- Si la suma inicial cubre el total, completar la venta; si no, mantener `OnHold`.
+
+##### Paso 6: Manejo de errores y rollback
+- Si falla cualquier validación, hacer `RollbackAsync` y registrar.
+
+#### Criterios de aceptación
+- [ ] El inventario se descuenta una sola vez en el momento de la entrega.
+- [ ] La deuda queda registrada correctamente con saldo restante.
+- [ ] No hay dobles descuentos en flujos con `DeliverOnCredit`.
+- [ ] Los precios manuales se respetan; los precios de catálogo se calculan con las reglas de listas.
+
+---
+
+### 1.4 Confirmación de no doble descuento en `DeliverOnCredit`
+
+#### Contexto
+En el flujo de crédito con entrega, es crítico que el inventario no se descuente dos veces: una al crear el crédito y otra al completar el pago.
+
+#### Tareas
+
+1. **Verificar el flujo de estados**:
+   - Al crear crédito: `Status = OnHold`, `DeliveryStatus = Delivered`, inventario descontado.
+   - Al liquidar: solo se registra el pago y se cambia a `Completed`; **no se descuenta inventario nuevamente**.
+
+2. **Añadir guarda defensiva**:
+   ```csharp
+   if (_sale.DeliveryStatus == SaleDeliveryStatus.Delivered)
+   {
+       // no disparar SaleMadeEvent ni descontar stock
+   }
+   ```
+
+3. **Pruebas manuales**:
+   - Crear crédito con entrega.
+   - Verificar inventario disminuye.
+   - Liquidar completamente.
+   - Verificar inventario no cambia.
+
+#### Criterios de aceptación
+- [ ] El inventario se descuenta exactamente una vez en todo el ciclo del crédito.
+- [ ] No hay desfase de stock al liquidar.
+
+---
+
+## 2. Manejo de Errores de Red y Base de Datos
+
+### 2.1 Probar escenarios de backend caído, timeout y reconexión
+
+#### Contexto
+El sistema debe continuar funcionando o degradarse de forma controlada cuando el backend no responde.
+
+#### Tareas
+
+1. **Simular caída del backend**:
+   - Detener `Backend.API`.
+   - Intentar operaciones en Web y WPF.
+   - Verificar que `ResilienceHandler` reintenta y luego muestra estado offline.
+
+2. **Probar timeout**:
+   - Configurar `HttpClient.Timeout` en un valor corto (ej. 5s).
+   - Comprobar que las peticiones no se cuelgan indefinidamente.
+
+3. **Probar reconexión**:
+   - Rearrancar backend.
+   - Verificar que `HealthPollingService` detecta el restablecimiento y la UI se recupera.
+
+#### Criterios de aceptación
+- [ ] La UI nunca se bloquea por una petición colgada.
+- [ ] Los intentos de reconexión son transparentes para el usuario.
+- [ ] Los logs registran cada intento y su resultado.
+
+---
+
+### 2.2 Asegurar que `ResilienceHandler` y `HealthPollingService` se comporten de forma predecible
+
+#### `ResilienceHandler`
+
+- Revisar que:
+  - Solo reintente errores 5xx y excepciones de red (no 4xx).
+  - Tenga un máximo de reintentos (3-5) con backoff.
+  - Active `IsFatalErrorActive` al agotar reintentos.
+  - No bloquee el hilo de UI.
+
+#### `HealthPollingService`
+
+- Revisar que:
+  - Tenga `StartPolling()` y `StopPolling()` idempotentes.
+  - Use `CancellationTokenSource` y `Task.Delay` con token.
+  - Detenga el sondeo inmediatamente al recibir `200 OK` desde `/health`.
+  - No deje tareas huérfanas al cerrar la aplicación.
+
+#### Criterios de aceptación
+- [ ] No hay reintentos infinitos.
+- [ ] El estado de conexión se refleja en la barra de estado.
+- [ ] Al recuperar, la aplicación reanuda operaciones sin reinicio manual.
+
+---
+
+### 2.3 Revisar logs de errores para detectar patrones recurrentes
+
+#### Tareas
+
+1. **Revisar archivos de log**:
+   - `logs/db-errors.log`
+   - `logs/client-resilience.log` (WPF)
+   - Logs de consola del backend.
+
+2. **Identificar los 5 errores más frecuentes** y corregir la causa raíz.
+
+3. **Estandarizar formato de log**:
+   - Incluir `[TIMESTAMP] [LEVEL] [ORIGEN] [MENSAJE]`.
+   - No registrar contraseñas ni datos sensibles.
+
+#### Criterios de aceptación
+- [ ] Se reduce el número de errores críticos a 0 en una semana.
+- [ ] Los logs son legibles y accionables.
+
+---
+
+## 3. Persistencia de Configuración
+
+### 3.1 Validar que `appsettings.Production.json`, `system.conf` y `client_settings.json` no se sobrescriban en actualizaciones
+
+#### Contexto
+Los archivos de configuración contienen datos de conexión y credenciales semilla. Deben permanecer intactos durante actualizaciones del sistema.
+
+#### Tareas
+
+1. **Mapear archivos y su ubicación**:
+   - `appsettings.Production.json` → `{app}\BackendAPI\`
+   - `system.conf` → raíz del proyecto (si aplica)
+   - `client_settings.json` → `%LOCALAPPDATA%\ProyectoPOS\`
+
+2. **Revisar el instalador Inno Setup**:
+   - Asegurar que los archivos tengan `onlyifdoesntexist` y `uninsneveruninstall`.
+   - Evitar `uninsneverdelete` para no sobrescribir en reinstalación.
+
+3. **Revisar scripts de actualización**:
+   - Los scripts batch/PowerShell no deben copiar configuraciones desde el paquete.
+
+4. **Pruebas**:
+   - Realizar una reinstalación simulada.
+   - Verificar que `appsettings.Production.json` y `client_settings.json` conservan los valores anteriores.
+
+#### Criterios de aceptación
+- [ ] Ninguna actualización sobrescribe configuraciones locales.
+- [ ] Los datos de conexión y credenciales permanecen intactos.
+
+---
+
+### 3.2 Comprobar que los cambios de IP/hostname se propaguen correctamente
+
+#### Contexto
+Cuando el servidor cambia de IP (DHCP), los clientes deben actualizar la URL sin intervención manual.
+
+#### Tareas
+
+1. **En Web**:
+   - Usar `localStorage` para almacenar la URL.
+   - Al recibir parámetros `?server=...` o `?api=...`, sobrescribir la URL.
+   - Si falla la conexión, mostrar pantalla de reconexión con opción de escanear QR.
+
+2. **En WPF**:
+   - `ClientSettingsStore` guarda la última IP exitosa.
+   - `SubnetScannerService` ejecuta el paso 0 (probando la IP anterior) antes del barrido.
+   - Si la IP cambia, el escáner descubre la nueva y actualiza `client_settings.json`.
+
+3. **Pruebas**:
+   - Cambiar la IP del servidor.
+   - Verificar que los clientes secundarios se reconectan automáticamente en < 2s.
+   - Comprobar que la URL del QR se actualiza en la caja principal.
+
+#### Criterios de aceptación
+- [ ] Los clientes no requieren intervención manual tras un cambio de IP.
+- [ ] La persistencia de configuración asegura reconexión inmediata.
+
+---
+
+## Verificación Global de Fase 2
+
+### Pruebas Automatizadas
+
+- Añadir tests en `CommandCenter.Tests`:
+  - `CompleteSaleAsync_WhenPaymentExceedsTotal_Throws`
+  - `AddPaymentToHoldSaleAsync_PartialPayment_RemainsOnHold`
+  - `CreateCreditInvoiceAsync_WithDeliverOnCredit_DoesNotDoubleDeduct`
+  - `ResilienceHandler_On4xx_DoesNotRetry`
+  - `HealthPollingService_StopPolling_IsIdempotent`
+
+### Pruebas Manuales
+
+1. **Atomicidad**: Forzar un error en medio de `CompleteSaleAsync` y verificar que no se guardó nada.
+2. **Red caída**: Detener backend, realizar petición, verificar reintentos y estado offline.
+3. **Reconexión**: Rearrancar backend, verificar recuperación automática.
+4. **Actualización**: Reinstalar y comprobar que configuraciones no se sobrescriben.
+
+---
+
+## Criterios de Aceptación Finales de Fase 2
+
+- [ ] Ninguna operación financiera queda a medias ante un fallo de red o base de datos.
+- [ ] Los pagos y abonos se registran de forma consistente en todas las plataformas.
+- [ ] El inventario no se descuenta dos veces en flujos con `DeliverOnCredit`.
+- [ ] Los archivos de configuración son inmunes a actualizaciones y cambios de IP.
+- [ ] Los logs permiten diagnosticar cualquier incidencia sin exponer datos sensibles.
+
+---
+
+Este es el desglose máximo de la Fase 2. Si deseas profundizar en alguna tarea específica o preparar los scripts de pruebas automatizadas, indícalo.
+
+/**/**/**/**/**/**/**/**/**/**/
+/**/**/**/**/**/**/**/**/**/**/
+
+
+# Fase 3: Cobertura de Pruebas Automatizadas — Detalle Completo
+
+## Objetivo  
+Establecer una suite de pruebas automatizadas robusta que cubra los servicios backend críticos, los flujos de integración esenciales y (opcionalmente) pruebas de UI, garantizando que futuras modificaciones no introduzcan regresiones. El objetivo es alcanzar una cobertura superior al 70% en los servicios backend y cubrir los 5 flujos de negocio más importantes.
+
+---
+
+## Alcance  
+- **Backend (.NET 10, ASP.NET Core, EF Core con PostgreSQL)**  
+  - Pruebas unitarias de servicios: `SalesService`, `InventoryService`, `CashDrawerService`, `CustomerAdvanceService`, `PasswordHasher`.  
+  - Pruebas de integración con `WebApplicationFactory<Program>` contra una base de datos PostgreSQL real o Testcontainers.  
+- **Cliente Web (React 19)**  
+  - Pruebas de integración UI opcionales con Playwright/Cypress para flujos críticos (login, agregar producto, cobrar).  
+- **Cliente Escritorio (WPF .NET 10)**  
+  - Pruebas de ViewModel con mocks de servicios (sin levantar UI real).  
+- **Infraestructura de CI**  
+  - Pipeline que compile y ejecute las pruebas automáticamente en cada commit.
+
+---
+
+## 1. Pruebas Unitarias Backend
+
+### 1.1 Servicios Críticos a Cubrir
+
+| Servicio | Métodos principales a probar | Casos límite |
+|----------|------------------------------|--------------|
+| **`SalesService`** | `CompleteSaleAsync`, `AddPaymentToHoldSaleAsync`, `CreateCreditInvoiceAsync`, `HoldSaleAsync`, `UpdateSaleItemsAsync`, `CancelSaleAsync` | Pagos exactos, sobrepagos, redondeo con `MidpointRounding`, cero pagos, estados de entrega (`Delivered`, `Undelivered`, `PendingPickup`). |
+| **`InventoryService`** | `GetProductsPagedAsync`, `GetProductsByIdsAsync`, `UpdateStockAsync`, `ValidateAndAdjustQuantityForProductAsync` | Filtros, ordenamiento, paginación, productos fraccionados, stock insuficiente. |
+| **`CashDrawerService`** | `ProcessCashAdvanceAsync`, `GetActiveSessionAsync`, `GetExpectedTotalsByPaymentMethodAsync` | Métodos de pago mixtos, efectivo vs electrónico, sesiones nulas. |
+| **`CustomerAdvanceService`** | `CreateAdvanceReceiptAsync`, `ConsumeAdvanceBalanceAsync`, `GetOrCreateConsumptionSaleAsync`, `GetPendingAdvancesAsync` | Consumo parcial, consumo total, concurrencia (FOR UPDATE). |
+| **`PasswordHasher`** | `HashPassword`, `VerifyPassword` | Sensibilidad a mayúsculas/minúsculas, hashes vacíos, compatibilidad legacy. |
+
+### 1.2 Casos Límite Específicos
+
+- **Cálculos de totales**:  
+  - Venta con múltiples ítems y redondeo a dos decimales.  
+  - Conversión USD ↔ Bs.S con tasa `AppliedRate` y `MidpointRounding.AwayFromZero`.  
+  - Productos con precios calculados por costo + margen (techo fiscal).  
+
+- **Redondeo**:  
+  - Precio `1.20001` → `1.21` (ceil).  
+  - Precio `1.20000` → `1.20` (exacto).  
+
+- **Límites de crédito** (si aún se aplican):  
+  - Pedido en espera que excede el límite → lanzar excepción (si la regla se mantiene).  
+  - Abono que reduce la deuda por debajo del límite → éxito.  
+
+- **Estados de entrega**:  
+  - `HoldSaleAsync` sin `DeliverOnCredit` → `DeliveryStatus = Undelivered`.  
+  - `CreateCreditInvoiceAsync` con entrega → `DeliveryStatus = Delivered` y descuento de inventario inmediato.  
+  - `CompleteSaleAsync` en crédito entregado no debe volver a descontar.
+
+---
+
+## 2. Pruebas de Integración
+
+### 2.1 Flujos Completos a Cubrir
+
+| Flujo | Descripción | Verificación |
+|-------|-------------|--------------|
+| **Creación de venta** | Crear carrito, agregar productos, cobrar en efectivo. | Estado `Completed`, inventario descontado, `CashTransaction` registrado. |
+| **Abono parcial** | Registrar abono en cuenta abierta (efectivo). | Saldo restante actualizado, estado `OnHold`, `CashTransaction` creado. |
+| **Liquidación de cuenta** | Completar pago total de una cuenta abierta. | Estado `Completed`, factura emitida, inventario descontado si no fue entregada antes. |
+| **Cierre de caja** | Ejecutar cierre diario y verificar acumuladores, totales por método, y guardado de comprobante. | Totales correctos, KPIs reiniciados, historial intacto. |
+| **Edición de pedido en espera** | Modificar ítems de un `OnHold`, respetando abonos previos. | Nuevo total calculado, saldo pendiente correcto, no se permite reducir por debajo de lo abonado. |
+
+### 2.2 Estrategia de Base de Datos para Integración
+
+- **Opción recomendada: PostgreSQL real mediante Testcontainers**.  
+  - Utiliza el paquete `Testcontainers.PostgreSql` para levantar una instancia temporal en cada ejecución.  
+  - Asegura compatibilidad total con Npgsql y las migraciones EF Core.  
+  - Configuración en `appsettings.Testing.json` con cadena de conexión dinámica.
+
+- **Opción alternativa (más rápida pero menos fiel): SQLite en memoria**.  
+  - Útil para pruebas de lógica, pero no valida traducciones de SQL específicas de PostgreSQL (`xmin`, `FOR UPDATE`, `LENGTH`).  
+  - Se puede usar para pruebas unitarias de servicios, dejando los flujos críticos con Testcontainers.
+
+- **`WebApplicationFactory<Program>`** se configura para reemplazar la conexión a la base de datos por la de prueba y aplicar migraciones automáticamente.
+
+---
+
+## 3. Pruebas de UI (Opcional)
+
+### 3.1 Web (React)
+
+- **Framework**: Playwright (recomendado) o Cypress.  
+- **Alcance**:  
+  1. **Login**: Ingresar credenciales válidas, fallar con contraseña incorrecta, redirección al POS.  
+  2. **Agregar producto al carrito**: Buscar por SKU/nombre, agregar, verificar totales en Bs.S/USD.  
+  3. **Cobro**: Seleccionar método de pago, ingresar monto (incluido ATM), confirmar y verificar éxito.  
+- **Configuración**:  
+  - Usar un servidor de desarrollo o el backend real con base de datos de prueba.  
+  - Aislar los tests mediante `beforeEach` que limpien la base de datos.
+
+### 3.2 WPF
+
+- **Pruebas de ViewModel**: Utilizar `xUnit` + `Moq` para simular `ISalesService`, `IDialogService`, etc.  
+- **Cobertura**:  
+  - `CheckoutViewModel`: alternancia de `CanFinalize`, añadir/quitar pagos, cambio de cliente.  
+  - `PosViewModel`: búsqueda con debounce, agregar producto, atajos de teclado.  
+  - `InventoryViewModel`: ordenamiento, paginación, toggle de precios al mayor.  
+- **No se requiere levantar la ventana WPF** (evitar `STAThread` y contextos de UI).
+
+---
+
+## 4. Pruebas de Regresión y Suite Existente
+
+- Mantener todos los tests existentes (actualmente 249+).  
+- Crear una carpeta `CommandCenter.Tests` con subcarpetas:  
+  - `Unit/` (servicios y helpers)  
+  - `Integration/` (flujos con `WebApplicationFactory`)  
+  - `UI/` (solo si se decide implementar Playwright/Cypress)  
+- Ejecutar la suite completa en cada commit con CI.
+
+---
+
+## 5. Infraestructura de CI
+
+### 5.1 Pipeline Sugerido (GitHub Actions)
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: pos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore dependencies
+        run: dotnet restore
+      - name: Build
+        run: dotnet build --no-restore
+      - name: Run tests
+        env:
+          TEST_POSTGRES_CONNECTION: "Host=localhost;Database=pos_test;Username=postgres;Password=testpass"
+        run: dotnet test --no-build --collect:"XPlat Code Coverage"
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./TestResults/**/coverage.cobertura.xml
+```
+
+- **Cobertura mínima exigida**: 70% en servicios backend (`SalesService`, `InventoryService`, `CashDrawerService`, `CustomerAdvanceService`).
+
+---
+
+## 6. Archivos y Estructura de Pruebas
+
+### Backend Tests (`CommandCenter.Tests/`)
+
+```
+CommandCenter.Tests/
+├── Unit/
+│   ├── SalesServiceTests.cs
+│   ├── InventoryServiceTests.cs
+│   ├── CashDrawerServiceTests.cs
+│   ├── CustomerAdvanceServiceTests.cs
+│   └── PasswordHasherTests.cs
+├── Integration/
+│   ├── SaleFlowTests.cs
+│   ├── PaymentFlowTests.cs
+│   ├── ClosureFlowTests.cs
+│   └── EditOrderFlowTests.cs
+├── UI/ (opcional)
+│   ├── WebPosTests.cs (si se implementan)
+│   └── ...
+└── Helpers/
+    ├── TestDataBuilders.cs
+    ├── TestDatabaseFactory.cs
+    └── MockServicesFactory.cs
+```
+
+### Ejemplo de Test Data Builder
+
+```csharp
+public class SaleBuilder
+{
+    private Sale _sale = new();
+    private List<SaleItem> _items = new();
+    private List<SalePayment> _payments = new();
+
+    public SaleBuilder WithItem(int productId, decimal qty, decimal price)
+    {
+        _items.Add(new SaleItem { ProductId = productId, Quantity = qty, UnitPrice = price });
+        return this;
+    }
+
+    public SaleBuilder WithPayment(decimal amount)
+    {
+        _payments.Add(new SalePayment { Amount = amount });
+        return this;
+    }
+
+    public Sale Build()
+    {
+        _sale.Items = _items;
+        _sale.Payments = _payments;
+        _sale.Status = SaleStatus.Pending;
+        _sale.AppliedRate = 100;
+        return _sale;
+    }
+}
+```
+
+---
+
+## 7. Estimación de Esfuerzo
+
+| Tarea | Esfuerzo |
+|-------|----------|
+| Configuración de infraestructura de pruebas (Testcontainers, WebApplicationFactory) | 0.5 día |
+| Pruebas unitarias de servicios | 2 días |
+| Pruebas de integración (5 flujos) | 2 días |
+| Pruebas de UI opcionales | 1-2 días |
+| Pipeline CI | 0.5 día |
+| Revisión y ajustes | 0.5 día |
+| **Total** | **6-7 días** |
+
+---
+
+## Criterios de Aceptación
+
+- Cobertura de código > 70% en servicios backend (medido con Coverlet).  
+- Las pruebas de integración cubren los 5 flujos críticos listados.  
+- La suite completa se ejecuta en menos de 10 minutos en el pipeline de CI.  
+- Ningún test nuevo introduce dependencias externas no controladas (usar Testcontainers o servicios mockeados).  
+- Todos los tests existentes continúan pasando sin regresiones.
+
+---
+
+## Conclusión
+
+Esta fase sienta las bases para un desarrollo seguro y ágil, reduciendo el riesgo de errores en producción y permitiendo iterar con confianza. La combinación de unit tests, integration tests y (opcionalmente) UI tests proporciona una cobertura integral del sistema POS. Una vez completada, el equipo tendrá una red de seguridad sólida para las fases posteriores de pulido y optimización.
+
+
+
+/**/**/**/**/**/**/**/**/**/**/
+/**/**/**/**/**/**/**/**/**/**/
+
+
+
+
+# Fase 4: Seguridad y Control de Acceso — Plan de Implementación Detallado
+
+## Objetivo  
+Garantizar que solo usuarios autorizados realicen acciones sensibles, mediante la revisión sistemática de endpoints, roles, protección de datos sensibles y validación de entradas. El resultado será un sistema donde un Cajero no pueda acceder a funciones administrativas y donde cada intento no autorizado se registre y rechace.
+
+## Alcance  
+- **Backend API (ASP.NET Core)**: Controladores, middleware de autenticación JWT, servicios de usuario, DTOs y validaciones.  
+- **Cliente Web (React)**: Gestión de roles en componentes, protección de rutas, manejo de tokens.  
+- **Cliente Escritorio (WPF)**: Almacenamiento seguro de JWT, ocultamiento de funcionalidades según rol, `IDialogService` para errores de acceso.  
+- **Base de Datos**: Índices, restricciones y migraciones si se requieren.
+
+---
+
+## 1. Revisión de Endpoints y Roles
+
+### 1.1 Auditoría de Controladores
+
+**Objetivo:** Verificar que todos los controladores que manejan operaciones sensibles tengan `[Authorize]` y, cuando corresponda, roles específicos.
+
+**Tareas detalladas:**
+
+1. **Inventario de controladores**  
+   Listar todos los `Controller` del proyecto y sus acciones, con el método HTTP y el nivel de acceso actual.
+
+2. **Clasificar por nivel de sensibilidad**:
+   - **Público**: `Login`, `Health`, `Pairing Info` (con restricciones).  
+   - **Cajero**: Operaciones de venta, cobro, cierre de caja (acciones propias del turno).  
+   - **Admin/Manager**: Gestión de usuarios, clientes, catálogo, configuración, tasa de cambio, importación masiva.
+
+3. **Aplicar atributos**:
+   ```csharp
+   [Authorize] // solo autenticado, sin rol específico
+   public class SalesController : ControllerBase { ... }
+
+   [Authorize(Roles = "Admin,Manager")]
+   public class UsersController : ControllerBase { ... }
+   ```
+
+4. **Revisar endpoints de emparejamiento**:
+   - `GET /api/pairing/info`: Debe permitir acceso localhost sin token y con token válido para dispositivos remotos.
+   - `GET /api/health`: Libre, pero sin exponer datos sensibles.
+
+5. **Agregar política de autorización global**  
+   En `Program.cs`:
+   ```csharp
+   app.UseAuthentication();
+   app.UseAuthorization();
+   ```
+
+6. **Probar acceso no autorizado**  
+   - Usando Postman o tests de integración, verificar que:
+     - Sin token → `401 Unauthorized`.
+     - Token de Cajero en endpoint de Admin → `403 Forbidden`.
+     - Token de Admin en endpoint de Cajero → éxito.
+
+### 1.2 Mapeo de Roles a Funcionalidades
+
+| Funcionalidad | Rol mínimo requerido |
+|---------------|----------------------|
+| Vender / Cobrar | Cajero |
+| Abonos / Cuentas Abiertas | Cajero |
+| Cierre de Caja (declaración) | Cajero |
+| Gestión de usuarios | Admin |
+| Gestión de clientes | Admin/Manager |
+| Catálogo de productos (edición) | Admin/Manager |
+| Importación/Exportación | Admin/Manager |
+| Configuración general | Admin |
+| Tasa de cambio manual | Admin |
+| Anulación de ventas | Admin/Manager |
+| Reportes financieros | Admin/Manager |
+
+---
+
+## 2. Protección de Datos Sensibles
+
+### 2.1 Contraseñas
+
+**Objetivo:** Garantizar que las contraseñas no se logueen ni se expongan en excepciones.
+
+**Tareas:**
+
+1. **Auditar todos los logs**  
+   Buscar en `Console.WriteLine`, `_logger.LogInformation/Error/Warning` cualquier referencia a `Password`, `PasswordHash`, `Clave`, etc.  
+   - Corregir para que solo se muestren IDs o nombres de usuario.
+
+2. **Revisar `PasswordHasher`**  
+   - Verificar que `HashPassword` y `VerifyPassword` nunca reciban o retornen contraseñas en texto plano en logs.
+   - Si ocurre una excepción, el mensaje no debe incluir la contraseña ingresada.
+
+3. **DTOs seguros**  
+   - `LoginRequest` contiene `Password`; esto es inevitable, pero debe excluirse de serialización en respuestas.
+   - Añadir `[JsonIgnore]` o usar `record` que no devuelva `Password`.
+
+### 2.2 Tokens JWT
+
+**Objetivo:** Asegurar que el token se almacene de forma segura en el cliente WPF y se maneje adecuadamente en Web.
+
+**Tareas en WPF:**
+
+1. **Almacenamiento en memoria**  
+   - Actualmente `UserSession` guarda el token en una propiedad `string`.
+   - Confirmar que **no** se persista en `client_settings.json` ni en `%LocalAppData%`.
+   - Si existe código que lo escriba en disco, eliminarlo.
+
+2. **Manejo de expiración**  
+   - El `UserSessionHeaderHandler` ya intercepta `401` y llama `Logout()`.
+   - Verificar que también limpia el token de la memoria al hacer logout.
+
+3. **Registro de token**  
+   - No se debe loguear el token JWT en ninguna circunstancia.
+
+**Tareas en Web:**
+
+1. **Almacenamiento en `localStorage`**  
+   - El token se guarda en `localStorage` como `pos_token`.
+   - Aceptable para esta fase, pero documentar que en producción se podría considerar `httpOnly cookies` (mejora futura).
+   - Asegurarse de que no se envíe a logs ni a servicios externos.
+
+2. **Refresh / Expiración**  
+   - Si el token expira, el interceptor debe redirigir al login.
+
+### 2.3 Auditoría de acceso
+
+**Objetivo:** Registrar intentos de acceso no autorizado.
+
+**Tareas:**
+
+1. **Middleware de auditoría**  
+   - Crear un middleware que capture respuestas `401` y `403`, registrando:
+     - Timestamp
+     - IP del cliente
+     - Ruta solicitada
+     - Usuario (si está autenticado) o `anónimo`
+     - Razón del rechazo
+   - Registrar en `logs/security-audit.log`.
+
+2. **Integración con `ClientStateLogger`**  
+   - Para WPF, registrar en `client-resilience.log` cuando ocurra un `401` y se fuerce logout.
+
+---
+
+## 3. Validación de Entradas
+
+### 3.1 DTOs y Modelos
+
+**Objetivo:** Rechazar datos inválidos en el backend, independientemente del frontend.
+
+**Tareas:**
+
+1. **Validación de números negativos**  
+   - En DTOs de productos (`PriceRetailUSD`, `CostPriceUSD`, `StockQuantity`, etc.), agregar atributos:
+     ```csharp
+     [Range(0, double.MaxValue, ErrorMessage = "El valor no puede ser negativo.")]
+     public decimal PriceRetailUSD { get; set; }
+     ```
+   - Para cantidades (`Quantity`), en `SaleItemDto`, `UpdateSaleItemDto`, etc.
+
+2. **Longitudes máximas**  
+   - `Name`, `SKU`, `CedulaOrRif`, `Phone`:
+     ```csharp
+     [StringLength(50, ErrorMessage = "Máximo 50 caracteres.")]
+     public string Name { get; set; }
+     [StringLength(20, ErrorMessage = "Máximo 20 caracteres.")]
+     public string SKU { get; set; }
+     ```
+
+3. **Formato de Cédula/RIF**  
+   - En DTOs de clientes:
+     ```csharp
+     [RegularExpression(@"^[VJEP]{1}-\d{6,9}$", ErrorMessage = "Formato de cédula/RIF inválido.")]
+     public string CedulaOrRif { get; set; }
+     ```
+
+4. **Teléfono**  
+   ```csharp
+   [RegularExpression(@"^0(412|414|416|426)\d{7}$", ErrorMessage = "Teléfono inválido.")]
+   public string Phone { get; set; }
+   ```
+
+5. **Validación global**  
+   - Añadir en `Program.cs`:
+     ```csharp
+     builder.Services.AddControllers(options =>
+     {
+         options.Filters.Add<ModelStateValidationFilter>();
+     });
+     ```
+   - Crear un filtro que devuelva `BadRequest` con los errores de `ModelState`.
+
+### 3.2 Importación de Productos
+
+**Objetivo:** Validar todos los campos del archivo Excel/CSV antes de procesar.
+
+**Tareas:**
+
+1. **Columnas requeridas**  
+   - Verificar que las columnas `SKU`, `Nombre` y `Costo` estén presentes.  
+   - Si no están, rechazar el archivo.
+
+2. **Validación por fila**  
+   - `SKU`: no vacío, único, sin caracteres especiales.  
+   - `Nombre`: longitud <= 50, no vacío.  
+   - `Costo`: decimal no negativo.  
+   - `Margen`: decimal entre 0 y 100.  
+   - `Stock`: decimal no negativo.  
+   - `IsFractional`, `HasWholesale`: booleano válido.  
+   - `UnitOfMeasure`: valor del enum permitido (`Und`, `Kg`, `Grs`, `Lb`, `Oz`, `Lt`, `Ml`).
+
+3. **Resumen de errores**  
+   - Devolver lista de filas con errores, sin procesar ninguna fila inválida (o permitir procesar solo válidas, según regla actual).
+
+---
+
+## 4. Pruebas de Seguridad
+
+### 4.1 Pruebas Unitarias / Integración
+
+| Test | Verificación |
+|------|--------------|
+| `Unauthorized_Access_To_Admin_Endpoint_Returns403` | Cajero no puede acceder a `UsersController` |
+| `Cajero_Puede_Cobrar` | Cajero accede a `SalesController` sin problema |
+| `Login_Fail_Does_Not_Log_Password` | Verificar logs no contienen contraseña |
+| `DTO_With_Negative_Price_Is_Rejected` | `PriceRetailUSD = -1` devuelve `400` |
+| `Import_With_Invalid_SKU_Returns_Errors` | Archivo con SKU inválido es rechazado |
+| `Token_Expiration_Triggers_Logout_In_WPF` | Handler 401 limpia `UserSession` |
+
+### 4.2 Verificación Manual
+
+- Iniciar sesión como Cajero y acceder a la URL de admin; debe aparecer mensaje de acceso denegado.  
+- Revisar `logs/security-audit.log` para confirmar que el intento fue registrado.  
+- En WPF, forzar un token inválido y verificar que redirige al login.
+
+---
+
+## Archivos Involucrados
+
+### Backend
+- `Backend.API/Controllers/*.cs`
+- `Backend.API/Program.cs`
+- `Core/DTOs/*.cs`
+- `Sales.Module/Services/SalesService.cs` (si es necesario)
+- `Backend.API/Middleware/SecurityAuditMiddleware.cs` (nuevo)
+- `Backend.API/Filters/ModelStateValidationFilter.cs` (nuevo)
+
+### WPF
+- `Desktop.Client.Core/Services/UserSession.cs`
+- `Desktop.Client.Core/Services/UserSessionHeaderHandler.cs`
+- `Desktop.Client/App.xaml.cs`
+
+### Web
+- `Web.Frontend/src/services/api.js`
+- `Web.Frontend/src/pages/LoginPage.jsx`
+
+### Tests
+- `CommandCenter.Tests/SecurityTests.cs` (nuevo)
+
+---
+
+## Estimación de Esfuerzo
+
+| Tarea | Esfuerzo |
+|-------|----------|
+| Auditoría y mapeo de endpoints/roles | 1 día |
+| Implementación de atributos `[Authorize]` | 0.5 día |
+| Auditoría de logs y contraseñas | 0.5 día |
+| Validación de DTOs y filtros | 1 día |
+| Middleware de auditoría de seguridad | 0.5 día |
+| Pruebas de seguridad | 0.5 día |
+| **Total** | **4 días** |
+
+---
+
+## Criterios de Aceptación
+
+- [ ] Todos los endpoints sensibles tienen `[Authorize]` o `[AllowAnonymous]` correcto.
+- [ ] Un Cajero no puede acceder a funciones de administración; recibe `403` y el intento se registra.
+- [ ] Ningún log contiene contraseñas, tokens JWT ni datos personales.
+- [ ] El cliente WPF almacena JWT solo en memoria y limpia al logout.
+- [ ] Los DTOs rechazan valores negativos, longitudes excesivas y formatos inválidos.
+- [ ] La importación de productos valida completamente cada campo y devuelve errores descriptivos.
+
+---
+
+## Conclusión
+
+La Fase 4 proporcionará una capa de seguridad integral que protegerá el sistema POS contra accesos no autorizados, fugas de datos sensibles y entradas maliciosas. Con esta base, las siguientes fases de consistencia visual y optimización de rendimiento podrán ejecutarse sin comprometer la confidencialidad e integridad del negocio.
+
+
+/**/**/**/**/**/**/**/**/**/**/
+/**/**/**/**/**/**/**/**/**/**/
+
+
+# Fase 5: Consistencia Visual y de Componentes — Plan de Implementación Detallado
+
+## Objetivo  
+Homologar la experiencia entre **Web (React 19)** y **Escritorio (WPF .NET 10)**, reutilizando componentes comunes, unificando estilos y garantizando responsividad y accesibilidad. El resultado será una interfaz coherente en ambas plataformas, sin diferencias notables para el usuario final, y sin dependencia de componentes nativos no estilizados.
+
+## Alcance  
+- **Cliente Web (React)**: Componentes reutilizables, estilos CSS vanilla con variables personalizadas, modales, botones, tablas, buscadores.  
+- **Cliente Escritorio (WPF)**: Vistas XAML, `IDialogService`, `BindingProxy`, estilos Material Design, control de DPI y resoluciones.  
+- **Backend API**: Sin cambios de negocio, salvo soporte para componentes reutilizables en frontend si es necesario (por ejemplo, DTOs que ya existen).
+
+---
+
+## 1. Inventario de Componentes Duplicados
+
+### 1.1 Identificación de componentes comunes
+
+Se realizará un inventario de los componentes que existen en ambas plataformas con lógica o apariencia duplicada. Los principales son:
+
+| Componente | Web (React) | WPF (XAML) | Estado actual | Acción propuesta |
+|------------|-------------|------------|----------------|------------------|
+| **Paginación** | `Pagination.jsx` (nuevo) | `InventoryView` + `DataGrid` | Parcialmente homologado | Unificar estilo y comportamiento (rangos, botones, input de página) |
+| **Buscador de clientes** | `CustomerModal` / `CustomerSelectorCard` | `CustomerPickerDialog` | Duplicado, con diferencias visuales | Extraer lógica compartida (búsqueda, filtrado) a un helper/hook y unificar estilos |
+| **Buscador de productos** | `SearchBar` + `SuggestionList` | `PosView` / `InventoryView` | Duplicado | Unificar debounce y estilos de sugerencias |
+| **Diálogos de confirmación** | `ConfirmModal` / `window.confirm` (parcial) | `IDialogService` + `CustomDialogWindow` | WPF estandarizado, Web no | Reemplazar `window.confirm` por `ConfirmModal` estilizado |
+| **Lista de precios** | `SummaryPanel` (toggle) | `PosView` (RadioButtons) | Visualmente diferente | Homologar a un switch/toggle consistente |
+| **Tarjetas de resumen (KPI)** | `RegisterClosePage` / `CashDrawer` | `CashDrawerView` | Similar pero con diferencias | Unificar diseño de tarjetas |
+| **Tablas de datos** | DataGrid reactivo | `DataGrid` WPF | Estilos y bordes diferentes | Definir guía de estilos para tablas |
+
+### 1.2 Estrategia de unificación
+
+- Para **Web**: Crear componentes reutilizables bajo `Web.Frontend/src/components/ui/` (ej. `Pagination`, `ConfirmDialog`, `SearchInput`, `Card`).  
+- Para **WPF**: Establecer estilos globales en `App.xaml` para los elementos comunes y usar `IDialogService` para confirmaciones.  
+- **Lógica compartida**: No es posible compartir directamente entre C# y JS, pero se puede mantener la misma semántica y comportamiento (mismo número de botones, misma forma de cancelar, mismos mensajes).
+
+### 1.3 Criterios de aceptación
+
+- [ ] Un cajero que use ambas versiones nota la misma disposición y comportamiento.
+- [ ] No hay componentes que hagan lo mismo con estilos radicalmente diferentes.
+- [ ] Los textos de botones y diálogos son idénticos o muy similares.
+
+---
+
+## 2. Reemplazo de `MessageBox.Show` por `IDialogService` en WPF
+
+### 2.1 Objetivo  
+Eliminar cualquier uso residual del nativo `System.Windows.MessageBox.Show` en el cliente WPF, sustituyéndolo por el servicio desacoplado `IDialogService` (que ya existe y usa `CustomDialogWindow` estilizado). Esto garantiza:
+
+- Consistencia visual con el tema oscuro.
+- Respeto al cortacircuitos visual (`IsFatalErrorActive`).
+- Posibilidad de mockear en pruebas unitarias.
+
+### 2.2 Inventario de llamadas residuales
+
+Se realizará una búsqueda global en `Desktop.Client` y `Desktop.Client.Core`:
+
+```powershell
+Get-ChildItem -Recurse -Filter "*.cs" | Select-String "MessageBox.Show"
+```
+
+Posibles archivos con remanentes (según fases anteriores):  
+- `InventoryViewModel.cs` (ya reemplazado en gran parte)  
+- `UsersManagementViewModel.cs` (probablemente ya migrado)  
+- `CashDrawerViewModel.cs` (puede tener alguno)  
+- `PosViewModel.cs` (quizás en `ClearCartCommand` o similar)
+
+### 2.3 Proceso de reemplazo
+
+Para cada llamada encontrada:
+
+```csharp
+// ANTES
+MessageBox.Show("Error al guardar", "Aviso", MessageBoxButton.OK, MessageBoxImage.Error);
+
+// DESPUÉS
+await _dialogService.ShowErrorAsync("Error al guardar", "Ocurrió un error al guardar los cambios. Revise los datos e intente nuevamente.");
+```
+
+Donde `_dialogService` es inyectado en el constructor del ViewModel.
+
+### 2.4 Criterios de aceptación
+
+- [ ] Cero referencias a `MessageBox.Show` en el proyecto WPF.
+- [ ] Todas las notificaciones pasan por `IDialogService`.
+- [ ] Las pruebas unitarias de ViewModels usan mocks de `IDialogService` y no muestran ventanas reales.
+
+---
+
+## 3. Tema y Estilos
+
+### 3.1 Variables de diseño compartidas
+
+#### Web (`Web.Frontend/src/index.css`)
+
+Definir (o verificar que ya existan) las variables CSS que se corresponden con Material Design:
+
+```css
+:root {
+  --bg-primary: #121212;
+  --bg-surface: #1e1e1e;
+  --bg-hover: rgba(99, 102, 241, 0.08);
+  --text-primary: #ffffff;
+  --text-muted: #a0a0a0;
+  --border: #333333;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --primary: #7c3aed;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+}
+```
+
+#### WPF (`Desktop.Client/Themes/Colors.xaml`)
+
+Verificar que los colores equivalentes estén en el diccionario de recursos:
+
+```xml
+<SolidColorBrush x:Key="PrimaryBrush" Color="#7C3AED" />
+<SolidColorBrush x:Key="SuccessBrush" Color="#10B981" />
+<SolidColorBrush x:Key="DangerBrush" Color="#EF4444" />
+<SolidColorBrush x:Key="WarningBrush" Color="#F59E0B" />
+```
+
+### 3.2 Tipografía y espaciado
+
+- **Web**: Usar `font-family: 'Segoe UI', sans-serif` y tamaños consistentes (`0.85rem` base, `1rem` títulos).  
+- **WPF**: Configurar `FontFamily="Segoe UI"` y `FontSize="12"` por defecto en `App.xaml`.
+
+### 3.3 Botones y tarjetas
+
+- **Web**: Crear clases utilitarias `.btn`, `.btn-primary`, `.btn-outline`, `.card` basadas en variables.  
+- **WPF**: Definir estilos implícitos para `Button` en `App.xaml` usando `MaterialDesignRaisedButton` / `MaterialDesignOutlinedButton` y colores primarios.
+
+### 3.4 Tablas
+
+- **Web**: Aplicar estilos a `table` y `thead` con bordes sutiles, hover en filas y alineación derecha para montos.  
+- **WPF**: Configurar `DataGrid` con `AlternatingRowBackground`, `RowHeight`, `ColumnHeaderStyle`, etc., de manera uniforme.
+
+### 3.5 Criterios de aceptación
+
+- [ ] Ambas plataformas usan la misma paleta de colores.
+- [ ] Los botones y tarjetas tienen esquinas redondeadas y sombras consistentes.
+- [ ] Los montos se alinean a la derecha en todas las tablas.
+
+---
+
+## 4. Responsividad y Accesibilidad
+
+### 4.1 Web (React)
+
+#### Responsividad
+
+- Verificar que los modales (`CheckoutModal`, `CustomerModal`, `HoldSaleModal`, etc.) tengan `max-width: 100%` y `overflow-y: auto`.
+- Las tablas en móvil deben permitir scroll horizontal o transformarse en tarjetas (`pending-mobile-view`, ya implementado en Cuentas Abiertas).
+- Asegurar que el teclado numérico ATM sea usable en pantallas táctiles (tamaños de botones ≥ 48px).
+
+#### Accesibilidad
+
+- Añadir atributos `aria-label` a botones iconográficos.
+- Uso de `role="dialog"` y `aria-modal="true"` en modales.
+- Foco automático en el primer campo de cada modal.
+- Manejar `Escape` para cerrar modales de forma consistente.
+
+### 4.2 WPF
+
+#### DPI y resoluciones
+
+- Verificar que las ventanas no tengan tamaños fijos excesivos y usen `MinWidth`/`MaxWidth` adecuados.
+- Probar con escalado de Windows al 125% / 150%.
+- Utilizar `Viewbox` o `Grid` con `*` para distribución fluida.
+
+#### Accesibilidad
+
+- Añadir `AutomationProperties.Name` a controles personalizados (botones con iconos).
+- Soporte de navegación por teclado (`Tab`, `Enter`, `Escape`).
+- Contraste de colores suficiente (texto blanco sobre fondos oscuros).
+
+### 4.3 Criterios de aceptación
+
+- [ ] La aplicación Web se ve y funciona correctamente en móvil y tablet.
+- [ ] WPF se adapta sin cortes a resoluciones de 1366x768 hasta 1920x1080.
+- [ ] Los controles interactivos son accesibles por teclado y lectores de pantalla básicos.
+
+---
+
+## Archivos Involucrados
+
+### Frontend Web (`Web.Frontend/`)
+
+- `src/index.css` (variables y estilos globales)
+- `src/components/ui/Pagination.jsx` (nuevo o existente, según fase 1)
+- `src/components/ui/ConfirmDialog.jsx` (nuevo)
+- `src/components/pos/SearchBar.jsx`
+- `src/components/pos/SuggestionList.jsx`
+- `src/components/checkout/CheckoutModal.jsx`
+- `src/components/pos/CustomerModal.jsx`
+- `src/pages/RegisterClosePage.jsx`
+- `src/pages/PendingOrdersPage.jsx` (si aplica)
+
+### Desktop Client (`Desktop.Client/` y `Desktop.Client.Core/`)
+
+- `Desktop.Client/App.xaml` (estilos globales)
+- `Desktop.Client/Themes/Colors.xaml` (paleta)
+- `Desktop.Client/Views/*.xaml` (vistas afectadas)
+- `Desktop.Client.Core/ViewModels/*.cs` (remplazo de MessageBox)
+- `Desktop.Client.Core/Services/IDialogService.cs` (ya existe)
+
+---
+
+## Estimación de Esfuerzo
+
+| Tarea | Esfuerzo |
+|-------|----------|
+| Inventario de componentes duplicados | 0.5 día |
+| Reemplazo de `MessageBox.Show` residual | 0.5 día |
+| Unificación de estilos y variables | 1 día |
+| Ajustes de responsividad y accesibilidad | 1 día |
+| Pruebas manuales y revisión | 0.5 día |
+| **Total** | **3.5 días** |
+
+---
+
+## Criterios de Aceptación Finales de Fase 5
+
+- [ ] No hay `MessageBox` nativos en WPF.
+- [ ] Colores, fuentes y espaciados son idénticos en Web y WPF.
+- [ ] Los componentes de paginación, buscador y diálogos tienen el mismo comportamiento.
+- [ ] La aplicación Web es usable en pantallas táctiles.
+- [ ] WPF se adapta correctamente a diferentes resoluciones y DPI.
+- [ ] Un usuario que use ambas versiones no nota diferencias en la lógica ni en la apariencia.
+
+---
+
+## Conclusión
+
+Esta fase de consistencia visual y de componentes elimina las fricciones estéticas entre la versión web y la de escritorio, proporcionando una experiencia unificada y profesional. Al reutilizar componentes y centralizar estilos, se reduce el mantenimiento y se mejora la percepción de calidad del sistema. Una vez completada, el sistema estará listo para la última fase de optimización de rendimiento.
+
+
+
+
+
+/**/**/**/**/**/**/**/**/**/**/
+/**/**/**/**/**/**/**/**/**/**/
+
+
+
+
+# Fase 6: Optimización Focalizada de Rendimiento — Plan de Implementación Detallado
+
+## Objetivo
+Reducir los tiempos de respuesta y el consumo de recursos del sistema POS, centrándose en los puntos críticos identificados en el diagnóstico y las fases previas. Se optimizarán las consultas a base de datos, se eliminarán cargas innecesarias, se aplicará caché para datos estáticos y se corregirán los problemas de N+1 queries residuales, manteniendo la estabilidad y sin introducir nuevas funcionalidades.
+
+## Alcance
+- **Backend API**: `InventoryService`, `SalesService`, `CashDrawerService`, `DailyClosureService` y contexto de EF Core.
+- **Cliente Web (React)**: No se esperan cambios de rendimiento backend en esta fase, salvo que se detecten problemas en el frontend (debounce ya aplicado en Fase 1).
+- **Cliente Escritorio (WPF)**: Virtualización y carga diferida ya cubiertas; esta fase se enfoca en backend y consultas.
+- **Base de Datos PostgreSQL**: Índices, consultas, y caché en memoria.
+
+---
+
+## 1. Revisión y Creación de Índices en Base de Datos
+
+### 1.1 Objetivo
+Garantizar que las búsquedas y filtros principales utilicen índices B-Tree adecuados, evitando escaneos secuenciales en tablas grandes.
+
+### 1.2 Índices a Crear o Verificar
+
+| Tabla | Columna(s) | Tipo de índice | Justificación |
+|-------|-----------|----------------|---------------|
+| `Products` | `SKU` | B-Tree único | Búsqueda por código de barras en catálogo y POS. |
+| `Products` | `Name` | B-Tree (no único) | Búsqueda por nombre y filtros de catálogo. |
+| `Products` | `IsActive` | B-Tree parcial `WHERE IsActive = true` | Consultas de productos activos (sugerencias, listados). |
+| `Customers` | `CedulaOrRif` | B-Tree único funcional `LOWER(CedulaOrRif)` | Búsqueda case-insensitive de clientes. |
+| `Customers` | `Name` | B-Tree (no único) | Filtros por nombre en listas y selección. |
+| `Sales` | `Status` | B-Tree parcial `WHERE Status = 1` (OnHold) o `Status = 2` (Completed) | Consultas de cuentas abiertas, historial. |
+| `Sales` | `DeliveryStatus` | B-Tree | Filtrar retiros pendientes y consumos. |
+| `Sales` | `InvoiceNumber` | B-Tree | Búsqueda por factura en historial. |
+| `Sales` | `Date` | B-Tree | Consultas por rango de fechas en cierres y reportes. |
+| `SaleItems` | `SaleId` | B-Tree (FK) | Cargar ítems de una venta rápidamente. |
+| `SalePayments` | `SaleId` | B-Tree (FK) | Cargar pagos de una venta. |
+| `CashTransactions` | `SessionId` | B-Tree | Transacciones de caja por sesión. |
+| `CashTransactions` | `TransactionTime` | B-Tree | Cierres y auditorías por fecha. |
+
+### 1.3 Implementación
+
+- Crear migraciones EF Core con `migrationBuilder.CreateIndex(...)` para los índices faltantes.
+- Para índices parciales, usar `HasFilter` en `OnModelCreating`.
+- Ejemplo para `Products`:
+
+```csharp
+modelBuilder.Entity<Product>()
+    .HasIndex(p => p.SKU)
+    .IsUnique()
+    .HasFilter("\"IsDeleted\" = false");
+```
+
+- Para `Customers` con índice funcional:
+
+```csharp
+modelBuilder.Entity<Customer>()
+    .HasIndex(c => c.CedulaOrRif)
+    .IsUnique()
+    .HasDatabaseName("IX_Customers_CedulaOrRif_Lower")
+    .HasFilter(null) // No parcial
+    .HasOperators("lower");
+```
+
+*(Nota: EF Core soporta `HasDatabaseName` y `HasOperators` para índices funcionales en PostgreSQL; verifica la sintaxis exacta de tu versión.)*
+
+### 1.4 Criterios de Aceptación
+
+- [ ] Las consultas de catálogo con 10.000 productos devuelven resultados en < 500 ms.
+- [ ] Las búsquedas por SKU y nombre no generan escaneos secuenciales (`EXPLAIN ANALYZE` lo confirma).
+- [ ] Los índices se crean mediante migraciones versionadas y se aplican en instalaciones nuevas y actualizaciones.
+
+---
+
+## 2. Consultas de Solo Lectura con `AsNoTracking`
+
+### 2.1 Objetivo
+Reducir el consumo de memoria y el trabajo del Change Tracker en todas las consultas que no necesitan modificar entidades.
+
+### 2.2 Inventario de Consultas
+
+| Servicio | Método | ¿Ya usa AsNoTracking? | Acción |
+|----------|--------|------------------------|--------|
+| `InventoryService` | `GetProductsPagedAsync` | No | Agregar `AsNoTracking()` |
+| `InventoryService` | `GetProductsByIdsAsync` | Parcial | Agregar `AsNoTracking()` |
+| `SalesService` | `GetPendingSalesAsync` | No | Agregar `AsNoTracking()` y proyección a DTO |
+| `SalesService` | `GetHistoryAsync` | No | Agregar `AsNoTracking()` y proyección a DTO |
+| `SalesService` | `GetPendingPickupsAsync` | No | Agregar `AsNoTracking()` |
+| `CashDrawerService` | `GetActiveSessionAsync` | No | Agregar `AsNoTracking()` si solo lectura |
+| `DailyClosureService` | `GetExpectedTotalsByPaymentMethodAsync` | No | Agregar `AsNoTracking()` |
+
+### 2.3 Implementación
+
+Ejemplo en `InventoryService.GetProductsPagedAsync`:
+
+```csharp
+var query = _context.Products
+    .AsNoTracking()
+    .Where(p => p.IsActive)
+    .OrderBy(p => p.Name)
+    .Select(p => new ProductDto { ... });
+```
+
+Para consultas con `Include`, usar `AsSplitQuery()` para evitar N+1:
+
+```csharp
+var sales = await _context.Sales
+    .AsNoTracking()
+    .Include(s => s.Items)
+    .Include(s => s.Payments)
+    .AsSplitQuery()
+    .ToListAsync();
+```
+
+### 2.4 Criterios de Aceptación
+
+- [ ] Todas las consultas de listado y búsqueda usan `AsNoTracking`.
+- [ ] Las consultas con colecciones hijas usan `AsSplitQuery`.
+- [ ] No hay instancias de `Include` sin `AsNoTracking` en operaciones de solo lectura.
+
+---
+
+## 3. Monitoreo y Corrección de N+1 Queries Residuales
+
+### 3.1 Objetivo
+Identificar y eliminar cualquier patrón N+1 en flujos de venta, edición y cierre.
+
+### 3.2 Procedimiento
+
+1. **Activar logging de EF Core** en `appsettings.Development.json`:
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Microsoft.EntityFrameworkCore.Database.Command": "Information"
+    }
+  }
+}
+```
+
+2. **Ejecutar flujos críticos** y capturar el número de `Executed DbCommand`:
+   - Agregar producto al carrito.
+   - Cambiar cantidad.
+   - Completar venta con 3 métodos de pago.
+   - Recalcular total de una venta con 15 ítems.
+   - Listar cuentas abiertas.
+   - Cierre diario.
+
+3. **Identificar repeticiones** de consultas sobre la misma tabla en el mismo flujo.
+
+4. **Aplicar técnicas de corrección**:
+   - Cargar productos por lote con `GetProductsByIdsAsync`.
+   - Cargar métodos de pago con `Dictionary<int, PaymentMethod>`.
+   - Usar proyección a DTO con `Select` en lugar de `Include` para listados.
+   - Evitar llamadas a `FindAsync` dentro de bucles.
+
+### 3.3 Ejemplo de corrección
+
+**Antes** (N+1 en recálculo de total):
+
+```csharp
+foreach (var item in sale.Items)
+{
+    var product = await _context.Products.FindAsync(item.ProductId);
+    // ...
+}
+```
+
+**Después** (batch):
+
+```csharp
+var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
+var products = await _context.Products
+    .AsNoTracking()
+    .Where(p => productIds.Contains(p.Id))
+    .ToDictionaryAsync(p => p.Id);
+```
+
+### 3.4 Criterios de Aceptación
+
+- [ ] El flujo de venta normal ejecuta menos de 10 consultas SQL (sin contar el guardado final).
+- [ ] El recálculo de total para 15 ítems ejecuta exactamente 1 consulta de productos.
+- [ ] No existen patrones de `FindAsync` dentro de bucles.
+
+---
+
+## 4. Caché de Datos Estáticos en Memoria
+
+### 4.1 Objetivo
+Reducir consultas repetitivas a la base de datos para datos que cambian con poca frecuencia.
+
+### 4.2 Datos Candidatos a Caché
+
+| Dato | TTL sugerido | Invalidación |
+|------|--------------|--------------|
+| Métodos de pago activos | 5 minutos | Al crear/actualizar/eliminar método de pago |
+| Cliente por defecto (`Consumidor Final`) | 10 minutos | Al actualizar cliente por defecto |
+| Tasa BCV del día | 10 minutos | Al actualizar tasa manualmente o por job |
+| Configuración de negocio | 15 minutos | Al guardar configuración |
+
+### 4.3 Implementación
+
+1. **Inyectar `IMemoryCache`** en los servicios correspondientes.
+
+2. **Métodos de pago activos** en `PaymentMethodService`:
+
+```csharp
+public async Task<List<PaymentMethodDto>> GetActiveMethodsAsync()
+{
+    var cacheKey = "active_payment_methods";
+    if (!_cache.TryGetValue(cacheKey, out List<PaymentMethodDto>? methods))
+    {
+        methods = await _context.PaymentMethods
+            .AsNoTracking()
+            .Where(p => p.IsActive)
+            .Select(p => new PaymentMethodDto { ... })
+            .ToListAsync();
+
+        _cache.Set(cacheKey, methods, TimeSpan.FromMinutes(5));
+    }
+    return methods!;
+}
+```
+
+3. **Invalidación** en los métodos de mutación:
+
+```csharp
+public async Task CreatePaymentMethodAsync(...)
+{
+    // ... guardar
+    _cache.Remove("active_payment_methods");
+}
+```
+
+4. **Tasa BCV** en `ExchangeRateService`:
+
+```csharp
+var cacheKey = $"bcv_rate_{DateTime.UtcNow:yyyyMMdd}";
+if (!_cache.TryGetValue(cacheKey, out decimal rate))
+{
+    rate = await FetchRateFromBcvAsync();
+    _cache.Set(cacheKey, rate, TimeSpan.FromMinutes(10));
+}
+```
+
+5. **Uso de `CancellationToken`** en las consultas para cancelación rápida.
+
+### 4.4 Criterios de Aceptación
+
+- [ ] Las consultas a métodos de pago no se repiten en cada cobro si ya se cargaron en los últimos 5 minutos.
+- [ ] La tasa BCV no se consulta al BCV más de una vez cada 10 minutos por día.
+- [ ] Al modificar un método de pago, la caché se invalida inmediatamente.
+
+---
+
+## 5. Optimización de Paginación y Consultas de Catálogo
+
+### 5.1 Objetivo
+Asegurar que el catálogo de productos responda rápido incluso con 10.000 registros, usando paginación server-side eficiente y proyección a DTO.
+
+### 5.2 Implementación
+
+- Ya se dispone de `GetProductsPagedAsync` con paginación y ordenamiento dinámico (implementado en fases anteriores).  
+- Verificar que la consulta use `Skip((page - 1) * pageSize).Take(pageSize)` y `CountAsync()` para el total.
+- Usar `AsNoTracking` y proyección directa a DTO:
+
+```csharp
+var items = await _context.Products
+    .AsNoTracking()
+    .Where(filter)
+    .OrderBy(sortExpression)
+    .Skip((page - 1) * pageSize)
+    .Take(pageSize)
+    .Select(p => new ProductDto { ... })
+    .ToListAsync();
+
+var totalCount = await _context.Products.CountAsync(filter);
+```
+
+### 5.3 Criterios de Aceptación
+
+- [ ] El catálogo con 10.000 productos responde en < 500 ms con paginación de 25.
+- [ ] El ordenamiento y filtrado se ejecutan en el servidor (no en memoria).
+
+---
+
+## 6. Verificación de Rendimiento
+
+### 6.1 Pruebas Automatizadas
+
+Crear pruebas de integración que midan el rendimiento básico:
+
+- `Catalog_Pagination_With_10000_Products_Responds_Under_500ms`
+- `CompleteSale_With_15_Items_Executes_Less_Than_10_Queries`
+- `PaymentMethod_Cache_Invalidates_On_Update`
+
+### 6.2 Métricas de Éxito
+
+| Métrica | Objetivo |
+|---------|----------|
+| Tiempo de respuesta catálogo (10.000 productos, 25 por página) | < 500 ms |
+| Consultas SQL en venta normal | < 10 |
+| Tasa de aciertos de caché para métodos de pago | > 90% |
+| Uso de memoria en backend | Estable, sin crecimiento continuo |
+
+### 6.3 Plan de Pruebas Manuales
+
+1. **Escenario catálogo**: Buscar y paginar 10.000 productos; verificar fluidez sin retrasos notables.
+2. **Escenario venta**: Agregar 15 productos con cantidades fraccionadas; medir tiempo de recálculo y total.
+3. **Escenario cierre**: Ejecutar cierre diario y medir tiempo de cálculo de totales esperados.
+4. **Escenario caché**: Modificar un método de pago y verificar que la próxima venta usa la nueva caché inmediatamente.
+
+---
+
+## Archivos Involucrados
+
+### Backend (`Sales.Module`, `Inventory.Module`, `Backend.API`)
+
+- `Inventory.Module/Services/InventoryService.cs`
+- `Sales.Module/Services/SalesService.cs`
+- `Sales.Module/Services/CashDrawerService.cs`
+- `Sales.Module/Services/PaymentMethodService.cs`
+- `Backend.API/Program.cs` (logging de EF Core, servicios caché)
+- Migraciones para índices
+
+### Tests (`CommandCenter.Tests`)
+
+- `CommandCenter.Tests/PerformanceTests.cs` (nuevo)
+
+---
+
+## Estimación de Esfuerzo
+
+| Tarea | Esfuerzo |
+|-------|----------|
+| Creación de índices | 0.5 día |
+| AsNoTracking y proyecciones | 0.5 día |
+| Corrección de N+1 | 1 día |
+| Caché de datos estáticos | 1 día |
+| Pruebas y mediciones | 0.5 día |
+| **Total** | **3.5 días** |
+
+---
+
+## Criterios de Aceptación Finales de Fase 6
+
+- [ ] El catálogo con 10.000 productos responde en < 500 ms.
+- [ ] Las operaciones de venta completan en < 2 s en un equipo estándar.
+- [ ] No se observan N+1 queries en los flujos críticos.
+- [ ] La caché de datos estáticos reduce las consultas a BD.
+- [ ] Los índices añadidos no degradan el rendimiento de inserción/actualización.
+- [ ] Las métricas de éxito se cumplen en el entorno de producción simulado.
+
+---
+
+Con esta fase, el sistema POS estará optimizado para soportar catálogos de alto volumen y operaciones intensivas de venta, garantizando una experiencia fluida en ambas plataformas. El plan de pulido y estabilización completo habrá logrado consolidar un producto confiable, seguro y eficiente.
+
+
+
+

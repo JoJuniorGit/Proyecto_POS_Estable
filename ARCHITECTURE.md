@@ -271,6 +271,40 @@ public record SaleItemSnapshot(
 └──────────────────┘
 ```
 
+### 4.5 Motor Multi-Formato Monetario (Dual-Currency Format Pipeline)
+
+El sistema soporta oficialmente dos estándares numéricos de presentación y parseo gobernados globalmente:
+
+1. **Venezolano Contable (`Venezuelan` - Por Defecto):**
+   - Separador de miles: Punto (`.`)
+   - Separador decimal: Coma (`,`)
+   - Ejemplos: `172.786,94` / `Bs.S 172.786,94` / `$ 1.250,50`
+2. **Internacional (`International`):**
+   - Separador de miles: Coma (`,`)
+   - Separador decimal: Punto (`.`)
+   - Ejemplos: `172,786.94` / `Bs.S 172,786.94` / `$ 1,250.50`
+
+```
+┌───────────────────────────┐      PUT /api/settings/currency-format      ┌──────────────────────┐
+│  Configuración (Admin)    │ ──────────────────────────────────────────► │ Backend API          │
+│  (Web / Desktop WPF)      │ ◄────────────────────────────────────────── │ (SettingsController) │
+└───────────────────────────┘      200 OK + Persiste en SystemSettings    └──────────┬───────────┘
+                                                                                     │
+                                                      Broadcast OnCurrencyFormatUpdated via SignalR
+                                                                                     ▼
+                                       ┌─────────────────────────────────────────────────────────────┐
+                                       │ Clients: Web (CurrencyFormatContext) & WPF (SettingsVM)     │
+                                       │ Actualización reactiva instantánea sin recarga de pantalla  │
+                                       └─────────────────────────────────────────────────────────────┘
+```
+
+**Principios de Implementación y Reglas de Parseo:**
+- **Inmutabilidad y Coherencia:** El formato es puramente cosmético a nivel de presentación (UI). Los datos en base de datos y memoria viajan siempre como números de punto flotante (`decimal` / `number`), garantizando cero drift financiero.
+- **Regla de Parseo Universal (`parseAmount`):**
+  - Un solo separador (punto o coma): Se interpreta como separador decimal (`172,94` -> `172.94`, `172.94` -> `172.94`, `72915` -> `72915.00`).
+  - Dos o más separadores: El **último** separador es el decimal y los precedentes son de miles (`172.786,94` -> `172786.94`, `172,786.94` -> `172786.94`, `1.234.567,89` -> `1234567.89`).
+- **Utilidades Centralizadas Obligatorias:** Se prohíben formateadores locales ad-hoc. Todo nuevo desarrollo debe utilizar `formatAmount`, `formatBsS`, `formatUSD` y `parseAmount` de `formatters.js` (Web) o `NumericCalculatorBehavior.ParseAmount` (WPF).
+
 ---
 
 ## 5. Contextos de Datos

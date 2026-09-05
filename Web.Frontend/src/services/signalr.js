@@ -25,6 +25,12 @@ export async function connectRateHub(onRateUpdate, onHoldSalesUpdated, onPayment
         window.dispatchEvent(new CustomEvent('onPaymentMethodsUpdated'));
       });
     }
+    connection.off('OnCurrencyFormatUpdated');
+    connection.on('OnCurrencyFormatUpdated', (newFormat) => {
+      if (newFormat) {
+        window.dispatchEvent(new CustomEvent('onCurrencyFormatUpdated', { detail: newFormat }));
+      }
+    });
     return connection;
   }
 
@@ -54,6 +60,12 @@ export async function connectRateHub(onRateUpdate, onHoldSalesUpdated, onPayment
       onPaymentMethodsUpdated();
     }
     window.dispatchEvent(new CustomEvent('onPaymentMethodsUpdated'));
+  });
+
+  connection.on('OnCurrencyFormatUpdated', (newFormat) => {
+    if (newFormat) {
+      window.dispatchEvent(new CustomEvent('onCurrencyFormatUpdated', { detail: newFormat }));
+    }
   });
 
   try {

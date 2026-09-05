@@ -95,17 +95,62 @@ public class NumericCalculatorBehavior : Behavior<TextBox>
         if (e.DataObject.GetDataPresent(DataFormats.Text))
         {
             string text = (string)e.DataObject.GetData(DataFormats.Text);
-            
-            // Clean the text from non-digits and try to parse as decimal
-            string cleanText = new string(text.Where(char.IsDigit).ToArray());
-            if (decimal.TryParse(cleanText, out decimal pastedValue))
-            {
-                // We treat pasted text as a whole number of cents
-                Value = pastedValue / 100m;
-            }
+            Value = ParseAmount(text);
         }
         e.CancelCommand();
         e.Handled = true;
+    }
+
+    public static decimal ParseAmount(string? rawText)
+    {
+        if (string.IsNullOrWhiteSpace(rawText)) return 0m;
+        string str = rawText.Trim();
+        bool isNegative = str.StartsWith('-');
+        if (isNegative) str = str.Substring(1).Trim();
+
+        if (str.StartsWith("Bs.S", StringComparison.OrdinalIgnoreCase)) str = str.Substring(4).Trim();
+        else if (str.StartsWith("Bs", StringComparison.OrdinalIgnoreCase)) str = str.Substring(2).Trim();
+        else if (str.StartsWith("$")) str = str.Substring(1).Trim();
+
+        if (string.IsNullOrWhiteSpace(str)) return 0m;
+
+        if (str.Contains(",,") || str.Contains("..") || str.Contains(".,") || str.Contains(",."))
+            return 0m;
+
+        if (str.Any(c => !char.IsDigit(c) && c != '.' && c != ','))
+            return 0m;
+
+        int dotCount = str.Count(c => c == '.');
+        int commaCount = str.Count(c => c == ',');
+        int totalSeps = dotCount + commaCount;
+
+        if (totalSeps == 0)
+        {
+            if (decimal.TryParse(str, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var whole))
+                return isNegative ? -whole : whole;
+            return 0m;
+        }
+
+        if (totalSeps == 1)
+        {
+            var normalized = str.Replace(',', '.');
+            if (decimal.TryParse(normalized, System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.InvariantCulture, out var singleVal))
+                return isNegative ? -singleVal : singleVal;
+            return 0m;
+        }
+
+        int lastDot = str.LastIndexOf('.');
+        int lastComma = str.LastIndexOf(',');
+        int lastSepIndex = Math.Max(lastDot, lastComma);
+
+        string intPart = str.Substring(0, lastSepIndex).Replace(".", "").Replace(",", "");
+        string decPart = str.Substring(lastSepIndex + 1);
+
+        string combined = $"{intPart}.{decPart}";
+        if (decimal.TryParse(combined, System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.InvariantCulture, out var multiVal))
+            return isNegative ? -multiVal : multiVal;
+
+        return 0m;
     }
 
     private void UpdateText()

@@ -1,46 +1,16 @@
+A continuación se presenta el **plan de desarrollo secuencial integral de 15 pasos**, que fusiona las 8 ideas originales del documento con las 7 propuestas de alta sinergia. 
 
+Las ideas originales se presentan **íntegras y textualmente tal como fueron redactadas**, las nuevas ideas sinérgicas adoptan la misma estructura formal, y cada una cuenta con su bloque **Justificación:** detallando el motivo lógico, técnico, la dificultad y el efecto dominó que determinan su ubicación en la secuencia.
 
-1. Implementar controles de sesión para cerrar sesión al iniciar o cambiar contraseña del sistema, visualizar usuarios activos
-Objetivo: Fortalecer la seguridad y administración de la aplicación mediante la gestión centralizada de sesiones de usuario.
+---
 
-Descripción detallada:
+# Plan de Desarrollo Secuencial Integral (15 Pasos)
 
-Cierre de sesión automático al iniciar sesión en otro dispositivo:
-Cuando un usuario inicia sesión con sus credenciales en una nueva instancia o dispositivo, el sistema deberá invalidar de forma inmediata cualquier sesión activa previa asociada a ese mismo usuario. Esto previene accesos concurrentes no autorizados y garantiza que las credenciales no se utilicen simultáneamente en múltiples equipos sin control.
+---
 
-Cierre de sesión forzado al cambiar la contraseña:
-Tras un cambio de contraseña exitoso, todas las sesiones activas del usuario deberán cerrarse automáticamente, incluyendo la actual. El sistema emitirá tokens de refresco inválidos y solicitará un nuevo inicio de sesión con la nueva contraseña. Esta medida evita que sesiones antiguas sigan operando con la contraseña anterior.
+## FASE 1: Estabilidad de Cliente, Ciclo de Vida y Persistencia de Carritos
 
-Visualización de usuarios activos:
-Se implementará una vista administrativa que muestre:
-
-Usuario (nombre y rol).
-
-Fecha y hora de inicio de sesión.
-
-Dispositivo o dirección IP.
-
-Estado de la sesión (activa, inactiva, bloqueada).
-
-Opciones para cerrar sesión de forma remota (kick) o revocar todos los tokens de un usuario.
-
-Aspectos técnicos:
-
-Uso de JWT con lista de revocación o almacenamiento de sesiones en base de datos (tabla UserSessions).
-
-Middleware que valide la vigencia del token y su estado activo.
-
-Notificaciones en tiempo real mediante SignalR para informar al usuario si su sesión ha sido cerrada.
-
-Beneficios:
-
-Mayor control sobre accesos no deseados.
-
-Cumplimiento de políticas de seguridad corporativas.
-
-Facilidad para auditar sesiones activas.
-
-####################
+### Paso 1
 
 2. Mejorar comportamiento de cierre
 Objetivo: Asegurar que la aplicación se cierre de forma ordenada, guardando el estado crítico y liberando recursos adecuadamente.
@@ -83,7 +53,445 @@ Previene fugas de memoria y cuelgues.
 
 Mejora la experiencia general del usuario.
 
-####################
+**Justificación:**
+- **Dificultad:** Baja - Media.
+- **Efecto Dominó:** Es el cimiento operativo del cliente. No requiere migraciones ni cambios en el esquema de base de datos. Garantiza la liberación limpia de recursos de hardware (cámaras web, hilos de escaneo, canales SignalR) y previene bloqueos de DLLs durante el ciclo de compilación/desarrollo de los pasos siguientes. Además, implementar el guardado de carritos previene la pérdida de ventas durante las pruebas de las siguientes fases.
+
+---
+
+### Paso 2
+
+9. Venta en espera multiterminal / Carritos compartidos y persistentes (Parked Orders)
+Objetivo: Permitir pausar ventas en curso y almacenarlas en el servidor para que cualquier terminal de la red local pueda retomarlas, evitando cuellos de botella en la fila de cobro.
+
+Descripción detallada:
+
+Pausa rápida de venta (Hot-Key F4):
+Cuando un cliente olvide un artículo, no tenga método de pago a mano o requiera tiempo para decidir, el cajero podrá pausar la venta con una sola tecla, liberando la caja de inmediato para atender al siguiente cliente.
+
+Almacenamiento centralizado en servidor:
+La orden en pausa se guardará con un código temporal (`HOLD-XXXX`), nombre de cliente (opcional), lista de productos y cantidades en el backend, en lugar de quedar atrapada exclusivamente en el almacenamiento local de un único navegador o máquina.
+
+Recuperación desde cualquier estación:
+Cualquier estación de cobro (sea cliente Desktop WPF o Web POS móvil) podrá visualizar la lista de órdenes en espera y retomar el carrito con un solo clic.
+
+Control de expiración e inventario:
+Las órdenes en espera mantendrán una reserva temporal opcional de stock o se liberarán automáticamente si no se cobran tras un período configurable (ej. 2 horas o al fin del turno).
+
+Aspectos técnicos:
+
+Tabla o caché distribuida de `ParkedOrders` y `ParkedOrderItems`.
+
+Endpoints en `SalesController`: `POST /api/sales/park`, `GET /api/sales/parked`, `DELETE /api/sales/parked/{id}`.
+
+Integración con atajos de teclado POS existentes (`F4` en WPF y Web).
+
+Beneficios:
+
+Elimina filas y tiempos muertos en caja.
+
+Multiplica la utilidad de la persistencia de carritos implementada en el Paso 1 al llevarla a escala multiterminal.
+
+Mayor fluidez operativa en horas pico.
+
+**Justificación:**
+- **Dificultad:** Media.
+- **Efecto Dominó:** Se ensambla de forma inmediata sobre el manejo de estado de carritos y modales del Paso 1. En lugar de limitar la recuperación de carritos a un archivo local de una sola computadora, crea el canal centralizado de órdenes pendientes. Esto allana el camino para los siguientes pasos comerciales y asegura que cuando se incorporen las sesiones concurrentes (Paso 3) y las ventas a crédito (Paso 11), las transacciones puedan suspenderse y reanudarse con total seguridad.
+
+---
+
+## FASE 2: Seguridad, Control de Sesiones y Autorizaciones Remotas
+
+### Paso 3
+
+1. Implementar controles de sesión para cerrar sesión al iniciar o cambiar contraseña del sistema, visualizar usuarios activos
+Objetivo: Fortalecer la seguridad y administración de la aplicación mediante la gestión centralizada de sesiones de usuario.
+
+Descripción detallada:
+
+Cierre de sesión automático al iniciar sesión en otro dispositivo:
+Cuando un usuario inicia sesión con sus credenciales en una nueva instancia o dispositivo, el sistema deberá invalidar de forma inmediata cualquier sesión activa previa asociada a ese mismo usuario. Esto previene accesos concurrentes no autorizados y garantiza que las credenciales no se utilicen simultáneamente en múltiples equipos sin control.
+
+Cierre de sesión forzado al cambiar la contraseña:
+Tras un cambio de contraseña exitoso, todas las sesiones activas del usuario deberán cerrarse automáticamente, incluyendo la actual. El sistema emitirá tokens de refresco inválidos y solicitará un nuevo inicio de sesión con la nueva contraseña. Esta medida evita que sesiones antiguas sigan operando con la contraseña anterior.
+
+Visualización de usuarios activos:
+Se implementará una vista administrativa que muestre:
+
+Usuario (nombre y rol).
+
+Fecha y hora de inicio de sesión.
+
+Dispositivo o dirección IP.
+
+Estado de la sesión (activa, inactiva, bloqueada).
+
+Opciones para cerrar sesión de forma remota (kick) o revocar todos los tokens de un usuario.
+
+Aspectos técnicos:
+
+Uso de JWT con lista de revocación o almacenamiento de sesiones en base de datos (tabla UserSessions).
+
+Middleware que valide la vigencia del token y su estado activo.
+
+Notificaciones en tiempo real mediante SignalR para informar al usuario si su sesión ha sido cerrada.
+
+Beneficios:
+
+Mayor control sobre accesos no deseados.
+
+Cumplimiento de políticas de seguridad corporativas.
+
+Facilidad para auditar sesiones activas.
+
+**Justificación:**
+- **Dificultad:** Media.
+- **Efecto Dominó:** Es la piedra angular de seguridad e identidad del sistema. Introduce la entidad `UserSessions` y el middleware de revocación JWT, además de desplegar el canal bidireccional en tiempo real de SignalR para los usuarios autenticados. Cualquier módulo posterior que requiera auditar quién realizó una acción (ajustes de stock, créditos o reportes de ventas por cajero) necesita de antemano una sesión inmutable y sin accesos duplicados no controlados.
+
+---
+
+### Paso 4
+
+10. Alertas administrativas y autorizaciones remotas en tiempo real (SignalR)
+Objetivo: Permitir a los administradores autorizar operaciones críticas de caja (descuentos especiales, mermas altas, créditos excepcionales) de forma remota desde su equipo, sin necesidad de desplazarse físicamente a la caja.
+
+Descripción detallada:
+
+Detección de acciones protegidas en caja:
+Cuando un cajero intente una acción que exceda sus privilegios (ej. aplicar un descuento superior al límite, autorizar un crédito a un cliente con saldo vencido o anular un ticket emitido), el sistema desplegará un estado de espera: *"Esperando autorización del supervisor..."*.
+
+Notificación push en panel administrativo:
+A través del canal SignalR activo establecido en el Paso 3, a los usuarios con rol `Admin` o `Manager` conectados les aparecerá una notificación emergente con el detalle de la operación (Cajero solicitante, Terminal, Monto, Motivo).
+
+Aprobación o rechazo con un clic:
+El administrador podrá pulsar *"Aprobar"* o *"Rechazar"*, enviando un token efímero de autorización firmado directamente a la terminal solicitante para desbloquear la transacción.
+
+Registro de auditoría del supervisor:
+Toda autorización remota registrará en base de datos quién la autorizó, a qué hora y el motivo, quedando ligada a la venta o al ajuste correspondiente.
+
+Aspectos técnicos:
+
+Hub SignalR `AuthorizationHub`.
+
+Tokens efímeros de autorización con expiración de 60 segundos.
+
+Integración con el modal de cobro y el diálogo de anulación.
+
+Beneficios:
+
+Agiliza la operación en horas pico al no requerir que el gerente camine hasta la caja.
+
+Trazabilidad total de autorizaciones excepcionales.
+
+Asegura el principio de mínimo privilegio para cajeros sin frenar el negocio.
+
+**Justificación:**
+- **Dificultad:** Media.
+- **Efecto Dominó:** Depende directamente del canal SignalR y del monitoreo de sesiones activas del Paso 3. Ubicarla antes de la auditoría de inventario (Paso 5) y del módulo de créditos (Paso 11) es una decisión de alto impacto: permite que cuando se construyan esos módulos complejos, ya cuenten con el mecanismo nativo para solicitar autorizaciones en lugar de tener que implementarlo después como un parche.
+
+---
+
+## FASE 3: Control de Inventario y Auditoría de Stock
+
+### Paso 5
+
+6. Agregar sección de auditoría de ajustes de stock
+Objetivo: Mantener un registro detallado y consultable de todos los ajustes de inventario realizados manualmente o automáticamente.
+
+Descripción detallada:
+
+Registro de eventos:
+
+Fecha y hora.
+
+Usuario responsable.
+
+Producto afectado (SKU y nombre).
+
+Cantidad anterior y nueva.
+
+Motivo del ajuste (merma, entrada, corrección, venta).
+
+Tipo de ajuste (manual, importación, sistema).
+
+Filtros:
+
+Por rango de fechas.
+
+Por usuario.
+
+Por producto.
+
+Por tipo de ajuste.
+
+Exportación:
+
+PDF/Excel para auditorías externas.
+
+Protección:
+
+Solo usuarios con rol Admin o Manager pueden realizar ajustes; la consulta puede ser para Auditor.
+
+Aspectos técnicos:
+
+Tabla StockAdjustmentsAudit.
+
+Inserción automática en cada modificación de StockQuantity.
+
+Beneficios:
+
+Trazabilidad completa.
+
+Detección de irregularidades.
+
+Cumplimiento normativo.
+
+**Justificación:**
+- **Dificultad:** Media.
+- **Efecto Dominó:** Crea la entidad `StockAdjustmentsAudit` y conecta los disparadores en el servicio de inventario. Disponer de este registro inmutable antes de implementar el conteo físico por móvil (Paso 6), la edición masiva de precios/costos (Paso 9) y las ventas a crédito (Paso 11) blinda el inventario contra discrepancias o mermas ocultas, asociando cada movimiento al `UserId` verificado en el Paso 3.
+
+---
+
+### Paso 6
+
+11. Conteo físico ciego e inventario rotativo asistido por escáner móvil
+Objetivo: Agilizar la toma física de inventario periódica utilizando la cámara de dispositivos móviles en modo ciego para detectar discrepancias reales sin sesgar al personal.
+
+Descripción detallada:
+
+Sesiones de toma de inventario programadas:
+El administrador podrá iniciar una *"Sesión de Conteo Físico"* delimitada por una selección de productos, estantes o almacén.
+
+Modo ciego en el escáner web/móvil:
+Los empleados accederán desde su teléfono al escáner móvil (PWA/Web POS por QR local) y escanearán productos. La pantalla registrará los códigos y sumará unidades, pero **no mostrará la existencia teórica del sistema**, obligando al conteo real sin alteraciones intencionadas.
+
+Cálculo automático de discrepancias:
+Al finalizar la sesión, el backend compara las cantidades contadas contra el stock del sistema y genera un informe de diferencias (Sobrantes, Faltantes, Mermas, Valor monetario de la diferencia).
+
+Aplicación automática a la auditoría:
+Con la aprobación del Administrador, el sistema genera automáticamente las entradas en `StockAdjustmentsAudit` (creada en el Paso 5) con el tipo de ajuste *"Toma física de inventario"*, actualizando el stock sin intervención manual fila por fila.
+
+Aspectos técnicos:
+
+Entidad `StockCountSession` y `StockCountItem`.
+
+Integración con la vista de cámara y escaneo láser en `Web.Frontend`.
+
+Disparo automático a `InventoryService.AdjustStockAsync` con trazabilidad completa.
+
+Beneficios:
+
+Ahorra días enteros de cierre por inventario al permitir conteos rotativos frecuentes.
+
+Elimina el sesgo en el conteo del personal.
+
+Convierte la auditoría de stock en un proceso ágil y periódico.
+
+**Justificación:**
+- **Dificultad:** Media - Alta.
+- **Efecto Dominó:** Se apoya directamente en la tabla de auditoría del Paso 5 y en el escáner móvil ya operativo. Resolver el control y conteo de existencias aquí garantiza que el catálogo tenga inventario verídico antes de realizar las actualizaciones masivas de precios (Paso 9) y el despliegue del crédito comercial (Paso 11).
+
+---
+
+## FASE 4: Jerarquía del Catálogo y Presentación de Variantes
+
+### Paso 7
+
+8. Estilizar los grupos de presentaciones para que se agrupen automáticamente visualmente
+Objetivo: Mejorar la visualización de productos agrupados (variantes) en el catálogo y en el punto de venta, agrupándolos visualmente bajo su producto padre.
+
+Descripción detallada:
+
+Agrupación visual en catálogo:
+
+Mostrar el producto padre como una fila principal expandible.
+
+Las variantes aparecerán como subfilas indentadas.
+
+Posibilidad de colapsar/expandir el grupo.
+
+Indicadores:
+
+Iconos o badges indicando el número de variantes.
+
+Si el grupo tiene stock compartido o precios independientes, mostrar badges correspondientes.
+
+Comportamiento en POS:
+
+Al buscar un producto padre, se mostrará automáticamente un selector con sus variantes.
+
+Al agregar una variante, se visualizará como "Padre - Variante".
+
+Aspectos técnicos:
+
+En WPF, uso de DataGrid con RowDetailsTemplate o ListCollectionView con agrupación.
+
+En React, agrupación lógica en el estado y renderizado condicional.
+
+Beneficios:
+
+Claridad visual.
+
+Menor confusión en productos similares.
+
+Mejora la experiencia del usuario.
+
+**Justificación:**
+- **Dificultad:** Media.
+- **Efecto Dominó:** No requiere migraciones en base de datos ya que capitaliza la estructura de grupos de variantes (`IsGroupHeader`, `ParentProductId`, stock compartido y factor de conversión) recién estabilizada. Establece la representación visual definitiva de las familias de productos en el catálogo de WPF y en el POS de React antes de incorporar el árbol de categorías del Paso 8.
+
+---
+
+### Paso 8
+
+7. Implementar categorías
+Objetivo: Organizar los productos en categorías jerárquicas para mejorar la navegación y el análisis.
+
+Descripción detallada:
+
+Estructura jerárquica:
+
+Categorías padre e hijas (ej. Alimentos > Lácteos > Quesos).
+
+Posibilidad de categorías múltiples por producto (opcional).
+
+Asignación:
+
+En el formulario de producto, seleccionar una o varias categorías.
+
+Importación masiva con columna de categoría.
+
+Filtros en catálogo:
+
+Sidebar con categorías.
+
+Búsqueda por categoría en POS.
+
+Informes:
+
+Ganancias por categoría.
+
+Rotación de inventario por categoría.
+
+Aspectos técnicos:
+
+Tabla Categories y tabla intermedia ProductCategories.
+
+Índices para consultas rápidas.
+
+Beneficios:
+
+Mejor organización.
+
+Facilita búsqueda.
+
+Análisis más granular.
+
+**Justificación:**
+- **Dificultad:** Media - Alta.
+- **Efecto Dominó:** Es el principal habilitador estructural de todo el catálogo. Es **requisito previo obligatorio** para la edición de precios por lote (Paso 9, para filtrar por departamento/categoría) y para los reportes de ganancias y rotación (Pasos 14 y 15). Implementarlo antes evita tener que reconstruir consultas o rehacer interfaces más adelante.
+
+---
+
+## FASE 5: Operaciones Comerciales Masivas y Políticas de Precios
+
+### Paso 9
+
+5. Soporte para edición múltiple de precios en el catálogo
+Objetivo: Permitir modificar masivamente precios y márgenes de un conjunto de productos sin tener que editarlos uno a uno.
+
+Descripción detallada:
+
+Selección múltiple:
+
+El catálogo incluirá casillas de verificación o selección por rango.
+
+Opciones para seleccionar todos los filtrados.
+
+Operaciones masivas:
+
+Cambiar precio de venta (Detal o Mayor) fijo.
+
+Aplicar porcentaje de incremento/decremento.
+
+Ajustar márgenes de ganancia.
+
+Actualizar costos.
+
+Vista previa:
+
+Mostrar una tabla comparativa "Antes vs Después" antes de confirmar.
+
+Validaciones:
+
+No permitir precios negativos.
+
+Respetar reglas de precios heredados en agrupadores si corresponde.
+
+Aspectos técnicos:
+
+Backend: BulkUpdatePricesAsync.
+
+Transacciones atómicas.
+
+Invalidación de caché de productos.
+
+Beneficios:
+
+Ahorro de tiempo.
+
+Consistencia en la actualización.
+
+Reduce errores manuales.
+
+**Justificación:**
+- **Dificultad:** Media - Alta.
+- **Efecto Dominó:** Ahora puede aprovechar directamente las Categorías (Paso 8) para realizar selecciones filtradas y las reglas de variantes (Paso 7) para sincronizar productos hijos con precios heredados. Utiliza transacciones atómicas PostgreSQL (`BeginTransactionAsync`) para garantizar que todas las modificaciones se apliquen o se cancelen en bloque.
+
+---
+
+### Paso 10
+
+12. Reglas de precios psicológicos y redondeo comercial inteligente
+Objetivo: Incorporar políticas de redondeo automatizadas durante la edición masiva de precios para evitar centavos imprácticos en efectivo y facilitar el cobro rápido en caja.
+
+Descripción detallada:
+
+Políticas de redondeo configurables:
+Al aplicar incrementos porcentuales o ajustes masivos en el Paso 9, el usuario podrá seleccionar una regla de terminación:
+- Sin redondeo (matemático exacto).
+- Precios psicológicos en USD: Terminar en `.99`, `.95` o `.50`.
+- Redondeo para efectivo en Bs.S: Redondeo al entero más cercano o al múltiplo de 5/10 bolívares.
+
+Cálculo bidireccional respetando el margen mínimo:
+Si una regla de redondeo hacia abajo reduce el margen de ganancia por debajo del piso deseado, el sistema redondeará automáticamente hacia el siguiente escalón superior.
+
+Integración en la vista previa:
+La tabla comparativa "Antes vs Después" del Paso 9 mostrará el precio resultante con la regla de redondeo aplicada antes de impactar la base de datos.
+
+Aspectos técnicos:
+
+Servicio de dominio `PricingRoundingPolicyService`.
+
+Parámetro `RoundingRuleType` en el DTO de actualización masiva.
+
+Beneficios:
+
+Agiliza enormemente el vuelto y manejo de billetes físicos en caja.
+
+Elimina precios con decimales incómodos tras aumentos porcentuales.
+
+Incrementa la efectividad comercial del punto de venta.
+
+**Justificación:**
+- **Dificultad:** Baja - Media.
+- **Efecto Dominó:** Es una extensión directa y natural del Paso 9. Al colocarse aquí, se programa como un modificador dentro del motor de cálculo de precios antes de persistirlos, garantizando que el catálogo completo quede formateado de manera comercialmente óptima antes de pasar a las ventas a crédito y al cálculo de ganancias.
+
+---
+
+## FASE 6: Expansión Financiera (Crédito, Moneda Dura y Gastos Operativos)
+
+### Paso 11
 
 3. Agregar soporte para ventas a crédito
 Objetivo: Permitir a clientes autorizados realizar compras sin pago inmediato, registrando la deuda y facilitando su posterior cobro.
@@ -137,7 +545,95 @@ Fideliza clientes.
 
 Mejora el control financiero.
 
-####################
+**Justificación:**
+- **Dificultad:** Alta.
+- **Efecto Dominó:** Expande el núcleo de ventas hacia Cuentas por Cobrar. Habiendo completado ya el control de sesiones (Paso 3), autorizaciones de sobregiro (Paso 4), auditoría de stock (Paso 5) y catálogo categorizado (Paso 8), la venta a crédito se integra sobre una base 100% estable. Es el prerrequisito imprescindible para el Paso 12 (crédito bimonetario) y el Paso 14 (cálculo de utilidades).
+
+---
+
+### Paso 12
+
+13. Cuentas por cobrar indexadas a moneda dura (Crédito Bimonetario Seguro)
+Objetivo: Proteger el capital del negocio frente a la devaluación en ventas a crédito, indexando la deuda en USD y recalculando el saldo en Bs.S al cambio oficial del día de cada abono.
+
+Descripción detallada:
+
+Indexación automática al emitir crédito:
+Al generar una venta a crédito (Paso 11), el saldo adeudado se registra en **USD base** junto con el contravalor y la tasa oficial BCV de la fecha de emisión.
+
+Liquidación de abonos a tasa del día:
+Cuando el cliente realiza un abono parcial o total semanas después, el sistema consulta la tasa BCV activa y calcula el monto exacto en bolívares necesario para amortizar el saldo en dólares correspondiente.
+
+Registro de diferencial cambiario:
+El sistema registra la ganancia o pérdida generada por la variación de la tasa entre la fecha de la venta y la fecha de cobro efectivo, manteniendo la transparencia fiscal y contable.
+
+Estado de cuenta dual para el cliente:
+El ticket de estado de cuenta o comprobante de abono muestra con claridad al cliente: Saldo adeudado en USD, equivalente en Bs.S a la tasa del día y saldo restante.
+
+Aspectos técnicos:
+
+Campos `BalanceUSD`, `HistoricalRate`, `PaymentRate` en `CreditSales` y `CreditPayments`.
+
+Integración con `IExchangeRateService` durante la recepción de abonos.
+
+Beneficios:
+
+Blindaje financiero total contra la inflación en cuentas por cobrar.
+
+Cero pérdida de margen de ganancia por crédito diferido.
+
+Claridad y confianza absoluta para el cliente en los cobros.
+
+**Justificación:**
+- **Dificultad:** Media.
+- **Efecto Dominó:** Complementa y blinda financieramente al Paso 11. Sin este paso, el cálculo de utilidades del Paso 14 arrojaría ganancias ficticias debido a la devaluación de las cuentas por cobrar pendientes.
+
+---
+
+### Paso 13
+
+14. Gastos operativos de caja chica en turno (Petty Cash Expenses)
+Objetivo: Registrar salidas de dinero menores de la gaveta durante el turno (compras de insumos, fletes, servicios) para cuadrar con exactitud el arqueo de caja y alimentar el cálculo de ganancia neta.
+
+Descripción detallada:
+
+Registro rápido de egresos en POS:
+Botón accesible para cajeros con permisos o administradores para asentar egresos:
+- Monto y moneda (USD efectivo o Bs.S efectivo).
+- Categoría de gasto (Insumos/Limpieza, Fletes/Delivery, Mantenimiento, Varios).
+- Justificación y número de comprobante/factura física.
+
+Afectación automática del arqueo de caja:
+Al realizar el cierre de turno o diario (`DailyClosure`), el sistema deduce automáticamente los egresos de caja chica del total de efectivo esperado en caja, evitando falsos "faltantes" de dinero.
+
+Auditoría de egresos:
+Queda registrado el cajero que extrajo el dinero y el supervisor que autorizó el egreso (utilizando el mecanismo del Paso 4 si correspondiera).
+
+Aspectos técnicos:
+
+Tabla `PettyCashExpenses` vinculada al `ShiftId` y `UserId`.
+
+Endpoints en `ShiftsController` / `DailyClosureController`.
+
+Comprobante impreso de salida de caja chica.
+
+Beneficios:
+
+Cierres de caja transparentes y sin descuadres por gastos menores.
+
+Trazabilidad del destino de cada billete que sale de la gaveta.
+
+Aporte indispensable para calcular el resultado neto real del negocio.
+
+**Justificación:**
+- **Dificultad:** Baja - Media.
+- **Efecto Dominó:** Se ensambla con los módulos de turnos y cierres diarios existentes. Es el componente que le falta al sistema para transformar el margen comercial bruto en la **ganancia neta real** solicitada en el Paso 14.
+
+---
+
+## FASE 7: Analítica Avanzada y Optimización de Rentabilidad
+
+### Paso 14
 
 4. Agregar cálculo de ganancias diarias, semanales y mensuales
 Objetivo: Proporcionar una herramienta de análisis de rentabilidad que permita visualizar las ganancias en diferentes períodos.
@@ -189,189 +685,101 @@ Identificación de tendencias.
 
 Mejora de la rentabilidad.
 
-####################
+**Justificación:**
+- **Dificultad:** Alta.
+- **Efecto Dominó:** Es la cúspide analítica del sistema. Al ubicarse en este punto, puede consumir sin parches ni refactorizaciones:
+  1. Filtros por **Categorías** (Paso 8).
+  2. Filtros por **Vendedor** con sesiones seguras (Paso 3).
+  3. Precios y costos consistentes tras la **Edición Masiva** (Paso 9 y 10).
+  4. Ingresos por ventas al contado y **Créditos con abonos indexados** (Paso 11 y 12).
+  5. Deducción de **Gastos operativos de caja chica** (Paso 13) para reflejar la ganancia neta verídica.
 
-5. Soporte para edición múltiple de precios en el catálogo
-Objetivo: Permitir modificar masivamente precios y márgenes de un conjunto de productos sin tener que editarlos uno a uno.
+---
 
-Descripción detallada:
+### Paso 15
 
-Selección múltiple:
-
-El catálogo incluirá casillas de verificación o selección por rango.
-
-Opciones para seleccionar todos los filtrados.
-
-Operaciones masivas:
-
-Cambiar precio de venta (Detal o Mayor) fijo.
-
-Aplicar porcentaje de incremento/decremento.
-
-Ajustar márgenes de ganancia.
-
-Actualizar costos.
-
-Vista previa:
-
-Mostrar una tabla comparativa "Antes vs Después" antes de confirmar.
-
-Validaciones:
-
-No permitir precios negativos.
-
-Respetar reglas de precios heredados en agrupadores si corresponde.
-
-Aspectos técnicos:
-
-Backend: BulkUpdatePricesAsync.
-
-Transacciones atómicas.
-
-Invalidación de caché de productos.
-
-Beneficios:
-
-Ahorro de tiempo.
-
-Consistencia en la actualización.
-
-Reduce errores manuales.
-
-####################
-
-6. Agregar sección de auditoría de ajustes de stock
-Objetivo: Mantener un registro detallado y consultable de todos los ajustes de inventario realizados manualmente o automáticamente.
+15. Análisis de rotación de inventario y detección de stock inmovilizado ("Stock Muerto")
+Objetivo: Identificar productos con baja o nula rotación para sugerir liquidaciones masivas y optimizar el capital de trabajo inmovilizado en el inventario.
 
 Descripción detallada:
 
-Registro de eventos:
+Métricas de rotación comercial:
+Cálculo de días promedio de inventario y velocidad de venta por producto y por categoría, utilizando los datos de ventas consolidados en el Paso 14.
 
-Fecha y hora.
+Alertas de stock muerto / estancado:
+Detección automática de artículos que superen un umbral sin ventas (ej. más de 45, 60 o 90 días), calculando el valor monetario total del capital retenido en bodega.
 
-Usuario responsable.
+Puente de acción directa a liquidación masiva:
+Desde el mismo reporte, un botón *"Aplicar Promoción / Descuento"* enviará automáticamente la lista de productos estancados al módulo de **Edición Múltiple de Precios (Paso 9)** para aplicar una rebaja porcentual rápida o remate por categoría.
 
-Producto afectado (SKU y nombre).
-
-Cantidad anterior y nueva.
-
-Motivo del ajuste (merma, entrada, corrección, venta).
-
-Tipo de ajuste (manual, importación, sistema).
-
-Filtros:
-
-Por rango de fechas.
-
-Por usuario.
-
-Por producto.
-
-Por tipo de ajuste.
-
-Exportación:
-
-PDF/Excel para auditorías externas.
-
-Protección:
-
-Solo usuarios con rol Admin o Manager pueden realizar ajustes; la consulta puede ser para Auditor.
+Informe ejecutivo de salud de inventario:
+Gráficos que muestren el porcentaje del inventario en: Alta Rotación, Media Rotación y Capital Inmovilizado.
 
 Aspectos técnicos:
 
-Tabla StockAdjustmentsAudit.
+Consultas optimizadas con vistas indexadas o tablas agregadas en PostgreSQL.
 
-Inserción automática en cada modificación de StockQuantity.
-
-Beneficios:
-
-Trazabilidad completa.
-
-Detección de irregularidades.
-
-Cumplimiento normativo.
-
-////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////
-
-7. Implementar categorías
-Objetivo: Organizar los productos en categorías jerárquicas para mejorar la navegación y el análisis.
-
-Descripción detallada:
-
-Estructura jerárquica:
-
-Categorías padre e hijas (ej. Alimentos > Lácteos > Quesos).
-
-Posibilidad de categorías múltiples por producto (opcional).
-
-Asignación:
-
-En el formulario de producto, seleccionar una o varias categorías.
-
-Importación masiva con columna de categoría.
-
-Filtros en catálogo:
-
-Sidebar con categorías.
-
-Búsqueda por categoría en POS.
-
-Informes:
-
-Ganancias por categoría.
-
-Rotación de inventario por categoría.
-
-Aspectos técnicos:
-
-Tabla Categories y tabla intermedia ProductCategories.
-
-Índices para consultas rápidas.
+Mapeo directo hacia `BulkUpdatePricesAsync` con selección prefiltrada.
 
 Beneficios:
 
-Mejor organización.
+Recupera liquidez financiera retenida en productos obsoletos.
 
-Facilita búsqueda.
+Evita pérdidas por vencimiento o merma de artículos sin salida.
 
-Análisis más granular.
+Cierra el ciclo completo entre inventario, precios, ventas y analítica.
 
-8. Estilizar los grupos de presentaciones para que se agrupen automáticamente visualmente
-Objetivo: Mejorar la visualización de productos agrupados (variantes) en el catálogo y en el punto de venta, agrupándolos visualmente bajo su producto padre.
+**Justificación:**
+- **Dificultad:** Media - Alta.
+- **Efecto Dominó:** Es el broche de oro del sistema gerencial. No podría existir sin la auditoría de stock (Paso 5 y 6), las categorías (Paso 8), la edición masiva de precios (Paso 9) y el motor analítico de ventas (Paso 14). Conecta la inteligencia del negocio directamente con la acción operativa de catálogo.
 
-Descripción detallada:
+---
 
-Agrupación visual en catálogo:
+### Resumen Visual de la Secuencia de 15 Pasos
 
-Mostrar el producto padre como una fila principal expandible.
+```mermaid
+flowchart TD
+    subgraph F1["Fase 1: Estabilidad & Persistencia"]
+        P1["1. Comportamiento de Cierre (Idea 2)"]
+        P2["2. Carritos en Espera / Parked Orders (Idea 9)"]
+        P1 --> P2
+    end
 
-Las variantes aparecerán como subfilas indentadas.
+    subgraph F2["Fase 2: Seguridad & Autorizaciones"]
+        P3["3. Controles de Sesión & JWT (Idea 1)"]
+        P4["4. Autorizaciones Remotas SignalR (Idea 10)"]
+        P2 --> P3 --> P4
+    end
 
-Posibilidad de colapsar/expandir el grupo.
+    subgraph F3["Fase 3: Control & Auditoría de Stock"]
+        P5["5. Auditoría de Ajustes de Stock (Idea 6)"]
+        P6["6. Conteo Físico Ciego Móvil (Idea 11)"]
+        P4 --> P5 --> P6
+    end
 
-Indicadores:
+    subgraph F4["Fase 4: Catálogo & Presentación"]
+        P7["7. Estilización de Grupos/Variantes (Idea 8)"]
+        P8["8. Categorías Jerárquicas (Idea 7)"]
+        P6 --> P7 --> P8
+    end
 
-Iconos o badges indicando el número de variantes.
+    subgraph F5["Fase 5: Operaciones de Precios"]
+        P9["9. Edición Múltiple de Precios (Idea 5)"]
+        P10["10. Precios Psicológicos & Redondeo (Idea 12)"]
+        P8 --> P9 --> P10
+    end
 
-Si el grupo tiene stock compartido o precios independientes, mostrar badges correspondientes.
+    subgraph F6["Fase 6: Crédito & Caja Chica"]
+        P11["11. Ventas a Crédito & CxC (Idea 3)"]
+        P12["12. Crédito Bimonetario Indexado (Idea 13)"]
+        P13["13. Gastos de Caja Chica (Idea 14)"]
+        P10 --> P11 --> P12 --> P13
+    end
 
-Comportamiento en POS:
+    subgraph F7["Fase 7: Analítica & Rentabilidad"]
+        P14["14. Cálculo de Ganancias (Idea 4)"]
+        P15["15. Rotación & Stock Muerto (Idea 15)"]
+        P13 --> P14 --> P15
+    end
+```
 
-Al buscar un producto padre, se mostrará automáticamente un selector con sus variantes.
-
-Al agregar una variante, se visualizará como "Padre - Variante".
-
-Aspectos técnicos:
-
-En WPF, uso de DataGrid con RowDetailsTemplate o ListCollectionView con agrupación.
-
-En React, agrupación lógica en el estado y renderizado condicional.
-
-Beneficios:
-
-Claridad visual.
-
-Menor confusión en productos similares.
-
-Mejora la experiencia del usuario.

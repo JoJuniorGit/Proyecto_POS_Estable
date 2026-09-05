@@ -3,7 +3,7 @@ import { getActivePaymentMethods } from '../services/paymentApi';
 import { api } from '../services/api';
 import { closeShift, getCurrentShiftReport } from '../services/shiftApi';
 import { useAuth } from '../context/AuthContext';
-import { formatBsS, formatUSD, formatNumberEs } from '../utils/formatters';
+import { useCurrencyFormat } from '../context/CurrencyFormatContext';
 import AtmAmountInput from '../components/ui/AtmAmountInput';
 import Modal from '../components/ui/Modal';
 import {
@@ -22,6 +22,7 @@ import {
 
 export default function RegisterClosePage() {
   const { user, logout } = useAuth();
+  const { currencyFormat, formatAmount, formatBsS, formatUSD } = useCurrencyFormat();
 
   const [methods, setMethods] = useState([]);
   const [exchangeRate, setExchangeRate] = useState(0);
@@ -209,7 +210,7 @@ export default function RegisterClosePage() {
             </div>
             <div className="zreport-meta-group sm:text-right">
               <div><strong>Fecha:</strong> {zReport.closedAt ? new Date(zReport.closedAt).toLocaleString('es-VE') : new Date().toLocaleString('es-VE')}</div>
-              <div><strong>Tasa del Día:</strong> <span className="font-mono font-bold">{formatNumberEs(zReport.exchangeRate || exchangeRate)} Bs/$</span></div>
+              <div><strong>Tasa del Día:</strong> <span className="font-mono font-bold">{formatAmount(zReport.exchangeRate || exchangeRate, 2)} Bs/$</span></div>
             </div>
           </div>
 
@@ -366,7 +367,7 @@ export default function RegisterClosePage() {
             <div className="flex-align-center gap-2">
               <DollarSign size={18} className="color-primary flex-shrink-0" />
               <span className="text-sm">
-                <strong>Tasa del Día (Informativa):</strong> <span className="font-mono font-bold color-primary">Bs.S {formatNumberEs(exchangeRate)}</span> / USD
+                <strong>Tasa del Día (Informativa):</strong> <span className="font-mono font-bold color-primary">Bs.S {formatAmount(exchangeRate, 2)}</span> / USD
               </span>
             </div>
           </div>
@@ -422,9 +423,9 @@ export default function RegisterClosePage() {
                     {/* Requisito 4: Campo de entrada numérico con resalto en estado Focus */}
                     <div className="register-close-method-input-wrapper">
                       <AtmAmountInput
-                        value={declaredAmounts[method.id] || 0}
+                        value={declaredAmounts[method.id] !== undefined ? declaredAmounts[method.id] : ''}
                         onChange={(numericVal) => handleAmountChange(method.id, numericVal)}
-                        placeholder="0,00"
+                        placeholder={currencyFormat === 'Venezuelan' ? '0,00' : '0.00'}
                         prefix={isUsd ? '$' : 'Bs.S'}
                       />
                     </div>

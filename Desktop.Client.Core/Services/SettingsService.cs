@@ -32,9 +32,33 @@ public class SettingsService : ISettingsService
         var request = new { Id = timeZoneId };
         await _httpClient.PostAsJsonAsync("api/settings/timezone", request);
     }
+
+    public async Task<string> GetCurrencyFormatAsync()
+    {
+        try
+        {
+            var response = await _httpClient.GetFromJsonAsync<CurrencyFormatResponse>("api/settings/currency-format");
+            return response?.Format ?? "Venezuelan";
+        }
+        catch
+        {
+            return "Venezuelan";
+        }
+    }
+
+    public async Task SetCurrencyFormatAsync(string format)
+    {
+        var request = new { Format = format };
+        await _httpClient.PutAsJsonAsync("api/settings/currency-format", request);
+    }
     
     private class TimeZoneResponse
     {
         public string Id { get; set; } = string.Empty;
+    }
+
+    private class CurrencyFormatResponse
+    {
+        public string Format { get; set; } = "Venezuelan";
     }
 }

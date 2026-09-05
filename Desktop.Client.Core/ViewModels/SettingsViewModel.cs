@@ -46,6 +46,38 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public ObservableCollection<PaymentMethodDto> PaymentMethods { get; } = new();
     public ObservableCollection<TimeZoneInfo> AvailableTimeZones { get; } = new();
 
+    public class CurrencyFormatOption
+    {
+        public string Key { get; set; } = "Venezuelan";
+        public string DisplayName { get; set; } = "Venezolano Contable (1.234,56)";
+        public string Description { get; set; } = "Separador de miles: punto (.), decimal: coma (,)";
+    }
+
+    public ObservableCollection<CurrencyFormatOption> AvailableCurrencyFormats { get; } = new()
+    {
+        new CurrencyFormatOption { Key = "Venezuelan", DisplayName = "Venezolano Contable (1.234,56)", Description = "Separador de miles: punto (.), decimal: coma (,)" },
+        new CurrencyFormatOption { Key = "International", DisplayName = "Internacional (1,234.56)", Description = "Separador de miles: coma (,), decimal: punto (.)" }
+    };
+
+    private CurrencyFormatOption? _selectedCurrencyFormat;
+    public CurrencyFormatOption? SelectedCurrencyFormat
+    {
+        get => _selectedCurrencyFormat;
+        set
+        {
+            if (SetProperty(ref _selectedCurrencyFormat, value))
+            {
+                OnSelectedCurrencyFormatChanged(value);
+            }
+        }
+    }
+
+    [ObservableProperty]
+    private string _currencyFormatPreviewBsS = "Bs.S 172.786,94";
+
+    [ObservableProperty]
+    private string _currencyFormatPreviewUSD = "$ 1.250,50";
+
     private TimeZoneInfo? _selected_time_zone;
     public TimeZoneInfo? SelectedTimeZone
     {
@@ -87,6 +119,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             _ = LoadMethodsAsync();
             _ = LoadTimeZonesAsync();
+            _ = LoadCurrencyFormatAsync();
         }
     }
 
@@ -96,6 +129,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             await LoadMethodsAsync();
             await LoadTimeZonesAsync();
+            await LoadCurrencyFormatAsync();
         }
     }
 
@@ -388,6 +422,53 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             MessageBox.Show($"Failed to save timezone: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async Task LoadCurrencyFormatAsync()
+    {
+        try
+        {
+            var savedFormat = await _settings_service.GetCurrencyFormatAsync();
+            var selected = AvailableCurrencyFormats.FirstOrDefault(f => f.Key.Equals(savedFormat, StringComparison.OrdinalIgnoreCase))
+                           ?? AvailableCurrencyFormats[0];
+            _selectedCurrencyFormat = selected;
+            OnPropertyChanged(nameof(SelectedCurrencyFormat));
+            UpdateCurrencyPreview(selected.Key);
+        }
+        catch
+        {
+            _selectedCurrencyFormat = AvailableCurrencyFormats[0];
+            OnPropertyChanged(nameof(SelectedCurrencyFormat));
+            UpdateCurrencyPreview("Venezuelan");
+        }
+    }
+
+    private async void OnSelectedCurrencyFormatChanged(CurrencyFormatOption? option)
+    {
+        if (option == null) return;
+        try
+        {
+            UpdateCurrencyPreview(option.Key);
+            await _settings_service.SetCurrencyFormatAsync(option.Key);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error al guardar formato de moneda: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void UpdateCurrencyPreview(string formatKey)
+    {
+        if (formatKey.Equals("International", StringComparison.OrdinalIgnoreCase))
+        {
+            CurrencyFormatPreviewBsS = "Bs.S 172,786.94";
+            CurrencyFormatPreviewUSD = "$ 1,250.50";
+        }
+        else
+        {
+            CurrencyFormatPreviewBsS = "Bs.S 172.786,94";
+            CurrencyFormatPreviewUSD = "$ 1.250,50";
         }
     }
 
