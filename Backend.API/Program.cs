@@ -9,6 +9,7 @@ using Backend.API.Services;
 using Backend.API.Hubs;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using System.Security.Cryptography.X509Certificates;
+using Logistics.Module.Extensions;
 
 // Setup global unhandled exception logger for crash.log
 AppDomain.CurrentDomain.UnhandledException += (s, e) =>
@@ -123,7 +124,9 @@ try
     {
         cfg.RegisterServicesFromAssembly(typeof(Sales.Module.Services.SalesService).Assembly);
         cfg.RegisterServicesFromAssembly(typeof(Inventory.Module.Services.InventoryService).Assembly);
+        cfg.RegisterServicesFromAssembly(typeof(Logistics.Module.Services.DeliveryService).Assembly);
     });
+    builder.Services.AddLogisticsModule();
 
     // BCV Services (Sincronización exclusivamente manual a demanda)
     builder.Services.AddHttpClient<BcvScraperService>();
@@ -432,21 +435,45 @@ try
         // 3) Aplicar migraciones (crea el esquema y __EFMigrationsHistory). Abortar si fallan.
         try
         {
-            AppLogger.LogStart("Running EF Core Database Migrations...");
-            _invDb.Database.Migrate();
-            _salesDb.Database.Migrate();
+            AppLogger.LogStart("Running EF Core Database Migrations asynchronously...");
+            await _invDb.Database.MigrateAsync();
+            await _salesDb.Database.MigrateAsync();
 
-            // Defensive schema check & migration: Ensure columns are properly typed in PostgreSQL
+            // Defensive schema check & migration: Ensure columns and tables are properly typed in PostgreSQL via information_schema
             try
             {
-                AppLogger.LogStart("Verifying and adjusting database column precision (numeric 18,3)...");
+                AppLogger.LogStart("Verifying and adjusting database schema and column precision (numeric 18,3)...");
 
-                _salesDb.Database.ExecuteSqlRaw(@"ALTER TABLE ""PaymentMethods"" ADD COLUMN IF NOT EXISTS ""DisplayOrder"" integer NOT NULL DEFAULT 0;");
-                _salesDb.Database.ExecuteSqlRaw(@"ALTER TABLE ""CashTransactions"" ADD COLUMN IF NOT EXISTS ""IsPhysicalCash"" boolean NOT NULL DEFAULT true;");
-                _salesDb.Database.ExecuteSqlRaw(@"
-                    CREATE SEQUENCE IF NOT EXISTS factura_number_seq START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
-                    SELECT setval('factura_number_seq', GREATEST(COALESCE((SELECT MAX(""InvoiceNumber"") FROM ""Sales""), 0) + 1, 1), false);
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'PaymentMethods') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'PaymentMethods' AND column_name = 'DisplayOrder') THEN
+            ALTER TABLE ""PaymentMethods"" ADD COLUMN ""DisplayOrder"" integer NOT NULL DEFAULT 0;
+        END IF;
+    END IF;
+END $$;");
 
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'CashTransactions') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'CashTransactions' AND column_name = 'IsPhysicalCash') THEN
+            ALTER TABLE ""CashTransactions"" ADD COLUMN ""IsPhysicalCash"" boolean NOT NULL DEFAULT true;
+        END IF;
+    END IF;
+END $$;");
+
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Sales') THEN
+        CREATE SEQUENCE IF NOT EXISTS factura_number_seq START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+        PERFORM setval('factura_number_seq', GREATEST(COALESCE((SELECT MAX(""InvoiceNumber"") FROM ""Sales""), 0) + 1, 1), false);
+    END IF;
+END $$;");
+
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
                     CREATE TABLE IF NOT EXISTS ""OutboxMessages"" (
                         ""Id"" uuid NOT NULL PRIMARY KEY,
                         ""EventType"" character varying(100) NOT NULL,
@@ -460,7 +487,14 @@ try
                         ""ErrorMessage"" text NULL
                     );
 
-                    ALTER TABLE ""OutboxMessages"" ADD COLUMN IF NOT EXISTS ""DispatchedAtUtc"" timestamp with time zone NULL;
+                    DO $$
+                    BEGIN
+                        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'OutboxMessages') THEN
+                            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'OutboxMessages' AND column_name = 'DispatchedAtUtc') THEN
+                                ALTER TABLE ""OutboxMessages"" ADD COLUMN ""DispatchedAtUtc"" timestamp with time zone NULL;
+                            END IF;
+                        END IF;
+                    END $$;
 
                     CREATE INDEX IF NOT EXISTS ""IX_OutboxMessages_Status_NextRetryUtc"" 
                         ON ""OutboxMessages"" (""Status"", ""NextRetryUtc"") 
@@ -469,14 +503,8 @@ try
                     CREATE INDEX IF NOT EXISTS ""IX_OutboxMessages_CreatedAtUtc"" 
                         ON ""OutboxMessages"" (""CreatedAtUtc"");
                 ");
-                _salesDb.Database.ExecuteSqlRaw(@"
-                    UPDATE ""Users""
-                    SET ""Username"" = COALESCE(NULLIF(TRIM(""Username""), ''), NULLIF(TRIM(""Cedula""), ''), 'user_' || ""Id""::text)
-                    WHERE ""Username"" IS NULL OR TRIM(""Username"") = '';
-                    CREATE UNIQUE INDEX IF NOT EXISTS ""ix_users_username_lower"" ON ""Users"" (LOWER(""Username""));
-                ");
 
-                _salesDb.Database.ExecuteSqlRaw(@"
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
                     CREATE TABLE IF NOT EXISTS ""IdempotentRequests"" (
                         ""Id"" serial PRIMARY KEY,
                         ""Key"" character varying(128) NOT NULL,
@@ -499,7 +527,7 @@ try
                 ");
 
                 // 1. Sales module: SaleItems.Quantity -> numeric(18,3)
-                _salesDb.Database.ExecuteSqlRaw(@"
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
 DO $$
 BEGIN
     IF EXISTS (
@@ -512,7 +540,7 @@ BEGIN
 END $$;");
 
                 // 2. Inventory module: Parent table (Products) first
-                _invDb.Database.ExecuteSqlRaw(@"
+                await _invDb.Database.ExecuteSqlRawAsync(@"
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'StockQuantity' AND data_type <> 'numeric') THEN
@@ -540,58 +568,94 @@ BEGIN
     END IF;
 END $$;");
 
-                // Phase 4: User Hardening, Token Revocation & Role Migration
-                _salesDb.Database.ExecuteSqlRaw(@"
-                    ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""SecurityStamp"" character varying(64) NOT NULL DEFAULT '';
-                    UPDATE ""Users"" SET ""SecurityStamp"" = md5(random()::text || clock_timestamp()::text) WHERE ""SecurityStamp"" = '' OR ""SecurityStamp"" IS NULL;
-                    ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""AccessFailedCount"" integer NOT NULL DEFAULT 0;
-                    ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""LockoutEndUtc"" timestamp with time zone NULL;
-                    ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""LastLoginUtc"" timestamp with time zone NULL;
+                // Phase 4: User Hardening, Token Revocation & Role Migration (Defensive with information_schema checks)
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Users') THEN
+        UPDATE ""Users""
+        SET ""Username"" = COALESCE(NULLIF(TRIM(""Username""), ''), NULLIF(TRIM(""Cedula""), ''), 'user_' || ""Id""::text)
+        WHERE ""Username"" IS NULL OR TRIM(""Username"") = '';
 
+        IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'Users' AND indexname = 'ix_users_username_lower') THEN
+            CREATE UNIQUE INDEX ""ix_users_username_lower"" ON ""Users"" (LOWER(""Username""));
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Users' AND column_name = 'SecurityStamp') THEN
+            ALTER TABLE ""Users"" ADD COLUMN ""SecurityStamp"" character varying(64) NOT NULL DEFAULT '';
+        END IF;
+        UPDATE ""Users"" SET ""SecurityStamp"" = md5(random()::text || clock_timestamp()::text) WHERE ""SecurityStamp"" = '' OR ""SecurityStamp"" IS NULL;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Users' AND column_name = 'AccessFailedCount') THEN
+            ALTER TABLE ""Users"" ADD COLUMN ""AccessFailedCount"" integer NOT NULL DEFAULT 0;
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Users' AND column_name = 'LockoutEndUtc') THEN
+            ALTER TABLE ""Users"" ADD COLUMN ""LockoutEndUtc"" timestamp with time zone NULL;
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Users' AND column_name = 'LastLoginUtc') THEN
+            ALTER TABLE ""Users"" ADD COLUMN ""LastLoginUtc"" timestamp with time zone NULL;
+        END IF;
+    END IF;
+END $$;");
+
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
                     DO $$
                     DECLARE
                         v_has_migrated boolean;
                         v_anomalous_count integer;
                     BEGIN
-                        CREATE TABLE IF NOT EXISTS ""__RoleMigrationApplied"" (""AppliedAt"" timestamp with time zone NOT NULL);
-                        SELECT EXISTS (SELECT 1 FROM ""__RoleMigrationApplied"") INTO v_has_migrated;
-                        IF NOT v_has_migrated THEN
-                            SELECT COUNT(*) INTO v_anomalous_count 
-                            FROM ""Users"" 
-                            WHERE ""Role"" NOT IN (0, 1, 2, 3, 4);
+                        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Users') THEN
+                            CREATE TABLE IF NOT EXISTS ""__RoleMigrationApplied"" (""AppliedAt"" timestamp with time zone NOT NULL);
+                            SELECT EXISTS (SELECT 1 FROM ""__RoleMigrationApplied"") INTO v_has_migrated;
+                            IF NOT v_has_migrated THEN
+                                SELECT COUNT(*) INTO v_anomalous_count 
+                                FROM ""Users"" 
+                                WHERE ""Role"" NOT IN (0, 1, 2, 3, 4);
 
-                            IF v_anomalous_count > 0 THEN
-                                RAISE WARNING 'Se detectaron % usuarios con roles no estándar. Se preservará su valor para auditoría manual.', v_anomalous_count;
+                                IF v_anomalous_count > 0 THEN
+                                    RAISE WARNING 'Se detectaron % usuarios con roles no estándar. Se preservará su valor para auditoría manual.', v_anomalous_count;
+                                END IF;
+
+                                UPDATE ""Users"" 
+                                SET ""Role"" = CASE 
+                                    WHEN ""Role"" = 0 THEN 3  -- Admin previo (0 en C#) -> nuevo Admin (3)
+                                    WHEN ""Role"" = 1 AND (LOWER(""Username"") = 'admin' OR LOWER(""Cedula"") = '12345678' OR LOWER(""Username"") = 'v-12345678') THEN 3
+                                    WHEN ""Role"" = 1 THEN 1  -- Cashier previo (1) -> nuevo Cashier (1)
+                                    WHEN ""Role"" = 2 THEN 4  -- Driver previo (2 en C#) -> nuevo Driver (4)
+                                    ELSE ""Role""             -- Preserva valores desconocidos
+                                END;
+
+                                INSERT INTO ""__RoleMigrationApplied"" VALUES (NOW());
                             END IF;
-
-                            UPDATE ""Users"" 
-                            SET ""Role"" = CASE 
-                                WHEN ""Role"" = 0 THEN 3  -- Admin previo (0 en C#) -> nuevo Admin (3)
-                                WHEN ""Role"" = 1 AND (LOWER(""Username"") = 'admin' OR LOWER(""Cedula"") = '12345678' OR LOWER(""Username"") = 'v-12345678') THEN 3
-                                WHEN ""Role"" = 1 THEN 1  -- Cashier previo (1) -> nuevo Cashier (1)
-                                WHEN ""Role"" = 2 THEN 4  -- Driver previo (2 en C#) -> nuevo Driver (4)
-                                ELSE ""Role""             -- Preserva valores desconocidos
-                            END;
-
-                            INSERT INTO ""__RoleMigrationApplied"" VALUES (NOW());
                         END IF;
                     END $$;
                 ");
 
                 // Upgrade legacy plain-text passwords to PBKDF2 immediately (H-API-23)
-                var plainUsers = _salesDb.Users.Where(u => !string.IsNullOrEmpty(u.PasswordHash) && !u.PasswordHash.StartsWith("PBKDF2$")).ToList();
-                foreach (var u in plainUsers)
+                var usersTableExists = (await _salesDb.Database.SqlQueryRaw<int>(
+                    @"SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Users'"
+                ).ToListAsync()).Any();
+
+                if (usersTableExists)
                 {
-                    u.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(u.PasswordHash);
-                    u.MustChangePassword = true;
-                }
-                if (plainUsers.Count > 0)
-                {
-                    _salesDb.SaveChanges();
-                    AppLogger.LogStart($"[Security] Upgraded {plainUsers.Count} legacy plain-text password(s) to PBKDF2 with MustChangePassword=true.");
+                    var plainUsers = await _salesDb.Users
+                        .Where(u => !string.IsNullOrEmpty(u.PasswordHash) && !u.PasswordHash.StartsWith("PBKDF2$"))
+                        .ToListAsync();
+                    foreach (var u in plainUsers)
+                    {
+                        u.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(u.PasswordHash);
+                        u.MustChangePassword = true;
+                    }
+                    if (plainUsers.Count > 0)
+                    {
+                        await _salesDb.SaveChangesAsync();
+                        AppLogger.LogStart($"[Security] Upgraded {plainUsers.Count} legacy plain-text password(s) to PBKDF2 with MustChangePassword=true.");
+                    }
                 }
 
-                AppLogger.LogStart("Database column precision verification completed successfully.");
+                AppLogger.LogStart("Database schema and column precision verification completed successfully.");
             }
             catch (System.Exception schemaEx)
             {

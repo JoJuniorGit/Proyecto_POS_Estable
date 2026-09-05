@@ -109,9 +109,19 @@ Dependencias: `Core`
 | `EventHandlers/` | InventorySaleMadeEventHandler | Consumidor de SaleMadeEvent (MediatR) |
 | `Migrations/` | 13 archivos | Migraciones EF Core de inventario |
 
-### 2.4 `Logistics.Module` — Placeholder
+### 2.4 `Logistics.Module` — Dominio de Entregas y Despacho (Delivery)
 
-Solo contiene `Logistics.Module.csproj` sin código fuente. Espacio reservado para futuras funcionalidades de logística.
+Dependencias: `Core`, `MediatR`
+
+Módulo desacoplado de ventas para gestión de repartos, despachos a domicilio y asignación de conductores (`Driver`):
+
+| Componente | Archivos | Descripción |
+|---|---|---|
+| `Services/` | IDeliveryService, DeliveryService | Gestión de órdenes de entrega, asignación de choferes y tracking de estado |
+| `DTOs/` | DeliveryOrderDto | Representación de datos de entrega y cliente receptor |
+| `Events/` | DeliveryEvents (DeliveryAssignedEvent, DeliveryStatusUpdatedEvent) | Eventos MediatR de ciclo de vida de logística |
+| `EventHandlers/` | SaleDispatchedEventHandler | Consumidor de `SaleDispatchedEvent` para crear órdenes de despacho sin acoplamiento a `Sales.Module` |
+| `Extensions/` | LogisticsServiceCollectionExtensions | Registro DI de servicios logísticos (`AddLogisticsModule`) |
 
 ### 2.5 `Backend.API` — API REST + SignalR
 

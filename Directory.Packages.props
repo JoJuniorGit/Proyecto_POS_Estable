@@ -21,6 +21,7 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.5" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.5" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.5" />
 
     <!-- UI & Desktop Components -->
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.0" />
