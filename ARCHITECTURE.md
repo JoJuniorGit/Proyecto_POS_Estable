@@ -120,11 +120,12 @@ Dependencias: `Core`, `Sales.Module`, `Inventory.Module`, `MediatR`, `Quartz`
 | Componente | Archivos | Descripción |
 |---|---|---|
 | `Controllers/` | AuthController, CashDrawerController, DailyClosureController, ExchangeRateController, HealthController, PaymentMethodsController, ProductsController, ReservationsController, SalesController, SettingsController, ShiftsController, UsersController, VersionCheckController | 13 controladores REST |
-| `Services/` | BcvScraperService, CurrentUserService, PasswordHasher, TokenService | Servicios auxiliares |
-| `Hubs/` | ExchangeRateHub | SignalR hub para tasas de cambio en tiempo real |
-| `Jobs/` | StockMovementArchiverJob, BcvExchangeRateJob (Sincronización automática de tasa BCV cada 2 horas con scraping resiliente) | Tareas programadas (BackgroundService) |
-| `Middleware/` | GlobalExceptionHandlerMiddleware, VersionCheckMiddleware | Middleware de excepciones y versioning |
+| `Services/` | BcvScraperService, CurrentUserService, PasswordHasher, TokenService, PasswordPolicyService | Servicios auxiliares |
+| `Hubs/` | ExchangeRateHub | SignalR hub para tasas de cambio y eventos de venta en tiempo real |
+| `Jobs/` | StockMovementArchiverJob (archivado en lotes a tabla histórica), BcvExchangeRateJob (sync BCV), IdempotencyCleanupJob (purga forense), OutboxProcessorJob (procesamiento y purga programada de mensajes Processed > 7d) | Tareas programadas (BackgroundService) |
+| `Middleware/` | GlobalExceptionHandlerMiddleware (ProblemDetails RFC 7807), VersionCheckMiddleware, MustChangePasswordMiddleware, SecurityHeadersMiddleware (CSP endurecido script-src 'self' en producción, nosniff, DENY) | Pipeline de middleware HTTP |
 | `DTOs/` | AdjustStockRequestDto, AdjustStockResultDto, BarcodeScanResultDto, CashDrawerOpenRequestDto, etc. | DTOs de API |
+
 
 ---
 

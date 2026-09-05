@@ -57,7 +57,7 @@ class Program
 
         // Step 1: Graceful Shutdown of Windows Service
         Console.WriteLine("[Updater] Performing Graceful Shutdown of Backend Service...");
-        RunCommand("nssm", $"stop \"{serviceName}\"");
+        ControlService("stop", serviceName, targetDir);
         Thread.Sleep(3000); // Give processes time to release file locks
 
         // Step 2: Replace Binaries preserving appsettings.Production.json safely
@@ -77,8 +77,61 @@ class Program
 
         // Step 3: Restart Backend Service
         Console.WriteLine("[Updater] Restarting Backend Windows Service...");
-        RunCommand("nssm", $"start \"{serviceName}\"");
+        ControlService("start", serviceName, targetDir);
         Console.WriteLine("[Updater] Update process completed successfully.");
+    }
+
+    static void ControlService(string action, string serviceName, string? targetDir)
+    {
+        var (cmd, args) = ResolveServiceManagerCommand(action, serviceName, targetDir);
+        RunCommand(cmd, args);
+    }
+
+    public static (string fileName, string arguments) ResolveServiceManagerCommand(string action, string serviceName, string? targetDir)
+    {
+        // Prioridad 1: AppContext.BaseDirectory/nssm.exe
+        var appDirNssm = Path.Combine(AppContext.BaseDirectory, "nssm.exe");
+        if (File.Exists(appDirNssm))
+        {
+            return (appDirNssm, $"{action} \"{serviceName}\"");
+        }
+
+        // Prioridad 2: targetDir/nssm.exe o targetDir/tools/nssm.exe
+        if (!string.IsNullOrWhiteSpace(targetDir) && Directory.Exists(targetDir))
+        {
+            var targetNssm = Path.Combine(targetDir, "nssm.exe");
+            if (File.Exists(targetNssm)) return (targetNssm, $"{action} \"{serviceName}\"");
+
+            var toolsNssm = Path.Combine(targetDir, "tools", "nssm.exe");
+            if (File.Exists(toolsNssm)) return (toolsNssm, $"{action} \"{serviceName}\"");
+        }
+
+        // Prioridad 3: nssm en PATH si existe
+        if (IsBinaryOnPath("nssm.exe") || IsBinaryOnPath("nssm"))
+        {
+            return ("nssm", $"{action} \"{serviceName}\"");
+        }
+
+        // Fallback documentado: sc.exe nativo de Windows (solo stop/start)
+        Console.WriteLine($"[Updater] [AVISO] Binario nssm.exe no encontrado en '{AppContext.BaseDirectory}' ni en PATH. Usando fallback nativo sc.exe (limitado a inicio y detención).");
+        return ("sc.exe", $"{action} \"{serviceName}\"");
+    }
+
+    private static bool IsBinaryOnPath(string binaryName)
+    {
+        var pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(pathEnv)) return false;
+
+        foreach (var path in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                var full = Path.Combine(path.Trim(), binaryName);
+                if (File.Exists(full)) return true;
+            }
+            catch { }
+        }
+        return false;
     }
 
     static void RunCommand(string fileName, string arguments)
@@ -103,3 +156,4 @@ class Program
         }
     }
 }
+

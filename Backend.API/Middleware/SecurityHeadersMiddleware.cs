@@ -1,15 +1,19 @@
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Hosting;
 
 namespace Backend.API.Middleware;
 
 public class SecurityHeadersMiddleware
 {
     private readonly RequestDelegate _next;
+    private readonly IWebHostEnvironment? _env;
 
-    public SecurityHeadersMiddleware(RequestDelegate next)
+    public SecurityHeadersMiddleware(RequestDelegate next, IWebHostEnvironment? env = null)
     {
         _next = next;
+        _env = env;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -38,9 +42,14 @@ public class SecurityHeadersMiddleware
 
         if (!headers.ContainsKey("Content-Security-Policy"))
         {
-            headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:;";
+            bool isDev = _env?.IsDevelopment() ?? false;
+            string connectSrc = isDev ? "connect-src 'self' http://localhost:* ws: wss:;" : "connect-src 'self' ws: wss:;";
+            string scriptSrc = isDev ? "script-src 'self' 'unsafe-inline';" : "script-src 'self';";
+
+            headers["Content-Security-Policy"] = $"default-src 'self'; {scriptSrc} style-src 'self' 'unsafe-inline'; img-src 'self' data:; {connectSrc}";
         }
 
         await _next(context);
     }
 }
+

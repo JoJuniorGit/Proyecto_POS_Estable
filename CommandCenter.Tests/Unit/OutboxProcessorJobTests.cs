@@ -213,4 +213,104 @@ public class OutboxProcessorJobTests
         // Inventory deduction must not happen again
         mockInv.Verify(i => i.UpdateStockAsync(It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<bool>()), Times.Never);
     }
+
+    [Fact]
+    public async Task PurgeProcessedMessagesAsync_PurgesOldProcessedMessages_AndPreservesPendingFailedAndDeadLetter()
+    {
+        string dbName = Guid.NewGuid().ToString();
+        using var dbContext = CreateInMemoryDbContext(dbName);
+
+        var oldProcessedId = Guid.NewGuid();
+        var recentProcessedId = Guid.NewGuid();
+        var oldPendingId = Guid.NewGuid();
+        var oldFailedId = Guid.NewGuid();
+        var oldDeadLetterId = Guid.NewGuid();
+
+        // 1. Mensaje procesado hace 10 días (debe ser purgado)
+        dbContext.OutboxMessages.Add(new OutboxMessage
+        {
+            Id = oldProcessedId,
+            EventType = "SaleCompleted",
+            Payload = "{}",
+            Status = "Processed",
+            CreatedAtUtc = DateTime.UtcNow.AddDays(-11),
+            ProcessedAtUtc = DateTime.UtcNow.AddDays(-10),
+            NextRetryUtc = DateTime.UtcNow.AddDays(-11)
+        });
+
+        // 2. Mensaje procesado hace 2 días (debe conservarse por retención de 7 días)
+        dbContext.OutboxMessages.Add(new OutboxMessage
+        {
+            Id = recentProcessedId,
+            EventType = "SaleCompleted",
+            Payload = "{}",
+            Status = "Processed",
+            CreatedAtUtc = DateTime.UtcNow.AddDays(-3),
+            ProcessedAtUtc = DateTime.UtcNow.AddDays(-2),
+            NextRetryUtc = DateTime.UtcNow.AddDays(-3)
+        });
+
+        // 3. Mensaje pendiente antiguo (NUNCA debe ser purgado)
+        dbContext.OutboxMessages.Add(new OutboxMessage
+        {
+            Id = oldPendingId,
+            EventType = "SaleCompleted",
+            Payload = "{}",
+            Status = "Pending",
+            CreatedAtUtc = DateTime.UtcNow.AddDays(-10),
+            NextRetryUtc = DateTime.UtcNow.AddDays(-10)
+        });
+
+        // 4. Mensaje fallido antiguo (NUNCA debe ser purgado)
+        dbContext.OutboxMessages.Add(new OutboxMessage
+        {
+            Id = oldFailedId,
+            EventType = "SaleCompleted",
+            Payload = "{}",
+            Status = "Failed",
+            CreatedAtUtc = DateTime.UtcNow.AddDays(-10),
+            ProcessedAtUtc = DateTime.UtcNow.AddDays(-10),
+            NextRetryUtc = DateTime.UtcNow.AddDays(-10),
+            ErrorMessage = "Error simulado"
+        });
+
+        // 5. Mensaje DeadLetter antiguo (NUNCA debe ser purgado)
+        dbContext.OutboxMessages.Add(new OutboxMessage
+        {
+            Id = oldDeadLetterId,
+            EventType = "SaleCompleted",
+            Payload = "{}",
+            Status = "DeadLetter",
+            CreatedAtUtc = DateTime.UtcNow.AddDays(-10),
+            ProcessedAtUtc = DateTime.UtcNow.AddDays(-10),
+            NextRetryUtc = DateTime.UtcNow.AddDays(-10),
+            ErrorMessage = "Dead letter"
+        });
+
+        await dbContext.SaveChangesAsync();
+
+        var services = new ServiceCollection();
+        services.AddScoped(_ => CreateInMemoryDbContext(dbName));
+        services.AddLogging();
+        var sp = services.BuildServiceProvider();
+
+        var job = new OutboxProcessorJob(sp, Mock.Of<ILogger<OutboxProcessorJob>>());
+
+        // Act: Purgar mensajes procesados con más de 7 días de antigüedad
+        int purged = await job.PurgeProcessedMessagesAsync(DateTime.UtcNow.AddDays(-7));
+
+        // Assert: Solo 1 registro debe haber sido eliminado
+        Assert.Equal(1, purged);
+
+        using var verifyContext = CreateInMemoryDbContext(dbName);
+        var remainingMessages = await verifyContext.OutboxMessages.ToListAsync();
+
+        Assert.Equal(4, remainingMessages.Count);
+        Assert.DoesNotContain(remainingMessages, m => m.Id == oldProcessedId);
+        Assert.Contains(remainingMessages, m => m.Id == recentProcessedId);
+        Assert.Contains(remainingMessages, m => m.Id == oldPendingId);
+        Assert.Contains(remainingMessages, m => m.Id == oldFailedId);
+        Assert.Contains(remainingMessages, m => m.Id == oldDeadLetterId);
+    }
 }
+
