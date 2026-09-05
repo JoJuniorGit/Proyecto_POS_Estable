@@ -383,52 +383,50 @@ public class SalesController : ControllerBase
     {
         string requestPath = $"/api/sales/{id}/complete";
         string? idempotencyKey = Request?.Headers["Idempotency-Key"].ToString();
+
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            return BadRequest(new { message = "El encabezado Idempotency-Key es obligatorio para completar una venta." });
+        }
+
+        idempotencyKey = idempotencyKey.Trim();
         byte[]? payloadHash = null;
 
-        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        if (_idempotencyService != null)
         {
-            idempotencyKey = idempotencyKey.Trim();
-
-            if (_idempotencyService != null)
+            if (!_idempotencyService.ValidateKeyFormat(idempotencyKey, out var formatError))
             {
-                if (!_idempotencyService.ValidateKeyFormat(idempotencyKey, out var formatError))
-                {
-                    return BadRequest(new { message = formatError });
-                }
-
-                var bodyJson = System.Text.Json.JsonSerializer.Serialize(request);
-                var bodyBytes = System.Text.Encoding.UTF8.GetBytes(bodyJson);
-                payloadHash = _idempotencyService.ComputePayloadHash(Request?.Method ?? "POST", requestPath, bodyBytes);
-
-                var checkResult = await _idempotencyService.CheckAsync(idempotencyKey, requestPath, payloadHash, HttpContext?.RequestAborted ?? default);
-                if (checkResult.IsReplay)
-                {
-                    if (Response?.Headers != null)
-                    {
-                        Response.Headers["X-Cache-Lookup"] = "HIT";
-                    }
-
-                    if (int.TryParse(checkResult.StoredResponseBody, out int cachedInvoice))
-                    {
-                        return Ok(cachedInvoice);
-                    }
-                    return Content(checkResult.StoredResponseBody ?? "", "application/json");
-                }
-
-                if (checkResult.IsMismatch)
-                {
-                    var clientIp = HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
-                    AppLogger.LogSecurityAudit($"[IDEMPOTENCY_MISMATCH] Key={idempotencyKey}, Path={requestPath}, IP={clientIp}, Timestamp={System.DateTime.UtcNow:O}");
-                    return StatusCode(StatusCodes.Status422UnprocessableEntity, new
-                    {
-                        message = "La clave de idempotencia ya fue utilizada para una transacción diferente con otro contenido."
-                    });
-                }
+                return BadRequest(new { message = formatError });
             }
-        }
-        else
-        {
-            idempotencyKey = null;
+
+            var bodyJson = System.Text.Json.JsonSerializer.Serialize(request);
+            var bodyBytes = System.Text.Encoding.UTF8.GetBytes(bodyJson);
+            payloadHash = _idempotencyService.ComputePayloadHash(Request?.Method ?? "POST", requestPath, bodyBytes);
+
+            var checkResult = await _idempotencyService.CheckAsync(idempotencyKey, requestPath, payloadHash, HttpContext?.RequestAborted ?? default);
+            if (checkResult.IsReplay)
+            {
+                if (Response?.Headers != null)
+                {
+                    Response.Headers["X-Cache-Lookup"] = "HIT";
+                }
+
+                if (int.TryParse(checkResult.StoredResponseBody, out int cachedInvoice))
+                {
+                    return Ok(cachedInvoice);
+                }
+                return Content(checkResult.StoredResponseBody ?? "", "application/json");
+            }
+
+            if (checkResult.IsMismatch)
+            {
+                var clientIp = HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+                AppLogger.LogSecurityAudit($"[IDEMPOTENCY_MISMATCH] Key={idempotencyKey}, Path={requestPath}, IP={clientIp}, Timestamp={System.DateTime.UtcNow:O}");
+                return StatusCode(StatusCodes.Status422UnprocessableEntity, new
+                {
+                    message = "La clave de idempotencia ya fue utilizada para una transacción diferente con otro contenido."
+                });
+            }
         }
 
         try

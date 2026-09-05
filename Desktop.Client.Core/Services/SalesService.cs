@@ -128,10 +128,8 @@ public class SalesService : ISalesService
         {
             Content = JsonContent.Create(_request)
         };
-        if (!string.IsNullOrWhiteSpace(idempotencyKey))
-        {
-            httpRequest.Headers.Add("Idempotency-Key", idempotencyKey);
-        }
+        var effectiveKey = !string.IsNullOrWhiteSpace(idempotencyKey) ? idempotencyKey : Guid.NewGuid().ToString("N");
+        httpRequest.Headers.Add("Idempotency-Key", effectiveKey);
         var _response = await _http_client.SendAsync(httpRequest);
         if (!_response.IsSuccessStatusCode)
         {

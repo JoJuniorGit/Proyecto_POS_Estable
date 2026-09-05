@@ -27,20 +27,6 @@ function isAllowedApiHost(hostname) {
   const h = hostname.toLowerCase();
   if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
   if (typeof window !== 'undefined' && window.location?.hostname && h === window.location.hostname.toLowerCase()) return true;
-
-  const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
-  const match = h.match(ipv4Regex);
-  if (match) {
-    const octet1 = parseInt(match[1], 10);
-    const octet2 = parseInt(match[2], 10);
-    const octet3 = parseInt(match[3], 10);
-    const octet4 = parseInt(match[4], 10);
-    if (octet1 <= 255 && octet2 <= 255 && octet3 <= 255 && octet4 <= 255) {
-      if (octet1 === 10) return true;
-      if (octet1 === 172 && octet2 >= 16 && octet2 <= 31) return true;
-      if (octet1 === 192 && octet2 === 168) return true;
-    }
-  }
   return false;
 }
 
@@ -267,19 +253,27 @@ export const api = {
   get: (endpoint, signal) =>
     apiFetch(endpoint, { method: 'GET', signal }),
 
-  post: (endpoint, body, signal) =>
-    apiFetch(endpoint, {
+  post: (endpoint, body, optionsOrSignal) => {
+    const opts = (optionsOrSignal && typeof optionsOrSignal === 'object' && !('aborted' in optionsOrSignal))
+      ? optionsOrSignal
+      : { signal: optionsOrSignal };
+    return apiFetch(endpoint, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
-      signal,
-    }),
+      ...opts,
+    });
+  },
 
-  put: (endpoint, body, signal) =>
-    apiFetch(endpoint, {
+  put: (endpoint, body, optionsOrSignal) => {
+    const opts = (optionsOrSignal && typeof optionsOrSignal === 'object' && !('aborted' in optionsOrSignal))
+      ? optionsOrSignal
+      : { signal: optionsOrSignal };
+    return apiFetch(endpoint, {
       method: 'PUT',
       body: body ? JSON.stringify(body) : undefined,
-      signal,
-    }),
+      ...opts,
+    });
+  },
 
   delete: (endpoint, signal) =>
     apiFetch(endpoint, { method: 'DELETE', signal }),

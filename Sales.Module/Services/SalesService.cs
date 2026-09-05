@@ -575,14 +575,35 @@ public class SalesService : ISalesService
             // Synchronous Stock Deduction inside Transaction (H-SAL-2 / H-INV-1 / A1)
             if (_inventoryService != null && _sale.Items != null)
             {
+                var productIds = _sale.Items.Select(i => i.ProductId).Distinct().ToList();
+                var productsDict = new Dictionary<int, Product>();
+                var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
+                if (fetched != null && fetched.Count > 0)
+                {
+                    productsDict = fetched.ToDictionary(p => p.Id);
+                }
+                else
+                {
+                    foreach (var id in productIds)
+                    {
+                        var p = await _inventoryService.GetProductByIdAsync(id);
+                        if (p != null) productsDict[p.Id] = p;
+                    }
+                }
+
                 foreach (var item in _sale.Items)
                 {
+                    if (productsDict.TryGetValue(item.ProductId, out var product) && product.IsCashAdvance)
+                    {
+                        continue;
+                    }
+
                     await _inventoryService.UpdateStockAsync(
                         item.ProductId,
                         -item.Quantity,
                         $"Sale #{_sale.InvoiceNumber.Value}",
                         userId: cashierId?.ToString(),
-                        allowNegativeStock: true);
+                        allowNegativeStock: false);
                 }
             }
 
@@ -888,13 +909,34 @@ public class SalesService : ISalesService
                 // Synchronous stock deduction
                 if (_inventoryService != null && _sale.Items != null)
                 {
+                    var productIds = _sale.Items.Select(i => i.ProductId).Distinct().ToList();
+                    var productsDict = new Dictionary<int, Product>();
+                    var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
+                    if (fetched != null && fetched.Count > 0)
+                    {
+                        productsDict = fetched.ToDictionary(p => p.Id);
+                    }
+                    else
+                    {
+                        foreach (var id in productIds)
+                        {
+                            var p = await _inventoryService.GetProductByIdAsync(id);
+                            if (p != null) productsDict[p.Id] = p;
+                        }
+                    }
+
                     foreach (var item in _sale.Items)
                     {
+                        if (productsDict.TryGetValue(item.ProductId, out var product) && product.IsCashAdvance)
+                        {
+                            continue;
+                        }
+
                         await _inventoryService.UpdateStockAsync(
                             item.ProductId,
                             -item.Quantity,
                             $"Sale #{_sale.InvoiceNumber.Value}",
-                            allowNegativeStock: true);
+                            allowNegativeStock: false);
                     }
                 }
 

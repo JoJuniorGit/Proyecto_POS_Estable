@@ -59,7 +59,7 @@ public class AuthController : ControllerBase
         if (user == null)
         {
             AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Usuario '{request.Cedula}' no encontrado.");
-            return NotFound(new { Message = "Usuario no encontrado." });
+            return Unauthorized(new { Message = "Credenciales inválidas." });
         }
 
         // Account lockout check (H-CORE-3)
@@ -94,7 +94,7 @@ public class AuthController : ControllerBase
             }
             await _db.SaveChangesAsync();
             AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{request.Cedula}': Contraseña incorrecta (Intento {user.AccessFailedCount}/5).");
-            return Unauthorized(new { Message = "Contraseña incorrecta." });
+            return Unauthorized(new { Message = "Credenciales inválidas." });
         }
 
         // Reset lockout counters on success
@@ -211,7 +211,7 @@ public class AuthController : ControllerBase
                                                            (digitsOnly.Length > 0 && (u.Cedula.ToLower() == "v-" + digitsOnly || u.Cedula == digitsOnly)));
         if (user == null)
         {
-            return NotFound(new { Message = "Usuario no encontrado." });
+            return Unauthorized(new { Message = "Credenciales inválidas o contraseña actual incorrecta." });
         }
 
         // 1. Validar si la cuenta está actualmente bloqueada
@@ -236,7 +236,7 @@ public class AuthController : ControllerBase
             }
             await _db.SaveChangesAsync();
             AppLogger.LogStart($"[AUTH] Intento fallido en change-password para Usuario '{user.Username}': Contraseña incorrecta (Intento {user.AccessFailedCount}/5).");
-            return Unauthorized(new { Message = "La contraseña actual es incorrecta." });
+            return Unauthorized(new { Message = "Credenciales inválidas o contraseña actual incorrecta." });
         }
 
         // 3. Validar la nueva contraseña frente a la política centralizada de seguridad

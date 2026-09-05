@@ -112,13 +112,18 @@ export async function getPendingSales() {
  * @param {number} [cashierId]
  * @returns {Promise<number>} Número de factura
  */
-export async function completeSale(saleId, exchangeRate, payments, roundingAdjustment = 0, cashierId = null, isPendingPickup = false) {
+export async function completeSale(saleId, exchangeRate, payments, roundingAdjustment = 0, cashierId = null, isPendingPickup = false, idempotencyKey = null) {
+  const key = idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `web-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
   return await api.post(`/api/sales/${saleId}/complete`, {
     exchangeRate,
     roundingAdjustment,
     cashierId,
     isPendingPickup,
     payments,
+  }, {
+    headers: {
+      'Idempotency-Key': key,
+    },
   });
 }
 
