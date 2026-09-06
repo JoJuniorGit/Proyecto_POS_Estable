@@ -1,54 +1,96 @@
 ================================================================================
 REPORTE POR MÓDULO: Instalador y Scripts (Despliegue, Empaque y Operación)
 Fecha: 2026-09-05
-Revisión: 7.1 (Certificación Final de Remediación Definitiva - 100% Hallazgos Subsanados)
+Revisión: 8.0 (Contrastación Empírica Rev. 7.1 vs Código Actual + Nuevos Hallazgos)
 Cubre: installer/setup.iss, installer/Configure-PosService.ps1, scripts/*.ps1, bat
-Cruce con docs/reporte.txt (análisis global).
+Cruce con docs/reporte.txt (revisión global 8.0).
 ================================================================================
 
 --------------------------------------------------------------------------------
-1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
+1. REVISIÓN DE LA CERTIFICACIÓN REV. 7.1 ("100% HALLAZGOS SUBSANADOS")
 --------------------------------------------------------------------------------
-El subsistema de instalación automatiza el aprovisionamiento del POS como Servicio Windows:
+La Rev. 7.1 declaraba C1/INS-1, UPD-2/INS, INS-10, INS-12 cerrados y dejaba C2,C1 residual.
+La auditoría Rev. 8.0 sobre HEAD c337462 confirma la estructura de instalación funcional
+pero corrige la "certificación" con los matices siguientes:
 
-1. Generación y Protección de Secretos JWT (C1 / INS-1 ✅):
-   - Configure-PosService.ps1 genera claves de 512 bits mediante CSPRNG criptográfico
-     ([Security.Cryptography.RandomNumberGenerator]) si no se suministra una clave válida.
-   - Aplica ACLs restrictivas en el Registro de Windows (HKLM:\Software\POS), restringiendo
-     la lectura exclusivamente a cuentas SYSTEM y Administradores locales.
+CONFIRMADO:
+  - INS-10 (compilación limpia de setup.iss): ✅ VERIFICADO (artifact de Inno Setup presente).
+  - INS-12 (rechazo de clave histórica ddf95c83...): ✅ VERIFICADO — detección y rechazo en
+    arranque (Program.cs:144-158).
+  - C1/INS-1: ✅ PARCIALMENTE — genera clave CSPRNG 512 bits en Reg (HKLM Software\POS,
+    ACLs SYSTEM/Admins). RESIDUAL (agravado): la clave se transfiere en texto claro a
+    AppEnvironmentExtra de NSSM (:209-211) y se documenta en docs/JWT_Key.md.
 
-2. Resiliencia del Servicio Windows y Fallback Nativo (UPD-2 ✅):
-   - Integración nativa con UseWindowsService() en Program.cs.
-   - Scripts de configuración y actualizador soportan fallback nativo a sc.exe si el
-     binario nssm.exe no se encuentra en el entorno.
-
-3. Reglas de Firewall Idempotentes:
-   - Configuración automática de reglas de entrada en el Firewall de Windows para los
-     puertos 5000 (HTTP) y 5001 (HTTPS), con limpieza de reglas huérfanas previas.
-
---------------------------------------------------------------------------------
-2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
---------------------------------------------------------------------------------
-- C1 / INS-1 (Generación de clave JWT): ✅ CORREGIDO (CSPRNG 512 bits + ACLs).
-  * Residual: La clave aún reside en texto claro dentro de AppEnvironmentExtra de NSSM.
-- C2 / INS-3 (Tráfico HTTP en LAN): ❌ VIGENTE (el instalador expone el puerto 5000 y el
-  tráfico viaja en texto plano si no se genera pos-https.pfx).
-- INS-10 (Error de compilación en Inno Setup): ✅ CERRADO (compilación limpia).
-- INS-12 (Detección de clave histórica ddf95c83...): ✅ CERRADO (rechazo en arranque).
+CAMBIOS DE ESTADO:
+  - C2/INS-3: ❌ REABIERTO COMO ALTO — el instalador expone SIEMPRE 5000-HTTP y solo levanta
+    5001-HTTPS si se genera pos-https.pfx manual (load http). Firewall abre ambos puertos
+    (setup.iss:280-281 y ps1:109-118) — inconsistencias: setup.iss crea solo 5000,
+    ps1:109 crea 5001; NAT. Se combina con la superfície del hub sin auth (Prog 374) y la
+    cookie/SPA 8W-CR2 (cross 01/09).
+  - UPD-2/INS: ✅ VERIFICADO (jerarquía NSSM→sc.exe).
+  - Residual 7.1 (clave en NSSM) ⇉ VIGENTE y además: el fallback sc.exe de
+    Configure-PosService.ps1:56-75 genera la clave en appsettings.json de TARGET en
+    TEXT PLANO si nssm no existe (:62-70).
 
 --------------------------------------------------------------------------------
-3. FORTALEZAS DEL MÓDULO
+2. NUEVOS HALLAZGOS REV. 8.0 (Instalador y Scripts)
 --------------------------------------------------------------------------------
-- Instalación limpia desatendida mediante Inno Setup y PowerShell integrado.
-- Verificación automática de PostgreSQL y migración de esquemas en el primer inicio.
-- Despliegue empaquetado autónomo con cliente de escritorio y web SPA integrada.
+[8U-N1] ALTO — Secretos en texto claro versionados en el repo:
+  - appsettings.Development.json:10,:13 (Password=123456, AdminSeedPassword=Admin123!)
+    y .env:1 (DB_PASSWORD=123456) están COMMITEADOS en git HISTORIA.
+  - docs/JWT_Key.md documenta la clave JWT real.
+  - La contraseña del certificado pos-https.pfx viaja embebida en Program.cs:900.
+  - Fix: rotar TODOS estos secretos AL MOMENTO, borrar de historial, cargar desde
+    variables de entorno/DPAPI y eliminar docs/JWT_Key.md.
+
+[8U-N2] ALTO (persistente) — Canal de actualización HTTP SIN firma digital:
+  - setup.iss:165 usa http:// del servidor para el UpdaterService; no hay firma X.509 de
+    paquetes ni pinning (cross 08 [8U-N2]). Ningún binario instalado se autentica.
+  - Fix: https:// + fingerprint y firma de los zips con clave privada del distribuidor.
+
+[8U-M2] MEDIO — Secretos por línea de comandos:
+  - setup.iss:374-379 y (cuando se re-llama) exponent pasan JWT/DB creds como argumentos
+    de proceso de cfg (visibles con procesadores/WSH); :209-211 vía AppEnvironmentExtra.
+  - Fix: pasar por archivos EFS/DPAPI con ACL restrictiva, no por CLI.
+
+[8U-M3] MEDIO — scripts/actualizar_servicio_y_sistema.bat:27 despliega appsettings de
+  Development (config de desarrollo) hacia servicios de producción; :21-22 hace
+  taskkill /F del proceso blindado sin esperar (puede dejar el Cierre en estado intermedio).
+  - Fix: bat de producción con configuración producción y parada coordinada (Stop-Service).
+
+[8U-M4] MEDIO — Debilidades de hardening en setup.iss:
+  - Const Password= pos-https.pfx de 4 caracteres (:206-212 — imposible de rotar con fuerza bruta trivial).
+  - users [installer] agrega al grupo local "users-modify" a cierre/barra de archivos
+    padres (:48 permite borrar/reemplazar binarios).
+  - El firewall se configura de forma idempotente pero oculta en caso de coexistir reglas
+    sueltas contradictorias o si el usuario elige "sin firewall".
+  - Uso de ignoreversion (:15) para reemplazar binarios sin control de versiones.
+  - nssm "binary manutention" sin hasheo/comprobación de integridad (LINQ).
+
+[8U-B1] BAJO — Servicio instalado como NSSM corriendo como LocalSystem; el acceso a
+  HKLM\Software\POS queda solo con ACL restrictivas, pero el proceso tiene privilegios
+  Machine-wide; ampliar a Virtual Account (SID local servicio) en la ACL y quitar del
+  grupo "users" los directorios del programa.
 
 --------------------------------------------------------------------------------
-4. RECOMENDACIONES FUTURAS
+3. FORTALEZAS DEL MÓDULO (CONFIRMADAS)
 --------------------------------------------------------------------------------
-- Incorporar en setup.iss la generación automatizada de un certificado autofirmado X.509
-  para habilitar HTTPS (5001) por defecto e instalarlo en la Entidad de Certificación
-  de Raíz de Confianza de la máquina local.
-- Migrar el almacenamiento de la clave JWT desde NSSM AppEnvironmentExtra hacia DPAPI
-  o Windows Credential Manager.
+- Instalación desatendida limpia con Inno Setup + PowerShell integrado.
+- Verificación automática de PostgreSQL y migración de esquemas en primer arranque.
+- Generación de clave JWT con CSPRNG (512 bits) y ACL restrictivas en registro.
+- Reglas de firewall idempotentes con limpieza de reglas huérfanas.
+
+--------------------------------------------------------------------------------
+4. PLAN DE ACCIÓN PRIORIZADO (Instalador y Scripts)
+--------------------------------------------------------------------------------
+1. Rotar secretos versionados, quitar de historial git, cargar desde entorno/DPAPI.
+2. Endurecer instalación: HTTPS por defecto (autogenerar certificado autofirmado e
+   instalarlo en Trusted Root), bloquear puerto HTTP 5000 salvo necesidad explícita.
+3. Configuración de producción en el bat de actualización (eliminar Development).
+4. Subir longitud de contraseña de pos-https.pfx y detener uso de ignoreversion/group write.
+5. Firma digital de paquetes de actualización y pinning del UpdateUrl a HTTPS.
+6. Reducir LocalSystem → cuenta de servicio con ACL mínimas (Virtual Account).
+7. NSSM: mover claves sensibles fuera de AppEnvironmentExtra a archivo cifrado.
+================================================================================
+FIN DEL REPORTE Instalador y Scripts — REV. 8.0
 ================================================================================

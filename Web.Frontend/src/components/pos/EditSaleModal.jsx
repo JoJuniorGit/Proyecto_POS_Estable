@@ -3,7 +3,7 @@ import Modal from '../ui/Modal';
 import SearchBar from './SearchBar';
 import QuantityInput from './QuantityInput';
 import { updateSaleItems } from '../../services/salesApi';
-import { formatBsS, formatUSD, formatNumberEs, getLineAmounts } from '../../utils/formatters';
+import { formatBsS, formatUSD, formatNumberEs } from '../../utils/formatters';
 import { Trash2, AlertTriangle, Save, Loader2, Plus, Minus } from 'lucide-react';
 
 export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onSuccess }) {
@@ -44,7 +44,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       setItems([]);
     }
     setError(null);
-  }, [sale, exchangeRate]);
+  }, [sale, exchangeRate, rateToUse]);
 
   const handleAddProduct = (prod) => {
     if (!prod) return;

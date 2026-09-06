@@ -1,52 +1,69 @@
 ================================================================================
 REPORTE POR MÓDULO: Logistics.Module (Gestión y Despacho de Pedidos / Envíos)
 Fecha: 2026-09-05
-Revisión: 7.1 (Certificación Final de Remediación Definitiva - 100% Hallazgos Subsanados)
+Revisión: 8.0 (Contrastación Empírica Rev. 7.1 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.0).
+===============================================================================
+
+--------------------------------------------------------------------------------
+1. REVISIÓN DE LA CERTIFICACIÓN REV. 7.1 ("100% HALLAZGOS SUBSANADOS")
+--------------------------------------------------------------------------------
+La Rev. 7.1 certificó la implementación de Logistics.Module como definitiva.
+La auditoría Rev. 8.0 sobre HEAD c337462 corrige 2 aseveraciones de dicha certificación:
+
+REVISIÓN 1 — [LOG-1]/[LOG-2] DECLARADOS CERRADOS, PERO LA IMPLEMENTACIÓN ES INERTE:
+  - El módulo existe (8+ archivos .cs: IDeliveryService, DeliveryService, eventos,
+    handlers, DTOs, AddLogisticsModule) y compila. La estructura desacoplada es correcta.
+  - PERO DeliveryService.cs:17 implementa la "base de datos" con un
+    ConcurrentDictionary<Guid, DeliveryOrder> EN MEMORIA:
+      * No persiste en ninguna tabla ni contexto EF Core (PERSISTENCIA = 0).
+      * No se registra vía AddLogisticsModule en Backend.API/Program.cs:122-228
+        (no está en la lista de módulos cargados).
+      * El evento de dominio SaleDispatchedEvent solo se publica en test
+        (DeliveryServiceTests.cs:123,142); en PRODUCCIÓN ningún flujo de venta lo envía.
+      * LiveReload/multisistema: cada instancia tiene su propio diccionario (stateless
+        entre procesos).
+  - Impacto: reiniciar el backend = pérdida total de todas las órdenes; consultas
+    DSPO/DSPE sin datos reales; no hay rastro en Auditoría de BD.
+
+REVISIÓN 2 — MÉTRICA "0 advertencias, 6/6 pruebas" CONFIRMADA PERO INSUFICIENTE:
+  - DeliveryServiceTests.cs:123:142 (mock/handler en memoria) valida la mecánica del
+    DTO sin ejercitar persistencia ni integración con el bus real.
+
+--------------------------------------------------------------------------------
+2. CONTRASTACIÓN DE HALLAZGOS (REV. 8.0)
+--------------------------------------------------------------------------------
+[8L-CR3] ALTO → Degradado de certificación a VIGENTE-CRÍTICO — Módulo inert/no persistente.
+  - DeliveryService.cs:15-39: backend Storage es ConcurrentDictionary en memoria;
+    métodos Patch/Add/Assign se reducen a manipulación del diccionario local.
+  - Los 3 eventos (SaleDispatchedEvent, DeliveryAssignedEvent, DeliveryStatusUpdatedEvent)
+    llegan a tener handler (auditoría) PERO nunca se disparan en el flujo real de ventas.
+  - Adicional: DeliveryService.cs:36-37 registra CustomerName + DeliveryAddress
+    COMPLETOS (PII sin redacción) en logs; viola la higiene de datos del cliente.
+  - Impacto funcional: la ventana DSPO/DSPE del cliente nunca muestra entregas reales.
+
+[8L-CR3b] BAJO — No existe ningún flujo que "completar venta con envío" despache en logística:
+  - La integración con sales (flag is_delivery existente en ítems) no invoca
+    DeliveryService en la API. Falta el puente Venta→VentaEntregable→DeliveryOrder.
+
+[8L-M1] MEDIO — Sin soporte de transición "asignado→en ruta→entregado" con validación
+  por usuario/rol: el estado vive solo en el diccionario (sin reglas de máquina de estados
+  enlazadas a la BD).
+
+[8L-M2] MEDIO — No hay tabla de auditoría de entregas en SalesDbContext ni en
+  LogisticsDbContext; los históricos DSPE/DSPO no existen fuera de la sesión.
+
+--------------------------------------------------------------------------------
+3. PLAN DE ACCIÓN PRIORIZADO (Logistics.Module)
+--------------------------------------------------------------------------------
+1. Persistir DeliveryOrder en PostgreSQL (entidad + DbContext + migración).
+2. Registrar AddLogisticsModule en DI del backend (Program.cs).
+3. Publicar SaleDispatchedEvent desde el flujo de venta real (hold completado con envío)
+   mediante el mismo pipeline Outbox que ya usa Sales.Module.
+4. Añadir máquina de estados (Asignado→EnRuta→Entregado) con validación por rol Driver.
+5. Añadir tabla de auditoría DSPE/DSPO con fechas UTC.
+6. Redactar/blanquear PII (CustomerName/DeliveryAddress parciales) en logs.
+7. Extender DeliveryServiceTests a integración con PostgreSQL (Testcontainers).
 ================================================================================
-
---------------------------------------------------------------------------------
-1. ESTADO ACTUAL DEL MÓDULO (REV. 7.1)
---------------------------------------------------------------------------------
-En la Fase 3 del Plan Maestro de Remediación (commit 492f038), el proyecto
-Logistics.Module fue completamente implementado y desacoplado, resolviendo en su
-totalidad la deuda técnica histórica de [LOG-1] y [LOG-2].
-
-Estructura de Componentes Implementada:
-  - Logistics.Module/Services/IDeliveryService.cs: Contrato de servicios para
-    despacho, asignación de chofer/repartidor, actualización de estado y consulta.
-  - Logistics.Module/Services/DeliveryService.cs: Implementación transaccional con
-    EF Core (SalesDbContext), validación de estados y soporte para órdenes de entrega.
-  - Logistics.Module/Events/SaleDispatchedEvent.cs: Evento MediatR emitido al
-    completarse o despacharse una venta con entrega a domicilio.
-  - Logistics.Module/Events/DeliveryAssignedEvent.cs: Evento emitido al vincular chofer.
-  - Logistics.Module/Events/DeliveryStatusUpdatedEvent.cs: Evento emitido en cambios de estado.
-  - Logistics.Module/EventHandlers/: Manejadores de eventos desacoplados para auditoría
-    y sincronización sin referencias circulares con Sales.Module.
-  - Logistics.Module/DTOs/: DeliveryOrderDto, AssignDeliveryDto, UpdateDeliveryStatusDto.
-  - Logistics.Module/Extensions/LogisticsModuleExtensions.cs: Inyección de dependencias (AddLogisticsModule).
-  - CommandCenter.Tests/Unit/DeliveryServiceTests.cs: 6 pruebas unitarias completas
-    con 100% de éxito cubriendo asignaciones, transiciones de estado y excepciones.
-
---------------------------------------------------------------------------------
-2. CONTRASTACIÓN DE HALLAZGOS
---------------------------------------------------------------------------------
-[LOG-1] Módulo vacío referenciado en la solución:
-  - Estado Anterior: ❌ VIGENTE (solo archivo .csproj sin código).
-  - Estado Rev. 7.0: ✅ TOTALMENTE CORREGIDO.
-  - Evidencia: Logistics.Module cuenta con 8 archivos fuente (.cs) organizados en
-    Services, Events, EventHandlers, DTOs y Extensions.
-
-[LOG-2] Conceptos logísticos dispersos sin módulo de dominio:
-  - Estado Anterior: ❌ VIGENTE.
-  - Estado Rev. 7.0: ✅ TOTALMENTE CORREGIDO.
-  - Evidencia: La orquestación logística reside formalmente en Logistics.Module,
-    desacoplada de Sales.Module a través del bus de eventos MediatR y de la
-    interfaz IDeliveryService.
-
---------------------------------------------------------------------------------
-3. MÉTRICAS Y CALIDAD DE CÓDIGO
---------------------------------------------------------------------------------
-- Compilación: 0 Errores, 0 Advertencias.
-- Pruebas Unitarias: 6 / 6 pruebas pasando en CommandCenter.Tests.Unit.DeliveryServiceTests.
-- Acoplamiento: Bajo (comunicación mediante MediatR INotification y DTOs puros).
+FIN DEL REPORTE Logistics.Module — REV. 8.0
 ================================================================================

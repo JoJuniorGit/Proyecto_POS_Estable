@@ -1,43 +1,77 @@
 ================================================================================
 REPORTE POR MÓDULO: UpdaterService (Servicio Windows de actualización de binarios)
 Fecha: 2026-09-05
-Revisión: 7.1 (Certificación Final de Remediación Definitiva - 100% Hallazgos Subsanados)
-Cruce con docs/reporte.txt (análisis global).
+Revisión: 8.0 (Contrastación Empírica Rev. 7.1 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.0).
 ================================================================================
 
 --------------------------------------------------------------------------------
-1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
+1. REVISIÓN DE LA CERTIFICACIÓN REV. 7.1 ("100% HALLAZGOS SUBSANADOS")
 --------------------------------------------------------------------------------
-UpdaterService es una utilidad autónoma de actualización sin tiempo de inactividad
-prolongado:
+La Rev. 7.1 certificó UPD-1, UPD-2 y SEC-01 como cerrados. La auditoría Rev. 8.0 sobre
+HEAD c337462 reabre 2 de ellos por contradicción con el código real:
 
-1. Verificación Criptográfica de Paquetes (UPD-1 ✅, Commit c541b57):
-   - Program.cs calcula el hash SHA-256 del archivo zip de actualización y lo compara
-     contra el argumento --sha256 antes de detener el servicio o reemplazar binarios.
-   - Si el hash no coincide, la actualización se aborta inmediatamente sin afectar el POS.
+REVISIÓN 1 — [UPD-1] ⚠️ PARCIAL (estado DIFERENTE al Rev. 7.1):
+  - El Rev. 7.1 declaraba que "si el hash no coincide, la actualización se aborta
+    inmediatamente sin afectar el POS".
+  - El código REAL es FAIL-OPEN: UpdaterService/Program.cs:33-56 valida el hash con
+    condición simple (if (providedSha.ToUpper() != computed.ToUpper())) y al final
+    apenas Devuelve; los servicios NUNCA se detienen si la verificación falla; y el
+    sidecar actualizador DE LA IMPLEMENTACIÓN se lanza condicionalmente (:37) con un
+    flag PIN/URL no autenticado.
+  - Impacto: con una entrada no autenticable o con argumentos erróneos, el servicio
+    continúa y descarga el paquete externo (setup.iss del canal HTTP, ver 11 [8U-N2])
+    sin firmar y reinicia igual (:"") → riesgo real de imagen envenenada.
 
-2. Resolución Dinámica y Resiliente de NSSM (UPD-2 ✅, Commit 686f0cd):
-   - ResolveServiceManagerCommand implementa una jerarquía de 4 niveles:
-     * Nivel 1: AppContext.BaseDirectory/nssm.exe
-     * Nivel 2: targetDir/nssm.exe o targetDir/tools/nssm.exe
-     * Nivel 3: nssm en variable de entorno PATH
-     * Nivel 4 (Fallback nativo): sc.exe de Windows para start/stop.
+REVISIÓN 2 — [UPD-2] ✅ VERIFICADO para resolución/path ("0 advertencias"), PERO MATIZ:
+  - ResolveServiceManagerCommand (NSSM→sc.exe smoke) es correcto. Lo que NO se
+    certificaba es la ORQUESTACIÓN producción (SetupUpdaterPackage con sidecar sin
+    autenticación/verificación de firma digital) que sigue abierta.
 
-3. Blindaje contra Zip Slip y Path Traversal (SEC-01 ✅):
-   - UpdatePackageExtractor valida la canonicidad de rutas, bloquea symlinks o reparse
-     points y preserva de forma inmutable el archivo appsettings.Production.json.
-
---------------------------------------------------------------------------------
-2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
---------------------------------------------------------------------------------
-- SEC-01 (Zip Slip / Path Traversal): ✅ CERRADO (validación canónica estricta).
-- UPD-1 (Verificación SHA-256 de binarios): ✅ CERRADO (computación previa de hash).
-- UPD-2 (Resolución de ruta NSSM / sc.exe): ✅ CERRADO (jerarquía de 4 niveles con fallback).
+REVISIÓN 3 — [SEC-01] ✅ VERIFICADO (validación canónica de rutas y bloqueo de symlinks/
+  reparse points; preserva appsettings.Production.json). Atenuante: la extracción puede
+  caerse SILENCIOSAMENTE (ver [8U-M1]), dejando el paquete sin extraer.
 
 --------------------------------------------------------------------------------
-3. FORTALEZAS DEL MÓDULO
+2. NUEVOS HALLAZGOS REV. 8.0 (UpdaterService)
 --------------------------------------------------------------------------------
-- Resiliencia ante fallos: no detiene el servicio en ejecución si el paquete está dañado.
-- Preservación segura de configuraciones de producción y cadenas de conexión de base de datos.
-- Operación completamente desatendida compatible con administradores de servicios de Windows.
+[8U-N5] ALTO → Mantenido por la Rev. 8.0 — Fail-open de actualización:
+  - Verificación de hash condicional y no bloqueante; si falla, sigue y reinicia
+    (Program.cs:33-56, :78-81, :137-157). El sidecar actualizador no está autenticado.
+  - Fix: decisión FAIL-CLOSED (abortar y NO tocar binarios si la firma/hash no es
+    válido), verificación de firma X.509 del paquete, y cancelar la descarga externa
+    del UpdateUrl si la cadena no es HTTPS + cert de origen.
+
+[8U-N2] ALTO (persistente) — Canal de actualización HTTP SIN TLS/firma:
+  - setup.iss:165 usa http:// del servidor sin PIN de clave; el cliente puede ser
+    relanzado con updateServerUrl no canónica (cross 8B-B7/8W-M2).
+  - Fix: exigir https:// + fingerprint/pinning en UpdateUrl.
+
+[8U-M1] MEDIO — Errores tragados y reinicio incondicionado/asincronizado:
+  - catch nulos/omitidos (v.g. comprobación de actualización acompaña _ = actualizar()).
+  - Programa NO registra en Event Log (otro hallazgo [8U-B1]); no hay CYNC del
+    resultado a BACKEND (falta Health/auditoría).
+
+[8U-B1] BAJO (CURIOSIDAD para el plan de higiene) — No usa Windows Event Log (EventLog)
+  ni ETL para registrar los reemplazos/verdictses.
+
+--------------------------------------------------------------------------------
+3. FORTALEZAS DEL MÓDULO (CONFIRMADAS)
+--------------------------------------------------------------------------------
+- Secuencia SPLIT (programa de VE del servicio) → extracción → reinicio en 4 niveles.
+- Validación canónica de ZIP y preservación inmutable de appsettings.Production.json.
+- No detiene el servicio en ejecución si el paquete está dañado (intención correcta);
+  el defecto es que SÍ reinicia cuando la verificación es la que falla.
+
+--------------------------------------------------------------------------------
+4. PLAN DE ACCIÓN PRIORIZADO (UpdaterService)
+--------------------------------------------------------------------------------
+1. Fail-closed: no tocar binarios sin firma/hash válido + Registro de auditoría.
+2. Exigir HTTPS y certificado de origen en UpdateUrl (eliminar HTTP).
+3. Autenticar/autorizar la invocación del sidecar (token de máquina/domain join).
+4. Registrar eventos en Event Log (Inicio/verificación/éxito/fallo).
+5. Añadir cierre de cuando la actualización falla (rollback del paquete anterior).
+6. Cruzar con 11-Reporte-Instalador para la cobertura de setup.iss y NSSM.
+================================================================================
+FIN DEL REPORTE UpdaterService — REV. 8.0
 ================================================================================

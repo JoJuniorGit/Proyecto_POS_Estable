@@ -8,6 +8,7 @@ using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Moq;
 using Xunit;
+using CommunityToolkit.Mvvm.Messaging;
 
 namespace CommandCenter.Tests.Unit;
 
@@ -55,6 +56,9 @@ public class PosViewModelPaymentMethodsDeduplicationTests
             cartVm,
             session,
             mockDialog.Object);
+
+        // Aislamos del bus estático global de mensajes para evitar que pruebas paralelas disparen recargas
+        WeakReferenceMessenger.Default.Unregister<PaymentMethodsChangedMessage>(posVm);
 
         // Act: Dos llamadas concurrentes simulando SessionChanged + LoginSuccess
         var task1 = posVm.InitializeForSessionAsync();

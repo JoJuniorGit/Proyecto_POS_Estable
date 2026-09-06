@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { useAuth } from '../context/AuthContext';
-import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime } from '../utils/formatters';
+import { formatBsS, formatUSD, formatNumberEs, formatDate } from '../utils/formatters';
 
 import CashInModal from '../components/register/CashInModal';
 import CashOutModal from '../components/register/CashOutModal';

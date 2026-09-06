@@ -1,63 +1,100 @@
 ================================================================================
 REPORTE POR MÓDULO: Web.Frontend (Cliente Web SPA — React 19 + Vite + PWA)
 Fecha: 2026-09-05
-Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
-Cruce con docs/reporte.txt (análisis global).
+Revisión: 8.0 (Contrastación Empírica Rev. 7.0 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.0).
+Métricas ejecutadas en esta auditoría: 70/70 pruebas Vitest en ~550 ms contra el árbol actual.
 ================================================================================
 
 --------------------------------------------------------------------------------
-1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
+1. CONTRASTACIÓN DE HALLAZGOS PREVIOS (REV. 7.0 vs CÓDIGO ACTUAL)
 --------------------------------------------------------------------------------
-Web.Frontend es la aplicación web de punto de venta optimizada para navegadores modernos
-y dispositivos móviles/tablets táctiles:
+HALLAZGOS VERIFICADOS COMO CORRECTOS EN EL ÁRBOL ACTUAL:
+  - SEC-06 (Allowlist de emparejamiento): ⚠️ CAMBIA DE ESTADO — Revisión 8.0.
+    * api.js restringe por defecto a loopback/window.location.hostname (:25-31, válido).
+    * PERO la persistencia de sesión via localStorage (ver [8W-CR2]) y
+      setCustomBaseUrl(s=<ip>) :86-97 permiten direccionar a OTRAS IPs del cliente
+      si el operador la teclea; el nivel de trust sigue alto.
+  - W1 (Idempotencia en cobros): ✅ VERIFICADO — salesApi.js genera UUID v4 criptográfico
+    (crypto.randomUUID()) y el servidor lo exige.
+  - UX-WEB-01 / ERR-05 (RFC 7807 robusto): ✅ VERIFICADO — api.js extrae detail/title/
+    errores/validación y no vuelca JSON crudo. Validado con 5 pruebas extra.
+  - ARQ-SKU / DOM-VAL-01: ✅ VERIFICADO — barcodeValidator.js limita captura óptica a
+    1D retail [A-Za-z0-9]{4,15} Mod10; catálogo admite ^[A-Za-z0-9\-_]{1,50}$.
+  - Seguridad web CSP: ✅ el bundle Vite prod opera sin 'unsafe-inline' y el middleware
+    de ASP.NET Core aplica CSP 'self'.
+  - W2 (precisión JS): 🟡 PERMANECE PARCIAL (formatters/toFixed; cross 8W-B2 y 8W-ZT).
 
-1. Endurecimiento de Seguridad Web y CSP (C4 / SEC-09 ✅, Commit 686f0cd):
-   - El bundle generado por Vite en producción opera sin requerir 'unsafe-inline'.
-   - El servidor ASP.NET Core aplica Content-Security-Policy: default-src 'self'; script-src 'self'.
-
-2. Restricción de Emparejamiento Web (SEC-06 ✅, Commit 2c4be32):
-   - api.js restringe la URL base del API estrictamente a loopback y al hostname de la
-     ventana (window.location.hostname), evitando el direccionamiento arbitrario hacia
-     otras subredes sin autorización.
-
-3. Idempotencia en Cobros Web (W1 ✅, Commit 2c4be32):
-   - salesApi.js genera un encabezado Idempotency-Key con UUID v4 criptográfico
-     (crypto.randomUUID()) para cada transacción de cobro, protegiendo contra dobles pagos.
-
-4. Experiencia de Usuario y Resiliencia Móvil:
-   - useMobileBackGuard protege contra salidas accidentales mediante el botón "Atrás"
-     cuando hay productos en el carrito o un cobro en curso.
-   - useScannerTrap gestiona la entrada de pistolas lectoras de códigos de barras (wedge).
-
---------------------------------------------------------------------------------
-2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
---------------------------------------------------------------------------------
-- C4 (Tokens web en cookies): ✅ CERRADO (cookie HttpOnly pos_jwt + SameSite=Strict).
-- SEC-06 (Allowlist de emparejamiento): ✅ CERRADO (restringido a host local).
-- SEC-09 (CSP unsafe-inline): ✅ CERRADO (script-src 'self' en producción).
-- W1 (Idempotencia en cobros): ✅ CERRADO (UUID v4 obligatorio en cada venta).
-- W2 (Precisión decimal JavaScript): 🟡 PARCIAL (formatters.js utiliza toFixed sobre
-  punto flotante IEEE-754; adecuado para visualización pero mejorable a centavos enteros).
-- [CERRADO] UX-WEB-01 / ERR-05: ✅ TOTALMENTE CORREGIDO (api.js enriquecido para
-  extraer de forma robusta 'detail', 'title', array de errores y objetos de validación
-  RFC 7807 de ASP.NET Core, evitando volcar JSON crudo al cajero. Validado con 5 pruebas
-  unitarias adicionales en api.test.js).
-- [DOCUMENTADO] ARQ-SKU / DOM-VAL-01: ✅ DISEÑO COHERENTE (barcodeValidator.js restringe la
-  captura óptica a códigos 1D retail [A-Za-z0-9]{4,15} con Mod10 y filtrado de puntuación
-  para rechazar URLs de QR, mientras que el catálogo admite SKUs alfanuméricos extendidos
-  con guiones [A-Za-z0-9\-_]{1,50}).
+----------------------------------------------- — REVISIÓN 8.0: ESTADO REAL AÑADIDO —
+C4 (Tokens web en cookies): ❌ VERIFICADO-ACTUALIZADO — El SPA NO usa cookies pos_jwt:
+  AuthContext.jsx:9,37-38 y api.js:159-171 guardan/limpian el JWT en localStorage y lo
+  envían como header Authorization Bearer (ver [8W-CR2] CRÍTICO). El middleware HttpOnly
+  cookie configurado en backend solo abastece a clientes que eligieran cookie (no web).
 
 --------------------------------------------------------------------------------
-3. FORTALEZAS DEL MÓDULO
+2. NUEVOS HALLAZGOS REV. 8.0 (Web.Frontend)
 --------------------------------------------------------------------------------
-- Suite de pruebas exhaustiva: 70 pruebas unitarias con Vitest (100% pasando en ~550ms).
-- Integración dual de escaneo de códigos de barras (BarcodeDetector nativo + ZXing fallback).
-- Filtros de visión para portátiles (lapTopVisionEnhancer con binarización Sauvola).
-- Sincronización en tiempo real de tasa de cambio y formato de moneda mediante SignalR.
+[8W-CR2] CRÍTICO — JWT persistido en localStorage (robo XSS).
+  - AuthContext.jsx:9 (localStorage.getItem('token')), :37-38 (setItem/removeItem),
+    api.js:159-171 (Bearer), :86-97/:121-147 (setCustomBaseUrl + allowlist de bypass
+    para endpoints anónimos). Un XSS cualquiera (accesible al servir por HTTP 5000 sin
+    Secure) extrae el token de caja. localStorage NO es context-aislado ni tiene puerta
+    HttpOnly.
+  - Fix (prioridad 1): mover el token a cookie HttpOnly Secure SameSite=Lax (ya hay
+    middleware cookie en backend) o usar un ServiceWorker con canal masivo; añadir CSP
+    estricta (script-src 'self'; object-src 'none'; base-uri 'self'), escapar claves en
+    el API y endurecer el bundle.
+
+[8W-C1] ALTO — Base-URL del API / CORS credentialed con AnyPort en localhost
+  (cross-backend 01 [8W-C1]): el allowlist (localhost:*) acepta cuantas webs con guion
+  en la misma host quieran robar el token cookie pos_jwt (SameSite=Strict no protege
+  contra crosses de host distinto dentro del mismo "site" localhost). Combinado con
+  [8W-CR2], la superficie es máxima.
+  - Fix: restringir origin del SPA a hosts/puertos exactos; cookie HTTP-only SameSite; y
+    mover el emparejamiento a token efímero+pinned.
+
+[8W-ZT] MEDIO-ALTO — Zero-Trust: el checkout web aplica la validación de pago y el
+  cálculo de vuelto por UI (CheckoutModal.jsx:76-82 redondea y forma el payload), y
+  usa el patrón server-flow para consumir endpoints. El backend revalida precios/cambio,
+  pero el cálculo visual informativo puede divergir del real por centavos en mixto.
+  - Fix: consumir un endpoint /checkout/preview que devuelva los importes canónicos.
+
+[8W-M1] MEDIO (persistente) — UX hace heavy use de window.confirm/alert bloqueantes en
+  flujos de caja (descartar carrito, guardar configuración local, rechazo de escaneo)
+  — fuera de MVVM y con riesgo de doble pulsación; migrar a modales in-app reutilizables.
+
+[8W-M2] MEDIO — Mismatch de trap de escáner vs. input manual:
+  SearchBar.jsx:104 captura datos como si vinieran del lector mientras que
+  useScannerTrap.js:33 define el umbral; hay caminos donde el wedge puede entrar con un
+  caracter de 40 ms y generar SKUs truncados sin feedback de error (solo carga).
+  - Fix: unificar un único guardián de escaneo (useScannerTrap) y validación del SKU.
+
+[8W-B1] BAJO — Hotkeys sin gating en modales activos (Enter/teclado numérico) cuando un
+  modal está abierto; validate en usePosHotkeys con locus de modal cerrado.
+
+[8W-B2] BAJO — base-uri/form-action/CSP mejorables: el bundle compila con strict CSP
+  pero conviene elevar a meta http-equiv también y 'strict-dynamic' para PWA.
+
+[8W-B3] BAJO — PWA offline caching (Workbox) puede cachear respuestas del API con tokens
+  en el scope if Activo sin routing DB; asegurar que el runtime cache NO captura
+  endpoints /api/* con credenciales.
 
 --------------------------------------------------------------------------------
-4. RECOMENDACIONES FUTURAS
+3. FORTALEZAS DEL MÓDULO (CONFIRMADAS)
 --------------------------------------------------------------------------------
-- Migrar cálculos financieros del cliente a centavos enteros para blindar contra drift
-  de punto flotante.
+- Suite Vitest: 70/70 (100% en ~550 ms) cubriendo api, barcode, prioridad, hotkeys, modales.
+- Doble motor de escaneo (BarcodeDetector nativo + ZXing) y vision enhancer para portátiles.
+- Ticker en vivo SignalR para tasa BCV y formato monetario, con fallback polling.
+- SPA empaquetada dentro del mismo origin que la API (sin CORS en tráfico normal).
+
+--------------------------------------------------------------------------------
+4. PLAN DE ACCIÓN PRIORIZADO (Web.Frontend)
+--------------------------------------------------------------------------------
+1. [8W-CR2] Eliminar JWT de localStorage; cookie HttpOnly Secure SameSite; CSP endurecida.
+2. [8W-C1] Endurecer CORS/brazo de origin del SPA (con Backend).
+3. [8W-ZT] Endpoint preview de checkout para importes canónicos.
+4. [8W-M1/M2] Modales in-app + guardián único de escaneo.
+5. [8W-B1/B2/B3] Gating de hotkeys, CSP meta, cache de service worker fuera de /api.
+================================================================================
+FIN DEL REPORTE Web.Frontend — REV. 8.0
 ================================================================================

@@ -3,7 +3,6 @@ import assert from 'node:assert';
 
 describe('QuantityInput Fractional vs Non-Fractional Validation Tests', () => {
   test('1. Non-fractional product strictly rejects decimal point (.) and comma (,)', () => {
-    const isFractional = false;
     const testInputs = ['1.', '1,', '1.5', '2,50', '0.1', '10.00'];
 
     for (const input of testInputs) {
@@ -14,7 +13,6 @@ describe('QuantityInput Fractional vs Non-Fractional Validation Tests', () => {
   });
 
   test('2. Non-fractional product accepts integer digits only', () => {
-    const isFractional = false;
     const testInputs = ['1', '5', '12', '100'];
 
     for (const input of testInputs) {
@@ -28,7 +26,6 @@ describe('QuantityInput Fractional vs Non-Fractional Validation Tests', () => {
   });
 
   test('3. Fractional product allows decimals up to 3 places (. or ,)', () => {
-    const isFractional = true;
     const validInputs = ['0.5', '1,25', '2.345', '100.500', '1.', '2,'];
 
     for (const input of validInputs) {
@@ -44,7 +41,6 @@ describe('QuantityInput Fractional vs Non-Fractional Validation Tests', () => {
   });
 
   test('4. OnBlur for non-fractional item guarantees integer quantity (truncating any rogue decimal)', () => {
-    const isFractional = false;
     const rogueInputs = ['2.8', '5,25', '10.999'];
 
     for (const input of rogueInputs) {

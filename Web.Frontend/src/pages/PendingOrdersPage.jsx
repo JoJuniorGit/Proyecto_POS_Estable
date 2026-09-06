@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getPendingSales, completeSale, addPaymentToHoldSale, cancelSale } from '../services/salesApi';
 import { useExchangeRate } from '../context/ExchangeRateContext';
-import { useAuth } from '../context/AuthContext';
 import CheckoutModal from '../components/checkout/CheckoutModal';
 import EditSaleModal from '../components/pos/EditSaleModal';
 import SuccessScreen from '../components/checkout/SuccessScreen';
@@ -11,7 +10,6 @@ import { Search, Loader2, Clock, ChevronRight, ChevronDown, RefreshCw, CheckCirc
 import './PendingOrdersPage.css';
 
 export default function PendingOrdersPage() {
-  const { user } = useAuth();
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -199,7 +197,6 @@ export default function PendingOrdersPage() {
               <tbody>
                 {filteredSales.map((sale) => {
                   const isExpanded = expandedSaleId === sale.id;
-                  const remainingUsd = sale.remainingBalanceUSD || 0;
 
                   return (
                     <React.Fragment key={sale.id}>

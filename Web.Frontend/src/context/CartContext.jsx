@@ -238,7 +238,7 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [currentSale?.id, currentSale?.status, currentSale?.items, currentSale?.appliedRate, exchangeRate, removeItem, validateOnHoldRules]);
+  }, [currentSale?.id, currentSale?.status, currentSale?.items, currentSale?.appliedRate, exchangeRate, validateOnHoldRules]);
 
   // Cambiar lista de precios ("Retail" | "Wholesale")
   const changePriceList = useCallback(async (priceListType) => {
@@ -281,7 +281,7 @@ export function CartProvider({ children }) {
     }
   }, [currentSale?.id]);
 
-  const items = currentSale?.items || [];
+  const items = useMemo(() => currentSale?.items || [], [currentSale?.items]);
   const subtotalUSD = currentSale?.subtotal ?? items.reduce((acc, item) => acc + (item.subtotal || 0), 0);
   const totalUSD = currentSale?.totalUSD ?? subtotalUSD;
   const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale?.appliedRate || 1);

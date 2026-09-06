@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
 
-export default function Modal({ isOpen, onClose, title, children, maxWidth = '500px', overflowVisible = false, centerTitle = true }) {
+export default function Modal({ isOpen, onClose, title, children, maxWidth = '500px', overflowVisible = false, _centerTitle = true }) {
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.key === 'Escape' && isOpen) {

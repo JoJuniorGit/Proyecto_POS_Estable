@@ -1,49 +1,65 @@
 ================================================================================
 REPORTE POR MÓDULO: CommandCenter.Tests (Suite Integral de Pruebas Automatizadas)
 Fecha: 2026-09-05
-Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
-Cruce con docs/reporte.txt (análisis global).
+Revisión: 8.0 (Contrastación Empírica Rev. 7.0 + Reejecución Completa de la Suite)
+Cruce con docs/reporte.txt (revisión global 8.0).
 ================================================================================
 
 --------------------------------------------------------------------------------
-1. RESUMEN DE COBERTURA Y EVOLUCIÓN (FASES 1 A 4)
+1. REV. 8.0 — RE-EJECUCIÓN EMPÍRICA DE LA SUITE (HEAD c337462)
 --------------------------------------------------------------------------------
-La suite de pruebas automatizadas garantiza la estabilidad del sistema y previene
-regresiones funcionales y de contrato:
+Ejecución de referencia contra el árbol actual (esta auditoría):
+  - dotnet test (solución .NET 10 / xUnit + Moq / Testcontainers async):
+    670 / 670 superadas, 0 fallidas, 0 omitidas (≈ 11 s local).
+  - npm test (Web.Frontend, Vitest): 70 / 70 superadas (≈ 550 ms).
+  - Total activo: 740 / 740 (100%) sin fallos ni omisiones en ambas suites.
+  - Compilación de toda la solución: 0 errores, 0 advertencias.
+  - Las métricas del informe Rev. 7.0 (670 / 70 / 740) quedan CONFIRMADAS.
 
-Métricas Actuales:
-  - Pruebas Backend (.NET 10 / xUnit / Moq): 670 / 670 pruebas superadas (100% éxito en ~10s).
-  - Pruebas Frontend (Node.js / Vitest): 70 / 70 pruebas superadas (100% éxito en ~550ms).
-  - Total Pruebas Automatizadas en la Solución: 740 pruebas activas sin ningún fallo ni omisión.
-
-Nuevas Suites Añadidas en la Remediación de Revisión 7.0:
-1. ForwardedHeadersIntegrationTests.cs (Fase 1 ✅):
-   - 7 pruebas de integración que validan:
-     * Procesamiento de X-Forwarded-For y X-Forwarded-Proto desde proxies loopback.
-     * Soporte de proxies remotos autorizados mediante KnownProxies y KnownIPNetworks.
-     * Rechazo de suplantación de IP desde proxies no autorizados.
-     * Protección de acceso anónimo en PairingController para máquinas locales y bloqueo
-       de accesos externos no autenticados a través de reverse proxies.
-
-2. ProductImportExportTests.cs y MainViewModelDisposeTests.cs (Fases 3 y 4 ✅):
-   - Pruebas de aceptación de SKUs alfanuméricos (BEB-101, COCA_350ML, REF-009) en importador.
-   - Pruebas de rechazo defensivo para caracteres no permitidos (ABC#1234).
-   - Verificación de IDisposable en ProductDialogViewModel con desuscripción limpia de timer.
-
-3. api.test.js (Fase 2 ✅):
-   - 5 pruebas unitarias para extracción de RFC 7807 ProblemDetails (detail, title, array y objeto de errores).
+Suites específicas añadidas en Rev. 7.0 verificadas:
+  - ForwardedHeadersIntegrationTests (7 pruebas): proxy loopback, KnownProxies/KnownIPNetworks,
+    rechazo de suplantación, protección de PairingController — ✅ pasan.
+  - ProductImportExportTests + MainViewModelDisposeTests — ✅ pasan.
+  - api.test.js (RFC 7807) — ✅ pasan (5 pruebas).
 
 --------------------------------------------------------------------------------
-2. FORTALEZAS DE LA SUITE
+2. GAPS DE COBERTURA DETECTADOS EN REV. 8.0 (sugerencias de prueba)
 --------------------------------------------------------------------------------
-- Pruebas de integración reales contra PostgreSQL y soporte de Test Data Builders (SaleBuilder, ProductBuilder).
-- Pruebas rigurosas de integridad financiera con dualidad de monedas (USD y Bs.S BCV).
-- Pruebas de debounce, hardware de cámara y navegación móvil en el cliente web.
-- Ejecución rápida (suite completa en menos de 15 segundos en entornos locales).
+La suite es extensa pero la auditoría Rev. 8.0 identificó rutas SIN cobertura que explican
+por qué varios defectos llegaron a producción. Prioridad de añadir:
+
+1. [8B-CR1] Mass assignment: test de integración que POST /products con RowVersion y
+   ProfitMargin/StockQuantity y aplique → debe poder fallar (la solución DTO/mapeo).
+2. [8I-CR1] Atomicidad HoldOrders-100%: test de integración con fallo del commit de venta
+   → el stock NO debe quedar descontado (regresión del fix).
+3. [8I-CR2] Expiración de reservas: job/worker que cancele reservas vencidas (hoy NO existe).
+4. [8I-M1] Reservas concurrentes: 2 confirmaciones simultáneas → exactamente 1 exitosa.
+5. [8D-CR1] ExchangeRateService sin callback => true: test que provea un cert no válido y
+   verifique que la conexión falla (blueprint TLS).
+6. [8W-CR2] Test de regresión de sesión: garantizar que el SPA NO escriba el token a
+   localStorage (mover a cookie).
+7. [8L-CR3] DeliveryServiceTests: sustituir el mock/handdler por persistencia real
+   (Testcontainers) y verificar que SaleDispatchedEvent se emite en el flujo de venta real.
+8. Pruebas de la ruta completa ShiftsController.GetCurrentReport (hoy no cubre el dictamen
+   de Cierre inventado).
 
 --------------------------------------------------------------------------------
-3. RECOMENDACIONES FUTURAS
+3. FORTALEZAS DE LA SUITE (CONFIRMADAS)
 --------------------------------------------------------------------------------
-- Configurar runners de CI/CD (GitHub Actions / GitLab CI) con soporte de Testcontainers
-  para ejecución automatizada en cada Pull Request contra PostgreSQL real.
+- Integración real PostgreSQL mediante Testcontainers y Test Data Builders (SaleBuilder,
+  ProductBuilder).
+- Rigor en integridad financiera: dualidad USD/Bs.S BCV, cambio mixto, redondeos,
+  idempotencia criptográfica.
+- Builders de procesos async (ViewModels) sin bloqueo de hilos mockeados.
+- Ejecución integral < 15 s: apta para CI/CD con Testcontainers por PR.
+
+--------------------------------------------------------------------------------
+4. RECOMENDACIONES FUTURAS
+--------------------------------------------------------------------------------
+1. Configurar GitHub Actions / GitLab CI con Testcontainers en cada Pull Request.
+2. Añadir las 8 suites propuestas arriba (caminos críticos 8.0).
+3. Añadir cobertura de comportamiento cero-trust del Web checkout (preview preview / cambio).
+4. Añadir smoke de actualización del UpdaterService (fail-closed) sin tocar binarios reales.
+================================================================================
+FIN DEL REPORTE CommandCenter.Tests — REV. 8.0
 ================================================================================

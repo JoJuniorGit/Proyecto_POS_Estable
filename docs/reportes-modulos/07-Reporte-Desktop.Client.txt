@@ -1,52 +1,69 @@
 ================================================================================
 REPORTE POR MÓDULO: Desktop.Client (interfaz de usuario WPF y vistas)
 Fecha: 2026-09-05
-Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
-Cruce con docs/reporte.txt (análisis global).
+Revisión: 8.0 (Contrastación Empírica Rev. 7.0 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.0).
 ================================================================================
 
 --------------------------------------------------------------------------------
-1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
+1. CONTRASTACIÓN DE HALLAZGOS PREVIOS (REV. 7.0 vs CÓDIGO ACTUAL)
 --------------------------------------------------------------------------------
-Desktop.Client contiene las vistas XAML, recursos visuales, converters y el punto de
-entrada de la aplicación de escritorio:
-
-1. Blindaje de Handlers en Vistas XAML (H-WPF-3 ✅, Commit 686f0cd):
-   - EditSaleDialog.xaml.cs: TxtProductSearch_TextChanged envuelto en try/catch
-     capturando OperationCanceledException (debounce) y Exception general hacia
-     AppLogger.LogCrash. Manejo de cursor de espera mediante try/finally.
-   - ImportProductsView.xaml.cs: Grid_Drop envuelto en try/catch defensivo contra caídas
-     del hilo de la interfaz de usuario.
-
-2. Apagado Limpio y No Bloqueante (H-WPF-2 ✅, Commit c541b57):
-   - App.xaml.cs implementa un procedimiento de cierre con timeout defensivo de 3 segundos
-     que previene bloqueos del hilo principal o congelamientos del proceso al cerrar ventanas.
-
-3. Registro de Excepciones No Controladas (ERR-02 ✅):
-   - AppDomain.CurrentDomain.UnhandledException y DispatcherUnhandledException enrutan
-     los registros a %LOCALAPPDATA%\CommandCenterPOS\Logs con rotación automática.
-
-4. Virtualización de Rendimiento en Listados:
-   - ProductsDataGrid en InventoryView.xaml tiene activada la virtualización de interfaz:
-     VirtualizingStackPanel.IsVirtualizing="True", VirtualizationMode="Recycling",
-     VirtualizingPanel.ScrollUnit="Pixel", RowHeight="42".
+HALLAZGOS VERIFICADOS COMO CORRECTOS EN EL ÁRBOL ACTUAL:
+  - H-WPF-3 (code-behind defensivo): ✅ VERIFICADO — EditSaleDialog.xaml.cs y
+    ImportProductsView.xaml.cs con try/catch + AppLogger.LogCrash.
+  - H-WPF-2 (shutdown no bloqueante): ✅ VERIFICADO — App.xaml.cs cierre con timeout 3 s.
+  - ERR-02 (crash logger): ✅ VERIFICADO — rutas %LOCALAPPDATA%\CommandCenterPOS\Logs con rotación.
+  - WPF-LEAK-01/02 (ciclo de vida): ✅ VERIFICADO — ProductDialog.xaml.cs OnClosed llama
+    ViewModel.Dispose(); SuccessDialogWindow desuscribe _timer.Tick (WPF-LEAK-02).
+  - Virtualización en listados: ⚠️ PARCIAL — InventoryView.xaml la tiene
+    (VirtualizingPanel.IsVirtualizing=True, Recycling, Pixel, RowHeight=42), PERO
+    SalesHistoryView, CashDrawerView y CustomersView NO (ver [8D-M1b]).
 
 --------------------------------------------------------------------------------
-2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
+2. NUEVOS HALLAZGOS REV. 8.0 (Desktop.Client)
 --------------------------------------------------------------------------------
-- ERR-02 (Crash logger): ✅ CERRADO (registros centralizados en AppData con rotación).
-- H-WPF-2 (Shutdown no bloqueante): ✅ CERRADO (timeout defensivo de 3s en App.xaml.cs).
-- H-WPF-3 (Async void en code-behind): ✅ CERRADO (try/catch + AppLogger.LogCrash en vistas).
-- [CERRADO] WPF-LEAK-01 / CICLO DE VIDA: ✅ TOTALMENTE CORREGIDO (ProductDialog.xaml.cs
-  implementa OnClosed invocando ViewModel?.Dispose() en cualquier camino de cierre;
-  NumberValidationTextBox actualizado para permitir caracteres alfanuméricos en la UI).
-- [CERRADO] WPF-LEAK-02: ✅ TOTALMENTE CORREGIDO (SuccessDialogWindow.xaml.cs desuscribe
-  _timer.Tick -= Timer_Tick en OnClosed antes de la disposición de la ventana).
+[8D-M1] MEDIO — Fuga de memoria por suscripción anónima en DailyClosureView.xaml.cs:19-25.
+  - El code-behind suscribe una lambda sin nombre al evento CurrentViewModel de
+    DailyClosureWindow/UserControl cada vez que el tipo de vista cambia y NUNCA la desuscribe.
+    Al cerrar/reabrir la ventana se acumulan suscriptores → retención de vistas muertas.
+  - Fix: WeakReferenceMessenger con tokens IMessageRegistration, o desuscripción en OnClosed,
+    o manejador nombrado con -= en OnClosed.
+
+[8D-M1b] MEDIO — Virtualización incompleta en listados grandes:
+  - SalesHistoryView, CashDrawerView, CustomersView cargan todo en ObservableCollection
+    sin VirtualizingPanel; abrir historial con miles de ventas congela la UI.
+  - Fix: DataGrid virtualization (Recycling+Pixel) y paginación en VM (reusar patrón ya
+    presente en InventoryView).
+
+[8D-M2] MEDIO — Acumulación de lógica de negocio en code-behind de vistas:
+  - EditSaleDialog.xaml.cs (búsqueda de producto + edición de venta) y
+    CheckoutView.xaml.cs (selección de método de pago/cálculo local de vuelto) ejecutan
+    reglas financieras por UI. Riesgo de divergencia con el servidor (cross-ref 6/8W-ZT).
+  - Fix: mover a CheckoutViewModel y validar contra el endpoint de cobro.
+
+[8D-B1] BAJO — Ventanas modales que bloquean el hilo UI (MessageBox, SaveFileDialog,
+  OpenFileDialog) en flujos de petición-respuesta; dlg.ShowDialog() dentro de procesos
+  async cercanos a mensajería débil puede encadenar deadlocks si no se respeta el
+  hilo del Dispatcher (revisar los llamados dentro de EditSaleDialog/SettingsView).
+
+[8D-B2] BAJO — NumericCalculatorBehavior y otros behaviors con regex sin anclaje en
+  editores monetarios (aceptan cadenas mixtas tipo "1.2.3"); la sanidad final la hace
+  el backend EnumeroCurrency, pero conviene hardening de tecleado.
 
 --------------------------------------------------------------------------------
-3. FORTALEZAS DEL MÓDULO
+3. FORTALEZAS DEL MÓDULO (CONFIRMADAS)
 --------------------------------------------------------------------------------
-- Estilos consistentes con Material Design in XAML y soporte para modo lectura condicional.
-- Comportamientos numéricos reactivos (NumericCalculatorBehavior) sincronizados.
-- Ventana de diálogo de edición de ventas con debouncing en búsqueda de productos.
+- Estilos Material Design in XAML coherentes y tema único; modo lectura condicional.
+- Navegación principal con WeakReferenceMessenger y ViewModel de navegación limpio.
+- Diálogos de edición con debouncing; cierre defensivo global.
+
+--------------------------------------------------------------------------------
+4. PLAN DE ACCIÓN PRIORIZADO (Desktop.Client)
+--------------------------------------------------------------------------------
+1. [8D-M1] Desuscripción de CurrentViewModel en DailyClosureView (OnClosed / token).
+2. [8D-M1b] Virtualización en SalesHistory/CashDrawer/CustomersDataGrid.
+3. [8D-M2] Mover reglas de edición/cobro del code-behind al ViewModel+servidor.
+4. [8D-B1/B2] Revisar modal blockers y regex de behaviors monetarios.
+================================================================================
+FIN DEL REPORTE Desktop.Client — REV. 8.0
 ================================================================================

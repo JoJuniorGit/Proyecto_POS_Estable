@@ -553,6 +553,7 @@ export default function BarcodeScannerModal({
       stopActiveStream();
       closeAudioContext();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, stopActiveStream]);
 
   const toggleTorch = async () => {
