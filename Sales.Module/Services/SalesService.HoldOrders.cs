@@ -261,7 +261,7 @@ public partial class SalesService
             try
             {
                 var itemsSnapshot = _sale.Items.Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity)).ToList();
-                var saleMadeEvent = new SaleMadeEvent(_sale.Id, _sale.Date, itemsSnapshot);
+                var saleMadeEvent = new SaleMadeEvent(_sale.Id, _sale.Date, itemsSnapshot, _sale.InvoiceNumber.Value);
                 await _mediator.Publish(saleMadeEvent);
             }
             catch (Exception ex)

@@ -116,6 +116,52 @@ public class PerformanceAndOptimizationSprint3Tests
     }
 
     [Fact]
+    public async Task InventorySaleMadeEventHandler_WhenPreDeductedByInvoiceNumber_DoesNotDoubleDeduct()
+    {
+        using var db = GetInMemoryInventoryDbContext();
+        var service = new InventoryService(db);
+        var handler = new InventorySaleMadeEventHandler(service, db);
+
+        var product = new Product
+        {
+            Id = 10,
+            SKU = "SNK-001",
+            Name = "Snack Salado",
+            PriceRetailUSD = 1.00m,
+            CostPriceUSD = 0.50m,
+            StockQuantity = 50.000m
+        };
+        db.Products.Add(product);
+        await db.SaveChangesAsync();
+
+        // Simulate that SalesService already deducted stock during transaction using InvoiceNumber (5001)
+        // while Sale.Id is 100 (DST-1 scenario)
+        int saleId = 100;
+        int invoiceNumber = 5001;
+        await service.UpdateStockAsync(10, -5.000m, $"Sale #{invoiceNumber}", allowNegativeStock: false);
+
+        var productAfterTx = await service.GetProductByIdAsync(10);
+        Assert.Equal(45.000m, productAfterTx!.StockQuantity);
+
+        // Now MediatR publishes SaleMadeEvent with SaleId=100 and InvoiceNumber=5001
+        var saleEvent = new SaleMadeEvent(
+            SaleId: saleId,
+            SaleDate: DateTime.UtcNow,
+            Items: new List<SaleItemSnapshot>
+            {
+                new SaleItemSnapshot(ProductId: 10, Quantity: 5.000m)
+            },
+            InvoiceNumber: invoiceNumber
+        );
+
+        // Handler must recognize that InvoiceNumber was already deducted and skip!
+        await handler.Handle(saleEvent, CancellationToken.None);
+
+        var productAfterHandler = await service.GetProductByIdAsync(10);
+        Assert.Equal(45.000m, productAfterHandler!.StockQuantity); // MUST remain 45, NOT 40!
+    }
+
+    [Fact]
     public void DbContexts_ModelConfigurations_HaveRequiredIndices()
     {
         using var salesDb = GetInMemorySalesDbContext();

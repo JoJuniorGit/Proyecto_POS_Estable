@@ -241,7 +241,7 @@ flowchart TD
 
 | Fase | Foco Principal | Esfuerzo Estimado | Estado |
 |---|---|:---:|:---:|
-| **Fase 0** | Integridad Crítica (`DST-1`, `WEB-1`, `CI-1`, `RBAC-1`) | 45 min | ⏳ Pendiente |
+| **Fase 0** | Integridad Crítica (`DST-1`, `WEB-1`, `CI-1`, `RBAC-1`) | 45 min | ✅ Completada y Certificada |
 | **Fase 1** | Linter Web (`21 warnings` $\rightarrow$ `0`) | 25 min | ⏳ Pendiente |
 | **Fase 2** | Erradicar `_snake_case` en ViewModels Carrito y Caja | 40 min | ⏳ Pendiente |
 | **Fase 3** | Descomponer God Objects WPF (`ProductDialog`, `Inventory`, `Pos`) | 60 min | ⏳ Pendiente |

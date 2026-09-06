@@ -473,7 +473,7 @@ export default function PendingOrdersPage() {
           isOpen={!!selectedSaleForCheckout}
           onClose={() => setSelectedSaleForCheckout(null)}
           overrideSale={selectedSaleForCheckout}
-          onCompleteSale={async (paymentList, roundingAdjustment, isPendingPickup) => {
+          onCompleteSale={async (paymentList, roundingAdjustment, isPendingPickup, idempotencyKey) => {
             try {
               const targetSaleId = selectedSaleForCheckout.id;
               const currentPaidUsd = selectedSaleForCheckout.totalPaidUSD || 0;
@@ -483,7 +483,7 @@ export default function PendingOrdersPage() {
               const isFullyCompleted = remainingDebtAfterUsd <= 0.05;
 
               if (isFullyCompleted) {
-                const invoiceNumber = await completeSale(targetSaleId, exchangeRate, paymentList, roundingAdjustment, null, isPendingPickup);
+                const invoiceNumber = await completeSale(targetSaleId, exchangeRate, paymentList, roundingAdjustment, null, isPendingPickup, idempotencyKey);
                 setSelectedSaleForCheckout(null);
                 await loadPendingData();
                 window.dispatchEvent(new CustomEvent('pendingPickupsUpdated'));

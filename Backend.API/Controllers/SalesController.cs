@@ -332,6 +332,11 @@ public class SalesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult> CompleteSale(int id, [FromBody] CompleteSaleRequest request)
     {
+        if (User.IsInRole("Driver"))
+        {
+            return Forbid();
+        }
+
         string requestPath = $"/api/sales/{id}/complete";
         string? idempotencyKey = Request?.Headers["Idempotency-Key"].ToString();
 

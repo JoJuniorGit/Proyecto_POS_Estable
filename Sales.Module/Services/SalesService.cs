@@ -659,7 +659,7 @@ public partial class SalesService : ISalesService
             try
             {
                 var _items_snapshot = (_sale.Items ?? Enumerable.Empty<SaleItem>()).Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity)).ToList();
-                var _sale_made_event = new SaleMadeEvent(_sale.Id, _sale.Date, _items_snapshot);
+                var _sale_made_event = new SaleMadeEvent(_sale.Id, _sale.Date, _items_snapshot, _sale.InvoiceNumber.Value);
                 await _mediator.Publish(_sale_made_event, cancellationToken);
             }
             catch (Exception ex)

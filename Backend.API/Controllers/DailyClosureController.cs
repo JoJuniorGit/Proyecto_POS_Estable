@@ -73,6 +73,11 @@ public class DailyClosureController : ControllerBase
     [HttpPost]
     public async Task<ActionResult> CreateClosure([FromBody] CreateClosureRequest request)
     {
+        if (User.IsInRole("Driver"))
+        {
+            return Forbid();
+        }
+
         try
         {
             // 1. Identidad fidedigna por claims autenticados (H-API-2)

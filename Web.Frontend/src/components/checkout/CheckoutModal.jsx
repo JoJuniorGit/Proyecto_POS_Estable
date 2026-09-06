@@ -24,12 +24,20 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
   const [error, setError] = useState(null);
   const [selectedSaleCustomer, setSelectedSaleCustomer] = useState(null);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const checkoutKeyRef = useRef(null);
+
+  if (!checkoutKeyRef.current) {
+    checkoutKeyRef.current = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `checkout-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  }
 
   const handleRequestClose = useCallback(() => {
     if (payments.length > 0) {
       setShowDiscardConfirm(true);
       return false;
     }
+    checkoutKeyRef.current = null;
     onClose?.();
     return true;
   }, [payments.length, onClose]);
@@ -143,7 +151,8 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       }));
 
       if (onCompleteSale) {
-        await onCompleteSale(rawPayments, roundingAdjustment, effectiveIsPendingPickup);
+        await onCompleteSale(rawPayments, roundingAdjustment, effectiveIsPendingPickup, checkoutKeyRef.current);
+        checkoutKeyRef.current = null;
       } else {
         const invoiceNumber = await completeSale(
           activeSale.id,
@@ -151,8 +160,11 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
           rawPayments,
           roundingAdjustment,
           user?.id,
-          effectiveIsPendingPickup
+          effectiveIsPendingPickup,
+          checkoutKeyRef.current
         );
+
+        checkoutKeyRef.current = null;
 
         // Limpiar carrito e iniciar nueva venta (solo en venta normal del POS)
         if (!overrideSale) {

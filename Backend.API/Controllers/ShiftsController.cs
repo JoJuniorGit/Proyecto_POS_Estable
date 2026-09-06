@@ -69,6 +69,11 @@ public class ShiftsController : ControllerBase
     [HttpPost("close")]
     public async Task<ActionResult> CloseShift([FromBody] CloseShiftRequest request)
     {
+        if (User.IsInRole("Driver"))
+        {
+            return Forbid();
+        }
+
         try
         {
             decimal exchangeRate = await GetTodayExchangeRateAsync();

@@ -1,57 +1,75 @@
 ================================================================================
 REPORTE POR MÓDULO: Core (librería de dominio y utilidades compartidas)
 Fecha: 2026-09-05
-Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
-Cruce con docs/reporte.txt (análisis global).
+Revisión: 8.0 (Contrastación Empírica Rev. 7.0 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.0).
 ================================================================================
 
 --------------------------------------------------------------------------------
-1. RESUMEN DE COMPONENTES Y EVOLUCIÓN (FASES 1 A 4)
+1. CONTRASTACIÓN DE HALLAZGOS PREVIOS (REV. 7.0 vs CÓDIGO ACTUAL)
 --------------------------------------------------------------------------------
-Core centraliza las entidades de dominio, contratos de interfaces, cálculo monetario
-y primitivas de registro compartidas:
+HALLAZGOS VERIFICADOS COMO CORRECTOS EN EL ÁRBOL ACTUAL:
+  - H-CORE-1 (Roles de usuario): ✅ VERIFICADO — User.cs con Cashier=1, Manager=2, Admin=3, Driver=4
+    y SecurityStamp, AccessFailedCount, LockoutEndUtc, LastLoginUtc.
+  - H-CORE-3 (User sin lockout): ✅ VERIFICADO — LockoutEndUtc/AccessFailedCount/SecurityStamp presentes.
+  - H-CORE-6 (TimeZoneHelper duplicado): ✅ VERIFICADO — unificado en Core/Helpers/TimeZoneHelper.cs.
+  - CODE-02 (Cédulas hardcodeadas): ✅ VERIFICADO — SecurityConstants.cs centraliza RootAdminCedulas
+    e IsRootAdmin(cedula, username).
+  - DOM-VAL-01 (SKU alfanumérico): ✅ VERIFICADO — Product.cs admite ^[A-Za-z0-9\-_]{1,50}$ alineado
+    con importador, InventoryService y ProductDialogViewModel.
+  - A6 (PasswordPolicy): ✅ VERIFICADO — PasswordPolicyService.cs:43-105 complejidad+blacklist;
+    :107-147 GenerateSecureTemporaryPassword (CSPRNG 12 chars).
+  - A4 (archivado): ✅ VERIFICADO — StockMovementArchive.cs y flujo de archivado en lotes.
+  - PERF-04: ✅ VERIFICADO — StockDeductionRequest.cs immutable para deducción en lote.
+  - H-DCC-5: ✅ VERIFICADO — TaskExtensions.cs:13-21 SafeFireAndForget con log a AppLogger.LogCrash.
 
-1. Seguridad y Autenticación de Usuarios (Fase 1 y previas):
-   - User.cs incorpora SecurityStamp (revocación de sesiones), AccessFailedCount,
-     LockoutEndUtc, LastLoginUtc y soporte de roles (Cashier=1, Manager=2, Admin=3, Driver=4).
-   - PasswordPolicyService.cs valida complejidad de contraseñas y genera claves seguras de 12 chars.
-   - SecurityConstants.cs (CODE-02 ✅, Commit c541b57): centraliza RootAdminCedulas y el
-     método IsRootAdmin(cedula, username), erradicando literales "V-00000000" dispersos.
-
-2. Integridad Financiera y Aritmética (PricingCalculator.cs):
-   - RoundToDigital (2 decimales con MidpointRounding.AwayFromZero para transacciones).
-   - RoundExchangeRateCeiling (redondeo hacia arriba de tasa BCV a 2 decimales).
-   - RoundToCash (redondeo a números enteros para retiros y vueltos en efectivo).
-   - TimeZoneHelper.cs: único en la solución, con GetUtcRange() para consultas de ventas
-     nocturnas bajo la zona horaria legal de Venezuela (VET, UTC-4).
-
-3. Resiliencia Asíncrona y Registro Forense:
-   - TaskExtensions.SafeFireAndForget(task, contextName): ejecuta tareas asíncronas no
-     bloqueantes enrutando cualquier excepción a AppLogger.LogCrash (H-DCC-5 ✅).
-   - AppLogger.cs y ClientStateLogger.cs con rotación automática de archivos (10 MB × 5).
-   - Métodos estructurados: LogSecurityAudit, LogCrash, LogDbError.
-
-4. Entidades y Contratos de Soporte:
-   - StockMovementArchive.cs: soporte para archivado histórico de movimientos de stock (A4 ✅).
-   - StockDeductionRequest.cs: record inmutable para deducción atómica en lote (PERF-04 ✅).
+HALLAZGOS CON MATICES EN REV. 8.0:
+  - H-CORE-2 (Secretos en config): 🟡 VIGENTE — appsettings.Development.json:10,13 y .env root
+    con credenciales de dev (Password=123456, AdminSeedPassword=Admin123!, DB_PASSWORD=123456),
+    versionados en git (ver global C3).
+  - H-CORE-4 (Logging duplicado): 🟡 VIGENTE — AppLogger.cs y ClientStateLogger.cs rotan 10MB×5
+    pero son estáticos independientes. AppLogger.cs:111-131 escribe texto plano con catch {} que
+    ocultan errores de logging (:20, :108, :129). No hay logging estructurado por span/trace.
+  - A1 (transacción compartida): ✅ en la ruta principal, con GAP en HoldOrders 100% (cross-ref 04/03).
 
 --------------------------------------------------------------------------------
-2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
+2. NUEVOS HALLAZGOS REV. 8.0 (Core)
 --------------------------------------------------------------------------------
-- H-CORE-1 (Roles de usuario): ✅ CERRADO (roles Manager=2, Admin=3, Driver=4 formalizados).
-- H-CORE-2 (Secretos por defecto en config): 🟡 PARCIAL (persisten valores de prueba en dev).
-- H-CORE-3 (User sin lockout): ✅ CERRADO (LockoutEndUtc, AccessFailedCount y SecurityStamp).
-- H-CORE-4 (Logging duplicado): 🟡 PARCIAL (ambos loggers rotan 10MB x 5, pero son estáticos independientes).
-- H-CORE-6 (TimeZoneHelper duplicado): ✅ CERRADO (unificado en Core/Helpers/TimeZoneHelper.cs).
-- CODE-02 (Cédulas hardcodeadas): ✅ CERRADO (centralizado en SecurityConstants.cs).
-- [CERRADO] DOM-VAL-01: ✅ TOTALMENTE CORREGIDO (Product.cs:23 con SKU alfanumérico
-  [StringLength(50)] ahora plenamente alineado con ProductImportService, InventoryService
-  y ProductDialogViewModel, admitiendo identificadores alfanuméricos ^[A-Za-z0-9\-_]{1,50}$).
+[8C-M1] MEDIO — PricingCalculator.ToUSD redondea a 2 decimales (PricingCalculator.cs:57)
+  mientras la regla de negocio (skill pos-financial-integrity) define 4 decimales para la
+  conversión Bs.S→USD. Puede introducir deriva vs. el lado que usa RoundExchangeRateCeiling.
+  - Fix: documentar/decidir la precisión canónica; si es 4 decimales, ajustar RoundToDigital
+    a USDCentsDib4 en esta conversión.
+
+[8C-M2] BAJO — Concurrency tokens xmin SOLO en Product (Product.cs:98-99 [Timestamp] +
+  InventoryDbContext.cs:117 IsRowVersion()) y PaymentMethod (SalesDbContext.cs:220-224).
+  Sale, SaleItem, CashTransaction, CashDrawerSession y Customer carecen de token xmin.
+  - Fix: aplicar token a las entidades de venta/caja con tráfico concurrente.
+
+[8C-M3] MEDIO — Parada de búsqueda: la inmutabilidad del historial de ventas está protegida
+  (SalesService.Pricing.cs:17-18 bloquea Completed), pero el balanceo del flujo hold no
+  redondea SubtotalBsS/AmountBsS (cross-ref 04 [8S-M2]). El dominio debería exponer un único
+  redondeo canónico (RoundToDigital) usado en TODAS las rutas.
+
+[8C-M4] BAJO — Logging de PII: DeliveryService.cs:36-37 registra CustomerName + DeliveryAddress
+  completos (ver 05). AppLogger no redacta secretos ni direcciones.
 
 --------------------------------------------------------------------------------
-3. FORTALEZAS DEL MÓDULO
+3. FORTALEZAS DEL MÓDULO (CONFIRMADAS)
 --------------------------------------------------------------------------------
-- Zero dependencias cruzadas con módulos de negocio concretos (inversión de dependencias).
-- Aritmética financiera pura basada en tipos decimal con cero uso de punto flotante en backend.
-- Mecanismos seguros de logging con rotación y timestamps ISO 8601 UTC.
+- Zero dependencias cruzadas con módulos de negocio (inversión de dependencias).
+- Aritmética financiera pura en decimal, cero punto flotante en backend.
+- Logging con rotación y timestamps ISO 8601 UTC.
+- SecureRandom CSPRNG para contraseñas temporales.
+
+--------------------------------------------------------------------------------
+4. RECOMENDACIONES FUTURAS
+--------------------------------------------------------------------------------
+1. Decidir la precisión canónica ToUSD (2 vs 4 decimales) y unificarla en toda la plataforma.
+2. Redondear todos los importes hold/abono con la misma rutina RoundToDigital.
+3. Extender tokens xmin a entidades de venta/caja concurrentes.
+4. Estructurar AppLogger (ILogger + scopes/redacción) y eliminar catch vacíos internos.
+5. Rotar y eliminar los secretos dev de appsettings.Development.json y .env.
+================================================================================
+FIN DEL REPORTE Core — REV. 8.0
 ================================================================================
