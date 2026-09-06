@@ -1,9 +1,9 @@
 ================================================================================
 REPORTE POR MÓDULO: UpdaterService (Servicio Windows de actualización de binarios)
 Fecha: 2026-09-06
-Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.2).
-HEAD auditado: e89100f (rama V0.15).
+Revisión: 8.4 (Re-Contrastación Empírica Rev. 8.3 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.4).
+HEAD auditado: 12eddf6 (rama V0.15).
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -94,6 +94,19 @@ Fecha: 2026-09-06
   credenciales y certificados de despliegue con generación CSPRNG aleatoria por instalación.
 - Compilación Release: 0 advertencias, 0 errores.
 
-================================================================================
-FIN DEL REPORTE UpdaterService — REV. 8.3 (100% REMEDIADO)
+=-------------------------------------------------------------------------------
+6. ADENDA REV. 8.4 — RE-CONTRASTACIÓN EMPÍRICA SOBRE HEAD 12eddf6
+-------------------------------------------------------------------------------
+Cruce con docs/reporte.txt §13 (Rev. 8.4):
+  CONFIRMADOS:
+  - [8.2-A4] Orfandad en el empaquetado eliminada: ✅ sin referencias a UpdaterService en
+    installer/*.iss; documentado como herramienta desacoplada/externa (installer/README.md).
+  NO RESUELTO:
+  - [8U-N2] ❌ NO RESUELTO. installer/setup.iss:185 conserva el valor por defecto
+    'http://localhost:5000/updates/' (HTTP plano, sin https/pinning). La afirmación 8.3 de
+    "erradicación completa de URLs HTTP" es FALSA para este canal.
+  NOTA: el blindaje del servicio solo será relevante si se vuelve a integrar en producción;
+  hoy permanece fuera del flujo operativo.
+===============================================================================
+FIN DEL REPORTE UpdaterService — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================

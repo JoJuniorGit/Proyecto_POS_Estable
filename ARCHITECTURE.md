@@ -8,17 +8,17 @@ Documento de referencia completa de la arquitectura, dependencias entre módulos
 
 El sistema POS es una aplicación de punto de venta multiplataforma compuesta por:
 
-- **Backend API** (ASP.NET Core 9) — Servidor central, REST + SignalR
+- **Backend API** (ASP.NET Core 10 / .NET 10) — Servidor central, REST + SignalR
 - **Web Frontend** (React 19 + Vite 8) — Cliente web para cajas y tablets
-- **Desktop Client** (WPF .NET 9) — Cliente de escritorio para cajas fijas
-- **Updater Service** — Servicio de auto-actualización del cliente WPF
+- **Desktop Client** (WPF .NET 10) — Cliente de escritorio para cajas fijas
+- **Updater Service** — Servicio de auto-actualización del cliente WPF (independiente, no incluido en el instalador)
 - **Installer** (Inno Setup 7) — Paquete de despliegue
 
 ### Arquitectura de Alto Nivel
 
 ```
                     ┌─────────────────────────────────────────────┐
-                    │         PostgreSQL 18 (CommandCenterDb)      │
+                    │       PostgreSQL 16/18 (CommandCenterDb)      │
                     │  ┌─────────────────┐  ┌──────────────────┐  │
                     │  │ InventoryDbContext│  │ SalesDbContext   │  │
                     │  │ (Products, Stock │  │ (Users, Sales,   │  │
@@ -27,15 +27,16 @@ El sistema POS es una aplicación de punto de venta multiplataforma compuesta po
                     └───────────────────┬─────────────────────────┘
                                         │ EF Core
                     ┌───────────────────┴─────────────────────────┐
-                    │         Backend.API (ASP.NET Core 9)         │
+                    │        Backend.API (ASP.NET Core 10)        │
                     │  ┌──────────────┐  ┌────────────────────┐  │
                     │  │   REST API   │  │  ExchangeRateHub   │  │
-                    │  │  (13 Controllers)│ │  (SignalR)        │  │
+                    │  │(14 Controllers)│ │  (SignalR)        │  │
                     │  └──────────────┘  └────────────────────┘  │
                     │  ┌──────────────┐  ┌────────────────────┐  │
-                    │  │ MediatR Bus  │  │  Quartz Jobs       │  │
-                    │  │ (SaleMade)   │  │ (BCV Rate, Stock   │  │
-                    │  └──────────────┘  │  Archiver)         │  │
+                    │  │ MediatR Bus  │  │ BackgroundService  │  │
+                    │  │ (SaleMade)   │  │ Jobs (BCV, Stock,  │  │
+                    │  └──────────────┘  │  Reservas, Outbox, │  │
+                    │                     │  Idempotencia)     │  │
                     │                     └────────────────────┘  │
                     │  ┌──────────────┐  ┌────────────────────┐  │
                     │  │ JWT Auth     │  │  Middleware Pipeline│  │
@@ -48,11 +49,10 @@ El sistema POS es una aplicación de punto de venta multiplataforma compuesta po
               ▼                         ▼                         ▼
     ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
     │  Web Frontend   │    │ Desktop.Client  │    │ UpdaterService  │
-    │  React 19 + Vite│    │  WPF .NET 9     │    │  (auto-update)  │
-    │  11 Pages       │    │  MVVM + Resilience│   └─────────────────┘
-    │  29 Components  │    │  12 ViewModels   │
-    └─────────────────┘    │  8 Services      │
-                           └─────────────────┘
+    │  React 19 + Vite│    │  WPF .NET 10    │    │  (auto-update)  │
+    │  11 Pages       │    │  30 ViewModels  │   └─────────────────┘
+    │  34 Components  │    │  MVVM + Resilience│
+    └─────────────────┘    └─────────────────┘
 ```
 
 ---
@@ -91,12 +91,12 @@ Dependencias: `Core`
 | Componente | Archivos | Descripción |
 |---|---|---|
 | `Entities/` | Sale, SaleItem, SalePayment, SaleDeliveryStatus, CashDrawerSession, CashTransaction, ClosureDetail, DailyClosure, PaymentMethod | Entidades de ventas/caja |
-| `Services/` | `SalesService` (orquestador transaccional particionado: `SalesService.cs`, `SalesService.HoldOrders.cs`, `SalesService.Pricing.cs`, `SalesService.CashAdvance.cs`, `SalesService.History.cs`), CashDrawerService, DailyClosureService, PaymentMethodService, ClosurePdfGenerator | Servicios de negocio modularizados en partial classes (<850 líneas/archivo) |
+| `Services/` | `SalesService` (orquestador transaccional particionado: `SalesService.cs`, `SalesService.HoldOrders.cs`, `SalesService.Pricing.cs`, `SalesService.CashAdvance.cs`, `SalesService.History.cs`), CashDrawerService, DailyClosureService, PaymentMethodService, ClosurePdfGenerator | Servicios de negocio modularizados en partial classes (<500 líneas/archivo) |
 | `Interfaces/` | ICashDrawerService, IDailyClosureService, IPaymentMethodService, ISalesService | Contratos |
 | `DTOs/` | PendingPickupDto, SaleHistoryDto, UpdateSaleItemsRequestDto | DTOs de ventas |
 | `Data/` | SalesDbContext | DbContext de ventas |
 | `Helpers/` | TimeZoneHelper | Helpers de zona horaria |
-| `Migrations/` | 22 archivos | Migraciones EF Core de ventas/caja |
+| `Migrations/` | 29 archivos | Migraciones EF Core de ventas/caja |
 
 ### 2.3 `Inventory.Module` — Dominio de Inventario
 
@@ -104,10 +104,10 @@ Dependencias: `Core`
 
 | Componente | Archivos | Descripción |
 |---|---|---|
-| `Services/` | `InventoryService` (orquestador particionado: `InventoryService.cs`, `InventoryService.ExchangeRate.cs`, `InventoryService.StockDeduction.cs`, `InventoryService.CatalogQueries.cs`, `InventoryService.ImportExport.cs`), SystemSettingsService | Servicios de inventario modularizados en partial classes (<700 líneas/archivo) |
+| `Services/` | `InventoryService` (orquestador particionado: `InventoryService.cs`, `InventoryService.ExchangeRate.cs`, `InventoryService.StockDeduction.cs`, `InventoryService.CatalogQueries.cs`, `InventoryService.ImportExport.cs`), SystemSettingsService | Servicios de inventario modularizados en partial classes (<500 líneas/archivo) |
 | `Data/` | InventoryDbContext | DbContext de inventario |
 | `EventHandlers/` | InventorySaleMadeEventHandler | Consumidor de SaleMadeEvent (MediatR) |
-| `Migrations/` | 13 archivos | Migraciones EF Core de inventario |
+| `Migrations/` | 26 archivos | Migraciones EF Core de inventario |
 
 ### 2.4 `Logistics.Module` — Dominio de Entregas y Despacho (Delivery)
 
@@ -125,14 +125,14 @@ Módulo desacoplado de ventas para gestión de repartos, despachos a domicilio y
 
 ### 2.5 `Backend.API` — API REST + SignalR
 
-Dependencias: `Core`, `Sales.Module`, `Inventory.Module`, `MediatR`, `Quartz`
+Dependencias: `Core`, `Sales.Module`, `Inventory.Module`, `MediatR`, `BackgroundService`
 
 | Componente | Archivos | Descripción |
 |---|---|---|
-| `Controllers/` | AuthController, CashDrawerController, DailyClosureController, ExchangeRateController, HealthController, PaymentMethodsController, ProductsController, ReservationsController, SalesController, SettingsController, ShiftsController, UsersController, VersionCheckController | 13 controladores REST |
+| `Controllers/` | AuthController, CashDrawerController, DailyClosureController, ExchangeRateController, HealthController, PairingController, PaymentMethodsController, ProductsController, ReservationsController, SalesController, SettingsController, ShiftsController, UsersController, VersionCheckController | 14 controladores REST |
 | `Services/` | BcvScraperService, CurrentUserService, PasswordHasher, TokenService, PasswordPolicyService | Servicios auxiliares |
 | `Hubs/` | ExchangeRateHub | SignalR hub para tasas de cambio y eventos de venta en tiempo real |
-| `Jobs/` | StockMovementArchiverJob (archivado en lotes a tabla histórica), BcvExchangeRateJob (sync BCV), IdempotencyCleanupJob (purga forense), OutboxProcessorJob (procesamiento y purga programada de mensajes Processed > 7d) | Tareas programadas (BackgroundService) |
+| `Jobs/` | BcvExchangeRateJob (sync BCV cada 2 h), ReservationExpiryJob (expiración y reintegración de reservas de stock cada 60 s), StockMovementArchiverJob (archivado en lotes a tabla histórica), IdempotencyCleanupJob (purga forense), OutboxProcessorJob (procesamiento y purga de mensajes Processed > 7d) | Tareas programadas (BackgroundService) |
 | `Middleware/` | GlobalExceptionHandlerMiddleware (ProblemDetails RFC 7807), VersionCheckMiddleware, MustChangePasswordMiddleware, SecurityHeadersMiddleware (CSP endurecido script-src 'self' en producción, nosniff, DENY) | Pipeline de middleware HTTP |
 | `DTOs/` | AdjustStockRequestDto, AdjustStockResultDto, BarcodeScanResultDto, CashDrawerOpenRequestDto, etc. | DTOs de API |
 
@@ -147,8 +147,8 @@ Dependencias: Backend API (HTTP + SignalR)
 
 | Categoría | Archivos | Descripción |
 |---|---|---|
-| **Pages** (11) | LoginPage, PosPage, CatalogPage, HistoryPage, PendingOrdersPage, PendingPickupsPage, RegisterPage, RegisterClosePage, SettingsPage, ExchangeRatePage | Páginas principales |
-| **Components** (29) | Layout, Cart, ProductGrid, ProductSearch, CustomerSelector, BarcodeScannerModal, CheckoutModal, HoldSaleModal, PartialPaymentModal, SuccessScreen, ATMInput, etc. | Componentes reutilizables |
+| **Pages** (11) | LoginPage, PosPage, CatalogPage, HistoryPage, PendingOrdersPage, PendingPickupsPage, RegisterPage, RegisterClosePage, ClosingPage, SettingsPage, ExchangeRatePage | Páginas principales |
+| **Components** (34) | Layout, Cart, ProductGrid, ProductSearch, CustomerSelector, BarcodeScannerModal, CheckoutModal, HoldSaleModal, PartialPaymentModal, SuccessScreen, ATMInput, VariantSelectorModal, etc. | Componentes reutilizables |
 | **Context** (3) | AuthContext, ExchangeRateContext, CartContext | Estado global React |
 | **Services** (api.js) | productService, salesService, cashDrawerService, etc. | Capa de comunicación HTTP |
 
@@ -158,7 +158,7 @@ Dependencias: Backend API (HTTP + SignalR)
 - `lucide-react` ^1.27.0 — Icons
 - `react` ^19.2.7, `react-dom` ^19.2.7
 
-### 3.2 Desktop Client (WPF .NET 9)
+### 3.2 Desktop Client (WPF .NET 10)
 
 Dependencias: Backend API (HTTP + SignalR), `Desktop.Client.Core`
 
@@ -178,8 +178,8 @@ Dependencias: `Core` (compartido), Backend API (HTTP)
 
 | Componente | Archivos | Descripción |
 |---|---|---|
-| `ViewModels/` (12) | MainViewModel, LoginViewModel, PosViewModel, CartViewModel, InventoryViewModel, SalesHistoryViewModel, PendingOrdersViewModel, PendingPickupsViewModel, CashDrawerViewModel, CheckoutViewModel, SettingsViewModel, ExchangeRateViewModel, etc. | ViewModels MVVM |
-| `Services/` | HealthPollingService, ResilienceHandler, UserSessionHeaderHandler, ClientStateService, UserSession, ProductionJitterProvider, ProductService, SalesService, CashDrawerService, PaymentService, ExchangeRateService, VersionCheckService, UserService | Servicios de negocio + resiliencia |
+| `ViewModels/` (30 clases base + particiones parciales) | MainViewModel, LoginViewModel, PosViewModel (+ `PosViewModel.Orders.cs`, `PosViewModel.Scanning.cs`), CheckoutViewModel (+ `.Payments.cs`), InventoryViewModel (+ `.Filters.cs`, `.Operations.cs`), ProductDialogViewModel (+ `.Pricing.cs`, `.Variants.cs`), CustomerManagementViewModel (+ `.Operations.cs`), VariantManagementViewModel (+ `.Operations.cs`), SettingsViewModel (+ `.Currency.cs`), SalesHistoryViewModel, CashDrawerViewModel, PairingQrViewModel, VersionLockoutViewModel, etc. | ViewModels MVVM |
+| `Services/` | HealthPollingService, ResilienceHandler, UserSessionHeaderHandler, ClientStateService, UserSession, ProductionJitterProvider, SecureTokenStorageService, CurrencyService, ProductService, SalesService, CashDrawerService, PaymentService, ExchangeRateService, VersionCheckService, UserService, SubnetScannerService + interfaces | Servicios de negocio + resiliencia |
 | `Messages/` | (event messages) | Mensajes para WeakReferenceMessenger |
 | `Helpers/` | (utilidades) | Helpers MVVM |
 
@@ -216,7 +216,7 @@ public record SaleItemSnapshot(
     decimal Quantity);
 ```
 
-**Handler:** `InventorySaleMadeEventHandler` descuenta stock con retry (3 intentos) y logging de fallos críticos.
+**Handler:** `InventorySaleMadeEventHandler` descuenta stock con retry (3 intentos) y logging de fallos críticos. Los ítems `IsCashAdvance` (adelantos de efectivo) se excluyen de la deducción física de stock tanto en el snapshot del evento (`SalesService.cs`) como defensivamente en el handler.
 
 ### 4.2 SignalR: ExchangeRateHub (Modelo Híbrido: Automático + Manual a Demanda)
 
@@ -328,6 +328,7 @@ El sistema soporta oficialmente dos estándares numéricos de presentación y pa
 |---|---|---|
 | `Products` | Product | Catálogo de productos (SKU, precios, stock) |
 | `StockMovements` | StockMovement | Historial de movimientos de inventario |
+| `StockMovements_Archive` | StockMovementArchive | Archivado histórico poblado por StockMovementArchiverJob |
 | `StockReservations` | StockReservation | Reservas de stock para pedidos pendientes |
 | `SystemSettings` | SystemSetting | Configuración key-value del sistema |
 | `ExchangeRateHistory` | ExchangeRateHistory | Historial de tasas de cambio (1 registro/día) |
@@ -348,6 +349,8 @@ El sistema soporta oficialmente dos estándares numéricos de presentación y pa
 | `CashTransactions` | CashTransaction | Movimientos de efectivo (ingresos/egresos) |
 | `DailyClosures` | DailyClosure | Cierres diarios de caja |
 | `ClosureDetails` | ClosureDetail | Detalle por método de pago en cierre |
+| `OutboxMessages` | OutboxMessage | Mensajes de salida (señales SignalR / correlación) procesados por OutboxProcessorJob |
+| `IdempotentRequests` | IdempotentRequest | Registro forense de Idempotency-Key (Key, Path, PayloadHash, Status, Body) |
 
 ### 5.3 Relaciones entre Contextos
 
@@ -447,7 +450,7 @@ Request
 ├─────────────────────────────────┤
 │ UseAuthorization (Roles)        │  ← Control de acceso por rol
 ├─────────────────────────────────┤
-│ MapControllers                  │  ← 13 controladores REST
+│ MapControllers                  │  ← 14 controladores REST
 ├─────────────────────────────────┤
 │ MapHub<ExchangeRateHub>         │  ← SignalR endpoint
 └─────────────────────────────────┘
@@ -639,7 +642,7 @@ netsh advfirewall firewall add rule name="Sistema POS - Backend API (TCP 5000)" 
 
 ### 12.2 Autorización
 
-- Roles: `Admin`, `Cashier`, `Driver`
+- Roles: `Cashier`, `Manager`, `Admin`, `Driver` (`Core.Entities.UserRole`)
 - Control de acceso por endpoint (Authorize attributes)
 - Headers `X-User-Id` y `X-User-Role` para trazabilidad
 
@@ -653,7 +656,7 @@ netsh advfirewall firewall add rule name="Sistema POS - Backend API (TCP 5000)" 
 
 ## 13. Pruebas
 
-### 13.1 CommandCenter.Tests (149 tests)
+### 13.1 CommandCenter.Tests (677 tests a la fecha de esta revisión)
 
 | Categoría | Tests | Descripción |
 |---|---|---|
@@ -666,9 +669,13 @@ netsh advfirewall firewall add rule name="Sistema POS - Backend API (TCP 5000)" 
 
 ### 13.2 Cobertura
 
+Suites automatizadas (Rev. 8.4): 677/677 .NET + 73/73 Web = **750/750**; oxlint 0/0 sobre 93 archivos.
+
 ```
 dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --logger "trx;LogFileName=results.trx"
 ```
+
+Suite Web (Web.Frontend): `npm test` ejecuta `node --test "src/**/*.test.js"` (runner oficial `node:test`); lint: `npm run lint` (oxlint).
 
 ---
 
@@ -799,12 +806,12 @@ sequenceDiagram
 
 | Capa | Tecnología | Versión |
 |---|---|---|
-| Backend API | ASP.NET Core | 9.x |
-| ORM | Entity Framework Core | 9.x |
-| Base de datos | PostgreSQL | 18 |
+| Backend API | ASP.NET Core | 10.x |
+| ORM | Entity Framework Core | 10.x |
+| Base de datos | PostgreSQL | 16/18 |
 | Mensajería | MediatR | (latest) |
-| Tiempo real | SignalR | (ASP.NET Core) |
-| Jobs | Quartz.NET | (latest) |
+| Tiempo real | SignalR | @microsoft/signalr ^10.0.5 (cliente web) |
+| Jobs | BackgroundService (IHostedService) | (sin Quartz) |
 | JWT | Microsoft.IdentityModel.Tokens | (built-in) |
 | Web Frontend | React | 19.2.7 |
 | Bundler | Vite | 8.1.1 |
@@ -814,7 +821,7 @@ sequenceDiagram
 | Auto-update | UpdaterService (custom) | 1.0.0 |
 | Installer | Inno Setup | 7.x |
 | CI/CD | Build scripts (PowerShell) | - |
-| Testing | xUnit + FluentAssertions | (latest) |
+| Testing | xUnit + Moq + coverlet (comandos .NET) y `node:test` (web) | (latest) |
 
 ---
 
@@ -823,10 +830,10 @@ sequenceDiagram
 ```
 Proyecto_POS_Estable/
 ├── Backend.API/                    # API REST + SignalR
-│   ├── Controllers/                # 13 controladores
+│   ├── Controllers/                # 14 controladores
 │   ├── Services/                   # BcvScraper, CurrentUserService, PasswordHasher
 │   ├── Hubs/                       # ExchangeRateHub
-│   ├── Jobs/                       # Quartz jobs
+│   ├── Jobs/                       # 5 x BackgroundService (BCV, Reservas, Stock, Outbox, Idempotencia)
 │   ├── Middleware/                  # Exception + Version check
 │   ├── DTOs/                       # Request/Response DTOs
 │   ├── Helpers/                    # Utilidades
@@ -850,15 +857,15 @@ Proyecto_POS_Estable/
 │   ├── DTOs/                       # DTOs de ventas
 │   ├── Data/                       # SalesDbContext
 │   ├── Helpers/                    # TimeZoneHelper
-│   └── Migrations/                 # 22 migraciones
+│   └── Migrations/                 # 29 migraciones
 │
 ├── Inventory.Module/               # Dominio de inventario
 │   ├── Services/                   # InventoryService, SystemSettingsService
 │   ├── Data/                       # InventoryDbContext
 │   ├── EventHandlers/              # InventorySaleMadeEventHandler
-│   └── Migrations/                 # 13 migraciones
+│   └── Migrations/                 # 26 migraciones
 │
-├── Logistics.Module/               # Placeholder (vacío)
+├── Logistics.Module/               # Experimental (no productivo)
 │
 ├── Desktop.Client/                 # WPF Client
 │   ├── Views/                      # 15+ vistas WPF
@@ -869,8 +876,8 @@ Proyecto_POS_Estable/
 │   └── App.xaml                    # ShutdownMode=OnMainWindowClose
 │
 ├── Desktop.Client.Core/            # MVVM + Resilience
-│   ├── ViewModels/                 # 12 ViewModels
-│   ├── Services/                   # 8 servicios (Health, Resilience, etc.)
+│   ├── ViewModels/                 # 30 ViewModels (base + parciales)
+│   ├── Services/                   # 21 servicios (Health, Resilience, etc.)
 │   ├── Messages/                   # Event messages
 │   └── Helpers/                    # Utilidades
 │
@@ -879,14 +886,14 @@ Proyecto_POS_Estable/
 ├── Web.Frontend/                   # React Client
 │   ├── src/
 │   │   ├── pages/                  # 11 páginas
-│   │   ├── components/             # 29 componentes
+│   │   ├── components/             # 34 componentes
 │   │   ├── context/                # 3 contexts (Auth, ExchangeRate, Cart)
 │   │   ├── services/               # API client
 │   │   └── utils/                  # Utilidades
 │   ├── package.json
 │   └── vite.config.js
 │
-├── CommandCenter.Tests/            # Tests unitarios (149 tests)
+├── CommandCenter.Tests/            # Tests unitarios (677 tests)
 │
 ├── installer/                      # Inno Setup
 │   ├── setup.iss                   # Script del instalador
@@ -911,7 +918,7 @@ Proyecto_POS_Estable/
 | `Core` | Ninguno | Todo el sistema colapsa |
 | `Sales.Module` | Core | Ventas y caja no funcionan |
 | `Inventory.Module` | Core | Inventario no se actualiza |
-| `Backend.API` | Core, Sales, Inventory, MediatR, Quartz | API completa cae |
+| `Backend.API` | Core, Sales, Inventory, MediatR, BackgroundService | API completa cae |
 | `Desktop.Client` | Desktop.Client.Core, Backend API | Cliente WPF inoperable |
 | `Desktop.Client.Core` | Core, Backend API (HTTP) | MVVM y resiliencia caen |
 | `Web.Frontend` | Backend API (HTTP) | Cliente web inoperable |

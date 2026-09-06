@@ -1,9 +1,9 @@
 ================================================================================
 REPORTE POR MÓDULO: CommandCenter.Tests (Suite Integral de Pruebas Automatizadas)
 Fecha: 2026-09-06
-Revisión: 8.2 (Contrastación Empírica Rev. 8.1 + Reejecución Completa de la Suite)
-Cruce con docs/reporte.txt (revisión global 8.2).
-HEAD auditado: e89100f (rama V0.15).
+Revisión: 8.4 (Re-Contrastación Empírica Rev. 8.3 + Reejecución Completa de la Suite)
+Cruce con docs/reporte.txt (revisión global 8.4).
+HEAD auditado: 12eddf6 (rama V0.15).
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -91,6 +91,28 @@ Fecha: 2026-09-06
 - Linter Web (oxlint): 0 advertencias, 0 errores sobre 92 archivos auditados.
 - Compilación Release: 0 advertencias, 0 errores en `CommandCenter.slnx` (`TreatWarningsAsErrors=true`).
 
-================================================================================
-FIN DEL REPORTE CommandCenter.Tests — REV. 8.3 (100% REMEDIADO)
+=-------------------------------------------------------------------------------
+6. ADENDA REV. 8.4 — RE-CONTRASTACIÓN EMPÍRICA SOBRE HEAD 12eddf6
+-------------------------------------------------------------------------------
+Métricas re-ejecutadas por el auditor en esta revisión (cruce con reporte.txt §13):
+  - Suite .NET (dotnet test, xUnit + Moq + coverlet): 677 / 677 superadas
+    (0 fallos, 0 omitidos, ≈10 s) — CONFIRMA la Rev. 8.3.
+  - Suite Web (Web.Frontend / npm test): 73 / 73 superadas (≈685 ms). Runner real:
+    `node --test "src/**/*.test.js"` — la Rev. 8.3 lo denominó "Vitest" de forma inexacta.
+  - Total: 750 / 750 sin regresiones.
+  - Linter oxlint: 0 errores / 0 advertencias sobre 93 archivos (la Rev. 8.3 certificó 92).
+  - Compilación Release: 0 advertencias, 0 errores (TreatWarningsAsErrors=true).
+
+  CORRECCIÓN DE ATRIBUCIÓN:
+  - [8.4-N5] ❌ CheckoutModal.test.js NO es una prueba de montaje: lee el fuente con
+    fs.readFileSync y simula el ciclo manualmente. Un ReferenceError como el [8.2-CR1] NO
+    habría sido detectado por la suite. El montaje real (jsdom) de CheckoutModal/PendingOrders
+    sigue sin cobertura automatizada (continúa como gap #1 de la sección 3).
+
+  CONTEOS VERIFICADOS:
+  - Las +6 pruebas .NET de la Rev. 8.3 (671 → 677: ReservationExpiryJobTests 4 +
+    SafeFireAndForgetTests 2) y +2 web (71 → 73: CheckoutModal.test.js) quedan confirmadas en
+    número, con la salvedad [8.4-N5] de que la prueba web es estática.
+===============================================================================
+FIN DEL REPORTE CommandCenter.Tests — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================

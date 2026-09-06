@@ -2,16 +2,18 @@
 REPORTE DE AUDITORÍA TÉCNICA INTEGRAL — SISTEMA POS "CommandCenter"
 ================================================================================
 Fecha de Emisión: 2026-09-06
-Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
-Commit Verificado: HEAD (Rama V0.15 — e89100f; árbol de trabajo auditado en vivo, git clean)
-Revisiones Previas: 7.1 (c337462) → 8.0 (c337462) → 8.1 (e89100f, adenda) → 8.2 (esta)
+Revisión: 8.4 (Re-Auditoría Exhaustiva del Sistema + Contrastación Empírica Rev. 8.3)
+Commit Verificado: HEAD (Rama V0.15 — 12eddf6; árbol de trabajo auditado en vivo, git clean)
+Revisiones Previas: 7.1 (c337462) → 8.0 (c337462) → 8.1 (e89100f) → 8.2 (e89100f)
+        → 8.3 (d222ca4, certificación de cierre) → 8.4 (esta)
 Entorno de Ejecución: Windows 10/11 / Windows Server — .NET 10.0.101 / PostgreSQL 16
 
-Métricas de Prueba RECALCULADAS EN ESTA AUDITORÍA (ejecución real sobre e89100f):
-  - Suite .NET (CommandCenter.Tests): 671 / 671 superadas (0 fallos, 0 omitidos) ≈ 11 s — CONFIRMA Rev. 8.1
-  - Suite Web (Web.Frontend / Vitest): 71 / 71 superadas (0 fallos) ≈ 875 ms — CONFIRMA Rev. 8.1
-  - Total Pruebas Automatizadas: 742 / 742 activas sin regresiones — CONFIRMADO
-  - Linter Web (oxlint): 0 errores / 0 advertencias (91 archivos) — CONFIRMADO (con salvedad: véase 8.2-CR1)
+Métricas de Prueba RECALCULADAS EN ESTA AUDITORÍA (ejecución real sobre HEAD 12eddf6):
+  - Suite .NET (CommandCenter.Tests): 677 / 677 superadas (0 fallos, 0 omitidos) ≈ 10 s — CONFIRMA Rev. 8.3
+  - Suite Web (Web.Frontend / node:test): 73 / 73 superadas (0 fallos) ≈ 685 ms — CONFIRMA Rev. 8.3
+    (NOTA: el runner real es `node --test`; la Rev. 8.3 lo denominó "Vitest" de forma inexacta)
+  - Total Pruebas Automatizadas: 750 / 750 activas sin regresiones — CONFIRMADO
+  - Linter Web (oxlint): 0 errores / 0 advertencias (93 archivos — la Rev. 8.3 certificó 92)
   - Compilación: 0 errores (dotnet test recompila la solución; TreatWarningsAsErrors=true)
 
 Alcance Auditado (contraste línea a línea):
@@ -672,5 +674,145 @@ Estado: VERIFICADO Y CERRADO (Build Release 0 errores/0 advertencias, 744/744 te
       - Estado de Hallazgos: 100% RESUELTOS / 0 REGRESIONES.
 
 ================================================================================
-FIN DEL REPORTE TÉCNICO — REVISIÓN 8.3 (CERTIFICACIÓN DE CIERRE TOTAL Y DEFINITIVO)
+13. CONTRASTACIÓN EMPÍRICA DE LA CERTIFICACIÓN REV. 8.3 (HEAD 12eddf6) — REV. 8.4
+===============================================================================
+La Rev. 8.3 declaró el sistema 100% remediado. Esta revisión re-audita exhaustivamente
+el árbol HEAD (12eddf6) y CONTRASTA cada afirmación con el código real. Verificación
+empírica por el propio auditor: suites 677/677 .NET, 73/73 Web (node:test), oxlint 0/0
+sobre 93 archivos, build Release 0 errores → las MÉTRICAS de la Rev. 8.3 son VERDADERAS
+(750/750), con dos desviaciones menores (runner real `node:test`, no "Vitest"; oxlint
+93 archivos y no 92). NO OBSTANTE, la declaración de "100% REMEDIADO / 0 REGRESIONES"
+ES INEXACTA: se verificaron hallazgos NO resueltos, parciales y errores de atribución
+en la propia certificación.
+
+13.1 AFIRMACIONES DE LA REV. 8.3 CONFIRMADAS (RESUELTO):
+-------------------------------------------------------------------------------
+[8.2-CR1] CheckoutModal reparable: ✅ import de useRef presente (CheckoutModal.jsx:1),
+  reset de checkoutKeyRef en "Descartar y Salir" (:40) y lazy-init (:29-33).
+  SALVEDAD: el "test de humo de montaje" (CheckoutModal.test.js) NO monta el componente:
+  verifica el fuente con fs.readFileSync y simula el ciclo manualmente; la Rev. 8.3 lo
+  catalogó como "prueba de montaje en Vitest". Es una prueba ESTÁTICA; el montaje real
+  sigue sin cobertura automatizada.
+[8I-CR1] HoldOrders atómico: ✅ SalesService.HoldOrders.cs:175-176 enrolla la DB Tx en
+  InventoryService ANTES de UpdateStockBatchAsync (:221-223), misma transacción física.
+[8.2-A3] Exclusión de IsCashAdvance de stock: ✅ filtrado en snapshot
+  (SalesService.cs:662-663) y guard defensivo en InventorySaleMadeEventHandler.cs:43-47.
+[8D-CR1] Validación TLS estricta: ✅ ExchangeRateService.cs:55-61 ya no es "_ => true":
+  aprueba solo SslPolicyErrors.None y, para self-signed, solo si la base es loopback
+  (:60). NO hay pinning por thumbprint (aceptable pero notar).
+[8B-M2] Mensajes genéricos en tasa de cambio: ✅ ExchangeRateController.cs (catches
+  genéricos, sin ex.Message a cliente).
+[8B-CR1/CR1b] Mass assignment: ✅ DTOs Create/Update binding (ProductsController.cs:69,
+  121; PaymentMethodsController.cs:54,84) con proyecciones que enmascaran costos
+  (GetById :178,188-190,195,197; GetAll :42-52).
+[8D-A1] Autorización SignalR: ✅ ExchangeRateHub.cs:6 [Authorize] + RequireAuthorization.
+[8.2-A2/M3] Sesión de caja única: ✅ índice único parcial Status=0 (SalesDbContext.cs:
+  164-168) + reapertura race-safe; migración 20260906100000.
+[8I-CR2] Reservas con expiración: ✅ ReservationExpiryJob (BackgroundService) registrado
+  (Program.cs:126), barrido 60 s (ReservationExpiryJob.cs:19,23,55) y reintegración de
+  stock atómica con predicado condicional (StockDeduction.cs:329-331).
+[GOD-VM] VMs < 500 líneas: ✅ PosViewModel.cs 346, CheckoutViewModel.cs 335,
+  InventoryViewModel.cs 349, CustomerManagementViewModel.cs 271,
+  VariantManagementViewModel.cs 335, SettingsViewModel.cs 456 (máximo).
+[8L-CR3/8.2-B8] Logística no-productiva: ✅ Program.cs:135 AddLogisticsModule +
+  IDeliveryService.IsProductionReady => false + README [NO PRODUCTIVO].
+[8.2-A4] UpdaterService fuera del instalador: ✅ sin referencias en installer/*.iss.
+[8.2-A5] Contraseña de certificado: ✅ ya no existe fallback estático "PosHttpsDev2026!"
+  en Program.cs (LoadHttpsCertificate usa Store de Windows o .pfx con password desde
+  configuración/entorno; ninguno hardcodeado). setup.iss genera contraseña aleatoria vía
+  GetOrGenerateCertPass y la persiste en HKLM (:129-142). RESIDUAL: el comentario
+  "Password: PosHttpsDev2026!" sobrevive en scripts/create-https-cert.ps1:5 y :25.
+[8.2-A6] .bat de actualización: ✅ resolución dinámica del directorio vía AppDirectory
+  NSSM, exclusión de appsettings.* y certs, parada suave Stop-Service con timeout.
+  RESIDUAL: retiene `taskkill /F` como fallback tras el timeout (sección [1/4]).
+[8.2-B1] Unicidad de clientes: ✅ índice único cédula/RIF + manejo 23505.
+
+13.2 AFIRMACIONES DE LA REV. 8.3 REFUTADAS O PARCIALES (ACTIVE):
+-------------------------------------------------------------------------------
+[8B-M3] "Anti-enumeración de usuarios": ❌ NO RESUELTO. AuthController.cs:70 sigue
+  devolviendo StatusCode(423) con texto "La cuenta está bloqueada ... en
+  {remainingMinutes} minutos" → enumera si el usuario existe Y cuánto falta. La
+  afirmación de la Rev. 8.3 ("respuestas 401 unificadas e impersonales") es FALSA.
+[8.2-CR2] "Secretos aislados de git": ❌ PARCIAL. .freebuff-test-out/ y
+  .freebuff/desktop-v2.db ya NO están rastreados, PERO SIGUEN VERSIONADOS:
+  Backend.API/appsettings.Development.json (Postgres Password=123456 y
+  SystemSettings:AdminSeedPassword=Admin123!) y docs/JWT_Key.md (material JWT).
+[8U-N2] "Actualizador con canal seguro": ❌ NO RESUELTO. installer/setup.iss:185
+  conserva el valor por defecto 'http://localhost:5000/updates/' (HTTP plano, sin
+  https/pinning).
+[8D-M2] "Eliminación de sync-over-async": ❌ NO RESUELTO. ExchangeRateService.cs:291
+  conserva DisposeAsync().AsTask().Wait(cts.Token) (única llamada .Wait en los
+  proyectos de escritorio).
+[8.2-A1] "Token de concurrencia funcional": ❌ PARCIAL. Product.cs:98-99 sigue con
+  [Timestamp] byte[] RowVersion → bytea inerte (InventoryDbContext.cs:117 mapea
+  isRowVersion sin soporte xmin); NO hay migración a uint xmin para Product (solo
+  PaymentMethod tiene xmin real en SalesDbContext.cs:224). La deducción por lote quedó
+  atómica con ExecuteUpdateAsync condicional (StockDeduction.cs:79-83), lo que mitiga
+  el oversell, pero las ACTUALIZACIONES POR ENTIDAD (precios, stock) siguen sin
+  protección anti-lost-update.
+[STYLE-WPF] "100% _snake_case → _camelCase": ❌ PARCIAL. Persisten ~22 campos privados
+  snake_case en Desktop.Client.Core (ej. SalesHistoryViewModel.cs:27,28,64,71,85,92,99,
+  106,113,120,127,160,202,209,216,223,237 — _has_loaded, _is_dirty,
+  _detail_subtotal_bs_s, _total_bs_s_for_the_period...; IPaymentService.cs:23,30,37,44,51).
+[8W-M1] "100% de MessageBox reemplazado": ❌ PARCIAL. Persisten ~49 usos de
+  MessageBox.Show/ShowAsync entre Desktop.Client.Core (~45) y Desktop.Client (~4).
+[8W-M2] "SafeFireAndForget en los 24+ sitios": ❌ PARCIAL. ~4 sitios de fire-and-forget
+  sin SafeFireAndForget.
+[8D-M1b] "Virtualización de vistas": ❌ PARCIAL. DataGrids virtualizados;
+  PendingPickupsView conserva ItemsControl + ScrollViewer sin virtualización.
+[8.2-M6] "Idempotency-Key en abonos y cuentas en espera": ❌ PARCIAL. El servidor valida
+  Idempotency-Key SOLO en POST /complete (SalesController.cs:410-430). Los endpoints
+  /hold (:108) y /payments (:157) reciben el encabezado del cliente (salesApi.js:102)
+  pero NO lo validan en backend → un retry puede duplicar abonos.
+[8W-ZT] "checkout-preview integrado en CheckoutModal": ❌ PARCIAL / ATRIBUCIÓN FALSA.
+  El endpoint canónico EXISTE (SalesController.cs:327; cliente getCheckoutPreview en
+  salesApi.js:113) PERO CheckoutModal.jsx NO lo consume (sin referencias a preview en
+  sus fuentes) y el cálculo `roundingAdjustment` sigue local (CheckoutModal.jsx:90 con
+  paidBsS - targetTotalBsS); PaymentForm.jsx continúa con matemática float (Math.round
+  y división):28,37,41,64,65,89.
+[METRICA] Desviación de la Rev. 8.3: oxlint certificó 92 archivos; el conteo real con
+  HEAD 12eddf6 es 93. El runner de pruebas WEB es `node:test`, no Vitest.
+[8.2-M9] VersionLockoutViewModel: parcial. Perdura Process.Start con UseShellExecute=true
+  (VersionLockoutViewModel.cs:43-46) y _isDownloading se setea true (:36) sin reset;
+  abrir una URL con UseShellExecute en el servidor es un vector de OS command injection.
+
+13.3 NUEVOS HALLAZGOS DE ESTA RE-AUDITORÍA (REV. 8.4):
+-------------------------------------------------------------------------------
+[8.4-N1] (ALTO, privacidad) Auth/Bearer residual: api.js:159,164,166,202-203 persiste el
+  esquema Bearer vía pos_token/pos_user en localStorage; AuthContext.jsx:9,37 almacena
+  pos_user (cédula del operador) como PII. setCustomBaseUrl (api.js:121-147) no valida
+  isAllowedApiHost pese a existir la whitelist.
+[8.4-N2] (ALTO, exposición de costos) GetVariants/GetParents devuelven CostPriceUSD sin
+  máscara a cualquier rol autenticado (ProductsController.cs:342-354 vía
+  CatalogQueries.cs:225-227,268-270), fuera del patrón canViewCost del resto del
+  controlador.
+[8.4-N3] (MEDIO, a11y web) PartialPaymentModal.jsx:76-77 usa su propio overlay
+  (.modal-overlay) sin role="dialog", aria-modal ni focus trap; el estándar 8.2-B6 no
+  cubre este modal (ni HoldSaleModal).
+[8.4-N4] (MEDIO, concurrencia) OutboxProcessorJob.cs:149 ejecuta la consulta
+  "FOR UPDATE SKIP LOCKED" con SQL crudo en autocommit; sin transacción explícita
+  (BeginTransaction) el bloqueo se libera al terminar el SELECT, por lo que dos
+  instancias podrían re-leer el mismo lote pendiente.
+[8.4-N5] (BAJO, cobertura) CheckoutModal.test.js es un test ESTÁTICO (fs.readFileSync) y
+  no un montaje real; un ReferenceError como el 8.2-CR1 no sería detectado por la suite
+  actual. La Rev. 8.3 lo describió como "prueba de montaje".
+[8.4-N6] (BAJO, higiene web) El servicio SignalR se expone como contexto global React
+  (ExchangeRateContext) y persisten estilos inline en los modales; baja prioridad.
+
+13.4 CONCLUSIÓN DE LA REV. 8.4:
+-------------------------------------------------------------------------------
+  - Las métricas automatizadas (750/750; oxlint 0/0 en 93 archivos) son VERDADERAS.
+  - La declaración "100% RESUELTOS / 0 REGRESIONES" de la Rev. 8.3 NO se sostiene:
+    persisten 1 hallazgo ALTO no resuelto (8B-M3 enumeración 423), 1 ALTO parcial
+    (8.2-CR2: appsettings.Development.json + JWT_Key.md versionados), 1 ALTO nuevo
+    (8.4-N1 PII/Bearer) y MEDIOS/BAJOS parciales (véase 13.2/13.3).
+  - Priorización sugerida para Rev. 8.5: (1) sacar de git appsettings.Development.json
+    y docs/JWT_Key.md; (2) unificar AuthController en 401 genéricos retirando el 423;
+    (3) máscara de costos en GetVariants/GetParents; (4) consumir checkout-preview
+    desde CheckoutModal.jsx y validar Idempotency-Key en /hold y /payments;
+    (5) transacción explícita en OutboxProcessorJob; (6) retirar Bearer/PII del
+    localStorage y validar setCustomBaseUrl; (7) a11y de PartialPaymentModal.
+
+================================================================================
+FIN DEL REPORTE TÉCNICO — REVISIÓN 8.4 (CONTRASTACIÓN DE LA CERTIFICACIÓN 8.3)
 ================================================================================

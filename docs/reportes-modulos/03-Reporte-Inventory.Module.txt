@@ -1,10 +1,10 @@
 ================================================================================
 REPORTE POR MÓDULO: Inventory.Module (inventario, stock, variantes, importación)
 Fecha: 2026-09-06
-Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.2).
-HEAD auditado: e89100f (rama V0.15).
-Métricas ejecutadas en esta auditoría: 671/671 .NET + 71/71 web (742/742), 0 errores.
+Revisión: 8.4 (Re-Contrastación Empírica Rev. 8.3 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.4).
+HEAD auditado: 12eddf6 (rama V0.15).
+Métricas ejecutadas en esta auditoría: 677/677 .NET + 73/73 web (750/750), 0 errores.
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -164,6 +164,26 @@ Fecha: 2026-09-06
   `VariantManagementViewModel.cs` reducido a 398 líneas extrayendo `VariantManagementViewModel.Operations.cs` (165 líneas).
 - Compilación Release: 0 advertencias, 0 errores en `Inventory.Module`.
 
-================================================================================
-FIN DEL REPORTE Inventory.Module — REV. 8.3 (100% REMEDIADO)
+=-------------------------------------------------------------------------------
+6. ADENDA REV. 8.4 — RE-CONTRASTACIÓN EMPÍRICA SOBRE HEAD 12eddf6
+-------------------------------------------------------------------------------
+Cruce con docs/reporte.txt §13 (Rev. 8.4):
+  CONFIRMADOS:
+  - [8I-CR1] HoldOrders atómico: ✅ SalesService.HoldOrders.cs:175-176 enrolla la DB Tx en
+    InventoryService ANTES de UpdateStockBatchAsync (:221-223), misma transacción física.
+  - [8.2-A3] Exclusión IsCashAdvance: ✅ snapshot filtrado (SalesService.cs:662-663) y guard
+    defensivo en InventorySaleMadeEventHandler.cs:43-47.
+  - [8I-CR2] Reservas con expiración: ✅ ReservationExpiryJob (BackgroundService, barrido
+    60 s) con reintegración atómica mediante predicado condicional (StockDeduction.cs:329-331).
+  PARCIAL:
+  - [8.2-A1] ❌ PARCIAL. Product.RowVersion sigue siendo bytea inerte (no xmin real); NO hay
+    migración a uint xmin para Product. La deducción por lote quedó atómica con
+    ExecuteUpdateAsync condicional (StockDeduction.cs:79-83) — mitiga el oversell — pero las
+    actualizaciones por entidad (precios/stock) siguen sin token anti-lost-update.
+  NUEVOS 8.4:
+  - [8.4-N2] (ALTO, exposición de costos) GetVariants/GetParents devuelven CostPriceUSD sin
+    máscara a cualquier rol autenticado (ProductsController.cs:342-354 vía
+    CatalogQueries.cs:225-227,268-270), fuera del patrón canViewCost.
+===============================================================================
+FIN DEL REPORTE Inventory.Module — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================

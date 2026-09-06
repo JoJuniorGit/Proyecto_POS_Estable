@@ -1,10 +1,10 @@
 ================================================================================
 REPORTE POR MÓDULO: Instalador y Scripts (Despliegue, Empaque y Operación)
 Fecha: 2026-09-06
-Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
+Revisión: 8.4 (Re-Contrastación Empírica Rev. 8.3 vs Código Actual + Nuevos Hallazgos)
 Cubre: installer/setup.iss, installer/Configure-PosService.ps1, scripts/*.ps1, bat
-Cruce con docs/reporte.txt (revisión global 8.2).
-HEAD auditado: e89100f (rama V0.15).
+Cruce con docs/reporte.txt (revisión global 8.4).
+HEAD auditado: 12eddf6 (rama V0.15).
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -123,6 +123,28 @@ Fecha: 2026-09-06
 - [8.2-A6] RESUELTO: `actualizar_servicio_y_sistema.bat` rescata dinámicamente la ruta del servicio desde el registro/entorno, excluye secretos de desarrollo (`appsettings.Development.json`) y aplica parada y arranque suaves con verificación de estados y timeouts.
 - [8.2-B8] RESUELTO: Flags seguros en scripts y delimitación de ejecución de procesos.
 
-================================================================================
-FIN DEL REPORTE Instalador y Scripts — REV. 8.3 (100% REMEDIADO)
+=-------------------------------------------------------------------------------
+6. ADENDA REV. 8.4 — RE-CONTRASTACIÓN EMPÍRICA SOBRE HEAD 12eddf6
+-------------------------------------------------------------------------------
+Cruce con docs/reporte.txt §13 (Rev. 8.4):
+  CONFIRMADOS:
+  - [8.2-A4] UpdaterService fuera del instalador: ✅ sin referencias a UpdaterService en
+    installer/*.iss.
+  - [8.2-A5] Sin fallback estático PosHttpsDev2026!: ✅ setup.iss genera contraseña aleatoria
+    vía GetOrGenerateCertPass persistida en HKLM (:129-142). RESIDUAL: comentario
+    "Password: PosHttpsDev2026!" sobrevive en scripts/create-https-cert.ps1:5 y :25.
+  - [8.2-A6] .bat de actualización: ✅ resolución dinámica del directorio vía AppDirectory
+    NSSM, exclusión de appsettings.* y certs, parada suave Stop-Service con timeout.
+    RESIDUAL: retiene `taskkill /F` como fallback tras el timeout (sección [1/4]).
+  - [8.2-B8] ✅ Flags seguros y delimitación de ejecución de procesos.
+
+  PARCIAL / NO RESUELTO:
+  - [8.2-CR2] ❌ PARCIAL. .freebuff-test-out/ y .freebuff/desktop-v2.db ya NO están
+    trackeados, PERO siguen versionados Backend.API/appsettings.Development.json
+    (Postgres Password=123456 y SystemSettings:AdminSeedPassword=Admin123!) y docs/JWT_Key.md
+    (material JWT) → prioridad #1 de la Rev. 8.5.
+  - [8U-N2] ❌ NO RESUELTO. installer/setup.iss:185 conserva el valor por defecto
+    'http://localhost:5000/updates/' (HTTP plano, sin https/pinning).
+===============================================================================
+FIN DEL REPORTE Instalador y Scripts — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================

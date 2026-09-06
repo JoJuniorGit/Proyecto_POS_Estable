@@ -1,9 +1,9 @@
 ================================================================================
 REPORTE POR MÓDULO: Logistics.Module (Gestión y Despacho de Pedidos / Envíos)
 Fecha: 2026-09-06
-Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual)
-Cruce con docs/reporte.txt (revisión global 8.2).
-HEAD auditado: e89100f (rama V0.15).
+Revisión: 8.4 (Re-Contrastación Empírica Rev. 8.3 vs Código Actual)
+Cruce con docs/reporte.txt (revisión global 8.4).
+HEAD auditado: 12eddf6 (rama V0.15).
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -78,6 +78,17 @@ Fecha: 2026-09-06
 - [8.2-B8] RESUELTO: Se corrigió la errata en `Logistics.Module/README.md` (reemplazado
   el nombre inexistente `SaleDeliveredEvent` por `SaleDispatchedEvent`).
 
-================================================================================
-FIN DEL REPORTE Logistics.Module — REV. 8.3 (100% REMEDIADO)
+=-------------------------------------------------------------------------------
+6. ADENDA REV. 8.4 — RE-CONTRASTACIÓN EMPÍRICA SOBRE HEAD 12eddf6
+-------------------------------------------------------------------------------
+Cruce con docs/reporte.txt §13 (Rev. 8.4):
+  - [8L-CR3 / 8.2-B8] ✅ CONFIRMADO. Program.cs:135 registra AddLogisticsModule;
+    IDeliveryService.IsProductionReady => false; README catalogado [NO PRODUCTIVO /
+    EXPERIMENTAL]; log de advertencia en el constructor de DeliveryService. Persistencia
+    transaccional sigue sin estar activa en producción (almacenamiento en memoria).
+  - Sin hallazgos refutados ni nuevos 8.4-Nx en este módulo.
+  NOTA: la declaración Rev. 8.3 se mantiene VERDADERA en este alcance (módulo ratificado como
+  esqueleto no productivo).
+===============================================================================
+FIN DEL REPORTE Logistics.Module — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================

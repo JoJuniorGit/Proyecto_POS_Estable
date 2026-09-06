@@ -1,11 +1,12 @@
 ================================================================================
 REPORTE POR MÓDULO: Backend.API (Servidor / API REST + Middleware + Jobs)
 Fecha: 2026-09-06
-Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.2).
-Métricas ejecutadas en esta auditoría: 671/671 pruebas .NET (11 s) y 71/71 web
-(875 ms) = 742/742; 0 errores de compilación de solución (dotnet test recompila
-toda la solución). HEAD auditado: e89100f (rama V0.15).
+Revisión: 8.4 (Re-Contrastación Empírica Rev. 8.3 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.4).
+Métricas ejecutadas en esta auditoría: 677/677 pruebas .NET (≈10 s) y 73/73 web
+(node:test, ≈685 ms) = 750/750; oxlint 0/0 sobre 93 archivos; 0 errores de
+compilación de solución (dotnet test recompila toda la solución).
+HEAD auditado: 12eddf6 (rama V0.15).
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -228,6 +229,47 @@ Fecha: 2026-09-06
 - [8.2-A5] RESUELTO: Eliminación de contraseña embebida `PosHttpsDev2026!` y generación dinámica por instalación.
 - Compilación Release: 0 advertencias, 0 errores en `Backend.API` y toda la solución.
 
-================================================================================
-FIN DEL REPORTE Backend.API — REV. 8.3 (100% REMEDIADO)
+=-------------------------------------------------------------------------------
+6. ADENDA REV. 8.4 — RE-CONTRASTACIÓN EMPÍRICA SOBRE HEAD 12eddf6
+-------------------------------------------------------------------------------
+La declaración "100% REMEDIADO" de la Rev. 8.3 NO se sostiene para este módulo.
+Las afirmaciones de la Adenda 8.3 que contradicen lo siguiente quedan SUSTITUIDAS.
+Cruce con docs/reporte.txt §13 (Rev. 8.4):
+
+  CONFIRMADOS (resuelto):
+  - [8D-A1] Autorización SignalR: ✅ ExchangeRateHub.cs:6 [Authorize] + RequireAuthorization.
+  - [8B-CR1 / 8B-CR1b] Mass assignment: ✅ DTOs Create/Update (ProductsController.cs:69,121;
+    PaymentMethodsController.cs:54,84) y proyecciones que enmascaran costos (GetById :178,
+    188-190,195,197; GetAll :42-52).
+  - [8B-M2] Mensajes genéricos en tasa: ✅ sin ex.Message a cliente (ExchangeRateController).
+  - [8.2-A2 / 8.2-M3] Sesión de caja única: ✅ índice único parcial Status=0
+    (SalesDbContext.cs:164-168) + reapertura race-safe; migración 20260906100000.
+  - [8I-CR2] Reservas con expiración: ✅ ReservationExpiryJob registrado (Program.cs:126).
+  - [8.2-A5] Contraseña de cert: ✅ sin fallback estático en Program.cs; generación CSPRNG por
+    instalación (setup.iss GetOrGenerateCertPass, HKLM). RESIDUAL: comentario
+    "Password: PosHttpsDev2026!" en scripts/create-https-cert.ps1:5 y :25.
+
+  REFUTADOS / PARCIALES (ACTIVE):
+  - [8B-M3] ❌ NO RESUELTO. AuthController.cs:70 sigue devolviendo StatusCode(423) con
+    "La cuenta está bloqueada ... en {remainingMinutes} minutos" → enumera si existe el
+    usuario y cuánto falta. La afirmación 8.3 ("401 unificados e impersonales") es FALSA.
+  - [8.2-CR2] ❌ PARCIAL. .freebuff-test-out/ y .freebuff/desktop-v2.db ya NO están
+    trackeados, PERO siguen versionados Backend.API/appsettings.Development.json
+    (Password=123456, AdminSeedPassword=Admin123!) y docs/JWT_Key.md.
+  - [8W-ZT] ❌ PARCIAL / ATRIBUCIÓN FALSA. El endpoint canónico EXISTE (SalesController.cs:327
+    + getCheckoutPreview en salesApi.js:113), pero CheckoutModal.jsx NO lo consume y el
+    redondeo sigue local (CheckoutModal.jsx:90); PaymentForm.jsx conserva float
+    (:28,37,41,64,65,89).
+  - [8.2-M6] ❌ PARCIAL. El servidor valida Idempotency-Key SOLO en POST /complete
+    (SalesController.cs:410-430); /hold (:108) y /payments (:157) NO la validan en backend.
+
+  NUEVOS HALLAZGOS 8.4:
+  - [8.4-N2] (ALTO, exposición de costos) GetVariants/GetParents devuelven CostPriceUSD sin
+    máscara a cualquier rol autenticado (ProductsController.cs:342-354 vía
+    CatalogQueries.cs:225-227,268-270), fuera del patrón canViewCost del resto del controlador.
+  - [8.4-N4] (MEDIO, concurrencia) OutboxProcessorJob.cs:149 ejecuta "FOR UPDATE SKIP LOCKED"
+    con SQL crudo en autocommit, sin transacción explícita (BeginTransaction) → dos instancias
+    pueden releer el mismo lote pendiente.
+===============================================================================
+FIN DEL REPORTE Backend.API — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================

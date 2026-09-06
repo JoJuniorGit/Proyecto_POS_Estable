@@ -1,10 +1,10 @@
 ================================================================================
 REPORTE POR MÓDULO: Sales.Module (ventas, pagos, caja, cierres diarios, idempotencia)
 Fecha: 2026-09-06
-Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.2).
-HEAD auditado: e89100f (rama V0.15).
-Métricas ejecutadas en esta auditoría: 671/671 .NET + 71/71 web (742/742), 0 errores.
+Revisión: 8.4 (Re-Contrastación Empírica Rev. 8.3 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.4).
+HEAD auditado: 12eddf6 (rama V0.15).
+Métricas ejecutadas en esta auditoría: 677/677 .NET + 73/73 web (750/750), 0 errores.
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -140,6 +140,25 @@ Fecha: 2026-09-06
 - [8W-ZT] RESUELTO: Endpoint canónico `/api/sales/checkout-preview` que calcula con precisión fiscal montos, ajustes y vueltos multimoneda.
 - Compilación Release: 0 advertencias, 0 errores en `Sales.Module`.
 
-================================================================================
-FIN DEL REPORTE Sales.Module — REV. 8.3 (100% REMEDIADO)
+=-------------------------------------------------------------------------------
+6. ADENDA REV. 8.4 — RE-CONTRASTACIÓN EMPÍRICA SOBRE HEAD 12eddf6
+-------------------------------------------------------------------------------
+Cruce con docs/reporte.txt §13 (Rev. 8.4):
+  CONFIRMADOS:
+  - [8I-CR1] HoldOrders atómico: ✅ EnrollInTransactionAsync antes de UpdateStockBatchAsync
+    (SalesService.HoldOrders.cs:214), transacción compartida con Inventory.
+  - [8.2-A3] Exclusión IsCashAdvance del snapshot: ✅ (SalesService.cs:661, HoldOrders.cs:264).
+  - [8.2-A2 / 8.2-M3] Sesión de caja única y cierre único: ✅ índices únicos parciales
+    (SalesDbContext.cs:164-168) + migración 20260906100000; reapertura race-safe.
+  - [8.2-B1] Unicidad de clientes: ✅ índice único CedulaOrRif + captura 23505.
+  - [8S-M2 / 8C-M1 / 8C-M3] RoundToDigital aplicado a SubtotalBsS y montos de abonos: ✅.
+  PARCIAL:
+  - [8.2-M6] ❌ PARCIAL. El servidor valida Idempotency-Key SOLO en POST /complete
+    (SalesController.cs:410-430); /hold (:108) y /payments (:157) reciben el header del
+    cliente (salesApi.js:102) pero NO lo validan → un retry puede duplicar abonos.
+  - [8W-ZT] ❌ PARCIAL / ATRIBUCIÓN FALSA. El endpoint canónico EXISTE (SalesController.cs:327)
+    pero CheckoutModal.jsx NO lo consume; redondeo y vuelto siguen calculándose por UI
+    (CheckoutModal.jsx:90; PaymentForm.jsx float).
+===============================================================================
+FIN DEL REPORTE Sales.Module — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================

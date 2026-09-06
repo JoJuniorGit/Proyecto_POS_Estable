@@ -1,11 +1,12 @@
 ================================================================================
 REPORTE POR MÓDULO: Web.Frontend (Cliente Web SPA — React 19 + Vite + PWA)
 Fecha: 2026-09-06
-Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.2).
-HEAD auditado: e89100f (rama V0.15).
-Métricas ejecutadas en esta auditoría: 71/71 pruebas Vitest (875 ms), oxlint 0/0 (91 archivos),
-build de producción OK — PERO ninguno detecta el fallo crítico [8.2-CR1].
+Revisión: 8.4 (Re-Contrastación Empírica Rev. 8.3 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.4).
+HEAD auditado: 12eddf6 (rama V0.15).
+Métricas ejecutadas en esta auditoría: 73/73 pruebas (node:test, ≈685 ms), oxlint 0/0
+(93 archivos), build de producción OK. NOTA: el runner real es `node --test` (la Rev. 8.3
+lo denominó "Vitest").
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -146,6 +147,45 @@ Fecha: 2026-09-06
 - Pruebas Vitest: 73 / 73 superadas (0 fallos).
 - Linter oxlint: 0 errores, 0 advertencias sobre 92 archivos.
 
-================================================================================
-FIN DEL REPORTE Web.Frontend — REV. 8.3 (100% REMEDIADO)
+=-------------------------------------------------------------------------------
+6. ADENDA REV. 8.4 — RE-CONTRASTACIÓN EMPÍRICA SOBRE HEAD 12eddf6
+-------------------------------------------------------------------------------
+La declaración "100% REMEDIADO" de la Rev. 8.3 NO se sostiene para este módulo.
+Las afirmaciones de la Adenda 8.3 que contradicen lo siguiente quedan SUSTITUIDAS.
+Cruce con docs/reporte.txt §13 (Rev. 8.4):
+
+  CONFIRMADOS:
+  - [8.2-CR1] useRef importado: ✅ CheckoutModal.jsx:1, reset de checkoutKeyRef en
+    "Descartar y Salir" (:40) y lazy-init (:29-33). SALVEDAD: ver [8.4-N5], la prueba no
+    monta realmente el componente.
+  - [8.2-M7] Secuenciación de cart: ✅ cartRequestIdRef + inFlightCreateRef (CartContext.jsx).
+  - [8.2-M8] Montos digitados preservados: ✅ sin sobreescritura reactiva por SignalR.
+  - [8.2-B6] Modales con role="dialog"/aria-modal/focus trap: ✅ (Modal.jsx, ConfirmModal.jsx).
+  - [8.2-B7 / 8W-M1] window.confirm/alert erradicados en web: ✅ (ConfirmModal e validación
+    inline).
+  - [8W-M2] Trap de escáner unificado: ✅ pos-search-input + data-scanner-trap="true".
+
+  REFUTADOS / PARCIALES / ATRIBUCIÓN FALSA:
+  - [8W-ZT] ❌ PARCIAL / ATRIBUCIÓN FALSA. checkout-preview EXISTE (SalesController.cs:327;
+    getCheckoutPreview en salesApi.js:113) PERO CheckoutModal.jsx NO lo consume (sin
+    referencias a preview en su fuente); roundingAdjustment sigue local (:90) y PaymentForm.jsx
+    conserva matemática float (:28,37,41,64,65,89).
+  - [8.2-M6] ❌ PARCIAL. La SPA sí transmite el header Idempotency-Key (salesApi.js:102) pero
+    el backend NO lo valida en /hold ni /payments (cross 04).
+  - [METRICA] Runner real `node:test`, no Vitest; oxlint 93 archivos (la Rev. 8.3 dijo 92).
+
+  NUEVOS HALLAZGOS 8.4:
+  - [8.4-N1] (ALTO, privacidad) api.js:159,164,166,202-203 conserva el esquema Bearer vía
+    pos_token/pos_user en localStorage; AuthContext.jsx:9,37 guarda pos_user (cédula del
+    operador) como PII; setCustomBaseUrl (api.js:121-147) no valida isAllowedApiHost pese a
+    existir la whitelist.
+  - [8.4-N3] (MEDIO, a11y) PartialPaymentModal.jsx:76-77 usa overlay propio
+    (.modal-overlay) sin role="dialog"/aria-modal ni focus trap; el estándar 8.2-B6 no cubre
+    este modal (ni HoldSaleModal).
+  - [8.4-N5] (BAJO, cobertura) CheckoutModal.test.js es ESTÁTICO (fs.readFileSync), no un
+    montaje real; un ReferenceError como [8.2-CR1] no sería detectado por la suite actual.
+  - [8.4-N6] (BAJO) ExchangeRateContext expuesto como contexto global React + estilos inline
+    en modales.
+===============================================================================
+FIN DEL REPORTE Web.Frontend — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================

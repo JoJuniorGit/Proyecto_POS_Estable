@@ -1,9 +1,9 @@
 ================================================================================
 REPORTE POR MÓDULO: Core (librería de dominio y utilidades compartidas)
 Fecha: 2026-09-06
-Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.2).
-HEAD auditado: e89100f (rama V0.15).
+Revisión: 8.4 (Re-Contrastación Empírica Rev. 8.3 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.4).
+HEAD auditado: 12eddf6 (rama V0.15).
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -102,6 +102,27 @@ Fecha: 2026-09-06
   atómicas a nivel de repositorio.
 - Compilación Release: 0 advertencias, 0 errores en `Core`.
 
-================================================================================
-FIN DEL REPORTE Core — REV. 8.3 (100% REMEDIADO)
+=-------------------------------------------------------------------------------
+6. ADENDA REV. 8.4 — RE-CONTRASTACIÓN EMPÍRICA SOBRE HEAD 12eddf6
+-------------------------------------------------------------------------------
+Cruce con docs/reporte.txt §13 (Rev. 8.4):
+  CONFIRMADOS:
+  - [8C-M1 / 8C-M3] Redondeo canónico: ✅ PricingCalculator.RoundToDigital unificado y
+    aplicado en hold/abonos (8S-M2, 8.2-M8) — deriva de centavos corregida.
+  - [H-DCC-5] SafeFireAndForget robusto: ✅ TaskExtensions.cs:13-21 + suite dedicada
+    SafeFireAndForgetTests.cs (2 pruebas).
+  - Roles: ✅ Core.Entities.UserRole (Cashier=1, Manager=2, Admin=3, Driver=4) se mantiene
+    (H-CORE-1).
+  PARCIAL:
+  - [8.2-A1] ❌ PARCIAL. Product.cs:98-99 sigue con [Timestamp] byte[] RowVersion → bytea
+    inerte (InventoryDbContext.cs:117 IsRowVersion sin soporte xmin); NO hay migración a
+    uint/xmin para Product. SOLO PaymentMethod posee token real de fila
+    (SalesDbContext.cs:224). La deducción por lote quedó atómica con ExecuteUpdateAsync
+    condicional, pero las actualizaciones por entidad (precios/stock) siguen sin protección
+    anti-lost-update.
+  - [8.2-CR2] ❌ PARCIAL (impacto config de este módulo): docs/JWT_Key.md y
+    Backend.API/appsettings.Development.json siguen versionados.
+  NUEVOS 8.4: sin hallazgos 8.4-Nx de aplicación directa en Core.
+===============================================================================
+FIN DEL REPORTE Core — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================

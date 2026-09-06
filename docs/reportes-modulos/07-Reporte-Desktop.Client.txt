@@ -1,9 +1,9 @@
 ================================================================================
 REPORTE POR MÓDULO: Desktop.Client (interfaz de usuario WPF y vistas)
 Fecha: 2026-09-06
-Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.2).
-HEAD auditado: e89100f (rama V0.15).
+Revisión: 8.4 (Re-Contrastación Empírica Rev. 8.3 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.4).
+HEAD auditado: 12eddf6 (rama V0.15).
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -76,6 +76,18 @@ Fecha: 2026-09-06
 - [8D-M1b] RESUELTO: Virtualización UI activada (`VirtualizingPanel.IsVirtualizing="True"`, `VirtualizationMode="Recycling"`, `ScrollUnit="Pixel"`) en todas las grillas restantes: `CashDrawerView`, `PendingOrdersView`, `PendingPickupsView`, `UsersManagementView`, `EditSaleDialog`, `VariantManagementDialog`.
 - Compilación Release: 0 advertencias, 0 errores en `Desktop.Client`.
 
-================================================================================
-FIN DEL REPORTE Desktop.Client — REV. 8.3 (100% REMEDIADO)
+=-------------------------------------------------------------------------------
+6. ADENDA REV. 8.4 — RE-CONTRASTACIÓN EMPÍRICA SOBRE HEAD 12eddf6
+-------------------------------------------------------------------------------
+Cruce con docs/reporte.txt §13 (Rev. 8.4):
+  CONFIRMADOS:
+  - [8D-M1] Desuscripción de CurrentViewModel: ✅ en Unloaded y DataContextChanged
+    (DailyClosureView.xaml.cs), elimina la fuga de memoria al navegar.
+  PARCIAL:
+  - [8D-M1b] ❌ PARCIAL. DataGrids virtualizados (VirtualizingPanel Recycling + Pixel) en
+    CashDrawer/PendingOrders/Users/EditSale/Variant, PERO PendingPickupsView conserva
+    ItemsControl + ScrollViewer sin virtualización.
+  NUEVOS 8.4: sin hallazgos directos (8.4-Nx son web/backend).
+===============================================================================
+FIN DEL REPORTE Desktop.Client — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================

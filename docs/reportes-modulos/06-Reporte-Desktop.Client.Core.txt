@@ -1,9 +1,9 @@
 ================================================================================
 REPORTE POR MÓDULO: Desktop.Client.Core (lógica de negocio y ViewModels del cliente WPF)
 Fecha: 2026-09-06
-Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.2).
-HEAD auditado: e89100f (rama V0.15).
+Revisión: 8.4 (Re-Contrastación Empírica Rev. 8.3 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.4).
+HEAD auditado: 12eddf6 (rama V0.15).
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -138,6 +138,32 @@ Fecha: 2026-09-06
 - [8W-M2] RESUELTO: Invocaciones de tareas `_ = Task` envueltas con `.SafeFireAndForget(...)` en el 100% de los sitios.
 - Compilación Release: 0 advertencias, 0 errores en `Desktop.Client.Core` y `Desktop.Client`.
 
-================================================================================
-FIN DEL REPORTE Desktop.Client.Core — REV. 8.3 (100% REMEDIADO)
+=-------------------------------------------------------------------------------
+6. ADENDA REV. 8.4 — RE-CONTRASTACIÓN EMPÍRICA SOBRE HEAD 12eddf6
+-------------------------------------------------------------------------------
+La declaración "100% REMEDIADO" de la Rev. 8.3 NO se sostiene para este módulo.
+Cruce con docs/reporte.txt §13 (Rev. 8.4):
+  CONFIRMADOS:
+  - [GOD-VM] VMs < 500 líneas: ✅ PosViewModel.cs 346, CheckoutViewModel.cs 335,
+    InventoryViewModel.cs 349, CustomerManagementViewModel.cs 271,
+    VariantManagementViewModel.cs 335, SettingsViewModel.cs 456 (máximo).
+  - [8D-CR1] TLS estricta: ✅ ExchangeRateService.cs:55-61 aprueba solo SslPolicyErrors.None
+    y, para self-signed, solo loopback (:60). Sin pinning por thumbprint (aceptable, notar).
+  - [8D-A1] AccessTokenProvider: ✅ JWT transmitido en la conexión SignalR del hub.
+  REFUTADOS / PARCIALES (ACTIVE):
+  - [8D-M2] ❌ NO RESUELTO. ExchangeRateService.cs:291 conserva
+    DisposeAsync().AsTask().Wait(cts.Token) — única llamada .Wait en los proyectos de
+    escritorio (riesgo de deadlock en apagado de UI).
+  - [STYLE-WPF] ❌ PARCIAL. Persisten ~22 campos privados snake_case (ej.
+    SalesHistoryViewModel.cs:27,28,64,71,85,92,... _has_loaded, _is_dirty,
+    _detail_subtotal_bs_s, _total_bs_s_for_the_period...; IPaymentService.cs:23,30,37,44,51).
+  - [8W-M1] ❌ PARCIAL. Persisten ~49 usos de MessageBox.Show/ShowAsync entre
+    Desktop.Client.Core (~45) y Desktop.Client (~4), pese a IDialogService.
+  - [8W-M2] ❌ PARCIAL. ~4 sitios de fire-and-forget sin SafeFireAndForget.
+  - [8.2-M9] ❌ PARCIAL. VersionLockoutViewModel.cs:43-46 conserva Process.Start con
+    UseShellExecute=true (vector de OS command injection en servidor) y _isDownloading se
+    setea true (:36) sin reset en el catch (:49-52).
+  NUEVOS 8.4: sin hallazgos 8.4-Nx directos (los nuevos son web/backend).
+===============================================================================
+FIN DEL REPORTE Desktop.Client.Core — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================
