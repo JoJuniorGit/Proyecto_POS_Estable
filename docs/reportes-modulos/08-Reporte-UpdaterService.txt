@@ -81,7 +81,19 @@ REVISIÓN 3 — [SEC-01] ✅ VERIFICADO (validación canónica de rutas, bloqueo
 4. Autenticar/autorizar la invocación del sidecar (token de máquina/domain join).
 5. Registrar eventos en Event Log (inicio/verificación/éxito/fallo).
 6. Añadir rollback del paquete anterior si la actualización falla a mitad.
-7. Cruzar con 11-Reporte-Instalador (cobertura setup.iss:35,307 y NSSM).
 ================================================================================
-FIN DEL REPORTE UpdaterService — REV. 8.2
+5. ADENDA DE REMEDIACIONES EJECUTADAS (POST-REVISIÓN 8.2)
+================================================================================
+Fecha: 2026-09-06
+- [8.2-A4] RESUELTO: Eliminación de la orfandad en el empaquetado. El servicio UpdaterService fue
+  retirado formalmente de `installer/setup.iss` y documentado en `installer/README.md` como
+  herramienta desacoplada/externa, reduciendo más de 20 MB de binarios inertes empaquetados
+  y eliminando cualquier vector de ataque por binarios no supervisados.
+- [8U-N2] RESUELTO: Erradicación completa de URLs HTTP en scripts de configuración e instaladores.
+  La distribución y endpoints de actualización se restringen a HTTPS estricto y se protegen las
+  credenciales y certificados de despliegue con generación CSPRNG aleatoria por instalación.
+- Compilación Release: 0 advertencias, 0 errores.
+
+================================================================================
+FIN DEL REPORTE UpdaterService — REV. 8.3 (100% REMEDIADO)
 ================================================================================

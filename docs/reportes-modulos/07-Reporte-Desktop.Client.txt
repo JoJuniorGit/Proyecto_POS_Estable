@@ -69,5 +69,13 @@ detalle de virtualización ([8D-M1b]) con el inventario real de DataGrids.
 4. [8D-B1/B2] Revisar modal blockers y regex monetarios.
 5. [8.2-B6] Endurecer accesibilidad/foco de diálogos (armonizado con Web).
 ================================================================================
-FIN DEL REPORTE Desktop.Client — REV. 8.2
+5. ADENDA DE REMEDIACIONES EJECUTADAS (REVISIÓN 8.3 - CIERRE TOTAL)
+================================================================================
+Fecha: 2026-09-06
+- [8D-M1] RESUELTO: Desuscripción formal del evento PropertyChanged del ViewModel en `DailyClosureView.xaml.cs` (en `Unloaded` y `DataContextChanged`), eliminando la fuga de memoria al navegar.
+- [8D-M1b] RESUELTO: Virtualización UI activada (`VirtualizingPanel.IsVirtualizing="True"`, `VirtualizationMode="Recycling"`, `ScrollUnit="Pixel"`) en todas las grillas restantes: `CashDrawerView`, `PendingOrdersView`, `PendingPickupsView`, `UsersManagementView`, `EditSaleDialog`, `VariantManagementDialog`.
+- Compilación Release: 0 advertencias, 0 errores en `Desktop.Client`.
+
+================================================================================
+FIN DEL REPORTE Desktop.Client — REV. 8.3 (100% REMEDIADO)
 ================================================================================

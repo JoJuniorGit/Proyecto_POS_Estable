@@ -79,5 +79,5 @@ Fecha: 2026-09-06
   el nombre inexistente `SaleDeliveredEvent` por `SaleDispatchedEvent`).
 
 ================================================================================
-FIN DEL REPORTE Logistics.Module — REV. 8.2 (ACTUALIZADO)
+FIN DEL REPORTE Logistics.Module — REV. 8.3 (100% REMEDIADO)
 ================================================================================

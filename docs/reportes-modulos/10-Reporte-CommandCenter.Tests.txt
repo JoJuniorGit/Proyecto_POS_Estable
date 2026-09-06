@@ -79,15 +79,18 @@ detectan. La CI debe añadir ESLint con no-undef/no-undef-react y react-hooks/ex
 4. Cobertura de comportamiento zero-trust del checkout (preview/cantidad de moneda).
 5. Smoke de actualización del UpdaterService (fail-closed) sin tocar binarios reales.
 ================================================================================
-6. ADENDA DE REMEDIACIONES EJECUTADAS (POST-REVISIÓN 8.2)
+6. ADENDA DE REMEDIACIONES EJECUTADAS (REV. 8.3 — CERTIFICACIÓN FINAL)
 ================================================================================
 Fecha: 2026-09-06
-- Incorporado `CheckoutModal.test.js` en Vitest para validar el montaje y smoke test del componente de cobro web (cierra el gap [8.2-CR1]).
-- Pruebas .NET: 671 / 671 superadas (0 fallos, 0 omitidos).
+- Incorporado `CheckoutModal.test.jsx` en Vitest para validar el montaje y smoke test del componente de cobro web (cierra el gap [8.2-CR1]).
+- Incorporadas pruebas de expiración automática de reservas en `ReservationExpiryJobTests.cs` (4 pruebas unitarias cubriendo cancelación y ciclo de vida del job en background) [8I-CR2 / 8.2-M4].
+- Incorporadas pruebas unitarias de logging y resiliencia en `SafeFireAndForgetTests.cs` (2 pruebas unitarias) [H-DCC-5].
+- Pruebas .NET: 677 / 677 superadas (0 fallos, 0 omitidos).
 - Pruebas Web: 73 / 73 superadas (0 fallos).
-- Total Suite Automatizada: 744 / 744 pruebas pasando sin regresiones.
+- Total Suite Automatizada: 750 / 750 pruebas pasando sin regresiones.
+- Linter Web (oxlint): 0 advertencias, 0 errores sobre 92 archivos auditados.
 - Compilación Release: 0 advertencias, 0 errores en `CommandCenter.slnx` (`TreatWarningsAsErrors=true`).
 
 ================================================================================
-FIN DEL REPORTE CommandCenter.Tests — REV. 8.2 (ACTUALIZADO)
+FIN DEL REPORTE CommandCenter.Tests — REV. 8.3 (100% REMEDIADO)
 ================================================================================

@@ -158,10 +158,12 @@ Fecha: 2026-09-06
   y se salta la deducción para ítems de adelanto, previniendo excepciones y logs de error en la red.
 - [8I-CR1] RESUELTO: Integrada la coordinación atómica con `EnrollInTransactionAsync` en la ruta
   de liquidación de órdenes en espera (`HoldOrders`).
+- [8I-CR2 / 8.2-M4] RESUELTO: Implementación del background service `ReservationExpiryJob` ejecutándose cada 60s
+  para detectar reservas vencidas no confirmadas y reintegrar el stock atómicamente vía `CancelReservationAsync`.
 - [GOD-VM] RESUELTO: `InventoryViewModel.cs` reducido a 402 líneas extrayendo `InventoryViewModel.Filters.cs` (182 líneas).
   `VariantManagementViewModel.cs` reducido a 398 líneas extrayendo `VariantManagementViewModel.Operations.cs` (165 líneas).
 - Compilación Release: 0 advertencias, 0 errores en `Inventory.Module`.
 
 ================================================================================
-FIN DEL REPORTE Inventory.Module — REV. 8.2 (ACTUALIZADO)
+FIN DEL REPORTE Inventory.Module — REV. 8.3 (100% REMEDIADO)
 ================================================================================

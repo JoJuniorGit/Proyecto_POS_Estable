@@ -136,9 +136,16 @@ Fecha: 2026-09-06
 - [8.2-CR1] RESUELTO: Se importó `useRef` en `CheckoutModal.jsx`, se corrigió el reset
   de `checkoutKeyRef.current = null` al descartar la venta, y se añadió la prueba unitaria
   de montaje `CheckoutModal.test.js`. El cobro web se encuentra 100% operativo.
+- [8W-ZT] RESUELTO: Integración con endpoint canónico `/api/sales/checkout-preview` en `CheckoutModal.jsx`.
+- [8.2-M6] RESUELTO: Header `Idempotency-Key` transmitido en `holdSale` y `addPaymentToHoldSale` en `salesApi.js`.
+- [8.2-M7] RESUELTO: Secuenciación de peticiones con `cartRequestIdRef` e `inFlightCreateRef` en `CartContext.jsx`.
+- [8.2-M8] RESUELTO: Preservación de montos digitados por el operador sin sobreescritura reactiva por SignalR.
+- [8.2-B6] RESUELTO: Accesibilidad completa en modales (`role="dialog"`, `aria-modal="true"`, focus trap en Tab y Escape) en `Modal.jsx` y `ConfirmModal.jsx`.
+- [8.2-B7 / 8W-M1] RESUELTO: Erradicación del 100% de llamadas nativas a `window.confirm` y `alert` en la interfaz web (`PosPage`, `SummaryPanel`, `PendingOrdersPage`, `SettingsPage`, `PaymentForm`).
+- [8W-M2] RESUELTO: Sincronización del escáner de código de barras físico con `pos-search-input` y `data-scanner-trap="true"` en `SearchBar.jsx`.
 - Pruebas Vitest: 73 / 73 superadas (0 fallos).
 - Linter oxlint: 0 errores, 0 advertencias sobre 92 archivos.
 
 ================================================================================
-FIN DEL REPORTE Web.Frontend — REV. 8.2 (ACTUALIZADO)
+FIN DEL REPORTE Web.Frontend — REV. 8.3 (100% REMEDIADO)
 ================================================================================

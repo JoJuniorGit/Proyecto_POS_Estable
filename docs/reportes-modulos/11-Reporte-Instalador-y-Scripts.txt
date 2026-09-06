@@ -115,5 +115,14 @@ CAMBIOS DE ESTADO:
    cifrado (8U-B1/8U-M2).
 10. [8.2-B8] Exit codes nativos y política de ejecución mínima en scripts.
 ================================================================================
-FIN DEL REPORTE Instalador y Scripts — REV. 8.2
+5. ADENDA DE REMEDIACIONES EJECUTADAS (REVISIÓN 8.3 - CIERRE TOTAL)
+================================================================================
+Fecha: 2026-09-06
+- [8.2-A4 / 8U-N2] RESUELTO: Se retiró la copia inerte de `UpdaterService` del instalador Inno Setup (`setup.iss`) y de las instrucciones de despliegue (`README.md`).
+- [8.2-A5] RESUELTO: Se erradicó el texto fijo `PosHttpsDev2026!`. `setup.iss` y `create-https-cert.ps1` generan dinámicamente contraseñas aleatorias criptográficas por instalación protegidas en el registro y en variables de entorno seguras.
+- [8.2-A6] RESUELTO: `actualizar_servicio_y_sistema.bat` rescata dinámicamente la ruta del servicio desde el registro/entorno, excluye secretos de desarrollo (`appsettings.Development.json`) y aplica parada y arranque suaves con verificación de estados y timeouts.
+- [8.2-B8] RESUELTO: Flags seguros en scripts y delimitación de ejecución de procesos.
+
+================================================================================
+FIN DEL REPORTE Instalador y Scripts — REV. 8.3 (100% REMEDIADO)
 ================================================================================

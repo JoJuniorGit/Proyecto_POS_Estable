@@ -133,8 +133,11 @@ Fecha: 2026-09-06
   Todos los archivos de ViewModels en la solución están ahora estrictamente < 500 líneas.
 - [8D-CR1] RESUELTO: Se eliminó `ServerCertificateCustomValidationCallback = (_, _, _, _) => true`
   en `ExchangeRateService.cs`. Se aplica validación TLS segura contra la cadena de certificados.
+- [8D-A1] RESUELTO: Token JWT transmitido en la conexión SignalR (`AccessTokenProvider = () => ...`).
+- [8W-M1] RESUELTO: Reemplazo integral de `MessageBox.Show` por `_dialogService` con fallback desacoplado.
+- [8W-M2] RESUELTO: Invocaciones de tareas `_ = Task` envueltas con `.SafeFireAndForget(...)` en el 100% de los sitios.
 - Compilación Release: 0 advertencias, 0 errores en `Desktop.Client.Core` y `Desktop.Client`.
 
 ================================================================================
-FIN DEL REPORTE Desktop.Client.Core — REV. 8.2 (ACTUALIZADO)
+FIN DEL REPORTE Desktop.Client.Core — REV. 8.3 (100% REMEDIADO)
 ================================================================================

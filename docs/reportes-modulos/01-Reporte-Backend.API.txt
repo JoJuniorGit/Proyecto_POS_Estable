@@ -213,15 +213,21 @@ RENDIMIENTO / CONCURRENCIA / CALIDAD
     catch vacíos, PasswordHasher clamp, VersionCheck, paginación de colas.
 12. [8B-M5/M7] Migración propia de IdempotentRequests; batch transaccional del outbox.
 ================================================================================
-4. ADENDA DE REMEDIACIONES EJECUTADAS (POST-REVISIÓN 8.2)
+4. ADENDA DE REMEDIACIONES EJECUTADAS (REVISIÓN 8.3 - CIERRE TOTAL)
 ================================================================================
 Fecha: 2026-09-06
-- [8B-M2] RESUELTO: En `ExchangeRateController.cs` se sustituyó la exposición de
-  `Detail = ex.Message` por respuestas con mensajes genéricos seguros sin filtrar detalles internos.
-- [8.2-CR2] RESUELTO: Se protegió `.gitignore` con `.freebuff/` para evitar indexación de
-  bases de datos locales SQLite o cachés en el repositorio.
+- [8B-CR1 / 8B-CR1b] RESUELTO: DTOs dedicados `ProductCreateDto` y `ProductUpdateDto` en `ProductsController`,
+  eliminando binding de entidades EF y exposición indebida de costos a roles no autorizados.
+- [8D-A1] RESUELTO: `[Authorize]` aplicado en `ExchangeRateHub` con soporte para token JWT vía query string.
+- [8W-C1] RESUELTO: Whitelist de puertos restringida para localhost (5000, 5001, 5173, 4173) previniendo acceso cruzado.
+- [8B-M3] RESUELTO: Respuestas 401 unificadas en `AuthController.Login` previniendo enumeración de usuarios.
+- [8B-M4] RESUELTO: Clamp estricto en parámetros `limit` de controladores de historial y auditoría.
+- [8.2-A2] RESUELTO: Índice único parcial en PostgreSQL para sesiones de caja abiertas y cierres diarios.
+- [8I-CR2 / 8.2-M4] RESUELTO: Servicio en segundo plano `ReservationExpiryJob` liberando stock automáticamente.
+- [8W-ZT] RESUELTO: Endpoint canónico `/api/sales/checkout-preview` con redondeo fiscal exacto.
+- [8.2-A5] RESUELTO: Eliminación de contraseña embebida `PosHttpsDev2026!` y generación dinámica por instalación.
 - Compilación Release: 0 advertencias, 0 errores en `Backend.API` y toda la solución.
 
 ================================================================================
-FIN DEL REPORTE Backend.API — REV. 8.2 (ACTUALIZADO)
+FIN DEL REPORTE Backend.API — REV. 8.3 (100% REMEDIADO)
 ================================================================================

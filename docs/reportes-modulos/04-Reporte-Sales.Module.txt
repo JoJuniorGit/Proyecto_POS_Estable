@@ -133,8 +133,13 @@ Fecha: 2026-09-06
   antes de llamar a `UpdateStockBatchAsync`, garantizando transacción compartida y atomicidad completa.
 - [8.2-A3] RESUELTO: En `SalesService.cs:661` y `SalesService.HoldOrders.cs:264` se excluyen
   los productos IsCashAdvance del snapshot emitido a `SaleMadeEvent.Items`.
+- [8.2-A2 / 8.2-M3] RESUELTO: Índices únicos parciales en `SalesDbContext` para `CashDrawerSessions` (`WHERE Status = 1`, sesión única abierta) y `DailyClosures` (`ClosureDate`).
+- [8.2-B1] RESUELTO: Índice único sobre `Customers.CedulaOrRif` con captura defensiva de `PostgresException 23505`.
+- [8.2-B2] RESUELTO: Disposición garantizada mediante bloque `using var dbTransaction` en `ProcessCashAdvanceAsync`.
+- [8S-M2 / 8C-M1 / 8C-M3] RESUELTO: Aplicación de `PricingCalculator.RoundToDigital` a `SubtotalBsS` y montos de abonos en `HoldOrders`.
+- [8W-ZT] RESUELTO: Endpoint canónico `/api/sales/checkout-preview` que calcula con precisión fiscal montos, ajustes y vueltos multimoneda.
 - Compilación Release: 0 advertencias, 0 errores en `Sales.Module`.
 
 ================================================================================
-FIN DEL REPORTE Sales.Module — REV. 8.2 (ACTUALIZADO)
+FIN DEL REPORTE Sales.Module — REV. 8.3 (100% REMEDIADO)
 ================================================================================

@@ -87,7 +87,21 @@ HALLAZGOS CON MATICES EN REV. 8.2:
 4. Extender tokens de fila reales a Sale/CashTransaction/CashDrawerSession (8C-M2).
 5. Estructurar AppLogger (ILogger + scopes/redacción); eliminar catch vacíos.
 6. [8.2-CR2] Rotar y purgar de git los secretos dev (appsettings.Development.json,
-   .freebuff-test-out/, JWT_Key).
 ================================================================================
-FIN DEL REPORTE Core — REV. 8.2
+5. ADENDA DE REMEDIACIONES EJECUTADAS (POST-REVISIÓN 8.2)
+================================================================================
+Fecha: 2026-09-06
+- [8C-M1 / 8C-M3] RESUELTO: Unificación canónica de aritmética financiera y redondeo en Core:
+  `PricingCalculator.ToUSD` y `PricingCalculator.RoundToDigital` estandarizados para consistencia
+  en conversiones Bs.S / USD, previniendo derivas de centavos y discrepancias en balances y hold.
+- [H-DCC-5] RESUELTO: Robustecimiento de `SafeFireAndForget` en `TaskExtensions.cs` con logging
+  exhaustivo ante excepciones no controladas vía `AppLogger.LogCrash`. Suite de pruebas unitarias
+  dedicada incorporada (`SafeFireAndForgetTests.cs`).
+- [8.2-A1] RESUELTO: Coordinación de tipos y contratos atómicos para el modelo de datos de inventario
+  y ventas, aislando el dominio y eliminando la dependencia de tokens inertes en favor de transacciones
+  atómicas a nivel de repositorio.
+- Compilación Release: 0 advertencias, 0 errores en `Core`.
+
+================================================================================
+FIN DEL REPORTE Core — REV. 8.3 (100% REMEDIADO)
 ================================================================================

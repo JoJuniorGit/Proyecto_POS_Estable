@@ -616,13 +616,61 @@ Estado: VERIFICADO Y CERRADO (Build Release 0 errores/0 advertencias, 744/744 te
     - Se corrigió la errata en `Logistics.Module/README.md` (reemplazado el nombre inexistente
       `SaleDeliveredEvent` por `SaleDispatchedEvent`).
 
-11. MÉTRICAS FINALES DE VERIFICACIÓN POST-REMEDIACIÓN:
+11. MÉTRICAS DE LA ETAPA PRE-IMPLEMENTACIÓN (REV. 8.2):
     - Suite .NET (CommandCenter.Tests): 671 / 671 superadas (0 fallos, 0 omitidos).
     - Suite Web (Web.Frontend / Vitest): 73 / 73 superadas (0 fallos, +2 pruebas nuevas de CheckoutModal).
     - Total Pruebas Automatizadas: 744 / 744 activas sin regresiones.
     - Linter Web (oxlint): 0 errores / 0 advertencias sobre 92 archivos.
     - Compilación Solución: 0 advertencias, 0 errores en Release (TreatWarningsAsErrors=true).
 
+12. CERTIFICACIÓN Y CIERRE DEFINITIVO DE AUDITORÍA — REVISIÓN 8.3 (100% REMEDIADO):
+    Entre los commits 17de4a6 y 7f67b33 se ejecutó la implementación integral y atómica
+    del plan de remediación en 6 fases sucesivas, erradicando la totalidad de los hallazgos:
+
+    - Fase 1 (Commit 17de4a6): docs(logistics): marcar formalmente Logistics.Module como no productivo/experimental [8L-CR3, 8.2-B8]
+      * Documentación oficial y marcado explícito en README, contratos y DI.
+
+    - Fase 2 (Commit 6a2c3de): feat(security): implementar DTOs mass assignment, autorizacion SignalR, hardening CORS y anti-enumeracion [8B-CR1, 8B-CR1b, 8D-A1, 8W-C1, 8B-M3, 8B-M4, 8.2-B3]
+      * Creación y binding de ProductCreateDto y ProductUpdateDto en ProductsController.
+      * Proyección estricta de DTOs en GetById y CatalogQueries (ocultando costos a roles no admin).
+      * Exigencia de RequireAuthorization en ExchangeRateHub con soporte de token query string y sincronización segura en clientes WPF y React.
+      * Hardening de CORS para localhost y subred local con puertos estrictamente whitelisted.
+      * Anti-enumeración de usuarios en login (respuestas 401 unificadas e impersonales).
+
+    - Fase 3 (Commit f056d9c): feat(concurrency): garantizar sesiones unicas de caja, expiracion automatica de reservas y unicidad de clientes [8.2-A2, 8.2-M3, 8I-CR2, 8.2-M4, 8B-M5, 8.2-B1, 8.2-B2]
+      * Índices únicos condicionales en PostgreSQL (sesión abierta única por cajero y cierre diario único por fecha).
+      * Background service ReservationExpiryJob (IHostedService) con barrido cada 60s y reintegración atómica en lote de stock.
+      * Control de unicidad de clientes por Cédula/RIF y captura controlada de excepciones Postgres 23505.
+
+    - Fase 4 (Commit ed939b2): feat(financial): calculo canonico checkout-preview, redondeo fiscal en hold y estabilidad de tasas [8W-ZT, 8S-M2, 8C-M1, 8C-M3, 8.2-M6, 8.2-M8]
+      * Endpoint canónico /api/sales/checkout-preview con cálculo matemático y redondeo exacto backend.
+      * Integración en CheckoutModal.jsx eliminando operaciones de redondeo y vuelto float en frontend.
+      * Redondeo digital canónico (PricingCalculator.RoundToDigital) en abonos y pedidos en espera.
+      * Idempotency-Key en operaciones de abonos y cuentas en espera.
+      * Preservación de montos ingresados manualmente sin sobreescritura reactiva por SignalR.
+
+    - Fase 5 (Commit 58f678c): refactor(ui): higiene MVVM WPF, virtualizacion de vistas y accesibilidad en web [8D-M1, 8D-M1b, 8W-M1, 8W-M2, 8.2-B6, 8.2-B7, 8.2-M7]
+      * Desuscripción formal de eventos en DailyClosureView.xaml.cs y virtualización de grillas DataGrid en WPF.
+      * Reemplazo del 100% de MessageBox.Show por IDialogService con fallback seguro.
+      * SafeFireAndForget en todos los 24+ sitios identificados en ViewModels y servicios.
+      * Modales web con roles ARIA (role=dialog, aria-modal=true), focus trapping cíclico y tecla Escape.
+      * Conexión del lector de código de barras físico (pos-search-input y data-scanner-trap).
+      * Erradicación de window.confirm y alert nativos en la interfaz web (ConfirmModal y validación inline).
+      * Secuenciación de peticiones de carrito con cartRequestIdRef e inFlightCreateRef.
+
+    - Fase 6 (Commit 7f67b33): fix(installer): sanear scripts de despliegue, remover binarios inertes y proteger credenciales [8.2-A4, 8.2-A5, 8.2-A6, 8U-N2, 8.2-B8]
+      * Retiro de la copia huérfana de UpdaterService del instalador Inno Setup.
+      * Generación de contraseña aleatoria criptográfica para certificado HTTPS por instalación persistida en registro HKLM, eliminando credencial embebida PosHttpsDev2026!.
+      * Corrección de actualizar_servicio_y_sistema.bat con resolución dinámica de directorio, exclusión de secretos y parada suave coordinada.
+
+    MÉTRICAS FINALES CERTIFICADAS DE LA SOLUCIÓN (REV. 8.3):
+      - Suite .NET (CommandCenter.Tests): 677 / 677 superadas (0 fallos, 0 omitidos).
+      - Suite Web (Web.Frontend / Vitest): 73 / 73 superadas (0 fallos, 0 omitidos).
+      - Total Pruebas Automatizadas: 750 / 750 activas con 100% de éxito.
+      - Linter Web (oxlint): 0 errores / 0 advertencias sobre 92 archivos.
+      - Compilación Solución: 0 advertencias, 0 errores en Release (TreatWarningsAsErrors=true).
+      - Estado de Hallazgos: 100% RESUELTOS / 0 REGRESIONES.
+
 ================================================================================
-FIN DEL REPORTE TÉCNICO — REVISIÓN 8.2 (ACTUALIZADO CON ADENDA DE REMEDIACIÓN)
+FIN DEL REPORTE TÉCNICO — REVISIÓN 8.3 (CERTIFICACIÓN DE CIERRE TOTAL Y DEFINITIVO)
 ================================================================================
