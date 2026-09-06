@@ -184,6 +184,9 @@ public class PosViewModelPaymentMethodsDeduplicationTests
             userSession,
             mockDialogService.Object);
 
+        // Aislamos del bus estático global para evitar que pruebas paralelas disparen recargas
+        WeakReferenceMessenger.Default.Unregister<PaymentMethodsChangedMessage>(posVm);
+
         mockUserService.Setup(u => u.LoginAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(new LoginResultDto
             {

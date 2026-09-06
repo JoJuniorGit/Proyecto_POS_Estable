@@ -21,7 +21,7 @@ namespace Desktop.Client.ViewModels;
 /// </summary>
 public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdatedMessage>
 {
-    private readonly ISalesService _sales_service;
+    private readonly ISalesService _salesService;
     private readonly SaleDto _sale;
     private string? _currentIdempotencyKey;
 
@@ -54,13 +54,13 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         ? $"Liquidar / Abonar — Pedido #{OverrideSale!.Id}"
         : "Checkout";
 
-    private decimal _total_usd;
+    private decimal _totalUsd;
     public decimal TotalUSD
     {
-        get => _total_usd;
+        get => _totalUsd;
         set
         {
-            if (SetProperty(ref _total_usd, value))
+            if (SetProperty(ref _totalUsd, value))
             {
                 OnPropertyChanged(nameof(TotalAmountLocal));
                 RecalculateBalances();
@@ -103,20 +103,20 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
     public ObservableCollection<CheckoutPaymentItem> Payments { get; } = new();
     public ObservableCollection<PaymentMethodDto> AvailableMethods { get; }
 
-    private CheckoutPaymentItem? _selected_payment;
+    private CheckoutPaymentItem? _selectedPayment;
     public CheckoutPaymentItem? SelectedPayment
     {
-        get => _selected_payment;
-        set => SetProperty(ref _selected_payment, value);
+        get => _selectedPayment;
+        set => SetProperty(ref _selectedPayment, value);
     }
 
-    private PaymentMethodDto? _selected_method;
+    private PaymentMethodDto? _selectedMethod;
     public PaymentMethodDto? SelectedMethod
     {
-        get => _selected_method;
+        get => _selectedMethod;
         set
         {
-            if (SetProperty(ref _selected_method, value))
+            if (SetProperty(ref _selectedMethod, value))
             {
                 // Refresh input rounding if method type changes (Cash vs Digital)
                 SetAmountToRemainingBalance();
@@ -124,13 +124,13 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         }
     }
 
-    private string _amount_bs_s_text = "0.00";
+    private string _amountBsSText = "0.00";
     public string AmountBsSText
     {
-        get => _amount_bs_s_text;
+        get => _amountBsSText;
         set
         {
-            if (SetProperty(ref _amount_bs_s_text, value))
+            if (SetProperty(ref _amountBsSText, value))
             {
                 OnPropertyChanged(nameof(AmountUsdPreview));
             }
@@ -142,51 +142,57 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         get
         {
             if (CurrentExchangeRate <= 0) return 0;
-            var bs_s = ParseAmount(AmountBsSText);
-            return System.Math.Round(bs_s / CurrentExchangeRate, 2, System.MidpointRounding.AwayFromZero);
+            var bsS = ParseAmount(AmountBsSText);
+            return System.Math.Round(bsS / CurrentExchangeRate, 2, System.MidpointRounding.AwayFromZero);
         }
     }
 
-    private string _current_reference = string.Empty;
+    private string _currentReference = string.Empty;
     public string CurrentReference
     {
-        get => _current_reference;
-        set => SetProperty(ref _current_reference, value);
+        get => _currentReference;
+        set => SetProperty(ref _currentReference, value);
     }
 
-    private bool _is_processing;
+    private bool _isProcessing;
     public bool IsProcessing
     {
-        get => _is_processing;
-        set => SetProperty(ref _is_processing, value);
+        get => _isProcessing;
+        set => SetProperty(ref _isProcessing, value);
     }
 
-    private bool _focus_amount_input;
+    private bool _focusAmountInput;
     public bool FocusAmountInput
     {
-        get => _focus_amount_input;
-        set => SetProperty(ref _focus_amount_input, value);
+        get => _focusAmountInput;
+        set => SetProperty(ref _focusAmountInput, value);
     }
 
-    private readonly UserSession? _user_session;
-    private readonly IDialogService? _dialog_service;
+    private readonly UserSession? _userSession;
+    private readonly IDialogService? _dialogService;
 
     public CheckoutViewModel(
         SaleDto sale,
-        ObservableCollection<PaymentMethodDto> available_methods,
-        ISalesService sales_service,
-        decimal current_exchange_rate,
+        ObservableCollection<PaymentMethodDto>? availableMethods = null,
+        ISalesService? salesService = null,
+        decimal currentExchangeRate = 0m,
+        UserSession? userSession = null,
+        SaleDto? overrideSale = null,
+        IDialogService? dialogService = null,
+        ObservableCollection<PaymentMethodDto>? available_methods = null,
+        ISalesService? sales_service = null,
+        decimal? current_exchange_rate = null,
         UserSession? user_session = null,
         SaleDto? override_sale = null,
         IDialogService? dialog_service = null)
     {
         _sale = sale;
-        _sales_service = sales_service;
-        _user_session = user_session;
-        _dialog_service = dialog_service;
-        CurrentExchangeRate = current_exchange_rate;
-        AvailableMethods = available_methods;
-        OverrideSale = override_sale;
+        _salesService = salesService ?? sales_service ?? throw new System.ArgumentNullException(nameof(salesService));
+        _userSession = userSession ?? user_session;
+        _dialogService = dialogService ?? dialog_service;
+        CurrentExchangeRate = currentExchangeRate > 0m ? currentExchangeRate : (current_exchange_rate ?? 0m);
+        AvailableMethods = availableMethods ?? available_methods ?? new();
+        OverrideSale = overrideSale ?? override_sale;
 
         // In override mode, TotalUSD = remaining debt of the OnHold sale
         TotalUSD = IsOverrideMode ? OriginalRemainingDebtUsd : sale.TotalUSD;
@@ -211,32 +217,32 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
             return;
         }
 
-        var amount_bs_s = ParseAmount(AmountBsSText);
-        if (amount_bs_s <= 0) return;
+        var amountBsS = ParseAmount(AmountBsSText);
+        if (amountBsS <= 0) return;
         if (CurrentExchangeRate <= 0) return;
 
         // Apply specialized rounding to the input based on payment type
         if (SelectedMethod.IsCash)
         {
-            amount_bs_s = PricingHelper.RoundToCash(amount_bs_s);
+            amountBsS = PricingHelper.RoundToCash(amountBsS);
         }
         else
         {
-            amount_bs_s = PricingHelper.RoundToDigital(amount_bs_s);
+            amountBsS = PricingHelper.RoundToDigital(amountBsS);
         }
 
-        var amount_usd = System.Math.Round(amount_bs_s / CurrentExchangeRate, 2, System.MidpointRounding.AwayFromZero);
+        var amountUsd = System.Math.Round(amountBsS / CurrentExchangeRate, 2, System.MidpointRounding.AwayFromZero);
 
         // Validation: prevent overpayment (with small tolerance)
-        if (amount_usd > RemainingBalanceUsd + 0.05m) 
+        if (amountUsd > RemainingBalanceUsd + 0.05m) 
         {
             ShowWarning("Monto Excedido", "El monto ingresado excede el saldo restante de la venta.");
             return;
         }
 
         // Auto-clamp if almost finished to ensure precise zeroing
-        if (amount_usd > RemainingBalanceUsd)
-            amount_usd = RemainingBalanceUsd;
+        if (amountUsd > RemainingBalanceUsd)
+            amountUsd = RemainingBalanceUsd;
 
         if (SelectedMethod.RequiresReference && string.IsNullOrWhiteSpace(CurrentReference))
         {
@@ -244,8 +250,8 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
             return;
         }
 
-        var dto = new SalePaymentDto(SelectedMethod.Id, amount_usd, amount_bs_s, CurrentReference);
-        Payments.Add(new CheckoutPaymentItem(dto, SelectedMethod.Name, amount_bs_s, SelectedMethod.IsCash));
+        var dto = new SalePaymentDto(SelectedMethod.Id, amountUsd, amountBsS, CurrentReference);
+        Payments.Add(new CheckoutPaymentItem(dto, SelectedMethod.Name, amountBsS, SelectedMethod.IsCash));
 
         CurrentReference = string.Empty;
         RecalculateBalances();
@@ -253,9 +259,9 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
     private void ShowWarning(string title, string message)
     {
-        if (_dialog_service != null)
+        if (_dialogService != null)
         {
-            _dialog_service.ShowWarning(title, message);
+            _dialogService.ShowWarning(title, message);
         }
         else if (Application.Current != null)
         {
@@ -265,9 +271,9 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
     private void ShowError(string title, string message)
     {
-        if (_dialog_service != null)
+        if (_dialogService != null)
         {
-            _dialog_service.ShowError(title, message);
+            _dialogService.ShowError(title, message);
         }
         else if (Application.Current != null)
         {
@@ -358,13 +364,13 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         return 0m;
     }
 
-    private bool _is_pending_pickup;
+    private bool _isPendingPickup;
     public bool IsPendingPickup
     {
-        get => _is_pending_pickup;
+        get => _isPendingPickup;
         set
         {
-            if (SetProperty(ref _is_pending_pickup, value))
+            if (SetProperty(ref _isPendingPickup, value))
             {
                 OnPropertyChanged(nameof(PendingPickupErrorMessage));
                 OnPropertyChanged(nameof(IsCustodyAllowed));
@@ -431,7 +437,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         IsProcessing = true;
         try
         {
-            var raw_payments = Payments.Select(p => new SalePaymentDto(p.Dto.PaymentMethodId, p.Dto.Amount, p.AmountBsS, p.Dto.ReferenceNumber));
+            var rawPayments = Payments.Select(p => new SalePaymentDto(p.Dto.PaymentMethodId, p.Dto.Amount, p.AmountBsS, p.Dto.ReferenceNumber));
 
             if (IsOverrideMode)
             {
@@ -445,22 +451,22 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
                 {
                     // Full liquidation: mark sale as Completed
                     targetSale.RoundingAdjustment = RoundingAdjustment;
-                    int real_id = await _sales_service.CompleteSaleAsync(
-                        targetSale.Id, CurrentExchangeRate, raw_payments,
-                        RoundingAdjustment, _user_session?.CurrentUser?.Id, IsPendingPickup,
+                    int realId = await _salesService.CompleteSaleAsync(
+                        targetSale.Id, CurrentExchangeRate, rawPayments,
+                        RoundingAdjustment, _userSession?.CurrentUser?.Id, IsPendingPickup,
                         _currentIdempotencyKey);
 
                     _currentIdempotencyKey = null;
                     WeakReferenceMessenger.Default.Unregister<CartUpdatedMessage>(this);
                     // Pass result: positive id = liquidated, negative = abono
-                    DialogHost.CloseDialogCommand.Execute(real_id, null);
+                    DialogHost.CloseDialogCommand.Execute(realId, null);
                 }
                 else
                 {
                     // Partial abono: add payment to OnHold sale (keeps it pending)
-                    foreach (var p in raw_payments)
+                    foreach (var p in rawPayments)
                     {
-                        await _sales_service.AddPaymentToHoldSaleAsync(targetSale.Id, new AddPaymentRequestDto
+                        await _salesService.AddPaymentToHoldSaleAsync(targetSale.Id, new AddPaymentRequestDto
                         {
                             PaymentMethodId = p.PaymentMethodId,
                             AmountBsS = p.AmountBsS,
@@ -479,15 +485,15 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
             {
                 // Normal checkout mode: complete the active cart sale
                 _sale.RoundingAdjustment = RoundingAdjustment;
-                var payments_list = Payments.Select(p => new SalePaymentDto(p.Dto.PaymentMethodId, p.Dto.Amount, p.AmountBsS, p.Dto.ReferenceNumber));
-                int real_id = await _sales_service.CompleteSaleAsync(
-                    _sale.Id, CurrentExchangeRate, payments_list,
-                    RoundingAdjustment, _user_session?.CurrentUser?.Id, IsPendingPickup,
+                var paymentsList = Payments.Select(p => new SalePaymentDto(p.Dto.PaymentMethodId, p.Dto.Amount, p.AmountBsS, p.Dto.ReferenceNumber));
+                int realId = await _salesService.CompleteSaleAsync(
+                    _sale.Id, CurrentExchangeRate, paymentsList,
+                    RoundingAdjustment, _userSession?.CurrentUser?.Id, IsPendingPickup,
                     _currentIdempotencyKey);
 
                 _currentIdempotencyKey = null;
                 WeakReferenceMessenger.Default.Unregister<CartUpdatedMessage>(this);
-                DialogHost.CloseDialogCommand.Execute(real_id, null);
+                DialogHost.CloseDialogCommand.Execute(realId, null);
             }
         }
         catch (System.Exception ex)

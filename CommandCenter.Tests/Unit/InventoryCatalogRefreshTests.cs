@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
+using Desktop.Client.Messages;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Moq;
@@ -22,11 +24,14 @@ public class InventoryCatalogRefreshTests
         _exchangeRateServiceMock.Setup(s => s.GetCurrentRateAsync())
                                 .ReturnsAsync((50.00m, DateTime.UtcNow));
 
-        return new InventoryViewModel(
+        var vm = new InventoryViewModel(
             _productServiceMock.Object,
             _exchangeRateServiceMock.Object,
             userSession: null,
             dialog_service: _dialogServiceMock.Object);
+
+        WeakReferenceMessenger.Default.Unregister<CatalogUpdatedMessage>(vm);
+        return vm;
     }
 
     [Fact]
@@ -99,6 +104,13 @@ public class InventoryCatalogRefreshTests
             .ReturnsAsync(pagedResult);
 
         var vm = CreateViewModel();
+
+        // Esperar que termine la carga inicial disparada en el constructor
+        await Task.Delay(150);
+        while (vm.IsSearching)
+        {
+            await Task.Delay(50);
+        }
 
         // Set SearchText and wait for debounce search to settle
         typeof(InventoryViewModel)

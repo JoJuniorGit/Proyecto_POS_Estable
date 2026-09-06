@@ -13,78 +13,78 @@ namespace Desktop.Client.ViewModels;
 
 public partial class CashDrawerViewModel : ObservableObject
 {
-    private readonly ICashDrawerService _cash_drawer_service;
-    private readonly IExchangeRateService _exchange_rate_service;
-    private readonly IDialogService? _dialog_service;
-    private readonly IPaymentService? _payment_service;
-    private readonly UserSession? _user_session;
+    private readonly ICashDrawerService _cashDrawerService;
+    private readonly IExchangeRateService _exchangeRateService;
+    private readonly IDialogService? _dialogService;
+    private readonly IPaymentService? _paymentService;
+    private readonly UserSession? _userSession;
 
-    private CashDrawerSessionDto? _active_session;
+    private CashDrawerSessionDto? _activeSession;
     public CashDrawerSessionDto? ActiveSession
     {
-        get => _active_session;
+        get => _activeSession;
         set
         {
-            if (SetProperty(ref _active_session, value))
+            if (SetProperty(ref _activeSession, value))
             {
                 OnPropertyChanged(nameof(IsSessionActive));
             }
         }
     }
 
-    private decimal _current_balance_bs_s;
+    private decimal _currentBalanceBsS;
     public decimal CurrentBalanceBsS
     {
-        get => _current_balance_bs_s;
+        get => _currentBalanceBsS;
         set
         {
-            if (SetProperty(ref _current_balance_bs_s, value))
+            if (SetProperty(ref _currentBalanceBsS, value))
             {
                 UpdateFormattedBalances();
             }
         }
     }
 
-    private string _formatted_balance_bs_s = "0";
+    private string _formattedBalanceBsS = "0";
     public string FormattedBalanceBsS
     {
-        get => _formatted_balance_bs_s;
-        set => SetProperty(ref _formatted_balance_bs_s, value);
+        get => _formattedBalanceBsS;
+        set => SetProperty(ref _formattedBalanceBsS, value);
     }
 
-    private string _formatted_balance_usd = "0.00 $";
+    private string _formattedBalanceUsd = "0.00 $";
     public string FormattedBalanceUsd
     {
-        get => _formatted_balance_usd;
-        set => SetProperty(ref _formatted_balance_usd, value);
+        get => _formattedBalanceUsd;
+        set => SetProperty(ref _formattedBalanceUsd, value);
     }
 
-    private decimal _total_income_bs_s;
+    private decimal _totalIncomeBsS;
     public decimal TotalIncomeBsS
     {
-        get => _total_income_bs_s;
-        set => SetProperty(ref _total_income_bs_s, value);
+        get => _totalIncomeBsS;
+        set => SetProperty(ref _totalIncomeBsS, value);
     }
 
-    private string _formatted_total_income_bs_s = "0 Bs.S";
+    private string _formattedTotalIncomeBsS = "0 Bs.S";
     public string FormattedTotalIncomeBsS
     {
-        get => _formatted_total_income_bs_s;
-        set => SetProperty(ref _formatted_total_income_bs_s, value);
+        get => _formattedTotalIncomeBsS;
+        set => SetProperty(ref _formattedTotalIncomeBsS, value);
     }
 
-    private decimal _total_expense_bs_s;
+    private decimal _totalExpenseBsS;
     public decimal TotalExpenseBsS
     {
-        get => _total_expense_bs_s;
-        set => SetProperty(ref _total_expense_bs_s, value);
+        get => _totalExpenseBsS;
+        set => SetProperty(ref _totalExpenseBsS, value);
     }
 
-    private string _formatted_total_expense_bs_s = "0 Bs.S";
+    private string _formattedTotalExpenseBsS = "0 Bs.S";
     public string FormattedTotalExpenseBsS
     {
-        get => _formatted_total_expense_bs_s;
-        set => SetProperty(ref _formatted_total_expense_bs_s, value);
+        get => _formattedTotalExpenseBsS;
+        set => SetProperty(ref _formattedTotalExpenseBsS, value);
     }
 
     public ObservableCollection<CashTransactionDto> RecentIncomes { get; } = new();
@@ -115,44 +115,44 @@ public partial class CashDrawerViewModel : ObservableObject
 
     public bool IsSessionActive => ActiveSession != null;
     public bool HasRecentIncomes => RecentIncomes.Count > 0;
-    public bool IsAdmin => _user_session == null || _user_session.IsAdmin;
+    public bool IsAdmin => _userSession == null || _userSession.IsAdmin;
 
 
     public CashDrawerViewModel(
-        ICashDrawerService cash_drawer_service, 
-        IExchangeRateService exchange_rate_service, 
-        IDialogService? dialog_service = null,
-        IPaymentService? payment_service = null,
-        UserSession? user_session = null)
+        ICashDrawerService cashDrawerService, 
+        IExchangeRateService exchangeRateService, 
+        IDialogService? dialogService = null,
+        IPaymentService? paymentService = null,
+        UserSession? userSession = null)
     {
-        _cash_drawer_service = cash_drawer_service;
-        _exchange_rate_service = exchange_rate_service;
-        _dialog_service = dialog_service;
-        _payment_service = payment_service;
-        _user_session = user_session;
+        _cashDrawerService = cashDrawerService;
+        _exchangeRateService = exchangeRateService;
+        _dialogService = dialogService;
+        _paymentService = paymentService;
+        _userSession = userSession;
 
         RecentIncomes.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRecentIncomes));
 
-        WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (_r, _m) =>
+        WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (r, m) =>
         {
             Application.Current.Dispatcher.Invoke(() => _ = RefreshAsync());
         });
 
-        WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.CurrencyRateChangedMessage>(this, (_r, _m) =>
+        WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.CurrencyRateChangedMessage>(this, (r, m) =>
         {
-            var _vm = (CashDrawerViewModel)_r;
-            if (_vm.ActiveSession != null)
+            var vm = (CashDrawerViewModel)r;
+            if (vm.ActiveSession != null)
             {
-                _vm.UpdateFormattedBalances();
+                vm.UpdateFormattedBalances();
             }
         });
 
-        WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.ShiftClosedMessage>(this, (_r, _m) =>
+        WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.ShiftClosedMessage>(this, (r, m) =>
         {
             Application.Current.Dispatcher.Invoke(() => _ = RefreshAsync());
         });
 
-        if (_user_session == null || _user_session.IsLoggedIn)
+        if (_userSession == null || _userSession.IsLoggedIn)
         {
             _ = LoadSessionAsync();
         }
@@ -160,7 +160,7 @@ public partial class CashDrawerViewModel : ObservableObject
 
     private void UpdateFormattedBalances()
     {
-        var rate = _exchange_rate_service.CurrentRate;
+        var rate = _exchangeRateService.CurrentRate;
         var balanceLocal = CurrentBalanceBsS;
         FormattedBalanceBsS = balanceLocal.ToString("N0");
         FormattedBalanceUsd = (rate > 0 ? balanceLocal / rate : 0).ToString("N2") + " $";
@@ -186,15 +186,15 @@ public partial class CashDrawerViewModel : ObservableObject
 
     public async Task LoadSessionAsync()
     {
-        if (_user_session != null && !_user_session.IsLoggedIn) return;
+        if (_userSession != null && !_userSession.IsLoggedIn) return;
 
         try
         {
-            ActiveSession = await _cash_drawer_service.GetActiveSessionAsync();
+            ActiveSession = await _cashDrawerService.GetActiveSessionAsync();
 
             // Historial persistente: movimientos físicos de TODAS las sesiones (activa y cerradas),
             // para conservar la trazabilidad de las sesiones previas tras el cierre de caja.
-            var history = await _cash_drawer_service.GetHistoryAsync();
+            var history = await _cashDrawerService.GetHistoryAsync();
             _allPhysicalTransactions.Clear();
             if (history != null && history.Count > 0)
             {
@@ -203,7 +203,7 @@ public partial class CashDrawerViewModel : ObservableObject
 
             if (ActiveSession != null)
             {
-                CurrentBalanceBsS = await _cash_drawer_service.GetCurrentBalanceLocalAsync(ActiveSession.Id);
+                CurrentBalanceBsS = await _cashDrawerService.GetCurrentBalanceLocalAsync(ActiveSession.Id);
                 RecentIncomes.Clear();
                 if (ActiveSession.Transactions != null)
                 {
@@ -229,9 +229,9 @@ public partial class CashDrawerViewModel : ObservableObject
             UpdatePaginatedTransactions();
             UpdateFormattedBalances();
         }
-        catch (Exception _ex)
+        catch (Exception ex)
         {
-            Application.Current.Dispatcher.Invoke(() => MessageBox.Show($"Error loading cash register: {_ex.Message}"));
+            Application.Current.Dispatcher.Invoke(() => MessageBox.Show($"Error loading cash register: {ex.Message}"));
         }
     }
 
@@ -283,20 +283,20 @@ public partial class CashDrawerViewModel : ObservableObject
     [RelayCommand]
     private async Task ProcessCashInAsync()
     {
-        if (ActiveSession == null || _dialog_service == null) return;
+        if (ActiveSession == null || _dialogService == null) return;
 
-        if (_user_session != null && !_user_session.IsAdmin)
+        if (_userSession != null && !_userSession.IsAdmin)
         {
-            _dialog_service.ShowError("Acceso Denegado", "Solo los usuarios Administradores tienen permiso para realizar operaciones de CASH IN.");
+            _dialogService.ShowError("Acceso Denegado", "Solo los usuarios Administradores tienen permiso para realizar operaciones de CASH IN.");
             return;
         }
 
-        var _dialogRes = await _dialog_service.ShowCashTransactionDialogAsync("Cash In (Add Funds)");
+        var dialogRes = await _dialogService.ShowCashTransactionDialogAsync("Cash In (Add Funds)");
 
-        if (_dialogRes is { } _res && _res.success)
+        if (dialogRes is { } res && res.success)
         {
-            var _rate = _exchange_rate_service.CurrentRate;
-            if (_rate <= 0)
+            var rate = _exchangeRateService.CurrentRate;
+            if (rate <= 0)
             {
                 MessageBox.Show("Exchange rate not set. Cannot process transaction.", "Warning");
                 return;
@@ -305,25 +305,25 @@ public partial class CashDrawerViewModel : ObservableObject
             try
             {
                 // Requirement 2: Format "{Description} - {Usuario Admin}", max 40 chars for description
-                string cleanReason = string.IsNullOrWhiteSpace(_res.reason) ? "Ingreso de Caja" : _res.reason.Trim();
+                string cleanReason = string.IsNullOrWhiteSpace(res.reason) ? "Ingreso de Caja" : res.reason.Trim();
                 if (cleanReason.Length > 40) cleanReason = cleanReason.Substring(0, 40).Trim();
 
-                string adminUser = _user_session?.CurrentUser?.Name ?? _user_session?.CurrentUser?.Cedula ?? "Admin";
+                string adminUser = _userSession?.CurrentUser?.Name ?? _userSession?.CurrentUser?.Cedula ?? "Admin";
                 string formattedDescription = $"{cleanReason} - {adminUser}";
 
-                await _cash_drawer_service.AddTransactionAsync(
+                await _cashDrawerService.AddTransactionAsync(
                     ActiveSession.Id,
-                    _res.amount,
+                    res.amount,
                     CashTransactionType.Income,
                     CashTransactionSource.CashIn,
                     formattedDescription,
-                    _rate);
+                    rate);
 
                 await LoadSessionAsync();
             }
-            catch (Exception _ex)
+            catch (Exception ex)
             {
-                MessageBox.Show($"Failed to add cash: {_ex.Message}");
+                MessageBox.Show($"Failed to add cash: {ex.Message}");
             }
         }
     }
@@ -331,20 +331,20 @@ public partial class CashDrawerViewModel : ObservableObject
     [RelayCommand]
     private async Task ProcessCashOutAsync()
     {
-        if (ActiveSession == null || _dialog_service == null) return;
+        if (ActiveSession == null || _dialogService == null) return;
 
-        if (_user_session != null && !_user_session.IsAdmin)
+        if (_userSession != null && !_userSession.IsAdmin)
         {
-            _dialog_service.ShowError("Acceso Denegado", "Solo los usuarios Administradores tienen permiso para realizar operaciones de CASH OUT.");
+            _dialogService.ShowError("Acceso Denegado", "Solo los usuarios Administradores tienen permiso para realizar operaciones de CASH OUT.");
             return;
         }
 
-        var _dialogRes = await _dialog_service.ShowCashTransactionDialogAsync("Cash Out (Withdraw Funds)");
+        var dialogRes = await _dialogService.ShowCashTransactionDialogAsync("Cash Out (Withdraw Funds)");
 
-        if (_dialogRes is { } _res && _res.success)
+        if (dialogRes is { } res && res.success)
         {
-            var _rate = _exchange_rate_service.CurrentRate;
-            if (_rate <= 0)
+            var rate = _exchangeRateService.CurrentRate;
+            if (rate <= 0)
             {
                 MessageBox.Show("Exchange rate not set. Cannot process transaction.", "Warning");
                 return;
@@ -353,25 +353,25 @@ public partial class CashDrawerViewModel : ObservableObject
             try
             {
                 // Requirement 2: Format "{Description} - {Usuario Admin}", max 40 chars for description
-                string cleanReason = string.IsNullOrWhiteSpace(_res.reason) ? "Retiro de Caja" : _res.reason.Trim();
+                string cleanReason = string.IsNullOrWhiteSpace(res.reason) ? "Retiro de Caja" : res.reason.Trim();
                 if (cleanReason.Length > 40) cleanReason = cleanReason.Substring(0, 40).Trim();
 
-                string adminUser = _user_session?.CurrentUser?.Name ?? _user_session?.CurrentUser?.Cedula ?? "Admin";
+                string adminUser = _userSession?.CurrentUser?.Name ?? _userSession?.CurrentUser?.Cedula ?? "Admin";
                 string formattedDescription = $"{cleanReason} - {adminUser}";
 
-                await _cash_drawer_service.AddTransactionAsync(
+                await _cashDrawerService.AddTransactionAsync(
                     ActiveSession.Id,
-                    _res.amount,
+                    res.amount,
                     CashTransactionType.Expense,
                     CashTransactionSource.CashOut,
                     formattedDescription,
-                    _rate);
+                    rate);
 
                 await LoadSessionAsync();
             }
-            catch (Exception _ex)
+            catch (Exception ex)
             {
-                MessageBox.Show($"Failed to withdraw cash: {_ex.Message}");
+                MessageBox.Show($"Failed to withdraw cash: {ex.Message}");
             }
         }
     }
@@ -379,12 +379,12 @@ public partial class CashDrawerViewModel : ObservableObject
     [RelayCommand]
     private async Task ProcessCashAdvanceAsync()
     {
-        if (ActiveSession == null || _dialog_service == null) return;
+        if (ActiveSession == null || _dialogService == null) return;
 
         try
         {
-            var paymentMethods = _payment_service != null
-                ? (await _payment_service.GetActiveMethodsAsync()).ToList()
+            var paymentMethods = _paymentService != null
+                ? (await _paymentService.GetActiveMethodsAsync()).ToList()
                 : new System.Collections.Generic.List<Desktop.Client.Services.PaymentMethodDto>
                 {
                     new Desktop.Client.Services.PaymentMethodDto { Id = 2, Name = "Transferencia", IsCash = false, DisplayOrder = 1 },
@@ -392,16 +392,16 @@ public partial class CashDrawerViewModel : ObservableObject
                     new Desktop.Client.Services.PaymentMethodDto { Id = 4, Name = "Pago Móvil", IsCash = false, DisplayOrder = 3 }
                 };
 
-            var currentBalance = await _cash_drawer_service.GetCurrentBalanceLocalAsync(ActiveSession.Id);
-            var dialogRes = await _dialog_service.ShowCashAdvanceRegisterDialogAsync(paymentMethods, currentBalance);
+            var currentBalance = await _cashDrawerService.GetCurrentBalanceLocalAsync(ActiveSession.Id);
+            var dialogRes = await _dialogService.ShowCashAdvanceRegisterDialogAsync(paymentMethods, currentBalance);
 
             if (dialogRes is { } res && res.success)
             {
-                var rate = _exchange_rate_service.CurrentRate;
-                var cashierId = _user_session?.CurrentUser?.Id;
-                var userName = _user_session?.CurrentUser?.Name ?? _user_session?.CurrentUser?.Cedula ?? "Usuario";
+                var rate = _exchangeRateService.CurrentRate;
+                var cashierId = _userSession?.CurrentUser?.Id;
+                var userName = _userSession?.CurrentUser?.Name ?? _userSession?.CurrentUser?.Cedula ?? "Usuario";
 
-                var advanceResult = await _cash_drawer_service.ProcessCashAdvanceAsync(
+                var advanceResult = await _cashDrawerService.ProcessCashAdvanceAsync(
                     ActiveSession.Id,
                     res.requestedAmount,
                     res.paymentMethodId,
@@ -415,13 +415,13 @@ public partial class CashDrawerViewModel : ObservableObject
                     ? $" (Factura N° {advanceResult.InvoiceNumber.Value})"
                     : string.Empty;
 
-                _dialog_service.ShowSuccessDialog($"Adelanto de {res.requestedAmount:N0} Bs.S procesado con éxito{invoiceInfo}. Registrado en el Historial de Ventas.");
+                _dialogService.ShowSuccessDialog($"Adelanto de {res.requestedAmount:N0} Bs.S procesado con éxito{invoiceInfo}. Registrado en el Historial de Ventas.");
                 await LoadSessionAsync();
             }
         }
         catch (Exception ex)
         {
-            _dialog_service.ShowError("Error de Adelanto", $"No se pudo procesar el adelanto: {ex.Message}");
+            _dialogService.ShowError("Error de Adelanto", $"No se pudo procesar el adelanto: {ex.Message}");
         }
     }
 }

@@ -134,8 +134,9 @@ flowchart TD
    * Verificar exhaustivamente `Desktop.Client/Views/CartView.xaml`, `CartItemView.xaml`, `CashDrawerView.xaml`, `CheckoutView.xaml`.
 
 * **Criterio de Aceptación:**
-  * `dotnet test` reporta: `670 / 670 superadas`.
-  * `dotnet build CommandCenter.slnx -c Release` reporta: `0 Advertencias, 0 Errores`.
+  * `dotnet test` reporta: `671 / 671 superadas` (100% éxito).
+  * `dotnet build CommandCenter.slnx -c Release` reporta: `0 Advertencias, 0 Errores` (TreatWarningsAsErrors=true).
+* **Estado:** ✅ **COMPLETADA** (Commit `e78a541` aprox - 100% de campos privados estandarizados a `_camelCase` en ViewModels de Carrito, Caja y Cobro).
 
 ---
 

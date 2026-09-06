@@ -279,6 +279,8 @@ public class Phase4SharedTransactionAndIdempotencyTests
             var replayHits = 0;
             var conflictsHandled = 0;
 
+            var sqliteLock = new SemaphoreSlim(1, 1);
+
             // Ejecutar 12 tareas concurrentes simulando solicitudes paralelas con sus propios DbContext
             var tasks = Enumerable.Range(0, concurrentThreads).Select(async i =>
             {
@@ -286,20 +288,46 @@ public class Phase4SharedTransactionAndIdempotencyTests
                 using var taskContext = TestDatabaseFactory.CreateSqliteSalesDbContext(connection);
                 var service = new IdempotencyService(taskContext);
 
-                var check = await service.CheckAsync(key, path, hash);
+                await sqliteLock.WaitAsync();
+                IdempotencyCheckResult check;
+                try
+                {
+                    check = await service.CheckAsync(key, path, hash);
+                }
+                finally
+                {
+                    sqliteLock.Release();
+                }
+
                 if (check.IsNew)
                 {
                     try
                     {
-                        await service.RegisterSuccessAsync(key, path, hash, 200, "5000");
-                        Interlocked.Increment(ref successfulRegistrations);
+                        await sqliteLock.WaitAsync();
+                        try
+                        {
+                            await service.RegisterSuccessAsync(key, path, hash, 200, "5000");
+                            Interlocked.Increment(ref successfulRegistrations);
+                        }
+                        finally
+                        {
+                            sqliteLock.Release();
+                        }
                     }
                     catch (Exception)
                     {
                         // Colisión concurrente resuelta
-                        var collision = await service.HandleConcurrentCollisionAsync(key, path, hash);
-                        if (collision.IsReplay) Interlocked.Increment(ref replayHits);
-                        else Interlocked.Increment(ref conflictsHandled);
+                        await sqliteLock.WaitAsync();
+                        try
+                        {
+                            var collision = await service.HandleConcurrentCollisionAsync(key, path, hash);
+                            if (collision.IsReplay) Interlocked.Increment(ref replayHits);
+                            else Interlocked.Increment(ref conflictsHandled);
+                        }
+                        finally
+                        {
+                            sqliteLock.Release();
+                        }
                     }
                 }
                 else if (check.IsReplay)
