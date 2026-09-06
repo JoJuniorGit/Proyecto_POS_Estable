@@ -197,7 +197,7 @@ export default function CustomerModal({
         amountBsS: finalInitialBs,
         amountUSD: finalInitialUsd,
         exchangeRate: exchangeRate,
-        referenceNumber: referenceNumber,
+        referenceNumber: null,
       };
     }
 
