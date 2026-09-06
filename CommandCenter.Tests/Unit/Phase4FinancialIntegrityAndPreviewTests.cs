@@ -47,6 +47,12 @@ public class Phase4FinancialIntegrityAndPreviewTests
         mockSalesService.Setup(s => s.GetSaleAsync(42)).ReturnsAsync(saleDto);
 
         var controller = new SalesController(mockSalesService.Object, mockCurrentUserService.Object, null);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+        };
+        // Usuario sin rol elevado ni UserId resuelto: IsAuthorizedForSaleAsync permanece tolerante,
+        // el chequeo de ownership real lo cubre la capa de autenticación (8.6-B1).
 
         var previewRequest = new CheckoutPreviewRequest
         {

@@ -103,6 +103,7 @@ public class CheckoutAndPaymentTests
             Status = SaleStatus.Pending
         };
         context.Sales.Add(sale);
+        context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true });
         await context.SaveChangesAsync();
 
         var payments = new List<PaymentInfo>
@@ -271,6 +272,10 @@ public class CheckoutAndPaymentTests
             Status = SaleStatus.Pending
         };
         context.Sales.Add(sale);
+        context.PaymentMethods.AddRange(
+            new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true },
+            new PaymentMethod { Id = 2, Name = "Punto de Venta", IsCash = false }
+        );
         await context.SaveChangesAsync();
 
         var payments = new List<PaymentInfo>

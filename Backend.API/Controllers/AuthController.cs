@@ -214,15 +214,11 @@ public class AuthController : ControllerBase
             return Unauthorized(new { Message = "Credenciales inválidas o contraseña actual incorrecta." });
         }
 
-        // 1. Validar si la cuenta está actualmente bloqueada
+        // 1. Validar si la cuenta está actualmente bloqueada (8B-M3: respuesta 401 genérica, no revelar lockout)
         if (user.LockoutEndUtc.HasValue && user.LockoutEndUtc.Value > DateTime.UtcNow)
         {
-            var remainingMinutes = Math.Max(1, Math.Ceiling((user.LockoutEndUtc.Value - DateTime.UtcNow).TotalMinutes));
             AppLogger.LogWarn($"[AUTH] Intento de cambio de contraseña denegado: Usuario '{user.Username}' bloqueado temporalmente.");
-            return StatusCode(StatusCodes.Status423Locked, new 
-            { 
-                Message = $"Cuenta bloqueada temporalmente por múltiples intentos fallidos. Intente de nuevo en {remainingMinutes} minutos." 
-            });
+            return Unauthorized(new { Message = "Credenciales inválidas o contraseña actual incorrecta." });
         }
 
         // 2. Validar contraseña actual e incrementar contador de intentos fallidos

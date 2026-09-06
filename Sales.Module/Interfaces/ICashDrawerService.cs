@@ -47,6 +47,23 @@ public interface ICashDrawerService
         int? referenceId = null,
         bool isPhysicalCash = true,
         int? paymentMethodId = null);
+
+    /// <summary>
+    /// Registra el vuelto de una venta como egreso físico de caja (Source=SalePayment) VALIDANDO saldo
+    /// (8.6-C1): usa el advisory lock de la sesión y verifica que el saldo disponible (saldo base + ingresos
+    /// cash pendientes de la venta aún no persistidos) soporte el vuelto ANTES de insertarlo, eliminando la
+    /// vía a saldo de caja negativo. Debe ejecutarse dentro de la transacción compartida de completar venta.
+    /// </summary>
+    Task<CashTransaction> RecordSaleChangeAsync(
+        int sessionId,
+        decimal changeUsd,
+        decimal changeBsS,
+        decimal exchangeRate,
+        string description,
+        int saleId,
+        int? cashPaymentMethodId,
+        decimal pendingCashIncomeBsS = 0m);
+
     Task<decimal> GetCurrentBalanceLocalAsync(int sessionId);
 
     /// <summary>

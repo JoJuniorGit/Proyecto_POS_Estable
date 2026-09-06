@@ -311,6 +311,66 @@ public class CashDrawerService : ICashDrawerService
         }
     }
 
+    /// <summary>
+    /// Registra el vuelto de una venta como egreso físico (8.6-C1). Usa el advisory lock de la sesión y
+    /// valida que el saldo disponible (saldo en BD + ingresos cash pendientes del tracker aún no persistidos)
+    /// soporte el vuelto ANTES de insertarlo. Debe ejecutarse dentro de la transacción compartida del cobro.
+    /// </summary>
+    public async Task<CashTransaction> RecordSaleChangeAsync(
+        int sessionId,
+        decimal changeUsd,
+        decimal changeBsS,
+        decimal exchangeRate,
+        string description,
+        int saleId,
+        int? cashPaymentMethodId,
+        decimal pendingCashIncomeBsS = 0m)
+    {
+        if (changeBsS <= 0m)
+        {
+            throw new ArgumentException("El vuelto debe ser mayor a cero.", nameof(changeBsS));
+        }
+        if (exchangeRate <= 0m)
+        {
+            throw new ArgumentException("La tasa de cambio debe ser mayor a cero.", nameof(exchangeRate));
+        }
+
+        bool isInMemory = _context.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true;
+
+        if (!isInMemory)
+        {
+            await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", sessionId);
+        }
+
+        // Saldo real en BD (persistido) + ingresos cash de la venta aún en el tracker (no persistidos).
+        // El vuelto es un egreso físico y NO puede llevar la caja a saldo negativo (8.6-C1).
+        var currentBalanceDb = await GetCurrentBalanceLocalAsync(sessionId);
+        decimal available = currentBalanceDb + pendingCashIncomeBsS;
+        if (available < changeBsS)
+        {
+            throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para registrar el vuelto de la venta #{saleId}. Disponible: {available:N2} Bs.S, Vuelto requerido: {changeBsS:N2} Bs.S.");
+        }
+
+        var changeTx = new CashTransaction
+        {
+            SessionId = sessionId,
+            Type = CashTransactionType.Expense,
+            Source = CashTransactionSource.SalePayment,
+            AmountUsd = Math.Round(changeUsd, 2, MidpointRounding.AwayFromZero),
+            AmountLocal = Math.Round(changeBsS, 2, MidpointRounding.AwayFromZero),
+            ExchangeRate = exchangeRate,
+            IsPhysicalCash = true,
+            SaleId = saleId,
+            PaymentMethodId = cashPaymentMethodId,
+            Description = description,
+            TransactionTime = DateTime.UtcNow
+        };
+
+        _context.CashTransactions.Add(changeTx);
+        // Sin SaveChangesAsync: el cobro persiste todo junto dentro de su transacción compartida.
+        return changeTx;
+    }
+
     public async Task<decimal> GetCurrentBalanceLocalAsync(int sessionId)
     {
         var session = await _context.CashDrawerSessions

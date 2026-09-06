@@ -81,6 +81,12 @@ public class SalesController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<SaleDto>> GetSale(int id)
     {
+        // 8.5-A3/8.6-B1: ownership a nivel de objeto — un cajero solo puede leer ventas propias.
+        if (!await IsAuthorizedForSaleAsync(id))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para consultar esta venta." });
+        }
+
         try
         {
             var _sale = await _salesService.GetSaleAsync(id);
@@ -343,6 +349,12 @@ public class SalesController : ControllerBase
     [HttpPut("{id}/customer")]
     public async Task<ActionResult<SaleDto>> UpdateSaleCustomer(int id, [FromBody] UpdateSaleCustomerRequest request)
     {
+        // 8.5-A3/8.6-B1: ownership a nivel de objeto.
+        if (!await IsAuthorizedForSaleAsync(id))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+        }
+
         try
         {
             var _sale = await _salesService.UpdateSaleCustomerAsync(id, request.CustomerId);
@@ -431,9 +443,16 @@ public class SalesController : ControllerBase
     [HttpPost("{id}/checkout-preview")]
     [ProducesResponseType(typeof(CheckoutPreviewResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<CheckoutPreviewResponse>> GetCheckoutPreview(int id, [FromBody] CheckoutPreviewRequest request)
     {
+        // 8.6-B1/8.5-A3: ownership a nivel de objeto — no se expone el desglose de una venta ajena.
+        if (!await IsAuthorizedForSaleAsync(id))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para consultar esta venta." });
+        }
+
         var sale = await _salesService.GetSaleAsync(id);
         if (sale == null) return NotFound(new { message = $"Venta #{id} no encontrada." });
 
@@ -770,6 +789,12 @@ public class SalesController : ControllerBase
     [HttpPut("{id}/price-list")]
     public async Task<ActionResult<SaleDto>> UpdatePriceList(int id, [FromBody] UpdatePriceListRequestDto request)
     {
+        // 8.5-A3/8.6-B1: ownership a nivel de objeto.
+        if (!await IsAuthorizedForSaleAsync(id))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+        }
+
         try
         {
             var sale = await _salesService.UpdatePriceListAsync(id, request.PriceListType);

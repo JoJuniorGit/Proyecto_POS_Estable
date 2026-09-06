@@ -94,7 +94,7 @@ public class Phase1SecurityHardeningTests
         Assert.NotNull(lockedUser.LockoutEndUtc);
         Assert.True(lockedUser.LockoutEndUtc.Value > DateTime.UtcNow);
 
-        // Act: 6th attempt (even with right or wrong password) -> rejected with 423 Locked
+        // Act: 6th attempt (even with right or wrong password) -> rejected with 401 genérico (8B-M3: sin revelar lockout)
         var sixthResult = await controller.ChangePassword(new ChangePasswordRequest
         {
             Cedula = "cajero1",
@@ -102,8 +102,7 @@ public class Phase1SecurityHardeningTests
             NewPassword = "NewPassword123!"
         });
 
-        var lockedResult = Assert.IsType<ObjectResult>(sixthResult);
-        Assert.Equal(StatusCodes.Status423Locked, lockedResult.StatusCode);
+        Assert.IsType<UnauthorizedObjectResult>(sixthResult);
     }
 
     [Fact]

@@ -33,6 +33,7 @@ public class CashDrawerController : ControllerBase
     }
 
     [HttpGet("active-session")]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult<CashDrawerSession?>> GetActiveSession()
     {
         // H-API-19: Eliminación de efectos secundarios en GET (no crear sesión en base de datos al consultar)
@@ -70,6 +71,7 @@ public class CashDrawerController : ControllerBase
     /// de las sesiones cerradas junto con los movimientos de la sesión siguiente.
     /// </summary>
     [HttpGet("history")]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult<IEnumerable<CashTransaction>>> GetHistory([FromQuery] int limit = 300)
     {
         limit = Math.Clamp(limit, 1, 300);

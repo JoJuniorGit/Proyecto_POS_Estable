@@ -96,11 +96,9 @@ public partial class SalesService
         if (customer.IsDefault || customer.CedulaOrRif == "V-00000000")
             throw new InvalidOperationException("Las ventas en espera requieren un cliente real identificable. Asigne un cliente distinto al Consumidor Final.");
 
-        if (request.ExchangeRate > 0)
-        {
-            _sale.AppliedRate = request.ExchangeRate;
-            await RecalculateTotalAsync(_sale);
-        }
+        // 8.6-B3: La tasa del HOLD se ancla a la tasa BCV del día (misma política que CompleteSale).
+        _sale.AppliedRate = await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: "HoldSale", referenceId: _sale.Id);
+        await RecalculateTotalAsync(_sale);
 
         var paymentsToProcess = new List<AddPaymentRequestDto>();
         if (request.InitialPayment != null) paymentsToProcess.Add(request.InitialPayment);
@@ -391,7 +389,10 @@ public partial class SalesService
         if (_sale.Status != SaleStatus.OnHold)
             throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
 
-        decimal rate = request.ExchangeRate > 0 ? request.ExchangeRate : _sale.AppliedRate;
+        // 8.6-B3/8.5-A5: Tasa del abono anclada a la BCV del día cuando el cliente la envía.
+        decimal rate = request.ExchangeRate > 0
+            ? await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: "AddPaymentToHoldSale", referenceId: _sale.Id)
+            : _sale.AppliedRate;
         decimal amountUsd = request.AmountUSD > 0 
             ? Math.Round(request.AmountUSD, 2, MidpointRounding.AwayFromZero) 
             : (rate > 0 ? Math.Round(request.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);

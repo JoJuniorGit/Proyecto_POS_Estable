@@ -249,7 +249,20 @@ public class ShiftsController : ControllerBase
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult> GetReportById(int id)
     {
+        // 8.6-B1/8.5-A3: ownership a nivel de objeto — un cajero solo puede ver reportes de sus propios cierres.
         var closure = await _dailyClosureService.GetClosureAsync(id);
+
+        bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
+        if (!isElevated && closure != null)
+        {
+            if (closure.UserId != null
+                && _currentUserService.UserId != null
+                && !string.Equals(closure.UserId, _currentUserService.UserId, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { Message = "Acceso denegado: no tiene permisos para consultar este reporte." });
+            }
+        }
+
         decimal exchangeRate = await GetTodayExchangeRateAsync();
 
         if (closure == null)
