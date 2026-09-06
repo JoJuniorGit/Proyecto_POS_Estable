@@ -902,7 +902,7 @@ X509Certificate2? LoadHttpsCertificate(IConfiguration config, IHostEnvironment e
         {
             string certPassword = Environment.GetEnvironmentVariable("HTTPS_CERT_PASSWORD")
                                 ?? config["Kestrel:Certificates:Default:Password"]
-                                ?? "PosHttpsDev2026!";
+                                ?? string.Empty;
 
             try
             {

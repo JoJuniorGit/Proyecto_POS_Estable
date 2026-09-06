@@ -31,8 +31,6 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "..\publish\BackendAPI\*"; DestDir: "{app}\BackendAPI"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "appsettings.Production.json,appsettings.Development.json"
 ; Publicación Autónoma Cliente WPF Desktop (.NET Self-Contained)
 Source: "..\publish\DesktopClient\*"; DestDir: "{app}\DesktopClient"; Flags: ignoreversion recursesubdirs createallsubdirs
-; UpdaterService ejecutable
-Source: "..\publish\UpdaterService\*"; DestDir: "{app}\UpdaterService"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NSSM ejecutable y Licencia (Opcional: Si está presente se empaqueta, si no se usa el fallback sc.exe)
 #if FileExists("nssm.exe")
 Source: "nssm.exe"; DestDir: "{app}\BackendAPI"; Flags: ignoreversion
@@ -120,6 +118,28 @@ begin
   end;
 
   Result := '';
+end;
+
+function GetOrGenerateCertPass: String;
+var
+  ExistingPass: String;
+  I: Integer;
+  Chars: String;
+begin
+  if RegQueryStringValue(HKEY_LOCAL_MACHINE, 'Software\POS', 'HttpsCertPassword', ExistingPass) and 
+     (Length(ExistingPass) >= 16) and 
+     (ExistingPass <> 'PosHttpsDev2026!') then
+  begin
+    Result := ExistingPass;
+    Exit;
+  end;
+
+  Chars := 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  Result := '';
+  for I := 1 to 24 do
+    Result := Result + Chars[Random(Length(Chars)) + 1];
+
+  RegWriteStringValue(HKEY_LOCAL_MACHINE, 'Software\POS', 'HttpsCertPassword', Result);
 end;
 
 procedure InitializeWizard;
@@ -304,7 +324,7 @@ begin
   SeedPassEnv := 'SystemSettings__AdminSeedPassword=' + EscapeQuotes(AdminPage.Values[2]);
   BusinessEnv := 'SystemSettings__BusinessName=' + Trim(AdminPage.Values[4]);
   JwtEnv := 'JWT_SETTINGS_KEY=' + GetOrGenerateJwtKey;
-  CertPassEnv := 'HTTPS_CERT_PASSWORD=PosHttpsDev2026!';
+  CertPassEnv := 'HTTPS_CERT_PASSWORD=' + GetOrGenerateCertPass;
 
   if UseNssm then
   begin
@@ -376,7 +396,8 @@ begin
     ' -AdminSeedPassword "' + EscapeQuotes(AdminPage.Values[2]) + '"' +
     ' -AdminSeedUsername "' + Trim(AdminPage.Values[0]) + '"' +
     ' -AdminSeedName "' + Trim(AdminPage.Values[1]) + '"' +
-    ' -BusinessName "' + Trim(AdminPage.Values[4]) + '"';
+    ' -BusinessName "' + Trim(AdminPage.Values[4]) + '"' +
+    ' -HttpsCertPassword "' + GetOrGenerateCertPass + '"';
 
   Code := RunCmd('powershell.exe', PsParams);
   if Code <> 0 then

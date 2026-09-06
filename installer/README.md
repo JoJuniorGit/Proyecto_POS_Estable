@@ -13,7 +13,6 @@ Este documento describe la arquitectura, proceso de compilación, políticas de 
    # Desde la raíz del repositorio
    dotnet publish Backend.API/Backend.API.csproj -c Release -r win-x64 --self-contained -o publish/BackendAPI
    dotnet publish Desktop.Client/Desktop.Client.csproj -c Release -r win-x64 --self-contained -o publish/DesktopClient
-   dotnet publish UpdaterService/UpdaterService.csproj -c Release -r win-x64 --self-contained -o publish/UpdaterService
    ```
 3. **NSSM:** Debe existir `installer/nssm.exe` (Non-Sucking Service Manager v2.24 o superior). Si no existe, ejecute:
    ```powershell

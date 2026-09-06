@@ -12,14 +12,23 @@
 #
 # No requiere permisos de administrador (usa el almacén CurrentUser y
 # luego elimina el certificado, dejando solo el archivo .pfx).
-# =====================================================================
+param(
+    [string]$certPassword = $env:HTTPS_CERT_PASSWORD
+)
 
 $ErrorActionPreference = "Stop"
 
 $rootDir = Split-Path -Path $PSScriptRoot -Parent
 $certDir = Join-Path $rootDir "Backend.API\certs"
 $certPath = Join-Path $certDir "pos-https.pfx"
-$certPassword = "PosHttpsDev2026!"
+
+if ([string]::IsNullOrWhiteSpace($certPassword) -or $certPassword -eq "PosHttpsDev2026!") {
+    $bytes = New-Object byte[] 24
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    $certPassword = [System.BitConverter]::ToString($bytes).Replace("-", "")
+    [Environment]::SetEnvironmentVariable("HTTPS_CERT_PASSWORD", $certPassword, "Process")
+    Write-Host "Generada contraseña aleatoria para el certificado HTTPS." -ForegroundColor Cyan
+}
 
 New-Item -ItemType Directory -Path $certDir -Force | Out-Null
 

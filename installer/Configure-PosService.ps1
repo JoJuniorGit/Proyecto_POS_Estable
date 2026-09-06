@@ -27,6 +27,7 @@ param(
     [string]$AdminSeedName = "Administrador Principal",
     [string]$BusinessName = "Mi Negocio POS",
     [string]$JwtSecretKey = "",
+    [string]$HttpsCertPassword = "",
     [switch]$RotateJwt = $false
 )
 
@@ -203,6 +204,18 @@ if (-not [string]::IsNullOrWhiteSpace($AdminSeedName)) {
 }
 if (-not [string]::IsNullOrWhiteSpace($BusinessName)) {
     $merged["SystemSettings__BusinessName"] = $BusinessName
+}
+
+# E) Contraseña de Certificado HTTPS
+if (-not [string]::IsNullOrWhiteSpace($HttpsCertPassword)) {
+    $merged["HTTPS_CERT_PASSWORD"] = $HttpsCertPassword
+    Log "Asignando contraseña de certificado HTTPS provista al servicio."
+} elseif (-not $merged.ContainsKey("HTTPS_CERT_PASSWORD") -or $merged["HTTPS_CERT_PASSWORD"] -eq "PosHttpsDev2026!") {
+    $bytes = New-Object byte[] 24
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    $randPass = [System.BitConverter]::ToString($bytes).Replace("-", "")
+    $merged["HTTPS_CERT_PASSWORD"] = $randPass
+    Log "Generada nueva contraseña criptográfica aleatoria para el certificado HTTPS."
 }
 
 # Aplicar las variables fusionadas a NSSM vía splatting
