@@ -45,10 +45,10 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: sale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            dialogService: _mockDialogService.Object);
 
         Assert.False(vm.HasValidPayments);
         Assert.False(vm.IsFullLiquidation);
@@ -70,10 +70,10 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: sale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            dialogService: _mockDialogService.Object);
 
         // Add 50 USD payment (out of 100 USD) -> 2500 Bs.S
         vm.SelectedMethod = _paymentMethods[0];
@@ -100,10 +100,10 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: sale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            dialogService: _mockDialogService.Object);
 
         // Add 100 USD full payment -> 5000 Bs.S
         vm.SelectedMethod = _paymentMethods[0];
@@ -132,11 +132,11 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: onHoldSale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            override_sale: onHoldSale,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            overrideSale: onHoldSale,
+            dialogService: _mockDialogService.Object);
 
         // Add 30 USD partial abono -> 1500 Bs.S
         vm.SelectedMethod = _paymentMethods[0];
@@ -165,11 +165,11 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: onHoldSale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            override_sale: onHoldSale,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            overrideSale: onHoldSale,
+            dialogService: _mockDialogService.Object);
 
         // Add 100 USD full payment -> 5000 Bs.S
         vm.SelectedMethod = _paymentMethods[0];
@@ -196,10 +196,10 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: sale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            dialogService: _mockDialogService.Object);
 
         // Add 100% payment
         vm.SelectedMethod = _paymentMethods[0];
@@ -230,10 +230,10 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: sale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            dialogService: _mockDialogService.Object);
 
         // Add 100% payment
         vm.SelectedMethod = _paymentMethods[0];
@@ -263,10 +263,10 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: sale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            dialogService: _mockDialogService.Object);
 
         // Add 100% payment
         vm.SelectedMethod = _paymentMethods[0];

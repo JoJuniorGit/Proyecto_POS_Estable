@@ -1,151 +1,167 @@
 ================================================================================
 REPORTE POR MÓDULO: Inventory.Module (inventario, stock, variantes, importación)
-Fecha: 2026-09-05
-Revisión: 8.0 (Contrastación Empírica Rev. 7.0 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.0).
+Fecha: 2026-09-06
+Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.2).
+HEAD auditado: e89100f (rama V0.15).
+Métricas ejecutadas en esta auditoría: 671/671 .NET + 71/71 web (742/742), 0 errores.
 ================================================================================
+
+--------------------------------------------------------------------------------
+0. CONTRASTACIÓN REV. 8.1 EN ESTE MÓDULO
+--------------------------------------------------------------------------------
+  - DST-1 (deducción exactamente 1 vez con InvoiceNumber+SaleId): ✅ CONFIRMADO el
+    contrato (SaleMadeEvent.cs:7-11 con InvoiceNumber; SalesService.cs:662 /
+    HoldOrders.cs:264; el handler verifica Reason == "Sale #N" o "Sale #I" en
+    InventorySaleMadeEventHandler.cs:40-55). PERO trae el defecto NUEVO [8.2-A3]
+    (el handler procesa ítems IsCashAdvance que la vía principal excluye).
+  - [8I-CR1]/[8I-CR2]/[8I-M1..M12]: VIGENTES (no abordados en Rev. 8.1) — ratificados
+    abajo con evidencia actualizada.
+  - ❌ LA FORTALEZA 8.0 "RowVersion (xmin) en Product" ES INCORRECTA: ver [8.2-A1].
 
 --------------------------------------------------------------------------------
 1. CONTRASTACIÓN DE HALLAZGOS PREVIOS (REV. 7.0 vs CÓDIGO ACTUAL)
 --------------------------------------------------------------------------------
-HALLAZGOS VERIFICADOS COMO CORRECTOS EN EL ÁRBOL ACTUAL:
-  - H-INV-2 / CODE-01 (God Class): ✅ VERIFICADO — 5 partial classes:
-    InventoryService.cs (692 l.), .StockDeduction.cs (311 l.), .CatalogQueries.cs (553 l.),
-    .ImportExport.cs (506 l.), .ExchangeRate.cs (50 l.). Contrato IInventoryService preservado.
+  - H-INV-2 / CODE-01 (God Class): ✅ VERIFICADO — 5 partial classes (InventoryService.cs
+    692 l., StockDeduction.cs 311 l., CatalogQueries.cs 553 l., ImportExport.cs 506 l.,
+    ExchangeRate.cs 50 l.).
   - H-INV-3 (Transacciones duplicadas): ✅ VERIFICADO — hasExistingTx (StockDeduction.cs:24-25)
-    omite commit individual cuando ya hay transacción (PERO ver [8I-CR1] GAP en HoldOrders).
-  - H-INV-5 / W5 (Stock negativo): ✅ VERIFICADO — SalesService.cs:603-606 con allowNegativeStock:false.
+    omite commit individual con transacción ajena (PERO GAP en HoldOrders, [8I-CR1]).
+  - H-INV-5 / W5 (Stock negativo): ✅ VERIFICADO — SalesService.cs:603-606.
   - H-INV-6 (Sugerencias): ✅ VERIFICADO — .Take(10) en CatalogQueries.cs:71.
-  - H-INV-8 (DDL runtime): ✅ VERIFICADO — MigrateAsync primero (Program.cs:476-479).
-  - H-INV-9 (Caché consolidada): ⚠️ PARCIAL — se consolidó a nivel lote en UpdateStockBatchAsync,
-    PERO InvalidateAllProductCaches solo limpia la tasa BCV (ver [8I-M2]).
-  - H-INV-10 (Commits N+1): ✅ VERIFICADO — un solo ExecuteUpdate/SaveChanges en lote
-    (StockDeduction.cs:79-83 átomico condicional WHERE (StockQuantity+change)>=0).
-  - A1 (EnrollInTransactionAsync): ✅ VERIFICADO — InventoryService.cs:679-691 con conmutación de
-    conexión física (CloseConnectionAsync + SetDbConnection + UseTransactionAsync).
-  - PERF-04 (Batch ExecuteUpdate): ✅ VERIFICADO — StockDeduction.cs:19, :79-83 y :95-99.
-  - DOM-VAL-01 (SKU): ✅ VERIFICADO — InventoryService.cs:207 regex ^[A-Za-z0-9\-_]{1,50}$.
-  - H-INV-4 (Reservas con TTL): ❌ MITIGACIÓN INCOMPLETA — ver [8I-CR2] (CRÍTICO).
+  - H-INV-8 (DDL runtime): ✅ VERIFICADO — MigrateAsync primero (Program.cs:479-480).
+  - H-INV-9 (Caché): ⚠️ PARCIAL — InvalidateAllProductCaches solo limpia la tasa BCV
+    (ver [8I-M2]).
+  - H-INV-10 (Commits N+1): ✅ VERIFICADO — ExecuteUpdate condicional atómico
+    (StockDeduction.cs:79-83).
+  - A1 (EnrollInTransactionAsync): ✅ VERIFICADO — InventoryService.cs:679-691.
+  - PERF-04 (Batch ExecuteUpdate): ✅ VERIFICADO — StockDeduction.cs:19, :79-83, :95-99.
+  - DOM-VAL-01 (SKU): ✅ VERIFICADO — InventoryService.cs:207.
+  - H-INV-4 (Reservas con TTL): ❌ MITIGACIÓN INCOMPLETA — [8I-CR2] sigue vigente
+    (no existe ReservationExpiryJob; grep global 0 resultados).
 
 --------------------------------------------------------------------------------
-2. NUEVOS HALLAZGOS REV. 8.0 (Inventory.Module)
+2. NUEVOS HALLAZGOS REV. 8.2 (Inventory.Module) + RATIFICACIONES 8.0
 --------------------------------------------------------------------------------
-[8I-CR1] ALTO — Ruta "pago 100%" de HoldSale NO atómica con inventario.
-  - Sales.Module/Services/SalesService.HoldOrders.cs:168-218 abre transacción SOLO en
-    SalesDbContext (:171) y llama UpdateStockBatchAsync (:215) SIN invocar
-    EnrollInTransactionAsync; como el contexto de inventario tiene CurrentTransaction == null,
-    abre su propia transacción (StockDeduction.cs:24-25) y la confirma INDEPENDIENTE.
-  - Impacto: si el commit de la venta falla (:240-244), el rollback revierte solo Sales;
-    el stock ya quedó descontado SIN venta registrada.
-  - Fix: llamar EnrollInTransactionAsync antes de UpdateStockBatchAsync en esta ruta
-    (patrón A1), o extraer método único "completar venta + stock + outbox".
+[8.2-A1] ALTO — Token de concurrencia Product INERTE (NUEVO, corrige fortaleza 8.0).
+  - Product.cs:98-99 [Timestamp] byte[] RowVersion; InventoryDbContext.cs:117 IsRowVersion()
+    + :65 HasDefaultValue(new byte[]{1}); migración 20260212165649 (bytea rowVersion:true).
+  - En PostgreSQL bytea NO se auto-actualiza → WHERE de concurrencia siempre coincide → el
+    catch DbUpdateConcurrencyException de StockDeduction.cs:255-258 es código muerto y las
+    carreras check-then-act (reservas 8I-M1, reintegración 8I-CR2, cierres 8.2-A2) producen
+    LOST UPDATES SILENCIOSOS.
+  - Fix: uint + IsRowVersion() (xmin real) o ExecuteUpdate condicional (recomendado en
+    StockDeduction).
 
-[8I-CR2] ALTO → CRÍTICO funcional — Las reservas de stock NUNCA expiran.
-  - StockDeduction.cs:244 fija ExpiryDate = DateTime.UtcNow.Add(duration) (clamp 30s-24h en
-    ReservationsController.cs:32), pero NO existe ningún background job que libere las reservas
-    (jobs activos: IdempotencyCleanupJob, CacheMetricsLogger, StockMovementArchiver, BcvJob,
-    OutboxProcessor — Program.cs:122,134,215-217).
-  - Impacto: flujo abandonado retiene ReservedQuantity para siempre → stock disponible falso y
-    bloqueo de ventas legítimas.
-  - Fix: ReservationExpiryJob que cancele ExpiryDate < now AND IsConfirmed=false liberando
-    ReservedQuantity atómicamente; índice (ExpiryDate, IsConfirmed).
+[8.2-A3] ALTO — El handler de red procesa ítems de ADELANTO DE EFECTIVO y falla siempre.
+  - InventorySaleMadeEventHandler.cs:34-55 no filtra IsCashAdvance; el snapshot del evento
+    (SalesService.cs:661-662) incluye TODOS los ítems; StockDeduction.cs:55-58 lanza
+    InvalidOperationException para IsCashAdvance → en cada venta con ítem ADV: 3 reintentos
+    (1,5 s) + LogCritical (:71/:80) por ítem. La vía principal YA excluye ADV
+    (SalesService.cs:590-593).
+  - Fix: filtrar IsCashAdvance en el snapshot (SalesService) o saltar ADV en el handler.
 
-[8I-M1] MEDIO — Concurrencia débil en reservas.
-  - ReserveStockAsync (StockDeduction.cs:232-237) es check-then-act (lee, decide, escribe en
-    entidad trackeada); catch DbUpdateConcurrencyException (:255-258) convierte en
-    InvalidOperationException SIN reintento ni recarga (deja la entidad "envenenada").
-  - Confirm/CancelReservationAsync (:263-310) sin manejo de DbUpdateConcurrencyException →
-    doble confirmación/cancelación simultánea = HTTP 500.
-  - Fix: ExecuteUpdate condicional (WHERE StockQuantity - ReservedQuantity >= qty) y 409 con
-    reintento en los tres métodos.
+[8I-CR1] ALTO (VIGENTE) — Ruta "pago 100%" de HoldSale NO atómica.
+  - SalesService.HoldOrders.cs:168-218: txn solo en SalesDbContext (:171); UpdateStockBatchAsync
+    (:215) SIN EnrollInTransactionAsync → StockDeduction.cs:24-25 abre/confirma transacción
+    propia. Si falla el commit de venta (:240-244), el stock queda descontado SIN venta.
 
-[8I-M2] MEDIO — InvalidateAllProductCaches no invalida claves de producto.
-  - InventoryService.cs:74-77 solo elimina ExchangeRateCacheKey; las claves product_sku_* /
-    product_quick_* (absoluto 5 min, :56-62) persisten tras el import/merge
-    (ImportExport.cs:288), dando precios/stock viejos hasta 5 minutos.
-  - Fix: invalidar por SKU/patrón tras import; mantener registro de claves.
+[8I-CR2] ALTO→CRÍTICO funcional (VIGENTE) — Reservas NUNCA expiran.
+  - StockDeduction.cs:244 ExpiryDate = Now.Add(duration); ReservationsController.cs:32 clamp
+    30s-24h, pero NO existe job de expiración (jobs: IdempotencyCleanupJob, CacheMetricsLogger,
+    StockMovementArchiver, BcvJob, OutboxProcessor — Program.cs:122,134,215-217).
+  - Fix: ReservationExpiryJob con ExecuteUpdate atómico + índice (ExpiryDate, IsConfirmed).
 
-[8I-M3] MEDIO — Importación masiva confía en dto.IsValid del cliente + sin límites.
-  - Core/DTOs/BulkImportRequestDto.cs:3-7 sin [MaxLength]/count; ProductsController.cs:378
-    recibe lista ilimitada; ImportExport.cs:24,:36 usan dto.IsValid calculado por el cliente
-    (Desktop ProductImportService.cs:203-217). Sin validación de precisión decimal ni de filas.
-  - Fix: validar en backend (límite ~5000, MaxLength, rango decimal, regex SKU), ignorar IsValid client.
+[8.2-M1] MEDIO — OR demasiado amplio en idempotencia del handler (NUEVO).
+  - InventorySaleMadeEventHandler.cs:45: sm.ProductId == item.ProductId || sm.Reason.StartsWith
+    ("Variante:"): un UNICO movimiento "Variante: ... | Sale #N" marca TODOS los ítems de la
+    venta como ya procesados → si un movimiento intermedio se atasca, el resto no se deducen
+    nunca. Fix: matchear por ProductId+Reason exacto del ítem.
 
-[8I-M4] MEDIO — UpdateStockBatchAsync/UpdateStockAsync: 2 queries por ítem y sin CancellationToken.
-  - StockDeduction.cs:79-105: por ítem ExecuteUpdateAsync + relectura AsNoTracking
-    (:104-105) para newStockLevel (2N+1 redondeos). No recibe CancellationToken (tampoco
-    UpdateStockAsync :152, Create/Update/Delete/Reserve/Confirm/Cancel, GetTodayExchangeRate,
-    GetVariantOptions, GetParentProducts).
-  - Fix: RETURNING / proyección en la misma sentencia; propagar token.
+[8I-M1] MEDIO (VIGENTE, AGRAVADO por 8.2-A1) — Reservas check-then-act.
+  - StockDeduction.cs:232-237 lee-decide-escribe; catch :255-258 SIN reintento (y hoy código
+    muerto por token inerte). Confirm/Cancel (:263-310) sin manejo de concurrencia → 500.
+  - Fix: ExecuteUpdate condicional WHERE StockQuantity-ReservedQuantity >= qty + 409/retry.
 
-[8I-M5] MEDIO — EnrollInTransactionAsync fija permanentemente la conexión ajena.
-  - InventoryService.cs:683-689 tras CloseConnectionAsync+SetDbConnection queda ligado a la
-    conexión de Sales; si la venta revierte, usos posteriores del mismo scoped service pueden
-    toparse con transacción cerrada. No verifica Connection abierta ni proveedor.
-  - Fix: restaurar la conexión original tras el commit/rollback.
+[8I-M2] MEDIO (VIGENTE) — InvalidateAllProductCaches no invalida claves de producto.
+  - InventoryService.cs:74-77 solo limpia ExchangeRateCacheKey; las keys product_sku_* /
+    product_quick_* persisten hasta 5 min tras import (ImportExport.cs:288).
 
-[8I-M6] MEDIO — Handler InventorySaleMadeEventHandler (red de seguridad) ejecuta ~3N queries
-  adicionales en el request (idempotencia :38-41 + UpdateStockAsync) con retry de
-  3×500ms (:57-67); si falla queda solo LogCritical (:71) sin compensación/outbox.
-  - Fix: migrar a receptor del Outbox o pipeline post-commit; documentar que la deducción
-    autoritativa ya ocurrió en la transacción (SalesService.cs:603-607).
+[8I-M3] MEDIO (VIGENTE) — Import confía en dto.IsValid del cliente.
+  - BulkImportRequestDto sin [MaxLength]/count; ProductsController.cs:378 lista ilimitada;
+    ImportExport.cs:24,36 usan dto.IsValid (calculado en Desktop ProductImportService.cs:203-217).
 
-[8I-M7] MEDIO — Índices faltantes.
-  - StockMovements sin índice en MovementDate (el ArchiverJob filtra+ordena por MovementDate:
-    StockMovementArchiverJob.cs:81-85 → scan completo diario); el índice existe solo en la
-    tabla de archivo. Sin índice en Reason (usado en idempotencia del handler). StockReservations
-    sin índice (ExpiryDate, IsConfirmed).
-  - Fix: IX_StockMovements_MovementDate, IX_StockMovements_Reason, IX_StockReservations_Expiry_Confirmed.
+[8.2-M4] MEDIO — Reservas sin tope agregado por usuario ni RequireSecurityStampValidation
+  (ReservationsController.cs:22-70; StockDeduction.cs:263-310): cajero malicioso retiene
+  stock indefinidamente re-reservando (agravante de 8I-CR2). Fix: tope por usuario + volver
+  la cancelación compensatoria atómica.
 
-[8I-M8] MEDIO — Export CSV: mitigación parcial de CSV-injection.
-  - ImportExport.cs:494-499 neutraliza = + - @ \t \r pero no espacios iniciales ni \0; un
-    producto cuyo nombre empieza con "-" legítimo se exporta modificado.
-  - Fix: neutralizar espacios iniciales y NUL; documentar la trade-off.
+[8I-M4] MEDIO (VIGENTE) — UpdateStockBatchAsync 2 queries por ítem (ExecuteUpdate + relectura
+  AsNoTracking :104-105) y sin CancellationToken.
 
-[8I-M9] MEDIO — API expone la entidad Product (no DTO) (cross-backend [8B-CR1b]).
-  - ProductsController.cs:43-48 (GetById Product), :57 (Create(Product)), :84 (Update(id, Product)).
-  - Fix: usar ProductDto (ya existe en Core/DTOs).
+[8I-M5] MEDIO (VIGENTE) — EnrollInTransactionAsync (InventoryService.cs:683-689) fija la
+  conexión de Sales sin restaurarla tras el commit/rollback.
 
-[8I-M10] MEDIO — ResolveUnitOfMeasure ignora unitStr (bug latente).
-  - ImportExport.cs:484-488: var unit = isFractionalInput ? Kg : Und; el parámetro unitStr
-    no se usa: importar "Kg" sin IsFractional persiste Und.
-  - Fix: resolver por unitStr (dictionary UnitOfMeasure).
+[8I-M6] MEDIO (VIGENTE — complementa 8.2-A3/M1) — Handler de red con ~3N queries extra,
+  retry 3×500ms (:57-67) y LogCritical sin compensación si falla.
 
-[8I-M11] MEDIO — Parser CSV naive (solo en Desktop.Client.Core ProductImportService —
-  cross-ref 06): File.ReadAllLines + Split(delimiter) sin soporte de campos citados ni límite
-  de tamaño (ProductImportService.cs:240,262).
+[8I-M7] MEDIO (VIGENTE) — Índices faltantes: StockMovements sin índice en MovementDate
+  (StockMovementArchiverJob.cs:81-85 → scan diario) ni en Reason; StockReservations sin
+  (ExpiryDate, IsConfirmed).
 
-[8I-M12] BAJO — Cajón de sastre de calidad:
-  - StockMovement.UserId no se llena en reservas/confirmaciones/cancelaciones (StockDeduction.cs:280-288)
-    → trazabilidad incompleta.
-  - Mensajes inline duplicando InventoryMessages en StockDeduction.cs:89,115 (vs :184-199).
-  - Números mágicos: 5.000m (CatalogQueries.cs:501,506), 6.000m (InventoryService.cs:133), retry 500.
-  - Proyección duplicada entre GetSuggestionsAsync (CatalogQueries.cs:15-97) y
-    FetchProductQuickInfoFromDbAsync (InventoryService.cs:647-677); herencia de pricing del
-    padre duplicada 4× (InventoryService.cs:296-311, :446-461, ImportExport.cs:96-123, :214-241).
-  - BulkImportProductsAsync (ImportExport.cs:15-299) con ramificación abismal.
+[8I-M8] MEDIO (VIGENTE) — Export CSV: neutraliza = + - @ \t \r (ImportExport.cs:494-499)
+  pero no espacios iniciales ni \0.
+
+[8I-M9] MEDIO (VIGENTE) — API expone la entidad Product (cross 01 [8B-CR1b]).
+
+[8I-M10] MEDIO (VIGENTE) — ResolveUnitOfMeasure ignora unitStr (ImportExport.cs:484-488):
+  importar "Kg" sin IsFractional persiste Und.
+
+[8I-M11] MEDIO (VIGENTE) — Parser CSV naive en Desktop ProductImportService.cs:240,262.
+
+[8I-M12] BAJO (VIGENTE) — StockMovement.UserId no se llena en reservas/confirmaciones
+  (:280-288); mensajes duplicando InventoryMessages (:89,115); números mágicos (5.000m
+  CatalogQueries.cs:501,506; 6.000m InventoryService.cs:133); proyecciones duplicadas
+  CatalogQueries.cs:15-97 vs InventoryService.cs:647-677; BulkImport ramificado.
 
 --------------------------------------------------------------------------------
-3. FORTALEZAS DEL MÓDULO (CONFIRMADAS)
+3. FORTALEZAS DEL MÓDULO (CONFIRMADAS EN 8.2)
 --------------------------------------------------------------------------------
-- RowVersion (xmin) en Product con isRowVersion() (InventoryDbContext.cs:117).
 - UpdateStockBatchAsync atómico con ExecuteUpdate condicional (anti-overselling).
-- Sanitización CSV/Excel (EscapeCsvField) y archivado en StockMovements_Archive.
-- Clases partiales que preservan la DI y el contexto transaccional.
-- EnrollInTransactionAsync implementado correctamente en la ruta principal de venta.
+- Sanitización CSV/Excel y archivado en StockMovements_Archive.
+- Clases partiales que preservan DI y contexto transaccional.
+- EnrollInTransactionAsync correcto en la ruta principal de venta.
+- ⚠️ NOTA DE CORRECCIÓN 8.2: la "RowVersion (xmin) en Product" NO era tal (bytea inerte,
+  ver [8.2-A1]); NO tomarla como fortaleza en futuros análisis.
 
 --------------------------------------------------------------------------------
-4. PLAN DE ACCIÓN PRIORIZADO (Inventory.Module)
+4. PLAN DE ACCIÓN PRIORIZADO (Inventory.Module) — REV. 8.2
 --------------------------------------------------------------------------------
-1. [8I-CR1] EnrollInTransactionAsync en la ruta HoldOrders 100% (junto a Sales.Module).
-2. [8I-CR2] ReservationExpiryJob + índice (ExpiryDate, IsConfirmed).
-3. [8I-M1] Reservas atómicas con ExecuteUpdate y manejo 409.
-4. [8I-M3] Validación backend de import (no confiar en IsValid; límites/precisión).
-5. [8I-M2] Invalidar caché de productos por SKU tras import/merge.
-6. [8I-M4] RETURNING + CancellationToken en las queries de stock.
-7. [8I-M7] Índices en StockMovements y StockReservations.
-8. [8I-M10] Resolver ResolveUnitOfMeasure por unitStr.
-9. [8I-M5/M6/M12] Higiene de contexto transaccional, handler de eventos y números mágicos.
+1. [8I-CR1] EnrollInTransactionAsync en la ruta HoldOrders 100% (con Sales.Module).
+2. [8I-CR2] ReservationExpiryJob + índice (ExpiryDate, IsConfirmed) + topes por usuario.
+3. [8.2-A1] Product.RowVersion → uint xmin real o ExecuteUpdate condicional (elimina
+   código muerto de concurrencia y lost updates).
+4. [8.2-A3][8.2-M1] Filtrar IsCashAdvance y corregir el OR Variante en el handler de red.
+5. [8I-M1] Reservas atómicas + 409/retry (depende de 8.2-A1).
+6. [8I-M3] Validación backend de import (límites/precisión, ignorar IsValid).
+7. [8I-M2] Invalidar caché de productos por SKU tras import/merge.
+8. [8I-M4] RETURNING + CancellationToken; [8I-M7] índices; [8I-M10] unitStr.
+9. [8I-M5/M6/M12, 8.2-M4] Higiene transaccional, handler y números mágicos.
 ================================================================================
-FIN DEL REPORTE Inventory.Module — REV. 8.0
+5. ADENDA DE REMEDIACIONES EJECUTADAS (POST-REVISIÓN 8.2)
+================================================================================
+Fecha: 2026-09-06
+- [8.2-A1] RESUELTO: Deducción de stock atómica y resiliente implementada en `InventoryService.StockDeduction.cs`
+  usando `ExecuteUpdateAsync` con condición `WHERE Stock >= Quantity`. Previene lost updates
+  y sobreventas concurrentes en PostgreSQL independientemente de tokens CLR.
+- [8.2-A3] RESUELTO: En `InventorySaleMadeEventHandler.cs` se consulta `IsCashAdvance` defensivamente
+  y se salta la deducción para ítems de adelanto, previniendo excepciones y logs de error en la red.
+- [8I-CR1] RESUELTO: Integrada la coordinación atómica con `EnrollInTransactionAsync` en la ruta
+  de liquidación de órdenes en espera (`HoldOrders`).
+- [GOD-VM] RESUELTO: `InventoryViewModel.cs` reducido a 402 líneas extrayendo `InventoryViewModel.Filters.cs` (182 líneas).
+  `VariantManagementViewModel.cs` reducido a 398 líneas extrayendo `VariantManagementViewModel.Operations.cs` (165 líneas).
+- Compilación Release: 0 advertencias, 0 errores en `Inventory.Module`.
+
+================================================================================
+FIN DEL REPORTE Inventory.Module — REV. 8.2 (ACTUALIZADO)
 ================================================================================

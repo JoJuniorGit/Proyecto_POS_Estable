@@ -566,10 +566,10 @@ public partial class SalesService : ISalesService
             _sale.FinalPaidAmountBsS = _sale.Payments.Sum(p => p.AmountBsS);
 
             // Synchronous Stock Deduction inside Transaction (H-SAL-2 / H-INV-1 / A1)
+            var productsDict = new Dictionary<int, Product>();
             if (_inventoryService != null && _sale.Items != null)
             {
                 var productIds = _sale.Items.Select(i => i.ProductId).Distinct().ToList();
-                var productsDict = new Dictionary<int, Product>();
                 var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
                 if (fetched != null && fetched.Count > 0)
                 {
@@ -658,7 +658,10 @@ public partial class SalesService : ISalesService
 
             try
             {
-                var _items_snapshot = (_sale.Items ?? Enumerable.Empty<SaleItem>()).Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity)).ToList();
+                var _items_snapshot = (_sale.Items ?? Enumerable.Empty<SaleItem>())
+                    .Where(i => !productsDict.TryGetValue(i.ProductId, out var prod) || !prod.IsCashAdvance)
+                    .Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity))
+                    .ToList();
                 var _sale_made_event = new SaleMadeEvent(_sale.Id, _sale.Date, _items_snapshot, _sale.InvoiceNumber.Value);
                 await _mediator.Publish(_sale_made_event, cancellationToken);
             }

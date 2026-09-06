@@ -28,7 +28,7 @@ public class InventoryCatalogRefreshTests
             _productServiceMock.Object,
             _exchangeRateServiceMock.Object,
             userSession: null,
-            dialog_service: _dialogServiceMock.Object);
+            dialogService: _dialogServiceMock.Object);
 
         WeakReferenceMessenger.Default.Unregister<CatalogUpdatedMessage>(vm);
         return vm;

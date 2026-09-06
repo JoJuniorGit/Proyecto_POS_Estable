@@ -64,7 +64,7 @@ public class MainViewModelDisposeTests
             disposableLogin,
             null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
             fakeHealth,
-            dialog_service: null);
+            dialogService: null);
 
         mainVm.Dispose();
 

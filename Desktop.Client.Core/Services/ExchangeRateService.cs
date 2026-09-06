@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Net.Security;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -48,8 +49,14 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
                 {
                     if (handler is HttpClientHandler clientHandler)
                     {
-                        // For local network / self-signed certificate setups, avoid connection rejection
-                        clientHandler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+                        // Validate SSL certificate: accept valid certs, or self-signed certs ONLY on loopback / localhost
+                        clientHandler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
+                        {
+                            if (errors == SslPolicyErrors.None)
+                                return true;
+
+                            return baseAddress.IsLoopback;
+                        };
                     }
                     return handler;
                 };

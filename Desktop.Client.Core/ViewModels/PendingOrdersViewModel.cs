@@ -141,12 +141,12 @@ public partial class PendingOrdersViewModel : ObservableObject
 
             var checkoutVm = new CheckoutViewModel(
                 sale: sale,
-                available_methods: paymentMethods,
-                sales_service: _salesService,
-                current_exchange_rate: CurrentExchangeRate,
-                user_session: _userSession,
-                override_sale: sale,
-                dialog_service: _dialogService);
+                availableMethods: paymentMethods,
+                salesService: _salesService,
+                currentExchangeRate: CurrentExchangeRate,
+                userSession: _userSession,
+                overrideSale: sale,
+                dialogService: _dialogService);
 
             var result = await DialogHost.Show(checkoutVm, "RootDialog");
 

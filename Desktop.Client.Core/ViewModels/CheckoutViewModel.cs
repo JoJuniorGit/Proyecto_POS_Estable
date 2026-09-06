@@ -178,21 +178,15 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         decimal currentExchangeRate = 0m,
         UserSession? userSession = null,
         SaleDto? overrideSale = null,
-        IDialogService? dialogService = null,
-        ObservableCollection<PaymentMethodDto>? available_methods = null,
-        ISalesService? sales_service = null,
-        decimal? current_exchange_rate = null,
-        UserSession? user_session = null,
-        SaleDto? override_sale = null,
-        IDialogService? dialog_service = null)
+        IDialogService? dialogService = null)
     {
         _sale = sale;
-        _salesService = salesService ?? sales_service ?? throw new System.ArgumentNullException(nameof(salesService));
-        _userSession = userSession ?? user_session;
-        _dialogService = dialogService ?? dialog_service;
-        CurrentExchangeRate = currentExchangeRate > 0m ? currentExchangeRate : (current_exchange_rate ?? 0m);
-        AvailableMethods = availableMethods ?? available_methods ?? new();
-        OverrideSale = overrideSale ?? override_sale;
+        _salesService = salesService ?? throw new System.ArgumentNullException(nameof(salesService));
+        _userSession = userSession;
+        _dialogService = dialogService;
+        CurrentExchangeRate = currentExchangeRate;
+        AvailableMethods = availableMethods ?? new();
+        OverrideSale = overrideSale;
 
         // In override mode, TotalUSD = remaining debt of the OnHold sale
         TotalUSD = IsOverrideMode ? OriginalRemainingDebtUsd : sale.TotalUSD;
@@ -206,101 +200,6 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
     public void Receive(CartUpdatedMessage message)
     {
         TotalUSD = message.NewTotal;
-    }
-
-    [RelayCommand]
-    private void AddPayment()
-    {
-        if (SelectedMethod == null)
-        {
-            ShowWarning("Método Requerido", "Por favor seleccione un método de pago antes de agregar el pago.");
-            return;
-        }
-
-        var amountBsS = ParseAmount(AmountBsSText);
-        if (amountBsS <= 0) return;
-        if (CurrentExchangeRate <= 0) return;
-
-        // Apply specialized rounding to the input based on payment type
-        if (SelectedMethod.IsCash)
-        {
-            amountBsS = PricingHelper.RoundToCash(amountBsS);
-        }
-        else
-        {
-            amountBsS = PricingHelper.RoundToDigital(amountBsS);
-        }
-
-        var amountUsd = System.Math.Round(amountBsS / CurrentExchangeRate, 2, System.MidpointRounding.AwayFromZero);
-
-        // Validation: prevent overpayment (with small tolerance)
-        if (amountUsd > RemainingBalanceUsd + 0.05m) 
-        {
-            ShowWarning("Monto Excedido", "El monto ingresado excede el saldo restante de la venta.");
-            return;
-        }
-
-        // Auto-clamp if almost finished to ensure precise zeroing
-        if (amountUsd > RemainingBalanceUsd)
-            amountUsd = RemainingBalanceUsd;
-
-        if (SelectedMethod.RequiresReference && string.IsNullOrWhiteSpace(CurrentReference))
-        {
-            ShowWarning("Referencia Requerida", $"El método de pago '{SelectedMethod.Name}' requiere ingresar un número de referencia.");
-            return;
-        }
-
-        var dto = new SalePaymentDto(SelectedMethod.Id, amountUsd, amountBsS, CurrentReference);
-        Payments.Add(new CheckoutPaymentItem(dto, SelectedMethod.Name, amountBsS, SelectedMethod.IsCash));
-
-        CurrentReference = string.Empty;
-        RecalculateBalances();
-    }
-
-    private void ShowWarning(string title, string message)
-    {
-        if (_dialogService != null)
-        {
-            _dialogService.ShowWarning(title, message);
-        }
-        else if (Application.Current != null)
-        {
-            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-    }
-
-    private void ShowError(string title, string message)
-    {
-        if (_dialogService != null)
-        {
-            _dialogService.ShowError(title, message);
-        }
-        else if (Application.Current != null)
-        {
-            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    [RelayCommand]
-    private void RemovePayment(CheckoutPaymentItem? item)
-    {
-        if (item == null) return;
-        Payments.Remove(item);
-        RecalculateBalances();
-    }
-
-    [RelayCommand]
-    private void EditPayment(CheckoutPaymentItem? item)
-    {
-        if (item == null) return;
-
-        SelectedMethod = AvailableMethods.FirstOrDefault(m => m.Id == item.Dto.PaymentMethodId);
-        AmountBsSText = item.AmountBsS.ToString("N2", CultureInfo.InvariantCulture);
-        CurrentReference = item.Dto.ReferenceNumber ?? string.Empty;
-
-        Payments.Remove(item);
-        RecalculateBalances();
-        FocusAmountInput = true;
     }
 
     public void UpdateCustomer(int? customerId, string? customerName)
@@ -332,36 +231,6 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         
         SetAmountToRemainingBalance();
         FinalizeSaleCommand.NotifyCanExecuteChanged();
-    }
-
-    private void SetAmountToRemainingBalance()
-    {
-        decimal balance = RemainingBalanceLocal;
-        if (SelectedMethod != null && SelectedMethod.IsCash)
-        {
-            balance = PricingHelper.RoundToCash(balance);
-        }
-        
-        AmountBsSText = balance.ToString("N2", CultureInfo.InvariantCulture);
-    }
-
-    public static decimal ParseAmount(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return 0m;
-        string clean = text.Trim();
-
-        if (clean.Contains(',') && !clean.Contains('.'))
-        {
-            clean = clean.Replace(',', '.');
-        }
-
-        if (decimal.TryParse(clean, NumberStyles.Any, CultureInfo.InvariantCulture, out var valInvariant))
-            return valInvariant;
-
-        if (decimal.TryParse(clean, NumberStyles.Any, CultureInfo.CurrentCulture, out var valCurrent))
-            return valCurrent;
-
-        return 0m;
     }
 
     private bool _isPendingPickup;
@@ -504,22 +373,5 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         {
             IsProcessing = false;
         }
-    }
-}
-
-public class CheckoutPaymentItem
-{
-    public SalePaymentDto Dto { get; }
-    public string MethodName { get; }
-    public decimal AmountBsS { get; }
-    public bool IsCash { get; }
-    public decimal AmountUsd => Dto.Amount;
-
-    public CheckoutPaymentItem(SalePaymentDto dto, string methodName, decimal amountBsS, bool isCash)
-    {
-        Dto = dto;
-        MethodName = methodName;
-        AmountBsS = amountBsS;
-        IsCash = isCash;
     }
 }

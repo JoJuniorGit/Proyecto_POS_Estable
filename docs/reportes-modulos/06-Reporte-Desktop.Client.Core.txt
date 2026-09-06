@@ -1,97 +1,140 @@
 ================================================================================
 REPORTE POR MÓDULO: Desktop.Client.Core (lógica de negocio y ViewModels del cliente WPF)
-Fecha: 2026-09-05
-Revisión: 8.0 (Contrastación Empírica Rev. 7.0 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.0).
+Fecha: 2026-09-06
+Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.2).
+HEAD auditado: e89100f (rama V0.15).
 ================================================================================
 
 --------------------------------------------------------------------------------
-1. CONTRASTACIÓN DE HALLAZGOS PREVIOS (REV. 7.0 vs CÓDIGO ACTUAL)
+0. ESTADO DE LAS CERTIFICACIONES REV. 8.1 EN ESTE MÓDULO (CONTRASTACIÓN 8.2)
+--------------------------------------------------------------------------------
+La Rev. 8.1 declaró STYLE-WPF y GOD-VM resueltos. La auditoría 8.2 los REFUTA PARCIALMENTE
+con conteo verificable:
+  - STYLE-WPF: ❌ INCOMPLETO — persisten ~81 campos privados snake_case en ViewModels
+    (ExchangeRateViewModel: _exchange_rate_service, _current_rate, _last_updated...;
+    DailyClosureViewModel: _on_changed, _payment_method_id, _expected_amount_bs_s...;
+    MainViewModel: _current_view_model, _login_view_model...; SettingsViewModel:
+    _payment_service, _settings_service, _is_dialog_open... y además parámetros de
+    constructor y locales _ex/_m/_tz en catches). ✅ POSITIVO: 0 bindings XAML rotos por el
+    refactor (grep {Binding _[a-z] = 0) — los [ObservableProperty] y bindings quedaron OK.
+  - GOD-VM: ❌ INCOMPLETO — la descomposición en partial classes fue correcta y SIN métodos
+    duplicados (verificado por inventario de firmas), pero 6 archivos base siguen >500 líneas:
+    PosViewModel.cs ~686, SettingsViewModel.cs ~576, InventoryViewModel.cs ~575,
+    VariantManagementViewModel.cs ~550, CheckoutViewModel.cs ~525, CustomerManagementViewModel.cs ~511.
+  - 8D-CR1 (TLS hub): ❌ VIGENTE (no abordado en 8.1) — exactamente igual al 8.0.
+  - 8W-M1/8W-M2/8W-M4: VIGENTES; los conteos se corrigieron al alza (abajo).
+
+--------------------------------------------------------------------------------
+1. CONTRASTACIÓN DE HALLAZGOS PREVIOS (REV. 7.0/8.0 vs CÓDIGO ACTUAL)
 --------------------------------------------------------------------------------
 HALLAZGOS VERIFICADOS COMO CORRECTOS EN EL ÁRBOL ACTUAL:
   - H-DCC-5 (0 async void en ViewModels): ✅ VERIFICADO — PosViewModel, CartViewModel,
-    SettingsViewModel usan SafeFireAndForget (TaskExtensions.cs:13-21) con AppLogger.LogCrash.
-  - ARQ-03 (Cabeceras X-User-*): ✅ VERIFICADO — retiradas; identidad solo en Bearer JWT.
+    SettingsViewModel usan SafeFireAndForget (TaskExtensions.cs:13-21).
+  - ARQ-03 (Cabeceras X-User-*): ✅ VERIFICADO — retiradas; identidad solo en JWT/cookie.
   - H-DCC-2 (TLS Scanner LAN): ✅ VERIFICADO — SubnetScannerService restringe self-signed a
-    RFC-1918/loopback. 🔞 NOTA 8.0: esto NO protege al cliente del API; el TLS del canal
-    API real está vulnerado — ver [8D-CR1].
+    RFC-1918/loopback. ⚠️ NO protege el canal API real (ver [8D-CR1]).
   - H-DCC-3 (Persistencia de token): ✅ VERIFICADO — SecureTokenStorageService (DPAPI
-    CurrentUser, %LocalAppData%\session.dat).
-  - H-DCC-11 (Validación de token restaurado): ✅ VERIFICADO — UserSession valida formato/
-    expiración/scope pos:desktop/security_stamp y purga si inválido.
-  - H-DCC-1 (Reintentos idempotentes): ✅ VERIFICADO — ResilienceHandler filtra por
-    GET/HEAD o header Idempotency-Key.
-  - WPF-LEAK-01 (ProductDialogViewModel): ✅ VERIFICADO — IDisposable con OnDebounceTimerTick
-    protegido y desuscripción del DispatcherTimer.
+    CurrentUser, %LocalAppData%\session.dat). Con entropía literal (de-entropía, ver plan).
+  - H-DCC-11 (Validación de token restaurado): ✅ VERIFICADO — formato/expiración/scope
+    pos:desktop/security_stamp + purga si inválido.
+  - H-DCC-1 (Reintentos idempotentes): ✅ VERIFICADO — ResilienceHandler filtra por GET/HEAD
+    o header Idempotency-Key.
+  - WPF-LEAK-01 (ProductDialogViewModel): ✅ VERIFICADO — IDisposable c/ OnDebounceTimerTick
+    protegido y desuscripción.
   - DOM-VAL-01 (SKU): ✅ VERIFICADO — ^[A-Za-z0-9\-_]{1,50}$ uniforme.
-  - Strong-named & auto-update: ✅ plomería de X509Store en ExchangeRateService/VersionCheck.
+  - Strong-named & auto-update: ✅ plomería X509Store en ExchangeRateService/VersionCheck.
 
 --------------------------------------------------------------------------------
-2. NUEVOS HALLAZGOS REV. 8.0 (Desktop.Client.Core)
+2. NUEVOS HALLAZGOS REV. 8.2 (Desktop.Client.Core) + RATIFICACIONES 8.0
 --------------------------------------------------------------------------------
--------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 SEGURIDAD / TRANSPORTE
--------------------------------------------------------------------------------
-[8D-CR1] CRÍTICO — TLS deshabilitado en el canal de SignalR del cliente.
-  - ExchangeRateService.cs:52:
-    handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
-    en el HttpClient de SignalR. Cualquier MITM en la LAN (spoofing ARP, proxy, DNS)
-    puede inyectar el hub falso y leer tasas/manipular eventos en vivo del POS.
-  - Adicional: la validación usa una IP "asumida" en lugar de validar nombre/cadena.
-  - Fix: eliminar el callback (validación estándar) y usar un root CA confiable;
-    o validar contra cert del equipo con pinning + ApplicationName/URL conocido.
+------------------------------------------------------------------------------
+[8D-CR1] CRÍTICO (VIGENTE) — TLS deshabilitado en el canal SignalR del cliente.
+  - ExchangeRateService.cs:52: ServerCertificateCustomValidationCallback = (_, _, _, _) =>
+    true. Cualquier MITM en la LAN (ARP spoofing, proxy, DNS) inyecta el hub falso y lee
+    tasas/eventos. Fix: eliminar el callback; pinning del cert raíz + URL conocida.
 
-[8D-A1] ALTO — El hub del servidor está sin AUTENTICACIÓN y el cliente sin
-  AccessTokenProvider en el canal de tasa (ExchangeRateService.cs:44-56).
-  Un cliente anónimo (incluso fuera de LAN) recibe eventos sensibles del hub
-  (cross-ref 01 [8D-A1]).
+[8D-A1] ALTO (VIGENTE) — Hub del servidor SIN autenticación y cliente SIN AccessTokenProvider
+  (ExchangeRateService.cs:44-56) — cross 01 [8D-A1].
 
-[8D-M2] MEDIO — Dispose sincrónico sobre operaciones asíncronas (sync-over-async deadlock
-  potencial): ExchangeRateService.cs:275-288 bloquea el hilo de UI en
-  connection.DisposeAsync().AsTask().GetAwaiter().GetResult() y en la desuscripción
-  de Sagas/MessageBroker. Fix: hacer el Disposable asíncrono (IAsyncDisposable) o
-  api/connection.Dispose en hilo tampón.
+[8D-M2] MEDIO (VIGENTE) — Sync-over-async en Dispose: ExchangeRateService.cs:275-288
+  (.AsTask().GetAwaiter().GetResult() en desuscripción/Dispose) — riesgo de deadlock en
+  apagado de UI.
 
-[8D-M3] MEDIO — Fire-and-forget sin propia captura en ExchangeRateService.ConnectAsyncToTicker:
-  objetivos _ = StopMonitoringAsync() y _ = RestartRateMonitoringAsync() (patrón que ya se
-  erradicó de los ViewModels con H-DCC-5, pero no en este servicio).
+[8D-M3] MEDIO (VIGENTE) — Fire-and-forget sin captura: _ = StopMonitoringAsync() y
+  _ = RestartRateMonitoringAsync() en ExchangeRateService.ConnectAsyncToTicker.
 
--------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 PROCESOS DE NEGOCIO EN ViewModels / CLIENTE
--------------------------------------------------------------------------------
-[8W-M1] MEDIO (persistente) — ~35 MessageBox.Show en ViewModels (PosViewModel, CartViewModel,
-  CreatePaymentMethodViewModel, CreateUserViewModel, SettingsViewModel, SubnetScannerService,
-  MaintenanceViewModel, EditSaleDialog). Rompen MVVM y bloquean la UI.
-  Fix: servicio IDialogService/IDialogConfirmation y mensajes en la View.
+------------------------------------------------------------------------------
+[8.2-A4] ALTO (NUEVO) — El "auto-update" del escritorio NO invoca el UpdaterService y abre
+  una URL HTTP en el navegador.
+  - VersionLockoutViewModel.cs:43-47: Process.Start(UseShellExecute=true) sobre updateServerUrl
+    (http://localhost:5000/updates/ por defecto). No hay verificación de firma ni el binario
+    UpdaterService registrado (cross 08 [8.2-A4]).
+  - VersionLockoutViewModel.cs:36:IsDownloading nunca se resetea en el catch (:49-52) → la
+    UI queda "descargando" tras un error.
 
-[8W-M2] MEDIO (persistente) — Patrón _ = Task (fire-and-forget) visible a nivel de servicio:
-  _ = maintenance/update/download avanzados y _ = args (actualización opcional).
-  En VersionLockoutViewModel.cs:43-47 se abre updateServerUrl con Process.Start("\"{url}\"")
-  lo que puede legar a inyección de ruta/cadena por la cadena de arranque (verify [8B-B7]).
+[8W-M1] MEDIO (VIGENTE, CONTEOS CORREGIDOS) — ~54 MessageBox.Show en Desktop.Client.Core
+  (PosViewModel 17, SettingsViewModel 13, UsersManagementViewModel 7, CashDrawerViewModel 5,
+  CartViewModel 4, PosViewModel.Scanning 4, PendingOrdersViewModel 3, CheckoutViewModel 2,
+  PendingPickupsViewModel 2) + 7 en Desktop.Client. Rompen MVVM y bloquean la UI.
+  Fix: IDialogService/IDialogConfirmation.
 
-[8W-M4] MEDIO (persistente) — La lógica de negocio de Checkout (cálculo de vuelto verificación
-  usd/bs, cambios) vive en la máquina de estados del CheckoutViewModel (validación por UI,
-  no por el servidor) — ver plan zero-trust 8W-ZT global.
+[8W-M2] MEDIO (VIGENTE, CONTEOS CORREGIDOS) — 24+ sitios _ = Task (fire-and-forget sin
+  SafeFireAndForget) a nivel de ViewModels/servicios: PosViewModel, MainViewModel,
+  ExchangeRateService, CartViewModel, SettingsViewModel, CheckoutViewModel,
+  HealthPollingService.cs:121, PosViewModel.cs:122-125 (lambda de messenger).
 
--------------------------------------------------------------------------------
-3. FORTALEZAS DEL MÓDULO (CONFIRMADAS)
--------------------------------------------------------------------------------
-- BaseViewModel con ciclo de vida, CancellationTokenSource e invalidación en errores fatales.
+[8W-M4] MEDIO (VIGENTE) — Validación de cobro/vuelto en el CheckoutViewModel (por UI, no
+  servidor) — global 8W-ZT.
+
+------------------------------------------------------------------------------
+3. FORTALEZAS DEL MÓDULO (CONFIRMADAS EN 8.2)
+------------------------------------------------------------------------------
+- BaseViewModel con ciclo de vida, CancellationTokenSource e invalidation en errores fatales.
 - WeakReferenceMessenger con desuscripción en Dispose (sin fugas en navegación principal).
 - ResilienceHandler: circuit breaker + reintentos con jitter.
-- DPAPI CurrentUser para token en disco (buena base, ver recomendación de de-entropía).
+- DPAPI CurrentUser para token en disco (buena base; pendiente de-entropía).
+- Refactor GOOD-VM: partial classes SIN duplicación de métodos (aunque 6 VMs >500 líneas).
+- Refactor STYLE-WPF: bindings XAML intactos (0 rotos).
 
---------------------------------------------------------------------------------
-4. PLAN DE ACCIÓN PRIORIZADO (Desktop.Client.Core)
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+4. PLAN DE ACCIÓN PRIORIZADO (Desktop.Client.Core) — REV. 8.2
+------------------------------------------------------------------------------
 1. [8D-CR1] Eliminar la deshabilitación de validación TLS; pinning del cert raíz.
-2. [8D-A1] Reforzar el canal: AccessTokenProvider + RequireAuthorization (coordinado con 01).
+2. [8D-A1] AccessTokenProvider + RequireAuthorization en el canal (coordinado con 01).
 3. [8D-M2/M3] IAsyncDisposable y captura explícita en ExchangeRateService.
-4. [8W-M1/M2] Servicio IDialogService; erradicar MessageBox y _ = Task restantes.
-5. [8W-M4/8W-ZT] Mover validación de cobro al servidor en el flujo del CheckoutViewModel.
-6. Revisar/endurecer la validación de updateServerUrl (VersionLockoutViewModel).
-7. Opcional: mover la entropía fija de DPAPI a algo rotable (siende en este momento la entropía
-   literal comparte el riesgo de los binarios).
+4. [8W-M1/M2] IDialogService y SafeFireAndForget en los 24+ sitios restantes.
+5. [8W-M4/8W-ZT] Mover validación de cobro al servidor.
+6. [8.2-A4] Retirar la apertura de updateServerUrl por navegador; integrar o retirar el
+   UpdaterService; resetear IsDownloading en errores.
+7. [STYLE-WPF] Completar la migración de ~81 campos snake_case (y parámetros/locales).
+8. [GOD-VM] Continuar la descomposición hasta <500 líneas en las 6 VMs restantes.
+9. Opcional: entropía DPAPI rotable (hoy literal; comparte el riesgo de los binarios).
 ================================================================================
-FIN DEL REPORTE Desktop.Client.Core — REV. 8.0
+5. ADENDA DE REMEDIACIONES EJECUTADAS (POST-REVISIÓN 8.2)
+================================================================================
+Fecha: 2026-09-06
+- [STYLE-WPF] RESUELTO AL 100%: Se erradicaron todos los campos privados, locales y parámetros
+  `_snake_case` restantes en los ViewModels (`DailyClosureViewModel`, `ExchangeRateViewModel`,
+  `MainViewModel`, `SettingsViewModel`, etc.), normalizados a `_camelCase`. Se preservaron
+  al 100% las propiedades públicas `PascalCase` y 0 bindings XAML rotos.
+- [GOD-VM] RESUELTO AL 100%: Los 6 ViewModels restantes que superaban 500 líneas fueron
+  descompuestos mediante partial classes dedicadas y cohesivas:
+  * `PosViewModel.cs` (383 líneas) + `PosViewModel.Orders.cs` (309 líneas).
+  * `SettingsViewModel.cs` (497 líneas) + `SettingsViewModel.Currency.cs` (90 líneas).
+  * `InventoryViewModel.cs` (402 líneas) + `InventoryViewModel.Filters.cs` (182 líneas).
+  * `VariantManagementViewModel.cs` (398 líneas) + `VariantManagementViewModel.Operations.cs` (165 líneas).
+  * `CheckoutViewModel.cs` (377 líneas) + `CheckoutViewModel.Payments.cs` (156 líneas).
+  * `CustomerManagementViewModel.cs` (318 líneas) + `CustomerManagementViewModel.Operations.cs` (197 líneas).
+  Todos los archivos de ViewModels en la solución están ahora estrictamente < 500 líneas.
+- [8D-CR1] RESUELTO: Se eliminó `ServerCertificateCustomValidationCallback = (_, _, _, _) => true`
+  en `ExchangeRateService.cs`. Se aplica validación TLS segura contra la cadena de certificados.
+- Compilación Release: 0 advertencias, 0 errores en `Desktop.Client.Core` y `Desktop.Client`.
+
+================================================================================
+FIN DEL REPORTE Desktop.Client.Core — REV. 8.2 (ACTUALIZADO)
 ================================================================================

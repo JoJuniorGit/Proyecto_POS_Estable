@@ -1,167 +1,227 @@
 ================================================================================
 REPORTE POR MÓDULO: Backend.API (Servidor / API REST + Middleware + Jobs)
-Fecha: 2026-09-05
-Revisión: 8.0 (Contrastación Empírica Rev. 7.0/7.1 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.0).
-Métricas ejecutadas en esta auditoría: 670/670 pruebas .NET (11 s) y 0 errores de
-compilación de solución (dotnet test recompila toda la solución).
+Fecha: 2026-09-06
+Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.2).
+Métricas ejecutadas en esta auditoría: 671/671 pruebas .NET (11 s) y 71/71 web
+(875 ms) = 742/742; 0 errores de compilación de solución (dotnet test recompila
+toda la solución). HEAD auditado: e89100f (rama V0.15).
 ================================================================================
 
 --------------------------------------------------------------------------------
-1. CONTRASTACIÓN DE HALLAZGOS PREVIOS (REV. 7.0/7.1 vs CÓDIGO ACTUAL)
+0. ESTADO DE LAS CERTIFICACIONES REV. 8.1 EN ESTE MÓDULO (CONTRASTACIÓN 8.2)
 --------------------------------------------------------------------------------
-LOS SIGUIENTES HALLAZGOS FIJADOS EN REV. 7.0/7.1 SE VERIFICAN COMO CORRECTOS SOBRE
-EL ÁRBOL ACTUAL (HEAD c337462, rama V0.15):
-  - C4 (cookie web): ✅ VERIFICADO — AuthController.cs:138-144 (HttpOnly, SameSite=Strict,
-    expiración 120 min). NOTA 8.0: el SPA web NO consume esa cookie; usa localStorage
-    (cross-ref 09). CSP script-src 'self' en producción (SecurityHeadersMiddleware.cs:45-49).
+  - RBAC-1 (guardrail Driver): ✅ CONFIRMADO — User.IsInRole("Driver") → Forbid en
+    SalesController.cs:335-338, ShiftsController.cs:72-75, DailyClosureController.cs:76-79
+    + CashDrawerController.cs:189-192 (ProcessCashAdvance).
+  - CI-1 (EnableWindowsTargeting): ✅ CONFIRMADO — Directory.Build.props:12; ci.yml:12,57.
+  - C4 + 8W-CR2 (cookie web): ✅ CAMBIO DE ESTADO IMPORTANTE — ver sección 1 ([8W-CR2]).
+  - 8W-C1 (CORS): ⚠️ ATENUADO, NO CERRADO — ver sección 1 ([8W-C1]).
+  - DST-1 (deducción única con InvoiceNumber): ✅ CONFIRMADO en el pipeline y el handler
+    (ver 04/03), con el defecto NUEVO [8.2-A3] en el handler.
+  - LINT-WEB (0/0 oxlint): ✅ salida REAL pero cubo falso de seguridad (no detecta
+    identificadores libres → el [8.2-CR1] del web no lo detectó).
+
+--------------------------------------------------------------------------------
+1. CONTRASTACIÓN DE HALLAZGOS PREVIOS (REV. 8.1/8.0 vs CÓDIGO ACTUAL)
+--------------------------------------------------------------------------------
+LOS SIGUIENTES HALLAZGOS FIJADOS EN REV. 7.0/7.1/8.0 SE VERIFICAN SOBRE EL ÁRBOL
+ACTUAL (HEAD e89100f):
+  - C4 (cookie web): ✅ VERIFICADO — AuthController.cs:136-144 (HttpOnly, SameSite=Strict,
+    expiración 120 min). CAMBIO 8.2: la cookie AHORA SÍ se usa en el SPA; el JWT del web
+    ya no vive en localStorage (ver [8W-CR2] en 09). Program.cs (JwtBearer OnMessageReceived)
+    lee el token desde la cookie pos_jwt cuando no hay header Authorization — flujo de
+    autenticación web por cookie confirmado. CSP script-src 'self' (SecurityHeadersMiddleware.cs:45-49).
   - A2 (secuencia facturas): ✅ VERIFICADO — setval en Program.cs:508-509, nextval en SalesService.cs:56.
-    Residual: setval fuerza MAX(InvoiceNumber)+1 con floor 1 (riesgo bajo documentado).
-  - A3 (idempotencia): ✅ VERIFICADO — IdempotencyService.cs:64-74 SHA-256 byte[] c/ FixedTimeEquals
-    (:99); índice único IX_IdempotentRequests_Key_RequestPath; header obligatorio en SalesController.cs:336-341.
-  - A5 (anti-enumeración): ⚠️ PARCIAL — 401 genérico en AuthController.cs:62,:97, PERO :70 (423),
-    :76 (400) y :82 (400) revelan estados de cuenta (ver REV-8 [8B-M3]).
-  - A7 (DDL async): ✅ VERIFICADO — MigrateAsync primero (Program.cs:476-479) + comprobaciones
-    no destructivas contra information_schema.
+  - A3 (idempotencia): ✅ VERIFICADO — IdempotencyService.cs:64-74 SHA-256 c/ FixedTimeEquals
+    (:99); índice único; header obligatorio en SalesController.cs:341-345. MATIZ 8.2: solo
+    /complete exige la clave (abonos/hold no) — ver 09 [8.2-M6].
+  - A5 (anti-enumeración): ⚠️ PARCIAL — 401 genérico en AuthController.cs:62,:97, PERO :70,
+    :76 y :82 revelan estados de cuenta (ver [8B-M3]).
+  - A7 (DDL async): ✅ VERIFICADO — MigrateAsync primero (Program.cs:479-480).
   - A8 (no reactivar admin): ✅ VERIFICADO — Program.cs:768-789 nunca fuerza IsActive.
-  - SEC-08 (Health): ✅ VERIFICADO — mensaje estático sin MachineName/ex.Message; matiz: expone
-    ApplicationVersion/GitCommit a anónimos (ver [8B-B3]).
+  - SEC-08 (Health): ✅ VERIFICADO (mensaje estático); matiz: expone ApplicationVersion/
+    GitCommit a anónimos (ver [8B-B3]).
   - SEC-09 (CSP): ✅ VERIFICADO — SecurityHeadersMiddleware.cs:45-49.
-  - SEC-10 (ForwardedHeaders): ✅ VERIFICADO — Program.cs:296-323 + UseForwardedHeaders (:335);
-    PairingController.cs:30-44 normaliza IP. Riesgo adyacente con CORS credentialed (ver [8W-C1]).
-  - SEC-11 (puertos CORS): ✅ presenté el allowlist (5000/5001/5173/80/443/4173) en
-    Program.cs:274, PERO configuración riesgosa en conjunto (ver [8W-C1]).
-  - PERF-05 (purga outbox): ✅ VERIFICADO — OutboxProcessorJob.cs:70-133 (DELETE lotes 1.000,
-    Processed > 7 días). Matiz multi-instancia (ver [8B-M5]).
+  - SEC-10 (ForwardedHeaders): ✅ VERIFICADO — UseForwardedHeaders (:335); PairingController
+    normaliza IP.
+  - SEC-11/8W-C1 (CORS): ⚠️ ATENUADO — Program.cs:254-293 añadió gating de puertos para
+    orígenes RFC-1918 (:270-283: 5000/5001/5173/80/443/4173) CONFIRMADO, PERO
+    localhost/127.0.0.1/::1 sigue aceptando CUALQUIER puerto (:267-268) con
+    AllowAnyMethod+AllowAnyHeader+AllowCredentials (:289-291) → vector same-site
+    localhost persiste (ver [8W-C1]).
+  - PERF-05 (purga outbox): ✅ VERIFICADO — OutboxProcessorJob.cs:70-133 (lotes 1.000,
+    > 7 días). Matiz multi-instancia (ver [8B-M5]).
   - PERF-06 (AsNoTracking Settings): ✅ VERIFICADO — SettingsController.cs:33,49,122,158.
-  - ERR-01 (RFC 7807 / SQLSTATE): ✅ PARCIAL — GlobalExceptionHandlerMiddleware.cs:34-253 mapea
-    23505/23502/23503/22001/23514/conexión/auth/concurrencia/dominio/500 genérico.
-    ✂ MATIZ-NUEVO: ContentType = "application/json" (:37), NO application/problem+json (ver [8B-B2]).
-  - SEC-01/02 (Zip Slip / JWT CSPRNG): ✅ VERIFICADO (UpdaterService/Program.cs:93-107 con matices;
+  - PERF-02 (SplitQuery por defecto): ✅ VERIFICADO — Program.cs:103 (AsSplitQuery default
+    en SalesDbContext) — mitiga parcialmente [8S-M1] (cross 04).
+  - ERR-01 (RFC 7807): ⚠️ PARCIAL — GlobalExceptionHandlerMiddleware.cs:34-253 mapea
+    SQLSTATE/conexión/concurrencia/dominio; ContentType "application/json" (:37) NO
+    problem+json (ver [8B-B2]).
+  - SEC-01/02 (Zip Slip / JWT CSPRNG): ✅ VERIFICADO (UpdaterService/Program.cs:93-107;
     Configure-PosService.ps1:54-59).
   - DOM-VAL-01 (SKU): ✅ VERIFICADO — ProductsController.cs:222 regex
-    ^[A-Za-z0-9\-_]{1,50}$, coherente con toda la plataforma.
+    ^[A-Za-z0-9\-_]{1,50}$.
   - W5 (stock negativo): ✅ VERIFICADO (SalesService.cs:603-606 allowNegativeStock:false).
 
-HALLAZGOS PREVIOS QUE CAMBIARON DE ESTADO EN REV. 8.0:
-  - [ERR-04] ⚠️ PARCIALMENTE CORREGIDO (estado DIFERENTE al Rev. 7.1).
-    DailyClosureController.cs:153-160 y ShiftsController.cs:177-184 YA no filtran ex.Message.
-    PERO ExchangeRateController.cs:179,183,187 SIGUE exponiendo Detail = ex.Message en
-    TimeoutException / InvalidOperationException / HttpRequestException → REABIERTO (ver [8B-M2]).
-  - [C2] ❌ VIGENTE — Program.cs:41-48 escucha SIEMPRE HTTP 5000 (ListenAnyIP); HTTPS 5001 solo
-    si LoadHttpsCertificate devuelve cert. RequireHttpsMetadata=false (:170). Cookie Secure solo
-    si HTTPS (AuthController.cs:131-139). setup.iss:280-281 y Configure-PosService.ps1:109-118
-    abren puertos en firewall. La gravedad AUMENTA al combinarse con [8W-C1] y [8W-CR2].
-  - [C1] 🟡 VIGENTE — validación en arranque Program.cs:144-158; clave persistida en texto plano
-    en NSSM AppEnvironmentExtra (Configure-PosService.ps1:209-211); docs/JWT_Key.md documenta la clave.
-  - [C3] 🟡 VIGENTE Y AMPLIADO — appsettings.Development.json:10,:13 + NUEVO .env:1
-    (DB_PASSWORD=123456 versionado) + contraseña de certificado embebida (Program.cs:900).
+HALLAZGOS PREVIOS QUE CAMBIARON DE ESTADO EN REV. 8.2:
+  - [8W-CR2] ⬇️ CRÍTICO → MITIGADO (descenso de severidad) — AuthController.cs:125-160
+    para la plataforma "Web": Token = isWeb ? null : token (:159); fija cookie httpOnly
+    pos_jwt con SameSite=Strict (:136-144), Secure solo si HTTPS o host localhost
+    (:131-139), 120 min, scope pos:web. AuthContext.jsx:37-38 elimina pos_token.
+    RESIDUALES en esta capa: (a) api.js conserva código muerto Bearer/localStorage;
+    (b) en LAN por HTTP (http://192.168.x.x:5000) la cookie NO es Secure → refuerza [C2];
+    (c) setCustomBaseUrl (:121-147) sin revalidar host.
+  - [C3] 🟡 VIGENTE Y AMPLIADO → convertido en [8.2-CR2] — además de
+    appsettings.Development.json:10,13, git trackea .freebuff-test-out/appsettings.json:10,17
+    (Password=123456, AdminSeedPassword=Admin123!) con 278 archivos y
+    .freebuff/desktop-v2.db (SQLite de desarrollo) → purga + rotación urgente.
+    NOTA: el .env:1 reportado en 8.0 YA NO está en el índice (eliminado entre c337462 y
+    e89100f); el resto de secretos persisten.
+  - [C1] 🟡 VIGENTE — validación en arranque Program.cs:143-161; clave persistida en texto
+    plano en NSSM AppEnvironmentExtra (Configure-PosService.ps1:209-211); docs/JWT_Key.md
+    documenta la clave (trackeado).
+  - [C2] ❌ VIGENTE Y COMPLICADO — Program.cs:41-50 escucha SIEMPRE HTTP 5000 (ListenAnyIP);
+    HTTPS 5001 solo si hay cert; RequireHttpsMetadata=false (:173); y ahora además la
+    cookie del SPA viaja sin Secure por HTTP en LAN.
+  - [ERR-04] ⚠️ ABIERTO EN ExchangeRateController.cs:179,183,187 (Detail = ex.Message en
+    TimeoutException/InvalidOperationException/HttpRequestException) — ver [8B-M2].
+  - [8B-CR1/8B-CR1b/8B-M1..M8] VIGENTES en el mismo estado (ver sección 2).
 
 --------------------------------------------------------------------------------
-2. NUEVOS HALLAZGOS REV. 8.0 (Backend.API)
+2. NUEVOS HALLAZGOS REV. 8.2 EN ESTE MÓDULO (+ RATIFICACIONES 8.0)
 --------------------------------------------------------------------------------
--------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 SEGURIDAD
--------------------------------------------------------------------------------
-[8B-CR1] ALTO — Mass assignment por binding de entidades EF en controladores.
-  - ProductsController.cs:57 (Create([FromBody] Product product)), :84 (Update(id, Product));
-    PaymentMethodsController.cs:50, :68 (mismo patrón).
-  - El cliente puede fijar CostPriceUSD, ProfitMargin, ProfitPercentage, StockQuantity,
-    ReservedQuantity, IsCashAdvance, IsDeleted y el token RowVersion [Timestamp]. RowVersion
-    incluido = manipulación de concurrencia; excluido = DbUpdateConcurrencyException en updates.
-  - Fix: DTOs de entrada (CreateProductRequest/UpdateProductRequest) + mapeo manual.
-  - Existe Core/DTOs/ProductDto.cs pero NO se usa en estos endpoints.
+------------------------------------------------------------------------------
+[8.2-CR2] CRÍTICO (C3 AMPLIADO) — Secretos versionados en git.
+  - .freebuff-test-out/appsettings.json:10,17 (Password=123456, AdminSeedPassword=Admin123!)
+    + 278 archivos (artefactos de compilación/runtime) trackeados; .freebuff/desktop-v2.db
+    trackeado; docs/JWT_Key.md trackeado; Backend.API/appsettings.Development.json:10,13.
+  - Fix: git rm -r --cached de .freebuff*/ ; purga de historial (filter-repo); ROTAR todas
+    las credenciales expuestas (BD, admin seed, clave JWT, PosHttpsDev2026!).
 
-[8B-CR1b] ALTO — ProductsController.GetById devuelve la entidad Product cruda (costo/margen)
-  a cualquier rol autenticado (ProductsController.cs:43-48); CashDrawerController.cs:132 y
-  GetHistory devuelven entidades ef (CashTransaction). Violación del pipeline DTO.
-  - Fix: proyección a DTO sin campos de costo/margen para roles no-admin.
+[8.2-A5] ALTO — Contraseña de certificado HTTPS embebida en el arranque.
+  - Program.cs:896-898: fallback ?? "PosHttpsDev2026!". Cualquiera con el .pfx exportado
+    y esta contraseña conocida suplanta el HTTPS del POS (junto a setup.iss:307, cross 11).
+  - Fix: generar contraseña aleatoria por instalación (DPAPI/USC); eliminar el fallback.
 
-[8W-C1] ALTO — CORS credentialed + SameSite=Strict + localhost con CUALQUIER puerto.
-  - Program.cs:264-265 (localhost/127.0.0.1/::1 true sin filtrar puerto), :286-288
-    (.AllowAnyMethod().AllowAnyHeader().AllowCredentials()); AuthController.cs:140 SameSite=Strict.
-  - SameSite define "site" por host: una página maliciosa en localhost:yyyy o en IP del
-    servidor:80 es same-site → el navegador envía pos_jwt a peticiones cross-origin que CORS
-    acepta → secuestro de sesión de caja en LAN.
-  - Fix: restringir localhost a los puertos exactos del SPA; evaluar SameSite=Lax + CSRF.
+[8B-CR1] ALTO — Mass assignment por binding de entidades EF (VIGENTE).
+  - ProductsController.cs:57 (Create(Product)), :84 (Update(id, Product));
+    PaymentMethodsController.cs:50, :68. El cliente puede fijar CostPriceUSD, ProfitMargin,
+    ProfitPercentage, StockQuantity, ReservedQuantity, IsCashAdvance, IsDeleted y el token
+    RowVersion [Timestamp]. Existe Core/DTOs/ProductDto.cs pero no se usa aquí.
 
-[8D-A1] ALTO — Hub SignalR sin RequireAuthorization.
-  - Program.cs:374: MapHub<ExchangeRateHub>("/hubs/exchange-rate") SIN RequireAuthorization;
-    Hubs/ExchangeRateHub.cs:5-10 sin atributo. Cualquier anónimo (LAN/NAT) recibe
-    ReceiveSaleCompleted, OnHoldSalesUpdated, OnPaymentMethodsUpdated, ReceiveRateUpdate.
-  - Fix: MapHub(...).RequireAuthorization(); ticker de tasa anónimo solo por endpoint dedicado.
+[8B-CR1b] ALTO — ProductsController.GetById (:43) devuelve la entidad Product cruda
+  (costo/margen) a cualquier rol autenticado; además CatalogQueries.cs:166-173
+  (GET /api/products) expone CostPriceUSD/ProfitMargin*/ProfitPercentage/QuickCheck.
 
-[8B-M3] MEDIO — Enumeración de estados de cuenta en login.
-  - AuthController.cs:70 (423 bloqueada), :76 (400 inactiva), :82 (400 sin contraseña) vs
-    401 genérico :62/:97. Distingue estados válidos de cuentas.
-  - Fix: respuesta homogénea + log interno (SecurityAuditMiddleware ya da trazabilidad).
+[8W-C1] ⚠️ ALTO → MEDIO (atenuado) — CORS hardening para RFC-1918 (puertos 5000/5001/5173/
+  80/443/4173 en Program.cs:270-283) CONFIRMADO, pero localhost/127.0.0.1/::1 sigue sin
+  whitelist de puertos (:267-268) + AllowCredentials (:291). Con sesión web en cookie
+  httpOnly SameSite=Strict (mismo-site por host, no por puerto), una página maliciosa
+  servida en http://localhost:yyyy sigue siendo same-site y el navegador ENVÍA pos_jwt.
+  Escenario: proceso local (malicioso o comprometido) sirviendo en localhost puede leer la
+  respuesta vía CORS. Fix: whitelist de puertos también para localhost + SameSite=Lax+CSRF.
 
-[8B-M4] MEDIO — limit sin tope superior en historial de caja.
-  - CashDrawerController.cs:73 (limit=300 sin clamp; ExchangeRateController sí clampea :77).
-  - Fix: Math.Clamp(limit, 1, 2000) o cursor pagination.
+[8D-A1] ALTO — Hub SignalR sin RequireAuthorization (VIGENTE).
+  - Program.cs:377 MapHub<ExchangeRateHub>("/hubs/exchange-rate") SIN RequireAuthorization;
+    Hubs/ExchangeRateHub.cs:5-10 sin atributo. Anónimos en LAN reciben eventos del hub.
 
-[8B-M6] MEDIO — AuthController.cs:85 login sin tope de longitud de password y
-  SettingsController.cs:128 SetTimeZone acepta cualquier string (sin
-  TimeZoneInfo.TryFindSystemTimeZoneById). Espolones de validación de entrada.
+[8.2-A2] ALTO — Carreras de doble cierre de caja/turno (NUEVO — ver 04 para detalle).
+  - DailyClosureController.cs:123-154 y ShiftsController.cs:145-168 computan totales ANTES
+    de la transacción (check-then-act); sin índice único sobre ClosureDate
+    (SalesDbContext.cs:207 solo índice simple) → dos cierres simultáneos cuentan los mismos
+    pagos (doble conteo) o RolloverSessionAfterClosureAsync (CashDrawerService.cs:135-147)
+    deja 2 sesiones abiertas.
+  - Fix: SERIALIZABLE/índice único + xmin en las entidades (ver [8.2-A1] en 02/03).
 
-[8B-B1] BAJO — AllowedHosts = "*" (appsettings.json:8) sin verificación de Host header.
-  - Fix: fijar host real en Producción.
+[8B-M3] MEDIO — Enumeración de estados de cuenta en login (VIGENTE).
+  - AuthController.cs:70 (423), :76 (400), :82 (400) vs 401 genérico :62/:97.
 
-[8B-B2] BAJO — Errores con ContentType "application/json" en vez de application/problem+json
-  (GlobalExceptionHandlerMiddleware.cs:37). Contrato ProblemDetails incompleto.
+[8B-M4] MEDIO — limit sin tope en historial de caja (VIGENTE): CashDrawerController.cs:73.
 
-[8B-B3] BAJO — HealthController.cs:35,45 expone ApplicationVersion y GitCommit a anónimos.
+[8B-M1] MEDIO/ALTO — Sin CancellationToken en la mayoría de acciones backend (VIGENTE).
 
-[8B-B4] BAJO — Catch vacíos/swallow de errores: Program.cs:78 (Env.Load),
-  NetworkDiscoveryService.cs:139-142, SecurityStampValidator.cs:60,82,94.
-  - Fix: LogWarning mínimo en cada catch vacío.
+[8.2-B3] BAJO — GetCurrentBalance (CashDrawerController.cs:111-116) devuelve el saldo de
+  CUALQUIER sesión de caja a cualquier rol autenticado (info sensible para Driver).
 
-[8B-B5] BAJO — ShiftsController.cs:230-239 fabrica GetCurrentReport() como si fuera un cierre
-  real cuando GetReportById no encuentra el cierre. Fix: 404 o DTO marcado "borrador".
+[8.2-B4] BAJO — Recurrencia frágil: ShiftsController.cs:231-238 GetReportById → GetCurrentReport
+  fabrica/recurse ante ausencia de cierre (fuente futura divergente).
 
-[8B-B6] BAJO — PasswordHasher.cs:34-44 confía en el "iterations" del hash almacenado;
-  un hash corrupto con iteraciones absurdas = DoS de CPU trivial. Fix: clamp de rango.
+[8B-B1] BAJO — AllowedHosts = "*" (appsettings.json:8), sin verificación de Host.
 
-[8B-B7] BAJO — VersionCheckController.cs:9,21-42 ([AllowAnonymous]) + VersionCheckMiddleware.cs:38-45
-  aceptan X-Client-Version no autenticada; un MITM puede inyectar una updateServerUrl maliciosa
-  que el cliente abre como "actualización" (desktop VersionLockoutViewModel.cs:43-47).
+[8B-B2] BAJO — ContentType "application/json" (:37) en vez de application/problem+json.
 
--------------------------------------------------------------------------------
+[8B-B3] BAJO — HealthController.cs:35,45 expone ApplicationVersion/GitCommit a anónimos.
+
+[8B-B4] BAJO — Catch vacíos: Program.cs:78, NetworkDiscoveryService.cs:139-142,
+  SecurityStampValidator.cs:60,82,94.
+
+[8B-B5] BAJO — ShiftsController fabrica un "cierre actual" cuando no hay cierre real
+  (relacionado con [8.2-B4]).
+
+[8B-B6] BAJO — PasswordHasher.cs:34-44 confía en el "iterations" del hash almacenado
+  (DoS CPU por iteraciones absurdas); fix: clamp de rango.
+
+[8B-B7] BAJO — VersionCheck anónimo (VersionCheckController.cs:9,21-42) acepta
+  X-Client-Version no autenticada; MITM puede inyectar updateServerUrl maliciosa
+  (interactúa con [8.2-A4] del desktop).
+
+------------------------------------------------------------------------------
 RENDIMIENTO / CONCURRENCIA / CALIDAD
--------------------------------------------------------------------------------
-[8B-M1] MEDIO/ALTO — Falta de CancellationToken en la mayoría de acciones backend
-  (AuthController, UsersController, SettingsController, CashDrawerController (Except Sales),
-  DailyClosureController, ShiftsController, ExchangeRateController, ReservationsController,
-  PaymentMethodsController). Requests canceladas siguen trabajando; degradación bajo carga.
-  - Fix: propagar HttpContext.RequestAborted.
+------------------------------------------------------------------------------
+[8.2-M2] MEDIO — Fallback de tasa 1.0 en cierres (NUEVO).
+  - ShiftsController.cs:48-66 y DailyClosureController.cs:45-63: si no hay registro BCV del
+    día, el cierre se calcula con tasa 1.0, distorsionando todos los importes Bs.S sin
+    marca visible. Fix: tratamiento de país/abortar cierre o tasa explícita 0/NA.
 
-[8B-M5] MEDIO — Tabla IdempotentRequests fuera del sistema de migraciones (SQL raw idempotente
-  en Program.cs:544-564; MigrateAsync no la crea). Brecha de consistencia con futuro
-  dotnet ef migrations add.
+[8.2-M9] MEDIO — Sin paginación en colas (NUEVO): SalesController.cs:178-183
+  (GetPendingSales) y :482-487 (GetPendingPickups) devuelven todo el conjunto.
 
-[8B-M7] MEDIO — OutboxProcessorJob.cs:146-149 usa FOR UPDATE SKIP LOCKED como query suelta
-  (autocommit): con 2 instancias ambas pueden leer el mismo mensaje (doble dispatch).
-  Absorbible por el LIMIT actual pero frágil para escala horizontal.
+[8.2-B5] BAJO — _snake_case residual en el backend (retoque STYLE-WPF incompleto):
+  SalesService.cs:193-242 (_existing_item, _sale, _item...), SalesService.CashAdvance.cs, etc.
+
+[8B-M2] MEDIO — ExchangeRateController.cs:179,183,187: Detail = ex.Message (Timeout/
+  InvalidOperation/HttpRequest) — filtra excepciones a anónimos.
+
+[8B-M5] MEDIO — Tabla IdempotentRequests creada con SQL raw en Program.cs:547-567 (fuera
+  del sistema de migraciones).
+
+[8B-M7] MEDIO — OutboxProcessorJob.cs:146-150 FOR UPDATE SKIP LOCKED como query suelta
+  (autocommit) → con 2 instancias ambas pueden leer el mismo mensaje.
 
 [8B-M8] MEDIO — Contratos de error mixtos en ProductsController.cs:70,74,106,125
-  (BadRequest(ex.Message) como string plano) mezclados con el ProblemDetails global.
-  Fix: uniformar vía Results.Problem.
+  (BadRequest(ex.Message) string plano) mezclados con el ProblemDetails global.
 
--------------------------------------------------------------------------------
-3. PLAN DE ACCIÓN PRIORIZADO (Backend.API)
--------------------------------------------------------------------------------
-1. [C2] HTTPS obligatorio en producción (fail-fast si falta cert) y bloquear 5000-HTTP; coordinar con CORS.
-2. [8B-CR1/8B-CR1b] Migrar Products/PaymentMethods a DTOs de entrada/salida (fin mass assignment,
-   no exponer costo/margen a Cashier).
-3. [8W-C1] Restringir CORS localhost a puertos exactos del SPA; revisar SameSite+CSRF.
-4. [8D-A1] RequireAuthorization() en el hub SignalR.
-5. [8B-M2] Cerrar Detail = ex.Message en ExchangeRateController (cierra ERR-04 100%).
-6. [8B-M3] Login con respuesta homogénea.
-7. [8B-M1] Propagar CancellationToken en todos los controllers.
-8. [8B-M4] Clamp limit en CashDrawerController.
-9. [8B-B1..B7] Higiene: AllowedHosts, problem+json, health, catch vacíos, reporte fabricado,
-   PasswordHasher clamp, VersionCheck.
-10. [8B-M5/M7] Migración propia de IdempotentRequests; opcional batch transaccional del outbox.
+------------------------------------------------------------------------------
+3. PLAN DE ACCIÓN PRIORIZADO (Backend.API) — REDEFINIDO REV. 8.2
+------------------------------------------------------------------------------
+1. [8.2-CR2] Purga de secretos versionados + rotación de credenciales (Urgente-absoluto).
+2. [C2] HTTPS obligatorio (fail-fast si falta cert); bloquear 5000-HTTP; cookie Secure en
+   LAN por HTTP; coordinar con CORS.
+3. [8W-C1] Whitelist de puertos también para localhost; evaluar SameSite=Lax + CSRF.
+4. [8.2-A2] Exclusividad de cierre/apertura (SERIALIZABLE + índices únicos parciales).
+5. [8B-CR1/8B-CR1b] DTOs de entrada/salida en Products/PaymentMethods; no exponer costo/
+   margen a Cashier.
+6. [8D-A1] Hub SignalR con RequireAuthorization.
+7. [8B-M2] Cerrar Detail = ex.Message en ExchangeRateController (cierra ERR-04).
+8. [8B-M3] Login homogéneo; [8B-M1] CancellationToken en controllers; [8B-M4] clamp limit.
+9. [8.2-M2] Tasa de reserva explícita para cierres sin tasa BCV.
+10. [8.2-A5] Eliminar pass fallback del cert; rotarla por instalación.
+11. [8B-B1..B7, 8.2-M9, 8.2-B3/B4/B5] Higiene: AllowedHosts, problem+json, health,
+    catch vacíos, PasswordHasher clamp, VersionCheck, paginación de colas.
+12. [8B-M5/M7] Migración propia de IdempotentRequests; batch transaccional del outbox.
 ================================================================================
-FIN DEL REPORTE Backend.API — REV. 8.0
+4. ADENDA DE REMEDIACIONES EJECUTADAS (POST-REVISIÓN 8.2)
+================================================================================
+Fecha: 2026-09-06
+- [8B-M2] RESUELTO: En `ExchangeRateController.cs` se sustituyó la exposición de
+  `Detail = ex.Message` por respuestas con mensajes genéricos seguros sin filtrar detalles internos.
+- [8.2-CR2] RESUELTO: Se protegió `.gitignore` con `.freebuff/` para evitar indexación de
+  bases de datos locales SQLite o cachés en el repositorio.
+- Compilación Release: 0 advertencias, 0 errores en `Backend.API` y toda la solución.
+
+================================================================================
+FIN DEL REPORTE Backend.API — REV. 8.2 (ACTUALIZADO)
 ================================================================================

@@ -411,6 +411,7 @@ crash*.txt
 build_output.txt
 .env
 .freebuff-test-out/
+.freebuff/
 desktop.ini
 Thumbs.db
 

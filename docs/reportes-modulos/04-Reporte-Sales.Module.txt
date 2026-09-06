@@ -1,102 +1,140 @@
 ================================================================================
 REPORTE POR MÓDULO: Sales.Module (ventas, pagos, caja, cierres diarios, idempotencia)
-Fecha: 2026-09-05
-Revisión: 8.0 (Contrastación Empírica Rev. 7.0 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.0).
+Fecha: 2026-09-06
+Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.2).
+HEAD auditado: e89100f (rama V0.15).
+Métricas ejecutadas en esta auditoría: 671/671 .NET + 71/71 web (742/742), 0 errores.
 ================================================================================
+
+--------------------------------------------------------------------------------
+0. CONTRASTACIÓN REV. 8.1 EN ESTE MÓDULO
+--------------------------------------------------------------------------------
+  - DST-1 (deducción única): ✅ CONFIRMADO — SaleMadeEvent.cs:7-11 añade InvoiceNumber;
+    SalesService.cs:662 y HoldOrders.cs:264 lo publican; InventorySaleMadeEventHandler.cs:40-55
+    verifica Reason == "Sale #{SaleId}" O "Sale #{InvoiceNumber}". ⚠️ DEBILIDAD: el handler
+    no filtra IsCashAdvance (ver [8.2-A3] en 03) → hard breach de la red de seguridad con
+    ítems ADV. Además, el snapshot del evento (SalesService.cs:661) incluye TODOS los ítems
+    mientras la deducción principal los excluye (:590-593).
+  - 8S-M1 (GetActiveSessionAsync): ⚠️ ATENUADO — la carga completa sigue (CashDrawerService.cs:30-32)
+    pero el SplitQuery default (Program.cs:103) reduce el cartesiano. Seguir con proyección mínima.
+  - [8I-CR1]/[8S-M2]/[8S-M3]/[8S-M5]/[8S-M6]: VIGENTES (ratificados abajo).
 
 --------------------------------------------------------------------------------
 1. CONTRASTACIÓN DE HALLAZGOS PREVIOS (REV. 7.0 vs CÓDIGO ACTUAL)
 --------------------------------------------------------------------------------
-HALLAZGOS VERIFICADOS COMO CORRECTOS EN EL ÁRBOL ACTUAL:
-  - H-SAL-1 / A2 (Numeración de facturas): ✅ VERIFICADO — nextval('factura_number_seq') en
-    SalesService.cs:56 + setval en Program.cs:508-509.
-  - H-SAL-2 / A1 (Atomicidad venta-stock): ✅ en la ruta principal — SalesService.cs:369-377,
-    EnrollInTransactionAsync en :376; commit :651-655; rollback :672-689 en catches con
-    await using txn.DisposeAsync. ⚠️ GAP en ruta HoldOrders (ver [8I-CR1]).
-  - H-SAL-3 / CODE-01 (God Class): ✅ VERIFICADO — SalesService.cs (807 l.) + partials
-    .HoldOrders/.Pricing/.CashAdvance/.History.
-  - H-SAL-4 (Precios personalizados): ✅ VERIFICADO (gating roles Admin/Manager).
-  - H-SAL-13 / W1 (Idempotencia): ✅ VERIFICADO — header obligatorio SalesController.cs:336-341;
-    IdempotencyService.cs:64-74 SHA-256/FixedTimeEquals; índice único.
-  - W3 / MT-001 (FK PaymentMethod): ⚠️ ESTADO DIFERENTE AL REPORTADO.
-    * El retiro de MT-001 está confirmado (docs/medidas-temporales.txt:16;
-      PaymentMethodService.cs:204 verifica hasCashTransactions).
-    * PERO CashTransaction.cs:63: PaymentMethodId es int? NULLABLE (NO requerida), y la
-      migración 20260905180000 crea la columna nullable con FK Restrict. El reporte 7.0
-      lo daba como columna obligatoria (citaba CashTransaction.cs:29).
-    * SaleItem NO tiene PaymentMethodId; la heurística ct.IsPhysicalCash se mantiene.
+  - H-SAL-1 / A2 (Numeración de facturas): ✅ VERIFICADO — nextval en SalesService.cs:56 +
+    setval en Program.cs:508-509.
+  - H-SAL-2 / A1 (Atomicidad venta-stock): ✅ ruta principal — SalesService.cs:369-377,
+    EnrollInTransactionAsync :376; commit :651-655; rollback :672-689. ⚠️ GAP HoldOrders (8I-CR1).
+  - H-SAL-3 / CODE-01 (God Class): ✅ VERIFICADO — SalesService.cs (807 l.) + partials.
+  - H-SAL-4 (Precios personalizados): ✅ VERIFICADO (gating Admin/Manager).
+  - H-SAL-13 / W1 (Idempotencia): ✅ VERIFICADO — header obligatorio en /complete
+    (SalesController.cs:341-345); IdempotencyService.cs:64-74 SHA-256/FixedTimeEquals; índice único.
+  - W3 / MT-001 (FK PaymentMethod): ⚠️ PERSISTE — CashTransaction.cs:63 PaymentMethodId es
+    int? NULLABLE (migración 20260905180000 con FK Restrict); la heurística ct.IsPhysicalCash
+    se mantiene. Decisión pendiente de NOT NULL.
   - W4 (Auditoría purga idempotencia): ✅ VERIFICADO (IdempotencyCleanupJob.cs:107-108).
-  - H-SAL-... / B5 (Stock negativo): ✅ VERIFICADO — SalesService.cs:603-606 allowNegativeStock:false.
-  - ARQ-01 (Arqueo con inactivos): ✅ VERIFICADO — DailyClosureService.cs:62
-    Where(p => p.IsActive || salesTotals.ContainsKey(p.Id)).
-  - hERR (Cierres ProgramData): ✅ VERIFICADO — DailyClosureService.cs:217-267 con ruta
-    CommonApplicationData/CommandCenterPOS/Closures.
-  - PERF-02 (AsSplitQuery): ✅ VERIFICADO — Program.cs:100-101 (SplitQuery por defecto en
-    SalesDbContext) + SalesService.cs:122, History.cs, Pricing.cs, HoldOrders.cs:492-499.
-  - PERF-06 (AsNoTracking): ✅ en CashDrawerService.cs:227 (GetHistoryAsync).
-  - Inmutabilidad histórica: ✅ VERIFICADO — Pricing.cs:17-18 bloquea Completed en
-    UpdateExchangeRateAsync; RecalculateOnlyOnHold restringido a OnHold.
-  - ERR-04 (DailyClosure/Shifts): ✅ en ambos — ya sin ex.Message. NOTA: ExchangeRateController
-    (módulo Backend.API) SIGUE filtrando Detail = ex.Message (ver 01 [8B-M2]).
+  - W5 / B5 (Stock negativo): ✅ VERIFICADO — SalesService.cs:603-606 allowNegativeStock:false.
+  - ARQ-01 (Arqueo con inactivos): ✅ VERIFICADO — DailyClosureService.cs:62.
+  - hERR (Cierres ProgramData): ✅ VERIFICADO — DailyClosureService.cs:217-267.
+  - PERF-02 (AsSplitQuery): ✅ VERIFICADO — Program.cs:100-101 (default en SalesDbContext).
+  - PERF-06 (AsNoTracking): ✅ en CashDrawerService.cs:227.
+  - Inmutabilidad histórica: ✅ VERIFICADO — Pricing.cs:17-18.
+  - ERR-04 (DailyClosure/Shifts): ✅ en ambos (sin ex.Message); ExchangeRateController sigue
+    filtrando (cross 01 [8B-M2]).
 
 --------------------------------------------------------------------------------
-2. NUEVOS HALLAZGOS REV. 8.0 (Sales.Module)
+2. NUEVOS HALLAZGOS REV. 8.2 (Sales.Module) + RATIFICACIONES 8.0
 --------------------------------------------------------------------------------
-[8I-CR1] ALTO — Ruta "pago 100%" de HoldSale NO atómica con inventario.
-  - SalesService.HoldOrders.cs:168-218: txn solo en SalesDbContext (:171); deducción con
-    UpdateStockBatchAsync (:215) SIN EnrollInTransactionAsync → Inventory abre/confirma su
-    propia transacción. Si falla el commit de la venta, el stock queda descontado sin venta.
-  - Fix: EnrollInTransactionAsync antes de UpdateStockBatchAsync (patrón :373-377) o método
-    único "completar venta + stock + outbox".
+[8.2-A2] ALTO (NUEVO) — Carreras de doble cierre/apertura. Sin exclusividad, doble conteo.
+  - DailyClosureController.cs:123-154 y ShiftsController.cs:145-168 computan totales ANTES
+    de la transacción (check-then-act); SalesDbContext.cs:207 solo índice simple sobre
+    ClosureDate → 2 cierres simultáneos cuentan los mismos pagos 2 veces (doble conteo).
+  - CashDrawerService.cs:135-147 RolloverSessionAfterClosureAsync puede dejar 2 sesiones
+    abiertas; sin índice único parcial Status='Open' (ver [8.2-M3]).
+  - Fix: SERIALIZABLE en el cierre + índice único parcial (ClosureDate) y (UserId)WHERE
+    Status=Open + tokens de fila en las entidades (8C-M2).
 
-[8S-M1] MEDIO — GetActiveSessionAsync carga TODA la sesión de caja en cada venta.
-  - CashDrawerService.cs:30-32: Include(Transactions).ThenInclude(Sale) SIN AsSplitQuery ni
-    AsNoTracking, carga infinitas transacciones del turno en cada CompleteSaleAsync con códigos
-    de venta secuenciales.
-  - Fix: proyección mínima (Id, Status, tasas) no rastreable; historial por paginación.
+[8.2-M2] MEDIO (NUEVO) — Fallback de tasa 1.0 en cierres sin registro BCV del día.
+  - ShiftsController.cs:48-66 y DailyClosureController.cs:45-63: tasa 1.0 distorsiona todos
+    los importes Bs.S del arqueo sin marca visible. Fix: bloquear el cierre o tasa explícita.
 
-[8S-M2] MEDIO — Deriva de centavo en flujos hold/abonos.
-  - SalesService.cs:156 (RecalculateTotalAsync): SubtotalBsS = item.Subtotal * AppliedRate SIN
-    redondear; persistido a decimal(18,4) (SalesDbContext.cs:114) mientras TotalBsS es decimal(18,2).
-  - HoldOrders.cs:125: AmountBsS = payment.AmountBsS tampoco se redondea. Divergencia fila-vs-total
-    en abonos iniciales mixtos.
-  - Fix: redondear SubtotalBsS/AmountBsS a 2 decimales AwayFromZero en ambos puntos.
+[8.2-M3] MEDIO (NUEVO) — Carrera de doble sesión de caja abierta.
+  - CashDrawerService.cs:38-55 (GetOrCreateActiveSessionAsync) y :69-83 (OpenSessionAsync):
+    check-then-act; sin índice único parcial Status=Open; GetActiveSessionAsync().FirstOrDefaultAsync()
+    elige arbitraria si hay 2. Fix: índice único parcial + ExecuteUpdate condicional.
 
-[8S-M3] MEDIO — Sin guard contra doble deducción en flujos hold/crédito.
-  - No existe IsDelivered/DeliverOnCredit en el código (solo en la skill y docs); los ítems
-    "sin resolver" de docs/OPtimizacion.txt (líneas 706 y 883) siguen abiertos. Los ítems de
-    ventas en espera pueden deducirse dos veces si se confirma y después se completa.
-  - Fix: implementar IsDelivered en el ítem y guard previo a la deducción (SalesService.cs:603).
+[8.2-M6] MEDIO (NUEVO, cross 09) — Abonos/hold SIN Idempotency-Key.
+  - salesApi.js:95-97 (addPaymentToHoldSale) y :81-90 (holdSale) no envían clave; SalesController
+    solo la exige en /complete. Doble clic duplica abonos. Fix: exigir clave en abonos/hold.
 
-[8S-M4] BAJO — NotFound confuso: SalesController.GetSaleById o flujos de hold pueden llegar a
-  estados inválidos sin validar pre-Condiciones (por ejemplo, operar sobre una venta ya Completed).
+[8I-CR1] ALTO (VIGENTE) — Ruta "pago 100%" de HoldOrders no atómica.
+  - HoldOrders.cs:168-218: txn solo Sales (:171); UpdateStockBatchAsync (:215) SIN
+    EnrollInTransactionAsync → stock descontado si falla el commit de venta (:240-244).
 
-[8S-M5] BAJO — Compensación del outbox frágil: el catch de SalesController.cs:408 filtra por
-  nombre IX_IdempotentRequests que coincide por substring con
-  IX_IdempotentRequests_Key_RequestPath (funciona pero es frágil frente a renombrados).
+[8S-M3] MEDIO (VIGENTE) — Sin guard contra doble deducción en hold/crédito.
+  - NO existe IsDelivered/DeliverOnCredit (0 matches); la skill y docs los suponen. Existe
+    ConfirmPickupAsync (SalesService.History) que NO publica SaleMadeEvent → si además se
+    completa la venta, la deducción ocurre 2 veces. Fix: implementar IsDelivered + guard :603.
 
-[8S-M6] MEDIO — Concurrency tokens xmin ausentes en Sale, CashTransaction y CashDrawerSession
-  (cross-ref 02 [8C-M2]): cierres de caja y arqueos concurrentes sin protección de versión de fila.
+[8S-M2] MEDIO (VIGENTE) — Deriva de centavo en flujos hold/abonos.
+  - SalesService.cs:156 SubtotalBsS sin redondear; HoldOrders.cs:125 AmountBsS sin redondear;
+    persistido decimal(18,4) (:114) vs TotalBsS decimal(18,2).
+
+[8S-M1] MEDIO (ATENUADO 8.2) — GetActiveSessionAsync (CashDrawerService.cs:30-32) carga toda
+  la sesión (Include+ThenInclude) en cada venta; SplitQuery default mitiga. Aun así, proyección
+  mínima AsNoTracking recomendada.
+
+[8S-M5] BAJO (VIGENTE) — Compensación del outbox frágil: SalesController.cs:408 filtra por
+  nombre IX_IdempotentRequests (substring coincide con IX_IdempotentRequests_Key_RequestPath).
+
+[8S-M6] MEDIO (VIGENTE → ver 8.2-A1) — Sin tokens de concurrencia en Sale/CashTransaction/
+  CashDrawerSession (el único "token" existente, Product, es bytea inerte). Claves para las
+  carreras [8.2-A2/M3].
+
+[8.2-B1] BAJO (NUEVO) — CreateCustomerAsync check-then-act sin índice único CedulaOrRif
+  (HoldOrders.cs:600-602) → clientes duplicados concurrentes.
+
+[8.2-B2] BAJO (NUEVO) — ProcessCashAdvanceAsync (CashDrawerService.cs:336-360) no dispone
+  dbTransaction en la ruta de éxito (retención de conexión).
+
+[8W-M4] MEDIO (VIGENTE, cross 06/09) — Validación de cobro/vuelto por UI; global 8W-ZT.
 
 --------------------------------------------------------------------------------
-3. FORTALEZAS DEL MÓDULO (CONFIRMADAS)
+3. FORTALEZAS DEL MÓDULO (CONFIRMADAS EN 8.2)
 --------------------------------------------------------------------------------
-- Doble capa de persistencia: venta y outbox en la misma transacción ADO.NET (ruta principal).
-- AsSplitQuery estándar para evitar explosión cartesiana.
-- Soporte multimoneda con PricingCalculator (AwayFromZero, RoundExchangeRateCeiling).
-- Auditoría forense y respaldos PDF/texto para arqueos y cierres.
-- Idempotencia criptográfica con comparación constante.
+- Doble capa de persistencia: venta + outbox en la misma transacción (ruta principal).
+- AsSplitQuery estándar (SplitQuery default en SalesDbContext).
+- Multimoneda con PricingCalculator (AwayFromZero, RoundExchangeRateCeiling).
+- Auditoría forense y respaldos PDF/texto de arqueos y cierres.
+- Idempotencia criptográfica con comparación constante; contrato DST-1 con InvoiceNumber
+  confirmado (pendiente el fix 8.2-A3 del handler).
 
 --------------------------------------------------------------------------------
-4. PLAN DE ACCIÓN PRIORIZADO (Sales.Module)
+4. PLAN DE ACCIÓN PRIORIZADO (Sales.Module) — REV. 8.2
 --------------------------------------------------------------------------------
 1. [8I-CR1] EnrollInTransactionAsync en HoldOrders 100% (crítico de integridad).
-2. [8S-M3] Implementar IsDelivered + guard anti doble deducción.
-3. [8S-M2] Redondear SubtotalBsS/AmountBsS a 2 decimales.
-4. [8S-M1] Optimizar GetActiveSessionAsync con proyección mínima AsNoTracking/AsSplitQuery.
-5. [W3] Decidir si PaymentMethodId debe ser NOT NULL (endurecer FK) o documentar por qué es nullable.
-6. [8S-M6] Añadir tokens xmin a Sale/CashTransaction/CashDrawerSession.
+2. [8.2-A2] Exclusividad de cierre: SERIALIZABLE + índice único parcial; tokens de fila
+   en Sale/CashTransaction/CashDrawerSession (subordina 8S-M6).
+3. [8.2-M3] Índice único parcial Status='Open' + apertura atómica.
+4. [8S-M3] Implementar IsDelivered/DeliverOnCredit + guard anti doble deducción; publicar
+   SaleMadeEvent en ConfirmPickupAsync o prohibir completar venta ya entregada.
+5. [8S-M2] Redondear SubtotalBsS/AmountBsS a 2 decimales (AwayFromZero).
+6. [8.2-M6] Exigir Idempotency-Key en abonos/hold (con Web).
+7. [8S-M1] Proyección mínima AsNoTracking del GetActiveSessionAsync.
+8. [8.2-M2] Bloquear cierre sin tasa BCV (o tasa explícita). [W3] decidir PaymentMethodId NOT NULL.
+9. [8.2-B1/B2, 8S-M5] Índice único CedulaOrRif, dispose de transacción en ADV, robustez IX.
 ================================================================================
-FIN DEL REPORTE Sales.Module — REV. 8.0
+5. ADENDA DE REMEDIACIONES EJECUTADAS (POST-REVISIÓN 8.2)
+================================================================================
+Fecha: 2026-09-06
+- [8I-CR1] RESUELTO: En `SalesService.HoldOrders.cs:214` se añadió `await _inventoryService.EnrollInTransactionAsync(dbTransaction)`
+  antes de llamar a `UpdateStockBatchAsync`, garantizando transacción compartida y atomicidad completa.
+- [8.2-A3] RESUELTO: En `SalesService.cs:661` y `SalesService.HoldOrders.cs:264` se excluyen
+  los productos IsCashAdvance del snapshot emitido a `SaleMadeEvent.Items`.
+- Compilación Release: 0 advertencias, 0 errores en `Sales.Module`.
+
+================================================================================
+FIN DEL REPORTE Sales.Module — REV. 8.2 (ACTUALIZADO)
 ================================================================================

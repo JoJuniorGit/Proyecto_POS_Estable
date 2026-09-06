@@ -228,13 +228,28 @@ public partial class InventoryService
             }
         }
 
-        // Check availability
-        if ((targetProduct.StockQuantity - targetProduct.ReservedQuantity) < effectiveQuantity)
+        // Check availability and reserve atomically in relational database
+        if (_context.Database.IsRelational())
         {
-            throw new InvalidOperationException("Not enough stock available.");
-        }
+            int updated = await _context.Products
+                .Where(p => p.Id == targetProduct.Id && (p.StockQuantity - p.ReservedQuantity) >= effectiveQuantity)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity + effectiveQuantity)
+                    .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
 
-        targetProduct.ReservedQuantity += effectiveQuantity;
+            if (updated == 0)
+            {
+                throw new InvalidOperationException("Not enough stock available.");
+            }
+        }
+        else
+        {
+            if ((targetProduct.StockQuantity - targetProduct.ReservedQuantity) < effectiveQuantity)
+            {
+                throw new InvalidOperationException("Not enough stock available.");
+            }
+            targetProduct.ReservedQuantity += effectiveQuantity;
+        }
 
         var reservation = new StockReservation
         {
@@ -254,6 +269,12 @@ public partial class InventoryService
         }
         catch (DbUpdateConcurrencyException)
         {
+            if (_context.Database.IsRelational())
+            {
+                await _context.Products
+                    .Where(p => p.Id == targetProduct.Id)
+                    .ExecuteUpdateAsync(s => s.SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity - effectiveQuantity));
+            }
             throw new InvalidOperationException("Stock changed concurrently. Please try again.");
         }
 
@@ -302,10 +323,23 @@ public partial class InventoryService
 
         if (reservation == null) return; // Already gone
 
-        reservation.Product.ReservedQuantity -= reservation.Quantity;
+        if (_context.Database.IsRelational())
+        {
+            await _context.Products
+                .Where(p => p.Id == reservation.ProductId)
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity > reservation.Quantity ? p.ReservedQuantity - reservation.Quantity : 0));
+        }
+        else
+        {
+            reservation.Product.ReservedQuantity = Math.Max(0, reservation.Product.ReservedQuantity - reservation.Quantity);
+        }
+
         _context.StockReservations.Remove(reservation);
 
         await _context.SaveChangesAsync();
-        InvalidateProductSkuCache(reservation.Product.SKU);
+        if (reservation.Product != null)
+        {
+            InvalidateProductSkuCache(reservation.Product.SKU);
+        }
     }
 }

@@ -1,65 +1,93 @@
 ================================================================================
 REPORTE POR MÓDULO: CommandCenter.Tests (Suite Integral de Pruebas Automatizadas)
-Fecha: 2026-09-05
-Revisión: 8.0 (Contrastación Empírica Rev. 7.0 + Reejecución Completa de la Suite)
-Cruce con docs/reporte.txt (revisión global 8.0).
+Fecha: 2026-09-06
+Revisión: 8.2 (Contrastación Empírica Rev. 8.1 + Reejecución Completa de la Suite)
+Cruce con docs/reporte.txt (revisión global 8.2).
+HEAD auditado: e89100f (rama V0.15).
 ================================================================================
 
 --------------------------------------------------------------------------------
-1. REV. 8.0 — RE-EJECUCIÓN EMPÍRICA DE LA SUITE (HEAD c337462)
+1. REV. 8.2 — RE-EJECUCIÓN EMPÍRICA DE LA SUITE (HEAD e89100f)
 --------------------------------------------------------------------------------
 Ejecución de referencia contra el árbol actual (esta auditoría):
   - dotnet test (solución .NET 10 / xUnit + Moq / Testcontainers async):
-    670 / 670 superadas, 0 fallidas, 0 omitidas (≈ 11 s local).
-  - npm test (Web.Frontend, Vitest): 70 / 70 superadas (≈ 550 ms).
-  - Total activo: 740 / 740 (100%) sin fallos ni omisiones en ambas suites.
-  - Compilación de toda la solución: 0 errores, 0 advertencias.
-  - Las métricas del informe Rev. 7.0 (670 / 70 / 740) quedan CONFIRMADAS.
+    671 / 671 superadas, 0 fallidas, 0 omitidas (≈ 11 s local).
+  - npm test (Web.Frontend, Vitest): 71 / 71 superadas (≈ 875 ms).
+  - Total activo: 742 / 742 (100%) sin fallos ni omisiones en ambas suites.
+  - Compilación de toda la solución: 0 errores (dotnet test recompila toda la solución).
+  - Linter web (oxlint): 0 errores / 0 advertencias sobre 91 archivos.
+  - Las métricas del informe Rev. 8.1 (671 .NET + 71 web / 742) quedan CONFIRMADAS.
 
-Suites específicas añadidas en Rev. 7.0 verificadas:
-  - ForwardedHeadersIntegrationTests (7 pruebas): proxy loopback, KnownProxies/KnownIPNetworks,
-    rechazo de suplantación, protección de PairingController — ✅ pasan.
-  - ProductImportExportTests + MainViewModelDisposeTests — ✅ pasan.
-  - api.test.js (RFC 7807) — ✅ pasan (5 pruebas).
-
---------------------------------------------------------------------------------
-2. GAPS DE COBERTURA DETECTADOS EN REV. 8.0 (sugerencias de prueba)
---------------------------------------------------------------------------------
-La suite es extensa pero la auditoría Rev. 8.0 identificó rutas SIN cobertura que explican
-por qué varios defectos llegaron a producción. Prioridad de añadir:
-
-1. [8B-CR1] Mass assignment: test de integración que POST /products con RowVersion y
-   ProfitMargin/StockQuantity y aplique → debe poder fallar (la solución DTO/mapeo).
-2. [8I-CR1] Atomicidad HoldOrders-100%: test de integración con fallo del commit de venta
-   → el stock NO debe quedar descontado (regresión del fix).
-3. [8I-CR2] Expiración de reservas: job/worker que cancele reservas vencidas (hoy NO existe).
-4. [8I-M1] Reservas concurrentes: 2 confirmaciones simultáneas → exactamente 1 exitosa.
-5. [8D-CR1] ExchangeRateService sin callback => true: test que provea un cert no válido y
-   verifique que la conexión falla (blueprint TLS).
-6. [8W-CR2] Test de regresión de sesión: garantizar que el SPA NO escriba el token a
-   localStorage (mover a cookie).
-7. [8L-CR3] DeliveryServiceTests: sustituir el mock/handdler por persistencia real
-   (Testcontainers) y verificar que SaleDispatchedEvent se emite en el flujo de venta real.
-8. Pruebas de la ruta completa ShiftsController.GetCurrentReport (hoy no cubre el dictamen
-   de Cierre inventado).
+Suites específicas verificadas en la reejecución:
+  - ForwardedHeadersIntegrationTests (7 pruebas): proxy loopback, KnownProxies/
+    KnownIPNetworks, rechazo de suplantación, protección de PairingController — ✅ pasan.
+  - ProductImportExportTests, MainViewModelDisposeTests — ✅ pasan.
+  - Aprendizaje 8.1: la obtención de tasa CDN (prueba del plazo de caché) usa token de único
+    uso en el servicio (avoid retries across different Token instances) — ✅ pasan.
 
 --------------------------------------------------------------------------------
-3. FORTALEZAS DE LA SUITE (CONFIRMADAS)
+2. LIMITACIÓN CRÍTICA DE COBERTURA DESCUBIERTA EN REV. 8.2
 --------------------------------------------------------------------------------
-- Integración real PostgreSQL mediante Testcontainers y Test Data Builders (SaleBuilder,
-  ProductBuilder).
-- Rigor en integridad financiera: dualidad USD/Bs.S BCV, cambio mixto, redondeos,
-  idempotencia criptográfica.
+La suite 742/742 NO cubre el montaje de componentes de cobro del SPA: el defecto
+[8.2-CR1] (CheckoutModal.jsx usa useRef sin importarlo → ReferenceError) pasó la CI web
+completa (71/71 + oxlint 0/0 + build OK). Mientras no exista una prueba que monte
+CheckoutModal, la "certificación verde" del front es INSUFICIENTE.
+
+ADDENDUM oxlint: plugins["react"] sin regla no-undef eficaz → referencias libres no se
+detectan. La CI debe añadir ESLint con no-undef/no-undef-react y react-hooks/exhaustive-deps.
+
+--------------------------------------------------------------------------------
+3. GAPS DE COBERTURA DETECTADOS EN REV. 8.2 (sugerencias de prueba priorizadas)
+--------------------------------------------------------------------------------
+1. [8.2-CR1] Smoke test de montaje del CheckoutModal (jsdom): DEBE lanzar error hoy y pasar
+   tras el fix useRef; añadir también PendingOrdersPage (usa CheckoutModal :469).
+2. [8.2-A1] Test de integración: verificar que con CLR uint + IsRowVersion (xmin) el stock se
+   vuelve a protegerse (hoy el token bytea es inerte y el catch DbUpdateConcurrencyException
+   es código muerto). Hacer fallar 2 reservas concurrentes y exigir exactamente 1 éxito.
+3. [8.2-A3] Test del handler de red con ítem IsCashAdvance: hoy debe ... lanzar y hacer
+   LogCritical; tras el fix no debe invocar UpdateStockBatchAsync para ítems ADV.
+4. [8.2-A2/M3] Test de integración: 2 requests de cierre/apertura simultáneos → solo 1
+   registro/1 sesión abierta (depende del índice único parcial o SERIALIZABLE).
+5. [8.2-M6] Test de integración de /sales/hold y addPaymentToHoldSale exigiendo
+   Idempotency-Key (hoy solo /complete la exige).
+6. [8B-CR1] POST /products con RowVersion/ProfitMargin/StockQuantity debe fallar (DTOs).
+7. [8I-CR1] Fallo del commit de venta en ruta hold 100% → el stock NO debe quedar descontado.
+8. [8I-CR2] ReservationExpiryJob: reserva vencida se libera atómicamente (job NO existe hoy).
+9. [8D-CR1] Test con cert inválido: la conexión DEBE fallar tras eliminar callback => true.
+10. [8W-CR2 residual] Test que garantice que el SPA NO escribe token en localStorage y que
+    limpia el código muerto Bearer de api.js.
+11. [8L-CR3] DeliveryServiceTests con persistencia real (Testcontainers) + verificación de que
+    SaleDispatchedEvent se emite desde el flujo de venta real.
+12. Ruta completa ShiftsController.GetCurrentReport (hoy no cubre los dictámenes fabricados).
+
+--------------------------------------------------------------------------------
+4. FORTALEZAS DE LA SUITE (CONFIRMADAS EN 8.2)
+--------------------------------------------------------------------------------
+- Integración real PostgreSQL (Testcontainers) + Test Data Builders (SaleBuilder, ProductBuilder).
+- Rigor financiero: dualidad USD/Bs.S BCV, cambio mixto, redondeos, idempotencia criptográfica.
 - Builders de procesos async (ViewModels) sin bloqueo de hilos mockeados.
-- Ejecución integral < 15 s: apta para CI/CD con Testcontainers por PR.
+- Ejecución integral < 15 s, apta para CI/CD con Testcontainers por PR.
 
 --------------------------------------------------------------------------------
-4. RECOMENDACIONES FUTURAS
+5. RECOMENDACIONES FUTURAS (REV. 8.2)
 --------------------------------------------------------------------------------
-1. Configurar GitHub Actions / GitLab CI con Testcontainers en cada Pull Request.
-2. Añadir las 8 suites propuestas arriba (caminos críticos 8.0).
-3. Añadir cobertura de comportamiento cero-trust del Web checkout (preview preview / cambio).
-4. Añadir smoke de actualización del UpdaterService (fail-closed) sin tocar binarios reales.
+1. Configurar GitHub Actions / GitLab CI con Testcontainers + jobs web (Vitest + build) en
+   cada PR; AÑADIR la prueba de montaje del CheckoutModal (cierra el hueco 8.2-CR1).
+2. Sustituir oxlint puro por ESLint con no-undef react + react-hooks; mantener oxlint rápido
+   como capa adicional.
+3. Implementar las 12 suites propuestas arriba (caminos críticos 8.2).
+4. Cobertura de comportamiento zero-trust del checkout (preview/cantidad de moneda).
+5. Smoke de actualización del UpdaterService (fail-closed) sin tocar binarios reales.
 ================================================================================
-FIN DEL REPORTE CommandCenter.Tests — REV. 8.0
+6. ADENDA DE REMEDIACIONES EJECUTADAS (POST-REVISIÓN 8.2)
+================================================================================
+Fecha: 2026-09-06
+- Incorporado `CheckoutModal.test.js` en Vitest para validar el montaje y smoke test del componente de cobro web (cierra el gap [8.2-CR1]).
+- Pruebas .NET: 671 / 671 superadas (0 fallos, 0 omitidos).
+- Pruebas Web: 73 / 73 superadas (0 fallos).
+- Total Suite Automatizada: 744 / 744 pruebas pasando sin regresiones.
+- Compilación Release: 0 advertencias, 0 errores en `CommandCenter.slnx` (`TreatWarningsAsErrors=true`).
+
+================================================================================
+FIN DEL REPORTE CommandCenter.Tests — REV. 8.2 (ACTUALIZADO)
 ================================================================================

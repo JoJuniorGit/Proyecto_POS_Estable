@@ -169,6 +169,11 @@ public partial class SalesService
             if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
             {
                 txn = await _context.Database.BeginTransactionAsync();
+                if (txn != null && _inventoryService != null)
+                {
+                    var rawDbTx = txn.GetDbTransaction();
+                    await _inventoryService.EnrollInTransactionAsync(rawDbTx);
+                }
             }
             try
             {

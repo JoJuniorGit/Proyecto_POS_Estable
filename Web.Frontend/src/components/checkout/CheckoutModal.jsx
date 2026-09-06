@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { useRef, useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import Modal from '../ui/Modal';
 import ConfirmModal from '../ui/ConfirmModal';
 import PaymentForm from './PaymentForm';
@@ -332,6 +332,7 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       onConfirm={() => {
         setShowDiscardConfirm(false);
         setPayments([]);
+        checkoutKeyRef.current = null;
         onClose?.();
       }}
       title="¿Cancelar cobro en curso?"

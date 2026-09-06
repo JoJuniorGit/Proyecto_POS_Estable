@@ -1,96 +1,119 @@
 ================================================================================
 REPORTE POR MÓDULO: Instalador y Scripts (Despliegue, Empaque y Operación)
-Fecha: 2026-09-05
-Revisión: 8.0 (Contrastación Empírica Rev. 7.1 vs Código Actual + Nuevos Hallazgos)
+Fecha: 2026-09-06
+Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
 Cubre: installer/setup.iss, installer/Configure-PosService.ps1, scripts/*.ps1, bat
-Cruce con docs/reporte.txt (revisión global 8.0).
+Cruce con docs/reporte.txt (revisión global 8.2).
+HEAD auditado: e89100f (rama V0.15).
 ================================================================================
+
+--------------------------------------------------------------------------------
+0. CONTRASTACIÓN REV. 8.1 EN ESTE MÓDULO + NUEVOS HALLAZGOS 8.2
+--------------------------------------------------------------------------------
+La Rev. 8.1 no remedió el instalador. La auditoría 8.2 RATIFICA los hallazgos 8.0 y añade:
+  - [8.2-CR2] NUEVO CRÍTICO (C3 ampliado): además de appsettings.Development.json:10,13,
+    GIT TRACKEA .freebuff-test-out/appsettings.json:10,17 (Password=123456,
+    AdminSeedPassword=Admin123!) junto a 278 archivos binarios (creados por cf50ef6 ANTES del
+    ignore .gitignore:413) y .freebuff/desktop-v2.db. → git rm --cached + filter-repo + rotación.
+  - [8.2-A5] ALTO (NUEVO): setup.iss:307 fuerza HTTPS_CERT_PASSWORD=PosHttpsDev2026! en
+    AppEnvironmentExtra del servicio (misma contraseña embebida en Program.cs:896-898 y
+    create-https-cert.ps1:22). El pfx es predecible → suplantación HTTPS trivial.
+  - [8.2-A6] ALTO (NUEVO): scripts/actualizar_servicio_y_sistema.bat:25 TARGET_DIR hardcodeado
+    "C:\Program Files (x86)\Sistema POS Administrador" mientras Inno usa {autopf} (Program
+    Files, 64-bit) → la actualización falla en silencio en instalaciones correctas; :27
+    excluye solo Production/certs/logs (Development.json viaja a producción); :21-22
+    taskkill /F y :19/:34 sc stop/start sin verificar salidas.
+  - [8.2-A4] ALTO (NUEVO, cross 08): setup.iss:35 copia UpdaterService a {app} pero NUNCA lo
+    registra/invoca → módulo de actualización empacado e inerte.
 
 --------------------------------------------------------------------------------
 1. REVISIÓN DE LA CERTIFICACIÓN REV. 7.1 ("100% HALLAZGOS SUBSANADOS")
 --------------------------------------------------------------------------------
-La Rev. 7.1 declaraba C1/INS-1, UPD-2/INS, INS-10, INS-12 cerrados y dejaba C2,C1 residual.
-La auditoría Rev. 8.0 sobre HEAD c337462 confirma la estructura de instalación funcional
-pero corrige la "certificación" con los matices siguientes:
-
 CONFIRMADO:
-  - INS-10 (compilación limpia de setup.iss): ✅ VERIFICADO (artifact de Inno Setup presente).
-  - INS-12 (rechazo de clave histórica ddf95c83...): ✅ VERIFICADO — detección y rechazo en
-    arranque (Program.cs:144-158).
-  - C1/INS-1: ✅ PARCIALMENTE — genera clave CSPRNG 512 bits en Reg (HKLM Software\POS,
-    ACLs SYSTEM/Admins). RESIDUAL (agravado): la clave se transfiere en texto claro a
-    AppEnvironmentExtra de NSSM (:209-211) y se documenta en docs/JWT_Key.md.
+  - INS-10 (compilación limpia de setup.iss): ✅ VERIFICADO.
+  - INS-12 (rechazo de clave histórica ddf95c83...): ✅ VERIFICADO — Program.cs:143-161.
+  - C1/INS-1: ✅ PARCIALMENTE — clave CSPRNG 512 bits en Reg (HKLM Software\POS, ACLs
+    SYSTEM/Admins). RESIDUAL (agravado): la clave se transfiere en texto claro a
+    AppEnvironmentExtra de NSSM (:209-211) y se documenta en docs/JWT_Key.md (trackeado).
 
 CAMBIOS DE ESTADO:
   - C2/INS-3: ❌ REABIERTO COMO ALTO — el instalador expone SIEMPRE 5000-HTTP y solo levanta
-    5001-HTTPS si se genera pos-https.pfx manual (load http). Firewall abre ambos puertos
-    (setup.iss:280-281 y ps1:109-118) — inconsistencias: setup.iss crea solo 5000,
-    ps1:109 crea 5001; NAT. Se combina con la superfície del hub sin auth (Prog 374) y la
-    cookie/SPA 8W-CR2 (cross 01/09).
+    5001-HTTPS si se genera pos-https.pfx manual (http). Firewall abre ambos (setup.iss:280-281
+    y ps1:109-118) con inconsistencias (setup.iss crea solo 5000, ps1:109 crea 5001). Se
+    combina con la cookie web no-Secure en LAN (ver 01 [C2]) y el hub sin auth.
   - UPD-2/INS: ✅ VERIFICADO (jerarquía NSSM→sc.exe).
-  - Residual 7.1 (clave en NSSM) ⇉ VIGENTE y además: el fallback sc.exe de
-    Configure-PosService.ps1:56-75 genera la clave en appsettings.json de TARGET en
-    TEXT PLANO si nssm no existe (:62-70).
+  - Residual 7.1 (clave en NSSM) ⇉ VIGENTE; el fallback sc.exe de Configure-PosService.ps1:56-75
+    genera la clave en appsettings.json de TARGET en TEXTO PLANO si nssm no existe (:62-70).
 
 --------------------------------------------------------------------------------
-2. NUEVOS HALLAZGOS REV. 8.0 (Instalador y Scripts)
+2. HALLAZGOS VIGENTES REV. 8.2 (Instalador y Scripts)
 --------------------------------------------------------------------------------
-[8U-N1] ALTO — Secretos en texto claro versionados en el repo:
-  - appsettings.Development.json:10,:13 (Password=123456, AdminSeedPassword=Admin123!)
-    y .env:1 (DB_PASSWORD=123456) están COMMITEADOS en git HISTORIA.
-  - docs/JWT_Key.md documenta la clave JWT real.
-  - La contraseña del certificado pos-https.pfx viaja embebida en Program.cs:900.
-  - Fix: rotar TODOS estos secretos AL MOMENTO, borrar de historial, cargar desde
-    variables de entorno/DPAPI y eliminar docs/JWT_Key.md.
+[8.2-CR2] CRÍTICO — Secretos en texto claro versionados (sección 0) — URGENTE ABSOLUTO.
 
-[8U-N2] ALTO (persistente) — Canal de actualización HTTP SIN firma digital:
-  - setup.iss:165 usa http:// del servidor para el UpdaterService; no hay firma X.509 de
-    paquetes ni pinning (cross 08 [8U-N2]). Ningún binario instalado se autentica.
-  - Fix: https:// + fingerprint y firma de los zips con clave privada del distribuidor.
+[8.2-A5] ALTO — Contraseña del certificado HTTPS embebida y FIJA:
+  setup.iss:307 + create-https-cert.ps1:22 + Program.cs:896-898 ("PosHttpsDev2026!").
+  Fix: generar contraseña aleatoria por instalación; DPAPI/USC; eliminar el fallback.
 
-[8U-M2] MEDIO — Secretos por línea de comandos:
-  - setup.iss:374-379 y (cuando se re-llama) exponent pasan JWT/DB creds como argumentos
-    de proceso de cfg (visibles con procesadores/WSH); :209-211 vía AppEnvironmentExtra.
-  - Fix: pasar por archivos EFS/DPAPI con ACL restrictiva, no por CLI.
+[8.2-A6] ALTO — script/actualizar... bat con ruta errónea, deployment de desarrollo y kill sin
+  esperar (sección 0). Fix: resolver ruta real del servicio; excluir Development.json;
+  Stop-Service coordinado + ExitCode verificados.
 
-[8U-M3] MEDIO — scripts/actualizar_servicio_y_sistema.bat:27 despliega appsettings de
-  Development (config de desarrollo) hacia servicios de producción; :21-22 hace
-  taskkill /F del proceso blindado sin esperar (puede dejar el Cierre en estado intermedio).
-  - Fix: bat de producción con configuración producción y parada coordinada (Stop-Service).
+[8.2-A4] ALTO — UpdaterService empacado e inerte (setup.iss:35) — ver 08 [8.2-A4].
 
-[8U-M4] MEDIO — Debilidades de hardening en setup.iss:
-  - Const Password= pos-https.pfx de 4 caracteres (:206-212 — imposible de rotar con fuerza bruta trivial).
-  - users [installer] agrega al grupo local "users-modify" a cierre/barra de archivos
-    padres (:48 permite borrar/reemplazar binarios).
-  - El firewall se configura de forma idempotente pero oculta en caso de coexistir reglas
-    sueltas contradictorias o si el usuario elige "sin firewall".
-  - Uso de ignoreversion (:15) para reemplazar binarios sin control de versiones.
-  - nssm "binary manutention" sin hasheo/comprobación de integridad (LINQ).
+[8U-N1] ALTO (VIGENTE, ahora subsumido/ampliado por 8.2-CR2) — Secretos dev versionados:
+  appsettings.Development.json:10,:13, docs/JWT_Key.md, pfx password embebida. Del .env:1
+  reportado en 8.0 YA NO queda rastro en el índice (eliminado entre c337462 y e89100f).
 
-[8U-B1] BAJO — Servicio instalado como NSSM corriendo como LocalSystem; el acceso a
-  HKLM\Software\POS queda solo con ACL restrictivas, pero el proceso tiene privilegios
-  Machine-wide; ampliar a Virtual Account (SID local servicio) en la ACL y quitar del
-  grupo "users" los directorios del programa.
+[8U-N2] ALTO (VIGENTE) — Canal de actualización HTTP sin firma: setup.iss:165 http://; sin
+  firma X.509 ni pinning (cross 08 [8U-N2]).
+
+[8U-M2] MEDIO (VIGENTE) — Secretos por línea de comandos: setup.iss:374-379 (y re-llamado)
+  pasan JWT/DB creds como argumentos de proceso de cfg (visibles con administrador de tareas);
+  :209-211 vía AppEnvironmentExtra. Fix: archivos EFS/DPAPI con ACL restrictiva.
+
+[8U-M3] MEDIO (VIGENTE, detallado en 8.2-A6) — .bat despliega appsettings de Development;
+  taskkill /F sin esperar.
+
+[8U-M4] MEDIO (VIGENTE) — Hardening de setup.iss:
+  - Const Password= pos-https.pfx de 4 caracteres (:206-212) — fuerza bruta trivial.
+  - users "users-modify" en directorios padres (:48) permite borrar/reemplazar binarios.
+  - Firewall idempotente pero opaco ante reglas huérfanas o elección "sin firewall".
+  - ignoreversion (:15) reemplaza binarios sin control de versiones.
+  - "binary manutention" de NSSM sin hasheo/comprobación de integridad.
+
+[8U-B1] BAJO (VIGENTE) — Servicio como NSSM en LocalSystem (Configure-PosService.ps1:127,138):
+  privilegios Machine-wide; migrar a Virtual Account (SID local servicio) y ACL mínimas.
+
+[8.2-B8] BAJO (NUEVO) — build-release.ps1:5 ($ErrorActionPreference=Stop sin capturar exit
+  codes nativos); setup.iss:373 usa -ExecutionPolicy Bypass sobre script de {app}\tools.
 
 --------------------------------------------------------------------------------
-3. FORTALEZAS DEL MÓDULO (CONFIRMADAS)
+3. FORTALEZAS DEL MÓDULO (CONFIRMADAS EN 8.2)
 --------------------------------------------------------------------------------
-- Instalación desatendida limpia con Inno Setup + PowerShell integrado.
+- Instalación desatendida limpia (Inno Setup + PowerShell integrado).
 - Verificación automática de PostgreSQL y migración de esquemas en primer arranque.
 - Generación de clave JWT con CSPRNG (512 bits) y ACL restrictivas en registro.
 - Reglas de firewall idempotentes con limpieza de reglas huérfanas.
+- Jerarquía NSSM→sc.exe verificada (UPD-2/INS).
 
 --------------------------------------------------------------------------------
-4. PLAN DE ACCIÓN PRIORIZADO (Instalador y Scripts)
+4. PLAN DE ACCIÓN PRIORIZADO (Instalador y Scripts) — REV. 8.2
 --------------------------------------------------------------------------------
-1. Rotar secretos versionados, quitar de historial git, cargar desde entorno/DPAPI.
-2. Endurecer instalación: HTTPS por defecto (autogenerar certificado autofirmado e
-   instalarlo en Trusted Root), bloquear puerto HTTP 5000 salvo necesidad explícita.
-3. Configuración de producción en el bat de actualización (eliminar Development).
-4. Subir longitud de contraseña de pos-https.pfx y detener uso de ignoreversion/group write.
-5. Firma digital de paquetes de actualización y pinning del UpdateUrl a HTTPS.
-6. Reducir LocalSystem → cuenta de servicio con ACL mínimas (Virtual Account).
-7. NSSM: mover claves sensibles fuera de AppEnvironmentExtra a archivo cifrado.
+1. [8.2-CR2] git rm -r --cached .freebuff-test-out/ y .freebuff/desktop-v2.db*; purga de
+   historial (git filter-repo); ROTAR todos los secretos expuestos (BD 123456, Admin123!,
+   PosHttpsDev2026!, clave JWT).
+2. [8.2-A5] Contraseña de cert aleatoria por instalación (DPAPI); eliminar fallback embebido.
+3. [8.2-A6] bat de producción: ruta resuelta desde el servicio, sin Development.json, parada
+   coordinada con ExitCodes verificados.
+4. [8.2-A4] Decidir registro/invocación del UpdaterService o retirarlo del paquete.
+5. Endurecer HTTPS: autogenerar cert autofirmado e instalarlo en Trusted Root; bloquear
+   5000-HTTP salvo necesidad explícita (C2/INS-3).
+6. Configuración de producción en el canal de actualización (fin de 8U-M3).
+7. Longitud de contraseña del pfx >> 4 y eliminar ignoreversion/group write (8U-M4).
+8. Firma digital de paquetes y pinning del UpdateUrl a HTTPS (8U-N2).
+9. Reducir LocalSystem → Virtual Account; mover claves fuera de AppEnvironmentExtra a archivo
+   cifrado (8U-B1/8U-M2).
+10. [8.2-B8] Exit codes nativos y política de ejecución mínima en scripts.
 ================================================================================
-FIN DEL REPORTE Instalador y Scripts — REV. 8.0
+FIN DEL REPORTE Instalador y Scripts — REV. 8.2
 ================================================================================

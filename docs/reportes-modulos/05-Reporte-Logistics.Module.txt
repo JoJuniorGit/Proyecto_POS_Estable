@@ -1,69 +1,70 @@
 ================================================================================
 REPORTE POR MÓDULO: Logistics.Module (Gestión y Despacho de Pedidos / Envíos)
-Fecha: 2026-09-05
-Revisión: 8.0 (Contrastación Empírica Rev. 7.1 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.0).
-===============================================================================
+Fecha: 2026-09-06
+Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual)
+Cruce con docs/reporte.txt (revisión global 8.2).
+HEAD auditado: e89100f (rama V0.15).
+================================================================================
 
 --------------------------------------------------------------------------------
-1. REVISIÓN DE LA CERTIFICACIÓN REV. 7.1 ("100% HALLAZGOS SUBSANADOS")
+0. ESTADO EN REV. 8.2 (RATIFICACIÓN COMPLETA)
 --------------------------------------------------------------------------------
-La Rev. 7.1 certificó la implementación de Logistics.Module como definitiva.
-La auditoría Rev. 8.0 sobre HEAD c337462 corrige 2 aseveraciones de dicha certificación:
+La Rev. 8.1 NO tocó Logistics.Module (no consta ninguna remediación relacionada).
+La auditoría 8.2 RATIFICA el veredicto de la Rev. 8.0 línea a línea sobre HEAD e89100f:
+  - [8L-CR3] CONFIRMADO VIGENTE-CRÍTICO — implementación INERTE y no persistente.
+  - [8L-CR3b] CONFIRMADO — no existe puente Venta→Logística en producción.
+  - [8L-M1]/[8L-M2] CONFIRMADOS — sin máquina de estados ni auditoría en BD.
 
-REVISIÓN 1 — [LOG-1]/[LOG-2] DECLARADOS CERRADOS, PERO LA IMPLEMENTACIÓN ES INERTE:
-  - El módulo existe (8+ archivos .cs: IDeliveryService, DeliveryService, eventos,
-    handlers, DTOs, AddLogisticsModule) y compila. La estructura desacoplada es correcta.
-  - PERO DeliveryService.cs:17 implementa la "base de datos" con un
-    ConcurrentDictionary<Guid, DeliveryOrder> EN MEMORIA:
-      * No persiste en ninguna tabla ni contexto EF Core (PERSISTENCIA = 0).
-      * No se registra vía AddLogisticsModule en Backend.API/Program.cs:122-228
-        (no está en la lista de módulos cargados).
-      * El evento de dominio SaleDispatchedEvent solo se publica en test
-        (DeliveryServiceTests.cs:123,142); en PRODUCCIÓN ningún flujo de venta lo envía.
-      * LiveReload/multisistema: cada instancia tiene su propio diccionario (stateless
-        entre procesos).
-  - Impacto: reiniciar el backend = pérdida total de todas las órdenes; consultas
-    DSPO/DSPE sin datos reales; no hay rastro en Auditoría de BD.
-
-REVISIÓN 2 — MÉTRICA "0 advertencias, 6/6 pruebas" CONFIRMADA PERO INSUFICIENTE:
-  - DeliveryServiceTests.cs:123:142 (mock/handler en memoria) valida la mecánica del
-    DTO sin ejercitar persistencia ni integración con el bus real.
+Detalle de evidencia (idéntico al 8.0, re-verificado):
+  - DeliveryService.cs:17 implementa el "storage" con ConcurrentDictionary<Guid, DeliveryOrder>
+    EN MEMORIA; sin tabla ni contexto EF Core (PERSISTENCIA = 0); sin registro vía
+    AddLogisticsModule en Program.cs; SaleDispatchedEvent SOLO se publica en tests
+    (DeliveryServiceTests.cs:123,142); LiveReload/multisistema pierde todo al reiniciar.
+  - La métrica "6/6 pruebas" del 7.1 valida la mecánica del DTO en memoria, no la integración.
 
 --------------------------------------------------------------------------------
-2. CONTRASTACIÓN DE HALLAZGOS (REV. 8.0)
+1. HALLAZGOS VIGENTES (REV. 8.2)
 --------------------------------------------------------------------------------
-[8L-CR3] ALTO → Degradado de certificación a VIGENTE-CRÍTICO — Módulo inert/no persistente.
-  - DeliveryService.cs:15-39: backend Storage es ConcurrentDictionary en memoria;
-    métodos Patch/Add/Assign se reducen a manipulación del diccionario local.
+[8L-CR3] CRÍTICO — Módulo logistico inerte/no persistente (VIGENTE).
+  - DeliveryService.cs:15-39: Patch/Add/Assign = manipulación del diccionario local.
   - Los 3 eventos (SaleDispatchedEvent, DeliveryAssignedEvent, DeliveryStatusUpdatedEvent)
-    llegan a tener handler (auditoría) PERO nunca se disparan en el flujo real de ventas.
-  - Adicional: DeliveryService.cs:36-37 registra CustomerName + DeliveryAddress
-    COMPLETOS (PII sin redacción) en logs; viola la higiene de datos del cliente.
-  - Impacto funcional: la ventana DSPO/DSPE del cliente nunca muestra entregas reales.
+    tienen handler de auditoría (Consumers) pero NUNCA se disparan en el flujo real de venta.
+  - Rendimiento: reiniciar el backend = pérdida total de órdenes; DSPO/DSPE vacíos.
+  - PII: DeliveryService.cs:36-37 registra CustomerName + DeliveryAddress completos
+    (Agravante [8C-M4] de Core).
 
-[8L-CR3b] BAJO — No existe ningún flujo que "completar venta con envío" despache en logística:
-  - La integración con sales (flag is_delivery existente en ítems) no invoca
-    DeliveryService en la API. Falta el puente Venta→VentaEntregable→DeliveryOrder.
+[8L-CR3b] BAJO — Sin puente Venta Entregable→DeliveryOrder en producción; el flag is_delivery
+  de los ítems no invoca DeliveryService en la API.
 
-[8L-M1] MEDIO — Sin soporte de transición "asignado→en ruta→entregado" con validación
-  por usuario/rol: el estado vive solo en el diccionario (sin reglas de máquina de estados
-  enlazadas a la BD).
+[8L-M1] MEDIO — Sin máquina de estados "asignado→en ruta→entregado" con validación por
+  rol Driver (todo vive en memoria, sin reglas enlazadas a BD; el rol Driver existe en RBAC 8.1
+  y el módulo no lo aprovecha).
 
-[8L-M2] MEDIO — No hay tabla de auditoría de entregas en SalesDbContext ni en
-  LogisticsDbContext; los históricos DSPE/DSPO no existen fuera de la sesión.
+[8L-M2] MEDIO — Sin tabla de auditoría de entregas ni históricos DSPE/DSPO en ninguna BD.
+
+[8.2-B8] BAJO (NUEVO) — Logistics.Module/README.md:13 documenta el evento INEXISTENTE
+  "SaleDeliveredEvent" (el real es SaleDispatchedEvent). La documentación desvia a
+  integradores. Fix: corregir el README.
 
 --------------------------------------------------------------------------------
-3. PLAN DE ACCIÓN PRIORIZADO (Logistics.Module)
+2. FORTALEZAS DEL MÓDULO (CONFIRMADAS EN 8.2)
 --------------------------------------------------------------------------------
-1. Persistir DeliveryOrder en PostgreSQL (entidad + DbContext + migración).
-2. Registrar AddLogisticsModule en DI del backend (Program.cs).
-3. Publicar SaleDispatchedEvent desde el flujo de venta real (hold completado con envío)
-   mediante el mismo pipeline Outbox que ya usa Sales.Module.
+- Estructura desacoplada correcta: IDeliveryService + eventos + consumers + DTOs.
+- Compila y la suite de tests de DTO válida la mecánica en memoria.
+- ⚠️ NINGUNA fortaleza funcional de producción: es un esqueleto sin persistencia.
+
+--------------------------------------------------------------------------------
+3. PLAN DE ACCIÓN PRIORIZADO (Logistics.Module) — REV. 8.2
+--------------------------------------------------------------------------------
+1. Persistir DeliveryOrder en PostgreSQL (entidad + DbContext + migración) — fin de 8L-CR3.
+2. Registrar AddLogisticsModule en la DI del backend (Program.cs).
+3. Publicar SaleDispatchedEvent desde el flujo de venta real (hold completado con envío) vía
+   el mismo pipeline Outbox de Sales.Module.
 4. Añadir máquina de estados (Asignado→EnRuta→Entregado) con validación por rol Driver.
 5. Añadir tabla de auditoría DSPE/DSPO con fechas UTC.
-6. Redactar/blanquear PII (CustomerName/DeliveryAddress parciales) en logs.
-7. Extender DeliveryServiceTests a integración con PostgreSQL (Testcontainers).
+6. Redactar/blankear PII (CustomerName/DeliveryAddress parciales) en logs (resuelve 8C-M4).
+7. Extender DeliveryServiceTests a integración PostgreSQL (Testcontainers).
+8. Corregir Logistics.Module/README.md (SaleDeliveredEvent → SaleDispatchedEvent).
 ================================================================================
-FIN DEL REPORTE Logistics.Module — REV. 8.0
+FIN DEL REPORTE Logistics.Module — REV. 8.2
 ================================================================================

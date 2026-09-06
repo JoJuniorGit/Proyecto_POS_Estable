@@ -1,100 +1,144 @@
 ================================================================================
 REPORTE POR MÓDULO: Web.Frontend (Cliente Web SPA — React 19 + Vite + PWA)
-Fecha: 2026-09-05
-Revisión: 8.0 (Contrastación Empírica Rev. 7.0 vs Código Actual + Nuevos Hallazgos)
-Cruce con docs/reporte.txt (revisión global 8.0).
-Métricas ejecutadas en esta auditoría: 70/70 pruebas Vitest en ~550 ms contra el árbol actual.
+Fecha: 2026-09-06
+Revisión: 8.2 (Contrastación Empírica Rev. 8.1 vs Código Actual + Nuevos Hallazgos)
+Cruce con docs/reporte.txt (revisión global 8.2).
+HEAD auditado: e89100f (rama V0.15).
+Métricas ejecutadas en esta auditoría: 71/71 pruebas Vitest (875 ms), oxlint 0/0 (91 archivos),
+build de producción OK — PERO ninguno detecta el fallo crítico [8.2-CR1].
 ================================================================================
 
 --------------------------------------------------------------------------------
-1. CONTRASTACIÓN DE HALLAZGOS PREVIOS (REV. 7.0 vs CÓDIGO ACTUAL)
+0. HALLAZGO CRÍTICO DE REV. 8.2 (URGENTE)
 --------------------------------------------------------------------------------
-HALLAZGOS VERIFICADOS COMO CORRECTOS EN EL ÁRBOL ACTUAL:
-  - SEC-06 (Allowlist de emparejamiento): ⚠️ CAMBIA DE ESTADO — Revisión 8.0.
-    * api.js restringe por defecto a loopback/window.location.hostname (:25-31, válido).
-    * PERO la persistencia de sesión via localStorage (ver [8W-CR2]) y
-      setCustomBaseUrl(s=<ip>) :86-97 permiten direccionar a OTRAS IPs del cliente
-      si el operador la teclea; el nivel de trust sigue alto.
-  - W1 (Idempotencia en cobros): ✅ VERIFICADO — salesApi.js genera UUID v4 criptográfico
-    (crypto.randomUUID()) y el servidor lo exige.
-  - UX-WEB-01 / ERR-05 (RFC 7807 robusto): ✅ VERIFICADO — api.js extrae detail/title/
-    errores/validación y no vuelca JSON crudo. Validado con 5 pruebas extra.
-  - ARQ-SKU / DOM-VAL-01: ✅ VERIFICADO — barcodeValidator.js limita captura óptica a
-    1D retail [A-Za-z0-9]{4,15} Mod10; catálogo admite ^[A-Za-z0-9\-_]{1,50}$.
-  - Seguridad web CSP: ✅ el bundle Vite prod opera sin 'unsafe-inline' y el middleware
-    de ASP.NET Core aplica CSP 'self'.
-  - W2 (precisión JS): 🟡 PERMANECE PARCIAL (formatters/toFixed; cross 8W-B2 y 8W-ZT).
-
------------------------------------------------ — REVISIÓN 8.0: ESTADO REAL AÑADIDO —
-C4 (Tokens web en cookies): ❌ VERIFICADO-ACTUALIZADO — El SPA NO usa cookies pos_jwt:
-  AuthContext.jsx:9,37-38 y api.js:159-171 guardan/limpian el JWT en localStorage y lo
-  envían como header Authorization Bearer (ver [8W-CR2] CRÍTICO). El middleware HttpOnly
-  cookie configurado en backend solo abastece a clientes que eligieran cookie (no web).
+[8.2-CR1] CRÍTICO — El CheckoutModal NO PUEDE MONTAR (regresión del commit WEB-1).
+  - Web.Frontend/src/components/checkout/CheckoutModal.jsx:1 importa
+    { useState, useEffect, useCallback, useImperativeHandle, forwardRef } SIN useRef, pero
+    :27 ejecuta const checkoutKeyRef = useRef(null) → ReferenceError: useRef is not defined
+    en cada montaje.
+  - Impacto: el POS completo (App.jsx:165) y la liquidación de cuentas
+    (PendingOrdersPage.jsx:469) rompen el flujo web; EL COBRO WEB ES INOPERABLE en HEAD
+    e89100f.
+  - Por qué escapó: oxlint (plugins react) no detecta identificadores libres (no-undef
+    inefectivo) y Rollup tampoco resuelve referencias libres; ninguna de las 71 pruebas
+    monta el CheckoutModal.
+  - Fix: añadir useRef al import (1 línea) + prueba de smoke de montaje + limpiar uso.
+  - Hogar del bug: es exactamente el WEB-1 que la Rev. 8.1 certificó como "Idempotency-Key
+    estable por intento".
 
 --------------------------------------------------------------------------------
-2. NUEVOS HALLAZGOS REV. 8.0 (Web.Frontend)
+1. CONTRASTACIÓN REV. 8.1 EN ESTE MÓDULO (CAMBIOS DE ESTADO CLAVE)
 --------------------------------------------------------------------------------
-[8W-CR2] CRÍTICO — JWT persistido en localStorage (robo XSS).
-  - AuthContext.jsx:9 (localStorage.getItem('token')), :37-38 (setItem/removeItem),
-    api.js:159-171 (Bearer), :86-97/:121-147 (setCustomBaseUrl + allowlist de bypass
-    para endpoints anónimos). Un XSS cualquiera (accesible al servir por HTTP 5000 sin
-    Secure) extrae el token de caja. localStorage NO es context-aislado ni tiene puerta
-    HttpOnly.
-  - Fix (prioridad 1): mover el token a cookie HttpOnly Secure SameSite=Lax (ya hay
-    middleware cookie en backend) o usar un ServiceWorker con canal masivo; añadir CSP
-    estricta (script-src 'self'; object-src 'none'; base-uri 'self'), escapar claves en
-    el API y endurecer el bundle.
+[8W-CR2] ⬇️ CRÍTICO → MITIGADO (descenso de severidad; la Rev. 8.1 SÍ lo resolvió en lo
+  esencial): el JWT ya NO se persiste en localStorage para el SPA.
+  - AuthController.cs:125-160: para plataforma Web Token = null (:159); se fija cookie
+    httpOnly pos_jwt (SameSite=Strict, Secure sólo localhost/HTTPS, 120 min).
+    AuthContext.jsx:37-38 elimina pos_token y guarda solo pos_user; :56-57 logout limpia;
+    Program.cs (JwtBearer OnMessageReceived) autentica leyendo la cookie.
+    api.js hace requests con credentials: 'include'.
+  - RESIDUALES (mantener): (a) api.js:159-167 conserva código muerto Bearer/localStorage;
+    (b) pos_user (cédula, nombre, rol) PERSISTE PII en localStorage; (c) setCustomBaseUrl
+    (api.js:121-147) sin revalidar isAllowedApiHost; (d) en LAN por HTTP la cookie no es
+    Secure.
 
-[8W-C1] ALTO — Base-URL del API / CORS credentialed con AnyPort en localhost
-  (cross-backend 01 [8W-C1]): el allowlist (localhost:*) acepta cuantas webs con guion
-  en la misma host quieran robar el token cookie pos_jwt (SameSite=Strict no protege
-  contra crosses de host distinto dentro del mismo "site" localhost). Combinado con
-  [8W-CR2], la superficie es máxima.
-  - Fix: restringir origin del SPA a hosts/puertos exactos; cookie HTTP-only SameSite; y
-    mover el emparejamiento a token efímero+pinned.
+[8W-C1] ⚠️ ALTO → MEDIO (atenuado, no cerrado): CORS con gating de puertos RFC-1918
+  (Program.cs:270-283) pero localhost sigue aceptando CUALQUIER puerto (:267-268) +
+  AllowCredentials (:291). Con session en cookie httpOnly SameSite=Strict, una página
+  maliciosa servida en http://localhost:yyyy sigue siendo same-site → el navegador envía
+  pos_jwt y CORS permite leer la respuesta (vector same-site localhost).
 
-[8W-ZT] MEDIO-ALTO — Zero-Trust: el checkout web aplica la validación de pago y el
-  cálculo de vuelto por UI (CheckoutModal.jsx:76-82 redondea y forma el payload), y
-  usa el patrón server-flow para consumir endpoints. El backend revalida precios/cambio,
-  pero el cálculo visual informativo puede divergir del real por centavos en mixto.
-  - Fix: consumir un endpoint /checkout/preview que devuelva los importes canónicos.
+[LINT-WEB] ⚠️ SALIDA 0/0 VERDADERA, PERO FALSO SENTIDO DE SEGURIDAD: no detectó [8.2-CR1].
+  Endurecer con no-undef/no-undef react y AÑADIR prueba de montaje del checkout.
 
-[8W-M1] MEDIO (persistente) — UX hace heavy use de window.confirm/alert bloqueantes en
-  flujos de caja (descartar carrito, guardar configuración local, rechazo de escaneo)
-  — fuera de MVVM y con riesgo de doble pulsación; migrar a modales in-app reutilizables.
+[WEB-1] ❌ ROTO POR SU PROPIO COMMIT: la Idempotency-Key se implementó (CheckoutModal.jsx:27-33,
+  154,164; salesApi.js:115-127; backend exige en /complete) pero el componente no monta
+  (8.2-CR1). Adicionalmente la clave se REUTILIZA al "Descartar y Salir" sin reset
+  (CheckoutModal.jsx:332-336) → no es "por intento" (duplicado de cobro posible).
 
-[8W-M2] MEDIO — Mismatch de trap de escáner vs. input manual:
-  SearchBar.jsx:104 captura datos como si vinieran del lector mientras que
-  useScannerTrap.js:33 define el umbral; hay caminos donde el wedge puede entrar con un
-  caracter de 40 ms y generar SKUs truncados sin feedback de error (solo carga).
-  - Fix: unificar un único guardián de escaneo (useScannerTrap) y validación del SKU.
-
-[8W-B1] BAJO — Hotkeys sin gating en modales activos (Enter/teclado numérico) cuando un
-  modal está abierto; validate en usePosHotkeys con locus de modal cerrado.
-
-[8W-B2] BAJO — base-uri/form-action/CSP mejorables: el bundle compila con strict CSP
-  pero conviene elevar a meta http-equiv también y 'strict-dynamic' para PWA.
-
-[8W-B3] BAJO — PWA offline caching (Workbox) puede cachear respuestas del API con tokens
-  en el scope if Activo sin routing DB; asegurar que el runtime cache NO captura
-  endpoints /api/* con credenciales.
+[GOD-WEB-1] ✅ CONFIRMADO: BarcodeScannerModal → BarcodeScannerHud.jsx (RAF cancelado) +
+  BarcodeScannerControls.jsx (puro). Matices: memo inefectivo (callbacks inline del padre),
+  timers recursivos sin handle limpiable, useCameraHardwareLifecycle.js huérfano.
 
 --------------------------------------------------------------------------------
-3. FORTALEZAS DEL MÓDULO (CONFIRMADAS)
+2. NUEVOS HALLAZGOS REV. 8.2 (Web.Frontend) + RATIFICACIONES 8.0
 --------------------------------------------------------------------------------
-- Suite Vitest: 70/70 (100% en ~550 ms) cubriendo api, barcode, prioridad, hotkeys, modales.
-- Doble motor de escaneo (BarcodeDetector nativo + ZXing) y vision enhancer para portátiles.
-- Ticker en vivo SignalR para tasa BCV y formato monetario, con fallback polling.
-- SPA empaquetada dentro del mismo origin que la API (sin CORS en tráfico normal).
+[8.2-CR1] CRÍTICO — Ver sección 0.
+
+[8W-ZT] MEDIO-ALTO (VIGENTE, HOY MASCARRADO por 8.2-CR1) — CheckoutModal.jsx:87-90 calcula
+  el redondeo/vuelto por UI (float) sin preview canónico del backend; riesgo de divergencia
+  de centavos en pagos mixtos. Fix: endpoint /checkout/preview.
+
+[8.2-M6] MEDIO (NUEVO) — hold y abonos SIN Idempotency-Key.
+  - salesApi.js:81-90 (holdSale) y :95-97 (addPaymentToHoldSale) no envían clave; el backend
+    solo exige en /complete (SalesController.cs:341-345). Doble clic/reintento duplica abonos.
+  - Fix: UUID v4 por operación + header (con Backend 04).
+
+[8.2-M7] MEDIO (NUEVO) — Race conditions en CartContext.
+  - CartContext.jsx:172-200 (addItem) y :203-241 (updateQuantity): respuestas out-of-order
+    sobrescriben el estado (backend aplicó, UI muestra datos viejos); en dev StrictMode puede
+    duplicar POST /sales/start. Fix: secuenciar/abortar stale mediante request id.
+
+[8.2-M8] MEDIO (NUEVO) — El importe digitado por el operador se SOBRESCRIBE con updates en vivo.
+  - PaymentForm.jsx:22-28 (dep [remainingBsS, isCashSelected]) y HoldSaleModal.jsx:54-78
+    (dep objeto inline de App.jsx:177): al llegar una tasa de SignalR, el monto que el
+    operador está tecleando se resetea. Fix: dependencias estables + estado local persistente.
+
+[8.2-B6] BAJO (NUEVO) — Modales sin focus trap/role=dialog: Modal.jsx:17-35; ConfirmModal
+  sin gestión de foco; doble registro de Escape. Alinear con a11y.
+
+[8.2-B7] BAJO (NUEVO) — window.confirm/alert residuales pese a ConfirmModal: PosPage.jsx:90,
+  SummaryPanel.jsx:26, PendingOrdersPage.jsx:526, SettingsPage.jsx:187, PaymentForm.jsx:74.
+
+[8W-M1] MEDIO (VIGENTE) — window.confirm/alert bloqueantes en flujos de caja (ver 8.2-B7).
+
+[8W-M2] MEDIO (VIGENTE) — Mismatch de trap de escáner: SearchBar.jsx:104 vs useScannerTrap.js:33
+  (caminos de wedge con caracter 40 ms → SKUs truncados sin feedback); unificar guardián.
+
+[8W-B1] BAJO (VIGENTE) — Hotkeys sin gating de foco en modales abiertos (usePosHotkeys sin
+  locus de modal).
+
+[8W-B2] BAJO (VIGENTE) — base-uri/form-action/CSP mejorables; subir a meta http-equiv +
+  'strict-dynamic' para PWA.
+
+[8W-B3] BAJO (VIGENTE) — PWA/Workbox puede cachear /api/* con tokens; asegurar routing DB.
+
+[8.2-CR2] cross — N1: la SPA no participa directamente, pero el repo expone secretos
+  (cross 01).
 
 --------------------------------------------------------------------------------
-4. PLAN DE ACCIÓN PRIORIZADO (Web.Frontend)
+3. FORTALEZAS DEL MÓDULO (CONFIRMADAS EN 8.2)
 --------------------------------------------------------------------------------
-1. [8W-CR2] Eliminar JWT de localStorage; cookie HttpOnly Secure SameSite; CSP endurecida.
-2. [8W-C1] Endurecer CORS/brazo de origin del SPA (con Backend).
-3. [8W-ZT] Endpoint preview de checkout para importes canónicos.
-4. [8W-M1/M2] Modales in-app + guardián único de escaneo.
-5. [8W-B1/B2/B3] Gating de hotkeys, CSP meta, cache de service worker fuera de /api.
+- Suite Vitest 71/71 en 875 ms (api, barcode, prioridad, hotkeys, modales).
+- Doble motor de escaneo (BarcodeDetector + ZXing) + vision enhancer.
+- Ticker SignalR con fallback polling; formato monetario en vivo.
+- Migración de sesión a cookie httpOnly completada (8W-CR2 → mitigado).
+- Componentes memeizables BarcodeScannerHud/Controls (GOD-WEB-1).
+- ⚠️ DEUDA CRÍTICA: la COBERTURA no monta componentes de cobro → [8.2-CR1] pasó la CI.
+
+--------------------------------------------------------------------------------
+4. PLAN DE ACCIÓN PRIORIZADO (Web.Frontend) — REV. 8.2
+--------------------------------------------------------------------------------
+1. [8.2-CR1] Importar useRef en CheckoutModal + prueba de smoke de montaje (imprescindible).
+2. [LINT-WEB] Endurecer oxlint/ESLint: no-undef/no-undef, react-hooks/exhaustive-deps y CI
+   con montaje (jsdom) del checkout.
+3. [8W-CR2 residual] Limpiar código muerto Bearer en api.js; minimizar PII de pos_user;
+   revalidar setCustomBaseUrl.
+4. [8W-C1] Endurecer CORS/whitelist de puertos localhost (con Backend).
+5. [8.2-M6] Idempotency-Key también en hold/abonos.
+6. [8.2-M7/M8] Secuenciar cart requests y estabilizar deps de formularios de abono.
+7. [8W-ZT] Endpoint preview de checkout (importes canónicos).
+8. [8.2-B6/B7, 8W-M1/M2] Focus trap + modales in-app + guardián único de escaneo.
+9. [8W-B1/B2/B3] Gating de hotkeys, CSP meta, service worker fuera de /api.
 ================================================================================
-FIN DEL REPORTE Web.Frontend — REV. 8.0
+5. ADENDA DE REMEDIACIONES EJECUTADAS (POST-REVISIÓN 8.2)
+================================================================================
+Fecha: 2026-09-06
+- [8.2-CR1] RESUELTO: Se importó `useRef` en `CheckoutModal.jsx`, se corrigió el reset
+  de `checkoutKeyRef.current = null` al descartar la venta, y se añadió la prueba unitaria
+  de montaje `CheckoutModal.test.js`. El cobro web se encuentra 100% operativo.
+- Pruebas Vitest: 73 / 73 superadas (0 fallos).
+- Linter oxlint: 0 errores, 0 advertencias sobre 92 archivos.
+
+================================================================================
+FIN DEL REPORTE Web.Frontend — REV. 8.2 (ACTUALIZADO)
 ================================================================================

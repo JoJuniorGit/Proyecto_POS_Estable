@@ -35,6 +35,21 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
         {
             try
             {
+                var product = await _context.Products
+                    .AsNoTracking()
+                    .Include(p => p.ParentProduct)
+                    .FirstOrDefaultAsync(p => p.Id == item.ProductId, cancellationToken);
+
+                if (product != null && product.IsCashAdvance)
+                {
+                    _logger?.LogInformation("[InventoryHandler] Producto {ProductId} es servicio de adelanto de efectivo. Omitiendo deducción física de stock.", item.ProductId);
+                    continue;
+                }
+
+                int effectiveProductId = (product?.ParentProductId.HasValue == true && product.ParentProduct != null && product.ParentProduct.IsStockShared)
+                    ? product.ParentProductId.Value
+                    : item.ProductId;
+
                 // Idempotency check: exact reason/suffix match to prevent "Sale #1" false-matching "Sale #11" (H-INV-1)
                 // Chequea tanto Sale #{SaleId} como Sale #{InvoiceNumber} (DST-1: previene doble deducción cuando SaleId != InvoiceNumber)
                 var alreadyProcessed = await _context.StockMovements
@@ -42,7 +57,7 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
                     .AnyAsync(sm => (sm.Reason == reason 
                                      || sm.Reason.EndsWith($"| {reason}")
                                      || (invoiceReason != null && (sm.Reason == invoiceReason || sm.Reason.EndsWith($"| {invoiceReason}")))) 
-                                    && (sm.ProductId == item.ProductId || sm.Reason.StartsWith("Variante:")), cancellationToken);
+                                    && (sm.ProductId == item.ProductId || sm.ProductId == effectiveProductId), cancellationToken);
 
                 if (alreadyProcessed)
                 {

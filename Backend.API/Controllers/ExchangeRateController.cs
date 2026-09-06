@@ -176,15 +176,18 @@ public class ExchangeRateController : ControllerBase
         }
         catch (TimeoutException ex)
         {
-            return StatusCode(StatusCodes.Status504GatewayTimeout, new { Message = "Tiempo de espera agotado al conectar con el portal del BCV. Puede reintentar la sincronización o ingresar la tasa manualmente.", Detail = ex.Message });
+            AppLogger.LogCrash(ex, "ExchangeRateController.SyncBcvRate.Timeout");
+            return StatusCode(StatusCodes.Status504GatewayTimeout, new { Message = "Tiempo de espera agotado al conectar con el portal del BCV. Puede reintentar la sincronización o ingresar la tasa manualmente." });
         }
         catch (InvalidOperationException ex)
         {
-            return StatusCode(StatusCodes.Status502BadGateway, new { Message = "La estructura del portal del BCV ha cambiado o no contiene el formato esperado. Por favor, reintente o ingrese la tasa manualmente.", Detail = ex.Message });
+            AppLogger.LogCrash(ex, "ExchangeRateController.SyncBcvRate.InvalidOperation");
+            return StatusCode(StatusCodes.Status502BadGateway, new { Message = "La estructura del portal del BCV ha cambiado o no contiene el formato esperado. Por favor, reintente o ingrese la tasa manualmente." });
         }
         catch (HttpRequestException ex)
         {
-            return StatusCode(StatusCodes.Status502BadGateway, new { Message = "Error de red o conexión al consultar el portal del BCV. Verifique el acceso a internet o ingrese la tasa manualmente.", Detail = ex.Message });
+            AppLogger.LogCrash(ex, "ExchangeRateController.SyncBcvRate.HttpRequest");
+            return StatusCode(StatusCodes.Status502BadGateway, new { Message = "Error de red o conexión al consultar el portal del BCV. Verifique el acceso a internet o ingrese la tasa manualmente." });
         }
         catch (Exception ex)
         {

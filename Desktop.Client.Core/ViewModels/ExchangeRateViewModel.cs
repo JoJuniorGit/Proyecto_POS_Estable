@@ -10,29 +10,29 @@ namespace Desktop.Client.ViewModels;
 
 public partial class ExchangeRateViewModel : ObservableObject
 {
-    private readonly Services.IExchangeRateService _exchange_rate_service;
+    private readonly Services.IExchangeRateService _exchangeRateService;
 
-    private decimal _current_rate;
+    private decimal _currentRate;
     public decimal CurrentRate
     {
-        get => _current_rate;
-        set => SetProperty(ref _current_rate, value);
+        get => _currentRate;
+        set => SetProperty(ref _currentRate, value);
     }
 
-    private string _new_rate_text = "0.00";
+    private string _newRateText = "0.00";
     public string NewRateText
     {
-        get => _new_rate_text;
-        set => SetProperty(ref _new_rate_text, value);
+        get => _newRateText;
+        set => SetProperty(ref _newRateText, value);
     }
 
-    private DateTime? _last_updated;
+    private DateTime? _lastUpdated;
     public DateTime? LastUpdated
     {
-        get => _last_updated;
+        get => _lastUpdated;
         set
         {
-            if (SetProperty(ref _last_updated, value))
+            if (SetProperty(ref _lastUpdated, value))
             {
                 OnPropertyChanged(nameof(IsRateOutdated));
                 OnPropertyChanged(nameof(LastUpdatedLocalFormatted));
@@ -55,40 +55,40 @@ public partial class ExchangeRateViewModel : ObservableObject
         }
     }
 
-    private bool _can_retry_sync;
+    private bool _canRetrySync;
     public bool CanRetrySync
     {
-        get => _can_retry_sync;
-        set => SetProperty(ref _can_retry_sync, value);
+        get => _canRetrySync;
+        set => SetProperty(ref _canRetrySync, value);
     }
 
-    private bool _is_loading;
+    private bool _isLoading;
     public bool IsLoading
     {
-        get => _is_loading;
-        set => SetProperty(ref _is_loading, value);
+        get => _isLoading;
+        set => SetProperty(ref _isLoading, value);
     }
 
-    private bool _is_saving;
+    private bool _isSaving;
     public bool IsSaving
     {
-        get => _is_saving;
-        set => SetProperty(ref _is_saving, value);
+        get => _isSaving;
+        set => SetProperty(ref _isSaving, value);
     }
 
-    private string? _status_message;
+    private string? _statusMessage;
     public string? StatusMessage
     {
-        get => _status_message;
-        set => SetProperty(ref _status_message, value);
+        get => _statusMessage;
+        set => SetProperty(ref _statusMessage, value);
     }
 
     public ObservableCollection<Services.ExchangeRateHistoryDto> History { get; } = new();
     public Services.UserSession? UserSession { get; }
 
-    public ExchangeRateViewModel(Services.IExchangeRateService exchange_rate_service, Services.UserSession? userSession = null)
+    public ExchangeRateViewModel(Services.IExchangeRateService exchangeRateService, Services.UserSession? userSession = null)
     {
-        _exchange_rate_service = exchange_rate_service;
+        _exchangeRateService = exchangeRateService;
         UserSession = userSession;
 
         WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (_r, _m) =>
@@ -148,16 +148,16 @@ public partial class ExchangeRateViewModel : ObservableObject
         StatusMessage = null;
         try
         {
-            var (_rate, _last_updated_val) = await _exchange_rate_service.GetCurrentRateAsync();
-            CurrentRate = _rate;
-            NewRateText = _rate > 0 ? _rate.ToString("0.00", CultureInfo.InvariantCulture) : "0.00";
-            LastUpdated = _last_updated_val;
+            var (rate, lastUpdatedVal) = await _exchangeRateService.GetCurrentRateAsync();
+            CurrentRate = rate;
+            NewRateText = rate > 0 ? rate.ToString("0.00", CultureInfo.InvariantCulture) : "0.00";
+            LastUpdated = lastUpdatedVal;
 
             await RefreshHistoryAsync();
         }
-        catch (System.Exception _ex)
+        catch (System.Exception ex)
         {
-            StatusMessage = $"Error loading: {_ex.Message}";
+            StatusMessage = $"Error loading: {ex.Message}";
         }
         finally
         {
@@ -168,7 +168,7 @@ public partial class ExchangeRateViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveRateAsync()
     {
-        if (!TryParseRate(NewRateText, out var _new_rate) || _new_rate <= 0)
+        if (!TryParseRate(NewRateText, out var newRate) || newRate <= 0)
         {
             StatusMessage = "The exchange rate must be greater than zero.";
             return;
@@ -179,10 +179,10 @@ public partial class ExchangeRateViewModel : ObservableObject
         try
         {
             // Save to backend and trigger local update via messaging
-            await _exchange_rate_service.SaveRateAsync(_new_rate);
+            await _exchangeRateService.SaveRateAsync(newRate);
 
-            CurrentRate = _new_rate;
-            NewRateText = _new_rate.ToString("0.00", CultureInfo.InvariantCulture);
+            CurrentRate = newRate;
+            NewRateText = newRate.ToString("0.00", CultureInfo.InvariantCulture);
             LastUpdated = DateTime.UtcNow;
             CanRetrySync = false;
             StatusMessage = "Tasa de cambio guardada correctamente.";
@@ -190,9 +190,9 @@ public partial class ExchangeRateViewModel : ObservableObject
             // Refresh history
             await RefreshHistoryAsync();
         }
-        catch (System.Exception _ex)
+        catch (System.Exception ex)
         {
-            StatusMessage = $"Error al guardar: {_ex.Message}";
+            StatusMessage = $"Error al guardar: {ex.Message}";
         }
         finally
         {
@@ -208,22 +208,22 @@ public partial class ExchangeRateViewModel : ObservableObject
         CanRetrySync = false;
         try
         {
-            var (_rate, _last_updated_val) = await _exchange_rate_service.SyncBcvAsync();
-            if (_rate > 0)
+            var (rate, lastUpdatedVal) = await _exchangeRateService.SyncBcvAsync();
+            if (rate > 0)
             {
-                CurrentRate = _rate;
-                NewRateText = _rate.ToString("0.00", CultureInfo.InvariantCulture);
-                LastUpdated = _last_updated_val;
+                CurrentRate = rate;
+                NewRateText = rate.ToString("0.00", CultureInfo.InvariantCulture);
+                LastUpdated = lastUpdatedVal;
                 StatusMessage = "Tasa BCV sincronizada correctamente.";
 
                 // Refresh history
                 await RefreshHistoryAsync();
             }
         }
-        catch (System.Exception _ex)
+        catch (System.Exception ex)
         {
             CanRetrySync = true;
-            StatusMessage = $"{_ex.Message} Puede reintentar la sincronización o ingresar la tasa del día manualmente.";
+            StatusMessage = $"{ex.Message} Puede reintentar la sincronización o ingresar la tasa del día manualmente.";
         }
         finally
         {
@@ -233,9 +233,9 @@ public partial class ExchangeRateViewModel : ObservableObject
 
     private async Task RefreshHistoryAsync()
     {
-        var _history = await _exchange_rate_service.GetHistoryAsync();
+        var history = await _exchangeRateService.GetHistoryAsync();
         History.Clear();
-        foreach (var _item in _history)
-            History.Add(_item);
+        foreach (var item in history)
+            History.Add(item);
     }
 }
