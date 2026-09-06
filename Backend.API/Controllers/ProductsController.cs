@@ -1,5 +1,7 @@
 using Core.Entities;
+using Core.DTOs;
 using Core.Interfaces;
+using Backend.API.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -25,7 +27,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>>> GetAll(
+    public async Task<ActionResult<PagedResultDto<ProductDto>>> GetAll(
         [FromQuery] string? filter,
         [FromQuery] string? status,
         [FromQuery] string? sortBy,
@@ -36,25 +38,35 @@ public class ProductsController : ControllerBase
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
-        return await _inventoryService.GetProductsPagedAsync(filter, page, pageSize, statusFilter: status, sortBy: sortBy, isDescending: isDescending, token: token);
+        var result = await _inventoryService.GetProductsPagedAsync(filter, page, pageSize, statusFilter: status, sortBy: sortBy, isDescending: isDescending, token: token);
+        if (!_currentUserService.CanMutateCatalog && result.Items != null)
+        {
+            foreach (var item in result.Items)
+            {
+                item.CostPriceUSD = 0m;
+                item.Cost = 0m;
+                item.ProfitMarginRetail = 0m;
+                item.ProfitMarginWholesale = 0m;
+                item.ProfitPercentage = 0m;
+            }
+        }
+        return result;
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<Product>> GetById(int id)
+    public async Task<ActionResult<ProductDto>> GetById(int id)
     {
         var product = await _inventoryService.GetProductByIdAsync(id);
         if (product == null) return NotFound();
-        return product;
+        return MapToDto(product);
     }
 
     /// <summary>
-    /// Crea un nuevo producto, grupo o variante.
-    /// Para variantes de grupos con stock compartido (IsStockShared = true), ConversionFactor define las unidades base a descontar.
-    /// Para productos no compartidos o grupos, ConversionFactor se normaliza automáticamente a 1.0000.
+    /// Crea un nuevo producto, grupo o variante mediante DTO protegido ([8B-CR1]).
     /// </summary>
     [HttpPost]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult<Product>> Create(Product product)
+    public async Task<ActionResult<ProductDto>> Create([FromBody] CreateProductDto request)
     {
         if (!_currentUserService.CanMutateCatalog)
         {
@@ -62,8 +74,34 @@ public class ProductsController : ControllerBase
         }
         try
         {
+            var product = new Product
+            {
+                Name = request.Name,
+                SKU = request.SKU ?? string.Empty,
+                Description = request.Description ?? string.Empty,
+                PriceUSD = request.PriceUSD > 0 ? request.PriceUSD : request.PriceRetailUSD,
+                PriceRetailUSD = request.PriceRetailUSD > 0 ? request.PriceRetailUSD : request.PriceUSD,
+                PriceWholesaleUSD = request.PriceWholesaleUSD,
+                CostPriceUSD = request.CostPriceUSD,
+                ProfitMarginRetail = request.ProfitMarginRetail,
+                ProfitMarginWholesale = request.ProfitMarginWholesale,
+                MinWholesaleQuantity = request.MinWholesaleQuantity,
+                HasWholesale = request.HasWholesale,
+                IsFractional = request.IsFractional,
+                UnitOfMeasure = request.UnitOfMeasure,
+                LowStockThreshold = request.LowStockThreshold,
+                IsCashAdvance = request.IsCashAdvance,
+                IsActive = request.IsActive,
+                ParentProductId = request.ParentProductId,
+                IsGroupHeader = request.IsGroupHeader,
+                IsStockShared = request.IsStockShared,
+                HasIndependentPricing = request.HasIndependentPricing,
+                ConversionFactor = request.ConversionFactor,
+                GroupKey = request.GroupKey
+            };
+
             var created = await _inventoryService.CreateProductAsync(product);
-            return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+            return CreatedAtAction(nameof(GetById), new { id = created.Id }, MapToDto(created));
         }
         catch (System.UnauthorizedAccessException unEx)
         {
@@ -76,21 +114,49 @@ public class ProductsController : ControllerBase
     }
 
     /// <summary>
-    /// Actualiza un producto existente.
-    /// Si ConversionFactor se omite o es menor o igual a 0 en una variante con stock compartido, se conserva el valor existente.
+    /// Actualiza un producto existente mediante DTO protegido ([8B-CR1]).
     /// </summary>
     [HttpPut("{id}")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<IActionResult> Update(int id, Product product)
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateProductDto request)
     {
         if (!_currentUserService.CanMutateCatalog)
         {
             return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "El rol Cajero no tiene permisos para modificar el catálogo ni realizar importaciones.");
         }
-        if (id != product.Id) return BadRequest("El ID del producto no coincide.");
+        if (id != request.Id) return BadRequest("El ID del producto no coincide.");
         try
         {
-            await _inventoryService.UpdateProductAsync(product);
+            var existing = await _inventoryService.GetProductByIdAsync(id);
+            if (existing == null) return NotFound();
+
+            existing.Name = request.Name;
+            if (!string.IsNullOrWhiteSpace(request.SKU))
+            {
+                existing.SKU = request.SKU;
+            }
+            existing.Description = request.Description ?? string.Empty;
+            existing.PriceRetailUSD = request.PriceRetailUSD > 0 ? request.PriceRetailUSD : request.PriceUSD;
+            existing.PriceUSD = existing.PriceRetailUSD;
+            existing.PriceWholesaleUSD = request.PriceWholesaleUSD;
+            existing.CostPriceUSD = request.CostPriceUSD;
+            existing.ProfitMarginRetail = request.ProfitMarginRetail;
+            existing.ProfitMarginWholesale = request.ProfitMarginWholesale;
+            existing.MinWholesaleQuantity = request.MinWholesaleQuantity;
+            existing.HasWholesale = request.HasWholesale;
+            existing.IsFractional = request.IsFractional;
+            existing.UnitOfMeasure = request.UnitOfMeasure;
+            existing.LowStockThreshold = request.LowStockThreshold;
+            existing.IsCashAdvance = request.IsCashAdvance;
+            existing.IsActive = request.IsActive;
+            existing.ParentProductId = request.ParentProductId;
+            existing.IsGroupHeader = request.IsGroupHeader;
+            existing.IsStockShared = request.IsStockShared;
+            existing.HasIndependentPricing = request.HasIndependentPricing;
+            existing.ConversionFactor = request.ConversionFactor;
+            existing.GroupKey = request.GroupKey;
+
+            await _inventoryService.UpdateProductAsync(existing);
             return NoContent();
         }
         catch (System.UnauthorizedAccessException unEx)
@@ -105,6 +171,44 @@ public class ProductsController : ControllerBase
         {
             return BadRequest(ex.Message);
         }
+    }
+
+    private ProductDto MapToDto(Product product)
+    {
+        bool canViewCost = _currentUserService.CanMutateCatalog;
+        return new ProductDto
+        {
+            Id = product.Id,
+            Name = product.Name,
+            SKU = product.SKU,
+            Description = product.Description,
+            PriceUSD = product.PriceUSD,
+            PriceRetailUSD = product.PriceRetailUSD,
+            PriceWholesaleUSD = product.PriceWholesaleUSD,
+            CostPriceUSD = canViewCost ? product.CostPriceUSD : 0m,
+            ProfitMarginRetail = canViewCost ? product.ProfitMarginRetail : 0m,
+            ProfitMarginWholesale = canViewCost ? product.ProfitMarginWholesale : 0m,
+            MinWholesaleQuantity = product.MinWholesaleQuantity,
+            HasWholesale = product.HasWholesale,
+            IsFractional = product.IsFractional,
+            PriceBsS = product.PriceBsS,
+            Cost = canViewCost ? product.Cost : 0m,
+            StockQuantity = product.StockQuantity,
+            ProfitPercentage = canViewCost ? product.ProfitPercentage : 0m,
+            UnitOfMeasure = product.UnitOfMeasure,
+            LowStockThreshold = product.LowStockThreshold,
+            IsCashAdvance = product.IsCashAdvance,
+            IsActive = product.IsActive,
+            IsDeleted = product.IsDeleted,
+            ReservedQuantity = product.ReservedQuantity,
+            ParentProductId = product.ParentProductId,
+            ParentIsStockShared = product.ParentProduct != null && product.ParentProduct.IsStockShared,
+            IsGroupHeader = product.IsGroupHeader,
+            IsStockShared = product.IsStockShared,
+            HasIndependentPricing = product.HasIndependentPricing,
+            ConversionFactor = product.ConversionFactor,
+            GroupKey = product.GroupKey
+        };
     }
 
     [HttpPut("{id}/status")]

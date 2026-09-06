@@ -45,6 +45,7 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
         _hubConnection = new HubConnectionBuilder()
             .WithUrl(hubUri, options =>
             {
+                options.AccessTokenProvider = () => Task.FromResult(_httpClient.DefaultRequestHeaders.Authorization?.Parameter);
                 options.HttpMessageHandlerFactory = handler =>
                 {
                     if (handler is HttpClientHandler clientHandler)

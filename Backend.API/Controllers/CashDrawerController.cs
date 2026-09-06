@@ -72,6 +72,7 @@ public class CashDrawerController : ControllerBase
     [HttpGet("history")]
     public async Task<ActionResult<IEnumerable<CashTransaction>>> GetHistory([FromQuery] int limit = 300)
     {
+        limit = Math.Clamp(limit, 1, 300);
         var transactions = await _cashDrawerService.GetHistoryAsync(limit);
 
         var tzId = await _settingsService.GetSettingAsync("SelectedTimeZoneId");
@@ -109,6 +110,7 @@ public class CashDrawerController : ControllerBase
     }
 
     [HttpGet("current-balance")]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult<decimal>> GetCurrentBalance([FromQuery] int sessionId)
     {
         var balance = await _cashDrawerService.GetCurrentBalanceLocalAsync(sessionId);

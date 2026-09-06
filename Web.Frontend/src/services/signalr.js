@@ -37,7 +37,7 @@ export async function connectRateHub(onRateUpdate, onHoldSalesUpdated, onPayment
   const hubUrl = `${getBaseUrl()}/hubs/exchange-rate`;
 
   connection = new signalR.HubConnectionBuilder()
-    .withUrl(hubUrl)
+    .withUrl(hubUrl, { withCredentials: true })
     .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
     .configureLogging(signalR.LogLevel.Warning)
     .build();

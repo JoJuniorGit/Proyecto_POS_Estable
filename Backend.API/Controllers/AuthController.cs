@@ -73,13 +73,13 @@ public class AuthController : ControllerBase
         if (!user.IsActive)
         {
             AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{request.Cedula}': Usuario inactivo.");
-            return Unauthorized(new { Message = "El usuario está inactivo en el sistema." });
+            return Unauthorized(new { Message = "Credenciales inválidas." });
         }
 
         if (string.IsNullOrWhiteSpace(user.PasswordHash))
         {
             AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Usuario '{request.Cedula}' no tiene contraseña configurada.");
-            return Unauthorized(new { Message = "El usuario no tiene una contraseña configurada. Contacte al administrador." });
+            return Unauthorized(new { Message = "Credenciales inválidas." });
         }
 
         bool passwordMatches = !string.IsNullOrWhiteSpace(request.Password) && PasswordHasher.VerifyPassword(request.Password, user.PasswordHash);

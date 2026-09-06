@@ -188,7 +188,13 @@ try
         {
             OnMessageReceived = context =>
             {
-                if (string.IsNullOrEmpty(context.Token))
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                {
+                    context.Token = accessToken;
+                }
+                else if (string.IsNullOrEmpty(context.Token))
                 {
                     if (context.Request.Cookies.TryGetValue("pos_jwt", out var cookieToken) && !string.IsNullOrWhiteSpace(cookieToken))
                     {
@@ -264,7 +270,11 @@ try
                 if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
                 {
                     var host = uri.Host;
-                    // Allow localhost / loopback
+                    int port = uri.Port;
+                    bool isAllowedPort = port == 5000 || port == 5001 || port == 5173 || port == 80 || port == 443 || port == 4173;
+                    if (!isAllowedPort) return false;
+
+                    // Allow localhost / loopback (gated to allowed POS ports [8W-C1])
                     if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.Equals("127.0.0.1") || host.Equals("::1"))
                         return true;
 
@@ -274,14 +284,9 @@ try
                         var bytes = ip.GetAddressBytes();
                         if (bytes.Length == 4)
                         {
-                            int port = uri.Port;
-                            bool isAllowedPort = port == 5000 || port == 5001 || port == 5173 || port == 80 || port == 443 || port == 4173;
-                            if (isAllowedPort)
-                            {
-                                if (bytes[0] == 10) return true; // 10.0.0.0/8
-                                if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true; // 172.16.0.0/12
-                                if (bytes[0] == 192 && bytes[1] == 168) return true; // 192.168.0.0/16
-                            }
+                            if (bytes[0] == 10) return true; // 10.0.0.0/8
+                            if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true; // 172.16.0.0/12
+                            if (bytes[0] == 192 && bytes[1] == 168) return true; // 192.168.0.0/16
                         }
                     }
                 }
@@ -375,7 +380,7 @@ try
     app.UseMiddleware<Backend.API.Middleware.MustChangePasswordMiddleware>();
 
     app.MapControllers().RequireRateLimiting("GeneralApiRateLimit");
-    app.MapHub<ExchangeRateHub>("/hubs/exchange-rate");
+    app.MapHub<ExchangeRateHub>("/hubs/exchange-rate").RequireAuthorization();
 
     // Fallback SPA routing with strict API 404 segregation (H-API-16)
     app.MapFallback(async context =>

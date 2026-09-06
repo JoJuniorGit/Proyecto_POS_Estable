@@ -1,3 +1,4 @@
+using Backend.API.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Sales.Module.Entities;
@@ -45,15 +46,27 @@ public class PaymentMethodsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Crea un nuevo método de pago mediante DTO protegido ([8B-CR1]).
+    /// </summary>
     [HttpPost]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> CreateMethod([FromBody] PaymentMethod method)
+    public async Task<IActionResult> CreateMethod([FromBody] CreatePaymentMethodDto dto)
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
         try
         {
+            var method = new PaymentMethod
+            {
+                Name = dto.Name,
+                RequiresReference = dto.RequiresReference,
+                IsCash = dto.IsCash,
+                DisplayOrder = dto.DisplayOrder,
+                IsActive = dto.IsActive
+            };
+
             var created = await _paymentService.CreateAsync(method);
             return CreatedAtAction(nameof(GetMethod), new { id = created.Id }, created);
         }
@@ -63,15 +76,31 @@ public class PaymentMethodsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Actualiza un método de pago existente mediante DTO protegido ([8B-CR1]).
+    /// </summary>
     [HttpPut("{id}")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> UpdateMethod(int id, [FromBody] PaymentMethod method)
+    public async Task<IActionResult> UpdateMethod(int id, [FromBody] UpdatePaymentMethodDto dto)
     {
-        if (id != method.Id)
+        if (id != dto.Id)
             return BadRequest(new { message = "ID mismatch" });
+
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
 
         try
         {
+            var method = new PaymentMethod
+            {
+                Id = id,
+                Name = dto.Name,
+                RequiresReference = dto.RequiresReference,
+                IsCash = dto.IsCash,
+                DisplayOrder = dto.DisplayOrder,
+                IsActive = dto.IsActive
+            };
+
             var updated = await _paymentService.UpdateAsync(method);
             return Ok(updated);
         }
