@@ -156,16 +156,18 @@ export function setCustomBaseUrl(url) {
 export async function apiFetch(endpoint, options = {}) {
   const url = `${CURRENT_BASE_URL}${endpoint}`;
 
-  const userStr = localStorage.getItem('pos_user');
+  const userStr = typeof localStorage !== 'undefined' ? localStorage.getItem('pos_user') : null;
   let userHeaders = {};
   if (userStr) {
     try {
       const u = JSON.parse(userStr);
-      const token = u?.token || u?.Token || localStorage.getItem('pos_token');
+      const token = u?.token || u?.Token || (typeof localStorage !== 'undefined' ? localStorage.getItem('pos_token') : null);
       if (token) {
         userHeaders['Authorization'] = `Bearer ${token}`;
       }
-    } catch {}
+    } catch {
+      // Ignorar error de parsing
+    }
   }
 
   const config = {
@@ -217,13 +219,21 @@ export async function apiFetch(endpoint, options = {}) {
       if (errorBody) {
         try {
           const jsonErr = JSON.parse(errorBody);
-          if (jsonErr.message) errorMessage = jsonErr.message;
-          else if (jsonErr.Message) errorMessage = jsonErr.Message;
-          else if (jsonErr.requiresPasswordChange) {
+          if (jsonErr.requiresPasswordChange) {
             const err = new Error(jsonErr.message || 'Debe cambiar su contraseña antes de continuar.');
             err.requiresPasswordChange = true;
             throw err;
           }
+          if (jsonErr.message) errorMessage = jsonErr.message;
+          else if (jsonErr.Message) errorMessage = jsonErr.Message;
+          else if (jsonErr.detail) errorMessage = jsonErr.detail;
+          else if (jsonErr.Detail) errorMessage = jsonErr.Detail;
+          else if (Array.isArray(jsonErr.errors) && jsonErr.errors.length > 0) {
+            errorMessage = jsonErr.errors.join('; ');
+          } else if (jsonErr.errors && typeof jsonErr.errors === 'object') {
+            errorMessage = Object.values(jsonErr.errors).flat().join('; ');
+          } else if (jsonErr.title) errorMessage = jsonErr.title;
+          else if (jsonErr.Title) errorMessage = jsonErr.Title;
         } catch (e) {
           if (e.requiresPasswordChange) throw e;
           if (!errorBody.includes('<html') && errorBody.length < 300) {

@@ -12,30 +12,26 @@ La suite de pruebas automatizadas garantiza la estabilidad del sistema y previen
 regresiones funcionales y de contrato:
 
 Métricas Actuales:
-  - Pruebas Backend (.NET 10 / xUnit / Moq): 660 / 660 pruebas superadas (100% éxito en ~11s).
-  - Pruebas Frontend (Node.js / Vitest): 65 / 65 pruebas superadas (100% éxito en ~540ms).
-  - Total Pruebas Automatizadas en la Solución: 725 pruebas activas sin ningún fallo ni omisión.
+  - Pruebas Backend (.NET 10 / xUnit / Moq): 670 / 670 pruebas superadas (100% éxito en ~10s).
+  - Pruebas Frontend (Node.js / Vitest): 70 / 70 pruebas superadas (100% éxito en ~550ms).
+  - Total Pruebas Automatizadas en la Solución: 740 pruebas activas sin ningún fallo ni omisión.
 
-Nuevas Suites Añadidas en las Fases 1 a 4:
-1. ServicesContractRegressionTests.cs (Fase 4 ✅, Commit 77b9a7c):
-   - Pruebas por reflexión de contratos de servicio.
-   - Valida que el 100% de los métodos, firmas, tipos de retorno y parámetros de
-     ISalesService e IInventoryService permanezcan idénticos tras la descomposición
-     modular en clases parciales.
+Nuevas Suites Añadidas en la Remediación de Revisión 7.0:
+1. ForwardedHeadersIntegrationTests.cs (Fase 1 ✅):
+   - 7 pruebas de integración que validan:
+     * Procesamiento de X-Forwarded-For y X-Forwarded-Proto desde proxies loopback.
+     * Soporte de proxies remotos autorizados mediante KnownProxies y KnownIPNetworks.
+     * Rechazo de suplantación de IP desde proxies no autorizados.
+     * Protección de acceso anónimo en PairingController para máquinas locales y bloqueo
+       de accesos externos no autenticados a través de reverse proxies.
 
-2. DeliveryServiceTests.cs (Fase 3 ✅, Commit 492f038):
-   - 6 pruebas unitarias para Logistics.Module:
-     * Asignación de repartidor (Driver) y emisión de eventos.
-     * Actualización de estados de entrega (PendingPickup -> Assigned -> InTransit -> Delivered).
-     * Validación de transiciones ilegales y excepciones.
+2. ProductImportExportTests.cs y MainViewModelDisposeTests.cs (Fases 3 y 4 ✅):
+   - Pruebas de aceptación de SKUs alfanuméricos (BEB-101, COCA_350ML, REF-009) en importador.
+   - Pruebas de rechazo defensivo para caracteres no permitidos (ABC#1234).
+   - Verificación de IDisposable en ProductDialogViewModel con desuscripción limpia de timer.
 
-3. GlobalExceptionHandlerMiddlewareTests.cs (Fase 2 ✅, Commit 1e8b29f):
-   - 10 pruebas unitarias para el middleware de excepciones:
-     * Mapeo de PostgreSQL SQLSTATE 23502 (NOT NULL) a HTTP 400 Bad Request.
-     * Mapeo de SQLSTATE 23505 (violación de unicidad) a HTTP 409 Conflict.
-     * Mapeo de SQLSTATE 23503 (clave foránea) a HTTP 400.
-     * Mapeo de fallos de conexión (08006, 08001) a HTTP 503 Service Unavailable.
-     * Validación de campos duales ('message' / 'Message' y 'traceId' / 'TraceId').
+3. api.test.js (Fase 2 ✅):
+   - 5 pruebas unitarias para extracción de RFC 7807 ProblemDetails (detail, title, array y objeto de errores).
 
 --------------------------------------------------------------------------------
 2. FORTALEZAS DE LA SUITE

@@ -106,7 +106,7 @@
                                              materialDesign:HintAssist.IsFloating="True"
                                              Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
                                              TabIndex="2"/>
-                                    <TextBlock Text="Número entero (solo dígitos 0-9)" Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
+                                    <TextBlock Text="Alfanumérico (letras, dígitos o guiones, hasta 50 caracteres)" Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
                                     <TextBlock Text="{Binding SkuVerificationMessage}" Foreground="{DynamicResource PrimaryHueMidBrush}" FontSize="10" Margin="4,2,0,0" Visibility="{Binding IsSkuVerifying, Converter={StaticResource BoolToVisConverter}}"/>
                                     <TextBlock Text="{Binding SkuVerificationMessage}" Foreground="Red" FontSize="10" Margin="4,2,0,0">
                                         <TextBlock.Style>

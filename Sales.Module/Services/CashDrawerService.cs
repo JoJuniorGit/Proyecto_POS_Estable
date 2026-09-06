@@ -225,6 +225,7 @@ public class CashDrawerService : ICashDrawerService
     public async Task<System.Collections.Generic.List<CashTransaction>> GetHistoryAsync(int limit = 300)
     {
         return await _context.CashTransactions
+            .AsNoTracking()
             .Include(t => t.Sale)
             .Where(t => t.IsPhysicalCash)
             .OrderByDescending(t => t.TransactionTime)

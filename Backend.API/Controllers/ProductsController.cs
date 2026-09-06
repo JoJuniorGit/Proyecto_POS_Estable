@@ -219,9 +219,9 @@ public class StatusUpdateDto
     [HttpGet("quick-check/{sku}")]
     public async Task<ActionResult<Core.DTOs.ProductQuickInfoDto>> GetQuickInfo(string sku)
     {
-        if (string.IsNullOrWhiteSpace(sku) || !System.Text.RegularExpressions.Regex.IsMatch(sku.Trim(), @"^\d+$"))
+        if (string.IsNullOrWhiteSpace(sku) || !System.Text.RegularExpressions.Regex.IsMatch(sku.Trim(), @"^[A-Za-z0-9\-_]{1,50}$"))
         {
-            return BadRequest("El SKU debe ser estrictamente un número entero (solo dígitos 0-9).");
+            return BadRequest("El SKU debe contener entre 1 y 50 caracteres alfanuméricos (letras, dígitos, guiones o guiones bajos).");
         }
         var info = await _inventoryService.GetProductQuickInfoAsync(sku);
         if (info == null) return NotFound();

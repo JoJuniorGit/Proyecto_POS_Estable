@@ -39,10 +39,12 @@ comunicación HTTP resiliente y descubrimiento de servidores en LAN:
 - H-DCC-4 / ARQ-03 (Cabeceras de rol/id): ✅ CERRADO (retiradas; Bearer token exclusivo).
 - H-DCC-5 (0 async void en ViewModels): ✅ CERRADO (100% Task o SafeFireAndForget).
 - H-DCC-11 (Validación de token restaurado): ✅ CERRADO (auditoría forense y purga si inválido).
-- [NUEVO] WPF-LEAK-01: ❌ VIGENTE (ProductDialogViewModel.cs:294 suscribe async void lambda
-  al DispatcherTimer sin bloque try/catch ni implementación de IDisposable).
-- [NUEVO] DOM-VAL-01: ❌ VIGENTE (ProductImportService.cs:203 y ProductDialogViewModel.cs:685
-  validan SKU con Regex ^\d+$ solo dígitos, rechazando códigos alfanuméricos válidos del dominio).
+- [CERRADO] WPF-LEAK-01: ✅ TOTALMENTE CORREGIDO (ProductDialogViewModel implementa IDisposable,
+  reemplaza la lambda anónima async void por el manejador OnDebounceTimerTick protegido con
+  SafeFireAndForget y AppLogger.LogCrash, y desuscribe/detiene el DispatcherTimer al cerrarse el diálogo).
+- [CERRADO] DOM-VAL-01: ✅ TOTALMENTE CORREGIDO (ProductImportService y ProductDialogViewModel
+  alineados con la regla alfanumérica ^[A-Za-z0-9\-_]{1,50}$, permitiendo códigos como BEB-101
+  o COCA_2L tanto en importación de catálogo como en creación/edición de productos).
 
 --------------------------------------------------------------------------------
 3. FORTALEZAS DEL MÓDULO

@@ -36,7 +36,11 @@ namespace Desktop.Client.Views
 
         protected override void OnClosed(EventArgs e)
         {
-            _timer?.Stop();
+            if (_timer != null)
+            {
+                _timer.Stop();
+                _timer.Tick -= Timer_Tick;
+            }
             base.OnClosed(e);
         }
     }

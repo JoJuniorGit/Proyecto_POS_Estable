@@ -37,8 +37,11 @@ entrada de la aplicación de escritorio:
 - ERR-02 (Crash logger): ✅ CERRADO (registros centralizados en AppData con rotación).
 - H-WPF-2 (Shutdown no bloqueante): ✅ CERRADO (timeout defensivo de 3s en App.xaml.cs).
 - H-WPF-3 (Async void en code-behind): ✅ CERRADO (try/catch + AppLogger.LogCrash en vistas).
-- [NUEVO] WPF-LEAK-02: 🟡 LEVE (SuccessDialogWindow.xaml.cs:17-20 suscribe _timer.Tick
-  pero no desuscribe el delegado en OnClosed).
+- [CERRADO] WPF-LEAK-01 / CICLO DE VIDA: ✅ TOTALMENTE CORREGIDO (ProductDialog.xaml.cs
+  implementa OnClosed invocando ViewModel?.Dispose() en cualquier camino de cierre;
+  NumberValidationTextBox actualizado para permitir caracteres alfanuméricos en la UI).
+- [CERRADO] WPF-LEAK-02: ✅ TOTALMENTE CORREGIDO (SuccessDialogWindow.xaml.cs desuscribe
+  _timer.Tick -= Timer_Tick en OnClosed antes de la disposición de la ventana).
 
 --------------------------------------------------------------------------------
 3. FORTALEZAS DEL MÓDULO

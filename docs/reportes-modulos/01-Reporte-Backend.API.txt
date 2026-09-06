@@ -50,22 +50,28 @@ se consolidaron las siguientes mejoras críticas:
 - SEC-09 (CSP unsafe-inline): ✅ CERRADO (script-src 'self' en producción).
 - PERF-05 (Purga Outbox): ✅ CERRADO (eliminación por lotes de 1.000 para mensajes > 7 días).
 - ERR-01 (ProblemDetails uniforme): ✅ CERRADO (middleware global RFC 7807 + SQLSTATE 23502).
-- [NUEVO] SEC-10 / ARQ-04: ❌ VIGENTE (Falta UseForwardedHeaders en Program.cs; bajo reverse
-  proxy en localhost, RemoteIpAddress es siempre 127.0.0.1, omitiendo la autenticación
-  en /api/pairing/info y colapsando el Rate Limiter a un solo bucket).
-- [NUEVO] ERR-04: ❌ VIGENTE (DailyClosureController.cs:155, ShiftsController.cs:179 y
-  ExchangeRateController.cs:190 conservan catch con ex.Message hacia el cliente).
-- [NUEVO] SEC-11 / NET-01: ❌ VIGENTE (Regla CORS de puertos privados restringe a 5000, 5001 y 5173;
-  bloquea clientes web en puertos 80/443 o vite preview en 4173 salvo configuración explícita).
+- [CERRADO] SEC-10 / ARQ-04: ✅ TOTALMENTE CORREGIDO (ForwardedHeadersOptions configurado en
+  Program.cs con soporte de KnownProxies y KnownIPNetworks desde appsettings.json.
+  PairingController.cs verifica RemoteIpAddress normalizado e impide bypass anónimo bajo reverse proxy.
+  Validado con 7 pruebas de integración en ForwardedHeadersIntegrationTests.cs).
+- [CERRADO] ERR-04: ✅ TOTALMENTE CORREGIDO (Retirados catches planos con ex.Message en
+  DailyClosureController.cs y ShiftsController.cs, delegando en GlobalExceptionHandlerMiddleware.
+  ExchangeRateController.cs saneado con AppLogger.LogCrash y mensaje genérico sin filtrar trazas).
+- [CERRADO] SEC-11 / NET-01: ✅ TOTALMENTE CORREGIDO (Regla CORS de subredes privadas RFC-1918
+  ampliada para admitir puertos estándar 80, 443 y 4173 además de 5000, 5001 y 5173).
+- [CERRADO] PERF-06: ✅ TOTALMENTE CORREGIDO (SettingsController.cs optimizado con AsNoTracking()
+  en consultas de solo lectura para ExchangeRate, TimeZone y CurrencyFormat).
+- [CERRADO] DOM-VAL-01: ✅ TOTALMENTE CORREGIDO (ProductsController.cs:222 actualizado con regex
+  alfanumérico ^[A-Za-z0-9\-_]{1,50}$ en endpoint quick-check).
 
 --------------------------------------------------------------------------------
-3. FORTALEZAS DEL MÓDULO
+3. PLAN DE ACCIÓN Y ROADMAP (FASE POST-REMEDIACIÓN)
 --------------------------------------------------------------------------------
-- Pipeline de middleware robusto: GlobalExceptionHandler -> SecurityHeaders -> RateLimiter ->
-  SecurityStampValidation -> Authentication/Authorization.
-- Protección de endpoints monetarios críticos con [RequireSecurityStampValidation].
-- Advisory locks de PostgreSQL en BcvExchangeRateJob para evitar colisiones de scraping concurrente.
-- Rate Limiting estricto para autenticación (10 req/min) y API general (200 req/min).
+1. Secretos y Certificados en Producción:
+   - Configurar scripts de despliegue para generar e instalar pos-https.pfx automáticamente (C2).
+   - Migrar almacenamiento de clave JWT desde Registro a Windows DPAPI o Azure KeyVault (C1).
+2. Monitoreo y Telemetría:
+   - Mantener pruebas automatizadas de regresión continua en pipeline CI/CD (670 pruebas .NET).
 
 --------------------------------------------------------------------------------
 4. RECOMENDACIONES FUTURAS

@@ -10,6 +10,7 @@ using Backend.API.Hubs;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using System.Security.Cryptography.X509Certificates;
 using Logistics.Module.Extensions;
+using Microsoft.AspNetCore.HttpOverrides;
 
 // Setup global unhandled exception logger for crash.log
 AppDomain.CurrentDomain.UnhandledException += (s, e) =>
@@ -270,7 +271,7 @@ try
                         if (bytes.Length == 4)
                         {
                             int port = uri.Port;
-                            bool isAllowedPort = port == 5000 || port == 5001 || port == 5173;
+                            bool isAllowedPort = port == 5000 || port == 5001 || port == 5173 || port == 80 || port == 443 || port == 4173;
                             if (isAllowedPort)
                             {
                                 if (bytes[0] == 10) return true; // 10.0.0.0/8
@@ -288,6 +289,39 @@ try
         });
     });
 
+    // Forwarded Headers Configuration (SEC-10)
+    // Permite normalizar X-Forwarded-For y X-Forwarded-Proto cuando el backend opera tras un reverse proxy (Nginx, IIS, Caddy).
+    // Por defecto en ASP.NET Core, confía en proxies en loopback (127.0.0.1/8 y ::1/128).
+    // Permite además extender KnownProxies y KnownNetworks mediante appsettings.json si se despliega tras proxies remotos.
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+        var knownProxiesConfig = builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>();
+        if (knownProxiesConfig != null)
+        {
+            foreach (var proxy in knownProxiesConfig)
+            {
+                if (System.Net.IPAddress.TryParse(proxy, out var ip))
+                {
+                    options.KnownProxies.Add(ip);
+                }
+            }
+        }
+
+        var knownNetworksConfig = builder.Configuration.GetSection("ForwardedHeaders:KnownNetworks").Get<string[]>();
+        if (knownNetworksConfig != null)
+        {
+            foreach (var net in knownNetworksConfig)
+            {
+                if (System.Net.IPNetwork.TryParse(net, out var parsedNet))
+                {
+                    options.KnownIPNetworks.Add(parsedNet);
+                }
+            }
+        }
+    });
+
     builder.Services.AddResponseCompression(options =>
     {
         options.EnableForHttps = true;
@@ -296,6 +330,9 @@ try
     });
 
     var app = builder.Build();
+
+    // Normalizar encabezados reenviados (X-Forwarded-For / X-Forwarded-Proto) al inicio del pipeline
+    app.UseForwardedHeaders();
 
     // Global Unhandled Exception & DB Resilience Middleware
     app.UseMiddleware<Backend.API.Middleware.GlobalExceptionHandlerMiddleware>();

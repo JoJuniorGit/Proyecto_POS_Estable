@@ -174,7 +174,11 @@ public class ShiftsController : ControllerBase
 
             return Ok(report);
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { Message = ex.Message });
+        }
+        catch (ArgumentException ex)
         {
             return BadRequest(new { Message = ex.Message });
         }

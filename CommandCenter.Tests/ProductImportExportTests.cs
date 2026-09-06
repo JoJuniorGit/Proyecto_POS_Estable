@@ -272,6 +272,81 @@ public class ProductImportExportTests
     }
 
     [Fact]
+    public async Task ParseFileWithMapping_AlphanumericSku_AcceptedSuccessfully()
+    {
+        var tempFile = System.IO.Path.GetTempFileName() + ".csv";
+        try
+        {
+            var csvLines = new[]
+            {
+                "SKU;Nombre;CostoUSD;MargenDetal%",
+                "BEB-101;Coca Cola 2L;1.50;30.00",
+                "COCA_350ML;Coca Cola Lata;0.80;25.00",
+                "REF-009-ABC;Refresco Especial;1.00;20.00"
+            };
+            await System.IO.File.WriteAllLinesAsync(tempFile, csvLines);
+
+            var service = new Desktop.Client.Services.ProductImportService(new System.Net.Http.HttpClient());
+            var mapping = new Dictionary<string, string>
+            {
+                { "SKU", "SKU" },
+                { "Nombre", "Name" },
+                { "CostoUSD", "CostPriceUSD" },
+                { "MargenDetal%", "ProfitMarginRetail" }
+            };
+
+            var list = await service.ParseFileWithMappingAsync(tempFile, mapping, 1.0m);
+
+            Assert.Equal(3, list.Count);
+            Assert.All(list, item => Assert.True(item.IsValid, $"Validation failed: {item.ErrorMessage}"));
+            Assert.Equal("BEB-101", list[0].SKU);
+            Assert.Equal("COCA_350ML", list[1].SKU);
+            Assert.Equal("REF-009-ABC", list[2].SKU);
+        }
+        finally
+        {
+            if (System.IO.File.Exists(tempFile)) System.IO.File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task ParseFileWithMapping_InvalidSku_RejectedWithValidationMessage()
+    {
+        var tempFile = System.IO.Path.GetTempFileName() + ".csv";
+        try
+        {
+            var csvLines = new[]
+            {
+                "SKU;Nombre;CostoUSD;MargenDetal%",
+                "BEB 101;Producto con Espacio;1.50;30.00",
+                "BEB@#$!;Producto con Simbolos;1.00;20.00"
+            };
+            await System.IO.File.WriteAllLinesAsync(tempFile, csvLines);
+
+            var service = new Desktop.Client.Services.ProductImportService(new System.Net.Http.HttpClient());
+            var mapping = new Dictionary<string, string>
+            {
+                { "SKU", "SKU" },
+                { "Nombre", "Name" },
+                { "CostoUSD", "CostPriceUSD" },
+                { "MargenDetal%", "ProfitMarginRetail" }
+            };
+
+            var list = await service.ParseFileWithMappingAsync(tempFile, mapping, 1.0m);
+
+            Assert.Equal(2, list.Count);
+            Assert.False(list[0].IsValid);
+            Assert.Contains("alfanuméricos", list[0].ErrorMessage);
+            Assert.False(list[1].IsValid);
+            Assert.Contains("alfanuméricos", list[1].ErrorMessage);
+        }
+        finally
+        {
+            if (System.IO.File.Exists(tempFile)) System.IO.File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
     public async Task ParseCsvWithMapping_ValidCsv_ExtractsRowsAndColumns()
     {
         var tempFile = System.IO.Path.GetTempFileName() + ".csv";
@@ -422,7 +497,7 @@ public class ProductImportExportTests
     }
 
     [Fact]
-    public async Task ParseCsv_NonNumericSku_ReturnsValidationError()
+    public async Task ParseCsv_InvalidSkuWithSpecialCharacters_ReturnsValidationError()
     {
         var tempFile = System.IO.Path.GetTempFileName() + ".csv";
         try
@@ -430,7 +505,7 @@ public class ProductImportExportTests
             var csvLines = new[]
             {
                 "SKU;Name",
-                "ABC-1234;Producto SKU Alfanumerico"
+                "ABC#1234;Producto SKU Simbolo Invalido"
             };
             await System.IO.File.WriteAllLinesAsync(tempFile, csvLines);
 
@@ -446,7 +521,7 @@ public class ProductImportExportTests
             Assert.Single(list);
             var item = list.First();
             Assert.False(item.IsValid);
-            Assert.Contains("entero", item.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("alfanumérico", item.ErrorMessage, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

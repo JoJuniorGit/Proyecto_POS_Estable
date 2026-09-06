@@ -200,9 +200,9 @@ public class ProductImportService : IProductImportService
                         {
                             errors.Add("El SKU/Código de barras no puede estar vacío.");
                         }
-                        else if (!System.Text.RegularExpressions.Regex.IsMatch(dto.SKU.Trim(), @"^\d+$"))
+                        else if (!System.Text.RegularExpressions.Regex.IsMatch(dto.SKU.Trim(), @"^[A-Za-z0-9\-_]{1,50}$"))
                         {
-                            errors.Add("El SKU/Código de barras debe ser estrictamente un número entero (solo dígitos 0-9).");
+                            errors.Add("El SKU/Código de barras debe contener entre 1 y 50 caracteres alfanuméricos (letras, dígitos, guiones o guiones bajos).");
                         }
 
                         if (errors.Any())
@@ -352,9 +352,9 @@ public class ProductImportService : IProductImportService
                     errors.Add("El SKU/Código de barras no puede estar vacío.");
                 }
             }
-            else if (!isGroup && !System.Text.RegularExpressions.Regex.IsMatch(dto.SKU.Trim(), @"^\d+$"))
+            else if (!isGroup && !System.Text.RegularExpressions.Regex.IsMatch(dto.SKU.Trim(), @"^[A-Za-z0-9\-_]{1,50}$"))
             {
-                errors.Add("El SKU/Código de barras debe ser estrictamente un número entero (solo dígitos 0-9).");
+                errors.Add("El SKU/Código de barras debe contener entre 1 y 50 caracteres alfanuméricos (letras, dígitos, guiones o guiones bajos).");
             }
 
             if (errors.Any())

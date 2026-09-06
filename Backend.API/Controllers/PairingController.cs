@@ -25,11 +25,14 @@ public class PairingController : ControllerBase
     public IActionResult GetPairingInfo()
     {
         // 1. Verificar si la petición es local (Loopback / Localhost)
+        // Nota: UseForwardedHeaders garantiza que si la petición proviene de un reverse proxy,
+        // RemoteIpAddress reflejará la IP del cliente real.
         var remoteIp = HttpContext.Connection.RemoteIpAddress;
-        bool isLocal = remoteIp == null 
-                       || IPAddress.IsLoopback(remoteIp) 
+        bool isLocal = remoteIp != null && (
+                       IPAddress.IsLoopback(remoteIp) 
+                       || (remoteIp.IsIPv4MappedToIPv6 && IPAddress.IsLoopback(remoteIp.MapToIPv4()))
                        || remoteIp.ToString() == "127.0.0.1" 
-                       || remoteIp.ToString() == "::1";
+                       || remoteIp.ToString() == "::1");
 
         // 2. Si no es local, verificar si el usuario está autenticado
         if (!isLocal && !(User.Identity?.IsAuthenticated ?? false))

@@ -46,9 +46,12 @@ Sales.Module ha sido objeto de refactorizaciones estructurales profundas:
 - H-SAL-13 / W1 (Idempotencia en cobros): ✅ CERRADO (Idempotency-Key obligatoria y persistida).
 - W3 / MT-001 (FK en CashTransaction): ✅ CERRADO (migración y validación relacional directa).
 - W4 (Auditoría en purga de idempotencia): ✅ CERRADO (AppLogger.LogSecurityAudit).
-- [NUEVO] PERF-06: ❌ VIGENTE (CashDrawerService.GetHistoryAsync(limit=300) sin AsNoTracking()).
-- [NUEVO] ERR-04: ❌ VIGENTE (DailyClosureController.cs:155 y ShiftsController.cs:179 capturan
-  Exception ex y retornan BadRequest(new { Message = ex.Message }) en lugar de ProblemDetails).
+- [CERRADO] PERF-06: ✅ TOTALMENTE CORREGIDO (CashDrawerService.GetHistoryAsync(limit=300)
+  optimizado con .AsNoTracking(), reduciendo el consumo de memoria y evitando el tracking
+  innecesario de hasta 600 entidades EF Core).
+- [CERRADO] ERR-04: ✅ TOTALMENTE CORREGIDO (DailyClosureController.cs y ShiftsController.cs
+  saneados retirando catch(Exception ex) genéricos, canalizando las fallas de forma segura
+  hacia GlobalExceptionHandlerMiddleware bajo el estándar RFC 7807).
 
 --------------------------------------------------------------------------------
 3. FORTALEZAS DEL MÓDULO

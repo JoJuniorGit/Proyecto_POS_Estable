@@ -44,8 +44,9 @@ y primitivas de registro compartidas:
 - H-CORE-4 (Logging duplicado): 🟡 PARCIAL (ambos loggers rotan 10MB x 5, pero son estáticos independientes).
 - H-CORE-6 (TimeZoneHelper duplicado): ✅ CERRADO (unificado en Core/Helpers/TimeZoneHelper.cs).
 - CODE-02 (Cédulas hardcodeadas): ✅ CERRADO (centralizado en SecurityConstants.cs).
-- [NUEVO] DOM-VAL-01: ❌ VIGENTE (Product.cs:23 admite SKU alfanumérico hasta 50 chars,
-  pero el importador y el diálogo WPF exigen números enteros exclusivamente).
+- [CERRADO] DOM-VAL-01: ✅ TOTALMENTE CORREGIDO (Product.cs:23 con SKU alfanumérico
+  [StringLength(50)] ahora plenamente alineado con ProductImportService, InventoryService
+  y ProductDialogViewModel, admitiendo identificadores alfanuméricos ^[A-Za-z0-9\-_]{1,50}$).
 
 --------------------------------------------------------------------------------
 3. FORTALEZAS DEL MÓDULO

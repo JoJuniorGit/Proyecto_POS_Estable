@@ -38,14 +38,19 @@ y dispositivos móviles/tablets táctiles:
 - W1 (Idempotencia en cobros): ✅ CERRADO (UUID v4 obligatorio en cada venta).
 - W2 (Precisión decimal JavaScript): 🟡 PARCIAL (formatters.js utiliza toFixed sobre
   punto flotante IEEE-754; adecuado para visualización pero mejorable a centavos enteros).
-- [NUEVO] UX-WEB-01 / ERR-05: ❌ VIGENTE (api.js:215-236 solo extrae jsonErr.message; si el
-  backend responde con ProblemDetails estándar que contiene 'detail' o 'errors', api.js
-  vuelca el JSON crudo o 'Error 400: Bad Request' al usuario).
+- [CERRADO] UX-WEB-01 / ERR-05: ✅ TOTALMENTE CORREGIDO (api.js enriquecido para
+  extraer de forma robusta 'detail', 'title', array de errores y objetos de validación
+  RFC 7807 de ASP.NET Core, evitando volcar JSON crudo al cajero. Validado con 5 pruebas
+  unitarias adicionales en api.test.js).
+- [DOCUMENTADO] ARQ-SKU / DOM-VAL-01: ✅ DISEÑO COHERENTE (barcodeValidator.js restringe la
+  captura óptica a códigos 1D retail [A-Za-z0-9]{4,15} con Mod10 y filtrado de puntuación
+  para rechazar URLs de QR, mientras que el catálogo admite SKUs alfanuméricos extendidos
+  con guiones [A-Za-z0-9\-_]{1,50}).
 
 --------------------------------------------------------------------------------
 3. FORTALEZAS DEL MÓDULO
 --------------------------------------------------------------------------------
-- Suite de pruebas exhaustiva: 65 pruebas unitarias con Vitest (100% pasando en ~500ms).
+- Suite de pruebas exhaustiva: 70 pruebas unitarias con Vitest (100% pasando en ~550ms).
 - Integración dual de escaneo de códigos de barras (BarcodeDetector nativo + ZXing fallback).
 - Filtros de visión para portátiles (lapTopVisionEnhancer con binarización Sauvola).
 - Sincronización en tiempo real de tasa de cambio y formato de moneda mediante SignalR.
@@ -53,8 +58,6 @@ y dispositivos móviles/tablets táctiles:
 --------------------------------------------------------------------------------
 4. RECOMENDACIONES FUTURAS
 --------------------------------------------------------------------------------
-- Mejorar el extractor de errores en api.js para parsear jsonErr.detail, jsonErr.title
-  y jsonErr.errors.
 - Migrar cálculos financieros del cliente a centavos enteros para blindar contra drift
   de punto flotante.
 ================================================================================

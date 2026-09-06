@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.SignalR;
 using Sales.Module.Interfaces;
 using Backend.API.Hubs;
+using Core.Logging;
 
 namespace Backend.API.Controllers;
 
@@ -187,7 +188,8 @@ public class ExchangeRateController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, new { Message = $"Error inesperado al sincronizar con el BCV: {ex.Message}" });
+            AppLogger.LogCrash(ex, "ExchangeRateController.SyncBcvRate");
+            return StatusCode(StatusCodes.Status500InternalServerError, new { Message = "Error inesperado al sincronizar con el BCV. Intente más tarde o ingrese la tasa manualmente." });
         }
 
         if (rate.Value <= 0 || rate.Value > 1_000_000m)

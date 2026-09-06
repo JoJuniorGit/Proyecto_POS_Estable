@@ -52,8 +52,9 @@ de botella de rendimiento, transaccionalidad y deuda arquitectónica:
 - H-INV-8 (DDL en runtime): ✅ CERRADO (MigrateAsync primero, comprobaciones seguras).
 - H-INV-9 (Invalidación de caché): ✅ MEJORADO (consolidada a nivel de lote en UpdateStockBatchAsync).
 - H-INV-10 (Commits por ítem N+1): ✅ CERRADO (un solo SaveChangesAsync en lote).
-- [NUEVO] DOM-VAL-01: ❌ VIGENTE (Inconsistencia: Product.cs admite SKU alfanumérico hasta 50 chars,
-  pero ProductImportService.cs:203 y el diálogo WPF exigen Regex ^\d+$ solo dígitos).
+- [CERRADO] DOM-VAL-01: ✅ TOTALMENTE CORREGIDO (InventoryService.cs:207 alineado para admitir SKUs
+  alfanuméricos ^[A-Za-z0-9\-_]{1,50}$ en validación de catálogo y creación de productos,
+  completamente coherente con Product.cs, ProductImportService y ProductDialogViewModel).
 
 --------------------------------------------------------------------------------
 3. FORTALEZAS DEL MÓDULO

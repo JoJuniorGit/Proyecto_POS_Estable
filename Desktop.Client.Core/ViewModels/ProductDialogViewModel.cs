@@ -9,10 +9,12 @@ using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using Core.Common;
+using Core.Logging;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class ProductDialogViewModel : ObservableValidator
+public partial class ProductDialogViewModel : ObservableValidator, IDisposable
 {
     private readonly IProductService _productService;
     private readonly IExchangeRateService _exchangeRateService;
@@ -291,7 +293,7 @@ public partial class ProductDialogViewModel : ObservableValidator
         {
             Interval = TimeSpan.FromMilliseconds(500)
         };
-        _debounceTimer.Tick += async (s, e) => await VerifySkuAsync();
+        _debounceTimer.Tick += OnDebounceTimerTick;
 
         _ = LoadMetadataAsync();
     }
@@ -492,10 +494,10 @@ public partial class ProductDialogViewModel : ObservableValidator
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(value) || !System.Text.RegularExpressions.Regex.IsMatch(value.Trim(), @"^\d+$"))
+        if (string.IsNullOrWhiteSpace(value) || !System.Text.RegularExpressions.Regex.IsMatch(value.Trim(), @"^[A-Za-z0-9\-_]{1,50}$"))
         {
             IsSkuValid = false;
-            SkuVerificationMessage = "El SKU debe ser estrictamente un número entero (solo dígitos 0-9).";
+            SkuVerificationMessage = "El SKU/Código de barras debe contener entre 1 y 50 caracteres alfanuméricos (letras, dígitos o guiones).";
             return;
         }
 
@@ -671,6 +673,12 @@ public partial class ProductDialogViewModel : ObservableValidator
         }
     }
 
+    private void OnDebounceTimerTick(object? sender, EventArgs e)
+    {
+        _debounceTimer.Stop();
+        VerifySkuAsync().SafeFireAndForget("ProductDialogViewModel.VerifySku");
+    }
+
     private async Task VerifySkuAsync()
     {
         _debounceTimer.Stop();
@@ -682,10 +690,10 @@ public partial class ProductDialogViewModel : ObservableValidator
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(Sku) || !System.Text.RegularExpressions.Regex.IsMatch(Sku.Trim(), @"^\d+$"))
+        if (string.IsNullOrWhiteSpace(Sku) || !System.Text.RegularExpressions.Regex.IsMatch(Sku.Trim(), @"^[A-Za-z0-9\-_]{1,50}$"))
         {
             IsSkuValid = false;
-            SkuVerificationMessage = "El SKU debe ser estrictamente un número entero (solo dígitos 0-9).";
+            SkuVerificationMessage = "El SKU/Código de barras debe contener entre 1 y 50 caracteres alfanuméricos (letras, dígitos o guiones).";
             return;
         }
 
@@ -728,6 +736,7 @@ public partial class ProductDialogViewModel : ObservableValidator
         }
         catch (Exception ex)
         {
+            AppLogger.LogCrash(ex, "ProductDialogViewModel.VerifySkuAsync");
             if (!token.IsCancellationRequested)
             {
                 IsSkuValid = true; // Err on side of allowing if service fails to respond for some reason, robust write validation will catch it
@@ -743,6 +752,19 @@ public partial class ProductDialogViewModel : ObservableValidator
         }
     }
 
+    public void Dispose()
+    {
+        _debounceTimer.Stop();
+        _debounceTimer.Tick -= OnDebounceTimerTick;
+        try
+        {
+            _skuCancellationTokenSource?.Cancel();
+            _skuCancellationTokenSource?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+        _skuCancellationTokenSource = null;
+    }
+
     [RelayCommand]
     private async Task SaveAsync()
     {
@@ -756,10 +778,10 @@ public partial class ProductDialogViewModel : ObservableValidator
         }
         else
         {
-            if (string.IsNullOrWhiteSpace(Sku) || !System.Text.RegularExpressions.Regex.IsMatch(Sku.Trim(), @"^\d+$"))
+            if (string.IsNullOrWhiteSpace(Sku) || !System.Text.RegularExpressions.Regex.IsMatch(Sku.Trim(), @"^[A-Za-z0-9\-_]{1,50}$"))
             {
                 IsSkuValid = false;
-                SkuVerificationMessage = "El SKU debe ser estrictamente un número entero (solo dígitos 0-9).";
+                SkuVerificationMessage = "El SKU/Código de barras debe contener entre 1 y 50 caracteres alfanuméricos (letras, dígitos o guiones).";
                 return;
             }
 

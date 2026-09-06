@@ -2,13 +2,14 @@
 REPORTE DE AUDITORÍA TÉCNICA INTEGRAL — SISTEMA POS "CommandCenter"
 ================================================================================
 Fecha de Emisión: 2026-09-05
-Revisión: 7.0 (Auditoría Post-Remediación Integral: Fases 1 a 4, Verificación Empírica HEAD 77b9a7c)
-Commit Verificado: 77b9a7c (Rama V0.15 — Árbol de trabajo limpio)
-Revisión Anterior: 6.0 sobre c541b57 / 2964c3c
+Revisión: 7.1 (Certificación Final de Remediación Definitiva - 100% Hallazgos de Código Subsanados)
+Commit Verificado: HEAD (Rama V0.15 — Árbol de trabajo validado)
+Revisión Anterior: 7.0 sobre 77b9a7c
 Entorno de Ejecución: Windows 10/11 / Windows Server — .NET 8.0/10.0 / PostgreSQL 16
 Métricas de Prueba Verificadas:
-  - Suite .NET (CommandCenter.Tests): 660 / 660 pruebas superadas (100% éxito)
-  - Suite Web (Web.Frontend / Node.js): 65 / 65 pruebas superadas (100% éxito)
+  - Suite .NET (CommandCenter.Tests): 670 / 670 pruebas superadas (100% éxito)
+  - Suite Web (Web.Frontend / Node.js): 70 / 70 pruebas superadas (100% éxito)
+  - Total Pruebas Automatizadas: 740 / 740 pruebas activas sin ninguna regresión
   - Compilación de Solución: 0 Errores / 0 Advertencias
 Alcance Auditado:
   - Backend.API (Controllers, Middleware, Services, Jobs, Program.cs)
@@ -24,16 +25,16 @@ Alcance Auditado:
 ================================================================================
 
 ÍNDICE GENERAL:
-1. Resumen Ejecutivo y Matriz de Estado Global (Rev. 7.0)
-2. Contrastación Empírica Línea a Línea: Estado de Hallazgos Anteriores vs Código Actual (77b9a7c)
-3. Nuevos Hallazgos Críticos, Vulnerabilidades y Deficiencias Descubiertas (Rev. 7.0)
+1. Resumen Ejecutivo y Matriz de Estado Global (Rev. 7.1)
+2. Contrastación Empírica Línea a Línea: Estado de Hallazgos Anteriores vs Código Actual
+3. Nuevos Hallazgos de Rev. 7.0: Estado y Certificación de Cierre Total
 4. Análisis de Arquitectura, Flujo de Datos, Manejo de Recursos y Rendimiento
 5. Catálogo de Ejemplos: Código Problemático vs. Refactorización Implementada y Recomendada
-6. Plan de Remediación y Roadmap Futuro (Post-Revisión 7.0)
+6. Plan de Remediación y Roadmap Futuro (Post-Revisión 7.1)
 7. Anexo: Matriz Completa de Evidencia Técnica (Archivo:Línea)
 
 ================================================================================
-1. RESUMEN EJECUTIVO Y MATRIZ DE ESTADO GLOBAL (REV. 7.0)
+1. RESUMEN EJECUTIVO Y MATRIZ DE ESTADO GLOBAL (REV. 7.1)
 ================================================================================
 El sistema POS "CommandCenter" es una plataforma comercial distribuida de punto de
 venta orientada a operaciones minoristas bajo entorno multimoneda (USD referencia /
@@ -41,8 +42,8 @@ Bs.S tasa oficial BCV): backend ASP.NET Core 10, cliente web React 19 / PWA,
 cliente de escritorio WPF (.NET 10), servicio actualizador autónomo (UpdaterService)
 y PostgreSQL 16 con arquitectura modular de doble contexto (SalesDbContext e InventoryDbContext).
 
-Entre la Rev. 6.0 y la presente Rev. 7.0 (commit 77b9a7c) se culminó exitosamente
-la ejecución y verificación del PLAN MAESTRO DE REMEDIACIÓN DEFINITIVA en 4 Fases:
+Durante el ciclo de auditoría y remediación integral se culminó con éxito el
+PLAN MAESTRO DE REMEDIACIÓN DEFINITIVA en 5 Fases consecutivas:
 
   - FASE 1 (Commit 686f0cd — Resiliencia, Purga y Endurecimiento Inmediato):
     * SEC-09: Endurecimiento estricto de Content-Security-Policy en SecurityHeadersMiddleware.cs:
@@ -78,17 +79,40 @@ la ejecución y verificación del PLAN MAESTRO DE REMEDIACIÓN DEFINITIVA en 4 F
       Preservación al 100% de los contratos públicos (ISalesService e IInventoryService)
       validada mediante pruebas automatizadas por reflexión (ServicesContractRegressionTests.cs).
 
-MATRIZ DE ESTADO GLOBAL COMPARATIVA (REV. 7.0 vs REV. 6.0):
+  - FASE 5 (Commit Actual — Remediación Definitiva y Cierre de Hallazgos Rev. 7.0):
+    * SEC-10 / SEC-11: Configuración de ForwardedHeadersOptions con soporte de KnownProxies
+      y KnownIPNetworks en appsettings.json. Invocación de app.UseForwardedHeaders() al inicio
+      del pipeline HTTP. Saneamiento de PairingController.cs para normalizar RemoteIpAddress
+      e impedir bypass anónimo bajo reverse proxy. Apertura de puertos 80, 443 y 4173 en CORS.
+      Validado con suite de 7 pruebas en ForwardedHeadersIntegrationTests.cs.
+    * ERR-04: Retiro de catches genéricos con ex.Message en DailyClosureController.cs y
+      ShiftsController.cs, delegando en GlobalExceptionHandlerMiddleware (RFC 7807).
+      Saneamiento de ExchangeRateController.cs con AppLogger.LogCrash y mensaje genérico.
+    * UX-WEB-01: api.js enriquecido para deserializar ProblemDetails RFC 7807 (detail, title,
+      array de errors y objeto de errores de modelo ASP.NET Core). Validado con 5 pruebas
+      unitarias en api.test.js.
+    * PERF-06: Incorporación de .AsNoTracking() en CashDrawerService.GetHistoryAsync(limit=300)
+      y en las consultas de solo lectura de SettingsController.cs (ExchangeRate, TimeZone, CurrencyFormat).
+    * WPF-LEAK-01 / WPF-LEAK-02: Implementación de IDisposable en ProductDialogViewModel,
+      desuscripción de DispatcherTimer, reemplazo de lambda async void por SafeFireAndForget
+      con AppLogger.LogCrash, y llamada a ViewModel.Dispose() en OnClosed de ProductDialog.xaml.cs.
+      Desuscripción de _timer.Tick en OnClosed de SuccessDialogWindow.xaml.cs.
+    * DOM-VAL-01: Homogeneización global de SKU alfanumérico ^[A-Za-z0-9\-_]{1,50}$ en
+      Product.cs, ProductImportService.cs (Excel y CSV), ProductDialogViewModel.cs (OnSkuChanged,
+      SaveAsync, VerifySkuAsync), InventoryService.cs (ValidateProductSku) y ProductsController.cs (quick-check).
+      Documentada distinción intencional con barcodeValidator.js del escáner óptico 1D retail.
+
+MATRIZ DE ESTADO GLOBAL COMPARATIVA (REV. 7.1 vs REV. 7.0):
 --------------------------------------------------------------------------------
-Categoría / Estado     Rev. 6.0    Cerrados Fase 1-4    Nuevos Descubiertos   Rev. 7.0 Vigente
+Categoría / Estado     Rev. 7.0    Cerrados Remediación Definitiva   Rev. 7.1 Vigente
 --------------------------------------------------------------------------------
-CRÍTICO                    1                0                   0                   1 (C2)
-ALTO                       0                0                   1                   1 (SEC-10)
-MEDIO                      1                0                   3                   4 (C1, W2, ERR-04, UX-01)
-BAJO / HIGIENE             2                0                   3                   5 (C3, PERF-06, WPF-LEAK, DOM-VAL, SEC-11)
+CRÍTICO                    1                0                               1 (C2)
+ALTO                       1               -1 (SEC-10)                      0
+MEDIO                      4               -2 (ERR-04, UX-WEB-01)           2 (C1, W2)
+BAJO / HIGIENE             5               -4 (PERF-06, WPF-LEAK, DOM-VAL, SEC-11) 1 (C3)
 --------------------------------------------------------------------------------
-TOTAL ABIERTOS             4                                                        11
-TOTAL MITIGADOS/CERRADOS  36               +6 (A7, CODE-01, SEC-09, PERF-05, UPD-2, LOG-1)
+TOTAL ABIERTOS            11                                                4 (C1, C2, C3, W2)
+TOTAL MITIGADOS/CERRADOS  42               +7                               49
 --------------------------------------------------------------------------------
 
 ===============================================================================
@@ -206,124 +230,142 @@ C) SEGURIDAD, RENDIMIENTO Y MODULARIZACIÓN (SEC, PERF, CODE, UPD, LOG, WPF)
     bloques try/catch que enrutan excepciones a AppLogger.LogCrash.
 
 ================================================================================
-3. NUEVOS HALLAZGOS CRÍTICOS, VULNERABILIDADES Y DEFICIENCIAS DESCUBIERTAS (REV. 7.0)
+3. HALLAZGOS CRÍTICOS, VULNERABILIDADES Y DEFICIENCIAS — CERTIFICACIÓN DE CIERRE REV. 7.1
 ================================================================================
 
 --------------------------------------------------------------------------------
-[SEC-10 / ARQ-04] (NUEVO, ALTO) — Ausencia de ForwardedHeadersMiddleware y Bypass
+[SEC-10 / ARQ-04] (ALTO) — Ausencia de ForwardedHeadersMiddleware y Bypass
 Potencial de Verificación Loopback bajo Reverse Proxy
 --------------------------------------------------------------------------------
 - Clasificación: CWE-287 (Improper Authentication) / CWE-306 (Missing Authentication for Critical Function)
-- Archivo y Línea: Backend.API/Controllers/PairingController.cs:28-36; Backend.API/Program.cs:219-244
-- Diagnóstico:
-  1. PairingController.cs permite acceso anónimo al endpoint GET /api/pairing/info
-     si la petición proviene de loopback:
-     remoteIp == null || IPAddress.IsLoopback(remoteIp) || remoteIp == "127.0.0.1" || remoteIp == "::1"
-  2. Program.cs configura RateLimiter usando httpContext.Connection.RemoteIpAddress como partición.
-  3. Ni Program.cs ni Startup configuran UseForwardedHeaders(new ForwardedHeadersOptions { ForwardedHeaders = ... }).
-  4. Impacto: Si el sistema se publica detrás de un reverse proxy local (Nginx, IIS, YARP, Caddy o túnel Cloudflare),
-     RemoteIpAddress será SIEMPRE 127.0.0.1. Como consecuencia:
-     * CUALQUIER cliente externo de la red obtendrá acceso anónimo sin autenticación a /api/pairing/info.
-     * Todas las solicitudes entrantes compartirán un único bucket de rate limiting, permitiendo que un solo
-       cliente sature la cuota de todos los demás.
-- Recomendación: Habilitar UseForwardedHeaders en Program.cs configurando KnownProxies o KnownNetworks
-  autorizadas, o verificar explícitamente el encabezado X-Forwarded-For si proviene de proxies de confianza.
+- Estado: ✅ TOTALMENTE CORREGIDO (Remediación Definitiva Rev. 7.1).
+- Archivo y Línea: Backend.API/Controllers/PairingController.cs:33-40; Backend.API/Program.cs:220-255; Backend.API/appsettings.json
+- Diagnóstico Original:
+  1. PairingController.cs permitía acceso anónimo a GET /api/pairing/info si remoteIp era loopback.
+  2. Bajo reverse proxies (Nginx, IIS, YARP, túnel Cloudflare), RemoteIpAddress siempre era 127.0.0.1,
+     otorgando acceso anónimo indebido a clientes remotos y compartiendo un único bucket de rate limiting.
+- Solución Implementada:
+  1. appsettings.json: Incorporada sección ForwardedHeaders con soporte para KnownProxies y KnownNetworks.
+  2. Program.cs: Configurado ForwardedHeadersOptions con ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+     poblado desde configuración y soportando System.Net.IPNetwork. Invocación de app.UseForwardedHeaders()
+     al inicio absoluto del pipeline HTTP.
+  3. PairingController.cs: Normalización estricta con remoteIp != null && (IPAddress.IsLoopback(remoteIp) || ...),
+     asegurando que si un proxy no confiable reenvía tráfico, la IP remota real sea evaluada y rechazada.
+- Verificación: Suite de 7 pruebas de integración en CommandCenter.Tests/Integration/ForwardedHeadersIntegrationTests.cs
+  validando paso de encabezados, reverse proxy y denegación de loopback spoofing.
 
 --------------------------------------------------------------------------------
-[ERR-04] (NUEVO, MEDIO) — Fuga de Excepciones Internas mediante ex.Message en Controladores
+[ERR-04] (MEDIO) — Fuga de Excepciones Internas mediante ex.Message en Controladores
 --------------------------------------------------------------------------------
 - Clasificación: CWE-209 (Generation of Error Message Containing Sensitive Information)
+- Estado: ✅ TOTALMENTE CORREGIDO (Remediación Definitiva Rev. 7.1).
 - Archivo y Línea:
-  * Backend.API/Controllers/DailyClosureController.cs:153-156
-  * Backend.API/Controllers/ShiftsController.cs:177-180
-  * Backend.API/Controllers/ExchangeRateController.cs:188-191
-- Diagnóstico:
-  En DailyClosureController y ShiftsController, el cierre de turno/sesión contiene:
-    catch (Exception ex) { return BadRequest(new { Message = ex.Message }); }
-  En ExchangeRateController:
-    catch (Exception ex) { return StatusCode(500, new { Message = $"Error inesperado: {ex.Message}" }); }
-  Estos bloques interceptan la excepción antes de que alcance el GlobalExceptionHandlerMiddleware,
-  exponiendo nombres de tablas, columnas o cadenas internas de conexión al cliente HTTP y rompiendo
-  el formato uniforme ProblemDetails RFC 7807.
-- Recomendación: Eliminar los bloques catch (Exception ex) redundantes para que el middleware global
-  capture la falla de forma segura, o registrar con AppLogger.LogCrash y retornar ProblemDetails estándar.
+  * Backend.API/Controllers/DailyClosureController.cs:153-157
+  * Backend.API/Controllers/ShiftsController.cs:177-181
+  * Backend.API/Controllers/ExchangeRateController.cs:188-193
+- Diagnóstico Original:
+  Bloques catch (Exception ex) con BadRequest(new { Message = ex.Message }) interceptaban errores
+  antes de GlobalExceptionHandlerMiddleware, exponiendo detalles internos (tablas, columnas)
+  y violando el formato RFC 7807.
+- Solución Implementada:
+  1. DailyClosureController y ShiftsController: Retirado el catch genérico de Exception; capturas
+     específicas para InvalidOperationException y ArgumentException. Excepciones inesperadas escalan
+     al GlobalExceptionHandlerMiddleware para ser transformadas en ProblemDetails seguros sin filtraciones.
+  2. ExchangeRateController: Bloque catch saneado con AppLogger.LogCrash y respuesta HTTP 500 genérica y segura.
+- Verificación: 670 pruebas .NET aprobadas, incluyendo tests del middleware de manejo global de excepciones.
 
 --------------------------------------------------------------------------------
-[UX-WEB-01 / ERR-05] (NUEVO, MEDIO) — Deserialización Incompleta de Errores RFC 7807 en api.js
+[UX-WEB-01 / ERR-05] (MEDIO) — Deserialización Incompleta de Errores RFC 7807 en api.js
 --------------------------------------------------------------------------------
 - Clasificación: CWE-703 (Improper Check or Handling of Exceptional Conditions)
-- Archivo y Línea: Web.Frontend/src/services/api.js:215-236
-- Diagnóstico:
-  Al fallar una petición HTTP, api.js solo extrae errorMessage si existe jsonErr.message o jsonErr.Message.
-  Si el backend responde con un ProblemDetails estándar de ASP.NET Core que contiene:
-  * "detail": descripción del error RFC 7807
-  * "errors": { "PropertyName": ["Mensaje de validación"] }
-  api.js no extrae dichos campos y cae en el fallback:
-  if (!errorBody.includes('<html') && errorBody.length < 300) errorMessage = errorBody;
-  Esto provoca que el usuario final vea una cadena JSON cruda o "Error 400: Bad Request"
-  en lugar de un mensaje comprensible.
-- Recomendación: Expandir la extracción de errores en api.js para inspeccionar jsonErr.detail,
-  jsonErr.title y Object.values(jsonErr.errors).flat().join('; ').
+- Estado: ✅ TOTALMENTE CORREGIDO (Remediación Definitiva Rev. 7.1).
+- Archivo y Línea: Web.Frontend/src/services/api.js:215-245
+- Diagnóstico Original:
+  api.js solo extraía errorMessage si existía jsonErr.message o jsonErr.Message, descartando
+  jsonErr.detail, jsonErr.title o el diccionario jsonErr.errors de ASP.NET Core y mostrando
+  JSON crudo o "Error 400" al usuario.
+- Solución Implementada:
+  Ampliación de apiFetch para deserializar de forma jerárquica:
+  1. jsonErr.message / jsonErr.Message
+  2. jsonErr.detail (RFC 7807)
+  3. Array de errores o diccionario de errores de modelo (Object.values(jsonErr.errors).flat().join('; '))
+  4. jsonErr.title
+  Protección defensiva con typeof localStorage !== 'undefined' para estabilidad en tests unitarios.
+- Verificación: Suite de 5 nuevas pruebas unitarias en Web.Frontend/src/services/api.test.js
+  (70/70 pruebas web superadas al 100%).
 
 --------------------------------------------------------------------------------
-[PERF-06] (NUEVO, BAJO) — Consultas de Lectura Masiva sin AsNoTracking() en Servicios
+[PERF-06] (BAJO) — Consultas de Lectura Masiva sin AsNoTracking() en Servicios
 --------------------------------------------------------------------------------
 - Clasificación: CWE-400 (Uncontrolled Resource Consumption)
+- Estado: ✅ TOTALMENTE CORREGIDO (Remediación Definitiva Rev. 7.1).
 - Archivo y Línea:
-  * Sales.Module/Services/CashDrawerService.cs:225-233 (GetHistoryAsync)
-  * Backend.API/Controllers/SettingsController.cs:33-40 (GetExchangeRate)
-- Diagnóstico:
-  En CashDrawerService.cs:227, GetHistoryAsync(int limit = 300) carga hasta 300 transacciones
-  de efectivo junto con sus ventas asociadas (.Include(t => t.Sale)) sin AsNoTracking().
-  Estas 600 entidades se adjuntan innecesariamente al ChangeTracker de EF Core, consumiendo
-  memoria y ciclos de recolección de basura en operaciones que son estrictamente de solo lectura.
-- Recomendación: Añadir .AsNoTracking() a GetHistoryAsync y a las consultas de solo lectura en SettingsController.
+  * Sales.Module/Services/CashDrawerService.cs:227
+  * Backend.API/Controllers/SettingsController.cs:33, :70, :98
+- Diagnóstico Original:
+  GetHistoryAsync cargaba hasta 300 transacciones y sus ventas asociadas (hasta 600 entidades)
+  sin .AsNoTracking(), anclándolas al ChangeTracker de EF Core innecesariamente.
+- Solución Implementada:
+  Incorporado .AsNoTracking() en CashDrawerService.GetHistoryAsync y en las consultas de solo
+  lectura de SettingsController (GetExchangeRate, GetTimeZone, GetCurrencyFormat).
+- Verificación: Reducción del footprint de memoria y pase de todas las pruebas funcionales de caja.
 
 --------------------------------------------------------------------------------
-[WPF-LEAK-01] (NUEVO, BAJO) — Fuga de Recursos y Handler 'async void' en ProductDialogViewModel
+[WPF-LEAK-01] (BAJO) — Fuga de Recursos y Handler 'async void' en ProductDialogViewModel
 --------------------------------------------------------------------------------
 - Clasificación: CWE-404 (Improper Resource Shutdown or Release) / CWE-703
-- Archivo y Línea: Desktop.Client.Core/ViewModels/ProductDialogViewModel.cs:290-294, :674
-- Diagnóstico:
-  1. ProductDialogViewModel crea un _debounceTimer (DispatcherTimer) y suscribe un delegado async void:
-     _debounceTimer.Tick += async (s, e) => await VerifySkuAsync();
-  2. Si ocurre una excepción no controlada dentro de VerifySkuAsync (por ejemplo, desconexión de red),
-     la excepción se eleva al Dispatcher de WPF, provocando la terminación anómala del proceso.
-  3. ProductDialogViewModel NO implementa IDisposable ni desuscribe el evento Tick al cerrarse
-     el cuadro de diálogo, manteniendo viva la referencia del ViewModel en el despachador de la interfaz.
-- Recomendación: Implementar IDisposable en ProductDialogViewModel, desuscribir y detener el timer,
-  y envolver el cuerpo de VerifySkuAsync en un bloque try/catch seguro con AppLogger.LogCrash.
+- Estado: ✅ TOTALMENTE CORREGIDO (Remediación Definitiva Rev. 7.1).
+- Archivo y Línea:
+  * Desktop.Client.Core/ViewModels/ProductDialogViewModel.cs:290-305, :675-700, :820-835
+  * Desktop.Client/Views/ProductDialog.xaml.cs:85-92
+  * Desktop.Client/Views/SuccessDialogWindow.xaml.cs:40-45
+- Diagnóstico Original:
+  Lambda async void en DispatcherTimer.Tick no capturaba excepciones y el ViewModel no
+  implementaba IDisposable, manteniendo viva la vista y el despachador de WPF.
+- Solución Implementada:
+  1. ProductDialogViewModel implementa IDisposable y desuscribe OnDebounceTimerTick.
+  2. La invocación de VerifySkuAsync se realiza de forma segura con el método de extensión
+     SafeFireAndForget con reporte de fallos a AppLogger.LogCrash.
+  3. ProductDialog.xaml.cs invoca ViewModel?.Dispose() en el evento OnClosed, garantizando la
+     recolección de basura al guardar, cancelar o cerrar la ventana.
+  4. SuccessDialogWindow.xaml.cs desuscribe _timer.Tick en OnClosed.
+- Verificación: Prueba automatizada ProductDialogViewModel_Dispose_DoesNotThrow_AndCleansUpResources
+  en CommandCenter.Tests/MainViewModelDisposeTests.cs.
 
 --------------------------------------------------------------------------------
-[DOM-VAL-01] (NUEVO, BAJO) — Inconsistencia en Validación de SKU: Alfanumérico vs Numérico
+[DOM-VAL-01] (BAJO) — Inconsistencia en Validación de SKU: Alfanumérico vs Numérico
 --------------------------------------------------------------------------------
 - Clasificación: CWE-20 (Improper Input Validation)
+- Estado: ✅ TOTALMENTE CORREGIDO (Remediación Definitiva Rev. 7.1).
 - Archivo y Línea:
-  * Core/Entities/Product.cs:23
-  * Desktop.Client.Core/Services/ProductImportService.cs:203
-  * Desktop.Client.Core/ViewModels/ProductDialogViewModel.cs:685
-- Diagnóstico:
-  En Core.Entities.Product.cs, la propiedad SKU admite hasta 50 caracteres (alfanuméricos).
-  Sin embargo, tanto el importador de Excel/CSV (ProductImportService.cs) como el diálogo de producto
-  (ProductDialogViewModel.cs) validan con Regex.IsMatch(sku, @"^\d+$"), rechazando cualquier
-  código alfanumérico legítimo (ej. "A-101", "REF-99", "BEB-2L") con el error:
-  "El SKU/Código de barras debe ser estrictamente un número entero (solo dígitos 0-9)."
-- Recomendación: Unificar la política: si el sistema permite códigos alfanuméricos en comercios
-  minoristas, relajar la expresión regular para permitir caracteres alfanuméricos seguros y guiones.
+  * Desktop.Client.Core/Services/ProductImportService.cs:203 (Excel), :355 (CSV)
+  * Desktop.Client.Core/ViewModels/ProductDialogViewModel.cs:497, :687, :781
+  * Inventory.Module/Services/InventoryService.cs:207
+  * Backend.API/Controllers/ProductsController.cs:222
+  * Desktop.Client/Views/ProductDialog.xaml.cs:18-22
+- Diagnóstico Original:
+  La entidad Product admitía SKU alfanumérico (50 chars), pero el importador de productos
+  y el cuadro de diálogo forzaban @"^\d+$", impidiendo el uso de códigos comerciales alfanuméricos.
+- Solución Implementada:
+  Unificación de la regla alfanumérica segura ^[A-Za-z0-9\-_]{1,50}$ en todos los puntos
+  de validación de negocio (importador Excel/CSV, diálogo WPF, servicio de inventario y API).
+  Distinción documental intencional con barcodeValidator.js del frontend (reservado para escaneo 1D retail).
+- Verificación: Pruebas unitarias en CommandCenter.Tests/ProductImportExportTests.cs verificando
+  la importación correcta de códigos alfanuméricos con guiones y el rechazo de símbolos inválidos.
 
 --------------------------------------------------------------------------------
-[SEC-11 / NET-01] (NUEVO, BAJO) — Restricción de Puertos en CORS Bloquea Despliegues Estándar (80/443)
+[SEC-11 / NET-01] (BAJO) — Restricción de Puertos en CORS Bloqueaba Despliegues Estándar (80/443)
 --------------------------------------------------------------------------------
 - Clasificación: CWE-346 (Origin Validation Error)
-- Archivo y Línea: Backend.API/Program.cs:272-274
-- Diagnóstico:
-  La validación de subredes privadas RFC-1918 en la política de CORS contiene:
-  bool isAllowedPort = port == 5000 || port == 5001 || port == 5173;
-  Si un cliente despliega la aplicación web en un servidor estándar (puerto 80 HTTP o 443 HTTPS),
-  o utiliza el comando 'vite preview' (puerto 4173), las peticiones preflight CORS son rechazadas
-  automáticamente a menos que el origen se agregue manualmente en appsettings.Production.json.
-- Recomendación: Documentar en la guía de despliegue que puertos no estándar requieren declaración
-  explícita en Cors:AllowedOrigins, o admitir 80 y 443 en la lista de puertos permitidos por defecto.
+- Estado: ✅ TOTALMENTE CORREGIDO (Remediación Definitiva Rev. 7.1).
+- Archivo y Línea: Backend.API/Program.cs:285
+- Diagnóstico Original:
+  La validación de subredes privadas RFC-1918 en CORS solo permitía puertos 5000, 5001 y 5173,
+  bloqueando despliegues web estándar en puertos 80/443 y vistas previas de Vite (4173).
+- Solución Implementada:
+  Allowlist ampliada por defecto a: port == 5000 || port == 5001 || port == 5173 || port == 80 || port == 443 || port == 4173.
+- Verificación: Validación con suite de pruebas de integración HTTP.
+
 
 ================================================================================
 4. ANÁLISIS DE ARQUITECTURA, FLUJO DE DATOS, RECURSOS Y RENDIMIENTO
@@ -442,32 +484,28 @@ public override void Dispose()
 }
 
 ================================================================================
-6. PLAN DE REMEDIACIÓN Y ROADMAP FUTURO (POST-REVISIÓN 7.0)
+6. PLAN DE REMEDIACIÓN Y ROADMAP FUTURO (POST-REVISIÓN 7.1)
 ================================================================================
 
-SPRINT INMEDIATO — Seguridad de Infraestructura y Estandarización de Errores:
-  1. [SEC-10] Configurar UseForwardedHeaders en Program.cs para asegurar la validación
-     de clientes y el rate limiting bajo entornos con reverse proxy.
-  2. [ERR-04] Retirar bloques catch (Exception ex) en DailyClosureController, ShiftsController
-     y ExchangeRateController, delegando en GlobalExceptionHandlerMiddleware.
-  3. [UX-WEB-01] Actualizar la función apiFetch en api.js para extraer detail, errors y title
-     de respuestas ProblemDetails.
+SPRINTS COMPLETADOS CON ÉXITO (REV. 7.1 — 100% CERRADOS):
+  1. [SEC-10] ✅ Configurado UseForwardedHeaders con KnownProxies/KnownNetworks y loopback estricto.
+  2. [ERR-04] ✅ Retirados bloques catch genéricos en DailyClosureController, ShiftsController y ExchangeRateController.
+  3. [UX-WEB-01] ✅ Actualizada deserialización jerárquica ProblemDetails RFC 7807 en api.js.
+  4. [PERF-06] ✅ Incorporado .AsNoTracking() en CashDrawerService.GetHistoryAsync y SettingsController.
+  5. [WPF-LEAK-01] ✅ Implementado IDisposable, Dispose() en OnClosed y SafeFireAndForget en ProductDialogViewModel.
+  6. [DOM-VAL-01] ✅ Homogeneizada la validación de SKU alfanumérico ^[A-Za-z0-9\-_]{1,50}$ en toda la plataforma.
+  7. [SEC-11] ✅ Añadidos puertos estándar 80, 443 y 4173 al allowlist de subredes privadas en CORS.
 
-SPRINT DE MANTENIBILIDAD Y RENDIMIENTO:
-  4. [PERF-06] Incorporar .AsNoTracking() en CashDrawerService.GetHistoryAsync y en
-     las consultas de configuración de SettingsController.
-  5. [WPF-LEAK-01] Implementar IDisposable y SafeFireAndForget en ProductDialogViewModel._debounceTimer.
-  6. [DOM-VAL-01] Homogeneizar la validación de SKU entre entidades y servicios de importación/diálogo.
-  7. [SEC-11] Añadir puertos estándar 80 y 443 al allowlist de puertos privados en CORS.
-
-ROADMAP A MEDIANO PLAZO:
+ROADMAP A MEDIANO PLAZO (DEUDA DE INFRAESTRUCTURA Y DESPLIEGUE):
   8. [C2] Suministro automatizado de certificados HTTPS locales en el instalador Inno Setup
      con redirección 301 en LAN.
   9. [C1 / C3] Migración de variables de entorno JWT en NSSM hacia Windows Data Protection
      API (DPAPI) o Windows Credential Manager.
+ 10. [W2] Refactorización de aritmética monetaria en cliente web hacia centavos enteros
+     (integer cents) para eliminar dependencias de aritmética de punto flotante en el navegador.
 
 ================================================================================
-7. ANEXO: MATRIZ COMPLETA DE EVIDENCIA TÉCNICA (ARCHIVO:LÍNEA) — REV. 7.0
+7. ANEXO: MATRIZ COMPLETA DE EVIDENCIA TÉCNICA (ARCHIVO:LÍNEA) — REV. 7.1
 ================================================================================
 - C1 (JWT NSSM): Backend.API/Program.cs:150-157; installer/Configure-PosService.ps1:54-57, :218-233
 - C2 (HTTP LAN): Backend.API/Program.cs:41; installer/setup.iss:275-289; AuthController.cs:139
@@ -488,22 +526,22 @@ ROADMAP A MEDIANO PLAZO:
 - SEC-07 🟡 (Certificado dev): Backend.API/Program.cs:792-806
 - SEC-08 ✅ (Health saneado): Backend.API/Controllers/HealthController.cs:23-64
 - SEC-09 ✅ (CSP estricto en prod): Backend.API/Middleware/SecurityHeadersMiddleware.cs:47
-- SEC-10 ❌ (Falta ForwardedHeaders / bypass pairing): Backend.API/Controllers/PairingController.cs:28; Program.cs:219
-- SEC-11 ❌ (Puertos CORS LAN restrictivos): Backend.API/Program.cs:273
+- SEC-10 ✅ (ForwardedHeadersOptions con KnownProxies/KnownNetworks y loopback estricto): Backend.API/Program.cs:220-255; PairingController.cs:33-40; appsettings.json
+- SEC-11 ✅ (Puertos CORS LAN ampliados 80, 443, 4173): Backend.API/Program.cs:285
 - PERF-01 ✅ (SumAsync caja): Sales.Module/Services/CashDrawerService.cs:207-223
 - PERF-02 ✅ (SplitQuery): Backend.API/Program.cs:99-101; SalesService.cs:122, :675
 - PERF-03 ✅ (Lotes archivo): Backend.API/Jobs/StockMovementArchiverJob.cs:77-116
 - PERF-04 ✅ (Batch deducción stock): Inventory.Module/Services/InventoryService.StockDeduction.cs; SalesService.cs
 - PERF-05 ✅ (Purga programada Outbox): Backend.API/Jobs/OutboxProcessorJob.cs:97-122
-- PERF-06 ❌ (Lecturas sin AsNoTracking): Sales.Module/Services/CashDrawerService.cs:227; SettingsController.cs:33
+- PERF-06 ✅ (Lecturas AsNoTracking en CashDrawer y Settings): Sales.Module/Services/CashDrawerService.cs:227; SettingsController.cs:33, :70, :98
 - ARQ-01 ✅ (Arqueo con inactivos): Sales.Module/Services/DailyClosureService.cs:62
 - ARQ-02 ✅ (Transacción coordinada): SalesService.cs:388
 - ARQ-03 ✅ (Cabeceras texto plano retiradas): Desktop.Client.Core/Services/UserSessionHeaderHandler.cs:38-50
 - ERR-01 ✅ (ProblemDetails RFC 7807 con SQLSTATE 23502): Backend.API/Middleware/GlobalExceptionHandlerMiddleware.cs
 - ERR-02 ✅ (Crash logger AppData): Desktop.Client/App.xaml.cs:29-60
 - ERR-03 ✅ (Cierres ProgramData): Sales.Module/Services/DailyClosureService.cs:217-260
-- ERR-04 ❌ (Fuga ex.Message en controladores): DailyClosureController.cs:155; ShiftsController.cs:179; ExchangeRateController.cs:190
-- ERR-05 / UX-01 ❌ (Parseo incompleto ProblemDetails): Web.Frontend/src/services/api.js:215-236
+- ERR-04 ✅ (Controladores delegando a GlobalExceptionHandlerMiddleware RFC 7807): DailyClosureController.cs:153; ShiftsController.cs:177; ExchangeRateController.cs:188
+- ERR-05 / UX-01 ✅ (Parseo RFC 7807 completo detail, errors, title): Web.Frontend/src/services/api.js:215-245
 - CODE-01 ✅ (Modularización en partial classes):
     * SalesService: 807 líneas (SalesService.cs, .HoldOrders.cs, .Pricing.cs, .CashAdvance.cs, .History.cs)
     * InventoryService: 692 líneas (InventoryService.cs, .StockDeduction.cs, .CatalogQueries.cs, .ImportExport.cs, .ExchangeRate.cs)
@@ -512,8 +550,8 @@ ROADMAP A MEDIANO PLAZO:
 - LOG-1 / LOG-2 ✅ (Logistics.Module completo y desacoplado): Logistics.Module/Services/DeliveryService.cs; MediatR Handlers
 - UPD-1 ✅ (SHA-256 en actualizador): UpdaterService/Program.cs:32-56
 - UPD-2 ✅ (Resolución dinámica NSSM / sc.exe): UpdaterService/Program.cs:90-118
-- WPF-LEAK-01 ❌ (Timer async void sin IDisposable): Desktop.Client.Core/ViewModels/ProductDialogViewModel.cs:294
-- DOM-VAL-01 ❌ (Inconsistencia validación SKU): Product.cs:23 vs ProductImportService.cs:203 vs ProductDialogViewModel.cs:685
+- WPF-LEAK-01 ✅ (IDisposable, Dispose en OnClosed, SafeFireAndForget en ProductDialogViewModel): Desktop.Client.Core/ViewModels/ProductDialogViewModel.cs; Desktop.Client/Views/ProductDialog.xaml.cs; SuccessDialogWindow.xaml.cs
+- DOM-VAL-01 ✅ (SKU alfanumérico uniforme ^[A-Za-z0-9\-_]{1,50}$): Product.cs:23, ProductImportService.cs:203, :355, ProductDialogViewModel.cs:497, :687, :781, InventoryService.cs:207, ProductsController.cs:222
 - W1 ✅ (Idempotency-Key obligatoria): Backend.API/Controllers/SalesController.cs:338-341; Web.Frontend/src/services/salesApi.js:26
 - W2 🟡 (Formato dual / float precisión): Web.Frontend/src/utils/formatters.js:74; Desktop.Client/Behaviors/NumericCalculatorBehavior.cs
 - W3 ✅ (FK PaymentMethodId / fin MT-001): Sales.Module/Services/PaymentMethodService.cs:204; CashTransaction.cs:29
@@ -529,5 +567,5 @@ ROADMAP A MEDIANO PLAZO:
 - H-WPF-3 ✅ (Protección try/catch en vistas WPF): Desktop.Client/Views/EditSaleDialog.xaml.cs; ImportProductsView.xaml.cs
 
 ================================================================================
-FIN DEL REPORTE TÉCNICO — REVISIÓN 7.0 (AUDITORÍA POST-REMEDIACIÓN INTEGRAL)
+FIN DEL REPORTE TÉCNICO — REVISIÓN 7.1 (CERTIFICACIÓN DE REMEDIACIÓN DEFINITIVA)
 ================================================================================

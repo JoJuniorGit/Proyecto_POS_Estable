@@ -30,10 +30,11 @@ public class SettingsController : ControllerBase
     public async Task<ActionResult> GetExchangeRate()
     {
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
-        var record = await _context.ExchangeRateHistory.FirstOrDefaultAsync(r => r.Date == today);
+        var record = await _context.ExchangeRateHistory.AsNoTracking().FirstOrDefaultAsync(r => r.Date == today);
         if (record == null)
         {
             record = await _context.ExchangeRateHistory
+                .AsNoTracking()
                 .Where(r => r.Date <= today)
                 .OrderByDescending(r => r.Date)
                 .FirstOrDefaultAsync();
@@ -45,6 +46,7 @@ public class SettingsController : ControllerBase
         }
 
         var setting = await _context.SystemSettings
+            .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Key == "ExchangeRate");
 
         if (setting == null)
@@ -117,7 +119,7 @@ public class SettingsController : ControllerBase
     [HttpGet("timezone")]
     public async Task<ActionResult> GetTimeZone()
     {
-        var setting = await _context.SystemSettings.FirstOrDefaultAsync(s => s.Key == "SelectedTimeZoneId");
+        var setting = await _context.SystemSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "SelectedTimeZoneId");
         return Ok(new { Id = setting?.Value ?? string.Empty });
     }
 
@@ -153,7 +155,7 @@ public class SettingsController : ControllerBase
     [HttpGet("currency-format")]
     public async Task<ActionResult> GetCurrencyFormat()
     {
-        var setting = await _context.SystemSettings.FirstOrDefaultAsync(s => s.Key == "CurrencyFormat");
+        var setting = await _context.SystemSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "CurrencyFormat");
         var format = setting?.Value;
         if (string.IsNullOrWhiteSpace(format) || 
             (!format.Equals("Venezuelan", StringComparison.OrdinalIgnoreCase) && 

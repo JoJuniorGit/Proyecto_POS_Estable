@@ -204,9 +204,9 @@ public partial class InventoryService : IInventoryService
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(sku) || !System.Text.RegularExpressions.Regex.IsMatch(sku.Trim(), @"^\d+$"))
+        if (string.IsNullOrWhiteSpace(sku) || !System.Text.RegularExpressions.Regex.IsMatch(sku.Trim(), @"^[A-Za-z0-9\-_]{1,50}$"))
         {
-            throw new InvalidOperationException("El SKU/Código del producto debe ser un número entero válido (solo dígitos 0-9).");
+            throw new InvalidOperationException("El SKU/Código del producto debe contener entre 1 y 50 caracteres alfanuméricos (letras, dígitos, guiones o guiones bajos).");
         }
     }
 
