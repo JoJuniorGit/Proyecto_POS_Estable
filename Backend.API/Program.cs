@@ -9,6 +9,9 @@ using Backend.API.Services;
 using Backend.API.Hubs;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using System.Security.Cryptography.X509Certificates;
+using System.Security.Cryptography;
+using System.Net;
+using System.Net.Sockets;
 using Logistics.Module.Extensions;
 using Microsoft.AspNetCore.HttpOverrides;
 
@@ -890,33 +893,75 @@ X509Certificate2? LoadHttpsCertificate(IConfiguration config, IHostEnvironment e
     {
         if (File.Exists(candidate))
         {
-            string? certPassword = Environment.GetEnvironmentVariable("HTTPS_CERT_PASSWORD")
-                                ?? config["Kestrel:Certificates:Default:Password"];
-
-            if (string.IsNullOrEmpty(certPassword))
-            {
-                if (env.IsDevelopment())
-                {
-                    certPassword = "PosHttpsDev2026!";
-                    AppLogger.LogStart("[HTTPS] Entorno de desarrollo: usando contraseña de prueba predeterminada para pos-https.pfx.");
-                }
-                else
-                {
-                    AppLogger.LogStart($"[HTTPS] [AVISO] Se detectó el archivo {candidate} en entorno de producción pero no se configuró la variable de entorno HTTPS_CERT_PASSWORD. Por seguridad, se omite la carga sin clave de entorno.");
-                    return null;
-                }
-            }
+            string certPassword = Environment.GetEnvironmentVariable("HTTPS_CERT_PASSWORD")
+                                ?? config["Kestrel:Certificates:Default:Password"]
+                                ?? "PosHttpsDev2026!";
 
             try
             {
-                return X509CertificateLoader.LoadPkcs12FromFile(candidate, certPassword);
+                var cert = X509CertificateLoader.LoadPkcs12FromFile(candidate, certPassword);
+                AppLogger.LogStart($"[HTTPS] Certificado HTTPS cargado exitosamente desde archivo ({candidate}): {cert.Subject}");
+                return cert;
             }
             catch (Exception ex)
             {
                 AppLogger.LogStart($"[HTTPS] [AVISO] No se pudo cargar el certificado HTTPS ({candidate}): {ex.Message}");
-                return null;
             }
         }
+    }
+
+    // 3. Fallback dinámico: Generar certificado autofirmado en memoria para asegurar disponibilidad de HTTPS
+    try
+    {
+        using var rsa = RSA.Create(2048);
+        var certRequest = new CertificateRequest(
+            $"CN={Environment.MachineName}",
+            rsa,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+
+        certRequest.CertificateExtensions.Add(
+            new X509KeyUsageExtension(
+                X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment,
+                critical: true));
+
+        certRequest.CertificateExtensions.Add(
+            new X509EnhancedKeyUsageExtension(
+                new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") },
+                critical: false));
+
+        var sanBuilder = new SubjectAlternativeNameBuilder();
+        sanBuilder.AddDnsName("localhost");
+        sanBuilder.AddDnsName(Environment.MachineName);
+        sanBuilder.AddIpAddress(IPAddress.Loopback);
+        sanBuilder.AddIpAddress(IPAddress.IPv6Loopback);
+
+        try
+        {
+            foreach (var ip in Dns.GetHostAddresses(Dns.GetHostName()))
+            {
+                if (ip.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    sanBuilder.AddIpAddress(ip);
+                }
+            }
+        }
+        catch { }
+
+        certRequest.CertificateExtensions.Add(sanBuilder.Build());
+
+        var ephemeralCert = certRequest.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-5),
+            DateTimeOffset.UtcNow.AddYears(5));
+
+        var pfxBytes = ephemeralCert.Export(X509ContentType.Pfx);
+        var certWithKey = X509CertificateLoader.LoadPkcs12(pfxBytes, null);
+        AppLogger.LogStart($"[HTTPS] Certificado autofirmado generado dinámicamente en memoria para {Environment.MachineName} (SANs configurados para LAN).");
+        return certWithKey;
+    }
+    catch (Exception ex)
+    {
+        AppLogger.LogCrash(ex, "[HTTPS] Fallo al generar certificado autofirmado en memoria");
     }
 
     return null;

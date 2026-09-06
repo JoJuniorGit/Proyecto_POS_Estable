@@ -267,32 +267,31 @@ begin
   SaveStringToFile(ConfigFile, JsonContent, False);
 end;
 
-// Regla de firewall idempotente: expone SOLO HTTP 5000 a la subred local.
-// El puerto 5001 (HTTPS) usa un certificado autofirmado que los clientes de la LAN no pueden
-// validar (INSTALLATION.md §3.2 y §5); por eso se deshabilita en la regla y se fuerza HTTP en la red.
+// Regla de firewall idempotente: expone HTTP 5000 y HTTPS 5001 a la subred local.
 procedure ConfigureFirewall;
 var
   Code: Integer;
 begin
-  // Retira la regla antigua (5000/5001) si existe: idempotente y elimina la exposición del 5001.
+  // Retira reglas antiguas si existen
   RunCmd('netsh.exe', 'advfirewall firewall delete rule name="' + FirewallRuleLegacy + '"');
+  RunCmd('netsh.exe', 'advfirewall firewall delete rule name="' + FirewallRuleHttp + '"');
 
-  Code := RunCmd('netsh.exe', 'advfirewall firewall add rule name="' + FirewallRuleHttp +
-    '" dir=in action=allow protocol=TCP localport=5000 remoteip=localsubnet profile=any');
+  Code := RunCmd('netsh.exe', 'advfirewall firewall add rule name="' + FirewallRuleLegacy +
+    '" dir=in action=allow protocol=TCP localport=5000,5001 remoteip=localsubnet profile=any');
   if Code <> 0 then
-    MsgBox('No se pudo crear la regla de Firewall de Windows para el puerto 5000.' + #13#10 + #13#10 +
+    MsgBox('No se pudo crear la regla de Firewall de Windows para los puertos 5000 y 5001.' + #13#10 + #13#10 +
       'Créela manualmente en una consola elevada:' + #13#10 +
-      'netsh advfirewall firewall add rule name="' + FirewallRuleHttp +
-      '" dir=in action=allow protocol=TCP localport=5000 remoteip=localsubnet profile=any',
+      'netsh advfirewall firewall add rule name="' + FirewallRuleLegacy +
+      '" dir=in action=allow protocol=TCP localport=5000,5001 remoteip=localsubnet profile=any',
       mbError, MB_OK);
 end;
 
 // Registra o actualiza el servicio PosBackendService sin fallar en reinstalaciones,
 // y reaplica siempre las variables de entorno (ConnectionStrings__DefaultConnection,
-// SystemSettings__* y JWT_SETTINGS_KEY) vía AppEnvironmentExtra de NSSM (INSTALLATION.md §3.5, §5 y JWT_Key.md).
+// SystemSettings__*, JWT_SETTINGS_KEY y HTTPS_CERT_PASSWORD) vía AppEnvironmentExtra de NSSM.
 procedure RegisterOrUpdateService(UseNssm: Boolean);
 var
-  AppExe, AppDir, ConnEnv, SeedUserEnv, SeedNameEnv, SeedPassEnv, BusinessEnv, JwtEnv, ConnString: String;
+  AppExe, AppDir, ConnEnv, SeedUserEnv, SeedNameEnv, SeedPassEnv, BusinessEnv, JwtEnv, CertPassEnv, ConnString: String;
   Code: Integer;
 begin
   AppExe := ExpandConstant('{app}\BackendAPI\Backend.API.exe');
@@ -305,6 +304,7 @@ begin
   SeedPassEnv := 'SystemSettings__AdminSeedPassword=' + EscapeQuotes(AdminPage.Values[2]);
   BusinessEnv := 'SystemSettings__BusinessName=' + Trim(AdminPage.Values[4]);
   JwtEnv := 'JWT_SETTINGS_KEY=' + GetOrGenerateJwtKey;
+  CertPassEnv := 'HTTPS_CERT_PASSWORD=PosHttpsDev2026!';
 
   if UseNssm then
   begin
@@ -314,7 +314,7 @@ begin
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Application "' + AppExe + '"');
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppDirectory "' + AppDir + '"');
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Start SERVICE_AUTO_START');
-      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedUserEnv + '" "' + SeedNameEnv + '" "' + SeedPassEnv + '" "' + BusinessEnv + '" "' + JwtEnv + '"');
+      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedUserEnv + '" "' + SeedNameEnv + '" "' + SeedPassEnv + '" "' + BusinessEnv + '" "' + JwtEnv + '" "' + CertPassEnv + '"');
       Code := RunCmd(AppDir + '\nssm.exe', 'restart ' + ServiceName);
     end
     else
@@ -324,7 +324,7 @@ begin
       begin
         RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppDirectory "' + AppDir + '"');
         RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Start SERVICE_AUTO_START');
-        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedUserEnv + '" "' + SeedNameEnv + '" "' + SeedPassEnv + '" "' + BusinessEnv + '" "' + JwtEnv + '"');
+        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedUserEnv + '" "' + SeedNameEnv + '" "' + SeedPassEnv + '" "' + BusinessEnv + '" "' + JwtEnv + '" "' + CertPassEnv + '"');
         Code := RunCmd(AppDir + '\nssm.exe', 'start ' + ServiceName);
       end;
     end;

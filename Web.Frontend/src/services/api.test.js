@@ -208,5 +208,32 @@ describe('apiFetch ProblemDetails and validation error extraction', () => {
       { message: 'Operación no permitida para el usuario' }
     );
   });
+
+  it('6. Preserves Content-Type application/json when options.headers are provided with body', async () => {
+    let capturedConfig = null;
+    originalFetch = global.fetch;
+    global.fetch = async (url, config) => {
+      capturedConfig = config;
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        text: async () => JSON.stringify({ success: true }),
+        json: async () => ({ success: true })
+      };
+    };
+
+    await apiFetch('/api/sales/1/complete', {
+      method: 'POST',
+      body: JSON.stringify({ exchangeRate: 40 }),
+      headers: { 'Idempotency-Key': 'test-uuid-123' }
+    });
+
+    assert.ok(capturedConfig, 'fetch should have been called');
+    assert.strictEqual(capturedConfig.headers['Content-Type'], 'application/json');
+    assert.strictEqual(capturedConfig.headers['Accept'], 'application/json');
+    assert.strictEqual(capturedConfig.headers['Idempotency-Key'], 'test-uuid-123');
+    assert.strictEqual(capturedConfig.headers['X-Client-Platform'], 'Web');
+  });
 });
 

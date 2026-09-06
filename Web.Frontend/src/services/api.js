@@ -170,17 +170,18 @@ export async function apiFetch(endpoint, options = {}) {
     }
   }
 
+  const { headers: customHeaders, ...restOptions } = options;
   const config = {
     credentials: 'include',
+    ...restOptions,
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'X-Client-Platform': 'Web',
       'X-Client-Version': '1.0.0',
       ...userHeaders,
-      ...options.headers,
+      ...customHeaders,
     },
-    ...options,
   };
 
   // No enviar Content-Type para peticiones sin body (GET, DELETE)
