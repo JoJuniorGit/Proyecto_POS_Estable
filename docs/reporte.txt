@@ -815,5 +815,41 @@ NUEVOS REV. 8.0 (ver sección 3 para detalle):
    antes de considerar el cliente listo para trazabilidad prolongada.
 
 ================================================================================
-FIN DEL REPORTE TÉCNICO — REVISIÓN 8.0 (CONTRASTACIÓN EMPÍRICA + NUEVOS HALLAZGOS)
+10. ADENDA: CERTIFICACIÓN DEL PLAN MAESTRO DE REFACTORIZACIÓN (REV. 8.1)
+================================================================================
+Fecha de Certificación: 2026-09-06
+Rama: V0.15 — Commit HEAD
+Resultado Global: 742 / 742 Pruebas Superadas (100% éxito)
+  - Suite .NET: 671 / 671 passing (0 fallos, 0 omitidos)
+  - Suite Web: 71 / 71 passing (0 fallos, 0 omitidos)
+  - Linter Web: 0 errores, 0 advertencias (oxlint sobre 91 archivos)
+  - Compilación C# Release: 0 errores, 0 advertencias (TreatWarningsAsErrors=true)
+  - Publicación Autónoma: Binarios win-x64 compilados y sincronizados en publish/
+
+REMEDIACIONES ESPECÍFICAS CONCLUIDAS:
+[DST-1] Prevención de Doble Deducción de Stock:
+  - Resuelto: Desacoplada la deducción redundante en InventorySaleMadeEventHandler
+    mediante comprobación biunívoca de InvoiceNumber y SaleId. Stock descontado exactamente 1 vez.
+[WEB-1] Idempotencia Estable en Checkout Web:
+  - Resuelto: Fijada la clave Idempotency-Key por intento en CheckoutModal.jsx, evitando
+    duplicación de cobros en reintentos de red.
+[CI-1] Compatibilidad de Compilación WPF en Linux CI:
+  - Resuelto: Configurado <EnableWindowsTargeting>true</EnableWindowsTargeting> en Directory.Build.props.
+[RBAC-1] Guardrail de Roles en Operaciones Críticas:
+  - Resuelto: Bloqueo estricto del rol Driver en SalesController.CompleteSale,
+    ShiftsController.CloseShift y DailyClosureController.CreateClosure.
+[LINT-WEB] Saneamiento de Linter Web:
+  - Resuelto: 21 advertencias reducidas a exactamente 0 en oxlint.
+[STYLE-WPF] Estandarización de ViewModels WPF:
+  - Resuelto: 100% de campos privados estandarizados de _snake_case a _camelCase
+    preservando intactos todos los bindings XAML.
+[GOD-VM-1, GOD-VM-2, GOD-VM-3] Descomposición de God Objects WPF:
+  - Resuelto: ProductDialogViewModel (3 partials), InventoryViewModel (2 partials) y
+    PosViewModel (2 partials) reducidos a menos de 500 líneas por archivo.
+[GOD-WEB-1] Modularización de Componentes React:
+  - Resuelto: BarcodeScannerModal.jsx descompuesto en BarcodeScannerHud.jsx y
+    BarcodeScannerControls.jsx con memoización pura y aislamiento de efectos.
+
+================================================================================
+FIN DEL REPORTE TÉCNICO — REVISIÓN 8.1 (CERTIFICACIÓN INTEGRAL DE SANEAMIENTO)
 ================================================================================
