@@ -584,9 +584,12 @@ public partial class InventoryService : IInventoryService
                 await _context.SaveChangesAsync();
                 result = "hard_deleted";
             }
-            catch
+            catch (DbUpdateException ex)
             {
-                // Has FK relationships (e.g. accounting history), fallback to archived
+                // 8.5-M3: el hard-delete falla solo por integridad referencial (historial contable/FK con
+                // Restrict). Se registra el motivo y se degrada a archivar (soft delete) sin enmascarar otras
+                // fallas (conexión, OOM, etc.) que se propagan al caller.
+                Core.Logging.AppLogger.LogWarn($"[DeleteProductAsync] Hard delete del producto {product.Id}/{product.SKU} degradado a archivo por restricción referencial: {ex.Message}", "Inventory");
                 _context.Entry(product).State = Microsoft.EntityFrameworkCore.EntityState.Unchanged;
                 product.IsActive = false;
                 product.IsDeleted = true;
@@ -629,19 +632,12 @@ public partial class InventoryService : IInventoryService
         }
 
         Core.Metrics.CacheMetrics.RecordMiss();
-        try
+        var dto = await FetchProductQuickInfoFromDbAsync(sku);
+        if (dto != null)
         {
-            var dto = await FetchProductQuickInfoFromDbAsync(sku);
-            if (dto != null)
-            {
-                _cache.Set(cacheKey, dto, CreateProductCacheOptions());
-            }
-            return dto;
+            _cache.Set(cacheKey, dto, CreateProductCacheOptions());
         }
-        catch
-        {
-            throw;
-        }
+        return dto;
     }
 
     private async Task<Core.DTOs.ProductQuickInfoDto?> FetchProductQuickInfoFromDbAsync(string sku)

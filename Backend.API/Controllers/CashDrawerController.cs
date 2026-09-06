@@ -36,7 +36,7 @@ public class CashDrawerController : ControllerBase
     public async Task<ActionResult<CashDrawerSession?>> GetActiveSession()
     {
         // H-API-19: Eliminación de efectos secundarios en GET (no crear sesión en base de datos al consultar)
-        var session = await _cashDrawerService.GetActiveSessionAsync();
+        var session = await _cashDrawerService.GetActiveSessionWithTransactionsAsync();
         if (session == null)
         {
             return Ok(null);
@@ -118,11 +118,19 @@ public class CashDrawerController : ControllerBase
     }
 
     [RequireSecurityStampValidation]
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost("transaction")]
     public async Task<ActionResult<CashTransaction>> AddTransaction([FromBody] AddTransactionRequest request)
     {
-        // Permission check: solo Administradores pueden realizar operaciones manuales de ingreso (CASH IN) o retiro (CASH OUT)
-        // Se bloquean explícitamente roles Cashier y Driver (H-API-17)
+        // 8.5-A4: Los orígenes Opening y Closing están reservados al ciclo interno de apertura/cierre
+        // y NO deben aceptarse desde el endpoint manual (evita bypass del chequeo de saldo).
+        if (request.Source == CashTransactionSource.Closing || request.Source == CashTransactionSource.Opening)
+        {
+            return BadRequest(new { Message = "Acceso denegado: los orígenes Opening y Closing están reservados al proceso interno de apertura y cierre de caja y no pueden usarse en transacciones manuales." });
+        }
+
+        // Permission check: solo Administradores pueden realizar operaciones manuales (CashIn/CashOut/ManualAdjustment)
+        // Roles Cashier y Driver quedan bloqueados (H-API-17)
         if (request.Source == CashTransactionSource.CashIn || request.Source == CashTransactionSource.CashOut || request.Source == CashTransactionSource.ManualAdjustment)
         {
             if (_currentUserService.UserRole.HasValue && 
@@ -142,7 +150,6 @@ public class CashDrawerController : ControllerBase
             return BadRequest(new { Message = "La tasa de cambio (ExchangeRate) debe ser mayor a cero." });
         }
 
-        // Convert purely integer local cash strictly to USD equivalent for standard tracking
         decimal amountUsd = Math.Round(request.AmountLocal / request.ExchangeRate, 2, MidpointRounding.AwayFromZero);
         
         var transaction = await _cashDrawerService.AddTransactionAsync(
@@ -155,7 +162,6 @@ public class CashDrawerController : ControllerBase
                     request.Description,
                     null
         );
-        // Transaction Mapping logic
         var tzId = await _settingsService.GetSettingAsync("SelectedTimeZoneId");
         var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
         transaction.TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(transaction.TransactionTime, tz);

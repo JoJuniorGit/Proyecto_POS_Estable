@@ -32,13 +32,16 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
     }
   }, [remainingBsS, isCashSelected, selectedMethodId]);
 
-  // Normalización del texto (soporta punto y coma decimal)
+  // Normalización del texto (soporta punto y coma decimal) y parseo en escala entera de centésimas
   const normalizedText = amountText.replace(',', '.').trim();
-  const parsedAmount = parseFloat(normalizedText);
-  const isValidNum = !isNaN(parsedAmount) && parsedAmount > 0 && isFinite(parsedAmount);
+  const amountMatch = normalizedText.match(/^(\d+)(?:\.(\d{1,2}))?$/);
+  const parsedCents = amountMatch
+    ? (parseInt(amountMatch[1], 10) * 100) + parseInt((amountMatch[2] || '').padEnd(2, '0') || '0', 10)
+    : 0;
+  const isValidNum = !!amountMatch && parsedCents > 0;
 
   // Verificación de número entero o terminación en .00 (ej: 10, 12.00, 15.00)
-  const isIntegerOrZeroDecimal = isValidNum && Math.abs(parsedAmount - Math.round(parsedAmount)) < 0.0001;
+  const isIntegerOrZeroDecimal = isValidNum && (parsedCents % 100) === 0;
 
   // Validación de monto:
   // - Para efectivo: acepta enteros o .00 (ej: 10, 12.00, 15.00), pero rechaza centavos (ej: 15.01)
@@ -61,8 +64,15 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
     }
   }, [hasDecimalError, amountText, isValidNum]);
 
-  const finalAmountBsS = isValidNum ? (isCashSelected ? Math.round(parsedAmount) : parsedAmount) : 0;
-  const usdPreview = exchangeRate > 0 ? (finalAmountBsS / exchangeRate).toFixed(2) : '0.00';
+  const finalAmountBsS = parsedCents / 100;
+  const usdPreview = (() => {
+    if (exchangeRate <= 0 || parsedCents <= 0) return '0.00';
+    // Equivalencia USD redondeada a 2 decimales en escala entera (evita drift de punto flotante)
+    const rateCents = Math.round(exchangeRate * 100);
+    if (rateCents <= 0) return '0.00';
+    const usdCents = Math.round((parsedCents * 100) / rateCents);
+    return (usdCents / 100).toFixed(2);
+  })();
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -82,11 +92,12 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
     }
 
     onAddPayment({
+      uid: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       methodId: selectedMethod.id,
       methodName: selectedMethod.name,
       isCash: selectedMethod.isCash,
       amountBsS: finalAmountBsS,
-      amountUsd: parseFloat(usdPreview),
+      amountUsd: Number(usdPreview),
       reference: reference.trim() || null,
     });
 

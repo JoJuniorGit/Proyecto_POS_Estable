@@ -43,6 +43,21 @@ public partial class PosViewModel
 
     private async Task AddSelectedSuggestionAsync(ProductQuickInfoDto? value)
     {
+        // 8.5-W1: El lock compartido con el scanner permite que una sugerencia seleccionada
+        // no se duplique si llega un escaneo rápido de código de barras del mismo producto.
+        await _scannerLock.WaitAsync();
+        try
+        {
+            await AddSelectedSuggestionCoreAsync(value);
+        }
+        finally
+        {
+            _scannerLock.Release();
+        }
+    }
+
+    private async Task AddSelectedSuggestionCoreAsync(ProductQuickInfoDto? value)
+    {
         // Lazy-start: If sale is null, start one now
         if (Cart.CurrentSale == null)
         {

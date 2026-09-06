@@ -681,4 +681,97 @@ public class Phase4SharedTransactionAndIdempotencyTests
     }
 
     #endregion
+
+    #region 7. Idempotencia en Abonos (8.2-M6): retry de abono → 1 sola aplicación
+
+    [Fact]
+    public async Task AddPayment_WithSameIdempotencyKey_ReturnsSaleButServiceCalledOnce()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var idService = new IdempotencyService(context);
+
+        var mockSalesService = new Mock<ISalesService>();
+        mockSalesService.Setup(s => s.AddPaymentToHoldSaleAsync(
+                5, It.IsAny<AddPaymentRequestDto>(), "ABONO-001", It.IsAny<byte[]>()))
+            .Callback<int, AddPaymentRequestDto, string?, byte[]?>((saleId, req, key, hash) =>
+            {
+                if (!string.IsNullOrEmpty(key) && hash != null)
+                {
+                    context.IdempotentRequests.Add(new IdempotentRequest
+                    {
+                        Key = key,
+                        RequestPath = "/api/sales/5/payments",
+                        PayloadHash = hash,
+                        StatusCode = 200,
+                        ResponseBody = "{\"status\":\"OnHold\"}",
+                        CreatedAtUtc = DateTime.UtcNow,
+                        ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
+                    });
+                    context.SaveChanges();
+                }
+            })
+            .ReturnsAsync(new SaleDto { Id = 5, Status = "OnHold" });
+
+        var mockUser = new Mock<ICurrentUserService>();
+        mockUser.Setup(u => u.UserId).Returns("1");
+
+        var controller = new SalesController(mockSalesService.Object, mockUser.Object, idService);
+        var paymentReq = new AddPaymentRequestDto { PaymentMethodId = 1, AmountUSD = 10m, AmountBsS = 500m, ExchangeRate = 50m };
+
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["Idempotency-Key"] = "ABONO-001";
+        httpContext.Request.Path = "/api/sales/5/payments";
+        httpContext.Request.Method = "POST";
+        httpContext.Response.Body = new MemoryStream();
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        // Primer intento: MISS → se registra y se llama al servicio
+        var first = Assert.IsType<OkObjectResult>((await controller.AddPayment(5, paymentReq)).Result);
+        Assert.Equal("MISS", httpContext.Response.Headers["X-Cache-Lookup"].ToString());
+
+        // Segundo intento con la misma clave: replay HIT, sin volver a llamar al servicio
+        var replayContext = new DefaultHttpContext();
+        replayContext.Request.Headers["Idempotency-Key"] = "ABONO-001";
+        replayContext.Request.Path = "/api/sales/5/payments";
+        replayContext.Request.Method = "POST";
+        replayContext.Response.Body = new MemoryStream();
+        controller.ControllerContext = new ControllerContext { HttpContext = replayContext };
+
+        await controller.AddPayment(5, paymentReq);
+        Assert.Equal("HIT", replayContext.Response.Headers["X-Cache-Lookup"].ToString());
+
+        mockSalesService.Verify(s => s.AddPaymentToHoldSaleAsync(
+            5, It.IsAny<AddPaymentRequestDto>(), "ABONO-001", It.IsAny<byte[]>()),
+            Times.Once);
+
+        // Se persiste un único registro de idempotencia
+        var count = await context.IdempotentRequests.CountAsync(r => r.Key == "ABONO-001" && r.RequestPath == "/api/sales/5/payments");
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task HoldSale_WithoutIdempotencyKey_Returns400BadRequest()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var idService = new IdempotencyService(context);
+
+        var mockSalesService = new Mock<ISalesService>();
+        var mockUser = new Mock<ICurrentUserService>();
+        mockUser.Setup(u => u.UserId).Returns("1");
+
+        var controller = new SalesController(mockSalesService.Object, mockUser.Object, idService);
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Path = "/api/sales/3/hold";
+        httpContext.Request.Method = "POST";
+        httpContext.Response.Body = new MemoryStream();
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        var request = new HoldSaleRequestDto { CustomerId = 7, ExchangeRate = 50m };
+
+        var result = await controller.HoldSale(3, request);
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        mockSalesService.Verify(s => s.HoldSaleAsync(3, request, null, null), Times.Never);
+    }
+
+    #endregion
 }

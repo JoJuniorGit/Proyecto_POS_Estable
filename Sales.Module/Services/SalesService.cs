@@ -87,7 +87,22 @@ public partial class SalesService : ISalesService
 
         _context.Sales.Add(_sale);
         await _context.SaveChangesAsync();
-        return await GetSaleAsync(_sale.Id);
+
+        // 8.5-M2: Evitar write-on-read (GetSaleAsync re-recarga/recalcula la venta con side effects).
+        // La venta recién creada no tiene items ni pagos; se mapea directamente sin round-trip.
+        return new SaleDto
+        {
+            Id = _sale.Id,
+            Date = _sale.Date,
+            Status = _sale.Status.ToString(),
+            CashierId = _sale.CashierId,
+            CustomerName = defaultCustomer.Name,
+            CustomerCedula = defaultCustomer.CedulaOrRif,
+            DeliveryStatus = _sale.DeliveryStatus.ToString(),
+            PriceListType = "Retail",
+            Items = new System.Collections.Generic.List<SaleItemDto>(),
+            Payments = new System.Collections.Generic.List<SalePaymentDto>()
+        };
     }
 
     public async Task<SaleDto> GetSaleAsync(int sale_id)
@@ -403,6 +418,34 @@ public partial class SalesService : ISalesService
             if (exchange_rate <= 0)
             {
                 throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio AppliedRate inválida o no inicializada (<= 0).");
+            }
+
+            // 8.5-A5: Auditoría de tasa BCV del día vs. tasa recibida del cliente.
+            // Previene manipulación extrema (rechazo > ±100%) y genera trazabilidad para desvíos moderados (>10%).
+            if (_inventoryService != null)
+            {
+                decimal officialRate;
+                try
+                {
+                    officialRate = await _inventoryService.GetTodayExchangeRateAsync();
+                }
+                catch { officialRate = 0m; }
+
+                if (officialRate > 0m)
+                {
+                    decimal deviationPct = Math.Abs(exchange_rate - officialRate) / officialRate;
+
+                    if (deviationPct > 1.0m)
+                    {
+                        _logger?.LogError("[A5-AUDIT] Tasa rechazada por posible manipulación. SaleId={SaleId}, TasaRecibida={Received}, TasaBCV={Official}, Desvío={Deviation:P2}", sale_id, exchange_rate, officialRate, deviationPct);
+                        throw new InvalidOperationException($"La tasa de cambio {exchange_rate} fue rechazada: excede ±100% de la tasa BCV oficial ({officialRate}). Contacte al supervisor.");
+                    }
+
+                    if (deviationPct > 0.10m)
+                    {
+                        _logger?.LogWarning("[A5-AUDIT] Desvío de tasa significativo (>10%) en cierre. SaleId={SaleId}, TasaRecibida={Received}, TasaBCV={Official}, Desvío={Deviation:P2}", sale_id, exchange_rate, officialRate, deviationPct);
+                    }
+                }
             }
 
             _sale.AppliedRate = exchange_rate;

@@ -3,11 +3,26 @@ import { api } from '../services/api';
 
 const AuthContext = createContext(null);
 
+// 8.5-WEB4: Whitelist estricta de campos del perfil de usuario. La forma dual "data.user || data"
+// podía persistir campos no relacionados (tokens, flags internos) que lleguen dentro de "data".
+// Solamente se conservan los campos consumidos por la UI; todo lo demás se descarta.
+function normalizeUserProfile(src) {
+  if (!src || typeof src !== 'object') return null;
+  return {
+    id: src.id ?? null,
+    name: src.name ?? null,
+    cedula: src.cedula ?? null,
+    role: src.role ?? null,
+  };
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     try {
-      const saved = localStorage.getItem('pos_user');
-      return saved ? JSON.parse(saved) : null;
+      const saved = localStorage.getItem('pos_user_profile');
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      return normalizeUserProfile(parsed);
     } catch {
       return null;
     }
@@ -31,10 +46,14 @@ export function AuthProvider({ children }) {
       return { requiresPasswordChange: true, message: data.message };
     }
 
-    const sessionUser = data.user || data;
+    const sessionUser = normalizeUserProfile(data.user || data);
+
+    if (!sessionUser) {
+      throw new Error('La respuesta del servidor no contiene un perfil de usuario válido.');
+    }
 
     setUser(sessionUser);
-    localStorage.setItem('pos_user', JSON.stringify(sessionUser));
+    localStorage.setItem('pos_user_profile', JSON.stringify(sessionUser));
     localStorage.removeItem('pos_token');
     return sessionUser;
   };
@@ -49,13 +68,26 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
+    // 8.5-WEB3: El logout nunca debe ser silencioso en el servidor. Se intenta revocar la cookie
+    // (una vez con timeout); si falla, se limpia el estado local y se advierte que el re-login puede
+    // chocar hasta que el servidor revoque la sesión por expiración.
+    let serverLogoutSucceeded = false;
     try {
-      await api.post('/api/auth/logout');
-    } catch {}
+      await api.post('/api/auth/logout', null, { signal: AbortSignal.timeout(5000) });
+      serverLogoutSucceeded = true;
+    } catch {
+      serverLogoutSucceeded = false;
+    }
+
     setUser(null);
+    localStorage.removeItem('pos_user_profile');
     localStorage.removeItem('pos_user');
     localStorage.removeItem('pos_token');
     sessionStorage.clear();
+
+    if (!serverLogoutSucceeded) {
+      console.warn('[AuthContext] No se pudo confirmar la revocación de la sesión en el servidor.');
+    }
   };
 
   return (

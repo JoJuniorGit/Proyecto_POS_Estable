@@ -197,7 +197,7 @@ public partial class DailyClosureViewModel : ObservableObject
     private string BuildConfirmationMessage()
     {
         var userName = UserSession?.CurrentUser?.Name ?? UserSession?.CurrentUser?.Cedula ?? "Usuario";
-        var dateStr = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+        var dateStr = DateTime.UtcNow.ToString("dd/MM/yyyy HH:mm");
 
         if (IsBlindClosing)
         {

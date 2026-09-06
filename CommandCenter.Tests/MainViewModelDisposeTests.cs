@@ -32,11 +32,10 @@ public class MainViewModelDisposeTests
     }
 
     /// <summary>
-    /// Los ViewModels hijo reales de MainViewModel no implementan IDisposable hoy; esta subclase
+    /// Los ViewModels hijo reales de MainViewModel implementan IDisposable; esta subclase
     /// de prueba permite ejercitar la rama de disposición de hijos sin lanzar excepciones.
-    /// Nota: en C# la interfaz debe declararse explícitamente; un método Dispose() por sí solo no la implementa.
     /// </summary>
-    private sealed class DisposableLoginViewModel : LoginViewModel, IDisposable
+    private sealed class DisposableLoginViewModel : LoginViewModel
     {
         public bool DisposeCalled { get; private set; }
 
@@ -45,7 +44,11 @@ public class MainViewModelDisposeTests
         {
         }
 
-        public void Dispose() => DisposeCalled = true;
+        public override void Dispose()
+        {
+            DisposeCalled = true;
+            base.Dispose();
+        }
     }
 
     [Fact]

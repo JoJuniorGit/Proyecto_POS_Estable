@@ -70,7 +70,16 @@ function MainApp() {
   const handleHoldSuccess = async () => {
     const saleId = currentSale?.id;
     setIsHoldModalOpen(false);
-    await resetCart();
+    const ok = await resetCart();
+    if (!ok) {
+      // 8.5-WEB5: no anunciar éxito si el carrito no pudo iniciar una nueva venta.
+      setCompletedHoldSuccess({
+        title: "Pedido Guardado en Espera",
+        badgeText: saleId ? `Pedido N° #${saleId}` : null,
+        message: "El pedido fue guardado correctamente, pero no se pudo iniciar una nueva venta automáticamente. Intente crear una nueva venta manualmente o recargue la página."
+      });
+      return;
+    }
     setCompletedHoldSuccess({
       title: "¡Pedido Guardado en Espera!",
       badgeText: saleId ? `Pedido N° #${saleId}` : null,

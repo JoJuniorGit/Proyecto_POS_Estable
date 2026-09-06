@@ -3,13 +3,23 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using ClientCashService = Desktop.Client.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Core.Entities;
+using Core.Interfaces;
 using Desktop.Client.ViewModels;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Moq;
 using Sales.Module.Data;
 using Sales.Module.Entities;
+using Sales.Module.Interfaces;
 using ServerCashService = Sales.Module.Services;
 using Xunit;
 using Core.DTOs;
+using SalesService = Sales.Module.Services.SalesService;
+using ISalesService = Sales.Module.Interfaces.ISalesService;
+using ICashDrawerService = Sales.Module.Interfaces.ICashDrawerService;
+using CashDrawerStatus = Sales.Module.Entities.CashDrawerStatus;
 
 namespace CommandCenter.Tests;
 
@@ -22,6 +32,30 @@ public class CashAdvanceTests
             .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         return new SalesDbContext(options);
+    }
+
+    private ServerCashService.CashDrawerService CreateCashDrawerServiceWithSalesService(SalesDbContext context)
+    {
+        // 8.5-A6: Sin anti-patrón de SalesService(null!). El SalesService real se resuelve desde un
+        // ServiceProvider ad hoc, replicando el patrón de producción (resolución perezosa que evita
+        // el ciclo Scoped ISalesService <-> ICashDrawerService). El mock de ICashDrawerService evita el ciclo local.
+        var inventoryMock = new Mock<IInventoryService>();
+        inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
+            .ReturnsAsync(new Product { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
+
+        var cashDrawerMock = new Mock<ICashDrawerService>();
+        cashDrawerMock.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
+            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+
+        var mediatorMock = new Mock<IMediator>();
+        var settingsMock = new Mock<ISystemSettingsService>();
+
+        var services = new ServiceCollection();
+        services.AddScoped<ISalesService>(_ =>
+            new SalesService(context, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsMock.Object));
+        var provider = services.BuildServiceProvider();
+
+        return new ServerCashService.CashDrawerService(context, provider);
     }
 
     [Fact]
@@ -66,7 +100,7 @@ public class CashAdvanceTests
     public async Task ProcessCashAdvance_GeneratesCompletedSale_WithConsecutiveInvoiceNumber()
     {
         using var context = GetInMemoryDbContext();
-        var service = new ServerCashService.CashDrawerService(context);
+        var service = CreateCashDrawerServiceWithSalesService(context);
 
         var session = await service.OpenSessionAsync(2000m, 50.0m);
 
@@ -149,7 +183,7 @@ public class CashAdvanceTests
     public async Task ProcessCashAdvance_SaleItem_HasExplicitPriceOverridingProductDefault()
     {
         using var context = GetInMemoryDbContext();
-        var service = new ServerCashService.CashDrawerService(context);
+        var service = CreateCashDrawerServiceWithSalesService(context);
 
         var session = await service.OpenSessionAsync(2000m, 50.0m);
 

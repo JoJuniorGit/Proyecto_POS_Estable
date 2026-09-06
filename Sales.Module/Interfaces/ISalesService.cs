@@ -25,9 +25,9 @@ public interface ISalesService
     Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId);
 
     // OnHold / Customer Methods
-    Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request);
+    Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null);
     Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false);
-    Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request);
+    Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null);
     Task<IEnumerable<SaleDto>> GetPendingSalesAsync();
     Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId);
     Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(string? query = null, int page = 1, int pageSize = 20, bool recentOnly = false);

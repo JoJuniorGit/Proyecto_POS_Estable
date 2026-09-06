@@ -207,4 +207,20 @@ public class CashDrawerServiceUnitTests
 
         Assert.Contains("mayor a cero", ex.Message);
     }
+
+    [Fact]
+    public async Task CloseSessionAsync_SecondCloseWithoutActiveSession_ThrowsInvalidOperationException()
+    {
+        // 8.5-A2: Registro: el cierre de caja es único; un segundo cierre sin sesión activa debe fallar
+        // (en PostgreSQL se garantiza además con advisory lock para el caso de cierres concurrentes).
+        var (service, context) = CreateService();
+        var session = await service.OpenSessionAsync(500m, 50m);
+
+        var closed = await service.CloseSessionAsync(500m, 50m);
+        Assert.Equal(CashDrawerStatus.Closed, closed.Status);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CloseSessionAsync(500m, 50m));
+        Assert.Contains("No active cash drawer session", ex.Message);
+    }
 }

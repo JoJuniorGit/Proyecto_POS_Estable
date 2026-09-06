@@ -19,6 +19,9 @@ public partial class LoginView : UserControl
         if (e.OldValue is LoginViewModel oldVm)
         {
             oldVm.PropertyChanged -= Vm_PropertyChanged;
+            // 8.5-W2: Desuscribir el handler de ConnectionStatusChanged al descartar el VM
+            // (previene la fuga del ViewModel transient por cada intento de login).
+            oldVm.Dispose();
         }
         if (e.NewValue is LoginViewModel newVm)
         {

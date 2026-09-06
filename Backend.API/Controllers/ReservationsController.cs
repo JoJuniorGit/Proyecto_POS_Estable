@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Core.Entities;
 using Core.Interfaces;
 using Backend.API.DTOs;
 using Backend.API.Attributes;
@@ -83,6 +84,20 @@ public class ReservationsController : ControllerBase
     {
         try
         {
+            // 8.5-A3: Verificar ownership — solo el usuario que creó la reserva puede confirmarla
+            if (_inventoryContext != null)
+            {
+                var reservation = await _inventoryContext.StockReservations
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(r => r.Id == id);
+
+                if (reservation == null) return NotFound();
+
+                if (!IsReservationOwner(reservation))
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        new { Message = "Acceso denegado: no tiene permisos para confirmar esta reserva." });
+            }
+
             await _inventoryService.ConfirmReservationAsync(id, dto.Reason);
             return NoContent();
         }
@@ -101,6 +116,20 @@ public class ReservationsController : ControllerBase
     {
         try
         {
+            // 8.5-A3: Verificar ownership — solo el usuario que creó la reserva puede cancelarla
+            if (_inventoryContext != null)
+            {
+                var reservation = await _inventoryContext.StockReservations
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(r => r.Id == id);
+
+                if (reservation == null) return NotFound();
+
+                if (!IsReservationOwner(reservation))
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        new { Message = "Acceso denegado: no tiene permisos para cancelar esta reserva." });
+            }
+
             await _inventoryService.CancelReservationAsync(id);
             return NoContent();
         }
@@ -108,5 +137,14 @@ public class ReservationsController : ControllerBase
         {
             return Conflict(new { Message = ex.Message });
         }
+    }
+
+    private bool IsReservationOwner(Core.Entities.StockReservation reservation)
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                     ?? User.Identity?.Name;
+        if (string.IsNullOrEmpty(userId)) return true;
+        var userRef = $"user:{userId}";
+        return reservation.ReferenceId == userRef || reservation.ReferenceId == null;
     }
 }

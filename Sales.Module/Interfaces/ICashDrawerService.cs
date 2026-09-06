@@ -18,6 +18,13 @@ public class CashAdvanceResultDto
 public interface ICashDrawerService
 {
     Task<CashDrawerSession?> GetActiveSessionAsync();
+
+    /// <summary>
+    /// Sesión activa con sus transacciones de caja precargadas (retorna null si no hay sesión abierta).
+    /// Solo los endpoints que exponen el detalle de movimientos deben usarla (8.5-M1: el include completo
+    /// no debe ejecutarse en cada acceso interno).
+    /// </summary>
+    Task<CashDrawerSession?> GetActiveSessionWithTransactionsAsync();
     Task<CashDrawerSession> GetOrCreateActiveSessionAsync(decimal currentExchangeRate);
     Task<CashDrawerSession> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate);
     Task<CashDrawerSession> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate);

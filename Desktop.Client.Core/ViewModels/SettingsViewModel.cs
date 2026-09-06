@@ -84,21 +84,21 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             _connectionManager.ConnectionStatusChanged += _connectionStatusHandler;
         }
 
-        if (UserSession == null || UserSession.IsLoggedIn)
-        {
-            LoadMethodsAsync().SafeFireAndForget("SettingsViewModel.LoadMethods");
-            LoadTimeZonesAsync().SafeFireAndForget("SettingsViewModel.LoadTimeZones");
-            LoadCurrencyFormatAsync().SafeFireAndForget("SettingsViewModel.LoadCurrencyFormat");
-        }
+        // 8.5-W4: El constructor NO dispara fetch. EnsureLoadedAsync() es la única fuente de carga
+        // (idempotente) y evita fetches duplicados en navegación al VM.
     }
+
+    private bool _hasLoaded;
 
     public async Task EnsureLoadedAsync()
     {
+        if (_hasLoaded) return;
         if (UserSession == null || UserSession.IsLoggedIn)
         {
             await LoadMethodsAsync();
             await LoadTimeZonesAsync();
             await LoadCurrencyFormatAsync();
+            _hasLoaded = true;
         }
     }
 

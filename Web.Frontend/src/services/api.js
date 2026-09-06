@@ -210,6 +210,8 @@ export async function apiFetch(endpoint, options = {}) {
   if (!response.ok) {
     if (response.status === 401 && !endpoint.includes('api/auth/login')) {
       try {
+        // 8.5-WEB4: limpiar el perfil guardado (PII) al revocar la sesión por 401.
+        localStorage.removeItem('pos_user_profile');
         localStorage.removeItem('pos_user');
         localStorage.removeItem('pos_token');
         sessionStorage.clear();

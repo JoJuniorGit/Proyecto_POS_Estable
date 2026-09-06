@@ -117,8 +117,6 @@ public class GlobalExceptionHandlerMiddlewareTests
         Assert.Equal("InvalidOperation", doc.RootElement.GetProperty("error").GetString());
         Assert.Equal("No se puede anular un pedido ya completado.", doc.RootElement.GetProperty("message").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("Message", out _));
     }
 
     [Fact]
@@ -145,9 +143,7 @@ public class GlobalExceptionHandlerMiddlewareTests
 
         Assert.Equal("NotFound", doc.RootElement.GetProperty("error").GetString());
         Assert.Equal("Producto no encontrado en inventario.", doc.RootElement.GetProperty("message").GetString());
-        Assert.Equal("Producto no encontrado en inventario.", doc.RootElement.GetProperty("Message").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
     }
 
     [Fact]
@@ -174,9 +170,7 @@ public class GlobalExceptionHandlerMiddlewareTests
 
         Assert.Equal("BadRequest", doc.RootElement.GetProperty("error").GetString());
         Assert.Equal("La cantidad debe ser mayor a 0.", doc.RootElement.GetProperty("message").GetString());
-        Assert.Equal("La cantidad debe ser mayor a 0.", doc.RootElement.GetProperty("Message").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
     }
 
     [Fact]
@@ -203,9 +197,7 @@ public class GlobalExceptionHandlerMiddlewareTests
 
         Assert.Equal("Forbidden", doc.RootElement.GetProperty("error").GetString());
         Assert.Equal("El rol Cajero no tiene permisos de exportación.", doc.RootElement.GetProperty("message").GetString());
-        Assert.Equal("El rol Cajero no tiene permisos de exportación.", doc.RootElement.GetProperty("Message").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
     }
 
     [Fact]
@@ -232,10 +224,8 @@ public class GlobalExceptionHandlerMiddlewareTests
 
         Assert.Equal("NotNullConstraintViolation", doc.RootElement.GetProperty("error").GetString());
         Assert.Equal("El campo 'Barcode' es obligatorio y no puede ser nulo.", doc.RootElement.GetProperty("message").GetString());
-        Assert.Equal("El campo 'Barcode' es obligatorio y no puede ser nulo.", doc.RootElement.GetProperty("Message").GetString());
         Assert.Equal("23502", doc.RootElement.GetProperty("sqlState").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
     }
 
     [Fact]
@@ -262,10 +252,8 @@ public class GlobalExceptionHandlerMiddlewareTests
 
         Assert.Equal("UniqueConstraintViolation", doc.RootElement.GetProperty("error").GetString());
         Assert.Equal("El código de barras ya está asignado a otro producto registrado.", doc.RootElement.GetProperty("message").GetString());
-        Assert.Equal("El código de barras ya está asignado a otro producto registrado.", doc.RootElement.GetProperty("Message").GetString());
         Assert.Equal("23505", doc.RootElement.GetProperty("sqlState").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
     }
 
     [Fact]
@@ -294,6 +282,5 @@ public class GlobalExceptionHandlerMiddlewareTests
         Assert.Contains("referencia un registro inexistente", doc.RootElement.GetProperty("message").GetString());
         Assert.Equal("23503", doc.RootElement.GetProperty("sqlState").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
     }
 }

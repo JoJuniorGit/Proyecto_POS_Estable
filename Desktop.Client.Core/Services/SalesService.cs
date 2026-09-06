@@ -167,7 +167,12 @@ public class SalesService : ISalesService
 
     public async Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request)
     {
-        var response = await _http_client.PostAsJsonAsync($"api/sales/{saleId}/hold", request);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"api/sales/{saleId}/hold")
+        {
+            Content = JsonContent.Create(request)
+        };
+        httpRequest.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+        var response = await _http_client.SendAsync(httpRequest);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
@@ -180,7 +185,12 @@ public class SalesService : ISalesService
 
     public async Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request)
     {
-        var response = await _http_client.PostAsJsonAsync($"api/sales/{saleId}/payments", request);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"api/sales/{saleId}/payments")
+        {
+            Content = JsonContent.Create(request)
+        };
+        httpRequest.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+        var response = await _http_client.SendAsync(httpRequest);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();

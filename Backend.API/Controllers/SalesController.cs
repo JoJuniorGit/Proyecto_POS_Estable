@@ -42,6 +42,42 @@ public class SalesController : ControllerBase
         return Ok(_sale);
     }
 
+    // 8.5-A3: Autorización por objeto. Un cajero solo puede mutar ventas que él inició.
+    // Admin/Manager siempre autorizados. Si la venta no puede resolverse (null / mock no stubeado),
+    // el helper es tolerante y NO bloquea (la resolución real de existencia la hace el servicio).
+    private async Task<bool> IsAuthorizedForSaleAsync(int saleId)
+    {
+        bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
+        if (isElevated) return true;
+
+        if (_currentUserService.UserRole.HasValue && _currentUserService.UserRole.Value == Core.Entities.UserRole.Driver)
+        {
+            return false;
+        }
+
+        if (User.IsInRole("Driver")) return false;
+
+        SaleDto? target;
+        try
+        {
+            target = await _salesService.GetSaleAsync(saleId);
+        }
+        catch (System.Collections.Generic.KeyNotFoundException)
+        {
+            return true; // Permite que el servicio devuelva NotFound al mutador
+        }
+
+        if (target == null) return true; // Tolerante a null (mocks/indefinido)
+
+        // Si no es rol elevado (Cashier), exige que el cajero sea el dueño.
+        if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid))
+        {
+            return target.CashierId == uid;
+        }
+
+        return true;
+    }
+
     [HttpGet("{id}")]
     public async Task<ActionResult<SaleDto>> GetSale(int id)
     {
@@ -59,6 +95,11 @@ public class SalesController : ControllerBase
     [HttpPost("{id}/items")]
     public async Task<ActionResult<SaleDto>> AddItem(int id, [FromBody] AddItemRequest request)
     {
+        if (!await IsAuthorizedForSaleAsync(id))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+        }
+
         bool isAuthorized = User.IsInRole("Admin") || User.IsInRole("Manager");
         if ((request.CustomUnitPriceUsd.HasValue || request.CustomUnitPriceLocal.HasValue) && !isAuthorized)
         {
@@ -72,6 +113,11 @@ public class SalesController : ControllerBase
     [HttpDelete("{id}/items/{itemId}")]
     public async Task<ActionResult<SaleDto>> RemoveItem(int id, int itemId, [FromQuery] decimal exchangeRate)
     {
+        if (!await IsAuthorizedForSaleAsync(id))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+        }
+
         var _sale = await _salesService.RemoveItemAsync(id, itemId, exchangeRate);
         return Ok(_sale);
     }
@@ -79,6 +125,11 @@ public class SalesController : ControllerBase
     [HttpPut("{id}/items/{itemId}")]
     public async Task<ActionResult<SaleDto>> UpdateItemQuantity(int id, int itemId, [FromBody] UpdateQuantityRequest request)
     {
+        if (!await IsAuthorizedForSaleAsync(id))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+        }
+
         var _sale = await _salesService.UpdateItemQuantityAsync(id, itemId, request.Quantity, request.ExchangeRate);
         return Ok(_sale);
     }
@@ -88,6 +139,11 @@ public class SalesController : ControllerBase
     {
         try
         {
+            if (!await IsAuthorizedForSaleAsync(id))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+            }
+
             var _sale = await _salesService.UpdateExchangeRateAsync(id, exchangeRate);
             return Ok(_sale);
         }
@@ -108,10 +164,29 @@ public class SalesController : ControllerBase
     [HttpPost("{id}/hold")]
     public async Task<ActionResult<SaleDto>> HoldSale(int id, [FromBody] HoldSaleRequestDto request)
     {
+        string requestPath = $"/api/sales/{id}/hold";
+        string bodyJson = System.Text.Json.JsonSerializer.Serialize(request);
+
+        var resolved = await ResolveIdempotencyAsync(requestPath, bodyJson);
+        if (resolved.ShouldStop) return resolved.BlockingResult!;
+
         try
         {
-            var _sale = await _salesService.HoldSaleAsync(id, request);
+            if (!await IsAuthorizedForSaleAsync(id))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+            }
+
+            var _sale = await _salesService.HoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash);
+            if (Response?.Headers != null)
+            {
+                Response.Headers["X-Cache-Lookup"] = "MISS";
+            }
             return Ok(_sale);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.Message.Contains("IX_IdempotentRequests") || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505"))
+        {
+            return await HandleIdempotencyCollisionAsync(ex, requestPath, resolved.Key, resolved.PayloadHash);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
@@ -132,6 +207,11 @@ public class SalesController : ControllerBase
     {
         try
         {
+            if (!await IsAuthorizedForSaleAsync(id))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+            }
+
             bool isAuthorized = User.IsInRole("Admin") || User.IsInRole("Manager");
             var _sale = await _salesService.UpdateSaleItemsAsync(id, request, isAuthorized);
             return Ok(_sale);
@@ -157,10 +237,29 @@ public class SalesController : ControllerBase
     [HttpPost("{id}/payments")]
     public async Task<ActionResult<SaleDto>> AddPayment(int id, [FromBody] AddPaymentRequestDto request)
     {
+        string requestPath = $"/api/sales/{id}/payments";
+        string bodyJson = System.Text.Json.JsonSerializer.Serialize(request);
+
+        var resolved = await ResolveIdempotencyAsync(requestPath, bodyJson);
+        if (resolved.ShouldStop) return resolved.BlockingResult!;
+
         try
         {
-            var _sale = await _salesService.AddPaymentToHoldSaleAsync(id, request);
+            if (!await IsAuthorizedForSaleAsync(id))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+            }
+
+            var _sale = await _salesService.AddPaymentToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash);
+            if (Response?.Headers != null)
+            {
+                Response.Headers["X-Cache-Lookup"] = "MISS";
+            }
             return Ok(_sale);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.Message.Contains("IX_IdempotentRequests") || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505"))
+        {
+            return await HandleIdempotencyCollisionAsync(ex, requestPath, resolved.Key, resolved.PayloadHash);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
@@ -189,6 +288,11 @@ public class SalesController : ControllerBase
     {
         try
         {
+            if (!await IsAuthorizedForSaleAsync(id))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para anular esta venta." });
+            }
+
             await _salesService.CancelSaleAsync(id);
             return Ok(new { message = $"Pedido #{id} anulado exitosamente." });
         }
@@ -406,6 +510,11 @@ public class SalesController : ControllerBase
             return Forbid();
         }
 
+        if (!await IsAuthorizedForSaleAsync(id))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para completar esta venta." });
+        }
+
         string requestPath = $"/api/sales/{id}/complete";
         string? idempotencyKey = Request?.Headers["Idempotency-Key"].ToString();
 
@@ -509,6 +618,72 @@ public class SalesController : ControllerBase
         }
     }
 
+    private async Task<(bool ShouldStop, ActionResult? BlockingResult, string? Key, byte[]? PayloadHash)> ResolveIdempotencyAsync(string requestPath, string bodyJson)
+    {
+        string? idempotencyKey = Request?.Headers["Idempotency-Key"].ToString();
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            return (true, BadRequest(new { message = "El encabezado Idempotency-Key es obligatorio para esta operación." }), null, null);
+        }
+
+        idempotencyKey = idempotencyKey.Trim();
+
+        if (_idempotencyService == null)
+        {
+            return (false, null, idempotencyKey, null);
+        }
+
+        if (!_idempotencyService.ValidateKeyFormat(idempotencyKey, out var formatError))
+        {
+            return (true, BadRequest(new { message = formatError }), null, null);
+        }
+
+        var bodyBytes = System.Text.Encoding.UTF8.GetBytes(bodyJson);
+        var payloadHash = _idempotencyService.ComputePayloadHash(Request?.Method ?? "POST", requestPath, bodyBytes);
+
+        var checkResult = await _idempotencyService.CheckAsync(idempotencyKey, requestPath, payloadHash, HttpContext?.RequestAborted ?? default);
+        if (checkResult.IsReplay)
+        {
+            if (Response?.Headers != null)
+            {
+                Response.Headers["X-Cache-Lookup"] = "HIT";
+            }
+            return (true, Content(checkResult.StoredResponseBody ?? "", "application/json"), null, null);
+        }
+
+        if (checkResult.IsMismatch)
+        {
+            var clientIp = HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+            AppLogger.LogSecurityAudit($"[IDEMPOTENCY_MISMATCH] Key={idempotencyKey}, Path={requestPath}, IP={clientIp}, Timestamp={System.DateTime.UtcNow:O}");
+            return (true, StatusCode(StatusCodes.Status422UnprocessableEntity, new { message = "La clave de idempotencia ya fue utilizada para una transacción diferente con otro contenido." }), null, null);
+        }
+
+        return (false, null, idempotencyKey, payloadHash);
+    }
+
+    private async Task<ActionResult> HandleIdempotencyCollisionAsync(Microsoft.EntityFrameworkCore.DbUpdateException ex, string requestPath, string? key, byte[]? payloadHash)
+    {
+        if (_idempotencyService is Sales.Module.Services.IdempotencyService idService && !string.IsNullOrWhiteSpace(key) && payloadHash != null)
+        {
+            var collisionResult = await idService.HandleConcurrentCollisionAsync(key, requestPath, payloadHash, HttpContext?.RequestAborted ?? default);
+            if (collisionResult.IsReplay)
+            {
+                if (Response?.Headers != null)
+                {
+                    Response.Headers["X-Cache-Lookup"] = "HIT";
+                }
+                return Content(collisionResult.StoredResponseBody ?? "", "application/json");
+            }
+            if (collisionResult.IsMismatch)
+            {
+                var clientIp = HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+                AppLogger.LogSecurityAudit($"[IDEMPOTENCY_MISMATCH] Key={key}, Path={requestPath}, IP={clientIp}, Timestamp={System.DateTime.UtcNow:O}");
+                return StatusCode(StatusCodes.Status422UnprocessableEntity, new { message = "La clave de idempotencia ya fue utilizada para una transacción diferente con otro contenido." });
+            }
+        }
+        return StatusCode(StatusCodes.Status409Conflict, new { message = "Operación concurrente en progreso para esta clave de idempotencia." });
+    }
+
     [HttpGet("idempotency/stats")]
     [Authorize(Roles = "Admin")]
     public ActionResult GetIdempotencyStats()
@@ -531,6 +706,11 @@ public class SalesController : ControllerBase
     {
         try
         {
+            if (!await IsAuthorizedForSaleAsync(id))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para confirmar esta entrega." });
+            }
+
             var _sale = await _salesService.ConfirmPickupAsync(id);
             return Ok(_sale);
         }

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Core.Logging;
 using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
@@ -14,6 +15,9 @@ public class CashDrawerService : ICashDrawerService
     private readonly SalesDbContext _context;
     private readonly IServiceProvider? _serviceProvider;
 
+    // 8.5-A6: Sin anti-patrón de construir SalesService con null!. El ISalesService se resuelve
+    // perezosamente desde el ServiceProvider para no crear un ciclo Scoped con ISalesService,
+    // que a su vez depende de ICashDrawerService (CashDrawerService) por constructor.
     public CashDrawerService(SalesDbContext context, IServiceProvider? serviceProvider = null)
     {
         _context = context;
@@ -27,12 +31,17 @@ public class CashDrawerService : ICashDrawerService
 
     public async Task<CashDrawerSession?> GetActiveSessionAsync()
     {
-        var session = await _context.CashDrawerSessions
+        // 8.5-M1: Sin Include de Transactions — liviano para accesos internos (cierre, apertura, rollover).
+        return await _context.CashDrawerSessions
+            .FirstOrDefaultAsync(s => s.Status == CashDrawerStatus.Open);
+    }
+
+    public async Task<CashDrawerSession?> GetActiveSessionWithTransactionsAsync()
+    {
+        return await _context.CashDrawerSessions
             .Include(s => s.Transactions)
                 .ThenInclude(t => t.Sale)
             .FirstOrDefaultAsync(s => s.Status == CashDrawerStatus.Open);
-            
-        return session;
     }
 
     public async Task<CashDrawerSession> GetOrCreateActiveSessionAsync(decimal currentExchangeRate)
@@ -126,29 +135,78 @@ public class CashDrawerService : ICashDrawerService
             throw new ArgumentException("La tasa de cambio para cierre de caja debe ser mayor a cero.", nameof(currentExchangeRate));
         }
 
-        var session = await GetActiveSessionAsync();
-        if (session == null)
+        bool isInMemory = _context.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true;
+        var ambientTransaction = _context.Database.CurrentTransaction;
+        bool ownsTransaction = !isInMemory && ambientTransaction == null;
+
+        IDbContextTransaction? ownTransaction = null;
+        if (ownsTransaction)
         {
-            throw new InvalidOperationException("No active cash drawer session to close.");
+            ownTransaction = await _context.Database.BeginTransactionAsync();
         }
 
-        session.ClosedAt = DateTime.UtcNow;
-        session.ClosingBalanceLocal = actualClosingBalanceLocal;
-        session.ClosingExchangeRate = currentExchangeRate;
-        session.Status = CashDrawerStatus.Closed;
+        try
+        {
+            var session = await GetActiveSessionAsync();
+            if (session == null)
+            {
+                throw new InvalidOperationException("No active cash drawer session to close.");
+            }
 
-        await AddTransactionAsync(
-            session.Id,
-            CashTransactionType.Expense,
-            CashTransactionSource.Closing,
-            actualClosingBalanceLocal,
-            currentExchangeRate > 0 ? actualClosingBalanceLocal / currentExchangeRate : 0,
-            currentExchangeRate,
-            "Cierre de caja"
-        );
+            // 8.5-A2: Serializar cierres concurrentes. El advisory lock garantiza que el segundo cierre
+            // re-lea la sesión ya como Closed y NO registre un egreso Closing duplicado. La re-lectura se hace
+            // CON tracking (la consulta refresca la instancia ya trackeada desde la primera lectura) para que
+            // el flip a Status=Closed y los balances persistan en SaveChanges de la misma transacción.
+            if (!isInMemory)
+            {
+                await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", session.Id);
+                session = await _context.CashDrawerSessions
+                    .FirstOrDefaultAsync(s => s.Id == session.Id && s.Status == CashDrawerStatus.Open);
+                if (session == null)
+                {
+                    throw new InvalidOperationException("No active cash drawer session to close.");
+                }
+            }
 
-        await _context.SaveChangesAsync();
-        return session;
+            session.ClosedAt = DateTime.UtcNow;
+            session.ClosingBalanceLocal = actualClosingBalanceLocal;
+            session.ClosingExchangeRate = currentExchangeRate;
+            session.Status = CashDrawerStatus.Closed;
+
+            await AddTransactionAsync(
+                session.Id,
+                CashTransactionType.Expense,
+                CashTransactionSource.Closing,
+                actualClosingBalanceLocal,
+                currentExchangeRate > 0 ? actualClosingBalanceLocal / currentExchangeRate : 0,
+                currentExchangeRate,
+                "Cierre de caja"
+            );
+
+            await _context.SaveChangesAsync();
+
+            if (ownTransaction != null)
+            {
+                await ownTransaction.CommitAsync();
+            }
+
+            return session;
+        }
+        catch
+        {
+            if (ownTransaction != null)
+            {
+                await ownTransaction.RollbackAsync();
+            }
+            throw;
+        }
+        finally
+        {
+            if (ownTransaction != null)
+            {
+                await ownTransaction.DisposeAsync();
+            }
+        }
     }
 
     public async Task RolloverSessionAfterClosureAsync(decimal currentExchangeRate)
@@ -182,35 +240,75 @@ public class CashDrawerService : ICashDrawerService
             throw new ArgumentException("El monto de la transacción debe ser mayor a cero.", nameof(amountLocal));
         }
 
-        // H-API-4 & H-API-17: Validar que los egresos físicos no sobregiren el saldo real de la caja
-        if (type == CashTransactionType.Expense && isPhysicalCash && source != CashTransactionSource.Closing)
+        bool isInMemory = _context.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true;
+        var ambientTransaction = _context.Database.CurrentTransaction;
+        bool ownsTransaction = !isInMemory && ambientTransaction == null;
+
+        IDbContextTransaction? ownTransaction = null;
+        if (ownsTransaction)
         {
-            var currentBalance = await GetCurrentBalanceLocalAsync(sessionId);
-            if (currentBalance < amountLocal)
-            {
-                throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para realizar el egreso. Disponible: {currentBalance:N2} Bs.S, Requerido: {amountLocal:N2} Bs.S.");
-            }
+            ownTransaction = await _context.Database.BeginTransactionAsync();
         }
 
-        var transaction = new CashTransaction
+        try
         {
-            SessionId = sessionId,
-            TransactionTime = DateTime.UtcNow,
-            Type = type,
-            Source = source,
-            AmountUsd = amountUsd,
-            AmountLocal = amountLocal,
-            ExchangeRate = exchangeRate,
-            Description = description,
-            SaleId = referenceId,
-            IsPhysicalCash = isPhysicalCash,
-            PaymentMethodId = paymentMethodId
-        };
+            // H-API-4 & H-API-17: Validar que los egresos físicos no sobregiren el saldo real de la caja.
+            // El chequeo de saldo y el INSERT ocurren en la MISMA transacción y se serializan con un
+            // advisory lock por sesión para eliminar el TOCTOU (doble egreso concurrente, 8.5-A1).
+            if (type == CashTransactionType.Expense && isPhysicalCash && source != CashTransactionSource.Closing)
+            {
+                if (!isInMemory)
+                {
+                    await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", sessionId);
+                }
 
-        _context.CashTransactions.Add(transaction);
-        await _context.SaveChangesAsync();
+                var currentBalance = await GetCurrentBalanceLocalAsync(sessionId);
+                if (currentBalance < amountLocal)
+                {
+                    throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para realizar el egreso. Disponible: {currentBalance:N2} Bs.S, Requerido: {amountLocal:N2} Bs.S.");
+                }
+            }
 
-        return transaction;
+            var transaction = new CashTransaction
+            {
+                SessionId = sessionId,
+                TransactionTime = DateTime.UtcNow,
+                Type = type,
+                Source = source,
+                AmountUsd = amountUsd,
+                AmountLocal = amountLocal,
+                ExchangeRate = exchangeRate,
+                Description = description,
+                SaleId = referenceId,
+                IsPhysicalCash = isPhysicalCash,
+                PaymentMethodId = paymentMethodId
+            };
+
+            _context.CashTransactions.Add(transaction);
+            await _context.SaveChangesAsync();
+
+            if (ownTransaction != null)
+            {
+                await ownTransaction.CommitAsync();
+            }
+
+            return transaction;
+        }
+        catch
+        {
+            if (ownTransaction != null)
+            {
+                await ownTransaction.RollbackAsync();
+            }
+            throw;
+        }
+        finally
+        {
+            if (ownTransaction != null)
+            {
+                await ownTransaction.DisposeAsync();
+            }
+        }
     }
 
     public async Task<decimal> GetCurrentBalanceLocalAsync(int sessionId)
@@ -223,22 +321,19 @@ public class CashDrawerService : ICashDrawerService
 
         if (session == null) return 0;
 
-        var physicalIncomes = await _context.CashTransactions
+        // 8.5-M1: Una sola consulta agregada con CASE condicional (ingresos físicos - egresos físicos),
+        // en lugar de 3 round-trips separados. El movimiento de apertura se excluye porque su saldo ya
+        // está contabilizado en OpeningBalanceLocal (evita doble conteo).
+        var netCash = await _context.CashTransactions
             .AsNoTracking()
-            .Where(t => t.SessionId == sessionId 
-                     && t.Source != CashTransactionSource.Opening 
-                     && t.Type == CashTransactionType.Income 
-                     && t.IsPhysicalCash)
-            .SumAsync(t => (decimal?)t.AmountLocal) ?? 0m;
+            .Where(t => t.SessionId == sessionId
+                     && t.IsPhysicalCash
+                     && t.Source != CashTransactionSource.Opening)
+            .SumAsync(t => t.Type == CashTransactionType.Expense
+                ? -(decimal?)t.AmountLocal
+                : (decimal?)t.AmountLocal) ?? 0m;
 
-        var physicalExpenses = await _context.CashTransactions
-            .AsNoTracking()
-            .Where(t => t.SessionId == sessionId 
-                     && t.Type == CashTransactionType.Expense 
-                     && t.IsPhysicalCash)
-            .SumAsync(t => (decimal?)t.AmountLocal) ?? 0m;
-
-        return session.OpeningBalanceLocal + physicalIncomes - physicalExpenses;
+        return session.OpeningBalanceLocal + netCash;
     }
 
     public async Task<System.Collections.Generic.List<CashTransaction>> GetHistoryAsync(int limit = 300)
@@ -322,24 +417,16 @@ public class CashDrawerService : ICashDrawerService
 
             Sale? createdSale = null;
             var salesService = GetSalesService();
-            if (salesService != null)
+            if (salesService == null)
             {
-                createdSale = await salesService.CreateCashAdvanceSaleAsync(
-                    requestedAmountLocal: roundedRequested,
-                    commissionAmountLocal: commissionAmountLocal,
-                    paymentMethodId: paymentMethodId,
-                    paymentMethodName: paymentMethodName,
-                    isTransfer: isTransfer,
-                    exchangeRate: exchangeRate,
-                    cashierId: cashierId,
-                    userName: activeUserName,
-                    existingTransaction: dbTransaction
-                );
+                // 8.5-A6: Eliminado el anti-patrón de construir un SalesService con null!.
+                // Sin el servicio DI no se genera la venta contable; en producción ISalesService
+                // siempre está registrado en el contenedor.
+                AppLogger.LogWarn("[CASH] ProcessCashAdvanceAsync no pudo obtener ISalesService del contenedor DI; no se generó la venta contable.");
             }
             else
             {
-                var tempSalesService = new SalesService(_context, null!, null!, this, null!);
-                createdSale = await tempSalesService.CreateCashAdvanceSaleAsync(
+                createdSale = await salesService.CreateCashAdvanceSaleAsync(
                     requestedAmountLocal: roundedRequested,
                     commissionAmountLocal: commissionAmountLocal,
                     paymentMethodId: paymentMethodId,

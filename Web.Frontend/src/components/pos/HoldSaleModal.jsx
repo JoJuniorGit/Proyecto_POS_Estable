@@ -54,12 +54,21 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
   useEffect(() => {
     if (isOpen) {
       loadCustomers('');
-      getActivePaymentMethods()
-        .then(res => {
-          setPaymentMethods(res || []);
-          if (res && res.length > 0) setPaymentMethodId(res[0].id.toString());
-        })
-        .catch(console.error);
+      // 8.5-WEB3: reintento ante fallo transitorio de payment-methods.
+      const loadMethods = (attempt) => {
+        getActivePaymentMethods()
+          .then(res => {
+            setPaymentMethods(res || []);
+            if (res && res.length > 0) setPaymentMethodId(res[0].id.toString());
+          })
+          .catch(err => {
+            console.error('[HoldSaleModal] Error al cargar métodos de pago:', err);
+            if (attempt < 1) {
+              setTimeout(() => loadMethods(attempt + 1), 800);
+            }
+          });
+      };
+      loadMethods(0);
 
       if (currentCustomer && !currentCustomer.isDefault && currentCustomer.cedulaOrRif !== 'V-00000000') {
         setSelectedCustomer(currentCustomer);

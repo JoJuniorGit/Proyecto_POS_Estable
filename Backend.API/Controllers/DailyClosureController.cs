@@ -64,7 +64,9 @@ public class DailyClosureController : ControllerBase
         if (activeSession != null && activeSession.OpeningExchangeRate > 0)
             return activeSession.OpeningExchangeRate;
 
-        return 1.0m;
+        // 8.2-M2: Tasa NA explícita (0) en lugar de un fallback silencioso 1.0.
+        // Los cierres sin tasa BCV del día se bloquean con error claro (ver CreateClosure).
+        return 0m;
     }
 
     [HttpGet("expected-totals")]
@@ -130,6 +132,12 @@ public class DailyClosureController : ControllerBase
             }
 
             decimal exchangeRate = await GetTodayExchangeRateAsync();
+
+            // 8.2-M2: Bloquear cierre sin tasa BCV del día (o tasa 0/NA explícita) con error claro
+            if (exchangeRate <= 0)
+            {
+                throw new InvalidOperationException("No se puede registrar el cierre diario: no existe una tasa BCV registrada para hoy. Registre la tasa del día antes de cerrar la caja.");
+            }
 
             using var dbTransaction = await _salesContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
 

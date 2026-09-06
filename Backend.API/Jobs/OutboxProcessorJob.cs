@@ -40,13 +40,26 @@ public class OutboxProcessorJob : BackgroundService
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                await ProcessPendingMessagesAsync(stoppingToken);
-
-                // Ejecutar purga de mensajes procesados con más de 7 días de antigüedad (cada 1 hora)
-                if (DateTime.UtcNow - _lastPurgeCheckUtc >= TimeSpan.FromHours(1))
+                try
                 {
-                    await PurgeProcessedMessagesAsync(cancellationToken: stoppingToken);
-                    _lastPurgeCheckUtc = DateTime.UtcNow;
+                    await ProcessPendingMessagesAsync(stoppingToken);
+
+                    // Ejecutar purga de mensajes procesados con más de 7 días de antigüedad (cada 1 hora)
+                    if (DateTime.UtcNow - _lastPurgeCheckUtc >= TimeSpan.FromHours(1))
+                    {
+                        await PurgeProcessedMessagesAsync(cancellationToken: stoppingToken);
+                        _lastPurgeCheckUtc = DateTime.UtcNow;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw; // Dejar que el finally externo lo maneje correctamente
+                }
+                catch (Exception tickEx)
+                {
+                    // 8.5-M5: Un error en un tick NO debe matar el servicio. Se registra y se
+                    // continúa con el siguiente ciclo de polling tras el intervalo normal.
+                    _logger.LogWarning(tickEx, "[OutboxProcessor] Error transitorio en ciclo de polling; se reintentará en el siguiente tick.");
                 }
 
                 await timer.WaitForNextTickAsync(stoppingToken);

@@ -4,7 +4,7 @@ import ConfirmModal from '../ui/ConfirmModal';
 import PaymentForm from './PaymentForm';
 import PaymentList from './PaymentList';
 import { getActivePaymentMethods } from '../../services/paymentApi';
-import { completeSale, updateSaleCustomer } from '../../services/salesApi';
+import { completeSale, updateSaleCustomer, getCheckoutPreview } from '../../services/salesApi';
 import { useCart } from '../../context/CartContext';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import { useAuth } from '../../context/AuthContext';
@@ -24,6 +24,8 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
   const [error, setError] = useState(null);
   const [selectedSaleCustomer, setSelectedSaleCustomer] = useState(null);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
   const checkoutKeyRef = useRef(null);
 
   if (!checkoutKeyRef.current) {
@@ -66,15 +68,33 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
 
   // Cargar métodos de pago activos
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+    let cancelled = false;
+    setPayments([]);
+    setIsPendingPickup(false);
+    setError(null);
+    setSelectedSaleCustomer(null);
+
+    // 8.5-WEB3: reintento único ante fallo transitorio de payment-methods; error visible si persiste.
+    const loadMethods = (attempt) => {
       getActivePaymentMethods()
-        .then((res) => setMethods(res || []))
-        .catch((err) => console.error('[CheckoutModal] Error al cargar métodos:', err));
-      setPayments([]);
-      setIsPendingPickup(false);
-      setError(null);
-      setSelectedSaleCustomer(null);
-    }
+        .then((res) => {
+          if (cancelled) return;
+          setMethods(res || []);
+        })
+        .catch((err) => {
+          console.error('[CheckoutModal] Error al cargar métodos:', err);
+          if (cancelled) return;
+          if (attempt < 1) {
+            setTimeout(() => loadMethods(attempt + 1), 800);
+          } else {
+            setError('No se pudieron cargar los métodos de pago. Verifique la conexión e intente nuevamente.');
+          }
+        });
+    };
+    loadMethods(0);
+
+    return () => { cancelled = true; };
   }, [isOpen]);
 
   const paidBsS = payments.reduce((acc, p) => acc + p.amountBsS, 0);
@@ -83,11 +103,60 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
   const remainingBsS = Math.max(0, targetTotalBsS - paidBsS);
   const remainingUsd = Math.max(0, targetTotalUSD - paidUsd);
 
-  const hasValidPayments = payments.length > 0 && payments.every((p) => (p.amountBsS > 0 || p.amountUsd > 0));
-  const isFullLiquidation = hasValidPayments && remainingUsd <= 0.05;
+  // Previsualización canónica del backend: redondeo fiscal, saldo, vuelto y estado de pago total
+  useEffect(() => {
+    if (!isOpen || !activeSale?.id) {
+      setPreview(null);
+      return;
+    }
 
-  // Ajuste de redondeo si la diferencia en USD es < 0.01
-  const roundingAdjustment = remainingUsd <= 0.01 ? paidBsS - targetTotalBsS : 0;
+    const prevPayments = overrideSale
+      ? (overrideSale.payments || []).map((p) => ({
+          paymentMethodId: p.paymentMethodId,
+          amount: p.amount || 0,
+          amountBsS: p.amountBsS || 0,
+        }))
+      : [];
+
+    const newPayments = payments.map((p) => ({
+      paymentMethodId: p.methodId,
+      amount: p.amountUsd,
+      amountBsS: p.amountBsS,
+      amountLocal: p.amountBsS,
+      referenceNumber: p.reference,
+    }));
+
+    let cancelled = false;
+    setPreviewFailed(false);
+    getCheckoutPreview(activeSale.id, rateToUse, [...prevPayments, ...newPayments])
+      .then((res) => {
+        if (!cancelled) {
+          if (!res) {
+            setPreviewFailed(true);
+            setPreview(null);
+          } else {
+            setPreviewFailed(false);
+            setPreview(res);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error('[CheckoutModal] Error al obtener previsualización de cobro:', err);
+        if (!cancelled) {
+          setPreviewFailed(true);
+          setPreview(null);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [isOpen, activeSale?.id, overrideSale, payments, rateToUse]);
+
+  const hasValidPayments = payments.length > 0 && payments.every((p) => (p.amountBsS > 0 || p.amountUsd > 0));
+  const isFullLiquidation = preview?.isFullyPaid ?? (hasValidPayments && remainingUsd <= 0.05);
+
+  // 8.5-WEB1: Zero-trust en el redondeo fiscal. El ajuste canónico proviene EXCLUSIVAMENTE del
+  // preview del backend; sin fallback local aproximado que pueda cerrar con vuelto distinto.
+  const roundingAdjustment = preview?.roundingAdjustment ?? 0;
 
   const custName = (activeSale?.customerName || '').toLowerCase();
   const isDefaultCust = !activeSale?.customerId || activeSale?.customer?.isDefault || custName.includes('consumidor final') || custName.includes('general');
@@ -96,7 +165,8 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
   const effectiveIsPendingPickup = isPendingPickup && isCustodyAllowed;
 
   // Venta normal POS: requiere al menos 1 pago y saldo cubierto. Cuentas Abiertas (overrideSale): permite abonos parciales con al menos 1 pago.
-  const canFinalize = hasValidPayments && (overrideSale ? true : isFullLiquidation) && (!isPendingPickup || isCustodyAllowed);
+  // 8.5-WEB1: Se requiere preview canónico del backend (redondeo fiscal/vuelto/saldo) para finalizar.
+  const canFinalize = hasValidPayments && !previewFailed && (overrideSale ? true : isFullLiquidation) && (!isPendingPickup || isCustodyAllowed);
 
   const handleSelectCustomer = async (cust) => {
     if (!cust?.id) return;
@@ -114,7 +184,9 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
 
   const noPaymentsNotice = !hasValidPayments
     ? 'Agregue al menos un método de pago presionando "+ Agregar Pago" para procesar el cobro.'
-    : (!overrideSale && !isFullLiquidation ? 'El monto acumulado aún no cubre el 100% del total de la venta.' : null);
+    : (previewFailed
+        ? 'No se pudo validar el cobro con el servidor. Verifique la conexión e intente nuevamente (la transacción no puede cerrarse sin la validación canónica).'
+        : (!overrideSale && !isFullLiquidation ? 'El monto acumulado aún no cubre el 100% del total de la venta.' : null));
 
   const displayError = error || pendingPickupError;
 
@@ -122,8 +194,13 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
     setPayments((prev) => [...prev, newPayment]);
   };
 
-  const handleRemovePayment = (index) => {
-    setPayments((prev) => prev.filter((_, i) => i !== index));
+  const handleRemovePayment = (targetPayment) => {
+    // 8.5-WEB5: remover por uid estable (la key del PaymentList ya no es el índice).
+    setPayments((prev) =>
+      targetPayment?.uid
+        ? prev.filter((p) => p.uid !== targetPayment.uid)
+        : prev.filter((p) => p !== targetPayment)
+    );
   };
 
   const handleFinalizeSale = async () => {

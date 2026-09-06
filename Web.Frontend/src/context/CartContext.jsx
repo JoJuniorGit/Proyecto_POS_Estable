@@ -42,17 +42,22 @@ export function CartProvider({ children }) {
   const cartRequestIdRef = useRef(0);
   const inFlightCreateRef = useRef(null);
 
-  // Sincronizar instantáneamente la venta activa en sessionStorage para persistencia síncrona en recargas
+// Sincronizar la venta activa en sessionStorage para persistencia en recargas.
+  // 8.5-WEB2: Debounce de 400ms — evita JSON.stringify en cada render intermedio (ráfagas de
+  // actualizaciones de tasa/ítems producen una sola escritura persistida).
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (currentSale?.id && (currentSale.status === 'Pending' || currentSale.status === 'OnHold')) {
-      sessionStorage.setItem('active_pos_sale_id', String(currentSale.id));
-      sessionStorage.setItem('active_pos_sale_cache', JSON.stringify(currentSale));
-      sessionStorage.setItem('active_pos_has_items', (currentSale.items?.length > 0) ? 'true' : 'false');
-    } else if (!currentSale) {
-      sessionStorage.removeItem('active_pos_sale_cache');
-      sessionStorage.removeItem('active_pos_has_items');
-    }
+    const timer = setTimeout(() => {
+      if (currentSale?.id && (currentSale.status === 'Pending' || currentSale.status === 'OnHold')) {
+        sessionStorage.setItem('active_pos_sale_id', String(currentSale.id));
+        sessionStorage.setItem('active_pos_sale_cache', JSON.stringify(currentSale));
+        sessionStorage.setItem('active_pos_has_items', (currentSale.items?.length > 0) ? 'true' : 'false');
+      } else if (!currentSale) {
+        sessionStorage.removeItem('active_pos_sale_cache');
+        sessionStorage.removeItem('active_pos_has_items');
+      }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [currentSale]);
 
   // Inicializar o crear nueva venta
@@ -128,15 +133,23 @@ export function CartProvider({ children }) {
     restoreOrStartSale();
   }, [createNewSale]);
 
-  // Si cambia la tasa global de cambio y hay venta pendiente o en espera, notificar al backend o actualizar
+// Si cambia la tasa global de cambio y hay venta pendiente o en espera, notificar al backend o actualizar
+  // 8.5-WEB2: Debounce trailing de 1500ms — cada ráfaga de SignalR (o cambios rápidos de tasa) produce
+  // UNA escritura al final, no un write por evento.
   useEffect(() => {
-    if (currentSale?.id && exchangeRate > 0 && (currentSale.status === 'Pending' || currentSale.status === 'OnHold')) {
+    if (!currentSale?.id || !(exchangeRate > 0) || !(currentSale.status === 'Pending' || currentSale.status === 'OnHold')) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
       updateSaleExchangeRate(currentSale.id, exchangeRate)
         .then(updatedSale => {
           if (updatedSale) setCurrentSale(updatedSale);
         })
         .catch(err => console.warn('[CartContext] Error actualizando tasa en venta:', err.message));
-    }
+    }, 1500);
+
+    return () => clearTimeout(timer);
   }, [exchangeRate, currentSale?.id, currentSale?.status]);
 
   const validateOnHoldRules = useCallback((prospectiveTotalUSD) => {
@@ -299,8 +312,10 @@ export function CartProvider({ children }) {
   }, [currentSale?.id]);
 
   // Limpiar carrito / Iniciar nueva venta
-  const resetCart = useCallback(async () => {
-    await createNewSale();
+const resetCart = useCallback(async () => {
+    // 8.5-WEB5: retorna si se pudo iniciar la nueva venta; el caller decide anunciar éxito o avisar.
+    const sale = await createNewSale();
+    return !!sale;
   }, [createNewSale]);
 
   // Actualizar cliente de la venta

@@ -84,7 +84,7 @@ public partial class SalesService
         return MapToDto(sale);
     }
 
-    public async Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request)
+    public async Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null)
     {
         var _sale = await GetSaleEntityAsync(saleId);
         if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold)
@@ -243,6 +243,8 @@ public partial class SalesService
                     Status = "Pending"
                 });
 
+                RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(_sale)));
+
                 await _context.SaveChangesAsync();
 
                 if (txn != null)
@@ -279,6 +281,7 @@ public partial class SalesService
         {
             _sale.Status = SaleStatus.OnHold;
             _sale.DeliveryStatus = SaleDeliveryStatus.PendingPickup;
+            RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(_sale)));
             await _context.SaveChangesAsync();
         }
 
@@ -382,7 +385,7 @@ public partial class SalesService
         return MapToDto(_sale);
     }
 
-    public async Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request)
+    public async Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null)
     {
         var _sale = await GetSaleEntityAsync(saleId);
         if (_sale.Status != SaleStatus.OnHold)
@@ -452,6 +455,8 @@ public partial class SalesService
                 };
                 _context.CashTransactions.Add(cashTx);
             }
+
+            RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/payments", System.Text.Json.JsonSerializer.Serialize(MapToDto(_sale)));
 
             await _context.SaveChangesAsync();
 
@@ -712,5 +717,21 @@ public partial class SalesService
         _context.Customers.Remove(customer);
         await _context.SaveChangesAsync();
         _cache?.Remove(DefaultCustomerCacheKey);
+    }
+
+    private void RegisterIdempotencyRecord(string? key, byte[]? payloadHash, string requestPath, string responseBody)
+    {
+        if (string.IsNullOrWhiteSpace(key) || payloadHash == null) return;
+
+        _context.IdempotentRequests.Add(new IdempotentRequest
+        {
+            Key = key,
+            RequestPath = requestPath,
+            PayloadHash = payloadHash,
+            StatusCode = 200,
+            ResponseBody = responseBody,
+            CreatedAtUtc = DateTime.UtcNow,
+            ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
+        });
     }
 }

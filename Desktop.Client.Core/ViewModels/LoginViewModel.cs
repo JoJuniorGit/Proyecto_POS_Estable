@@ -7,12 +7,13 @@ using Desktop.Client.Services;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class LoginViewModel : ObservableObject
+public partial class LoginViewModel : ObservableObject, IDisposable
 {
     private readonly IUserService _userService;
     private readonly IDialogService _dialogService;
     private readonly UserSession _userSession;
     private readonly IConnectionManager? _connectionManager;
+    private readonly EventHandler<ConnectionStatusEventArgs>? _connectionStatusHandler;
 
     [ObservableProperty]
     private string _cedula = string.Empty;
@@ -92,13 +93,24 @@ public partial class LoginViewModel : ObservableObject
 
         if (_connectionManager != null)
         {
-            _connectionManager.ConnectionStatusChanged += (s, e) =>
+            _connectionStatusHandler = (s, e) =>
             {
                 UpdateConnectionDisplay();
             };
+            _connectionManager.ConnectionStatusChanged += _connectionStatusHandler;
             UpdateConnectionDisplay();
             _connectionManager.InitializeAsync().SafeFireAndForget("LoginViewModel.InitializeConnection");
         }
+    }
+
+    public virtual void Dispose()
+    {
+        // 8.5-W2: Desuscribir el lambda capturado evita fugas del ViewModel transient por login.
+        if (_connectionManager != null && _connectionStatusHandler != null)
+        {
+            _connectionManager.ConnectionStatusChanged -= _connectionStatusHandler;
+        }
+        GC.SuppressFinalize(this);
     }
 
     private void UpdateConnectionDisplay()

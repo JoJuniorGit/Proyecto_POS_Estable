@@ -38,11 +38,26 @@ public partial class VersionLockoutViewModel : ObservableObject
 
         if (!string.IsNullOrWhiteSpace(UpdateServerUrl))
         {
+            // 8.5-M6: Validación estricta antes de abrir la URL del servidor. Solo se permite
+            // http/https; cualquier otra entrada (script, comando, protocolo custom) se rechaza
+            // para evitar OS command injection vía UseShellExecute si el servidor se ve comprometido.
+            var url = UpdateServerUrl.Trim();
+            bool isAllowed =
+                Uri.TryCreate(url, UriKind.Absolute, out var parsed)
+                && (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps);
+
+            if (!isAllowed)
+            {
+                StatusMessage = "La dirección de actualización no es una URL válida (http/https). Contacte al administrador.";
+                IsDownloading = false;
+                return;
+            }
+
             try
             {
                 Process.Start(new ProcessStartInfo
                 {
-                    FileName = UpdateServerUrl,
+                    FileName = url,
                     UseShellExecute = true
                 });
             }

@@ -273,11 +273,9 @@ public class GlobalExceptionHandlerMiddleware
             ["status"] = statusCode,
             ["error"] = error,
             ["message"] = message,
-            ["Message"] = message,
             ["detail"] = detail,
             ["instance"] = requestPath,
-            ["traceId"] = traceId,
-            ["TraceId"] = traceId
+            ["traceId"] = traceId
         };
 
         if (!string.IsNullOrEmpty(sqlState))

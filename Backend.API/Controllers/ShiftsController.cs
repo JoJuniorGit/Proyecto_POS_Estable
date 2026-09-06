@@ -67,7 +67,9 @@ public class ShiftsController : ControllerBase
         if (activeSession != null && activeSession.OpeningExchangeRate > 0)
             return activeSession.OpeningExchangeRate;
 
-        return 1.0m;
+        // 8.2-M2: Tasa NA explícita (0) en lugar de un fallback silencioso 1.0.
+        // Los cierres sin tasa BCV del día se bloquean con error claro (ver CloseShift).
+        return 0m;
     }
 
     [RequireSecurityStampValidation]
@@ -82,6 +84,12 @@ public class ShiftsController : ControllerBase
         try
         {
             decimal exchangeRate = await GetTodayExchangeRateAsync();
+
+            // 8.2-M2: Bloquear cierre sin tasa BCV del día (o tasa 0/NA explícita) con error claro
+            if (exchangeRate <= 0)
+            {
+                throw new InvalidOperationException("No se puede cerrar el turno: no existe una tasa BCV registrada para hoy. Registre la tasa del día antes de cerrar la caja.");
+            }
 
             using var dbTransaction = await _salesContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
 
@@ -199,6 +207,7 @@ public class ShiftsController : ControllerBase
     }
 
     [HttpGet("current/report")]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult> GetCurrentReport()
     {
         var latestClosure = await _salesContext.DailyClosures
@@ -237,6 +246,7 @@ public class ShiftsController : ControllerBase
     }
 
     [HttpGet("{id}/report")]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult> GetReportById(int id)
     {
         var closure = await _dailyClosureService.GetClosureAsync(id);
