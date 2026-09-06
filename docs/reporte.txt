@@ -610,7 +610,13 @@ Estado: VERIFICADO Y CERRADO (Build Release 0 errores/0 advertencias, 744/744 te
      * `CustomerManagementViewModel.cs` (318 líneas) + `CustomerManagementViewModel.Operations.cs` (197 líneas).
    - El 100% de los archivos ViewModel del proyecto miden ahora estrictamente < 500 líneas.
 
-10. MÉTRICAS FINALES DE VERIFICACIÓN POST-REMEDIACIÓN:
+10. [8L-CR3 / 8.2-B8] Módulo de Logística Declarado Formalmente como No-Producción / Experimental:
+    - Se catalogó oficialmente `Logistics.Module` como `[NO PRODUCTIVO / EXPERIMENTAL]` en su `README.md`,
+      `IDeliveryService.cs`, `DeliveryService.cs` y en el registro DI de `Program.cs`.
+    - Se corrigió la errata en `Logistics.Module/README.md` (reemplazado el nombre inexistente
+      `SaleDeliveredEvent` por `SaleDispatchedEvent`).
+
+11. MÉTRICAS FINALES DE VERIFICACIÓN POST-REMEDIACIÓN:
     - Suite .NET (CommandCenter.Tests): 671 / 671 superadas (0 fallos, 0 omitidos).
     - Suite Web (Web.Frontend / Vitest): 73 / 73 superadas (0 fallos, +2 pruebas nuevas de CheckoutModal).
     - Total Pruebas Automatizadas: 744 / 744 activas sin regresiones.

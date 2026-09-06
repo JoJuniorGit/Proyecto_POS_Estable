@@ -66,5 +66,18 @@ Detalle de evidencia (idéntico al 8.0, re-verificado):
 7. Extender DeliveryServiceTests a integración PostgreSQL (Testcontainers).
 8. Corregir Logistics.Module/README.md (SaleDeliveredEvent → SaleDispatchedEvent).
 ================================================================================
-FIN DEL REPORTE Logistics.Module — REV. 8.2
+4. ADENDA DE REMEDIACIONES EJECUTADAS (POST-REVISIÓN 8.2)
+================================================================================
+Fecha: 2026-09-06
+- [8L-CR3] CERRADO / RESUELTO (Declarado Formalmente como No-Producción / Experimental):
+  * Se añadió advertencia explícita en `Logistics.Module/README.md` catalogándolo oficialmente
+    como módulo `[NO PRODUCTIVO / EXPERIMENTAL]` con almacenamiento temporal en memoria.
+  * Se documentaron `IDeliveryService` y `DeliveryService` con indicadores explícitos
+    de no aptitud para producción hasta implementar persistencia transaccional en PostgreSQL.
+  * Se emite log de advertencia en el constructor de `DeliveryService` y se documentó el registro en `Program.cs`.
+- [8.2-B8] RESUELTO: Se corrigió la errata en `Logistics.Module/README.md` (reemplazado
+  el nombre inexistente `SaleDeliveredEvent` por `SaleDispatchedEvent`).
+
+================================================================================
+FIN DEL REPORTE Logistics.Module — REV. 8.2 (ACTUALIZADO)
 ================================================================================

@@ -130,6 +130,7 @@ try
         cfg.RegisterServicesFromAssembly(typeof(Inventory.Module.Services.InventoryService).Assembly);
         cfg.RegisterServicesFromAssembly(typeof(Logistics.Module.Services.DeliveryService).Assembly);
     });
+    // Logistics.Module (Clasificado formalmente como NO-PRODUCCIÓN / EXPERIMENTAL - almacenamiento en memoria [8L-CR3])
     builder.Services.AddLogisticsModule();
 
     // BCV Services (Sincronización exclusivamente manual a demanda)
