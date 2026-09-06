@@ -188,8 +188,11 @@ flowchart TD
 
 * **Criterio de Aceptación:**
   * Componentes desacoplados y testeables de forma aislada.
-  * `npm test` reporta: `70 / 70 tests passed`.
+  * `npm test` reporta: `71 / 71 tests passed`.
   * `npm run lint` reporta: `0 errors, 0 warnings`.
+  * Compilación de producción Vite y .NET Release (`TreatWarningsAsErrors=true`): 0 advertencias, 0 errores.
+* **Estado:** ✅ **COMPLETADA** (`BarcodeScannerHud.jsx` y `BarcodeScannerControls.jsx` extraídos con React.memo, `BarcodeScannerModal.jsx` modularizado con 742/742 pruebas passing en la solución global).
+
 
 ---
 
