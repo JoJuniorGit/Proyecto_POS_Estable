@@ -13,13 +13,61 @@
 El sistema POS "CommandCenter" opera bajo un modelo de desarrollo ágil con equipo centralizado/unipersonal, donde **la automatización y la disciplina técnica reemplazan a la burocracia**. Cada línea de código debe diseñarse para ser mantenible, auditable y escalable a largo plazo hacia entornos de múltiples sucursales.
 
 ### Los 7 Pilares de Calidad
-1. **Mantenibilidad Primero:** Código simple, explícito y desacoplado. Ninguna modificación en un módulo debe provocar efectos colaterales imprevistos en otro. Si una clase supera las 800 líneas, debe modularizarse (ej. partial classes por subdominio o servicios específicos).
+1. **Mantenibilidad Primero:** Código simple, explícito y desacoplado. Ninguna modificación en un módulo debe provocar efectos colaterales imprevistos en otro. El tamaño objetivo por clase es de **300 a 500 líneas** (ver Sección 1.1 para la política anti-God Objects).
 2. **Consistencia Total:** Las mismas convenciones aplican en todo el repositorio. Se prohíbe introducir nueva deuda técnica (como nombres en `_snake_case`, estilos inline desordenados o mezcla de idiomas en mensajes). La deuda histórica se migra de forma gradual y oportunista al intervenir cada archivo.
 3. **Seguridad por Defecto (Zero-Trust):** Validación exhaustiva de entradas, autorización estricta basada en roles (RBAC: Admin vs Cashier), protección contra ataques comunes (Zip Slip, inyección SQL, bypass de loopback bajo proxy, exposición de credenciales) y aislamiento de secretos.
 4. **Rendimiento Consciente:** Cero consultas N+1, uso imperativo de `.AsNoTracking()` en lecturas, `.AsSplitQuery()` en relaciones complejas, paginación en catálogos y virtualización en interfaces gráficas.
 5. **Testeabilidad y Regresión Cero:** Cada lógica crítica debe poder probarse de forma aislada. Toda remediación o nueva característica debe acompañarse de pruebas automatizadas que garanticen que la suite completa (740+ pruebas) permanezca en 100% de éxito.
 6. **Observabilidad y Resiliencia:** Logs estructurados con parámetros semánticos (evitando concatenación de cadenas), captura centralizada de excepciones y degradación elegante ante fallos de red.
 7. **Accesibilidad Operativa:** Interfaces ágiles optimizadas para operación por teclado en caja (hotkeys) y soporte táctil/móvil (`inputMode`).
+
+### 1.1. Directrices Anti-God Objects y Modularización de Clases
+
+Para prevenir la reaparición de "God Objects" (clases monolíticas de más de 1.000 líneas que acumulan múltiples responsabilidades), se establecen las siguientes directrices y límites obligatorios:
+
+#### A. Límites de Tamaño y Responsabilidad Única (SRP)
+* **Umbral de Tamaño:** Máximo **300 a 500 líneas** por archivo de clase. Si un archivo supera las 500 líneas, debe programarse su partición o extracción.
+* **Principio de Responsabilidad Única (SRP):** Cada clase debe tener una única razón para cambiar.
+  * *Ejemplo en Ventas:*
+    - `SalePricingCalculator`: Cálculos matemáticos puros, impuestos, márgenes y redondeos.
+    - `SaleHoldCoordinator`: Gestión de órdenes en espera, reservas y abonos parciales.
+    - `SalesService`: Orquestador principal del ciclo de vida de la venta y transacciones.
+
+#### B. Estrategias de División y Árbol de Decisión
+1. **Estrategia Táctica (Clases Parciales):**
+   * *Mismo tipo, archivos separados:* Divide físicamente el código en archivos cohesivos (`SalesService.Pricing.cs`, `SalesService.HoldOrders.cs`, `InventoryService.StockDeduction.cs`) sin romper la interfaz pública ni los contratos de Inyección de Dependencias.
+   * *Cuándo usar:* En refactorizaciones inmediatas donde submódulos comparten intensivamente el mismo contexto transaccional (`_context`, tokens `xmin`) y no se deben alterar contratos públicos.
+2. **Estrategia Estratégica (Sub-servicios Inyectados por Composición):**
+   * *Desacoplamiento total:* Extraer la lógica a clases independientes registradas como `Scoped` en el contenedor de dependencias:
+     ```csharp
+     public class SalesService : ISalesService
+     {
+         private readonly ISalePricingCalculator _pricingCalculator;
+         private readonly ISaleHoldCoordinator _holdCoordinator;
+         // ...
+     }
+     ```
+   * *Cuándo usar:* Cuando la lógica es de cálculo puro, reglas reutilizables o flujos de negocio independientes. Facilita pruebas unitarias ultrarrápidas sin necesidad de mocks de base de datos.
+   * *Regla de Transacciones EF Core:* Los sub-servicios `Scoped` comparten la misma instancia de `SalesDbContext` durante la petición HTTP (Unit of Work compartido). La coordinación con `InventoryDbContext` se mantiene en el orquestador raíz.
+
+```mermaid
+flowchart TD
+    A["¿La clase supera las 500 líneas?"] -->|Sí| B["¿La lógica a separar requiere acceso intensivo al DbContext y transacción activa?"]
+    A -->|No| Z["Mantener en clase actual"]
+    B -->|No: cálculo puro, validación o transformación| C["Crear Sub-servicio Inyectado o Clase Pura"]
+    B -->|Sí: acceso directo a DbContext| D["¿Modificar la interfaz rompería contratos en múltiples clientes ahora?"]
+    D -->|Sí: sprint de mantenimiento o bugfix| E["Dividir en Clase Parcial (SalesService.Subdominio.cs)"]
+    D -->|No: nueva feature o refactor planificado| F["Crear Sub-servicio Scoped inyectado con DbContext compartido"]
+```
+
+#### C. Métricas Objetivas de Complejidad
+* **Complejidad Ciclomática (McCabe):** Máximo **10 por método**. Métodos con complejidad > 10 deben refactorizarse extrayendo métodos privados o aplicando patrones (Strategy/State).
+* **Número de Métodos Públicos:** Máximo **15 a 20 métodos públicos** por clase o interfaz. Si una clase requiere más métodos, viola el Principio de Segregación de Interfaces (ISP) y debe dividirse.
+* **Acoplamiento Inter-módulo:** Cero dependencias circulares. La comunicación entre dominios desacoplados (como Ventas y Logística) debe realizarse exclusivamente mediante eventos en segundo plano (**MediatR**).
+
+#### D. Revisiones de Código y Regla del Boy Scout
+* En cada Pull Request se debe verificar que no se agreguen métodos nuevos a clases que ya superen el límite de 500 líneas.
+* Si se interviene una clase grande para agregar funcionalidad, es obligatorio planificar la extracción de una clase parcial o sub-servicio en la misma iteración (*"Deja el código más limpio de como lo encontraste"*).
 
 ---
 
