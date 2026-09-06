@@ -1,0 +1,83 @@
+================================================================================
+REPORTE POR MÓDULO: Backend.API (Servidor / API REST + Middleware + Jobs)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
+Cruce con docs/reporte.txt (análisis global).
+================================================================================
+
+--------------------------------------------------------------------------------
+1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
+--------------------------------------------------------------------------------
+Backend.API constituye el núcleo de servicios del sistema. Durante el plan de remediación
+se consolidaron las siguientes mejoras críticas:
+
+1. Estandarización Total de Errores RFC 7807 (ERR-01 ✅, Commit 1e8b29f):
+   - GlobalExceptionHandlerMiddleware.cs estandariza ProblemDetails con campos duales
+     ('message' / 'Message' y 'traceId' / 'TraceId') para compatibilidad hacia atrás.
+   - Soporte para PostgreSQL SQLSTATE 23502 (violación de restricción NOT NULL) mapeado a HTTP 400.
+   - Mapeo de errores de unicidad (23505 → 409 Conflict), claves foráneas (23503 → 400 Bad Request)
+     y concurrencia (DbUpdateConcurrencyException → 409 Conflict).
+   - Retiro de catches genéricos en ProductsController y ReservationsController.
+
+2. Inicialización DDL Asíncrona y Segura (A7 ✅, Commit 492f038):
+   - Program.cs ejecuta await _invDb.Database.MigrateAsync() y await _salesDb.Database.MigrateAsync()
+     al inicio. Las comprobaciones defensivas posteriores se reescribieron contra
+     information_schema.tables e information_schema.columns sin sentencias destructivas.
+
+3. Endurecimiento de Seguridad Web y CSP (C4 / SEC-09 ✅, Commit 686f0cd):
+   - SecurityHeadersMiddleware.cs aplica estrictamente script-src 'self' en producción,
+     eliminando 'unsafe-inline'.
+
+4. Mantenimiento y Purga de OutboxMessages (PERF-05 ✅, Commit 686f0cd):
+   - OutboxProcessorJob.cs incluye PurgeProcessedMessagesAsync en lotes de 1.000 para
+     mensajes con Status='Processed' y más de 7 días de antigüedad, con timeout y auditoría forense.
+
+5. Saneamiento de Endpoints Anónimos (SEC-08 ✅, Commit 2c4be32):
+   - HealthController.cs saneado: se retiraron Environment.MachineName y ex.Message.
+   - AuthController.cs unificó respuestas de fallo a HTTP 401 "Credenciales inválidas." (A5 ✅).
+
+--------------------------------------------------------------------------------
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
+--------------------------------------------------------------------------------
+- C1 (Clave JWT): 🟡 PARCIAL (generada con CSPRNG 512 bits pero persistida en texto claro en NSSM).
+- C2 (HTTP plano en LAN): ❌ VIGENTE (escucha en HTTP 5000 por defecto si no hay certificado).
+- C3 (Secretos de desarrollo): 🟡 PARCIAL (restringido a Development pero en historial git).
+- C4 (Tokens web / CSP): ✅ CERRADO (cookie HttpOnly + SameSite=Strict + CSP self en producción).
+- A5 (Anti-enumeración usuarios): ✅ CERRADO (HTTP 401 unificado en login).
+- A7 (DDL en runtime): ✅ CERRADO (MigrateAsync asíncrono y verificaciones information_schema).
+- SEC-06 (Allowlist web): ✅ CERRADO (restringido a loopback y hostname de ventana).
+- SEC-08 (Health saneado): ✅ CERRADO (sin MachineName ni fugas de excepciones).
+- SEC-09 (CSP unsafe-inline): ✅ CERRADO (script-src 'self' en producción).
+- PERF-05 (Purga Outbox): ✅ CERRADO (eliminación por lotes de 1.000 para mensajes > 7 días).
+- ERR-01 (ProblemDetails uniforme): ✅ CERRADO (middleware global RFC 7807 + SQLSTATE 23502).
+- [CERRADO] SEC-10 / ARQ-04: ✅ TOTALMENTE CORREGIDO (ForwardedHeadersOptions configurado en
+  Program.cs con soporte de KnownProxies y KnownIPNetworks desde appsettings.json.
+  PairingController.cs verifica RemoteIpAddress normalizado e impide bypass anónimo bajo reverse proxy.
+  Validado con 7 pruebas de integración en ForwardedHeadersIntegrationTests.cs).
+- [CERRADO] ERR-04: ✅ TOTALMENTE CORREGIDO (Retirados catches planos con ex.Message en
+  DailyClosureController.cs y ShiftsController.cs, delegando en GlobalExceptionHandlerMiddleware.
+  ExchangeRateController.cs saneado con AppLogger.LogCrash y mensaje genérico sin filtrar trazas).
+- [CERRADO] SEC-11 / NET-01: ✅ TOTALMENTE CORREGIDO (Regla CORS de subredes privadas RFC-1918
+  ampliada para admitir puertos estándar 80, 443 y 4173 además de 5000, 5001 y 5173).
+- [CERRADO] PERF-06: ✅ TOTALMENTE CORREGIDO (SettingsController.cs optimizado con AsNoTracking()
+  en consultas de solo lectura para ExchangeRate, TimeZone y CurrencyFormat).
+- [CERRADO] DOM-VAL-01: ✅ TOTALMENTE CORREGIDO (ProductsController.cs:222 actualizado con regex
+  alfanumérico ^[A-Za-z0-9\-_]{1,50}$ en endpoint quick-check).
+
+--------------------------------------------------------------------------------
+3. PLAN DE ACCIÓN Y ROADMAP (FASE POST-REMEDIACIÓN)
+--------------------------------------------------------------------------------
+1. Secretos y Certificados en Producción:
+   - Configurar scripts de despliegue para generar e instalar pos-https.pfx automáticamente (C2).
+   - Migrar almacenamiento de clave JWT desde Registro a Windows DPAPI o Azure KeyVault (C1).
+2. Monitoreo y Telemetría:
+   - Mantener pruebas automatizadas de regresión continua en pipeline CI/CD (670 pruebas .NET).
+
+--------------------------------------------------------------------------------
+4. RECOMENDACIONES FUTURAS
+--------------------------------------------------------------------------------
+- Configurar UseForwardedHeaders en Program.cs para soportar despliegues tras reverse proxy.
+- Retirar los bloques catch locales con ex.Message en DailyClosureController, ShiftsController
+  y ExchangeRateController.
+- Añadir puertos 80 y 443 al allowlist por defecto de CORS para redes privadas.
+================================================================================

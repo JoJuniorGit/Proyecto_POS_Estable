@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Backend.API.Attributes;
 
 namespace Backend.API.Controllers;
 
@@ -43,23 +44,20 @@ public class DailyClosureController : ControllerBase
 
     private async Task<decimal> GetTodayExchangeRateAsync()
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
         var record = await _inventoryContext.ExchangeRateHistory
             .FirstOrDefaultAsync(r => r.Date == today);
 
         if (record == null)
         {
             record = await _inventoryContext.ExchangeRateHistory
+                .Where(r => r.Date <= today)
                 .OrderByDescending(r => r.Date)
                 .FirstOrDefaultAsync();
         }
 
         if (record != null && record.Rate > 0)
             return record.Rate;
-
-        var rateStr = await _settingsService.GetSettingAsync("CurrentExchangeRate") ?? "1.0";
-        if (decimal.TryParse(rateStr, out decimal parsedRate) && parsedRate > 0)
-            return parsedRate;
 
         return 1.0m;
     }
@@ -71,28 +69,70 @@ public class DailyClosureController : ControllerBase
         return Ok(totals);
     }
 
+    [RequireSecurityStampValidation]
     [HttpPost]
     public async Task<ActionResult> CreateClosure([FromBody] CreateClosureRequest request)
     {
         try
         {
+            // 1. Identidad fidedigna por claims autenticados (H-API-2)
             var authenticatedUserId = _currentUserService.UserId 
                 ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                ?? User.Identity?.Name 
-                ?? request.UserId 
-                ?? "Admin";
+                ?? User.Identity?.Name;
+
+            var finalUserId = !string.IsNullOrWhiteSpace(authenticatedUserId)
+                ? authenticatedUserId
+                : (!string.IsNullOrWhiteSpace(request.UserId) ? request.UserId : "Admin");
+
+            DateTime closureDate = DateTime.UtcNow;
+            if (request.ClosureDate != default)
+            {
+                var now = DateTime.UtcNow;
+                var requestedDateUtc = request.ClosureDate.Kind == DateTimeKind.Unspecified
+                    ? DateTime.SpecifyKind(request.ClosureDate, DateTimeKind.Utc)
+                    : request.ClosureDate.ToUniversalTime();
+
+                bool isAdmin = User.IsInRole("Admin");
+                if (isAdmin)
+                {
+                    if (requestedDateUtc > now.AddMinutes(5))
+                    {
+                        return BadRequest(new { message = "La fecha de cierre no puede ser en el futuro." });
+                    }
+                    if (now - requestedDateUtc > TimeSpan.FromHours(24))
+                    {
+                        return BadRequest(new { message = "No se permite registrar cierres con más de 24 horas de retroactividad." });
+                    }
+
+                    closureDate = requestedDateUtc;
+                    Core.Logging.AppLogger.LogSecurityAudit(
+                        $"[DAILY_CLOSURE_BACKDATE] Admin '{finalUserId}' registró un cierre con fecha retroactiva: {closureDate:O} (Actual: {now:O})");
+                }
+                else
+                {
+                    closureDate = now;
+                }
+            }
+
+            // 2. Totales esperados autoritativos calculados server-side (H-API-3)
+            var serverExpectedTotals = await _closureService.GetExpectedTotalsByPaymentMethodAsync(closureDate);
+            var expectedMap = serverExpectedTotals.ToDictionary(e => e.PaymentMethodId, e => e.ExpectedAmountBsS);
 
             var closure = new DailyClosure
             {
-                ClosureDate = request.ClosureDate != default ? request.ClosureDate : DateTime.UtcNow,
-                UserId = authenticatedUserId,
+                ClosureDate = closureDate,
+                UserId = finalUserId,
                 Observation = request.Observation,
-                Details = request.Details.Select(d => new ClosureDetail
+                Details = request.Details.Select(d =>
                 {
-                    PaymentMethodId = d.PaymentMethodId,
-                    PaymentMethodName = d.PaymentMethodName,
-                    ExpectedAmountBsS = d.ExpectedAmountBsS,
-                    ActualAmountBsS = d.ActualAmountBsS
+                    expectedMap.TryGetValue(d.PaymentMethodId, out var authoritativeExpected);
+                    return new ClosureDetail
+                    {
+                        PaymentMethodId = d.PaymentMethodId,
+                        PaymentMethodName = d.PaymentMethodName,
+                        ExpectedAmountBsS = authoritativeExpected,
+                        ActualAmountBsS = d.ActualAmountBsS
+                    };
                 }).ToList()
             };
 
@@ -110,7 +150,11 @@ public class DailyClosureController : ControllerBase
 
             return Ok(result);
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { Message = ex.Message });
+        }
+        catch (ArgumentException ex)
         {
             return BadRequest(new { Message = ex.Message });
         }

@@ -41,13 +41,13 @@ public partial class PairingQrViewModel : ObservableObject
     private int _httpsPort = 5001;
 
     [ObservableProperty]
-    private bool _useHttps;
+    private bool _useHttps = true;
 
     [ObservableProperty]
-    private string _fullUrl = "http://localhost:5000";
+    private string _fullUrl = "https://127.0.0.1:5001";
 
     [ObservableProperty]
-    private string _qrPayload = "http://localhost:5000/?paired=true";
+    private string _qrPayload = "https://127.0.0.1:5001/?paired=true";
 
     [ObservableProperty]
     private string _statusMessage = string.Empty;
@@ -148,7 +148,7 @@ public partial class PairingQrViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    private int _activePort = 5000;
+    private int _activePort = 5001;
 
     partial void OnUseHttpsChanged(bool value)
     {

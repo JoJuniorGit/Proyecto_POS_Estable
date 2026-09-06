@@ -13,4 +13,10 @@ public class StockReservation : BaseEntity
 
     // Optional: Reference to an OrderId or CartId if available
     public string? ReferenceId { get; set; }
+
+    /// <summary>
+    /// Id del producto variante que originó la reserva (cuando ProductId apunta al padre con stock compartido).
+    /// </summary>
+    public int? SourceProductId { get; set; }
+    public Product? SourceProduct { get; set; }
 }

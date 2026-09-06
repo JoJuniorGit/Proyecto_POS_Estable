@@ -1,0 +1,28 @@
+================================================================================
+REGISTRO DE MEDIDAS TEMPORALES Y DEUDA TÉCNICA — COMMANDCENTER POS
+================================================================================
+Este archivo registra de forma centralizada todas las medidas temporales,
+supuestos de diseño transitorios y reglas de negocio conservadoras implementadas
+en el código fuente. Cada entrada documenta:
+1. Módulo / Componente afectado
+2. Descripción de la medida temporal
+3. Justificación técnica y de negocio
+4. Criterio de resolución definitiva y condiciones de retiro
+
+--------------------------------------------------------------------------------
+REGISTRO DE ENTRADAS:
+--------------------------------------------------------------------------------
+
+[MT-001] [RESUELTO - RETIRADO] Regla de Auditoría Conservadora: Relación PaymentMethod y CashTransactions
+--------------------------------------------------------------------------------
+- Fecha de Registro: 2026-09-05
+- Fecha de Resolución: 2026-09-05 (Fase 2 de Remediación Integral)
+- Módulos Afectados: Sales.Module (Entities/CashTransaction.cs, Entities/PaymentMethod.cs, Services/PaymentMethodService.cs)
+- Descripción:
+  Se añadió la columna `PaymentMethodId` (nullable `int`, con clave foránea a `PaymentMethods(Id)`)
+  en la entidad `CashTransaction` y la migración `20260905180000_AddPaymentMethodIdToCashTransactions`.
+- Estado:
+  RESUELTO Y RETIRADO. `PaymentMethodService.DeleteAsync` ahora evalúa directamente:
+    bool hasCashTransactions = await _context.CashTransactions.AnyAsync(ct => ct.PaymentMethodId == id);
+  eliminando la heurística temporal `ct.IsPhysicalCash`.
+--------------------------------------------------------------------------------

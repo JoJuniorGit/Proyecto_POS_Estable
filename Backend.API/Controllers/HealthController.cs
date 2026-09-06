@@ -9,7 +9,6 @@ using Sales.Module.Data;
 namespace Backend.API.Controllers;
 
 [ApiController]
-[AllowAnonymous]
 public class HealthController : ControllerBase
 {
     private readonly SalesDbContext _salesDb;
@@ -19,6 +18,7 @@ public class HealthController : ControllerBase
         _salesDb = salesDb;
     }
 
+    [AllowAnonymous]
     [HttpGet("health")]
     [HttpGet("api/health")]
     public async Task<IActionResult> CheckHealth()
@@ -32,8 +32,7 @@ public class HealthController : ControllerBase
                 {
                     status = "Healthy",
                     service = "Proyecto_POS_Server",
-                    machineName = Environment.MachineName,
-                    version = "1.0.0",
+                    version = Core.Common.AppVersionHelper.CurrentVersion,
                     database = "Connected",
                     timestamp = DateTime.UtcNow.ToString("o")
                 });
@@ -43,8 +42,7 @@ public class HealthController : ControllerBase
             {
                 status = "Unhealthy",
                 service = "Proyecto_POS_Server",
-                machineName = Environment.MachineName,
-                version = "1.0.0",
+                version = Core.Common.AppVersionHelper.CurrentVersion,
                 database = "Disconnected",
                 message = "La conexión con la base de datos PostgreSQL no está disponible.",
                 timestamp = DateTime.UtcNow.ToString("o")
@@ -52,16 +50,30 @@ public class HealthController : ControllerBase
         }
         catch (Exception ex)
         {
+            Core.Logging.AppLogger.LogStart($"[HEALTH_CHECK_ERROR] Error al verificar la salud de la base de datos: {ex.Message}");
             return StatusCode((int)HttpStatusCode.ServiceUnavailable, new
             {
                 status = "Unhealthy",
                 service = "Proyecto_POS_Server",
-                machineName = Environment.MachineName,
-                version = "1.0.0",
+                version = Core.Common.AppVersionHelper.CurrentVersion,
                 database = "Error",
-                message = ex.Message,
+                message = "El servicio no se encuentra disponible temporalmente.",
                 timestamp = DateTime.UtcNow.ToString("o")
             });
         }
+    }
+
+    [HttpGet("api/health/metrics")]
+    [Authorize(Roles = "Admin,Manager")]
+    public IActionResult GetMetrics()
+    {
+        var (hits, misses, hitRate) = Core.Metrics.CacheMetrics.GetSnapshot();
+        return Ok(new
+        {
+            cacheHits = hits,
+            cacheMisses = misses,
+            hitRatePercentage = Math.Round(hitRate, 2),
+            timestamp = DateTime.UtcNow.ToString("o")
+        });
     }
 }

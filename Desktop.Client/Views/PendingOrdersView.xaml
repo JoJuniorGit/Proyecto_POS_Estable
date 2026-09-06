@@ -169,7 +169,7 @@
                             <materialDesign:PackIcon Kind="CurrencyUsd" Width="16" Height="16" VerticalAlignment="Center" Foreground="#059669"/>
                             <TextBlock Margin="4,0,0,0" FontSize="13" VerticalAlignment="Center">
                                 <Run Text="Tasa BCV: "/>
-                                <Run Text="{Binding CurrentExchangeRate, StringFormat='{}{0:N2} Bs/$'}" FontWeight="Bold" Foreground="#059669"/>
+                                <Run Text="{Binding CurrentExchangeRate, Mode=OneWay, StringFormat='{}{0:N2} Bs/$'}" FontWeight="Bold" Foreground="#059669"/>
                             </TextBlock>
                         </StackPanel>
                     </Border>
@@ -242,21 +242,11 @@
                             <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding TotalBsS, StringFormat='{}{0:N2} Bs.S'}"
                                            FontWeight="Bold" FontSize="14"
+                                           Foreground="#EF4444"
                                            HorizontalAlignment="Right"/>
                                 <TextBlock Text="{Binding TotalUSD, StringFormat='${0:N2}'}"
                                            FontSize="11" Foreground="Gray" HorizontalAlignment="Right"/>
                             </StackPanel>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-
-                <!-- Status badge -->
-                <DataGridTemplateColumn Header="Estado" Width="100" IsReadOnly="True">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <Border Style="{StaticResource StatusBadgeStyle}" HorizontalAlignment="Left" VerticalAlignment="Center">
-                                <TextBlock Text="En Espera" FontSize="11" FontWeight="SemiBold" Foreground="#B45309"/>
-                            </Border>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
@@ -266,7 +256,7 @@
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <Button Content="Liquidar / Abonar"
+                                <Button Content="Cobrar"
                                         Command="{Binding DataContext.LiquidarAbonarCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                         CommandParameter="{Binding}"
                                         Style="{DynamicResource MaterialDesignRaisedButton}"

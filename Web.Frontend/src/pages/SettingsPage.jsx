@@ -1,10 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
-import { getAllPaymentMethods } from '../services/paymentApi';
+import { 
+  getAllPaymentMethods, 
+  createPaymentMethod, 
+  updatePaymentMethod, 
+  deletePaymentMethod 
+} from '../services/paymentApi';
 import { BrowserQRCodeSvgWriter } from '@zxing/library';
-import { Settings, CreditCard, Plus, Save, Loader2, Check, X, QrCode, Server, Wifi, Copy, RefreshCw } from 'lucide-react';
+import { Settings, CreditCard, Plus, Loader2, Check, QrCode, Server, Wifi, Copy, RefreshCw, Trash2, DollarSign } from 'lucide-react';
+import { useCurrencyFormat } from '../context/CurrencyFormatContext';
 
 export default function SettingsPage() {
+  const { currencyFormat, setCurrencyFormat, formatBsS, formatUSD } = useCurrencyFormat();
   const [methods, setMethods] = useState([]);
   const [loadingMethods, setLoadingMethods] = useState(false);
   const [newMethodName, setNewMethodName] = useState('');
@@ -12,10 +19,26 @@ export default function SettingsPage() {
   const [newMethodRequiresRef, setNewMethodRequiresRef] = useState(false);
   const [message, setMessage] = useState(null);
 
-  // Estados para Emparejamiento QR
+  const handleFormatChange = async (newFmt) => {
+    try {
+      await setCurrencyFormat(newFmt);
+      setMessage({
+        type: 'success',
+        text: `Formato de moneda actualizado a "${newFmt === 'Venezuelan' ? 'Venezolano Contable (1.234,56)' : 'Internacional (1,234.56)'}".`,
+      });
+      setTimeout(() => setMessage(null), 3500);
+    } catch (err) {
+      setMessage({
+        type: 'danger',
+        text: err?.response?.data?.message || err?.message || 'Error al actualizar el formato de moneda.',
+      });
+    }
+  };
+
+  // Estados para Emparejamiento QR (por defecto HTTPS / Puerto 5001 para permitir uso de cámara en móviles)
   const [pairingInfo, setPairingInfo] = useState(null);
   const [selectedInterface, setSelectedInterface] = useState(null);
-  const [useHttps, setUseHttps] = useState(typeof window !== 'undefined' && window.location?.protocol === 'https:');
+  const [useHttps, setUseHttps] = useState(true);
   const [loadingPairing, setLoadingPairing] = useState(false);
   const [copiedIp, setCopiedIp] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
@@ -54,6 +77,14 @@ export default function SettingsPage() {
   useEffect(() => {
     loadMethods();
     loadPairingInfo();
+
+    const handleMethodsUpdated = () => {
+      loadMethods();
+    };
+    window.addEventListener('onPaymentMethodsUpdated', handleMethodsUpdated);
+    return () => {
+      window.removeEventListener('onPaymentMethodsUpdated', handleMethodsUpdated);
+    };
   }, []);
 
   // Cálculo de URL y payload activo
@@ -69,6 +100,17 @@ export default function SettingsPage() {
     try {
       const writer = new BrowserQRCodeSvgWriter();
       const svg = writer.write(activePayload, 200, 200);
+      svg.style.backgroundColor = '#FFFFFF';
+      svg.style.display = 'block';
+      svg.style.borderRadius = '4px';
+
+      // Fondo blanco explícito dentro del árbol SVG para máxima compatibilidad y contraste
+      const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      bgRect.setAttribute('width', '100%');
+      bgRect.setAttribute('height', '100%');
+      bgRect.setAttribute('fill', '#FFFFFF');
+      svg.insertBefore(bgRect, svg.firstChild);
+
       qrRef.current.innerHTML = '';
       qrRef.current.appendChild(svg);
     } catch (err) {
@@ -104,25 +146,57 @@ export default function SettingsPage() {
     }
   };
 
-  const handleToggleActive = async (method) => {
+  const handleToggleCash = async (method) => {
+    const updated = { ...method, isCash: !method.isCash };
+    setMethods((prev) => prev.map((m) => (m.id === method.id ? updated : m)));
     try {
-      const updated = { ...method, isActive: !method.isActive };
-      await api.put(`/api/paymentmethods/${method.id}`, updated);
-      setMethods((prev) => prev.map((m) => (m.id === method.id ? updated : m)));
+      await updatePaymentMethod(method.id, updated);
+      setMessage({ type: 'success', text: `Método "${method.name}" clasificado como ${updated.isCash ? 'Físico' : 'Digital'}.` });
+    } catch (err) {
+      console.error('[SettingsPage] Error actualizando tipo de método:', err);
+      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al cambiar tipo del método.' });
+      loadMethods();
+    }
+  };
+
+  const handleToggleActive = async (method) => {
+    const updated = { ...method, isActive: !method.isActive };
+    setMethods((prev) => prev.map((m) => (m.id === method.id ? updated : m)));
+    try {
+      await updatePaymentMethod(method.id, updated);
     } catch (err) {
       console.error('[SettingsPage] Error actualizando método:', err);
-      setMessage({ type: 'danger', text: 'Error al cambiar estado del método.' });
+      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al cambiar estado del método.' });
+      loadMethods();
     }
   };
 
   const handleToggleRef = async (method) => {
+    const updated = { ...method, requiresReference: !method.requiresReference };
+    setMethods((prev) => prev.map((m) => (m.id === method.id ? updated : m)));
     try {
-      const updated = { ...method, requiresReference: !method.requiresReference };
-      await api.put(`/api/paymentmethods/${method.id}`, updated);
-      setMethods((prev) => prev.map((m) => (m.id === method.id ? updated : m)));
+      await updatePaymentMethod(method.id, updated);
     } catch (err) {
       console.error('[SettingsPage] Error actualizando método:', err);
-      setMessage({ type: 'danger', text: 'Error al actualizar configuración de referencia.' });
+      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al actualizar configuración de referencia.' });
+      loadMethods();
+    }
+  };
+
+  const handleDeleteMethod = async (method) => {
+    const confirmed = window.confirm(
+      `¿Está seguro de eliminar el método de pago "${method.name}"?\n\nSi posee transacciones históricas registradas, será archivado de forma segura sin afectar reportes ni auditorías.`
+    );
+    if (!confirmed) return;
+
+    setMethods((prev) => prev.filter((m) => m.id !== method.id));
+    try {
+      await deletePaymentMethod(method.id);
+      setMessage({ type: 'success', text: `Método "${method.name}" eliminado correctamente.` });
+    } catch (err) {
+      console.error('[SettingsPage] Error eliminando método:', err);
+      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al eliminar método de pago.' });
+      loadMethods();
     }
   };
 
@@ -137,15 +211,16 @@ export default function SettingsPage() {
         isCash: newMethodIsCash,
         requiresReference: newMethodRequiresRef,
       };
-      await api.post('/api/paymentmethods', dto);
+      await createPaymentMethod(dto);
       setNewMethodName('');
       setNewMethodIsCash(false);
       setNewMethodRequiresRef(false);
-      setMessage({ type: 'success', text: 'Nuevo método de pago agregado.' });
+      setMessage({ type: 'success', text: 'Nuevo método de pago agregado correctamente.' });
       loadMethods();
     } catch (err) {
       console.error('[SettingsPage] Error agregando método:', err);
-      setMessage({ type: 'danger', text: 'Error al crear método de pago.' });
+      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al crear método de pago.' });
+      loadMethods();
     }
   };
 
@@ -191,8 +266,19 @@ export default function SettingsPage() {
               
               <div 
                 ref={qrRef} 
-                className="bg-white p-2 rounded-lg border flex-center mb-2" 
-                style={{ width: '216px', height: '216px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                className="qr-code-container mb-2" 
+                style={{ 
+                  backgroundColor: '#FFFFFF',
+                  width: '224px', 
+                  height: '224px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  padding: '12px',
+                  borderRadius: '10px',
+                  border: '1px solid #E2E8F0',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)'
+                }}
               />
 
               <p className="text-xs text-muted mb-3" style={{ maxWidth: '240px' }}>
@@ -290,6 +376,102 @@ export default function SettingsPage() {
         )}
       </div>
 
+      {/* ── SECCIÓN 2: FORMATO DE MONEDA Y NÚMEROS ── */}
+      <div className="card mb-4 p-3 sm:p-4">
+        <div className="flex-between flex-align-center mb-3">
+          <h3 className="card-title flex-align-center gap-2 text-base font-bold mb-0">
+            <DollarSign size={20} className="color-primary flex-shrink-0" />
+            <span>Formato Numérico y de Moneda</span>
+          </h3>
+        </div>
+        <p className="text-muted text-xs sm:text-sm mb-4">
+          Seleccione cómo desea visualizar y formatear los montos monetarios en todo el sistema (cierres, checkout, reportes y catálogo).
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }} className="mb-4">
+          {/* Opción 1: Venezolano contable */}
+          <div
+            onClick={() => handleFormatChange('Venezuelan')}
+            className="p-3.5 border rounded-lg cursor-pointer transition-all"
+            style={{
+              borderColor: currencyFormat === 'Venezuelan' ? 'var(--primary)' : 'var(--border)',
+              backgroundColor: currencyFormat === 'Venezuelan' ? 'rgba(37, 99, 235, 0.08)' : 'var(--bg-surface)',
+              borderWidth: currencyFormat === 'Venezuelan' ? '2px' : '1px'
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Seleccionar Formato Venezolano Contable"
+          >
+            <div className="flex-between flex-align-center mb-2">
+              <span className="font-bold text-sm sm:text-base">Venezolano Contable</span>
+              <input
+                type="radio"
+                name="currencyFormat"
+                value="Venezuelan"
+                checked={currencyFormat === 'Venezuelan'}
+                onChange={() => handleFormatChange('Venezuelan')}
+                style={{ cursor: 'pointer' }}
+              />
+            </div>
+            <p className="text-xs text-muted mb-2">
+              Separador de miles: <strong>punto (.)</strong> | Separador decimal: <strong>coma (,)</strong>
+            </p>
+            <div className="font-mono text-xs p-2 rounded bg-background border">
+              Ejemplo: <strong>172.786,94</strong>
+            </div>
+          </div>
+
+          {/* Opción 2: Internacional */}
+          <div
+            onClick={() => handleFormatChange('International')}
+            className="p-3.5 border rounded-lg cursor-pointer transition-all"
+            style={{
+              borderColor: currencyFormat === 'International' ? 'var(--primary)' : 'var(--border)',
+              backgroundColor: currencyFormat === 'International' ? 'rgba(37, 99, 235, 0.08)' : 'var(--bg-surface)',
+              borderWidth: currencyFormat === 'International' ? '2px' : '1px'
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Seleccionar Formato Internacional"
+          >
+            <div className="flex-between flex-align-center mb-2">
+              <span className="font-bold text-sm sm:text-base">Internacional</span>
+              <input
+                type="radio"
+                name="currencyFormat"
+                value="International"
+                checked={currencyFormat === 'International'}
+                onChange={() => handleFormatChange('International')}
+                style={{ cursor: 'pointer' }}
+              />
+            </div>
+            <p className="text-xs text-muted mb-2">
+              Separador de miles: <strong>coma (,)</strong> | Separador decimal: <strong>punto (.)</strong>
+            </p>
+            <div className="font-mono text-xs p-2 rounded bg-background border">
+              Ejemplo: <strong>172,786.94</strong>
+            </div>
+          </div>
+        </div>
+
+        {/* Vista Previa en Vivo */}
+        <div className="p-3 border rounded-lg bg-surface">
+          <span className="text-xs font-bold text-muted uppercase tracking-wider block mb-2">
+            Vista Previa Activa en el Sistema:
+          </span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px' }} className="text-xs sm:text-sm">
+            <div className="flex-between p-2 rounded bg-background border">
+              <span className="text-muted">Monto en Bolívares (Bs.S):</span>
+              <span className="font-mono font-bold color-primary">{formatBsS(172786.94, 2)}</span>
+            </div>
+            <div className="flex-between p-2 rounded bg-background border">
+              <span className="text-muted">Monto en Dólares ($):</span>
+              <span className="font-mono font-bold color-primary">{formatUSD(1250.5, 2)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Métodos de Pago */}
       <div className="card mb-4 p-3 sm:p-4">
         <h3 className="card-title mb-3 flex-align-center gap-2 text-base font-bold">
@@ -303,29 +485,58 @@ export default function SettingsPage() {
           </div>
         ) : (
           <>
-            {/* ── Requisito 1, 2 y 3: Tarjetas Independientes para Vista Móvil con Etiquetas de Contexto ── */}
+            {/* ── Tarjetas Independientes para Vista Móvil con Etiquetas de Contexto ── */}
             <div className="settings-mobile-cards-view mb-4">
               {methods.map((m) => (
                 <div key={m.id} className="settings-method-card p-3 mb-3 border rounded-lg bg-surface shadow-xs">
                   
-                  {/* Fila 1: Encabezado de Tarjeta (Nombre a la izquierda, Estado a la extrema derecha) */}
+                  {/* Fila 1: Encabezado de Tarjeta (Nombre a la izquierda, Estado y Eliminar a la derecha) */}
                   <div className="flex-between flex-align-center mb-2.5 pb-2 border-bottom">
                     <span className="font-bold text-base color-primary">{m.name}</span>
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${m.isActive ? 'btn-primary' : 'btn-danger'} text-xs font-bold px-3`}
-                      onClick={() => handleToggleActive(m)}
-                      style={{ borderRadius: '14px', minWidth: '76px' }}
-                    >
-                      {m.isActive ? 'Activo' : 'Inactivo'}
-                    </button>
+                    <div className="flex-align-center gap-2">
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${m.isActive ? 'btn-primary' : 'btn-danger'} text-xs font-bold px-3`}
+                        onClick={() => handleToggleActive(m)}
+                        style={{ borderRadius: '14px', minWidth: '76px' }}
+                        title="Alternar estado activo"
+                        aria-label={`Alternar estado activo para ${m.name}`}
+                      >
+                        {m.isActive ? 'Activo' : 'Inactivo'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline text-danger p-1"
+                        onClick={() => handleDeleteMethod(m)}
+                        title="Eliminar método de pago"
+                        aria-label={`Eliminar método ${m.name}`}
+                        style={{ color: '#DC2626', borderColor: '#FCA5A5' }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Fila 2: Detalles Secundarios con Etiquetas de Contexto ("Tipo:" y "Requiere Ref.:") */}
+                  {/* Fila 2: Detalles Secundarios con Tipo interactivo y Requiere Ref */}
                   <div className="flex-between flex-align-center text-xs">
-                    <div className="flex-align-center gap-1">
+                    <div className="flex-align-center gap-1.5">
                       <span className="text-muted text-xs">Tipo:</span>
-                      <span className="font-medium">{m.isCash ? 'Efectivo' : 'Digital / Banco'}</span>
+                      <button
+                        type="button"
+                        className={`btn btn-xs ${m.isCash ? 'btn-success' : 'btn-outline'} text-xs font-bold`}
+                        onClick={() => handleToggleCash(m)}
+                        style={{
+                          borderRadius: '10px',
+                          padding: '2px 10px',
+                          backgroundColor: m.isCash ? '#DCFCE7' : 'transparent',
+                          color: m.isCash ? '#166534' : 'inherit',
+                          borderColor: m.isCash ? '#86EFAC' : 'var(--border)'
+                        }}
+                        title="Clic para cambiar entre Físico y Digital"
+                        aria-label={`Cambiar tipo de ${m.name}. Actualmente ${m.isCash ? 'Físico' : 'Digital'}`}
+                      >
+                        {m.isCash ? 'Físico' : 'Digital'}
+                      </button>
                     </div>
 
                     <div className="flex-align-center gap-1.5">
@@ -335,6 +546,8 @@ export default function SettingsPage() {
                         className={`btn btn-xs ${m.requiresReference ? 'btn-primary' : 'btn-outline'} text-xs font-bold`}
                         onClick={() => handleToggleRef(m)}
                         style={{ borderRadius: '10px', padding: '2px 10px' }}
+                        title="Alternar requerimiento de referencia"
+                        aria-label={`Alternar requerimiento de referencia para ${m.name}`}
                       >
                         {m.requiresReference ? 'Sí' : 'No'}
                       </button>
@@ -354,18 +567,38 @@ export default function SettingsPage() {
                     <th className="text-center">Tipo</th>
                     <th className="text-center">Requiere Referencia</th>
                     <th className="text-center">Estado</th>
+                    <th className="text-center">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {methods.map((m) => (
                     <tr key={m.id}>
                       <td className="font-medium">{m.name}</td>
-                      <td className="text-center">{m.isCash ? 'Efectivo' : 'Digital / Banco'}</td>
+                      <td className="text-center">
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${m.isCash ? 'btn-success' : 'btn-outline'} text-xs font-bold`}
+                          style={{
+                            borderRadius: '12px',
+                            padding: '3px 12px',
+                            backgroundColor: m.isCash ? '#DCFCE7' : 'transparent',
+                            color: m.isCash ? '#166534' : 'inherit',
+                            borderColor: m.isCash ? '#86EFAC' : 'var(--border)'
+                          }}
+                          onClick={() => handleToggleCash(m)}
+                          title="Clic para cambiar entre Físico y Digital"
+                          aria-label={`Cambiar tipo de método ${m.name}. Actualmente ${m.isCash ? 'Físico' : 'Digital'}`}
+                        >
+                          {m.isCash ? 'Físico' : 'Digital'}
+                        </button>
+                      </td>
                       <td className="text-center">
                         <button
                           type="button"
                           className={`btn btn-sm ${m.requiresReference ? 'btn-primary' : 'btn-outline'}`}
                           onClick={() => handleToggleRef(m)}
+                          title="Alternar requerimiento de referencia"
+                          aria-label={`Alternar requerimiento de referencia para ${m.name}`}
                         >
                           {m.requiresReference ? 'Sí' : 'No'}
                         </button>
@@ -375,8 +608,22 @@ export default function SettingsPage() {
                           type="button"
                           className={`btn btn-sm ${m.isActive ? 'btn-primary' : 'btn-danger'}`}
                           onClick={() => handleToggleActive(m)}
+                          title="Alternar activación en POS"
+                          aria-label={`Alternar activación para ${m.name}`}
                         >
                           {m.isActive ? 'Activo' : 'Inactivo'}
+                        </button>
+                      </td>
+                      <td className="text-center">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline text-danger p-1.5"
+                          onClick={() => handleDeleteMethod(m)}
+                          title="Eliminar método de pago"
+                          aria-label={`Eliminar método ${m.name}`}
+                          style={{ color: '#DC2626', borderColor: '#FCA5A5' }}
+                        >
+                          <Trash2 size={16} />
                         </button>
                       </td>
                     </tr>
@@ -404,13 +651,13 @@ export default function SettingsPage() {
             </div>
 
             <div className="form-group mb-0 flex-align-center" style={{ paddingBottom: '8px' }}>
-              <label className="form-label cursor-pointer flex-align-center gap-2 text-sm mb-0">
+              <label className="form-label cursor-pointer flex-align-center gap-2 text-sm mb-0" title="Desmarcado por defecto: se creará como Digital">
                 <input
                   type="checkbox"
                   checked={newMethodIsCash}
                   onChange={(e) => setNewMethodIsCash(e.target.checked)}
                 />
-                <span>Es Efectivo</span>
+                <span>Es Efectivo (Físico)</span>
               </label>
             </div>
 

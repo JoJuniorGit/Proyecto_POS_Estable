@@ -20,8 +20,12 @@ public class DailyClosureService : IDailyClosureService
 
     public async Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc)
     {
-        var startOfDay = dateUtc.Date;
-        var endOfDay = startOfDay.AddDays(1);
+        // 1. Calcular ventana comercial de Venezuela en UTC (VET UTC-4, H-API-14)
+        var venDate = Core.Helpers.TimeZoneHelper.GetVenezuelaDate(dateUtc);
+        var tz = Core.Helpers.TimeZoneHelper.GetVenezuelaTimeZone();
+        var startOfDayLocal = venDate.ToDateTime(TimeOnly.MinValue);
+        var startOfDayUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(startOfDayLocal, DateTimeKind.Unspecified), tz);
+        var endOfDayUtc = startOfDayUtc.AddDays(1);
 
         // Fetch latest daily closure if any exists
         var lastClosure = await _context.DailyClosures
@@ -29,32 +33,37 @@ public class DailyClosureService : IDailyClosureService
             .OrderByDescending(dc => dc.ClosureDate)
             .FirstOrDefaultAsync();
 
-        // Effective start time: if last closure occurred today (or after startOfDay), count sales after last closure
-        var effectiveStartTime = (lastClosure != null && lastClosure.ClosureDate > startOfDay)
+        // Effective start time: if last closure occurred after startOfDayUtc, count sales after last closure
+        var effectiveStartTime = (lastClosure != null && lastClosure.ClosureDate > startOfDayUtc)
             ? lastClosure.ClosureDate
-            : startOfDay;
+            : startOfDayUtc;
 
-        // Fetch all active payment methods ordered by priority
-        var activeMethods = await _context.PaymentMethods
-            .AsNoTracking()
-            .Where(p => p.IsActive)
-            .OrderBy(p => p.DisplayOrder)
-            .ThenBy(p => p.Name)
-            .ToListAsync();
-
-        // Calculate expected sales totals per payment method for completed sales after effectiveStartTime
+        // 1. Calculate expected sales totals per payment method for completed sales after effectiveStartTime
         var salesTotals = await _context.SalePayments
             .AsNoTracking()
             .Where(sp => sp.Sale != null
                 && sp.Sale.Status == SaleStatus.Completed
                 && sp.Sale.Date > effectiveStartTime
-                && sp.Sale.Date < endOfDay)
+                && sp.Sale.Date < endOfDayUtc)
             .GroupBy(sp => sp.PaymentMethodId)
             .Select(g => new { PaymentMethodId = g.Key, TotalBsS = g.Sum(sp => sp.AmountBsS) })
             .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS);
 
+        // 2. Fetch all payment methods not deleted ordered by priority
+        var allMethods = await _context.PaymentMethods
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted)
+            .OrderBy(p => p.DisplayOrder)
+            .ThenBy(p => p.Name)
+            .ToListAsync();
+
+        // 3. Include active methods OR methods with historical sales in the period (even if deactivated)
+        var relevantMethods = allMethods
+            .Where(p => p.IsActive || salesTotals.ContainsKey(p.Id))
+            .ToList();
+
         var result = new List<ExpectedTotalDto>();
-        foreach (var method in activeMethods)
+        foreach (var method in relevantMethods)
         {
             salesTotals.TryGetValue(method.Id, out decimal expected);
             result.Add(new ExpectedTotalDto
@@ -70,25 +79,34 @@ public class DailyClosureService : IDailyClosureService
 
     public async Task<DailyClosure> CreateClosureAsync(DailyClosure closure)
     {
-        // Ensure all active payment methods are present in details
-        var activeMethods = await _context.PaymentMethods
-            .AsNoTracking()
-            .Where(p => p.IsActive)
-            .ToListAsync();
+        // Ensure all relevant payment methods (active or with sales) are present in details
+        var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(closure.ClosureDate);
+        var expectedMap = expectedTotals.ToDictionary(e => e.PaymentMethodId, e => e.ExpectedAmountBsS);
 
         var existingMethodIds = closure.Details.Select(d => d.PaymentMethodId).ToHashSet();
-        foreach (var method in activeMethods)
+        if (existingMethodIds.Count < expectedTotals.Count)
         {
-            if (!existingMethodIds.Contains(method.Id))
+            var methodEntities = await _context.PaymentMethods
+                .AsNoTracking()
+                .Where(p => !p.IsDeleted)
+                .ToDictionaryAsync(p => p.Id);
+
+            foreach (var exp in expectedTotals)
             {
-                closure.Details.Add(new ClosureDetail
+                if (!existingMethodIds.Contains(exp.PaymentMethodId))
                 {
-                    PaymentMethodId = method.Id,
-                    PaymentMethodName = method.Name,
-                    ExpectedAmountBsS = 0m,
-                    ActualAmountBsS = 0m,
-                    DifferenceBsS = 0m
-                });
+                    methodEntities.TryGetValue(exp.PaymentMethodId, out var methodEntity);
+                    decimal actualAmount = (methodEntity != null && methodEntity.IsCash) ? 0m : exp.ExpectedAmountBsS;
+
+                    closure.Details.Add(new ClosureDetail
+                    {
+                        PaymentMethodId = exp.PaymentMethodId,
+                        PaymentMethodName = exp.PaymentMethodName,
+                        ExpectedAmountBsS = exp.ExpectedAmountBsS,
+                        ActualAmountBsS = actualAmount,
+                        DifferenceBsS = actualAmount - exp.ExpectedAmountBsS
+                    });
+                }
             }
         }
 
@@ -205,41 +223,78 @@ public class DailyClosureService : IDailyClosureService
             byte[] pdfBytes = ClosurePdfGenerator.GeneratePdf(closure, isBlind);
 
             string dateStamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-            string pdfFileName = $"Cierre_{dateStamp}.pdf";
-            string txtFileName = $"Cierre_{dateStamp}.txt";
+            string uniqueSuffix = Guid.NewGuid().ToString("N")[..8];
+            string pdfFileName = $"Cierre_{dateStamp}_{closure.Id}_{uniqueSuffix}.pdf";
+            string txtFileName = $"Cierre_{dateStamp}_{closure.Id}_{uniqueSuffix}.txt";
 
-            // 1. Carpeta Downloads
-            string downloadsDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-            if (!System.IO.Directory.Exists(downloadsDir))
+            // 1. Ruta segura y canónica del sistema para servicios: %ProgramData%\CommandCenterPOS\Closures
+            string commonAppData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            string primaryDir = System.IO.Path.Combine(commonAppData, "CommandCenterPOS", "Closures");
+            string legacyCommonDir = System.IO.Path.Combine(commonAppData, "Registro de cierres");
+
+            // 2. Ruta de documentos personales si está disponible en sesión interactiva
+            string docsDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            string userDocsDir = !string.IsNullOrWhiteSpace(docsDir) ? System.IO.Path.Combine(docsDir, "Registro de cierres") : string.Empty;
+
+            var targetDirs = new System.Collections.Generic.List<string> { primaryDir, legacyCommonDir };
+            if (!string.IsNullOrWhiteSpace(userDocsDir))
             {
-                downloadsDir = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+                targetDirs.Add(userDocsDir);
             }
 
-            // 2. Carpeta Mis Documentos\Registro de cierres
-            string docsDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            string closureDocsDir = System.IO.Path.Combine(docsDir, "Registro de cierres");
+            foreach (var dir in targetDirs)
+            {
+                try
+                {
+                    if (!System.IO.Directory.Exists(dir))
+                    {
+                        System.IO.Directory.CreateDirectory(dir);
+                    }
 
-            // 3. Carpeta CommonApplicationData\Registro de cierres
-            string commonAppDataDir = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
-            string closureCommonDir = System.IO.Path.Combine(commonAppDataDir, "Registro de cierres");
-
-            try { System.IO.Directory.CreateDirectory(downloadsDir); } catch { }
-            try { System.IO.Directory.CreateDirectory(closureDocsDir); } catch { }
-            try { System.IO.Directory.CreateDirectory(closureCommonDir); } catch { }
-
-            // Guardar copias en PDF
-            try { System.IO.File.WriteAllBytes(System.IO.Path.Combine(downloadsDir, pdfFileName), pdfBytes); } catch { }
-            try { System.IO.File.WriteAllBytes(System.IO.Path.Combine(closureDocsDir, pdfFileName), pdfBytes); } catch { }
-            try { System.IO.File.WriteAllBytes(System.IO.Path.Combine(closureCommonDir, pdfFileName), pdfBytes); } catch { }
-
-            // Guardar copias en TXT
-            try { System.IO.File.WriteAllText(System.IO.Path.Combine(downloadsDir, txtFileName), txtContent); } catch { }
-            try { System.IO.File.WriteAllText(System.IO.Path.Combine(closureDocsDir, txtFileName), txtContent); } catch { }
-            try { System.IO.File.WriteAllText(System.IO.Path.Combine(closureCommonDir, txtFileName), txtContent); } catch { }
+                    TryWriteFileWithRetry(System.IO.Path.Combine(dir, pdfFileName), pdfBytes);
+                    TryWriteTextWithRetry(System.IO.Path.Combine(dir, txtFileName), txtContent);
+                }
+                catch (Exception ex)
+                {
+                    Core.Logging.AppLogger.LogWarn($"[DailyClosureService] Aviso al escribir comprobantes en '{dir}': {ex.Message}");
+                }
+            }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[DailyClosureService] Warning: Failed to auto-save closure receipts: {ex.Message}");
+            Core.Logging.AppLogger.LogWarn($"[DailyClosureService] Advertencia general al auto-guardar comprobantes de cierre #{closure.Id}: {ex.Message}");
+        }
+    }
+
+    private static void TryWriteFileWithRetry(string path, byte[] bytes)
+    {
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            try
+            {
+                System.IO.File.WriteAllBytes(path, bytes);
+                return;
+            }
+            catch
+            {
+                if (attempt == 0) System.Threading.Thread.Sleep(200);
+            }
+        }
+    }
+
+    private static void TryWriteTextWithRetry(string path, string text)
+    {
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            try
+            {
+                System.IO.File.WriteAllText(path, text);
+                return;
+            }
+            catch
+            {
+                if (attempt == 0) System.Threading.Thread.Sleep(200);
+            }
         }
     }
 }

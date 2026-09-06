@@ -9,6 +9,11 @@ public class LoginRequest
     public string Cedula { get; set; } = string.Empty;
 
     public string Password { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Plataforma de origen ("Web" o "Desktop"). Permite diferenciar el canal de entrega del token (Cookies vs Bearer).
+    /// </summary>
+    public string? Platform { get; set; }
 }
 
 public class ChangePasswordRequest
@@ -67,3 +72,17 @@ public class UpdateUserDto
 
     public bool IsActive { get; set; } = true;
 }
+
+public class UserCreatedDto : UserDto
+{
+    public string? TemporaryPassword { get; set; }
+    public bool MustChangePassword { get; set; }
+}
+
+public class ResetTemporaryPasswordResponseDto
+{
+    public int UserId { get; set; }
+    public string TemporaryPassword { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+}
+

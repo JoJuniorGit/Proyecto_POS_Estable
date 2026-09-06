@@ -578,7 +578,7 @@ public class OnHoldSalesTests
     }
 
     [Fact]
-    public async Task AddItemAsync_AllowsDecimalQuantityForUnitProducts()
+    public async Task AddItemAsync_TruncatesDecimalQuantityForNonFractionalProducts()
     {
         using var context = GetInMemoryDbContext();
         var mockInventory = new Mock<IInventoryService>();
@@ -604,7 +604,7 @@ public class OnHoldSalesTests
 
         Assert.NotNull(updatedSale);
         Assert.Single(updatedSale.Items);
-        Assert.Equal(1.5m, updatedSale.Items[0].Quantity);
+        Assert.Equal(1m, updatedSale.Items[0].Quantity);
     }
 
     [Fact]
@@ -713,7 +713,7 @@ public class OnHoldSalesTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
-        var sale = new Sale { Id = 1, TotalUSD = 50m, Status = SaleStatus.OnHold, DeliveryStatus = SaleDeliveryStatus.Delivered };
+        var sale = new Sale { Id = 1, TotalUSD = 50m, Status = SaleStatus.OnHold, DeliveryStatus = SaleDeliveryStatus.Delivered, PickupDate = DateTime.UtcNow };
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 

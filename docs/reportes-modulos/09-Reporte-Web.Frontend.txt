@@ -1,0 +1,63 @@
+================================================================================
+REPORTE POR MÓDULO: Web.Frontend (Cliente Web SPA — React 19 + Vite + PWA)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
+Cruce con docs/reporte.txt (análisis global).
+================================================================================
+
+--------------------------------------------------------------------------------
+1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
+--------------------------------------------------------------------------------
+Web.Frontend es la aplicación web de punto de venta optimizada para navegadores modernos
+y dispositivos móviles/tablets táctiles:
+
+1. Endurecimiento de Seguridad Web y CSP (C4 / SEC-09 ✅, Commit 686f0cd):
+   - El bundle generado por Vite en producción opera sin requerir 'unsafe-inline'.
+   - El servidor ASP.NET Core aplica Content-Security-Policy: default-src 'self'; script-src 'self'.
+
+2. Restricción de Emparejamiento Web (SEC-06 ✅, Commit 2c4be32):
+   - api.js restringe la URL base del API estrictamente a loopback y al hostname de la
+     ventana (window.location.hostname), evitando el direccionamiento arbitrario hacia
+     otras subredes sin autorización.
+
+3. Idempotencia en Cobros Web (W1 ✅, Commit 2c4be32):
+   - salesApi.js genera un encabezado Idempotency-Key con UUID v4 criptográfico
+     (crypto.randomUUID()) para cada transacción de cobro, protegiendo contra dobles pagos.
+
+4. Experiencia de Usuario y Resiliencia Móvil:
+   - useMobileBackGuard protege contra salidas accidentales mediante el botón "Atrás"
+     cuando hay productos en el carrito o un cobro en curso.
+   - useScannerTrap gestiona la entrada de pistolas lectoras de códigos de barras (wedge).
+
+--------------------------------------------------------------------------------
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
+--------------------------------------------------------------------------------
+- C4 (Tokens web en cookies): ✅ CERRADO (cookie HttpOnly pos_jwt + SameSite=Strict).
+- SEC-06 (Allowlist de emparejamiento): ✅ CERRADO (restringido a host local).
+- SEC-09 (CSP unsafe-inline): ✅ CERRADO (script-src 'self' en producción).
+- W1 (Idempotencia en cobros): ✅ CERRADO (UUID v4 obligatorio en cada venta).
+- W2 (Precisión decimal JavaScript): 🟡 PARCIAL (formatters.js utiliza toFixed sobre
+  punto flotante IEEE-754; adecuado para visualización pero mejorable a centavos enteros).
+- [CERRADO] UX-WEB-01 / ERR-05: ✅ TOTALMENTE CORREGIDO (api.js enriquecido para
+  extraer de forma robusta 'detail', 'title', array de errores y objetos de validación
+  RFC 7807 de ASP.NET Core, evitando volcar JSON crudo al cajero. Validado con 5 pruebas
+  unitarias adicionales en api.test.js).
+- [DOCUMENTADO] ARQ-SKU / DOM-VAL-01: ✅ DISEÑO COHERENTE (barcodeValidator.js restringe la
+  captura óptica a códigos 1D retail [A-Za-z0-9]{4,15} con Mod10 y filtrado de puntuación
+  para rechazar URLs de QR, mientras que el catálogo admite SKUs alfanuméricos extendidos
+  con guiones [A-Za-z0-9\-_]{1,50}).
+
+--------------------------------------------------------------------------------
+3. FORTALEZAS DEL MÓDULO
+--------------------------------------------------------------------------------
+- Suite de pruebas exhaustiva: 70 pruebas unitarias con Vitest (100% pasando en ~550ms).
+- Integración dual de escaneo de códigos de barras (BarcodeDetector nativo + ZXing fallback).
+- Filtros de visión para portátiles (lapTopVisionEnhancer con binarización Sauvola).
+- Sincronización en tiempo real de tasa de cambio y formato de moneda mediante SignalR.
+
+--------------------------------------------------------------------------------
+4. RECOMENDACIONES FUTURAS
+--------------------------------------------------------------------------------
+- Migrar cálculos financieros del cliente a centavos enteros para blindar contra drift
+  de punto flotante.
+================================================================================

@@ -26,6 +26,9 @@ public class ProductImportDto
     // Grouping & Variants Import Fields
     public string ProductType { get; set; } = "Normal"; // "Grupo" | "Variante" | "Normal"
     public string? GroupNameOrKey { get; set; }
+    public bool IsStockShared { get; set; } = false;
+    public bool HasIndependentPricing { get; set; } = false;
+    public decimal ConversionFactor { get; set; } = 1.0000m;
 
     // Legacy Aliases for backwards compatibility
     public decimal Cost { get => CostPriceUSD; set => CostPriceUSD = value; }

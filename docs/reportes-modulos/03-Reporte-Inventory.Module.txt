@@ -1,0 +1,72 @@
+================================================================================
+REPORTE POR MÓDULO: Inventory.Module (inventario, stock, variantes, importación)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
+Cruce con docs/reporte.txt (análisis global).
+================================================================================
+
+--------------------------------------------------------------------------------
+1. RESUMEN DE CAMBIOS Y EVOLUCIÓN (FASES 1 A 4 — COMMITS 686f0cd A 77b9a7c)
+--------------------------------------------------------------------------------
+Inventory.Module ha sido objeto de refactorizaciones profundas para eliminar cuellos
+de botella de rendimiento, transaccionalidad y deuda arquitectónica:
+
+1. Modularización de la God Class (CODE-01 ✅, Commit 77b9a7c):
+   InventoryService.cs fue descompuesto en 5 clases parciales organizadas por subdominio:
+   - InventoryService.cs: orquestación general, transacciones compartidas y eventos (692 líneas, -66.5%).
+   - InventoryService.StockDeduction.cs: deducción atómica en lote (UpdateStockBatchAsync),
+     ajustes manuales y reservas de existencias.
+   - InventoryService.CatalogQueries.cs: consultas paginadas de productos y sugerencias
+     rápidas optimizadas con Take(10) (H-INV-6 ✅).
+   - InventoryService.ImportExport.cs: importación masiva con fusión/sobrescritura,
+     plantillas y exportación CSV sanitizada contra inyección de fórmulas (CWE-1236).
+   - InventoryService.ExchangeRate.cs: consulta y caché de la tasa oficial BCV.
+   * Contrato público IInventoryService 100% preservado e idéntico (validado con reflection tests).
+
+2. Deducción de Stock Atómica en Lote (PERF-04 ✅, Commit 5965a13):
+   Se implementó UpdateStockBatchAsync(List<StockDeductionRequest>, ...), reduciendo
+   el problema N+1 de SaveChangesAsync y consolidando la invalidación de caché a una
+   sola llamada final.
+
+3. Bloqueo Estricto de Stock Negativo en Ventas (W5 ✅, Commit 2c4be32):
+   SalesService ahora invoca UpdateStockBatchAsync con allowNegativeStock: false,
+   garantizando la integridad del inventario físico.
+
+4. Transacción Compartida (A1 ✅):
+   EnrollInTransactionAsync enrola el contexto de inventario en la transacción de la venta,
+   asegurando que si la venta falla, la deducción de inventario se revierte limpiamente.
+
+5. Archivo Histórico de Movimientos de Stock (A4 / PERF-03 ✅, Commit a07922b):
+   Migración y entidad StockMovements_Archive con copia previa en lotes de 1.000 antes de purga.
+
+--------------------------------------------------------------------------------
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
+--------------------------------------------------------------------------------
+- H-INV-1 (Consistencia Venta-Stock): ✅ CERRADO (transacción compartida con rollback atómico).
+- H-INV-2 (God Class): ✅ CERRADO (modularizado en 5 partial classes por subdominio).
+- H-INV-3 (Transacciones duplicadas): ✅ CERRADO (hasExistingTx omite commit individual).
+- H-INV-4 (Reservas de stock huérfanas): 🟡 MITIGADO (reservas ligadas a apartados con TTL).
+- H-INV-5 / W5 (Stock negativo en ventas): ✅ CERRADO (allowNegativeStock: false forzado en ventas).
+- H-INV-6 (Sugerencias no limitadas): ✅ CERRADO (.Take(10) aplicado antes de proyección).
+- H-INV-7 (Permisos duplicados): 🟡 PARCIAL (EnsureCatalogMutationPermission + [Authorize]).
+- H-INV-8 (DDL en runtime): ✅ CERRADO (MigrateAsync primero, comprobaciones seguras).
+- H-INV-9 (Invalidación de caché): ✅ MEJORADO (consolidada a nivel de lote en UpdateStockBatchAsync).
+- H-INV-10 (Commits por ítem N+1): ✅ CERRADO (un solo SaveChangesAsync en lote).
+- [CERRADO] DOM-VAL-01: ✅ TOTALMENTE CORREGIDO (InventoryService.cs:207 alineado para admitir SKUs
+  alfanuméricos ^[A-Za-z0-9\-_]{1,50}$ en validación de catálogo y creación de productos,
+  completamente coherente con Product.cs, ProductImportService y ProductDialogViewModel).
+
+--------------------------------------------------------------------------------
+3. FORTALEZAS DEL MÓDULO
+--------------------------------------------------------------------------------
+- InventoryDbContext con RowVersion (xmin) para control de concurrencia optimista.
+- Índices filtrados y check constraints para productos variantes y agrupadores.
+- Sanitización rigurosa de CSV/Excel contra inyección de fórmulas en EscapeCsvField.
+- Clases parciales que mantienen el contexto transaccional intacto sin alterar DI.
+
+--------------------------------------------------------------------------------
+4. RECOMENDACIONES FUTURAS
+--------------------------------------------------------------------------------
+- Homogeneizar la validación de SKU en importación masiva para permitir códigos alfanuméricos válidos.
+- Implementar un job en segundo plano para la expiración y liberación automática de reservas de stock obsoletas.
+================================================================================

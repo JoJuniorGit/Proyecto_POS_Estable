@@ -14,8 +14,9 @@ export async function getProductSuggestions(filter, signal) {
 /**
  * Consulta rápida por código SKU / de barras.
  * @param {string} sku
+ * @param {AbortSignal} [signal]
  */
-export async function getProductBySku(sku) {
+export async function getProductBySku(sku, signal) {
   if (!sku) return null;
-  return await api.get(`/api/products/quick-check/${encodeURIComponent(sku)}`);
+  return await api.get(`/api/products/quick-check/${encodeURIComponent(sku)}`, signal);
 }

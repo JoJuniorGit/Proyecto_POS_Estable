@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getSalesHistory, getSaleHistoryDetail } from '../services/historyApi';
-import { Search, Loader2, Calendar, ChevronRight, ChevronLeft, ChevronDown, RefreshCw, CheckCircle, Clock, XCircle, FileText } from 'lucide-react';
+import { Search, Loader2, Calendar, ChevronRight, ChevronDown, RefreshCw, CheckCircle, Clock, XCircle, FileText } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime, formatQuantity } from '../utils/formatters';
 import Pagination from '../components/ui/Pagination';
@@ -87,7 +87,7 @@ export default function HistoryPage() {
       try {
         const detail = await getSaleHistoryDetail(id);
         setSaleDetails(prev => ({ ...prev, [id]: { loading: false, data: detail, error: null } }));
-      } catch (err) {
+      } catch {
         setSaleDetails(prev => ({ ...prev, [id]: { loading: false, data: null, error: 'No se pudieron cargar los detalles.' } }));
       }
     }

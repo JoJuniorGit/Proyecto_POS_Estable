@@ -52,6 +52,10 @@ public class SaleHistoryDto
     public int Id { get; set; }
     public int? InvoiceNumber { get; set; }
     public DateTime Date { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public DateTime DateLocal => Date.Kind == DateTimeKind.Utc
+        ? Core.Helpers.TimeZoneHelper.ToVenezuelaTime(Date)
+        : Date;
     public decimal TotalUSD { get; set; }
     public decimal AppliedRate { get; set; }
     public decimal TotalBsS { get; set; }
@@ -92,7 +96,7 @@ public interface ISalesService
     Task<SaleDto> UpdateItemQuantityAsync(int sale_id, int item_id, decimal quantity, decimal exchange_rate);
     Task<SaleDto> UpdateExchangeRateAsync(int sale_id, decimal exchange_rate);
     Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType);
-    Task<int> CompleteSaleAsync(int sale_id, decimal exchange_rate, IEnumerable<SalePaymentDto> payments, decimal rounding_adjustment = 0, int? cashierId = null, bool isPendingPickup = false);
+    Task<int> CompleteSaleAsync(int sale_id, decimal exchange_rate, IEnumerable<SalePaymentDto> payments, decimal rounding_adjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null);
     Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int page_size, System.DateTime? start_date = null, System.DateTime? end_date = null, string? search = null, System.Threading.CancellationToken cancellation_token = default);
     Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int sale_id, System.Threading.CancellationToken cancellation_token = default);
     Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request);

@@ -478,5 +478,29 @@ public class WpfDialogService : IDialogService
 
         return System.Threading.Tasks.Task.FromResult(result);
     }
+
+    public System.Threading.Tasks.Task ShowVariantManagementDialogAsync(ProductDto parentProduct)
+    {
+        if (Application.Current == null || _productService == null)
+            return System.Threading.Tasks.Task.CompletedTask;
+
+        using var _ = TrackModal();
+        Action openDialog = () =>
+        {
+            var exchangeRateService = _exchangeRateService ?? new ExchangeRateService(new System.Net.Http.HttpClient());
+            var vm = new ViewModels.VariantManagementViewModel(_productService, exchangeRateService, this, parentProduct);
+            var dialog = new VariantManagementDialog(vm);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+            dialog.ShowDialog();
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.CompletedTask;
+    }
 }
 

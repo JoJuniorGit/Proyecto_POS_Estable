@@ -22,6 +22,14 @@ export function resolveBaseUrl() {
     return origin || (isHttps ? `https://${hostname}:5001` : `http://${hostname}:5000`);
   }
 
+function isAllowedApiHost(hostname) {
+  if (!hostname) return false;
+  const h = hostname.toLowerCase();
+  if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
+  if (typeof window !== 'undefined' && window.location?.hostname && h === window.location.hostname.toLowerCase()) return true;
+  return false;
+}
+
   // 2. Parámetro en URL (?api=... o ?server=...)
   try {
     const search = window.location?.search || '';
@@ -45,22 +53,33 @@ export function resolveBaseUrl() {
         }
       }
 
+      // Validar host contra lista blanca LAN/Loopback (H-WEB-2)
+      let isAllowed = false;
       try {
-        localStorage.setItem('pos_custom_api_url', normalized);
-      } catch {}
-
-      // Limpiar los parámetros de la URL sin recargar la página
-      if (window.history?.replaceState && window.location?.pathname) {
-        urlParams.delete('api');
-        urlParams.delete('server');
-        urlParams.delete('backend');
-        urlParams.delete('paired');
-        const newQuery = urlParams.toString();
-        const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '') + (window.location.hash || '');
-        window.history.replaceState({}, (typeof document !== 'undefined' ? document.title : ''), newUrl);
+        const parsed = new URL(normalized);
+        isAllowed = isAllowedApiHost(parsed.hostname);
+      } catch {
+        isAllowed = false;
       }
 
-      return normalized;
+      if (isAllowed) {
+        try {
+          localStorage.setItem('pos_custom_api_url', normalized);
+        } catch {}
+
+        // Limpiar los parámetros de la URL sin recargar la página
+        if (window.history?.replaceState && window.location?.pathname) {
+          urlParams.delete('api');
+          urlParams.delete('server');
+          urlParams.delete('backend');
+          urlParams.delete('paired');
+          const newQuery = urlParams.toString();
+          const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '') + (window.location.hash || '');
+          window.history.replaceState({}, (typeof document !== 'undefined' ? document.title : ''), newUrl);
+        }
+
+        return normalized;
+      }
     }
   } catch {}
 
@@ -137,24 +156,26 @@ export function setCustomBaseUrl(url) {
 export async function apiFetch(endpoint, options = {}) {
   const url = `${CURRENT_BASE_URL}${endpoint}`;
 
-  const userStr = localStorage.getItem('pos_user');
+  const userStr = typeof localStorage !== 'undefined' ? localStorage.getItem('pos_user') : null;
   let userHeaders = {};
   if (userStr) {
     try {
       const u = JSON.parse(userStr);
-      const token = u?.token || u?.Token || localStorage.getItem('pos_token');
+      const token = u?.token || u?.Token || (typeof localStorage !== 'undefined' ? localStorage.getItem('pos_token') : null);
       if (token) {
         userHeaders['Authorization'] = `Bearer ${token}`;
       }
-      if (u?.id) userHeaders['X-User-Id'] = String(u.id);
-      if (u?.role !== undefined) userHeaders['X-User-Role'] = String(u.role);
-    } catch {}
+    } catch {
+      // Ignorar error de parsing
+    }
   }
 
   const config = {
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      'X-Client-Platform': 'Web',
       'X-Client-Version': '1.0.0',
       ...userHeaders,
       ...options.headers,
@@ -179,6 +200,10 @@ export async function apiFetch(endpoint, options = {}) {
       try {
         localStorage.removeItem('pos_user');
         localStorage.removeItem('pos_token');
+        sessionStorage.clear();
+        if (!endpoint.includes('api/auth/logout')) {
+          fetch(`${getBaseUrl()}/api/auth/logout`, { credentials: 'include', method: 'POST' }).catch(() => {});
+        }
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('pos_unauthorized'));
         }
@@ -194,13 +219,21 @@ export async function apiFetch(endpoint, options = {}) {
       if (errorBody) {
         try {
           const jsonErr = JSON.parse(errorBody);
-          if (jsonErr.message) errorMessage = jsonErr.message;
-          else if (jsonErr.Message) errorMessage = jsonErr.Message;
-          else if (jsonErr.requiresPasswordChange) {
+          if (jsonErr.requiresPasswordChange) {
             const err = new Error(jsonErr.message || 'Debe cambiar su contraseña antes de continuar.');
             err.requiresPasswordChange = true;
             throw err;
           }
+          if (jsonErr.message) errorMessage = jsonErr.message;
+          else if (jsonErr.Message) errorMessage = jsonErr.Message;
+          else if (jsonErr.detail) errorMessage = jsonErr.detail;
+          else if (jsonErr.Detail) errorMessage = jsonErr.Detail;
+          else if (Array.isArray(jsonErr.errors) && jsonErr.errors.length > 0) {
+            errorMessage = jsonErr.errors.join('; ');
+          } else if (jsonErr.errors && typeof jsonErr.errors === 'object') {
+            errorMessage = Object.values(jsonErr.errors).flat().join('; ');
+          } else if (jsonErr.title) errorMessage = jsonErr.title;
+          else if (jsonErr.Title) errorMessage = jsonErr.Title;
         } catch (e) {
           if (e.requiresPasswordChange) throw e;
           if (!errorBody.includes('<html') && errorBody.length < 300) {
@@ -230,19 +263,27 @@ export const api = {
   get: (endpoint, signal) =>
     apiFetch(endpoint, { method: 'GET', signal }),
 
-  post: (endpoint, body, signal) =>
-    apiFetch(endpoint, {
+  post: (endpoint, body, optionsOrSignal) => {
+    const opts = (optionsOrSignal && typeof optionsOrSignal === 'object' && !('aborted' in optionsOrSignal))
+      ? optionsOrSignal
+      : { signal: optionsOrSignal };
+    return apiFetch(endpoint, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
-      signal,
-    }),
+      ...opts,
+    });
+  },
 
-  put: (endpoint, body, signal) =>
-    apiFetch(endpoint, {
+  put: (endpoint, body, optionsOrSignal) => {
+    const opts = (optionsOrSignal && typeof optionsOrSignal === 'object' && !('aborted' in optionsOrSignal))
+      ? optionsOrSignal
+      : { signal: optionsOrSignal };
+    return apiFetch(endpoint, {
       method: 'PUT',
       body: body ? JSON.stringify(body) : undefined,
-      signal,
-    }),
+      ...opts,
+    });
+  },
 
   delete: (endpoint, signal) =>
     apiFetch(endpoint, { method: 'DELETE', signal }),

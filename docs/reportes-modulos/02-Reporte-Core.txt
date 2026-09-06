@@ -1,0 +1,57 @@
+================================================================================
+REPORTE POR MÓDULO: Core (librería de dominio y utilidades compartidas)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
+Cruce con docs/reporte.txt (análisis global).
+================================================================================
+
+--------------------------------------------------------------------------------
+1. RESUMEN DE COMPONENTES Y EVOLUCIÓN (FASES 1 A 4)
+--------------------------------------------------------------------------------
+Core centraliza las entidades de dominio, contratos de interfaces, cálculo monetario
+y primitivas de registro compartidas:
+
+1. Seguridad y Autenticación de Usuarios (Fase 1 y previas):
+   - User.cs incorpora SecurityStamp (revocación de sesiones), AccessFailedCount,
+     LockoutEndUtc, LastLoginUtc y soporte de roles (Cashier=1, Manager=2, Admin=3, Driver=4).
+   - PasswordPolicyService.cs valida complejidad de contraseñas y genera claves seguras de 12 chars.
+   - SecurityConstants.cs (CODE-02 ✅, Commit c541b57): centraliza RootAdminCedulas y el
+     método IsRootAdmin(cedula, username), erradicando literales "V-00000000" dispersos.
+
+2. Integridad Financiera y Aritmética (PricingCalculator.cs):
+   - RoundToDigital (2 decimales con MidpointRounding.AwayFromZero para transacciones).
+   - RoundExchangeRateCeiling (redondeo hacia arriba de tasa BCV a 2 decimales).
+   - RoundToCash (redondeo a números enteros para retiros y vueltos en efectivo).
+   - TimeZoneHelper.cs: único en la solución, con GetUtcRange() para consultas de ventas
+     nocturnas bajo la zona horaria legal de Venezuela (VET, UTC-4).
+
+3. Resiliencia Asíncrona y Registro Forense:
+   - TaskExtensions.SafeFireAndForget(task, contextName): ejecuta tareas asíncronas no
+     bloqueantes enrutando cualquier excepción a AppLogger.LogCrash (H-DCC-5 ✅).
+   - AppLogger.cs y ClientStateLogger.cs con rotación automática de archivos (10 MB × 5).
+   - Métodos estructurados: LogSecurityAudit, LogCrash, LogDbError.
+
+4. Entidades y Contratos de Soporte:
+   - StockMovementArchive.cs: soporte para archivado histórico de movimientos de stock (A4 ✅).
+   - StockDeductionRequest.cs: record inmutable para deducción atómica en lote (PERF-04 ✅).
+
+--------------------------------------------------------------------------------
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
+--------------------------------------------------------------------------------
+- H-CORE-1 (Roles de usuario): ✅ CERRADO (roles Manager=2, Admin=3, Driver=4 formalizados).
+- H-CORE-2 (Secretos por defecto en config): 🟡 PARCIAL (persisten valores de prueba en dev).
+- H-CORE-3 (User sin lockout): ✅ CERRADO (LockoutEndUtc, AccessFailedCount y SecurityStamp).
+- H-CORE-4 (Logging duplicado): 🟡 PARCIAL (ambos loggers rotan 10MB x 5, pero son estáticos independientes).
+- H-CORE-6 (TimeZoneHelper duplicado): ✅ CERRADO (unificado en Core/Helpers/TimeZoneHelper.cs).
+- CODE-02 (Cédulas hardcodeadas): ✅ CERRADO (centralizado en SecurityConstants.cs).
+- [CERRADO] DOM-VAL-01: ✅ TOTALMENTE CORREGIDO (Product.cs:23 con SKU alfanumérico
+  [StringLength(50)] ahora plenamente alineado con ProductImportService, InventoryService
+  y ProductDialogViewModel, admitiendo identificadores alfanuméricos ^[A-Za-z0-9\-_]{1,50}$).
+
+--------------------------------------------------------------------------------
+3. FORTALEZAS DEL MÓDULO
+--------------------------------------------------------------------------------
+- Zero dependencias cruzadas con módulos de negocio concretos (inversión de dependencias).
+- Aritmética financiera pura basada en tipos decimal con cero uso de punto flotante en backend.
+- Mecanismos seguros de logging con rotación y timestamps ISO 8601 UTC.
+================================================================================

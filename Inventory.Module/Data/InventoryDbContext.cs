@@ -11,6 +11,7 @@ public class InventoryDbContext : DbContext
 
     public DbSet<Product> Products { get; set; }
     public DbSet<StockMovement> StockMovements { get; set; }
+    public DbSet<StockMovementArchive> StockMovements_Archive { get; set; }
     public DbSet<StockReservation> StockReservations { get; set; }
     public DbSet<SystemSetting> SystemSettings { get; set; }
     public DbSet<ExchangeRateHistory> ExchangeRateHistory { get; set; }
@@ -55,6 +56,21 @@ public class InventoryDbContext : DbContext
             entity.HasIndex(p => new { p.IsGroupHeader, p.IsActive, p.IsDeleted, p.Name })
                 .HasDatabaseName("IX_Products_GroupActiveName");
 
+            entity.Property(p => p.IsStockShared).HasDefaultValue(false);
+            entity.Property(p => p.HasIndependentPricing).HasDefaultValue(false);
+            entity.Property(p => p.ConversionFactor).HasPrecision(18, 4).HasDefaultValue(1.0000m);
+
+            if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+            {
+                entity.Property(p => p.RowVersion).HasDefaultValue(new byte[] { 1 });
+            }
+
+            entity.ToTable(t => {
+                t.HasCheckConstraint("CK_Products_Variant_Flags",
+                    "(\"IsGroupHeader\" = TRUE AND \"ParentProductId\" IS NULL) OR (\"IsStockShared\" = FALSE AND \"HasIndependentPricing\" = FALSE)");
+                t.HasCheckConstraint("CK_Products_ConversionFactor", "\"ConversionFactor\" > 0");
+            });
+
             entity.HasIndex(p => p.GroupKey)
                 .HasDatabaseName("IX_Products_GroupKey")
                 .HasFilter("\"GroupKey\" IS NOT NULL AND \"IsDeleted\" = false");
@@ -88,10 +104,21 @@ public class InventoryDbContext : DbContext
         modelBuilder.Entity<StockMovement>().Property(m => m.QuantityChange).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
         modelBuilder.Entity<StockMovement>().Property(m => m.NewStockLevel).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
 
+        modelBuilder.Entity<StockMovementArchive>(entity =>
+        {
+            entity.HasKey(m => m.Id);
+            entity.ToTable("StockMovements_Archive");
+            entity.Property(m => m.QuantityChange).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+            entity.Property(m => m.NewStockLevel).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+            entity.HasIndex(m => m.OriginalMovementId).HasDatabaseName("IX_StockMovements_Archive_OriginalMovementId");
+            entity.HasIndex(m => m.MovementDate).HasDatabaseName("IX_StockMovements_Archive_MovementDate");
+        });
+
         modelBuilder.Entity<Product>().Property(p => p.RowVersion).IsRowVersion();
 
         modelBuilder.Entity<StockReservation>().HasKey(r => r.Id);
         modelBuilder.Entity<StockReservation>().HasOne(r => r.Product).WithMany().HasForeignKey(r => r.ProductId);
+        modelBuilder.Entity<StockReservation>().HasOne(r => r.SourceProduct).WithMany().HasForeignKey(r => r.SourceProductId).OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<StockReservation>().Property(r => r.Quantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
 
         // SystemSetting: Key-value store for app configuration

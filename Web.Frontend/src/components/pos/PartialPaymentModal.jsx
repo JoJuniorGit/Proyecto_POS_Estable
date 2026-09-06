@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldCheck, DollarSign, Calculator, AlertCircle } from 'lucide-react';
+import { X, ShieldCheck, Calculator, AlertCircle } from 'lucide-react';
 import AtmAmountInput from '../ui/AtmAmountInput';
 import { formatBsS, formatUSD, formatNumberEs } from '../../utils/formatters';
 
@@ -75,12 +75,12 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-container card" style={{ maxWidth: '520px', padding: 0, overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)', margin: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)', margin: 0, position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', padding: '0 36px' }}>
             <Calculator size={20} style={{ color: 'var(--primary-color)' }} />
-            <h3 className="modal-title" style={{ margin: 0 }}>Registrar Abono</h3>
+            <h3 className="modal-title" style={{ margin: 0, textAlign: 'center' }}>Registrar Abono</h3>
           </div>
-          <button type="button" className="modal-close-btn" onClick={onClose}>
+          <button type="button" className="modal-close-btn" onClick={onClose} style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)' }}>
             <X size={18} />
           </button>
         </div>
@@ -95,13 +95,14 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
             )}
 
             {/* Info header */}
-            <div style={{ padding: '12px', borderRadius: '8px', backgroundColor: 'var(--bg-tertiary, rgba(128,128,128,0.1))', fontSize: '0.85em', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ padding: '12px', borderRadius: '8px', backgroundColor: 'var(--bg-tertiary, rgba(128,128,128,0.1))', fontSize: '0.85em', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
               <div>
-                <span>Tasa Activa: <strong>{formatNumberEs(exchangeRate)} Bs/$</strong></span>
+                <span>Tasa Activa: <strong>{formatNumberEs(exchangeRate)} Bs.S / USD</strong></span>
               </div>
               <div>
-                <span>Saldo Pendiente: <span style={{ color: '#ef4444' }}>{formatUSD(sale?.remainingBalanceUSD || 0)}</span></span>
-                <span> ({formatBsS((sale?.remainingBalanceUSD || 0) * exchangeRate)})</span>
+                <span>Saldo Pendiente: </span>
+                <strong style={{ color: '#ef4444', fontSize: '1.05rem' }}>{formatBsS((sale?.remainingBalanceUSD || 0) * exchangeRate)}</strong>
+                <span className="text-muted" style={{ fontSize: '0.8rem', marginLeft: '6px' }}>({formatUSD(sale?.remainingBalanceUSD || 0)})</span>
               </div>
             </div>
 
@@ -163,7 +164,7 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
             <div style={{ padding: '12px', borderRadius: '8px', backgroundColor: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.3)', display: 'flex', gap: '10px', alignItems: 'center' }}>
               <ShieldCheck size={28} style={{ color: '#6366f1', flexShrink: 0 }} />
               <div style={{ fontSize: '0.85em', color: 'var(--text-color)' }}>
-                <strong>Regla Anti-Devaluación:</strong> Este abono en Bolívares se convierte automáticamente a <strong>{formatUSD(usdValue)}</strong> al cambio actual. La deuda restante del cliente bajará a <strong>{formatUSD(Math.max(0, remainingUsd))}</strong>.
+                <strong>Regla Anti-Devaluación:</strong> Este abono de <strong className="color-primary">{formatBsS(bsValue)}</strong> equivale a <strong>{formatUSD(usdValue)}</strong> al cambio actual. La deuda restante del cliente bajará a <strong className="color-danger">{formatBsS(Math.max(0, remainingUsd) * exchangeRate)}</strong> ({formatUSD(Math.max(0, remainingUsd))}).
               </div>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useExchangeRate } from './ExchangeRateContext';
 import { useAuth } from './AuthContext';
 import {
@@ -13,15 +13,44 @@ import {
 } from '../services/salesApi';
 import { getLineAmounts } from '../utils/formatters';
 
-const CartContext = createContext();
+const CartStateContext = createContext(null);
+const CartActionsContext = createContext(null);
 
 export function CartProvider({ children }) {
   const { exchangeRate } = useExchangeRate();
   const { user } = useAuth();
-  const [currentSale, setCurrentSale] = useState(null);
+  const [currentSale, setCurrentSale] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const cached = sessionStorage.getItem('active_pos_sale_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && (parsed.status === 'Pending' || parsed.status === 'OnHold')) {
+            return parsed;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[CartContext] Error cargando caché de venta:', e);
+    }
+    return null;
+  });
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Sincronizar instantáneamente la venta activa en sessionStorage para persistencia síncrona en recargas
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (currentSale?.id && (currentSale.status === 'Pending' || currentSale.status === 'OnHold')) {
+      sessionStorage.setItem('active_pos_sale_id', String(currentSale.id));
+      sessionStorage.setItem('active_pos_sale_cache', JSON.stringify(currentSale));
+      sessionStorage.setItem('active_pos_has_items', (currentSale.items?.length > 0) ? 'true' : 'false');
+    } else if (!currentSale) {
+      sessionStorage.removeItem('active_pos_sale_cache');
+      sessionStorage.removeItem('active_pos_has_items');
+    }
+  }, [currentSale]);
 
   // Inicializar o crear nueva venta
   const createNewSale = useCallback(async () => {
@@ -33,6 +62,8 @@ export function CartProvider({ children }) {
       setSelectedItemId(null);
       if (sale?.id) {
         sessionStorage.setItem('active_pos_sale_id', String(sale.id));
+        sessionStorage.setItem('active_pos_sale_cache', JSON.stringify(sale));
+        sessionStorage.setItem('active_pos_has_items', (sale.items?.length > 0) ? 'true' : 'false');
       }
       return sale;
     } catch (err) {
@@ -44,7 +75,7 @@ export function CartProvider({ children }) {
   }, [user?.id]);
 
   // Cargar venta existente (para editar pedido en espera)
-  const loadExistingSale = async (saleId) => {
+  const loadExistingSale = useCallback(async (saleId) => {
     setLoading(true);
     setError(null);
     try {
@@ -61,7 +92,7 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Al montar, restaurar venta activa de la sesión o crear una nueva
   useEffect(() => {
@@ -76,6 +107,8 @@ export function CartProvider({ children }) {
           }
         } catch {
           sessionStorage.removeItem('active_pos_sale_id');
+          sessionStorage.removeItem('active_pos_sale_cache');
+          sessionStorage.removeItem('active_pos_has_items');
         }
       }
       createNewSale();
@@ -95,7 +128,7 @@ export function CartProvider({ children }) {
     }
   }, [exchangeRate, currentSale?.id, currentSale?.status]);
 
-  const validateOnHoldRules = (prospectiveTotalUSD) => {
+  const validateOnHoldRules = useCallback((prospectiveTotalUSD) => {
     if (currentSale?.status !== 'OnHold') return true;
     const totalPaidUSD = currentSale.totalPaidUSD || (currentSale.payments?.reduce((acc, p) => acc + (p.amount || 0), 0)) || 0;
     if (prospectiveTotalUSD < (totalPaidUSD - 0.01)) {
@@ -103,77 +136,10 @@ export function CartProvider({ children }) {
       return false;
     }
     return true;
-  };
-
-  // Agregar ítem al carrito
-  const addItem = async (product, quantity = 1) => {
-    let sale = currentSale;
-    if (!sale || (sale.status !== 'Pending' && sale.status !== 'OnHold')) {
-      sale = await createNewSale();
-    }
-    if (!sale?.id) return;
-
-    // Validar límite de crédito en pedidos en espera
-    if (sale.status === 'OnHold') {
-      const price = product.priceUSD || product.unitPriceUSD || 0;
-      const currentTotal = (sale.items || []).reduce((acc, i) => acc + (i.subtotal || 0), 0);
-      if (!validateOnHoldRules(currentTotal + (price * quantity))) {
-        return;
-      }
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      const rateToUse = exchangeRate > 0 ? exchangeRate : (sale.appliedRate || 1);
-      const updatedSale = await addItemToSale(sale.id, product.id, quantity, rateToUse);
-      setCurrentSale(updatedSale);
-      return updatedSale;
-    } catch (err) {
-      console.error('[CartContext] Error agregando item:', err);
-      setError(err.message || 'Error al agregar producto al carrito');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Cambiar cantidad
-  const updateQuantity = async (itemId, newQuantity) => {
-    if (!currentSale?.id) return;
-
-    if (newQuantity === '' || newQuantity === null || newQuantity === undefined || typeof newQuantity !== 'number' || isNaN(newQuantity)) {
-      return;
-    }
-
-    if (newQuantity <= 0) {
-      return removeItem(itemId);
-    }
-
-    if (currentSale.status === 'OnHold') {
-      const currentItems = currentSale.items || [];
-      const prospectiveItems = currentItems.map(i => i.id === itemId ? { ...i, quantity: newQuantity, subtotal: newQuantity * i.unitPrice } : i);
-      const prospectiveTotal = prospectiveItems.reduce((acc, i) => acc + i.subtotal, 0);
-      if (!validateOnHoldRules(prospectiveTotal)) {
-        return;
-      }
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale.appliedRate || 1);
-      const updatedSale = await updateItemQuantity(currentSale.id, itemId, newQuantity, rateToUse);
-      setCurrentSale(updatedSale);
-    } catch (err) {
-      console.error('[CartContext] Error modificando cantidad:', err);
-      setError(err.message || 'Error al modificar la cantidad');
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [currentSale?.status, currentSale?.totalPaidUSD, currentSale?.payments]);
 
   // Eliminar ítem
-  const removeItem = async (itemId) => {
+  const removeItem = useCallback(async (itemId) => {
     if (!currentSale?.id) return;
 
     if (currentSale.status === 'OnHold') {
@@ -200,10 +166,82 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentSale?.id, currentSale?.status, currentSale?.items, currentSale?.appliedRate, exchangeRate, selectedItemId, validateOnHoldRules]);
+
+  // Agregar ítem al carrito
+  const addItem = useCallback(async (product, quantity = 1) => {
+    let sale = currentSale;
+    if (!sale || (sale.status !== 'Pending' && sale.status !== 'OnHold')) {
+      sale = await createNewSale();
+    }
+    if (!sale?.id) return;
+
+    if (sale.status === 'OnHold') {
+      const price = product.priceUSD || product.unitPriceUSD || 0;
+      const currentTotal = (sale.items || []).reduce((acc, i) => acc + (i.subtotal || 0), 0);
+      if (!validateOnHoldRules(currentTotal + (price * quantity))) {
+        return;
+      }
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const rateToUse = exchangeRate > 0 ? exchangeRate : (sale.appliedRate || 1);
+      const updatedSale = await addItemToSale(sale.id, product.id, quantity, rateToUse);
+      setCurrentSale(updatedSale);
+      return updatedSale;
+    } catch (err) {
+      console.error('[CartContext] Error agregando item:', err);
+      setError(err.message || 'Error al agregar producto al carrito');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentSale, createNewSale, exchangeRate, validateOnHoldRules]);
+
+  // Cambiar cantidad
+  const updateQuantity = useCallback(async (itemId, newQuantity) => {
+    if (!currentSale?.id) return;
+
+    if (newQuantity === '' || newQuantity === null || newQuantity === undefined || typeof newQuantity !== 'number' || isNaN(newQuantity)) {
+      return;
+    }
+
+    // Regla de negocio POS: Reducir cantidad nunca debe eliminar el producto del carrito.
+    // Para eliminar un ítem, el usuario debe utilizar explícitamente la acción de eliminar (removeItem).
+    if (newQuantity <= 0) {
+      return;
+    }
+
+    const currentItems = currentSale.items || [];
+    const targetItem = currentItems.find(i => i.id === itemId);
+    const isFrac = Boolean(targetItem?.isFractional);
+    const validatedQty = isFrac ? Math.round(newQuantity * 1000) / 1000 : Math.max(1, Math.trunc(newQuantity));
+
+    if (currentSale.status === 'OnHold') {
+      const prospectiveItems = currentItems.map(i => i.id === itemId ? { ...i, quantity: validatedQty, subtotal: validatedQty * i.unitPrice } : i);
+      const prospectiveTotal = prospectiveItems.reduce((acc, i) => acc + i.subtotal, 0);
+      if (!validateOnHoldRules(prospectiveTotal)) {
+        return;
+      }
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale.appliedRate || 1);
+      const updatedSale = await updateItemQuantity(currentSale.id, itemId, validatedQty, rateToUse);
+      setCurrentSale(updatedSale);
+    } catch (err) {
+      console.error('[CartContext] Error modificando cantidad:', err);
+      setError(err.message || 'Error al modificar la cantidad');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentSale?.id, currentSale?.status, currentSale?.items, currentSale?.appliedRate, exchangeRate, removeItem, validateOnHoldRules]);
 
   // Cambiar lista de precios ("Retail" | "Wholesale")
-  const changePriceList = async (priceListType) => {
+  const changePriceList = useCallback(async (priceListType) => {
     if (!currentSale?.id) return;
     setLoading(true);
     setError(null);
@@ -219,15 +257,15 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentSale?.id]);
 
   // Limpiar carrito / Iniciar nueva venta
-  const resetCart = async () => {
+  const resetCart = useCallback(async () => {
     await createNewSale();
-  };
+  }, [createNewSale]);
 
   // Actualizar cliente de la venta
-  const updateCustomer = async (customerId) => {
+  const updateCustomer = useCallback(async (customerId) => {
     if (!currentSale?.id) return;
     setLoading(true);
     setError(null);
@@ -241,52 +279,69 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentSale?.id]);
 
   const items = currentSale?.items || [];
   const subtotalUSD = currentSale?.subtotal ?? items.reduce((acc, item) => acc + (item.subtotal || 0), 0);
   const totalUSD = currentSale?.totalUSD ?? subtotalUSD;
   const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale?.appliedRate || 1);
 
-  // Sum exact item subtotals in Bs.S to ensure TOTAL matches the sum of the "Subtotal Bs.S" column
   const itemsSubtotalBsS = items.reduce((acc, item) => acc + getLineAmounts(item, rateToUse).subtotalBsS, 0);
-
   const subtotalBsS = (currentSale?.subtotalBsS > 0) ? currentSale.subtotalBsS : itemsSubtotalBsS;
   const totalBsS = (currentSale?.totalBsS > 0) ? currentSale.totalBsS : itemsSubtotalBsS;
 
+  const stateValue = useMemo(() => ({
+    currentSale,
+    items,
+    selectedItemId,
+    setSelectedItemId,
+    loading,
+    error,
+    setError,
+    subtotalUSD,
+    totalUSD,
+    subtotalBsS,
+    totalBsS,
+  }), [currentSale, items, selectedItemId, loading, error, subtotalUSD, totalUSD, subtotalBsS, totalBsS]);
+
+  const actionsValue = useMemo(() => ({
+    addItem,
+    updateQuantity,
+    removeItem,
+    resetCart,
+    createNewSale,
+    loadExistingSale,
+    updateCustomer,
+    changePriceList,
+  }), [addItem, updateQuantity, removeItem, resetCart, createNewSale, loadExistingSale, updateCustomer, changePriceList]);
+
   return (
-    <CartContext.Provider
-      value={{
-        currentSale,
-        items,
-        selectedItemId,
-        setSelectedItemId,
-        loading,
-        error,
-        setError,
-        subtotalUSD,
-        totalUSD,
-        subtotalBsS,
-        totalBsS,
-        addItem,
-        updateQuantity,
-        removeItem,
-        resetCart,
-        createNewSale,
-        loadExistingSale,
-        updateCustomer,
-        changePriceList,
-      }}
-    >
-      {children}
-    </CartContext.Provider>
+    <CartStateContext.Provider value={stateValue}>
+      <CartActionsContext.Provider value={actionsValue}>
+        {children}
+      </CartActionsContext.Provider>
+    </CartStateContext.Provider>
   );
 }
 
-export function useCart() {
-  const context = useContext(CartContext);
+export function useCartState() {
+  const context = useContext(CartStateContext);
   if (!context) {
-    throw new Error('useCart debe ser usado dentro de un CartProvider');
+    throw new Error('useCartState debe ser usado dentro de un CartProvider');
   }
   return context;
+}
+
+export function useCartActions() {
+  const context = useContext(CartActionsContext);
+  if (!context) {
+    throw new Error('useCartActions debe ser usado dentro de un CartProvider');
+  }
+  return context;
+}
+
+export function useCart() {
+  const state = useCartState();
+  const actions = useCartActions();
+  return { ...state, ...actions };
 }

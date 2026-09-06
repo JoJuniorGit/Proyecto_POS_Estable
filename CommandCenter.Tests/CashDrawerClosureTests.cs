@@ -26,6 +26,8 @@ public class CashDrawerClosureTests
     private class MockExchangeRateService : IExchangeRateService
     {
         public decimal CurrentRate { get; set; } = 50.0m;
+        public DateTime? LastUpdated { get; set; } = DateTime.UtcNow;
+        public bool IsRateOutdated => false;
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 

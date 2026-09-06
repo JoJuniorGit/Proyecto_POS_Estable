@@ -1,0 +1,43 @@
+================================================================================
+REPORTE POR MÓDULO: UpdaterService (Servicio Windows de actualización de binarios)
+Fecha: 2026-09-05
+Revisión: 7.1 (Certificación Final de Remediación Definitiva - 100% Hallazgos Subsanados)
+Cruce con docs/reporte.txt (análisis global).
+================================================================================
+
+--------------------------------------------------------------------------------
+1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
+--------------------------------------------------------------------------------
+UpdaterService es una utilidad autónoma de actualización sin tiempo de inactividad
+prolongado:
+
+1. Verificación Criptográfica de Paquetes (UPD-1 ✅, Commit c541b57):
+   - Program.cs calcula el hash SHA-256 del archivo zip de actualización y lo compara
+     contra el argumento --sha256 antes de detener el servicio o reemplazar binarios.
+   - Si el hash no coincide, la actualización se aborta inmediatamente sin afectar el POS.
+
+2. Resolución Dinámica y Resiliente de NSSM (UPD-2 ✅, Commit 686f0cd):
+   - ResolveServiceManagerCommand implementa una jerarquía de 4 niveles:
+     * Nivel 1: AppContext.BaseDirectory/nssm.exe
+     * Nivel 2: targetDir/nssm.exe o targetDir/tools/nssm.exe
+     * Nivel 3: nssm en variable de entorno PATH
+     * Nivel 4 (Fallback nativo): sc.exe de Windows para start/stop.
+
+3. Blindaje contra Zip Slip y Path Traversal (SEC-01 ✅):
+   - UpdatePackageExtractor valida la canonicidad de rutas, bloquea symlinks o reparse
+     points y preserva de forma inmutable el archivo appsettings.Production.json.
+
+--------------------------------------------------------------------------------
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
+--------------------------------------------------------------------------------
+- SEC-01 (Zip Slip / Path Traversal): ✅ CERRADO (validación canónica estricta).
+- UPD-1 (Verificación SHA-256 de binarios): ✅ CERRADO (computación previa de hash).
+- UPD-2 (Resolución de ruta NSSM / sc.exe): ✅ CERRADO (jerarquía de 4 niveles con fallback).
+
+--------------------------------------------------------------------------------
+3. FORTALEZAS DEL MÓDULO
+--------------------------------------------------------------------------------
+- Resiliencia ante fallos: no detiene el servicio en ejecución si el paquete está dañado.
+- Preservación segura de configuraciones de producción y cadenas de conexión de base de datos.
+- Operación completamente desatendida compatible con administradores de servicios de Windows.
+================================================================================

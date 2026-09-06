@@ -13,61 +13,197 @@ export function formatQuantity(qty) {
 
 
 
+let cachedCurrencyFormat = 'Venezuelan';
+if (typeof window !== 'undefined' && window.localStorage) {
+  const saved = window.localStorage.getItem('currency_format_preference');
+  if (saved === 'Venezuelan' || saved === 'International') {
+    cachedCurrencyFormat = saved;
+  }
+}
+
 /**
- * Formats a numeric value: 1250.5 -> "1,250.50"
- * @param {number|string} amount
- * @param {number} decimals
+ * Retorna la preferencia actual de formato de moneda ('Venezuelan' | 'International').
+ * @returns {'Venezuelan' | 'International'}
+ */
+export function getCurrencyFormat() {
+  return cachedCurrencyFormat;
+}
+
+/**
+ * Actualiza la preferencia en caché en memoria y en localStorage.
+ * @param {'Venezuelan' | 'International'} format
+ */
+export function setCachedCurrencyFormat(format) {
+  if (format === 'Venezuelan' || format === 'International') {
+    cachedCurrencyFormat = format;
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem('currency_format_preference', format);
+    }
+  }
+}
+
+/**
+ * Formats a numeric value according to the specified or active format:
+ * - Venezuelan: 1250.5 -> "1.250,50", 172786.94 -> "172.786,94"
+ * - International: 1250.5 -> "1,250.50", 172786.94 -> "172,786.94"
+ *
+ * @param {number|string} value
+ * @param {'Venezuelan'|'International'} [format]
+ * @param {number} [decimals]
  * @returns {string}
  */
-export function formatNumberEs(amount, decimals = 2) {
-  if (amount === null || amount === undefined || isNaN(amount)) {
-    return (0).toFixed(decimals);
+export function formatAmount(value, format = getCurrencyFormat(), decimals = 2) {
+  const effectiveFormat = (format === 'International') ? 'International' : 'Venezuelan';
+  const dec = typeof decimals === 'number' && decimals >= 0 ? decimals : 2;
+
+  if (value === null || value === undefined || value === '') {
+    return effectiveFormat === 'Venezuelan'
+      ? (0).toFixed(dec).replace('.', ',')
+      : (0).toFixed(dec);
   }
-  const num = typeof amount === 'number' ? amount : parseFloat(amount);
-  if (isNaN(num)) return (0).toFixed(decimals);
 
-  const parts = num.toFixed(decimals).split('.');
-  const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  const decimalPart = parts[1];
+  const num = typeof value === 'number' ? value : parseFloat(value);
+  if (isNaN(num)) {
+    return effectiveFormat === 'Venezuelan'
+      ? (0).toFixed(dec).replace('.', ',')
+      : (0).toFixed(dec);
+  }
 
-  return decimals > 0 ? `${integerPart}.${decimalPart}` : integerPart;
+  const isNegative = num < 0;
+  const absNum = Math.abs(num);
+  const parts = absNum.toFixed(dec).split('.');
+  const integerPartRaw = parts[0];
+  const decimalPartRaw = parts[1];
+
+  let integerPartFormatted = '';
+  if (effectiveFormat === 'Venezuelan') {
+    // Miles con punto .
+    integerPartFormatted = integerPartRaw.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const result = dec > 0 ? `${integerPartFormatted},${decimalPartRaw}` : integerPartFormatted;
+    return isNegative ? `-${result}` : result;
+  } else {
+    // Miles con coma ,
+    integerPartFormatted = integerPartRaw.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const result = dec > 0 ? `${integerPartFormatted}.${decimalPartRaw}` : integerPartFormatted;
+    return isNegative ? `-${result}` : result;
+  }
 }
 
 /**
- * Formats Bolívares: 1250.5 -> "Bs.S 1,250.50"
+ * Compatibilidad con código existente: Formatea un valor numérico usando el formato activo
+ * @param {number|string} amount
+ * @param {number} decimals
+ * @param {'Venezuelan'|'International'} [format]
+ * @returns {string}
  */
-export function formatBsS(amount, decimals = 2) {
-  return `Bs.S ${formatNumberEs(amount, decimals)}`;
+export function formatNumberEs(amount, decimals = 2, format = getCurrencyFormat()) {
+  return formatAmount(amount, format, decimals);
 }
 
 /**
- * Formats USD: 1250.5 -> "$ 1,250.50"
+ * Formats Bolívares: 1250.5 -> "Bs.S 1.250,50" (Venezolano) o "Bs.S 1,250.50" (Internacional)
+ * @param {number|string} amount
+ * @param {number} decimals
+ * @param {'Venezuelan'|'International'} [format]
+ * @returns {string}
  */
-export function formatUSD(amount, decimals = 2) {
-  return `$ ${formatNumberEs(amount, decimals)}`;
+export function formatBsS(amount, decimals = 2, format = getCurrencyFormat()) {
+  return `Bs.S ${formatAmount(amount, format, decimals)}`;
 }
 
 /**
- * Parses a formatted string ("1,250.50") back to number (1250.50)
+ * Formats USD: 1250.5 -> "$ 1.250,50" (Venezolano) o "$ 1,250.50" (Internacional)
+ * @param {number|string} amount
+ * @param {number} decimals
+ * @param {'Venezuelan'|'International'} [format]
+ * @returns {string}
+ */
+export function formatUSD(amount, decimals = 2, format = getCurrencyFormat()) {
+  return `$ ${formatAmount(amount, format, decimals)}`;
+}
+
+/**
+ * Parsea cadenas numéricas de forma flexible y segura:
+ * Regla:
+ * - Vacío, nulo, inválido -> 0
+ * - Sin separadores -> entero ("72915" -> 72915.00)
+ * - Un solo separador (punto o coma) -> se asume decimal ("172,94" -> 172.94, "172.94" -> 172.94)
+ * - Dos o más separadores -> el ÚLTIMO separador es decimal, los precedentes son de miles:
+ *   "172.786,94" -> 172786.94
+ *   "172,786.94" -> 172786.94
+ *   "1.234.567,89" -> 1234567.89
+ * - Caracteres inválidos o separadores dobles continuos (ej. ",,", "..") -> 0
+ *
+ * @param {number|string} rawValue
+ * @returns {number}
+ */
+export function parseAmount(rawValue) {
+  if (rawValue === null || rawValue === undefined) return 0;
+  if (typeof rawValue === 'number') return isNaN(rawValue) ? 0 : rawValue;
+
+  let str = String(rawValue).trim();
+  if (!str) return 0;
+
+  // Manejar signo negativo
+  const isNegative = str.startsWith('-');
+  if (isNegative) {
+    str = str.substring(1).trim();
+  }
+
+  // Eliminar prefijos de moneda como "Bs.S", "Bs", "$"
+  str = str.replace(/^(Bs\.S|Bs|\$)\s*/i, '').trim();
+  if (!str) return 0;
+
+  // Separadores consecutivos inválidos (ej. ",,", "..", ".,", ",.")
+  if (/[,.]{2,}/.test(str)) {
+    return 0;
+  }
+
+  // Si contiene caracteres extraños (no dígitos ni . ni ,)
+  if (/[^\d.,]/.test(str)) {
+    return 0;
+  }
+
+  const hasDot = str.includes('.');
+  const hasComma = str.includes(',');
+
+  // Caso 1: Sin separadores
+  if (!hasDot && !hasComma) {
+    const num = parseFloat(str);
+    return isNaN(num) ? 0 : (isNegative ? -num : num);
+  }
+
+  const matches = str.match(/[,.]/g) || [];
+
+  // Caso 2: Exactamente un separador -> se asume decimal
+  if (matches.length === 1) {
+    const normalized = str.replace(/[,.]/, '.');
+    const num = parseFloat(normalized);
+    return isNaN(num) ? 0 : (isNegative ? -num : num);
+  }
+
+  // Caso 3: Dos o más separadores -> el ÚLTIMO es decimal, los demás son miles
+  const lastDot = str.lastIndexOf('.');
+  const lastComma = str.lastIndexOf(',');
+  const lastSepIndex = Math.max(lastDot, lastComma);
+
+  const intPart = str.substring(0, lastSepIndex).replace(/[.,]/g, '');
+  const decPart = str.substring(lastSepIndex + 1);
+
+  const normalized = `${intPart}.${decPart}`;
+  const num = parseFloat(normalized);
+  return isNaN(num) ? 0 : (isNegative ? -num : num);
+}
+
+/**
+ * Alias de compatibilidad hacia atrás
  */
 export function parseFormattedNumber(val) {
-  if (val === null || val === undefined) return 0;
-  if (typeof val === 'number') return val;
-  const str = String(val).trim();
-  if (!str) return 0;
-  // Remove thousand commas and parse decimal dot
-  const cleanStr = str.replace(/,/g, '');
-  const parsed = parseFloat(cleanStr);
-  return isNaN(parsed) ? 0 : parsed;
+  return parseAmount(val);
 }
 
 /**
  * ATM-style input formatting: shifts typed digits to cents
- * "125050" -> "1,250.50"
- * "50" -> "0.50"
- * "5" -> "0.05"
- *
- * With decimals=0 (modo entero): "125050" -> "125,050" (monto entero, sin centavos)
  */
 export function formatAtmInput(rawValue, decimals = 2) {
   const digits = String(rawValue || '').replace(/\D/g, '');
@@ -82,7 +218,7 @@ export function formatAtmInput(rawValue, decimals = 2) {
 export function formatDate(value) {
   if (!value) return '-';
   const d = new Date(value);
-  return isNaN(d.getTime()) ? '-' : d.toLocaleDateString('es-VE');
+  return isNaN(d.getTime()) ? '-' : d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 /**
@@ -121,4 +257,32 @@ export function getLineAmounts(item, fallbackExchangeRate = 1) {
     : (unitBsS > 0 ? qty * unitBsS : subtotalUSD * rate);
     
   return { unitBsS, subtotalBsS, unitUSD, subtotalUSD };
+}
+
+/**
+ * Formats a product's price for catalog views, returning '—' if it's a group header with independent pricing.
+ * @param {object} product
+ * @param {boolean} isWholesale
+ * @param {string} currency 'Bs.S' | 'USD'
+ * @param {number} exchangeRate
+ * @returns {string}
+ */
+export function formatProductDisplayPrice(product, isWholesale = false, currency = 'Bs.S', exchangeRate = 1) {
+  if (!product) return '—';
+  if (product.isGroupHeader && product.hasIndependentPricing) {
+    return '—';
+  }
+
+  const retailUSD = product.priceUSD || 0;
+  const retailBsS = product.priceUSD > 0 ? product.priceUSD * exchangeRate : (product.priceBsS || 0);
+
+  if (!isWholesale) {
+    return currency === 'USD' ? formatUSD(retailUSD) : formatBsS(retailBsS);
+  }
+
+  const hasRealWholesale = (product.hasWholesale || product.priceWholesaleUSD > 0) && product.priceWholesaleUSD > 0 && product.priceWholesaleUSD < retailUSD;
+  const wholesaleUSD = hasRealWholesale ? product.priceWholesaleUSD : retailUSD;
+  const wholesaleBsS = hasRealWholesale ? product.priceWholesaleUSD * exchangeRate : retailBsS;
+
+  return currency === 'USD' ? formatUSD(wholesaleUSD) : formatBsS(wholesaleBsS);
 }

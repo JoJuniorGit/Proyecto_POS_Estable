@@ -52,8 +52,15 @@ public class PaymentMethodsController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        var created = await _paymentService.CreateAsync(method);
-        return CreatedAtAction(nameof(GetMethod), new { id = created.Id }, created);
+        try
+        {
+            var created = await _paymentService.CreateAsync(method);
+            return CreatedAtAction(nameof(GetMethod), new { id = created.Id }, created);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpPut("{id}")]
@@ -61,16 +68,24 @@ public class PaymentMethodsController : ControllerBase
     public async Task<IActionResult> UpdateMethod(int id, [FromBody] PaymentMethod method)
     {
         if (id != method.Id)
-            return BadRequest("ID mismatch");
+            return BadRequest(new { message = "ID mismatch" });
 
         try
         {
             var updated = await _paymentService.UpdateAsync(method);
             return Ok(updated);
         }
-        catch (KeyNotFoundException)
+        catch (KeyNotFoundException ex)
         {
-            return NotFound();
+            return NotFound(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
         }
     }
 
@@ -78,7 +93,18 @@ public class PaymentMethodsController : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteMethod(int id)
     {
-        await _paymentService.DeleteAsync(id);
-        return NoContent(); // Logical deletion applied
+        try
+        {
+            await _paymentService.DeleteAsync(id);
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 }

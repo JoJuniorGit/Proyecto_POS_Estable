@@ -79,25 +79,25 @@ public partial class EditSaleDialog : Window
 
     private async void TxtProductSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
-        string query = TxtProductSearch.Text.Trim();
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            PopupSuggestions.IsOpen = false;
-            return;
-        }
-
-        if (_productService == null)
-        {
-            PopupSuggestions.IsOpen = false;
-            return;
-        }
-
-        _searchCts?.Cancel();
-        _searchCts = new CancellationTokenSource();
-        var token = _searchCts.Token;
-
         try
         {
+            string query = TxtProductSearch.Text.Trim();
+            if (string.IsNullOrWhiteSpace(query) || _productService == null)
+            {
+                PopupSuggestions.IsOpen = false;
+                return;
+            }
+
+            try
+            {
+                _searchCts?.Cancel();
+                _searchCts?.Dispose();
+            }
+            catch (ObjectDisposedException) { }
+
+            _searchCts = new CancellationTokenSource();
+            var token = _searchCts.Token;
+
             await Task.Delay(200, token);
             if (token.IsCancellationRequested) return;
 
@@ -119,13 +119,24 @@ public partial class EditSaleDialog : Window
                 }
             });
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            // Tarea cancelada por debounce de nuevo tipeo; comportamiento normal
+        }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[EditSaleDialog] Search error: {ex.Message}");
+            Core.Logging.AppLogger.LogCrash(ex, "EditSaleDialog.TxtProductSearch_TextChanged");
             Dispatcher.Invoke(() => PopupSuggestions.IsOpen = false);
         }
+        finally
+        {
+            if (string.IsNullOrWhiteSpace(TxtProductSearch.Text))
+            {
+                Dispatcher.Invoke(() => PopupSuggestions.IsOpen = false);
+            }
+        }
     }
+
 
 
     private void LstSuggestions_SelectionChanged(object sender, SelectionChangedEventArgs e)

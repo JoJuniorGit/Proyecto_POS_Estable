@@ -30,9 +30,14 @@ public class ProductDto
 
     // Parent/Group and Variant Properties
     public int? ParentProductId { get; set; }
+    public bool ParentIsStockShared { get; set; }
     public bool IsGroupHeader { get; set; }
+    public bool IsStockShared { get; set; }
+    public bool HasIndependentPricing { get; set; }
+    public decimal ConversionFactor { get; set; } = 1.0000m;
     public string? GroupKey { get; set; }
     public int VariantCount { get; set; }
     public decimal ConsolidatedStock { get; set; }
     public List<ProductDto>? Variants { get; set; }
+    public byte[]? RowVersion { get; set; }
 }

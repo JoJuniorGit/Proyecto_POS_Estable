@@ -50,7 +50,7 @@ public static class PasswordHasher
             }
         }
 
-        // Legacy plain-text comparison (seed admin before hashing was introduced).
-        return string.Equals(password, stored, StringComparison.Ordinal);
+        // Strict: Reject any non-PBKDF2 formatted hash. Plain-text fallback is strictly eliminated (H-API-23).
+        return false;
     }
 }

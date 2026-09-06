@@ -171,4 +171,50 @@ public class ProductService : IProductService
             return new List<Core.DTOs.ProductDto>();
         }
     }
+
+    public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetCandidateVariantsPagedAsync(int parentId, string? filter, int page, int pageSize, System.Threading.CancellationToken token = default)
+    {
+        var url = $"api/products/{parentId}/candidate-variants?page={page}&pageSize={pageSize}";
+        if (!string.IsNullOrWhiteSpace(filter))
+        {
+            url += $"&filter={System.Uri.EscapeDataString(filter.Trim())}";
+        }
+
+        return await _httpClient.GetFromJsonAsync<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>>(url, token)
+               ?? new Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>();
+    }
+
+    public async Task<List<Core.DTOs.ProductDto>> LinkVariantsBatchAsync(int parentId, List<int> productIds, System.Threading.CancellationToken token = default)
+    {
+        var response = await _httpClient.PostAsJsonAsync($"api/products/{parentId}/link-variants", productIds, token);
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync(token);
+            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                throw new System.Net.Http.HttpRequestException(string.IsNullOrWhiteSpace(err) ? "Conflicto de concurrencia al vincular variantes." : err, null, System.Net.HttpStatusCode.Conflict);
+            }
+            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+        }
+        var rawJson = await response.Content.ReadAsStringAsync(token);
+        return System.Text.Json.JsonSerializer.Deserialize<List<Core.DTOs.ProductDto>>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+               ?? new List<Core.DTOs.ProductDto>();
+    }
+
+    public async Task<Core.DTOs.ProductDto> UnlinkVariantAsync(int parentId, int variantId, System.Threading.CancellationToken token = default)
+    {
+        var response = await _httpClient.PostAsync($"api/products/{parentId}/unlink-variant/{variantId}", null, token);
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync(token);
+            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                throw new System.Net.Http.HttpRequestException(string.IsNullOrWhiteSpace(err) ? "Conflicto de concurrencia al desvincular variante." : err, null, System.Net.HttpStatusCode.Conflict);
+            }
+            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+        }
+        var rawJson = await response.Content.ReadAsStringAsync(token);
+        return System.Text.Json.JsonSerializer.Deserialize<Core.DTOs.ProductDto>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+               ?? throw new System.Exception("No se pudo deserializar el producto desvinculado devuelto.");
+    }
 }

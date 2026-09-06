@@ -23,7 +23,11 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
     private readonly HubConnection _hubConnection;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private decimal _currentRate;
+    private DateTime? _lastUpdated;
     private int _isDisposed;
+
+    public DateTime? LastUpdated => _lastUpdated;
+    public bool IsRateOutdated => _lastUpdated == null || (DateTime.UtcNow - _lastUpdated.Value.ToUniversalTime()) > TimeSpan.FromHours(24);
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -70,6 +74,21 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             else
             {
                 WeakReferenceMessenger.Default.Send(new OnHoldSalesRefreshMessage());
+            }
+        });
+
+        _hubConnection.On("OnPaymentMethodsUpdated", () =>
+        {
+            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    WeakReferenceMessenger.Default.Send(new Desktop.Client.ViewModels.PaymentMethodsChangedMessage());
+                });
+            }
+            else
+            {
+                WeakReferenceMessenger.Default.Send(new Desktop.Client.ViewModels.PaymentMethodsChangedMessage());
             }
         });
 
@@ -160,11 +179,15 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
 
             var json = await response.Content.ReadFromJsonAsync<ExchangeRateResponse>(_jsonOptions);
             decimal rate = json?.Value ?? 0m;
+            if (json?.UpdatedAt != null)
+            {
+                _lastUpdated = json.UpdatedAt;
+            }
             if (rate > 0)
             {
                 await UpdateRateLocallyAsync(rate);
             }
-            return (rate, json?.UpdatedAt);
+            return (rate, _lastUpdated);
         }
         catch
         {
@@ -176,6 +199,7 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
     {
         var response = await _httpClient.PostAsJsonAsync("api/exchange-rate", new { Value = rate });
         response.EnsureSuccessStatusCode();
+        _lastUpdated = DateTime.UtcNow;
         await UpdateRateLocallyAsync(rate);
     }
 
@@ -198,15 +222,26 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
     public async Task<(decimal Rate, DateTime? LastUpdated)> SyncBcvAsync()
     {
         var response = await _httpClient.PostAsync("api/exchange-rate/sync-bcv", null);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            string? errorMessage = null;
+            try
+            {
+                var errorDoc = await response.Content.ReadFromJsonAsync<System.Text.Json.Nodes.JsonObject>(_jsonOptions);
+                errorMessage = errorDoc?["message"]?.ToString();
+            }
+            catch { }
+            throw new HttpRequestException(errorMessage ?? $"Error {(int)response.StatusCode}: {response.ReasonPhrase}");
+        }
 
         var json = await response.Content.ReadFromJsonAsync<ExchangeRateResponse>(_jsonOptions);
         decimal rate = json?.Value ?? 0m;
+        _lastUpdated = json?.UpdatedAt ?? DateTime.UtcNow;
         if (rate > 0)
         {
             await UpdateRateLocallyAsync(rate);
         }
-        return (rate, json?.UpdatedAt);
+        return (rate, _lastUpdated);
     }
 
     public async ValueTask DisposeAsync()

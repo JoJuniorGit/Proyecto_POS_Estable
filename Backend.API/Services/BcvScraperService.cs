@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using HtmlAgilityPack;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Backend.API.Services;
@@ -12,26 +13,38 @@ public class BcvScraperService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<BcvScraperService> _logger;
+    private readonly TimeSpan _timeout;
 
-    public BcvScraperService(HttpClient httpClient, ILogger<BcvScraperService> logger)
+    public BcvScraperService(HttpClient httpClient, ILogger<BcvScraperService> logger, IConfiguration? configuration = null)
     {
         _httpClient = httpClient;
         _logger = logger;
+
+        int timeoutSeconds = 10;
+        if (configuration != null && int.TryParse(configuration["BcvSettings:TimeoutSeconds"], out int configuredTimeout) && configuredTimeout > 0)
+        {
+            timeoutSeconds = configuredTimeout;
+        }
+        _timeout = TimeSpan.FromSeconds(timeoutSeconds);
+        _httpClient.Timeout = _timeout;
         
         // BCV often blocks requests without a browser-like User-Agent
         _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         _httpClient.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
     }
 
-    public async Task<decimal?> GetOfficialUsdRateAsync(CancellationToken cancellationToken = default)
+    public virtual async Task<decimal?> GetOfficialUsdRateAsync(CancellationToken cancellationToken = default)
     {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(_timeout);
+
         try
         {
-            _logger.LogInformation("Attempting to fetch official BCV USD rate from bcv.org.ve...");
-            var response = await _httpClient.GetAsync("https://www.bcv.org.ve/", cancellationToken);
+            _logger.LogInformation("Attempting to fetch official BCV USD rate from bcv.org.ve (timeout: {Timeout}s)...", _timeout.TotalSeconds);
+            var response = await _httpClient.GetAsync("https://www.bcv.org.ve/", cts.Token);
             response.EnsureSuccessStatusCode();
 
-            var html = await response.Content.ReadAsStringAsync(cancellationToken);
+            var html = await response.Content.ReadAsStringAsync(cts.Token);
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
 
@@ -41,7 +54,7 @@ public class BcvScraperService
             if (node == null)
             {
                 _logger.LogWarning("BCV USD rate node (//div[@id='dolar']//strong) not found on the page.");
-                return null;
+                throw new InvalidOperationException("No se encontró el elemento contenedor de la tasa oficial en el portal del BCV.");
             }
 
             var rateText = node.InnerText.Trim().Replace(",", ".");
@@ -54,12 +67,12 @@ public class BcvScraperService
             }
 
             _logger.LogWarning("Failed to parse extracted BCV rate text to decimal: '{RateText}'", node.InnerText);
-            return null;
+            throw new InvalidOperationException($"El formato numérico devuelto por el BCV no es válido: '{node.InnerText.Trim()}'.");
         }
-        catch (Exception ex)
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger.LogError(ex, "An error occurred while fetching the official BCV rate.");
-            return null;
+            _logger.LogWarning("Timeout fetching official BCV rate after {Timeout}s.", _timeout.TotalSeconds);
+            throw new TimeoutException($"Tiempo de espera agotado ({_timeout.TotalSeconds}s) al consultar el portal del BCV.", ex);
         }
     }
 }

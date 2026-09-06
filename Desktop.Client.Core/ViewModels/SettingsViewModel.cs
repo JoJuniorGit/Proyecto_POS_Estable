@@ -8,6 +8,7 @@ using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Linq;
+using Core.Common;
 
 namespace Desktop.Client.ViewModels;
 
@@ -46,6 +47,38 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public ObservableCollection<PaymentMethodDto> PaymentMethods { get; } = new();
     public ObservableCollection<TimeZoneInfo> AvailableTimeZones { get; } = new();
 
+    public class CurrencyFormatOption
+    {
+        public string Key { get; set; } = "Venezuelan";
+        public string DisplayName { get; set; } = "Venezolano Contable (1.234,56)";
+        public string Description { get; set; } = "Separador de miles: punto (.), decimal: coma (,)";
+    }
+
+    public ObservableCollection<CurrencyFormatOption> AvailableCurrencyFormats { get; } = new()
+    {
+        new CurrencyFormatOption { Key = "Venezuelan", DisplayName = "Venezolano Contable (1.234,56)", Description = "Separador de miles: punto (.), decimal: coma (,)" },
+        new CurrencyFormatOption { Key = "International", DisplayName = "Internacional (1,234.56)", Description = "Separador de miles: coma (,), decimal: punto (.)" }
+    };
+
+    private CurrencyFormatOption? _selectedCurrencyFormat;
+    public CurrencyFormatOption? SelectedCurrencyFormat
+    {
+        get => _selectedCurrencyFormat;
+        set
+        {
+            if (SetProperty(ref _selectedCurrencyFormat, value))
+            {
+                OnSelectedCurrencyFormatChangedAsync(value).SafeFireAndForget("Settings.CurrencyFormatChanged");
+            }
+        }
+    }
+
+    [ObservableProperty]
+    private string _currencyFormatPreviewBsS = "Bs.S 172.786,94";
+
+    [ObservableProperty]
+    private string _currencyFormatPreviewUSD = "$ 1.250,50";
+
     private TimeZoneInfo? _selected_time_zone;
     public TimeZoneInfo? SelectedTimeZone
     {
@@ -54,7 +87,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selected_time_zone, value))
             {
-                OnSelectedTimeZoneChanged(value);
+                OnSelectedTimeZoneChangedAsync(value).SafeFireAndForget("Settings.TimeZoneChanged");
             }
         }
     }
@@ -87,6 +120,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             _ = LoadMethodsAsync();
             _ = LoadTimeZonesAsync();
+            _ = LoadCurrencyFormatAsync();
         }
     }
 
@@ -96,6 +130,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             await LoadMethodsAsync();
             await LoadTimeZonesAsync();
+            await LoadCurrencyFormatAsync();
         }
     }
 
@@ -161,6 +196,39 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private async Task TogglePaymentTypeAsync(PaymentMethodDto method)
+    {
+        if (method == null) return;
+        var original = method.IsCash;
+        try
+        {
+            method.IsCash = !method.IsCash;
+            var updated = await _payment_service.UpdateAsync(method);
+            var index = PaymentMethods.IndexOf(method);
+            if (index >= 0)
+            {
+                PaymentMethods[index] = new PaymentMethodDto
+                {
+                    Id = updated.Id,
+                    Name = updated.Name,
+                    IsActive = updated.IsActive,
+                    RequiresReference = updated.RequiresReference,
+                    IsCash = updated.IsCash,
+                    DisplayOrder = updated.DisplayOrder,
+                    IsDeleted = updated.IsDeleted
+                };
+            }
+            WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
+        }
+        catch (Exception ex)
+        {
+            method.IsCash = original;
+            MessageBox.Show($"Error al cambiar el tipo de método de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            await LoadMethodsAsync();
+        }
+    }
+
+    [RelayCommand]
     private async Task AddNewMethodAsync()
     {
         if (_dialog_service == null) return;
@@ -182,7 +250,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             {
                 Name = _newName,
                 IsActive = true,
-                RequiresReference = false
+                RequiresReference = false,
+                IsCash = false // Digital por defecto
             };
 
             var _created = await _payment_service.CreateAsync(_method);
@@ -192,6 +261,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         catch (Exception _ex)
         {
             MessageBox.Show($"Failed to create method: {_ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            await LoadMethodsAsync();
         }
     }
 
@@ -304,25 +374,25 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task DeleteMethodAsync(PaymentMethodDto method)
     {
-        var _result = MessageBox.Show($"Are you sure you want to deactivate '{method.Name}'?\n\nThis will keep historical sales intact but remove it from the Point of Sale screen.", "Confirm Deactivation", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (method == null) return;
+        var result = MessageBox.Show(
+            $"¿Está seguro de eliminar el método de pago '{method.Name}'?\n\nSi el método tiene transacciones históricas registradas, será archivado de forma segura sin afectar las ventas ni auditorías.",
+            "Confirmar Eliminación",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
 
-        if (_result == MessageBoxResult.Yes)
+        if (result == MessageBoxResult.Yes)
         {
             try
             {
                 await _payment_service.DeleteAsync(method.Id);
-                var _local = PaymentMethods.FirstOrDefault(p => p.Id == method.Id);
-                if (_local != null)
-                {
-                    _local.IsActive = false;
-                    var _index = PaymentMethods.IndexOf(_local);
-                    PaymentMethods[_index] = _local;
-                }
+                PaymentMethods.Remove(method);
                 WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
             }
-            catch (Exception _ex)
+            catch (Exception ex)
             {
-                MessageBox.Show($"Failed to deactivate method: {_ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Error al eliminar el método de pago: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                await LoadMethodsAsync();
             }
         }
     }
@@ -342,7 +412,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async void OnSelectedTimeZoneChanged(TimeZoneInfo? value)
+    private async Task OnSelectedTimeZoneChangedAsync(TimeZoneInfo? value)
     {
         if (value == null) return;
         try
@@ -353,6 +423,53 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             MessageBox.Show($"Failed to save timezone: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async Task LoadCurrencyFormatAsync()
+    {
+        try
+        {
+            var savedFormat = await _settings_service.GetCurrencyFormatAsync();
+            var selected = AvailableCurrencyFormats.FirstOrDefault(f => f.Key.Equals(savedFormat, StringComparison.OrdinalIgnoreCase))
+                           ?? AvailableCurrencyFormats[0];
+            _selectedCurrencyFormat = selected;
+            OnPropertyChanged(nameof(SelectedCurrencyFormat));
+            UpdateCurrencyPreview(selected.Key);
+        }
+        catch
+        {
+            _selectedCurrencyFormat = AvailableCurrencyFormats[0];
+            OnPropertyChanged(nameof(SelectedCurrencyFormat));
+            UpdateCurrencyPreview("Venezuelan");
+        }
+    }
+
+    private async Task OnSelectedCurrencyFormatChangedAsync(CurrencyFormatOption? option)
+    {
+        if (option == null) return;
+        try
+        {
+            UpdateCurrencyPreview(option.Key);
+            await _settings_service.SetCurrencyFormatAsync(option.Key);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error al guardar formato de moneda: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void UpdateCurrencyPreview(string formatKey)
+    {
+        if (formatKey.Equals("International", StringComparison.OrdinalIgnoreCase))
+        {
+            CurrencyFormatPreviewBsS = "Bs.S 172,786.94";
+            CurrencyFormatPreviewUSD = "$ 1,250.50";
+        }
+        else
+        {
+            CurrencyFormatPreviewBsS = "Bs.S 172.786,94";
+            CurrencyFormatPreviewUSD = "$ 1.250,50";
         }
     }
 

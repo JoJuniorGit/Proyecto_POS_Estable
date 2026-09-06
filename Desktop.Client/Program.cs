@@ -45,7 +45,6 @@ public class Program
         finally
         {
             ReleaseSingleInstanceMutex();
-            Environment.Exit(0);
         }
     }
 

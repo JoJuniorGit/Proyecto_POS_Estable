@@ -59,4 +59,7 @@ public class CashTransaction
     public Sale? Sale { get; set; }
 
     public bool IsPhysicalCash { get; set; } = true;
+
+    public int? PaymentMethodId { get; set; }
+    public PaymentMethod? PaymentMethod { get; set; }
 }

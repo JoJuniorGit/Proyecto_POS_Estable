@@ -80,6 +80,18 @@ public class Product : BaseEntity
 
     public bool IsGroupHeader { get; set; } = false;
 
+    // Variant Group Capabilities (Only applicable if IsGroupHeader == true, immutable once created)
+    public bool IsStockShared { get; set; } = false;
+    public bool HasIndependentPricing { get; set; } = false;
+
+    /// <summary>
+    /// Multiplicador de consumo de stock sobre el producto padre cuando IsStockShared = true.
+    /// Define cuántas unidades base del padre consume 1 unidad de esta variante.
+    /// Para productos no compartidos o independientes siempre se normaliza a 1.0000.
+    /// </summary>
+    [Range(0.0001, 1000000.0, ErrorMessage = "El factor de conversión debe ser mayor a 0.")]
+    public decimal ConversionFactor { get; set; } = 1.0000m;
+
     [StringLength(50)]
     public string? GroupKey { get; set; }
 

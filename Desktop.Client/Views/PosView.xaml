@@ -50,12 +50,8 @@
 
                 <!-- Header: Search -->
                 <Grid Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <TextBox x:Name="SearchInput" Grid.Column="0"
+                    <TextBox x:Name="SearchInput"
+                             Tag="PosSearchBox"
                              materialDesign:HintAssist.Hint="Enter the desired product"
                              materialDesign:TextFieldAssist.HasClearButton="True"
                              Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
@@ -70,15 +66,6 @@
                             </i:EventTrigger>
                         </i:Interaction.Triggers>
                     </TextBox>
-
-                    <!-- Camera barcode scanner -->
-                    <Button Grid.Column="1" x:Name="OpenScannerButton" Click="OpenScanner_Click"
-                            Style="{DynamicResource MaterialDesignIconButton}"
-                            Margin="8,0,0,0" VerticalAlignment="Center"
-                            ToolTip="Scan a barcode or text with the camera">
-                        <materialDesign:PackIcon Kind="Camera" Width="20" Height="20"
-                                                 Foreground="{DynamicResource PrimaryHueMidBrush}"/>
-                    </Button>
 
                     <Popup IsOpen="{Binding HasSuggestions, Mode=TwoWay}"
                            StaysOpen="False"
@@ -124,7 +111,25 @@
                                                         </Style.Triggers>
                                                     </Style>
                                                 </StackPanel.Style>
-                                                <TextBlock Text="{Binding PriceBsS, StringFormat='{}{0:N2}'}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,10,0"/>
+                                                <TextBlock FontWeight="Bold" FontSize="13" Margin="0,0,10,0">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="{Binding PriceBsS, StringFormat='{}{0:N2}'}"/>
+                                                            <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                                                            <Style.Triggers>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding IsGroupHeader}" Value="True"/>
+                                                                        <Condition Binding="{Binding HasIndependentPricing}" Value="True"/>
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Text" Value="Precios indiv."/>
+                                                                    <Setter Property="Foreground" Value="Gray"/>
+                                                                    <Setter Property="FontStyle" Value="Italic"/>
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
                                             </StackPanel>
                                         </StackPanel>
                                     </DataTemplate>
@@ -156,6 +161,10 @@
                               CanUserAddRows="False"
                               GridLinesVisibility="Horizontal"
                               HeadersVisibility="Column"
+                              VirtualizingStackPanel.IsVirtualizing="True"
+                              VirtualizingStackPanel.VirtualizationMode="Recycling"
+                              VirtualizingPanel.ScrollUnit="Pixel"
+                              ScrollViewer.IsDeferredScrollingEnabled="False"
                               BorderThickness="0"
                               Background="Transparent"
                               SelectionUnit="FullRow"
@@ -469,9 +478,28 @@
             </Border>
         </Grid>
 
-        <!-- Footer: Hotkeys Legend -->
+        <!-- Footer: Rate Indicator & Hotkeys Legend -->
         <Border Grid.Row="1" Background="{DynamicResource MaterialDesignPaper}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="0,1,0,0" Padding="10,6">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Opacity="0.85">
+            <DockPanel LastChildFill="False">
+                <!-- Left: Exchange Rate Info & Outdated Warning -->
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <materialDesign:PackIcon Kind="CurrencyUsd" Width="16" Height="16" VerticalAlignment="Center" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,4,0"/>
+                    <TextBlock Text="{Binding CurrentExchangeRate, StringFormat='{}Tasa: {0:N2} Bs/$'}" 
+                               FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                    
+                    <!-- Warning badge if outdated -->
+                    <Border Visibility="{Binding IsRateOutdated, Converter={StaticResource BoolToVis}}"
+                            Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="3"
+                            Padding="6,1" Margin="8,0,0,0" ToolTip="Tasa no actualizada en más de 24 horas. Presione F5 para sincronizar.">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="AlertCircleOutline" Foreground="#D97706" Width="13" Height="13" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBlock Text="Desactualizada (F5)" FontSize="10" FontWeight="Bold" Foreground="#B45309" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Right: Hotkeys Legend -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Opacity="0.85">
                 <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
                     <Border Background="#2563EB" CornerRadius="3" Padding="5,2" Margin="0,0,4,0">
                         <TextBlock Text="F1" FontWeight="Bold" FontSize="11" Foreground="White"/>
@@ -527,6 +555,7 @@
                     <TextBlock Text="Limpiar" VerticalAlignment="Center" FontSize="11"/>
                 </StackPanel>
             </StackPanel>
+            </DockPanel>
         </Border>
     </Grid>
 </UserControl>

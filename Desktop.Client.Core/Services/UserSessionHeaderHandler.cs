@@ -36,20 +36,17 @@ public class UserSessionHeaderHandler : DelegatingHandler
         }
 
         request.Headers.Remove("X-Client-Version");
-        request.Headers.Add("X-Client-Version", "1.0.0");
+        request.Headers.Add("X-Client-Version", Core.Common.AppVersionHelper.CurrentVersion);
+
+        // Cabecera meramente informativa y de telemetría/diagnóstico.
+        // ADVERTENCIA DE SEGURIDAD: La API NO debe usar esta cabecera para autorización.
+        // La autorización y el aislamiento de plataformas se basan 100% en los claims criptográficos (scope: pos:desktop).
+        request.Headers.Remove("X-Client-Platform");
+        request.Headers.Add("X-Client-Platform", "Desktop");
 
         if (!string.IsNullOrWhiteSpace(_userSession.Token))
         {
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _userSession.Token);
-        }
-
-        if (_userSession.CurrentUser != null)
-        {
-            request.Headers.Remove("X-User-Role");
-            request.Headers.Add("X-User-Role", _userSession.CurrentUser.Role.ToString());
-
-            request.Headers.Remove("X-User-Id");
-            request.Headers.Add("X-User-Id", _userSession.CurrentUser.Id.ToString());
         }
 
         var response = await base.SendAsync(request, cancellationToken);

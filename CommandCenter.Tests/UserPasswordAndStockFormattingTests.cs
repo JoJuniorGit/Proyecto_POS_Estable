@@ -74,17 +74,17 @@ public class UserPasswordAndStockFormattingTests
         {
             Cedula = "V-20111222",
             Name = "Usuario Test",
-            Password = "CustomPassword123"
+            Password = "CustomPassword123!"
         };
 
         var result = await controller.CreateUser(dto);
         var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
-        var userDto = Assert.IsType<UserDto>(createdResult.Value);
+        var userDto = Assert.IsAssignableFrom<UserDto>(createdResult.Value);
 
         var savedUser = await context.Users.FindAsync(userDto.Id);
         Assert.NotNull(savedUser);
         Assert.False(savedUser.MustChangePassword);
-        Assert.True(PasswordHasher.VerifyPassword("CustomPassword123", savedUser.PasswordHash));
+        Assert.True(PasswordHasher.VerifyPassword("CustomPassword123!", savedUser.PasswordHash));
     }
 
     [Fact]
@@ -102,12 +102,14 @@ public class UserPasswordAndStockFormattingTests
 
         var result = await controller.CreateUser(dto);
         var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
-        var userDto = Assert.IsType<UserDto>(createdResult.Value);
+        var userDto = Assert.IsType<UserCreatedDto>(createdResult.Value);
 
         var savedUser = await context.Users.FindAsync(userDto.Id);
         Assert.NotNull(savedUser);
         Assert.True(savedUser.MustChangePassword);
-        Assert.True(PasswordHasher.VerifyPassword("V-20111222", savedUser.PasswordHash));
+        Assert.False(string.IsNullOrWhiteSpace(userDto.TemporaryPassword));
+        Assert.True(PasswordHasher.VerifyPassword(userDto.TemporaryPassword, savedUser.PasswordHash));
+        Assert.False(PasswordHasher.VerifyPassword("V-20111222", savedUser.PasswordHash));
     }
 
     [Fact]
@@ -121,7 +123,7 @@ public class UserPasswordAndStockFormattingTests
             Name = "Cajero Uno",
             FullName = "Cajero Uno",
             Username = "V-12345678",
-            PasswordHash = PasswordHasher.HashPassword("OldPassword123"),
+            PasswordHash = PasswordHasher.HashPassword("OldPassword123!"),
             MustChangePassword = true,
             IsActive = true
         };
@@ -134,7 +136,7 @@ public class UserPasswordAndStockFormattingTests
         {
             Cedula = "V-12345678",
             Name = "Cajero Modificado",
-            Password = "NewSecretPassword2026",
+            Password = "NewSecretPassword2026!",
             IsActive = true
         };
 
@@ -145,8 +147,8 @@ public class UserPasswordAndStockFormattingTests
         Assert.NotNull(updatedUser);
         Assert.Equal("Cajero Modificado", updatedUser.Name);
         Assert.False(updatedUser.MustChangePassword);
-        Assert.True(PasswordHasher.VerifyPassword("NewSecretPassword2026", updatedUser.PasswordHash));
-        Assert.False(PasswordHasher.VerifyPassword("OldPassword123", updatedUser.PasswordHash));
+        Assert.True(PasswordHasher.VerifyPassword("NewSecretPassword2026!", updatedUser.PasswordHash));
+        Assert.False(PasswordHasher.VerifyPassword("OldPassword123!", updatedUser.PasswordHash));
     }
 
     [Fact]
@@ -354,12 +356,12 @@ public class UserPasswordAndStockFormattingTests
         {
             Cedula = "cajero_central",
             Name = "Carlos Cajero",
-            Password = "SecurePass2026"
+            Password = "SecurePass2026!"
         };
 
         var result = await controller.CreateUser(dto);
         var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
-        var userDto = Assert.IsType<UserDto>(createdResult.Value);
+        var userDto = Assert.IsAssignableFrom<UserDto>(createdResult.Value);
 
         var savedUser = await context.Users.FindAsync(userDto.Id);
         Assert.NotNull(savedUser);

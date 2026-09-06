@@ -4,16 +4,33 @@ import { getBaseUrl } from './api';
 let connection = null;
 
 /**
- * Conecta al Hub de SignalR para recibir actualizaciones de la tasa de cambio en tiempo real.
+ * Conecta al Hub de SignalR para recibir actualizaciones de la tasa de cambio, ventas en espera y métodos de pago en tiempo real.
  * @param {function(number): void} onRateUpdate - Callback ejecutado al recibir una nueva tasa
  * @param {function(): void} [onHoldSalesUpdated] - Callback ejecutado cuando se recalculan las ventas en espera
+ * @param {function(): void} [onPaymentMethodsUpdated] - Callback ejecutado cuando cambian los métodos de pago
  */
-export async function connectRateHub(onRateUpdate, onHoldSalesUpdated) {
+export async function connectRateHub(onRateUpdate, onHoldSalesUpdated, onPaymentMethodsUpdated) {
   if (connection) {
     if (onHoldSalesUpdated) {
       connection.off('OnHoldSalesUpdated');
-      connection.on('OnHoldSalesUpdated', () => onHoldSalesUpdated());
+      connection.on('OnHoldSalesUpdated', () => {
+        onHoldSalesUpdated();
+        window.dispatchEvent(new CustomEvent('onHoldSalesUpdated'));
+      });
     }
+    if (onPaymentMethodsUpdated) {
+      connection.off('OnPaymentMethodsUpdated');
+      connection.on('OnPaymentMethodsUpdated', () => {
+        onPaymentMethodsUpdated();
+        window.dispatchEvent(new CustomEvent('onPaymentMethodsUpdated'));
+      });
+    }
+    connection.off('OnCurrencyFormatUpdated');
+    connection.on('OnCurrencyFormatUpdated', (newFormat) => {
+      if (newFormat) {
+        window.dispatchEvent(new CustomEvent('onCurrencyFormatUpdated', { detail: newFormat }));
+      }
+    });
     return connection;
   }
 
@@ -34,6 +51,20 @@ export async function connectRateHub(onRateUpdate, onHoldSalesUpdated) {
   connection.on('OnHoldSalesUpdated', () => {
     if (onHoldSalesUpdated) {
       onHoldSalesUpdated();
+    }
+    window.dispatchEvent(new CustomEvent('onHoldSalesUpdated'));
+  });
+
+  connection.on('OnPaymentMethodsUpdated', () => {
+    if (onPaymentMethodsUpdated) {
+      onPaymentMethodsUpdated();
+    }
+    window.dispatchEvent(new CustomEvent('onPaymentMethodsUpdated'));
+  });
+
+  connection.on('OnCurrencyFormatUpdated', (newFormat) => {
+    if (newFormat) {
+      window.dispatchEvent(new CustomEvent('onCurrencyFormatUpdated', { detail: newFormat }));
     }
   });
 

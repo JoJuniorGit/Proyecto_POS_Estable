@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { resolveBaseUrl, setCustomBaseUrl } from './api.js';
+import { resolveBaseUrl, setCustomBaseUrl, apiFetch } from './api.js';
 
 describe('api.js resolveBaseUrl & setCustomBaseUrl', () => {
   let originalWindow;
@@ -98,8 +98,8 @@ describe('api.js resolveBaseUrl & setCustomBaseUrl', () => {
     global.window = {
       location: {
         protocol: 'https:',
-        origin: 'https://192.168.1.50:5173',
-        hostname: '192.168.1.50',
+        origin: 'https://192.168.1.100:5173',
+        hostname: '192.168.1.100',
         port: '5173',
         search: '?server=192.168.1.100:5000',
         pathname: '/'
@@ -128,3 +128,85 @@ describe('api.js resolveBaseUrl & setCustomBaseUrl', () => {
     assert.strictEqual(mockStorage['pos_custom_api_url'], 'https://192.168.1.20:5001');
   });
 });
+
+describe('apiFetch ProblemDetails and validation error extraction', () => {
+  let originalFetch;
+  let originalLocalStorage;
+
+  beforeEach(() => {
+    originalLocalStorage = global.localStorage;
+    global.localStorage = {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+      clear: () => {}
+    };
+  });
+
+  afterEach(() => {
+    if (originalFetch) global.fetch = originalFetch;
+    global.localStorage = originalLocalStorage;
+  });
+
+  function mockFetchResponse(status, bodyJson, statusText = 'Bad Request') {
+    originalFetch = global.fetch;
+    global.fetch = async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      statusText,
+      headers: {
+        get: (h) => (h.toLowerCase() === 'content-type' ? 'application/json' : null)
+      },
+      text: async () => JSON.stringify(bodyJson),
+      json: async () => bodyJson
+    });
+  }
+
+  it('1. Extracts RFC 7807 detail', async () => {
+    mockFetchResponse(400, { detail: 'Saldo insuficiente en la caja' });
+    await assert.rejects(
+      async () => await apiFetch('/api/test'),
+      { message: 'Saldo insuficiente en la caja' }
+    );
+  });
+
+  it('2. Extracts RFC 7807 title when detail is absent', async () => {
+    mockFetchResponse(400, { title: 'One or more validation errors occurred.' });
+    await assert.rejects(
+      async () => await apiFetch('/api/test'),
+      { message: 'One or more validation errors occurred.' }
+    );
+  });
+
+  it('3. Extracts validation errors from ASP.NET Core object format', async () => {
+    mockFetchResponse(400, {
+      errors: {
+        Sku: ['El SKU es requerido'],
+        Name: ['El nombre es obligatorio']
+      }
+    });
+    await assert.rejects(
+      async () => await apiFetch('/api/test'),
+      { message: 'El SKU es requerido; El nombre es obligatorio' }
+    );
+  });
+
+  it('4. Extracts validation errors from array format', async () => {
+    mockFetchResponse(400, {
+      errors: ['Error A', 'Error B']
+    });
+    await assert.rejects(
+      async () => await apiFetch('/api/test'),
+      { message: 'Error A; Error B' }
+    );
+  });
+
+  it('5. Prioritizes standard message property', async () => {
+    mockFetchResponse(400, { message: 'Operación no permitida para el usuario' });
+    await assert.rejects(
+      async () => await apiFetch('/api/test'),
+      { message: 'Operación no permitida para el usuario' }
+    );
+  });
+});
+

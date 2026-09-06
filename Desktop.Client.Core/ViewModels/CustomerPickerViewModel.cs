@@ -8,6 +8,7 @@ using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Core.Common;
 
 namespace Desktop.Client.ViewModels;
 
@@ -209,7 +210,7 @@ public partial class CustomerPickerViewModel : ObservableObject
                 }
                 catch (ObjectDisposedException) { }
 
-                StartDebouncedSearch(value, newCts.Token);
+                StartDebouncedSearchAsync(value, newCts.Token).SafeFireAndForget("CustomerPicker.DebouncedSearch");
             }
         }
     }
@@ -225,7 +226,7 @@ public partial class CustomerPickerViewModel : ObservableObject
         await SearchAsync(string.Empty);
     }
 
-    private async void StartDebouncedSearch(string query, CancellationToken token)
+    private async Task StartDebouncedSearchAsync(string query, CancellationToken token)
     {
         try
         {

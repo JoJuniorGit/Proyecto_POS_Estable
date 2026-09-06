@@ -9,10 +9,12 @@ using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using Core.Common;
+using Core.Logging;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class ProductDialogViewModel : ObservableValidator
+public partial class ProductDialogViewModel : ObservableValidator, IDisposable
 {
     private readonly IProductService _productService;
     private readonly IExchangeRateService _exchangeRateService;
@@ -84,6 +86,7 @@ public partial class ProductDialogViewModel : ObservableValidator
     private bool _isFractional;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CurrentStockDisplay))]
     private Core.Entities.UnitOfMeasureType _unitOfMeasureType = Core.Entities.UnitOfMeasureType.Und;
 
     [ObservableProperty]
@@ -95,8 +98,11 @@ public partial class ProductDialogViewModel : ObservableValidator
     private bool _isUpdatingPrices;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CurrentStockDisplay))]
     [Range(0, double.MaxValue, ErrorMessage = "Stock Quantity must be non-negative")]
     private decimal _stockQuantity;
+
+    public string CurrentStockDisplay => $"{StockQuantity:G29} {UnitOfMeasureType}";
 
     [ObservableProperty]
     [Range(0, double.MaxValue, ErrorMessage = "Low Stock Threshold must be non-negative")]
@@ -140,7 +146,32 @@ public partial class ProductDialogViewModel : ObservableValidator
     private bool _isCashAdvance;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanEditStockShared))]
+    [NotifyPropertyChangedFor(nameof(CanEditIndependentPricing))]
+    [NotifyPropertyChangedFor(nameof(ShowStockInputs))]
+    [NotifyPropertyChangedFor(nameof(ShowConversionFactorInput))]
+    [NotifyPropertyChangedFor(nameof(ShowManageVariantsButton))]
+    [NotifyPropertyChangedFor(nameof(ShowPricingInputs))]
+    [NotifyPropertyChangedFor(nameof(ShowIndependentPricingNotice))]
+    [NotifyPropertyChangedFor(nameof(CanEditPricing))]
+    [NotifyPropertyChangedFor(nameof(CanEditWholesale))]
+    [NotifyPropertyChangedFor(nameof(CanEditFractional))]
     private bool _isGroupHeader;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanEditStockShared))]
+    [NotifyPropertyChangedFor(nameof(CanEditIndependentPricing))]
+    [NotifyPropertyChangedFor(nameof(ShowStockInputs))]
+    private bool _isStockShared;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanEditStockShared))]
+    [NotifyPropertyChangedFor(nameof(CanEditIndependentPricing))]
+    [NotifyPropertyChangedFor(nameof(ShowPricingInputs))]
+    [NotifyPropertyChangedFor(nameof(ShowIndependentPricingNotice))]
+    [NotifyPropertyChangedFor(nameof(CanEditPricing))]
+    [NotifyPropertyChangedFor(nameof(CanEditWholesale))]
+    private bool _hasIndependentPricing;
 
     [ObservableProperty]
     private int? _parentProductId;
@@ -164,19 +195,31 @@ public partial class ProductDialogViewModel : ObservableValidator
     [NotifyPropertyChangedFor(nameof(GroupHeaderToolTip))]
     private int _activeVariantsCount;
 
-    public bool IsVariant => SelectedParentProduct != null && SelectedParentProduct.Id > 0;
-    public bool IsInheritingPricing => SelectedParentProduct != null && SelectedParentProduct.Id > 0;
+    [ObservableProperty]
+    [Range(0.0001, 1000000.0, ErrorMessage = "El factor de conversión debe ser mayor a 0")]
+    private decimal _conversionFactor = 1.0000m;
 
-    public bool CanEditPricing => !IsInheritingPricing;
-    public bool CanEditWholesale => HasWholesale && !IsInheritingPricing;
+    public bool IsVariant => SelectedParentProduct != null && SelectedParentProduct.Id > 0;
+    public bool IsInheritingPricing => SelectedParentProduct != null && SelectedParentProduct.Id > 0 && !SelectedParentProduct.HasIndependentPricing;
+
+    public bool CanEditStockShared => IsCreateMode && IsGroupHeader && !IsCashAdvance;
+    public bool CanEditIndependentPricing => IsCreateMode && IsGroupHeader && !IsCashAdvance;
+    public bool ShowManageVariantsButton => IsEditMode && IsGroupHeader;
+
+    public bool ShowPricingInputs => !IsCashAdvance && !(IsGroupHeader && HasIndependentPricing);
+    public bool ShowIndependentPricingNotice => !IsCashAdvance && IsGroupHeader && HasIndependentPricing;
+
+    public bool CanEditPricing => !IsInheritingPricing && !(IsGroupHeader && HasIndependentPricing);
+    public bool CanEditWholesale => HasWholesale && !IsInheritingPricing && !(IsGroupHeader && HasIndependentPricing);
     public bool CanEditFractional => !IsCashAdvance && !IsGroupHeader && !IsInheritingPricing;
     public bool CanEditGroupHeader => !IsCashAdvance && (SelectedParentProduct == null || SelectedParentProduct.Id == 0) && !HasActiveVariants;
     public bool CanSelectParentProduct => !HasActiveVariants && !IsCashAdvance;
-    public bool ShowStockInputs => !IsCashAdvance;
+    public bool ShowStockInputs => !IsCashAdvance && (!IsGroupHeader || (IsGroupHeader && IsStockShared)) && !(SelectedParentProduct != null && SelectedParentProduct.Id > 0 && SelectedParentProduct.IsStockShared);
+    public bool ShowConversionFactorInput => !IsCashAdvance && !IsGroupHeader && SelectedParentProduct != null && SelectedParentProduct.Id > 0 && SelectedParentProduct.IsStockShared;
 
     public string GroupHeaderToolTip => HasActiveVariants 
         ? $"Este producto es un grupo con {ActiveVariantsCount} variante(s) asociada(s). No puede convertirse en producto independiente; elimine o desvincule primero las variantes."
-        : "Agrupa múltiples variantes o sabores bajo un mismo producto padre";
+        : "Activa esta opción si viene en diferentes sabores, tallas o capacidades.";
 
     // Snapshot fields for restoring manual pricing when switching back to "Ninguno"
     private decimal _origCostPriceUSD;
@@ -192,22 +235,26 @@ public partial class ProductDialogViewModel : ObservableValidator
     public ObservableCollection<Core.Entities.UnitOfMeasureType> UnitOfMeasureTypes { get; } = new(Enum.GetValues<Core.Entities.UnitOfMeasureType>());
     public ObservableCollection<string> UnitOfMeasures { get; } = new ObservableCollection<string>();
 
+    private readonly IDialogService? _dialogService;
     public UserSession? UserSession { get; }
 
-    public ProductDialogViewModel(IProductService productService, IExchangeRateService exchangeRateService, Product? product = null, UserSession? userSession = null)
+    public ProductDialogViewModel(IProductService productService, IExchangeRateService exchangeRateService, Product? product = null, UserSession? userSession = null, IDialogService? dialogService = null)
     {
         _productService = productService;
         _exchangeRateService = exchangeRateService;
         _initialProduct = product;
+        _dialogService = dialogService;
         UserSession = userSession;
 
         IsEditMode = product != null;
-        DialogTitle = IsEditMode ? "Edit Product" : "Add New Product";
+        DialogTitle = IsEditMode ? "Editar Producto" : "Nuevo Producto";
         ResultProduct = new Product { IsActive = true };
 
         if (_initialProduct != null)
         {
             IsGroupHeader = _initialProduct.IsGroupHeader;
+            IsStockShared = _initialProduct.IsStockShared;
+            HasIndependentPricing = _initialProduct.HasIndependentPricing;
             GroupKey = _initialProduct.GroupKey;
             ParentProductId = _initialProduct.ParentProductId;
             Name = _initialProduct.Name;
@@ -227,12 +274,14 @@ public partial class ProductDialogViewModel : ObservableValidator
             StockQuantity = _initialProduct.StockQuantity;
             LowStockThreshold = _initialProduct.LowStockThreshold;
             IsCashAdvance = _initialProduct.IsCashAdvance;
+            ConversionFactor = _initialProduct.ConversionFactor > 0 ? _initialProduct.ConversionFactor : 1.0000m;
         }
         else
         {
             HasWholesale = false;
             MinWholesaleQuantity = 6.000m;
             PriceBsS = 0;
+            ConversionFactor = 1.0000m;
         }
 
         // Initialize snapshot with initial pricing BEFORE CalculatePricing
@@ -244,7 +293,7 @@ public partial class ProductDialogViewModel : ObservableValidator
         {
             Interval = TimeSpan.FromMilliseconds(500)
         };
-        _debounceTimer.Tick += async (s, e) => await VerifySkuAsync();
+        _debounceTimer.Tick += OnDebounceTimerTick;
 
         _ = LoadMetadataAsync();
     }
@@ -293,6 +342,8 @@ public partial class ProductDialogViewModel : ObservableValidator
         OnPropertyChanged(nameof(CanEditFractional));
         OnPropertyChanged(nameof(CanEditGroupHeader));
         OnPropertyChanged(nameof(CanSelectParentProduct));
+        OnPropertyChanged(nameof(ShowStockInputs));
+        OnPropertyChanged(nameof(ShowConversionFactorInput));
 
         if (value != null && value.Id > 0)
         {
@@ -305,30 +356,46 @@ public partial class ProductDialogViewModel : ObservableValidator
             }
 
             IsGroupHeader = false;
-            if (ParentProductId == null)
+            IsStockShared = false;
+            HasIndependentPricing = false;
+
+            if (value.IsStockShared)
             {
-                CaptureManualPricingSnapshot();
+                StockQuantity = 0m;
+                LowStockThreshold = 0m;
             }
 
-            _isUpdatingPrices = true;
-            try
+            if (!value.HasIndependentPricing)
+            {
+                if (ParentProductId == null)
+                {
+                    CaptureManualPricingSnapshot();
+                }
+
+                _isUpdatingPrices = true;
+                try
+                {
+                    ParentProductId = value.Id;
+                    CostPriceUSD = value.CostPriceUSD;
+                    ProfitMarginRetail = value.ProfitMarginRetail;
+                    PriceRetailUSD = value.PriceRetailUSD;
+                    HasWholesale = value.HasWholesale;
+                    ProfitMarginWholesale = value.ProfitMarginWholesale;
+                    PriceWholesaleUSD = value.PriceWholesaleUSD;
+                    MinWholesaleQuantity = value.MinWholesaleQuantity > 0m ? value.MinWholesaleQuantity : 6.000m;
+                    IsFractional = value.IsFractional;
+                    UnitOfMeasureType = value.UnitOfMeasure;
+                }
+                finally
+                {
+                    _isUpdatingPrices = false;
+                }
+                CalculatePricing("Cost");
+            }
+            else
             {
                 ParentProductId = value.Id;
-                CostPriceUSD = value.CostPriceUSD;
-                ProfitMarginRetail = value.ProfitMarginRetail;
-                PriceRetailUSD = value.PriceRetailUSD;
-                HasWholesale = value.HasWholesale;
-                ProfitMarginWholesale = value.ProfitMarginWholesale;
-                PriceWholesaleUSD = value.PriceWholesaleUSD;
-                MinWholesaleQuantity = value.MinWholesaleQuantity > 0m ? value.MinWholesaleQuantity : 6.000m;
-                IsFractional = value.IsFractional;
-                UnitOfMeasureType = value.UnitOfMeasure;
             }
-            finally
-            {
-                _isUpdatingPrices = false;
-            }
-            CalculatePricing("Cost");
         }
         else
         {
@@ -350,6 +417,8 @@ public partial class ProductDialogViewModel : ObservableValidator
             }
 
             IsGroupHeader = false;
+            IsStockShared = false;
+            HasIndependentPricing = false;
             SelectedParentProduct = ParentProducts.FirstOrDefault(p => p.Id == 0);
             ParentProductId = null;
             IsFractional = false;
@@ -362,25 +431,37 @@ public partial class ProductDialogViewModel : ObservableValidator
         OnPropertyChanged(nameof(CanEditFractional));
         OnPropertyChanged(nameof(CanEditGroupHeader));
         OnPropertyChanged(nameof(CanSelectParentProduct));
+        OnPropertyChanged(nameof(CanEditStockShared));
+        OnPropertyChanged(nameof(CanEditIndependentPricing));
     }
 
     partial void OnIsGroupHeaderChanged(bool value)
     {
         OnPropertyChanged(nameof(CanEditFractional));
         OnPropertyChanged(nameof(CanEditGroupHeader));
+        OnPropertyChanged(nameof(CanEditStockShared));
+        OnPropertyChanged(nameof(CanEditIndependentPricing));
+        OnPropertyChanged(nameof(ShowStockInputs));
+        OnPropertyChanged(nameof(ShowManageVariantsButton));
+
         if (value)
         {
             IsCashAdvance = false;
             SelectedParentProduct = ParentProducts.FirstOrDefault(p => p.Id == 0);
             ParentProductId = null;
-            StockQuantity = 0;
-            LowStockThreshold = 0;
+            if (!IsStockShared)
+            {
+                StockQuantity = 0;
+                LowStockThreshold = 0;
+            }
             IsSkuValid = true;
             SkuVerificationMessage = string.Empty;
             RestoreManualPricingSnapshot();
         }
         else
         {
+            IsStockShared = false;
+            HasIndependentPricing = false;
             if (!string.IsNullOrWhiteSpace(Sku))
             {
                 OnSkuChanged(Sku);
@@ -390,6 +471,16 @@ public partial class ProductDialogViewModel : ObservableValidator
                 IsSkuValid = false;
                 SkuVerificationMessage = "El código SKU es obligatorio.";
             }
+        }
+    }
+
+    partial void OnIsStockSharedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowStockInputs));
+        if (IsGroupHeader && !value)
+        {
+            StockQuantity = 0;
+            LowStockThreshold = 0;
         }
     }
 
@@ -403,10 +494,10 @@ public partial class ProductDialogViewModel : ObservableValidator
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(value) || !System.Text.RegularExpressions.Regex.IsMatch(value.Trim(), @"^\d+$"))
+        if (string.IsNullOrWhiteSpace(value) || !System.Text.RegularExpressions.Regex.IsMatch(value.Trim(), @"^[A-Za-z0-9\-_]{1,50}$"))
         {
             IsSkuValid = false;
-            SkuVerificationMessage = "El SKU debe ser estrictamente un número entero (solo dígitos 0-9).";
+            SkuVerificationMessage = "El SKU/Código de barras debe contener entre 1 y 50 caracteres alfanuméricos (letras, dígitos o guiones).";
             return;
         }
 
@@ -582,6 +673,12 @@ public partial class ProductDialogViewModel : ObservableValidator
         }
     }
 
+    private void OnDebounceTimerTick(object? sender, EventArgs e)
+    {
+        _debounceTimer.Stop();
+        VerifySkuAsync().SafeFireAndForget("ProductDialogViewModel.VerifySku");
+    }
+
     private async Task VerifySkuAsync()
     {
         _debounceTimer.Stop();
@@ -593,10 +690,10 @@ public partial class ProductDialogViewModel : ObservableValidator
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(Sku) || !System.Text.RegularExpressions.Regex.IsMatch(Sku.Trim(), @"^\d+$"))
+        if (string.IsNullOrWhiteSpace(Sku) || !System.Text.RegularExpressions.Regex.IsMatch(Sku.Trim(), @"^[A-Za-z0-9\-_]{1,50}$"))
         {
             IsSkuValid = false;
-            SkuVerificationMessage = "El SKU debe ser estrictamente un número entero (solo dígitos 0-9).";
+            SkuVerificationMessage = "El SKU/Código de barras debe contener entre 1 y 50 caracteres alfanuméricos (letras, dígitos o guiones).";
             return;
         }
 
@@ -639,6 +736,7 @@ public partial class ProductDialogViewModel : ObservableValidator
         }
         catch (Exception ex)
         {
+            AppLogger.LogCrash(ex, "ProductDialogViewModel.VerifySkuAsync");
             if (!token.IsCancellationRequested)
             {
                 IsSkuValid = true; // Err on side of allowing if service fails to respond for some reason, robust write validation will catch it
@@ -654,6 +752,19 @@ public partial class ProductDialogViewModel : ObservableValidator
         }
     }
 
+    public void Dispose()
+    {
+        _debounceTimer.Stop();
+        _debounceTimer.Tick -= OnDebounceTimerTick;
+        try
+        {
+            _skuCancellationTokenSource?.Cancel();
+            _skuCancellationTokenSource?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+        _skuCancellationTokenSource = null;
+    }
+
     [RelayCommand]
     private async Task SaveAsync()
     {
@@ -667,10 +778,10 @@ public partial class ProductDialogViewModel : ObservableValidator
         }
         else
         {
-            if (string.IsNullOrWhiteSpace(Sku) || !System.Text.RegularExpressions.Regex.IsMatch(Sku.Trim(), @"^\d+$"))
+            if (string.IsNullOrWhiteSpace(Sku) || !System.Text.RegularExpressions.Regex.IsMatch(Sku.Trim(), @"^[A-Za-z0-9\-_]{1,50}$"))
             {
                 IsSkuValid = false;
-                SkuVerificationMessage = "El SKU debe ser estrictamente un número entero (solo dígitos 0-9).";
+                SkuVerificationMessage = "El SKU/Código de barras debe contener entre 1 y 50 caracteres alfanuméricos (letras, dígitos o guiones).";
                 return;
             }
 
@@ -695,26 +806,46 @@ public partial class ProductDialogViewModel : ObservableValidator
 
         ResultProduct.Name = Name.Trim();
         ResultProduct.Description = Description.Trim();
-        ResultProduct.CostPriceUSD = CostPriceUSD;
-        ResultProduct.Cost = CostPriceUSD;
-        ResultProduct.ProfitMarginRetail = ProfitMarginRetail;
-        ResultProduct.ProfitPercentage = ProfitMarginRetail;
-        ResultProduct.PriceRetailUSD = PriceRetailUSD;
-        ResultProduct.PriceUSD = PriceRetailUSD;
-        ResultProduct.HasWholesale = HasWholesale;
-        ResultProduct.ProfitMarginWholesale = HasWholesale ? ProfitMarginWholesale : ProfitMarginRetail;
-        ResultProduct.PriceWholesaleUSD = HasWholesale ? PriceWholesaleUSD : PriceRetailUSD;
-        ResultProduct.MinWholesaleQuantity = MinWholesaleQuantity > 0m ? MinWholesaleQuantity : 6.000m;
+
+        if (IsGroupHeader && HasIndependentPricing)
+        {
+            ResultProduct.CostPriceUSD = 0m;
+            ResultProduct.Cost = 0m;
+            ResultProduct.ProfitMarginRetail = 0m;
+            ResultProduct.ProfitPercentage = 0m;
+            ResultProduct.PriceRetailUSD = 0m;
+            ResultProduct.PriceUSD = 0m;
+            ResultProduct.HasWholesale = false;
+            ResultProduct.ProfitMarginWholesale = 0m;
+            ResultProduct.PriceWholesaleUSD = 0m;
+            ResultProduct.PriceBsS = 0m;
+            ResultProduct.MinWholesaleQuantity = 6.000m;
+        }
+        else
+        {
+            ResultProduct.CostPriceUSD = CostPriceUSD;
+            ResultProduct.Cost = CostPriceUSD;
+            ResultProduct.ProfitMarginRetail = ProfitMarginRetail;
+            ResultProduct.ProfitPercentage = ProfitMarginRetail;
+            ResultProduct.PriceRetailUSD = PriceRetailUSD;
+            ResultProduct.PriceUSD = PriceRetailUSD;
+            ResultProduct.HasWholesale = HasWholesale;
+            ResultProduct.ProfitMarginWholesale = HasWholesale ? ProfitMarginWholesale : ProfitMarginRetail;
+            ResultProduct.PriceWholesaleUSD = HasWholesale ? PriceWholesaleUSD : PriceRetailUSD;
+            ResultProduct.MinWholesaleQuantity = MinWholesaleQuantity > 0m ? MinWholesaleQuantity : 6.000m;
+            decimal rate = _exchangeRateService.CurrentRate;
+            ResultProduct.PriceBsS = (rate > 0 && PriceRetailUSD > 0)
+                ? Math.Round(PriceRetailUSD * rate, 2, MidpointRounding.AwayFromZero)
+                : (PriceRetailBsS > 0 ? PriceRetailBsS : (_initialProduct?.PriceBsS ?? 0m));
+        }
+
         ResultProduct.IsFractional = IsCashAdvance ? false : IsFractional;
         ResultProduct.UnitOfMeasure = IsCashAdvance ? Core.Entities.UnitOfMeasureType.Und : UnitOfMeasureType;
-        decimal rate = _exchangeRateService.CurrentRate;
-        ResultProduct.PriceBsS = (rate > 0 && PriceRetailUSD > 0)
-            ? Math.Round(PriceRetailUSD * rate, 2, MidpointRounding.AwayFromZero)
-            : (PriceRetailBsS > 0 ? PriceRetailBsS : (_initialProduct?.PriceBsS ?? 0m));
 
-        ResultProduct.LowStockThreshold = (IsGroupHeader || IsCashAdvance) ? 0m : LowStockThreshold;
         ResultProduct.IsCashAdvance = IsCashAdvance;
         ResultProduct.IsGroupHeader = IsCashAdvance ? false : IsGroupHeader;
+        ResultProduct.IsStockShared = IsGroupHeader ? IsStockShared : false;
+        ResultProduct.HasIndependentPricing = IsGroupHeader ? HasIndependentPricing : false;
         ResultProduct.ParentProductId = (IsGroupHeader || IsCashAdvance) ? null : (SelectedParentProduct != null && SelectedParentProduct.Id > 0 ? SelectedParentProduct.Id : null);
         ResultProduct.GroupKey = IsCashAdvance ? null : (string.IsNullOrWhiteSpace(GroupKey) ? (IsGroupHeader ? Name.Trim() : null) : GroupKey.Trim());
 
@@ -730,21 +861,26 @@ public partial class ProductDialogViewModel : ObservableValidator
         }
 
         // Stock quantity can only be set initially. Existing products must use stock adjust.
+        bool isSharedChild = SelectedParentProduct != null && SelectedParentProduct.Id > 0 && SelectedParentProduct.IsStockShared;
+
+        ResultProduct.ConversionFactor = (isSharedChild && ConversionFactor > 0) ? ConversionFactor : 1.0000m;
+        ResultProduct.LowStockThreshold = (IsCashAdvance || (IsGroupHeader && !IsStockShared) || isSharedChild) ? 0m : LowStockThreshold;
+
         if (!IsEditMode)
         {
-            ResultProduct.StockQuantity = (IsGroupHeader || IsCashAdvance) ? 0m : StockQuantity;
+            ResultProduct.StockQuantity = (IsCashAdvance || (IsGroupHeader && !IsStockShared) || isSharedChild) ? 0m : StockQuantity;
         }
 
         if (_initialProduct != null)
         {
             ResultProduct.Id = _initialProduct.Id;
             ResultProduct.IsActive = _initialProduct.IsActive;
-            ResultProduct.ReservedQuantity = (IsGroupHeader || IsCashAdvance) ? 0m : _initialProduct.ReservedQuantity;
+            ResultProduct.ReservedQuantity = (IsCashAdvance || (IsGroupHeader && !IsStockShared) || isSharedChild) ? 0m : _initialProduct.ReservedQuantity;
             ResultProduct.RowVersion = _initialProduct.RowVersion;
 
             if (IsEditMode)
             {
-                ResultProduct.StockQuantity = IsGroupHeader ? 0m : _initialProduct.StockQuantity;
+                ResultProduct.StockQuantity = (IsGroupHeader && !IsStockShared) ? 0m : _initialProduct.StockQuantity;
             }
         }
 
@@ -755,5 +891,32 @@ public partial class ProductDialogViewModel : ObservableValidator
     private void Cancel()
     {
         RequestClose?.Invoke(false);
+    }
+
+    [RelayCommand]
+    private async Task ManageVariantsAsync()
+    {
+        if (_initialProduct == null || !IsGroupHeader || _dialogService == null) return;
+        var parentDto = new ProductDto
+        {
+            Id = _initialProduct.Id,
+            Name = Name,
+            SKU = Sku,
+            IsGroupHeader = true,
+            IsStockShared = IsStockShared,
+            HasIndependentPricing = HasIndependentPricing,
+            CostPriceUSD = CostPriceUSD,
+            ProfitMarginRetail = ProfitMarginRetail,
+            PriceRetailUSD = PriceRetailUSD,
+            HasWholesale = HasWholesale,
+            ProfitMarginWholesale = ProfitMarginWholesale,
+            PriceWholesaleUSD = PriceWholesaleUSD,
+            MinWholesaleQuantity = MinWholesaleQuantity,
+            IsFractional = IsFractional,
+            UnitOfMeasure = UnitOfMeasureType,
+            RowVersion = _initialProduct.RowVersion
+        };
+        await _dialogService.ShowVariantManagementDialogAsync(parentDto);
+        await LoadMetadataAsync();
     }
 }

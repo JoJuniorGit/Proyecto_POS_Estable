@@ -46,7 +46,7 @@ public class CurrentUserService : ICurrentUserService
     }
 
     // Deny-by-default: only explicitly allowed roles have mutation rights
-    public bool CanMutateCatalog => UserRole == Core.Entities.UserRole.Admin;
+    public bool CanMutateCatalog => UserRole == Core.Entities.UserRole.Admin || UserRole == Core.Entities.UserRole.Manager;
     public bool CanMutateSettings => UserRole == Core.Entities.UserRole.Admin;
     public bool CanMutateExchangeRate => UserRole == Core.Entities.UserRole.Admin;
 }

@@ -30,6 +30,53 @@ public static class TestDatabaseFactory
         return new InventoryDbContext(options);
     }
 
+    public static bool IsPostgreSqlAvailable => !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION"));
+
+    public static SalesDbContext? CreatePostgreSqlSalesDbContext()
+    {
+        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connStr)) return null;
+
+        var options = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseNpgsql(connStr)
+            .Options;
+        var ctx = new SalesDbContext(options);
+        ctx.Database.EnsureCreated();
+        return ctx;
+    }
+
+    public static (InventoryDbContext context, Microsoft.Data.Sqlite.SqliteConnection connection) CreateSqliteInventoryDbContext()
+    {
+        var connection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=:memory:");
+        connection.Open();
+        var options = new DbContextOptionsBuilder<InventoryDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        var context = new InventoryDbContext(options);
+        context.Database.EnsureCreated();
+        return (context, connection);
+    }
+
+    public static (SalesDbContext context, Microsoft.Data.Sqlite.SqliteConnection connection) CreateSqliteSalesDbContext()
+    {
+        var connection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=:memory:");
+        connection.Open();
+        var options = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        var context = new SalesDbContext(options);
+        context.Database.EnsureCreated();
+        return (context, connection);
+    }
+
+    public static SalesDbContext CreateSqliteSalesDbContext(Microsoft.Data.Sqlite.SqliteConnection connection)
+    {
+        var options = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        return new SalesDbContext(options);
+    }
+
     public static async Task SeedStandardSalesDataAsync(SalesDbContext context)
     {
         if (!await context.Customers.AnyAsync(c => c.IsDefault || c.Id == 1))

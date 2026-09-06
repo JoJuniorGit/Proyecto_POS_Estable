@@ -62,6 +62,40 @@ public static class ClientStateLogger
         WriteLog("ERROR", origin, message);
     }
 
+    private const long MaxFileSizeBytes = 10 * 1024 * 1024; // 10 MB
+    private const int MaxArchiveFiles = 5;
+
+    private static void RotateLogFileIfNeeded(string filePath)
+    {
+        try
+        {
+            var fileInfo = new FileInfo(filePath);
+            if (!fileInfo.Exists || fileInfo.Length < MaxFileSizeBytes)
+            {
+                return;
+            }
+
+            string oldestArchive = $"{filePath}.{MaxArchiveFiles}";
+            if (File.Exists(oldestArchive))
+            {
+                File.Delete(oldestArchive);
+            }
+
+            for (int i = MaxArchiveFiles - 1; i >= 1; i--)
+            {
+                string source = $"{filePath}.{i}";
+                string destination = $"{filePath}.{i + 1}";
+                if (File.Exists(source))
+                {
+                    File.Move(source, destination, true);
+                }
+            }
+
+            File.Move(filePath, $"{filePath}.1", true);
+        }
+        catch { }
+    }
+
     private static void WriteLog(string level, string origin, string message)
     {
         lock (_lock)
@@ -73,6 +107,8 @@ public static class ClientStateLogger
                 {
                     Directory.CreateDirectory(dir);
                 }
+
+                RotateLogFileIfNeeded(ResilienceLogPath);
 
                 // ISO 8601 Timestamp format
                 var isoTimestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");

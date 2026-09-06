@@ -40,6 +40,9 @@ Source: "nssm.exe"; DestDir: "{app}\BackendAPI"; Flags: ignoreversion
 #if FileExists("NSSM_LICENSE.txt")
 Source: "NSSM_LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 #endif
+; Script PowerShell de Configuración Idempotente (Firewall, NSSM, Env Vars)
+Source: "Configure-PosService.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
+
 
 [Dirs]
 Name: "{commonappdata}\Registro de cierres"; Permissions: users-modify
@@ -70,7 +73,6 @@ const
   ServiceName = 'PosBackendService';
   FirewallRuleHttp = 'Sistema POS - Backend API (TCP 5000)';
   FirewallRuleLegacy = 'Sistema POS - Backend API (TCP 5000/5001)';
-  DefaultJwtSecretKey = 'ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795';
 
 var
   DbPage: TInputQueryWizardPage;
@@ -101,6 +103,23 @@ function ServiceExists: Boolean;
 begin
   // sc query devuelve 0 si el servicio existe (aunque esté detenido); 1060 si no existe.
   Result := (RunCmd('sc.exe', 'query ' + ServiceName) = 0);
+end;
+
+function GetOrGenerateJwtKey: String;
+var
+  ExistingKey: String;
+begin
+  // Si existiera una clave previa en instalaciones legacy, se respeta temporalmente;
+  // la generación criptográfica segura (CSPRNG 512 bits) y la protección ACL se delegan a Configure-PosService.ps1
+  if RegQueryStringValue(HKEY_LOCAL_MACHINE, 'Software\POS', 'JwtSecretKey', ExistingKey) and 
+     (Length(ExistingKey) >= 32) and 
+     (ExistingKey <> 'ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795') then
+  begin
+    Result := ExistingKey;
+    Exit;
+  end;
+
+  Result := '';
 end;
 
 procedure InitializeWizard;
@@ -241,7 +260,7 @@ begin
   if IncludeSecrets then
     JsonContent := JsonContent + ',' + #13#10 +
       '  "JwtSettings": {' + #13#10 +
-      '    "Key": "' + DefaultJwtSecretKey + '"' + #13#10 +
+      '    "Key": "' + GetOrGenerateJwtKey + '"' + #13#10 +
       '  }';
   JsonContent := JsonContent + #13#10 + '}';
 
@@ -285,7 +304,7 @@ begin
   SeedNameEnv := 'SystemSettings__AdminSeedName=' + Trim(AdminPage.Values[1]);
   SeedPassEnv := 'SystemSettings__AdminSeedPassword=' + EscapeQuotes(AdminPage.Values[2]);
   BusinessEnv := 'SystemSettings__BusinessName=' + Trim(AdminPage.Values[4]);
-  JwtEnv := 'JWT_SETTINGS_KEY=' + DefaultJwtSecretKey;
+  JwtEnv := 'JWT_SETTINGS_KEY=' + GetOrGenerateJwtKey;
 
   if UseNssm then
   begin
@@ -334,15 +353,48 @@ begin
       AppDir + '\logs para más detalles.', mbError, MB_OK);
 end;
 
+procedure ConfigureServiceWithPowerShell;
+var
+  PsScript, PsParams, ConnString: String;
+  Code: Integer;
+begin
+  PsScript := ExpandConstant('{app}\tools\Configure-PosService.ps1');
+  if not FileExists(PsScript) then
+  begin
+    // Fallback a lógica interna si no existe el script
+    ConfigureFirewall;
+    RegisterOrUpdateService(HasNssm);
+    Exit;
+  end;
+
+  ConnString := 'Host=' + DbPage.Values[0] + ';Port=' + DbPage.Values[1] + ';Database=' +
+    DbPage.Values[2] + ';Username=' + DbPage.Values[3] + ';Password=' + DbPage.Values[4];
+
+  PsParams := '-NoProfile -ExecutionPolicy Bypass -File "' + PsScript + '"' +
+    ' -InstallDir "' + ExpandConstant('{app}') + '"' +
+    ' -ConnectionString "' + ConnString + '"' +
+    ' -AdminSeedPassword "' + EscapeQuotes(AdminPage.Values[2]) + '"' +
+    ' -AdminSeedUsername "' + Trim(AdminPage.Values[0]) + '"' +
+    ' -AdminSeedName "' + Trim(AdminPage.Values[1]) + '"' +
+    ' -BusinessName "' + Trim(AdminPage.Values[4]) + '"';
+
+  Code := RunCmd('powershell.exe', PsParams);
+  if Code <> 0 then
+  begin
+    MsgBox('Aviso: La configuración del servicio reportó código ' + IntToStr(Code) + '.' + #13#10 +
+      'Revise el registro detallado en:' + #13#10 +
+      ExpandConstant('{app}\BackendAPI\logs\installer.log'), mbInformation, MB_OK);
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
-    // 1) Config de producción sin secretos (con NSSM); con secretos solo en el fallback sc.exe.
+    // 1) Config de producción inicial (respaldo estático)
     WriteProductionConfig(not HasNssm);
-    // 2) Firewall: solo HTTP 5000 a la subred local.
-    ConfigureFirewall;
-    // 3) Registrar/actualizar el servicio conservando y reaplicando las env vars.
-    RegisterOrUpdateService(HasNssm);
+    // 2) Configuración idempotente del servicio y firewall mediante PowerShell
+    ConfigureServiceWithPowerShell;
   end;
 end;
+

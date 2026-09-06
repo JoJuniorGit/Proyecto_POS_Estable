@@ -25,13 +25,14 @@ public class ServerPairingInfo
     public int HttpsPort { get; set; } = 5001;
     public string PrimaryHttpUrl { get; set; } = string.Empty;
     public string PrimaryHttpsUrl { get; set; } = string.Empty;
+    public bool IsHttpsEnabled { get; set; }
     public List<NetworkInterfaceInfo> NetworkInterfaces { get; set; } = new();
     public string QrPayload { get; set; } = string.Empty;
 }
 
 public interface INetworkDiscoveryService
 {
-    ServerPairingInfo GetPairingInfo(int httpPort = 5000, int httpsPort = 5001);
+    ServerPairingInfo GetPairingInfo(int httpPort = 5000, int httpsPort = 5001, bool isHttpsEnabled = true);
     List<NetworkInterfaceInfo> GetPhysicalIPv4Interfaces();
 }
 
@@ -44,7 +45,7 @@ public class NetworkDiscoveryService : INetworkDiscoveryService
         "wireguard", "vpn", "loopback", "pseudo", "teredo", "isatap"
     };
 
-    public ServerPairingInfo GetPairingInfo(int httpPort = 5000, int httpsPort = 5001)
+    public ServerPairingInfo GetPairingInfo(int httpPort = 5000, int httpsPort = 5001, bool isHttpsEnabled = true)
     {
         var machineName = Environment.MachineName;
         var interfaces = GetPhysicalIPv4Interfaces();
@@ -63,7 +64,8 @@ public class NetworkDiscoveryService : INetworkDiscoveryService
 
         var primaryIp = primary.IpAddress;
         var httpUrl = $"http://{primaryIp}:{httpPort}";
-        var httpsUrl = $"https://{primaryIp}:{httpsPort}";
+        var httpsUrl = isHttpsEnabled ? $"https://{primaryIp}:{httpsPort}" : string.Empty;
+        var effectiveUrl = isHttpsEnabled ? httpsUrl : httpUrl;
 
         return new ServerPairingInfo
         {
@@ -74,8 +76,9 @@ public class NetworkDiscoveryService : INetworkDiscoveryService
             HttpsPort = httpsPort,
             PrimaryHttpUrl = httpUrl,
             PrimaryHttpsUrl = httpsUrl,
+            IsHttpsEnabled = isHttpsEnabled,
             NetworkInterfaces = interfaces,
-            QrPayload = $"{httpUrl}/?paired=true"
+            QrPayload = $"{effectiveUrl}/?paired=true"
         };
     }
 

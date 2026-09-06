@@ -6,4 +6,6 @@ public interface ISettingsService
 {
     Task<string> GetTimeZoneAsync();
     Task SetTimeZoneAsync(string timeZoneId);
+    Task<string> GetCurrencyFormatAsync();
+    Task SetCurrencyFormatAsync(string format);
 }

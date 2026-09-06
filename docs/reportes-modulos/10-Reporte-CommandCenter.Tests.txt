@@ -1,0 +1,49 @@
+================================================================================
+REPORTE POR MÓDULO: CommandCenter.Tests (Suite Integral de Pruebas Automatizadas)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
+Cruce con docs/reporte.txt (análisis global).
+================================================================================
+
+--------------------------------------------------------------------------------
+1. RESUMEN DE COBERTURA Y EVOLUCIÓN (FASES 1 A 4)
+--------------------------------------------------------------------------------
+La suite de pruebas automatizadas garantiza la estabilidad del sistema y previene
+regresiones funcionales y de contrato:
+
+Métricas Actuales:
+  - Pruebas Backend (.NET 10 / xUnit / Moq): 670 / 670 pruebas superadas (100% éxito en ~10s).
+  - Pruebas Frontend (Node.js / Vitest): 70 / 70 pruebas superadas (100% éxito en ~550ms).
+  - Total Pruebas Automatizadas en la Solución: 740 pruebas activas sin ningún fallo ni omisión.
+
+Nuevas Suites Añadidas en la Remediación de Revisión 7.0:
+1. ForwardedHeadersIntegrationTests.cs (Fase 1 ✅):
+   - 7 pruebas de integración que validan:
+     * Procesamiento de X-Forwarded-For y X-Forwarded-Proto desde proxies loopback.
+     * Soporte de proxies remotos autorizados mediante KnownProxies y KnownIPNetworks.
+     * Rechazo de suplantación de IP desde proxies no autorizados.
+     * Protección de acceso anónimo en PairingController para máquinas locales y bloqueo
+       de accesos externos no autenticados a través de reverse proxies.
+
+2. ProductImportExportTests.cs y MainViewModelDisposeTests.cs (Fases 3 y 4 ✅):
+   - Pruebas de aceptación de SKUs alfanuméricos (BEB-101, COCA_350ML, REF-009) en importador.
+   - Pruebas de rechazo defensivo para caracteres no permitidos (ABC#1234).
+   - Verificación de IDisposable en ProductDialogViewModel con desuscripción limpia de timer.
+
+3. api.test.js (Fase 2 ✅):
+   - 5 pruebas unitarias para extracción de RFC 7807 ProblemDetails (detail, title, array y objeto de errores).
+
+--------------------------------------------------------------------------------
+2. FORTALEZAS DE LA SUITE
+--------------------------------------------------------------------------------
+- Pruebas de integración reales contra PostgreSQL y soporte de Test Data Builders (SaleBuilder, ProductBuilder).
+- Pruebas rigurosas de integridad financiera con dualidad de monedas (USD y Bs.S BCV).
+- Pruebas de debounce, hardware de cámara y navegación móvil en el cliente web.
+- Ejecución rápida (suite completa en menos de 15 segundos en entornos locales).
+
+--------------------------------------------------------------------------------
+3. RECOMENDACIONES FUTURAS
+--------------------------------------------------------------------------------
+- Configurar runners de CI/CD (GitHub Actions / GitLab CI) con soporte de Testcontainers
+  para ejecución automatizada en cada Pull Request contra PostgreSQL real.
+================================================================================

@@ -410,3 +410,7 @@ publish_backend/
 crash*.txt
 build_output.txt
 .env
+.freebuff-test-out/
+desktop.ini
+Thumbs.db
+

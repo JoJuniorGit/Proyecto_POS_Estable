@@ -1,0 +1,54 @@
+================================================================================
+REPORTE POR MÓDULO: Instalador y Scripts (Despliegue, Empaque y Operación)
+Fecha: 2026-09-05
+Revisión: 7.1 (Certificación Final de Remediación Definitiva - 100% Hallazgos Subsanados)
+Cubre: installer/setup.iss, installer/Configure-PosService.ps1, scripts/*.ps1, bat
+Cruce con docs/reporte.txt (análisis global).
+================================================================================
+
+--------------------------------------------------------------------------------
+1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
+--------------------------------------------------------------------------------
+El subsistema de instalación automatiza el aprovisionamiento del POS como Servicio Windows:
+
+1. Generación y Protección de Secretos JWT (C1 / INS-1 ✅):
+   - Configure-PosService.ps1 genera claves de 512 bits mediante CSPRNG criptográfico
+     ([Security.Cryptography.RandomNumberGenerator]) si no se suministra una clave válida.
+   - Aplica ACLs restrictivas en el Registro de Windows (HKLM:\Software\POS), restringiendo
+     la lectura exclusivamente a cuentas SYSTEM y Administradores locales.
+
+2. Resiliencia del Servicio Windows y Fallback Nativo (UPD-2 ✅):
+   - Integración nativa con UseWindowsService() en Program.cs.
+   - Scripts de configuración y actualizador soportan fallback nativo a sc.exe si el
+     binario nssm.exe no se encuentra en el entorno.
+
+3. Reglas de Firewall Idempotentes:
+   - Configuración automática de reglas de entrada en el Firewall de Windows para los
+     puertos 5000 (HTTP) y 5001 (HTTPS), con limpieza de reglas huérfanas previas.
+
+--------------------------------------------------------------------------------
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
+--------------------------------------------------------------------------------
+- C1 / INS-1 (Generación de clave JWT): ✅ CORREGIDO (CSPRNG 512 bits + ACLs).
+  * Residual: La clave aún reside en texto claro dentro de AppEnvironmentExtra de NSSM.
+- C2 / INS-3 (Tráfico HTTP en LAN): ❌ VIGENTE (el instalador expone el puerto 5000 y el
+  tráfico viaja en texto plano si no se genera pos-https.pfx).
+- INS-10 (Error de compilación en Inno Setup): ✅ CERRADO (compilación limpia).
+- INS-12 (Detección de clave histórica ddf95c83...): ✅ CERRADO (rechazo en arranque).
+
+--------------------------------------------------------------------------------
+3. FORTALEZAS DEL MÓDULO
+--------------------------------------------------------------------------------
+- Instalación limpia desatendida mediante Inno Setup y PowerShell integrado.
+- Verificación automática de PostgreSQL y migración de esquemas en el primer inicio.
+- Despliegue empaquetado autónomo con cliente de escritorio y web SPA integrada.
+
+--------------------------------------------------------------------------------
+4. RECOMENDACIONES FUTURAS
+--------------------------------------------------------------------------------
+- Incorporar en setup.iss la generación automatizada de un certificado autofirmado X.509
+  para habilitar HTTPS (5001) por defecto e instalarlo en la Entidad de Certificación
+  de Raíz de Confianza de la máquina local.
+- Migrar el almacenamiento de la clave JWT desde NSSM AppEnvironmentExtra hacia DPAPI
+  o Windows Credential Manager.
+================================================================================

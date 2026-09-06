@@ -15,4 +15,5 @@ public class PaymentMethod
     public bool RequiresReference { get; set; } = false;
     public bool IsCash { get; set; } = false;
     public int DisplayOrder { get; set; } = 0;
+    public bool IsDeleted { get; set; } = false;
 }

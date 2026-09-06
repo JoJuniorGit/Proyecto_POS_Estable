@@ -27,6 +27,7 @@ export default function CustomerSelectorCard({
 
   const searchInputRef = useRef(null);
   const containerRef = useRef(null);
+  const blurTimeoutRef = useRef(null);
 
   const custName = (currentCustomer?.name || currentCustomer?.customerName || '').toLowerCase();
   const isDefaultCust = !currentCustomer?.id || 
@@ -34,6 +35,15 @@ export default function CustomerSelectorCard({
     currentCustomer?.cedulaOrRif === 'V-00000000' ||
     custName.includes('consumidor final') || 
     custName.includes('general');
+
+  // Cancelar y guardar/plegar automáticamente la lista de clientes
+  const handleCancelAndCollapse = () => {
+    setIsDropdownOpen(false);
+    setIsExpanded(false);
+    setIsCreatingCustomer(false);
+    setQuery('');
+    setError(null);
+  };
 
   // Auto-expandir cuando se marca Mercancía en Custodia y el cliente es Consumidor Final
   useEffect(() => {
@@ -47,18 +57,41 @@ export default function CustomerSelectorCard({
     }
   }, [forceExpand, isPendingPickup, isDefaultCust, readOnly]);
 
-  // Manejar tecla Escape para cerrar dropdown
+  // Manejar tecla Escape para cerrar dropdown y cancelar cambio
   useEffect(() => {
     function handleKeyDown(e) {
-      if (e.key === 'Escape' && isExpanded && !isPendingPickup) {
-        setIsExpanded(false);
-        setIsDropdownOpen(false);
-        setIsCreatingCustomer(false);
+      if (e.key === 'Escape' && isExpanded) {
+        handleCancelAndCollapse();
       }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isExpanded, isPendingPickup]);
+  }, [isExpanded]);
+
+  // Cerrar y cancelar al hacer clic o tap fuera del contenedor
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        if (isExpanded && !saving) {
+          handleCancelAndCollapse();
+        }
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isExpanded, saving]);
+
+  // Limpiar timer de blur al desmontar
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+    };
+  }, []);
 
   const loadCustomers = async (q) => {
     setLoadingCustomers(true);
@@ -76,7 +109,7 @@ export default function CustomerSelectorCard({
     if (isExpanded) {
       loadCustomers(debouncedQuery);
     }
-  }, [debouncedQuery]);
+  }, [debouncedQuery, isExpanded]);
 
   const handleToggleExpand = () => {
     if (disabled || readOnly) return;
@@ -99,6 +132,29 @@ export default function CustomerSelectorCard({
     const val = e.target.value;
     setQuery(val);
     setIsDropdownOpen(true);
+  };
+
+  const handleInputFocus = () => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+    }
+    setIsDropdownOpen(true);
+  };
+
+  const handleInputBlur = (e) => {
+    const nextTarget = e.relatedTarget;
+    // Si el foco se movió a otro elemento dentro del contenedor (ej. scrollbar o botón crear)
+    if (containerRef.current && nextTarget && containerRef.current.contains(nextTarget)) {
+      return;
+    }
+
+    // Al perder el foco del buscador, guardar/ocultar automáticamente la lista y cancelar el cambio de clientes
+    blurTimeoutRef.current = setTimeout(() => {
+      if (containerRef.current && containerRef.current.contains(document.activeElement)) {
+        return;
+      }
+      handleCancelAndCollapse();
+    }, 180);
   };
 
   const handleChooseCustomer = async (cust) => {
@@ -258,7 +314,8 @@ export default function CustomerSelectorCard({
                     placeholder="Buscar por Nombre o Cédula/RIF..."
                     value={query}
                     onChange={handleSearchChange}
-                    onFocus={() => setIsDropdownOpen(true)}
+                    onFocus={handleInputFocus}
+                    onBlur={handleInputBlur}
                     style={{
                       paddingLeft: '32px',
                       paddingRight: '28px',
@@ -301,6 +358,10 @@ export default function CustomerSelectorCard({
               {isDropdownOpen && (
                 <div
                   className="custom-scrollbar"
+                  onMouseDown={(e) => {
+                    // Evitar que el mousedown robe el foco al input antes del onClick
+                    e.preventDefault();
+                  }}
                   style={{
                     position: 'absolute',
                     top: 'calc(100% + 4px)',
@@ -329,6 +390,9 @@ export default function CustomerSelectorCard({
                       return (
                         <div
                           key={c.id}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                          }}
                           onClick={() => handleChooseCustomer(c)}
                           className="d-flex justify-between flex-align-center px-3 py-2 text-left"
                           style={{

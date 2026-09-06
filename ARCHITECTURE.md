@@ -91,7 +91,7 @@ Dependencias: `Core`
 | Componente | Archivos | Descripción |
 |---|---|---|
 | `Entities/` | Sale, SaleItem, SalePayment, SaleDeliveryStatus, CashDrawerSession, CashTransaction, ClosureDetail, DailyClosure, PaymentMethod | Entidades de ventas/caja |
-| `Services/` | SalesService, CashDrawerService, DailyClosureService, PaymentMethodService, ClosurePdfGenerator | Servicios de negocio |
+| `Services/` | `SalesService` (orquestador transaccional particionado: `SalesService.cs`, `SalesService.HoldOrders.cs`, `SalesService.Pricing.cs`, `SalesService.CashAdvance.cs`, `SalesService.History.cs`), CashDrawerService, DailyClosureService, PaymentMethodService, ClosurePdfGenerator | Servicios de negocio modularizados en partial classes (<850 líneas/archivo) |
 | `Interfaces/` | ICashDrawerService, IDailyClosureService, IPaymentMethodService, ISalesService | Contratos |
 | `DTOs/` | PendingPickupDto, SaleHistoryDto, UpdateSaleItemsRequestDto | DTOs de ventas |
 | `Data/` | SalesDbContext | DbContext de ventas |
@@ -104,14 +104,24 @@ Dependencias: `Core`
 
 | Componente | Archivos | Descripción |
 |---|---|---|
-| `Services/` | InventoryService, SystemSettingsService | Servicios de inventario |
+| `Services/` | `InventoryService` (orquestador particionado: `InventoryService.cs`, `InventoryService.ExchangeRate.cs`, `InventoryService.StockDeduction.cs`, `InventoryService.CatalogQueries.cs`, `InventoryService.ImportExport.cs`), SystemSettingsService | Servicios de inventario modularizados en partial classes (<700 líneas/archivo) |
 | `Data/` | InventoryDbContext | DbContext de inventario |
 | `EventHandlers/` | InventorySaleMadeEventHandler | Consumidor de SaleMadeEvent (MediatR) |
 | `Migrations/` | 13 archivos | Migraciones EF Core de inventario |
 
-### 2.4 `Logistics.Module` — Placeholder
+### 2.4 `Logistics.Module` — Dominio de Entregas y Despacho (Delivery)
 
-Solo contiene `Logistics.Module.csproj` sin código fuente. Espacio reservado para futuras funcionalidades de logística.
+Dependencias: `Core`, `MediatR`
+
+Módulo desacoplado de ventas para gestión de repartos, despachos a domicilio y asignación de conductores (`Driver`):
+
+| Componente | Archivos | Descripción |
+|---|---|---|
+| `Services/` | IDeliveryService, DeliveryService | Gestión de órdenes de entrega, asignación de choferes y tracking de estado |
+| `DTOs/` | DeliveryOrderDto | Representación de datos de entrega y cliente receptor |
+| `Events/` | DeliveryEvents (DeliveryAssignedEvent, DeliveryStatusUpdatedEvent) | Eventos MediatR de ciclo de vida de logística |
+| `EventHandlers/` | SaleDispatchedEventHandler | Consumidor de `SaleDispatchedEvent` para crear órdenes de despacho sin acoplamiento a `Sales.Module` |
+| `Extensions/` | LogisticsServiceCollectionExtensions | Registro DI de servicios logísticos (`AddLogisticsModule`) |
 
 ### 2.5 `Backend.API` — API REST + SignalR
 
@@ -120,11 +130,12 @@ Dependencias: `Core`, `Sales.Module`, `Inventory.Module`, `MediatR`, `Quartz`
 | Componente | Archivos | Descripción |
 |---|---|---|
 | `Controllers/` | AuthController, CashDrawerController, DailyClosureController, ExchangeRateController, HealthController, PaymentMethodsController, ProductsController, ReservationsController, SalesController, SettingsController, ShiftsController, UsersController, VersionCheckController | 13 controladores REST |
-| `Services/` | BcvScraperService, CurrentUserService, PasswordHasher, TokenService | Servicios auxiliares |
-| `Hubs/` | ExchangeRateHub | SignalR hub para tasas de cambio en tiempo real |
-| `Jobs/` | BcvExchangeRateJob, StockMovementArchiverJob | Tareas programadas (Quartz) |
-| `Middleware/` | GlobalExceptionHandlerMiddleware, VersionCheckMiddleware | Middleware de excepciones y versioning |
+| `Services/` | BcvScraperService, CurrentUserService, PasswordHasher, TokenService, PasswordPolicyService | Servicios auxiliares |
+| `Hubs/` | ExchangeRateHub | SignalR hub para tasas de cambio y eventos de venta en tiempo real |
+| `Jobs/` | StockMovementArchiverJob (archivado en lotes a tabla histórica), BcvExchangeRateJob (sync BCV), IdempotencyCleanupJob (purga forense), OutboxProcessorJob (procesamiento y purga programada de mensajes Processed > 7d) | Tareas programadas (BackgroundService) |
+| `Middleware/` | GlobalExceptionHandlerMiddleware (ProblemDetails RFC 7807), VersionCheckMiddleware, MustChangePasswordMiddleware, SecurityHeadersMiddleware (CSP endurecido script-src 'self' en producción, nosniff, DENY) | Pipeline de middleware HTTP |
 | `DTOs/` | AdjustStockRequestDto, AdjustStockResultDto, BarcodeScanResultDto, CashDrawerOpenRequestDto, etc. | DTOs de API |
+
 
 ---
 
@@ -207,21 +218,34 @@ public record SaleItemSnapshot(
 
 **Handler:** `InventorySaleMadeEventHandler` descuenta stock con retry (3 intentos) y logging de fallos críticos.
 
-### 4.2 SignalR: ExchangeRateHub
+### 4.2 SignalR: ExchangeRateHub (Modelo Híbrido: Automático + Manual a Demanda)
 
 ```
-┌──────────────┐    Broadcast    ┌──────────────┐    Subscribe   ┌──────────────────┐
-│ BcvExchange  │ ──────────────►│ ExchangeRate │ ──────────────►│ Web Frontend     │
-│ RateJob      │                │ Hub          │                │ (ExchangeRateCtx)│
-│ (Quartz)     │                │              │                │ Desktop Client   │
-└──────────────┘                └──────────────┘                │ (ExchangeRateSvc)│
-                                                                └──────────────────┘
+┌──────────────────────┐    POST /sync-bcv    ┌──────────────┐    Broadcast    ┌──────────────────┐
+│ Administrador /      │ ───────────────────► │ ExchangeRate │ ──────────────► │ Web Frontend     │
+│ BcvExchangeRateJob   │    POST /api/rate    │ Hub          │                 │ (ExchangeRateCtx)│
+│ (Automático cada 2h) │ ◄─────────────────── │              │                 │ Desktop Client   │
+└──────────────────────┘   200 OK + Caché     └──────────────┘                 │ (ExchangeRateSvc)│
+                           Purge bcv_rate_today                                └──────────────────┘
 ```
 
-**Flujo:**
-1. `BcvExchangeRateJob` ejecuta cada X minutos (Quartz)
-2. Scraping de BCV → nueva tasa → `ExchangeRateHub.Clients.All.SendAsync("ReceiveRate", rate)`
-3. Web y Desktop reciben la actualización en tiempo real
+**Flujo y Principios de Diseño:**
+1. **Modelo Híbrido Resiliente:**
+   - **Automático:** `BcvExchangeRateJob` se ejecuta en segundo plano cada 2 horas (`PeriodicTimer(TimeSpan.FromHours(2))`). Consulta el portal oficial del BCV respetando el timeout configurado en `appsettings.json` (`BcvSettings:TimeoutSeconds`, default 15s).
+   - **A Demanda / Manual:** El administrador puede sincronizar con el botón oficial (`POST /api/exchange-rate/sync-bcv`) o con la tecla rápida `F5` en el POS; o bien digitar manualmente la tasa de contingencia.
+2. **Defensas del Scraper y Observabilidad:**
+   - Si el scraper falla por conectividad o el portal del BCV retorna HTTP 502/504/timeout, el error es atrapado con log estructurado (`[BCV Scraper Audit]`), y la tasa activa se **preserva intacta** sin generar interrupción de caja.
+   - Validación de Rango Razonable: Si el valor extraído es menor o igual a 0 o mayor o igual a 1,000,000, se descarta emitiendo advertencia de auditoría estructurada.
+   - Redondeo Hacia Arriba (Ceiling): Se aplica redondeo hacia arriba a 2 decimales (`PricingCalculator.RoundExchangeRateCeiling`: `Math.Ceiling(rate * 100) / 100`; ej. 804.6301 -> 804.64) antes de persistir y propagar.
+3. **Corte Diario y Zona Horaria Legal (Venezuela UTC-4):**
+   - El sistema calcula la fecha de la jornada cambiaria mediante `Core.Helpers.TimeZoneHelper.GetVenezuelaDate()` (`America/Caracas` / `Venezuela Standard Time` / offset fijo UTC-4).
+   - Esto previene que al cruzar las 8:00 PM (hora local), el sistema salte a la fecha UTC del día siguiente.
+   - Si no existe cotización para el día actual (fines de semana, feriados bancarios o inicio de jornada), `GET /api/exchange-rate/today` aplica fallback al último registro histórico válido hasta hoy (`Where(r => r.Date <= today).OrderByDescending(r => r.Date)`), garantizando que el sistema jamás devuelva `0` ni caiga en contingencia de `1`.
+4. **Propagación en Tiempo Real:**
+   - Ante cualquier cambio, se persiste en `ExchangeRateHistory`, se purga la clave en memoria `bcv_rate_today`, se recalculan las ventas en espera (`RecalculateOnHoldSalesAsync`) y se emite `ReceiveRateUpdate` y `OnHoldSalesUpdated` vía `ExchangeRateHub`.
+5. **Consideración Multi-instancia y Concurrencia:**
+   - La arquitectura actual asume una **única instancia primaria** del backend (`PosBackendService`) por punto de venta/sucursal física.
+   - Para futuros despliegues multi-nodo o clústeres balanceados, la ejecución concurrente de `BcvExchangeRateJob` debe coordinarse mediante un mecanismo de exclusión mutua distribuida (por ejemplo, PostgreSQL Session Advisory Locks `pg_try_advisory_lock` o un lease en base de datos) para evitar scraping redundante, y la invalidación de `IMemoryCache` debe transicionar a un bus distribuido (Redis / Npgsql Listen-Notify).
 
 ### 4.3 HealthPolling (Desktop Client)
 
@@ -257,6 +281,40 @@ public record SaleItemSnapshot(
 │ → Shutdown()     │
 └──────────────────┘
 ```
+
+### 4.5 Motor Multi-Formato Monetario (Dual-Currency Format Pipeline)
+
+El sistema soporta oficialmente dos estándares numéricos de presentación y parseo gobernados globalmente:
+
+1. **Venezolano Contable (`Venezuelan` - Por Defecto):**
+   - Separador de miles: Punto (`.`)
+   - Separador decimal: Coma (`,`)
+   - Ejemplos: `172.786,94` / `Bs.S 172.786,94` / `$ 1.250,50`
+2. **Internacional (`International`):**
+   - Separador de miles: Coma (`,`)
+   - Separador decimal: Punto (`.`)
+   - Ejemplos: `172,786.94` / `Bs.S 172,786.94` / `$ 1,250.50`
+
+```
+┌───────────────────────────┐      PUT /api/settings/currency-format      ┌──────────────────────┐
+│  Configuración (Admin)    │ ──────────────────────────────────────────► │ Backend API          │
+│  (Web / Desktop WPF)      │ ◄────────────────────────────────────────── │ (SettingsController) │
+└───────────────────────────┘      200 OK + Persiste en SystemSettings    └──────────┬───────────┘
+                                                                                     │
+                                                      Broadcast OnCurrencyFormatUpdated via SignalR
+                                                                                     ▼
+                                       ┌─────────────────────────────────────────────────────────────┐
+                                       │ Clients: Web (CurrencyFormatContext) & WPF (SettingsVM)     │
+                                       │ Actualización reactiva instantánea sin recarga de pantalla  │
+                                       └─────────────────────────────────────────────────────────────┘
+```
+
+**Principios de Implementación y Reglas de Parseo:**
+- **Inmutabilidad y Coherencia:** El formato es puramente cosmético a nivel de presentación (UI). Los datos en base de datos y memoria viajan siempre como números de punto flotante (`decimal` / `number`), garantizando cero drift financiero.
+- **Regla de Parseo Universal (`parseAmount`):**
+  - Un solo separador (punto o coma): Se interpreta como separador decimal (`172,94` -> `172.94`, `172.94` -> `172.94`, `72915` -> `72915.00`).
+  - Dos o más separadores: El **último** separador es el decimal y los precedentes son de miles (`172.786,94` -> `172786.94`, `172,786.94` -> `172786.94`, `1.234.567,89` -> `1234567.89`).
+- **Utilidades Centralizadas Obligatorias:** Se prohíben formateadores locales ad-hoc. Todo nuevo desarrollo debe utilizar `formatAmount`, `formatBsS`, `formatUSD` y `parseAmount` de `formatters.js` (Web) o `NumericCalculatorBehavior.ParseAmount` (WPF).
 
 ---
 
@@ -377,7 +435,7 @@ Request
   │
   ▼
 ┌─────────────────────────────────┐
-│ GlobalExceptionHandlerMiddleware│  ← Captura excepciones no manejadas
+│ GlobalExceptionHandlerMiddleware│  ← Captura excepciones no manejadas y estandariza respuestas RFC 7807
 ├─────────────────────────────────┤
 │ UseDefaultFiles + UseStaticFiles│  ← Sirve React build (wwwroot)
 ├─────────────────────────────────┤
@@ -394,6 +452,26 @@ Request
 │ MapHub<ExchangeRateHub>         │  ← SignalR endpoint
 └─────────────────────────────────┘
 ```
+
+### 7.1 Manejo Centralizado de Excepciones (RFC 7807 ProblemDetails)
+
+Toda excepción no controlada que ocurre en los controladores o servicios del Backend se intercepta en `GlobalExceptionHandlerMiddleware`, eliminando bloques `catch (Exception)` con texto plano en los controladores. Las respuestas siguen la especificación RFC 7807 e incluyen campos de compatibilidad dual para clientes WPF y Web:
+
+| Excepción / Origen | Código HTTP | Error Code | Mensaje / Detalle |
+|---|---|---|---|
+| `PostgresException` (SQLSTATE `23505`) | 409 Conflict | `UniqueConstraintViolation` | Mensaje amigable mapeado por restricción (código de barras, cédula, etc.) |
+| `PostgresException` (SQLSTATE `23502`) | 400 Bad Request | `NotNullConstraintViolation` | Notificación de campo obligatorio no nulo con nombre de columna |
+| `PostgresException` (SQLSTATE `23503`) | 400 Bad Request | `ForeignKeyViolation` | Mensaje de restricción de integridad referencial |
+| `PostgresException` (SQLSTATE `22001`, `23514`) | 400 Bad Request | `InvalidDataConstraintViolation` | Violación de formato o longitud en base de datos |
+| `PostgresException` (SQLSTATE `08*`, `28P01`) o `NpgsqlException` | 503 Service Unavailable | `DatabaseConnectionError` | Error de conexión / autenticación con PostgreSQL |
+| `KeyNotFoundException` | 404 Not Found | `NotFound` | Recurso no encontrado |
+| `UnauthorizedAccessException` | 403 Forbidden | `Forbidden` | Permisos insuficientes para la operación solicitada |
+| `ArgumentException` | 400 Bad Request | `BadRequest` | Argumentos inválidos en la solicitud de dominio |
+| `DbUpdateConcurrencyException` | 409 Conflict | `ConcurrencyConflict` | Conflicto de versión de fila en concurrencia optimista |
+| `InvalidOperationException` | 409 Conflict | `InvalidOperation` | Operación inválida en el estado actual del dominio |
+| `Exception` (cualquier otra no controlada) | 500 Internal Server Error | `InternalServerError` | Error interno inesperado (registrado en log forense) |
+
+Todos los payloads de error retornan: `type`, `title`, `status`, `error`, `message`, `Message`, `detail`, `instance`, `traceId`, `TraceId` (y `sqlState` cuando aplica).
 
 ---
 
@@ -601,35 +679,80 @@ dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --logger "trx;LogFile
 │                           FLUJO DE VENTA COMPLETA                           │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                               │
-│  1. POS Page                                                                 │
-│     └─► Agregar productos al cart (CartContext)                              │
+│  1. POS Page / Desktop POS View                                              │
+│     └─► Agregar productos al carrito (CartContext / POSViewModel)            │
 │         └─► Seleccionar cliente (CustomerSelector)                           │
-│             └─► Abrir CheckoutModal                                          │
+│             └─► Abrir CheckoutModal / PaymentDialog                          │
 │                                                                               │
 │  2. CheckoutModal                                                            │
-│     └─► Seleccionar método de pago                                           │
-│         └─► Ingresar monto (ATMInput / partial payment)                      │
+│     └─► Seleccionar métodos de pago (Mixto USD / Bs.S / Digital)             │
+│         └─► Generar/conservar Idempotency-Key UUID                           │
 │             └─► Confirmar venta                                              │
 │                                                                               │
-│  3. Backend API                                                              │
-│     └─► POST /api/sales                                                     │
-│         └─► SalesService.CreateSaleAsync()                                   │
-│             ├─► Crear Sale + SaleItems + SalePayments                        │
-│             ├─► Publish SaleMadeEvent (MediatR)                              │
-│             │   └─► InventorySaleMadeEventHandler                            │
-│             │       └─► InventoryService.UpdateStockAsync()                  │
-│             │           └─► StockMovement (descuento de stock)               │
-│             └─► Retornar InvoiceNumber                                        │
+│  3. Backend API: POST /api/sales/{id}/complete                               │
+│     ├─► Validar formato regex de Idempotency-Key                              │
+│     ├─► Calcular SHA-256 compuesto (Method + Path + Body) en bytea           │
+│     ├─► Consultar IdempotentRequests:                                         │
+│     │   ├─► HIT (mismo hash) ──► Retornar 200 OK cacheado (X-Cache-Lookup:HIT)│
+│     │   └─► MISMATCH ──────────► LogSecurityAudit + Retornar 422             │
+│     └─► MISS (nueva venta):                                                  │
+│         └─► SalesService.CompleteSaleAsync()                                 │
+│             ├─► ExecutionStrategy (reintentos ante deadlocks transitorios)   │
+│             ├─► Iniciar Transacción Compartida (IsolationLevel.ReadCommitted)│
+│             │   ├─► SalesDbContext.Database.BeginTransactionAsync()          │
+│             │   └─► InventoryDbContext.Database.UseTransactionAsync()        │
+│             ├─► Deducción síncrona de stock (InventoryService.UpdateStock)   │
+│             ├─► Persistir Sale, SalePayments, CashTransactions               │
+│             ├─► Persistir OutboxMessage ("SaleCompleted" para SignalR)       │
+│             ├─► Persistir IdempotentRequest (Key, Path, Hash, 200, Body)     │
+│             ├─► Commit Transaccional Atómico (Venta + Stock + Idempotencia)  │
+│             └─► Retornar InvoiceNumber                                       │
 │                                                                               │
 │  4. Response                                                                  │
-│     └─► SuccessScreen (mostrar factura)                                      │
-│         └─► Reset cart                                                       │
+│     └─► SuccessScreen / Modal de Factura (mostrar InvoiceNumber)             │
+│         └─► Reset cart y descarte de Idempotency-Key                         │
 │                                                                               │
-│  5. Real-time (opcional)                                                     │
-│     └─► SignalR: ExchangeRateHub actualiza tasa                              │
-│         └─► Productos recalculan precios en Bs.S                             │
+│  5. Background Jobs                                                          │
+│     ├─► OutboxProcessorJob: Notificación push SignalR (ReceiveSaleCompleted) │
+│     └─► IdempotencyCleanupJob: Purga por lotes de 1.000 filas (ExpiresAt<NOW)│
 │                                                                               │
 └─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Diagrama de Secuencia: Transacción Compartida e Idempotencia (Fase 4)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cajero as Cliente / Cajero (WPF o Web)
+    participant SC as SalesController
+    participant IS as IdempotencyService
+    participant SS as SalesService
+    participant SalesDB as SalesDbContext (PostgreSQL)
+    participant InvDB as InventoryDbContext (PostgreSQL)
+
+    Cajero->>SC: POST /api/sales/{id}/complete (Idempotency-Key + Body)
+    SC->>IS: ValidateIdempotencyAsync(key, path, method, payloadBytes)
+    alt Clave encontrada con mismo hash
+        IS-->>SC: IdempotentResult (Cached Response)
+        SC-->>Cajero: 200 OK (X-Cache-Lookup: HIT)
+    else Clave encontrada con hash diferente
+        IS-->>SC: Error (Payload Mismatch)
+        Note over SC: LogSecurityAudit (Key, Path, IP, Mismatch)
+        SC-->>Cajero: 422 Unprocessable Entity
+    else Clave nueva
+        SC->>SS: CompleteSaleAsync(saleId, ..., idempotencyKey, payloadHash)
+        Note over SS: ExecutionStrategy.ExecuteAsync
+        SS->>SalesDB: salesTx = await BeginTransactionAsync(ReadCommitted)
+        SS->>InvDB: await UseTransactionAsync(salesTx.GetDbTransaction())
+        SS->>InvDB: UpdateStockAsync() (en misma tx compartida, sin subtransacciones)
+        SS->>SalesDB: Insert Payments, CashTx, OutboxMessage
+        SS->>SalesDB: Insert IdempotentRequest (Key, Path, PayloadHash bytea, 200, Body)
+        SS->>SalesDB: await SaveChangesAsync()
+        SS->>SalesDB: await salesTx.CommitAsync() (persiste atómicamente Venta + Stock + Idempotencia)
+        SS-->>SC: InvoiceNumber
+        SC-->>Cajero: 200 OK (X-Cache-Lookup: MISS)
+    end
 ```
 
 ---

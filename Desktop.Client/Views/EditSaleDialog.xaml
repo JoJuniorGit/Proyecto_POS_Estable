@@ -93,7 +93,25 @@
                                                 <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="13"/>
                                                 <TextBlock Text="{Binding SKU, StringFormat='SKU: {0}'}" FontSize="11" Foreground="Gray"/>
                                             </StackPanel>
-                                            <TextBlock Grid.Column="1" Text="{Binding PriceUSD, StringFormat='${0:N2}'}" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="12,0,4,0"/>
+                                            <TextBlock Grid.Column="1" FontWeight="Bold" VerticalAlignment="Center" Margin="12,0,4,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="{Binding PriceUSD, StringFormat='${0:N2}'}"/>
+                                                        <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                                                        <Style.Triggers>
+                                                            <MultiDataTrigger>
+                                                                <MultiDataTrigger.Conditions>
+                                                                    <Condition Binding="{Binding IsGroupHeader}" Value="True"/>
+                                                                    <Condition Binding="{Binding HasIndependentPricing}" Value="True"/>
+                                                                </MultiDataTrigger.Conditions>
+                                                                <Setter Property="Text" Value="Precios indiv."/>
+                                                                <Setter Property="Foreground" Value="Gray"/>
+                                                                <Setter Property="FontStyle" Value="Italic"/>
+                                                            </MultiDataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>

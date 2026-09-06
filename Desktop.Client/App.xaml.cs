@@ -25,20 +25,40 @@ public partial class App : Application
     public static string ShutdownReason { get; set; } = string.Empty;
 
     private IHost? _host;
+    private bool _isServicesStopped;
     private readonly string _crashPath = GetCrashPath();
 
     private static string GetCrashPath()
     {
-        var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
-        while (dir != null)
+        try
         {
-            if (File.Exists(Path.Combine(dir.FullName, "start.bat")) || File.Exists(Path.Combine(dir.FullName, "Start.bat")))
+            // 1. En entorno de desarrollo (con start.bat presente), registrar en la raíz del proyecto
+            var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+            while (dir != null)
             {
-                return Path.Combine(dir.FullName, "crash.txt");
+                if (File.Exists(Path.Combine(dir.FullName, "start.bat")) || File.Exists(Path.Combine(dir.FullName, "Start.bat")))
+                {
+                    return Path.Combine(dir.FullName, "crash.txt");
+                }
+                dir = dir.Parent;
             }
-            dir = dir.Parent;
+
+            // 2. En producción, registrar en %LOCALAPPDATA% donde usuarios estándar tienen permisos completos de escritura
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!string.IsNullOrWhiteSpace(localAppData))
+            {
+                string logDir = Path.Combine(localAppData, "CommandCenterPOS", "Logs");
+                Directory.CreateDirectory(logDir);
+                return Path.Combine(logDir, "crash.txt");
+            }
         }
-        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.txt");
+        catch
+        {
+            // Ignorar y proceder al fallback
+        }
+
+        // 3. Fallback de emergencia a %TEMP% con ProcessId para evitar colisiones entre instancias concurrentes
+        return Path.Combine(Path.GetTempPath(), $"commandcenter_wpf_crash_{Environment.ProcessId}.txt");
     }
 
     public App()
@@ -96,6 +116,7 @@ public partial class App : Application
         builder.Services.AddSingleton<IConnectionManager, ConnectionManager>();
         builder.Services.AddSingleton<IDialogService, WpfDialogService>();
         builder.Services.AddSingleton<IJitterProvider, ProductionJitterProvider>();
+        builder.Services.AddSingleton<ISecureTokenStorageService, SecureTokenStorageService>();
         builder.Services.AddSingleton<UserSession>();
         builder.Services.AddTransient<UserSessionHeaderHandler>();
         builder.Services.AddTransient<ResilienceHandler>();
@@ -243,8 +264,9 @@ public partial class App : Application
 
             if (!checkResult.IsCompatible)
             {
-                Core.Logging.AppLogger.LogStart($"Client version obsolete. Installed: 1.0.0, Required: {checkResult.MinimumClientVersion}. Displaying lockout modal.");
-                var lockoutVm = new ViewModels.VersionLockoutViewModel("1.0.0", checkResult.MinimumClientVersion, checkResult.UpdateServerUrl);
+                var currentVersion = Core.Common.AppVersionHelper.CurrentVersion;
+                Core.Logging.AppLogger.LogStart($"Client version obsolete. Installed: {currentVersion}, Required: {checkResult.MinimumClientVersion}. Displaying lockout modal.");
+                var lockoutVm = new ViewModels.VersionLockoutViewModel(currentVersion, checkResult.MinimumClientVersion, checkResult.UpdateServerUrl);
                 var lockoutDialog = new Views.VersionLockoutDialog(lockoutVm);
                 lockoutDialog.ShowDialog();
                 ShutdownReason = "Versión del cliente no compatible";
@@ -253,6 +275,21 @@ public partial class App : Application
             }
 
             Core.Logging.AppLogger.LogStart("WPF Desktop Client version check passed. Displaying MainWindow.");
+
+            // Restaurar sesión previa resguardada en DPAPI (H-DCC-11 / R7)
+            try
+            {
+                var userSession = _host.Services.GetRequiredService<UserSession>();
+                if (userSession.TryRestoreTokenFromStorage())
+                {
+                    Core.Logging.AppLogger.LogStart($"Sesión previa restaurada exitosamente para '{userSession.UserName}' ({userSession.CurrentUser?.Role}).");
+                }
+            }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.RestoreToken");
+            }
+
             var mainWindow = _host.Services.GetRequiredService<MainWindow>();
             mainWindow.Show();
         }
@@ -263,11 +300,13 @@ public partial class App : Application
         }
     }
 
-    protected override void OnExit(ExitEventArgs e)
+    /// <summary>
+    /// Detiene y dispone de manera asíncrona y no bloqueante los servicios en segundo plano y el Generic Host.
+    /// </summary>
+    public async Task StopServicesAsync()
     {
-        IsShutdownRequested = true;
-        if (string.IsNullOrEmpty(ShutdownReason)) ShutdownReason = "Cierre de la ventana principal";
-        Core.Logging.AppLogger.LogStart($"WPF Desktop Client shutting down. Motivo: {ShutdownReason}");
+        if (_isServicesStopped) return;
+        _isServicesStopped = true;
 
         if (_host != null)
         {
@@ -280,14 +319,10 @@ public partial class App : Application
                     healthService.StopPolling();
                     Core.Logging.AppLogger.LogStart("Servicio de sondeo de salud detenido con éxito.");
                 }
-                else
-                {
-                    Core.Logging.AppLogger.LogStart("Advertencia: IHealthPollingService no encontrado en el contenedor DI.");
-                }
             }
             catch (Exception ex)
             {
-                Core.Logging.AppLogger.LogCrash(ex, "App.OnExit.StopHealthPolling");
+                Core.Logging.AppLogger.LogCrash(ex, "App.StopServicesAsync.StopHealthPolling");
             }
 
             try
@@ -299,35 +334,56 @@ public partial class App : Application
                     disposableExchange.Dispose();
                     Core.Logging.AppLogger.LogStart("Servicio de tasa de cambio dispuesto con éxito.");
                 }
-                else
-                {
-                    Core.Logging.AppLogger.LogStart("Advertencia: IExchangeRateService no encontrado o no es IDisposable.");
-                }
             }
             catch (Exception ex)
             {
-                Core.Logging.AppLogger.LogCrash(ex, "App.OnExit.DisposeExchangeRate");
+                Core.Logging.AppLogger.LogCrash(ex, "App.StopServicesAsync.DisposeExchangeRate");
             }
 
             try
             {
-                Core.Logging.AppLogger.LogStart("Deteniendo Generic Host...");
-                _host.StopAsync(TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
+                Core.Logging.AppLogger.LogStart("Deteniendo Generic Host asíncronamente...");
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await _host.StopAsync(cts.Token);
                 Core.Logging.AppLogger.LogStart("Generic Host detenido con éxito.");
             }
             catch (Exception ex)
             {
-                Core.Logging.AppLogger.LogCrash(ex, "App.OnExit.StopHost");
+                Core.Logging.AppLogger.LogCrash(ex, "App.StopServicesAsync.StopHost");
             }
 
             try
             {
                 _host.Dispose();
+                _host = null;
                 Core.Logging.AppLogger.LogStart("Generic Host dispuesto con éxito.");
             }
             catch (Exception ex)
             {
-                Core.Logging.AppLogger.LogCrash(ex, "App.OnExit.DisposeHost");
+                Core.Logging.AppLogger.LogCrash(ex, "App.StopServicesAsync.DisposeHost");
+            }
+        }
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        IsShutdownRequested = true;
+        if (string.IsNullOrEmpty(ShutdownReason)) ShutdownReason = "Cierre de la ventana principal";
+        Core.Logging.AppLogger.LogStart($"WPF Desktop Client shutting down. Motivo: {ShutdownReason}");
+
+        if (!_isServicesStopped && _host != null)
+        {
+            try
+            {
+                var stopTask = StopServicesAsync();
+                if (!stopTask.Wait(TimeSpan.FromSeconds(3)))
+                {
+                    Core.Logging.AppLogger.LogStart("StopServicesAsync timed out during OnExit shutdown (3s limit).");
+                }
+            }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogCrash(ex, "App.OnExit.StopServices");
             }
         }
 
@@ -338,8 +394,5 @@ public partial class App : Application
         catch { }
 
         base.OnExit(e);
-
-        // Garantizar que el proceso del sistema operativo desaparezca de inmediato
-        Environment.Exit(e.ApplicationExitCode);
     }
 }

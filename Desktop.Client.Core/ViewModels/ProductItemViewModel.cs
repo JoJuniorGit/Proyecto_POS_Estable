@@ -20,6 +20,7 @@ public partial class ProductItemViewModel : ObservableObject
     private string _sKU = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayCost))]
     private decimal _cost;
 
     [ObservableProperty]
@@ -29,12 +30,16 @@ public partial class ProductItemViewModel : ObservableObject
     private bool _isActive;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAdjustStock))]
+    [NotifyPropertyChangedFor(nameof(AdjustStockToolTip))]
     private bool _isDeleted;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayWholesalePrice))]
     private decimal _priceWholesaleUSD;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayWholesalePrice))]
     private decimal _priceWholesaleBsS;
 
     [ObservableProperty]
@@ -48,6 +53,35 @@ public partial class ProductItemViewModel : ObservableObject
 
     [ObservableProperty]
     private string _selectedCurrency = "Bs.S";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayCost))]
+    [NotifyPropertyChangedFor(nameof(DisplayRetailPrice))]
+    [NotifyPropertyChangedFor(nameof(DisplayWholesalePrice))]
+    [NotifyPropertyChangedFor(nameof(FormattedStockQuantity))]
+    [NotifyPropertyChangedFor(nameof(IsStockCritical))]
+    [NotifyPropertyChangedFor(nameof(CanAdjustStock))]
+    [NotifyPropertyChangedFor(nameof(AdjustStockToolTip))]
+    private bool _isGroupHeader;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAdjustStock))]
+    [NotifyPropertyChangedFor(nameof(AdjustStockToolTip))]
+    [NotifyPropertyChangedFor(nameof(FormattedStockQuantity))]
+    private bool _isStockShared;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAdjustStock))]
+    [NotifyPropertyChangedFor(nameof(AdjustStockToolTip))]
+    private bool _parentIsStockShared;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayCost))]
+    [NotifyPropertyChangedFor(nameof(DisplayRetailPrice))]
+    [NotifyPropertyChangedFor(nameof(DisplayWholesalePrice))]
+    private bool _hasIndependentPricing;
+
+    public int? ParentProductId => _dto.ParentProductId;
 
     public bool IsInactive => !IsActive && !IsDeleted;
 
@@ -64,7 +98,6 @@ public partial class ProductItemViewModel : ObservableObject
     public decimal EffectiveMinWholesaleQuantity => HasRealWholesale ? (MinWholesaleQuantity > 0 ? MinWholesaleQuantity : 1m) : 1m;
 
     public bool IsCashAdvance => _dto.IsCashAdvance;
-    public bool IsGroupHeader => _dto.IsGroupHeader;
     public decimal ConsolidatedStock => _dto.ConsolidatedStock;
 
     public bool IsStockCritical => !IsCashAdvance && !IsGroupHeader && StockQuantity <= 0;
@@ -89,11 +122,13 @@ public partial class ProductItemViewModel : ObservableObject
 
     public string WholesalePriceColor => HasRealWholesale ? "#6366F1" : "#D97706";
 
+    public string DisplayCost => (IsGroupHeader && HasIndependentPricing) ? "—" : $"${Cost:N2}";
 
     public string DisplayRetailPrice
     {
         get
         {
+            if (IsGroupHeader && HasIndependentPricing) return "—";
             if (SelectedCurrency == "USD") return $"${PriceUSD:N2}";
             decimal bss = PriceBsS > 0 
                 ? PriceBsS 
@@ -106,11 +141,31 @@ public partial class ProductItemViewModel : ObservableObject
     {
         get
         {
+            if (IsGroupHeader && HasIndependentPricing) return "—";
             if (SelectedCurrency == "USD") return $"${EffectivePriceWholesaleUSD:N2}";
             decimal bss = EffectivePriceWholesaleBsS > 0 
                 ? EffectivePriceWholesaleBsS 
                 : (_exchangeRateService.CurrentRate > 0 ? Math.Round(EffectivePriceWholesaleUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0m);
             return $"Bs.S {bss:N2}";
+        }
+    }
+
+    public bool CanAdjustStock =>
+        !IsCashAdvance &&
+        !IsDeleted &&
+        (IsGroupHeader ? IsStockShared : (ParentProductId.HasValue ? !ParentIsStockShared : true));
+
+    public string AdjustStockToolTip
+    {
+        get
+        {
+            if (IsDeleted) return Core.Constants.InventoryMessages.TooltipDeleted;
+            if (IsCashAdvance) return Core.Constants.InventoryMessages.TooltipCashAdvance;
+            if (IsGroupHeader && !IsStockShared)
+                return Core.Constants.InventoryMessages.TooltipGroupIndividualBlocked;
+            if (ParentProductId.HasValue && ParentIsStockShared)
+                return Core.Constants.InventoryMessages.TooltipVariantSharedBlocked;
+            return Core.Constants.InventoryMessages.TooltipAdjustStockAllowed;
         }
     }
 
@@ -137,6 +192,11 @@ public partial class ProductItemViewModel : ObservableObject
         _hasWholesale = dto.HasWholesale || dto.PriceWholesaleUSD > 0;
         _unitOfMeasureStr = dto.UnitOfMeasureStr;
 
+        _isGroupHeader = dto.IsGroupHeader;
+        _isStockShared = dto.IsStockShared;
+        _parentIsStockShared = dto.ParentIsStockShared;
+        _hasIndependentPricing = dto.HasIndependentPricing;
+
         _isActive = dto.IsActive;
         _isDeleted = dto.IsDeleted;
     }
@@ -144,6 +204,7 @@ public partial class ProductItemViewModel : ObservableObject
     public void NotifyCurrencyChanged(string newCurrency)
     {
         SelectedCurrency = newCurrency;
+        OnPropertyChanged(nameof(DisplayCost));
         OnPropertyChanged(nameof(DisplayRetailPrice));
         OnPropertyChanged(nameof(DisplayWholesalePrice));
     }
@@ -177,6 +238,9 @@ public partial class ProductItemViewModel : ObservableObject
             _dto.LowStockThreshold = dto.LowStockThreshold;
             _dto.IsCashAdvance = dto.IsCashAdvance;
             _dto.IsGroupHeader = dto.IsGroupHeader;
+            _dto.IsStockShared = dto.IsStockShared;
+            _dto.ParentIsStockShared = dto.ParentIsStockShared;
+            _dto.HasIndependentPricing = dto.HasIndependentPricing;
             _dto.ConsolidatedStock = dto.ConsolidatedStock;
             _dto.ParentProductId = dto.ParentProductId;
             _dto.ReservedQuantity = dto.ReservedQuantity;
@@ -199,6 +263,11 @@ public partial class ProductItemViewModel : ObservableObject
             HasWholesale = dto.HasWholesale || dto.PriceWholesaleUSD > 0;
             UnitOfMeasureStr = dto.UnitOfMeasureStr;
 
+            IsGroupHeader = dto.IsGroupHeader;
+            IsStockShared = dto.IsStockShared;
+            ParentIsStockShared = dto.ParentIsStockShared;
+            HasIndependentPricing = dto.HasIndependentPricing;
+
             IsActive = dto.IsActive;
             IsDeleted = dto.IsDeleted;
 
@@ -206,6 +275,9 @@ public partial class ProductItemViewModel : ObservableObject
             OnPropertyChanged(nameof(StatusLabel));
             OnPropertyChanged(nameof(IsCashAdvance));
             OnPropertyChanged(nameof(IsGroupHeader));
+            OnPropertyChanged(nameof(IsStockShared));
+            OnPropertyChanged(nameof(ParentIsStockShared));
+            OnPropertyChanged(nameof(HasIndependentPricing));
             OnPropertyChanged(nameof(ConsolidatedStock));
             OnPropertyChanged(nameof(HasRealWholesale));
             OnPropertyChanged(nameof(EffectiveMinWholesaleQuantity));
@@ -213,8 +285,11 @@ public partial class ProductItemViewModel : ObservableObject
             OnPropertyChanged(nameof(IsStockCritical));
             OnPropertyChanged(nameof(FormattedStockQuantity));
             OnPropertyChanged(nameof(WholesalePriceColor));
+            OnPropertyChanged(nameof(DisplayCost));
             OnPropertyChanged(nameof(DisplayRetailPrice));
             OnPropertyChanged(nameof(DisplayWholesalePrice));
+            OnPropertyChanged(nameof(CanAdjustStock));
+            OnPropertyChanged(nameof(AdjustStockToolTip));
 
         }
         finally

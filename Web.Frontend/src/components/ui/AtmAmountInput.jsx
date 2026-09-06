@@ -1,61 +1,95 @@
-import React, { useState, useEffect } from 'react';
-import { formatNumberEs, parseFormattedNumber, formatAtmInput } from '../../utils/formatters';
+import React, { useState, useEffect, useRef } from 'react';
+import { useCurrencyFormat } from '../../context/CurrencyFormatContext';
 
 export default function AtmAmountInput({
   value = '',
   onChange,
-  placeholder = '0,00',
+  placeholder,
   className = 'input-field',
   style = {},
   disabled = false,
   autoFocus = false,
   prefix = '',
   allowDecimals = true,
+  onBlur: externalOnBlur,
+  onFocus: externalOnFocus,
   ...props
 }) {
+  const { currencyFormat, formatAmount, parseAmount } = useCurrencyFormat();
   const [displayValue, setDisplayValue] = useState('');
+  const isFocusedRef = useRef(false);
+  const inputRef = useRef(null);
   const decimals = allowDecimals ? 2 : 0;
 
+  // Placeholder por defecto según el formato oficial activo si no se pasa uno explícito
+  const activePlaceholder = placeholder || (currencyFormat === 'Venezuelan' ? '0,00' : '0.00');
+
+  // Sincronización con el valor externo cuando el campo NO está siendo editado activamente
   useEffect(() => {
-    if (value === '' || value === null || value === undefined) {
+    if (isFocusedRef.current) return;
+
+    if (value === '' || value === null || value === undefined || value === 0 || value === '0') {
       setDisplayValue('');
     } else if (typeof value === 'number') {
-      setDisplayValue(formatNumberEs(value, decimals));
+      setDisplayValue(value > 0 ? formatAmount(value, decimals) : '');
     } else {
-      const num = parseFormattedNumber(value);
+      const num = parseAmount(value);
       if (!isNaN(num) && num > 0) {
-        setDisplayValue(formatNumberEs(num, decimals));
+        setDisplayValue(formatAmount(num, decimals));
       } else {
-        setDisplayValue(value);
+        setDisplayValue('');
       }
     }
-  }, [value, decimals]);
+  }, [value, decimals, currencyFormat, formatAmount, parseAmount]);
 
   const handleChange = (e) => {
     const rawText = e.target.value;
-    const formatted = formatAtmInput(rawText, decimals);
-    const numeric = parseFormattedNumber(formatted);
-    setDisplayValue(formatted);
+    
+    // Filtrar caracteres no numéricos excepto separadores permitidos (dígitos, punto y coma)
+    // Permite que el usuario escriba libremente "172.786,94" o "172,786.94" o "150.5"
+    const cleaned = rawText.replace(/[^\d.,]/g, '');
+    setDisplayValue(cleaned);
+
     if (onChange) {
-      onChange(numeric, formatted);
+      const numeric = parseAmount(cleaned);
+      onChange(numeric, cleaned);
     }
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Backspace' && displayValue) {
-      const digits = displayValue.replace(/\D/g, '');
-      const newDigits = digits.slice(0, -1);
-      const formatted = formatAtmInput(newDigits, decimals);
-      const numeric = parseFormattedNumber(formatted);
-      setDisplayValue(formatted);
-      if (onChange) {
-        onChange(numeric, formatted);
+  const handleFocus = (e) => {
+    isFocusedRef.current = true;
+    // Seleccionar todo el contenido al entrar para facilitar sobreescritura natural
+    e.target.select();
+    if (externalOnFocus) {
+      externalOnFocus(e);
+    }
+  };
+
+  const handleBlur = (e) => {
+    isFocusedRef.current = false;
+    const rawText = displayValue.trim();
+
+    if (!rawText) {
+      setDisplayValue('');
+      if (onChange) onChange(0, '');
+    } else {
+      const num = parseAmount(rawText);
+      if (!isNaN(num) && num > 0) {
+        const formatted = formatAmount(num, decimals);
+        setDisplayValue(formatted);
+        if (onChange) onChange(num, formatted);
+      } else {
+        setDisplayValue('');
+        if (onChange) onChange(0, '');
       }
-      e.preventDefault();
+    }
+
+    if (externalOnBlur) {
+      externalOnBlur(e);
     }
   };
 
-  // All amount input fields maintain the exact reference padding of the Divisas field (32px)
+  // Espaciado para el prefijo de moneda ($ o Bs.S)
   const prefixPadding = prefix ? '32px' : (style.paddingLeft || '12px');
 
   return (
@@ -78,15 +112,18 @@ export default function AtmAmountInput({
         </span>
       )}
       <input
+        ref={inputRef}
         type="text"
         inputMode={allowDecimals ? 'decimal' : 'numeric'}
         className={`atm-amount-input ${className}`}
         value={displayValue}
         onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        placeholder={activePlaceholder}
         disabled={disabled}
         autoFocus={autoFocus}
+        aria-label={props['aria-label'] || `Monto en ${prefix || 'dinero'}`}
         style={{
           paddingLeft: prefixPadding,
           paddingRight: '14px',

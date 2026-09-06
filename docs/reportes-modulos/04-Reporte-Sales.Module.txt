@@ -1,0 +1,70 @@
+================================================================================
+REPORTE POR MÓDULO: Sales.Module (ventas, pagos, caja, cierres diarios, idempotencia)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
+Cruce con docs/reporte.txt (análisis global).
+================================================================================
+
+--------------------------------------------------------------------------------
+1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
+--------------------------------------------------------------------------------
+Sales.Module ha sido objeto de refactorizaciones estructurales profundas:
+
+1. Modularización de la God Class (CODE-01 ✅, Commit 77b9a7c):
+   SalesService.cs fue descompuesto en 5 clases parciales por subdominio:
+   - SalesService.cs: orquestación de ventas, persistencia transaccional y Outbox (807 líneas, -52.1%).
+   - SalesService.HoldOrders.cs: pedidos en espera (apartados), abonos parciales y clientes.
+   - SalesService.Pricing.cs: recálculo de precios mayorista/detal y sincronización cambiaria.
+   - SalesService.CashAdvance.cs: emisión de adelantos de efectivo con soporte de transacción externa.
+   - SalesService.History.cs: consultas paginadas de historial y despachos con AsSplitQuery y AsNoTracking.
+   * Contrato público ISalesService 100% preservado e idéntico (validado con reflection tests).
+
+2. Transaccionalidad Atómica Coordinada (A1 ✅):
+   SalesService.cs enrola la transacción ADO.NET en el módulo de inventario mediante
+   _inventoryService.EnrollInTransactionAsync(rawDbTx). Si la venta falla, la deducción de
+   stock se revierte en un solo rollback de PostgreSQL.
+
+3. Idempotencia Criptográfica Obligatoria (A3 / W1 ✅, Commit 2c4be32):
+   SalesController exige el encabezado Idempotency-Key (HTTP 400 si falta).
+   IdempotencyService valida claves UUID mediante hash SHA-256 e índice único en base de datos.
+
+4. Retiro Definitivo de Medida Temporal MT-001 (W3 ✅, Commit a07922b):
+   Se creó la columna PaymentMethodId (FK a PaymentMethods) en CashTransactions con su
+   migración correspondiente, eliminando la heurística ct.IsPhysicalCash para deshabilitar métodos.
+
+5. Cierres Diarios y Arqueos Blindados (H-API-2, ARQ-01 ✅):
+   DailyClosureService recalcula diferencias del lado del servidor, previene el backdating
+   (forzando DateTime.UtcNow para usuarios estándar) e incluye métodos de pago inactivos con ventas.
+
+--------------------------------------------------------------------------------
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
+--------------------------------------------------------------------------------
+- H-SAL-1 / A2 (Numeración de facturas): ✅ CERRADO (secuencia PostgreSQL factura_number_seq).
+- H-SAL-2 / A1 (Atomicidad Venta-Stock): ✅ CERRADO (EnrollInTransactionAsync unificado).
+- H-SAL-3 / CODE-01 (God Class): ✅ CERRADO (modularizado en 5 partial classes).
+- H-SAL-4 (Precios personalizados): ✅ CERRADO (gating estricto de roles Admin/Manager).
+- H-SAL-13 / W1 (Idempotencia en cobros): ✅ CERRADO (Idempotency-Key obligatoria y persistida).
+- W3 / MT-001 (FK en CashTransaction): ✅ CERRADO (migración y validación relacional directa).
+- W4 (Auditoría en purga de idempotencia): ✅ CERRADO (AppLogger.LogSecurityAudit).
+- [CERRADO] PERF-06: ✅ TOTALMENTE CORREGIDO (CashDrawerService.GetHistoryAsync(limit=300)
+  optimizado con .AsNoTracking(), reduciendo el consumo de memoria y evitando el tracking
+  innecesario de hasta 600 entidades EF Core).
+- [CERRADO] ERR-04: ✅ TOTALMENTE CORREGIDO (DailyClosureController.cs y ShiftsController.cs
+  saneados retirando catch(Exception ex) genéricos, canalizando las fallas de forma segura
+  hacia GlobalExceptionHandlerMiddleware bajo el estándar RFC 7807).
+
+--------------------------------------------------------------------------------
+3. FORTALEZAS DEL MÓDULO
+--------------------------------------------------------------------------------
+- Doble capa de persistencia: Venta y Outbox se confirman en la misma transacción ADO.NET.
+- AsSplitQuery estándar para evitar explosión cartesiana en ventas con múltiples ítems/pagos.
+- Soporte multimoneda robusto con PricingCalculator.
+- Auditoría forense automática y respaldos silenciosos en PDF/texto para arqueos y cierres de caja.
+
+--------------------------------------------------------------------------------
+4. RECOMENDACIONES FUTURAS
+--------------------------------------------------------------------------------
+- Añadir .AsNoTracking() a GetHistoryAsync en CashDrawerService.
+- Retirar los bloques catch locales en DailyClosureController y ShiftsController para permitir
+  que GlobalExceptionHandlerMiddleware estandarice respuestas RFC 7807 sin filtrar ex.Message.
+================================================================================

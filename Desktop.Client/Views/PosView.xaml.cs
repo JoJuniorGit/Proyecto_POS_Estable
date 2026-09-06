@@ -1,29 +1,40 @@
+using System;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using Desktop.Client.Helpers;
 
 namespace Desktop.Client.Views
 {
     public partial class PosView : UserControl
     {
-        private BarcodeScannerWindow? _scannerWindow;
+        private KeyboardWedgeScannerListener? _scannerListener;
 
         public PosView()
         {
             InitializeComponent();
+            Loaded += PosView_Loaded;
             Unloaded += PosView_Unloaded;
+        }
+
+        private void PosView_Loaded(object sender, RoutedEventArgs e)
+        {
+            _scannerListener?.Dispose();
+            _scannerListener = new KeyboardWedgeScannerListener(async code =>
+            {
+                if (DataContext is ViewModels.PosViewModel vm)
+                {
+                    await vm.AddProductByCodeAsync(code);
+                }
+            });
+            _scannerListener.Attach(this);
         }
 
         private void PosView_Unloaded(object sender, RoutedEventArgs e)
         {
-            // Cierra la ventana flotante del escáner si quedó abierta (defensa contra ventanas
-            // huérfanas al salir del módulo POS o al cerrarse la ventana principal).
-            if (_scannerWindow != null)
-            {
-                try { _scannerWindow.Close(); } catch { }
-                _scannerWindow = null;
-            }
+            _scannerListener?.Dispose();
+            _scannerListener = null;
         }
 
         private void UserControl_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -47,44 +58,6 @@ namespace Desktop.Client.Views
                 SearchInput.Focus();
                 SearchInput.SelectAll();
             }), System.Windows.Threading.DispatcherPriority.Input);
-        }
-
-        /// <summary>
-        /// Opens the floating barcode scanner / OCR window. The window stays open so the
-        /// cashier can scan several codes; each scanned barcode is added straight to the cart,
-        /// and the window shows the product name (or not-found/inactive states) on its result card.
-        /// </summary>
-        private void OpenScanner_Click(object sender, RoutedEventArgs e)
-        {
-            if (_scannerWindow != null && _scannerWindow.IsVisible)
-            {
-                _scannerWindow.Activate();
-                return;
-            }
-
-            _scannerWindow = new BarcodeScannerWindow(InsertScannedValue, ResolveScannedProductAsync)
-            {
-                Owner = Window.GetWindow(this)
-            };
-            _scannerWindow.Show();
-        }
-
-        private void InsertScannedValue(string value)
-        {
-            if (DataContext is ViewModels.PosViewModel vm)
-            {
-                _ = vm.AddProductByCodeAsync(value);
-                SearchInput.Focus();
-            }
-        }
-
-        private Task<Core.DTOs.ProductQuickInfoDto?> ResolveScannedProductAsync(string code)
-        {
-            if (DataContext is ViewModels.PosViewModel vm)
-            {
-                return vm.ResolveScannedCodeAsync(code);
-            }
-            return Task.FromResult<Core.DTOs.ProductQuickInfoDto?>(null);
         }
 
 

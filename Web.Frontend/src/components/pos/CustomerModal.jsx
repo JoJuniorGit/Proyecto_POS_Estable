@@ -1,14 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Modal from '../ui/Modal';
 import { getCustomers, createCustomer } from '../../services/customerApi';
 import { Search, UserPlus, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
+import { formatBsS } from '../../utils/formatters';
 
 const VALID_RIF_PREFIXES = ['V', 'E', 'J', 'G', 'P'];
 const VALID_PHONE_PREFIXES = [
   '0412', '0414', '0424', '0416', '0426', '0212', '0241', '0242', '0243', '0244', '0245', '0251', '0276', '0261'
 ];
 
-export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelectCustomer, mode = 'hold', saleTotalUSD, exchangeRate, paymentMethods = [] }) {
+export default function CustomerModal({
+  isOpen,
+  onClose,
+  onConfirmHold,
+  onSelectCustomer,
+  mode = 'select',
+  saleTotalUSD = 0,
+  exchangeRate = 1,
+  paymentMethods = []
+}) {
   const [tab, setTab] = useState('search'); // 'search' | 'create'
   const [query, setQuery] = useState('');
   const [customers, setCustomers] = useState([]);
@@ -24,7 +34,6 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
   const [enableInitialPayment, setEnableInitialPayment] = useState(false);
   const [initialPaymentBsS, setInitialPaymentBsS] = useState('');
   const [paymentMethodId, setPaymentMethodId] = useState('');
-  const [referenceNumber, setReferenceNumber] = useState('');
 
   useEffect(() => {
     if (paymentMethods && paymentMethods.length > 0 && !paymentMethodId) {
@@ -32,14 +41,7 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
     }
   }, [paymentMethods, paymentMethodId]);
 
-  useEffect(() => {
-    if (isOpen) {
-      loadCustomers('');
-      setError(null);
-    }
-  }, [isOpen]);
-
-  const loadCustomers = async (searchQuery) => {
+  const loadCustomers = useCallback(async (searchQuery) => {
     setLoading(true);
     try {
       const data = await getCustomers(searchQuery);
@@ -48,12 +50,19 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
       } else {
         setCustomers(data || []);
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      setError('Error al cargar la lista de clientes.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [mode]);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadCustomers('');
+      setError(null);
+    }
+  }, [isOpen, loadCustomers]);
 
   const handleSearchChange = (e) => {
     const val = e.target.value;
@@ -141,6 +150,10 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
         phone: phone.trim(),
       });
       setSelectedCustomer(created);
+      if (mode === 'select') {
+        if (onSelectCustomer) onSelectCustomer(created.id);
+        return;
+      }
       setTab('search');
       setQuery(created.cedulaOrRif);
       loadCustomers(created.cedulaOrRif);
@@ -149,16 +162,18 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
     }
   };
 
-  // Calculations for live preview
+  // Calculations for live preview (defensive against undefined/null values)
+  const safeSaleTotalUSD = typeof saleTotalUSD === 'number' && !isNaN(saleTotalUSD) ? saleTotalUSD : 0;
+  const safeExchangeRate = typeof exchangeRate === 'number' && exchangeRate > 0 ? exchangeRate : 1;
   const initialBs = parseFloat(initialPaymentBsS) || 0;
-  const initialUsd = exchangeRate > 0 ? initialBs / exchangeRate : 0;
-  const remainingDebtUsd = Math.max(0, saleTotalUSD - (enableInitialPayment ? initialUsd : 0));
+  const initialUsd = safeExchangeRate > 0 ? initialBs / safeExchangeRate : 0;
+  const remainingDebtUsd = Math.max(0, safeSaleTotalUSD - (enableInitialPayment ? initialUsd : 0));
 
   // El efectivo solo acepta montos enteros (sin centavos)
   const selectedMethod = paymentMethods.find((m) => String(m.id) === String(paymentMethodId));
   const isCashSelected = !!selectedMethod?.isCash;
   const finalInitialBs = isCashSelected ? Math.trunc(initialBs) : initialBs;
-  const finalInitialUsd = exchangeRate > 0 ? finalInitialBs / exchangeRate : 0;
+  const finalInitialUsd = safeExchangeRate > 0 ? finalInitialBs / safeExchangeRate : 0;
 
   const handleConfirm = () => {
     if (!selectedCustomer) {
@@ -247,11 +262,20 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
                   return (
                     <div
                       key={c.id}
-                      onClick={() => setSelectedCustomer(c)}
+                      onClick={() => {
+                        setSelectedCustomer(c);
+                        if (mode === 'select') {
+                          if (onSelectCustomer) onSelectCustomer(c.id);
+                        }
+                      }}
                       className="customer-modal-item"
                       style={{
                         backgroundColor: isSelected ? 'var(--primary-light)' : 'transparent',
                         borderLeft: isSelected ? '4px solid var(--primary-color)' : '4px solid transparent',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
                       }}
                     >
                       <div className="customer-modal-item-info">
@@ -263,6 +287,20 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
                           {c.phone && <span>• Tel: {c.phone}</span>}
                         </div>
                       </div>
+                      {mode === 'select' && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary"
+                          style={{ marginLeft: '12px', padding: '5px 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedCustomer(c);
+                            if (onSelectCustomer) onSelectCustomer(c.id);
+                          }}
+                        >
+                          <Check size={14} /> Seleccionar
+                        </button>
+                      )}
                     </div>
                   );
                 })
@@ -435,15 +473,36 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
             <div className="checkout-summary-box" style={{ marginTop: '15px' }}>
               <div className="checkout-summary-row">
                 <span>Total Pedido:</span>
-                <span className="font-bold">${saleTotalUSD.toFixed(2)}</span>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="font-bold text-primary" style={{ fontSize: '1.1rem' }}>
+                    {formatBsS(safeSaleTotalUSD * safeExchangeRate)}
+                  </div>
+                  <div className="text-xs text-muted">
+                    Ref: ${safeSaleTotalUSD.toFixed(2)} USD
+                  </div>
+                </div>
               </div>
               <div className="checkout-summary-row text-success">
                 <span>Abono Inicial:</span>
-                <span className="font-bold">-${initialUsd.toFixed(2)}</span>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="font-bold">
+                    {formatBsS(finalInitialBs)}
+                  </div>
+                  <div className="text-xs text-muted">
+                    Ref: -${initialUsd.toFixed(2)} USD
+                  </div>
+                </div>
               </div>
               <div className="checkout-summary-row highlight">
                 <span>Deuda Restante:</span>
-                <span className="font-bold">${remainingDebtUsd.toFixed(2)}</span>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="font-bold" style={{ fontSize: '1.1rem' }}>
+                    {formatBsS(remainingDebtUsd * safeExchangeRate)}
+                  </div>
+                  <div className="text-xs text-muted">
+                    Ref: ${remainingDebtUsd.toFixed(2)} USD
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -462,7 +521,7 @@ export default function CustomerModal({ isOpen, onClose, onConfirmHold, onSelect
             onClick={handleConfirm} 
             disabled={!selectedCustomer || (enableInitialPayment && isCashSelected && initialBs % 1 !== 0)}
           >
-            <Check size={18} /> {mode === 'hold' ? 'Confirmar y Guardar en Espera' : 'Confirmar Cliente'}
+            <Check size={18} /> {mode === 'hold' ? 'Guardar' : 'Confirmar Cliente'}
           </button>
         </div>
       )}

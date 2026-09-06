@@ -34,10 +34,11 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
         {
             try
             {
-                // Idempotency check: verify if this sale stock deduction was already processed
+                // Idempotency check: exact reason/suffix match to prevent "Sale #1" false-matching "Sale #11" (H-INV-1)
                 var alreadyProcessed = await _context.StockMovements
                     .AsNoTracking()
-                    .AnyAsync(sm => sm.ProductId == item.ProductId && sm.Reason == reason, cancellationToken);
+                    .AnyAsync(sm => (sm.Reason == reason || sm.Reason.EndsWith($"| {reason}")) 
+                                    && (sm.ProductId == item.ProductId || sm.Reason.StartsWith("Variante:")), cancellationToken);
 
                 if (alreadyProcessed)
                 {
@@ -45,8 +46,8 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
                     continue;
                 }
 
-                // We use negative quantity to deduct stock without fractional truncation
-                await _inventoryService.UpdateStockAsync(item.ProductId, -item.Quantity, reason);
+                // We use negative quantity to deduct stock without fractional truncation, allowing negative stock on sales
+                await _inventoryService.UpdateStockAsync(item.ProductId, -item.Quantity, reason, allowNegativeStock: true);
             }
             catch (Exception ex)
             {
@@ -58,7 +59,7 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
                     try
                     {
                         await Task.Delay(500, cancellationToken);
-                        await _inventoryService.UpdateStockAsync(item.ProductId, -item.Quantity, reason);
+                        await _inventoryService.UpdateStockAsync(item.ProductId, -item.Quantity, reason, allowNegativeStock: true);
                         success = true;
                         break;
                     }

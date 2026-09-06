@@ -155,8 +155,24 @@ public class CashDrawerService : ICashDrawerService
         decimal exchangeRate,
         string description,
         int? referenceId = null,
-        bool isPhysicalCash = true)
+        bool isPhysicalCash = true,
+        int? paymentMethodId = null)
     {
+        if (amountLocal <= 0 && source != CashTransactionSource.Closing && source != CashTransactionSource.Opening)
+        {
+            throw new ArgumentException("El monto de la transacción debe ser mayor a cero.", nameof(amountLocal));
+        }
+
+        // H-API-4 & H-API-17: Validar que los egresos físicos no sobregiren el saldo real de la caja
+        if (type == CashTransactionType.Expense && isPhysicalCash && source != CashTransactionSource.Closing)
+        {
+            var currentBalance = await GetCurrentBalanceLocalAsync(sessionId);
+            if (currentBalance < amountLocal)
+            {
+                throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para realizar el egreso. Disponible: {currentBalance:N2} Bs.S, Requerido: {amountLocal:N2} Bs.S.");
+            }
+        }
+
         var transaction = new CashTransaction
         {
             SessionId = sessionId,
@@ -168,7 +184,8 @@ public class CashDrawerService : ICashDrawerService
             ExchangeRate = exchangeRate,
             Description = description,
             SaleId = referenceId,
-            IsPhysicalCash = isPhysicalCash
+            IsPhysicalCash = isPhysicalCash,
+            PaymentMethodId = paymentMethodId
         };
 
         _context.CashTransactions.Add(transaction);
@@ -180,18 +197,27 @@ public class CashDrawerService : ICashDrawerService
     public async Task<decimal> GetCurrentBalanceLocalAsync(int sessionId)
     {
         var session = await _context.CashDrawerSessions
-            .Include(s => s.Transactions)
-            .FirstOrDefaultAsync(s => s.Id == sessionId);
+            .AsNoTracking()
+            .Where(s => s.Id == sessionId)
+            .Select(s => new { s.OpeningBalanceLocal })
+            .FirstOrDefaultAsync();
 
         if (session == null) return 0;
 
-        var physicalIncomes = session.Transactions
-            .Where(t => t.Source != CashTransactionSource.Opening && t.Type == CashTransactionType.Income && t.IsPhysicalCash)
-            .Sum(t => t.AmountLocal);
+        var physicalIncomes = await _context.CashTransactions
+            .AsNoTracking()
+            .Where(t => t.SessionId == sessionId 
+                     && t.Source != CashTransactionSource.Opening 
+                     && t.Type == CashTransactionType.Income 
+                     && t.IsPhysicalCash)
+            .SumAsync(t => (decimal?)t.AmountLocal) ?? 0m;
 
-        var physicalExpenses = session.Transactions
-            .Where(t => t.Type == CashTransactionType.Expense && t.IsPhysicalCash)
-            .Sum(t => t.AmountLocal);
+        var physicalExpenses = await _context.CashTransactions
+            .AsNoTracking()
+            .Where(t => t.SessionId == sessionId 
+                     && t.Type == CashTransactionType.Expense 
+                     && t.IsPhysicalCash)
+            .SumAsync(t => (decimal?)t.AmountLocal) ?? 0m;
 
         return session.OpeningBalanceLocal + physicalIncomes - physicalExpenses;
     }
@@ -199,6 +225,7 @@ public class CashDrawerService : ICashDrawerService
     public async Task<System.Collections.Generic.List<CashTransaction>> GetHistoryAsync(int limit = 300)
     {
         return await _context.CashTransactions
+            .AsNoTracking()
             .Include(t => t.Sale)
             .Where(t => t.IsPhysicalCash)
             .OrderByDescending(t => t.TransactionTime)
@@ -257,7 +284,8 @@ public class CashDrawerService : ICashDrawerService
                 amountUsd: exchangeRate > 0 ? roundedRequested / exchangeRate : 0,
                 exchangeRate: exchangeRate,
                 description: $"Adelanto de Efectivo - {paymentMethodName} {commissionPercentage:0}% {activeUserName}",
-                isPhysicalCash: true
+                isPhysicalCash: true,
+                paymentMethodId: paymentMethodId
             );
 
             // 2. Ingreso contable por comisión (no físico, IsPhysicalCash = false)
@@ -269,7 +297,8 @@ public class CashDrawerService : ICashDrawerService
                 amountUsd: exchangeRate > 0 ? commissionAmountLocal / exchangeRate : 0,
                 exchangeRate: exchangeRate,
                 description: $"Comisión Adelanto ({commissionPercentage:0}% {paymentMethodName}) - {activeUserName}",
-                isPhysicalCash: false
+                isPhysicalCash: false,
+                paymentMethodId: paymentMethodId
             );
 
             Sale? createdSale = null;

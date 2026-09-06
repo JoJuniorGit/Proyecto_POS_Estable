@@ -22,7 +22,14 @@ public class ProductQuickInfoDto
 
     // Parent/Group and Variant Properties
     public int? ParentProductId { get; set; }
+    public bool ParentIsStockShared { get; set; }
     public bool IsGroupHeader { get; set; }
+    public bool IsStockShared { get; set; }
+    public bool HasIndependentPricing { get; set; }
+    public decimal ConversionFactor { get; set; } = 1.0000m;
     public int VariantCount { get; set; }
     public decimal ConsolidatedStock { get; set; }
+
+    public string DisplayPriceBsS => (IsGroupHeader && HasIndependentPricing) ? "Precios indiv." : PriceBsS.ToString("N2", System.Globalization.CultureInfo.InvariantCulture);
+    public string DisplayPriceUSD => (IsGroupHeader && HasIndependentPricing) ? "Precios indiv." : $"${PriceUSD.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)}";
 }

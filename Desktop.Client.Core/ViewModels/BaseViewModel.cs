@@ -38,7 +38,12 @@ public abstract class BaseViewModel : ObservableObject, IDisposable
         catch (AggregateException) { }
     }
 
-    private async void OnFatalErrorResetInternal()
+    private void OnFatalErrorResetInternal()
+    {
+        Core.Common.TaskExtensions.SafeFireAndForget(OnFatalErrorResetInternalAsync(), "BaseViewModel.OnFatalErrorReset");
+    }
+
+    private async Task OnFatalErrorResetInternalAsync()
     {
         if (_disposed) return;
 

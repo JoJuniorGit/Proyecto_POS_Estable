@@ -23,6 +23,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 {
     private readonly ISalesService _sales_service;
     private readonly SaleDto _sale;
+    private string? _currentIdempotencyKey;
 
     // ── Override Sale (for pending/OnHold sales) ──
     /// <summary>
@@ -192,6 +193,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
         SelectedMethod = null;
         SetAmountToRemainingBalance();
+        _currentIdempotencyKey = System.Guid.NewGuid().ToString();
         WeakReferenceMessenger.Default.Register(this);
     }
 
@@ -445,8 +447,10 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
                     targetSale.RoundingAdjustment = RoundingAdjustment;
                     int real_id = await _sales_service.CompleteSaleAsync(
                         targetSale.Id, CurrentExchangeRate, raw_payments,
-                        RoundingAdjustment, _user_session?.CurrentUser?.Id, IsPendingPickup);
+                        RoundingAdjustment, _user_session?.CurrentUser?.Id, IsPendingPickup,
+                        _currentIdempotencyKey);
 
+                    _currentIdempotencyKey = null;
                     WeakReferenceMessenger.Default.Unregister<CartUpdatedMessage>(this);
                     // Pass result: positive id = liquidated, negative = abono
                     DialogHost.CloseDialogCommand.Execute(real_id, null);
@@ -478,8 +482,10 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
                 var payments_list = Payments.Select(p => new SalePaymentDto(p.Dto.PaymentMethodId, p.Dto.Amount, p.AmountBsS, p.Dto.ReferenceNumber));
                 int real_id = await _sales_service.CompleteSaleAsync(
                     _sale.Id, CurrentExchangeRate, payments_list,
-                    RoundingAdjustment, _user_session?.CurrentUser?.Id, IsPendingPickup);
+                    RoundingAdjustment, _user_session?.CurrentUser?.Id, IsPendingPickup,
+                    _currentIdempotencyKey);
 
+                _currentIdempotencyKey = null;
                 WeakReferenceMessenger.Default.Unregister<CartUpdatedMessage>(this);
                 DialogHost.CloseDialogCommand.Execute(real_id, null);
             }

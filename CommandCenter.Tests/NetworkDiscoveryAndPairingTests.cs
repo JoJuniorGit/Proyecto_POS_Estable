@@ -24,9 +24,12 @@ public class NetworkDiscoveryAndPairingTests
         Assert.False(string.IsNullOrWhiteSpace(info.ServerName));
         Assert.False(string.IsNullOrWhiteSpace(info.PrimaryIpAddress));
         Assert.Equal(5000, info.HttpPort);
-        Assert.Equal(5001, info.HttpsPort);
         Assert.StartsWith("http://", info.PrimaryHttpUrl);
         Assert.Contains(":5000", info.PrimaryHttpUrl);
+        Assert.StartsWith("https://", info.PrimaryHttpsUrl);
+        Assert.Contains(":5001", info.PrimaryHttpsUrl);
+        Assert.StartsWith("https://", info.QrPayload);
+        Assert.Contains(":5001", info.QrPayload);
         Assert.Contains("?paired=true", info.QrPayload);
     }
 

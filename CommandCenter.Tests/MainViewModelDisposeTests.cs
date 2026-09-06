@@ -1,6 +1,7 @@
 using System;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
+using Moq;
 using Xunit;
 
 namespace CommandCenter.Tests;
@@ -70,5 +71,22 @@ public class MainViewModelDisposeTests
         Assert.True(fakeHealth.StopPollingCalled, "Dispose debe llamar StopPolling del servicio de salud.");
         Assert.False(fakeHealth.IsPollingActive, "El sondeo debe quedar inactivo tras Dispose.");
         Assert.True(disposableLogin.DisposeCalled, "Dispose debe disponer los ViewModels hijo que implementan IDisposable.");
+    }
+
+    [Fact]
+    public void ProductDialogViewModel_Dispose_DoesNotThrow_AndCleansUpResources()
+    {
+        var productMock = new Mock<IProductService>();
+        var exchangeRateMock = new Mock<IExchangeRateService>();
+        exchangeRateMock.Setup(e => e.CurrentRate).Returns(36.5m);
+
+        var vm = new ProductDialogViewModel(productMock.Object, exchangeRateMock.Object);
+        vm.Sku = "BEB-101";
+
+        Assert.IsAssignableFrom<IDisposable>(vm);
+
+        // Act & Assert Dispose does not throw and is idempotent
+        vm.Dispose();
+        vm.Dispose();
     }
 }

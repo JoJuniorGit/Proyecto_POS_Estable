@@ -1,0 +1,52 @@
+================================================================================
+REPORTE POR MÓDULO: Desktop.Client (interfaz de usuario WPF y vistas)
+Fecha: 2026-09-05
+Revisión: 7.0 (Verificación Empírica Post-Remediación Integral: Fases 1 a 4, HEAD 77b9a7c)
+Cruce con docs/reporte.txt (análisis global).
+================================================================================
+
+--------------------------------------------------------------------------------
+1. RESUMEN DE EVOLUCIÓN ARQUITECTÓNICA (FASES 1 A 4)
+--------------------------------------------------------------------------------
+Desktop.Client contiene las vistas XAML, recursos visuales, converters y el punto de
+entrada de la aplicación de escritorio:
+
+1. Blindaje de Handlers en Vistas XAML (H-WPF-3 ✅, Commit 686f0cd):
+   - EditSaleDialog.xaml.cs: TxtProductSearch_TextChanged envuelto en try/catch
+     capturando OperationCanceledException (debounce) y Exception general hacia
+     AppLogger.LogCrash. Manejo de cursor de espera mediante try/finally.
+   - ImportProductsView.xaml.cs: Grid_Drop envuelto en try/catch defensivo contra caídas
+     del hilo de la interfaz de usuario.
+
+2. Apagado Limpio y No Bloqueante (H-WPF-2 ✅, Commit c541b57):
+   - App.xaml.cs implementa un procedimiento de cierre con timeout defensivo de 3 segundos
+     que previene bloqueos del hilo principal o congelamientos del proceso al cerrar ventanas.
+
+3. Registro de Excepciones No Controladas (ERR-02 ✅):
+   - AppDomain.CurrentDomain.UnhandledException y DispatcherUnhandledException enrutan
+     los registros a %LOCALAPPDATA%\CommandCenterPOS\Logs con rotación automática.
+
+4. Virtualización de Rendimiento en Listados:
+   - ProductsDataGrid en InventoryView.xaml tiene activada la virtualización de interfaz:
+     VirtualizingStackPanel.IsVirtualizing="True", VirtualizationMode="Recycling",
+     VirtualizingPanel.ScrollUnit="Pixel", RowHeight="42".
+
+--------------------------------------------------------------------------------
+2. MATRIZ DE ESTADO DE HALLAZGOS (REV. 7.0)
+--------------------------------------------------------------------------------
+- ERR-02 (Crash logger): ✅ CERRADO (registros centralizados en AppData con rotación).
+- H-WPF-2 (Shutdown no bloqueante): ✅ CERRADO (timeout defensivo de 3s en App.xaml.cs).
+- H-WPF-3 (Async void en code-behind): ✅ CERRADO (try/catch + AppLogger.LogCrash en vistas).
+- [CERRADO] WPF-LEAK-01 / CICLO DE VIDA: ✅ TOTALMENTE CORREGIDO (ProductDialog.xaml.cs
+  implementa OnClosed invocando ViewModel?.Dispose() en cualquier camino de cierre;
+  NumberValidationTextBox actualizado para permitir caracteres alfanuméricos en la UI).
+- [CERRADO] WPF-LEAK-02: ✅ TOTALMENTE CORREGIDO (SuccessDialogWindow.xaml.cs desuscribe
+  _timer.Tick -= Timer_Tick en OnClosed antes de la disposición de la ventana).
+
+--------------------------------------------------------------------------------
+3. FORTALEZAS DEL MÓDULO
+--------------------------------------------------------------------------------
+- Estilos consistentes con Material Design in XAML y soporte para modo lectura condicional.
+- Comportamientos numéricos reactivos (NumericCalculatorBehavior) sincronizados.
+- Ventana de diálogo de edición de ventas con debouncing en búsqueda de productos.
+================================================================================

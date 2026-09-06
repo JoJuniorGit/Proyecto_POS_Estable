@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Entities;
 using Core.Entities;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Backend.API")]
 namespace Sales.Module.Data;
@@ -21,6 +22,8 @@ public class SalesDbContext : DbContext
     public DbSet<CashTransaction> CashTransactions { get; set; } = null!;
     public DbSet<DailyClosure> DailyClosures { get; set; } = null!;
     public DbSet<ClosureDetail> ClosureDetails { get; set; } = null!;
+    public DbSet<OutboxMessage> OutboxMessages { get; set; } = null!;
+    public DbSet<IdempotentRequest> IdempotentRequests { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -172,6 +175,16 @@ public class SalesDbContext : DbContext
         modelBuilder.Entity<CashTransaction>()
             .HasIndex(t => new { t.SessionId, t.TransactionTime });
 
+        modelBuilder.Entity<CashTransaction>()
+            .HasOne(t => t.PaymentMethod)
+            .WithMany()
+            .HasForeignKey(t => t.PaymentMethodId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<CashTransaction>()
+            .HasIndex(t => t.PaymentMethodId)
+            .HasDatabaseName("IX_CashTransactions_PaymentMethodId");
+
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningBalanceLocal).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningExchangeRate).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingBalanceLocal).HasColumnType("decimal(18,2)");
@@ -197,10 +210,85 @@ public class SalesDbContext : DbContext
         modelBuilder.Entity<ClosureDetail>().Property(cd => cd.ActualAmountBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<ClosureDetail>().Property(cd => cd.DifferenceBsS).HasColumnType("decimal(18,2)");
 
+        // PaymentMethods Configuration
+        modelBuilder.Entity<PaymentMethod>()
+            .Property(p => p.IsDeleted)
+            .HasDefaultValue(false);
+
+        if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            modelBuilder.Entity<PaymentMethod>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+        }
+
         // Seed initial payment methods
         modelBuilder.Entity<PaymentMethod>().HasData(
-            new PaymentMethod { Id = 1, Name = "Cash", IsActive = true, RequiresReference = false, IsCash = true },
-            new PaymentMethod { Id = 2, Name = "Card", IsActive = true, RequiresReference = true, IsCash = false }
+            new PaymentMethod { Id = 1, Name = "Cash", IsActive = true, RequiresReference = false, IsCash = true, IsDeleted = false },
+            new PaymentMethod { Id = 2, Name = "Card", IsActive = true, RequiresReference = true, IsCash = false, IsDeleted = false }
         );
+
+        // Sequences for consecutive invoice numbers (H-SAL-1 / A2) and atomic DisplayOrder (PostgreSQL)
+        if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            modelBuilder.HasSequence<int>("factura_number_seq")
+                .StartsAt(1)
+                .IncrementsBy(1);
+
+            modelBuilder.HasSequence<int>("paymentmethod_displayorder_seq")
+                .StartsAt(1)
+                .IncrementsBy(1);
+        }
+
+        // OutboxMessages Configuration
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EventType).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Status).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.Payload).HasColumnType("jsonb").IsRequired();
+            entity.HasIndex(e => new { e.Status, e.NextRetryUtc })
+                .HasDatabaseName("IX_OutboxMessages_Status_NextRetryUtc");
+            entity.HasIndex(e => e.CreatedAtUtc)
+                .HasDatabaseName("IX_OutboxMessages_CreatedAtUtc");
+        });
+
+        // IdempotentRequests Configuration
+        modelBuilder.Entity<IdempotentRequest>(entity =>
+        {
+            entity.ToTable("IdempotentRequests");
+            entity.HasKey(e => e.Id);
+            
+            // Índice único compuesto (Key, RequestPath)
+            entity.HasIndex(e => new { e.Key, e.RequestPath })
+                .IsUnique()
+                .HasDatabaseName("IX_IdempotentRequests_Key_RequestPath");
+                
+            // Índice secundario para optimizar la purga periódica
+            entity.HasIndex(e => e.ExpiresAtUtc)
+                .HasDatabaseName("IX_IdempotentRequests_ExpiresAtUtc");
+
+            // Índice secundario para auditoría y consultas
+            entity.HasIndex(e => e.CreatedAtUtc)
+                .HasDatabaseName("IX_IdempotentRequests_CreatedAtUtc");
+
+            entity.Property(e => e.Key)
+                .HasMaxLength(128)
+                .IsRequired();
+
+            entity.Property(e => e.RequestPath)
+                .HasMaxLength(256)
+                .IsRequired();
+
+            // Hash binario SHA-256 de 32 bytes (tipo bytea en PostgreSQL)
+            entity.Property(e => e.PayloadHash)
+                .HasColumnType("bytea")
+                .IsRequired();
+
+            entity.Property(e => e.ResponseBody)
+                .IsRequired();
+        });
     }
 }

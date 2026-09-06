@@ -5,7 +5,7 @@ import { DollarSign, RefreshCw, Save, Loader2, History } from 'lucide-react';
 import { formatBsS, formatNumberEs } from '../utils/formatters';
 
 export default function ExchangeRatePage() {
-  const { exchangeRate, setExchangeRate } = useExchangeRate();
+  const { exchangeRate, setExchangeRate, lastUpdated, isRateOutdated } = useExchangeRate();
   const [newRateText, setNewRateText] = useState('');
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -71,7 +71,11 @@ export default function ExchangeRatePage() {
       }
     } catch (err) {
       console.error('[ExchangeRatePage] Error sincronizando BCV:', err);
-      setMessage({ type: 'danger', text: err.message || 'Error al conectar con BCV.' });
+      setMessage({
+        type: 'danger',
+        text: err.message || 'No se pudo sincronizar la tasa con el BCV. Verifique la conexión o ingrese la tasa manualmente.',
+        canRetry: true,
+      });
     } finally {
       setIsSyncing(false);
     }
@@ -81,9 +85,37 @@ export default function ExchangeRatePage() {
     <div className="exchange-page" style={{ maxWidth: '800px', margin: '0 auto' }}>
       <h2 className="page-title mb-4">Gestión de Tasa de Cambio</h2>
 
+      {/* Modo Híbrido Informativo */}
+      <div className="alert alert-info mb-3" style={{ fontSize: '0.875rem' }}>
+        ℹ️ El sistema sincroniza automáticamente con el BCV cada 2 horas. También puede sincronizar a demanda con el botón oficial o ingresar la tasa de la jornada manualmente.
+      </div>
+
+      {/* Alerta de Desactualización (> 24h) */}
+      {isRateOutdated && (
+        <div className="alert alert-warning mb-3" style={{ fontSize: '0.875rem', borderColor: '#f59e0b' }}>
+          ⚠️ <strong>Tasa desactualizada:</strong> No se ha registrado actualización en más de 24 horas. Por favor sincronice con el BCV o establezca la tasa del día.
+        </div>
+      )}
+
       {message && (
         <div className={`alert alert-${message.type} mb-4`}>
-          {message.text}
+          <div>{message.text}</div>
+          {message.canRetry && (
+            <div className="mt-2 flex-align-center gap-2">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={handleSyncBcv}
+                disabled={isSyncing}
+              >
+                {isSyncing ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+                Reintentar Sincronización
+              </button>
+              <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+                o puede ingresar la tasa manualmente abajo
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -109,12 +141,19 @@ export default function ExchangeRatePage() {
           </button>
         </div>
 
-        <div className="current-rate-display mb-4">
-          <DollarSign size={32} className="color-primary" />
-          <span className="current-rate-value">
-            Bs.S {exchangeRate > 0 ? formatNumberEs(exchangeRate) : '---'}
-          </span>
-          <span className="text-muted" style={{ fontSize: '0.9rem' }}>/ 1.00 USD</span>
+        <div className="current-rate-display mb-4" style={{ flexWrap: 'wrap', gap: '8px' }}>
+          <div className="flex-align-center gap-2">
+            <DollarSign size={32} className="color-primary" />
+            <span className="current-rate-value">
+              Bs.S {exchangeRate > 0 ? formatNumberEs(exchangeRate) : '---'}
+            </span>
+            <span className="text-muted" style={{ fontSize: '0.9rem' }}>/ 1.00 USD</span>
+          </div>
+          {lastUpdated && (
+            <span className="text-muted" style={{ fontSize: '0.8rem', marginLeft: 'auto' }}>
+              Última actualización: {new Date(lastUpdated).toLocaleString()}
+            </span>
+          )}
         </div>
 
         <form onSubmit={handleSaveManual} className="form-row align-end">

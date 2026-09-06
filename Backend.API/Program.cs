@@ -9,6 +9,8 @@ using Backend.API.Services;
 using Backend.API.Hubs;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using System.Security.Cryptography.X509Certificates;
+using Logistics.Module.Extensions;
+using Microsoft.AspNetCore.HttpOverrides;
 
 // Setup global unhandled exception logger for crash.log
 AppDomain.CurrentDomain.UnhandledException += (s, e) =>
@@ -26,9 +28,9 @@ try
     var builder = WebApplication.CreateBuilder(args);
 
     // HTTPS (contexto seguro requerido por el escáner de cámara desde dispositivos de la red local).
-    // Usa el certificado autofirmado pos-https.pfx si existe (ver scripts/create-https-cert.ps1).
+    // Intenta cargar el certificado HTTPS autofirmado para escuchar también en el puerto 5001.
     // Si el certificado falta, el servidor continúa sirviendo solo HTTP sin romper el arranque.
-    var httpsCert = LoadHttpsCertificate();
+    var httpsCert = LoadHttpsCertificate(builder.Configuration, builder.Environment);
 
     // Limpia la configuración de 'urls' para evitar la advertencia de Kestrel (Overriding address(es)) al definir ListenAnyIP.
     builder.Configuration["urls"] = null;
@@ -98,27 +100,38 @@ try
         options.UseNpgsql(connectionString, npgsql => npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery))
                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
-    builder.Services.AddMemoryCache();
+    builder.Services.AddMemoryCache(options =>
+    {
+        options.SizeLimit = builder.Configuration.GetValue<int>("MemoryCache:SizeLimit", 10000);
+    });
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
     builder.Services.AddScoped<ITokenService, TokenService>();
+    builder.Services.AddScoped<ISecurityStampValidator, SecurityStampValidator>();
+    var customPasswordBlacklist = builder.Configuration.GetSection("SecuritySettings:PasswordBlacklist").Get<string[]>();
+    builder.Services.AddSingleton<Core.Interfaces.IPasswordPolicyService>(new Core.Services.PasswordPolicyService(customPasswordBlacklist));
     builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
     builder.Services.AddScoped<IInventoryService, InventoryService>();
     builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
     builder.Services.AddScoped<Sales.Module.Interfaces.ISalesService, Sales.Module.Services.SalesService>();
     builder.Services.AddScoped<Sales.Module.Interfaces.ICashDrawerService, Sales.Module.Services.CashDrawerService>();
     builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodService, Sales.Module.Services.PaymentMethodService>();
+    builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodNotifier, Backend.API.Services.SignalRPaymentMethodNotifier>();
     builder.Services.AddScoped<Sales.Module.Interfaces.IDailyClosureService, Sales.Module.Services.DailyClosureService>();
+    builder.Services.AddScoped<Core.Interfaces.IIdempotencyService, Sales.Module.Services.IdempotencyService>();
+    builder.Services.AddHostedService<Backend.API.Jobs.IdempotencyCleanupJob>();
 
     builder.Services.AddMediatR(cfg =>
     {
         cfg.RegisterServicesFromAssembly(typeof(Sales.Module.Services.SalesService).Assembly);
         cfg.RegisterServicesFromAssembly(typeof(Inventory.Module.Services.InventoryService).Assembly);
+        cfg.RegisterServicesFromAssembly(typeof(Logistics.Module.Services.DeliveryService).Assembly);
     });
+    builder.Services.AddLogisticsModule();
 
-    // BCV Services
+    // BCV Services (Sincronización exclusivamente manual a demanda)
     builder.Services.AddHttpClient<BcvScraperService>();
-    builder.Services.AddHostedService<Backend.API.Jobs.BcvExchangeRateJob>();
+    builder.Services.AddHostedService<Backend.API.Services.CacheMetricsLoggerService>();
     builder.Services.AddSignalR();
 
     builder.Services.Configure<Core.Configuration.SystemSettingsOptions>(builder.Configuration.GetSection(Core.Configuration.SystemSettingsOptions.SectionName));
@@ -138,6 +151,10 @@ try
         {
             throw new InvalidOperationException("CRITICAL: JWT Secret Key (JWT_SETTINGS_KEY or JwtSettings:Key) must be configured in production and must be at least 32 characters long.");
         }
+    }
+    else if (!builder.Environment.IsDevelopment() && (jwtKey.Contains("Default_Development_Secret_Key") || jwtKey.Equals("ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795", StringComparison.OrdinalIgnoreCase)))
+    {
+        throw new InvalidOperationException("CRITICAL: Default or historically leaked development JWT secret key cannot be used in production environments.");
     }
 
     var jwtIssuer = builder.Configuration["JwtSettings:Issuer"] ?? "SolucionesPos";
@@ -163,9 +180,28 @@ try
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
+        options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                if (string.IsNullOrEmpty(context.Token))
+                {
+                    if (context.Request.Cookies.TryGetValue("pos_jwt", out var cookieToken) && !string.IsNullOrWhiteSpace(cookieToken))
+                    {
+                        context.Token = cookieToken;
+                    }
+                }
+                return Task.CompletedTask;
+            }
+        };
     });
 
-    builder.Services.AddAuthorization();
+    builder.Services.AddAuthorization(options =>
+    {
+        options.AddPolicy("DesktopOnly", policy => policy.RequireClaim("scope", "pos:desktop"));
+        options.AddPolicy("WebOnly", policy => policy.RequireClaim("scope", "pos:web"));
+        options.AddPolicy("WebOrDesktop", policy => policy.RequireClaim("scope", "pos:web", "pos:desktop"));
+    });
 
     builder.Services.AddControllers(options =>
     {
@@ -177,6 +213,8 @@ try
 
     builder.Services.AddOpenApi();
     builder.Services.AddHostedService<Backend.API.Jobs.StockMovementArchiverJob>();
+    builder.Services.AddHostedService<Backend.API.Jobs.BcvExchangeRateJob>();
+    builder.Services.AddHostedService<Backend.API.Jobs.OutboxProcessorJob>();
 
     // Rate Limiting (H-15)
     builder.Services.AddRateLimiter(options =>
@@ -226,15 +264,20 @@ try
                     if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.Equals("127.0.0.1") || host.Equals("::1"))
                         return true;
 
-                    // Allow Private Intranet Subnets (RFC-1918) for POS LAN network
+                    // Allow Private Intranet Subnets (RFC-1918) for POS LAN network (gated to POS application ports: 5000, 5001, 5173)
                     if (System.Net.IPAddress.TryParse(host, out var ip))
                     {
                         var bytes = ip.GetAddressBytes();
                         if (bytes.Length == 4)
                         {
-                            if (bytes[0] == 10) return true; // 10.0.0.0/8
-                            if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true; // 172.16.0.0/12
-                            if (bytes[0] == 192 && bytes[1] == 168) return true; // 192.168.0.0/16
+                            int port = uri.Port;
+                            bool isAllowedPort = port == 5000 || port == 5001 || port == 5173 || port == 80 || port == 443 || port == 4173;
+                            if (isAllowedPort)
+                            {
+                                if (bytes[0] == 10) return true; // 10.0.0.0/8
+                                if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true; // 172.16.0.0/12
+                                if (bytes[0] == 192 && bytes[1] == 168) return true; // 192.168.0.0/16
+                            }
                         }
                     }
                 }
@@ -246,6 +289,39 @@ try
         });
     });
 
+    // Forwarded Headers Configuration (SEC-10)
+    // Permite normalizar X-Forwarded-For y X-Forwarded-Proto cuando el backend opera tras un reverse proxy (Nginx, IIS, Caddy).
+    // Por defecto en ASP.NET Core, confía en proxies en loopback (127.0.0.1/8 y ::1/128).
+    // Permite además extender KnownProxies y KnownNetworks mediante appsettings.json si se despliega tras proxies remotos.
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+        var knownProxiesConfig = builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>();
+        if (knownProxiesConfig != null)
+        {
+            foreach (var proxy in knownProxiesConfig)
+            {
+                if (System.Net.IPAddress.TryParse(proxy, out var ip))
+                {
+                    options.KnownProxies.Add(ip);
+                }
+            }
+        }
+
+        var knownNetworksConfig = builder.Configuration.GetSection("ForwardedHeaders:KnownNetworks").Get<string[]>();
+        if (knownNetworksConfig != null)
+        {
+            foreach (var net in knownNetworksConfig)
+            {
+                if (System.Net.IPNetwork.TryParse(net, out var parsedNet))
+                {
+                    options.KnownIPNetworks.Add(parsedNet);
+                }
+            }
+        }
+    });
+
     builder.Services.AddResponseCompression(options =>
     {
         options.EnableForHttps = true;
@@ -254,6 +330,9 @@ try
     });
 
     var app = builder.Build();
+
+    // Normalizar encabezados reenviados (X-Forwarded-For / X-Forwarded-Proto) al inicio del pipeline
+    app.UseForwardedHeaders();
 
     // Global Unhandled Exception & DB Resilience Middleware
     app.UseMiddleware<Backend.API.Middleware.GlobalExceptionHandlerMiddleware>();
@@ -287,11 +366,41 @@ try
     app.UseMiddleware<Backend.API.Middleware.SecurityAuditMiddleware>();
 
     app.UseAuthentication();
+    app.UseMiddleware<Backend.API.Middleware.SecurityStampValidationMiddleware>();
     app.UseAuthorization();
+    app.UseMiddleware<Backend.API.Middleware.MustChangePasswordMiddleware>();
 
-    app.MapControllers();
+    app.MapControllers().RequireRateLimiting("GeneralApiRateLimit");
     app.MapHub<ExchangeRateHub>("/hubs/exchange-rate");
-    app.MapFallbackToFile("index.html");
+
+    // Fallback SPA routing with strict API 404 segregation (H-API-16)
+    app.MapFallback(async context =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api") || context.Request.Path.StartsWithSegments("/hubs"))
+        {
+            context.Response.StatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status404NotFound;
+            context.Response.ContentType = "application/problem+json";
+            await context.Response.WriteAsJsonAsync(new Microsoft.AspNetCore.Mvc.ProblemDetails
+            {
+                Status = Microsoft.AspNetCore.Http.StatusCodes.Status404NotFound,
+                Title = "Not Found",
+                Detail = $"Ruta de API no encontrada: {context.Request.Path}"
+            });
+            return;
+        }
+
+        var webRoot = app.Environment.WebRootPath ?? System.IO.Path.Combine(AppContext.BaseDirectory, "wwwroot");
+        var indexPath = System.IO.Path.Combine(webRoot, "index.html");
+        if (System.IO.File.Exists(indexPath))
+        {
+            context.Response.ContentType = "text/html; charset=utf-8";
+            await context.Response.SendFileAsync(indexPath);
+        }
+        else
+        {
+            context.Response.StatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status404NotFound;
+        }
+    });
 
     // Ensure Database Exists, Migrations and Seed Data (fail-fast: abort startup on any failure)
     using (var scope = app.Services.CreateScope())
@@ -363,26 +472,99 @@ try
         // 3) Aplicar migraciones (crea el esquema y __EFMigrationsHistory). Abortar si fallan.
         try
         {
-            AppLogger.LogStart("Running EF Core Database Migrations...");
-            _invDb.Database.Migrate();
-            _salesDb.Database.Migrate();
+            AppLogger.LogStart("Running EF Core Database Migrations asynchronously...");
+            await _invDb.Database.MigrateAsync();
+            await _salesDb.Database.MigrateAsync();
 
-            // Defensive schema check & migration: Ensure columns are properly typed in PostgreSQL
+            // Defensive schema check & migration: Ensure columns and tables are properly typed in PostgreSQL via information_schema
             try
             {
-                AppLogger.LogStart("Verifying and adjusting database column precision (numeric 18,3)...");
+                AppLogger.LogStart("Verifying and adjusting database schema and column precision (numeric 18,3)...");
 
-                _salesDb.Database.ExecuteSqlRaw(@"ALTER TABLE ""PaymentMethods"" ADD COLUMN IF NOT EXISTS ""DisplayOrder"" integer NOT NULL DEFAULT 0;");
-                _salesDb.Database.ExecuteSqlRaw(@"ALTER TABLE ""CashTransactions"" ADD COLUMN IF NOT EXISTS ""IsPhysicalCash"" boolean NOT NULL DEFAULT true;");
-                _salesDb.Database.ExecuteSqlRaw(@"
-                    UPDATE ""Users""
-                    SET ""Username"" = COALESCE(NULLIF(TRIM(""Username""), ''), NULLIF(TRIM(""Cedula""), ''), 'user_' || ""Id""::text)
-                    WHERE ""Username"" IS NULL OR TRIM(""Username"") = '';
-                    CREATE UNIQUE INDEX IF NOT EXISTS ""ix_users_username_lower"" ON ""Users"" (LOWER(""Username""));
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'PaymentMethods') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'PaymentMethods' AND column_name = 'DisplayOrder') THEN
+            ALTER TABLE ""PaymentMethods"" ADD COLUMN ""DisplayOrder"" integer NOT NULL DEFAULT 0;
+        END IF;
+    END IF;
+END $$;");
+
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'CashTransactions') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'CashTransactions' AND column_name = 'IsPhysicalCash') THEN
+            ALTER TABLE ""CashTransactions"" ADD COLUMN ""IsPhysicalCash"" boolean NOT NULL DEFAULT true;
+        END IF;
+    END IF;
+END $$;");
+
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Sales') THEN
+        CREATE SEQUENCE IF NOT EXISTS factura_number_seq START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+        PERFORM setval('factura_number_seq', GREATEST(COALESCE((SELECT MAX(""InvoiceNumber"") FROM ""Sales""), 0) + 1, 1), false);
+    END IF;
+END $$;");
+
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""OutboxMessages"" (
+                        ""Id"" uuid NOT NULL PRIMARY KEY,
+                        ""EventType"" character varying(100) NOT NULL,
+                        ""Payload"" jsonb NOT NULL,
+                        ""CreatedAtUtc"" timestamp with time zone NOT NULL,
+                        ""ProcessedAtUtc"" timestamp with time zone NULL,
+                        ""DispatchedAtUtc"" timestamp with time zone NULL,
+                        ""Status"" character varying(20) NOT NULL DEFAULT 'Pending',
+                        ""RetryCount"" integer NOT NULL DEFAULT 0,
+                        ""NextRetryUtc"" timestamp with time zone NOT NULL,
+                        ""ErrorMessage"" text NULL
+                    );
+
+                    DO $$
+                    BEGIN
+                        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'OutboxMessages') THEN
+                            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'OutboxMessages' AND column_name = 'DispatchedAtUtc') THEN
+                                ALTER TABLE ""OutboxMessages"" ADD COLUMN ""DispatchedAtUtc"" timestamp with time zone NULL;
+                            END IF;
+                        END IF;
+                    END $$;
+
+                    CREATE INDEX IF NOT EXISTS ""IX_OutboxMessages_Status_NextRetryUtc"" 
+                        ON ""OutboxMessages"" (""Status"", ""NextRetryUtc"") 
+                        WHERE ""Status"" = 'Pending';
+
+                    CREATE INDEX IF NOT EXISTS ""IX_OutboxMessages_CreatedAtUtc"" 
+                        ON ""OutboxMessages"" (""CreatedAtUtc"");
+                ");
+
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""IdempotentRequests"" (
+                        ""Id"" serial PRIMARY KEY,
+                        ""Key"" character varying(128) NOT NULL,
+                        ""RequestPath"" character varying(256) NOT NULL,
+                        ""PayloadHash"" bytea NOT NULL,
+                        ""StatusCode"" integer NOT NULL,
+                        ""ResponseBody"" text NOT NULL,
+                        ""CreatedAtUtc"" timestamp with time zone NOT NULL,
+                        ""ExpiresAtUtc"" timestamp with time zone NOT NULL
+                    );
+
+                    CREATE UNIQUE INDEX IF NOT EXISTS ""IX_IdempotentRequests_Key_RequestPath"" 
+                        ON ""IdempotentRequests"" (""Key"", ""RequestPath"");
+
+                    CREATE INDEX IF NOT EXISTS ""IX_IdempotentRequests_ExpiresAtUtc"" 
+                        ON ""IdempotentRequests"" (""ExpiresAtUtc"");
+
+                    CREATE INDEX IF NOT EXISTS ""IX_IdempotentRequests_CreatedAtUtc"" 
+                        ON ""IdempotentRequests"" (""CreatedAtUtc"");
                 ");
 
                 // 1. Sales module: SaleItems.Quantity -> numeric(18,3)
-                _salesDb.Database.ExecuteSqlRaw(@"
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
 DO $$
 BEGIN
     IF EXISTS (
@@ -395,7 +577,7 @@ BEGIN
 END $$;");
 
                 // 2. Inventory module: Parent table (Products) first
-                _invDb.Database.ExecuteSqlRaw(@"
+                await _invDb.Database.ExecuteSqlRawAsync(@"
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'StockQuantity' AND data_type <> 'numeric') THEN
@@ -423,7 +605,94 @@ BEGIN
     END IF;
 END $$;");
 
-                AppLogger.LogStart("Database column precision verification completed successfully.");
+                // Phase 4: User Hardening, Token Revocation & Role Migration (Defensive with information_schema checks)
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Users') THEN
+        UPDATE ""Users""
+        SET ""Username"" = COALESCE(NULLIF(TRIM(""Username""), ''), NULLIF(TRIM(""Cedula""), ''), 'user_' || ""Id""::text)
+        WHERE ""Username"" IS NULL OR TRIM(""Username"") = '';
+
+        IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'Users' AND indexname = 'ix_users_username_lower') THEN
+            CREATE UNIQUE INDEX ""ix_users_username_lower"" ON ""Users"" (LOWER(""Username""));
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Users' AND column_name = 'SecurityStamp') THEN
+            ALTER TABLE ""Users"" ADD COLUMN ""SecurityStamp"" character varying(64) NOT NULL DEFAULT '';
+        END IF;
+        UPDATE ""Users"" SET ""SecurityStamp"" = md5(random()::text || clock_timestamp()::text) WHERE ""SecurityStamp"" = '' OR ""SecurityStamp"" IS NULL;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Users' AND column_name = 'AccessFailedCount') THEN
+            ALTER TABLE ""Users"" ADD COLUMN ""AccessFailedCount"" integer NOT NULL DEFAULT 0;
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Users' AND column_name = 'LockoutEndUtc') THEN
+            ALTER TABLE ""Users"" ADD COLUMN ""LockoutEndUtc"" timestamp with time zone NULL;
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Users' AND column_name = 'LastLoginUtc') THEN
+            ALTER TABLE ""Users"" ADD COLUMN ""LastLoginUtc"" timestamp with time zone NULL;
+        END IF;
+    END IF;
+END $$;");
+
+                await _salesDb.Database.ExecuteSqlRawAsync(@"
+                    DO $$
+                    DECLARE
+                        v_has_migrated boolean;
+                        v_anomalous_count integer;
+                    BEGIN
+                        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Users') THEN
+                            CREATE TABLE IF NOT EXISTS ""__RoleMigrationApplied"" (""AppliedAt"" timestamp with time zone NOT NULL);
+                            SELECT EXISTS (SELECT 1 FROM ""__RoleMigrationApplied"") INTO v_has_migrated;
+                            IF NOT v_has_migrated THEN
+                                SELECT COUNT(*) INTO v_anomalous_count 
+                                FROM ""Users"" 
+                                WHERE ""Role"" NOT IN (0, 1, 2, 3, 4);
+
+                                IF v_anomalous_count > 0 THEN
+                                    RAISE WARNING 'Se detectaron % usuarios con roles no estándar. Se preservará su valor para auditoría manual.', v_anomalous_count;
+                                END IF;
+
+                                UPDATE ""Users"" 
+                                SET ""Role"" = CASE 
+                                    WHEN ""Role"" = 0 THEN 3  -- Admin previo (0 en C#) -> nuevo Admin (3)
+                                    WHEN ""Role"" = 1 AND (LOWER(""Username"") = 'admin' OR LOWER(""Cedula"") = '12345678' OR LOWER(""Username"") = 'v-12345678') THEN 3
+                                    WHEN ""Role"" = 1 THEN 1  -- Cashier previo (1) -> nuevo Cashier (1)
+                                    WHEN ""Role"" = 2 THEN 4  -- Driver previo (2 en C#) -> nuevo Driver (4)
+                                    ELSE ""Role""             -- Preserva valores desconocidos
+                                END;
+
+                                INSERT INTO ""__RoleMigrationApplied"" VALUES (NOW());
+                            END IF;
+                        END IF;
+                    END $$;
+                ");
+
+                // Upgrade legacy plain-text passwords to PBKDF2 immediately (H-API-23)
+                var usersTableExists = (await _salesDb.Database.SqlQueryRaw<int>(
+                    @"SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Users'"
+                ).ToListAsync()).Any();
+
+                if (usersTableExists)
+                {
+                    var plainUsers = await _salesDb.Users
+                        .Where(u => !string.IsNullOrEmpty(u.PasswordHash) && !u.PasswordHash.StartsWith("PBKDF2$"))
+                        .ToListAsync();
+                    foreach (var u in plainUsers)
+                    {
+                        u.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(u.PasswordHash);
+                        u.MustChangePassword = true;
+                    }
+                    if (plainUsers.Count > 0)
+                    {
+                        await _salesDb.SaveChangesAsync();
+                        AppLogger.LogStart($"[Security] Upgraded {plainUsers.Count} legacy plain-text password(s) to PBKDF2 with MustChangePassword=true.");
+                    }
+                }
+
+                AppLogger.LogStart("Database schema and column precision verification completed successfully.");
             }
             catch (System.Exception schemaEx)
             {
@@ -469,18 +738,13 @@ END $$;");
 
             if (targetAdmin != null)
             {
-                if (!targetAdmin.IsActive)
-                {
-                    targetAdmin.IsActive = true;
-                    AppLogger.LogStart($"[Seed] Reactivated Admin user: {targetAdmin.Username} ({targetAdmin.Cedula})");
-                }
                 if (string.IsNullOrWhiteSpace(targetAdmin.PasswordHash))
                 {
                     targetAdmin.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(seedPassword);
-                    targetAdmin.MustChangePassword = false;
-                    AppLogger.LogStart($"[Seed] Set password hash for Admin user: {targetAdmin.Username}");
+                    targetAdmin.MustChangePassword = true;
+                    AppLogger.LogStart($"[Seed] Set password hash for Admin user: {targetAdmin.Username} (MustChangePassword=true)");
+                    _salesDb.SaveChanges();
                 }
-                _salesDb.SaveChanges();
             }
             else
             {
@@ -493,29 +757,30 @@ END $$;");
                     PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(seedPassword),
                     Role = Core.Entities.UserRole.Admin,
                     IsActive = true,
-                    MustChangePassword = false // Clave elegida explícitamente en el instalador
+                    MustChangePassword = false, // Clave elegida explícitamente en el instalador
+                    SecurityStamp = Guid.NewGuid().ToString("N")
                 };
                 _salesDb.Users.Add(newAdmin);
                 _salesDb.SaveChanges();
                 AppLogger.LogStart($"[Seed] Created customized admin user: {seedUsername} ({seedName})");
             }
 
-            // Ensure ALL Admin users in the system are ALWAYS active on startup and have valid password
+            // Ensure ALL Admin users in the system have valid security stamp and password hash if missing (never forcibly reactivate inactive admins)
             var allAdmins = _salesDb.Users.Where(u => u.Role == Core.Entities.UserRole.Admin).ToList();
             bool modifiedAdmins = false;
             foreach (var admin in allAdmins)
             {
-                if (!admin.IsActive)
-                {
-                    admin.IsActive = true;
-                    modifiedAdmins = true;
-                    AppLogger.LogStart($"[Seed] Reactivated Admin user: {admin.Username} ({admin.Cedula})");
-                }
                 if (string.IsNullOrWhiteSpace(admin.PasswordHash))
                 {
                     admin.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(seedPassword);
+                    admin.MustChangePassword = true;
                     modifiedAdmins = true;
-                    AppLogger.LogStart($"[Seed] Set seed password hash for Admin user: {admin.Username} ({admin.Cedula})");
+                    AppLogger.LogStart($"[Seed] Set seed password hash for Admin user: {admin.Username} ({admin.Cedula}) with MustChangePassword=true");
+                }
+                if (string.IsNullOrWhiteSpace(admin.SecurityStamp))
+                {
+                    admin.SecurityStamp = Guid.NewGuid().ToString("N");
+                    modifiedAdmins = true;
                 }
             }
             if (modifiedAdmins)
@@ -583,11 +848,38 @@ catch (Exception fatalEx)
     throw;
 }
 
-// Devuelve el certificado HTTPS autofirmado (pos-https.pfx) si está disponible; si no, null.
-// Busca primero junto al ejecutable (modo servicio/publicado) y luego en el directorio actual.
-X509Certificate2? LoadHttpsCertificate()
+// Devuelve el certificado HTTPS si está disponible (vía Windows Certificate Store o pos-https.pfx); si no, null.
+// Nunca usa contraseñas hardcodeadas en producción; resuelve desde Store o HTTPS_CERT_PASSWORD.
+X509Certificate2? LoadHttpsCertificate(IConfiguration config, IHostEnvironment env)
 {
-    const string certPassword = "PosHttpsDev2026!";
+    // 1. Prioridad: Windows Certificate Store (Recomendado en Windows Server / Entornos Corporativos)
+    var thumbprint = (Environment.GetEnvironmentVariable("HTTPS_CERT_THUMBPRINT") 
+                      ?? config["SystemSettings:HttpsCertThumbprint"] 
+                      ?? config["Kestrel:Certificates:Default:Subject"])?.Replace(" ", "").ToUpperInvariant();
+
+    if (!string.IsNullOrWhiteSpace(thumbprint))
+    {
+        foreach (var location in new[] { StoreLocation.LocalMachine, StoreLocation.CurrentUser })
+        {
+            try
+            {
+                using var store = new X509Store(StoreName.My, location);
+                store.Open(OpenFlags.ReadOnly);
+                var matches = store.Certificates.Find(X509FindType.FindByThumbprint, thumbprint, validOnly: false);
+                if (matches.Count > 0)
+                {
+                    AppLogger.LogStart($"[HTTPS] Certificado cargado exitosamente desde Windows Certificate Store ({location}): {matches[0].Subject}");
+                    return matches[0];
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.LogStart($"[HTTPS] [AVISO] Error al consultar Windows Certificate Store ({location}): {ex.Message}");
+            }
+        }
+    }
+
+    // 2. Archivo .pfx local en directorio certs/
     var candidates = new[]
     {
         Path.Combine(AppContext.BaseDirectory, "certs", "pos-https.pfx"),
@@ -598,13 +890,30 @@ X509Certificate2? LoadHttpsCertificate()
     {
         if (File.Exists(candidate))
         {
+            string? certPassword = Environment.GetEnvironmentVariable("HTTPS_CERT_PASSWORD")
+                                ?? config["Kestrel:Certificates:Default:Password"];
+
+            if (string.IsNullOrEmpty(certPassword))
+            {
+                if (env.IsDevelopment())
+                {
+                    certPassword = "PosHttpsDev2026!";
+                    AppLogger.LogStart("[HTTPS] Entorno de desarrollo: usando contraseña de prueba predeterminada para pos-https.pfx.");
+                }
+                else
+                {
+                    AppLogger.LogStart($"[HTTPS] [AVISO] Se detectó el archivo {candidate} en entorno de producción pero no se configuró la variable de entorno HTTPS_CERT_PASSWORD. Por seguridad, se omite la carga sin clave de entorno.");
+                    return null;
+                }
+            }
+
             try
             {
                 return X509CertificateLoader.LoadPkcs12FromFile(candidate, certPassword);
             }
             catch (Exception ex)
             {
-                AppLogger.LogStart($"[AVISO] No se pudo cargar el certificado HTTPS ({candidate}): {ex.Message}");
+                AppLogger.LogStart($"[HTTPS] [AVISO] No se pudo cargar el certificado HTTPS ({candidate}): {ex.Message}");
                 return null;
             }
         }

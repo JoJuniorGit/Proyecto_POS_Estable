@@ -19,10 +19,17 @@ namespace Desktop.Client.Views
             };
         }
 
+        protected override void OnClosed(System.EventArgs e)
+        {
+            ViewModel?.Dispose();
+            base.OnClosed(e);
+        }
+
         private void NumberValidationTextBox(object sender, System.Windows.Input.TextCompositionEventArgs e)
         {
             if (ViewModel?.IsGroupHeader == true) return;
-            System.Text.RegularExpressions.Regex regex = new System.Text.RegularExpressions.Regex("[^0-9]+");
+            // Permite caracteres alfanuméricos, guiones y guiones bajos para SKU/Código de barras
+            System.Text.RegularExpressions.Regex regex = new System.Text.RegularExpressions.Regex(@"[^a-zA-Z0-9\-_]+");
             e.Handled = regex.IsMatch(e.Text);
         }
     }

@@ -12,7 +12,7 @@ const VIEW_TITLES = {
   exchange: 'Tasa de Cambio',
 };
 
-export default function Layout({ children, currentView, onNavigate, exchangeRate }) {
+export default function Layout({ children, currentView, onNavigate, exchangeRate, isRateOutdated }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -28,6 +28,7 @@ export default function Layout({ children, currentView, onNavigate, exchangeRate
         <TopBar
           title={VIEW_TITLES[currentView] || 'POS'}
           exchangeRate={exchangeRate}
+          isRateOutdated={isRateOutdated}
           onMenuClick={() => setSidebarOpen(true)}
         />
 
