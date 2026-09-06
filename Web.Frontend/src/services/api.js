@@ -7,6 +7,26 @@
  * 5. Modo desarrollo Vite (puerto 5173 u otros) -> http://${hostname}:5000 o https://${hostname}:5001 según protocolo.
  * 6. Fallback general: window.location.origin o http://${hostname}:5000.
  */
+function isAllowedApiHost(hostname) {
+  if (!hostname) return false;
+  const h = hostname.toLowerCase();
+  // Loopback
+  if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
+  // Mismo host del documento (origen de servido)
+  if (typeof window !== 'undefined' && window.location?.hostname && h === window.location.hostname.toLowerCase()) return true;
+  // Rango IP privado LAN (red de despliegue del POS): verifica si es una IP privada pura.
+  const ipMatch = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (ipMatch) {
+    const [a, b] = [Number(ipMatch[1]), Number(ipMatch[2])];
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+    return false;
+  }
+  return false;
+}
+
 export function resolveBaseUrl() {
   if (typeof window === 'undefined') {
     return 'http://localhost:5000';
@@ -21,14 +41,6 @@ export function resolveBaseUrl() {
   if (port === '5000' || port === '5001') {
     return origin || (isHttps ? `https://${hostname}:5001` : `http://${hostname}:5000`);
   }
-
-function isAllowedApiHost(hostname) {
-  if (!hostname) return false;
-  const h = hostname.toLowerCase();
-  if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
-  if (typeof window !== 'undefined' && window.location?.hostname && h === window.location.hostname.toLowerCase()) return true;
-  return false;
-}
 
   // 2. Parámetro en URL (?api=... o ?server=...)
   try {
@@ -141,6 +153,20 @@ export function setCustomBaseUrl(url) {
       }
     }
 
+    // Validación zero-trust del host contra la whitelist LAN/Loopback (H-WEB-2, 8.4-N1)
+    let isAllowed = false;
+    try {
+      const parsed = new URL(normalized);
+      isAllowed = isAllowedApiHost(parsed.hostname);
+    } catch {
+      isAllowed = false;
+    }
+
+    if (!isAllowed) {
+      localStorage.removeItem('pos_custom_api_url');
+      return;
+    }
+
     localStorage.setItem('pos_custom_api_url', normalized);
     CURRENT_BASE_URL = normalized;
   }
@@ -156,20 +182,6 @@ export function setCustomBaseUrl(url) {
 export async function apiFetch(endpoint, options = {}) {
   const url = `${CURRENT_BASE_URL}${endpoint}`;
 
-  const userStr = typeof localStorage !== 'undefined' ? localStorage.getItem('pos_user') : null;
-  let userHeaders = {};
-  if (userStr) {
-    try {
-      const u = JSON.parse(userStr);
-      const token = u?.token || u?.Token || (typeof localStorage !== 'undefined' ? localStorage.getItem('pos_token') : null);
-      if (token) {
-        userHeaders['Authorization'] = `Bearer ${token}`;
-      }
-    } catch {
-      // Ignorar error de parsing
-    }
-  }
-
   const { headers: customHeaders, ...restOptions } = options;
   const config = {
     credentials: 'include',
@@ -179,7 +191,6 @@ export async function apiFetch(endpoint, options = {}) {
       'Accept': 'application/json',
       'X-Client-Platform': 'Web',
       'X-Client-Version': '1.0.0',
-      ...userHeaders,
       ...customHeaders,
     },
   };

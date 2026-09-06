@@ -401,6 +401,13 @@ FodyWeavers.xsd
 *.sln.iml
 
 # Project Specific Ignores
+
+# SECRETS (hallazgo 8.2-CR2): credenciales de entorno y clave JWT NO se versionan
+Backend.API/appsettings.Development.json
+docs/JWT_Key.md
+*.local.json
+*.secrets.json
+
 dist_installer/
 installer/Output/
 Web.Frontend/dist/

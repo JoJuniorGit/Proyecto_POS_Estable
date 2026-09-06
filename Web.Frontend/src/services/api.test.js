@@ -114,7 +114,7 @@ describe('api.js resolveBaseUrl & setCustomBaseUrl', () => {
     assert.strictEqual(mockStorage['pos_custom_api_url'], 'https://192.168.1.100:5001');
   });
 
-  it('7. setCustomBaseUrl sanitizes http to https on HTTPS page', () => {
+  it('7. setCustomBaseUrl sanitizes http to https on HTTPS page for a permitted LAN host', () => {
     global.window = {
       location: {
         protocol: 'https:',
@@ -126,6 +126,35 @@ describe('api.js resolveBaseUrl & setCustomBaseUrl', () => {
 
     setCustomBaseUrl('http://192.168.1.20:5000');
     assert.strictEqual(mockStorage['pos_custom_api_url'], 'https://192.168.1.20:5001');
+  });
+
+  it('8. setCustomBaseUrl rejects a remote (non-private, non-loopback) host', () => {
+    global.window = {
+      location: {
+        protocol: 'https:',
+        origin: 'https://localhost:5001',
+        hostname: 'localhost',
+        port: '5001'
+      }
+    };
+
+    setCustomBaseUrl('https://api.evil.com');
+    // No debe persistirse ni actualizar la URL base
+    assert.strictEqual(mockStorage['pos_custom_api_url'], undefined);
+  });
+
+  it('9. setCustomBaseUrl rejects a public-IP LAN-looking host', () => {
+    global.window = {
+      location: {
+        protocol: 'https:',
+        origin: 'https://localhost:5001',
+        hostname: 'localhost',
+        port: '5001'
+      }
+    };
+
+    setCustomBaseUrl('https://8.8.8.8');
+    assert.strictEqual(mockStorage['pos_custom_api_url'], undefined);
   });
 });
 

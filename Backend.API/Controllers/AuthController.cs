@@ -62,12 +62,12 @@ public class AuthController : ControllerBase
             return Unauthorized(new { Message = "Credenciales inválidas." });
         }
 
-        // Account lockout check (H-CORE-3)
+        // Account lockout check (H-CORE-3). Responde 401 genérico (anti-enumeración 8B-M3):
+        // no se revela si la cuenta existe, está bloqueada ni por cuánto tiempo.
         if (user.LockoutEndUtc.HasValue && user.LockoutEndUtc.Value > DateTime.UtcNow)
         {
-            var remainingMinutes = Math.Ceiling((user.LockoutEndUtc.Value - DateTime.UtcNow).TotalMinutes);
             AppLogger.LogWarn($"[AUTH] Intento de acceso a cuenta bloqueada: Usuario '{request.Cedula}'. Bloqueada hasta {user.LockoutEndUtc.Value:O}.");
-            return StatusCode(423, new { Message = $"La cuenta está bloqueada temporalmente por múltiples intentos fallidos. Intente de nuevo en {remainingMinutes} minutos." });
+            return Unauthorized(new { Message = "Credenciales inválidas." });
         }
 
         if (!user.IsActive)

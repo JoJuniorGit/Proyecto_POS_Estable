@@ -57,7 +57,7 @@ public class SalesDbContext : DbContext
             .HasIndex(u => u.Username)
             .IsUnique();
 
-        modelBuilder.Entity<User>().HasData(
+modelBuilder.Entity<User>().HasData(
             new User
             {
                 Id = 1,
@@ -66,7 +66,8 @@ public class SalesDbContext : DbContext
                 Username = "admin",
                 Role = UserRole.Admin,
                 IsActive = true,
-                CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+                CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                SecurityStamp = ""
             }
         );
 
@@ -227,6 +228,24 @@ public class SalesDbContext : DbContext
                 .IsConcurrencyToken();
         }
 
+        // Tokens de concurrencia basados en `xmin` de PostgreSQL (hallazgo 8.2-A1).
+        // `xmin` es una pseudo-columna de sistema que toda tabla PostgreSQL expone, por lo
+        // que se configura en caliente sin DDL adicional y se omite en SQLite (tests).
+        if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            modelBuilder.Entity<Sale>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+
+            modelBuilder.Entity<CashDrawerSession>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+        }
+
         // Seed initial payment methods
         modelBuilder.Entity<PaymentMethod>().HasData(
             new PaymentMethod { Id = 1, Name = "Cash", IsActive = true, RequiresReference = false, IsCash = true, IsDeleted = false },
@@ -253,7 +272,8 @@ public class SalesDbContext : DbContext
             entity.Property(e => e.Status).HasMaxLength(20).IsRequired();
             entity.Property(e => e.Payload).HasColumnType("jsonb").IsRequired();
             entity.HasIndex(e => new { e.Status, e.NextRetryUtc })
-                .HasDatabaseName("IX_OutboxMessages_Status_NextRetryUtc");
+                .HasDatabaseName("IX_OutboxMessages_Status_NextRetryUtc")
+                .HasFilter("\"Status\" = 'Pending'");
             entity.HasIndex(e => e.CreatedAtUtc)
                 .HasDatabaseName("IX_OutboxMessages_CreatedAtUtc");
         });

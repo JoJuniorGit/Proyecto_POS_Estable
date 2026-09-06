@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Sales.Module.Data;
@@ -11,9 +12,11 @@ using Sales.Module.Data;
 namespace Sales.Module.Migrations
 {
     [DbContext(typeof(SalesDbContext))]
-    partial class SalesDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260906170744_AddXminConcurrencyTokensToSales")]
+    partial class AddXminConcurrencyTokensToSales
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -77,7 +80,7 @@ namespace Sales.Module.Migrations
                         .HasDatabaseName("IX_Customers_Active_Name")
                         .HasFilter("\"IsActive\" = true");
 
-                    b.ToTable("Customers", (string)null);
+                    b.ToTable("Customers");
                 });
 
             modelBuilder.Entity("Core.Entities.IdempotentRequest", b =>
@@ -177,7 +180,7 @@ namespace Sales.Module.Migrations
                         .HasDatabaseName("IX_OutboxMessages_Status_NextRetryUtc")
                         .HasFilter("\"Status\" = 'Pending'");
 
-                    b.ToTable("OutboxMessages", (string)null);
+                    b.ToTable("OutboxMessages");
                 });
 
             modelBuilder.Entity("Core.Entities.User", b =>
@@ -247,7 +250,7 @@ namespace Sales.Module.Migrations
                     b.HasIndex("Username")
                         .IsUnique();
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users");
 
                     b.HasData(
                         new
@@ -309,7 +312,7 @@ namespace Sales.Module.Migrations
                         .HasDatabaseName("IX_CashDrawerSessions_SingleOpen")
                         .HasFilter("\"Status\" = 0");
 
-                    b.ToTable("CashDrawerSessions", (string)null);
+                    b.ToTable("CashDrawerSessions");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.CashTransaction", b =>
@@ -372,7 +375,7 @@ namespace Sales.Module.Migrations
 
                     b.HasIndex("SessionId", "TransactionTime");
 
-                    b.ToTable("CashTransactions", (string)null);
+                    b.ToTable("CashTransactions");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.ClosureDetail", b =>
@@ -409,7 +412,7 @@ namespace Sales.Module.Migrations
 
                     b.HasIndex("PaymentMethodId");
 
-                    b.ToTable("ClosureDetails", (string)null);
+                    b.ToTable("ClosureDetails");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.DailyClosure", b =>
@@ -444,7 +447,7 @@ namespace Sales.Module.Migrations
 
                     b.HasIndex("ClosureDate");
 
-                    b.ToTable("DailyClosures", (string)null);
+                    b.ToTable("DailyClosures");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.PaymentMethod", b =>
@@ -485,7 +488,7 @@ namespace Sales.Module.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PaymentMethods", (string)null);
+                    b.ToTable("PaymentMethods");
 
                     b.HasData(
                         new
@@ -595,7 +598,7 @@ namespace Sales.Module.Migrations
 
                     b.HasIndex("Status", "DeliveryStatus");
 
-                    b.ToTable("Sales", (string)null);
+                    b.ToTable("Sales");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.SaleItem", b =>
@@ -636,7 +639,7 @@ namespace Sales.Module.Migrations
                     b.HasIndex("SaleId")
                         .HasDatabaseName("IX_SaleItems_SaleId");
 
-                    b.ToTable("SaleItems", (string)null);
+                    b.ToTable("SaleItems");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.SalePayment", b =>
@@ -676,7 +679,7 @@ namespace Sales.Module.Migrations
                     b.HasIndex("SaleId")
                         .HasDatabaseName("IX_SalePayments_SaleId");
 
-                    b.ToTable("SalePayments", (string)null);
+                    b.ToTable("SalePayments");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.CashTransaction", b =>

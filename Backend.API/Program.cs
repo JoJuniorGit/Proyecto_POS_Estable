@@ -520,59 +520,6 @@ BEGIN
     END IF;
 END $$;");
 
-                await _salesDb.Database.ExecuteSqlRawAsync(@"
-                    CREATE TABLE IF NOT EXISTS ""OutboxMessages"" (
-                        ""Id"" uuid NOT NULL PRIMARY KEY,
-                        ""EventType"" character varying(100) NOT NULL,
-                        ""Payload"" jsonb NOT NULL,
-                        ""CreatedAtUtc"" timestamp with time zone NOT NULL,
-                        ""ProcessedAtUtc"" timestamp with time zone NULL,
-                        ""DispatchedAtUtc"" timestamp with time zone NULL,
-                        ""Status"" character varying(20) NOT NULL DEFAULT 'Pending',
-                        ""RetryCount"" integer NOT NULL DEFAULT 0,
-                        ""NextRetryUtc"" timestamp with time zone NOT NULL,
-                        ""ErrorMessage"" text NULL
-                    );
-
-                    DO $$
-                    BEGIN
-                        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'OutboxMessages') THEN
-                            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'OutboxMessages' AND column_name = 'DispatchedAtUtc') THEN
-                                ALTER TABLE ""OutboxMessages"" ADD COLUMN ""DispatchedAtUtc"" timestamp with time zone NULL;
-                            END IF;
-                        END IF;
-                    END $$;
-
-                    CREATE INDEX IF NOT EXISTS ""IX_OutboxMessages_Status_NextRetryUtc"" 
-                        ON ""OutboxMessages"" (""Status"", ""NextRetryUtc"") 
-                        WHERE ""Status"" = 'Pending';
-
-                    CREATE INDEX IF NOT EXISTS ""IX_OutboxMessages_CreatedAtUtc"" 
-                        ON ""OutboxMessages"" (""CreatedAtUtc"");
-                ");
-
-                await _salesDb.Database.ExecuteSqlRawAsync(@"
-                    CREATE TABLE IF NOT EXISTS ""IdempotentRequests"" (
-                        ""Id"" serial PRIMARY KEY,
-                        ""Key"" character varying(128) NOT NULL,
-                        ""RequestPath"" character varying(256) NOT NULL,
-                        ""PayloadHash"" bytea NOT NULL,
-                        ""StatusCode"" integer NOT NULL,
-                        ""ResponseBody"" text NOT NULL,
-                        ""CreatedAtUtc"" timestamp with time zone NOT NULL,
-                        ""ExpiresAtUtc"" timestamp with time zone NOT NULL
-                    );
-
-                    CREATE UNIQUE INDEX IF NOT EXISTS ""IX_IdempotentRequests_Key_RequestPath"" 
-                        ON ""IdempotentRequests"" (""Key"", ""RequestPath"");
-
-                    CREATE INDEX IF NOT EXISTS ""IX_IdempotentRequests_ExpiresAtUtc"" 
-                        ON ""IdempotentRequests"" (""ExpiresAtUtc"");
-
-                    CREATE INDEX IF NOT EXISTS ""IX_IdempotentRequests_CreatedAtUtc"" 
-                        ON ""IdempotentRequests"" (""CreatedAtUtc"");
-                ");
-
                 // 1. Sales module: SaleItems.Quantity -> numeric(18,3)
                 await _salesDb.Database.ExecuteSqlRawAsync(@"
 DO $$

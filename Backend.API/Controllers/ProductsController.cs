@@ -211,6 +211,24 @@ public class ProductsController : ControllerBase
         };
     }
 
+    // Aplica la máscara de costos (canViewCost) sobre DTOs devueltos por el servicio, de forma
+    // consistente con MapToDto (hallazgo 8.4-N2: GetVariants/GetParents exponían CostPriceUSD
+    // a cualquier rol autenticado).
+    private List<Core.DTOs.ProductDto> MaskCostsForCurrentRole(List<Core.DTOs.ProductDto> items)
+    {
+        bool canViewCost = _currentUserService.CanMutateCatalog;
+        if (canViewCost) return items;
+        foreach (var item in items)
+        {
+            item.CostPriceUSD = 0m;
+            item.ProfitMarginRetail = 0m;
+            item.ProfitMarginWholesale = 0m;
+            item.Cost = 0m;
+            item.ProfitPercentage = 0m;
+        }
+        return items;
+    }
+
     [HttpPut("{id}/status")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> SetStatus(int id, [FromBody] StatusUpdateDto dto)
@@ -343,14 +361,14 @@ public class StatusUpdateDto
     public async Task<ActionResult<List<Core.DTOs.ProductDto>>> GetVariants(int id)
     {
         var variants = await _inventoryService.GetVariantOptionsAsync(id);
-        return Ok(variants);
+        return Ok(MaskCostsForCurrentRole(variants));
     }
 
     [HttpGet("parents")]
     public async Task<ActionResult<List<Core.DTOs.ProductDto>>> GetParents()
     {
         var parents = await _inventoryService.GetParentProductsAsync();
-        return Ok(parents);
+        return Ok(MaskCostsForCurrentRole(parents));
     }
 
     /// <summary>

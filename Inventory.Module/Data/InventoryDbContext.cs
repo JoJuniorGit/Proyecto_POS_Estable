@@ -116,6 +116,17 @@ public class InventoryDbContext : DbContext
 
         modelBuilder.Entity<Product>().Property(p => p.RowVersion).IsRowVersion();
 
+        // Token de concurrencia basado en la pseudo-columna de sistema `xmin` de PostgreSQL
+        // (hallazgo 8.2-A1). Se configura en caliente sin DDL adicional; se omite en SQLite.
+        if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            modelBuilder.Entity<Product>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+        }
+
         modelBuilder.Entity<StockReservation>().HasKey(r => r.Id);
         modelBuilder.Entity<StockReservation>().HasOne(r => r.Product).WithMany().HasForeignKey(r => r.ProductId);
         modelBuilder.Entity<StockReservation>().HasOne(r => r.SourceProduct).WithMany().HasForeignKey(r => r.SourceProductId).OnDelete(DeleteBehavior.SetNull);

@@ -81,10 +81,10 @@ public class Phase4SecurityHardeningTests
         Assert.NotNull(checkUser.LockoutEndUtc);
         Assert.True(checkUser.LockoutEndUtc.Value > DateTime.UtcNow);
 
-        // 6th attempt (even with correct password) -> 423 Locked
+        // 6th attempt (even with correct password) -> 401 genérico (anti-enumeración 8B-M3,
+        // no se revela que la cuenta está bloqueada)
         var lockedRes = await controller.Login(new LoginRequest { Cedula = "V-12345678", Password = "CorrectPassword123!" });
-        var statusResult = Assert.IsType<ObjectResult>(lockedRes.Result);
-        Assert.Equal(423, statusResult.StatusCode);
+        Assert.IsType<UnauthorizedObjectResult>(lockedRes.Result);
     }
 
     [Fact]

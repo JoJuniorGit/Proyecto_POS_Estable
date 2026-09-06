@@ -129,7 +129,7 @@ public class OutboxProcessorJob : BackgroundService
             _logger.LogError(ex, "[OutboxProcessor] Error inesperado durante la purga de mensajes procesados de Outbox.");
         }
 
-        return totalPurged;
+return totalPurged;
     }
 
 
@@ -145,9 +145,57 @@ public class OutboxProcessorJob : BackgroundService
 
             if (dbContext.Database.IsNpgsql())
             {
+                if (dbContext.Database.CurrentTransaction is not null)
+                    throw new InvalidOperationException("[OutboxProcessor] No se admite una transacción ya abierta al seleccionar mensajes pendientes.");
+
+                await using var tx = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
                 messages = await dbContext.OutboxMessages
                     .FromSqlRaw("SELECT * FROM \"OutboxMessages\" WHERE \"Status\" = 'Pending' AND \"NextRetryUtc\" <= NOW() ORDER BY \"CreatedAtUtc\" LIMIT 20 FOR UPDATE SKIP LOCKED")
                     .ToListAsync(cancellationToken);
+
+                if (!messages.Any())
+                {
+                    await tx.RollbackAsync(cancellationToken);
+                    return;
+                }
+
+                foreach (var message in messages)
+                {
+                    try
+                    {
+                        await DispatchMessageAsync(message, hubContext, cancellationToken);
+
+                        message.DispatchedAtUtc = DateTime.UtcNow;
+                        message.Status = "Processed";
+                        message.ProcessedAtUtc = DateTime.UtcNow;
+                        message.ErrorMessage = null;
+                    }
+                    catch (Exception ex)
+                    {
+                        message.RetryCount++;
+
+                        if (message.RetryCount < 5)
+                        {
+                            var delaySeconds = Math.Pow(2, message.RetryCount);
+                            message.NextRetryUtc = DateTime.UtcNow.AddSeconds(delaySeconds);
+                            message.ErrorMessage = ex.Message;
+                            _logger.LogWarning(ex, "[OutboxProcessor] Error al despachar mensaje {MessageId} (Intento {Attempt}/5). Próximo reintento en {Delay}s.",
+                                message.Id, message.RetryCount, delaySeconds);
+                        }
+                        else
+                        {
+                            message.Status = "DeadLetter";
+                            message.ErrorMessage = $"Falló tras 5 intentos: {ex.Message}";
+                            _logger.LogCritical(ex, "[OutboxProcessor] CRÍTICO: Mensaje {MessageId} ({EventType}) movido a DeadLetter tras 5 intentos fallidos.",
+                                message.Id, message.EventType);
+                        }
+                    }
+                }
+
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await tx.CommitAsync(cancellationToken);
+                return;
             }
             else
             {
