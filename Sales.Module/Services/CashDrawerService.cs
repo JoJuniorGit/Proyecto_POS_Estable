@@ -51,7 +51,19 @@ public class CashDrawerService : ICashDrawerService
             carryOverBalance = lastSession.ClosingBalanceLocal ?? await GetCurrentBalanceLocalAsync(lastSession.Id);
         }
 
-        return await OpenSessionAsync(carryOverBalance, currentExchangeRate);
+        try
+        {
+            return await OpenSessionAsync(carryOverBalance, currentExchangeRate);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or DbUpdateException)
+        {
+            var concurrentSession = await GetActiveSessionAsync();
+            if (concurrentSession != null)
+            {
+                return concurrentSession;
+            }
+            throw;
+        }
     }
 
     public async Task<CashDrawerSession> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate)
@@ -79,8 +91,15 @@ public class CashDrawerService : ICashDrawerService
             Status = CashDrawerStatus.Open
         };
 
-        _context.CashDrawerSessions.Add(session);
-        await _context.SaveChangesAsync();
+        try
+        {
+            _context.CashDrawerSessions.Add(session);
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            throw new InvalidOperationException("There is already an active cash drawer session.", ex);
+        }
 
         await AddTransactionAsync(
             session.Id,
@@ -336,6 +355,7 @@ public class CashDrawerService : ICashDrawerService
             if (dbTransaction != null)
             {
                 await dbTransaction.CommitAsync();
+                await dbTransaction.DisposeAsync();
             }
 
             return new CashAdvanceResultDto
@@ -355,6 +375,7 @@ public class CashDrawerService : ICashDrawerService
             if (dbTransaction != null)
             {
                 await dbTransaction.RollbackAsync();
+                await dbTransaction.DisposeAsync();
             }
             throw;
         }

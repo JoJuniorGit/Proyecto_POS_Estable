@@ -162,7 +162,10 @@ public class SalesDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<CashDrawerSession>()
-            .HasIndex(s => s.Status);
+            .HasIndex(s => s.Status)
+            .IsUnique()
+            .HasFilter("\"Status\" = 0")
+            .HasDatabaseName("IX_CashDrawerSessions_SingleOpen");
 
         modelBuilder.Entity<CashTransaction>()
             .HasIndex(t => t.SessionId)

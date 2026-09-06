@@ -59,6 +59,11 @@ public class DailyClosureController : ControllerBase
         if (record != null && record.Rate > 0)
             return record.Rate;
 
+        // Fallback a la tasa de apertura de la sesión activa para evitar distorsiones con 1.0 (8.2-M2)
+        var activeSession = await _cashDrawerService.GetActiveSessionAsync();
+        if (activeSession != null && activeSession.OpeningExchangeRate > 0)
+            return activeSession.OpeningExchangeRate;
+
         return 1.0m;
     }
 
@@ -78,10 +83,15 @@ public class DailyClosureController : ControllerBase
             return Forbid();
         }
 
+        if (request == null || request.Details == null || !request.Details.Any())
+        {
+            return BadRequest(new { message = "El arqueo debe incluir el desglose por métodos de pago." });
+        }
+
         try
         {
-            // 1. Identidad fidedigna por claims autenticados (H-API-2)
-            var authenticatedUserId = _currentUserService.UserId 
+            // 1. Identidad autoritativa por claims (H-API-2)
+            string? authenticatedUserId = _currentUserService.UserId
                 ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
                 ?? User.Identity?.Name;
 
@@ -119,7 +129,11 @@ public class DailyClosureController : ControllerBase
                 }
             }
 
-            // 2. Totales esperados autoritativos calculados server-side (H-API-3)
+            decimal exchangeRate = await GetTodayExchangeRateAsync();
+
+            using var dbTransaction = await _salesContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+
+            // 2. Totales esperados autoritativos calculados server-side (H-API-3) dentro de la transacción Serializable
             var serverExpectedTotals = await _closureService.GetExpectedTotalsByPaymentMethodAsync(closureDate);
             var expectedMap = serverExpectedTotals.ToDictionary(e => e.PaymentMethodId, e => e.ExpectedAmountBsS);
 
@@ -141,10 +155,6 @@ public class DailyClosureController : ControllerBase
                 }).ToList()
             };
 
-            decimal exchangeRate = await GetTodayExchangeRateAsync();
-
-            using var dbTransaction = await _salesContext.Database.BeginTransactionAsync();
-
             var result = await _closureService.CreateClosureAsync(closure);
 
             // Al cerrar el turno, se cierra la sesión anterior y se inicia una nueva conservando el saldo esperado
@@ -154,6 +164,10 @@ public class DailyClosureController : ControllerBase
             await dbTransaction.CommitAsync();
 
             return Ok(result);
+        }
+        catch (DbUpdateException ex)
+        {
+            return Conflict(new { Message = "Conflicto de concurrencia al registrar el cierre diario. Es posible que ya se haya ejecutado otro cierre en paralelo.", Details = ex.Message });
         }
         catch (InvalidOperationException ex)
         {

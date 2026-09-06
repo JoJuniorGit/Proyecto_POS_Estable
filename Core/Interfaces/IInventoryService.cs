@@ -27,7 +27,7 @@ public interface IInventoryService
     Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, bool allowNegativeStock = false);
     Task UpdateStockBatchAsync(IEnumerable<StockDeductionRequest> items, string? userId = null, bool allowNegativeStock = false);
     Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null);
-    Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration);
+    Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration, string? referenceId = null);
     Task ConfirmReservationAsync(int reservationId, string reason);
     Task CancelReservationAsync(int reservationId);
     Task<List<Core.DTOs.ProductQuickInfoDto>> GetSuggestionsAsync(string filter, bool activeOnly, System.Threading.CancellationToken token);

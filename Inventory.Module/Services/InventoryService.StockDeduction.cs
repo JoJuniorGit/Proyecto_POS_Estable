@@ -202,7 +202,7 @@ public partial class InventoryService
         await UpdateStockAsync(productId, quantityChange, $"Ajuste Manual: {reason}", userId, allowNegativeStock: false);
     }
 
-    public async Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration)
+    public async Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration, string? referenceId = null)
     {
         var product = await _context.Products.FindAsync(productId);
         if (product == null) throw new KeyNotFoundException($"Product {productId} not found");
@@ -257,7 +257,8 @@ public partial class InventoryService
             SourceProductId = sourceProductId,
             Quantity = effectiveQuantity,
             ExpiryDate = DateTime.UtcNow.Add(duration),
-            IsConfirmed = false
+            IsConfirmed = false,
+            ReferenceId = referenceId
         };
 
         _context.StockReservations.Add(reservation);

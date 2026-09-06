@@ -120,6 +120,9 @@ public class InventoryDbContext : DbContext
         modelBuilder.Entity<StockReservation>().HasOne(r => r.Product).WithMany().HasForeignKey(r => r.ProductId);
         modelBuilder.Entity<StockReservation>().HasOne(r => r.SourceProduct).WithMany().HasForeignKey(r => r.SourceProductId).OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<StockReservation>().Property(r => r.Quantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+        modelBuilder.Entity<StockReservation>()
+            .HasIndex(r => new { r.ExpiryDate, r.IsConfirmed })
+            .HasDatabaseName("IX_StockReservations_ExpiryDate_IsConfirmed");
 
         // SystemSetting: Key-value store for app configuration
         modelBuilder.Entity<SystemSetting>(entity =>

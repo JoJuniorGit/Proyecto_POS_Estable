@@ -123,6 +123,7 @@ try
     builder.Services.AddScoped<Sales.Module.Interfaces.IDailyClosureService, Sales.Module.Services.DailyClosureService>();
     builder.Services.AddScoped<Core.Interfaces.IIdempotencyService, Sales.Module.Services.IdempotencyService>();
     builder.Services.AddHostedService<Backend.API.Jobs.IdempotencyCleanupJob>();
+    builder.Services.AddHostedService<Backend.API.Jobs.ReservationExpiryJob>();
 
     builder.Services.AddMediatR(cfg =>
     {

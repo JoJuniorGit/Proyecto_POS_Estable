@@ -62,6 +62,11 @@ public class ShiftsController : ControllerBase
         if (record != null && record.Rate > 0)
             return record.Rate;
 
+        // Fallback a la tasa de apertura de la sesión activa para evitar distorsiones con 1.0 (8.2-M2)
+        var activeSession = await _cashDrawerService.GetActiveSessionAsync();
+        if (activeSession != null && activeSession.OpeningExchangeRate > 0)
+            return activeSession.OpeningExchangeRate;
+
         return 1.0m;
     }
 
@@ -78,7 +83,9 @@ public class ShiftsController : ControllerBase
         {
             decimal exchangeRate = await GetTodayExchangeRateAsync();
 
-            // Obtenemos los totales teóricos por método de pago
+            using var dbTransaction = await _salesContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+
+            // Obtenemos los totales teóricos por método de pago dentro de la transacción Serializable
             var expectedTotals = await _dailyClosureService.GetExpectedTotalsByPaymentMethodAsync(DateTime.UtcNow);
             
             var details = new List<ShiftReportDetailDto>();
@@ -142,8 +149,6 @@ public class ShiftsController : ControllerBase
                 cashierCedula = request.CashierCedula ?? "V-00000000";
             }
 
-            using var dbTransaction = await _salesContext.Database.BeginTransactionAsync();
-
             // Persistir cierre de caja de forma secuencial en la Base de Datos
             var dailyClosure = new DailyClosure
             {
@@ -178,6 +183,10 @@ public class ShiftsController : ControllerBase
             };
 
             return Ok(report);
+        }
+        catch (DbUpdateException ex)
+        {
+            return Conflict(new { Message = "Conflicto de concurrencia al cerrar el turno. Ya se encuentra un cierre en ejecución.", Details = ex.Message });
         }
         catch (InvalidOperationException ex)
         {

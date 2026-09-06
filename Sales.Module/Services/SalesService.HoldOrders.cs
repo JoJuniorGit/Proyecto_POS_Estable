@@ -602,13 +602,14 @@ public partial class SalesService
         if (string.IsNullOrWhiteSpace(request.CedulaOrRif) || string.IsNullOrWhiteSpace(request.Name))
             throw new ArgumentException("Cédula/RIF y Nombre son campos obligatorios.");
 
-        var exists = await _context.Customers.AnyAsync(c => c.CedulaOrRif.ToLower() == request.CedulaOrRif.Trim().ToLower());
+        var normalizedCedula = request.CedulaOrRif.Trim().ToUpperInvariant();
+        var exists = await _context.Customers.AnyAsync(c => c.CedulaOrRif.ToUpper() == normalizedCedula);
         if (exists)
             throw new InvalidOperationException($"Ya existe un cliente registrado con la Cédula/RIF '{request.CedulaOrRif}'.");
 
         var customer = new Customer
         {
-            CedulaOrRif = request.CedulaOrRif.Trim(),
+            CedulaOrRif = normalizedCedula,
             Name = request.Name.Trim(),
             Phone = request.Phone?.Trim() ?? string.Empty,
             CreditLimitUSD = request.CreditLimitUSD >= 0 ? request.CreditLimitUSD : 0m,
@@ -616,7 +617,14 @@ public partial class SalesService
         };
 
         _context.Customers.Add(customer);
-        await _context.SaveChangesAsync();
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            throw new InvalidOperationException($"Ya existe un cliente registrado con la Cédula/RIF '{request.CedulaOrRif}'.", ex);
+        }
 
         return new CustomerDto
         {
@@ -646,17 +654,25 @@ public partial class SalesService
         if (string.IsNullOrWhiteSpace(request.CedulaOrRif) || string.IsNullOrWhiteSpace(request.Name))
             throw new ArgumentException("Cédula/RIF y Nombre son campos obligatorios.");
 
-        var exists = await _context.Customers.AnyAsync(c => c.Id != id && c.CedulaOrRif.ToLower() == request.CedulaOrRif.Trim().ToLower());
+        var normalizedCedula = request.CedulaOrRif.Trim().ToUpperInvariant();
+        var exists = await _context.Customers.AnyAsync(c => c.Id != id && c.CedulaOrRif.ToUpper() == normalizedCedula);
         if (exists)
             throw new InvalidOperationException($"Ya existe otro cliente registrado con la Cédula/RIF '{request.CedulaOrRif}'.");
 
-        customer.CedulaOrRif = request.CedulaOrRif.Trim();
+        customer.CedulaOrRif = normalizedCedula;
         customer.Name = request.Name.Trim();
         customer.Phone = request.Phone?.Trim() ?? string.Empty;
         customer.CreditLimitUSD = request.CreditLimitUSD >= 0 ? request.CreditLimitUSD : 0m;
         customer.IsActive = request.IsActive;
 
-        await _context.SaveChangesAsync();
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            throw new InvalidOperationException($"Ya existe otro cliente registrado con la Cédula/RIF '{request.CedulaOrRif}'.", ex);
+        }
 
         if (customer.IsDefault || id == 1)
         {
