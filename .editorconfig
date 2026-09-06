@@ -1,0 +1,103 @@
+# Configuración de Formato y Estilo de Código — Proyecto POS "CommandCenter"
+root = true
+
+# ==============================================================================
+# Exclusiones de Código Generado (Migraciones EF Core y Artefactos de Build)
+# ==============================================================================
+[**/Migrations/**]
+generated_code = true
+
+[**/{bin,obj}/**]
+generated_code = true
+
+# ==============================================================================
+# Configuración Global para Código Fuente
+# ==============================================================================
+[*]
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# ==============================================================================
+# Archivos Web (JS, JSX, JSON, CSS, Markdown, YAML)
+# ==============================================================================
+[*.{js,jsx,json,css,md,yml,yaml}]
+indent_size = 2
+end_of_line = lf
+
+# ==============================================================================
+# Reglas de Código C# (.NET 10)
+# ==============================================================================
+[*.cs]
+indent_size = 4
+
+# File-scoped namespaces preferido
+csharp_style_namespace_declarations = file_scoped:suggestion
+
+# Directivas using fuera del namespace
+csharp_using_directive_placement = outside_namespace:suggestion
+
+# Llaves obligatorias en bloques de control
+csharp_prefer_braces = true:suggestion
+
+# Tipos predefinidos (int en vez de Int32, string en vez de String)
+dotnet_style_predefined_type_for_locals_parameters_members = true:suggestion
+dotnet_style_predefined_type_for_member_access = true:suggestion
+
+# Modificadores de acceso explícitos
+dotnet_style_require_accessibility_modifiers = always:suggestion
+
+# ------------------------------------------------------------------------------
+# Convenciones de Nombres (Naming Conventions)
+# ------------------------------------------------------------------------------
+
+# 1. Campos privados: prefijo '_' + camelCase (ej. _context, _productService)
+dotnet_naming_rule.private_fields_with_underscore.symbols = private_fields_symbols
+dotnet_naming_rule.private_fields_with_underscore.style = prefix_underscore_style
+dotnet_naming_rule.private_fields_with_underscore.severity = suggestion
+
+dotnet_naming_symbols.private_fields_symbols.applicable_kinds = field
+dotnet_naming_symbols.private_fields_symbols.applicable_accessibilities = private, internal_and_private
+dotnet_naming_style.prefix_underscore_style.capitalization = camel_case
+dotnet_naming_style.prefix_underscore_style.required_prefix = _
+
+# 2. Métodos asíncronos: sufijo 'Async' (ej. GetActiveSessionAsync)
+dotnet_naming_rule.async_methods_must_end_with_async.symbols = async_methods_symbols
+dotnet_naming_rule.async_methods_must_end_with_async.style = async_suffix_style
+dotnet_naming_rule.async_methods_must_end_with_async.severity = suggestion
+
+dotnet_naming_symbols.async_methods_symbols.applicable_kinds = method
+dotnet_naming_symbols.async_methods_symbols.required_modifiers = async
+dotnet_naming_style.async_suffix_style.required_suffix = Async
+
+# 3. Interfaces: prefijo 'I' + PascalCase (ej. ISalesService, IDeliveryService)
+dotnet_naming_rule.interface_should_be_begins_with_i.symbols = interface_symbols
+dotnet_naming_rule.interface_should_be_begins_with_i.style = interface_style
+dotnet_naming_rule.interface_should_be_begins_with_i.severity = suggestion
+
+dotnet_naming_symbols.interface_symbols.applicable_kinds = interface
+dotnet_naming_style.interface_style.capitalization = pascal_case
+dotnet_naming_style.interface_style.required_prefix = I
+
+# 4. Tipos (clases, structs, enums): PascalCase
+dotnet_naming_rule.types_should_be_pascal_case.symbols = type_symbols
+dotnet_naming_rule.types_should_be_pascal_case.style = pascal_case_style
+dotnet_naming_rule.types_should_be_pascal_case.severity = suggestion
+
+dotnet_naming_symbols.type_symbols.applicable_kinds = class, struct, enum
+dotnet_naming_style.pascal_case_style.capitalization = pascal_case
+
+# 5. Constantes: PascalCase (ej. SecurityConstants.RoleAdmin)
+dotnet_naming_rule.constants_should_be_pascal_case.symbols = constant_symbols
+dotnet_naming_rule.constants_should_be_pascal_case.style = pascal_case_style
+dotnet_naming_rule.constants_should_be_pascal_case.severity = suggestion
+
+dotnet_naming_symbols.constant_symbols.applicable_kinds = field
+dotnet_naming_symbols.constant_symbols.required_modifiers = const
+
+# ==============================================================================
+# Archivos de Proyecto y Solución XML
+# ==============================================================================
+[*.{csproj,props,targets,slnx,xml}]
+indent_size = 2

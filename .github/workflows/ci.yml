@@ -7,8 +7,8 @@ on:
     branches: [ main, develop ]
 
 jobs:
-  build-and-test:
-    name: Build & Test (.NET 10 + PostgreSQL)
+  backend-build-and-test:
+    name: Backend Build & Test (.NET 10 + PostgreSQL)
     runs-on: ubuntu-latest
 
     services:
@@ -37,7 +37,7 @@ jobs:
       - name: Restore Dependencies
         run: dotnet restore CommandCenter.slnx
 
-      - name: Build Solution
+      - name: Build Solution (TreatWarningsAsErrors)
         run: dotnet build CommandCenter.slnx --no-restore --configuration Release
 
       - name: Run Test Suite & Collect Code Coverage
@@ -51,3 +51,30 @@ jobs:
         with:
           name: code-coverage-report
           path: ./CommandCenter.Tests/TestResults/**/coverage.cobertura.xml
+
+  frontend-lint-and-test:
+    name: Frontend Lint & Test (React 19 + Node.js)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+          cache-dependency-path: Web.Frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+        working-directory: Web.Frontend
+
+      - name: Run Linter (Oxlint)
+        run: npm run lint
+        working-directory: Web.Frontend
+
+      - name: Run Frontend Tests
+        run: npm test
+        working-directory: Web.Frontend
