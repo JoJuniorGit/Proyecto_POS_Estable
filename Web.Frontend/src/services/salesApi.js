@@ -78,22 +78,42 @@ export async function updateSaleExchangeRate(saleId, exchangeRate) {
 /**
  * Pone una venta en espera asignando un cliente y opcionalmente un abono inicial.
  */
-export async function holdSale(saleId, requestData, exchangeRate = 0, initialPayment = null) {
-  if (typeof requestData === 'object' && requestData !== null) {
-    return await api.post(`/api/sales/${saleId}/hold`, requestData);
-  }
-  return await api.post(`/api/sales/${saleId}/hold`, {
-    customerId: requestData,
-    exchangeRate,
-    initialPayment,
+export async function holdSale(saleId, requestData, exchangeRate = 0, initialPayment = null, idempotencyKey = null) {
+  const key = idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `hold-${saleId}-${Date.now()}`);
+  const payload = typeof requestData === 'object' && requestData !== null
+    ? requestData
+    : {
+        customerId: requestData,
+        exchangeRate,
+        initialPayment,
+      };
+  return await api.post(`/api/sales/${saleId}/hold`, payload, {
+    headers: {
+      'Idempotency-Key': key,
+    },
   });
 }
 
 /**
  * Registra un abono parcial en una venta en espera.
  */
-export async function addPaymentToHoldSale(saleId, paymentReq) {
-  return await api.post(`/api/sales/${saleId}/payments`, paymentReq);
+export async function addPaymentToHoldSale(saleId, paymentReq, idempotencyKey = null) {
+  const key = idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `pay-${saleId}-${Date.now()}`);
+  return await api.post(`/api/sales/${saleId}/payments`, paymentReq, {
+    headers: {
+      'Idempotency-Key': key,
+    },
+  });
+}
+
+/**
+ * Obtiene la previsualización canónica de cobro, redondeo y vuelto calculada por el backend.
+ */
+export async function getCheckoutPreview(saleId, exchangeRate, payments) {
+  return await api.post(`/api/sales/${saleId}/checkout-preview`, {
+    exchangeRate,
+    payments,
+  });
 }
 
 /**

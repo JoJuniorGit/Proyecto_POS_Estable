@@ -564,6 +564,7 @@ public partial class SalesService : ISalesService
             _sale.AppliedRate = exchange_rate;
             await RecalculateTotalAsync(_sale);
             _sale.FinalPaidAmountBsS = _sale.Payments.Sum(p => p.AmountBsS);
+            _sale.RoundingAdjustment = roundingAdjustment;
 
             // Synchronous Stock Deduction inside Transaction (H-SAL-2 / H-INV-1 / A1)
             var productsDict = new Dictionary<int, Product>();

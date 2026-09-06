@@ -49,11 +49,12 @@ public static class PricingCalculator
     }
 
     /// <summary>
-    /// Converts a Bs.S amount to USD using the provided exchange rate and digital rounding.
+    /// Converts a Bs.S amount to USD using the provided exchange rate.
+    /// Defaults to 2 decimals for digital presentation, supports 4 decimals for high-precision currency conversions [8C-M1].
     /// </summary>
-    public static decimal ToUSD(decimal amountBsS, decimal rate)
+    public static decimal ToUSD(decimal amountBsS, decimal rate, int decimals = 2)
     {
         if (rate <= 0) return 0m;
-        return RoundToDigital(amountBsS / rate);
+        return Math.Round(amountBsS / rate, decimals, MidpointRounding.AwayFromZero);
     }
 }

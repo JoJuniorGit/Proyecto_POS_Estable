@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Core.DTOs;
+using Core.Helpers;
 using Core.Logging;
 using Sales.Module.DTOs;
 using Sales.Module.Entities;
@@ -323,6 +324,74 @@ public class SalesController : ControllerBase
     }
 
 
+    [HttpPost("{id}/checkout-preview")]
+    [ProducesResponseType(typeof(CheckoutPreviewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<CheckoutPreviewResponse>> GetCheckoutPreview(int id, [FromBody] CheckoutPreviewRequest request)
+    {
+        var sale = await _salesService.GetSaleAsync(id);
+        if (sale == null) return NotFound(new { message = $"Venta #{id} no encontrada." });
+
+        decimal rate = request.ExchangeRate > 0 ? request.ExchangeRate : sale.AppliedRate;
+        if (rate <= 0) return BadRequest(new { message = "Tasa de cambio inválida." });
+
+        decimal totalUsd = sale.TotalUSD;
+        decimal totalBsS = PricingCalculator.RoundToDigital(totalUsd * rate);
+
+        decimal totalPaidUsd = 0m;
+        decimal totalPaidBsS = 0m;
+
+        if (request.Payments != null)
+        {
+            foreach (var p in request.Payments)
+            {
+                decimal pUsd = p.Amount;
+                decimal pBsS = p.AmountBsS > 0 ? p.AmountBsS : p.AmountLocal;
+
+                if (pUsd <= 0 && pBsS > 0 && rate > 0)
+                {
+                    pUsd = PricingCalculator.ToUSD(pBsS, rate, decimals: 2);
+                }
+                else if (pBsS <= 0 && pUsd > 0 && rate > 0)
+                {
+                    pBsS = PricingCalculator.ToBsS(pUsd, rate);
+                }
+
+                totalPaidUsd += PricingCalculator.RoundToDigital(pUsd);
+                totalPaidBsS += PricingCalculator.RoundToDigital(pBsS);
+            }
+        }
+
+        decimal remainingUsd = Math.Max(0m, totalUsd - totalPaidUsd);
+        decimal remainingBsS = Math.Max(0m, totalBsS - totalPaidBsS);
+
+        bool isFullyPaid = remainingUsd <= 0.05m;
+        decimal roundingAdjustment = remainingUsd <= 0.01m ? PricingCalculator.RoundToDigital(totalPaidBsS - totalBsS) : 0m;
+
+        decimal changeUsd = 0m;
+        decimal changeBsS = 0m;
+        if (totalPaidUsd > totalUsd + 0.05m)
+        {
+            changeUsd = PricingCalculator.RoundToDigital(totalPaidUsd - totalUsd);
+            changeBsS = PricingCalculator.ToBsS(changeUsd, rate);
+        }
+
+        return Ok(new CheckoutPreviewResponse
+        {
+            TotalUSD = totalUsd,
+            TotalBsS = totalBsS,
+            TotalPaidUSD = totalPaidUsd,
+            TotalPaidBsS = totalPaidBsS,
+            RemainingBalanceUSD = remainingUsd,
+            RemainingBalanceBsS = remainingBsS,
+            RoundingAdjustment = roundingAdjustment,
+            ChangeDueUSD = changeUsd,
+            ChangeDueBsS = changeBsS,
+            IsFullyPaid = isFullyPaid
+        });
+    }
+
     [RequireSecurityStampValidation]
     [HttpPost("{id}/complete")]
     [ProducesResponseType(typeof(int), StatusCodes.Status200OK)]
@@ -567,4 +636,24 @@ public class CompleteSaleRequest
 public class UpdateSaleCustomerRequest
 {
     public int CustomerId { get; set; }
+}
+
+public class CheckoutPreviewRequest
+{
+    public decimal ExchangeRate { get; set; }
+    public IEnumerable<SalePaymentDto> Payments { get; set; } = new List<SalePaymentDto>();
+}
+
+public class CheckoutPreviewResponse
+{
+    public decimal TotalUSD { get; set; }
+    public decimal TotalBsS { get; set; }
+    public decimal TotalPaidUSD { get; set; }
+    public decimal TotalPaidBsS { get; set; }
+    public decimal RemainingBalanceUSD { get; set; }
+    public decimal RemainingBalanceBsS { get; set; }
+    public decimal RoundingAdjustment { get; set; }
+    public decimal ChangeDueUSD { get; set; }
+    public decimal ChangeDueBsS { get; set; }
+    public bool IsFullyPaid { get; set; }
 }

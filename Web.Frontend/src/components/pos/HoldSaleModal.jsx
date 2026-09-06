@@ -75,7 +75,8 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
       setIsDropdownOpen(false);
       setQuery('');
     }
-  }, [isOpen, currentCustomer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentCustomer?.id, currentCustomer?.cedulaOrRif, currentCustomer?.isDefault]);
 
   // Close the floating dropdown when clicking outside the search area
   useEffect(() => {

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Core.DTOs;
 using Core.Entities;
 using Core.Events;
+using Core.Helpers;
 using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -122,7 +123,7 @@ public partial class SalesService
                     SaleId = _sale.Id,
                     PaymentMethodId = payment.PaymentMethodId,
                     Amount = Math.Round(amountUsd, 2, MidpointRounding.AwayFromZero),
-                    AmountBsS = payment.AmountBsS,
+                    AmountBsS = PricingCalculator.RoundToDigital(payment.AmountBsS > 0 ? payment.AmountBsS : (amountUsd * rate)),
                     ExchangeRate = rate,
                     ReferenceNumber = payment.ReferenceNumber,
                     CreatedAt = DateTime.UtcNow

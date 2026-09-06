@@ -17,15 +17,18 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
 
   const selectedMethod = methods.find((m) => m.id.toString() === selectedMethodId);
   const isCashSelected = !!selectedMethod?.isCash;
+  const isManuallyEditedRef = useRef(false);
 
-  // Prellenar el monto al cambiar saldo restante o método de pago
+  // Prellenar el monto al cambiar saldo restante o método de pago, sin sobreescribir edición manual
   useEffect(() => {
-    if (remainingBsS > 0) {
-      setAmountText(isCashSelected ? Math.round(remainingBsS).toString() : remainingBsS.toFixed(2));
-    } else {
-      setAmountText('');
+    if (!isManuallyEditedRef.current) {
+      if (remainingBsS > 0) {
+        setAmountText(isCashSelected ? Math.round(remainingBsS).toString() : remainingBsS.toFixed(2));
+      } else {
+        setAmountText('');
+      }
     }
-  }, [remainingBsS, isCashSelected]);
+  }, [remainingBsS, isCashSelected, selectedMethodId]);
 
   // Normalización del texto (soporta punto y coma decimal)
   const normalizedText = amountText.replace(',', '.').trim();
@@ -85,6 +88,7 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
     });
 
     setReference('');
+    isManuallyEditedRef.current = false;
   };
 
   return (
@@ -94,7 +98,10 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
         <select
           className="form-select"
           value={selectedMethodId}
-          onChange={(e) => setSelectedMethodId(e.target.value)}
+          onChange={(e) => {
+            isManuallyEditedRef.current = false;
+            setSelectedMethodId(e.target.value);
+          }}
         >
           {methods.map((method) => (
             <option key={method.id} value={method.id}>
@@ -114,7 +121,10 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
             className={`form-input font-bold ${hasDecimalError ? 'is-invalid' : ''}`}
             placeholder={isCashSelected ? '10 o 10.00' : '0.00'}
             value={amountText}
-            onChange={(e) => setAmountText(e.target.value)}
+            onChange={(e) => {
+              isManuallyEditedRef.current = true;
+              setAmountText(e.target.value);
+            }}
             onFocus={(e) => e.target.select()}
           />
           {isCashSelected && (

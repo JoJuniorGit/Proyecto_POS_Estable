@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Core.DTOs;
 using Core.Entities;
+using Core.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Entities;
 
@@ -151,20 +152,20 @@ public partial class SalesService
                     throw new KeyNotFoundException($"Producto #{item.ProductId} no encontrado en la base de datos.");
                 }
 
-                item.UnitPriceBsS = item.UnitPrice * sale.AppliedRate;
-                item.Subtotal = item.Quantity * item.UnitPrice;
-                item.SubtotalBsS = item.Subtotal * sale.AppliedRate;
+                item.UnitPriceBsS = PricingCalculator.RoundToDigital(item.UnitPrice * sale.AppliedRate);
+                item.Subtotal = Math.Round(item.Quantity * item.UnitPrice, 4, MidpointRounding.AwayFromZero);
+                item.SubtotalBsS = PricingCalculator.RoundToDigital(item.Subtotal * sale.AppliedRate);
             }
 
-            sale.Subtotal = sale.Items.Sum(i => i.Subtotal);
-            sale.SubtotalBsS = sale.Items.Sum(i => i.SubtotalBsS);
+            sale.Subtotal = Math.Round(sale.Items.Sum(i => i.Subtotal), 4, MidpointRounding.AwayFromZero);
+            sale.SubtotalBsS = PricingCalculator.RoundToDigital(sale.Items.Sum(i => i.SubtotalBsS));
 
             sale.TotalUSD = Math.Round(sale.Subtotal, 2, MidpointRounding.AwayFromZero);
-            sale.TotalBsS = Math.Round(sale.SubtotalBsS, 2, MidpointRounding.AwayFromZero);
+            sale.TotalBsS = PricingCalculator.RoundToDigital(sale.SubtotalBsS);
         }
         else if (sale.AppliedRate > 0)
         {
-            sale.TotalBsS = Math.Round(sale.TotalUSD * sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
+            sale.TotalBsS = PricingCalculator.RoundToDigital(sale.TotalUSD * sale.AppliedRate);
             sale.SubtotalBsS = sale.TotalBsS;
         }
     }
