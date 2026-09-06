@@ -249,11 +249,12 @@ flowchart TD
 |---|---|:---:|:---:|
 | **Fase 0** | Integridad Crítica (`DST-1`, `WEB-1`, `CI-1`, `RBAC-1`) | 45 min | ✅ Completada y Certificada |
 | **Fase 1** | Linter Web (`21 warnings` $\rightarrow$ `0`) | 25 min | ✅ Completada y Certificada |
-| **Fase 2** | Erradicar `_snake_case` en ViewModels Carrito y Caja | 40 min | ⏳ Pendiente |
-| **Fase 3** | Descomponer God Objects WPF (`ProductDialog`, `Inventory`, `Pos`) | 60 min | ⏳ Pendiente |
-| **Fase 4** | Modularizar `BarcodeScannerModal` en componentes React | 35 min | ⏳ Pendiente |
-| **Fase 5** | Certificación Global (740 Tests), Binarios y Documentación | 20 min | ⏳ Pendiente |
+| **Fase 2** | Erradicar `_snake_case` en ViewModels Carrito y Caja | 40 min | ✅ Completada y Certificada |
+| **Fase 3** | Descomponer God Objects WPF (`ProductDialog`, `Inventory`, `Pos`) | 60 min | ✅ Completada y Certificada |
+| **Fase 4** | Modularizar `BarcodeScannerModal` en componentes React | 35 min | ✅ Completada y Certificada |
+| **Fase 5** | Certificación Global (742 Tests), Binarios y Documentación | 20 min | ⏳ Pendiente |
 | **TOTAL** | **Refactorización Integral de Calidad** | **3h 45m** | |
+
 
 ---
 
