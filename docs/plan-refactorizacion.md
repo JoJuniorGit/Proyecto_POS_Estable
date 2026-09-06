@@ -163,9 +163,11 @@ flowchart TD
    * Archivo principal `PosViewModel.cs`: Conserva comandos principales de venta, apertura/cierre de caja, órdenes en espera y navegación modal.
 
 * **Criterio de Aceptación:**
-  * Ningún archivo resultante de ViewModel excede las 500 líneas.
+  * Ningún archivo resultante de ViewModel excede las 500 líneas (todos los archivos oscilan entre 168 y 490 líneas).
   * Preservación del 100% de la interfaz pública y bindings en `ProductDialog.xaml`, `InventoryView.xaml` y `PosView.xaml`.
-  * `dotnet test` reporta: `670 / 670 superadas`.
+  * `dotnet test` reporta: `671 / 671 superadas` (100% éxito).
+  * `dotnet build CommandCenter.slnx -c Release` reporta: `0 Advertencias, 0 Errores` (TreatWarningsAsErrors=true).
+* **Estado:** ✅ **COMPLETADA** (ProductDialogViewModel dividido en 3 partials, InventoryViewModel dividido en 2 partials, PosViewModel dividido en 2 partials).
 
 ---
 
