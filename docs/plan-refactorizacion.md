@@ -1,12 +1,12 @@
 # Plan Maestro de Refactorización y Saneamiento Técnico
-## Sistema POS "CommandCenter" — Alineación Integral con Coding Guidelines y Auditoría Rev. 8.0
+## Sistema POS "CommandCenter" — Alineación Integral con Coding Guidelines y Auditoría Rev. 8.4 / Plan Rev. 8.5
 
-**Fecha de Emisión:** 2026-09-05  
-**Versión:** 1.1.0  
+**Fecha de Emisión:** 2026-09-06  
+**Versión:** 2.0.0  
 **Documentos de Referencia:**  
 * [`docs/coding-guidelines.md`](file:///c:/Users/Lenovo%20IdeaPad%203/Desktop/Proyecto_POS_Estable/V0.1/docs/coding-guidelines.md) (Directrices Técnicas y Estándar de Calidad)  
-* [`docs/reporte.txt`](file:///c:/Users/Lenovo%20IdeaPad%203/Desktop/Proyecto_POS_Estable/V0.1/docs/reporte.txt) (Auditoría Técnica Integral Rev. 8.0)  
-**Objetivo Primario:** Ejecutar un saneamiento estructural y estilístico profundo del repositorio, erradicando la deuda técnica histórica (nombres `_snake_case`, clases que exceden 500 líneas, advertencias de linter y duplicación de deducciones de stock), garantizando **100% de éxito en la suite de pruebas (740/740 tests), compilación Release con cero advertencias (`TreatWarningsAsErrors=true`) y regresión cero en producción**.
+* [`docs/reporte.txt`](file:///c:/Users/Lenovo%20IdeaPad%203/Desktop/Proyecto_POS_Estable/V0.1/docs/reporte.txt) (Auditoría Técnica Integral Rev. 8.4)  
+**Objetivo Primario:** Ejecutar un saneamiento estructural y estilístico profundo del repositorio, erradicando la deuda técnica histórica (nombres `_snake_case`, clases que exceden 500 líneas, advertencias de linter y duplicación de deducciones de stock), garantizando **100% de éxito en la suite de pruebas (≥677 .NET + ≥73 Web), compilación Release con cero advertencias (`TreatWarningsAsErrors=true`) y regresión cero en producción**.
 
 ---
 
@@ -265,3 +265,57 @@ Se sugiere proceder de forma estrictamente secuencial:
 1. **Paso Inmediato:** Ejecutar la **Fase 0** para blindar la lógica de negocio y la infraestructura de CI antes de tocar capas cosméticas o de presentación.
 2. **Paso Siguiente:** Abordar secuencialmente **Fase 1**, **Fase 2**, **Fase 3**, **Fase 4** y culminar con la **Fase 5**.
 3. Tras cada fase, se ejecutará la verificación automatizada y se solicitará confirmación al usuario para avanzar a la siguiente.
+
+---
+
+## 7. Plan Rev. 8.5 — Cierre de Auditoría 8.4 y Cumplimiento de Coding Guidelines (HEAD `12eddf6`)
+
+> Los hallazgos de la Rev. 8.4 y las desalineaciones detectadas contra `docs/coding-guidelines.md` apuntan al mismo conjunto de defectos. Por tanto, no se ejecutan como dos colas separadas: se fusionan en un único backlog priorizado por riesgo.
+
+### FASE 0 (nueva): Alinear `docs/coding-guidelines.md` — ✅ COMPLETADA 2026-09-06
+| # | Corrección (sección) | Estado |
+|---|---|:---:|
+| 1 | RBAC: describir los 4 roles reales (`Cashier/Manager/Admin/Driver`) (L17) | ✅ |
+| 2 | Ejemplo SRP: reflejar el patrón de clases parciales (`SalesService.Pricing.cs`, `.HoldOrders.cs`, `.CashAdvance.cs`, `.History.cs`); sub-servicios quedan para extracciones futuras (L31-34) | ✅ |
+| 3 | Conteos de pruebas vivos: "≥677 .NET + ≥73 Web, HEAD `12eddf6`" (L20) | ✅ |
+| 4 | Suite CI: 677 .NET (`dotnet test`) + 73 Web (`node --test`) (L243) | ✅ |
+
+### FASE 6: Seguridad e Integridad (prioridad absoluta de la Rev. 8.5)
+| Hallazgo | Gravedad | Acción | Criterio de Aceptación |
+|---|:---:|---|---|
+| **8.2-CR2** | 🔴 Crítico | `git rm --cached` de `Backend.API/appsettings.Development.json` + `docs/JWT_Key.md`; rotar credenciales (DB `123456`, `Admin123!`, clave JWT) | `git ls-files` no lista secretos |
+| **8B-M3** | 🔴 Crítico | `AuthController.cs:70`: unificar en `401` genérico, retirar `423` (anti-enumeración) | `grep StatusCode(423)` = 0 |
+| **8.4-N2** | 🟠 Alto | Máscara de `CostPriceUSD` en `GetVariants/GetParents` (`ProductsController.cs:342-354`, `CatalogQueries.cs:225-227,268-270`) bajo permiso | Test rol `Cashier` no ve costos |
+| **8.4-N1** | 🟠 Alto | Retirar Bearer muerto (`api.js:159,164,166,202-203`); eliminar PII `pos_user` de localStorage; validar `setCustomBaseUrl` con `isAllowedApiHost` | `grep pos_token` en `api.js` = 0 |
+| **8.2-A1** | 🟠 Alto | Migrar `Product.RowVersion` bytea→`uint` xmin; añadir token xmin a `Sale` y `CashDrawerSession` | Test: 2 reservas o cierres concurrentes → solo 1 tiene éxito |
+| **8.4-N4** | 🟠 Alto | `OutboxProcessorJob.cs:149`: `BeginTransaction` explícito en torno a `FOR UPDATE SKIP LOCKED` | Test de integración con 2 instancias |
+| **8B-M5** | 🟠 Alto | Mover `IdempotentRequests` a migración EF; retirar SQL raw de `Program.cs:547-567` | `grep "CREATE TABLE" Program.cs` = 0 |
+
+### FASE 7: Correctitud Financiera
+| Hallazgo | Gravedad | Acción | Criterio de Aceptación |
+|---|:---:|---|---|
+| **8.2-M6** | 🟠 Alto | Validar `Idempotency-Key` en `/hold` (`SalesController.cs:108`) y `/payments` (:157) | Test: retry de abono → 1 sola aplicación |
+| **8W-ZT** | 🟡 Medio | `CheckoutModal.jsx` consume `getCheckoutPreview`; eliminar `roundingAdjustment` local (:90) y float en `PaymentForm.jsx` (:28,37,41,64,65,89) | `grep preview` en `CheckoutModal` > 0 |
+| **8.2-M2** | 🟡 Medio | Bloquear cierres sin tasa BCV del día (o tasa 0/NA explícita) | Test: cierre sin tasa → error claro |
+
+### FASE 8: Higiene de Guidelines (boy-scout en cada archivo intervenido)
+| Hallazgo | Acción | Verificación (grep) |
+|---|---|---|
+| 8B-M1 | `CancellationToken` en interfaces, servicios y controladores | — |
+| STYLE-WPF | Eliminar ~22 `_snake_case` (ej. `SalesHistoryViewModel.cs:27,28,237`) | `rg "_[a-z]+_[a-z]" Desktop.Client.Core/ViewModels` = 0 |
+| §3.3 | Estilos inline de modales → design tokens `var(--...)` | `rg "style={{"` = 0 |
+| 8D-M1b | Virtualizar `PendingPickupsView` (`ItemsControl`→`DataGrid` Recycled) | Revisión XAML |
+| 8B-B2 | `GlobalExceptionHandlerMiddleware.cs:37`: `application/problem+json` | Revisión |
+| 8W-M1/M2 | ~49 `MessageBox`→`IDialogService`; ~4 fire-and-forget→`SafeFireAndForget` | `rg "MessageBox"` / `rg "= Firebase"` = 0 |
+| 8.2-M9 | `VersionLockoutViewModel.cs:43-46`: retirar `UseShellExecute=true`; reset `_isDownloading` en `catch` | Revisión |
+| 8D-M2 | `ExchangeRateService.cs:291`: `.Wait()`→`await` | `rg "\.Wait"` = 0 |
+| 8U-N2 | `setup.iss:185`: canal de actualizaciones a `https` + pinning, o retirar | Revisión |
+| 8.4-N3/N5/N6 | a11y en `PartialPaymentModal`; test de montaje real (jsdom) del checkout; contexto de tasa no-global | Suite web + revisión |
+
+### FASE 9: Certificación Rev. 8.5
+1. Ejecutar `dotnet test` (≥677), `npm test` (≥73), `npm run lint` (0/0), `dotnet build CommandCenter.slnx -c Release` (0 warnings).
+2. Cerrar checklist de guidelines con los greps de la Fase 8.
+3. Actualizar `docs/reporte.txt` a **Rev. 8.5** (§13.5) y adendas de los 11 reportes modulares.
+4. Añadir al CI el gate de cobertura ≥70% (coverlet) y pruebas de montaje web (jsdom).
+
+* **Criterio de Aceptación General:** árbol Git limpio, 0 errores/advertencias, entendido como la combinación de lo verificado por `reporte.txt` Rev 8.4 y la certificación del cierre de las Fases 6-8.

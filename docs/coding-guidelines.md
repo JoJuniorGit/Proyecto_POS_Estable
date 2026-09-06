@@ -15,9 +15,9 @@ El sistema POS "CommandCenter" opera bajo un modelo de desarrollo ágil con equi
 ### Los 7 Pilares de Calidad
 1. **Mantenibilidad Primero:** Código simple, explícito y desacoplado. Ninguna modificación en un módulo debe provocar efectos colaterales imprevistos en otro. El tamaño objetivo por clase es de **300 a 500 líneas** (ver Sección 1.1 para la política anti-God Objects).
 2. **Consistencia Total:** Las mismas convenciones aplican en todo el repositorio. Se prohíbe introducir nueva deuda técnica (como nombres en `_snake_case`, estilos inline desordenados o mezcla de idiomas en mensajes). La deuda histórica se migra de forma gradual y oportunista al intervenir cada archivo.
-3. **Seguridad por Defecto (Zero-Trust):** Validación exhaustiva de entradas, autorización estricta basada en roles (RBAC: Admin vs Cashier), protección contra ataques comunes (Zip Slip, inyección SQL, bypass de loopback bajo proxy, exposición de credenciales) y aislamiento de secretos.
+3. **Seguridad por Defecto (Zero-Trust):** Validación exhaustiva de entradas, autorización estricta basada en roles (RBAC: `Cashier`, `Manager`, `Admin` y `Driver`; bloqueo explícito de `Driver` en ventas, caja y cierres), protección contra ataques comunes (Zip Slip, inyección SQL, bypass de loopback bajo proxy, exposición de credenciales) y aislamiento de secretos.
 4. **Rendimiento Consciente:** Cero consultas N+1, uso imperativo de `.AsNoTracking()` en lecturas, `.AsSplitQuery()` en relaciones complejas, paginación en catálogos y virtualización en interfaces gráficas.
-5. **Testeabilidad y Regresión Cero:** Cada lógica crítica debe poder probarse de forma aislada. Toda remediación o nueva característica debe acompañarse de pruebas automatizadas que garanticen que la suite completa (740+ pruebas) permanezca en 100% de éxito.
+5. **Testeabilidad y Regresión Cero:** Cada lógica crítica debe poder probarse de forma aislada. Toda remediación o nueva característica debe acompañarse de pruebas automatizadas que garanticen que la suite completa (≥677 pruebas .NET y ≥73 pruebas Web al cierre de la Rev. 8.4, HEAD `12eddf6`) permanezca en 100% de éxito.
 6. **Observabilidad y Resiliencia:** Logs estructurados con parámetros semánticos (evitando concatenación de cadenas), captura centralizada de excepciones y degradación elegante ante fallos de red.
 7. **Accesibilidad Operativa:** Interfaces ágiles optimizadas para operación por teclado en caja (hotkeys) y soporte táctil/móvil (`inputMode`).
 
@@ -28,10 +28,13 @@ Para prevenir la reaparición de "God Objects" (clases monolíticas de más de 1
 #### A. Límites de Tamaño y Responsabilidad Única (SRP)
 * **Umbral de Tamaño:** Máximo **300 a 500 líneas** por archivo de clase. Si un archivo supera las 500 líneas, debe programarse su partición o extracción.
 * **Principio de Responsabilidad Única (SRP):** Cada clase debe tener una única razón para cambiar.
-  * *Ejemplo en Ventas:*
-    - `SalePricingCalculator`: Cálculos matemáticos puros, impuestos, márgenes y redondeos.
-    - `SaleHoldCoordinator`: Gestión de órdenes en espera, reservas y abonos parciales.
-    - `SalesService`: Orquestador principal del ciclo de vida de la venta y transacciones.
+  * *Ejemplo en Ventas (patrón real implementado con clases parciales):*
+    - `SalesService.cs`: Orquestador principal del ciclo de vida de la venta y transacciones.
+    - `SalesService.Pricing.cs`: Cálculos matemáticos puros, impuestos, márgenes y redondeos.
+    - `SalesService.HoldOrders.cs`: Gestión de órdenes en espera, reservas y abonos parciales.
+    - `SalesService.CashAdvance.cs`: Avances de caja y comisiones.
+    - `SalesService.History.cs`: Consultas de historial y recuperación de ventas.
+    - La estrategia de *sub-servicios Scoped inyectados* (bloque de código de la sección B) queda reservada para extracciones futuras de cálculo puro o flujos independientes.
 
 #### B. Estrategias de División y Árbol de Decisión
 1. **Estrategia Táctica (Clases Parciales):**
@@ -240,7 +243,7 @@ Con el fin de evitar refactorizaciones traumáticas cuando el sistema se desplie
 El flujo automatizado en GitHub Actions valida en cada Pull Request y Push a `main`/`develop`:
 1. **Frontend:** Ejecución de `npm run lint` (`oxlint`) y `npm test` en `Web.Frontend`.
 2. **Backend:** Compilación estricta con `TreatWarningsAsErrors=true` en Release.
-3. **Suite Completa:** Ejecución de las 670 pruebas .NET y 70 pruebas Web con recolección de cobertura Cobertura XML.
+3. **Suite Completa:** Ejecución de las 677 pruebas .NET (`dotnet test`) y 73 pruebas Web (`node --test`) con recolección de cobertura Cobertura XML.
 
 ---
 
