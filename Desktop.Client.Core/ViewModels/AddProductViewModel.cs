@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Core.Entities;
 using Desktop.Client.Services;
 using System;
@@ -84,7 +85,7 @@ public partial class AddProductViewModel : ObservableValidator
             LowStockThreshold = product.LowStockThreshold;
         }
 
-        _ = LoadMetadataAsync();
+        LoadMetadataAsync().SafeFireAndForget("AddProductViewModel.LoadMetadata");
     }
 
     [RelayCommand]

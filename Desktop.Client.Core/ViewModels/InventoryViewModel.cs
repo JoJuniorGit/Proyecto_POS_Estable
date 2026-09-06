@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Core.Common;
 using Core.Entities;
 using Desktop.Client.Messages;
 using Desktop.Client.Services;
@@ -39,7 +40,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _searchText, value))
             {
-                _ = RestartSearchTimerAsync();
+                RestartSearchTimerAsync().SafeFireAndForget("InventoryViewModel.RestartSearchTimer");
             }
         }
     }
@@ -135,7 +136,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedStatusFilter, value))
             {
-                _ = LoadDataAsync(false);
+                LoadDataAsync(false).SafeFireAndForget("InventoryViewModel.StatusFilterChanged");
             }
         }
     }
@@ -167,7 +168,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
 
         if (UserSession == null || UserSession.IsLoggedIn)
         {
-            _ = LoadDataAsync(false);
+            LoadDataAsync(false).SafeFireAndForget("InventoryViewModel.InitialLoad");
         }
     }
 

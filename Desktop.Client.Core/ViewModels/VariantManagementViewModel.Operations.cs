@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Core.DTOs;
 using Desktop.Client.Services;
 
@@ -13,7 +14,7 @@ public partial class VariantManagementViewModel
 {
     partial void OnSearchCatalogTextChanged(string value)
     {
-        _ = SearchCandidatesDebouncedAsync();
+        SearchCandidatesDebouncedAsync().SafeFireAndForget("VariantManagementViewModel.SearchCandidates");
     }
 
     private async Task SearchCandidatesDebouncedAsync()

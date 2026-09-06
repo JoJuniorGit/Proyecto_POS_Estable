@@ -86,9 +86,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
         if (UserSession == null || UserSession.IsLoggedIn)
         {
-            _ = LoadMethodsAsync();
-            _ = LoadTimeZonesAsync();
-            _ = LoadCurrencyFormatAsync();
+            LoadMethodsAsync().SafeFireAndForget("SettingsViewModel.LoadMethods");
+            LoadTimeZonesAsync().SafeFireAndForget("SettingsViewModel.LoadTimeZones");
+            LoadCurrencyFormatAsync().SafeFireAndForget("SettingsViewModel.LoadCurrencyFormat");
         }
     }
 
@@ -141,7 +141,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to update status: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (_dialogService != null) _dialogService.ShowError("Settings Error", $"Failed to update status: {ex.Message}");
+            else if (Application.Current != null) MessageBox.Show($"Failed to update status: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
             method.IsActive = !method.IsActive; // Revert
             OnPropertyChanged(nameof(PaymentMethods));
         }
@@ -157,7 +158,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to update rule: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (_dialogService != null) _dialogService.ShowError("Settings Error", $"Failed to update rule: {ex.Message}");
+            else if (Application.Current != null) MessageBox.Show($"Failed to update rule: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
             method.RequiresReference = !method.RequiresReference; // Revert
             OnPropertyChanged(nameof(PaymentMethods));
         }
@@ -191,7 +193,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             method.IsCash = original;
-            MessageBox.Show($"Error al cambiar el tipo de método de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (_dialogService != null) _dialogService.ShowError("Error", $"Error al cambiar el tipo de método de pago: {ex.Message}");
+            else if (Application.Current != null) MessageBox.Show($"Error al cambiar el tipo de método de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             await LoadMethodsAsync();
         }
     }
@@ -208,7 +211,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
         if (PaymentMethods.Any(p => p.Name.Equals(newName, StringComparison.OrdinalIgnoreCase)))
         {
-            MessageBox.Show("A payment method with this name already exists!", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
+            _dialogService.ShowWarning("Validation", "A payment method with this name already exists!");
             return;
         }
 
@@ -228,7 +231,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to create method: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            _dialogService.ShowError("Settings Error", $"Failed to create method: {ex.Message}");
             await LoadMethodsAsync();
         }
     }
@@ -250,7 +253,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         var cleanName = newName.Trim();
         if (PaymentMethods.Any(p => p.Id != method.Id && p.Name.Equals(cleanName, StringComparison.OrdinalIgnoreCase)))
         {
-            MessageBox.Show("Ya existe un método de pago con ese nombre.", "Validación", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (_dialogService != null) _dialogService.ShowWarning("Validación", "Ya existe un método de pago con ese nombre.");
+            else if (Application.Current != null) MessageBox.Show("Ya existe un método de pago con ese nombre.", "Validación", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -275,7 +279,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al renombrar el método de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (_dialogService != null) _dialogService.ShowError("Error", $"Error al renombrar el método de pago: {ex.Message}");
+            else if (Application.Current != null) MessageBox.Show($"Error al renombrar el método de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -305,7 +310,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al reordenar métodos de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (_dialogService != null) _dialogService.ShowError("Error", $"Error al reordenar métodos de pago: {ex.Message}");
+            else if (Application.Current != null) MessageBox.Show($"Error al reordenar métodos de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -335,7 +341,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al reordenar métodos de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (_dialogService != null) _dialogService.ShowError("Error", $"Error al reordenar métodos de pago: {ex.Message}");
+            else if (Application.Current != null) MessageBox.Show($"Error al reordenar métodos de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -343,13 +350,17 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private async Task DeleteMethodAsync(PaymentMethodDto method)
     {
         if (method == null) return;
-        var result = MessageBox.Show(
-            $"¿Está seguro de eliminar el método de pago '{method.Name}'?\n\nSi el método tiene transacciones históricas registradas, será archivado de forma segura sin afectar las ventas ni auditorías.",
-            "Confirmar Eliminación",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
+        bool confirmed = _dialogService != null
+            ? _dialogService.ShowConfirm(
+                "Confirmar Eliminación",
+                $"¿Está seguro de eliminar el método de pago '{method.Name}'?\n\nSi el método tiene transacciones históricas registradas, será archivado de forma segura sin afectar las ventas ni auditorías.")
+            : (Application.Current != null && MessageBox.Show(
+                $"¿Está seguro de eliminar el método de pago '{method.Name}'?\n\nSi el método tiene transacciones históricas registradas, será archivado de forma segura sin afectar las ventas ni auditorías.",
+                "Confirmar Eliminación",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question) == MessageBoxResult.Yes);
 
-        if (result == MessageBoxResult.Yes)
+        if (confirmed)
         {
             try
             {
@@ -359,7 +370,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al eliminar el método de pago: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                if (_dialogService != null) _dialogService.ShowError("Settings Error", $"Error al eliminar el método de pago: {ex.Message}");
+                else if (Application.Current != null) MessageBox.Show($"Error al eliminar el método de pago: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 await LoadMethodsAsync();
             }
         }
@@ -390,7 +402,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to save timezone: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (_dialogService != null) _dialogService.ShowError("Settings Error", $"Failed to save timezone: {ex.Message}");
+            else if (Application.Current != null) MessageBox.Show($"Failed to save timezone: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

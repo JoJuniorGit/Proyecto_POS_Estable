@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Core.Common;
 using Desktop.Client.Services;
 using System;
 using System.Collections.ObjectModel;
@@ -135,7 +136,7 @@ public partial class CashDrawerViewModel : ObservableObject
 
         WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (r, m) =>
         {
-            Application.Current.Dispatcher.Invoke(() => _ = RefreshAsync());
+            Application.Current.Dispatcher.Invoke(() => RefreshAsync().SafeFireAndForget("CashDrawer.TimeZoneChanged"));
         });
 
         WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.CurrencyRateChangedMessage>(this, (r, m) =>
@@ -149,12 +150,12 @@ public partial class CashDrawerViewModel : ObservableObject
 
         WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.ShiftClosedMessage>(this, (r, m) =>
         {
-            Application.Current.Dispatcher.Invoke(() => _ = RefreshAsync());
+            Application.Current.Dispatcher.Invoke(() => RefreshAsync().SafeFireAndForget("CashDrawer.ShiftClosed"));
         });
 
         if (_userSession == null || _userSession.IsLoggedIn)
         {
-            _ = LoadSessionAsync();
+            LoadSessionAsync().SafeFireAndForget("CashDrawer.InitialLoad");
         }
     }
 
@@ -231,7 +232,8 @@ public partial class CashDrawerViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Application.Current.Dispatcher.Invoke(() => MessageBox.Show($"Error loading cash register: {ex.Message}"));
+            if (_dialogService != null) _dialogService.ShowError("Error", $"Error loading cash register: {ex.Message}");
+            else if (Application.Current != null) Application.Current.Dispatcher.Invoke(() => MessageBox.Show($"Error loading cash register: {ex.Message}"));
         }
     }
 
@@ -298,7 +300,8 @@ public partial class CashDrawerViewModel : ObservableObject
             var rate = _exchangeRateService.CurrentRate;
             if (rate <= 0)
             {
-                MessageBox.Show("Exchange rate not set. Cannot process transaction.", "Warning");
+                if (_dialogService != null) _dialogService.ShowWarning("Warning", "Exchange rate not set. Cannot process transaction.");
+                else if (Application.Current != null) MessageBox.Show("Exchange rate not set. Cannot process transaction.", "Warning");
                 return;
             }
 
@@ -323,7 +326,8 @@ public partial class CashDrawerViewModel : ObservableObject
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to add cash: {ex.Message}");
+                if (_dialogService != null) _dialogService.ShowError("Error", $"Failed to add cash: {ex.Message}");
+                else if (Application.Current != null) MessageBox.Show($"Failed to add cash: {ex.Message}");
             }
         }
     }
@@ -346,7 +350,8 @@ public partial class CashDrawerViewModel : ObservableObject
             var rate = _exchangeRateService.CurrentRate;
             if (rate <= 0)
             {
-                MessageBox.Show("Exchange rate not set. Cannot process transaction.", "Warning");
+                if (_dialogService != null) _dialogService.ShowWarning("Warning", "Exchange rate not set. Cannot process transaction.");
+                else if (Application.Current != null) MessageBox.Show("Exchange rate not set. Cannot process transaction.", "Warning");
                 return;
             }
 
@@ -371,7 +376,8 @@ public partial class CashDrawerViewModel : ObservableObject
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to withdraw cash: {ex.Message}");
+                if (_dialogService != null) _dialogService.ShowError("Error", $"Failed to withdraw cash: {ex.Message}");
+                else if (Application.Current != null) MessageBox.Show($"Failed to withdraw cash: {ex.Message}");
             }
         }
     }

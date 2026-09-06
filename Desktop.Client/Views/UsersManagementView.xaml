@@ -131,6 +131,9 @@
                                   AutoGenerateColumns="False"
                                   IsReadOnly="True"
                                   SelectionMode="Single"
+                                  VirtualizingStackPanel.IsVirtualizing="True"
+                                  VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                  VirtualizingPanel.ScrollUnit="Pixel"
                                   Style="{StaticResource MaterialDesignDataGrid}">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Usuario" Binding="{Binding Cedula}" Width="120" FontWeight="SemiBold"/>
@@ -386,6 +389,9 @@
                                   AutoGenerateColumns="False"
                                   IsReadOnly="True"
                                   SelectionMode="Single"
+                                  VirtualizingStackPanel.IsVirtualizing="True"
+                                  VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                  VirtualizingPanel.ScrollUnit="Pixel"
                                   Style="{StaticResource MaterialDesignDataGrid}">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Cédula / RIF" Binding="{Binding CedulaOrRif}" Width="110" FontWeight="Bold"/>

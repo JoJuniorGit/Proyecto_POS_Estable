@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useExchangeRate } from './ExchangeRateContext';
 import { useAuth } from './AuthContext';
 import {
@@ -39,6 +39,9 @@ export function CartProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const cartRequestIdRef = useRef(0);
+  const inFlightCreateRef = useRef(null);
+
   // Sincronizar instantáneamente la venta activa en sessionStorage para persistencia síncrona en recargas
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -54,24 +57,32 @@ export function CartProvider({ children }) {
 
   // Inicializar o crear nueva venta
   const createNewSale = useCallback(async () => {
+    if (inFlightCreateRef.current) {
+      return inFlightCreateRef.current;
+    }
     setLoading(true);
     setError(null);
-    try {
-      const sale = await startSale(user?.id);
-      setCurrentSale(sale);
-      setSelectedItemId(null);
-      if (sale?.id) {
-        sessionStorage.setItem('active_pos_sale_id', String(sale.id));
-        sessionStorage.setItem('active_pos_sale_cache', JSON.stringify(sale));
-        sessionStorage.setItem('active_pos_has_items', (sale.items?.length > 0) ? 'true' : 'false');
+    const promise = (async () => {
+      try {
+        const sale = await startSale(user?.id);
+        setCurrentSale(sale);
+        setSelectedItemId(null);
+        if (sale?.id) {
+          sessionStorage.setItem('active_pos_sale_id', String(sale.id));
+          sessionStorage.setItem('active_pos_sale_cache', JSON.stringify(sale));
+          sessionStorage.setItem('active_pos_has_items', (sale.items?.length > 0) ? 'true' : 'false');
+        }
+        return sale;
+      } catch (err) {
+        console.error('[CartContext] Error al crear nueva venta:', err);
+        setError('No se pudo iniciar la sesión de venta. Intente de nuevo.');
+      } finally {
+        setLoading(false);
+        inFlightCreateRef.current = null;
       }
-      return sale;
-    } catch (err) {
-      console.error('[CartContext] Error al crear nueva venta:', err);
-      setError('No se pudo iniciar la sesión de venta. Intente de nuevo.');
-    } finally {
-      setLoading(false);
-    }
+    })();
+    inFlightCreateRef.current = promise;
+    return promise;
   }, [user?.id]);
 
   // Cargar venta existente (para editar pedido en espera)
@@ -151,20 +162,27 @@ export function CartProvider({ children }) {
       }
     }
 
+    const reqId = ++cartRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale.appliedRate || 1);
       const updatedSale = await removeItemFromSale(currentSale.id, itemId, rateToUse);
-      setCurrentSale(updatedSale);
-      if (selectedItemId === itemId) {
-        setSelectedItemId(null);
+      if (reqId === cartRequestIdRef.current) {
+        setCurrentSale(updatedSale);
+        if (selectedItemId === itemId) {
+          setSelectedItemId(null);
+        }
       }
     } catch (err) {
       console.error('[CartContext] Error eliminando item:', err);
-      setError(err.message || 'Error al eliminar producto del carrito');
+      if (reqId === cartRequestIdRef.current) {
+        setError(err.message || 'Error al eliminar producto del carrito');
+      }
     } finally {
-      setLoading(false);
+      if (reqId === cartRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [currentSale?.id, currentSale?.status, currentSale?.items, currentSale?.appliedRate, exchangeRate, selectedItemId, validateOnHoldRules]);
 
@@ -184,18 +202,25 @@ export function CartProvider({ children }) {
       }
     }
 
+    const reqId = ++cartRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const rateToUse = exchangeRate > 0 ? exchangeRate : (sale.appliedRate || 1);
       const updatedSale = await addItemToSale(sale.id, product.id, quantity, rateToUse);
-      setCurrentSale(updatedSale);
+      if (reqId === cartRequestIdRef.current) {
+        setCurrentSale(updatedSale);
+      }
       return updatedSale;
     } catch (err) {
       console.error('[CartContext] Error agregando item:', err);
-      setError(err.message || 'Error al agregar producto al carrito');
+      if (reqId === cartRequestIdRef.current) {
+        setError(err.message || 'Error al agregar producto al carrito');
+      }
     } finally {
-      setLoading(false);
+      if (reqId === cartRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [currentSale, createNewSale, exchangeRate, validateOnHoldRules]);
 
@@ -226,36 +251,50 @@ export function CartProvider({ children }) {
       }
     }
 
+    const reqId = ++cartRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale.appliedRate || 1);
       const updatedSale = await updateItemQuantity(currentSale.id, itemId, validatedQty, rateToUse);
-      setCurrentSale(updatedSale);
+      if (reqId === cartRequestIdRef.current) {
+        setCurrentSale(updatedSale);
+      }
     } catch (err) {
       console.error('[CartContext] Error modificando cantidad:', err);
-      setError(err.message || 'Error al modificar la cantidad');
+      if (reqId === cartRequestIdRef.current) {
+        setError(err.message || 'Error al modificar la cantidad');
+      }
     } finally {
-      setLoading(false);
+      if (reqId === cartRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [currentSale?.id, currentSale?.status, currentSale?.items, currentSale?.appliedRate, exchangeRate, validateOnHoldRules]);
 
   // Cambiar lista de precios ("Retail" | "Wholesale")
   const changePriceList = useCallback(async (priceListType) => {
     if (!currentSale?.id) return;
+    const reqId = ++cartRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const updatedSale = await updatePriceList(currentSale.id, priceListType);
-      setCurrentSale(updatedSale);
+      if (reqId === cartRequestIdRef.current) {
+        setCurrentSale(updatedSale);
+      }
       return updatedSale;
     } catch (err) {
       console.error('[CartContext] Error cambiando lista de precios:', err);
       const msg = err.response?.data?.message || err.response?.data?.Message || err.message || 'Error al cambiar lista de precios';
-      setError(msg);
+      if (reqId === cartRequestIdRef.current) {
+        setError(msg);
+      }
       throw new Error(msg);
     } finally {
-      setLoading(false);
+      if (reqId === cartRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [currentSale?.id]);
 

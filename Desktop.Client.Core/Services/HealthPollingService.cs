@@ -2,6 +2,7 @@ using System;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Core.Common;
 using Core.Logging;
 
 namespace Desktop.Client.Services;
@@ -118,7 +119,7 @@ public class HealthPollingService : IHealthPollingService, IDisposable
                 _connectionManager?.NotifyConnectionFailed("Sin respuesta del servidor tras múltiples intentos.");
                 if (_connectionManager != null)
                 {
-                    _ = _connectionManager.AutoRecoverAsync(cancellationToken);
+                    _connectionManager.AutoRecoverAsync(cancellationToken).SafeFireAndForget("HealthPollingService.AutoRecover");
                 }
             }
 

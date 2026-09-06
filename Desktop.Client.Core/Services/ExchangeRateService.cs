@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Core.Common;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Net.Security;
@@ -100,7 +101,7 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             }
         });
 
-        _ = InitializeAsync();
+        InitializeAsync().SafeFireAndForget("ExchangeRateService.Initialize");
     }
 
     private async Task InitializeAsync()
@@ -117,13 +118,13 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
         }
 
         // Start SignalR in background — never blocks the UI
-        _ = StartSignalRAsync();
+        StartSignalRAsync().SafeFireAndForget("ExchangeRateService.StartSignalR");
     }
 
     public decimal CurrentRate
     {
         get => _currentRate;
-        set => _ = UpdateRateLocallyAsync(value);
+        set => UpdateRateLocallyAsync(value).SafeFireAndForget("ExchangeRateService.UpdateRateLocally");
     }
 
     private async Task UpdateRateLocallyAsync(decimal newRate)

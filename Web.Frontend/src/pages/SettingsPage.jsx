@@ -9,6 +9,7 @@ import {
 import { BrowserQRCodeSvgWriter } from '@zxing/library';
 import { Settings, CreditCard, Plus, Loader2, Check, QrCode, Server, Wifi, Copy, RefreshCw, Trash2, DollarSign } from 'lucide-react';
 import { useCurrencyFormat } from '../context/CurrencyFormatContext';
+import ConfirmModal from '../components/ui/ConfirmModal';
 
 export default function SettingsPage() {
   const { currencyFormat, setCurrencyFormat, formatBsS, formatUSD } = useCurrencyFormat();
@@ -18,6 +19,7 @@ export default function SettingsPage() {
   const [newMethodIsCash, setNewMethodIsCash] = useState(false);
   const [newMethodRequiresRef, setNewMethodRequiresRef] = useState(false);
   const [message, setMessage] = useState(null);
+  const [methodToDelete, setMethodToDelete] = useState(null);
 
   const handleFormatChange = async (newFmt) => {
     try {
@@ -183,11 +185,14 @@ export default function SettingsPage() {
     }
   };
 
-  const handleDeleteMethod = async (method) => {
-    const confirmed = window.confirm(
-      `¿Está seguro de eliminar el método de pago "${method.name}"?\n\nSi posee transacciones históricas registradas, será archivado de forma segura sin afectar reportes ni auditorías.`
-    );
-    if (!confirmed) return;
+  const handleDeleteMethod = (method) => {
+    setMethodToDelete(method);
+  };
+
+  const confirmDeleteMethod = async () => {
+    if (!methodToDelete) return;
+    const method = methodToDelete;
+    setMethodToDelete(null);
 
     setMethods((prev) => prev.filter((m) => m.id !== method.id));
     try {
@@ -680,6 +685,17 @@ export default function SettingsPage() {
           </div>
         </form>
       </div>
+
+      <ConfirmModal
+        isOpen={!!methodToDelete}
+        onClose={() => setMethodToDelete(null)}
+        onConfirm={confirmDeleteMethod}
+        title="¿Eliminar método de pago?"
+        message={`¿Está seguro de eliminar el método de pago "${methodToDelete?.name}"? Si posee transacciones históricas registradas, será archivado de forma segura sin afectar reportes ni auditorías.`}
+        confirmText="Eliminar Método"
+        cancelText="Cancelar"
+        variant="danger"
+      />
     </div>
   );
 }

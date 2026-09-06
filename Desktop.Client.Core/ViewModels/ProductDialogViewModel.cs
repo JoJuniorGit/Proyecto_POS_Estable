@@ -156,7 +156,7 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
         };
         _debounceTimer.Tick += OnDebounceTimerTick;
 
-        _ = LoadMetadataAsync();
+        LoadMetadataAsync().SafeFireAndForget("ProductDialogViewModel.LoadMetadata");
     }
 
     partial void OnIsCashAdvanceChanged(bool value)

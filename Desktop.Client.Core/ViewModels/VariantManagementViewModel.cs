@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Core.DTOs;
 using Core.Entities;
 using Desktop.Client.Services;
@@ -72,7 +73,7 @@ public partial class VariantManagementViewModel : ObservableObject, IDisposable
         _dialogService = dialogService;
         _parentProduct = parentProduct;
 
-        _ = LoadVariantsAsync();
+        LoadVariantsAsync().SafeFireAndForget("VariantManagementViewModel.LoadVariants");
     }
 
     [RelayCommand]

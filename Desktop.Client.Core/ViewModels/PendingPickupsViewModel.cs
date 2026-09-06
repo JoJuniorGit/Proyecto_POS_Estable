@@ -61,7 +61,7 @@ public partial class PendingPickupsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al cargar retiros pendientes: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            _dialogService.ShowError("Error", $"Error al cargar retiros pendientes: {ex.Message}");
         }
         finally
         {
@@ -96,7 +96,7 @@ public partial class PendingPickupsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al confirmar retiro: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            _dialogService.ShowError("Error", $"Error al confirmar retiro: {ex.Message}");
         }
         finally
         {

@@ -523,7 +523,8 @@ export default function PendingOrdersPage() {
                 });
               }
             } catch (err) {
-              alert(err.response?.data || err.message || 'Error al procesar la operación.');
+              const msg = err.response?.data?.message || err.response?.data?.Message || (typeof err.response?.data === 'string' ? err.response?.data : null) || err.message || 'Error al procesar la operación.';
+              setError(msg);
             }
           }}
         />

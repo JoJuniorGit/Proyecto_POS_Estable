@@ -13,6 +13,7 @@ export default function SummaryPanel({ onCheckout, onHold }) {
     removeItem,
     changePriceList,
     loading,
+    setError,
   } = useCart();
 
   const isEmpty = items.length === 0;
@@ -23,7 +24,7 @@ export default function SummaryPanel({ onCheckout, onHold }) {
     try {
       await changePriceList(newType);
     } catch (err) {
-      alert(err.message || 'No se pudo cambiar la lista de precios.');
+      setError?.(err.message || 'No se pudo cambiar la lista de precios.');
     }
   };
 

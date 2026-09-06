@@ -112,7 +112,7 @@ public partial class PendingOrdersViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al cargar cuentas abiertas: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            _dialogService.ShowError("Error", $"Error al cargar cuentas abiertas: {ex.Message}");
         }
         finally
         {
@@ -160,7 +160,7 @@ public partial class PendingOrdersViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al abrir cobro: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            _dialogService.ShowError("Error", $"Error al abrir cobro: {ex.Message}");
         }
     }
 
@@ -180,7 +180,7 @@ public partial class PendingOrdersViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al editar pedido: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            _dialogService.ShowError("Error", $"Error al editar pedido: {ex.Message}");
         }
     }
 }

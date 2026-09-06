@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Core.Common;
 using Core.DTOs;
 using Desktop.Client.Helpers;
 using Desktop.Client.Messages;
@@ -20,11 +21,13 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
 {
     private readonly ISalesService _salesService;
     private readonly IExchangeRateService _exchangeRateService;
+    private readonly IDialogService? _dialogService;
 
-    public CartViewModel(ISalesService salesService, IExchangeRateService exchangeRateService)
+    public CartViewModel(ISalesService salesService, IExchangeRateService exchangeRateService, IDialogService? dialogService = null)
     {
         _salesService = salesService;
         _exchangeRateService = exchangeRateService;
+        _dialogService = dialogService;
 
         // Reactive sync: When the rate changes, update all items and totals at once.
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
@@ -132,7 +135,8 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         }
         catch (System.Exception ex)
         {
-            MessageBox.Show(ex.Message, "Lista de Precios", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (_dialogService != null) _dialogService.ShowWarning("Lista de Precios", ex.Message);
+            else if (Application.Current != null) MessageBox.Show(ex.Message, "Lista de Precios", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -205,7 +209,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         {
             if (CurrentSale.Status == "OnHold")
             {
-                _ = Task.Run(async () =>
+                Task.Run(async () =>
                 {
                     try
                     {
@@ -224,7 +228,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
                     {
                         // Ignore transient network issues
                     }
-                });
+                }).SafeFireAndForget("CartViewModel.UpdateAllPrices");
                 return;
             }
 
@@ -256,7 +260,8 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         }
         catch (System.Exception ex)
         {
-            MessageBox.Show(ex.Message);
+            if (_dialogService != null) _dialogService.ShowWarning("Error", ex.Message);
+            else if (Application.Current != null) MessageBox.Show(ex.Message);
         }
     }
 
@@ -279,7 +284,8 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         }
         catch (System.Exception ex)
         {
-            MessageBox.Show(ex.Message);
+            if (_dialogService != null) _dialogService.ShowWarning("Error", ex.Message);
+            else if (Application.Current != null) MessageBox.Show(ex.Message);
         }
     }
 
@@ -293,7 +299,8 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         }
         catch (System.Exception ex)
         {
-            MessageBox.Show($"Error removing item: {ex.Message}");
+            if (_dialogService != null) _dialogService.ShowError("Error", $"Error removing item: {ex.Message}");
+            else if (Application.Current != null) MessageBox.Show($"Error removing item: {ex.Message}");
         }
     }
 

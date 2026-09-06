@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Core.Common;
 using Core.DTOs;
 using Desktop.Client.Messages;
 using Desktop.Client.Services;
@@ -62,7 +63,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _searchText, value))
             {
-                _ = ExecuteSearchAsync();
+                ExecuteSearchAsync().SafeFireAndForget("PosViewModel.ExecuteSearch");
             }
         }
     }
@@ -85,8 +86,16 @@ public partial class PosViewModel : ObservableObject, IDisposable
     public ProductQuickInfoDto? SelectedSuggestion
     {
         get => _selectedSuggestion;
-        set => SetProperty(ref _selectedSuggestion, value);
+        set
+        {
+            if (SetProperty(ref _selectedSuggestion, value))
+            {
+                OnSelectedSuggestionChanged(value);
+            }
+        }
     }
+
+    partial void OnSelectedSuggestionChanged(ProductQuickInfoDto? value);
 
     public PosViewModel(
         ISalesService salesService, 
@@ -261,7 +270,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[POS] StartNewSaleAsync FAILED: {ex.GetType().Name}: {ex.Message}");
-            MessageBox.Show($"Error starting sale: {ex.Message}", "Sale Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (_dialogService != null) _dialogService.ShowError("Sale Error", $"Error starting sale: {ex.Message}");
+            else if (Application.Current != null) MessageBox.Show($"Error starting sale: {ex.Message}", "Sale Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {

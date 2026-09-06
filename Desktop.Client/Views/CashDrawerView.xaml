@@ -231,6 +231,9 @@
             
             <controls:PerformantDataGrid Grid.Row="1" ItemsSource="{Binding OrderedTransactions}" 
                       AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True"
+                      VirtualizingStackPanel.IsVirtualizing="True"
+                      VirtualizingStackPanel.VirtualizationMode="Recycling"
+                      VirtualizingPanel.ScrollUnit="Pixel"
                       Visibility="{Binding IsSessionActive, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:PerformantDataGrid.Columns>
                     

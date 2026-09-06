@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using System.Windows;
 using CommunityToolkit.Mvvm.Messaging;
+using Core.Common;
 using Desktop.Client.Messages;
 using Microsoft.AspNetCore.SignalR.Client;
 
@@ -28,7 +29,7 @@ public class CurrencyService : ICurrencyService
             });
         });
 
-        _ = StartConnectionAsync();
+        StartConnectionAsync().SafeFireAndForget("CurrencyService.StartConnection");
     }
 
     private async Task StartConnectionAsync()

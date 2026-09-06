@@ -101,7 +101,8 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct }, ref) {
         <input
           ref={inputRef}
           type="text"
-          className="search-input"
+          className="search-input pos-search-input"
+          data-scanner-trap="true"
           placeholder="Buscar producto por nombre o código (F2)..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}

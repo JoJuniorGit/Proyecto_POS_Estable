@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Desktop.Client.Services;
 
 namespace Desktop.Client.ViewModels;
@@ -96,7 +97,7 @@ public partial class LoginViewModel : ObservableObject
                 UpdateConnectionDisplay();
             };
             UpdateConnectionDisplay();
-            _ = _connectionManager.InitializeAsync();
+            _connectionManager.InitializeAsync().SafeFireAndForget("LoginViewModel.InitializeConnection");
         }
     }
 

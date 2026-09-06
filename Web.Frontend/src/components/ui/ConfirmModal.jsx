@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 
 /**
@@ -19,14 +19,52 @@ export default function ConfirmModal({
   variant = 'warning', // 'warning' | 'danger' | 'primary'
   icon = null,
 }) {
+  const modalRef = useRef(null);
+
   useEffect(() => {
+    if (!isOpen) return;
+
     function handleKeyDown(e) {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape') {
         onClose?.();
+        return;
+      }
+
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusableElements = modalRef.current.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusableElements.length === 0) return;
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement.focus();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement.focus();
+          }
+        }
       }
     }
+
+    const timer = setTimeout(() => {
+      if (modalRef.current) {
+        const focusable = modalRef.current.querySelector('button.btn:not(.btn-outline), button');
+        if (focusable) focusable.focus();
+      }
+    }, 50);
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      clearTimeout(timer);
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
@@ -37,6 +75,7 @@ export default function ConfirmModal({
   return (
     <div className="modal-overlay" style={{ zIndex: 1200 }} onClick={onClose}>
       <div
+        ref={modalRef}
         className="modal-container card"
         style={{
           maxWidth: '430px',

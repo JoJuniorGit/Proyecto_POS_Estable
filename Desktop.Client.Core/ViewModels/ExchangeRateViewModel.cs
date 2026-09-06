@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Core.Common;
 using System;
 using System.Globalization;
 using System.Threading.Tasks;
@@ -93,12 +94,12 @@ public partial class ExchangeRateViewModel : ObservableObject
 
         WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (_r, _m) =>
         {
-            _ = LoadAllAsync();
+            LoadAllAsync().SafeFireAndForget("ExchangeRateViewModel.TimeZoneChanged");
         });
 
         if (UserSession == null || UserSession.IsLoggedIn)
         {
-            _ = LoadAllAsync();
+            LoadAllAsync().SafeFireAndForget("ExchangeRateViewModel.InitialLoad");
         }
     }
 

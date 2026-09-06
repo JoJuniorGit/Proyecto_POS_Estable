@@ -10,6 +10,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Core.Common;
 using Desktop.Client.Services;
 using Core.DTOs;
 using Desktop.Client.Helpers;
@@ -164,7 +165,7 @@ public partial class SalesHistoryViewModel : ObservableObject
         {
             if (SetProperty(ref _search_text, value))
             {
-                _ = DebounceSearchAsync(value);
+                DebounceSearchAsync(value).SafeFireAndForget("SalesHistoryViewModel.DebounceSearch");
             }
         }
     }
@@ -260,7 +261,7 @@ public partial class SalesHistoryViewModel : ObservableObject
 
         WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (_r, _m) =>
         {
-            _dispatchAction(() => _ = LoadHistoryAsync());
+            _dispatchAction(() => LoadHistoryAsync().SafeFireAndForget("SalesHistoryViewModel.TimeZoneChanged"));
         });
 
         WeakReferenceMessenger.Default.Register<SaleCompletedNotificationMessage>(this, (_r, _m) =>
@@ -279,8 +280,8 @@ public partial class SalesHistoryViewModel : ObservableObject
         }
     }
 
-    private void OnStartDateChanged(DateTime? _value) => _ = LoadHistoryAsync();
-    private void OnEndDateChanged(DateTime? _value) => _ = LoadHistoryAsync();
+    private void OnStartDateChanged(DateTime? _value) => LoadHistoryAsync().SafeFireAndForget("SalesHistoryViewModel.StartDateChanged");
+    private void OnEndDateChanged(DateTime? _value) => LoadHistoryAsync().SafeFireAndForget("SalesHistoryViewModel.EndDateChanged");
 
     private void OnSelectedSaleChanged(SaleHistoryDto? _value)
     {
@@ -298,7 +299,7 @@ public partial class SalesHistoryViewModel : ObservableObject
             DetailErrorMessage = null;
         }
 
-        _ = LoadSelectedSaleDetailsWithDebounceAsync(_value);
+        LoadSelectedSaleDetailsWithDebounceAsync(_value).SafeFireAndForget("SalesHistoryViewModel.SelectedSaleDetails");
     }
 
     [RelayCommand]

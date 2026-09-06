@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Desktop.Client.Services;
 using System;
 using System.Threading.Tasks;
@@ -91,7 +92,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _title = "POINT OF SALE";
             if (_posViewModel != null)
             {
-                _ = _posViewModel.InitializeForSessionAsync();
+                _posViewModel.InitializeForSessionAsync().SafeFireAndForget("MainViewModel.InitialPosInit");
             }
         }
     }
@@ -189,7 +190,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (UserSession == null || !UserSession.IsLoggedIn || _posViewModel == null) return;
         Title = "POINT OF SALE";
         CurrentViewModel = _posViewModel;
-        _ = _posViewModel.InitializeForSessionAsync();
+        _posViewModel.InitializeForSessionAsync().SafeFireAndForget("MainViewModel.NavigateToPos");
     }
 
     [RelayCommand]
@@ -198,7 +199,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (UserSession == null || !UserSession.IsLoggedIn || _inventoryViewModel == null) return;
         Title = "INVENTORY";
         CurrentViewModel = _inventoryViewModel;
-        _ = _inventoryViewModel.EnsureLoadedAsync();
+        _inventoryViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToInventory");
     }
 
     [RelayCommand]
@@ -207,7 +208,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (UserSession == null || !UserSession.IsLoggedIn || _salesHistoryViewModel == null) return;
         Title = "SALES HISTORY";
         CurrentViewModel = _salesHistoryViewModel;
-        _ = _salesHistoryViewModel.EnsureLoadedAsync();
+        _salesHistoryViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToSalesHistory");
     }
 
     [RelayCommand]
@@ -216,7 +217,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (UserSession == null || !UserSession.IsLoggedIn || _pendingOrdersViewModel == null) return;
         Title = "CUENTAS ABIERTAS (EN ESPERA)";
         CurrentViewModel = _pendingOrdersViewModel;
-        _ = _pendingOrdersViewModel.EnsureLoadedAsync();
+        _pendingOrdersViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToPendingOrders");
     }
 
     [RelayCommand]
@@ -225,7 +226,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (UserSession == null || !UserSession.IsLoggedIn || _pendingPickupsViewModel == null) return;
         Title = "RETIROS PENDIENTES";
         CurrentViewModel = _pendingPickupsViewModel;
-        _ = _pendingPickupsViewModel.EnsureLoadedAsync();
+        _pendingPickupsViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToPendingPickups");
     }
 
     [RelayCommand]
@@ -234,7 +235,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (UserSession == null || !UserSession.IsLoggedIn || _settingsViewModel == null) return;
         Title = "SYSTEM SETTINGS";
         CurrentViewModel = _settingsViewModel;
-        _ = _settingsViewModel.EnsureLoadedAsync();
+        _settingsViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToSettings");
     }
 
     [RelayCommand]
@@ -243,7 +244,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (UserSession == null || !UserSession.IsLoggedIn || _exchangeRateViewModel == null) return;
         Title = "EXCHANGE RATE";
         CurrentViewModel = _exchangeRateViewModel;
-        _ = _exchangeRateViewModel.LoadAllCommand.ExecuteAsync(null);
+        _exchangeRateViewModel.LoadAllCommand.ExecuteAsync(null).SafeFireAndForget("MainViewModel.NavigateToExchangeRate");
     }
 
     [RelayCommand]
@@ -252,7 +253,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (UserSession == null || !UserSession.IsLoggedIn || _cashDrawerViewModel == null) return;
         Title = "REGISTER / CASH DRAWER";
         CurrentViewModel = _cashDrawerViewModel;
-        _ = _cashDrawerViewModel.LoadSessionAsync();
+        _cashDrawerViewModel.LoadSessionAsync().SafeFireAndForget("MainViewModel.NavigateToCashDrawer");
     }
 
     [RelayCommand]
@@ -269,7 +270,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (UserSession == null || !UserSession.IsLoggedIn || _dailyClosureViewModel == null) return;
         Title = "DAILY CLOSING";
         CurrentViewModel = _dailyClosureViewModel;
-        _ = _dailyClosureViewModel.LoadExpectedTotalsAsync();
+        _dailyClosureViewModel.LoadExpectedTotalsAsync().SafeFireAndForget("MainViewModel.NavigateToDailyClosure");
     }
 
     [RelayCommand]
@@ -278,7 +279,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (UserSession == null || !UserSession.IsLoggedIn || !UserSession.IsAdmin || _usersManagementViewModel == null) return;
         Title = "GESTIÓN DE USUARIOS";
         CurrentViewModel = _usersManagementViewModel;
-        _ = _usersManagementViewModel.EnsureLoadedAsync();
+        _usersManagementViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToUsersManagement");
     }
 
     private bool _isAnyModalOpen;

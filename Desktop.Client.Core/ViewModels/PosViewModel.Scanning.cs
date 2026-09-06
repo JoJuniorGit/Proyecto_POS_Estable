@@ -57,7 +57,8 @@ public partial class PosViewModel
 
                 if (Cart.CurrentSale == null)
                 {
-                    MessageBox.Show("Could not start a sale session. Please check that the server is running and try again.", "Connection Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    if (_dialogService != null) _dialogService.ShowError("Connection Error", "Could not start a sale session. Please check that the server is running and try again.");
+                    else if (Application.Current != null) MessageBox.Show("Could not start a sale session. Please check that the server is running and try again.", "Connection Error", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
             }
@@ -131,7 +132,8 @@ public partial class PosViewModel
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error adding item: {ex.Message}");
+                    if (_dialogService != null) _dialogService.ShowError("Error", $"Error adding item: {ex.Message}");
+                    else if (Application.Current != null) MessageBox.Show($"Error adding item: {ex.Message}");
                 }
                 finally
                 {
@@ -140,7 +142,8 @@ public partial class PosViewModel
             }
             catch (HttpRequestException ex)
             {
-                MessageBox.Show($"Error de conexión al consultar el código: {ex.Message}", "Error de Red", MessageBoxButton.OK, MessageBoxImage.Warning);
+                if (_dialogService != null) _dialogService.ShowWarning("Error de Red", $"Error de conexión al consultar el código: {ex.Message}");
+                else if (Application.Current != null) MessageBox.Show($"Error de conexión al consultar el código: {ex.Message}", "Error de Red", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             catch (OperationCanceledException)
             {
@@ -148,7 +151,8 @@ public partial class PosViewModel
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error looking up the scanned code: {ex.Message}");
+                if (_dialogService != null) _dialogService.ShowError("Error", $"Error looking up the scanned code: {ex.Message}");
+                else if (Application.Current != null) MessageBox.Show($"Error looking up the scanned code: {ex.Message}");
             }
         }
         finally

@@ -6,7 +6,9 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
   const [selectedMethodId, setSelectedMethodId] = useState('');
   const [amountText, setAmountText] = useState('');
   const [reference, setReference] = useState('');
+  const [referenceError, setReferenceError] = useState(null);
   const inputRef = useRef(null);
+  const refInputRef = useRef(null);
 
   // Seleccionar automáticamente el primer método activo
   useEffect(() => {
@@ -74,7 +76,8 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
     if (!selectedMethod || !isAmountValid || finalAmountBsS <= 0) return;
 
     if (selectedMethod.requiresReference && !reference.trim()) {
-      alert(`El método de pago (${selectedMethod.name}) requiere un número de referencia.`);
+      setReferenceError(`El método de pago (${selectedMethod.name}) requiere un número de referencia.`);
+      refInputRef.current?.focus();
       return;
     }
 
@@ -88,6 +91,7 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
     });
 
     setReference('');
+    setReferenceError(null);
     isManuallyEditedRef.current = false;
   };
 
@@ -101,6 +105,7 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
           onChange={(e) => {
             isManuallyEditedRef.current = false;
             setSelectedMethodId(e.target.value);
+            setReferenceError(null);
           }}
         >
           {methods.map((method) => (
@@ -155,13 +160,22 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
         <div className="form-group">
           <label className="form-label">Número de Referencia *</label>
           <input
+            ref={refInputRef}
             type="text"
-            className="form-input"
+            className={`form-input ${referenceError ? 'is-invalid' : ''}`}
             placeholder="Ingrese el N° de transacción / referencia"
             value={reference}
-            onChange={(e) => setReference(e.target.value)}
+            onChange={(e) => {
+              setReference(e.target.value);
+              if (referenceError) setReferenceError(null);
+            }}
             required
           />
+          {referenceError && (
+            <small style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+              {referenceError}
+            </small>
+          )}
         </div>
       )}
 

@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Core.DTOs;
 using Desktop.Client.Services;
 using System;
@@ -48,7 +49,7 @@ public partial class VariantSelectionViewModel : ObservableObject
         _exchangeRateService = exchangeRateService;
         ParentProduct = parentProduct;
 
-        _ = LoadVariantsAsync();
+        LoadVariantsAsync().SafeFireAndForget("VariantSelectionViewModel.LoadVariants");
     }
 
     public async Task LoadVariantsAsync()

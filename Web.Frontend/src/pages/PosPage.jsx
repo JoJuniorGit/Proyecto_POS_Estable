@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useCartState, useCartActions } from '../context/CartContext';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { usePosHotkeys } from '../hooks/usePosHotkeys';
@@ -27,6 +27,7 @@ export default function PosPage({
   const searchBarRef = useRef(null);
   const abortControllerRef = useRef(null);
   const { exchangeRate, syncBcvRate } = useExchangeRate();
+  const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
 
   const {
     currentSale,
@@ -87,8 +88,8 @@ export default function PosPage({
       changePriceList(nextType);
     },
     onClearCart: () => {
-      if (items.length > 0 && window.confirm('¿Desea limpiar el carrito e iniciar una nueva venta?')) {
-        createNewSale();
+      if (items.length > 0) {
+        setIsConfirmClearOpen(true);
       }
     },
     onDeleteItem: () => {
@@ -350,6 +351,21 @@ export default function PosPage({
         message="Tiene productos agregados en el carrito de compras. Si abandona la página ahora, se perderá la venta en curso."
         cancelText="Continuar en POS"
         confirmText="Salir del Sistema"
+        variant="warning"
+      />
+
+      {/* Modal de confirmación personalizada para limpiar carrito */}
+      <ConfirmModal
+        isOpen={isConfirmClearOpen}
+        onClose={() => setIsConfirmClearOpen(false)}
+        onConfirm={() => {
+          setIsConfirmClearOpen(false);
+          createNewSale();
+        }}
+        title="¿Limpiar carrito?"
+        message="¿Desea limpiar el carrito de compras e iniciar una nueva venta? Esta acción no se puede deshacer."
+        cancelText="Cancelar"
+        confirmText="Limpiar Carrito"
         variant="warning"
       />
     </div>
