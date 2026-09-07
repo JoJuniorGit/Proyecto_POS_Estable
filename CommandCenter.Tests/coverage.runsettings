@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 8.9-L5: la cobertura se mide sobre las capas criticas de dominio
+     (Sales.Module, Inventory.Module, Core) segun politica Rev 8.2 / coding-guidelines.md.
+     El gate de CI consume este conjunto con scripts/check-coverage.py. -->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <Include>
+            <Include>[Sales.Module]*,[Inventory.Module]*,[Core]*</Include>
+          </Include>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
