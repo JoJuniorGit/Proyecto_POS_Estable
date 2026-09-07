@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getSalesHistory, getSaleHistoryDetail } from '../services/historyApi';
 import { Search, Loader2, Calendar, ChevronRight, ChevronDown, RefreshCw, CheckCircle, Clock, XCircle, FileText } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
@@ -27,26 +27,7 @@ export default function HistoryPage() {
   const [expandedSaleId, setExpandedSaleId] = useState(null);
   const [saleDetails, setSaleDetails] = useState({});
   const [error, setError] = useState(null);
-
-  // Requisito: Paginación de 25 pedidos por página
-  const fetchHistory = useCallback(async (pageOverride) => {
-    const pageToFetch = pageOverride !== undefined ? pageOverride : currentPage;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getSalesHistory(pageToFetch, PAGE_SIZE, startDate, endDate, debouncedSearch);
-      const items = data?.items || data?.Items || (Array.isArray(data) ? data : []);
-      const total = data?.totalCount ?? data?.TotalCount ?? items.length;
-
-      setSales(items);
-      setTotalCount(total);
-    } catch (err) {
-      console.error('[HistoryPage] Error al cargar historial:', err);
-      setError('No se pudo cargar el historial de ventas.');
-    } finally {
-      setLoading(false);
-    }
-  }, [currentPage, startDate, endDate, debouncedSearch]);
+  const [reloadToken, setReloadToken] = useState(0);
 
   // Búsqueda multicampo con debounce: al escribir, la vista se actualiza sola
   // (300 ms) y vuelve a la primera página.
@@ -58,20 +39,41 @@ export default function HistoryPage() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  // 8.7-M9: un SOLO efecto orquestador con AbortController para la lista de ventas.
+  // Los handlers de búsqueda/paginación/fechas solo cambian estado.
   useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+
+    getSalesHistory(currentPage, PAGE_SIZE, startDate, endDate, debouncedSearch, controller.signal)
+      .then((data) => {
+        const items = data?.items || data?.Items || (Array.isArray(data) ? data : []);
+        const total = data?.totalCount ?? data?.TotalCount ?? items.length;
+        setSales(items);
+        setTotalCount(total);
+      })
+      .catch((err) => {
+        if (err?.name !== 'AbortError') {
+          console.error('[HistoryPage] Error al cargar historial:', err);
+          setError('No se pudo cargar el historial de ventas.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [currentPage, startDate, endDate, debouncedSearch, reloadToken]);
 
   const handleSearchClick = () => {
     setCurrentPage(1);
-    fetchHistory(1);
   };
 
   const handlePageChange = (newPage) => {
     const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
     if (newPage < 1 || newPage > totalPages || newPage === currentPage) return;
     setCurrentPage(newPage);
-    fetchHistory(newPage);
   };
 
   const toggleExpand = async (id) => {
@@ -107,7 +109,7 @@ export default function HistoryPage() {
           <button
             type="button"
             className="btn btn-outline btn-sm flex-align-center gap-2"
-            onClick={() => fetchHistory(currentPage)}
+            onClick={() => setReloadToken((t) => t + 1)}
             disabled={loading}
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Actualizar

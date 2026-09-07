@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System;
 using System.Linq;
 using Backend.API.Attributes;
+using Backend.API.Services;
 
 namespace Backend.API.Controllers;
 
@@ -45,31 +46,10 @@ public class ShiftsController : ControllerBase
         _currentUserService = currentUserService;
     }
 
-    private async Task<decimal> GetTodayExchangeRateAsync()
+    // 8.7-M3: tasa efectiva del día centralizada en ExchangeRateResolver (BCV hoy -> histórico -> apertura de sesión).
+    private Task<decimal> GetTodayExchangeRateAsync()
     {
-        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
-        var record = await _inventoryContext.ExchangeRateHistory
-            .FirstOrDefaultAsync(r => r.Date == today);
-
-        if (record == null)
-        {
-            record = await _inventoryContext.ExchangeRateHistory
-                .Where(r => r.Date <= today)
-                .OrderByDescending(r => r.Date)
-                .FirstOrDefaultAsync();
-        }
-
-        if (record != null && record.Rate > 0)
-            return record.Rate;
-
-        // Fallback a la tasa de apertura de la sesión activa para evitar distorsiones con 1.0 (8.2-M2)
-        var activeSession = await _cashDrawerService.GetActiveSessionAsync();
-        if (activeSession != null && activeSession.OpeningExchangeRate > 0)
-            return activeSession.OpeningExchangeRate;
-
-        // 8.2-M2: Tasa NA explícita (0) en lugar de un fallback silencioso 1.0.
-        // Los cierres sin tasa BCV del día se bloquean con error claro (ver CloseShift).
-        return 0m;
+        return ExchangeRateResolver.ReadEffectiveTodayRateAsync(_inventoryContext, _cashDrawerService);
     }
 
     [RequireSecurityStampValidation]
@@ -180,6 +160,10 @@ public class ShiftsController : ControllerBase
 
             await dbTransaction.CommitAsync();
 
+            // 8.7-B5: los comprobantes (PDF/TXT) se escriben DESPUÉS del commit para no mantener
+            // abierta la transacción Serializable durante I/O de disco.
+            _dailyClosureService.WriteClosedClosureReceipts(savedClosure);
+
             var report = new ShiftReportDto
             {
                 ShiftId = savedClosure.Id,
@@ -249,15 +233,23 @@ public class ShiftsController : ControllerBase
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult> GetReportById(int id)
     {
-        // 8.6-B1/8.5-A3: ownership a nivel de objeto — un cajero solo puede ver reportes de sus propios cierres.
+        // 8.6-B1/8.5-A3 + 8.7-B3: ownership a nivel de objeto — un cajero solo puede ver
+        // reportes de sus propios cierres. El cierre persiste UserId (nombre) y Observation
+        // (cédula): se compara contra los claims Name/SerialNumber del JWT (no contra el id
+        // numérico, que nunca coincide con un nombre almacenado).
         var closure = await _dailyClosureService.GetClosureAsync(id);
 
         bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
         if (!isElevated && closure != null)
         {
-            if (closure.UserId != null
-                && _currentUserService.UserId != null
-                && !string.Equals(closure.UserId, _currentUserService.UserId, System.StringComparison.OrdinalIgnoreCase))
+            var identityName = User.Identity?.Name;
+            var identityCedula = User.FindFirst(System.Security.Claims.ClaimTypes.SerialNumber)?.Value;
+            bool isOwner = (!string.IsNullOrEmpty(closure.UserId) && !string.IsNullOrEmpty(identityName)
+                                && string.Equals(closure.UserId, identityName, System.StringComparison.OrdinalIgnoreCase))
+                        || (!string.IsNullOrEmpty(closure.Observation) && !string.IsNullOrEmpty(identityCedula)
+                                && string.Equals(closure.Observation, identityCedula, System.StringComparison.OrdinalIgnoreCase));
+
+            if (!isOwner)
             {
                 return StatusCode(StatusCodes.Status403Forbidden, new { Message = "Acceso denegado: no tiene permisos para consultar este reporte." });
             }

@@ -42,6 +42,8 @@ public interface IInventoryService
     Task<byte[]> ExportProductsAsync(string format, bool activeOnly, string? filter = null, System.Threading.CancellationToken cancellationToken = default);
     Task<byte[]> GenerateTemplateAsync(string format, System.Threading.CancellationToken cancellationToken = default);
     Task EnrollInTransactionAsync(System.Data.Common.DbTransaction transaction, System.Threading.CancellationToken cancellationToken = default);
+    /// <summary>Restaura la conexión propia del scope tras una transacción compartida (8.7-B7).</summary>
+    Task DetachFromTransactionAsync(System.Threading.CancellationToken cancellationToken = default);
 }
 
 public record StockDeductionRequest(int ProductId, decimal QuantityChange, string Reason);

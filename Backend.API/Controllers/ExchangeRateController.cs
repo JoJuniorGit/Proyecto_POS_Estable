@@ -3,9 +3,7 @@ using Inventory.Module.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.SignalR;
-using Sales.Module.Interfaces;
-using Backend.API.Hubs;
+using Backend.API.Services;
 using Core.Logging;
 
 namespace Backend.API.Controllers;
@@ -17,22 +15,13 @@ public class ExchangeRateController : ControllerBase
 {
     private readonly InventoryDbContext _context;
     private readonly Core.Interfaces.ICurrentUserService _currentUserService;
-    private readonly ISalesService _salesService;
-    private readonly Core.Interfaces.IInventoryService _inventoryService;
-    private readonly IHubContext<ExchangeRateHub> _hubContext;
 
     public ExchangeRateController(
         InventoryDbContext context,
-        Core.Interfaces.ICurrentUserService currentUserService,
-        ISalesService salesService,
-        Core.Interfaces.IInventoryService inventoryService,
-        IHubContext<ExchangeRateHub> hubContext)
+        Core.Interfaces.ICurrentUserService currentUserService)
     {
         _context = context;
         _currentUserService = currentUserService;
-        _salesService = salesService;
-        _inventoryService = inventoryService;
-        _hubContext = hubContext;
     }
 
     /// <summary>
@@ -106,7 +95,9 @@ public class ExchangeRateController : ControllerBase
     /// </summary>
     [HttpPost]
     [Authorize(Roles = "Admin")]
-    public async Task<ActionResult> UpsertRate([FromBody] UpsertExchangeRateRequest request)
+    public async Task<ActionResult> UpsertRate(
+        [FromBody] UpsertExchangeRateRequest request,
+        [FromServices] IExchangeRateWriteService rateWriteService)
     {
         if (!_currentUserService.CanMutateExchangeRate)
         {
@@ -117,35 +108,9 @@ public class ExchangeRateController : ControllerBase
 
         var roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(request.Value);
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
-        var existing = await _context.ExchangeRateHistory
-            .FirstOrDefaultAsync(r => r.Date == today);
 
-        if (existing != null)
-        {
-            existing.Rate = roundedRate;
-            existing.UpdatedAt = DateTime.UtcNow;
-        }
-        else
-        {
-            _context.ExchangeRateHistory.Add(new ExchangeRateHistory
-            {
-                Date = today,
-                Rate = roundedRate,
-                UpdatedAt = DateTime.UtcNow
-            });
-        }
-
-        await _context.SaveChangesAsync();
-
-        // Invalidate today's cached exchange rate
-        _inventoryService.InvalidateTodayExchangeRateCache();
-
-        // Recalculate OnHold sales with the new exchange rate
-        await _salesService.RecalculateOnHoldSalesAsync(roundedRate);
-
-        // Broadcast rate update and OnHold sales refresh signal to all connected clients
-        await _hubContext.Clients.All.SendAsync("ReceiveRateUpdate", roundedRate);
-        await _hubContext.Clients.All.SendAsync("OnHoldSalesUpdated");
+        // 8.7-M3: la escritura + recálculo OnHold + broadcast quedan centralizados en el servicio único.
+        await rateWriteService.UpsertTodayRateAsync(roundedRate);
 
         var tz = await GetConfiguredTimeZoneAsync();
         var nowUtc = DateTime.UtcNow;
@@ -159,7 +124,9 @@ public class ExchangeRateController : ControllerBase
     /// </summary>
     [HttpPost("sync-bcv")]
     [Authorize(Roles = "Admin")]
-    public async Task<ActionResult> SyncBcv([FromServices] Backend.API.Services.BcvScraperService scraperService)
+    public async Task<ActionResult> SyncBcv(
+        [FromServices] Backend.API.Services.BcvScraperService scraperService,
+        [FromServices] IExchangeRateWriteService rateWriteService)
     {
         if (!_currentUserService.CanMutateExchangeRate)
         {
@@ -202,35 +169,9 @@ public class ExchangeRateController : ControllerBase
 
         var roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(rate.Value);
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
-        var existing = await _context.ExchangeRateHistory
-            .FirstOrDefaultAsync(r => r.Date == today);
 
-        if (existing != null)
-        {
-            existing.Rate = roundedRate;
-            existing.UpdatedAt = DateTime.UtcNow;
-        }
-        else
-        {
-            _context.ExchangeRateHistory.Add(new ExchangeRateHistory
-            {
-                Date = today,
-                Rate = roundedRate,
-                UpdatedAt = DateTime.UtcNow
-            });
-        }
-
-        await _context.SaveChangesAsync();
-
-        // Invalidate today's cached exchange rate immediately
-        _inventoryService.InvalidateTodayExchangeRateCache();
-
-        // Recalculate OnHold sales with the new exchange rate
-        await _salesService.RecalculateOnHoldSalesAsync(roundedRate);
-
-        // Broadcast to clients via SignalR
-        await _hubContext.Clients.All.SendAsync("ReceiveRateUpdate", roundedRate);
-        await _hubContext.Clients.All.SendAsync("OnHoldSalesUpdated");
+        // 8.7-M3: la escritura + recálculo OnHold + broadcast quedan centralizados en el servicio único.
+        await rateWriteService.UpsertTodayRateAsync(roundedRate);
 
         var tz = await GetConfiguredTimeZoneAsync();
         var nowUtc = DateTime.UtcNow;

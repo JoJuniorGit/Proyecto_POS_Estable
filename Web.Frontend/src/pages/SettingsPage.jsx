@@ -9,7 +9,33 @@ import {
 import { BrowserQRCodeSvgWriter } from '@zxing/library';
 import { Settings, CreditCard, Plus, Loader2, Check, QrCode, Server, Wifi, Copy, RefreshCw, Trash2, DollarSign } from 'lucide-react';
 import { useCurrencyFormat } from '../context/CurrencyFormatContext';
+import { copyTextToClipboard } from '../utils/clipboard';
 import ConfirmModal from '../components/ui/ConfirmModal';
+
+// 8.7-L6: pinta el QR de emparejamiento dentro de un contenedor dado (reutilizable de forma
+// aislada para pruebas y con limpieza previa del contenedor).
+export function renderPairingQr(container, payload, onError) {
+  try {
+    const writer = new BrowserQRCodeSvgWriter();
+    const svg = writer.write(payload, 200, 200);
+    svg.style.backgroundColor = '#FFFFFF';
+    svg.style.display = 'block';
+    svg.style.borderRadius = '4px';
+
+    const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bgRect.setAttribute('width', '100%');
+    bgRect.setAttribute('height', '100%');
+    bgRect.setAttribute('fill', '#FFFFFF');
+    svg.insertBefore(bgRect, svg.firstChild);
+
+    container.innerHTML = '';
+    container.appendChild(svg);
+    return svg;
+  } catch (err) {
+    if (onError) onError(err);
+    return null;
+  }
+}
 
 export default function SettingsPage() {
   const { currencyFormat, setCurrencyFormat, formatBsS, formatUSD } = useCurrencyFormat();
@@ -99,52 +125,22 @@ export default function SettingsPage() {
   // Renderizado dinámico del QR SVG
   useEffect(() => {
     if (!qrRef.current || !activePayload) return;
-    try {
-      const writer = new BrowserQRCodeSvgWriter();
-      const svg = writer.write(activePayload, 200, 200);
-      svg.style.backgroundColor = '#FFFFFF';
-      svg.style.display = 'block';
-      svg.style.borderRadius = '4px';
-
-      // Fondo blanco explícito dentro del árbol SVG para máxima compatibilidad y contraste
-      const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      bgRect.setAttribute('width', '100%');
-      bgRect.setAttribute('height', '100%');
-      bgRect.setAttribute('fill', '#FFFFFF');
-      svg.insertBefore(bgRect, svg.firstChild);
-
-      qrRef.current.innerHTML = '';
-      qrRef.current.appendChild(svg);
-    } catch (err) {
+    // 8.7-L6: renderizado del QR centralizado en renderPairingQr (evita manipulación DOM dispersa).
+    renderPairingQr(qrRef.current, activePayload, (err) => {
       console.error('[SettingsPage] Error generando QR SVG:', err);
-    }
+    });
   }, [activePayload, loadingPairing]);
 
   const handleCopy = async (text, type) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      if (type === 'ip') {
-        setCopiedIp(true);
-        setTimeout(() => setCopiedIp(false), 2000);
-      } else if (type === 'url') {
-        setCopiedUrl(true);
-        setTimeout(() => setCopiedUrl(false), 2000);
-      }
-    } catch {
-      // Fallback manual
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-      if (type === 'ip') {
-        setCopiedIp(true);
-        setTimeout(() => setCopiedIp(false), 2000);
-      } else if (type === 'url') {
-        setCopiedUrl(true);
-        setTimeout(() => setCopiedUrl(false), 2000);
-      }
+    // 8.7-L6: copia centralizada (Clipboard API primero, fallback legacy solo como último recurso).
+    const copied = await copyTextToClipboard(text);
+    if (!copied) return;
+    if (type === 'ip') {
+      setCopiedIp(true);
+      setTimeout(() => setCopiedIp(false), 2000);
+    } else if (type === 'url') {
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2000);
     }
   };
 

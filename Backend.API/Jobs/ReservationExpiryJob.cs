@@ -18,13 +18,13 @@ namespace Backend.API.Jobs;
 /// </summary>
 public class ReservationExpiryJob : BackgroundService
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ReservationExpiryJob> _logger;
     private readonly TimeSpan _interval = TimeSpan.FromSeconds(60);
 
-    public ReservationExpiryJob(IServiceProvider serviceProvider, ILogger<ReservationExpiryJob> logger)
+    public ReservationExpiryJob(IServiceScopeFactory scopeFactory, ILogger<ReservationExpiryJob> logger)
     {
-        _serviceProvider = serviceProvider;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -69,7 +69,7 @@ public class ReservationExpiryJob : BackgroundService
     /// </summary>
     public async Task<int> RunExpiryCycleAsync(CancellationToken cancellationToken = default)
     {
-        using var scope = _serviceProvider.CreateScope();
+        using var scope = _scopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
         var inventoryService = scope.ServiceProvider.GetRequiredService<IInventoryService>();
 

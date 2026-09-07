@@ -72,7 +72,7 @@ public class OutboxProcessorJobTests
 
         var serviceProvider = services.BuildServiceProvider();
         var logger = new Mock<ILogger<OutboxProcessorJob>>();
-        var job = new OutboxProcessorJob(serviceProvider, logger.Object);
+        var job = new OutboxProcessorJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), logger.Object);
 
         await job.ProcessPendingMessagesAsync(CancellationToken.None);
 
@@ -111,7 +111,7 @@ public class OutboxProcessorJobTests
 
         var serviceProvider = services.BuildServiceProvider();
         var logger = new Mock<ILogger<OutboxProcessorJob>>();
-        var job = new OutboxProcessorJob(serviceProvider, logger.Object);
+        var job = new OutboxProcessorJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), logger.Object);
 
         await job.ProcessPendingMessagesAsync(CancellationToken.None);
 
@@ -151,7 +151,7 @@ public class OutboxProcessorJobTests
 
         var serviceProvider = services.BuildServiceProvider();
         var logger = new Mock<ILogger<OutboxProcessorJob>>();
-        var job = new OutboxProcessorJob(serviceProvider, logger.Object);
+        var job = new OutboxProcessorJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), logger.Object);
 
         await job.ProcessPendingMessagesAsync(CancellationToken.None);
 
@@ -294,7 +294,7 @@ public class OutboxProcessorJobTests
         services.AddLogging();
         var sp = services.BuildServiceProvider();
 
-        var job = new OutboxProcessorJob(sp, Mock.Of<ILogger<OutboxProcessorJob>>());
+        var job = new OutboxProcessorJob(sp.GetRequiredService<IServiceScopeFactory>(), Mock.Of<ILogger<OutboxProcessorJob>>());
 
         // Act: Purgar mensajes procesados con más de 7 días de antigüedad
         int purged = await job.PurgeProcessedMessagesAsync(DateTime.UtcNow.AddDays(-7));

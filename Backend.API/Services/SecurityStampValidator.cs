@@ -10,14 +10,18 @@ namespace Backend.API.Services;
 
 /// <summary>
 /// Validates user security stamps to enable immediate or micro-cached token revocation.
-/// Enforces a 5-10 second micro-cache sliding window for standard requests,
-/// and immediate database verification for sensitive monetary endpoints.
+/// Two-tier cache:
+///  - Mixed fingerprint (45 s): standard requests (sliding window).
+///  - Strict window (5 s): sensitive monetary endpoints that set forceImmediateCheck limit the
+///    DB hit to once every 5 seconds per user instead of once per request (8.7-M8).
 /// </summary>
 public class SecurityStampValidator : ISecurityStampValidator
 {
     private readonly SalesDbContext _db;
     private readonly IMemoryCache _cache;
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan StrictWindow = TimeSpan.FromSeconds(5);
+    private sealed record CachedStamp(string Value, DateTime IssuedAtUtc);
 
     public SecurityStampValidator(SalesDbContext db, IMemoryCache cache)
     {
@@ -34,18 +38,15 @@ public class SecurityStampValidator : ISecurityStampValidator
 
         string cacheKey = $"sec_stamp_{userId}";
 
-        if (!forceImmediateCheck)
+        if (_cache.TryGetValue(cacheKey, out CachedStamp? cached))
         {
-            try
+            // 8.7-M8: el modo estricto solo esquiva el caché si la entrada supera la ventana corta.
+            var maxAge = forceImmediateCheck ? StrictWindow : CacheDuration;
+            if (cached != null
+                && string.Equals(cached.Value, tokenStamp, StringComparison.Ordinal)
+                && DateTime.UtcNow - cached.IssuedAtUtc < maxAge)
             {
-                if (_cache.TryGetValue(cacheKey, out string? cachedStamp) && cachedStamp != null)
-                {
-                    return string.Equals(cachedStamp, tokenStamp, StringComparison.Ordinal);
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLogger.LogWarn($"[CACHE] Failed to read security stamp from cache: {ex.Message}");
+                return true;
             }
         }
 
@@ -57,29 +58,22 @@ public class SecurityStampValidator : ISecurityStampValidator
 
         if (user == null || !user.IsActive)
         {
-            try { _cache.Remove(cacheKey); } catch { }
+            _cache.Remove(cacheKey);
             return false;
         }
 
         if (string.Equals(user.SecurityStamp, tokenStamp, StringComparison.Ordinal))
         {
-            try
+            _cache.Set(cacheKey, new CachedStamp(user.SecurityStamp, DateTime.UtcNow), new MemoryCacheEntryOptions
             {
-                _cache.Set(cacheKey, user.SecurityStamp, new MemoryCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = CacheDuration,
-                    Size = 1
-                });
-            }
-            catch (Exception ex)
-            {
-                AppLogger.LogWarn($"[CACHE] Failed to set security stamp in cache: {ex.Message}");
-            }
+                AbsoluteExpirationRelativeToNow = CacheDuration,
+                Size = 1
+            });
             return true;
         }
 
         // Stamp mismatch: session has been revoked or credentials changed
-        try { _cache.Remove(cacheKey); } catch { }
+        _cache.Remove(cacheKey);
         return false;
     }
 
@@ -91,7 +85,28 @@ public class SecurityStampValidator : ISecurityStampValidator
             {
                 _cache.Remove($"sec_stamp_{userId}");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                AppLogger.LogWarn($"[CACHE] Failed to remove security stamp cache entry for userId={userId}: {ex.Message}");
+            }
         }
+    }
+
+    public async Task RevokeUserStampAsync(int userId)
+    {
+        if (userId <= 0)
+        {
+            return;
+        }
+
+        // 8.7-B1: rota el stamp en BD → cualquier JWT emitido antes queda revocado (stamp mismatch).
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        if (user != null)
+        {
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            await _db.SaveChangesAsync();
+        }
+
+        InvalidateUserStamp(userId);
     }
 }

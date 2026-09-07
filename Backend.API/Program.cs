@@ -38,6 +38,14 @@ try
     // Limpia la configuración de 'urls' para evitar la advertencia de Kestrel (Overriding address(es)) al definir ListenAnyIP.
     builder.Configuration["urls"] = null;
 
+    // 8.7-L2: AllowedHosts restringido — sin "*". Se permite localhost, el nombre del equipo y las
+    // IPs locales de la máquina (LAN POS), preservando entradas explícitas de configuración/env.
+    var rawAllowedHosts = builder.Configuration["AllowedHosts"] ?? "localhost";
+    var computedAllowedHosts = string.IsNullOrWhiteSpace(rawAllowedHosts) || rawAllowedHosts == "*"
+        ? BuildLanAllowedHosts()
+        : BuildLanAllowedHosts() + ";" + rawAllowedHosts;
+    builder.Configuration["AllowedHosts"] = computedAllowedHosts;
+
     int httpPort = int.TryParse(Environment.GetEnvironmentVariable("PORT") ?? Environment.GetEnvironmentVariable("ASPNETCORE_HTTP_PORT"), out int p) ? p : 5000;
     int httpsPort = httpPort + 1;
 
@@ -96,12 +104,14 @@ try
     }
 
     builder.Services.AddDbContext<InventoryDbContext>(options =>
-        options.UseNpgsql(connectionString)
-               .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
+        options.UseNpgsql(connectionString));
+    // 8.7-B8: la advertencia de cambios pendientes del modelo se conserva ACTIVA: cualquier
+    // divergencia entre modelo/migraciones debe ser visible y resolverse con una migración EF,
+    // no con SQL crudo inline.
 
     builder.Services.AddDbContext<Sales.Module.Data.SalesDbContext>(options =>
-        options.UseNpgsql(connectionString, npgsql => npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery))
-               .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
+        options.UseNpgsql(connectionString, npgsql => npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
+    // 8.7-B8: PendingModelChangesWarning ACTIVA (ver InventoryDbContext arriba).
 
     builder.Services.AddMemoryCache(options =>
     {
@@ -122,6 +132,7 @@ try
     builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodNotifier, Backend.API.Services.SignalRPaymentMethodNotifier>();
     builder.Services.AddScoped<Sales.Module.Interfaces.IDailyClosureService, Sales.Module.Services.DailyClosureService>();
     builder.Services.AddScoped<Core.Interfaces.IIdempotencyService, Sales.Module.Services.IdempotencyService>();
+    builder.Services.AddScoped<Backend.API.Services.IExchangeRateWriteService, Backend.API.Services.ExchangeRateWriteService>();
     builder.Services.AddHostedService<Backend.API.Jobs.IdempotencyCleanupJob>();
     builder.Services.AddHostedService<Backend.API.Jobs.ReservationExpiryJob>();
 
@@ -341,6 +352,10 @@ try
 
     var app = builder.Build();
 
+    // 8.7-L2: validación del encabezado Host contra la whitelist calculada (AllowedHosts).
+    // Debe ejecutarse antes del manejo de encabezados reenviados para no confiar en Host externos.
+    app.UseHostFiltering();
+
     // Normalizar encabezados reenviados (X-Forwarded-For / X-Forwarded-Proto) al inicio del pipeline
     app.UseForwardedHeaders();
 
@@ -349,6 +364,30 @@ try
 
     // Security Headers (M-07)
     app.UseMiddleware<Backend.API.Middleware.SecurityHeadersMiddleware>();
+
+    // 8.7-B10: Con certificado presente, en Producción se fuerza HTTPS para el cliente Web:
+    //  - HSTS dirige al browser a HTTPS desde la primera respuesta segura.
+    //  - Redirección 307 HTTP→HTTPS para request con X-Client-Platform: Web (preserva el body
+    //    del login). El escritorio (desktop) sigue sobre HTTP en LAN por compatibilidad, pero la
+    //    cookie pos_jwt es Secure siempre (solo viaja por HTTPS).
+    if (httpsCert != null && !app.Environment.IsDevelopment())
+    {
+        app.UseHsts();
+        app.Use(async (context, next) =>
+        {
+            var platform = context.Request.Headers["X-Client-Platform"].ToString();
+            if (!context.Request.IsHttps
+                && string.Equals(platform, "Web", StringComparison.OrdinalIgnoreCase))
+            {
+                var host = context.Request.Host.Host;
+                var target = $"https://{host}:{httpsPort}{context.Request.Path}{context.Request.QueryString}";
+                context.Response.StatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status307TemporaryRedirect;
+                context.Response.Headers.Location = target;
+                return;
+            }
+            await next();
+        });
+    }
 
     // HTTP Response Compression (Brotli/Gzip)
     app.UseResponseCompression();
@@ -486,7 +525,12 @@ try
             await _invDb.Database.MigrateAsync();
             await _salesDb.Database.MigrateAsync();
 
-            // Defensive schema check & migration: Ensure columns and tables are properly typed in PostgreSQL via information_schema
+            // 8.7-B8 (segregación): bloque de CONVERGENCIA LEGACY idempotente (information_schema),
+            // solo alcanza a BD instaladas antes de estas migraciones EF. En instalaciones nuevas el
+            // esquema proviene 100% de las migraciones; la advertencia PendingModelChangesWarning
+            // ahora está activa para detectar cualquier divergencia futura del modelo.
+            // CONSERVAR: no agregar más ALTER TABLE inline aquí — toda evolución de esquema debe ser una
+            // migración EF (dotnet ef migrations add).
             try
             {
                 AppLogger.LogStart("Verifying and adjusting database schema and column precision (numeric 18,3)...");
@@ -675,23 +719,37 @@ END $$;");
             ? config["SystemSettings:AdminSeedName"]!.Trim()
             : "Administrador";
         var seedPassword = config["SystemSettings:AdminSeedPassword"];
+        // 8.7-B9: en Producción el arranque es fail-fast si falta la contraseña del Admin seed
+        // (nunca hay un default conocido). En Development/otras se continúa sin sembrar el Admin
+        // semilla (appsettings.Development.json puede aportarla explícitamente).
+        var isProductionSeed = string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production", "Production", StringComparison.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(seedPassword))
         {
-            var criticalMsg = "[ERROR CRÍTICO] Falta SystemSettings__AdminSeedPassword. " +
-                "Establezca la variable de entorno del servicio antes de arrancar.";
-            Console.WriteLine(criticalMsg);
-            AppLogger.LogDbError(criticalMsg, "Program.SeedPassword");
-            Environment.ExitCode = 1;
-            return;
+            if (isProductionSeed)
+            {
+                var criticalMsg = "[ERROR CRÍTICO] Falta SystemSettings__AdminSeedPassword. " +
+                    "Establezca la variable de entorno del servicio antes de arrancar en Producción.";
+                Console.WriteLine(criticalMsg);
+                AppLogger.LogDbError(criticalMsg, "Program.SeedPassword");
+                Environment.ExitCode = 1;
+                return;
+            }
+
+            AppLogger.LogWarn("[SEED] SystemSettings:AdminSeedPassword no configurada en este entorno. Se omite el sembrado del Admin semilla.");
+            seedPassword = string.Empty;
         }
 
         try
         {
+            // 8.7-B9: sin contraseña semilla (dev) se conservan los seeds no sensibles
+            // (cliente por defecto, producto adelanto) pero NUNCA se hashea una clave vacía.
+            bool hasSeedPassword = !string.IsNullOrWhiteSpace(seedPassword);
+
             var seedLower = seedUsername.ToLower();
-            var targetAdmin = _salesDb.Users.FirstOrDefault(u => 
+            var targetAdmin = hasSeedPassword ? _salesDb.Users.FirstOrDefault(u => 
                 u.Username.ToLower() == seedLower || 
                 u.Cedula.ToLower() == seedLower ||
-                (u.Role == Core.Entities.UserRole.Admin && (u.Username == "V-12345678" || u.Cedula == "V-12345678")));
+                (u.Role == Core.Entities.UserRole.Admin && (u.Username == "V-12345678" || u.Cedula == "V-12345678"))) : null;
 
             if (targetAdmin != null)
             {
@@ -703,7 +761,7 @@ END $$;");
                     _salesDb.SaveChanges();
                 }
             }
-            else
+            else if (hasSeedPassword)
             {
                 var newAdmin = new Core.Entities.User
                 {
@@ -723,6 +781,8 @@ END $$;");
             }
 
             // Ensure ALL Admin users in the system have valid security stamp and password hash if missing (never forcibly reactivate inactive admins)
+            if (hasSeedPassword)
+            {
             var allAdmins = _salesDb.Users.Where(u => u.Role == Core.Entities.UserRole.Admin).ToList();
             bool modifiedAdmins = false;
             foreach (var admin in allAdmins)
@@ -743,6 +803,7 @@ END $$;");
             if (modifiedAdmins)
             {
                 _salesDb.SaveChanges();
+            }
             }
 
             // Add default customer if not exists
@@ -919,4 +980,41 @@ X509Certificate2? LoadHttpsCertificate(IConfiguration config, IHostEnvironment e
     }
 
     return null;
+}
+
+/// <summary>8.7-L2: devuelve la whitelist de hosts válidos para el filtro de host de ASP.NET
+/// (localhost + nombre del equipo + IPs locales), permitiendo el acceso LAN sin "*".</summary>
+static string BuildLanAllowedHosts()
+{
+    var hosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "localhost", "127.0.0.1", "::1"
+    };
+
+    try
+    {
+        string hostName = Dns.GetHostName();
+        if (!string.IsNullOrWhiteSpace(hostName))
+        {
+            hosts.Add(hostName);
+        }
+
+        foreach (var ip in Dns.GetHostAddresses(hostName))
+        {
+            if (ip.AddressFamily == AddressFamily.InterNetwork)
+            {
+                hosts.Add(ip.ToString());
+            }
+            else if (ip.IsIPv6LinkLocal)
+            {
+                hosts.Add(ip.ToString());
+            }
+        }
+    }
+    catch
+    {
+        // Sin DNS disponible: se mantiene la base localhost.
+    }
+
+    return string.Join(";", hosts);
 }

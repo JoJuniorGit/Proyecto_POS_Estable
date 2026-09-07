@@ -129,8 +129,8 @@ public class DailyClosureService : IDailyClosureService
 
         var savedClosure = (await GetClosureAsync(closure.Id))!;
 
-        // Auto-save closure receipt copies to Downloads & Documents\Registro de cierres
-        SaveClosureReceiptsSilently(savedClosure);
+        // 8.7-B5: la escritura de comprobantes se mueve FUERA de CreateClosureAsync; el caller
+        // la invoca tras el commit de su transacción (WriteClosedClosureReceipts).
 
         return savedClosure;
     }
@@ -214,8 +214,11 @@ public class DailyClosureService : IDailyClosureService
         return sb.ToString();
     }
 
-    private static void SaveClosureReceiptsSilently(DailyClosure closure)
+    public void WriteClosedClosureReceipts(DailyClosure closure)
     {
+        if (closure == null) throw new ArgumentNullException(nameof(closure));
+
+        // 8.7-B5: I/O de comprobantes CONFIRMADO, post-commit y fail-open (nunca rompe el cierre).
         try
         {
             bool isBlind = closure.UserId?.Contains("Cajero", StringComparison.OrdinalIgnoreCase) == true;

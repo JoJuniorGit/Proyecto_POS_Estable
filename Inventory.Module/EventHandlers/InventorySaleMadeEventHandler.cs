@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
 using Core.Events;
+using Core.Interfaces;
 using Inventory.Module.Data;
-using Inventory.Module.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -12,12 +14,12 @@ namespace Inventory.Module.EventHandlers;
 
 public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
 {
-    private readonly Core.Interfaces.IInventoryService _inventoryService;
+    private readonly IInventoryService _inventoryService;
     private readonly InventoryDbContext _context;
     private readonly ILogger<InventorySaleMadeEventHandler>? _logger;
 
     public InventorySaleMadeEventHandler(
-        Core.Interfaces.IInventoryService inventoryService, 
+        IInventoryService inventoryService,
         InventoryDbContext context,
         ILogger<InventorySaleMadeEventHandler>? logger = null)
     {
@@ -31,69 +33,103 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
         var reason = $"Sale #{notification.SaleId}";
         string? invoiceReason = notification.InvoiceNumber.HasValue ? $"Sale #{notification.InvoiceNumber.Value}" : null;
 
+        // 8.7-B4: una única carga de productos para todos los ítems (sin N+1).
+        var requestedIds = notification.Items.Select(i => i.ProductId).Distinct().ToList();
+        var products = await _context.Products
+            .AsNoTracking()
+            .Include(p => p.ParentProduct)
+            .Where(p => requestedIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, cancellationToken);
+
+        // Idempotencia en lote (H-INV-1 / DST-1): movimientos ya registrados para estos productos
+        // con reason o invoiceReason (exacto o tras el sufijo "| " de variantes).
+        var effectiveIds = new HashSet<int>(requestedIds);
         foreach (var item in notification.Items)
         {
-            try
+            if (products.TryGetValue(item.ProductId, out var product)
+                && product.ParentProductId.HasValue
+                && product.ParentProduct != null
+                && product.ParentProduct.IsStockShared)
             {
-                var product = await _context.Products
-                    .AsNoTracking()
-                    .Include(p => p.ParentProduct)
-                    .FirstOrDefaultAsync(p => p.Id == item.ProductId, cancellationToken);
-
-                if (product != null && product.IsCashAdvance)
-                {
-                    _logger?.LogInformation("[InventoryHandler] Producto {ProductId} es servicio de adelanto de efectivo. Omitiendo deducción física de stock.", item.ProductId);
-                    continue;
-                }
-
-                int effectiveProductId = (product?.ParentProductId.HasValue == true && product.ParentProduct != null && product.ParentProduct.IsStockShared)
-                    ? product.ParentProductId.Value
-                    : item.ProductId;
-
-                // Idempotency check: exact reason/suffix match to prevent "Sale #1" false-matching "Sale #11" (H-INV-1)
-                // Chequea tanto Sale #{SaleId} como Sale #{InvoiceNumber} (DST-1: previene doble deducción cuando SaleId != InvoiceNumber)
-                var alreadyProcessed = await _context.StockMovements
-                    .AsNoTracking()
-                    .AnyAsync(sm => (sm.Reason == reason 
-                                     || sm.Reason.EndsWith($"| {reason}")
-                                     || (invoiceReason != null && (sm.Reason == invoiceReason || sm.Reason.EndsWith($"| {invoiceReason}")))) 
-                                    && (sm.ProductId == item.ProductId || sm.ProductId == effectiveProductId), cancellationToken);
-
-                if (alreadyProcessed)
-                {
-                    _logger?.LogInformation("[InventoryHandler] Deducción ya procesada previamente para producto {ProductId} en Venta #{SaleId} (Factura #{InvoiceNumber}). Omitiendo.", item.ProductId, notification.SaleId, notification.InvoiceNumber);
-                    continue;
-                }
-
-                // Usamos invoiceReason si está disponible para máxima coherencia con SalesService, o reason como fallback
-                var deductionReason = invoiceReason ?? reason;
-                await _inventoryService.UpdateStockAsync(item.ProductId, -item.Quantity, deductionReason, allowNegativeStock: true);
+                effectiveIds.Add(product.ParentProductId.Value);
             }
-            catch (Exception ex)
+        }
+
+        var existingMovements = await _context.StockMovements
+            .AsNoTracking()
+            .Where(sm =>
+                effectiveIds.Contains(sm.ProductId)
+                && (sm.Reason == reason
+                    || sm.Reason.EndsWith($"| {reason}")
+                    || (invoiceReason != null && (sm.Reason == invoiceReason || sm.Reason.EndsWith($"| {invoiceReason}")))))
+            .Select(sm => new { sm.ProductId, sm.Reason })
+            .ToListAsync(cancellationToken);
+
+        // Elegibilidad por ítem: omitir ya procesados (no depender de índices) y servicios sin stock.
+        var pending = new List<Core.Interfaces.StockDeductionRequest>();
+
+        foreach (var item in notification.Items)
+        {
+            var product = products.TryGetValue(item.ProductId, out var prod) ? prod : null;
+
+            int effectiveProductId = item.ProductId;
+            if (product?.ParentProductId.HasValue == true && product.ParentProduct != null && product.ParentProduct.IsStockShared)
             {
-                _logger?.LogWarning(ex, "[InventoryHandler] Fallo temporal al deducir stock para producto {ProductId} en Venta #{SaleId}. Reintentando...", item.ProductId, notification.SaleId);
+                effectiveProductId = product.ParentProductId.Value;
+            }
 
-                var deductionReason = invoiceReason ?? reason;
-                bool success = false;
-                for (int i = 0; i < 3; i++)
-                {
-                    try
-                    {
-                        await Task.Delay(500, cancellationToken);
-                        await _inventoryService.UpdateStockAsync(item.ProductId, -item.Quantity, deductionReason, allowNegativeStock: true);
-                        success = true;
-                        break;
-                    }
-                    catch (Exception retryEx)
-                    {
-                        _logger?.LogDebug(retryEx, "[InventoryHandler] Reintento {Attempt} falló al deducir stock para producto {ProductId} en Venta #{SaleId}", i + 1, item.ProductId, notification.SaleId);
-                    }
-                }
+            if (product != null && product.IsCashAdvance)
+            {
+                continue;
+            }
 
-                if (!success)
+            var already = existingMovements.Any(m =>
+                (m.ProductId == item.ProductId || m.ProductId == effectiveProductId)
+                && (m.Reason == reason
+                    || m.Reason.EndsWith($"| {reason}")
+                    || (invoiceReason != null && (m.Reason == invoiceReason || m.Reason.EndsWith($"| {invoiceReason}")))));
+
+            if (already)
+            {
+                _logger?.LogInformation("[InventoryHandler] Deducción ya procesada previamente para producto {ProductId} en Venta #{SaleId} (Factura #{InvoiceNumber}). Omitiendo.", item.ProductId, notification.SaleId, notification.InvoiceNumber);
+                continue;
+            }
+
+            pending.Add(new Core.Interfaces.StockDeductionRequest(item.ProductId, -item.Quantity, invoiceReason ?? reason));
+        }
+
+        if (pending.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await _inventoryService.UpdateStockBatchAsync(pending, allowNegativeStock: true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "[InventoryHandler] Fallo temporal al deducir stock (lote de {Count} productos) en Venta #{SaleId}. Reintentando...", pending.Count, notification.SaleId);
+
+            bool success = false;
+            for (int i = 0; i < 3; i++)
+            {
+                try
                 {
-                    _logger?.LogCritical("[InventoryHandler] CRÍTICO: Fallaron todos los reintentos para deducir stock del producto {ProductId} en Venta #{SaleId}.", item.ProductId, notification.SaleId);
+                    await Task.Delay(500, cancellationToken);
+                    await _inventoryService.UpdateStockBatchAsync(pending, allowNegativeStock: true);
+                    success = true;
+                    break;
                 }
+                catch (Exception retryEx)
+                {
+                    _logger?.LogDebug(retryEx, "[InventoryHandler] Reintento {Attempt} falló al deducir stock para Venta #{SaleId} ({Count} productos)", i + 1, notification.SaleId, pending.Count);
+                }
+            }
+
+            if (!success)
+            {
+                _logger?.LogCritical("[InventoryHandler] CRÍTICO: Fallaron todos los reintentos para deducir stock de {Count} productos en Venta #{SaleId}.", pending.Count, notification.SaleId);
             }
         }
     }

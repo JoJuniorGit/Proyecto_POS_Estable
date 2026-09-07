@@ -111,6 +111,12 @@ public partial class SalesService
 
             foreach (var payment in paymentsToProcess)
             {
+                // 8.7-B2: Rechazo de montos negativos en abonos (misma política que CompleteSale).
+                if (payment.AmountUSD < 0m || payment.AmountBsS < 0m)
+                {
+                    throw new InvalidOperationException($"La validación del abono (PaymentMethodId={payment.PaymentMethodId}) rechaza montos negativos.");
+                }
+
                 decimal rate = payment.ExchangeRate > 0 ? payment.ExchangeRate : _sale.AppliedRate;
                 decimal amountUsd = payment.AmountUSD > 0 
                     ? Math.Round(payment.AmountUSD, 2, MidpointRounding.AwayFromZero) 
@@ -248,6 +254,11 @@ public partial class SalesService
                 if (txn != null)
                 {
                     await txn.CommitAsync();
+                    // 8.7-B7: devolver al InventoryDbContext su conexión propia tras el commit.
+                    if (_inventoryService != null)
+                    {
+                        await _inventoryService.DetachFromTransactionAsync();
+                    }
                 }
             }
             catch (Exception ex)
@@ -255,6 +266,10 @@ public partial class SalesService
                 if (txn != null)
                 {
                     await txn.RollbackAsync();
+                    if (_inventoryService != null)
+                    {
+                        await _inventoryService.DetachFromTransactionAsync();
+                    }
                 }
                 _logger?.LogError(ex, "[SalesService] Error al completar venta en espera #{SaleId} al 100%. Transacción revertida.", saleId);
                 throw;
@@ -485,21 +500,8 @@ public partial class SalesService
 
     public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync()
     {
-        if (_inventoryService != null)
-        {
-            try
-            {
-                var todayRate = await _inventoryService.GetTodayExchangeRateAsync();
-                if (todayRate > 0)
-                {
-                    await RecalculateOnHoldSalesAsync(todayRate);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning(ex, "Failed to auto-recalculate OnHold sales in GetPendingSalesAsync.");
-            }
-        }
+        // 8.7-B6: los GET no escriben. El recálculo masivo de OnHold ocurre en el POST de tasa
+        // (ExchangeRateController → RecalculateOnHoldSalesAsync) e invalida/redifunde por SignalR.
 
         var sales = await _context.Sales
             .AsNoTracking()

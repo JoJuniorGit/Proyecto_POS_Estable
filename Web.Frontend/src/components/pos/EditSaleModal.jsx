@@ -216,7 +216,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
                 const step = !isFrac ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
 
                 return (
-                  <tr key={idx} className="cart-row">
+                  <tr key={item.productId != null ? item.productId : item.productName} className="cart-row">
                     <td className="font-medium">{item.displayProductName || item.productName}</td>
 
                     <td className="text-center">

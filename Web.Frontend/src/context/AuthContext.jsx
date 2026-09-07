@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { api } from '../services/api';
 
 const AuthContext = createContext(null);
@@ -27,6 +27,24 @@ export function AuthProvider({ children }) {
       return null;
     }
   });
+
+  // 8.7-M1: la UI debe reaccionar al 401/revocación. api.js emite 'pos_unauthorized' cuando el
+  // servidor rechaza el token (stamp inválido tras logout/rotación o expiración). Aquí se limpia
+  // el estado de sesión en memoria para volver a la pantalla de login.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const handleUnauthorized = () => {
+      setUser(null);
+      localStorage.removeItem('pos_user_profile');
+      localStorage.removeItem('pos_user');
+      localStorage.removeItem('pos_token');
+      sessionStorage.clear();
+    };
+
+    window.addEventListener('pos_unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('pos_unauthorized', handleUnauthorized);
+  }, []);
 
   const login = async (cedula, password) => {
     if (!cedula || !cedula.trim()) {

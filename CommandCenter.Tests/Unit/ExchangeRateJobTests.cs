@@ -81,17 +81,20 @@ public class ExchangeRateJobTests
         var inventoryMock = new Mock<IInventoryService>();
         var salesMock = new Mock<ISalesService>();
 
+        var rateWriteService = new ExchangeRateWriteService(dbContext, inventoryMock.Object, salesMock.Object, hubContextMock.Object);
+
         var services = new ServiceCollection();
         services.AddSingleton(scraperMock.Object);
         services.AddSingleton(dbContext);
         services.AddSingleton(hubContextMock.Object);
         services.AddSingleton(inventoryMock.Object);
         services.AddSingleton(salesMock.Object);
+        services.AddSingleton<IExchangeRateWriteService>(rateWriteService);
 
         var serviceProvider = services.BuildServiceProvider();
         var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
 
-        var job = new BcvExchangeRateJob(serviceProvider, jobLogger.Object);
+        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object);
 
         // Act - should NOT throw
         await job.SyncRateAsync(CancellationToken.None);
@@ -128,17 +131,20 @@ public class ExchangeRateJobTests
         var inventoryMock = new Mock<IInventoryService>();
         var salesMock = new Mock<ISalesService>();
 
+        var rateWriteService = new ExchangeRateWriteService(dbContext, inventoryMock.Object, salesMock.Object, hubContextMock.Object);
+
         var services = new ServiceCollection();
         services.AddSingleton(scraperMock.Object);
         services.AddSingleton(dbContext);
         services.AddSingleton(hubContextMock.Object);
         services.AddSingleton(inventoryMock.Object);
         services.AddSingleton(salesMock.Object);
+        services.AddSingleton<IExchangeRateWriteService>(rateWriteService);
 
         var serviceProvider = services.BuildServiceProvider();
         var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
 
-        var job = new BcvExchangeRateJob(serviceProvider, jobLogger.Object);
+        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object);
 
         // Act
         await job.SyncRateAsync(CancellationToken.None);
@@ -172,17 +178,20 @@ public class ExchangeRateJobTests
         var inventoryMock = new Mock<IInventoryService>();
         var salesMock = new Mock<ISalesService>();
 
+        var rateWriteService = new ExchangeRateWriteService(dbContext, inventoryMock.Object, salesMock.Object, hubContextMock.Object);
+
         var services = new ServiceCollection();
         services.AddSingleton(scraperMock.Object);
         services.AddSingleton(dbContext);
         services.AddSingleton(hubContextMock.Object);
         services.AddSingleton(inventoryMock.Object);
         services.AddSingleton(salesMock.Object);
+        services.AddSingleton<IExchangeRateWriteService>(rateWriteService);
 
         var serviceProvider = services.BuildServiceProvider();
         var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
 
-        var job = new BcvExchangeRateJob(serviceProvider, jobLogger.Object);
+        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object);
 
         // Act
         await job.SyncRateAsync(CancellationToken.None);
@@ -246,16 +255,10 @@ public class ExchangeRateJobTests
         await dbContext.SaveChangesAsync();
 
         var userMock = new Mock<ICurrentUserService>();
-        var salesMock = new Mock<ISalesService>();
-        var inventoryMock = new Mock<IInventoryService>();
-        var hubContextMock = new Mock<IHubContext<ExchangeRateHub>>();
 
         var controller = new ExchangeRateController(
             dbContext,
-            userMock.Object,
-            salesMock.Object,
-            inventoryMock.Object,
-            hubContextMock.Object);
+            userMock.Object);
 
         // Act
         var actionResult = await controller.GetToday();
@@ -307,6 +310,7 @@ public class ExchangeRateJobTests
         var userMock = new Mock<ICurrentUserService>();
         var inventoryService = new InventoryService(dbContext, userMock.Object, memoryCache);
         var salesMock = new Mock<ISalesService>();
+        var rateWriteService = new ExchangeRateWriteService(dbContext, inventoryService, salesMock.Object, hubContextMock.Object);
 
         var services = new ServiceCollection();
         services.AddSingleton(scraperMock.Object);
@@ -314,17 +318,15 @@ public class ExchangeRateJobTests
         services.AddSingleton(hubContextMock.Object);
         services.AddSingleton<IInventoryService>(inventoryService);
         services.AddSingleton(salesMock.Object);
+        services.AddSingleton<IExchangeRateWriteService>(rateWriteService);
 
         var serviceProvider = services.BuildServiceProvider();
         var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
 
-        var job = new BcvExchangeRateJob(serviceProvider, jobLogger.Object);
+        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object);
         var controller = new ExchangeRateController(
             dbContext,
-            userMock.Object,
-            salesMock.Object,
-            inventoryService,
-            hubContextMock.Object);
+            userMock.Object);
 
         // 1. Before job runs: GetToday returns yesterday's rate (800.00m) via fallback
         var initialRes = Assert.IsType<OkObjectResult>(await controller.GetToday());
@@ -438,16 +440,10 @@ public class ExchangeRateJobTests
         await dbContext.SaveChangesAsync();
 
         var userMock = new Mock<ICurrentUserService>();
-        var salesMock = new Mock<ISalesService>();
-        var inventoryMock = new Mock<IInventoryService>();
-        var hubContextMock = new Mock<IHubContext<ExchangeRateHub>>();
 
         var controller = new ExchangeRateController(
             dbContext,
-            userMock.Object,
-            salesMock.Object,
-            inventoryMock.Object,
-            hubContextMock.Object);
+            userMock.Object);
 
         // Act - GetToday
         var todayResult = Assert.IsType<OkObjectResult>(await controller.GetToday());

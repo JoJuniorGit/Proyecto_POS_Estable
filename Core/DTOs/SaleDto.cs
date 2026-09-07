@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace Core.DTOs;
 
@@ -63,11 +64,16 @@ public class SalePaymentDto
     public int Id { get; set; }
     public int PaymentMethodId { get; set; }
     public string PaymentMethodName { get; set; } = string.Empty;
+
+    // 8.7-B2: los montos NEGATIVOS se rechazan en el contrato (binding). Los ceros se permiten:
+    // la sanitización pre-persistencia los purga (checkout con método no utilizado).
+    [Range(0, 999_999_999_999.99, ErrorMessage = "El monto USD del pago no puede ser negativo.")]
     public decimal Amount { get; set; } // Amount in USD
 
     private decimal _amountBsS;
     private bool _amountBsSExplicitlySet;
 
+    [Range(0, 999_999_999_999.99, ErrorMessage = "El monto en Bs.S del pago no puede ser negativo.")]
     public decimal AmountBsS
     {
         get => _amountBsS;
@@ -78,6 +84,7 @@ public class SalePaymentDto
         }
     }
 
+    [Range(0, 999_999_999_999.99, ErrorMessage = "El monto en Bs.S del pago no puede ser negativo.")]
     public decimal AmountLocal
     {
         get => _amountBsS;
@@ -107,8 +114,14 @@ public class HoldSaleRequestDto
 public class AddPaymentRequestDto
 {
     public int PaymentMethodId { get; set; }
+
+    // 8.7-B2: montos negativos rechazados en el contrato (el servicio valida el total > 0).
+    [Range(0, 999_999_999_999.99, ErrorMessage = "El monto en Bs.S del abono no puede ser negativo.")]
     public decimal AmountBsS { get; set; }
+
+    [Range(0, 999_999_999_999.99, ErrorMessage = "El monto en USD del abono no puede ser negativo.")]
     public decimal AmountUSD { get; set; }
+
     public decimal ExchangeRate { get; set; }
     public string? ReferenceNumber { get; set; }
 }

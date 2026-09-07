@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import { getCustomers, createCustomer } from '../../services/customerApi';
+import useDebounce from '../../hooks/useDebounce';
 import { Search, UserPlus, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
 import { formatBsS } from '../../utils/formatters';
 
@@ -41,33 +42,36 @@ export default function CustomerModal({
     }
   }, [paymentMethods, paymentMethodId]);
 
-  const loadCustomers = useCallback(async (searchQuery) => {
-    setLoading(true);
-    try {
-      const data = await getCustomers(searchQuery);
-      if (mode === 'hold') {
-        setCustomers((data || []).filter(c => !c.isDefault && c.cedulaOrRif !== 'V-00000000'));
-      } else {
-        setCustomers(data || []);
-      }
-    } catch {
-      setError('Error al cargar la lista de clientes.');
-    } finally {
-      setLoading(false);
-    }
-  }, [mode]);
+  // 8.7-M9: búsqueda de clientes con debounce (250 ms) + AbortController. El input solo cambia
+  // estado; el efecto dispara un único fetch por consulta. Se refresca cuando el modal abre.
+  const debouncedQuery = useDebounce(query, 250);
+  const [searchTick, setSearchTick] = useState(0);
 
   useEffect(() => {
-    if (isOpen) {
-      loadCustomers('');
-      setError(null);
-    }
-  }, [isOpen, loadCustomers]);
+    if (!isOpen) return;
+    const controller = new AbortController();
+    setLoading(true);
+    getCustomers(debouncedQuery, controller.signal)
+      .then((data) => {
+        if (mode === 'hold') {
+          setCustomers((data || []).filter(c => !c.isDefault && c.cedulaOrRif !== 'V-00000000'));
+        } else {
+          setCustomers(data || []);
+        }
+      })
+      .catch((err) => {
+        if (err?.name !== 'AbortError') {
+          setError('Error al cargar la lista de clientes.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [isOpen, debouncedQuery, mode, searchTick]);
 
   const handleSearchChange = (e) => {
-    const val = e.target.value;
-    setQuery(val);
-    loadCustomers(val);
+    setQuery(e.target.value);
   };
 
   // ── Controlled Input 1: Cédula / RIF (V or E + 7-8 digits) ──
@@ -156,7 +160,7 @@ export default function CustomerModal({
       }
       setTab('search');
       setQuery(created.cedulaOrRif);
-      loadCustomers(created.cedulaOrRif);
+      setSearchTick((t) => t + 1);
     } catch (err) {
       setError(err.response?.data || err.message || 'Error al crear cliente');
     }

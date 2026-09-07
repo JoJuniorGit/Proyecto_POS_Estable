@@ -88,12 +88,13 @@ public class Phase2IntegrityRemediationTests
     {
         // Arrange
         using var db = CreateInMemorySalesDbContext();
+        using var inventoryDb = CreateInMemoryInventoryDbContext();
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.UserId).Returns("4");
 
-        var controller = new CashDrawerController(mockCashDrawer.Object, mockSettings.Object, db, mockUser.Object);
+        var controller = new CashDrawerController(mockCashDrawer.Object, mockSettings.Object, db, mockUser.Object, inventoryDb);
 
         var userClaims = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
@@ -211,7 +212,7 @@ public class Phase2IntegrityRemediationTests
             .Build();
 
         var job = new Backend.API.Jobs.StockMovementArchiverJob(
-            serviceProvider,
+            serviceProvider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<Backend.API.Jobs.StockMovementArchiverJob>.Instance,
             inMemoryConfig);
 

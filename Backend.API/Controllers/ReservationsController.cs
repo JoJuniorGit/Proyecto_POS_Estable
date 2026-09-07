@@ -143,8 +143,10 @@ public class ReservationsController : ControllerBase
     {
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
                      ?? User.Identity?.Name;
-        if (string.IsNullOrEmpty(userId)) return true;
+        if (string.IsNullOrEmpty(userId)) return false;
         var userRef = $"user:{userId}";
-        return reservation.ReferenceId == userRef || reservation.ReferenceId == null;
+        // 8.7-M11: reservas de sistema (ReferenceId == null) u otras reservas ajenas NO son
+        // confirmables/cancelables por un usuario autenticado.
+        return reservation.ReferenceId != null && reservation.ReferenceId == userRef;
     }
 }

@@ -17,4 +17,8 @@ public interface IDailyClosureService
     Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc);
     Task<DailyClosure> CreateClosureAsync(DailyClosure closure);
     Task<DailyClosure?> GetClosureAsync(int id);
+
+    // 8.7-B5: los comprobantes se escriben DESPUÉS del commit de la transacción Serializable,
+    // nunca dentro de ella (evita I/O de disco bloqueando aislamiento Serializable).
+    void WriteClosedClosureReceipts(DailyClosure closure);
 }

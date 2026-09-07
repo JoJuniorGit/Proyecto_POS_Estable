@@ -34,12 +34,21 @@ public class PairingController : ControllerBase
                        || remoteIp.ToString() == "127.0.0.1" 
                        || remoteIp.ToString() == "::1");
 
-        // 2. Si no es local, verificar si el usuario está autenticado
+        // 2. Si no es local, verificar que el usuario esté autenticado con rol elevado (Admin/Manager).
+        // 8.7-L1: un cajero no debe poder leer IPs/puertos/QR del establecimiento.
         if (!isLocal && !(User.Identity?.IsAuthenticated ?? false))
         {
             return StatusCode((int)HttpStatusCode.Forbidden, new
             {
                 message = "El acceso a la información de emparejamiento está restringido a la máquina local o usuarios autenticados."
+            });
+        }
+
+        if (!isLocal && !User.IsInRole("Admin") && !User.IsInRole("Manager"))
+        {
+            return StatusCode((int)HttpStatusCode.Forbidden, new
+            {
+                message = "El acceso a la información de emparejamiento requiere rol de Administrador o Supervisor."
             });
         }
 

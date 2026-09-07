@@ -60,8 +60,13 @@ export function CartProvider({ children }) {
     return () => clearTimeout(timer);
   }, [currentSale]);
 
-  // Inicializar o crear nueva venta
+// Inicializar o crear nueva venta
   const createNewSale = useCallback(async () => {
+    // 8.7-M10: sin usuario autenticado NO se crean ventas Pending huérfanas (cashierId null).
+    if (!user?.id) {
+      setError('Inicie sesión para iniciar una venta.');
+      return null;
+    }
     if (inFlightCreateRef.current) {
       return inFlightCreateRef.current;
     }
@@ -110,8 +115,12 @@ export function CartProvider({ children }) {
     }
   }, []);
 
-  // Al montar, restaurar venta activa de la sesión o crear una nueva
+// Al montar, restaurar venta activa de la sesión o crear una nueva.
+  // 8.7-M10: SOLO cuando hay usuario autenticado (user.id). En la pantalla de login no se crean
+  // ventas Pending huérfanas sin cajero asignado; al iniciar sesión el efecto se re-ejecuta.
   useEffect(() => {
+    if (!user?.id) return;
+
     const restoreOrStartSale = async () => {
       const savedSaleId = sessionStorage.getItem('active_pos_sale_id');
       if (savedSaleId) {
@@ -131,7 +140,7 @@ export function CartProvider({ children }) {
     };
 
     restoreOrStartSale();
-  }, [createNewSale]);
+  }, [user?.id, createNewSale]);
 
 // Si cambia la tasa global de cambio y hay venta pendiente o en espera, notificar al backend o actualizar
   // 8.5-WEB2: Debounce trailing de 1500ms — cada ráfaga de SignalR (o cambios rápidos de tasa) produce

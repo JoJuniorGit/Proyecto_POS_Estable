@@ -4,6 +4,7 @@ using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -15,6 +16,16 @@ public partial class InventoryService : IInventoryService
     private readonly ICurrentUserService? _currentUserService;
     private readonly IMemoryCache? _cache;
     private const string ExchangeRateCacheKey = "bcv_rate_today";
+    // 8.7-L5: registro de claves de caché de producto emitidas para invalidación efectiva.
+    private static readonly ConcurrentDictionary<string, byte> _productCacheKeys = new(StringComparer.OrdinalIgnoreCase);
+
+    private static void RegisterProductCacheKey(string cacheKey)
+    {
+        if (!string.IsNullOrWhiteSpace(cacheKey))
+        {
+            _productCacheKeys.TryAdd(cacheKey, 0);
+        }
+    }
 
     public InventoryService(InventoryDbContext context, ICurrentUserService? currentUserService = null, IMemoryCache? cache = null)
     {
@@ -73,6 +84,12 @@ public partial class InventoryService : IInventoryService
 
     public void InvalidateAllProductCaches()
     {
+        // 8.7-L5: ahora SÍ invalida las claves de producto (SKU/quick) registradas, además de la
+        // tasa BCV que históricamente era lo único que se removía aquí.
+        foreach (var cacheKey in _productCacheKeys.Keys)
+        {
+            _cache?.Remove(cacheKey);
+        }
         _cache?.Remove(ExchangeRateCacheKey);
     }
 
@@ -100,6 +117,7 @@ public partial class InventoryService : IInventoryService
             var product = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == sku);
             if (product != null)
             {
+                RegisterProductCacheKey(cacheKey);
                 _cache.Set(cacheKey, product, CreateProductCacheOptions());
             }
             return product;
@@ -635,6 +653,7 @@ public partial class InventoryService : IInventoryService
         var dto = await FetchProductQuickInfoFromDbAsync(sku);
         if (dto != null)
         {
+            RegisterProductCacheKey(cacheKey);
             _cache.Set(cacheKey, dto, CreateProductCacheOptions());
         }
         return dto;
@@ -672,6 +691,8 @@ public partial class InventoryService : IInventoryService
             .FirstOrDefaultAsync();
     }
 
+    private System.Data.Common.DbConnection? _originalConnection;
+
     public async Task EnrollInTransactionAsync(System.Data.Common.DbTransaction transaction, System.Threading.CancellationToken cancellationToken = default)
     {
         if (_context.Database.IsRelational() && transaction != null)
@@ -679,10 +700,38 @@ public partial class InventoryService : IInventoryService
             var txConn = transaction.Connection;
             if (txConn != null && _context.Database.GetDbConnection() != txConn)
             {
+                // 8.7-B7: conservar la conexión propia del scope para restaurarla al salir de la
+                // transacción compartida (evita que SalesDbContext recicle una conexión ajena
+                // que InventoryDbContext sigue referenciando).
+                _originalConnection ??= _context.Database.GetDbConnection();
                 await _context.Database.CloseConnectionAsync();
                 _context.Database.SetDbConnection(txConn);
             }
             await _context.Database.UseTransactionAsync(transaction, cancellationToken);
+        }
+    }
+
+    public async Task DetachFromTransactionAsync(System.Threading.CancellationToken cancellationToken = default)
+    {
+        if (!_context.Database.IsRelational() || _originalConnection == null)
+        {
+            return;
+        }
+
+        // Ya committeada/revertida la transacción ajena: soltar la conexión prestada y restaurar
+        // la del scope. La restauración es perezosa (EF la abre al siguiente query).
+        try
+        {
+            await _context.Database.CloseConnectionAsync();
+        }
+        catch
+        {
+            // La conexión ajena puede haber sido clausurada por el ciclo de vida del otro scope.
+        }
+        finally
+        {
+            _context.Database.SetDbConnection(_originalConnection);
+            _originalConnection = null;
         }
     }
 }

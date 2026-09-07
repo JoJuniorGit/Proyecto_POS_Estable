@@ -271,7 +271,7 @@ export default function PendingPickupsPage() {
                                 </thead>
                                 <tbody>
                                   {(pickup.items || []).map((item, idx) => (
-                                    <tr key={idx} style={{ borderBottom: '1px dashed var(--border-color)' }}>
+                                      <tr key={`${item.productName}-${item.quantity}-${idx}`} style={{ borderBottom: '1px dashed var(--border-color)' }}>
                                       <td style={{ padding: '6px 12px 6px 0', fontWeight: 500 }}>{item.productName}</td>
                                       <td style={{ textAlign: 'right', padding: '6px 12px', fontWeight: 700, whiteSpace: 'nowrap' }}>{formatQuantity(item.quantity)}</td>
                                       <td style={{ textAlign: 'right', padding: '6px 12px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatBsS(item.unitPriceBsS)}</td>
@@ -391,7 +391,7 @@ export default function PendingPickupsPage() {
                       <h4 style={{ margin: '0 0 8px 0', fontSize: '0.9rem' }}>📦 Productos del Pedido</h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         {(pickup.items || []).map((item, idx) => (
-                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: '1px solid var(--border-color)' }}>
+                          <div key={`${item.productName}-${item.quantity}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: '1px solid var(--border-color)' }}>
                             <div style={{ flex: '1 1 auto', minWidth: 0, paddingRight: '12px' }}>
                               <div><strong>{item.productName}</strong></div>
                               <div className="text-xs text-muted">{formatQuantity(item.quantity)} unds x {formatBsS(item.unitPriceBsS)}</div>

@@ -109,23 +109,8 @@ public partial class SalesService : ISalesService
     {
         var _sale = await GetSaleEntityAsync(sale_id, includeCashier: true);
 
-        if (_sale.Status == SaleStatus.OnHold && _inventoryService != null)
-        {
-            try
-            {
-                var todayRate = await _inventoryService.GetTodayExchangeRateAsync();
-                if (todayRate > 0 && _sale.AppliedRate != todayRate)
-                {
-                    _sale.AppliedRate = todayRate;
-                    await RecalculateTotalAsync(_sale);
-                    await _context.SaveChangesAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning(ex, "Failed to auto-recalculate OnHold sale {SaleId} in GetSaleAsync.", sale_id);
-            }
-        }
+        // 8.7-B6: los GET no escriben. La tasa de las OnHold se recalcula en el POST de tasa
+        // (RecalculateOnHoldSalesAsync) y se re-difunde por SignalR; aquí solo se lee.
 
         await PopulateItemsMetadataAsync(_sale);
         return MapToDto(_sale);
@@ -438,6 +423,12 @@ public partial class SalesService : ISalesService
             _sale.AppliedRate = exchange_rate;
             await RecalculateTotalAsync(_sale);
 
+            // 8.7-B2: Acotar el ajuste de redondeo a un límite operacional (refuerzo del [Range]).
+            if (Math.Abs(roundingAdjustment) > 1000m)
+            {
+                throw new InvalidOperationException($"Rechazo Defensivo: el ajuste de redondeo ({roundingAdjustment:F2}) excede el límite operacional de ±1000.");
+            }
+
             _sale.RoundingAdjustment = roundingAdjustment;
 
             decimal existingPaidUsd = _sale.Payments.Sum(p => p.Amount);
@@ -497,6 +488,16 @@ public partial class SalesService : ISalesService
                     if (_payment_method == null || !_payment_method.IsActive)
                     {
                         throw new InvalidOperationException($"Método de pago inválido o inactivo: PaymentMethodId={_p.PaymentMethodId}. Verifique la configuración de métodos de pago.");
+                    }
+
+                    // 8.7-B2: Rechazo de montos NEGATIVOS por método. Sin esta validación, un pago con
+                    // Amount <= 0 Y AmountLocal <= 0 se persistiría tal cual y distorsionaría los totales
+                    // liquidados y el arqueo diario (suma de AmountBsS). Los ceros absolutos se purgan en la
+                    // sanitización pre-persistencia (:592-596) y los montos mixtos (una sola moneda) se
+                    // convierten arriba.
+                    if (amountUsd < 0m || amountLocal < 0m)
+                    {
+                        throw new InvalidOperationException($"La validación del método de pago (PaymentMethodId={_p.PaymentMethodId}) rechaza montos negativos. Monto USD={_p.Amount}, Monto Bs.S={_p.AmountLocal}.");
                     }
 
                     // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
@@ -696,6 +697,12 @@ public partial class SalesService : ISalesService
             if (_transaction != null)
             {
                 await _transaction.CommitAsync(cancellationToken);
+                // 8.7-B7: ya committeado, el InventoryDbContext vuelve a su propia conexión
+                // (el handler de evento y las operaciones posteriores no comparten la ajena).
+                if (_inventoryService != null)
+                {
+                    await _inventoryService.DetachFromTransactionAsync(cancellationToken);
+                }
             }
 
             _logger?.LogInformation("[TX_COMMIT] CorrelationId={CorrelationId}, SaleId={SaleId}, InvoiceNumber={InvoiceNumber}", correlationId, sale_id, _sale.InvoiceNumber.Value);
@@ -721,6 +728,10 @@ public partial class SalesService : ISalesService
             if (_transaction != null)
             {
                 await _transaction.RollbackAsync(System.Threading.CancellationToken.None);
+                if (_inventoryService != null)
+                {
+                    await _inventoryService.DetachFromTransactionAsync(System.Threading.CancellationToken.None);
+                }
             }
             _logger?.LogWarning(opEx, "[TX_ROLLBACK] CorrelationId={CorrelationId}, SaleId={SaleId}, Reason=OperationCanceled", correlationId, sale_id);
             throw;
@@ -730,6 +741,10 @@ public partial class SalesService : ISalesService
             if (_transaction != null)
             {
                 await _transaction.RollbackAsync(System.Threading.CancellationToken.None);
+                if (_inventoryService != null)
+                {
+                    await _inventoryService.DetachFromTransactionAsync(System.Threading.CancellationToken.None);
+                }
             }
             _logger?.LogError(ex, "[TX_ROLLBACK] CorrelationId={CorrelationId}, SaleId={SaleId}, Reason={Reason}", correlationId, sale_id, ex.Message);
             throw;

@@ -2,422 +2,543 @@
 REPORTE DE AUDITORÍA TÉCNICA INTEGRAL — SISTEMA POS "CommandCenter"
 ================================================================================
 Fecha de Emisión: 2026-09-06
-Revisión: 8.6 (Re-Auditoría Exhaustiva del Sistema + Contrastación Empírica Rev. 8.5)
+Revisión: 8.7 (Verificación Post-S1 + Nueva Auditoría Exhaustiva de Seguridad,
+          Rendimiento, Arquitectura, WPF y Web)
 Entorno de Ejecución: Windows 10/11 / Windows Server — .NET 10.0.101 / PostgreSQL 16
+Commit de referencia del sprint S1: 0b451d0
 
 Métricas de Prueba RECALCULADAS EN ESTA AUDITORÍA (ejecución real):
-  - Suite .NET (CommandCenter.Tests): 685 / 685 superadas (0 fallos, 0 omitidos) ≈ 9-10 s
+  - Suite .NET (CommandCenter.Tests): 691 / 691 superadas (0 fallos, 0 omitidos) ≈ 9-10 s
+    (incluye +6 tests nuevos aportados por el Sprint S1: 3 de RecordSaleChangeAsync y
+     3 de anclaje de tasa BCV)
   - Suite Web (Web.Frontend / node:test): 75 / 75 superadas (0 fallos)
-  - Total Pruebas Automatizadas: 760 / 760 activas sin regresiones
+  - Total Pruebas Automatizadas: 766 / 766 activas sin regresiones
   - Linter Web (oxlint): 0 errores / 0 advertencias (93 archivos)
   - Compilación Release: 0 advertencias / 0 errores (TreatWarningsAsErrors=true)
 
-================================================================================
-0. NOTA METODOLÓGICA DE ESTA REVISIÓN (8.6)
-================================================================================
-La Rev. 8.5 detectó 21 hallazgos nuevos (6 altos, 6 medios, 5 Web, 4 WPF) y dejó 13
-afirmaciones vigentes de la Rev. 8.4. Esta revisión:
-  (a) CONTRASTA línea a línea cada afirmación de la Rev. 8.5 contra el árbol actual,
-      clasificándola como RESUELTA, PARCIAL o VIGENTE (con la línea actual en cada caso);
-  (b) incorpora la corrección inmediata del hallazgo 8.5-A6 (DI anti-patrón del
-      CashDrawerService) aplicada al inicio de esta auditoría;
-  (c) añade una nueva re-lectura profunda de BACKEND, DESKTOP (WPF) y WEB (React) con la
-      infraestructura (tests, instalador, scripts, git) para hallazgos NUEVOS.
-
-Resultado neto: 10 afirmaciones de la Rev. 8.5 quedan RESUELTAS, 9 permanecen PARCIALES,
-12 permanecen VIGENTES/CONFIRMADAS, y se descubren 24 hallazgos NUEVOS (1 CRÍTICO,
-7 ALTOS, 12 MEDIOS, 4 BAJOS) distribuidos en backend, frontend e infraestructura. La
-declaración "100% remediado" sigue sin sostenerse.
+Resumen del estado: el Sprint S1 de la Rev. 8.6 se ejecutó COMPLETO y resuelve 5 de sus
+24 hallazgos (entre ellos el único CRÍTICO y 3 ALTOS). Esta revisión CONTRASTA línea a
+línea todas las afirmaciones de la Rev. 8.6, ejecuta una NUEVA auditoría en profundidad
+(seguridad, rendimiento/concurrencia, arquitectura/DI, WPF y React) y descubre 28
+hallazgos NUEVOS (0 CRÍTICOS, 10 ALTOS, 12 MEDIOS, 6 BAJOS), incluida 1 REGRESIÓN
+introducida por el propio S1. La declaración "100% remediado" sigue sin sostenerse.
 
 ================================================================================
-1. HALLAZGOS DE LA REV. 8.5 RESUELTOS (contrastación línea a línea)
+0. NOTA METODOLÓGICA DE ESTA REVISIÓN (8.7)
 ================================================================================
-  [8.5-A1] ALTO → RESUELTO. TOCTOU de caja (double-spend): CashDrawerService.cs:255-270
-    ahora envuelve check de saldo (L.265-269) + INSERT del egreso (L.287) en la MISMA
-    transacción con advisory lock (L.262, lock), commit L.290-293. Verificado contra el
-    test real PostgreSQL ConcurrentPhysicalExpenses_CannotOverdrawBalance.
-  [8.5-A2] ALTO → RESUELTO. Cierre no atómico: CashDrawerService.cs:156-184 serializa el
-    cierre con lock + re-lectura (Status==Open L.169) antes de flip (L.171-174) e INSERT
-    del egreso Closing (L.176-184). Doble cierre ya no genera filas duplicadas.
-  [8.5-A4] ALTO → RESUELTO. Forja de Source=Closing/Opening en egreso manual:
-    CashDrawerController.cs:127-130 rechaza los orígenes reservados en el endpoint manual.
-  [8.5-A6] ALTO → RESUELTO. DI anti-patrón (new SalesService(_context, null!, this, null!)):
-    CashDrawerService.cs:16,21,27-30 resuelve ISalesService perezosamente desde
-    IServiceProvider. Se eliminó el parámetro inyectado del constructor y el fallback null!;
-    Program.cs:119-120 registra el servicio. (Corregido al inicio de esta auditoría; ver §4.)
-  [8.5-M2] MEDIO → RESUELTO. StartSaleAsync re-leía vía GetSaleAsync (round-trip con side
-    effects): SalesService.cs:91-105 retorna el DTO construido localmente sin re-consultar.
-  [8.5-M5] MEDIO → RESUELTO. Jobs frágiles: OutboxProcessorJob.cs:58,72 try/catch por tick
-    y externo; BcvExchangeRateJob.cs:110 catch-all en SyncRateAsync (loop solo responde a
-    OperationCanceledException, L.46); ReservationExpiryJob e IdempotencyCleanupJob con
-    try/catch logueado por ciclo. InventorySaleMadeEventHandler.cs:78-91 REINTENTA 3x500ms
-    (ya no abandona tras el primer fallo).
-  [8.4-W-2/8.5-W2] ALTO → RESUELTO. LoginViewModel lambda sin desuscribir:
-    LoginViewModel.cs:96-100 guarda el handler en campo; Dispose() L.106-114 hace
-    -= (-= L.111); LoginView.xaml.cs:24 invoca oldVm.Dispose() en DataContextChanged.
-  [8.5-W3] MEDIO → RESUELTO. Doble fuente de verdad de tasa: la clase CurrencyService con
-    URL hardcoded ya NO EXISTE en el árbol (grep = 0). ExchangeRateService.cs:27 es la
-    fuente única; DailyClosureViewModel.cs:164 Y :200 usan DateTime.UtcNow (consistente).
-  [8.5-W4] MEDIO → RESUELTO. SettingsViewModel disparaba 3 SafeFireAndForget que re-hacían
-    EnsureLoadedAsync: constructor limpio (L.87-89 comentario), EnsureLoadedAsync idempotente
-    con guard _hasLoaded (L.91/95, L.93-103); única llamada desde MainViewModel.cs:238.
-  [8.5-WEB1] MEDIO → RESUELTO. CheckoutModal conecta pagos sin validar preview: preview
-    exclusivo del backend (L.27-28,106-152), roundingAdjustment SOLO del preview (L.157-159),
-    canFinalize exige !previewFailed (L.169) y guard en handleFinalizeSale (L.207).
-  [8.5-WEB2] MEDIO → RESUELTO. Ráfaga de syncs de tasa + sessionStorage en cada cambio:
-    CartContext.jsx:48-61 debounce 400ms a sessionStorage y :139-153 sync al backend con
-    debounce 1500ms trailing (1 escritura por ráfaga).
-  [8.5-WEB3] MEDIO → RESUELTO. Logout catch vacío y payment-methods sin retry:
-    AuthContext.jsx:70-91 logout con AbortSignal.timeout(5000) + revocación en servidor y
-    limpieza local como fallback visible; CheckoutModal.jsx:78-95 reintenta 1 vez (800ms) la
-    carga de métodos de pago y muestra error visible si persiste.
-  [8.4-N5/8.5-WEB4] MEDIO → PARCIAL. Perfil con PII en localStorage: whithelist estricta en
-    AuthContext.jsx:9-17 (sin tokens ni banderas internas), api.js:210-225 limpia perfil ante
-    401. RESIDUAL: cedula/nombre siguen persistidos en localStorage['pos_user_profile']
-    (PII con permanencia indefinida) — ver hallazgo NUEVO [8.6-W2].
+1. Se verificó EMPÍRICAMENTE (lectura del árbol + ejecución de suite) cada fix del
+   Sprint S1 (commit 0b451d0) que cerró los hallazgos 8.6-C1, 8.6-B1, 8.6-B2, 8.6-B3
+   y 8B-M3.
+2. Se contrastó el estado ACTUAL de las 19 afirmaciones PARCIALES/VIGENTES de la
+   Rev. 8.6, clasificándolas como RESUELTA, PARCIAL o VIGENTE con línea vigente.
+3. Se ejecutó una auditoría de segunda pasada con lecturas en profundidad de Backend
+   (14 controllers, 5 middleware, 6 jobs, ~20 servicios), EF Core/Npgsql, Desktop WPF
+   (85+ archivos) y Web React (100 archivos), reportando hallazgos NUEVOS con
+   archivo:línea y recomendaciones concretas.
+4. Métricas recalibradas: conteo de MessageBox (=52), SafeFireAndForget (=47) e
+   identificadores snake_case en cliente WPF (=132 en 4 archivos, recalibrado del "34").
+
+Hallazgos por severidad en esta revisión:
+  - RESUELTOS por S1 (verificados): 5 (8.6-C1, 8.6-B1, 8.6-B2, 8.6-B3, 8B-M3) + el ítem
+    "PaymentMethodId sin validar" que pasa a RESUELTO (validación activa).
+  - NUEVOS 8.7: 10 ALTOS (1 es REGRESIÓN de S1), 12 MEDIOS, 6 BAJOS.
+  - Continúan VIGENTES/PARCIALES: 19 de la Rev. 8.6 más los 12 parciales/vigentes de
+    Rev. 8.5/8.4 no cubiertos por S1.
 
 ================================================================================
-2. HALLAZGOS DE LA REV. 8.5 PARCIALES (contrastados en el árbol actual)
+1. CONTRASTACIÓN DE LA REV. 8.6 TRAS EL SPRINT S1 (ejecutado y commiteado)
 ================================================================================
-  [8B-M3] 🔴 PARCIAL — AuthController.cs:218-226 sigue devolviendo Status423Locked y el
-    string del Message expone "remainingMinutes" (anti-enumeración de cuenta NO resuelta;
-    login sí es 401 genérico). VERIFICADO.
-  [8.5-A3] 🔴 PARCIAL — Autorización a nivel de objeto. CompleteSale (:513-516),
-    ConfirmPickup (~709) y AddPayment SÍ llaman IsAuthorizedForSaleAsync (A2). PERO
-    PERMANECEN SIN CHECK: GetSale (~81-93), GetCheckoutPreview (:435-497 — expone totales/
-    desglose de venta ajena sin ownership), UpdateSaleCustomer (~343-363), UpdatePriceList
-    (~770-790 sin rol concreto ni scoping). CashDrawerController.GetActiveSession/GetHistory
-    sin roles (Driver lee datos financieros). ShiftsController.GetReportById (:248-290)
-    permite ver cierre ajeno por ID. ReservationsController confirm/cancel sin ownership
-    (:81-111). VERIFICADO.
-  [8.5-A5] 🔴 PARCIAL — Tasa de cambio: la ruta de cobro principal (CompleteSale)
-    SalesService.cs:423-449 ahora RECHAZA desvíos ≥ ±100% (L.438-442) y loguea warning en
-    ±10% (L.444-447); se audita la rate del pago. PERO: Hold (HoldOrders.cs:99-103,394-397),
-    CashAdvance y la transacción manual siguen aceptando cualquier tasa >0 sin anclaje al
-    ExchangeRateHistory del día — el "shortage enmascarado" persiste en esos flujos.
-    ADEMÁS el catch en L.432 puede tragarse el chequeo (catch-swallow).
-  [8.5-A5 / Hold rate] 🔴 ALTO PARCIAL — HoldOrders.cs:99-103 acepta request.ExchangeRate >0
-    del cliente sin anclar a la tasa BCV del día ni validar desvío → un abono en espera
-    puede registrar Bs.S desviados. VERIFICADO (incluido en §3 como [8.6-B3]).
-  [8.5-M1] 🟡 PARCIAL MEJORADO — GetCurrentBalanceLocalAsync pasó de 3 a 2 queries
-    (CashDrawerService.cs:316-336: sesión L.316-320 + SUM agregado L.327-334), pero aún no
-    es 1 sola query agregada; GetActiveSessionAsync con Include(Transactions).ThenInclude(Sale).
-  [8.5-M3] 🟡 PARCIAL — DeleteProductAsync (InventoryService.cs:579-599) ya NO captura
-    Exception genérico: solo DbUpdateException (L.587) → soft-delete con log de degradación
-    (L.592-598); caveat: sigue enmascarando errores Npgsql no-DbUpdateException. Persisten
-    catch vacíos: Backend.API 5 (Program.cs:81,903 deliberados; SecurityStampValidator
-    :60/:82/:94 micro), Core 7 (logging/versión), Sales.Module ~6, Inventory.Module ~2.
-  [8.5-M4] 🟡 PARCIAL MEJORADO — Inconsistencia de formato de error: el payload canónico del
-    GlobalExceptionHandlerMiddleware.cs (255-287) ya NO duplica Message/TraceId capitalizados
-    (serializa SOLO camelCase {type,title,status,error,message,detail,instance,traceId});
-    RESIDUAL: en casi todas las ramas message == detail (mismo string, L.189-190,204-205,
-    221-222,235-236) y persisten respuestas no uniformes en controllers (NotFound() vacío vs
-    NotFound(new{message}) vs UpdatePriceList con Message capitalizado).
-  [8.5-W1] 🟡 PARCIAL — PosViewModel.Orders.cs:40-57: AddSelectedSuggestionAsync YA respeta
-    _scannerLock (L.48 WaitAsync, comentario fix L.46-47). RESIDUAL: OnSelectedSuggestionChanged
-    (void) sigue SafeFireAndForget (L.40) y dos selecciones rápidas de la MISMA sugerencia
-    encolan dos Tasks que pasan el semáforo secuencialmente → doble-add; AddSelectedSuggestion
-    CoreAsync (L.59+) no tiene guard de cooldown/IsProcessing.
-  [8.5-WEB5] 🟡 PARCIAL — PaymentList key estable (PaymentList.jsx:17-19 key=p.uid) y App.jsx
-    valida el retorno resetCart en hold (App.jsx:70-88). RESIDUAL: CheckoutModal.jsx:247-249
-    tras completeSale hace await resetCart() e ignora el booleano → si createNewSale falla,
-    la UI anuncia éxito con currentSale obsoleto. VERIFICADO (nuevo en §3 como [8.6-W1]).
-  [8.5-M6 → RESUELTO con residuo] 🔴 MITIGADO — VersionLockoutViewModel.cs:41-54 valida el
-    esquema http/https de la URL (Uri.TryCreate) antes de Process.Start (L.58, UseShellExecute
-    L.61); origen VersionCheckService.cs:60-63. RESIDUAL: abrir navegador con URL del servidor
-    automáticamente sigue siendo vector si el servidor de updates es comprometido; host no
-    validado (acepta IPs privadas maliciosas).
-  [8.2-A1/xmin] 🟡 PARCIAL — token xmin uint de Product en InventoryDbContext.cs:117-128,
-    pero el [Timestamp] bytea RowVersion ORIGINAL COEXISTE (Product.cs:98-99): dos tokens de
-    concurrencia sobre la misma entidad (inofensivo pero confuso). Resto del inventario sin xmin.
+A) HALLAZGOS 8.6 RESUELTOS POR EL SPRINT S1 (verificados en el árbol)
+-------------------------------------------------------------------------------
+[8.6-C1] 🔴 CRÍTICO → RESUELTO. El vuelto se registra VÍA CashDrawerService:
+  RecordSaleChangeAsync (CashDrawerService.cs:319-372) aplica advisory lock (:342),
+  verifica saldo disponible = saldo BD + ingresos cash pendientes del tracker
+  (:345-352 con pendingCashIncomeBsS) y NO hace SaveChanges interno (transacción
+  compartida del cobro). SalesService.cs:546-578 lo invoca con pendingCashIncomeBsS
+  calculado de _context.CashTransactions.Local (:560-565). El límite de magnitud previo
+  (changeUsd>100m) se conserva (:549-552). 3 tests directos nuevos
+  (DataIntegritySprint1Tests): rechazo sin cobertura, cobertura con pendientes,
+  rechazo de change/rate ≤ 0. VERIFICADO.
 
-================================================================================
-3. NUEVOS HALLAZGOS — REV. 8.6 (backend, frontend, infraestructura)
-================================================================================
-A) CRÍTICOS NUEVOS (1)
---------------------------------------------------------------------------------
-[8.6-C1] 🔴 CRÍTICO — Vuelto (change) insertado como egreso SIN control de saldo.
-  - SalesService.cs:549-578: al liquidar una venta con sobrepago, _change_tx (CashTransaction
-    Expense, Source=SalePayment, IsPhysicalCash=true) se añade directo a _context (L.575) con
-    SOLO un límite de magnitud (L.553: changeUsd>100m Y >sale.TotalUSD). NO consulta el saldo
-    de la caja, NO usa advisory lock ni transacción de caja (a diferencia de 8.5-A1). Un pago
-    en efectivo excesivo puede llevar la caja a saldo NEGATIVO sin bloqueo.
-  - Además L.560 toma la tasa CLIENTE (changeBsS = changeUsd * exchange_rate) sin anclaje;
-    y L.558 cashMethodId es null si el pago cash se borró de la colección (FK nullable).
-  - Fix: centralizar el registro de vuelto en CashDrawerService con lock+check de saldo
-    (misma transacción que 8.5-A1) y anclar la tasa del vuelto al día.
+[8.6-B1] ALTO → RESUELTO. Ownership a nivel de objeto aplicado con
+  IsAuthorizedForSaleAsync (SalesController.cs:48-79) a GetSale (:85),
+  GetCheckoutPreview (:451), UpdateSaleCustomer (:728) y UpdatePriceList (:793);
+  CashDrawerController.GetActiveSession (:36) y GetHistory (:74) restringidos a
+  Admin/Manager/Cashier. RESIDUAL NUEVO: el fix de ShiftsController.GetReportById es
+  una REGRESIÓN (ver [8.7-B3]).
 
-B) ALTOS NUEVOS (7)
---------------------------------------------------------------------------------
-[8.6-B1] ALTO — GetCheckoutPreview sin autorización a nivel de objeto.
-  - SalesController.cs:435-497: expone totales, desglose e incluso la venta de OTRO cajero
-    por ID, pese a que el resto del flujo de cobro sí aplica IsAuthorizedForSaleAsync.
-  - Fix: aplicar el mismo chequeo de ownership de A2/8.5-A3 a GetCheckoutPreview y
-    UpdateSaleCustomer/UpdatePriceList.
+[8.6-B2] ALTO → RESUELTO. exchange_rate <= 0 rechazado al inicio de AddItemAsync
+  (SalesService.cs:207-210).
 
-[8.6-B2] ALTO — AddItemAsync acepta exchange_rate <= 0 sin validar al añadir ítem.
-  - SalesService.cs:206: _sale.AppliedRate = exchange_rate sin validación > 0 en AddItem;
-    solo existe compensación defensiva al COMPLETAR (L.418-421). Un cliente puede fijar tasa 0
-    o negativa y persistir montos Bs.S en 0 durante la edición del carrito.
-  - Fix: validar exchange_rate > 0 al inicio de AddItemAsync (como ya se hace en el cobro).
+[8.6-B3] ALTO → RESUELTO. ResolveAnchoredRateAsync (SalesService.cs:862-926):
+  tasa ≤ 0 lanza; desvío ≥ ±100% rechaza; desvío > tolerancia (setting
+  RateDeviationTolerancePct, default 0.10) ANCLA a la BCV del día; sin BCV disponible
+  o error → fail-open auditable (catch logueado, NO catch-swallow). Aplicado en
+  CompleteSale (:433), HoldSale (:100) y AddPaymentToHoldSale (:394). PaymentMethodId
+  validado pre-persistencia (:497-500: inexistente o inactivo aborta el cobro).
+  3 tests nuevos de anclaje (FinancialRobustnessTests). RESIDUAL: CashAdvance y la
+  transacción manual siguen sin anclar (refuerza 8.5-A5 PARCIAL, ver abajo).
 
-[8.6-B3] ALTO — Tasa del HOLD aceptada del cliente sin anclaje BCV.
-  - HoldOrders.cs:99-103 (HoldSale) y :394-397 (UpdateHoldSale): request.ExchangeRate>0 se
-    asigna a _sale.AppliedRate sin validar desvío ni consultar ExchangeRateHistory del día.
-    Completa la evasión de 8.5-A5 para el flujo de esperas (abono parcial desviado en Bs.S).
-  - Fix: anclar a la tasa BCV del día con tolerancia configurable y audit log.
+[8B-M3] 🔴 PARCIAL → RESUELTO. Change-password unificado en 401 genérico
+  (AuthController.cs:214,221,235); retirado el Status423Locked que revelaba el lockout
+  con remainingMinutes. Test de lockout actualizado a 401 (Phase1SecurityHardeningTests).
 
-[8.6-B4] ALTO — Test de autorización a nivel de objeto (ownership) no existe.
-  - RbacPermissionTests verifica SOLO roles (Admin vs Cashier en catálogo); 8.5-A3/8.6-B1
-    (venta/reserva/reporte de otro cajero) carecen de cobertura automatizada. CheckoutModal
-    sigue sin montaje REAL (CheckoutModal.test.js lee el fuente con fs.readFileSync — 8.4-N5).
-  - Fix: tests de ownership por recurso y montaje jsdom real del modal.
+[§2 Rev 8.6 "PaymentMethodId sin validar (SalesService.cs:506)"] → RESUELTO por 8.6-B3.
 
-[8.6-B5] ALTO — Sync-over-async bloqueante en apagado WPF + Dispose de ExchangeRateService.
-  - App.xaml.cs:379 stopTask.Wait(TimeSpan.FromSeconds(3)) en OnExit y
-    ExchangeRateService.cs:291 DisposeAsync().AsTask().Wait(cts.Token) (timeout 1s, L.290).
-    Ambos bloquean el hilo UI en shutdown; el segundo traga excepciones (L.293-294).
-  - Fix: método async de stop ("ExitAsync") + DisposeAsync en el host; documentar tolerancia.
+B) PARCIALES DE REV. 8.5 QUE PERMANECEN (verificados; S1 no los cubrió)
+-------------------------------------------------------------------------------
+[8.5-A5] 🔴 PARCIAL — Anclaje de tasa en flujos fuera de Complete/Hold:
+  - CashAdvance (SalesService.CashAdvance.cs:18,90,103,136) acepta exchangeRate > 0 del
+    cliente SIN consultar la BCV del día ni tolerancia → adelanto en espera con Bs.S
+    desviados.
+  - Transacción manual de caja (CashDrawerController.cs:150-155,163): AddTransaction
+    acepta cualquier tasa > 0 (solo valida >0) sin anclaje ni audit de desvío.
+  VERIFICADO.
 
-[8.6-B6] ALTO — Sin WebApplicationFactory/TestServer en toda la suite .NET.
-  - grep en CommandCenter.Tests → 0 coincidencias de WebApplicationFactory/TestServer. Los
-    "integration tests" instancian controllers/servicios directos (DefaultHttpContext en
-    Phase7ClosureWithoutRateTests.cs:49-55) → no se cubre el pipeline HTTP real (auth, model
-    binding, filtros, idempotencia, CORS). Los 3 tests con PostgreSQL real (PostgresReal*)
-    están condicionados a env var y hacen `if(connStr==null) return;` (silent-pass, L.20-24/
-    31-34) y comparten la MISMA BD en colecciones paralelas (riesgo de flakiness).
-  - Fix: WebApplicationFactory por escenario + Assert.Skip (o retorno visible) en postgres.
+[8.5-M1] 🟡 PARCIAL — GetCurrentBalanceLocalAsync sigue en 2 queries (CashDrawerService
+  .cs:316-336: sesión + SUM agregado), no 1 query agregada.
+[8.5-M3] 🟡 PARCIAL — Persisten catch vacíos: PaymentMethodService.cs:41,60,74,93;
+  SalesService.HoldOrders.cs:31,61; InventoryService.ExchangeRate.cs:41;
+  SecurityStampValidator.cs:60,82,94 (micro-cache). Product/Inventory ya no captura
+  Exception genérico (solo DbUpdateException).
+[8.5-M4] 🟡 PARCIAL — El payload canónico del GlobalExceptionHandlerMiddleware.cs:255-287
+  es correcto (camelCase {type,title,status,error,message,detail,instance,traceId}), pero
+  message == detail en la mayoría de ramas (:189-236) y los controllers siguen mezclando
+  {message}, {Message}, BadRequest("string") y NotFound() vacío (ver §3). VERIFICADO.
+[8.5-W1] 🟡 PARCIAL — PosViewModel.Orders.cs:36-57: semáforo _scannerLock respetado
+  (:48), pero sin guard de cooldown en AddSelectedSuggestion CoreAsync (:59+) → doble-add
+  de sugerencias rápidas idénticas.
+[8.5-WEB5] 🟡 PARCIAL — CheckoutModal.jsx:247-249 sigue ignorando el booleano devuelto por
+  resetCart(): si createNewSale falla, la UI anuncia éxito con currentSale obsoleto.
+[8.5-M6] 🔴 MITIGADO — VersionLockoutViewModel valida esquema http/https; RESIDUAL: host
+  no validado (acepta IPs privadas maliciosas).
+[xmin/RowVersion] 🟡 PARCIAL — Product.cs:98-99 conserva [Timestamp] RowVersion mientras
+  existe el token xmin (InventoryDbContext.cs:117-128): dos tokens de concurrencia.
 
-[8.6-B7] ALTO — Fallback silencioso a localhost en el cliente WPF.
-  - ExchangeRateService.cs:43: httpClient.BaseAddress ?? new Uri("http://localhost:5000/") —
-    si DI no configura BaseAddress, conecta a localhost en silencio (logs ruidosos, y
-    WpfDialogService.cs:462 Y :490 crean new ExchangeRateService(new HttpClient()) fuera de
-    DI sin Dispose → conexión SignalR huérfana). App.xaml.cs:127-129 lo enmascara en la
-    práctica, pero el fallback queda sin diagnóstico.
-  - Fix: InvalidOperationException si BaseAddress es null (fail-fast) y eliminar los fallbacks
-    de WpfDialogService.
+C) HALLAZGOS DE REV. 8.6 QUE CONTINÚAN VIGENTES (S1 no los tocó; verificados)
+-------------------------------------------------------------------------------
+- [8.6-B4] VIGENTE — Test de ownership a nivel de objeto SIGUE SIN EXISTIR (RbacPermission
+  Tests solo cubre roles; CheckoutModal.test.js lee el fuente con fs.readFileSync).
+  El único ajuste de S1 fue ControllerContext+DefaultHttpContext en la prueba de preview.
+- [8.6-B5] VIGENTE — Sync-over-async en apagado WPF: App.xaml.cs:379 stopTask.Wait(3s) y
+  ExchangeRateService.cs:291 DisposeAsync().AsTask().Wait(cts) desde el hilo UI.
+- [8.6-B6] VIGENTE — Sin WebApplicationFactory/TestServer en CommandCenter.Tests
+  (grep = 0); PostgresReal* con silent-pass (if connStr == null return;) y BD compartida
+  en colecciones paralelas.
+- [8.6-B7] VIGENTE — Fallback a localhost (ExchangeRateService.cs:43) y 2 instancias
+  huérfanas en WpfDialogService.cs:462,490 (ver [8.7-M12] por su refuerzo).
+- [8.6-M1] VIGENTE — F5 (syncBcvRate) sigue ROTO: PosPage.jsx:29,81 desestructura
+  syncBcvRate que ExchangeRateContext.jsx:62 no expone → TypeError capturado en silencio.
+- [8.6-M2] VIGENTE — Doble dispatch SignalR (signalr.js:51-63 + ExchangeRateContext.jsx:41-50)
+  → ver [8.7-M9-web] por su impacto reforzado.
+- [8.6-M3] VIGENTE — PendingOrdersPage.jsx:52 incluye exchangeRate en deps → re-fetch en
+  cada push de tasa.
+- [8.6-M4] VIGENTE — signalr.js no hace off/on de ReceiveRateUpdate en re-conexiones.
+- [8.6-M5] VIGENTE — Sin code splitting: chunk único ~996 kB (React+signalr+zxing+lucide).
+- [8.6-M6] VIGENTE — WpfDialogService.cs:462,490 crea ExchangeRateService fuera de DI sin
+  Dispose (servicio SignalR huérfano).
+- [8.6-M7] VIGENTE — Mezcla UTC/local: DailyClosureViewModel.cs:164,200 UTC vs :313,368
+  DateTime.Now; ExchangeRateViewModel.cs:16 copia stale de _currentRate.
+- [8.6-M8] VIGENTE — key={idx} en EditSaleModal.jsx:~219 y PendingPickupsPage.jsx:273-280,
+  393-401.
+- [8.6-M9] VIGENTE — Junk trackeado: "Nueva carpeta/", "Proyecto_Pos_Estable/" (submodule
+  huérfano), skills/test.txt vacío.
+- [8.6-M10] VIGENTE — rules.md desalineado con .editorconfig (snake_case vs _camelCase);
+  duplicado en raíz con hash distinto.
+- [8.6-M11] VIGENTE — VMs transient retenidos de facto singleton por MainViewModel
+  (ver [8.7-M12] por su refuerzo con conteo de SafeFireAndForget).
+- [8.6-M12] VIGENTE — ci.yml:3-7 no cubre la rama de trabajo V0.15.
+- [8.6-L1..L4] VIGENTES — useCameraHardwareLifecycle.js muerto; whitelist 169.254.0.0/16
+  (api.js:10-28); ranges ^ en package.json; scripts con taskkill /F + nssm.exe
+  commiteado (331 KB).
 
-C) MEDIOS NUEVOS (12)
---------------------------------------------------------------------------------
-[8.6-M1] F5 (syncBcvRate) ROTO: PosPage.jsx:29,81 desestructura syncBcvRate de
-  useExchangeRate(), pero ExchangeRateContext.jsx:62 expone solo {exchangeRate,setExchangeRate,
-  lastUpdated,setLastUpdated,isRateOutdated,loading} → TypeError capturado en silencio; el
-  atajo de sincronización de tasa NUNCA funciona. Fix: exportar syncBcvRate o eliminar F5.
-[8.6-M2] Doble dispatch de eventos SignalR: signalr.js:51-63 despacha el callback Y
-  window.dispatchEvent; ExchangeRateContext.jsx:41-50 re-despacha los mismos window events →
-  cada evento del servidor genera 2 notificaciones y dobles fetches (PendingOrdersPage/
-  SettingsPage). Fix: un solo canal (contexto o evento global).
-[8.6-M3] PendingOrdersPage re-fetch por cambio de tasa: PendingOrdersPage.jsx:52 incluye
-  exchangeRate en deps del useEffect → getPendingSales() en cada actualización (ráfagas
-  SignalR) aunque el listado no dependa de la tasa. Fix: quitar exchangeRate de deps.
-[8.6-M4] Re-registro incompleto de handlers SignalR: signalr.js:13-35 la rama "ya conectado"
-  hace off/on de OnHoldSalesUpdated/OnPaymentMethodsUpdated/OnCurrencyFormatUpdated pero NO de
-  ReceiveRateUpdate (L.45-49) → callbacks viejos acumulan stale closures en re-conexiones.
-[8.6-M5] Sin code splitting en el bundle web: main.jsx monta todo estático; vite.config.js sin
-  manualChunks; chunk único ~996 kB (React+signalr+zxing+lucide). Fix: React.lazy por página +
-  vendor chunks. (Warning >500 kB ya reportado en build.)
-[8.6-M6] WpfDialogService crea ExchangeRateService fuera de DI: L.462 y L.490
-  new ExchangeRateService(new HttpClient()) sin Dispose → servicio SignalR huérfano
-  (ver 8.6-B7). Fix: inyección obligatoria.
-[8.6-M7] Inconsistencia horaria en DailyClosureViewModel: :164 y :200 usan UTC (confirmación),
-  pero :313 y :368 usan DateTime.Now (hora LOCAL) en comprobante/FileName exportado → el mismo
-  cierre puede mostrar horas distintas. ExchangeRateViewModel.cs:16 copia stale de _currentRate
-  (no suscrito a ExchangeRateChangedMessage).
-[8.6-M8] Estructura de datos en listas: EditSaleModal.jsx:~219 y PendingPickupsPage.jsx:273-280,
-  393-401 usan key={idx} en ítems editables/expandibles → estado desincronizado si reordenan
-  tras recálculo. (EditableSaleModal ya usa key estable.)
-[8.6-M9] Junk trackeado en git: "Nueva carpeta/" (INSTALLATION.md + README.md duplicados,
-  trackeados) y "Proyecto_Pos_Estable/" como gitlink de submodule huérfano (modo 160000, sin
-  .gitmodules, árbol vacío). skills/test.txt vacío (trackeado). Fix: git rm y limpiar.
-[8.6-M10] Reglas de código desalineadas: skills/rules.md:8 exige snake_case para variables,
-  Contradice .editorconfig (dotnet_naming_rule private_fields _camelCase) y al.codebase actual;
-  rutas src/Infrastructure (rules.md:14-15) no existen en el repo; regla "No Code-Behind"
-  incumplida (LoginView.xaml.cs modificado). rules.md duplicado en la raíz con hash distinto.
-  Fix: reconciliar rules.md con .editorconfig y borrar duplicado.
-[8.6-M11] Apagado de UIs WPF via host: los VMs transient de MainViewModel viven toda la app
-  (inyectados 1 sola vez) → lifetime registrado no refleja el real (de facto singleton);
-  riesgo futuro de fuga al navegar vistas. Fix: registrar como singleton con intención o
-  liberar holdings al cambiar de vista.
-[8.6-M12] CI no cubre la rama de trabajo: .github/workflows/ci.yml:3-7 dispara solo en
-  main/develop; la rama V0.15 (de trabajo real) NO activa CI por push; develop no existe.
-  Fix: añadir V0.15 a triggers (o merge a main como puerta).
-
-D) BAJOS NUEVOS (4)
---------------------------------------------------------------------------------
-[8.6-L1] useCameraHardwareLifecycle.js es código muerto (solo lo usa su propio test; la cámara
-  real se gestiona en BarcodeScannerModal.jsx:434-444). Eliminar o integrar.
-[8.6-L2] api.js:10-28 incluye 169.254.0.0/16 (link-local) en la whitelist de hosts LAN — amplía
-  superficie sin necesidad para POS. Retirar si no se requiere.
-[8.6-L3] package.json usa rangos ^ sin pin exacto (react ^19.2.7, vite ^8.1.1, @microsoft/
-  signalr ^10.0.5, @zxing ^0.23.0) → build no reproducible entre entornos. Fijar exactos.
-[8.6-L4] Scripts residuales: taskkill /F en start.bat:8-25, actualizar_servicio_y_sistema.bat:27
-  y deshabilitar_servicio_windows.bat:24-25; paths absolutos frágiles en el fallback del
-  servicio (L.34-35); binario único commiteado installer/nssm.exe (331 KB).
-
-E) VERIFICACIONES NUEVAS POSITIVAS (lo que SÍ está bien)
---------------------------------------------------------------------------------
-  - JWT: Program.cs:149-163 rechaza secret <32 chars y la clave filtrada/desarrollo en
-    Producción (lanza InvalidOperationException); RequireHttpsMetadata=false solo en el
-    bearer; cookie pos_jwt + access_token permitida ÚNICAMENTE para /hubs (L.192-196);
-    ClockSkew.  Rate limiting FixedWindow activo (AuthRateLimit L.235-244, GeneralApiRateLimit
-    L.246-253) aplicado global (L.383) + [EnableRateLimiting] en AuthController.
-  - CORS (Program.cs:259-300): única policy con SetIsOriginAllowed que restringe a orígenes
-    configurados + localhost/loopback + RFC-1918 con puertos whitelist {5000,5001,5173,80,443,
-    4173}; AllowAnyMethod/Header + AllowCredentials acotado a LAN.
-  - Ingreso de datos: MISMA transacción física para venta+pagos+vuelto(inventario) vía
-    EnrollInTransactionAsync (SalesService.cs:384-392 y HoldOrders.cs:169-177); RecalculateTotal
-    defensivo (L.580-601) rechaza total<=0 y AppliedRate<=0 al persistir.
-  - Jobs: los 6 jobs tienen try/catch logueado por ciclo; handler de inventario reintenta 3x.
-  - Idempotencia: header Idempotency-Key validado en /hold, /payments Y /complete.
-  - Secretos: .gitignore:405-409 excluye .env/appsettings.Development.json/JWT_Key.md y
-    git ls-files confirma que NO están trackeados en el índice (ver 8.6-B6-infra para el
-    histórico). .env (raíz) contiene SOLO DB_PASSWORD=123456 (debía rotarse).
-  - Redondeo: RoundToDigital a 2 decimales con AwayFromZero aplicado en SubtotalBsS/AmountBsS
-    (Pricing.cs:155-157, HoldOrders.cs:125-126); vuelto/change con PricingCalculator.
+D) VIGENTES CONFIRMADOS de Rev. 8.5/8.4 (verificados; no cubiertos por S1)
+-------------------------------------------------------------------------------
+- Write-on-read en GET: GetSaleAsync (SalesService.cs:~108-132) y — mucho más grave —
+  GetPendingSalesAsync (HoldOrders.cs:486-500) dispara RecalculateOnHoldSalesAsync
+  (Pricing.cs:28-51) que recarga y reescribe TODAS las ventas OnHold. REFORZADO en
+  [8.7-B6].
+- Sin EnableRetryOnFailure en cadena EF (Program.cs:98-104) en ninguno de los 2 contextos.
+- Entidades EF como DTOs del contrato (ISalesService.cs:47 devuelve Sale; ICashDrawerService;
+  IDailyClosureService) protegidas con ReferenceHandler.IgnoreCycles (Program.cs:220-223).
+- RoundingAdjustment sin [Range] (SalesController.cs:~833/841; SalesService.cs:441,610)
+  aceptando valores no acotados en cobro/ajuste.
+- setup.iss:185 sigue con default http://localhost:5000/updates/ y lo hereda a
+  Production (setup.iss:271); UpdaterService sin empaquetar.
+- SecureTokenStorageService.cs:28 entropía DPAPI hardcodeada "POS_Desktop_Entropy_2026_Secure".
+- ClosurePdfGenerator.cs con carga async en constructor/streams no desechados.
+- GetProductsPagedAsync con proyección duplicada (ProductDto/ProductQuickInfoDto ~6 copias).
+- Deuda de configuración: JWT dev hardcodeado (Program.cs:153 y TokenService.cs:23-44),
+  .env con DB_PASSWORD=123456 (ver [8.7-B9-admin] para el seed de Admin).
+- Program.cs:922 líneas monolíticas; controllers gruesos; orquestación transaccional en
+  controllers (ShiftsController.cs:94,176-181, DailyClosureController.cs:142,166-172).
 
 ================================================================================
-4. ANÁLISIS DE ARQUITECTURA, FLUJO DE DATOS, RECURSOS Y RENDIMIENTO (REV. 8.6)
+2. NUEVOS HALLAZGOS — REV. 8.7 (seguridad, rendimiento, arquitectura, WPF, web)
 ================================================================================
-1. BACKEND / AISLAMIENTO: El doble DbContext (Program.cs:98-104) se mantiene por diseño con
-   coordinación transaccional en las rutas de venta. LA RUTA DE CAJA quedó endurecida (8.5-A1/
-   A2/A4) y el DI hack eliminado (8.5-A6 vía IServiceProvider perezoso). Persisten: ownership
-   incompleto (8.5-A3 + 8.6-B1), anclaje de tasa parcial (8.5-A5 + 8.6-B3), vuelto sin control
-   de saldo (8.6-C1), falta de paginación en GetPendingSales/GetPendingPickups
-   (HoldOrders.cs:485-518, History.cs:38-72) mientras GetSalesHistory sí pagina (:115-116),
-   y la proyección de DTOs duplicada (ProductDto 5+, QuickInfoDto 3).
+A) ALTOS NUEVOS (10)
+-------------------------------------------------------------------------------
+[8.7-B1] ALTO — Logout NO revoca el JWT activo (sesión sobrevive al cierre de sesión).
+  AuthController.cs:167-172 solo InvalidateUserStamp(uid) (elimina el micro-caché de 10 s);
+  el SecurityStamp EN BD no rota (SecurityStampValidator.cs:52-96), por lo que el siguiente
+  request re-valida contra BD y pasa. La rotación solo ocurre en change-password
+  (:251) o en operaciones admin (UsersController.cs:199,241,256,333). Un terminal perdido
+  conserva sesión válida hasta la expiración (TokenService.cs:84, ~120 min).
+  Fix: rotar user.SecurityStamp en logout y/o deny-list de jti; test de revocación.
 
-2. INTEGRIDAD FINANCIERA: pricing/redondeo correctos en la ruta principal; gaps reales:
-   vuelto sin saldo (8.6-C1), tasa del hold no anclada (8.6-B3), PaymentMethodId sin validar
-   pre-persistencia (SalesService.cs:506), RoundingAdjustment sin [Range] (SalesController.cs:
-   577/811 y SalesService.cs:454,610), AddItemAsync con tasa<=0 (8.6-B2).
+[8.7-B2] ALTO — Montos de pago negativos/cero pueden persistirse en CompleteSaleAsync.
+  SalesService.cs:481-491: la conversión cruzada solo ocurre si UNO de los dos montos es
+  > 0; si ambos son ≤ 0 (p. ej. Amount=-5, AmountLocal=-250) se persisten tal cual
+  (:510-520). El guard agregado Sum(p.Amount) <= 0 (:581) no frena mezclas +/- y la purga
+  (:592-596) solo elimina ceros absolutos. Impacto: FinalPaidAmountBsS (:609) subestimado y
+  cierres diarios/auditoría distorsionados (DailyClosureService.cs:42-50).
+  Fix: rechazar cualquier pago con amountUsd <= 0 && amountLocal <= 0 (espejo de
+  SalesService.HoldOrders.cs:400-403) + [Range] en RoundingAdjustment.
 
-3. RESILIENCIA/CONCURRENCIA: advisory lock + transacción en caja (bueno); Sin
-   EnableRetryOnFailure en la cadena de conexión EF (Program.cs:98-104), lo que deja la
-   resiliencia a conexión intermitente PostgreSQL SIN strategy (recomendado: retry 6x con jitter,
-   mismo connectionString en ambos contextos). Jobs con try/catch (bueno). Outbox con transacción
-   explícita (resuelto Rev 8.5).
+[8.7-B3] ALTO — REGRESIÓN de S1: ownership de ShiftsController.GetReportById ROTO.
+  CloseShift persiste UserId = cashierName (UN NOMBRE, ShiftsController.cs:164, de
+  authUser.Name :150), pero el chequeo agregado por S1 compara closure.UserId contra
+  _currentUserService.UserId = claim NameIdentifier (ID NUMÉRICO, CurrentUserService.cs:37-45).
+  La igualdad estructural es imposible → todo Cashier no elevado recibe 403 incluso sobre su
+  propio reporte; además rompe GetCurrentReport (:220) que delega en GetReportById.
+  Fix: comparar por cédula/username o persistir el id del cajero; añadir test de ownership
+  (8.6-B4).
 
-4. GESTIÓN DE RECURSOS WPF: desuscripciones correctas (Login, Main, Settings, Pos, ProductDialog,
-   BaseViewModel UnregisterAll) y WeakReferenceMessenger con UnregisterAll (PosViewModel.cs:382).
-   PERSISTEN: sync-over-async en shutdown (8.6-B5), 52 MessageBox (8W-M1 §2), acoplamiento
-   Desktop→Sales.Module (Desktop.Client.Core.csproj:12), fallback a localhost en ExchangeRate
-   Service (8.6-B7), WpfDialogService fuera de DI (8.6-M6), 34 campos snake_case (STYLE-WPF).
+[8.7-B4] ALTO — N+1 + transacción por ítem en la deducción de stock post-venta.
+  InventorySaleMadeEventHandler.cs:34-71 recorre cada ítem: (1) query producto con
+  Include(ParentProduct) :38-41, (2) idempotencia AnyAsync :55-60, (3) UpdateStockAsync :70
+  que abre SU PROPIA transacción (StockDeduction.cs:24-25), un ExecuteUpdateAsync, una
+  RELECTURA del producto (:104) y SaveChanges (:137-138); por ítem se llega a ~4-6
+  round-trips y 1 transacción. Una venta de 20 ítems = ~20 transacciones + ~120
+  round-trips, amplificado por reintentos 3x500ms (:78-91). Es el camino crítico de T O D A
+  venta completada.
+  Fix: una query Products WHERE Id IN (...), un único chequeo de idempotencia, una llamada
+  batch UpdateStockBatch(items) y calcular NewStockLevel con RETURNING o lectura única previa.
 
-5. DESPLIEGUE/INFRAESTRUCTURA: setup.iss:185 sigue con default http://localhost:5000/updates/
-   (8U-N2) y hereda la URL a appsettings.Production.json (setup.iss:271). UpdaterService no se
-   empaqueta (ARCHITECTURE.md:14). Secretos en el HISTÓRICO git (JWT key ddf95c83... y
-   appsettings.Development.json trackeados en commits previos a la purga) → RECOMENDACIÓN:
-   rotar las credenciales (DB 123456, Admin123!, JWT) aunque el índice esté limpio. CI sin
-   cobertura de V0.15 (8.6-M12). Junk trackeado en git (8.6-M9).
+[8.7-B5] ALTO — I/O síncrono de comprobantes dentro de la transacción Serializable del cierre.
+  DailyClosureController.cs:166-172: CreateClosureAsync (que llama SaveChanges :128,
+  reconsulta GetClosureAsync :130 y SaveClosureReceiptsSilently :133) genera PDF/TXT y los
+  escribe en HASTA 3 carpetas de forma síncrona con reintento y Thread.Sleep(200)
+  (DailyClosureService.cs:217-299). Los locks de aislamiento Serializable quedan abiertos
+  durante I/O de disco lento (antivirus, red) y bloquea ventas/cierres concurrentes.
+  Fix: escribir comprobantes DESPUÉS del commit (o en job con reintentos); reducir el
+  aislamiento a ReadCommitted con unicidad por constraint.
+
+[8.7-B6] ALTO — Write-on-read masivo en GET /pending-sales: un GET reescribe todas las OnHold.
+  HoldOrders.cs:486-500 (GetPendingSalesAsync, endpoint GET consumido por el cliente y
+  PendingOrdersViewModel) invoca RecalculateOnHoldSalesAsync (Pricing.cs:28-51) que carga
+  TODAS las ventas OnHold con Items y Payments (trackeadas, AsSplitQuery) y hace
+  SaveChangesAsync. Refuerza el write-on-read ya conocido: en cada GET con tasa cambiada se
+  produce una escritura masiva y el listado no pagina (HoldOrders.cs:514,536,541,551,602
+  sin límite). Fix: recálculo a un job de background/outbox; AsNoTracking + paginación; los
+  GET no deben escribir.
+
+[8.7-B7] ALTO — "Transacción compartida" entre 2 DbContexts por secuestro de conexión.
+  InventoryService.EnrollInTransactionAsync (InventoryService.cs:675-687) CIERRA la conexión
+  del InventoryDbContext y le asigna la del SalesDbContext (CloseConnectionAsync :682 +
+  SetDbConnection :683 + UseTransactionAsync :685). Llamado en el camino del dinero
+  (SalesService.cs:396-397, SalesService.HoldOrders.cs:173-174, SalesService.CashAdvance
+  .cs:25-28). Riesgo: el InventoryDbContext usa una conexión ajena cuyo ciclo de vida
+  pertenece a otro scope; disposición/recyclado del pool del SalesDbContext deja al segundo
+  con conexión clausurada.
+  Fix: evaluar DbContext único por transacción, o mover la coordinación a transacciones por
+  agregado con reconciliciación vía outbox (ya existe el patrón).
+
+[8.7-B8] ALTO — El arranque muta el esquema con SQL crudo: las migraciones EF ya no son
+  confiables.
+  Program.cs:489-650 contiene ~29 bloques ALTER TABLE / CREATE SEQUENCE / DO $$...$$ y
+  upgrades de hashes legacy inline; PendingModelChangesWarning está desactivado
+  (:100,104). Cualquier divergencia entre modelo, migración y parche queda SILENCIOSA y el
+  despliegue no es reproducible. Fallback del proceso con Environment.ExitCode=1 + return
+  en 4 puntos en lugar de IHostedLifecycleService.
+  Fix: consolidar en migraciones EF, activar la advertencia, separar bootstrap (readiness)
+  de configuración.
+
+[8.7-B9] ALTO — AdminSeedPassword por defecto "Admin123!" hardcodeado.
+  Core\Configuration\SystemSettingsOptions.cs:11: si no se configura la env var, el seed crea el Admin con una
+  contraseña pública conocida (verificado con Program.cs:677-686). Reforzar fail-fast en
+  Producción (como ya se hace con el JWT débil) y eliminar defaults conocidos.
+
+[8.7-B10] ALTO — Transporte en claro en LAN: credenciales y tokens sniffables.
+  Program.cs:44-51 escucha HTTP 0.0.0.0:5000 incluso con certificado; RequireHttpsMetadata
+  = false (:175); la cookie pos_jwt solo usa Secure en localhost/https
+  (AuthController.cs:132-143,176-186,264-276); sin HSTS ni redirect HTTP→HTTPS. Un sniffer
+  en la red local captura contraseñas y JWT.
+  Fix: con certificado presente, redirigir HTTP→HTTPS (5000→5001) o desactivar HTTP en
+  Producción; cookie Secure siempre; considerar HSTS en LAN.
+
+B) MEDIOS NUEVOS (12)
+-------------------------------------------------------------------------------
+[8.7-M1] MEDIO (seguridad-UI) — La UI web NUNCA desloguea ante 401/revocación.
+  api.js:222 emite window.dispatchEvent(new CustomEvent('pos_unauthorized')) tras limpiar
+  localStorage/sessionStorage, PERO grep = 0 listeners en todo src/. AuthContext.jsx
+  conserva el user en memoria (:20-29,0,55+). El cajero sigue "autenticado" con cookie
+  muerta y repite 401 en cada operación.
+  Fix: en AuthProvider registrar el listener 'pos_unauthorized' → setUser(null)/forzar login.
+
+[8.7-M2] MEDIO (RBAC) — Rutas financieras sin restricción de rol.
+  CashDrawerController.OpenSession/CloseSession (:96-112; solo [Authorize] de clase :13)
+  permiten a un Driver abrir/cerrar sesiones de caja y fijar saldos; GetExpectedTotals
+  (DailyClosureController.cs:72-77) expone totales esperados por método de pago a cualquier
+  rol (CreateClosure sí bloquea Driver :83-86). Contraste: GetCurrentBalance/GetActiveSession
+  sí tienen roles.
+  Fix: roles Admin/Manager/Cashier en open/close y expected-totals.
+
+[8.7-M3] MEDIO (duplicación) — Lógica de tasa BCV duplicada 3-4 veces y sin caché.
+  GetTodayExchangeRateAsync idéntico en ShiftsController.cs:48-73 y DailyClosureController
+  .cs:45-70 (sin caché, 2-3 queries por cierre) más copias simplificadas en
+  ExchangeRateController.cs:45-56 y SettingsController.cs:32-43; el upsert se repite en
+  ExchangeRateController.cs:120-155,205-239 y SettingsController.cs:77-114 (3 copias).
+  El servicio canónico (InventoryService.ExchangeRate.cs:11-44) SÍ tiene caché de 10 min.
+  Fix: centralizar en un único servicio + caché.
+
+[8.7-M4] MEDIO (arquitectura) — Jobs con IServiceProvider+CreateScope manual y esperas
+  mágicas de arranque (patrón repetido 5-6 veces: OutboxProcessorJob.cs:20-27,39;
+  IdempotencyCleanupJob.cs:18-26,33; ReservationExpiryJob; BcvExchangeRateJob;
+  StockMovementArchiverJob). Unificar con IServiceScopeFactory inyectado y señal de
+  readiness (evitar Task.Delay(3000)/Delay(2 min) como "espera a que las migraciones asienten").
+
+[8.7-M5] MEDIO — Estado estático mutable en servicio Scoped: IdempotencyService.cs:20-26
+  (static long _hits/_misses/_conflicts) compartido entre scopes.
+
+[8.7-M6] MEDIO (rendimiento) — GetSettingAsync sin caché, consultado 4-5 veces por request:
+  SystemSettingsService.cs:19-23; callers CashDrawerController.cs:80,167,175,228
+  (SelectedTimeZoneId) y SalesService.cs:906 (RateDeviationTolerancePct). Migrar a
+  IOptionsMonitor+SystemSettingsOptions (patrón ya usado en VersionCheckMiddleware).
+
+[8.7-M7] MEDIO (rendimiento) — GetProductsPagedAsync con subqueries correlacionadas
+  (VariantCount, ConsolidatedStock, ParentIsStockShared) re-escaneando Products por fila en
+  cada página (CatalogQueries.cs) sin SplitQuery en InventoryDbContext (Program.cs:98-100).
+  Revisar índices de cobertura (ParentProductId/IsDeleted/IsActive) o cachear páginas con la
+  invalidación existente por SKU.
+
+[8.7-M8] MEDIO (rendimiento) — Validación de Security Stamp en el hot path: el atributo
+  [RequireSecurityStampValidation] fuerza verificación INMEDIATA a BD por cada request de
+  caja/cierre/reservas (bypasa el micro-caché de 10 s; SecurityStampValidator.cs). Subir TTL
+  a 30-60 s o validar el stamp contra el claim emitido en el token.
+
+[8.7-M9] MEDIO (web) — Doble fetch y carreras sin AbortController:
+  CatalogPage.jsx:65-75,159 (handleSort llama loadProducts ADEMÁS del useEffect) y
+  HistoryPage.jsx:61-75 (handlePageChange llama fetchHistory ADEMÁS del efecto) → 2 requests
+  por acción verificables; respuestas tardías pisan estado. CustomerModal.jsx:67-71 sin
+  debounce (1 fetch por tecla). Fix: un solo efecto orquestador + abort + useDebouncedCallback.
+
+[8.7-M10] MEDIO (integridad de datos) — Ventas Pending huérfanas pre-login.
+  CartContext.jsx:113-134 monta restoreOrStartSale sin depender de user?.id: en la pantalla
+  de login cada carga crea una venta Pending con cashierId null (startSale(user?.id) con
+  user null :72); tras autenticarse el efecto re-corre y restaura ESA venta anónima como
+  venta de trabajo. Fix: `if (!user?.id) return;` en el efecto.
+
+[8.7-M11] MEDIO (RBAC) — IsReservationOwner devuelve true cuando ReferenceId == null
+  (ReservationsController.cs:142-148) → reservas de sistema confirmables/cancelables por
+  cualquier usuario autenticado.
+
+[8.7-M12] MEDIO (WPF, refuerza 8.6-B7/M6/M11) — 47 SafeFireAndForget + discards no
+  observados y VMs transient retenidos:
+  - TaskExtensions.cs:13 async void; discards _ = task en PosView.xaml.cs:176,
+    ConnectionManager.cs, HealthPollingService.cs:122 → excepciones no observadas.
+  - SalesHistoryViewModel (90 snake_case, 5 SFnF) NO implementa IDisposable y es retenido
+    de facto singleton por MainViewModel (ver 8.6-M11). SalesService.cs (25 snake_case),
+    IPaymentService.cs (15), ExchangeRateService.cs (2) → 132 identificadores snake_case en
+    cliente WPF (recalibrado).
+  Fix: esperar las tareas relevantes, IDisposable en VMs transient, _camelCase completo.
+
+[8.7-M13] MEDIO (web-a11y/validación) — PartialPaymentModal.jsx no usa Modal compartido:
+  sin role="dialog", focus trap ni cierre ESC; y NO valida referenceNumber para métodos que
+  lo requieren (Pago Móvil/Zelle), a diferencia de CashIn/CashOut. Migrar a
+  components/ui/Modal.jsx + validación de referencia.
+
+C) BAJOS NUEVOS (6)
+-------------------------------------------------------------------------------
+[8.7-L1] GET /api/pairing/info revela IPs/puertos/QR a cualquier rol autenticado
+  (PairingController.cs:23-52). Restringir a Admin/Manager.
+[8.7-L2] AllowedHosts: "*" en appsettings.json:8 (spoofing de host, sin resets de correo).
+[8.7-L3] ConfirmReservationAsync sin control de concurrencia del stock (StockDeduction.cs:
+  285-315); muta en memoria antes de SaveChanges, a diferencia de ReserveStockAsync que
+  compensa DbUpdateConcurrencyException (:266-280). Usar ExecuteUpdate condicional
+  (WHERE ReservedQuantity >= quantity).
+[8.7-L4] StockMovementArchiverJob: INSERT en archivo y ExecuteDeleteAsync NO están en la
+  misma transacción → crash deja versión parcial. Envolver cada lote en transacción.
+[8.7-L5] InvalidateAllProductCaches() está mal nombrado: solo elimina ExchangeRateCacheKey
+  (InventoryService.cs:74) pese a invocarse desde deducción de stock/importación donde se
+  esperaría invalidar cachés de SKU → riesgo de staleness.
+[8.7-L6] Web: SettingsPage.jsx:116 usa document.execCommand('copy') obsoleto y qrRef.current
+  .innerHTML (limpieza SVG); CheckoutSummary/CheckoutHeader son huérfanos (sin import) y
+  usan clases contra los design tokens (bg-[#121824]/text-emerald-400).
+
+D) VERIFICACIONES POSITIVAS (lo que SÍ está bien, verificado en esta pasada)
+-------------------------------------------------------------------------------
+- Fixes S1 presentes y con cobertura: vuelto con lock+saldo (3 tests), anclaje BCV (3 tests),
+  ownership, tasa>0, 401 genérico.
+- Autenticación: PBKDF2-100k (PasswordHasher), lockout 5 fallos/15 min, anti-enumeración con
+  401 genérico, rate limit por IP (10/min login + 200/min API global con FixedWindow),
+  JWT con issuer/audience y ClockSkew en cero, rechazo de clave débil/filtrada en Producción.
+- Cookie pos_jwt HttpOnly + SameSite=Strict; permitida SOLO para /hubs; CORS restringido a
+  LAN/localhost con whitelist de puertos.
+- Sin SQL injection: consultas EF con parámetros en todo el backend; neutralización de
+  fórmulas CSV (ImportExport).
+- Efectivo con montos enteros validado (:503-506); recálculo defensivo (total>0, tasa>0);
+  idempotencia por Idempotency-Key en /hold, /payments y /complete; outbox con
+  FOR UPDATE SKIP LOCKED + limite de 20 + purga horaria; handler de inventario con 3
+  reintentos y log crítico si falla todo.
+- WPF: KeyboardWedgeScannerListener con Attach/Detach/Dispose; SuccessDialogWindow detiene
+  su DispatcherTimer en OnClosed; LoginViewModel desuscribe en Dispose; WeakReferenceMessenger
+  con UnregisterAll; mutex de instancia única en Program.cs WPF.
+- Frontend: sin dangerouslySetInnerHTML, sin tokens en localStorage (perfil whitelisted,
+  cookie), debounce de tasa (1500 ms trailing) y de sessionStorage (400 ms), guard de carrera
+  cartRequestIdRef, useScannerTrap/useMobileBackGuard.
 
 ================================================================================
-5. PLAN DE REMEDIACIÓN Y ROADMAP (POST-REVISIÓN 8.6)
+3. ANÁLISIS DE ARQUITECTURA, FLUJO DE DATOS, RECURSOS Y RENDIMIENTO (REV. 8.7)
 ================================================================================
-SPRINT URGENTE (S1 — bloqueantes):
-  1. [8.6-C1] Vuelto con control de saldo: mover el registro del vuelto a una operación de
-     CashDrawerService con advisory lock + check de saldo y tasa anclada al día.
-  2. [8.5-A3 + 8.6-B1] Completar autorización a nivel de objeto: GetCheckoutPreview,
-     UpdateSaleCustomer, UpdatePriceList, reportes por ID y reservas (ownership de cajero/
-     reservante); tests de ownership (8.6-B4).
-  3. [8.5-A5 + 8.6-B3] Anclar tasa BCV del día en COMPLETE y HOLD (tolerancia configurable +
-     audit), retirar el catch-swallow de L.432, y validar PaymentMethodId pre-persistencia.
-  4. [8.6-B2] Validar exchange_rate > 0 en AddItemAsync.
-  5. [8B-M3] Unificar change-password en 401 genérico (retirar el 423).
-SPRINT S2 (medio plazo):
-  6. [8U-N2→SS1] Canal de actualización HTTPS/pinning o retiro del flujo.
-  7. [8.6-B7/M6] Fail-fast en BaseAddress + eliminar fallbacks de WpfDialogService;
-     angularidad de apagado WPF (8.6-B5) con ExitAsync/DisposeAsync.
-  8. [8.6-M1..M5, W1] syncBcvRate real, canal único SignalR, dep fix PendingOrders,
-     off/on de ReceiveRateUpdate, code splitting.
-  9. [8.6-B6] WebApplicationFactory + ownership; quitar silent-pass y paralelismo en
-     PostgresReal* tests.
-  10. [8.6-B4-extra] Montaje jsdom real de CheckoutModal.
-  11. [8.6-B6-infra] Rotar credenciales (JWT/DB/Admin) por el histórico git; borrar .env del
-      working tree o mover a secrets.
-SPRINT S3 (higiene/rendimiento/calidad):
-  12. [§2 STYLE-WPF] Completar _camelCase (~34 campos) y [8W-M1] MessageBox restante (0).
-  13. [8.5-M1] Query agregada en GetCurrentBalanceLocalAsync (2→1) + AsNoTracking en
-      GetActiveSessionAsync.
-  14. [Program.cs 922] Descomponer la composición raíz en extensiones por área.
-  15. [8.6-M7..M12, L1..L4] Unificar UTC/local, key estable en listas, limpiar junk trackeado,
-      reconciliar rules.md, corregir lifetime de VMs, CI en V0.15, código muerto y `^` fijos.
-  16. EnableRetryOnFailure en ambos DbContexts (misma config) — resiliencia de conexión.
+1. BACKEND / AISLAMIENTO: El doble DbContext se mantiene por diseño, pero la coordinación
+   transaccional por swap de conexión (8.7-B7) es el eslabón más frágil del camino del
+   dinero. La "modularización" sigue siendo nominal: controllers inyectan ambos contextos y
+   entidades de ambos módulos; ISalesService ↔ ICashDrawerService mantienen un ciclo resuelto
+   por Service Locator (CashDrawerService.cs:21,27-30). El contrato de API expone entidades EF
+   con ciclos (IgnoreCycles) y un shape de errores de 3 estilos (message/Message/ProblemDetails).
+
+2. FLUJO DE DATOS / INTEGRIDAD: el recálculo OnHold embebido en el GET de pendientes
+   (8.7-B6), la deducción de stock N+1 (8.7-B4) y los pagos negativos persistibles
+   (8.7-B2) son las grietas actuales. La ruta principal de caja está endurecida
+   (8.6-C1 → lock+saldo) y el anclaje de tasa cubre Complete/Hold pero no CashAdvance/tx
+   manual (8.5-A5 parcial).
+
+3. RESILIENCIA/CONCURRENCIA: advisory locks y outbox correctos; pendiente
+   EnableRetryOnFailure en ambos DbContexts; SecurityStamp en el hot path sin caché
+   eficiente (8.7-M8); I/O de disco dentro de Serializable (8.7-B5); archivador sin
+   transacción atómica (8.7-L4).
+
+4. GESTIÓN DE RECURSOS WPF: desuscripción correcta en la mayoría de VMs; persisten
+   sync-over-async en shutdown (8.6-B5), 47 SafeFireAndForget/discards (8.7-M12),
+   132 snake_case, 52 MessageBox, acoplamiento Desktop→Sales.Module/Core, instancias
+   ExchangeRateService no dispuestas (8.6-M6/B7), entropía DPAPI hardcodeada.
+
+5. DEPLOY/INFRAESTRUCTURA: SQL crudo de arranque (8.7-B8), AdminSeedPassword por defecto
+   (8.7-B9), transporte en claro en LAN (8.7-B10), secretos en el histórico git pendientes de
+   rotación, CI sin cobertura de V0.15 (8.6-M12), junk trackeado (8.6-M9).
 
 ================================================================================
-6. ANEXO: MATRIZ DE EVIDENCIA TÉCNICA (ARCHIVO:LÍNEA) — REV. 8.6
+4. PLAN DE REMEDIACIÓN (POST-REVISIÓN 8.7)
 ================================================================================
-RESUELTAS 8.5 (verificadas en el árbol): 8.5-A1 (CashDrawerService.cs:255-293), 8.5-A2
-  (CashDrawerService.cs:156-184), 8.5-A4 (CashDrawerController.cs:127-130), 8.5-A6
-  (CashDrawerService.cs:16,21,27-30; Program.cs:119-120), 8.5-M2 (SalesService.cs:91-105),
-  8.5-M5 (OutboxProcessorJob.cs:58,72; BcvExchangeRateJob.cs:46,110; ReservationExpiryJob;
-  IdempotencyCleanupJob; InventorySaleMadeEventHandler.cs:78-91), 8.5-W2 (LoginViewModel.cs:
-  96-100,111; LoginView.xaml.cs:24), 8.5-W3 (CurrencyService ELIMINADO; ExchangeRateService.cs:27;
-  DailyClosureViewModel.cs:164,200), 8.5-W4 (SettingsViewModel.cs:87-95), 8.5-WEB1 (CheckoutModal
-  .jsx:27-28,106-152,157-169,207), 8.5-WEB2 (CartContext.jsx:48-61,139-153), 8.5-WEB3
-  (AuthContext.jsx:70-91; CheckoutModal.jsx:78-95), 8.5-WEB4-parcial (AuthContext.jsx:9-17;
-  api.js:210-225).
-
-PARCIALES 8.5 (verificadas): 8B-M3 (AuthController.cs:218-226), 8.5-A3 (GetSale ~81-93;
-  GetCheckoutPreview 435-497; UpdateSaleCustomer 343-363; UpdatePriceList 770-790;
-  CashDrawerController 35-65; ShiftsController 248-290; ReservationsController 81-111),
-  8.5-A5-parcial (SalesService.cs:423-449; catch L.432; HoldOrders.cs:99-103,394-397),
-  8.5-M1 (CashDrawerService.cs:316-336), 8.5-M3 (InventoryService.cs:579-599; catch vacíos),
-  8.5-M4 (GlobalExceptionHandlerMiddleware.cs:255-287; message==detail 189-236),
-  8.5-W1 (PosViewModel.Orders.cs:36-57; falta guard en CoreAsync L.59+), 8.5-WEB5-parcial
-  (CheckoutModal.jsx:247-249 vs App.jsx:70-88), 8.5-M6-mitigado (VersionLockoutViewModel.cs:41-
-  61; VersionCheckService.cs:60-63), xmin/RowVersion (InventoryDbContext.cs:117-128;
-  Product.cs:98-99), GetSaleAsync write-on-read (SalesService.cs:108-132,119-121),
-  GetPendingSalesAsync write-on-read (HoldOrders.cs:485-518,494), Startup verificado.
-
-NUEVOS 8.6:
-  CRÍTICO: 8.6-C1 (SalesService.cs:549-578).
-  ALTOS: 8.6-B1 (SalesController.cs:435-497), 8.6-B2 (SalesService.cs:206), 8.6-B3
-    (HoldOrders.cs:99-103,394-397), 8.6-B4 (RbacPermissionTests; CheckoutModal.test.js),
-    8.6-B5 (App.xaml.cs:379; ExchangeRateService.cs:291), 8.6-B6 (PostgresReal*Tests.cs:20-24/
-    31-34; 0 WebApplicationFactory), 8.6-B7 (ExchangeRateService.cs:43; WpfDialogService.cs:
-    462,490).
-  MEDIOS: 8.6-M1 (PosPage.jsx:29,81; ExchangeRateContext.jsx:62), 8.6-M2 (signalr.js:51-63;
-    ExchangeRateContext.jsx:41-50), 8.6-M3 (PendingOrdersPage.jsx:52), 8.6-M4 (signalr.js:45-49),
-    8.6-M5 (main.jsx; vite.config.js), 8.6-M6 (WpfDialogService.cs:462,490), 8.6-M7
-    (DailyClosureViewModel.cs:313,368 vs :200; ExchangeRateViewModel.cs:16), 8.6-M8
-    (EditSaleModal.jsx:~219; PendingPickupsPage.jsx:273-280,393-401), 8.6-M9 ("Nueva carpeta/";
-    "Proyecto_Pos_Estable/"; skills/test.txt), 8.6-M10 (skills/rules.md:8,14-15; rules.md raíz;
-    .editorconfig), 8.6-M11 (App.xaml.cs:199,228-229; MainViewModel.cs:123-125), 8.6-M12
-    (ci.yml:3-7).
-  BAJOS: 8.6-L1 (useCameraHardwareLifecycle.js), 8.6-L2 (api.js:10-28), 8.6-L3 (package.json
-    ^), 8.6-L4 (start.bat:8-25; actualizar_servicio_y_sistema.bat:27,34-35;
-    deshabilitar_servicio_windows.bat:24-25; installer/nssm.exe).
-
-VIGENTES confirmadas en §2 (tabla resumen): setup.iss:185 (8U-N2), Program.cs:98-104+922,
-  Desktop.Client.Core.csproj:12, SalesService.cs:506 (PaymentMethodId), SalesController.cs:
-  577/811 + SalesService.cs:454,610 (RoundingAdjustment), SalesService.cs:108-132 y
-  HoldOrders.cs:485-518 (write-on-read), SecureTokenStorageService.cs:28 (entropy),
-  ClosurePdfGenerator.cs:13-14 (leak), SalesHistoryViewModel.cs:23-237 + IPaymentService.cs:
-  23-51 (snake_case 34), ~52 MessageBox (8W-M1), ExchangeRateService.cs:291 (8D-M2),
-  STYLE-WPF.
+SPRINT URGENTE (S1-A — reparación y cierre de la seguridad):
+  1. [8.7-B3] Reparar ownership de ShiftsController.GetReportById (comparar identidad real
+     del cajero: Name/Cedula/Id persistido) y añadir tests de ownership (8.6-B4).
+  2. [8.7-B2] Rechazar montos de pago <= 0 por método en CompleteSaleAsync (+ [Range] en
+     RoundingAdjustment).
+  3. [8.7-B1] Rotar SecurityStamp en logout y/o deny-list de jti; test de revocación.
+  4. [8.7-B10] Redirigir/prohibir HTTP en Producción con certificado; cookie Secure siempre.
+  5. [8.7-B9] Retirar AdminSeedPassword default y fail-fast si no se configura en Producción.
+  6. [8.7-M1] Listener 'pos_unauthorized' en AuthProvider (deslogueo web real).
+  7. [8.7-M2] Roles Admin/Manager/Cashier en OpenSession/CloseSession/GetExpectedTotals;
+     [8.7-L1] restringir pairing/info.
+SPRINT S2 (rendimiento, integridad, tests):
+  8. [8.7-B4] Batch de deducción de stock: 1 transacción + 1 query por venta (IN + RETURNING).
+  9. [8.7-B5] Comprobantes post-commit (job) y aislamiento ReadCommitted en cierre.
+  10. [8.7-B6] Recálculo OnHold a job de background; GET /pending-sales AsNoTracking + paginado.
+  11. [8.7-B7] Eliminar el swap de conexión (redirect de conexión) en favor de DbContext único
+      por transacción o transacciones por agregado con outbox.
+  12. [8.7-B8] Consolidar el SQL de arranque en migraciones EF y activar
+      PendingModelChangesWarning; separar bootstrap/readiness.
+  13. [8.6-B6] WebApplicationFactory por escenario + quitar silent-pass/paralelismo en
+      PostgresReal*.
+  14. [8.5-A5] Anclar CashAdvance y transacción manual a la BCV del día (misma
+      ResolveAnchoredRateAsync).
+  15. [8.7-M6/M8] Cachear SystemSettings (IOptionsMonitor) y TTL ≥30 s del security stamp.
+SPRINT S3 (web/WPF/higiene):
+  16. Web: [8.7-M9] un solo efecto+abort por página, [8.7-M10] cart condicionado a user?.id,
+      [8.7-M13] migrar PartialPaymentModal al Modal compartido + validar referencia,
+      [8.7-L6] tokens/estilo, y los vigentes 8.6-M1..M5.
+  17. WPF: [8.7-M12] reducir SafeFireAndForget/esperar tareas, IDisposable en VMs transient
+      (SalesHistoryViewModel), _camelCase (132), eliminar instancias ExchangeRateService
+      fuera de DI (8.6-M6/B7); [8.6-B5] ExitAsync/DisposeAsync.
+  18. Concurrencia: [8.7-M5] quitar estáticos de IdempotencyService, [8.7-M4] jobs con
+      IServiceScopeFactory, [8.7-M3] centralizar tasa BCV con caché.
+  19. Datos/archivo: [8.7-M7] índices de cobertura en Products, [8.7-L3] ExecuteUpdate
+      condicional en ConfirmReservation, [8.7-L4] transacción en archivador, [8.7-B5-note]
+      InvalidateAllProductCaches corregir nombre/alcance.
+  20. Higiene/seguridad operacional: 8.6-M9..M12 y L1..L4 (junk, rules.md, CI V0.15,
+      scripts/^), rotar credenciales del histórico git, EnableRetryOnFailure, y completar
+      ownership/auditoría de pruebas (8.6-B4).
 
 ================================================================================
-7. VEREDICTO Y RECOMENDACIONES EJECUTIVAS
+5. ANEXO: MATRIZ DE EVIDENCIA TÉCNICA (ARCHIVO:LÍNEA) — REV. 8.7
 ================================================================================
-1. Las métricas (760/760: .NET 685/685 + Web 75/75, oxlint 0/0, build 0/0) del árbol actual
-   son VERDADERAS y se reproducen. La mayoría de los hallazgos ALTOS de la Rev. 8.5 quedarón
-   RESUELTOS (caja: TOCTOU, doble cierre, forja de Source; DI; jobs). PERO la declaración
-   "100% remediado" sigue SIN sostenerse: persisten 9 parciales, 12 vigentes y 24 nuevos,
-   incluido 1 CRÍTICO nuevo (vuelto sin control de saldo) y 7 ALTOS (ownership del preview,
-   tasa en AddItem/Hold, tests de ownership ausentes, sync-over-async en apagado, sin
-   WebApplicationFactory, fallback localhost).
-2. MAYOR PRIORIDAD FUNCIONAL/SEGURIDAD: (a) registrar el vuelto con lock+check de saldo
-   (8.6-C1) — es la vía más directa a saldo de caja negativo; (b) completar la autorización a
-   nivel de objeto en preview/update/reportes (8.6-B1, 8.5-A3); (c) anclar la tasa BCV del día
-   en cobro y esperas (8.5-A5, 8.6-B3).
-3. La infraestructura de pruebas debe subir de nivel: WebApplicationFactory + ownership +
-   montaje real de CheckoutModal + retirar silent-pass en PostgresReal* (8.6-B4/B6).
-4. Frontend: reparar F5 (8.6-M1), unificar el canal SignalR (8.6-M2/M4) y code splitting
-   (8.6-M5); UX de hora local/UTC consistente (8.6-M7).
-5. Seguridad operacional: rotar credenciales por histórico git (8.6-B6-infra), endurecer canal
-   de updates (8U-N2), eliminar fallbacks a localhost (8.6-B7).
-6. Recomendado ejecutar: S1 de §5 (vuelto, ownership, tasa, AddItem, 423) y luego S2/S3.
+RESUELTOS por S1 (verificados): 8.6-C1 (CashDrawerService.cs:319-372; SalesService.cs
+  :546-578; tests DataIntegritySprint1), 8.6-B1 (SalesController.cs:48-79 y usos :85,451,
+  728,793; CashDrawerController.cs:36,74) con REGRESIÓN en 8.7-B3, 8.6-B2 (SalesService.cs
+  :207-210), 8.6-B3 (SalesService.cs:862-926; usos :100,394,433; validación :497-500;
+  tests FinancialRobustnessTests), 8B-M3 (AuthController.cs:214,221,235), PaymentMethodId
+  (SalesService.cs:497-500).
+
+PARCIALES VIGENTES: 8.5-A5 (CashAdvance.cs:18,90,103,136; CashDrawerController.cs:150-155),
+  8.5-M1 (CashDrawerService.cs:316-336), 8.5-M3 (PaymentMethodService.cs:41,60,74,93;
+  HoldOrders.cs:31,61; ExchangeRate.cs:41; SecurityStampValidator.cs:60,82,94),
+  8.5-M4 (GlobalExceptionHandlerMiddleware.cs:255-287 vs controllers), 8.5-W1
+  (PosViewModel.Orders.cs:36-59), 8.5-WEB5 (CheckoutModal.jsx:247-249), 8.5-M6
+  (VersionLockoutViewModel.cs:41-54), xmin/RowVersion (Product.cs:98-99;
+  InventoryDbContext.cs:117-128).
+
+VIGENTES 8.6: B4 (RbacPermissionTests; CheckoutModal.test.js), B5 (App.xaml.cs:379;
+  ExchangeRateService.cs:291), B6 (0 WebApplicationFactory; PostgresReal*Tests.cs),
+  B7 (ExchangeRateService.cs:43; WpfDialogService.cs:462,490), M1 (PosPage.jsx:29,81;
+  ExchangeRateContext.jsx:62), M2 (signalr.js:51-63), M3 (PendingOrdersPage.jsx:52),
+  M4 (signalr.js:45-49), M5 (vite.config.js/main.jsx), M6 (WpfDialogService.cs),
+  M7 (DailyClosureViewModel.cs:313,368 vs :200), M8 (EditSaleModal.jsx:219;
+  PendingPickupsPage.jsx:273-280,393-401), M9 ("Nueva carpeta/"; "Proyecto_Pos_Estable/"),
+  M10 (skills/rules.md; rules.md), M11 (MainViewModel.cs), M12 (ci.yml:3-7), L1..L4.
+
+NUEVOS 8.7:
+  ALTOS: 8.7-B1 (AuthController.cs:167-172; SecurityStampValidator.cs:52-96;
+    TokenService.cs:84), 8.7-B2 (SalesService.cs:481-520,581,592-596,609;
+    DailyClosureService.cs:42-50), 8.7-B3 (ShiftsController.cs:150,164,255-264;
+    CurrentUserService.cs:37-45), 8.7-B4 (InventorySaleMadeEventHandler.cs:34-71;
+    StockDeduction.cs:24-25,104,137-138), 8.7-B5 (DailyClosureController.cs:142-172;
+    DailyClosureService.cs:217-299), 8.7-B6 (Pricing.cs:28-51; HoldOrders.cs:486-500),
+    8.7-B7 (InventoryService.cs:675-687; SalesService.cs:396-397; HoldOrders.cs:173-174;
+    CashAdvance.cs:25-28), 8.7-B8 (Program.cs:489-650; :100,104), 8.7-B9
+    Core\Configuration\SystemSettingsOptions.cs:11; Program.cs:677-686), 8.7-B10 (Program.cs:44-51,175;
+    AuthController.cs:132-143,176-186).
+  MEDIOS: 8.7-M1 (api.js:222; AuthContext.jsx:20-29), 8.7-M2 (CashDrawerController.cs:96-
+    112; DailyClosureController.cs:72-77,83-86), 8.7-M3 (ShiftsController.cs:48-73;
+    DailyClosureController.cs:45-70; ExchangeRateController.cs:120-155,205-239;
+    SettingsController.cs:77-114; InventoryService.ExchangeRate.cs:11-44), 8.7-M4
+    (OutboxProcessorJob.cs:20-27,39; IdempotencyCleanupJob.cs:18-26,33),
+    8.7-M5 (IdempotencyService.cs:20-26), 8.7-M6 (SystemSettingsService.cs:19-23;
+    CashDrawerController.cs:80,167,175,228; SalesService.cs:906), 8.7-M7
+    (CatalogQueries.cs GetProductsPagedAsync), 8.7-M8 (SecurityStampValidator.cs;
+    [RequireSecurityStampValidation]), 8.7-M9 (CatalogPage.jsx:65-75,159;
+    HistoryPage.jsx:61-75; CustomerModal.jsx:67-71), 8.7-M10 (CartContext.jsx:113-134,72),
+    8.7-M11 (ReservationsController.cs:142-148), 8.7-M12 (TaskExtensions.cs:13;
+    PosView.xaml.cs:176; HealthPollingService.cs:122; SalesHistoryViewModel 90 snake_case),
+    8.7-M13 (PartialPaymentModal.jsx).
+  BAJOS: 8.7-L1 (PairingController.cs:23-52), 8.7-L2 (appsettings.json:8), 8.7-L3
+    (StockDeduction.cs:285-315), 8.7-L4 (StockMovementArchiverJob), 8.7-L5
+    (InventoryService.cs:74), 8.7-L6 (SettingsPage.jsx:116; CheckoutSummary/CheckoutHeader).
 
 ================================================================================
-FIN DEL REPORTE TÉCNICO — REVISIÓN 8.6
+6. VEREDICTO Y RECOMENDACIONES EJECUTIVAS
+================================================================================
+1. Las métricas del árbol actual son VERDADERAS y se reproducen: 766/766 (691 .NET + 75 Web),
+   oxlint 0/0 y build Release 0/0. El Sprint S1 cerró los 5 bloqueantes de la Rev. 8.6
+   (vuelto con saldo, ownership del preview/update, tasa>0, anclaje Complete/Hold, 401
+   genérico) con tests nuevos. Sin embargo, la declaración "100% remediado" sigue SIN
+   sostenerse: persisten 19 PARCIALES/VIGENTES y esta pasada descubre 28 hallazgos nuevos,
+   entre ellos 1 REGRESIÓN de S1 (8.7-B3) y 10 ALTOS de seguridad/integridad/rendimiento.
+2. MAYOR PRIORIDAD: (a) reparar el ownership de GetReportById (8.7-B3) — rompe a los cajeros
+   en su propio reporte; (b) rechazar pagos negativos/cero (8.7-B2) — vía directa a cierres
+   falseados; (c) revocación real de sesión en logout (8.7-B1); (d) HTTPS/cookie Secure en
+   LAN (8.7-B10); (e) eliminar el AdminSeedPassword default (8.7-B9).
+3. RENDIMIENTO: el N+1 de deducción de stock (8.7-B4), el write-on-read de OnHold en GET
+   (8.7-B6) y el I/O en Serializable (8.7-B5) son las cargas dominantes en horas pico; todos
+   tienen fix de bajo riesgo.
+4. DEUDA ESTRUCTURAL: SQL crudo de arranque (8.7-B8) y el swap de conexión entre DbContexts
+   (8.7-B7) deben resolverse antes de escalar; la infraestructura de pruebas necesita
+   WebApplicationFactory y ownership tests (8.6-B4/B6).
+5. Frontend/UX: deslogueo 401 real (8.7-M1), consolidar fetch por página (8.7-M9) y los
+   vigentes 8.6-M1..M5 (F5, SignalR, code splitting).
+6. Se recomienda ejecutar el S1-A de §4 (7 items urgentes) y luego S2/S3.
+
+================================================================================
+FIN DEL REPORTE TÉCNICO — REVISIÓN 8.7
 ================================================================================

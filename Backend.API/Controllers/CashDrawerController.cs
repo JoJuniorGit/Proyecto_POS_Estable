@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 
 using Core.Interfaces;
 using Backend.API.Attributes;
+using Inventory.Module.Data;
 
 namespace Backend.API.Controllers;
 
@@ -19,17 +20,20 @@ public class CashDrawerController : ControllerBase
     private readonly ISystemSettingsService _settingsService;
     private readonly Sales.Module.Data.SalesDbContext _db;
     private readonly ICurrentUserService _currentUserService;
+    private readonly InventoryDbContext _inventoryContext;
 
     public CashDrawerController(
         ICashDrawerService cashDrawerService, 
         ISystemSettingsService settingsService, 
         Sales.Module.Data.SalesDbContext db,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        InventoryDbContext inventoryContext)
     {
         _cashDrawerService = cashDrawerService;
         _settingsService = settingsService;
         _db = db;
         _currentUserService = currentUserService;
+        _inventoryContext = inventoryContext;
     }
 
     [HttpGet("active-session")]
@@ -93,6 +97,7 @@ public class CashDrawerController : ControllerBase
     }
 
     [RequireSecurityStampValidation]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpPost("open")]
     [HttpPost("open-session")]
     public async Task<ActionResult<CashDrawerSession>> OpenSession([FromBody] OpenSessionRequest request)
@@ -103,6 +108,7 @@ public class CashDrawerController : ControllerBase
     }
 
     [RequireSecurityStampValidation]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpPost("close")]
     public async Task<ActionResult<CashDrawerSession>> CloseSession([FromBody] CloseSessionRequest request)
     {
@@ -152,7 +158,12 @@ public class CashDrawerController : ControllerBase
             return BadRequest(new { Message = "La tasa de cambio (ExchangeRate) debe ser mayor a cero." });
         }
 
-        decimal amountUsd = Math.Round(request.AmountLocal / request.ExchangeRate, 2, MidpointRounding.AwayFromZero);
+        // 8.5-A5 (residual): la transacción manual también ancla la tasa a la BCV del día con la
+        // misma política que CompleteSale/HoldSale (desvío > 10% => ancla; >= ±100% => rechazo;
+        // fail-open auditable si no hay BCV del día).
+        decimal anchoredRate = await ResolveAnchoredRateAsync(request.ExchangeRate, referenceId: request.SessionId);
+
+        decimal amountUsd = Math.Round(request.AmountLocal / anchoredRate, 2, MidpointRounding.AwayFromZero);
         
         var transaction = await _cashDrawerService.AddTransactionAsync(
                     request.SessionId,
@@ -160,7 +171,7 @@ public class CashDrawerController : ControllerBase
                     request.Source,
                     request.AmountLocal,
                     amountUsd,
-                    request.ExchangeRate,
+                    anchoredRate,
                     request.Description,
                     null
         );
@@ -168,6 +179,71 @@ public class CashDrawerController : ControllerBase
         var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
         transaction.TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(transaction.TransactionTime, tz);
         return Ok(transaction);
+    }
+
+    /// <summary>
+    /// 8.5-A5 (residual): misma política de anclaje BCV que CompleteSale/HoldSale para la
+    /// transacción manual de caja. Desvío ≤ tolerancia (default 10%): se acepta la recibida;
+    /// desvío > tolerancia: se ancla a la BCV del día; desvío ≥ ±100%: rechazo; sin BCV del día:
+    /// fail-open auditable (nunca catch-swallow).
+    /// </summary>
+    private async Task<decimal> ResolveAnchoredRateAsync(decimal clientRate, int referenceId)
+    {
+        if (clientRate <= 0m)
+        {
+            throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio inválida o no inicializada (<= 0).");
+        }
+
+        decimal officialRate = 0m;
+        try
+        {
+            var record = await _inventoryContext.ExchangeRateHistory
+                .Where(r => r.Date <= Core.Helpers.TimeZoneHelper.GetVenezuelaDate())
+                .OrderByDescending(r => r.Date)
+                .FirstOrDefaultAsync();
+            officialRate = record != null ? record.Rate : 0m;
+        }
+        catch (System.Exception ex)
+        {
+            Core.Logging.AppLogger.LogDbError(ex, "CashDrawerController.ResolveAnchoredRate");
+            return clientRate;
+        }
+
+        if (officialRate <= 0m)
+        {
+            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Sin tasa BCV del día en CashDrawerController manual txn #{referenceId}. Fail-open: tasa recibida {clientRate}.");
+            return clientRate;
+        }
+
+        decimal deviationPct = Math.Abs(clientRate - officialRate) / officialRate;
+        if (deviationPct >= 1.0m)
+        {
+            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Tasa rechazada por manipulación en txn manual #{referenceId}: recibida={clientRate}, BCV={officialRate}, desvío={deviationPct:P2}");
+            throw new InvalidOperationException($"La tasa de cambio {clientRate} fue rechazada: excede ±100% de la tasa BCV oficial ({officialRate}). Contacte al supervisor.");
+        }
+
+        decimal tolerancePct = 0.10m;
+        try
+        {
+            var toleranceSetting = await _settingsService.GetSettingAsync("RateDeviationTolerancePct");
+            if (decimal.TryParse(toleranceSetting, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+                && parsed > 0m && parsed < 1.0m)
+            {
+                tolerancePct = parsed;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] No se pudo leer la tolerancia configurada en txn manual #{referenceId}; se usa default 10%. {ex.Message}");
+        }
+
+        if (deviationPct > tolerancePct)
+        {
+            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Desvío de tasa ({deviationPct:P2} > {tolerancePct:P2}) en txn manual #{referenceId}. Se ANCLA: {clientRate} -> {officialRate}");
+            return officialRate;
+        }
+
+        return clientRate;
     }
 
     private async Task MapLocalTimesAsync(CashDrawerSession session)

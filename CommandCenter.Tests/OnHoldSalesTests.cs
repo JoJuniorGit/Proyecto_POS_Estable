@@ -553,7 +553,7 @@ public class OnHoldSalesTests
     }
 
     [Fact]
-    public async Task GetPendingSalesAsync_AutoRecalculatesOutdatedOnHoldSalesWithTodayExchangeRate()
+    public async Task GetPendingSalesAsync_IsReadOnly_RecalcHappensAtRateUpsert()
     {
         using var context = GetInMemoryDbContext();
         var mockInventory = new Mock<IInventoryService>();
@@ -577,11 +577,28 @@ public class OnHoldSalesTests
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
+        // 8.7-B6: GET no escribe. El recálculo masivo ocurre SOLO en el upsert de tasa
+        // (RecalculateOnHoldSalesAsync), no al leer.
+        await service.RecalculateOnHoldSalesAsync(65m);
+
         var pendingSales = (await service.GetPendingSalesAsync()).ToList();
 
         Assert.Single(pendingSales);
         Assert.Equal(65m, pendingSales[0].AppliedRate);
         Assert.Equal(6500m, pendingSales[0].TotalBsS);
+
+        // Escribir una tasa divergente y NADA de re-calcular: GET debe devolver lo persistido
+        // sin mutar la BD (sin write-on-read).
+        var tracked = await context.Sales.FirstAsync(s => s.Id == 1);
+        tracked.AppliedRate = 99m;
+        await context.SaveChangesAsync();
+
+        var before = await context.Sales.AsNoTracking().Select(s => s.AppliedRate).FirstAsync();
+        var readBack = (await service.GetPendingSalesAsync()).ToList();
+        var after = await context.Sales.AsNoTracking().Select(s => s.AppliedRate).FirstAsync();
+
+        Assert.Equal(before, readBack[0].AppliedRate);
+        Assert.Equal(after, before); // GET no persiste cambios
     }
 
     [Fact]

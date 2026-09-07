@@ -46,11 +46,8 @@ public class Phase3PerformanceRemediationTests
         await context.SaveChangesAsync();
 
         var mockUser = new Mock<ICurrentUserService>();
-        var mockSales = new Mock<ISalesService>();
-        var mockInventory = new Mock<IInventoryService>();
-        var mockHub = new Mock<IHubContext<ExchangeRateHub>>();
 
-        var controller = new ExchangeRateController(context, mockUser.Object, mockSales.Object, mockInventory.Object, mockHub.Object);
+        var controller = new ExchangeRateController(context, mockUser.Object);
 
         // Act & Assert 1: Custom limit = 5
         var result5 = await controller.GetHistory(limit: 5) as OkObjectResult;

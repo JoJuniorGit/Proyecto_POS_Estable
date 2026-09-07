@@ -75,7 +75,7 @@ public class Phase3ConcurrencyAndReservationTests
             await db.SaveChangesAsync();
         }
 
-        var job = new ReservationExpiryJob(serviceProvider, NullLogger<ReservationExpiryJob>.Instance);
+        var job = new ReservationExpiryJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), NullLogger<ReservationExpiryJob>.Instance);
 
         // Act
         int releasedCount = await job.RunExpiryCycleAsync(CancellationToken.None);

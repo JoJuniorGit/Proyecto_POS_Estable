@@ -1,22 +1,25 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ExchangeRateProvider, useExchangeRate } from './context/ExchangeRateContext';
 import { CurrencyFormatProvider } from './context/CurrencyFormatContext';
 import { CartProvider, useCart } from './context/CartContext';
 import Layout from './components/layout/Layout';
 import LoginPage from './pages/LoginPage';
-import PosPage from './pages/PosPage';
-import CatalogPage from './pages/CatalogPage';
-import HistoryPage from './pages/HistoryPage';
-import PendingOrdersPage from './pages/PendingOrdersPage';
-import PendingPickupsPage from './pages/PendingPickupsPage';
-import RegisterPage from './pages/RegisterPage';
-import RegisterClosePage from './pages/RegisterClosePage';
-import SettingsPage from './pages/SettingsPage';
-import ExchangeRatePage from './pages/ExchangeRatePage';
 import CheckoutModal from './components/checkout/CheckoutModal';
 import HoldSaleModal from './components/pos/HoldSaleModal';
 import SuccessScreen from './components/checkout/SuccessScreen';
+import FullScreenLoader from './components/ui/FullScreenLoader';
+
+// 8.6-M5: code splitting — cada página se carga como chunk propio (React.lazy).
+const PosPage = lazy(() => import('./pages/PosPage'));
+const CatalogPage = lazy(() => import('./pages/CatalogPage'));
+const HistoryPage = lazy(() => import('./pages/HistoryPage'));
+const PendingOrdersPage = lazy(() => import('./pages/PendingOrdersPage'));
+const PendingPickupsPage = lazy(() => import('./pages/PendingPickupsPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const RegisterClosePage = lazy(() => import('./pages/RegisterClosePage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const ExchangeRatePage = lazy(() => import('./pages/ExchangeRatePage'));
 
 const VALID_VIEWS = ['pos', 'catalog', 'history', 'pending', 'pickups', 'register', 'closing', 'settings', 'exchange'];
 
@@ -62,8 +65,16 @@ function MainApp() {
     window.location.hash = view;
   };
 
-  const handleCheckoutSuccess = (invoiceNumber) => {
+  const handleCheckoutSuccess = async (invoiceNumber, cartResetOk = true) => {
     setIsCheckoutOpen(false);
+    // 8.5-WEB5: si el CheckoutModal no logró iniciar una nueva venta, se re-intenta aquí antes de
+    // anunciar el éxito (evita dejar el carrito con la venta ya liquidada).
+    if (!cartResetOk) {
+      const ok = await resetCart();
+      if (!ok) {
+        console.warn('[App] No se pudo iniciar la nueva venta tras la liquidación.');
+      }
+    }
     setCompletedInvoice(invoiceNumber);
   };
 
@@ -168,7 +179,9 @@ function MainApp() {
       exchangeRate={exchangeRate}
       isRateOutdated={isRateOutdated}
     >
-      {renderView()}
+      <Suspense fallback={<FullScreenLoader />}>
+        {renderView()}
+      </Suspense>
 
       {/* Modal de Checkout / Cobro */}
       <CheckoutModal

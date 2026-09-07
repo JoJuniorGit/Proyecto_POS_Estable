@@ -146,7 +146,14 @@ public class SecurityTests
         mockCurrentUserService.Setup(u => u.UserRole).Returns(UserRole.Cashier);
         mockCurrentUserService.Setup(u => u.UserId).Returns("5");
 
-        var controller = new CashDrawerController(mockCashDrawer.Object, mockSettings.Object, salesDb, mockCurrentUserService.Object);
+        using var inventoryDb = TestDatabaseFactory.CreateInventoryDbContext();
+
+        var controller = new CashDrawerController(
+            mockCashDrawer.Object,
+            mockSettings.Object,
+            salesDb,
+            mockCurrentUserService.Object,
+            inventoryDb);
 
         var request = new AddTransactionRequest
         {

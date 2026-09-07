@@ -1,8 +1,8 @@
 import { api } from './api';
 
-export async function getCustomers(query = '') {
+export async function getCustomers(query = '', signal) {
   const url = query ? `/api/sales/customers?query=${encodeURIComponent(query)}` : '/api/sales/customers';
-  const data = await api.get(url);
+  const data = await api.get(url, signal);
   if (data && Array.isArray(data.items)) {
     return data.items;
   }

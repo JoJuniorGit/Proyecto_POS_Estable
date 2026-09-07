@@ -16,18 +16,18 @@ namespace Backend.API.Jobs;
 /// </summary>
 public class StockMovementArchiverJob : BackgroundService
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<StockMovementArchiverJob> _logger;
 
     private readonly TimeSpan _period;
     private readonly TimeSpan _retentionPeriod;
 
     public StockMovementArchiverJob(
-        IServiceProvider serviceProvider,
+        IServiceScopeFactory scopeFactory,
         ILogger<StockMovementArchiverJob> logger,
         Microsoft.Extensions.Configuration.IConfiguration? configuration = null)
     {
-        _serviceProvider = serviceProvider;
+        _scopeFactory = scopeFactory;
         _logger = logger;
 
         int intervalHours = configuration != null && int.TryParse(configuration["Archiver:IntervalHours"], out var hours) && hours > 0
@@ -66,7 +66,7 @@ public class StockMovementArchiverJob : BackgroundService
 
     private async Task ArchiveOldRecordsAsync(CancellationToken stoppingToken)
     {
-        using var scope = _serviceProvider.CreateScope();
+        using var scope = _scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
 
         var cutoffDate = DateTime.UtcNow.Subtract(_retentionPeriod);
@@ -112,6 +112,12 @@ public class StockMovementArchiverJob : BackgroundService
                 ArchivedAtUtc = DateTime.UtcNow
             }).ToList();
 
+            // 8.7-L4: INSERT de archivo y DELETE de original en la MISMA transacción atómica.
+            // Un fallo a mitad de lote revierte ambos, evitando pérdida de datos.
+            await using var transaction = context.Database.IsRelational()
+                ? await context.Database.BeginTransactionAsync(stoppingToken)
+                : null;
+
             context.StockMovements_Archive.AddRange(archiveEntries);
             await context.SaveChangesAsync(stoppingToken);
 
@@ -129,6 +135,11 @@ public class StockMovementArchiverJob : BackgroundService
                     .ToListAsync(stoppingToken);
                 context.StockMovements.RemoveRange(entitiesToDelete);
                 await context.SaveChangesAsync(stoppingToken);
+            }
+
+            if (transaction != null)
+            {
+                await transaction.CommitAsync(stoppingToken);
             }
 
             totalArchived += batch.Count;

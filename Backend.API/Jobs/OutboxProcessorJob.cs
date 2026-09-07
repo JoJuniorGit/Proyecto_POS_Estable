@@ -17,12 +17,12 @@ namespace Backend.API.Jobs;
 
 public class OutboxProcessorJob : BackgroundService
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<OutboxProcessorJob> _logger;
 
-    public OutboxProcessorJob(IServiceProvider serviceProvider, ILogger<OutboxProcessorJob> logger)
+    public OutboxProcessorJob(IServiceScopeFactory scopeFactory, ILogger<OutboxProcessorJob> logger)
     {
-        _serviceProvider = serviceProvider;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -88,7 +88,7 @@ public class OutboxProcessorJob : BackgroundService
 
         try
         {
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<SalesDbContext>();
 
             using var cycleCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -150,7 +150,7 @@ return totalPurged;
     {
         try
         {
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<SalesDbContext>();
             var hubContext = scope.ServiceProvider.GetService<IHubContext<ExchangeRateHub>>();
 

@@ -154,11 +154,16 @@ public class ForwardedHeadersIntegrationTests
     [Fact]
     public void PairingController_WhenRemoteAndAuthenticated_Returns200OK()
     {
-        // Arrange
+// Arrange
         var controller = new PairingController(_networkDiscoveryMock.Object);
         var context = new DefaultHttpContext();
         context.Connection.RemoteIpAddress = IPAddress.Parse("192.168.1.88");
-        var identity = new ClaimsIdentity(new[] { new Claim(ClaimTypes.Name, "Cajero1") }, "TestAuth");
+        // 8.7-L1: el acceso no-local exige rol Admin/Manager, no basta con estar autenticado.
+        var identity = new ClaimsIdentity(new[]
+        {
+            new Claim(ClaimTypes.Name, "AdminPrincipal"),
+            new Claim(ClaimTypes.Role, "Admin")
+        }, "TestAuth");
         context.User = new ClaimsPrincipal(identity);
         controller.ControllerContext = new ControllerContext { HttpContext = context };
 

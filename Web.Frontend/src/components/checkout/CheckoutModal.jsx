@@ -1,4 +1,6 @@
 import { useRef, useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
+
+import { createCheckoutKeyHolder } from '../../utils/idempotency.js';
 import Modal from '../ui/Modal';
 import ConfirmModal from '../ui/ConfirmModal';
 import PaymentForm from './PaymentForm';
@@ -26,12 +28,9 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [preview, setPreview] = useState(null);
   const [previewFailed, setPreviewFailed] = useState(false);
-  const checkoutKeyRef = useRef(null);
-
-  if (!checkoutKeyRef.current) {
-    checkoutKeyRef.current = (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : `checkout-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const checkoutKeyHolderRef = useRef(null);
+  if (!checkoutKeyHolderRef.current) {
+    checkoutKeyHolderRef.current = createCheckoutKeyHolder();
   }
 
   const handleRequestClose = useCallback(() => {
@@ -39,7 +38,7 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       setShowDiscardConfirm(true);
       return false;
     }
-    checkoutKeyRef.current = null;
+    checkoutKeyHolderRef.current.reset();
     onClose?.();
     return true;
   }, [payments.length, onClose]);
@@ -228,8 +227,8 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       }));
 
       if (onCompleteSale) {
-        await onCompleteSale(rawPayments, roundingAdjustment, effectiveIsPendingPickup, checkoutKeyRef.current);
-        checkoutKeyRef.current = null;
+        await onCompleteSale(rawPayments, roundingAdjustment, effectiveIsPendingPickup, checkoutKeyHolderRef.current.getOrCreateKey());
+        checkoutKeyHolderRef.current.reset();
       } else {
         const invoiceNumber = await completeSale(
           activeSale.id,
@@ -238,18 +237,24 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
           roundingAdjustment,
           user?.id,
           effectiveIsPendingPickup,
-          checkoutKeyRef.current
+          checkoutKeyHolderRef.current.getOrCreateKey()
         );
 
-        checkoutKeyRef.current = null;
+        checkoutKeyHolderRef.current.reset();
 
         // Limpiar carrito e iniciar nueva venta (solo en venta normal del POS)
+        let cartResetOk = true;
         if (!overrideSale) {
-          await resetCart();
+          // 8.5-WEB5: se honra el booleano de resetCart(); si la nueva venta no pudo iniciarse,
+          // se notifica al caller para que no anuncie éxito con un currentSale obsoleto.
+          cartResetOk = await resetCart();
+          if (!cartResetOk) {
+            console.warn('[CheckoutModal] Venta liquidada, pero el carrito no pudo iniciar una nueva venta.');
+          }
         }
 
         if (onSuccess) {
-          onSuccess(invoiceNumber);
+          onSuccess(invoiceNumber, cartResetOk);
         }
       }
     } catch (err) {
@@ -409,7 +414,7 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       onConfirm={() => {
         setShowDiscardConfirm(false);
         setPayments([]);
-        checkoutKeyRef.current = null;
+        checkoutKeyHolderRef.current.reset();
         onClose?.();
       }}
       title="¿Cancelar cobro en curso?"

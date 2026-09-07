@@ -449,32 +449,10 @@ public class CashDrawerService : ICashDrawerService
             decimal commissionAmountLocal = Math.Round(roundedRequested * (commissionPercentage / 100.0m), 2, MidpointRounding.AwayFromZero);
             decimal totalChargedLocal = roundedRequested + commissionAmountLocal;
 
-            // 1. Egreso físico de caja con la descripción requerida: "Adelanto de Efectivo - {Metodo} {comision}% {usuario}"
-            var expenseTx = await AddTransactionAsync(
-                sessionId: sessionId,
-                type: CashTransactionType.Expense,
-                source: CashTransactionSource.CashAdvance,
-                amountLocal: roundedRequested,
-                amountUsd: exchangeRate > 0 ? roundedRequested / exchangeRate : 0,
-                exchangeRate: exchangeRate,
-                description: $"Adelanto de Efectivo - {paymentMethodName} {commissionPercentage:0}% {activeUserName}",
-                isPhysicalCash: true,
-                paymentMethodId: paymentMethodId
-            );
-
-            // 2. Ingreso contable por comisión (no físico, IsPhysicalCash = false)
-            var incomeTx = await AddTransactionAsync(
-                sessionId: sessionId,
-                type: CashTransactionType.Income,
-                source: CashTransactionSource.CashAdvance,
-                amountLocal: commissionAmountLocal,
-                amountUsd: exchangeRate > 0 ? commissionAmountLocal / exchangeRate : 0,
-                exchangeRate: exchangeRate,
-                description: $"Comisión Adelanto ({commissionPercentage:0}% {paymentMethodName}) - {activeUserName}",
-                isPhysicalCash: false,
-                paymentMethodId: paymentMethodId
-            );
-
+            // 8.5-A5 (residual): se genera PRIMERO la venta contable, que ancla la tasa a la BCV del día
+            // (misma política CompleteSale/HoldSale). La tasa anclada rige también para las transacciones
+            // de caja asociadas, evitando tasas divergentes entre la venta y los movimientos de caja.
+            decimal anchoredRate = exchangeRate;
             Sale? createdSale = null;
             var salesService = GetSalesService();
             if (salesService == null)
@@ -497,7 +475,37 @@ public class CashDrawerService : ICashDrawerService
                     userName: activeUserName,
                     existingTransaction: dbTransaction
                 );
+                if (createdSale != null && createdSale.AppliedRate > 0m)
+                {
+                    anchoredRate = createdSale.AppliedRate;
+                }
             }
+
+            // 1. Egreso físico de caja con la descripción requerida: "Adelanto de Efectivo - {Metodo} {comision}% {usuario}"
+            var expenseTx = await AddTransactionAsync(
+                sessionId: sessionId,
+                type: CashTransactionType.Expense,
+                source: CashTransactionSource.CashAdvance,
+                amountLocal: roundedRequested,
+                amountUsd: anchoredRate > 0 ? roundedRequested / anchoredRate : 0,
+                exchangeRate: anchoredRate,
+                description: $"Adelanto de Efectivo - {paymentMethodName} {commissionPercentage:0}% {activeUserName}",
+                isPhysicalCash: true,
+                paymentMethodId: paymentMethodId
+            );
+
+            // 2. Ingreso contable por comisión (no físico, IsPhysicalCash = false)
+            var incomeTx = await AddTransactionAsync(
+                sessionId: sessionId,
+                type: CashTransactionType.Income,
+                source: CashTransactionSource.CashAdvance,
+                amountLocal: commissionAmountLocal,
+                amountUsd: anchoredRate > 0 ? commissionAmountLocal / anchoredRate : 0,
+                exchangeRate: anchoredRate,
+                description: $"Comisión Adelanto ({commissionPercentage:0}% {paymentMethodName}) - {activeUserName}",
+                isPhysicalCash: false,
+                paymentMethodId: paymentMethodId
+            );
 
             if (dbTransaction != null)
             {

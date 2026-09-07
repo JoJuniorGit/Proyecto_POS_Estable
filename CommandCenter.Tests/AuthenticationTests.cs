@@ -363,7 +363,7 @@ public class AuthenticationTests
     }
 
     [Fact]
-    public void Logout_RemovesPosJwtCookie()
+    public async Task Logout_RemovesPosJwtCookie()
     {
         using var db = GetInMemorySalesDbContext();
         var config = GetMockConfiguration();
@@ -373,7 +373,7 @@ public class AuthenticationTests
         var httpContext = new DefaultHttpContext();
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
-        var result = controller.Logout();
+        var result = await controller.Logout();
         Assert.IsType<OkObjectResult>(result);
 
         var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();

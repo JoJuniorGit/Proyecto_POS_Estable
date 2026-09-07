@@ -287,30 +287,90 @@ public partial class InventoryService
         if (reservationId == 0) return; // Ignore service reservations
 
         var reservation = await _context.StockReservations
+            .AsNoTracking()
             .Include(r => r.Product)
             .FirstOrDefaultAsync(r => r.Id == reservationId);
 
         if (reservation == null) throw new KeyNotFoundException("Reservation not found.");
         if (reservation.IsConfirmed) return; // Already confirmed
 
-        // Reduce stock and reserved quantity on the target entity (parent or product)
-        reservation.Product.StockQuantity -= reservation.Quantity;
-        reservation.Product.ReservedQuantity -= reservation.Quantity;
-        reservation.IsConfirmed = true;
-
-        // Log movement
-        var movement = new StockMovement
+        // 8.7-L3: confirmación atómica y condicional. Dos ejecuciones concurrentes no pueden
+        // descontar el stock dos veces ni dejar ReservedQuantity negativo.
+        if (_context.Database.IsRelational())
         {
-            ProductId = reservation.ProductId,
-            QuantityChange = -reservation.Quantity,
-            NewStockLevel = reservation.Product.StockQuantity,
-            Reason = $"Confirmed Reservation {reservationId}: {reason}",
-            MovementDate = DateTime.UtcNow
-        };
-        _context.StockMovements.Add(movement);
-        _context.StockReservations.Remove(reservation);
+            await using var transaction = await _context.Database.BeginTransactionAsync();
 
-        await _context.SaveChangesAsync();
+            // 1) Reclamación atómica: solo la primera confirmación gana.
+            int claimed = await _context.StockReservations
+                .Where(r => r.Id == reservationId && !r.IsConfirmed)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.IsConfirmed, true));
+
+            if (claimed == 0)
+            {
+                await transaction.RollbackAsync();
+                return; // Confirmación concurrente: otra request ya la confirmó.
+            }
+
+            // 2) Descuento condicional: no permite quedarse en negativo.
+            int updated = await _context.Products
+                .Where(p => p.Id == reservation.ProductId && p.ReservedQuantity >= reservation.Quantity)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(p => p.StockQuantity, p => p.StockQuantity - reservation.Quantity)
+                    .SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity - reservation.Quantity));
+
+            if (updated == 0)
+            {
+                await transaction.RollbackAsync();
+                throw new InvalidOperationException("Stock changed concurrently. Please try again.");
+            }
+
+            reservation.Product.StockQuantity -= reservation.Quantity;
+            reservation.Product.ReservedQuantity = Math.Max(0, reservation.Product.ReservedQuantity - reservation.Quantity);
+
+            // 3) Movimiento de inventario y eliminación de la reserva.
+            var movement = new StockMovement
+            {
+                ProductId = reservation.ProductId,
+                QuantityChange = -reservation.Quantity,
+                NewStockLevel = reservation.Product.StockQuantity,
+                Reason = $"Confirmed Reservation {reservationId}: {reason}",
+                MovementDate = DateTime.UtcNow
+            };
+            _context.StockMovements.Add(movement);
+            await _context.StockReservations.Where(r => r.Id == reservationId).ExecuteDeleteAsync();
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        else
+        {
+            // InMemory (tests): cargar entidad TRACKEADA (Remove requiere tracking en el provider).
+            var trackedReservation = await _context.StockReservations
+                .Include(r => r.Product)
+                .FirstOrDefaultAsync(r => r.Id == reservationId);
+
+            if (trackedReservation == null || trackedReservation.IsConfirmed) return;
+
+            trackedReservation.Product.StockQuantity -= trackedReservation.Quantity;
+            trackedReservation.Product.ReservedQuantity = Math.Max(0, trackedReservation.Product.ReservedQuantity - trackedReservation.Quantity);
+            trackedReservation.IsConfirmed = true;
+
+            var movement = new StockMovement
+            {
+                ProductId = trackedReservation.ProductId,
+                QuantityChange = -trackedReservation.Quantity,
+                NewStockLevel = trackedReservation.Product.StockQuantity,
+                Reason = $"Confirmed Reservation {reservationId}: {reason}",
+                MovementDate = DateTime.UtcNow
+            };
+            _context.StockMovements.Add(movement);
+            _context.StockReservations.Remove(trackedReservation);
+
+            await _context.SaveChangesAsync();
+            InvalidateProductSkuCache(trackedReservation.Product.SKU);
+            return;
+        }
+
         InvalidateProductSkuCache(reservation.Product.SKU);
     }
 

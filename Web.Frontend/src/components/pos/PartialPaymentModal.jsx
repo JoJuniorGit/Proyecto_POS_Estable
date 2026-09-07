@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldCheck, Calculator, AlertCircle } from 'lucide-react';
+import Modal from '../ui/Modal';
+import { ShieldCheck, AlertCircle } from 'lucide-react';
 import AtmAmountInput from '../ui/AtmAmountInput';
 import { formatBsS, formatUSD, formatNumberEs } from '../../utils/formatters';
 
@@ -56,6 +57,12 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
       return;
     }
 
+    // 8.7-M13: un pago por método no-efectivo (zelle/punto/transferencia) exige su referencia.
+    if (!isCashSelected && !referenceNumber.trim()) {
+      setError('Ingrese el número de referencia / recibo para métodos de pago no-efectivos.');
+      return;
+    }
+
     if (usdValue > (sale?.remainingBalanceUSD || 0) + 0.01) {
       setError(`El abono (${formatUSD(usdValue)}) no puede ser mayor que la deuda pendiente (${formatUSD(sale?.remainingBalanceUSD || 0)}).`);
       return;
@@ -73,19 +80,8 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-container card" style={{ maxWidth: '520px', padding: 0, overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)', margin: 0, position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', padding: '0 36px' }}>
-            <Calculator size={20} style={{ color: 'var(--primary-color)' }} />
-            <h3 className="modal-title" style={{ margin: 0, textAlign: 'center' }}>Registrar Abono</h3>
-          </div>
-          <button type="button" className="modal-close-btn" onClick={onClose} style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)' }}>
-            <X size={18} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit}>
+    <Modal isOpen={isOpen} onClose={onClose} title="Registrar Abono" maxWidth="520px">
+      <form onSubmit={handleSubmit}>
           <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {error && (
               <div className="alert alert-danger" style={{ fontSize: '0.85em', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -176,7 +172,6 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }

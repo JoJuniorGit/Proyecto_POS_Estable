@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Backend.API.Attributes;
+using Backend.API.Services;
 
 namespace Backend.API.Controllers;
 
@@ -42,34 +43,14 @@ public class DailyClosureController : ControllerBase
         _currentUserService = currentUserService;
     }
 
-    private async Task<decimal> GetTodayExchangeRateAsync()
+    // 8.7-M3: tasa efectiva del día centralizada en ExchangeRateResolver (BCV hoy -> histórico -> apertura de sesión).
+    private Task<decimal> GetTodayExchangeRateAsync()
     {
-        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
-        var record = await _inventoryContext.ExchangeRateHistory
-            .FirstOrDefaultAsync(r => r.Date == today);
-
-        if (record == null)
-        {
-            record = await _inventoryContext.ExchangeRateHistory
-                .Where(r => r.Date <= today)
-                .OrderByDescending(r => r.Date)
-                .FirstOrDefaultAsync();
-        }
-
-        if (record != null && record.Rate > 0)
-            return record.Rate;
-
-        // Fallback a la tasa de apertura de la sesión activa para evitar distorsiones con 1.0 (8.2-M2)
-        var activeSession = await _cashDrawerService.GetActiveSessionAsync();
-        if (activeSession != null && activeSession.OpeningExchangeRate > 0)
-            return activeSession.OpeningExchangeRate;
-
-        // 8.2-M2: Tasa NA explícita (0) en lugar de un fallback silencioso 1.0.
-        // Los cierres sin tasa BCV del día se bloquean con error claro (ver CreateClosure).
-        return 0m;
+        return ExchangeRateResolver.ReadEffectiveTodayRateAsync(_inventoryContext, _cashDrawerService);
     }
 
     [HttpGet("expected-totals")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<List<ExpectedTotalDto>>> GetExpectedTotals([FromQuery] DateTime dateUtc)
     {
         var totals = await _closureService.GetExpectedTotalsByPaymentMethodAsync(dateUtc);
@@ -170,6 +151,10 @@ public class DailyClosureController : ControllerBase
             await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate);
 
             await dbTransaction.CommitAsync();
+
+            // 8.7-B5: los comprobantes (PDF/TXT) se escriben DESPUÉS del commit para no mantener
+            // abierta la transacción Serializable durante I/O de disco.
+            _closureService.WriteClosedClosureReceipts(result);
 
             return Ok(result);
         }

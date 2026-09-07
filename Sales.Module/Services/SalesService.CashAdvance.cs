@@ -86,8 +86,12 @@ public partial class SalesService
         // 4. Consecutivo de Facturación atómico en transacción
         int nextInvoice = await GenerateNextInvoiceNumberAsync();
 
+        // 8.5-A5 (residual): el adelanto de efectivo ancla su tasa a la BCV del día con la misma
+        // política que CompleteSale/HoldSale (desvío > tolerancia => ancla; >= ±100% => rechazo).
+        decimal anchoredRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "CashAdvance", referenceId: nextInvoice);
+
         decimal totalChargedLocal = requestedAmountLocal + commissionAmountLocal;
-        decimal totalChargedUSD = exchangeRate > 0 ? Math.Round(totalChargedLocal / exchangeRate, 4) : 0m;
+        decimal totalChargedUSD = anchoredRate > 0 ? Math.Round(totalChargedLocal / anchoredRate, 4) : 0m;
 
         // 5. Crear Sale completado con el CashierId resuelto
         var sale = new Sale
@@ -100,7 +104,7 @@ public partial class SalesService
             CustomerId = customerId,
             CustomerName = customerName,
             CustomerCedula = customerCedula,
-            AppliedRate = exchangeRate,
+            AppliedRate = anchoredRate,
             Subtotal = totalChargedUSD,
             TotalUSD = totalChargedUSD,
             SubtotalBsS = totalChargedLocal,
@@ -133,7 +137,7 @@ public partial class SalesService
             PaymentMethodId = paymentMethodId,
             Amount = totalChargedUSD,
             AmountBsS = totalChargedLocal,
-            ExchangeRate = exchangeRate,
+            ExchangeRate = anchoredRate,
             CreatedAt = DateTime.UtcNow,
             ReferenceNumber = $"ADELANTO-{DateTime.UtcNow:yyyyMMddHHmmss}"
         };

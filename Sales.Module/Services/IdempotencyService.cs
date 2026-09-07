@@ -17,9 +17,11 @@ public class IdempotencyService : IIdempotencyService
     private static readonly Regex KeyRegex = new(@"^[a-zA-Z0-9_\-\.]{1,128}$", RegexOptions.Compiled);
     private readonly SalesDbContext _context;
 
-    private static long _hits;
-    private static long _misses;
-    private static long _conflicts;
+    // 8.7-M5: contadores por-instancia (servicio Scoped), no estáticos — el estado mutable no
+    // debe compartirse entre scopes de request.
+    private long _hits;
+    private long _misses;
+    private long _conflicts;
 
     public long Hits => Interlocked.Read(ref _hits);
     public long Misses => Interlocked.Read(ref _misses);

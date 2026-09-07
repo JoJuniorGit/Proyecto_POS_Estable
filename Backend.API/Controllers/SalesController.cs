@@ -9,6 +9,7 @@ using Sales.Module.Interfaces;
 using System.Linq;
 using System.Threading.Tasks;
 using Backend.API.Attributes;
+using System.ComponentModel.DataAnnotations;
 
 namespace Backend.API.Controllers;
 
@@ -833,6 +834,8 @@ public class UpdateQuantityRequest
 public class CompleteSaleRequest
 {
     public decimal ExchangeRate { get; set; }
+    // 8.7-B2: El ajuste de redondeo debe acotarse; la validación en el servicio refuerza el límite.
+    [Range(-1000, 1000, ErrorMessage = "El ajuste de redondeo está fuera de los límites operacionales (-1000 a 1000).")]
     public decimal RoundingAdjustment { get; set; }
     public int? CashierId { get; set; }
     public bool IsPendingPickup { get; set; } = false;

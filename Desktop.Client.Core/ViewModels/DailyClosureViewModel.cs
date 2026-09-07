@@ -72,6 +72,23 @@ public partial class DailyClosureViewModel : ObservableObject
         _isBlindClosing = UserSession?.IsCashier == true;
     }
 
+    // 8.6-M7: instante único de cierre en la zona legal (Venezuela). La API recibe UTC y el
+    // comprobante/fecha se muestran en hora local legal para no mezclar ahora-UTC con DateTime.Now
+    // del equipo (que podría estar en otra zona y desalinear fecha del arqueo).
+    private DateTime LocalClosureNow()
+    {
+        var utcNow = DateTime.UtcNow;
+        try
+        {
+            var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(null);
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc), tz);
+        }
+        catch
+        {
+            return DateTime.SpecifyKind(utcNow, DateTimeKind.Utc).ToLocalTime();
+        }
+    }
+
     public ObservableCollection<ClosureDetailRow> DetailRows { get; } = new();
 
     private bool _isBlindClosing;
@@ -197,7 +214,7 @@ public partial class DailyClosureViewModel : ObservableObject
     private string BuildConfirmationMessage()
     {
         var userName = UserSession?.CurrentUser?.Name ?? UserSession?.CurrentUser?.Cedula ?? "Usuario";
-        var dateStr = DateTime.UtcNow.ToString("dd/MM/yyyy HH:mm");
+        var dateStr = LocalClosureNow().ToString("dd/MM/yyyy HH:mm");
 
         if (IsBlindClosing)
         {
@@ -310,7 +327,8 @@ public partial class DailyClosureViewModel : ObservableObject
         }
 
         var userName = UserSession?.CurrentUser?.Name ?? UserSession?.CurrentUser?.Cedula ?? "Usuario";
-        var dateStr = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+        var localNow = LocalClosureNow();
+        var dateStr = localNow.ToString("dd/MM/yyyy HH:mm:ss");
 
         var sb = new System.Text.StringBuilder();
         if (IsBlindClosing)
@@ -365,7 +383,7 @@ public partial class DailyClosureViewModel : ObservableObject
             var saveDialog = new Microsoft.Win32.SaveFileDialog
             {
                 Filter = "Archivo de Texto (*.txt)|*.txt",
-                FileName = $"Comprobante_Cierre_{DateTime.Now:yyyyMMdd_HHmmss}.txt"
+                FileName = $"Comprobante_Cierre_{localNow:yyyyMMdd_HHmmss}.txt"
             };
 
             if (saveDialog.ShowDialog() == true)

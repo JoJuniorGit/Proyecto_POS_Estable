@@ -128,15 +128,11 @@ public class AuthController : ControllerBase
 
         if (isWeb && Response?.Cookies != null)
         {
-            var host = Request?.Host.Host;
-            var isLocalOrHttps = (Request?.IsHttps ?? false)
-                || string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) 
-                || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase);
-
+            // 8.7-B10: cookie Secure siempre (localhost es trustworthy para el browser en dev).
             var cookieOptions = new Microsoft.AspNetCore.Http.CookieOptions
             {
                 HttpOnly = true,
-                Secure = isLocalOrHttps,
+                Secure = true,
                 SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict,
                 Path = "/",
                 Expires = DateTimeOffset.UtcNow.AddMinutes(120)
@@ -160,28 +156,37 @@ public class AuthController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// 8.6-B1-revocación / 8.7-B1: el logout rota el SecurityStamp del usuario, de modo que
+    /// todo JWT emitido con el stamp anterior queda revocado al siguiente request (stamp mismatch
+    /// en SecurityStampValidationMiddleware). La cookie se borra siempre (8.7-B10).
+    /// </summary>
     [AllowAnonymous]
     [HttpPost("logout")]
-    public IActionResult Logout()
+    public async Task<IActionResult> Logout()
     {
-        var idClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value 
+        var idClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
                    ?? User.FindFirst("sub")?.Value;
         if (int.TryParse(idClaim, out int uid))
         {
-            _stampValidator?.InvalidateUserStamp(uid);
+            if (_stampValidator != null)
+            {
+                await _stampValidator.RevokeUserStampAsync(uid);
+            }
+            else
+            {
+                _stampValidator?.InvalidateUserStamp(uid);
+            }
         }
 
         if (Response?.Cookies != null)
         {
-            var host = Request?.Host.Host;
-            var isLocalOrHttps = (Request?.IsHttps ?? false)
-                || string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) 
-                || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase);
-
+            // 8.7-B10: Secure siempre; los browsers tratan localhost como trustworthy de modo
+            // que el desarrollo sobre http://localhost sigue funcionando.
             Response.Cookies.Delete("pos_jwt", new Microsoft.AspNetCore.Http.CookieOptions
             {
                 HttpOnly = true,
-                Secure = isLocalOrHttps,
+                Secure = true,
                 SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict,
                 Path = "/"
             });
@@ -258,18 +263,13 @@ public class AuthController : ControllerBase
         _stampValidator?.InvalidateUserStamp(user.Id);
         AppLogger.LogSecurityAudit($"[PASSWORD_CHANGED] UserId={user.Id}, Username={user.Username}, Timestamp={DateTime.UtcNow:O}");
 
-        // 5. Revocación de sesión activa en Web (limpieza de cookie pos_jwt)
+        // 5. Revocación de sesión activa en Web (limpieza de cookie pos_jwt) — Secure siempre (8.7-B10)
         if (Response?.Cookies != null)
         {
-            var host = Request?.Host.Host;
-            var isLocalOrHttps = (Request?.IsHttps ?? false)
-                || string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) 
-                || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase);
-
             Response.Cookies.Delete("pos_jwt", new Microsoft.AspNetCore.Http.CookieOptions
             {
                 HttpOnly = true,
-                Secure = isLocalOrHttps,
+                Secure = true,
                 SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict,
                 Path = "/"
             });

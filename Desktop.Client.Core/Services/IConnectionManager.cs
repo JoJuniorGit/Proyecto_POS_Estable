@@ -60,7 +60,8 @@ public class ConnectionManager : IConnectionManager, IDisposable
 
         // Iniciar inmediatamente sondeo en segundo plano y temporizador periódico cada 4 segundos
         StartHeartbeat();
-        _ = InitializeAsync();
+        // 8.7-M12: discard desnudo reemplazado por fire-and-forget controlado (captura y loguea excepciones).
+        Core.Common.TaskExtensions.SafeFireAndForget(InitializeAsync(), "ConnectionManager.Initialize");
     }
 
     private void StartHeartbeat()

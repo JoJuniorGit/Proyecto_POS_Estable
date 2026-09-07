@@ -49,7 +49,9 @@ export default function PendingOrdersPage() {
     return () => {
       window.removeEventListener('onHoldSalesUpdated', handleRefreshSignal);
     };
-  }, [loadPendingData, exchangeRate]);
+    // 8.6-M3: exchangeRate NO depende del re-fetch — la lista se refresca con el evento
+    // onHoldSalesUpdated (que el servidor emite al recalcular). Evita recargar por cada tick de tasa.
+  }, [loadPendingData]);
 
   const toggleExpand = (id) => {
     setSelectedSaleId(id);

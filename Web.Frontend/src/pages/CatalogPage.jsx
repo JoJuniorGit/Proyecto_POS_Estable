@@ -29,50 +29,53 @@ export default function CatalogPage() {
   const [totalPages, setTotalPages] = useState(1);
   const pageSize = 25;
 
-  const loadProducts = useCallback(async (filter = '', page = 1, sort = sortBy, desc = sortDescending) => {
-    setLoading(true);
-    try {
-      const filterParam = filter ? `&filter=${encodeURIComponent(filter)}` : '';
-      const sortParam = sort ? `&sortBy=${encodeURIComponent(sort)}&isDescending=${desc}` : '';
-      const data = await api.get(`/api/products?page=${page}&pageSize=${pageSize}${filterParam}${sortParam}`);
-      
-      const items = data?.items || (Array.isArray(data) ? data : []);
-      const total = data?.totalCount ?? items.length;
-      const pages = data?.totalPages ?? (Math.ceil(total / pageSize) || 1);
-
-      setProducts(items);
-      setTotalCount(total);
-      setTotalPages(pages);
-      setCurrentPage(page);
-
-      // Auto-scroll al inicio de la tabla/vista
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      const mainContent = document.querySelector('.app-content') || document.querySelector('.catalog-page');
-      if (mainContent) {
-        mainContent.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-    } catch (err) {
-      console.error('[CatalogPage] Error cargando catálogo:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [sortBy, sortDescending]);
+  // 8.7-M9: un SOLO efecto orquestador por página con AbortController. Los handlers de
+  // sort/paginación/búsqueda solo cambian estado; el efecto dispara un único fetch por cambio.
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
-    loadProducts(debouncedSearch, 1, sortBy, sortDescending);
-  }, [debouncedSearch, sortBy, sortDescending, loadProducts]);
+    const controller = new AbortController();
+    setLoading(true);
+    const filterParam = debouncedSearch ? `&filter=${encodeURIComponent(debouncedSearch)}` : '';
+    const sortParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}&isDescending=${sortDescending}` : '';
+
+    api.get(`/api/products?page=${currentPage}&pageSize=${pageSize}${filterParam}${sortParam}`, controller.signal)
+      .then((data) => {
+        const items = data?.items || (Array.isArray(data) ? data : []);
+        const total = data?.totalCount ?? items.length;
+        const pages = data?.totalPages ?? (Math.ceil(total / pageSize) || 1);
+
+        setProducts(items);
+        setTotalCount(total);
+        setTotalPages(pages);
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        const mainContent = document.querySelector('.app-content') || document.querySelector('.catalog-page');
+        if (mainContent) {
+          mainContent.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      })
+      .catch((err) => {
+        if (err?.name !== 'AbortError') {
+          console.error('[CatalogPage] Error cargando catálogo:', err);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [debouncedSearch, sortBy, sortDescending, currentPage, reloadToken]);
 
   const handleSort = useCallback((column) => {
-    let newDesc = false;
     if (sortBy === column) {
-      newDesc = !sortDescending;
-      setSortDescending(newDesc);
+      setSortDescending((d) => !d);
     } else {
       setSortBy(column);
       setSortDescending(false);
     }
-    loadProducts(debouncedSearch, 1, column, newDesc);
-  }, [sortBy, sortDescending, debouncedSearch, loadProducts]);
+    setCurrentPage(1);
+  }, [sortBy]);
 
   const renderSortIcon = (column) => {
     if (sortBy !== column) {
@@ -89,7 +92,7 @@ export default function CatalogPage() {
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    loadProducts(debouncedSearch, 1);
+    setCurrentPage(1);
   };
 
   return (
@@ -104,7 +107,7 @@ export default function CatalogPage() {
           <button
             type="button"
             className="btn btn-outline btn-sm flex-align-center gap-2"
-            onClick={() => loadProducts(search, currentPage)}
+            onClick={() => setReloadToken((t) => t + 1)}
             disabled={loading}
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
           >
@@ -156,7 +159,7 @@ export default function CatalogPage() {
                 const isDesc = dir === 'desc';
                 setSortBy(col);
                 setSortDescending(isDesc);
-                loadProducts(debouncedSearch, 1, col, isDesc);
+                setCurrentPage(1);
               }}
               style={{ padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', minWidth: '130px' }}
             >
@@ -471,7 +474,7 @@ export default function CatalogPage() {
             currentPage={currentPage}
             totalPages={totalPages}
             totalCount={totalCount}
-            onPageChange={(p) => loadProducts(debouncedSearch, p)}
+            onPageChange={(p) => setCurrentPage(p)}
             loading={loading}
             itemLabel="productos"
           />
