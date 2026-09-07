@@ -108,6 +108,9 @@ public partial class App : Application
     public IHost CreateAndStartHost(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(args);
+        // 8.6-B5: acota el teardown del host (Dispose best-effort de salida) a 3s máx.
+        builder.Services.Configure<Microsoft.Extensions.Hosting.HostOptions>(opts =>
+            opts.ShutdownTimeout = TimeSpan.FromSeconds(3));
 
         // Service Registration
         builder.Services.AddSingleton<IClientStateService, ClientStateService>();
@@ -329,7 +332,13 @@ public partial class App : Application
             {
                 Core.Logging.AppLogger.LogStart("Disponiendo servicio de tasa de cambio y cerrando SignalR...");
                 var exchangeRateService = _host.Services.GetService<IExchangeRateService>();
-                if (exchangeRateService is IDisposable disposableExchange)
+                if (exchangeRateService is IAsyncDisposable asyncExchange)
+                {
+                    // 8.6-B5: se espera el teardown asíncrono (no Dispose().Wait) desde hilo no-UI.
+                    await asyncExchange.DisposeAsync();
+                    Core.Logging.AppLogger.LogStart("Servicio de tasa de cambio dispuesto con éxito.");
+                }
+                else if (exchangeRateService is IDisposable disposableExchange)
                 {
                     disposableExchange.Dispose();
                     Core.Logging.AppLogger.LogStart("Servicio de tasa de cambio dispuesto con éxito.");
@@ -375,11 +384,12 @@ public partial class App : Application
         {
             try
             {
-                var stopTask = StopServicesAsync();
-                if (!stopTask.Wait(TimeSpan.FromSeconds(3)))
-                {
-                    Core.Logging.AppLogger.LogStart("StopServicesAsync timed out during OnExit shutdown (3s limit).");
-                }
+                // 8.6-B5: el apagado canónico es ASÍNCRONO en MainWindow.OnClosing (await StopServicesAsync)
+                // y ya está completo antes de OnExit. Esta rama es un respaldo best-effort para rutas
+                // alternativas: NO se bloquea la UI con Wait/GetResult; se delega al pool y el proceso
+                // sigue su salida (el Host limita su propio shutdown vía HostOptions.ShutdownTimeout).
+                Core.Logging.AppLogger.LogStart("OnExit: el apagado asíncrono no se completó (ruta alternativa); disponiendo host best-effort.");
+                _ = Task.Run(() => _host.Dispose());
             }
             catch (Exception ex)
             {

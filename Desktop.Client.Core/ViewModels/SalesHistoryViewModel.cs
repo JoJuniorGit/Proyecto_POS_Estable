@@ -18,14 +18,14 @@ using Desktop.Client.Messages;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class SalesHistoryViewModel : ObservableObject
+public partial class SalesHistoryViewModel : ObservableObject, IDisposable
 {
-    private readonly ISalesService _sales_service;
+    private readonly ISalesService _salesService;
     private readonly Action<Action> _dispatchAction;
-    private CancellationTokenSource? _search_cts;
-    private CancellationTokenSource? _selection_cts;
-    private bool _has_loaded;
-    private bool _is_dirty;
+    private CancellationTokenSource? _searchCts;
+    private CancellationTokenSource? _selectionCts;
+    private bool _hasLoaded;
+    private bool _isDirty;
 
     private ObservableCollection<SaleHistoryDto> _sales = new();
     public ObservableCollection<SaleHistoryDto> Sales
@@ -34,150 +34,150 @@ public partial class SalesHistoryViewModel : ObservableObject
         private set => SetProperty(ref _sales, value);
     }
 
-    private SaleHistoryDto? _selected_sale;
+    private SaleHistoryDto? _selectedSale;
     public SaleHistoryDto? SelectedSale
     {
-        get => _selected_sale;
+        get => _selectedSale;
         set
         {
-            if (SetProperty(ref _selected_sale, value))
+            if (SetProperty(ref _selectedSale, value))
             {
                 OnSelectedSaleChanged(value);
             }
         }
     }
 
-    private ObservableCollection<SaleItemHistoryDto> _selected_sale_items = new();
+    private ObservableCollection<SaleItemHistoryDto> _selectedSaleItems = new();
     public ObservableCollection<SaleItemHistoryDto> SelectedSaleItems
     {
-        get => _selected_sale_items;
-        private set => SetProperty(ref _selected_sale_items, value);
+        get => _selectedSaleItems;
+        private set => SetProperty(ref _selectedSaleItems, value);
     }
 
-    private ObservableCollection<PaymentDetailDto> _selected_sale_payments = new();
+    private ObservableCollection<PaymentDetailDto> _selectedSalePayments = new();
     public ObservableCollection<PaymentDetailDto> SelectedSalePayments
     {
-        get => _selected_sale_payments;
-        private set => SetProperty(ref _selected_sale_payments, value);
+        get => _selectedSalePayments;
+        private set => SetProperty(ref _selectedSalePayments, value);
     }
 
-    private bool _is_detail_debouncing;
+    private bool _isDetailDebouncing;
     public bool IsDetailDebouncing
     {
-        get => _is_detail_debouncing;
-        set => SetProperty(ref _is_detail_debouncing, value);
+        get => _isDetailDebouncing;
+        set => SetProperty(ref _isDetailDebouncing, value);
     }
 
-    private bool _is_detail_fetching;
+    private bool _isDetailFetching;
     public bool IsDetailFetching
     {
-        get => _is_detail_fetching;
-        set => SetProperty(ref _is_detail_fetching, value);
+        get => _isDetailFetching;
+        set => SetProperty(ref _isDetailFetching, value);
     }
 
-    private string? _detail_error_message;
+    private string? _detailErrorMessage;
     public string? DetailErrorMessage
     {
-        get => _detail_error_message;
-        set => SetProperty(ref _detail_error_message, value);
+        get => _detailErrorMessage;
+        set => SetProperty(ref _detailErrorMessage, value);
     }
 
-    private decimal _detail_subtotal_bs_s;
+    private decimal _detailSubtotalBsS;
     public decimal DetailSubtotalBsS
     {
-        get => _detail_subtotal_bs_s;
-        set => SetProperty(ref _detail_subtotal_bs_s, value);
+        get => _detailSubtotalBsS;
+        set => SetProperty(ref _detailSubtotalBsS, value);
     }
 
-    private decimal _detail_applied_rate;
+    private decimal _detailAppliedRate;
     public decimal DetailAppliedRate
     {
-        get => _detail_applied_rate;
-        set => SetProperty(ref _detail_applied_rate, value);
+        get => _detailAppliedRate;
+        set => SetProperty(ref _detailAppliedRate, value);
     }
 
-    private decimal _detail_total_usd;
+    private decimal _detailTotalUsd;
     public decimal DetailTotalUSD
     {
-        get => _detail_total_usd;
-        set => SetProperty(ref _detail_total_usd, value);
+        get => _detailTotalUsd;
+        set => SetProperty(ref _detailTotalUsd, value);
     }
 
-    private decimal _detail_total_bs_s;
+    private decimal _detailTotalBsS;
     public decimal DetailTotalBsS
     {
-        get => _detail_total_bs_s;
-        set => SetProperty(ref _detail_total_bs_s, value);
+        get => _detailTotalBsS;
+        set => SetProperty(ref _detailTotalBsS, value);
     }
 
-    private string _detail_date_local_formatted = string.Empty;
+    private string _detailDateLocalFormatted = string.Empty;
     public string DetailDateLocalFormatted
     {
-        get => _detail_date_local_formatted;
-        set => SetProperty(ref _detail_date_local_formatted, value);
+        get => _detailDateLocalFormatted;
+        set => SetProperty(ref _detailDateLocalFormatted, value);
     }
 
-    private bool _is_purchase_details_expanded = true;
+    private bool _isPurchaseDetailsExpanded = true;
     public bool IsPurchaseDetailsExpanded
     {
-        get => _is_purchase_details_expanded;
-        set => SetProperty(ref _is_purchase_details_expanded, value);
+        get => _isPurchaseDetailsExpanded;
+        set => SetProperty(ref _isPurchaseDetailsExpanded, value);
     }
 
-    private bool _is_purchase_details_visible = true;
+    private bool _isPurchaseDetailsVisible = true;
     public bool IsPurchaseDetailsVisible
     {
-        get => _is_purchase_details_visible;
-        set => SetProperty(ref _is_purchase_details_visible, value);
+        get => _isPurchaseDetailsVisible;
+        set => SetProperty(ref _isPurchaseDetailsVisible, value);
     }
 
-    private DateTime? _start_date;
+    private DateTime? _startDate;
     public DateTime? StartDate
     {
-        get => _start_date;
+        get => _startDate;
         set
         {
-            if (SetProperty(ref _start_date, value))
+            if (SetProperty(ref _startDate, value))
             {
                 OnStartDateChanged(value);
             }
         }
     }
 
-    private DateTime? _end_date;
+    private DateTime? _endDate;
     public DateTime? EndDate
     {
-        get => _end_date;
+        get => _endDate;
         set
         {
-            if (SetProperty(ref _end_date, value))
+            if (SetProperty(ref _endDate, value))
             {
                 OnEndDateChanged(value);
             }
         }
     }
 
-    private string _search_text = string.Empty;
+    private string _searchText = string.Empty;
     public string SearchText
     {
-        get => _search_text;
+        get => _searchText;
         set
         {
-            if (SetProperty(ref _search_text, value))
+            if (SetProperty(ref _searchText, value))
             {
                 DebounceSearchAsync(value).SafeFireAndForget("SalesHistoryViewModel.DebounceSearch");
             }
         }
     }
 
-    private CancellationTokenSource? _search_debounce_cts;
+    private CancellationTokenSource? _searchDebounceCts;
 
     private async Task DebounceSearchAsync(string term)
     {
         // Búsqueda multicampo con debounce: al escribir, se espera 300 ms y se
         // recarga desde la primera página con el término aplicado.
         var newCts = new CancellationTokenSource();
-        var oldCts = Interlocked.Exchange(ref _search_debounce_cts, newCts);
+        var oldCts = Interlocked.Exchange(ref _searchDebounceCts, newCts);
         try
         {
             oldCts?.Cancel();
@@ -199,51 +199,51 @@ public partial class SalesHistoryViewModel : ObservableObject
         }
     }
 
-    private int _current_page = 1;
+    private int _currentPage = 1;
     public int CurrentPage
     {
-        get => _current_page;
-        set => SetProperty(ref _current_page, value);
+        get => _currentPage;
+        set => SetProperty(ref _currentPage, value);
     }
 
-    private int _page_size = 25;
+    private int _pageSize = 25;
     public int PageSize
     {
-        get => _page_size;
-        set => SetProperty(ref _page_size, value);
+        get => _pageSize;
+        set => SetProperty(ref _pageSize, value);
     }
 
-    private int _total_items = 0;
+    private int _totalItems = 0;
     public int TotalItems
     {
-        get => _total_items;
-        set => SetProperty(ref _total_items, value);
+        get => _totalItems;
+        set => SetProperty(ref _totalItems, value);
     }
 
-    private bool _is_loading = false;
+    private bool _isLoading = false;
     public bool IsLoading
     {
-        get => _is_loading;
-        set => SetProperty(ref _is_loading, value);
+        get => _isLoading;
+        set => SetProperty(ref _isLoading, value);
     }
 
-    private string? _error_message;
+    private string? _errorMessage;
     public string? ErrorMessage
     {
-        get => _error_message;
-        set => SetProperty(ref _error_message, value);
+        get => _errorMessage;
+        set => SetProperty(ref _errorMessage, value);
     }
 
-    private decimal _total_bs_s_for_the_period;
+    private decimal _totalBsSForThePeriod;
     public decimal TotalBsSForThePeriod
     {
-        get => _total_bs_s_for_the_period;
-        set => SetProperty(ref _total_bs_s_for_the_period, value);
+        get => _totalBsSForThePeriod;
+        set => SetProperty(ref _totalBsSForThePeriod, value);
     }
 
     public SalesHistoryViewModel(ISalesService sales_service, Action<Action>? dispatchAction = null)
     {
-        _sales_service = sales_service;
+        _salesService = sales_service;
         _dispatchAction = dispatchAction ?? (action =>
         {
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
@@ -256,8 +256,8 @@ public partial class SalesHistoryViewModel : ObservableObject
         // Filtro inicial: solo el día en curso. Se asignan los campos directamente
         // (no las propiedades) para no disparar LoadHistoryAsync antes de que el
         // servicio esté listo; la carga inicial la dispara EnsureLoadedAsync.
-        _start_date = DateTime.Today;
-        _end_date = DateTime.Today;
+        _startDate = DateTime.Today;
+        _endDate = DateTime.Today;
 
         WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (_r, _m) =>
         {
@@ -266,16 +266,16 @@ public partial class SalesHistoryViewModel : ObservableObject
 
         WeakReferenceMessenger.Default.Register<SaleCompletedNotificationMessage>(this, (_r, _m) =>
         {
-            _is_dirty = true;
+            _isDirty = true;
         });
     }
 
     public async Task EnsureLoadedAsync()
     {
-        if (!_has_loaded || _is_dirty)
+        if (!_hasLoaded || _isDirty)
         {
-            _has_loaded = true;
-            _is_dirty = false;
+            _hasLoaded = true;
+            _isDirty = false;
             await LoadHistoryAsync();
         }
     }
@@ -318,7 +318,7 @@ public partial class SalesHistoryViewModel : ObservableObject
     private async Task LoadHistoryAsync()
     {
         var newCts = new CancellationTokenSource();
-        var oldCts = Interlocked.Exchange(ref _search_cts, newCts);
+        var oldCts = Interlocked.Exchange(ref _searchCts, newCts);
         try
         {
             oldCts?.Cancel();
@@ -333,19 +333,19 @@ public partial class SalesHistoryViewModel : ObservableObject
 
         try
         {
-            var (_items, _total) = await _sales_service.GetSalesHistoryAsync(CurrentPage, PageSize, StartDate, EndDate, SearchText, _token);
+            var (_items, _total) = await _salesService.GetSalesHistoryAsync(CurrentPage, PageSize, StartDate, EndDate, SearchText, _token);
 
             if (!_token.IsCancellationRequested)
             {
                 Sales.Clear();
-                decimal _temp_total_bs_s = 0;
+                decimal _tempTotalBsS = 0;
                 foreach (var _item in _items)
                 {
                     Sales.Add(_item);
-                    _temp_total_bs_s += _item.FinalPaidAmountBsS;
+                    _tempTotalBsS += _item.FinalPaidAmountBsS;
                 }
                 TotalItems = _total;
-                TotalBsSForThePeriod = _temp_total_bs_s;
+                TotalBsSForThePeriod = _tempTotalBsS;
                 SelectedSale = null;
                 ClearSelectedDetailState();
             }
@@ -389,10 +389,10 @@ public partial class SalesHistoryViewModel : ObservableObject
         }
     }
 
-    private async Task LoadSelectedSaleDetailsWithDebounceAsync(SaleHistoryDto? _selected_sale_item)
+    private async Task LoadSelectedSaleDetailsWithDebounceAsync(SaleHistoryDto? _selectedSaleItem)
     {
         var newCts = new CancellationTokenSource();
-        var oldCts = Interlocked.Exchange(ref _selection_cts, newCts);
+        var oldCts = Interlocked.Exchange(ref _selectionCts, newCts);
         try
         {
             oldCts?.Cancel();
@@ -400,14 +400,14 @@ public partial class SalesHistoryViewModel : ObservableObject
         }
         catch (ObjectDisposedException) { }
 
-        if (_selected_sale_item is null)
+        if (_selectedSaleItem is null)
         {
             ClearSelectedDetailState();
             return;
         }
 
         var _token = newCts.Token;
-        var _sale_id = _selected_sale_item.Id;
+        var _saleId = _selectedSaleItem.Id;
 
         // Limpiar colecciones de detalle mientras se realiza la petición
         _dispatchAction(() =>
@@ -430,7 +430,7 @@ public partial class SalesHistoryViewModel : ObservableObject
             IsDetailDebouncing = false;
             IsDetailFetching = true;
 
-            var _detail = await _sales_service.GetSaleHistoryDetailAsync(_sale_id, _token);
+            var _detail = await _salesService.GetSaleHistoryDetailAsync(_saleId, _token);
 
             if (_token.IsCancellationRequested)
                 return;
@@ -494,5 +494,22 @@ public partial class SalesHistoryViewModel : ObservableObject
         {
             _target.Add(_item);
         }
+    }
+
+    // 8.6-M11/M12: VM retenido de facto singleton por MainViewModel → debe liberar sus recursos
+    // (CTS de búsqueda/selección/debounce y suscripciones de mensajes) al terminar la app.
+    public void Dispose()
+    {
+        foreach (var cts in new[] { _searchCts, _selectionCts, _searchDebounceCts })
+        {
+            if (cts == null) continue;
+            cts.Cancel();
+            cts.Dispose();
+        }
+        _searchCts = null;
+        _selectionCts = null;
+        _searchDebounceCts = null;
+        WeakReferenceMessenger.Default.UnregisterAll(this);
+        GC.SuppressFinalize(this);
     }
 }

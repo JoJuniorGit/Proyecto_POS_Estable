@@ -104,13 +104,17 @@ try
     }
 
     builder.Services.AddDbContext<InventoryDbContext>(options =>
-        options.UseNpgsql(connectionString));
+        options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure(3)));
     // 8.7-B8: la advertencia de cambios pendientes del modelo se conserva ACTIVA: cualquier
     // divergencia entre modelo/migraciones debe ser visible y resolverse con una migración EF,
     // no con SQL crudo inline.
 
     builder.Services.AddDbContext<Sales.Module.Data.SalesDbContext>(options =>
-        options.UseNpgsql(connectionString, npgsql => npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
+        options.UseNpgsql(connectionString, npgsql =>
+        {
+            npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+            npgsql.EnableRetryOnFailure(3);
+        }));
     // 8.7-B8: PendingModelChangesWarning ACTIVA (ver InventoryDbContext arriba).
 
     builder.Services.AddMemoryCache(options =>
@@ -988,7 +992,7 @@ static string BuildLanAllowedHosts()
 {
     var hosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "localhost", "127.0.0.1", "::1"
+        "localhost", "127.0.0.1", "::1", "[::1]"
     };
 
     try
@@ -1010,11 +1014,35 @@ static string BuildLanAllowedHosts()
                 hosts.Add(ip.ToString());
             }
         }
+
+        // 8.6-M9/L2: enumera adaptadores reales para cubrir APIPA/link-local (169.254/16 y fe80::)
+        // que DNS suele omitir: en LAN sin DHCP el host del reenvío sería 169.254.x.x y la
+        // whitelist anterior lo rechazaría, rompiendo el Pairing del POS.
+        foreach (var networkInterface in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (networkInterface.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+            foreach (var unicast in networkInterface.GetIPProperties().UnicastAddresses)
+            {
+                var address = unicast.Address;
+                if (address.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    hosts.Add(address.ToString());
+                }
+                else if (address.IsIPv6LinkLocal && !address.IsIPv6SiteLocal)
+                {
+                    hosts.Add(address.ToString());
+                }
+            }
+        }
     }
     catch
     {
-        // Sin DNS disponible: se mantiene la base localhost.
+        // Sin DNS/disponibilidad de red: se mantiene la base localhost.
     }
 
     return string.Join(";", hosts);
 }
+
+// 8.6-B6: expone Program para WebApplicationFactory<Program> (clase pública requerida por el
+// integrador de hosting de pruebas sin reescribir el entrypoint de producción).
+public partial class Program { }

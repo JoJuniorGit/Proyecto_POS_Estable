@@ -20,39 +20,39 @@ public partial class PaymentMethodDto : ObservableObject
         set => SetProperty(ref _name, value);
     }
 
-    private bool _is_active = true;
+    private bool _isActive = true;
     public bool IsActive
     {
-        get => _is_active;
-        set => SetProperty(ref _is_active, value);
+        get => _isActive;
+        set => SetProperty(ref _isActive, value);
     }
 
-    private bool _requires_reference = false;
+    private bool _requiresReference = false;
     public bool RequiresReference
     {
-        get => _requires_reference;
-        set => SetProperty(ref _requires_reference, value);
+        get => _requiresReference;
+        set => SetProperty(ref _requiresReference, value);
     }
 
-    private bool _is_cash = false;
+    private bool _isCash = false;
     public bool IsCash
     {
-        get => _is_cash;
-        set => SetProperty(ref _is_cash, value);
+        get => _isCash;
+        set => SetProperty(ref _isCash, value);
     }
 
-    private int _display_order = 0;
+    private int _displayOrder = 0;
     public int DisplayOrder
     {
-        get => _display_order;
-        set => SetProperty(ref _display_order, value);
+        get => _displayOrder;
+        set => SetProperty(ref _displayOrder, value);
     }
 
-    private bool _is_deleted = false;
+    private bool _isDeleted = false;
     public bool IsDeleted
     {
-        get => _is_deleted;
-        set => SetProperty(ref _is_deleted, value);
+        get => _isDeleted;
+        set => SetProperty(ref _isDeleted, value);
     }
 }
 

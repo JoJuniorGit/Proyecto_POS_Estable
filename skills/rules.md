@@ -5,7 +5,7 @@
 - Mandatory Flow (No Vibe Coding): BEFORE modifying any code, generate a plan in Markdown format and wait for my approval. Do not assume unspecified business rules; stop and ask.
 - Boundaries: - NEVER modify the database schema without first performing an EF Core migration.
 - No comments: NEVER use comments unless I ask for them directly
-- snake_case: ALWAYS use "snake_case" to name variables
+- Naming (C#): fields privados/campos = `_camelCase` (p. ej. `_productService`), métodos async terminan en `Async`, propiedades públicas = `PascalCase` — conforme a `.editorconfig`. snake_case SOLO para nombres de propiedad JSON del contrato de la API cuando el backend lo exige.
 - No Code-Behind: NEVER use Code-Behind (`.xaml.cs`). Everything must be handled using ViewModels or Behaviors.
 
 2.  Project Commands (Run these to validate your work)
@@ -59,11 +59,11 @@ c. Contract Verification:
 ```csharp
 [ObservableProperty]
 [NotifyPropertyChangedFor(nameof(SellingPriceBsS))]
-private decimal _cost_price;
+private decimal _costPrice;
 
 [ObservableProperty]
 [NotifyPropertyChangedFor(nameof(SellingPriceBsS))]
-private decimal _profit_margin;
+private decimal _profitMargin;
 
 
 public decimal SellingPriceBsS => (decimal)Math.Round(CostPrice * (1 + (ProfitMargin / 100)) * ExchangeRate);

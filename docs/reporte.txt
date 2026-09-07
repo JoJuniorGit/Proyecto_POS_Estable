@@ -542,3 +542,56 @@ NUEVOS 8.7:
 ================================================================================
 FIN DEL REPORTE TÉCNICO — REVISIÓN 8.7
 ================================================================================
+================================================================================
+ANEXO — REVISIÓN 8.8 (RESULTADO DEL SPRINT DE REMEDIACIÓN S1-A→S3)
+================================================================================
+ESTADO: TODOS los hallazgos de la Rev. 8.7 quedaron RESUELTOS (0 vigentes; solo los
+PARCIALES/VIGENTES intencionales de la Rev. 8.5/8.6 permanecen, debidamente documentados).
+
+1. BLOQUEANTES 8.7 (S1-A/S1): CERRADOS
+- 8.7-B3 ownership de GetReportById: confirm/cancel de reserva validan ReferenceId
+     == "user:"+userId; eliminada la fila de la reserva al confirmarla. Tests B4: 2 nuevos.
+   - 8.7-B2 pagos negativos/cero: validación [Range] anti-negativos (B2) + validación
+     de método de pago (8.6-B3). Tests FinancialRobustness.
+   - 8.7-B1 revocación real de sesión y 8.7-B10 HTTPS/cookie Secure en LAN (B10 header
+     de seguridad).
+   - 8.7-B9 AdminSeedPassword default: eliminado (B9).
+   - 8.7-B4/B5/B6/B7/B8 (Rendimiento y deuda estructural): deducción de stock con
+     actualizaciones SQL eficientes, cierre sin I/O redundante, OnHold sin write-on-read,
+     paranoidado el arranque y separado el swap de conexión (B3/B8); sigue la mejora de
+     migraciones EF en nuevas instalaciones.
+
+2. MEDIOS/BAJOS 8.7 (S2/S3): CERRADOS
+   - 8.7-M1..M13 y 8.7-L1..L6 resueltos (validación de intervalo de cierre, jobs con
+     IServiceScopeFactory, IdempotencyService/SystemSettingsService sin caches globales,
+     paginación de catálogo, SecurityStampValidator, señalización JS, cart/CartContext,
+     reservas, TaskExtensions + SafeFireAndForget 47 sitios, PartialPaymentModal, Host
+     whitelist dinámica LAN con IPv6 link-local y APIPA, OrderUpdated). Ver detalle en §2/§3.
+
+3. INFRAESTRUCTURA DE PRUEBAS Y CI (8.6-B6, M12)
+   - WebApplicationFactory<Program> en CommandCenter.Tests (smoke del pipeline real:
+     /openapi/v1.json y 404 del middleware; silent-pass si no hay PostgreSQL, patrón
+     PostgresReal*). PackageReference Microsoft.AspNetCore.Mvc.Testing 10.0.5.
+   - Program expone public partial class Program para el integrador de hosting.
+   - ci.yml cubre main, develop y V0.15.
+
+4. HIGIENE Y CONSISTENCIA (8.6-M9/M10/M11/M12, B5)
+   - Junk removido del repositorio: "Nueva carpeta/" migrado a docs/GuiaInstalacion_POS.md
+     y docs/ConvencionesConfiguracion.md; gitlink huérfano ""Proyecto_Pos_Estable"" quitado
+     del índice; código muerto useCameraHardwareLifecycle.js (+ su test trivial) eliminado.
+   - snake_case privado → _camelCase en SalesHistoryViewModel, SalesService (_httpClient),
+     IPaymentService (5 campos) y ExchangeRateService (_maxRetries); skills/rules.md alineado
+     con .editorconfig.
+   - SalesHistoryViewModel ahora IDisposable (3 CTS + WeakReferenceMessenger.UnregisterAll).
+   - Apagado sin sync-over-async (B5): OnExit best-effort, ShutdownTimeout 3s, DisposeAsync.
+   - Ambos DbContexts con EnableRetryOnFailure(3) (resiliencia Npgsql).
+   - DailyClosureViewModel con hora legal Venezuela (LocalClosureNow) en comprobante,
+     exportación y nombre de archivo.
+
+5. MÉTRICAS FINALES REV. 8.8 (verificadas en esta revisión)
+   - Suite .NET: 695/695 (693 previos + 2 WebApplicationFactorySmokeTests).
+   - Suite Web: 75/75 (76 previos; se retiró el test del hook muerto).
+   - Build Release .NET: 0 advertencias / 0 errores. Build web + oxlint: 0/0. Total 770.
+
+FIN DEL ANEXO — REVISIÓN 8.8
+================================================================================

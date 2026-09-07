@@ -158,10 +158,10 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
 
     private async Task StartSignalRAsync()
     {
-        const int _max_retries = 60; // ~5 minutes of retries
+        const int _maxRetries = 60; // ~5 minutes of retries
         int _attempt = 0;
 
-        while (_attempt < _max_retries)
+        while (_attempt < _maxRetries)
         {
             try
             {
@@ -285,15 +285,14 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
     {
         if (Volatile.Read(ref _isDisposed) != 0) return;
 
+        // 8.6-B5: NO bloquear el hilo caller (UI o contenedor DI) con Wait/GetResult (sync-over-async).
+        // El apagado asíncrono real lo ejecuta App.StopServicesAsync vía DisposeAsync(); este camino
+        // es solo best-effort defensivo que se despacha al pool de subprocesos sin esperarlo.
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-            DisposeAsync().AsTask().Wait(cts.Token);
+            _ = Task.Run(async () => await DisposeAsync().ConfigureAwait(false));
         }
-        catch (OperationCanceledException) { }
         catch (Exception) { }
-
-        GC.SuppressFinalize(this);
     }
 
     private class ExchangeRateResponse

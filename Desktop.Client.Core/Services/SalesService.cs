@@ -10,13 +10,13 @@ namespace Desktop.Client.Services;
 
 public class SalesService : ISalesService
 {
-    private readonly HttpClient _http_client;
+    private readonly HttpClient _httpClient;
     private readonly object _saleLock = new object();
     private SaleDto? _currentSale;
 
     public SalesService(HttpClient http_client)
     {
-        _http_client = http_client;
+        _httpClient = http_client;
     }
 
     public SaleDto? CurrentSale
@@ -38,7 +38,7 @@ public class SalesService : ISalesService
 
     public async Task<SaleDto> GetSaleAsync(int saleId)
     {
-        var response = await _http_client.GetAsync($"api/sales/{saleId}");
+        var response = await _httpClient.GetAsync($"api/sales/{saleId}");
         response.EnsureSuccessStatusCode();
         var sale = await response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception($"Sale #{saleId} not found.");
         if (CurrentSale?.Id == saleId)
@@ -51,7 +51,7 @@ public class SalesService : ISalesService
     public async Task<SaleDto> StartSaleAsync(int? cashierId = null)
     {
         string url = cashierId.HasValue ? $"api/sales/start?cashierId={cashierId.Value}" : "api/sales/start";
-        var _response = await _http_client.PostAsync(url, null);
+        var _response = await _httpClient.PostAsync(url, null);
         _response.EnsureSuccessStatusCode();
         var sale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to start sale.");
         SetCurrentSale(sale);
@@ -61,7 +61,7 @@ public class SalesService : ISalesService
     public async Task<SaleDto> AddItemAsync(int sale_id, int product_id, decimal quantity, decimal exchange_rate, decimal? custom_unit_price_usd = null, decimal? custom_unit_price_bs_s = null)
     {
         var _request = new { ProductId = product_id, Quantity = quantity, ExchangeRate = exchange_rate, CustomUnitPriceUSD = custom_unit_price_usd, CustomUnitPriceBsS = custom_unit_price_bs_s };
-        var _response = await _http_client.PostAsJsonAsync($"api/sales/{sale_id}/items", _request);
+        var _response = await _httpClient.PostAsJsonAsync($"api/sales/{sale_id}/items", _request);
         if (!_response.IsSuccessStatusCode)
         {
             var err = await _response.Content.ReadFromJsonAsync<System.Text.Json.Nodes.JsonObject>();
@@ -75,7 +75,7 @@ public class SalesService : ISalesService
 
     public async Task<SaleDto> RemoveItemAsync(int sale_id, int item_id, decimal exchange_rate)
     {
-        var _response = await _http_client.DeleteAsync($"api/sales/{sale_id}/items/{item_id}?exchangeRate={exchange_rate}");
+        var _response = await _httpClient.DeleteAsync($"api/sales/{sale_id}/items/{item_id}?exchangeRate={exchange_rate}");
         _response.EnsureSuccessStatusCode();
         var sale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to remove item.");
         SetCurrentSale(sale);
@@ -85,7 +85,7 @@ public class SalesService : ISalesService
     public async Task<SaleDto> UpdateItemQuantityAsync(int sale_id, int item_id, decimal quantity, decimal exchange_rate)
     {
         var _request = new { Quantity = quantity, ExchangeRate = exchange_rate };
-        var _response = await _http_client.PutAsJsonAsync($"api/sales/{sale_id}/items/{item_id}", _request);
+        var _response = await _httpClient.PutAsJsonAsync($"api/sales/{sale_id}/items/{item_id}", _request);
         if (!_response.IsSuccessStatusCode)
         {
             var err = await _response.Content.ReadFromJsonAsync<System.Text.Json.Nodes.JsonObject>();
@@ -99,7 +99,7 @@ public class SalesService : ISalesService
 
     public async Task<SaleDto> UpdateExchangeRateAsync(int sale_id, decimal exchange_rate)
     {
-        var _response = await _http_client.PutAsync($"api/sales/{sale_id}/exchange-rate?exchangeRate={exchange_rate}", null);
+        var _response = await _httpClient.PutAsync($"api/sales/{sale_id}/exchange-rate?exchangeRate={exchange_rate}", null);
         _response.EnsureSuccessStatusCode();
         var sale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to update exchange rate.");
         SetCurrentSale(sale);
@@ -109,7 +109,7 @@ public class SalesService : ISalesService
     public async Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType)
     {
         var _request = new { PriceListType = priceListType };
-        var _response = await _http_client.PutAsJsonAsync($"api/sales/{saleId}/price-list", _request);
+        var _response = await _httpClient.PutAsJsonAsync($"api/sales/{saleId}/price-list", _request);
         if (!_response.IsSuccessStatusCode)
         {
             var err = await _response.Content.ReadFromJsonAsync<System.Text.Json.Nodes.JsonObject>();
@@ -130,7 +130,7 @@ public class SalesService : ISalesService
         };
         var effectiveKey = !string.IsNullOrWhiteSpace(idempotencyKey) ? idempotencyKey : Guid.NewGuid().ToString("N");
         httpRequest.Headers.Add("Idempotency-Key", effectiveKey);
-        var _response = await _http_client.SendAsync(httpRequest);
+        var _response = await _httpClient.SendAsync(httpRequest);
         if (!_response.IsSuccessStatusCode)
         {
             var errorContent = await _response.Content.ReadAsStringAsync();
@@ -149,7 +149,7 @@ public class SalesService : ISalesService
         if (end_date.HasValue) _url += $"&endDate={end_date.Value:yyyy-MM-dd}";
         if (!string.IsNullOrWhiteSpace(search)) _url += $"&search={System.Uri.EscapeDataString(search.Trim())}";
 
-        var _response = await _http_client.GetAsync(_url, cancellation_token);
+        var _response = await _httpClient.GetAsync(_url, cancellation_token);
         _response.EnsureSuccessStatusCode();
 
         var _result = await _response.Content.ReadFromJsonAsync<SalesHistoryResponse>(cancellationToken: cancellation_token);
@@ -158,7 +158,7 @@ public class SalesService : ISalesService
 
     public async Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int sale_id, System.Threading.CancellationToken cancellation_token = default)
     {
-        var _response = await _http_client.GetAsync($"api/sales/{sale_id}/history-detail", cancellation_token);
+        var _response = await _httpClient.GetAsync($"api/sales/{sale_id}/history-detail", cancellation_token);
         _response.EnsureSuccessStatusCode();
 
         return await _response.Content.ReadFromJsonAsync<SaleHistoryDto>(cancellationToken: cancellation_token)
@@ -172,7 +172,7 @@ public class SalesService : ISalesService
             Content = JsonContent.Create(request)
         };
         httpRequest.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
-        var response = await _http_client.SendAsync(httpRequest);
+        var response = await _httpClient.SendAsync(httpRequest);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
@@ -190,7 +190,7 @@ public class SalesService : ISalesService
             Content = JsonContent.Create(request)
         };
         httpRequest.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
-        var response = await _http_client.SendAsync(httpRequest);
+        var response = await _httpClient.SendAsync(httpRequest);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
@@ -203,7 +203,7 @@ public class SalesService : ISalesService
 
     public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync()
     {
-        return await _http_client.GetFromJsonAsync<IEnumerable<SaleDto>>("api/sales/pending") ?? new List<SaleDto>();
+        return await _httpClient.GetFromJsonAsync<IEnumerable<SaleDto>>("api/sales/pending") ?? new List<SaleDto>();
     }
 
     public async Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(
@@ -220,7 +220,7 @@ public class SalesService : ISalesService
 
         try
         {
-            var pagedResult = await _http_client.GetFromJsonAsync<CustomerPagedResultDto>(url);
+            var pagedResult = await _httpClient.GetFromJsonAsync<CustomerPagedResultDto>(url);
             if (pagedResult != null && pagedResult.Items != null)
             {
                 return (pagedResult.Items, pagedResult.TotalCount);
@@ -230,7 +230,7 @@ public class SalesService : ISalesService
         {
             try
             {
-                var list = await _http_client.GetFromJsonAsync<List<CustomerDto>>(url);
+                var list = await _httpClient.GetFromJsonAsync<List<CustomerDto>>(url);
                 if (list != null) return (list, list.Count);
             }
             catch { }
@@ -243,7 +243,7 @@ public class SalesService : ISalesService
 
     public async Task<CustomerDto> CreateCustomerAsync(CreateCustomerDto request)
     {
-        var response = await _http_client.PostAsJsonAsync("api/sales/customers", request);
+        var response = await _httpClient.PostAsJsonAsync("api/sales/customers", request);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
@@ -254,7 +254,7 @@ public class SalesService : ISalesService
 
     public async Task<CustomerDto> UpdateCustomerAsync(int id, UpdateCustomerDto request)
     {
-        var response = await _http_client.PutAsJsonAsync($"api/sales/customers/{id}", request);
+        var response = await _httpClient.PutAsJsonAsync($"api/sales/customers/{id}", request);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
@@ -265,7 +265,7 @@ public class SalesService : ISalesService
 
     public async Task DeleteCustomerAsync(int id)
     {
-        var response = await _http_client.DeleteAsync($"api/sales/customers/{id}");
+        var response = await _httpClient.DeleteAsync($"api/sales/customers/{id}");
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
@@ -275,13 +275,13 @@ public class SalesService : ISalesService
 
     public async Task<CustomerDto> GetDefaultCustomerAsync()
     {
-        return await _http_client.GetFromJsonAsync<CustomerDto>("api/sales/customers/default") 
+        return await _httpClient.GetFromJsonAsync<CustomerDto>("api/sales/customers/default") 
                ?? throw new System.Exception("Failed to load default customer.");
     }
 
     public async Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId)
     {
-        var response = await _http_client.PutAsJsonAsync($"api/sales/{saleId}/customer", new { CustomerId = customerId });
+        var response = await _httpClient.PutAsJsonAsync($"api/sales/{saleId}/customer", new { CustomerId = customerId });
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
@@ -294,13 +294,13 @@ public class SalesService : ISalesService
 
     public async Task<IEnumerable<PendingPickupClientDto>> GetPendingPickupsAsync()
     {
-        return await _http_client.GetFromJsonAsync<IEnumerable<PendingPickupClientDto>>("api/sales/pending-pickups")
+        return await _httpClient.GetFromJsonAsync<IEnumerable<PendingPickupClientDto>>("api/sales/pending-pickups")
                ?? new List<PendingPickupClientDto>();
     }
 
     public async Task ConfirmPickupAsync(int saleId)
     {
-        var response = await _http_client.PostAsync($"api/sales/{saleId}/confirm-pickup", null);
+        var response = await _httpClient.PostAsync($"api/sales/{saleId}/confirm-pickup", null);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
@@ -311,7 +311,7 @@ public class SalesService : ISalesService
     public async Task UpdateSaleItemsAsync(int saleId, IEnumerable<UpdateSaleItemDto> items, decimal exchangeRate)
     {
         var body = new { ExchangeRate = exchangeRate, Items = items };
-        var response = await _http_client.PutAsJsonAsync($"api/sales/{saleId}/items", body);
+        var response = await _httpClient.PutAsJsonAsync($"api/sales/{saleId}/items", body);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
