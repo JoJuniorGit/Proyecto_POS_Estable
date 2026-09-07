@@ -154,65 +154,40 @@ return totalPurged;
             var dbContext = scope.ServiceProvider.GetRequiredService<SalesDbContext>();
             var hubContext = scope.ServiceProvider.GetService<IHubContext<ExchangeRateHub>>();
 
-            List<OutboxMessage> messages;
+            List<OutboxMessage>? messages = null;
 
             if (dbContext.Database.IsNpgsql())
             {
-                if (dbContext.Database.CurrentTransaction is not null)
-                    throw new InvalidOperationException("[OutboxProcessor] No se admite una transacción ya abierta al seleccionar mensajes pendientes.");
-
-                await using var tx = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-
-                messages = await dbContext.OutboxMessages
-                    .FromSqlRaw("SELECT * FROM \"OutboxMessages\" WHERE \"Status\" = 'Pending' AND \"NextRetryUtc\" <= NOW() ORDER BY \"CreatedAtUtc\" LIMIT 20 FOR UPDATE SKIP LOCKED")
-                    .ToListAsync(cancellationToken);
-
-                if (!messages.Any())
+                // 8.9-B4: con NpgsqlRetryingExecutionStrategy (EnableRetryOnFailure) EF Core exige
+                // que la transacción manual viva DENTRO del lambda de CreateExecutionStrategy().
+                // El SELECT con FOR UPDATE SKIP LOCKED es SQL crudo (FromSqlRaw) y EF lo enruta por
+                // la execution strategy: fuera del lambda, la retrying strategy rechaza transacciones
+                // user-initiated ("does not support user-initiated transactions") en la primera query.
+                await dbContext.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
                 {
-                    await tx.RollbackAsync(cancellationToken);
-                    return;
-                }
+                    if (dbContext.Database.CurrentTransaction is not null)
+                        throw new InvalidOperationException("[OutboxProcessor] No se admite una transacción ya abierta al seleccionar mensajes pendientes.");
 
-                // 8.9-M8: el despacho SignalR (llamada de red a todos los clientes) se ejecuta FUERA de la
-                // transacción. El lock FOR UPDATE SKIP LOCKED se libera al hacer commit ANTES de difundir;
-                // mantenerlo durante la operación de red bloquearía otras escrituras sobre OutboxMessages.
-                await tx.CommitAsync(cancellationToken);
+                    await using var tx = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-                foreach (var message in messages)
-                {
-                    try
+                    var pending = await dbContext.OutboxMessages
+                        .FromSqlRaw("SELECT * FROM \"OutboxMessages\" WHERE \"Status\" = 'Pending' AND \"NextRetryUtc\" <= NOW() ORDER BY \"CreatedAtUtc\" LIMIT 20 FOR UPDATE SKIP LOCKED")
+                        .ToListAsync(cancellationToken);
+
+                    if (!pending.Any())
                     {
-                        await DispatchMessageAsync(message, hubContext, cancellationToken);
-
-                        message.DispatchedAtUtc = DateTime.UtcNow;
-                        message.Status = "Processed";
-                        message.ProcessedAtUtc = DateTime.UtcNow;
-                        message.ErrorMessage = null;
+                        await tx.RollbackAsync(cancellationToken);
+                        return;
                     }
-                    catch (Exception ex)
-                    {
-                        message.RetryCount++;
 
-                        if (message.RetryCount < 5)
-                        {
-                            var delaySeconds = Math.Pow(2, message.RetryCount);
-                            message.NextRetryUtc = DateTime.UtcNow.AddSeconds(delaySeconds);
-                            message.ErrorMessage = ex.Message;
-                            _logger.LogWarning(ex, "[OutboxProcessor] Error al despachar mensaje {MessageId} (Intento {Attempt}/5). Próximo reintento en {Delay}s.",
-                                message.Id, message.RetryCount, delaySeconds);
-                        }
-                        else
-                        {
-                            message.Status = "DeadLetter";
-                            message.ErrorMessage = $"Falló tras 5 intentos: {ex.Message}";
-                            _logger.LogCritical(ex, "[OutboxProcessor] CRÍTICO: Mensaje {MessageId} ({EventType}) movido a DeadLetter tras 5 intentos fallidos.",
-                                message.Id, message.EventType);
-                        }
-                    }
-                }
+                    // 8.9-M8: el despacho SignalR (llamada de red a todos los clientes) se ejecuta
+                    // FUERA de la transacción. El commit ANTES de difundir libera el lock FOR UPDATE
+                    // SKIP LOCKED; mantenerlo durante la operación de red bloquearía otras escrituras
+                    // sobre OutboxMessages.
+                    await tx.CommitAsync(cancellationToken);
 
-                await dbContext.SaveChangesAsync(cancellationToken);
-                return;
+                    messages = pending;
+                });
             }
             else
             {
@@ -224,7 +199,7 @@ return totalPurged;
                     .ToListAsync(cancellationToken);
             }
 
-            if (!messages.Any()) return;
+            if (messages == null || messages.Count == 0) return;
 
             foreach (var message in messages)
             {

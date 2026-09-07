@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Builders;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
+using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Services;
 using Xunit;
@@ -30,31 +30,33 @@ public class PostgresRealSharedTransactionTests
         var connStr = GetConnectionString();
         if (connStr == null) return;
 
-        using var salesContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-        if (salesContext == null) return;
+        // 8.11: patrón correcto para compartir UNA transacción física entre dos DbContexts:
+        // ambos contextos deben enlazarse a la MISMA conexión ADO .NET (UseNpgsql(connection)).
+        // La versión previa iniciaba la transacción sobre la conexión del SalesDbContext y luego
+        // intentaba UseTransactionAsync en un InventoryDbContext con conexión propia (pooling),
+        // lo que fallaba con "The specified transaction is not associated with the current connection".
+        await using var connection = new Npgsql.NpgsqlConnection(connStr);
+        await connection.OpenAsync();
+        await using var rawDbTx = await connection.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
 
-        var strategy = salesContext.Database.CreateExecutionStrategy();
+        var salesOptions = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseNpgsql(connection)
+            .Options;
+        using var salesContext = new SalesDbContext(salesOptions);
 
-        await strategy.ExecuteAsync(async () =>
-        {
-            await using var tx = await salesContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
-            var rawDbTx = tx.GetDbTransaction();
+        var invOptions = new DbContextOptionsBuilder<Inventory.Module.Data.InventoryDbContext>()
+            .UseNpgsql(connection)
+            .Options;
+        using var inventoryContext = new Inventory.Module.Data.InventoryDbContext(invOptions);
 
-            // Crear contexto de inventario con exactamente la misma cadena de conexión
-            var invOptions = new DbContextOptionsBuilder<Inventory.Module.Data.InventoryDbContext>()
-                .UseNpgsql(connStr)
-                .Options;
-            using var inventoryContext = new Inventory.Module.Data.InventoryDbContext(invOptions);
+        salesContext.Database.UseTransaction(rawDbTx);
+        inventoryContext.Database.UseTransaction(rawDbTx);
 
-            // Enrolar InventoryDbContext en la misma transacción física
-            await inventoryContext.Database.UseTransactionAsync(rawDbTx);
+        Assert.NotNull(salesContext.Database.CurrentTransaction);
+        Assert.NotNull(inventoryContext.Database.CurrentTransaction);
 
-            Assert.NotNull(salesContext.Database.CurrentTransaction);
-            Assert.NotNull(inventoryContext.Database.CurrentTransaction);
-
-            // Revertir para mantener la base de datos limpia
-            await tx.RollbackAsync();
-        });
+        // Revertir para mantener la base de datos limpia
+        await rawDbTx.RollbackAsync();
     }
 
     /// <summary>

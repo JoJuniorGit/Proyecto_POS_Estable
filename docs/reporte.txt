@@ -1012,6 +1012,26 @@ Pendientes declarados (de la lista 8.9) para evaluacion futura:
   - M2: rate limit por cuenta no implementable con RateLimitPartition sincrono (documentado).
   - B3/L2 locales: los tests RequiresDocker dependen de TEST_POSTGRES_CONNECTION (CI).
   - Hipotesis H1-H6 (requieren validacion dinamica).
+  - Migraciones "huerfanas": AddCashTransactionAmountLocal (20260320000000),
+    ExpandSubtotalPrecisionTo4Decimals (20260805120000), AddDisplayOrderToPaymentMethod
+    (20260809232500), AddIsPhysicalCashToCashTransactions (20260810105800),
+    AlterSaleItemQuantityToNumeric (20260822120000),
+    AddCaseInsensitiveUsernameIndexAndBackfill (20260823120000) y
+    AddPgTrgmGinIndexesRev89 (20260907030000) carecen de atributo [Migration] y Designer;
+    EF no las descubre y nunca se aplican via MigrateAsync (su efecto se compensa con el
+    bloque de CONVERGENCIA LEGACY de Program.cs). Ref [8.11-F]: 20260905140000 autocurado.
+
+[8.11-F] Correccion de migracion (instalacion fresca rota):
+  Descubierto al aislar los WebApplicationFactorySmokeTests en su propia BD pos_smoke_test:
+  una BD creada 100% por MigrateAsync abortaba el arranque en la migracion 20260905140000
+  (setval de la secuencia paymentmethod_displayorder_seq) porque la columna PaymentMethods.
+  DisplayOrder la creaba la migracion huerfana 20260809232500 (sin atributo [Migration], asi
+  que EF la ignora). En produccion nunca fallo porque el bloque de CONVERGENCIA LEGACY ya
+  habia agregado la columna. Fix: la migracion 20260905140000 ahora autocura la columna con
+  guardado information_schema (no-op en BD legacy, crea la columna en instalaciones frescas)
+  antes de ejecutar el setval. Compatible con produccion existente (no re-rompe columnas).
+  El hallazgo de las demas huerfanas queda registrado como pendiente de consolidacion
+  (evaluar atribuir [Migration] idempotentes o migrarlas al bloque de convergencia).
 
 CI sobre este bloque: .NET (con PostgreSQL de servicio), gate de cobertura >= 70%,
 frontend lint + tests + build. Commit de cierre en rama V0.15.

@@ -45,6 +45,25 @@ public static class TestDatabaseFactory
         return ctx;
     }
 
+    /// <summary>
+    /// 8.9-B4 regression: espejo de la configuracion REAL de Produccion/CI
+    /// (Program.cs) con EnableRetryOnFailure(3) -> NpgsqlRetryingExecutionStrategy.
+    /// Necesaria para reproducir el fallo "retrying strategy does not support
+    /// user-initiated transactions" en queries FromSqlRaw dentro de transaccion manual.
+    /// </summary>
+    public static SalesDbContext? CreatePostgreSqlSalesDbContextWithRetry()
+    {
+        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connStr)) return null;
+
+        var options = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseNpgsql(connStr, npgsql => npgsql.EnableRetryOnFailure(3))
+            .Options;
+        var ctx = new SalesDbContext(options);
+        ctx.Database.EnsureCreated();
+        return ctx;
+    }
+
     public static (InventoryDbContext context, Microsoft.Data.Sqlite.SqliteConnection connection) CreateSqliteInventoryDbContext()
     {
         var connection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=:memory:");

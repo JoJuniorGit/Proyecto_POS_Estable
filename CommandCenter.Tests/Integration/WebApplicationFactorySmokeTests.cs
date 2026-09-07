@@ -18,8 +18,30 @@ public class WebApplicationFactorySmokeTests
         !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION"))
         || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection"));
 
-    private static WebApplicationFactory<Program> CreateFactory() =>
-        new WebApplicationFactory<Program>();
+    private static WebApplicationFactory<Program> CreateFactory()
+    {
+        // 8.11: el pipeline real (Program.cs) arranca contra la BD de SU SMOKE aislada
+        // (pos_smoke_test) derivada de TEST_POSTGRES_CONNECTION. Antes apuntaba al
+        // CommandCenterDb de desarrollo (appsettings.Development) -> en CI/auth real el
+        // host fallaba al arrancar ("The server has not been started"). Aislar la BD evita
+        // además colisionar con EnsureCreated/EnsureDeleted de los tests PostgresReal*.
+        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        if (!string.IsNullOrWhiteSpace(connStr))
+        {
+            var csb = new Npgsql.NpgsqlConnectionStringBuilder(connStr)
+            {
+                Database = "pos_smoke_test"
+            };
+            Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection", csb.ConnectionString);
+        }
+
+        // Program.cs evalúa la política del Admin seed leyendo la env var ASPNETCORE_ENVIRONMENT
+        // (por defecto "Production" -> fail-fast B9). Los smoke arrancan el pipeline real en modo
+        // Development (igual que la API local), donde el seed del Admin se omite sin romper.
+        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
+
+        return new WebApplicationFactory<Program>();
+    }
 
     [Fact]
     public async Task OpenApiJson_IsServedThroughTheRealPipeline()
@@ -42,7 +64,7 @@ public class WebApplicationFactorySmokeTests
 
         await using var factory = CreateFactory();
         var client = factory.CreateClient();
-        using var response = await client.GetAsync("/ruta/no/existente-8b6");
+        using var response = await client.GetAsync("/api/ruta/no/existente-8b6");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
