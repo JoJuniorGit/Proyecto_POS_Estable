@@ -595,3 +595,225 @@ PARCIALES/VIGENTES intencionales de la Rev. 8.5/8.6 permanecen, debidamente docu
 
 FIN DEL ANEXO — REVISIÓN 8.8
 ================================================================================
+
+================================================================================
+REVISION 8.9 - AUDITORIA EXHAUSTIVA DE SEGURIDAD, RENDIMIENTO, RECURSOS Y CALIDAD
+================================================================================
+FECHA: domingo 2026-09-06. Metodo: revision linea por linea de Backend.API,
+Inventory.Module, Sales.Module, Core, Desktop.Client(+Core), Web.Frontend,
+CommandCenter.Tests, CI/CD e instalador. Verificado [V] contra el codigo; los
+items [H] son hipotesis que requieren validacion dinamica. Metricas re-ejecutadas
+HOY 8.9: build Release 0 avisos/0 errores; .NET 695/695; Web 75/75; oxlint 0/0;
+build web OK. Total 770 = iguales a lo declarado en Rev 8.8.
+
+--------------------------------------------------------------------------------
+A. VERIFICACION DE VIGENCIA DEL REPORTE ANTERIOR
+--------------------------------------------------------------------------------
+Rev 8.8 sigue siendo CIERTO en todo lo verificado. Evidencia puntual re-chequeada:
+- 8.7-B3 (ownership reservas): ReservationsController valida ReferenceId=="user:"+userId;
+  change-password/confirm eliminan la fila; tests B4 (6/6) presentes. OK.
+- 8.7-B1 (logout con revocacion real): SecurityStampValidator + rotacion de stamp
+  en AuthController (logout:174, change-password:256). OK.
+- 8.7-B2 (pagos negativos): validaciones [Range] vigentes. OK.
+- 8.7-B9 (AdminSeedPassword): Program.cs:726-740 fail-fast en Produccion SIN default
+  en el codigo. MATIZ NUEVO: el instalador reintroduce un default literal "Admin123!"
+  (hallazgo 8.9-B1).
+- 8.7-M12 (SafeFireAndForget sancionado, 47+ sitios), 8.7-L2 (AllowedHosts dinamico
+  ANTES de ForwardedHeaders), 8.7-B7 (swap con restauracion de conexion), 8.7-B8
+  (bloque legacy idempotente), 8.6-B5 (OnExit sin sync-over-async), 8.6-B6 (WAF),
+  8.6-M10 (snake->camel), 8.6-M9 (junk removido), xmin/RowVersion y EnableRetryOnFailure:
+  todos re-verificados presentes. OK.
+- VIGENTES declarados (8.5/8.6: PostgresReal* silent-pass, xmin, 8.5-W1 lock compartido,
+  8.5-M6 VersionLockout, etc.): siguen vigentes como tal.
+NOTA OPERATIVA: la rama local V0.15 esta 6 commits AHEAD de origin/V0.15 (origin en
+1b41b0b); por tanto GitHub Actions NO ha corrido sobre el bloque S1-S3 ni sobre esta
+revision. Las metricas "build 0/0" de los commits recientes son locales, no de CI.
+
+--------------------------------------------------------------------------------
+B. NUEVOS HALLAZGOS REVISION 8.9
+--------------------------------------------------------------------------------
+ALTOS (7):
+[8.9-B1] Credenciales conocidas por defecto en el instalador. [V] installer/
+  Configure-PosService.ps1:24-25 defaults "postgres"/"Admin123!"; Program.cs:779
+  crea el Admin seed con MustChangePassword=false. Un despliegue con el camino de
+  menor resistencia queda con admin y BD conocidos en la LAN. RECOMENDACION: default
+  vacio + abortar si falta o generar aleatoria con ACL; MustChangePassword=true para
+  passwords del instalador; rechazar "Admin123!" en la politica de passwords.
+[8.9-B2] IDOR horizontal: un cajero lee TODAS las ventas. [V] SalesController.cs:285
+  /pending, :751 pending-pickups, :766 history, :776 history-detail: sin filtro por
+  CashierId (SalesService.History.cs:38,74,138) ni IsAuthorizedForSaleAsync (que SI
+  usan las mutaciones :86,105,123,354,729,794). RECOMENDACION: filtrar por cashier en
+  Cashier role y aplicar IsAuthorizedForSaleAsync en history-detail.
+[8.9-B3] LOWER() en busqueda inutiliza los indices B-tree. [V] InventoryService.
+  CatalogQueries.cs:62,124,308 hacen Name.ToLower().Contains(...) / SKU.ToLower();
+  los indices IX_Products_Name/SKU (InventoryDbContext.cs:35-45) son case-sensitive.
+  Cada tecleo del POS = seq scan. RECOMENDACION: indice funcional LOWER(Name/LowerSKU) o
+  pg_trgm; busqueda exacta por SKU sin ToLower para codigo de barras.
+[8.9-B4] Transacciones cross-DB asimetricas. [V] CompleteSaleAsync usa
+  CreateExecutionStrategy (SalesService.cs:362-383); HoldOrders.cs:173-181,
+  CashDrawerService.cs:439-443 usan BeginTransactionAsync sin strategy (con
+  EnableRetryOnFailure(3) activo: sin reintentos y riesgo de doble ejecucion).
+  Aislamientos dispares: ReadCommitted en cobros vs Serializable en cierres (Shifts
+  :74, DailyClosure :123). RECOMENDACION: envolver TODOS los BeginTransactionAsync
+  manuales en execution strategy y normalizar el isolation level.
+[8.9-B5] GetPendingPickupsAsync/RecalculateOnHoldSalesAsync sin proyeccion. [V]
+  History.cs:38-71 materializa Sale+Items+Payments completos sin Take; Pricing.cs:
+  28-51 re-ejecuta GetProductsByIdsAsync por cada venta OnHold (N+1) en cada update
+  de tasa. RECOMENDACION: proyeccion directa en SQL + fetch batcheado de productos y
+  limite operativo.
+[8.9-B6] HealthPollingService transient: OnHealthRecovered nunca llega a MainViewModel.
+  [V] AddHttpClient<IHealthPollingService,HealthPollingService> (App.xaml.cs:138) es
+  transient; MainViewModel (singleton) se suscribe a su instancia (MainViewModel.cs:80)
+  pero quien llama StartPolling es ResilienceHandler (transient, ResilienceHandler.cs:
+  144) sobre instancias nuevas. El dialogo de recuperacion no se muestra y pueden
+  convivir n loops de /health. RECOMENDACION: singleton explicito con cliente "Health"
+  compartido y eliminada la variante typed.
+[8.9-B7] Dispatcher.Invoke sincrono x15 en WpfDialogService. [V] WpfDialogService.cs:
+  96,147,189,217,242,272,298,316,337,364,393,421,448,477,501 (0 InvokeAsync). Si se
+  llama desde hilo de servicio (SignalR/pooling) bloquea el hilo durante el dialogo
+  modal. RECOMENDACION: InvokeAsync para informativos; API async Task<T> con
+  TCS/DialogHost para los que retornan valor.
+
+MEDIOS (18):
+[8.9-M1] GET /exchange-rate/today evade el cache: 2 consultas + timezone leida por
+  BD directa (ExchangeRateController.cs:30-47,183-191), ignorando la cache
+  bcv_rate_today (10 min) y SystemSettingsService. RECOMENDACION: delegar en
+  IInventoryService.GetTodayExchangeRateAsync + config timezone cacheada.
+[8.9-M2] Lockout re-extendible = DoS pre-autenticacion. [V] AuthController.cs:89-97 y
+  230-240 re-aplican AddMinutes(15) en CADA fallo >=5; rate limit solo por IP
+  (Program.cs:250-259). RECOMENDACION: fijar lockout al primer umbral y particionar
+  el rate limit por cuenta (IP|cedula).
+[8.9-M3] Oracle de cuentas por timing en login. [V] AuthController.cs:59-63 retorna
+  sin PBKDF2 si el usuario no existe; :85 ejecuta 100k iteraciones si existe.
+  RECOMENDACION: verificacion dummy PBKDF2 en usuarios inexistentes.
+[8.9-M4] Pairing QR sin secreto y self-signed aceptado en LAN. [V]
+  NetworkDiscoveryService.cs:81 QR soolo URL+?paired=true (estatico); el cliente WPF
+  acepta certificados invalidos en IPs privadas (SubnetScannerService.cs:46-59,
+  ExchangeRateService.cs:55-61). RECOMENDACION: secreto efimero por servidor,
+  confirmacion visual de identidad y pinning de fingerprint.
+[8.9-M5] CSP connect-src 'self' ws: wss: sin host + falta Permissions-Policy. [V]
+  SecurityHeadersMiddleware.cs:43-50. RECOMENDACION: acotar hosts del hub y emitir
+  Permissions-Policy (camera=(self), geolocation=(), microphone=(), payment=(), usb=()).
+[8.9-M6] CORS AllowCredentials amplia a toda LAN/IP local con puertos 5000/5001/5173/
+  80/443/4173 (Program.cs:281-315). Hoy mitigado por SameSite=Strict + JSON-only en
+  mutantes, pero fragil ante cambios. RECOMENDACION: origen fijo por entorno vía
+  Cors:AllowedOrigins.
+[8.9-M7] Escritorio opera sobre HTTP sin TLS (Program.cs:54 ListenAnyIP http; :190
+  RequireHttpsMetadata=false; Desktop.Client/appsettings.json:3 http://localhost:5000).
+  RECOMENDACION: exigir certificado en Produccion y HTTPS para el cliente WPF.
+[8.9-M8] OutboxProcessor despacha SignalR dentro de la transaccion de marcado
+  (OutboxProcessorJob.cs:164-210): red I/O dentro de locks FOR UPDATE SKIP LOCKED.
+  RECOMENDACION: commit de estado corto y despacho fuera.
+[8.9-M9] Indices faltantes: StockMovements.MovementDate (archiver, StockMovementArchiver
+  Job.cs:81-96) y StockReservations.ReferenceId (tope por usuario, Reservations
+  Controller.cs:52-54). RECOMENDACION: migraciones EF con HasIndex compuestos.
+[8.9-M10] Bloque SQL legacy corre en cada arranque y su guard data_type<>'numeric'
+  no cubre cambios de precision/escala (Program.cs:542-698). RECOMENDACION: absorber
+  en migraciones; extender el guard a numeric_precision/scala.
+[8.9-M11] Busqueda del historico OR con LOWER + join a Cashier no indexable (History.
+  cs:94-109). RECOMENDACION: pg_trgm GIN en columnas relevantes.
+[8.9-M12] Arranque WPF bloqueado hasta completar version-check sin timeout
+  (App.xaml.cs:263-297; timeout por defecto del HttpClient = 100 s). RECOMENDACION:
+  mostrar UI primero y/o poner timeout de 5 s al cliente IVersionCheckService + CTS.
+[8.9-M13] Fallbacks crudos en WpfDialogService: new HttpClient / new ExchangeRateService
+  / new ConnectionManager sin ciclo de vida (WpfDialogService.cs:407-409,435-436,462,490).
+  RECOMENDACION: dependencias obligatorias, sin fallbacks.
+[8.9-M14] Invoke defensivo duplicado en 7+ archivos (PosViewModel.cs:146,218,300;
+  CartViewModel.cs:177,220; ...) y Task.Run sobre I/O pura (CartViewModel.cs:212).
+  RECOMENDACION: helper unico de marshalling async; sin Task.Run para I/O.
+[8.9-M15] errorBody crudo de api.js puede volcarse a la UI (api.js:253-255 filtra HTML
+  solo por '<html'). RECOMENDACION: extraer mensaje de JSON estructurado y descartar
+  bodies con '<' o '>'.
+[8.9-M16] getMethodCurrency clasifica por NOMBRE del metodo (RegisterClosePage.jsx:43-49):
+  descuadre falso en arqueo con metodos homonimos. RECOMENDACION: exponer el campo
+  currency nativo del backend como fuente de verdad.
+[8.9-M17] ConfirmPickupAsync hace doble fetch (History.cs:16-35): carga con Includes y
+  re-consulta GetSaleHistoryDetailAsync. RECOMENDACION: mapear el DTO desde la entidad
+  ya cargada.
+[8.9-M18] parseAmount de AtmAmountInput (regex flexible) vs PaymentForm (2 decimales
+  estrictos): montos con >2 decimales redondean distinto (AtmAmountInput.jsx:50-57 vs
+  PaymentForm.jsx:37-40). RECOMENDACION: rutina unica de normalizacion en centesimas.
+
+BAJOS (13):
+[8.9-L1] Tests vacios/smoke debiles: Assert.True(true) (WpfDialogServiceTests.cs:52,67) y
+  "200-or-404" en WebApplicationFactorySmokeTests.cs (debil pero asertivo). MEJORAR con
+  Record.Exception y asserts reales.
+[8.9-L2] Silent-pass en PostgresReal* (PostgresRealIntegrationTests.cs:19-23) y WAF
+  (WebApplicationFactorySmokeTests.cs:27,41): sin TEST_POSTGRES_CONNECTION el test pasa
+  vacio. Aceptable solo porque CI la define; documentalo o marca Skip.
+[8.9-L3] catch {} vacio en UpdaterSecurityIntegrationTests.cs:36 (traga errores).
+[8.9-L4] NoWarn NU1903 suprime avisos de paquete vulnerable (CommandCenter.Tests.csproj:13).
+[8.9-L5] CI: frontend no ejecuta npm run build, no hay gate de cobertura y el bundle
+  Web ya commiteado (Backend.API/wwwroot) puede quedar stale. (ci.yml)
+[8.9-L6] Higiene: .last-restore-timestamp trackeado; literales "PosHttpsDev2026!"
+  en scripts/create-https-cert.ps1:5,25, installer/Configure-PosService.ps1:213 y
+  installer/setup.iss:131; appsettings.Development (gitignored) con 123456/Admin123!.
+[8.9-L7] Setter ExchangeRateService.CurrentRate lanza UpdateRateLocallyAsync fire-and-
+  forget (ExchangeRateService.cs:124-127): estado inconsistente ante errores.
+[8.9-L8] Prop centerTitle muerta: Modal.jsx:4 declara _centerTitle y 4 callers la pasan
+  (CheckoutModal.jsx:275, PendingOrdersPage.jsx:561, PendingPickupsPage.jsx:419,
+  RegisterClosePage.jsx:488).
+[8.9-L9] /health y /api/system/version-check anonimos divulgan estado y version exacta
+  (HealthController.cs:21-23, VersionCheckController.cs:9,21).
+[8.9-L10] POST /api/auth/change-password anonimo no valida IsActive (AuthController.cs:
+  197-241): un usuario desactivado puede cambiar su clave.
+[8.9-L11] Whitelist de host evitable: VITE_API_URL y localStorage pos_custom_api_url se
+  devuelven sin revalidar el host (api.js:112-116,160-170); setCustomBaseUrl no revierte
+  CURRENT_BASE_URL al rechazar (api.js:165-168).
+[8.9-L12] SystemSettingsService cachea string.Empty 30 s (SystemSettingsService.cs:37-44)
+  y el perfil de usuario local no expira (AuthContext.jsx:74) hasta el proximo 401.
+[8.9-L13] VMs registrados Transient que son de-facto singletons retenidos por
+  MainViewModel (App.xaml.cs:190,202,231-232 vs MainViewModel.cs:26-39); Dispose solo
+  al cerrar la app. Registrarlos Singleton o liberarlos por vista.
+
+HIPOTESIS (requieren validacion dinamica):
+[8.9-H1] Efectividad del rate-limit por IP tras proxies remotos (Program.cs:250-259
+  particiona solo RemoteIpAddress; KnownProxies default loopback).
+[8.9-H2] VersionCheckMiddleware: un cliente que omita X-Client-Version podria saltar el
+  gating (verificar logica de ausencia vs minimo).
+[8.9-H3] Deadlock potencial cierre de caja vs venta en curso por inversion de orden
+  (advisory->filas en CashDrawerService.cs:162,262,342 vs filas->advisory en
+  SalesService.cs:568-576). No se identifico ciclo concreto; requiere stress test.
+[8.9-H4] Vision laptop O(n x4 pases) por frame sin throttle (laptopVisionEnhancer.js:
+  166-207 con requestAnimationFrame) puede saturar CPU en laptops basicas.
+[8.9-H5] Hotkeys globales bloquean F5/F1-F12 en toda la app (usePosHotkeys.js:107-150)
+  y conviven dos listeners keydown en captura (useScannerTrap.js:70).
+[8.9-H6] Doble envio posible en rama override de handleFinalizeSale (sin guard
+  isProcessing; CheckoutModal.jsx:229-258) y deriva de redondeo de centavos acumulado
+  en pagos mixtos (CheckoutModal.jsx:100 vs umbral 0.05 en :154).
+
+--------------------------------------------------------------------------------
+C. LO QUE YA ESTA BIEN (re-verificado 8.9, no tocar salvo mejora puntual)
+--------------------------------------------------------------------------------
+- JWT fail-fast ante claves ausentes/debiles/filtradas (Program.cs:164-178),
+  ValidateIssuer/Audience/Lifetime + ClockSkew=0 (:192-202); PBKDF2 100k con
+  FixedTimeEquals; rotacion de SecurityStamp en logout/change-password.
+- AllowedHosts dinamico sin "*" ANTES de ForwardedHeaders (Program.cs:45-47,359-364);
+  mismo detalle con IPs de adaptadores (8.6-M9).
+- Caja con advisory lock por sesion y cierre atomico; outbox transaccional con
+  SKIP LOCKED + DeadLetter; BCV con pg_try_advisory_lock multinodo.
+- xmin/RowVersion y deduccion de stock condicional contra negativos; confirmacion de
+  reserva atomica 8.7-L3; CreateExecutionStrategy en CompleteSaleAsync.
+- Sin sync-over-async en backend ni WPF (grep .Wait/.Result/.GetAwaiter = 0);
+  SafeFireAndForget sancionado (57 usos); disposicion correcta en VMs y dialogos.
+- Frontend: sin dangerouslySetInnerHTML/eval; whitelist LAN en api.js; cookie
+  HttpOnly Secure SameSite=Strict; preview canonicio del backend para redondeos;
+  idempotency holder de checkout; debounce/AbortController; React.lazy code-splitting.
+- No hay artefactos de build/secretos commiteados (publish/, .pfx/.pem/.env/crash* no
+  estan en git; verificado con git ls-files). Se mantienen en git solo .last-restore-timestamp.
+
+--------------------------------------------------------------------------------
+D. RECOMENDACIONES PRIORIZADAS
+--------------------------------------------------------------------------------
+1. Bloque de seguridad critica (antes de nuevos despliegues): 8.9-B1 y 8.9-B2.
+2. Consolidacion de datos/rendimiento hot path: 8.9-B3, 8.9-B5 y 8.9-M1 (mayor impacto
+   en horas pico del POS).
+3. Correctitud WPF (funcional): 8.9-B6 (HealthPolling) y 8.9-M12 (startup sin timeout).
+4. Endurecimiento de transporte/pairing: 8.9-M4 y 8.9-M7 (TLS LAN).
+5. Deuda estructural (S4): execution strategy unica (8.9-B4), indices (8.9-M9), retirar
+   bloque SQL legacy (8.9-M10), tests reales en vez de silent-pass/Assert.True (8.9-L1/L2).
+6. Cambio de proceso: hacer correr CI sobre el bloque completo (6 commits pendientes de
+   push) y anadir npm run build + gate de cobertura (8.9-L5).
+
+FIN DEL ANEXO - REVISION 8.9
+================================================================================
