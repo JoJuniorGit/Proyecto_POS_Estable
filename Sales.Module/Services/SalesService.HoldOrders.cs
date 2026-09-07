@@ -498,10 +498,11 @@ public partial class SalesService
         }
     }
 
-    public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync()
+    public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync(int? cashierId = null)
     {
         // 8.7-B6: los GET no escriben. El recálculo masivo de OnHold ocurre en el POST de tasa
         // (ExchangeRateController → RecalculateOnHoldSalesAsync) e invalida/redifunde por SignalR.
+        // 8.9-B2: scope por cajero — un cajero solo vio sus propias ventas OnHold; Admin/Manager todo.
 
         var sales = await _context.Sales
             .AsNoTracking()
@@ -512,6 +513,7 @@ public partial class SalesService
                 .ThenInclude(p => p.PaymentMethod)
             .Include(s => s.Cashier)
             .Where(s => s.Status == SaleStatus.OnHold)
+            .Where(s => !cashierId.HasValue || s.CashierId == cashierId.Value)
             .OrderByDescending(s => s.Date)
             .ToListAsync();
 

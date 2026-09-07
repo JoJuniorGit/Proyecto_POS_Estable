@@ -79,6 +79,21 @@ public class SalesController : ControllerBase
         return true;
     }
 
+    // 8.9-B2: scope de lectura para listados. Un cajero solo puede listar sus propias ventas;
+    // Admin/Manager conservan visión global. Se aplica a pending, pending-pickups e history.
+    private (bool ScopeToCashier, int CashierId) GetCashierReadScope()
+    {
+        bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
+        if (isElevated) return (false, 0);
+
+        if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid))
+        {
+            return (true, uid);
+        }
+
+        return (false, 0);
+    }
+
     [HttpGet("{id}")]
     public async Task<ActionResult<SaleDto>> GetSale(int id)
     {
@@ -285,7 +300,8 @@ public class SalesController : ControllerBase
     [HttpGet("pending")]
     public async Task<ActionResult<System.Collections.Generic.IEnumerable<SaleDto>>> GetPendingSales()
     {
-        var _pending = await _salesService.GetPendingSalesAsync();
+        var (scopeToCashier, cashierId) = GetCashierReadScope();
+        var _pending = await _salesService.GetPendingSalesAsync(scopeToCashier ? cashierId : null);
         return Ok(_pending);
     }
 
@@ -751,7 +767,8 @@ public class SalesController : ControllerBase
     [HttpGet("pending-pickups")]
     public async Task<ActionResult<System.Collections.Generic.IEnumerable<PendingPickupDto>>> GetPendingPickups()
     {
-        var _pending = await _salesService.GetPendingPickupsAsync();
+        var (scopeToCashier, cashierId) = GetCashierReadScope();
+        var _pending = await _salesService.GetPendingPickupsAsync(scopeToCashier ? cashierId : null);
         return Ok(_pending);
     }
 
@@ -769,13 +786,20 @@ public class SalesController : ControllerBase
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        var (_items, _total_count) = await _salesService.GetSalesHistoryAsync(page, pageSize, startDate, endDate, search);
+        var (scopeToCashier, cashierId) = GetCashierReadScope();
+        var (_items, _total_count) = await _salesService.GetSalesHistoryAsync(page, pageSize, startDate, endDate, search, scopeToCashier ? cashierId : null);
         return Ok(new { Items = _items, TotalCount = _total_count });
     }
 
     [HttpGet("{id}/history-detail")]
     public async Task<ActionResult> GetHistoryDetail(int id)
     {
+        // 8.9-B2: ownership a nivel de objeto, igual que GetSale/{id}.
+        if (!await IsAuthorizedForSaleAsync(id))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para consultar esta venta." });
+        }
+
         try
         {
             var _detail = await _salesService.GetSaleHistoryDetailAsync(id);

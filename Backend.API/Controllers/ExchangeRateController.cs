@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Backend.API.Services;
 using Core.Logging;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Backend.API.Controllers;
 
@@ -15,13 +16,16 @@ public class ExchangeRateController : ControllerBase
 {
     private readonly InventoryDbContext _context;
     private readonly Core.Interfaces.ICurrentUserService _currentUserService;
+    private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache? _cache;
 
     public ExchangeRateController(
         InventoryDbContext context,
-        Core.Interfaces.ICurrentUserService currentUserService)
+        Core.Interfaces.ICurrentUserService currentUserService,
+        Microsoft.Extensions.Caching.Memory.IMemoryCache? cache = null)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _cache = cache;
     }
 
     /// <summary>
@@ -32,6 +36,14 @@ public class ExchangeRateController : ControllerBase
     public async Task<ActionResult> GetToday()
     {
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
+        // 8.9-M1: caché de corta vida (20s) para el endpoint de mayor frecuencia;
+        // la tasa cambia pocas veces al día y se invalida explícitamente en cada write.
+        var cacheKey = $"er_today_{today:yyyy-MM-dd}";
+        if (_cache != null && _cache.TryGetValue(cacheKey, out object? cached))
+        {
+            return Ok(cached);
+        }
+
         var record = await _context.ExchangeRateHistory
             .FirstOrDefaultAsync(r => r.Date == today);
 
@@ -46,15 +58,21 @@ public class ExchangeRateController : ControllerBase
 
         var tz = await GetConfiguredTimeZoneAsync();
 
+        object result;
         if (record == null)
-            return Ok(new { Value = 0m, Date = today, UpdatedAt = (DateTime?)null, UpdatedAtLocal = (DateTime?)null });
+            result = new { Value = 0m, Date = today, UpdatedAt = (DateTime?)null, UpdatedAtLocal = (DateTime?)null };
+        else
+        {
+            var utc = record.UpdatedAt.Kind == DateTimeKind.Utc
+                ? record.UpdatedAt
+                : DateTime.SpecifyKind(record.UpdatedAt, DateTimeKind.Utc);
+            var local = TimeZoneInfo.ConvertTimeFromUtc(utc, tz);
 
-        var utc = record.UpdatedAt.Kind == DateTimeKind.Utc
-            ? record.UpdatedAt
-            : DateTime.SpecifyKind(record.UpdatedAt, DateTimeKind.Utc);
-        var local = TimeZoneInfo.ConvertTimeFromUtc(utc, tz);
+            result = new { Value = record.Rate, Date = record.Date, UpdatedAt = record.UpdatedAt, UpdatedAtLocal = (DateTime?)local };
+        }
 
-        return Ok(new { Value = record.Rate, Date = record.Date, UpdatedAt = record.UpdatedAt, UpdatedAtLocal = (DateTime?)local });
+        _cache?.Set(cacheKey, result, TimeSpan.FromSeconds(20));
+        return Ok(result);
     }
 
     /// <summary>
@@ -111,6 +129,9 @@ public class ExchangeRateController : ControllerBase
 
         // 8.7-M3: la escritura + recálculo OnHold + broadcast quedan centralizados en el servicio único.
         await rateWriteService.UpsertTodayRateAsync(roundedRate);
+
+        // 8.9-M1: la escritura invalida la caché /today para visibilidad inmediata.
+        _cache?.Remove($"er_today_{today:yyyy-MM-dd}");
 
         var tz = await GetConfiguredTimeZoneAsync();
         var nowUtc = DateTime.UtcNow;
@@ -173,6 +194,9 @@ public class ExchangeRateController : ControllerBase
         // 8.7-M3: la escritura + recálculo OnHold + broadcast quedan centralizados en el servicio único.
         await rateWriteService.UpsertTodayRateAsync(roundedRate);
 
+        // 8.9-M1: la escritura invalida la caché /today.
+        _cache?.Remove($"er_today_{today:yyyy-MM-dd}");
+
         var tz = await GetConfiguredTimeZoneAsync();
         var nowUtc = DateTime.UtcNow;
         var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, tz);
@@ -180,14 +204,22 @@ public class ExchangeRateController : ControllerBase
         return Ok(new { Value = roundedRate, Date = today, UpdatedAt = nowUtc, UpdatedAtLocal = nowLocal });
     }
 
+    // 8.9-M1: la timezone configurada casi nunca cambia; se cachea 10 min (una query de SystemSettings menos por request).
     private async Task<TimeZoneInfo> GetConfiguredTimeZoneAsync()
     {
+        if (_cache != null && _cache.TryGetValue("er_tz", out object? cachedTz) && cachedTz is TimeZoneInfo tzCached)
+        {
+            return tzCached;
+        }
+
         var tzId = await _context.SystemSettings
             .Where(s => s.Key == "SelectedTimeZoneId")
             .Select(s => s.Value)
             .FirstOrDefaultAsync();
 
-        return Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
+        var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
+        _cache?.Set("er_tz", tz, TimeSpan.FromMinutes(10));
+        return tz;
     }
 }
 

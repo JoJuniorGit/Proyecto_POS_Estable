@@ -749,6 +749,23 @@ END $$;");
             // (cliente por defecto, producto adelanto) pero NUNCA se hashea una clave vacía.
             bool hasSeedPassword = !string.IsNullOrWhiteSpace(seedPassword);
 
+            // 8.9-B1: en Producción la clave semilla debe cumplir la política de contraseñas
+            // (fail-fast, cubre seed de admin nuevo y de admins existentes sin hash). Impide
+            // desplegar con claves conocidas por defecto ("Admin123!", "postgres", etc.).
+            if (isProductionSeed && hasSeedPassword)
+            {
+                var (isSeedPolicyValid, seedPolicyError) =
+                    new Core.Services.PasswordPolicyService().ValidatePassword(seedPassword, seedUsername);
+                if (!isSeedPolicyValid)
+                {
+                    var policyMsg = "[ERROR CRÍTICO] SystemSettings__AdminSeedPassword no cumple la política de contraseñas: " + seedPolicyError;
+                    Console.WriteLine(policyMsg);
+                    AppLogger.LogDbError(policyMsg, "Program.SeedPolicy");
+                    Environment.ExitCode = 1;
+                    return;
+                }
+            }
+
             var seedLower = seedUsername.ToLower();
             var targetAdmin = hasSeedPassword ? _salesDb.Users.FirstOrDefault(u => 
                 u.Username.ToLower() == seedLower || 
@@ -776,7 +793,8 @@ END $$;");
                     PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(seedPassword),
                     Role = Core.Entities.UserRole.Admin,
                     IsActive = true,
-                    MustChangePassword = false, // Clave elegida explícitamente en el instalador
+                    MustChangePassword = true, // 8.9-B1: rotación obligatoria en el primer login,
+                                               // aunque la clave provenga del instalador
                     SecurityStamp = Guid.NewGuid().ToString("N")
                 };
                 _salesDb.Users.Add(newAdmin);

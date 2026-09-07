@@ -17,7 +17,7 @@ public class VersionCheckResult
 
 public interface IVersionCheckService
 {
-    Task<VersionCheckResult> CheckVersionAsync();
+    Task<VersionCheckResult> CheckVersionAsync(System.Threading.CancellationToken cancellationToken = default);
 }
 
 public class VersionCheckService : IVersionCheckService
@@ -29,12 +29,13 @@ public class VersionCheckService : IVersionCheckService
         _httpClient = httpClient;
     }
 
-    public async Task<VersionCheckResult> CheckVersionAsync()
+    // 8.9-M12: CancellationToken obligatorio para que el arranque no cuelgue si el servidor no responde.
+    public async Task<VersionCheckResult> CheckVersionAsync(System.Threading.CancellationToken cancellationToken = default)
     {
         var result = new VersionCheckResult();
         try
         {
-            var response = await _httpClient.GetAsync("api/system/version-check");
+            var response = await _httpClient.GetAsync("api/system/version-check", cancellationToken);
             if (response.StatusCode == System.Net.HttpStatusCode.UpgradeRequired)
             {
                 result.IsCompatible = false;

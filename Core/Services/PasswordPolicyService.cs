@@ -11,10 +11,10 @@ public class PasswordPolicyService : IPasswordPolicyService
 {
     private static readonly HashSet<string> DefaultBlacklist = new(StringComparer.OrdinalIgnoreCase)
     {
-        "admin", "admin123", "administrator", "administrador", "password", "password123",
-        "12345678", "123456789", "1234567890", "posadmin", "clave123", "sistema",
+        "admin", "admin123", "admin123!", "administrator", "administrador", "password", "password123",
+        "123456", "12345678", "123456789", "1234567890", "posadmin", "clave123", "sistema",
         "sistema123", "cajero", "cajero123", "gerente", "gerente123", "supervisor",
-        "qwerty123", "letmein123", "welcome123", "admin2026", "pos2026"
+        "qwerty123", "letmein123", "welcome123", "admin2026", "pos2026", "postgres"
     };
 
     private readonly HashSet<string> _blacklist;

@@ -23,6 +23,10 @@ public class AuthController : ControllerBase
     private readonly IPasswordPolicyService _passwordPolicyService;
     private readonly ISecurityStampValidator? _stampValidator;
 
+    // 8.9-M3: hash PBKDF2 fijo para ejecutar el mismo coste de derivación cuando el usuario
+    // no existe (cierra el oráculo de timing por enumeración de cuenta).
+    private static readonly string _dummyPasswordHash = PasswordHasher.HashPassword("dummy-ooac0f8b");
+
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public AuthController(
         SalesDbContext db, 
@@ -58,6 +62,8 @@ public class AuthController : ControllerBase
 
         if (user == null)
         {
+            // 8.9-M3: PBKDF2 dummy anti-oráculo de timing (mismo coste que una verificación real).
+            PasswordHasher.VerifyPassword(request.Password, _dummyPasswordHash);
             AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Usuario '{request.Cedula}' no encontrado.");
             return Unauthorized(new { Message = "Credenciales inválidas." });
         }
@@ -87,7 +93,9 @@ public class AuthController : ControllerBase
         if (!passwordMatches)
         {
             user.AccessFailedCount++;
-            if (user.AccessFailedCount >= 5)
+            // 8.9-M2: el bloqueo NO es re-extendible — una vez fijado LockoutEndUtc no se
+            // reinicia el reloj en cada fallo posterior (evita DoS por intentos encadenados).
+            if (user.AccessFailedCount >= 5 && !user.LockoutEndUtc.HasValue)
             {
                 user.LockoutEndUtc = DateTime.UtcNow.AddMinutes(15);
                 AppLogger.LogWarn($"[AUTH] Usuario '{request.Cedula}' alcanzó 5 intentos fallidos. Cuenta bloqueada por 15 minutos.");
@@ -216,6 +224,8 @@ public class AuthController : ControllerBase
                                                            (digitsOnly.Length > 0 && (u.Cedula.ToLower() == "v-" + digitsOnly || u.Cedula == digitsOnly)));
         if (user == null)
         {
+            // 8.9-M3: PBKDF2 dummy anti-oráculo de timing en change-password.
+            PasswordHasher.VerifyPassword(request.CurrentPassword, _dummyPasswordHash);
             return Unauthorized(new { Message = "Credenciales inválidas o contraseña actual incorrecta." });
         }
 
@@ -227,10 +237,17 @@ public class AuthController : ControllerBase
         }
 
         // 2. Validar contraseña actual e incrementar contador de intentos fallidos
+        // 8.9-L10: una cuenta inactiva tampoco puede cambiar su contraseña (misma respuesta 401 genérica).
+        if (!user.IsActive)
+        {
+            return Unauthorized(new { Message = "Credenciales inválidas o contraseña actual incorrecta." });
+        }
+
         if (!PasswordHasher.VerifyPassword(request.CurrentPassword, user.PasswordHash))
         {
             user.AccessFailedCount++;
-            if (user.AccessFailedCount >= 5)
+            // 8.9-M2: lockout no re-extendible (mismo criterio que Login).
+            if (user.AccessFailedCount >= 5 && !user.LockoutEndUtc.HasValue)
             {
                 user.LockoutEndUtc = DateTime.UtcNow.AddMinutes(15);
                 AppLogger.LogSecurityAudit($"[ACCOUNT_LOCKED] Usuario={user.Username} bloqueado por 15 min tras fallos en change-password.");

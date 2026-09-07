@@ -134,11 +134,20 @@ public partial class App : Application
         if (!baseAddressStr.EndsWith("/")) baseAddressStr += "/";
         var baseAddressUri = new Uri(baseAddressStr);
 
-        // Register HealthPollingService with dedicated HttpClient (without ResilienceHandler loop)
-        builder.Services.AddHttpClient<IHealthPollingService, HealthPollingService>(client =>
+        // 8.9-B6: HealthPollingService SINGLETON. Antes se registraba con AddHttpClient<T,T>
+        // (transient): MainViewModel y el job de arranque resolvían instancias distintas y la
+        // suscripción a OnHealthRecovered podía perderse. Ahora hay un único HealthPollingService
+        // con su propio HttpClient dedicado (sin ResilienceHandler). El timeout del cliente se
+        // fija en StartPolling via CancellationToken linkeado (8.9-M12).
+        builder.Services.AddHttpClient("HealthPolling", client =>
         {
             client.BaseAddress = baseAddressUri;
         });
+        builder.Services.AddSingleton<IHealthPollingService>(sp =>
+            new HealthPollingService(
+                sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("HealthPolling"),
+                sp.GetService<IClientStateService>(),
+                sp.GetService<IConnectionManager>()));
 
         builder.Services.AddHttpClient<IProductService, ProductService>(client =>
         {
@@ -221,6 +230,8 @@ public partial class App : Application
         builder.Services.AddHttpClient<IVersionCheckService, VersionCheckService>(client =>
         {
             client.BaseAddress = baseAddressUri;
+            // 8.9-M12: el version-check de arranque nunca debe colgar la UI; timeout duro de 5s.
+            client.Timeout = TimeSpan.FromSeconds(5);
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
         builder.Services.AddHttpClient<IProductImportService, ProductImportService>(client =>
@@ -263,7 +274,10 @@ public partial class App : Application
             await _host.StartAsync();
 
             var versionService = _host.Services.GetRequiredService<IVersionCheckService>();
-            var checkResult = await versionService.CheckVersionAsync();
+            // 8.9-M12: timeout de 5s en el arranque — si el servidor no responde, se continúa
+            // con la versión actual (el servicio degrada a IsCompatible=true y no bloquea).
+            using var versionCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var checkResult = await versionService.CheckVersionAsync(versionCts.Token);
 
             if (!checkResult.IsCompatible)
             {

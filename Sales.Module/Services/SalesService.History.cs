@@ -35,49 +35,58 @@ public partial class SalesService
         return await GetSaleHistoryDetailAsync(saleId);
     }
 
-    public async Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync()
+    // 8.9-B2: soporta scope por cajero (Cashier filtra sus entregas; Admin/Manager ven todas).
+    // 8.9-B5: proyección directa en SQL (sin materializar entidades con Items/Payments completos).
+    public async Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync(int? cashierId = null)
     {
         var _sales = await _context.Sales
             .AsNoTracking()
             .AsSplitQuery()
-            .Include(s => s.Customer)
-            .Include(s => s.Items)
             .Where(s => s.Status == SaleStatus.Completed && s.DeliveryStatus == SaleDeliveryStatus.PendingPickup)
+            .Where(s => !cashierId.HasValue || s.CashierId == cashierId.Value)
             .OrderByDescending(s => s.Date)
+            .Select(s => new PendingPickupDto
+            {
+                SaleId = s.Id,
+                InvoiceNumber = s.InvoiceNumber,
+                Date = s.Date,
+                CustomerId = s.CustomerId,
+                CustomerName = s.CustomerName ?? s.Customer!.Name ?? "Cliente Desconocido",
+                CustomerCedula = s.CustomerCedula ?? s.Customer!.CedulaOrRif ?? "V-00000000",
+                CustomerPhone = s.Customer != null ? s.Customer.Phone : string.Empty,
+                TotalUSD = s.TotalUSD,
+                TotalBsS = s.TotalBsS,
+                DeliveryStatus = s.DeliveryStatus.ToString(),
+                PickupDate = s.PickupDate,
+                Items = s.Items.Select(i => new SaleItemHistoryDto
+                {
+                    Id = i.Id,
+                    ProductName = i.ProductName,
+                    Quantity = i.Quantity,
+                    UnitPrice = i.UnitPrice,
+                    UnitPriceBsS = i.UnitPriceBsS,
+                    SubtotalBsS = i.SubtotalBsS
+                }).ToList()
+            })
             .ToListAsync();
 
-        return _sales.Select(s => new PendingPickupDto
-        {
-            SaleId = s.Id,
-            InvoiceNumber = s.InvoiceNumber,
-            Date = s.Date,
-            CustomerId = s.CustomerId,
-            CustomerName = s.CustomerName ?? s.Customer?.Name ?? "Cliente Desconocido",
-            CustomerCedula = s.CustomerCedula ?? s.Customer?.CedulaOrRif ?? "V-00000000",
-            CustomerPhone = s.Customer?.Phone ?? string.Empty,
-            TotalUSD = s.TotalUSD,
-            TotalBsS = s.TotalBsS,
-            DeliveryStatus = s.DeliveryStatus.ToString(),
-            PickupDate = s.PickupDate,
-            Items = s.Items.Select(i => new SaleItemHistoryDto
-            {
-                Id = i.Id,
-                ProductName = i.ProductName,
-                Quantity = i.Quantity,
-                UnitPrice = i.UnitPrice,
-                UnitPriceBsS = i.UnitPriceBsS,
-                SubtotalBsS = i.SubtotalBsS
-            }).ToList()
-        });
+        return _sales;
     }
 
-    public async Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, DateTime? startDate, DateTime? endDate, string? search = null)
+    // 8.9-B2: un Cashier solo consulta su propio historial; Admin/Manager sin restricción.
+    public async Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, DateTime? startDate, DateTime? endDate, string? search = null, int? cashierId = null)
     {
         var query = _context.Sales
             .AsNoTracking()
             .Include(s => s.Cashier)
             .Include(s => s.Customer)
             .Where(s => s.Status == SaleStatus.Completed);
+
+        // 8.9-B2: filtro de propiedad para el rol Cashier.
+        if (cashierId.HasValue)
+        {
+            query = query.Where(s => s.CashierId == cashierId.Value);
+        }
 
         // La columna Date es "timestamp with time zone" (UTC): Npgsql rechaza parámetros
         // DateTime con Kind != Utc. Se utiliza TimeZoneHelper.GetUtcRange para convertir las

@@ -22,7 +22,8 @@ param(
     [string]$BackendExe = "$InstallDir\BackendAPI\Backend.API.exe",
     [string]$Nssm = "$InstallDir\BackendAPI\nssm.exe",
     [string]$ConnectionString = "Host=localhost;Port=5432;Database=CommandCenterDb;Username=postgres;Password=postgres",
-    [string]$AdminSeedPassword = "Admin123!",
+    # 8.9-B1: sin valor por defecto - se exige una clave fuerte para el admin semilla.
+    [string]$AdminSeedPassword = "",
     [string]$AdminSeedUsername = "admin",
     [string]$AdminSeedName = "Administrador Principal",
     [string]$BusinessName = "Mi Negocio POS",
@@ -50,6 +51,11 @@ function Log([string]$message, [string]$level = "INFO") {
 }
 
 Log "=== Iniciando configuración del servicio POS y Firewall ==="
+
+# 8.9-B1: validación obligatoria de la clave del admin semilla (sin defaults conocidos).
+if ([string]::IsNullOrWhiteSpace($AdminSeedPassword)) {
+    throw "Se requiere -AdminSeedPassword. Proporcione una contraseña fuerte para el administrador semilla (mín. 8 caracteres, con mayúscula, minúscula, dígito y carácter especial). El backend abortará en Producción si la clave no cumple la política."
+}
 
 # Generar clave JWT aleatoria segura si no fue provista o si coincide con la predeterminada débil
 if ([string]::IsNullOrWhiteSpace($JwtSecretKey) -or $JwtSecretKey -eq "ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795") {

@@ -815,5 +815,85 @@ D. RECOMENDACIONES PRIORIZADAS
 6. Cambio de proceso: hacer correr CI sobre el bloque completo (6 commits pendientes de
    push) y anadir npm run build + gate de cobertura (8.9-L5).
 
-FIN DEL ANEXO - REVISION 8.9
+================================================================================
+ANEXO - REVISION 8.10 (Bloque S4 - Remediacion de hallazgos criticos/altos 8.9)
+================================================================================
+Fecha de ejecucion: 2026-09-06 (rama V0.15; working tree, pendiente de commit/push)
+Metricas post-remediacion (ejecucion real):
+  - Suite .NET: 695 / 695 superadas (0 fallos, 0 omitidos) ~ 9 s
+  - Suite Web: 75 / 75 superadas (0 fallos)
+  - Total: 770 / 770 sin regresiones
+  - Linter Web (oxlint): 0 errores / 0 advertencias (94 archivos)
+  - Compilacion Release: 0 advertencias / 0 errores (TreatWarningsAsErrors=true)
+
+Fixes aplicados en el bloque S4:
+
+[S4-A1 | 8.9-B1] Credenciales por defecto del instalador.
+  - installer/Configure-PosService.ps1: se elimina el default 'Admin123!' de
+    -AdminSeedPassword; el script aborta si el parametro se omite.
+  - Backend.API/Program.cs (seed): el admin semilla se crea con MustChangePassword=true;
+    en Produccion la clave se valida contra PasswordPolicyService con fail-fast
+    (la app no arranca si la password es debil por parametro/variable de entorno).
+  - Core/Services/PasswordPolicyService.cs: blacklist ampliada con 'admin123!',
+    '123456' y 'postgres'.
+
+[S4-A2 | 8.9-B2] IDOR en GET de ventas.
+  - SalesController.GetCashierReadScope(): un Cashier solo lista sus propias ventas en
+    GET /pending, /pending-pickups y /history; Admin/Manager conservan vision global.
+  - GET /{id}/history-detail ahora exige IsAuthorizedForSaleAsync (403 si no es dueno).
+  - SalesService: GetPendingSalesAsync(cashierId?), GetPendingPickupsAsync(cashierId?)
+    y GetSalesHistoryAsync(..., cashierId?) aplican el filtro de propiedad.
+
+[S4-A3 | 8.9-M2/M3] Lockout no re-extendible y oraculo de timing.
+  - AuthController: en Login y ChangePassword el lockout se fija UNA sola vez
+    (!LockoutEndUtc.HasValue): fallos posteriores ya no reinician los 15 min
+    (elimina el DoS de bloqueo indefinido).
+  - PBKDF2 dummy (hash fijo) ejecutado cuando el usuario no existe, en login y en
+    change-password: coste de derivacion identico al real (cierra el oraculo de
+    enumeracion por timing).
+  - Residual: la particion del rate limiter sigue siendo por IP (RateLimitPartition es
+    sincrona y no permite leer el cuerpo JSON por cuenta). Queda mitigado por lockout
+    no re-extendible + ventana burst de 10/min por IP.
+
+[S4-A4 | 8.9-B6] HealthPollingService transient perdia la suscripcion de recuperacion.
+  - App.xaml.cs: IHealthPollingService ahora es SINGLETON construido con un HttpClient
+    dedicado ("HealthPolling", sin ResilienceHandler). Un unico loop de polling.
+
+[S4-A5 | 8.9-M12] Arranque WPF podia colgarse en el version-check.
+  - VersionCheckService.CheckVersionAsync acepta CancellationToken; en OnStartup se usa
+    CancellationTokenSource de 5 s y el HttpClient de version-check lleva Timeout=5s.
+  - Si el servidor no responde, degrada a compatible y la app arranca igualmente.
+
+[S4-A6 | 8.9-M1] exchange-rate/today sin cache (2-3 queries por poll del POS).
+  - ExchangeRateController.GetToday: cache IMemoryCache de 20 s por fecha calendario,
+    invalidada en cada write (POST y sync-bcv).
+  - GetConfiguredTimeZoneAsync: la timezone configurada se cachea 10 min.
+
+[S4-A7 | 8.9-M5/L10] Cabeceras de seguridad y change-password sin IsActive.
+  - SecurityHeadersMiddleware: anadida Permissions-Policy
+    (camera, geolocation, microphone, payment, usb, fullscreen = none); CSP existente.
+  - AuthController.ChangePassword: rechaza cuentas inactivas (respuesta 401 generica,
+    sin revelar el motivo).
+
+[S4-B1 | 8.9-B3] Indices vs LOWER().
+  - Verificado que el quick-search del POS ya hace match EXACTO ordinal de SKU
+    (p.SKU == trimmed, sin ToLower()) en GetSuggestionsAsync: el indice de SKU SI se
+    utiliza en el hot path del scanner.
+  - Los LOWER() en busquedas parciales de texto (InventoryService.CatalogQueries.cs
+    :62, :124, :308) se mantienen por ser autocompletado/UI. Siguiente paso si crece
+    el volumen: indice GIN (pg_trgm).
+
+[S4-B2 | 8.9-B5] Recalculo OnHold y PendingPickups sin proyeccion.
+  - RecalculateOnHoldSalesAsync: procesamiento paginado por lotes (200 por pagina) con
+    SaveChanges por pagina; memoria acotada en canteras grandes.
+  - GetPendingPickupsAsync: proyeccion directa en SQL (sin materializar entidades
+    completas con Items/Payments).
+
+Hallazgos 8.9 cerrados por S4: B1, B2, B5, B6, M1, M2, M3, M5, M12, L10; B3 parcial
+(documentado). Pendiente de bloque futuro: B4 (transacciones cross-DB asimetricas),
+B7 (Dispatcher.Invoke sincrono x15), M4 (pairing QR sin secreto), M6 (CORS), M7 (HTTP
+sin TLS en LAN), M8 (outbox dentro de tx), M9 (indices), M10 (SQL legacy), M11 (busqueda
+de historial no indexable), M13-M18, L1-L13 (excepto L10) y H1-H6.
+
+FIN DEL ANEXO - REVISION 8.10
 ================================================================================

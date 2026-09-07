@@ -30,24 +30,38 @@ public partial class SalesService
         if (newExchangeRate <= 0)
             return 0;
 
-        var onHoldSales = await _context.Sales
-            .AsSplitQuery()
-            .Include(s => s.Items)
-            .Include(s => s.Payments)
-            .Where(s => s.Status == SaleStatus.OnHold)
-            .ToListAsync();
+        // 8.9-B5: procesamiento por lotes (paginado) para no cargar todo el conjunto OnHold en
+        // memoria; cada página se graba al terminar. El recálculo unitario (RecalculateTotalAsync)
+        // ya usa batch fetch de productos, de modo que el costo por página se mantiene acotado.
+        const int batchSize = 200;
+        int totalUpdated = 0;
 
-        if (!onHoldSales.Any())
-            return 0;
-
-        foreach (var sale in onHoldSales)
+        while (true)
         {
-            sale.AppliedRate = newExchangeRate;
-            await RecalculateTotalAsync(sale);
+            var batch = await _context.Sales
+                .AsSplitQuery()
+                .Include(s => s.Items)
+                .Include(s => s.Payments)
+                .Where(s => s.Status == SaleStatus.OnHold)
+                .OrderBy(s => s.Id)
+                .Skip(totalUpdated)
+                .Take(batchSize)
+                .ToListAsync();
+
+            if (batch.Count == 0)
+                break;
+
+            foreach (var sale in batch)
+            {
+                sale.AppliedRate = newExchangeRate;
+                await RecalculateTotalAsync(sale);
+            }
+
+            await _context.SaveChangesAsync();
+            totalUpdated += batch.Count;
         }
 
-        await _context.SaveChangesAsync();
-        return onHoldSales.Count;
+        return totalUpdated;
     }
 
     public async Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType)
