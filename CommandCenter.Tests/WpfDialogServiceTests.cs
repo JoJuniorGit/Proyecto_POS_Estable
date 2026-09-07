@@ -44,12 +44,16 @@ public class WpfDialogServiceTests
         var clientState = new ClientStateService();
         var dialogService = CreateService(clientState);
 
-        // Should execute cleanly without throwing NRE or WPF exceptions
-        dialogService.ShowError("Error Grave", "Fallo de conexión");
-        dialogService.ShowWarning("Advertencia", "Tasa de cambio no configurada");
-        dialogService.ShowInfo("Información", "Operación completada");
+        // 8.9-L1: assert real — ninguna de las notificaciones debe lanzar excepciones
+        // (NRE o excepciones WPF) al ejecutar en modo suprimido sin Application.Current.
+        var exception = Record.Exception(() =>
+        {
+            dialogService.ShowError("Error Grave", "Fallo de conexión");
+            dialogService.ShowWarning("Advertencia", "Tasa de cambio no configurada");
+            dialogService.ShowInfo("Información", "Operación completada");
+        });
 
-        Assert.True(true);
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -57,14 +61,19 @@ public class WpfDialogServiceTests
     {
         var clientState = new ClientStateService();
         clientState.TryActivateFatalError();
+        Assert.True(clientState.IsFatalErrorActive);
         var dialogService = CreateService(clientState);
 
-        // Should execute cleanly without throwing NRE or WPF exceptions
-        dialogService.ShowError("Error Fatal", "Servidor no responde");
-        dialogService.ShowWarning("Advertencia", "Almacén offline");
-        dialogService.ShowInfo("Información", "Modo degradado");
+        // 8.9-L1: assert real — en modo circuito roto las notificaciones se suprimen sin lanzar.
+        var exception = Record.Exception(() =>
+        {
+            dialogService.ShowError("Error Fatal", "Servidor no responde");
+            dialogService.ShowWarning("Advertencia", "Almacén offline");
+            dialogService.ShowInfo("Información", "Modo degradado");
+        });
 
-        Assert.True(true);
+        Assert.Null(exception);
+        Assert.True(clientState.IsFatalErrorActive);
     }
 
     [Fact]

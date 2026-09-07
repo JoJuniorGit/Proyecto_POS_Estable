@@ -41,6 +41,11 @@ export default function RegisterClosePage() {
 
   // Utility to determine currency for a payment method
   const getMethodCurrency = useCallback((method) => {
+    // 8.9-M16: la fuente de verdad es la moneda derivada por el backend (method.currency);
+    // la heurística por nombre solo actúa como fallback temporal para respuestas cacheadas viejas.
+    if (method?.currency === 'USD' || method?.currency === 'Bs.S') {
+      return method.currency;
+    }
     const name = (method?.name || '').toLowerCase();
     if (name.includes('usd') || name.includes('dolar') || name.includes('$') || name.includes('divisa')) {
       return 'USD';
@@ -485,7 +490,6 @@ export default function RegisterClosePage() {
         onClose={() => setIsPreSendModalOpen(false)}
         title="Confirmar Declaración de Cierre Ciego"
         maxWidth="540px"
-        centerTitle={true}
       >
         <div className="p-2">
           <p className="text-muted text-xs sm:text-sm mb-3">

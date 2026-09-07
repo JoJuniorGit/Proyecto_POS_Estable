@@ -73,6 +73,11 @@ public class DailyClosureController : ControllerBase
 
         try
         {
+            // 8.9-B4: el cierre diario combina SalesDbContext (totales/cierre) + caja (rollover) en una
+            // transacción Serializable cross-DB; bajo execution strategy para reintentar en bloque
+            // ante fallos transitorios.
+            return await _salesContext.Database.CreateExecutionStrategy().ExecuteAsync<ActionResult>(async () =>
+            {
             // 1. Identidad autoritativa por claims (H-API-2)
             string? authenticatedUserId = _currentUserService.UserId
                 ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
@@ -157,6 +162,7 @@ public class DailyClosureController : ControllerBase
             _closureService.WriteClosedClosureReceipts(result);
 
             return Ok(result);
+            });
         }
         catch (DbUpdateException ex)
         {

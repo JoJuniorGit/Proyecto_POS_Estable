@@ -28,11 +28,12 @@ public class HealthController : ControllerBase
             bool canConnect = await _salesDb.Database.CanConnectAsync();
             if (canConnect)
             {
+                // 8.9-L9: el endpoint de salud es anónimo (lo usan el escaneo LAN y el polling
+                // de conectividad); por ello NO se expone la versión exacta del servidor.
                 return Ok(new
                 {
                     status = "Healthy",
                     service = "Proyecto_POS_Server",
-                    version = Core.Common.AppVersionHelper.CurrentVersion,
                     database = "Connected",
                     timestamp = DateTime.UtcNow.ToString("o")
                 });
@@ -42,7 +43,6 @@ public class HealthController : ControllerBase
             {
                 status = "Unhealthy",
                 service = "Proyecto_POS_Server",
-                version = Core.Common.AppVersionHelper.CurrentVersion,
                 database = "Disconnected",
                 message = "La conexión con la base de datos PostgreSQL no está disponible.",
                 timestamp = DateTime.UtcNow.ToString("o")
@@ -55,7 +55,6 @@ public class HealthController : ControllerBase
             {
                 status = "Unhealthy",
                 service = "Proyecto_POS_Server",
-                version = Core.Common.AppVersionHelper.CurrentVersion,
                 database = "Error",
                 message = "El servicio no se encuentra disponible temporalmente.",
                 timestamp = DateTime.UtcNow.ToString("o")

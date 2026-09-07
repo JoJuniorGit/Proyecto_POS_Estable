@@ -160,7 +160,7 @@ public class DailyClosureService : IDailyClosureService
             sb.AppendLine("------------------------------------------------------------------------------------------");
             foreach (var detail in closure.Details)
             {
-                string curr = detail.PaymentMethodName.Contains("USD", StringComparison.OrdinalIgnoreCase) ? "USD" : "Bs.S";
+                string curr = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
                 sb.AppendLine(string.Format("{0,-25} {1,-8} {2,22:N2}", detail.PaymentMethodName, curr, detail.ActualAmountBsS));
             }
             sb.AppendLine("------------------------------------------------------------------------------------------");
@@ -184,7 +184,7 @@ public class DailyClosureService : IDailyClosureService
             sb.AppendLine("------------------------------------------------------------------------------------------");
             foreach (var detail in closure.Details)
             {
-                string curr = detail.PaymentMethodName.Contains("USD", StringComparison.OrdinalIgnoreCase) ? "USD" : "Bs.S";
+                string curr = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
                 sb.AppendLine(string.Format("{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}", 
                     detail.PaymentMethodName, 
                     curr, 

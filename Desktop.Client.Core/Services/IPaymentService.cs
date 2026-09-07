@@ -41,6 +41,16 @@ public partial class PaymentMethodDto : ObservableObject
         set => SetProperty(ref _isCash, value);
     }
 
+    private string _currency = "Bs.S";
+    /// <summary>
+    /// 8.9-M16: moneda efectiva del método de pago provista por el backend (fuente de verdad).
+    /// </summary>
+    public string Currency
+    {
+        get => _currency;
+        set => SetProperty(ref _currency, value);
+    }
+
     private int _displayOrder = 0;
     public int DisplayOrder
     {

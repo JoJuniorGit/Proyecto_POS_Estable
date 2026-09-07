@@ -41,9 +41,29 @@ jobs:
         run: dotnet build CommandCenter.slnx --no-restore --configuration Release
 
       - name: Run Test Suite & Collect Code Coverage
+        # 8.9-L2: TEST_POSTGRES_CONNECTION es un contrato de CI; sin ella PostgresRealIntegrationTests
+        # falla en pipelines (GITHUB_ACTIONS=true), nunca hace silent-pass.
         env:
           TEST_POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=pos_test;Username=postgres;Password=testpass"
         run: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build --configuration Release --collect:"XPlat Code Coverage" --verbosity normal
+
+      # 8.9-L5: gate de cobertura (>= 70% line-rate) sobre el reporte Cobertura del paso anterior.
+      - name: Enforce Coverage Gate (>= 70%)
+        if: always()
+        run: |
+          report=$(find ./CommandCenter.Tests/TestResults -name 'coverage.cobertura.xml' | head -n 1)
+          echo "Coverage report: ${report}"
+          if [ -z "${report}" ]; then
+            echo "::error::No se generó el reporte de cobertura en CI (gate de cobertura insuficientemente medible)."
+            exit 1
+          fi
+          rate=$(grep -oP '<coverage[^>]*line-rate="\K[0-9.]+' "${report}" | head -n 1)
+          echo "Line coverage rate: ${rate}"
+          threshold=0.70
+          if ! python3 -c "import sys; sys.exit(0 if float('${rate}') >= ${threshold} else 1)"; then
+            echo "::error::Cobertura por debajo del umbral: ${rate} < ${threshold}"
+            exit 1
+          fi
 
       - name: Upload Coverage Results
         uses: actions/upload-artifact@v4
@@ -77,4 +97,9 @@ jobs:
 
       - name: Run Frontend Tests
         run: npm test
+        working-directory: Web.Frontend
+
+      # 8.9-L5: gate de build del bundle (evita que el bundle Web de Backend.API/wwwroot quede stale).
+      - name: Build Frontend Bundle
+        run: npm run build
         working-directory: Web.Frontend

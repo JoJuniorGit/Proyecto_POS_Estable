@@ -63,6 +63,11 @@ public class ShiftsController : ControllerBase
 
         try
         {
+            // 8.9-B4: el cierre de turno combina SalesDbContext (cierre/totales) + caja (rollover) en
+            // una transacción Serializable cross-DB; se ejecuta bajo execution strategy para
+            // reintentar el bloque completo ante fallos transitorios y no quedar a medias.
+            return await _salesContext.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
             decimal exchangeRate = await GetTodayExchangeRateAsync();
 
             // 8.2-M2: Bloquear cierre sin tasa BCV del día (o tasa 0/NA explícita) con error claro
@@ -175,6 +180,7 @@ public class ShiftsController : ControllerBase
             };
 
             return Ok(report);
+            });
         }
         catch (DbUpdateException ex)
         {

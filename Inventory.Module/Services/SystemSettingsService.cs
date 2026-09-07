@@ -34,13 +34,23 @@ public class SystemSettingsService : ISystemSettingsService
         var setting = await _context.SystemSettings.FirstOrDefaultAsync(s => s.Key == key);
         var value = setting?.Value;
 
+        // 8.9-L12: no cachear string.Empty — un key inexistente no debe quedar "falsamente
+        // resuelto" durante el TTL devolviendo "" en lugar de null. Los keys ausentes se
+        // re-consultan en la siguiente petición.
         if (_cache != null)
         {
-            _cache.Set(cacheKey, value ?? string.Empty, new MemoryCacheEntryOptions
+            if (!string.IsNullOrEmpty(value))
             {
-                SlidingExpiration = CacheTtl,
-                Size = 1
-            });
+                _cache.Set(cacheKey, value, new MemoryCacheEntryOptions
+                {
+                    SlidingExpiration = CacheTtl,
+                    Size = 1
+                });
+            }
+            else
+            {
+                _cache.Remove(cacheKey);
+            }
         }
 
         return value;

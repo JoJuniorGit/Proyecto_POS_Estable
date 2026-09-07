@@ -124,7 +124,30 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
     public decimal CurrentRate
     {
         get => _currentRate;
-        set => UpdateRateLocallyAsync(value).SafeFireAndForget("ExchangeRateService.UpdateRateLocally");
+        set => SetCurrentRateSynchronously(value);
+    }
+
+    /// <summary>
+    /// 8.9-L7: incorporación síncrona de tasa desde el setter. El estado queda consistente al
+    /// retornar; no se delega a fire-and-forget (evita tareas huérfanas y estado reversionado
+    /// ante fallos). Inseguro de marcar/deadlocarse porque los hilos de fondo ya no retienen el
+    /// semáforo mientras esperan al dispatcher (ver BroadcastRateChange).
+    /// </summary>
+    public void SetCurrentRateSynchronously(decimal newRate)
+    {
+        _semaphore.Wait();
+        try
+        {
+            if (_currentRate != newRate)
+            {
+                _currentRate = newRate;
+                BroadcastRateChange(_currentRate);
+            }
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     private async Task UpdateRateLocallyAsync(decimal newRate)
@@ -135,24 +158,30 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             if (_currentRate != newRate)
             {
                 _currentRate = newRate;
-                
-                // Broadcast change to the rest of the application
-                if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
-                {
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        WeakReferenceMessenger.Default.Send(new ExchangeRateChangedMessage(_currentRate));
-                    });
-                }
-                else
-                {
-                    WeakReferenceMessenger.Default.Send(new ExchangeRateChangedMessage(_currentRate));
-                }
+                BroadcastRateChange(_currentRate);
             }
         }
         finally
         {
             _semaphore.Release();
+        }
+    }
+
+    private void BroadcastRateChange(decimal newRate)
+    {
+        if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
+        {
+            // 8.9-L7: InvokeAsync (no bloqueante): el hilo de fondo suelta el semáforo sin
+            // esperar al dispatcher, por lo que un setter síncrono desde la UI (Wait) jamás
+            // puede quedar atrapado esperando un dispatcher bloqueado por sí mismo.
+            Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                WeakReferenceMessenger.Default.Send(new ExchangeRateChangedMessage(newRate));
+            });
+        }
+        else
+        {
+            WeakReferenceMessenger.Default.Send(new ExchangeRateChangedMessage(newRate));
         }
     }
 

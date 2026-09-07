@@ -186,17 +186,19 @@ public partial class App : Application
             client.BaseAddress = baseAddressUri;
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
-        builder.Services.AddTransient<LoginViewModel>();
+        // 8.9-L13: los VMs retenidos de por vida por MainViewModel son de-facto singletons;
+        // se registran Singleton para que el contenedor refleje su ciclo de vida real.
+        builder.Services.AddSingleton<LoginViewModel>();
         builder.Services.AddTransient<PairingQrViewModel>();
         builder.Services.AddTransient<ServerConnectionViewModel>();
         builder.Services.AddTransient<CustomerManagementViewModel>();
-        builder.Services.AddTransient<UsersManagementViewModel>();
+        builder.Services.AddSingleton<UsersManagementViewModel>();
 
 
         builder.Services.AddSingleton<CartViewModel>();
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddSingleton<PosViewModel>();
-        builder.Services.AddTransient<InventoryViewModel>();
+        builder.Services.AddSingleton<InventoryViewModel>();
         builder.Services.AddSingleton<SalesHistoryViewModel>();
         builder.Services.AddSingleton<PendingOrdersViewModel>(sp => new Desktop.Client.ViewModels.PendingOrdersViewModel(
             sp.GetRequiredService<Desktop.Client.Services.ISalesService>(),
@@ -208,7 +210,7 @@ public partial class App : Application
 
         builder.Services.AddSingleton<PendingPickupsViewModel>();
 
-        builder.Services.AddTransient<SettingsViewModel>();
+        builder.Services.AddSingleton<SettingsViewModel>();
         builder.Services.AddSingleton<ExchangeRateViewModel>();
 
         // Register new Cash Drawer Service
@@ -239,9 +241,9 @@ public partial class App : Application
             client.BaseAddress = baseAddressUri;
         }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
 
-        builder.Services.AddTransient<DailyClosureViewModel>();
-        builder.Services.AddTransient<CashDrawerViewModel>();
-        builder.Services.AddTransient<ImportProductsViewModel>();
+        builder.Services.AddSingleton<DailyClosureViewModel>();
+        builder.Services.AddSingleton<CashDrawerViewModel>();
+        builder.Services.AddSingleton<ImportProductsViewModel>();
 
         // Main Window Registration
         builder.Services.AddSingleton<MainWindow>();

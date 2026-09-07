@@ -203,6 +203,30 @@ export function parseFormattedNumber(val) {
 }
 
 /**
+ * 8.9-M18: normalización canónica de montos a escala entera de centésimas.
+ * Convierte cualquier entrada que parseAmount entienda (incluido >2 decimales) al valor
+ * monetario redondeado al céntimo más próximo (regla única usada por AtmAmountInput y
+ * PaymentForm para que ambos redondeen idéntico).
+ * @param {number|string} rawValue
+ * @returns {number} centésimas (ej: "172.786" -> 17279)
+ */
+export function amountToCents(rawValue) {
+  const num = parseAmount(rawValue);
+  if (!isFinite(num)) return 0;
+  return Math.round(num * 100);
+}
+
+/**
+ * Convierte centésimas al número decimal equivalente (ej: 17279 -> 172.79).
+ * @param {number} cents
+ * @returns {number}
+ */
+export function centsToAmount(cents) {
+  const n = Number(cents);
+  return isFinite(n) ? n / 100 : 0;
+}
+
+/**
  * ATM-style input formatting: shifts typed digits to cents
  */
 export function formatAtmInput(rawValue, decimals = 2) {

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 
-export default function Modal({ isOpen, onClose, title, children, maxWidth = '500px', overflowVisible = false, _centerTitle = true }) {
+export default function Modal({ isOpen, onClose, title, children, maxWidth = '500px', overflowVisible = false }) {
   const modalRef = useRef(null);
 
   useEffect(() => {

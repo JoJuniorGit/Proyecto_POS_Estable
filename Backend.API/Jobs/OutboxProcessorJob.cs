@@ -173,6 +173,11 @@ return totalPurged;
                     return;
                 }
 
+                // 8.9-M8: el despacho SignalR (llamada de red a todos los clientes) se ejecuta FUERA de la
+                // transacción. El lock FOR UPDATE SKIP LOCKED se libera al hacer commit ANTES de difundir;
+                // mantenerlo durante la operación de red bloquearía otras escrituras sobre OutboxMessages.
+                await tx.CommitAsync(cancellationToken);
+
                 foreach (var message in messages)
                 {
                     try
@@ -207,7 +212,6 @@ return totalPurged;
                 }
 
                 await dbContext.SaveChangesAsync(cancellationToken);
-                await tx.CommitAsync(cancellationToken);
                 return;
             }
             else

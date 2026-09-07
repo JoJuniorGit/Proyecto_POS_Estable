@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useCurrencyFormat } from '../../context/CurrencyFormatContext';
+import { amountToCents } from '../../utils/formatters';
 
 export default function AtmAmountInput({
   value = '',
@@ -51,7 +52,8 @@ export default function AtmAmountInput({
     setDisplayValue(cleaned);
 
     if (onChange) {
-      const numeric = parseAmount(cleaned);
+      // 8.9-M18: normalización canónica a centésimas (idéntica a PaymentForm).
+      const numeric = amountToCents(cleaned) / 100;
       onChange(numeric, cleaned);
     }
   };
@@ -73,7 +75,8 @@ export default function AtmAmountInput({
       setDisplayValue('');
       if (onChange) onChange(0, '');
     } else {
-      const num = parseAmount(rawText);
+      // 8.9-M18: misma normalización en centésimas que en handleChange.
+      const num = amountToCents(rawText) / 100;
       if (!isNaN(num) && num > 0) {
         const formatted = formatAmount(num, decimals);
         setDisplayValue(formatted);

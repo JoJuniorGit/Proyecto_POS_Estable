@@ -272,7 +272,6 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
         onClose={handleRequestClose} 
         title={overrideSale ? (isFullLiquidation ? "Liquidar Cuenta Completa" : "Liquidar / Registrar Abono a Cuenta") : "Cobranza"} 
         maxWidth="560px"
-        centerTitle={true}
       >
       <CustomerSelectorCard
         currentCustomer={activeSale?.customer || (activeSale?.customerName ? { id: activeSale.customerId, name: activeSale.customerName, cedulaOrRif: activeSale.customerCedula } : null)}

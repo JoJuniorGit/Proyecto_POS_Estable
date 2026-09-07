@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using Core.Common;
 using Core.DTOs;
 using Core.Logging;
 using Desktop.Client.Views;
@@ -144,11 +145,13 @@ public class WpfDialogService : IDialogService
         }
         else
         {
-            Application.Current.Dispatcher.Invoke(() =>
+            // 8.9-B7: los diálogos informativos no bloquean el hilo de llamada (servicio/polling);
+            // se envían al hilo UI en async y se reportan fallos vía SafeFireAndForget.
+            Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 var dialog = new CustomDialogWindow(title, message, type);
                 dialog.ShowDialog();
-            });
+            }).Task.SafeFireAndForget($"WpfDialogService.{methodName}");
         }
     }
 
@@ -239,7 +242,7 @@ public class WpfDialogService : IDialogService
         }
         else
         {
-            Application.Current.Dispatcher.Invoke(openDialog);
+            Application.Current.Dispatcher.InvokeAsync(openDialog).Task.SafeFireAndForget("WpfDialogService.ShowSuccessDialog");
         }
     }
 
@@ -313,7 +316,7 @@ public class WpfDialogService : IDialogService
         };
 
         if (Application.Current.Dispatcher.CheckAccess()) openDialog();
-        else Application.Current.Dispatcher.Invoke(openDialog);
+        else Application.Current.Dispatcher.InvokeAsync(openDialog).Task.SafeFireAndForget("WpfDialogService.ShowInterruptedTransactionDialog");
     }
 
     public async System.Threading.Tasks.Task<CustomerDto?> ShowCustomerPickerAsync()
@@ -400,13 +403,22 @@ public class WpfDialogService : IDialogService
         if (Application.Current == null)
             return System.Threading.Tasks.Task.CompletedTask;
 
+        // 8.9-M13: sin dependencias inyectadas no se crean fallbacks crudos (HttpClient suelto sin
+        // ciclo de vida); el diálogo se deniega y se registra, en lugar de operar fuera de DI.
+        if (_httpClientFactory == null || _connectionManager == null)
+        {
+            string logMessage = "[NO-OP DIALOG SUPPRESSED] ShowPairingQrDialogAsync denegado: faltan dependencias inyectadas (IHttpClientFactory / IConnectionManager).";
+            _logger?.LogWarning(logMessage);
+            ClientStateLogger.LogWarning(logMessage);
+            return System.Threading.Tasks.Task.CompletedTask;
+        }
+
         using var _ = TrackModal();
         Action openDialog = () =>
         {
-            var serverAddr = _connectionManager?.CurrentServerAddress ?? "http://localhost:5000/";
-            var httpClient = _httpClientFactory != null 
-                ? _httpClientFactory.CreateClient("SalesApi")
-                : new System.Net.Http.HttpClient { BaseAddress = new Uri(serverAddr) };
+            var serverAddr = _connectionManager.CurrentServerAddress ?? "http://localhost:5000/";
+            var httpClient = _httpClientFactory.CreateClient("SalesApi");
+            httpClient.BaseAddress = new Uri(serverAddr);
 
             var vm = new ViewModels.PairingQrViewModel(httpClient);
             var dialog = new PairingQrDialog(vm);
@@ -428,13 +440,21 @@ public class WpfDialogService : IDialogService
         if (Application.Current == null)
             return System.Threading.Tasks.Task.FromResult(false);
 
+        // 8.9-M13: sin dependencias inyectadas no se construyen ConnectionManager/SubnetScanner
+        // ad-hoc; el diálogo se deniega y se registra.
+        if (_connectionManager == null || _scannerService == null)
+        {
+            string logMessage = "[NO-OP DIALOG SUPPRESSED] ShowServerConnectionDialogAsync denegado: faltan dependencias inyectadas (IConnectionManager / ISubnetScannerService).";
+            _logger?.LogWarning(logMessage);
+            ClientStateLogger.LogWarning(logMessage);
+            return System.Threading.Tasks.Task.FromResult(false);
+        }
+
         bool result = false;
         using var _ = TrackModal();
         Action openDialog = () =>
         {
-            var connMgr = _connectionManager ?? new ConnectionManager(new ClientSettingsStore(), new SubnetScannerService());
-            var scanner = _scannerService ?? new SubnetScannerService();
-            var vm = new ViewModels.ServerConnectionViewModel(connMgr, scanner);
+            var vm = new ViewModels.ServerConnectionViewModel(_connectionManager, _scannerService);
             var dialog = new ServerConnectionDialog(vm);
             if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
             {
@@ -455,12 +475,20 @@ public class WpfDialogService : IDialogService
         if (Application.Current == null || _productService == null)
             return System.Threading.Tasks.Task.FromResult<ProductDto?>(null);
 
+        // 8.9-M13: el ExchangeRateService lo provee DI; si falta, se deniega el diálogo.
+        if (_exchangeRateService == null)
+        {
+            string logMessage = "[NO-OP DIALOG SUPPRESSED] ShowVariantSelectionDialogAsync denegado: falta dependencia inyectada (IExchangeRateService).";
+            _logger?.LogWarning(logMessage);
+            ClientStateLogger.LogWarning(logMessage);
+            return System.Threading.Tasks.Task.FromResult<ProductDto?>(null);
+        }
+
         ProductDto? result = null;
         using var _ = TrackModal();
         Action openDialog = () =>
         {
-            var exchangeRateService = _exchangeRateService ?? new ExchangeRateService(new System.Net.Http.HttpClient());
-            var vm = new ViewModels.VariantSelectionViewModel(_productService, exchangeRateService, parentProduct);
+            var vm = new ViewModels.VariantSelectionViewModel(_productService, _exchangeRateService, parentProduct);
             var dialog = new VariantSelectionDialog(vm);
             if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
             {
@@ -484,11 +512,19 @@ public class WpfDialogService : IDialogService
         if (Application.Current == null || _productService == null)
             return System.Threading.Tasks.Task.CompletedTask;
 
+        // 8.9-M13: el ExchangeRateService lo provee DI; si falta, se deniega el diálogo.
+        if (_exchangeRateService == null)
+        {
+            string logMessage = "[NO-OP DIALOG SUPPRESSED] ShowVariantManagementDialogAsync denegado: falta dependencia inyectada (IExchangeRateService).";
+            _logger?.LogWarning(logMessage);
+            ClientStateLogger.LogWarning(logMessage);
+            return System.Threading.Tasks.Task.CompletedTask;
+        }
+
         using var _ = TrackModal();
         Action openDialog = () =>
         {
-            var exchangeRateService = _exchangeRateService ?? new ExchangeRateService(new System.Net.Http.HttpClient());
-            var vm = new ViewModels.VariantManagementViewModel(_productService, exchangeRateService, this, parentProduct);
+            var vm = new ViewModels.VariantManagementViewModel(_productService, _exchangeRateService, this, parentProduct);
             var dialog = new VariantManagementDialog(vm);
             if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
             {

@@ -19,9 +19,26 @@ public class VersionCheckController : ControllerBase
     }
 
     [HttpGet("version-check")]
-    public IActionResult CheckVersion([FromHeader(Name = "X-Client-Version")] string? clientVersion)
+    public IActionResult CheckVersion([
+        FromHeader(Name = "X-Client-Platform")] string? clientPlatform,
+        [FromHeader(Name = "X-Client-Version")] string? clientVersion)
     {
         var settings = _systemSettingsMonitor.CurrentValue;
+
+        // 8.9-L9: sin el marcador de plataforma de un cliente conocido, no se divulga la
+        // versión exacta del servidor a peticiones anónimas (respuesta genérica no vinculante).
+        // Los clientes nuevos (Desktop/Web) siempre envían X-Client-Platform.
+        if (string.IsNullOrWhiteSpace(clientPlatform))
+        {
+            return Ok(new
+            {
+                serverVersion = "*",
+                minimumClientVersion = "*",
+                updateServerUrl = (string?)null,
+                clientVersionReceived = clientVersion ?? "0.0.0",
+                isClientCompatible = true
+            });
+        }
 
         bool isCompatible = true;
         if (!string.IsNullOrWhiteSpace(clientVersion) &&

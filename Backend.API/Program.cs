@@ -64,6 +64,17 @@ try
     }
     else
     {
+        // 8.9-M7: en Producción un arranque sin HTTPS es un fallo de seguridad, no una advertencia.
+        if (builder.Environment.IsProduction())
+        {
+            AppLogger.LogCrash(
+                new InvalidOperationException(
+                    "[FATAL] HTTPS no disponible en Producción. No se puede iniciar el backend sin canal cifrado. Configure HTTPS_CERT_THUMBPRINT / HTTPS_CERT_PASSWORD o certs/pos-https.pfx."),
+                "Backend.API.Program.Startup.HttpsRequired");
+            throw new InvalidOperationException(
+                "[FATAL] HTTPS no disponible en Producción. El backend se niega a arrancar sin canal cifrado. Consulte el log.");
+        }
+
         AppLogger.LogStart("[AVISO] Certificado HTTPS no encontrado; el servidor solo escuchará en http://0.0.0.0:5000. Ejecute scripts/create-https-cert.ps1 para habilitar HTTPS.");
     }
 
@@ -278,10 +289,20 @@ try
     {
         options.AddDefaultPolicy(policy =>
         {
+            // 8.9-M6: si el entorno define una lista explícita de orígenes (Cors:AllowedOrigins),
+            // se usa esa lista exacta (cero apertura LAN). En Producción es el único modo admisible.
+            if (allowedOriginsSet.Count > 0)
+            {
+                policy.WithOrigins(allowedOriginsSet.ToArray())
+                      .AllowAnyMethod()
+                      .AllowAnyHeader()
+                      .AllowCredentials();
+                return;
+            }
+
             policy.SetIsOriginAllowed(origin =>
             {
                 if (string.IsNullOrWhiteSpace(origin)) return false;
-                if (allowedOriginsSet.Contains(origin)) return true;
 
                 if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
                 {
@@ -293,6 +314,9 @@ try
                     // Allow localhost / loopback (gated to allowed POS ports [8W-C1])
                     if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.Equals("127.0.0.1") || host.Equals("::1"))
                         return true;
+
+                    // 8.9-M6: en Producción la LAN no se abre por defecto; se exige Cors:AllowedOrigins.
+                    if (builder.Environment.IsProduction()) return false;
 
                     // Allow Private Intranet Subnets (RFC-1918) for POS LAN network (gated to POS application ports: 5000, 5001, 5173)
                     if (System.Net.IPAddress.TryParse(host, out var ip))
@@ -574,7 +598,7 @@ DO $$
 BEGIN
     IF EXISTS (
         SELECT 1 FROM information_schema.columns 
-        WHERE table_schema = 'public' AND table_name = 'SaleItems' AND column_name = 'Quantity' AND data_type <> 'numeric'
+        WHERE table_schema = 'public' AND table_name = 'SaleItems' AND column_name = 'Quantity' AND (data_type <> 'numeric' OR numeric_precision <> 18 OR numeric_scale <> 3)
     ) THEN
         ALTER TABLE ""SaleItems"" ALTER COLUMN ""Quantity"" TYPE numeric(18,3);
         RAISE NOTICE 'Column SaleItems.Quantity altered to numeric(18,3)';
@@ -585,27 +609,27 @@ END $$;");
                 await _invDb.Database.ExecuteSqlRawAsync(@"
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'StockQuantity' AND data_type <> 'numeric') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'StockQuantity' AND (data_type <> 'numeric' OR numeric_precision <> 18 OR numeric_scale <> 3)) THEN
         ALTER TABLE ""Products"" ALTER COLUMN ""StockQuantity"" TYPE numeric(18,3);
     END IF;
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'ReservedQuantity' AND data_type <> 'numeric') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'ReservedQuantity' AND (data_type <> 'numeric' OR numeric_precision <> 18 OR numeric_scale <> 3)) THEN
         ALTER TABLE ""Products"" ALTER COLUMN ""ReservedQuantity"" TYPE numeric(18,3);
     END IF;
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'LowStockThreshold' AND data_type <> 'numeric') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'LowStockThreshold' AND (data_type <> 'numeric' OR numeric_precision <> 18 OR numeric_scale <> 3)) THEN
         ALTER TABLE ""Products"" ALTER COLUMN ""LowStockThreshold"" TYPE numeric(18,3);
     END IF;
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'MinWholesaleQuantity' AND data_type <> 'numeric') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'MinWholesaleQuantity' AND (data_type <> 'numeric' OR numeric_precision <> 18 OR numeric_scale <> 3)) THEN
         ALTER TABLE ""Products"" ALTER COLUMN ""MinWholesaleQuantity"" TYPE numeric(18,3);
     END IF;
 
     -- Child tables: StockMovements, StockReservations
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StockMovements' AND column_name = 'QuantityChange' AND data_type <> 'numeric') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StockMovements' AND column_name = 'QuantityChange' AND (data_type <> 'numeric' OR numeric_precision <> 18 OR numeric_scale <> 3)) THEN
         ALTER TABLE ""StockMovements"" ALTER COLUMN ""QuantityChange"" TYPE numeric(18,3);
     END IF;
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StockMovements' AND column_name = 'NewStockLevel' AND data_type <> 'numeric') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StockMovements' AND column_name = 'NewStockLevel' AND (data_type <> 'numeric' OR numeric_precision <> 18 OR numeric_scale <> 3)) THEN
         ALTER TABLE ""StockMovements"" ALTER COLUMN ""NewStockLevel"" TYPE numeric(18,3);
     END IF;
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StockReservations' AND column_name = 'Quantity' AND data_type <> 'numeric') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StockReservations' AND column_name = 'Quantity' AND (data_type <> 'numeric' OR numeric_precision <> 18 OR numeric_scale <> 3)) THEN
         ALTER TABLE ""StockReservations"" ALTER COLUMN ""Quantity"" TYPE numeric(18,3);
     END IF;
 END $$;");

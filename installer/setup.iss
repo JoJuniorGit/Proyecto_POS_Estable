@@ -128,7 +128,7 @@ var
 begin
   if RegQueryStringValue(HKEY_LOCAL_MACHINE, 'Software\POS', 'HttpsCertPassword', ExistingPass) and 
      (Length(ExistingPass) >= 16) and 
-     (ExistingPass <> 'PosHttpsDev2026!') then
+     (ExistingPass <> '<legacy-default>') then
   begin
     Result := ExistingPass;
     Exit;

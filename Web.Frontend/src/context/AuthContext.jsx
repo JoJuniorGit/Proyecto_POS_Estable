@@ -3,6 +3,27 @@ import { api } from '../services/api';
 
 const AuthContext = createContext(null);
 
+// 8.9-L12: el perfil local almacenado no debe sobrevivir indefinidamente ni quedar válido en
+// caché hasta el próximo 401. Se marca con un sello de expiración (24 h, alineado con la vida
+// típica de la sesión HTTP) y se descarta al vencerse, forzando re-login.
+const PROFILE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const PROFILE_TS_KEY = 'pos_user_profile_ts';
+
+function isProfileExpired() {
+  try {
+    const ts = Number(localStorage.getItem(PROFILE_TS_KEY) || 0);
+    return !ts || Date.now() - ts > PROFILE_CACHE_TTL_MS;
+  } catch {
+    return true;
+  }
+}
+
+function clearStoredProfile() {
+  try {
+    localStorage.removeItem('pos_user_profile_ts');
+  } catch {}
+}
+
 // 8.5-WEB4: Whitelist estricta de campos del perfil de usuario. La forma dual "data.user || data"
 // podía persistir campos no relacionados (tokens, flags internos) que lleguen dentro de "data".
 // Solamente se conservan los campos consumidos por la UI; todo lo demás se descarta.
@@ -21,6 +42,12 @@ export function AuthProvider({ children }) {
     try {
       const saved = localStorage.getItem('pos_user_profile');
       if (!saved) return null;
+      // 8.9-L12: perfil caducado => fuera de sesión (no esperar al próximo 401).
+      if (isProfileExpired()) {
+        localStorage.removeItem('pos_user_profile');
+        clearStoredProfile();
+        return null;
+      }
       const parsed = JSON.parse(saved);
       return normalizeUserProfile(parsed);
     } catch {
@@ -39,6 +66,7 @@ export function AuthProvider({ children }) {
       localStorage.removeItem('pos_user_profile');
       localStorage.removeItem('pos_user');
       localStorage.removeItem('pos_token');
+      clearStoredProfile();
       sessionStorage.clear();
     };
 
@@ -72,6 +100,9 @@ export function AuthProvider({ children }) {
 
     setUser(sessionUser);
     localStorage.setItem('pos_user_profile', JSON.stringify(sessionUser));
+    try {
+      localStorage.setItem(PROFILE_TS_KEY, String(Date.now()));
+    } catch {}
     localStorage.removeItem('pos_token');
     return sessionUser;
   };
@@ -101,6 +132,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('pos_user_profile');
     localStorage.removeItem('pos_user');
     localStorage.removeItem('pos_token');
+    clearStoredProfile();
     sessionStorage.clear();
 
     if (!serverLogoutSucceeded) {

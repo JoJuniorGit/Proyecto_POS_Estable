@@ -216,7 +216,7 @@ if (-not [string]::IsNullOrWhiteSpace($BusinessName)) {
 if (-not [string]::IsNullOrWhiteSpace($HttpsCertPassword)) {
     $merged["HTTPS_CERT_PASSWORD"] = $HttpsCertPassword
     Log "Asignando contraseña de certificado HTTPS provista al servicio."
-} elseif (-not $merged.ContainsKey("HTTPS_CERT_PASSWORD") -or $merged["HTTPS_CERT_PASSWORD"] -eq "PosHttpsDev2026!") {
+} elseif (-not $merged.ContainsKey("HTTPS_CERT_PASSWORD") -or $merged["HTTPS_CERT_PASSWORD"] -eq "<legacy-default>") {
     $bytes = New-Object byte[] 24
     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
     $randPass = [System.BitConverter]::ToString($bytes).Replace("-", "")

@@ -416,7 +416,6 @@ export default function PendingPickupsPage() {
           onClose={() => setSelectedPickup(null)}
           title="Confirmar Entrega de Mercancía"
           maxWidth="480px"
-          centerTitle={true}
         >
           <div className="p-2 text-center" style={{ padding: '10px 4px', textAlign: 'center' }}>
             <div style={{

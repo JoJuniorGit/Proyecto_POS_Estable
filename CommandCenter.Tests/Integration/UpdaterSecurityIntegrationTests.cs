@@ -33,7 +33,12 @@ public class UpdaterSecurityIntegrationTests : IDisposable
                 Directory.Delete(_tempRoot, recursive: true);
             }
         }
-        catch { }
+        // 8.9-L3: no tragar en silencio: se registra el error de limpieza para diagnóstico,
+        // aunque la prueba ya haya terminado (limpieza best-effort del directorio temporal).
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[UPDATER_TEST_CLEANUP] No se pudo eliminar {_tempRoot}: {ex.Message}");
+        }
     }
 
     [Fact]

@@ -15,9 +15,11 @@ public partial class SalesService
 {
     public async Task<SaleHistoryDto> ConfirmPickupAsync(int saleId)
     {
+        // 8.9-M17: una sola consulta; se mapea el DTO desde la entidad ya cargada (sin doble fetch).
         var _sale = await _context.Sales
             .AsSplitQuery()
             .Include(s => s.Customer)
+            .Include(s => s.Cashier)
             .Include(s => s.Items)
             .Include(s => s.Payments).ThenInclude(p => p.PaymentMethod)
             .FirstOrDefaultAsync(s => s.Id == saleId);
@@ -32,7 +34,7 @@ public partial class SalesService
 
         await _context.SaveChangesAsync();
 
-        return await GetSaleHistoryDetailAsync(saleId);
+        return MapToHistoryDetail(_sale);
     }
 
     // 8.9-B2: soporta scope por cajero (Cashier filtra sus entregas; Admin/Manager ven todas).
@@ -100,19 +102,22 @@ public partial class SalesService
 
         // Búsqueda multicampo: coincidencia de texto (insensible a mayúsculas) simultánea
         // en N° de factura, cliente (nombre o cédula) y cajero (nombre, nombre completo o cédula).
+        // 8.9-M11: se usa ILIKE (no LOWER(...) LIKE) para que PostgreSQL pueda explotar los índices
+        // pg_trgm GIN sobre las columnas de texto; los comodines del término se escapan para
+        // preservar la semántica de "contiene texto plano".
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim();
-            var lowerTerm = term.ToLower();
+            var pattern = ToLikePattern(term);
             var isNumericTerm = int.TryParse(term, out var invoiceMatch);
 
             query = query.Where(s =>
-                (s.CustomerName != null && s.CustomerName.ToLower().Contains(lowerTerm)) ||
-                (s.CustomerCedula != null && s.CustomerCedula.ToLower().Contains(lowerTerm)) ||
+                (s.CustomerName != null && EF.Functions.ILike(s.CustomerName, pattern)) ||
+                (s.CustomerCedula != null && EF.Functions.ILike(s.CustomerCedula, pattern)) ||
                 (s.Cashier != null &&
-                 ((s.Cashier.Name != null && s.Cashier.Name.ToLower().Contains(lowerTerm)) ||
-                  (s.Cashier.FullName != null && s.Cashier.FullName.ToLower().Contains(lowerTerm)) ||
-                  (s.Cashier.Cedula != null && s.Cashier.Cedula.ToLower().Contains(lowerTerm)))) ||
+                 ((s.Cashier.Name != null && EF.Functions.ILike(s.Cashier.Name, pattern)) ||
+                  (s.Cashier.FullName != null && EF.Functions.ILike(s.Cashier.FullName, pattern)) ||
+                  (s.Cashier.Cedula != null && EF.Functions.ILike(s.Cashier.Cedula, pattern)))) ||
                 (s.InvoiceNumber != null && s.InvoiceNumber.Value.ToString().Contains(term)) ||
                 (isNumericTerm && s.InvoiceNumber == invoiceMatch));
         }
@@ -158,6 +163,13 @@ public partial class SalesService
 
         if (_sale == null) throw new KeyNotFoundException($"Sale {saleId} not found.");
 
+        return MapToHistoryDetail(_sale);
+    }
+
+    // 8.9-M17: mapeo único a SaleHistoryDto para que ConfirmPickupAsync y el detalle de
+    // historial produzcan exactamente el mismo DTO.
+    private static SaleHistoryDto MapToHistoryDetail(Sale _sale)
+    {
         return new SaleHistoryDto
         {
             Id = _sale.Id,
@@ -189,5 +201,16 @@ public partial class SalesService
                 Reference = p.ReferenceNumber
             }).ToList()
         };
+    }
+
+    // 8.9-M11: patrón para ILIKE "%term%" con los comodines LIKE del usuario escapados, de modo
+    // que "%" y "_" se traten como texto plano y el resultado sea idéntico a Contains().
+    private static string ToLikePattern(string term)
+    {
+        var escaped = term
+            .Replace("\\", "\\\\")
+            .Replace("%", "\\%")
+            .Replace("_", "\\_");
+        return $"%{escaped}%";
     }
 }

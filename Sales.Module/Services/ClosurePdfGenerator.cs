@@ -69,7 +69,7 @@ public static class ClosurePdfGenerator
                 contentSb.AppendLine($"0.95 0.96 0.97 rg 40 {yPos} 532 20 re f");
             }
 
-            string currency = detail.PaymentMethodName.Contains("USD", StringComparison.OrdinalIgnoreCase) ? "USD" : "Bs.S";
+            string currency = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
             string declaredValStr = detail.ActualAmountBsS.ToString("N2");
             string systemValStr = isBlind ? "-" : detail.ExpectedAmountBsS.ToString("N2");
             

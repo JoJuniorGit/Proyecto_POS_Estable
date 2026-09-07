@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
-import { formatNumberEs } from '../../utils/formatters';
+import { formatNumberEs, amountToCents } from '../../utils/formatters';
 
 export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAddPayment }) {
   const [selectedMethodId, setSelectedMethodId] = useState('');
@@ -32,12 +32,11 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
     }
   }, [remainingBsS, isCashSelected, selectedMethodId]);
 
-  // Normalización del texto (soporta punto y coma decimal) y parseo en escala entera de centésimas
+  // Normalización del texto (soporta punto y coma decimal) y parseo en escala entera de
+  // centésimas mediante la rutina canónica (8.9-M18): >2 decimales se redondea al céntimo.
   const normalizedText = amountText.replace(',', '.').trim();
-  const amountMatch = normalizedText.match(/^(\d+)(?:\.(\d{1,2}))?$/);
-  const parsedCents = amountMatch
-    ? (parseInt(amountMatch[1], 10) * 100) + parseInt((amountMatch[2] || '').padEnd(2, '0') || '0', 10)
-    : 0;
+  const amountMatch = normalizedText.match(/^(\d+)(?:\.(\d+))?$/);
+  const parsedCents = amountMatch ? amountToCents(normalizedText) : 0;
   const isValidNum = !!amountMatch && parsedCents > 0;
 
   // Verificación de número entero o terminación en .00 (ej: 10, 12.00, 15.00)

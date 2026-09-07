@@ -170,11 +170,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             }
         }
 
-        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        if (dispatcher == null || dispatcher.CheckAccess())
-            DoUpdate();
-        else
-            dispatcher.Invoke(DoUpdate);
+        UiThreadMarshaller.Invoke(DoUpdate);
     }
 
     private void RecalculateTotals()
@@ -209,26 +205,9 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         {
             if (CurrentSale.Status == "OnHold")
             {
-                Task.Run(async () =>
-                {
-                    try
-                    {
-                        var updated = await _salesService.GetSaleAsync(CurrentSale.Id);
-                        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-                        if (dispatcher != null && !dispatcher.CheckAccess())
-                        {
-                            dispatcher.Invoke(() => CurrentSale = updated);
-                        }
-                        else
-                        {
-                            CurrentSale = updated;
-                        }
-                    }
-                    catch
-                    {
-                        // Ignore transient network issues
-                    }
-                }).SafeFireAndForget("CartViewModel.UpdateAllPrices");
+                // 8.9-M14: sin Task.Run para I/O pura (GetSaleAsync es async, no bloquea);
+                // se despacha en background implícito del await con fire-and-forget sancionado.
+                RefreshOnHoldSaleAsync().SafeFireAndForget("CartViewModel.UpdateAllPrices");
                 return;
             }
 
@@ -245,6 +224,19 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         // Fire notifications for calculated totals
         OnPropertyChanged(nameof(TotalAmountLocal));
         OnPropertyChanged(nameof(SubtotalLocal));
+    }
+
+    private async Task RefreshOnHoldSaleAsync()
+    {
+        try
+        {
+            var updated = await _salesService.GetSaleAsync(CurrentSale!.Id);
+            UiThreadMarshaller.Invoke(() => CurrentSale = updated);
+        }
+        catch
+        {
+            // Ignorar errores de red transitorios (misma semántica que el código previo).
+        }
     }
 
     [RelayCommand]

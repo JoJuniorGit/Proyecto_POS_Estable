@@ -27,6 +27,26 @@ function isAllowedApiHost(hostname) {
   return false;
 }
 
+/**
+ * 8.9-M4: reclama el secreto efímero de emparejamiento (single-use) incrustado en el QR.
+ * Solo persiste la URL si el backend confirma el token antes de su expiración y consumo.
+ */
+export async function claimPairingToken(apiBaseUrl, token) {
+  if (!token) return false;
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/pairing/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (!response.ok) return false;
+    const body = await response.json().catch(() => null);
+    return !!(body && body.status === 'ok' && body.paired === true);
+  } catch {
+    return false;
+  }
+}
+
 export function resolveBaseUrl() {
   if (typeof window === 'undefined') {
     return 'http://localhost:5000';
@@ -75,9 +95,24 @@ export function resolveBaseUrl() {
       }
 
       if (isAllowed) {
-        try {
-          localStorage.setItem('pos_custom_api_url', normalized);
-        } catch {}
+        // 8.9-M4: si el QR trae secreto efímero (pair), reclámarlo de un solo uso ANTES de
+        // persistir la URL. Un QR fotografiado/expirado/reutilizado no queda fijado.
+        const pairToken = urlParams.get('pair');
+        if (pairToken) {
+          claimPairingToken(normalized, pairToken).then((claimed) => {
+            try {
+              if (claimed) {
+                localStorage.setItem('pos_custom_api_url', normalized);
+              } else {
+                localStorage.removeItem('pos_custom_api_url');
+              }
+            } catch {}
+          });
+        } else {
+          try {
+            localStorage.setItem('pos_custom_api_url', normalized);
+          } catch {}
+        }
 
         // Limpiar los parámetros de la URL sin recargar la página
         if (window.history?.replaceState && window.location?.pathname) {
@@ -85,6 +120,7 @@ export function resolveBaseUrl() {
           urlParams.delete('server');
           urlParams.delete('backend');
           urlParams.delete('paired');
+          urlParams.delete('pair');
           const newQuery = urlParams.toString();
           const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '') + (window.location.hash || '');
           window.history.replaceState({}, (typeof document !== 'undefined' ? document.title : ''), newUrl);
@@ -102,17 +138,41 @@ export function resolveBaseUrl() {
       let sanitized = stored.trim();
       if (isHttps && sanitized.startsWith('http://')) {
         sanitized = sanitized.replace(/^http:\/\//i, 'https://').replace(/:5000$/, ':5001');
-        localStorage.setItem('pos_custom_api_url', sanitized);
       }
-      return sanitized;
+      // 8.9-L11: revalidación zero-trust del host guardado (una URL previamente válida puede
+      // quedar comprometida o ser manipulada en localStorage).
+      let storedHostAllowed = false;
+      try {
+        storedHostAllowed = isAllowedApiHost(new URL(sanitized).hostname);
+      } catch {
+        storedHostAllowed = false;
+      }
+      if (storedHostAllowed) {
+        if (sanitized !== stored) {
+          try {
+            localStorage.setItem('pos_custom_api_url', sanitized);
+          } catch {}
+        }
+        return sanitized;
+      }
+      try {
+        localStorage.removeItem('pos_custom_api_url');
+      } catch {}
     }
   } catch {}
 
-  // 4. Variables de entorno (con guard seguro para Node/Jest/Vitest/Vite)
+  // 4. Variables de entorno (con guard seguro para Node/Jest/Vitest/Vite).
+  // 8.9-L11: también se revalidan contra la whitelist LAN/Loopback.
   const isDev = typeof import.meta !== 'undefined' && import.meta.env?.DEV;
   const viteApiUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_API_URL : undefined;
   if (viteApiUrl) {
-    return viteApiUrl;
+    let viteAllowed = false;
+    try {
+      viteAllowed = isAllowedApiHost(new URL(viteApiUrl).hostname);
+    } catch {
+      viteAllowed = false;
+    }
+    if (viteAllowed) return viteApiUrl;
   }
 
   // 5. Servidor de desarrollo Vite (ej. puerto 5173 o puerto no Kestrel)
@@ -164,6 +224,9 @@ export function setCustomBaseUrl(url) {
 
     if (!isAllowed) {
       localStorage.removeItem('pos_custom_api_url');
+      // 8.9-L11: al rechazar se revierte la URL base activa a la resolución válida (no se
+      // mantiene un estado huérfano apuntando al host rechazado).
+      CURRENT_BASE_URL = resolveBaseUrl();
       return;
     }
 
@@ -250,7 +313,9 @@ export async function apiFetch(endpoint, options = {}) {
           else if (jsonErr.Title) errorMessage = jsonErr.Title;
         } catch (e) {
           if (e.requiresPasswordChange) throw e;
-          if (!errorBody.includes('<html') && errorBody.length < 300) {
+          // 8.9-M15: descartar cuerpos que contengan marcas HTML/markup ('<' o '>') para
+          // nunca volcar HTML crudo u otro contenido no estructurado a la UI.
+          if (!/</.test(errorBody) && !/>/.test(errorBody) && errorBody.length < 300) {
             errorMessage = errorBody;
           }
         }

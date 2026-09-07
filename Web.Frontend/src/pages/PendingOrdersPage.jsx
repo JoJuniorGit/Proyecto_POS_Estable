@@ -558,7 +558,7 @@ export default function PendingOrdersPage() {
 
       {/* Modal de Confirmación Estilizado para Anulación desde la Sección */}
       {showConfirmCancel && selectedSale && (
-        <Modal isOpen={true} onClose={() => setShowConfirmCancel(false)} title="Confirmar Anulación de Pedido" maxWidth="440px" centerTitle={true}>
+        <Modal isOpen={true} onClose={() => setShowConfirmCancel(false)} title="Confirmar Anulación de Pedido" maxWidth="440px">
           <div className="text-center py-2">
             <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px auto' }}>
               <AlertTriangle size={24} />

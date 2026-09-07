@@ -141,14 +141,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
             Suggestions.Clear();
         };
 
-        if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
-        {
-            Application.Current.Dispatcher.Invoke(clearAction);
-        }
-        else
-        {
-            clearAction();
-        }
+        UiThreadMarshaller.Invoke(clearAction);
     }
 
     public async Task InitializeForSessionAsync()
@@ -213,14 +206,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
                     }
                 };
 
-                if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
-                {
-                    Application.Current.Dispatcher.Invoke(updateAction);
-                }
-                else
-                {
-                    updateAction();
-                }
+                UiThreadMarshaller.Invoke(updateAction);
                 return;
             }
             catch (Exception ex)
@@ -292,13 +278,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
 
         var token = newCts.Token;
         var term = SearchText ?? string.Empty;
-        var dispatcher = Application.Current?.Dispatcher;
 
-        void RunOnUI(Action action)
-        {
-            if (dispatcher == null || dispatcher.CheckAccess()) action();
-            else dispatcher.Invoke(action);
-        }
+        void RunOnUI(Action action) => UiThreadMarshaller.Invoke(action);
 
         if (string.IsNullOrWhiteSpace(term))
         {

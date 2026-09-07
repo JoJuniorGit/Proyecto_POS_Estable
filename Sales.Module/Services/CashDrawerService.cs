@@ -139,74 +139,86 @@ public class CashDrawerService : ICashDrawerService
         var ambientTransaction = _context.Database.CurrentTransaction;
         bool ownsTransaction = !isInMemory && ambientTransaction == null;
 
-        IDbContextTransaction? ownTransaction = null;
-        if (ownsTransaction)
+        // 8.9-B4: misma estrategia condicional que AddTransactionAsync (reintento standalone,
+        // sin anidar cuando la transacción la aporta una capa externa).
+        async Task<CashDrawerSession> ExecuteWithinTransactionAsync()
         {
-            ownTransaction = await _context.Database.BeginTransactionAsync();
-        }
-
-        try
-        {
-            var session = await GetActiveSessionAsync();
-            if (session == null)
+            IDbContextTransaction? ownTransaction = null;
+            if (ownsTransaction)
             {
-                throw new InvalidOperationException("No active cash drawer session to close.");
+                ownTransaction = await _context.Database.BeginTransactionAsync();
             }
 
-            // 8.5-A2: Serializar cierres concurrentes. El advisory lock garantiza que el segundo cierre
-            // re-lea la sesión ya como Closed y NO registre un egreso Closing duplicado. La re-lectura se hace
-            // CON tracking (la consulta refresca la instancia ya trackeada desde la primera lectura) para que
-            // el flip a Status=Closed y los balances persistan en SaveChanges de la misma transacción.
-            if (!isInMemory)
+            try
             {
-                await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", session.Id);
-                session = await _context.CashDrawerSessions
-                    .FirstOrDefaultAsync(s => s.Id == session.Id && s.Status == CashDrawerStatus.Open);
+                var session = await GetActiveSessionAsync();
                 if (session == null)
                 {
                     throw new InvalidOperationException("No active cash drawer session to close.");
                 }
+
+                // 8.5-A2: Serializar cierres concurrentes. El advisory lock garantiza que el segundo cierre
+                // re-lea la sesión ya como Closed y NO registre un egreso Closing duplicado. La re-lectura se hace
+                // CON tracking (la consulta refresca la instancia ya trackeada desde la primera lectura) para que
+                // el flip a Status=Closed y los balances persistan en SaveChanges de la misma transacción.
+                if (!isInMemory)
+                {
+                    await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", session.Id);
+                    session = await _context.CashDrawerSessions
+                        .FirstOrDefaultAsync(s => s.Id == session.Id && s.Status == CashDrawerStatus.Open);
+                    if (session == null)
+                    {
+                        throw new InvalidOperationException("No active cash drawer session to close.");
+                    }
+                }
+
+                session.ClosedAt = DateTime.UtcNow;
+                session.ClosingBalanceLocal = actualClosingBalanceLocal;
+                session.ClosingExchangeRate = currentExchangeRate;
+                session.Status = CashDrawerStatus.Closed;
+
+                await AddTransactionAsync(
+                    session.Id,
+                    CashTransactionType.Expense,
+                    CashTransactionSource.Closing,
+                    actualClosingBalanceLocal,
+                    currentExchangeRate > 0 ? actualClosingBalanceLocal / currentExchangeRate : 0,
+                    currentExchangeRate,
+                    "Cierre de caja"
+                );
+
+                await _context.SaveChangesAsync();
+
+                if (ownTransaction != null)
+                {
+                    await ownTransaction.CommitAsync();
+                }
+
+                return session;
             }
-
-            session.ClosedAt = DateTime.UtcNow;
-            session.ClosingBalanceLocal = actualClosingBalanceLocal;
-            session.ClosingExchangeRate = currentExchangeRate;
-            session.Status = CashDrawerStatus.Closed;
-
-            await AddTransactionAsync(
-                session.Id,
-                CashTransactionType.Expense,
-                CashTransactionSource.Closing,
-                actualClosingBalanceLocal,
-                currentExchangeRate > 0 ? actualClosingBalanceLocal / currentExchangeRate : 0,
-                currentExchangeRate,
-                "Cierre de caja"
-            );
-
-            await _context.SaveChangesAsync();
-
-            if (ownTransaction != null)
+            catch
             {
-                await ownTransaction.CommitAsync();
+                if (ownTransaction != null)
+                {
+                    await ownTransaction.RollbackAsync();
+                }
+                throw;
             }
-
-            return session;
+            finally
+            {
+                if (ownTransaction != null)
+                {
+                    await ownTransaction.DisposeAsync();
+                }
+            }
         }
-        catch
+
+        if (ownsTransaction)
         {
-            if (ownTransaction != null)
-            {
-                await ownTransaction.RollbackAsync();
-            }
-            throw;
+            return await _context.Database.CreateExecutionStrategy().ExecuteAsync(ExecuteWithinTransactionAsync);
         }
-        finally
-        {
-            if (ownTransaction != null)
-            {
-                await ownTransaction.DisposeAsync();
-            }
-        }
+
+        return await ExecuteWithinTransactionAsync();
     }
 
     public async Task RolloverSessionAfterClosureAsync(decimal currentExchangeRate)
@@ -244,71 +256,85 @@ public class CashDrawerService : ICashDrawerService
         var ambientTransaction = _context.Database.CurrentTransaction;
         bool ownsTransaction = !isInMemory && ambientTransaction == null;
 
-        IDbContextTransaction? ownTransaction = null;
+        // 8.9-B4: si no hay transacción ambiente (llamada directa/standalone) la operación corre
+        // bajo execution strategy para reintentar el bloque completo ante fallos transitorios.
+        // Cuando existe transacción compartida (p.ej. el cobro de venta), el reintento lo aporta
+        // la capa externa y aquí NO se abre otra transacción (evita anidar estrategias).
+        async Task<CashTransaction> ExecuteWithinTransactionAsync()
+        {
+            IDbContextTransaction? ownTransaction = null;
+            if (ownsTransaction)
+            {
+                ownTransaction = await _context.Database.BeginTransactionAsync();
+            }
+
+            try
+            {
+                // H-API-4 & H-API-17: Validar que los egresos físicos no sobregiren el saldo real de la caja.
+                // El chequeo de saldo y el INSERT ocurren en la MISMA transacción y se serializan con un
+                // advisory lock por sesión para eliminar el TOCTOU (doble egreso concurrente, 8.5-A1).
+                if (type == CashTransactionType.Expense && isPhysicalCash && source != CashTransactionSource.Closing)
+                {
+                    if (!isInMemory)
+                    {
+                        await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", sessionId);
+                    }
+
+                    var currentBalance = await GetCurrentBalanceLocalAsync(sessionId);
+                    if (currentBalance < amountLocal)
+                    {
+                        throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para realizar el egreso. Disponible: {currentBalance:N2} Bs.S, Requerido: {amountLocal:N2} Bs.S.");
+                    }
+                }
+
+                var transaction = new CashTransaction
+                {
+                    SessionId = sessionId,
+                    TransactionTime = DateTime.UtcNow,
+                    Type = type,
+                    Source = source,
+                    AmountUsd = amountUsd,
+                    AmountLocal = amountLocal,
+                    ExchangeRate = exchangeRate,
+                    Description = description,
+                    SaleId = referenceId,
+                    IsPhysicalCash = isPhysicalCash,
+                    PaymentMethodId = paymentMethodId
+                };
+
+                _context.CashTransactions.Add(transaction);
+                await _context.SaveChangesAsync();
+
+                if (ownTransaction != null)
+                {
+                    await ownTransaction.CommitAsync();
+                }
+
+                return transaction;
+            }
+            catch
+            {
+                if (ownTransaction != null)
+                {
+                    await ownTransaction.RollbackAsync();
+                }
+                throw;
+            }
+            finally
+            {
+                if (ownTransaction != null)
+                {
+                    await ownTransaction.DisposeAsync();
+                }
+            }
+        }
+
         if (ownsTransaction)
         {
-            ownTransaction = await _context.Database.BeginTransactionAsync();
+            return await _context.Database.CreateExecutionStrategy().ExecuteAsync(ExecuteWithinTransactionAsync);
         }
 
-        try
-        {
-            // H-API-4 & H-API-17: Validar que los egresos físicos no sobregiren el saldo real de la caja.
-            // El chequeo de saldo y el INSERT ocurren en la MISMA transacción y se serializan con un
-            // advisory lock por sesión para eliminar el TOCTOU (doble egreso concurrente, 8.5-A1).
-            if (type == CashTransactionType.Expense && isPhysicalCash && source != CashTransactionSource.Closing)
-            {
-                if (!isInMemory)
-                {
-                    await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", sessionId);
-                }
-
-                var currentBalance = await GetCurrentBalanceLocalAsync(sessionId);
-                if (currentBalance < amountLocal)
-                {
-                    throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para realizar el egreso. Disponible: {currentBalance:N2} Bs.S, Requerido: {amountLocal:N2} Bs.S.");
-                }
-            }
-
-            var transaction = new CashTransaction
-            {
-                SessionId = sessionId,
-                TransactionTime = DateTime.UtcNow,
-                Type = type,
-                Source = source,
-                AmountUsd = amountUsd,
-                AmountLocal = amountLocal,
-                ExchangeRate = exchangeRate,
-                Description = description,
-                SaleId = referenceId,
-                IsPhysicalCash = isPhysicalCash,
-                PaymentMethodId = paymentMethodId
-            };
-
-            _context.CashTransactions.Add(transaction);
-            await _context.SaveChangesAsync();
-
-            if (ownTransaction != null)
-            {
-                await ownTransaction.CommitAsync();
-            }
-
-            return transaction;
-        }
-        catch
-        {
-            if (ownTransaction != null)
-            {
-                await ownTransaction.RollbackAsync();
-            }
-            throw;
-        }
-        finally
-        {
-            if (ownTransaction != null)
-            {
-                await ownTransaction.DisposeAsync();
-            }
-        }
+        return await ExecuteWithinTransactionAsync();
     }
 
     /// <summary>
@@ -436,6 +462,11 @@ public class CashDrawerService : ICashDrawerService
             throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente. Disponible: {availableCash:N2} Bs.S, Requerido: {roundedRequested:N2} Bs.S.");
         }
 
+        // 8.9-B4: adelanto de efectivo = venta contable (SalesDbContext) + movimientos de caja en la MISMA
+        // transacción cross-DB. Se ejecuta bajo execution strategy para reintentar el bloque completo
+        // (ambas bases) ante fallos transitorios, evitando escrituras a medias.
+        return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
         IDbContextTransaction? dbTransaction = null;
         if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
         {
@@ -534,5 +565,6 @@ public class CashDrawerService : ICashDrawerService
             }
             throw;
         }
+        });
     }
 }

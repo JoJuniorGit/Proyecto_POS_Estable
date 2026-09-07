@@ -897,3 +897,115 @@ de historial no indexable), M13-M18, L1-L13 (excepto L10) y H1-H6.
 
 FIN DEL ANEXO - REVISION 8.10
 ================================================================================
+
+================================================================================
+ANEXO - REVISION 8.11 (Bloque S4.2 - Cierre de hallazgos restantes 8.9 B4/B7/M4-M18/L1-L13)
+================================================================================
+Fecha de ejecucion: 2026-09-06 (rama V0.15; bloque posterior a S4/dbbc60d)
+Metricas post-remediacion (ejecucion real en este bloque):
+  - Suite .NET: 695 / 695 superadas (0 fallos, 0 omitidos; PostgresReal local documentado)
+  - Suite Web: 75 / 75 superadas (0 fallos)
+  - Linter Web (oxlint): 0 errores / 0 advertencias (94 archivos)
+  - Compilacion Release: 0 advertencias / 0 errores (TreatWarningsAsErrors=true)
+  - NU1903 (SQLitePCLRaw 2.1.11 vulnerable) RESUELTO fijando bundle_e_sqlite3 2.1.12;
+    se elimino NoWarn NU1903 del csproj de tests (ya no se suprime, se corrige).
+
+Fixes aplicados:
+
+[B4 | BLOQUEO DE transacciones] ShiftsController.CloseShift y DailyClosureController
+  ahora abren BeginTransactionAsync DENTRO del lambda de CreateExecutionStrategy()
+  (patron valido de resiliencia Npgsql). DailyClosure requirio tipo generico explicito
+  ExecuteAsync<ActionResult> (CS8031); Shifts no. Se conserva IsolationLevel.Serializable
+  por diseno. 129 tests del cluster (CashDrawer/Shift/DailyClosure/OnHold/Payment) OK.
+
+[B7] WpfDialogService: los 3 dialogos informativos (ShowNotificationDialog,
+  ShowSuccessDialog, ShowInterruptedTransactionDialog) pasan a InvokeAsync + SafeFireAndForget.
+  Los dialogos que devuelven valor se mantienen como modales bloqueantes (semantica de modal).
+
+[M4 | Pairing seguro por QR] Token efimero single-use (24 bytes aleatorios, TTL 10 min)
+  en el payload del QR (?paired=true&pair=...); POST /api/pairing/claim (solo IP privada/
+  local) quema el token. Web api.js: claimPairingToken() reclama el token ANTES de persistir
+  pos_custom_api_url (SOLO persiste si el backend confirma; si no, se descarta).
+  SubnetScannerService: pinning TOFU por host en LAN (primer fingerprint fijado, distintos
+  posteriores rechazados). ExchangeRateService verificado: ya era loopback-only (claim
+  obsoleto del reporte).
+
+[M6] CORS: si Cors:AllowedOrigins esta configurado -> WithOrigins exacto (sin abrir LAN);
+  en Produccion el fallback LAN rechaza IPs RFC1918 (solo loopback/localhost).
+
+[M7] Fail-fast HTTPS en Produccion (throw si no hay certificado); en Dev solo warning.
+
+[M8] Outbox Npgsql: el despacho SignalR (DispatchMessageAsync) sale de la transaccion
+  FOR UPDATE SKIP LOCKED; se hace Commit ANTES del bucle de despacho y luego se actualizan
+  los estados (Procesado/Retry/DeadLetter) con SaveChanges en autocommit.
+
+[M9] Inventario: indices IX_StockMovements_MovementDate y IX_StockReservations_ReferenceId
+  (modelo EF) + migracion 20260907025800_AddPerformanceIndexesRev89.
+
+[M10] Bloque SQL legacy: el guard ahora exige exactamente numeric(18,3)
+  (data_type <> 'numeric' OR precision/scale incorrectos) en las 8 columnas objetivo.
+
+[M11] Historial: busqueda con EF.Functions.ILike + formato LikePattern escapando \ % _
+  (igual semantica a Contains) + migracion manual pg_trgm GIN
+  (20260907030000_AddPgTrgmGinIndexesRev89; sin tocar el Snapshot).
+
+[M13] WpfDialogService sin fallbacks crudos: ShowPairingQrDialogAsync exige
+  IHttpClientFactory+IConnectionManager; ShowServerConnectionDialogAsync exige
+  IConnectionManager+ISubnetScannerService; ShowVariant* exigen IExchangeRateService.
+  Si falta la dependencia -> denegar + [NO-OP DIALOG SUPPRESSED] + log.
+
+[M14] Marshalling de UI unico: UiThreadMarshaller (Desktop.Client.Core) centraliza el
+  patron Dispatcher/CheckAccess usado en PosViewModel (3 sitios) y CartViewModel;
+  eliminado Task.Run sobre I/O pura en CartViewModel.UpdateAllPrices (OnHold) ->
+  metodo async + SafeFireAndForget.
+
+[M15] api.js errorBody: se descartan cuerpos con '<' o '>' (HTML/markup) en lugar de
+  filtrar solo '<html'; el mensaje se extrae del JSON estructurado.
+
+[M16] Moneda de metodos de pago con backend como fuente de verdad: new
+  PaymentMethodCurrencyResolver (regla unica 'USD' en nombre) usada por DailyClosureService,
+  ClosurePdfGenerator y expuesta computada como PaymentMethod.Currency [NotMapped];
+  RegisterClosePage lee method.currency (la heuristica por nombre queda de fallback para
+  respuestas cacheadas viejas). Fin del descuadre falso en arqueo con metodos homonimos.
+
+[M17] ConfirmPickupAsync sin doble fetch: mapeo a SaleHistoryDto desde la entidad ya
+  cargada via MapToHistoryDetail (helper compartido con GetSaleHistoryDetailAsync).
+
+[M18] Normalizacion de montos unica en centesimas: amountToCents/centsToAmount en
+  formatters.js; PaymentForm y AtmAmountInput redondean identico (>= 2 decimales).
+
+[L1] WpfDialogServiceTests: Assert.True(true) reemplazados por Record.Exception + asserts
+  reales (null exception + estado del circuito persistente).
+[L2] PostgresRealIntegrationTests: la ausencia de TEST_POSTGRES_CONNECTION queda
+  documentada; en CI (GITHUB_ACTIONS=true) produce fallo accionable, nunca silent-pass.
+[L3] UpdaterSecurityIntegrationTests.Dispose: catch{} vacio ahora registra via AppLogger.
+[L4] NoWarn NU1903 eliminado; la dependencia vulnerable se fija en 2.1.12 (ver arriba).
+[L5] CI: gate de cobertura >= 70% (line-rate sobre coverage.cobertura.xml) y npm run build
+  del frontend (evita bundle stale en Backend.API/wwwroot).
+[L6] Higiene: erradicado el literal 'PosHttpsDev2026!' de scripts/creates-https-cert.ps1,
+  installer/Configure-PosService.ps1 y installer/setup.iss (sentinel '<legacy-default>' +
+  generacion aleatoria); .last-restore-timestamp fuera de git (gitignore + untracked).
+[L7] ExchangeRateService.CurrentRate: setter sincrono consistente (SetCurrentRateSynchronously)
+  sin fire-and-forget; los hilos de fondo usan InvokeAsync (no bloquean reteniendo semaforo).
+[L8] Prop centerTitle muerta eliminada de Modal.jsx y sus 4 callers.
+[L9] /api/health ya no expone la version exacta anonima; /api/system/version-check exige
+  X-Client-Platform para revelar version detallada (sin header -> respuesta generica '*').
+  (Nota: HealthPollingService/scanner LAN siguen funcionando: solo evaluan HTTP 200.)
+[L11] api.js: el valor VITE_API_URL y pos_custom_api_url almacenado se REVALIDAN contra la
+  whitelist LAN/Loopback; setCustomBaseUrl revierte CURRENT_BASE_URL al rechazar.
+[L12] SystemSettingsService ya no cachea string.Empty (keys ausentes se re-consultan);
+  AuthContext persiste el perfil con sello de 24 h (expira sin esperar el proximo 401).
+[L13] VMs retenidos de por vida por MainViewModel registrados Singleton (Login, Inventory,
+  Settings, DailyClosure, CashDrawer, ImportProducts, UsersManagement) alineando el
+  ciclo de vida real del contenedor.
+
+Pendientes declarados (de la lista 8.9) para evaluacion futura:
+  - M2: rate limit por cuenta no implementable con RateLimitPartition sincrono (documentado).
+  - B3/L2 locales: los tests RequiresDocker dependen de TEST_POSTGRES_CONNECTION (CI).
+  - Hipotesis H1-H6 (requieren validacion dinamica).
+
+CI sobre este bloque: .NET (con PostgreSQL de servicio), gate de cobertura >= 70%,
+frontend lint + tests + build. Commit de cierre en rama V0.15.
+
+FIN DEL ANEXO - REVISION 8.11
+================================================================================

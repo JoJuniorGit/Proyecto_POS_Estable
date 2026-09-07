@@ -416,6 +416,7 @@ publish/
 publish_backend/
 crash*.txt
 build_output.txt
+.last-restore-timestamp
 .env
 .freebuff-test-out/
 .freebuff/

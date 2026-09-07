@@ -2,7 +2,8 @@
 # Genera el certificado autofirmado HTTPS para Backend.API
 # ---------------------------------------------------------------------
 # Salida:  Backend.API\certs\pos-https.pfx
-# Password: PosHttpsDev2026!  (debe coincidir con HttpsCertPassword en Program.cs)
+# Password: provista por HTTPS_CERT_PASSWORD o generada aleatoriamente en esta ejecución
+# (debe coincidir con la variable HTTPS_CERT_PASSWORD que usa Program.cs en el servicio).
 #
 # El certificado incluye SANs para localhost, el nombre del equipo y las
 # IPs IPv4 actuales de la red local, de modo que https://<ip>:5001 sirve
@@ -22,7 +23,7 @@ $rootDir = Split-Path -Path $PSScriptRoot -Parent
 $certDir = Join-Path $rootDir "Backend.API\certs"
 $certPath = Join-Path $certDir "pos-https.pfx"
 
-if ([string]::IsNullOrWhiteSpace($certPassword) -or $certPassword -eq "PosHttpsDev2026!") {
+if ([string]::IsNullOrWhiteSpace($certPassword) -or $certPassword -eq "<legacy-default>") {
     $bytes = New-Object byte[] 24
     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
     $certPassword = [System.BitConverter]::ToString($bytes).Replace("-", "")

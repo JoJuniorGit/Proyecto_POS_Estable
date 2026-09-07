@@ -253,6 +253,9 @@ namespace Inventory.Module.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("MovementDate")
+                        .HasDatabaseName("IX_StockMovements_MovementDate");
+
                     b.HasIndex("ProductId");
 
                     b.ToTable("StockMovements");
@@ -346,6 +349,9 @@ namespace Inventory.Module.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ProductId");
+
+                    b.HasIndex("ReferenceId")
+                        .HasDatabaseName("IX_StockReservations_ReferenceId");
 
                     b.HasIndex("SourceProductId");
 

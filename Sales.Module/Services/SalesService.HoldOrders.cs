@@ -170,6 +170,11 @@ public partial class SalesService
         if (totalPaidUsd > 0 && _sale.TotalUSD > 0 && remainingBalanceUsd <= 0.05m && totalPaidUsd >= (_sale.TotalUSD - 0.05m))
         {
             // Se cubrió el 100% mediante los pagos iniciales -> Completar y generar factura
+            // 8.9-B4: caminar TODA la operación bajo execution strategy para que un fallo
+            // transitorio reintente el bloque completo (sales + inventory enrollado) y no
+            // quede una escritura a medias entre las dos bases.
+            await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
             IDbContextTransaction? txn = null;
             if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
             {
@@ -289,6 +294,7 @@ public partial class SalesService
             {
                 _logger?.LogWarning(ex, "[SalesService] Publicación secundaria de SaleMadeEvent falló para Venta #{SaleId}, pero está respaldada en Outbox.", _sale.Id);
             }
+            });
         }
         else
         {
@@ -430,6 +436,9 @@ public partial class SalesService
             throw new InvalidOperationException("El método de pago en efectivo solo acepta montos enteros.");
         }
 
+        // 8.9-B4: envolver en execution strategy (reintento completo ante fallos transitorios).
+        return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
         IDbContextTransaction? dbTransaction = null;
         if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
         {
@@ -496,6 +505,7 @@ public partial class SalesService
         {
             dbTransaction?.Dispose();
         }
+        });
     }
 
     public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync(int? cashierId = null)

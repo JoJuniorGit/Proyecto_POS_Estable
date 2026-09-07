@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 
 namespace Backend.API.Services;
 
@@ -34,6 +36,7 @@ public interface INetworkDiscoveryService
 {
     ServerPairingInfo GetPairingInfo(int httpPort = 5000, int httpsPort = 5001, bool isHttpsEnabled = true);
     List<NetworkInterfaceInfo> GetPhysicalIPv4Interfaces();
+    bool TryClaimPairingToken(string? token);
 }
 
 public class NetworkDiscoveryService : INetworkDiscoveryService
@@ -44,6 +47,73 @@ public class NetworkDiscoveryService : INetworkDiscoveryService
         "default switch", "bluetooth", "npcap", "tailscale", "zerotier",
         "wireguard", "vpn", "loopback", "pseudo", "teredo", "isatap"
     };
+
+    // 8.9-M4: token de emparejamiento efímero de un solo uso. El QR ya no es una URL estática:
+    // incorpora un secreto aleatorio (192 bits) de corta vida y consumo único, de modo que un QR
+    // fotografiado o capturado en la LAN no pueda reutilizarse para emparejar otro dispositivo.
+    private const int PairingTokenTtlMinutes = 10;
+    private const int PairingTokenKeyBytes = 24;
+    private readonly ConcurrentDictionary<string, PairingTokenEntry> _pairingTokens = new();
+
+    private sealed class PairingTokenEntry
+    {
+        public required DateTime CreatedUtc { get; init; }
+        public bool Used { get; set; }
+    }
+
+    private static string CreatePairingToken() => Convert.ToHexString(RandomNumberGenerator.GetBytes(PairingTokenKeyBytes));
+
+    private void PrunePairingTokens()
+    {
+        var cutoff = DateTime.UtcNow - TimeSpan.FromMinutes(PairingTokenTtlMinutes);
+        foreach (var kvp in _pairingTokens)
+        {
+            if (kvp.Value.CreatedUtc < cutoff)
+            {
+                _pairingTokens.TryRemove(kvp.Key, out _);
+            }
+        }
+    }
+
+    private string GetOrCreatePairingToken()
+    {
+        PrunePairingTokens();
+        var now = DateTime.UtcNow;
+
+        // Reutilizar el token vigente y sin usar: si el cajero reabre el dialogo QR o el cliente
+        // reintenta GET /info, el QR mostrado sigue siendo válido.
+        foreach (var kvp in _pairingTokens)
+        {
+            if (!kvp.Value.Used && now - kvp.Value.CreatedUtc <= TimeSpan.FromMinutes(PairingTokenTtlMinutes))
+            {
+                return kvp.Key;
+            }
+        }
+
+        var token = CreatePairingToken();
+        _pairingTokens[token] = new PairingTokenEntry { CreatedUtc = now };
+        return token;
+    }
+
+    public bool TryClaimPairingToken(string? token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return false;
+
+        PrunePairingTokens();
+        if (!_pairingTokens.TryGetValue(token, out var entry)) return false;
+
+        if (DateTime.UtcNow - entry.CreatedUtc > TimeSpan.FromMinutes(PairingTokenTtlMinutes)) return false;
+
+        // Consumo único (single-use): solo un dispositivo puede reclamar el token.
+        if (entry.Used) return false;
+        if (_pairingTokens.TryUpdate(token, new PairingTokenEntry { CreatedUtc = entry.CreatedUtc, Used = true }, entry))
+        {
+            return true;
+        }
+
+        // Carrera perdida: otro reclamante consumió el token primero.
+        return false;
+    }
 
     public ServerPairingInfo GetPairingInfo(int httpPort = 5000, int httpsPort = 5001, bool isHttpsEnabled = true)
     {
@@ -67,6 +137,9 @@ public class NetworkDiscoveryService : INetworkDiscoveryService
         var httpsUrl = isHttpsEnabled ? $"https://{primaryIp}:{httpsPort}" : string.Empty;
         var effectiveUrl = isHttpsEnabled ? httpsUrl : httpUrl;
 
+        // 8.9-M4: el QR incorpora el secreto efímero de emparejamiento (single-use).
+        var pairingToken = GetOrCreatePairingToken();
+
         return new ServerPairingInfo
         {
             ServerName = machineName,
@@ -78,7 +151,7 @@ public class NetworkDiscoveryService : INetworkDiscoveryService
             PrimaryHttpsUrl = httpsUrl,
             IsHttpsEnabled = isHttpsEnabled,
             NetworkInterfaces = interfaces,
-            QrPayload = $"{effectiveUrl}/?paired=true"
+            QrPayload = $"{effectiveUrl}/?paired=true&pair={pairingToken}"
         };
     }
 
