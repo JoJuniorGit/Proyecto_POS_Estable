@@ -616,17 +616,9 @@ public partial class SalesService : ISalesService
             {
                 var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
                 var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
-                if (fetched != null && fetched.Count > 0)
+                if (fetched != null)
                 {
                     productsDict = fetched.ToDictionary(p => p.Id);
-                }
-                else
-                {
-                    foreach (var id in productIds)
-                    {
-                        var p = await _inventoryService.GetProductByIdAsync(id);
-                        if (p != null) productsDict[p.Id] = p;
-                    }
                 }
 
                 var stockDeductions = new List<StockDeductionRequest>();

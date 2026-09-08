@@ -10,6 +10,7 @@ jobs:
   backend-build-and-test:
     name: Backend Build & Test (.NET 10 + PostgreSQL)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -33,6 +34,14 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      - name: Cache NuGet Packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
 
       - name: Restore Dependencies
         run: dotnet restore CommandCenter.slnx
@@ -73,6 +82,7 @@ jobs:
   frontend-lint-and-test:
     name: Frontend Lint & Test (React 19 + Node.js)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout Code

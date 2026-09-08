@@ -2006,17 +2006,55 @@ CORREGIDOS (verificados, marcar como cerrados):
   desacoplado). Todas las llamadas seguian el patron `if (_dialogService !=
   null) ... else MessageBox`; se quito la rama fallback MessageBox (dead code
   en produccion). Cero MessageBox restantes en Core. Suite 700/700.
-- [8.16-B11] PARCIALMENTE RESUELTO EN ESTA PASE — se extrajo el bloque de
-  inicializacion de BD (probe, migraciones, convergencia legacy y seed) de
-  Program.cs (1127 -> 625 lineas) a `Backend.API/Startup/
-  DatabaseInitializer.cs`. El punto de entrada ahora es legible; aun quedan en
-  Program.cs la config de servicios y el pipeline de middleware (candidato a
-  futura extraccion por modulos).
+- [8.16-B11] RESUELTO EN ESTA PASE — Program.cs descompuesto de 1127 -> 132
+  lineas mediante la extraccion a `Backend.API/Startup/`:
+  `DatabaseInitializer.cs` (inicializacion de BD), `ServiceCollectionExtensions.cs`
+  (AddBackendServices: DI, EF, JWT, CORS, rate limiting, etc.),
+  `PipelineExtensions.cs` (ConfigureBackendPipeline: middleware HTTP) y
+  `BackendHelpers.cs` (LoadHttpsCertificate + BuildLanAllowedHosts). El punto
+  de entrada es ahora legible y cada responsabilidad es testeable/reusable.
 - [8.16-N4 (migraciones sin Designer.cs)] VERIFICADO NO-BLOQUEANTE — las 13
   migraciones escritas a mano tienen atributos [Migration]+[DbContext] y
   FUNCIONAN (700/700, has-pending-model-changes limpio). El .Designer.cs es
   metadata de tooling; regenerarlo a mano es arriesgado y EF lo auto-cura con
   el proximo `dotnet ef migrations add`. Sin accion.
+
+--- PASE DE MANTENIBILIDAD (continuacion) ---
+- [8.16-H04/BCV/price] RESUELTO EN ESTA PASE — consolidados en
+  `Core/Helpers/PricingCalculator.cs` los redondeos duplicados
+  `Math.Ceiling(x*100m)/100m`: BcvScraperService -> RoundExchangeRateCeiling y
+  los 4 calculos de precio (InventoryService.UpdateProduct x2, ImportExport
+  ResolveImportPricing x2) -> nuevo RoundPriceUp. Solo PricingCalculator
+  conserva la logica de redondeo. Suite 700/700.
+- [W2] VERIFICADO NO-MERGEABLE — la formateacion de moneda existe en 2 runtimes
+  (WPF NumericCalculatorBehavior y Web formatters.js). No pueden compartir un
+  punto de verdad literal; el lado C# ya delega a PricingCalculator via
+  PricingHelper. Ambos aplican la misma regla de 2 decimales.
+- [H04] VERIFICADO CORRECTO POR DISEÑO — items/subtotales usan 4 decimales
+  (alta precision) y totales/pagos 2 decimales (RoundToDigital). Unificarlos
+  romperia la integridad financiera (regla 8C-M1). Sin cambio.
+- [W01/W02] RESUELTO EN ESTA PASE — Modal.jsx usa useId() para aria-labelledby
+  (evita ids duplicados al renderizar 2 modales) y restaura el foco al cerrar.
+  Web 77/77, oxlint 0 errores.
+- [H12] RESUELTO EN ESTA PASE — InvalidateAllProductCaches limpia el diccionario
+  estatico _productCacheKeys tras invalidar, evitando el crecimiento no acotado.
+- [H17] VERIFICADO NO-BUG — cada servicio invalida su propia clave de cache en
+  write (SystemSettingsService:83, PaymentMethodService), el TTL corto cubre la
+  propagacion. No hay bug de propagacion observado.
+- [H05] RESUELTO EN ESTA PASE — eliminado el fallback N+1 muerto en
+  SalesService.cs (cuando GetProductsByIdsAsync devuelve vacio, las consultas
+  individuales tambien devuelven null; era dead code).
+- [H06/H08/H14] VERIFICADOS DEFERIDOS — son optimizaciones de rendimiento con
+  cambio de firma (proyeccion a DTO / indice) que rizan sobre callers y hot
+  paths; no son deuda de mantenibilidad y el test suite no cubre esos paths.
+- [I06] RESUELTO EN ESTA PASE — download-nssm.ps1 verifica SHA-256 del binario
+  descargado contra el nssm.exe versionado (pin anti supply-chain).
+- [CI01/CI03] RESUELTO EN ESTA PASE — timeout-minutes (30 backend / 20 frontend)
+  y cache de NuGet (~/.nuget/packages) en ci.yml.
+- [I05/C01] VERIFICADOS DEFERIDOS — I05 (ACL del servicio en setup.iss) requiere
+  el nombre del servicio y no es testeable localmente; C01 (gates de cobertura)
+  es una decision de politica (baseline anti-regresion vs 0.70) que requiere
+  aumentar cobertura real, no un cambio de codigo.
 
 VERIFICADO COMO FALSO / NO ACCIONABLE (correccion del informe):
 - [8.16-B01] El middleware 404/400/409 SI expone exception.Message, pero es
@@ -2041,8 +2079,6 @@ PENDIENTES DE LA AUDITORIA (no tocados, requieren refactor mayor/infra):
   T01/T03/T04/T05/T06, B03/B04/B05/B06/B07/B09/B12/B13/B14.
 - Web: W01/W02 (Modal aria id estatico, focus-restore), W03 (aviso oxlint
   base sin uso en esbuild-jsx-loader-hook.mjs:17).
-- B11 (Program.cs): la config de servicios y el pipeline de middleware siguen
-  inline en Program.cs; extraer por modulos como siguiente paso.
 
 FIN DEL ANEXO - REVISION 8.16
 ================================================================================ 

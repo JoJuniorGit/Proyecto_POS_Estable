@@ -86,11 +86,17 @@ public partial class InventoryService : IInventoryService
     {
         // 8.7-L5: ahora SÍ invalida las claves de producto (SKU/quick) registradas, además de la
         // tasa BCV que históricamente era lo único que se removía aquí.
+        // 8.16-H12: tras invalidar todas las claves registradas se limpia el diccionario de
+        // seguimiento, evitando el crecimiento no acotado en procesos long-running. Las claves
+        // ya no existen en el caché (Remove sobre claves ausentes es no-op), por lo que las
+        // entradas huérfanas solo acarreaban memoria. El diccionario se repuebla con el próximo
+        // uso de la caché.
         foreach (var cacheKey in _productCacheKeys.Keys)
         {
             _cache?.Remove(cacheKey);
         }
         _cache?.Remove(ExchangeRateCacheKey);
+        _productCacheKeys.Clear();
     }
 
     [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
@@ -164,7 +170,7 @@ public partial class InventoryService : IInventoryService
         else if (product.CostPriceUSD > 0 && product.ProfitMarginRetail > 0)
         {
             decimal rawPrice = product.CostPriceUSD * (1m + (product.ProfitMarginRetail / 100m));
-            product.PriceRetailUSD = Math.Ceiling(rawPrice * 100m) / 100m;
+            product.PriceRetailUSD = Core.Helpers.PricingCalculator.RoundPriceUp(rawPrice);
         }
 
         if (!product.HasWholesale)
@@ -186,7 +192,7 @@ public partial class InventoryService : IInventoryService
             else if (product.CostPriceUSD > 0 && product.ProfitMarginWholesale > 0)
             {
                 decimal rawWholesalePrice = product.CostPriceUSD * (1m + (product.ProfitMarginWholesale / 100m));
-                product.PriceWholesaleUSD = Math.Ceiling(rawWholesalePrice * 100m) / 100m;
+                product.PriceWholesaleUSD = Core.Helpers.PricingCalculator.RoundPriceUp(rawWholesalePrice);
             }
 
             if (product.PriceWholesaleUSD > product.PriceRetailUSD && product.PriceRetailUSD > 0)

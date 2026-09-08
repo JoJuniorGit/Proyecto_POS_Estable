@@ -498,7 +498,7 @@ public partial class InventoryService
     {
         decimal cost = Math.Max(0m, dto.CostPriceUSD);
         decimal marginRetail = Math.Max(0m, dto.ProfitMarginRetail);
-        decimal priceRetail = cost > 0 && marginRetail > 0 ? Math.Ceiling(cost * (1m + marginRetail / 100m) * 100m) / 100m : dto.PriceRetailUSD;
+        decimal priceRetail = cost > 0 && marginRetail > 0 ? Core.Helpers.PricingCalculator.RoundPriceUp(cost * (1m + marginRetail / 100m)) : dto.PriceRetailUSD;
 
         bool hasWholesale = dto.HasWholesale;
         decimal marginWholesale = 0m;
@@ -508,7 +508,7 @@ public partial class InventoryService
         if (hasWholesale)
         {
             marginWholesale = Math.Max(0m, dto.ProfitMarginWholesale);
-            priceWholesale = cost > 0 && marginWholesale > 0 ? Math.Ceiling(cost * (1m + marginWholesale / 100m) * 100m) / 100m : dto.PriceWholesaleUSD;
+            priceWholesale = cost > 0 && marginWholesale > 0 ? Core.Helpers.PricingCalculator.RoundPriceUp(cost * (1m + marginWholesale / 100m)) : dto.PriceWholesaleUSD;
 
             if (priceWholesale > priceRetail)
             {

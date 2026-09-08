@@ -30,6 +30,15 @@ public static class PricingCalculator
     }
 
     /// <summary>
+    /// Rounds a monetary value up to 2 decimal places (ceiling rounding).
+    /// Used para precios calculados desde costo+margen (nunca se redondea hacia abajo).
+    /// </summary>
+    public static decimal RoundPriceUp(decimal amount)
+    {
+        return Math.Ceiling(amount * 100m) / 100m;
+    }
+
+    /// <summary>
     /// Rounds an amount to cash precision (0 decimal places / integer).
     /// Chained from digital rounding to guarantee consistency.
     /// </summary>

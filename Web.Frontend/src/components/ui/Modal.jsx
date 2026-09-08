@@ -1,11 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 
 export default function Modal({ isOpen, onClose, title, children, maxWidth = '500px', overflowVisible = false }) {
   const modalRef = useRef(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (!isOpen) return;
+
+    // W02: recordar el elemento que tenía el foco para restaurarlo al cerrar.
+    const previouslyFocused = document.activeElement;
 
     function handleKeyDown(e) {
       if (e.key === 'Escape') {
@@ -47,6 +51,10 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = '50
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       clearTimeout(timer);
+      // W02: restaurar el foco al elemento que abrió el modal.
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+        previouslyFocused.focus();
+      }
     };
   }, [isOpen, onClose]);
 
@@ -58,14 +66,14 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = '50
         ref={modalRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
         tabIndex={-1}
         className="modal-container card"
         style={{ maxWidth, overflow: overflowVisible ? 'visible' : 'auto' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
-          <h3 id="modal-title" className="modal-title">{title}</h3>
+          <h3 id={titleId} className="modal-title">{title}</h3>
           <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Cerrar">
             <X size={18} />
           </button>
