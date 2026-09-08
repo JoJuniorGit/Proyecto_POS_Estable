@@ -38,7 +38,10 @@ public partial class InventoryService
                     Size = 1
                 });
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogWarn($"[InventoryService] Fallo al escribir la tasa BCV de hoy en la caché. {ex.Message}");
+            }
         }
         return rate;
     }

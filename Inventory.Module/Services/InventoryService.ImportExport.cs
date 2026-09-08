@@ -12,16 +12,61 @@ namespace Inventory.Module.Services;
 
 public partial class InventoryService
 {
+    // 8I-M3: tope de lote del import (evita cargas de memoria/CPU ilimitadas desde el cliente).
+    private const int MaxImportBatchSize = 5000;
+    // 8I-M3: SKU con la misma regla del catálogo (ProductsController regex ^[A-Za-z0-9\-_]{1,50}$).
+    private static readonly System.Text.RegularExpressions.Regex SkuRegex =
+        new("^[A-Za-z0-9\\-_]{1,50}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+
+    /// <summary>
+    /// 8I-M3: validación de importación EN EL SERVIDOR (no confía en dto.IsValid calculado en el
+    /// cliente): SKU con formato válido, nombre no vacío y montos/cantidades no negativos.
+    /// </summary>
+    private static bool IsImportable(Core.DTOs.ProductImportDto p)
+    {
+        if (string.IsNullOrWhiteSpace(p.SKU) || !SkuRegex.IsMatch(p.SKU.Trim())) return false;
+        if (string.IsNullOrWhiteSpace(p.Name) || p.Name.Trim().Length > 200) return false;
+
+        bool NonNeg(decimal v) => v >= 0;
+        return NonNeg(p.CostPriceUSD)
+            && NonNeg(p.PriceRetailUSD)
+            && NonNeg(p.PriceWholesaleUSD)
+            && NonNeg(p.MinWholesaleQuantity)
+            && NonNeg(p.StockQuantity)
+            && NonNeg(p.LowStockThreshold);
+    }
+
     public async Task<(int added, int updated)> BulkImportProductsAsync(IEnumerable<Core.DTOs.ProductImportDto> products, bool overwriteMerge, CancellationToken cancellationToken = default)
     {
         EnsureCatalogMutationPermission();
         int added = 0;
         int updated = 0;
 
-        using var transaction = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
-        try
+        if (products == null)
         {
-            var skusToImport = products.Where(p => p.IsValid && !string.IsNullOrWhiteSpace(p.SKU)).Select(p => p.SKU.Trim()).Distinct().ToList();
+            throw new ArgumentException("La lista de productos a importar no puede ser nula.", nameof(products));
+        }
+
+        var productList = products.ToList();
+        if (productList.Count == 0)
+        {
+            return (0, 0);
+        }
+
+        if (productList.Count > MaxImportBatchSize)
+        {
+            throw new ArgumentException($"El lote de importación excede el máximo permitido ({MaxImportBatchSize} productos).");
+        }
+
+        // 8.16-H02: la transacción manual debe vivir DENTRO de CreateExecutionStrategy().ExecuteAsync()
+        // para no lanzar InvalidOperationException bajo NpgsqlRetryingExecutionStrategy en producción.
+        return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            using var transaction = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
+            try
+            {
+            var skusToImport = productList.Where(IsImportable).Select(p => p.SKU.Trim()).Distinct().ToList();
             var existingProducts = await _context.Products
                 .Where(p => skusToImport.Contains(p.SKU))
                 .ToDictionaryAsync(p => p.SKU, cancellationToken);
@@ -31,9 +76,9 @@ public partial class InventoryService
                 .Where(p => p.IsGroupHeader && !p.IsDeleted)
                 .ToDictionaryAsync(p => p.GroupKey ?? p.Name, p => p, StringComparer.OrdinalIgnoreCase, cancellationToken);
 
-            foreach (var dto in products)
+            foreach (var dto in productList)
             {
-                if (!dto.IsValid || string.IsNullOrWhiteSpace(dto.SKU)) continue;
+                if (!IsImportable(dto)) continue; // 8I-M3: validación en servidor, no dto.IsValid
 
                 var isGroup = string.Equals(dto.ProductType, "Grupo", StringComparison.OrdinalIgnoreCase) ||
                               string.Equals(dto.ProductType, "Group", StringComparison.OrdinalIgnoreCase);
@@ -287,15 +332,16 @@ public partial class InventoryService
 
             InvalidateAllProductCaches();
             return (added, updated);
-        }
-        catch (Exception)
-        {
-            if (transaction != null)
-            {
-                await transaction.RollbackAsync(cancellationToken);
             }
-            throw;
-        }
+            catch (Exception)
+            {
+                if (transaction != null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                }
+                throw;
+            }
+        });
     }
 
     public async Task<byte[]> ExportProductsAsync(string format, bool activeOnly, string? filter = null, CancellationToken cancellationToken = default)
@@ -483,18 +529,44 @@ public partial class InventoryService
 
     private static (UnitOfMeasureType unit, bool isFractional) ResolveUnitOfMeasure(string unitStr, bool isFractionalInput)
     {
-        var unit = isFractionalInput ? UnitOfMeasureType.Kg : UnitOfMeasureType.Und;
-        return (unit, isFractionalInput);
+        // 8I-M10: el texto de la unidad importada se respeta ("Kg"/"kilos"/"g"/"und"...);
+        // el flag booleano del cliente solo actúa como respaldo cuando el texto no es reconocible.
+        var unit = (unitStr ?? string.Empty).Trim().ToLowerInvariant() switch
+        {
+            "kg" or "kilo" or "kilos" or "kilogramo" or "kilogramos" => UnitOfMeasureType.Kg,
+            "g" or "gr" or "gramo" or "gramos" => UnitOfMeasureType.Grs,
+            "lb" or "libra" or "libras" => UnitOfMeasureType.Lb,
+            "oz" or "onza" or "onzas" => UnitOfMeasureType.Oz,
+            "l" or "lt" or "litro" or "litros" => UnitOfMeasureType.Lt,
+            "ml" or "mililitro" or "mililitros" => UnitOfMeasureType.Ml,
+            "und" or "unidad" or "unidades" or "pza" or "pzas" or "pieza" or "piezas" => UnitOfMeasureType.Und,
+            _ when isFractionalInput => UnitOfMeasureType.Kg,
+            _ => UnitOfMeasureType.Und
+        };
+
+        bool isFractional = isFractionalInput
+            || unit is UnitOfMeasureType.Kg or UnitOfMeasureType.Grs or UnitOfMeasureType.Lb
+                or UnitOfMeasureType.Oz or UnitOfMeasureType.Lt or UnitOfMeasureType.Ml;
+        return (unit, isFractional);
     }
 
     private static string EscapeCsvField(string? field)
     {
         if (string.IsNullOrEmpty(field)) return "";
 
+        // 8I-M8: neutralizar también NUL y espacios iniciales (Excel los interpreta como
+        // fórmula precedida de espacio; \0 es un separador de celda legacy).
+        field = field.Replace("\0", "");
+        var trimmedStart = field.TrimStart();
+        bool hadLeadingSpace = trimmedStart.Length != field.Length;
+
         // Neutralize CSV/Excel Formula Injection (CWE-1236)
-        if (field.StartsWith('=') || field.StartsWith('+') || field.StartsWith('-') || field.StartsWith('@') || field.StartsWith('\t') || field.StartsWith('\r'))
+        if (hadLeadingSpace
+            || field.StartsWith('=') || field.StartsWith('+')
+            || field.StartsWith('-') || field.StartsWith('@')
+            || field.StartsWith('\t') || field.StartsWith('\r'))
         {
-            field = "'" + field;
+            field = "'" + trimmedStart;
         }
 
         if (field.Contains(";") || field.Contains("\"") || field.Contains("\n") || field.Contains("\r"))

@@ -60,11 +60,6 @@ public class InventoryDbContext : DbContext
             entity.Property(p => p.HasIndependentPricing).HasDefaultValue(false);
             entity.Property(p => p.ConversionFactor).HasPrecision(18, 4).HasDefaultValue(1.0000m);
 
-            if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
-            {
-                entity.Property(p => p.RowVersion).HasDefaultValue(new byte[] { 1 });
-            }
-
             entity.ToTable(t => {
                 t.HasCheckConstraint("CK_Products_Variant_Flags",
                     "(\"IsGroupHeader\" = TRUE AND \"ParentProductId\" IS NULL) OR (\"IsStockShared\" = FALSE AND \"HasIndependentPricing\" = FALSE)");
@@ -115,8 +110,6 @@ public class InventoryDbContext : DbContext
             entity.HasIndex(m => m.OriginalMovementId).HasDatabaseName("IX_StockMovements_Archive_OriginalMovementId");
             entity.HasIndex(m => m.MovementDate).HasDatabaseName("IX_StockMovements_Archive_MovementDate");
         });
-
-        modelBuilder.Entity<Product>().Property(p => p.RowVersion).IsRowVersion();
 
         // Token de concurrencia basado en la pseudo-columna de sistema `xmin` de PostgreSQL
         // (hallazgo 8.2-A1). Se configura en caliente sin DDL adicional; se omite en SQLite.

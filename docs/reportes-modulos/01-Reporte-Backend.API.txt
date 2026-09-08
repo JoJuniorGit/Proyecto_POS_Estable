@@ -273,3 +273,119 @@ Cruce con docs/reporte.txt §13 (Rev. 8.4):
 ===============================================================================
 FIN DEL REPORTE Backend.API — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================
+=================================================================================
+7. ADENDA REV. 8.12 — VERIFICACION POST-OLAS S1..S4.2 (HEAD 84e3f84)
+=================================================================================
+Metodo: re-ejecucion de suites (696/696 .NET + 75/75 Web, 2026-09-08) y verificacion
+linea a linea de cada hallazgo de este modulo contra el arbol actual.
+
+CAMBIOS DE ESTADO (hallazgos previos de este modulo):
+  - [8.4-N4] y [8B-M7] (outbox FOR UPDATE en autocommit) -> ✅ RESUELTO en 84e3f84:
+    SELECT + BeginTransactionAsync + CommitAsync viven DENTRO de CreateExecutionStrategy()
+    (OutboxProcessorJob.cs:170-197); despacho SignalR fuera de la transaccion (:206-209).
+  - [8B-M5] (IdempotentRequests por SQL raw) -> ✅ RESUELTO: migracion propia
+    20260906100000_AddIdempotentRequestsAndCashDrawerSingleOpenIndex (con atributo).
+  - [8.2-CR2] (secretos versionados) -> ✅ RESUELTO: git ls-files no lista
+    appsettings.Development.json, docs/JWT_Key.md ni .env (0 resultados en 8.12).
+  - [8.2-A2]/[8.2-M3] (carreras doble cierre/sesion) -> ✅ RESUELTO: indices unicos
+    parciales (SalesDbContext.cs:164-168) + migracion 20260906100000.
+  - [8.2-M6] (idempotencia solo en /complete) -> ✅ RESUELTO: ResolveIdempotencyAsync
+    ahora en /hold (SalesController.cs:192) y /payments (:265), ademas de /complete.
+  - [8.4-N2] (GetVariants expone costos) -> ✅ RESUELTO: ProductsController.cs:188
+    enmascara con canViewCost ? CostPriceUSD : 0m y :46 aplica 0m en listados.
+  - [8B-B1] (AllowedHosts *) -> ✅ RESUELTO (dinamico, sin comodin).
+  - [8B-B3] (health con version) -> ✅ RESUELTO (HealthController.cs:30-36 sin version).
+  - [8.2-M2] (tasa 1.0 en cierres) -> ✅ RESUELTO: ShiftsController.cs:74 rechaza <=0.
+  - [8S-M5] (filtro IX por substring) -> ✅ MEJORADO: SalesController.cs:209,282,627
+    ahora captura tambien SqlState==23505.
+  - [8B-B2] (ContentType problem+json) -> ❌ VIGENTE: sigue application/json (:37).
+  - [8B-B6] (PasswordHasher sin clamp de iterations) -> ❌ VIGENTE: PasswordHasher.cs:35
+    usa el iterations del hash almacenado sin clamp.
+  - [8.2-M9] (colas sin paginar) -> 🟡 PARCIAL: la lista principal sigue sin Take
+    (solo .Take(3) de clientes recientes, HoldOrders.cs:549,564,574).
+
+HALLAZGOS NUEVOS 8.12 EN ESTE MODULO:
+  - [8.12-M2] MEDIO — Program.cs:556-559 afirma que en instalaciones nuevas el esquema
+    proviene 100% de las migraciones, pero es FALSO: el bloque de CONVERGENCIA LEGACY
+    sigue siendo imprescindible (DisplayOrder :570-571, IsPhysicalCash :580-581,
+    factura_number_seq :584-590, precisiones :595-650, hardening Users :662-698,
+    role migration :700-746). Corregir el comentario mientras existan huerfanas.
+  - [8.12-L2] BAJO — Rama no-Npgsql del outbox (OutboxProcessorJob.cs:199-205):
+    ToListAsync sin FOR UPDATE SKIP LOCKED ni Take(20) -> los tests InMemory no
+    reproducen la semantica de produccion.
+  - [8.12-L3] BAJO — Los comentarios Program.cs:129,135 dicen PendingModelChangesWarning
+    ACTIVA pero no hay ConfigureWarnings() explicito en ningun DbContext; depende del
+    default de EF Core 10 y NO detecta divergencias BD<->modelo por huerfanas.
+=================================================================================
+================================================================================
+ADENDA REV. 8.13 (OLA DE REMEDIACION TOTAL)
+================================================================================
+- [8B-B6] PasswordHasher sin clamp -> ✅ RESUELTO: clamps 10.000..2.000.000
+  iteraciones y clave 16..64 bytes (PasswordHasher.cs); 3 tests nuevos.
+- [8B-B2] problem+json -> ✅ RESUELTO: ContentType application/problem+json
+  (GlobalExceptionHandlerMiddleware.cs:37).
+- [8.2-M9] colas sin paginar -> ✅ RESUELTO (cap): ?limit= default 200 clamp
+  1..1000 con Take() antes de materializar en GetPendingSales (:301) y
+  GetPendingPickups (:768); servicio con parametro limit (HoldOrders.cs:511,
+  History.cs:42).
+- [8.12-M2] comentario Program.cs -> ✅ RESUELTO: reescrito (~:556); el bloque
+  legacy queda como red de seguridad idempotente.
+- [8.12-L3] PendingModelChangesWarning -> ✅ RESUELTO: ConfigureWarnings Throw
+  en ambos DbContexts (Program.cs:119-131); verificado has-pending-model-changes
+  sin pendientes.
+- [8B-B3] health expone version -> ❌ VIGENTE; [8B-B1] AllowedHosts="*" -> ❌
+  VIGENTE; [8B-B4] catches vacios -> ❌ VIGENTE; [8B-M2] Detail=ex.Message -> ❌.
+
+================================================================================
+ADENDA REV. 8.14 (RE-VERIFICACION 8.13 + HALLAZGOS NUEVOS)
+================================================================================
+- VIGENCIA 8.13 confirmada: todos los fixes de este modulo presentes en el
+  working tree (clamps PasswordHasher, problem+json, limit en colas,
+  ConfigureWarnings Throw, comentario legacy).
+- [8B-B6] SIN REGRESION HISTORICA: PasswordHasher nacio con 100k iteraciones
+  (commit cf9b05e) y nunca cambio -> el clamp (min 10k) no rechaza hashes reales.
+- [8.14-N1] MEDIO — cap 200 sin paginacion de UI: GetPendingSales/GetPendingPickups
+  devuelven max 200 por defecto y ningun cliente pagina -> mas de 200 OnHold/
+  pickups quedan INVISIBLES. Pendiente: page/pageSize/totalCount o UI "ver mas".
+- [8.14-N2] BAJO — seed DisplayOrder por nombre: en BD legacy con Cash/Card
+  renombrados el UPDATE no aplica (quedan DisplayOrder=0, ordenan primero).
+- [8.14-N4] BAJO — las 6 migraciones reactivadas de Sales no tienen .Designer.cs
+  (snapshot OK, has-pending-model-changes limpio; metadata de diseno perdida).
+- [8.14-N5] INFO — dotnet-ef 10.0.3 vs runtime EF 10.0.4 (actualizar tool).
+- ABIERTOS confirmados: W1 (web sin Idempotency-Key), W4 (purga 24h TTL fijo),
+  8B-B1/B3/B4, 8B-M2, SEC-06, A5, ARQ-03, CODE-01/02/03.
+- CERRADO verificado: GetCurrencyFormat bajo [Authorize] de clase
+  (SettingsController.cs:10) — no hay GET anonimo de formato.
+
+ADENDA REV. 8.15 (OLA DE CORRECCION TOTAL — estados actualizados)
+================================================================================
+- [8B-B4] catches vacios -> ✅ RESUELTO (Program.cs:100,1015 y
+  NetworkDiscoveryService.cs:225-228 con logging).
+- [8B-M8] BadRequest(ex.Message) -> ✅ RESUELTO (mensajes genericos en
+  ProductsController.cs:112,172).
+- [8.2-B5] snake_case residual -> ✅ RESUELTO (renombrado a camelCase en
+  SalesService*.cs y SalesController.cs).
+- [W4] TTL de idempotencia -> ✅ RESUELTO (Idempotency:TtlHours en
+  appsettings, default 24 h, inyectado via DI).
+- [8.2-B4]/[8B-B5] cierres fabricados -> ✅ RESUELTO (404 explicito; sin
+  recursion GetReportById -> GetCurrentReport).
+- [8U-M2] secretos por linea de comandos -> ✅ MITIGADO (secrets.json con
+  ACL restrictiva + carga con maxima precedencia en Program.cs).
+- [8U-B1] LocalSystem -> ✅ MITIGADO (Virtual Account en instalaciones
+  nuevas + ACL sobre BackendDir).
+- [8C-M1] ToUSD 4 decimales en conversion de pagos -> ✅ RESUELTO
+  (SalesController.cs:496 decimals:4).
+- YA RESUELTOS verificados (reportes previos desactualizados): 8B-B1
+  (AllowedHosts=localhost), 8B-B3 (health sin version), 8B-M2 (sin
+  ex.Message en tasa), 8B-M3 (401 generico), ARQ-03 (sin X-User-*),
+  8.2-B3 (GetCurrentBalance con roles), 8B-B7 (VersionCheck mitigado),
+  SEC-06 (?api= whitelist RFC-1918).
+- [8.14-N1] paginacion de colas -> ✅ RESUELTO (backend): offset +
+  cabecera X-Total-Count en pending/pending-pickups; CountPendingSales/
+  CountPendingPickups en ISalesService. (Falta solo el lado WPF.)
+- [8.14-N2] seed DisplayOrder -> ✅ RESUELTO: fallback ROW_NUMBER por Id
+  en la migracion AddDisplayOrderToPaymentMethod.
+- Pendientes: 8.14-N4 (Designers), 8.14-N5 (dotnet-ef).
+
+FIN DEL REPORTE Backend.API — ADENDA REV. 8.15
+=================================================================================

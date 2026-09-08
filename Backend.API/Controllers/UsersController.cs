@@ -193,16 +193,19 @@ public class UsersController : ControllerBase
         user.Role = dto.Role;
         user.IsActive = isMainAdmin ? true : dto.IsActive;
 
-        await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync() : null;
-        if (credentialsOrRoleChanged)
+        await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            user.SecurityStamp = Guid.NewGuid().ToString("N");
-        }
-        await _db.SaveChangesAsync();
-        if (tx != null)
-        {
-            await tx.CommitAsync();
-        }
+            await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync() : null;
+            if (credentialsOrRoleChanged)
+            {
+                user.SecurityStamp = Guid.NewGuid().ToString("N");
+            }
+            await _db.SaveChangesAsync();
+            if (tx != null)
+            {
+                await tx.CommitAsync();
+            }
+        });
 
         if (credentialsOrRoleChanged)
         {
@@ -327,17 +330,20 @@ public class UsersController : ControllerBase
 
         var temporaryPassword = _passwordPolicyService.GenerateSecureTemporaryPassword(12);
 
-        await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync() : null;
-        user.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(temporaryPassword);
-        user.MustChangePassword = true;
-        user.SecurityStamp = Guid.NewGuid().ToString("N");
-        user.AccessFailedCount = 0;
-        user.LockoutEndUtc = null;
-        await _db.SaveChangesAsync();
-        if (tx != null)
+        await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            await tx.CommitAsync();
-        }
+            await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync() : null;
+            user.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(temporaryPassword);
+            user.MustChangePassword = true;
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            user.AccessFailedCount = 0;
+            user.LockoutEndUtc = null;
+            await _db.SaveChangesAsync();
+            if (tx != null)
+            {
+                await tx.CommitAsync();
+            }
+        });
 
         _stampValidator?.InvalidateUserStamp(user.Id);
 

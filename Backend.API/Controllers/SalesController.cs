@@ -39,8 +39,8 @@ public class SalesController : ControllerBase
             ? uid 
             : cashierId;
 
-        var _sale = await _salesService.StartSaleAsync(effectiveCashierId);
-        return Ok(_sale);
+        var sale = await _salesService.StartSaleAsync(effectiveCashierId);
+        return Ok(sale);
     }
 
     // 8.5-A3: Autorización por objeto. Un cajero solo puede mutar ventas que él inició.
@@ -105,8 +105,8 @@ public class SalesController : ControllerBase
 
         try
         {
-            var _sale = await _salesService.GetSaleAsync(id);
-            return Ok(_sale);
+            var sale = await _salesService.GetSaleAsync(id);
+            return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException)
         {
@@ -128,8 +128,8 @@ public class SalesController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { message = "Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor." });
         }
 
-        var _sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized);
-        return Ok(_sale);
+        var sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized);
+        return Ok(sale);
     }
 
     [HttpDelete("{id}/items/{itemId}")]
@@ -140,8 +140,8 @@ public class SalesController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
         }
 
-        var _sale = await _salesService.RemoveItemAsync(id, itemId, exchangeRate);
-        return Ok(_sale);
+        var sale = await _salesService.RemoveItemAsync(id, itemId, exchangeRate);
+        return Ok(sale);
     }
 
     [HttpPut("{id}/items/{itemId}")]
@@ -152,8 +152,8 @@ public class SalesController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
         }
 
-        var _sale = await _salesService.UpdateItemQuantityAsync(id, itemId, request.Quantity, request.ExchangeRate);
-        return Ok(_sale);
+        var sale = await _salesService.UpdateItemQuantityAsync(id, itemId, request.Quantity, request.ExchangeRate);
+        return Ok(sale);
     }
 
     [HttpPut("{id}/exchange-rate")]
@@ -166,8 +166,8 @@ public class SalesController : ControllerBase
                 return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
             }
 
-            var _sale = await _salesService.UpdateExchangeRateAsync(id, exchangeRate);
-            return Ok(_sale);
+            var sale = await _salesService.UpdateExchangeRateAsync(id, exchangeRate);
+            return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
@@ -199,12 +199,12 @@ public class SalesController : ControllerBase
                 return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
             }
 
-            var _sale = await _salesService.HoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash);
+            var sale = await _salesService.HoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash);
             if (Response?.Headers != null)
             {
                 Response.Headers["X-Cache-Lookup"] = "MISS";
             }
-            return Ok(_sale);
+            return Ok(sale);
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.Message.Contains("IX_IdempotentRequests") || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505"))
         {
@@ -235,8 +235,8 @@ public class SalesController : ControllerBase
             }
 
             bool isAuthorized = User.IsInRole("Admin") || User.IsInRole("Manager");
-            var _sale = await _salesService.UpdateSaleItemsAsync(id, request, isAuthorized);
-            return Ok(_sale);
+            var sale = await _salesService.UpdateSaleItemsAsync(id, request, isAuthorized);
+            return Ok(sale);
         }
         catch (System.UnauthorizedAccessException ex)
         {
@@ -272,12 +272,12 @@ public class SalesController : ControllerBase
                 return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
             }
 
-            var _sale = await _salesService.AddPaymentToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash);
+            var sale = await _salesService.AddPaymentToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash);
             if (Response?.Headers != null)
             {
                 Response.Headers["X-Cache-Lookup"] = "MISS";
             }
-            return Ok(_sale);
+            return Ok(sale);
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.Message.Contains("IX_IdempotentRequests") || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505"))
         {
@@ -298,11 +298,17 @@ public class SalesController : ControllerBase
     }
 
     [HttpGet("pending")]
-    public async Task<ActionResult<System.Collections.Generic.IEnumerable<SaleDto>>> GetPendingSales()
+    public async Task<ActionResult<System.Collections.Generic.IEnumerable<SaleDto>>> GetPendingSales([FromQuery] int limit = 200, [FromQuery] int offset = 0)
     {
+        // 8.2-M9: tope de cola acotado (max 1000) para no devolver el conjunto completo.
+        limit = System.Math.Clamp(limit, 1, 1000);
         var (scopeToCashier, cashierId) = GetCashierReadScope();
-        var _pending = await _salesService.GetPendingSalesAsync(scopeToCashier ? cashierId : null);
-        return Ok(_pending);
+        var pending = await _salesService.GetPendingSalesAsync(scopeToCashier ? cashierId : null, limit, offset);
+
+        // 8.14-N1: total de la cola en cabecera para paginacion de UI sin romper el shape.
+        var totalCount = await _salesService.CountPendingSalesAsync(scopeToCashier ? cashierId : null);
+        Response.Headers.Append("X-Total-Count", totalCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return Ok(pending);
     }
 
     [HttpPost("{id}/cancel")]
@@ -354,8 +360,8 @@ public class SalesController : ControllerBase
     {
         try
         {
-            var _customer = await _salesService.GetDefaultCustomerAsync();
-            return Ok(_customer);
+            var customer = await _salesService.GetDefaultCustomerAsync();
+            return Ok(customer);
         }
         catch (System.Collections.Generic.KeyNotFoundException)
         {
@@ -374,8 +380,8 @@ public class SalesController : ControllerBase
 
         try
         {
-            var _sale = await _salesService.UpdateSaleCustomerAsync(id, request.CustomerId);
-            return Ok(_sale);
+            var sale = await _salesService.UpdateSaleCustomerAsync(id, request.CustomerId);
+            return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
@@ -397,8 +403,8 @@ public class SalesController : ControllerBase
     {
         try
         {
-            var _customer = await _salesService.CreateCustomerAsync(request);
-            return Ok(_customer);
+            var customer = await _salesService.CreateCustomerAsync(request);
+            return Ok(customer);
         }
         catch (System.ArgumentException ex)
         {
@@ -416,8 +422,8 @@ public class SalesController : ControllerBase
     {
         try
         {
-            var _customer = await _salesService.UpdateCustomerAsync(id, request);
-            return Ok(_customer);
+            var customer = await _salesService.UpdateCustomerAsync(id, request);
+            return Ok(customer);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
@@ -491,7 +497,9 @@ public class SalesController : ControllerBase
 
                 if (pUsd <= 0 && pBsS > 0 && rate > 0)
                 {
-                    pUsd = PricingCalculator.ToUSD(pBsS, rate, decimals: 2);
+                    // 8C-M1: conversión de alta precisión (4 decimales) para no perder centésimas
+                    // en el redondeo intermedio; el total final se redondea a 2 (RoundToDigital).
+                    pUsd = PricingCalculator.ToUSD(pBsS, rate, decimals: 4);
                 }
                 else if (pBsS <= 0 && pUsd > 0 && rate > 0)
                 {
@@ -605,11 +613,11 @@ public class SalesController : ControllerBase
                 ? uid
                 : request.CashierId;
 
-            var _payment_infos = request.Payments.Select(p => new PaymentInfo(p.PaymentMethodId, p.Amount, p.AmountBsS > 0 ? p.AmountBsS : p.AmountLocal, p.ReferenceNumber));
+            var paymentInfos = request.Payments.Select(p => new PaymentInfo(p.PaymentMethodId, p.Amount, p.AmountBsS > 0 ? p.AmountBsS : p.AmountLocal, p.ReferenceNumber));
             int _real_id = await _salesService.CompleteSaleAsync(
                 id, 
                 request.ExchangeRate, 
-                _payment_infos, 
+                paymentInfos, 
                 request.RoundingAdjustment, 
                 effectiveCashierId, 
                 request.IsPendingPickup, 
@@ -747,8 +755,8 @@ public class SalesController : ControllerBase
                 return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para confirmar esta entrega." });
             }
 
-            var _sale = await _salesService.ConfirmPickupAsync(id);
-            return Ok(_sale);
+            var sale = await _salesService.ConfirmPickupAsync(id);
+            return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException)
         {
@@ -765,11 +773,17 @@ public class SalesController : ControllerBase
     }
 
     [HttpGet("pending-pickups")]
-    public async Task<ActionResult<System.Collections.Generic.IEnumerable<PendingPickupDto>>> GetPendingPickups()
+    public async Task<ActionResult<System.Collections.Generic.IEnumerable<PendingPickupDto>>> GetPendingPickups([FromQuery] int limit = 200, [FromQuery] int offset = 0)
     {
+        // 8.2-M9: tope de cola acotado (max 1000).
+        limit = System.Math.Clamp(limit, 1, 1000);
         var (scopeToCashier, cashierId) = GetCashierReadScope();
-        var _pending = await _salesService.GetPendingPickupsAsync(scopeToCashier ? cashierId : null);
-        return Ok(_pending);
+        var pending = await _salesService.GetPendingPickupsAsync(scopeToCashier ? cashierId : null, limit, offset);
+
+        // 8.14-N1: total de la cola en cabecera para paginacion de UI sin romper el shape.
+        var totalCount = await _salesService.CountPendingPickupsAsync(scopeToCashier ? cashierId : null);
+        Response.Headers.Append("X-Total-Count", totalCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return Ok(pending);
     }
 
     /// <summary>
@@ -802,8 +816,8 @@ public class SalesController : ControllerBase
 
         try
         {
-            var _detail = await _salesService.GetSaleHistoryDetailAsync(id);
-            return Ok(_detail);
+            var detail = await _salesService.GetSaleHistoryDetailAsync(id);
+            return Ok(detail);
         }
         catch (System.Collections.Generic.KeyNotFoundException)
         {

@@ -136,7 +136,6 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         catch (System.Exception ex)
         {
             if (_dialogService != null) _dialogService.ShowWarning("Lista de Precios", ex.Message);
-            else if (Application.Current != null) MessageBox.Show(ex.Message, "Lista de Precios", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -253,7 +252,6 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         catch (System.Exception ex)
         {
             if (_dialogService != null) _dialogService.ShowWarning("Error", ex.Message);
-            else if (Application.Current != null) MessageBox.Show(ex.Message);
         }
     }
 
@@ -277,7 +275,6 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         catch (System.Exception ex)
         {
             if (_dialogService != null) _dialogService.ShowWarning("Error", ex.Message);
-            else if (Application.Current != null) MessageBox.Show(ex.Message);
         }
     }
 
@@ -292,7 +289,6 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         catch (System.Exception ex)
         {
             if (_dialogService != null) _dialogService.ShowError("Error", $"Error removing item: {ex.Message}");
-            else if (Application.Current != null) MessageBox.Show($"Error removing item: {ex.Message}");
         }
     }
 

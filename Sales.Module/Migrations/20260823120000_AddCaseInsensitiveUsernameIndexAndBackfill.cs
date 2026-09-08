@@ -1,10 +1,14 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Sales.Module.Data;
 
 #nullable disable
 
 namespace Sales.Module.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(SalesDbContext))]
+    [Migration("20260823120000_AddCaseInsensitiveUsernameIndexAndBackfill")]
     public partial class AddCaseInsensitiveUsernameIndexAndBackfill : Migration
     {
         /// <inheritdoc />

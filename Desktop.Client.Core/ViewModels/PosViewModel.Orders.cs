@@ -29,7 +29,6 @@ public partial class PosViewModel
         catch (Exception ex)
         {
             if (_dialogService != null) _dialogService.ShowError("Error", $"Error al asignar cliente: {ex.Message}");
-            else if (Application.Current != null) MessageBox.Show($"Error al asignar cliente: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -69,7 +68,6 @@ public partial class PosViewModel
             {
                 System.Diagnostics.Debug.WriteLine("[POS] Lazy start FAILED — CurrentSale still null after retry.");
                 if (_dialogService != null) _dialogService.ShowError("Connection Error", "Could not start a sale session. Please check that the server is running and try again.");
-                else if (Application.Current != null) MessageBox.Show("Could not start a sale session. Please check that the server is running and try again.", "Connection Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -109,7 +107,6 @@ public partial class PosViewModel
                 if (CurrentExchangeRate <= 0)
                 {
                     if (_dialogService != null) _dialogService.ShowWarning("Missing Rate", "Please set a valid Exchange Rate in the top header before requesting a cash advance.");
-                    else if (Application.Current != null) MessageBox.Show("Please set a valid Exchange Rate in the top header before requesting a cash advance.", "Missing Rate", MessageBoxButton.OK, MessageBoxImage.Warning);
                     SelectedSuggestion = null;
                     return;
                 }
@@ -137,7 +134,6 @@ public partial class PosViewModel
             catch (Exception ex)
             {
                 if (_dialogService != null) _dialogService.ShowError("Error", $"Error adding item: {ex.Message}");
-                else if (Application.Current != null) MessageBox.Show($"Error adding item: {ex.Message}");
             }
             finally
             {
@@ -162,8 +158,6 @@ public partial class PosViewModel
         {
             if (_dialogService != null)
                 _dialogService.ShowWarning("Validación", "El carrito está vacío. Por favor agregue productos antes de cobrar.");
-            else
-                MessageBox.Show("El carrito está vacío. Por favor agregue productos antes de cobrar.", "Validación", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -171,8 +165,6 @@ public partial class PosViewModel
         {
             if (_dialogService != null)
                 _dialogService.ShowWarning("Tasa Requerida", "No se puede proceder al cobro. Por favor establezca una tasa de cambio válida en el encabezado.");
-            else
-                MessageBox.Show("No se puede proceder al cobro. Por favor establezca una tasa de cambio válida en el encabezado.", "Tasa Requerida", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -202,14 +194,12 @@ public partial class PosViewModel
         if (!Cart.CartItems.Any())
         {
             if (_dialogService != null) _dialogService.ShowWarning("Validación", "El carrito está vacío. Agregue productos antes de guardar en espera.");
-            else if (Application.Current != null) MessageBox.Show("El carrito está vacío. Agregue productos antes de guardar en espera.", "Validación", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (CurrentExchangeRate <= 0)
         {
             if (_dialogService != null) _dialogService.ShowWarning("Tasa Requerida", "No se puede guardar en espera. Por favor establezca una tasa de cambio válida.");
-            else if (Application.Current != null) MessageBox.Show("No se puede guardar en espera. Por favor establezca una tasa de cambio válida.", "Tasa Requerida", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -248,7 +238,6 @@ public partial class PosViewModel
         if (!Cart.CurrentSale.CustomerId.HasValue)
         {
             if (_dialogService != null) _dialogService.ShowError("Error", "Error de consistencia: La venta no posee cliente asociado.");
-            else if (Application.Current != null) MessageBox.Show("Error de consistencia: La venta no posee cliente asociado.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
 
@@ -275,7 +264,6 @@ public partial class PosViewModel
         catch (Exception ex)
         {
             if (_dialogService != null) _dialogService.ShowError("Error", $"Error al guardar pedido en espera: {ex.Message}");
-            else if (Application.Current != null) MessageBox.Show($"Error al guardar pedido en espera: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -298,7 +286,7 @@ public partial class PosViewModel
 
         bool confirmed = _dialogService != null
             ? _dialogService.ShowConfirm("Cancelar Venta (F8)", "¿Está seguro de que desea cancelar la venta actual y limpiar el carrito?")
-            : (Application.Current != null && MessageBox.Show("¿Está seguro de que desea cancelar la venta actual y limpiar el carrito?", "Cancelar Venta (F8)", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes);
+            : false;
 
         if (confirmed)
         {

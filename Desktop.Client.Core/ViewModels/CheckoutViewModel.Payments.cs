@@ -119,10 +119,6 @@ public partial class CheckoutViewModel
         {
             _dialogService.ShowWarning(title, message);
         }
-        else if (Application.Current != null)
-        {
-            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
     }
 
     private void ShowError(string title, string message)
@@ -130,10 +126,6 @@ public partial class CheckoutViewModel
         if (_dialogService != null)
         {
             _dialogService.ShowError(title, message);
-        }
-        else if (Application.Current != null)
-        {
-            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

@@ -91,3 +91,52 @@ Cruce con docs/reporte.txt §13 (Rev. 8.4):
 ===============================================================================
 FIN DEL REPORTE Desktop.Client — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================
+=================================================================================
+7. ADENDA REV. 8.12 — VERIFICACION POST-OLAS S1..S4.2 (HEAD 84e3f84)
+=================================================================================
+Metodo: verificacion contra el arbol actual (2026-09-08).
+
+CAMBIOS DE ESTADO (hallazgos previos de este modulo):
+  - [8D-M1] (fuga por suscripcion) -> ✅ RESUELTO (desuscripcion en Unloaded y
+    DataContextChanged, DailyClosureView.xaml.cs).
+  - [8D-M1b] (virtualizacion) -> 🟡 PARCIAL CONFIRMADO: CashDrawer/PendingOrders/Users/
+    EditSale/Variant virtualizados, PERO PendingPickupsView.xaml:93 sigue ItemsControl
+    + ItemsPanel sin VirtualizingPanel (verificado en 8.12).
+  - [8D-M2] (logica financiera en code-behind) -> 🟡 VIGENTE (EditSaleDialog/CheckoutView).
+  - [8D-B1]/[8D-B2] -> ❌ VIGENTES (modales y regex monetarios sin endurecer).
+  - [8.2-B6] (accesibilidad WPF) -> ❌ VIGENTE (deuda heredada).
+  - Sin hallazgos 8.12 directos de codigo (los nuevos son backend/migraciones); el
+    desktop hereda el impacto de 8.12-B2 (precision 18,2 vs 18,4 en BD frescas).
+=================================================================================
+================================================================================
+ADENDA REV. 8.13 (OLA DE REMEDIACION TOTAL)
+================================================================================
+- [8D-M1b] PendingPickups sin virtualizar -> 🟡 PARCIAL: la cuadricula usa
+  UniformGrid (no virtualizable en WPF sin libreria externa); mitigado por el
+  tope servidor 8.2-M9 (default 200) y el DataGrid interno ya virtualiza
+  (Recycling). Virtualizacion real del grid de tarjetas requiere
+  VirtualizingWrapPanel (pendiente de libreria o rediseno a 1 columna).
+- Resto (MessageBox 60 usos, DI manual) -> ❌ VIGENTE.
+
+================================================================================
+ADENDA REV. 8.14 (RE-VERIFICACION 8.13 + HALLAZGOS NUEVOS)
+================================================================================
+- [8.14-N1] MEDIO — PendingOrdersView/PendingPickupsView muestran hasta 200
+  filas (cap servidor 8.2-M9) sin paginacion de UI: el excedente queda
+  invisible. Pendiente: page/pageSize + "ver mas"/scroll infinito.
+- [8D-M1b] parcial confirmado (UniformGrid no virtualizable; DataGrid interno
+  con Recycling; cap servidor mitiga).
+- [8C-M1/M3] redondeo canonico -> ❌ VIGENTES (cierres/hold).
+
+ADENDA REV. 8.15 (OLA DE CORRECCION TOTAL — estados actualizados)
+================================================================================
+- Sin cambios de codigo en este modulo en la ola 8.15 (los fixes fueron
+  backend/instalador/tests).
+- [8.14-N1] cap 200 sin paginacion de UI -> sigue pendiente (WPF no pagina).
+- [8D-M1b] PendingPickups UniformGrid -> 🟡 PARCIAL confirmado (mitigado por
+  cap servidor 200).
+- Pendientes declarados: 8D-M2 (logica financiera en code-behind),
+  8D-B1/B2 (modales/regex), 8.2-B6 (accesibilidad WPF).
+
+FIN DEL REPORTE Desktop.Client — ADENDA REV. 8.15
+=================================================================================

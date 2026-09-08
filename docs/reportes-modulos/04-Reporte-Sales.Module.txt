@@ -162,3 +162,105 @@ Cruce con docs/reporte.txt §13 (Rev. 8.4):
 ===============================================================================
 FIN DEL REPORTE Sales.Module — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================
+=================================================================================
+7. ADENDA REV. 8.12 — VERIFICACION POST-OLAS S1..S4.2 (HEAD 84e3f84)
+=================================================================================
+Metodo: verificacion linea a linea contra el arbol actual (2026-09-08).
+
+CAMBIOS DE ESTADO (hallazgos previos de este modulo):
+  - [8.2-A2]/[8.2-M3] (carreras cierre/sesion) -> ✅ RESUELTO (indices unicos parciales
+    SalesDbContext.cs:164-168 + migracion 20260906100000; cierre atomico fase7).
+  - [8.2-M6] (idempotencia hold/abonos) -> ✅ RESUELTO: ResolveIdempotencyAsync en
+    /hold (SalesController.cs:192) y /payments (:265), ademas de /complete.
+  - [8S-M2] (deriva de centavo) -> ✅ RESUELTO (RoundToDigital).
+  - [8S-M5] (filtro IX substring) -> ✅ MEJORADO (SqlState==23505 incluido).
+  - [8S-M6] (sin tokens de concurrencia) -> ✅ RESUELTO (xmin en Sales: migracion
+    20260906170744_AddXminConcurrencyTokensToSales).
+  - [8.2-B1]/[8.2-B2] -> ✅ RESUELTOS (indice unico CedulaOrRif; using en ADV).
+  - [8W-M4]/[8W-ZT] -> ✅ RESUELTO: CheckoutModal.jsx:29-30,154,157 consume el preview
+    canonico del backend (verificado en 8.12).
+  - [8S-M3] (IsDelivered/DeliverOnCredit) -> ❌ VIGENTE: 0 matches en Sales.Module.
+  - [W3] (PaymentMethodId nullable) -> 🟡 VIGENTE: sigue int? sin decision de NOT NULL.
+  - [8S-M1] (proyeccion GetActiveSession) -> 🟡 PARCIAL (8.5-M1, 2 queries).
+
+HALLAZGOS NUEVOS 8.12 EN ESTE MODULO (los mas criticos del sistema):
+  - [8.12-B2] ALTO — 20260805120000_ExpandSubtotalPrecisionTo4Decimals es HUERFANA y NO
+    compensada: el snapshot declara decimal(18,4) (SalesDbContextModelSnapshot.cs:564-
+    568,622-626), el negocio calcula Math.Round(...,4) (Pricing.cs:170,174), pero la BD
+    fresca queda numeric(18,2) (InitialSales.cs:23,43 + SalesDecimalPrecision.cs:22-26;
+    grep numeric(18,4) en Program.cs = 0). PostgreSQL redondea a 2 decimales en
+    persistencia -> perdida silenciosa de precision en subtotales/precios Bs.S.
+  - [8.12-B3] ALTO — 20260907030000_AddPgTrgmGinIndexesRev89 es HUERFANA: los indices
+    GIN de la busqueda del historico (SalesService.History.cs:106-120 usa ILike) NUNCA
+    se crean. M11 de 8.11 declarado resuelto es INERTE.
+  - [8.12-B1] ALTO — Las 7 huerfanas de Sales listadas en 8.11 son correctas, pero la
+    compensacion NO es completa: 20260805120000 (B2) y 20260907030000 (B3) no estan
+    compensadas por el bloque legacy. Si estan compensadas: IsPhysicalCash (:580),
+    Username index/backfill (:662-698), SaleItemQuantity (:601-605) y AmountLocal
+    (por 20260322025621, con atributo).
+  - [8.12-M3] MEDIO — Los UpdateData DisplayOrder=1/2 (Efectivo USD/Bs.S) de la huerfana
+    20260809232500 se pierden en instalaciones frescas: la autocuracion 8.11-F crea la
+    columna con DEFAULT 0 pero no siembra 1/2; el seed 20260303194805 tampoco define
+    DisplayOrder -> todos quedan en 0 y el orden depende del Id.
+=================================================================================
+================================================================================
+ADENDA REV. 8.13 (OLA DE REMEDIACION TOTAL)
+================================================================================
+- [8.12-B2] precision Subtotal/UnitPrice 18,4 -> ✅ RESUELTO: la migracion
+  20260805120000 esta ACTIVA (era huerfana); BD frescas ya coinciden con el
+  modelo/snapshot; BD legacy se auto-corrigen (ALTER idempotente).
+- [8.12-B3] indices GIN -> ✅ RESUELTO: 20260907030000 activa (guard pg_trgm).
+- [8.12-M3] DisplayOrder -> ✅ RESUELTO (con correccion): el seed real es
+  Cash/Card (SalesDbContext.cs:250-253); la migracion AddDisplayOrderToPaymentMethod
+  siembra 1/2 por NOMBRE solo si DisplayOrder=0.
+- [8.12-B1] resto de Sales -> ✅: AddDisplayOrderToPaymentMethod,
+  AddIsPhysicalCashToCashTransactions (boolean, corrige el INT original),
+  AlterSaleItemQuantityToNumeric, AddCaseInsensitiveUsernameIndexAndBackfill
+  activadas con guards; 20260320000000_AddCashTransactionAmountLocal ELIMINADA
+  (duplicada por 20260322025621).
+- [8.2-M9] colas -> ✅ RESUELTO (cap 200/1000 con Take antes de materializar).
+- Smoke 8.12-M1 valida en BD real: Subtotal scale>=4, DisplayOrder existe,
+  ix_users_username_lower existe, factura_number_seq existe.
+- [8S-M3]/[W3] -> ❌ VIGENTES; [8S-M5] -> ✅ verificado en 8.12.
+
+================================================================================
+ADENDA REV. 8.14 (RE-VERIFICACION 8.13 + HALLAZGOS NUEVOS)
+================================================================================
+- VIGENCIA 8.13 confirmada: 6 migraciones reactivadas con atributos y guards;
+  AddCashTransactionAmountLocal eliminada; DisplayOrder sembrado por nombre;
+  ?limit= en colas (Take antes de materializar, HoldOrders.cs:511/History.cs:42).
+- [8.12-M3] INOCUO verificado: PaymentMethodService asigna DisplayOrder via
+  nextval('paymentmethod_displayorder_seq') explicito (:240-269) con fallback
+  Max+1 -> el DEFAULT 0 de la migracion reactivada nunca se usa en inserciones.
+- [8.14-N1] MEDIO — cap 200 sin paginacion de UI: >200 OnHold/pickups quedan
+  invisibles para los clientes (no envian ?limit ni pagina).
+- [8.14-N2] BAJO — seed de DisplayOrder por nombre falla si Cash/Card fueron
+  renombrados en BD legacy (quedan 0 y ordenan primero).
+- [8.14-N4] BAJO — sin .Designer.cs en las 6 migraciones reactivadas.
+- ABIERTOS confirmados: [8S-M3]/[W3] heuristica MT-001, [8S-M2] redondeo
+  canonical en hold/abono (8C-M3), W4 (purga 24h de IdempotentRequests).
+
+ADENDA REV. 8.15 (OLA DE CORRECCION TOTAL — estados actualizados)
+================================================================================
+- [8.2-B5] snake_case residual -> ✅ RESUELTO (variables locales renombradas
+  a camelCase en SalesService*.cs).
+- [W4] TTL de idempotencia -> ✅ RESUELTO (IdempotencyService con ttl
+  configurable; Idempotency:TtlHours en appsettings, default 24 h).
+- [8.2-B4]/[8B-B5] cierres fabricados -> ✅ RESUELTO (404 explicito en
+  GetCurrentReport/GetReportById).
+- [8S-M3]/[W3] doble deduccion -> 🟡 MITIGADO: idempotencia por venta en el
+  handler + guard de venta ya completada; PaymentMethodId validado
+  pre-persistencia (8.6-B3); nullable conservado para apertura/cierre
+  (decision documentada). IsDelivered/DeliverOnCredit siguen sin existir.
+- [8C-M1] conversion de pagos a 4 decimales -> ✅ RESUELTO
+  (SalesController.cs:496).
+- [8C-M3] RoundToDigital en hold/abono -> ✅ VERIFICADO (HoldOrders.cs:130).
+- [8.14-N1] paginacion de colas -> ✅ RESUELTO (backend): offset +
+  X-Total-Count en pending/pending-pickups; CountPendingSalesAsync/
+  CountPendingPickupsAsync en el servicio.
+- [8.14-N2] seed DisplayOrder -> ✅ RESUELTO: fallback ROW_NUMBER por Id
+  para metodos renombrados (migracion AddDisplayOrderToPaymentMethod).
+- Pendiente: 8.14-N4 (Designers).
+
+FIN DEL REPORTE Sales.Module — ADENDA REV. 8.15
+=================================================================================

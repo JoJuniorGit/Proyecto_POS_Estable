@@ -16,7 +16,7 @@ public partial class SalesService
     public async Task<SaleHistoryDto> ConfirmPickupAsync(int saleId)
     {
         // 8.9-M17: una sola consulta; se mapea el DTO desde la entidad ya cargada (sin doble fetch).
-        var _sale = await _context.Sales
+        var sale = await _context.Sales
             .AsSplitQuery()
             .Include(s => s.Customer)
             .Include(s => s.Cashier)
@@ -24,29 +24,36 @@ public partial class SalesService
             .Include(s => s.Payments).ThenInclude(p => p.PaymentMethod)
             .FirstOrDefaultAsync(s => s.Id == saleId);
 
-        if (_sale == null) throw new KeyNotFoundException("Sale not found.");
+        if (sale == null) throw new KeyNotFoundException("Venta no encontrada.");
 
-        if (_sale.DeliveryStatus != SaleDeliveryStatus.PendingPickup)
-            throw new InvalidOperationException($"El pedido #{_sale.InvoiceNumber ?? _sale.Id} no se encuentra en estado Pendiente por Retirar.");
+        if (sale.DeliveryStatus != SaleDeliveryStatus.PendingPickup)
+            throw new InvalidOperationException($"El pedido #{sale.InvoiceNumber ?? sale.Id} no se encuentra en estado Pendiente por Retirar.");
 
-        _sale.DeliveryStatus = SaleDeliveryStatus.Delivered;
-        _sale.PickupDate = DateTime.UtcNow;
+        sale.DeliveryStatus = SaleDeliveryStatus.Delivered;
+        sale.PickupDate = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        return MapToHistoryDetail(_sale);
+        return MapToHistoryDetail(sale);
     }
 
     // 8.9-B2: soporta scope por cajero (Cashier filtra sus entregas; Admin/Manager ven todas).
     // 8.9-B5: proyección directa en SQL (sin materializar entidades con Items/Payments completos).
-    public async Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync(int? cashierId = null)
+    public async Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync(int? cashierId = null, int limit = 200, int offset = 0)
     {
-        var _sales = await _context.Sales
+        // 8.2-M9: tope de la cola (default 200, max 1000 en el controlador).
+        // 8.14-N1: paginación real por offset.
+        if (limit <= 0) limit = 200;
+        if (offset < 0) offset = 0;
+
+        var sales = await _context.Sales
             .AsNoTracking()
             .AsSplitQuery()
             .Where(s => s.Status == SaleStatus.Completed && s.DeliveryStatus == SaleDeliveryStatus.PendingPickup)
             .Where(s => !cashierId.HasValue || s.CashierId == cashierId.Value)
             .OrderByDescending(s => s.Date)
+            .Skip(offset)
+            .Take(limit)
             .Select(s => new PendingPickupDto
             {
                 SaleId = s.Id,
@@ -72,7 +79,16 @@ public partial class SalesService
             })
             .ToListAsync();
 
-        return _sales;
+        return sales;
+    }
+
+    public async Task<int> CountPendingPickupsAsync(int? cashierId = null)
+    {
+        return await _context.Sales
+            .AsNoTracking()
+            .CountAsync(s => s.Status == SaleStatus.Completed
+                && s.DeliveryStatus == SaleDeliveryStatus.PendingPickup
+                && (!cashierId.HasValue || s.CashierId == cashierId.Value));
     }
 
     // 8.9-B2: un Cashier solo consulta su propio historial; Admin/Manager sin restricción.
@@ -151,7 +167,7 @@ public partial class SalesService
 
     public async Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId)
     {
-        var _sale = await _context.Sales
+        var sale = await _context.Sales
             .AsNoTracking()
             .AsSplitQuery()
             .Include(s => s.Items)
@@ -161,31 +177,31 @@ public partial class SalesService
             .Include(s => s.Customer)
             .FirstOrDefaultAsync(s => s.Id == saleId);
 
-        if (_sale == null) throw new KeyNotFoundException($"Sale {saleId} not found.");
+        if (sale == null) throw new KeyNotFoundException($"Sale {saleId} not found.");
 
-        return MapToHistoryDetail(_sale);
+        return MapToHistoryDetail(sale);
     }
 
     // 8.9-M17: mapeo único a SaleHistoryDto para que ConfirmPickupAsync y el detalle de
     // historial produzcan exactamente el mismo DTO.
-    private static SaleHistoryDto MapToHistoryDetail(Sale _sale)
+    private static SaleHistoryDto MapToHistoryDetail(Sale sale)
     {
         return new SaleHistoryDto
         {
-            Id = _sale.Id,
-            InvoiceNumber = _sale.InvoiceNumber,
-            Date = _sale.Date,
-            TotalUSD = _sale.TotalUSD,
-            AppliedRate = _sale.AppliedRate,
-            TotalBsS = _sale.TotalBsS,
-            Status = _sale.Status.ToString(),
-            FinalPaidAmountBsS = _sale.FinalPaidAmountBsS,
-            CashierName = _sale.Cashier != null ? (!string.IsNullOrWhiteSpace(_sale.Cashier.Name) ? _sale.Cashier.Name : (!string.IsNullOrWhiteSpace(_sale.Cashier.FullName) ? _sale.Cashier.FullName : _sale.Cashier.Cedula)) : "Usuario Desconocido",
-            CustomerName = _sale.CustomerName ?? (_sale.Customer != null ? _sale.Customer.Name : "Consumidor Final"),
-            CustomerCedula = _sale.CustomerCedula ?? (_sale.Customer != null ? _sale.Customer.CedulaOrRif : "V-00000000"),
-            DeliveryStatus = _sale.DeliveryStatus.ToString(),
-            PickupDate = _sale.PickupDate,
-            Items = _sale.Items.Select(i => new SaleItemHistoryDto
+            Id = sale.Id,
+            InvoiceNumber = sale.InvoiceNumber,
+            Date = sale.Date,
+            TotalUSD = sale.TotalUSD,
+            AppliedRate = sale.AppliedRate,
+            TotalBsS = sale.TotalBsS,
+            Status = sale.Status.ToString(),
+            FinalPaidAmountBsS = sale.FinalPaidAmountBsS,
+            CashierName = sale.Cashier != null ? (!string.IsNullOrWhiteSpace(sale.Cashier.Name) ? sale.Cashier.Name : (!string.IsNullOrWhiteSpace(sale.Cashier.FullName) ? sale.Cashier.FullName : sale.Cashier.Cedula)) : "Usuario Desconocido",
+            CustomerName = sale.CustomerName ?? (sale.Customer != null ? sale.Customer.Name : "Consumidor Final"),
+            CustomerCedula = sale.CustomerCedula ?? (sale.Customer != null ? sale.Customer.CedulaOrRif : "V-00000000"),
+            DeliveryStatus = sale.DeliveryStatus.ToString(),
+            PickupDate = sale.PickupDate,
+            Items = sale.Items.Select(i => new SaleItemHistoryDto
             {
                 Id = i.Id,
                 ProductName = i.ProductName,
@@ -194,7 +210,7 @@ public partial class SalesService
                 UnitPriceBsS = i.UnitPriceBsS,
                 SubtotalBsS = i.SubtotalBsS
             }).ToList(),
-            Payments = _sale.Payments.Select(p => new PaymentDetailDto
+            Payments = sale.Payments.Select(p => new PaymentDetailDto
             {
                 MethodName = p.PaymentMethod != null ? p.PaymentMethod.Name : "Desconocido",
                 AmountBsS = p.AmountBsS,

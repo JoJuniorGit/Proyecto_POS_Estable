@@ -1,4 +1,6 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Sales.Module.Data;
 
 #nullable disable
 
@@ -9,7 +11,12 @@ namespace Sales.Module.Migrations
     /// buscan con coincidecias parciales (cliente, cédula y cajero). La extensión pg_trgm solo se
     /// crea si el motor la soporta (CREATE EXTENSION requiere permiso); si no está disponible, el
     /// arranque no falla y la búsqueda opera igual (sin aceleración por índice).
+    /// 8.12-B3: migración reactivada con [Migration] — antes era huérfana (sin atributo) y los
+    /// índices GIN nunca se creaban en ninguna BD. El cuerpo ya es idempotente (guards pg_extension,
+    /// to_regclass e information_schema).
     /// </summary>
+    [DbContext(typeof(SalesDbContext))]
+    [Migration("20260907030000_AddPgTrgmGinIndexesRev89")]
     public partial class AddPgTrgmGinIndexesRev89 : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

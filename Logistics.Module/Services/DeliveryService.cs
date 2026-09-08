@@ -38,8 +38,12 @@ public class DeliveryService : IDeliveryService
         }
 
         _deliveries[order.OrderId] = order;
-        _logger?.LogInformation("[Logistics] Orden de entrega #{OrderId} registrada para cliente '{Customer}' con destino '{Address}'.",
-            order.OrderId, order.CustomerName, order.DeliveryAddress);
+        // 8C-M4: sin PII en logs — CustomerName/DeliveryAddress completos son datos personales;
+        // solo se registran el id y un fragmento no sensible del nombre.
+        var nameFragment = order.CustomerName?.Length > 3 ? order.CustomerName.Substring(0, 3) : (order.CustomerName ?? "?");
+        _logger?.LogInformation(
+            "[Logistics] Orden de entrega #{OrderId} registrada para cliente '{Customer}' (direccion registrada: {HasAddress}).",
+            order.OrderId, nameFragment + "…", !string.IsNullOrWhiteSpace(order.DeliveryAddress));
 
         return Task.FromResult(order);
     }

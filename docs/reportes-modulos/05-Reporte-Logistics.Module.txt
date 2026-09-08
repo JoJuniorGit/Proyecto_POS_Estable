@@ -92,3 +92,42 @@ Cruce con docs/reporte.txt §13 (Rev. 8.4):
 ===============================================================================
 FIN DEL REPORTE Logistics.Module — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================
+=================================================================================
+7. ADENDA REV. 8.12 — VERIFICACION POST-OLAS S1..S4.2 (HEAD 84e3f84)
+=================================================================================
+Metodo: verificacion contra el arbol actual (2026-09-08).
+  - [8L-CR3]/[8L-CR3b]/[8L-M1]/[8L-M2] -> ❌ VIGENTES: ninguna ola (fase6..S4.2)
+    toco Logistics.Module. Sigue siendo esqueleto en memoria declarado [NO PRODUCTIVO /
+    EXPERIMENTAL] (README + IsProductionReady => false), sin persistencia ni eventos en
+    el flujo real de venta.
+  - [8.2-B8] (README SaleDeliveredEvent) -> ✅ RESUELTO (corregido a SaleDispatchedEvent).
+  - Sin hallazgos 8.12 directos (los nuevos B1-B3/M1-M3/L1-L3 son de migraciones,
+    outbox, smoke tests y arranque, no de este modulo).
+  - Estado global: sigue siendo el unico modulo sin avance funcional desde la Rev 8.0.
+=================================================================================
+================================================================================
+ADENDA REV. 8.13 (OLA DE REMEDIACION TOTAL)
+================================================================================
+- [8C-M4] PII en logs -> ✅ RESUELTO: DeliveryService.cs:36-40 registra solo Id +
+  fragmento de 3 caracteres del nombre + booleano de direccion registrada.
+- Resto del modulo sigue vacio/experimental (sin persistencia) -> ❌ VIGENTE:
+  migracion a almacenamiento real y eventos de dominio (S1 sprint largo).
+
+================================================================================
+ADENDA REV. 8.14 (RE-VERIFICACION 8.13 + HALLAZGOS NUEVOS)
+================================================================================
+- Sin cambios en 8.14. [8C-M4] PII redactada sigue vigente (DeliveryService.cs).
+- Modulo sigue vacio/experimental sin persistencia -> ❌ VIGENTE (S1 sprint largo:
+  almacenamiento real + eventos de dominio).
+
+ADENDA REV. 8.15 (OLA DE CORRECCION TOTAL — estados actualizados)
+================================================================================
+- [8.2-B8] README con evento inexistente -> ✅ VERIFICADO RESUELTO: el
+  README ya documenta SaleDispatchedEvent (no SaleDeliveredEvent).
+- [8C-M4] PII en logs -> ✅ VERIFICADO RESUELTO (8.13: solo Id + fragmento
+  de 3 caracteres).
+- Pendientes declarados: 8L-CR3/CR3b/M1/M2 (modulo oficialmente NO
+  productivo, sin persistencia; requiere decision de producto).
+
+FIN DEL REPORTE Logistics.Module — ADENDA REV. 8.15
+=================================================================================

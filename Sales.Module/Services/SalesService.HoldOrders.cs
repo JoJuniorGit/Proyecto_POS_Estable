@@ -28,7 +28,10 @@ public partial class SalesService
                 return cachedCustomer;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "[SalesService] Fallo al leer el cliente por defecto desde la caché; se consulta a la base de datos.");
+        }
 
         var defaultCustomer = await _context.Customers
             .AsNoTracking()
@@ -58,7 +61,10 @@ public partial class SalesService
                 Size = 1
             });
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "[SalesService] Fallo al escribir el cliente por defecto en la caché.");
+        }
 
         return dto;
     }
@@ -86,8 +92,8 @@ public partial class SalesService
 
     public async Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null)
     {
-        var _sale = await GetSaleEntityAsync(saleId);
-        if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold)
+        var sale = await GetSaleEntityAsync(saleId);
+        if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold)
             throw new InvalidOperationException("Solo se pueden poner en espera ventas pendientes o abiertas.");
 
         var customer = await _context.Customers.FindAsync(request.CustomerId);
@@ -97,8 +103,8 @@ public partial class SalesService
             throw new InvalidOperationException("Las ventas en espera requieren un cliente real identificable. Asigne un cliente distinto al Consumidor Final.");
 
         // 8.6-B3: La tasa del HOLD se ancla a la tasa BCV del día (misma política que CompleteSale).
-        _sale.AppliedRate = await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: "HoldSale", referenceId: _sale.Id);
-        await RecalculateTotalAsync(_sale);
+        sale.AppliedRate = await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: "HoldSale", referenceId: sale.Id);
+        await RecalculateTotalAsync(sale);
 
         var paymentsToProcess = new List<AddPaymentRequestDto>();
         if (request.InitialPayment != null) paymentsToProcess.Add(request.InitialPayment);
@@ -117,14 +123,14 @@ public partial class SalesService
                     throw new InvalidOperationException($"La validación del abono (PaymentMethodId={payment.PaymentMethodId}) rechaza montos negativos.");
                 }
 
-                decimal rate = payment.ExchangeRate > 0 ? payment.ExchangeRate : _sale.AppliedRate;
+                decimal rate = payment.ExchangeRate > 0 ? payment.ExchangeRate : sale.AppliedRate;
                 decimal amountUsd = payment.AmountUSD > 0 
                     ? Math.Round(payment.AmountUSD, 2, MidpointRounding.AwayFromZero) 
                     : (rate > 0 ? Math.Round(payment.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
 
                 var initialPaymentEntity = new SalePayment
                 {
-                    SaleId = _sale.Id,
+                    SaleId = sale.Id,
                     PaymentMethodId = payment.PaymentMethodId,
                     Amount = Math.Round(amountUsd, 2, MidpointRounding.AwayFromZero),
                     AmountBsS = PricingCalculator.RoundToDigital(payment.AmountBsS > 0 ? payment.AmountBsS : (amountUsd * rate)),
@@ -133,7 +139,7 @@ public partial class SalesService
                     CreatedAt = DateTime.UtcNow
                 };
 
-                _sale.Payments.Add(initialPaymentEntity);
+                sale.Payments.Add(initialPaymentEntity);
 
                 // H-SAL-5: Asentar ingresos físicos en sesión activa de caja
                 if (amountUsd > 0 && pMethodsDict.TryGetValue(payment.PaymentMethodId, out var pMethod) && pMethod.IsCash && _cashDrawerService != null)
@@ -150,9 +156,9 @@ public partial class SalesService
                             ExchangeRate = rate,
                             AmountLocal = Math.Round(payment.AmountBsS, 2, MidpointRounding.AwayFromZero),
                             IsPhysicalCash = true,
-                            Description = $"Abono Inicial Venta #{_sale.Id}",
+                            Description = $"Abono Inicial Venta #{sale.Id}",
                             TransactionTime = DateTime.UtcNow,
-                            SaleId = _sale.Id,
+                            SaleId = sale.Id,
                             PaymentMethodId = payment.PaymentMethodId
                         });
                     }
@@ -160,14 +166,14 @@ public partial class SalesService
             }
         }
 
-        decimal totalPaidUsd = Math.Round(_sale.Payments.Sum(p => p.Amount), 2, MidpointRounding.AwayFromZero);
-        decimal remainingBalanceUsd = Math.Round(_sale.TotalUSD - totalPaidUsd, 2, MidpointRounding.AwayFromZero);
+        decimal totalPaidUsd = Math.Round(sale.Payments.Sum(p => p.Amount), 2, MidpointRounding.AwayFromZero);
+        decimal remainingBalanceUsd = Math.Round(sale.TotalUSD - totalPaidUsd, 2, MidpointRounding.AwayFromZero);
 
-        _sale.CustomerId = customer.Id;
-        _sale.CustomerName = customer.Name;
-        _sale.CustomerCedula = customer.CedulaOrRif;
+        sale.CustomerId = customer.Id;
+        sale.CustomerName = customer.Name;
+        sale.CustomerCedula = customer.CedulaOrRif;
 
-        if (totalPaidUsd > 0 && _sale.TotalUSD > 0 && remainingBalanceUsd <= 0.05m && totalPaidUsd >= (_sale.TotalUSD - 0.05m))
+        if (totalPaidUsd > 0 && sale.TotalUSD > 0 && remainingBalanceUsd <= 0.05m && totalPaidUsd >= (sale.TotalUSD - 0.05m))
         {
             // Se cubrió el 100% mediante los pagos iniciales -> Completar y generar factura
             // 8.9-B4: caminar TODA la operación bajo execution strategy para que un fallo
@@ -187,15 +193,15 @@ public partial class SalesService
             }
             try
             {
-                _sale.InvoiceNumber = await GenerateNextInvoiceNumberAsync();
-                _sale.Status = SaleStatus.Completed;
-                _sale.Date = DateTime.UtcNow;
-                _sale.FinalPaidAmountBsS = _sale.Payments.Sum(p => p.AmountBsS);
+                sale.InvoiceNumber = await GenerateNextInvoiceNumberAsync();
+                sale.Status = SaleStatus.Completed;
+                sale.Date = DateTime.UtcNow;
+                sale.FinalPaidAmountBsS = sale.Payments.Sum(p => p.AmountBsS);
 
                 // Synchronous stock deduction
-                if (_inventoryService != null && _sale.Items != null)
+                if (_inventoryService != null && sale.Items != null)
                 {
-                    var productIds = _sale.Items.Select(i => i.ProductId).Distinct().ToList();
+                    var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
                     var productsDict = new Dictionary<int, Product>();
                     var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
                     if (fetched != null && fetched.Count > 0)
@@ -212,7 +218,7 @@ public partial class SalesService
                     }
 
                     var stockDeductions = new List<StockDeductionRequest>();
-                    foreach (var item in _sale.Items)
+                    foreach (var item in sale.Items)
                     {
                         if (productsDict.TryGetValue(item.ProductId, out var product) && product.IsCashAdvance)
                         {
@@ -222,7 +228,7 @@ public partial class SalesService
                         stockDeductions.Add(new StockDeductionRequest(
                             item.ProductId,
                             -item.Quantity,
-                            $"Sale #{_sale.InvoiceNumber.Value}"));
+                            $"Sale #{sale.InvoiceNumber.Value}"));
                     }
 
                     if (stockDeductions.Count > 0)
@@ -240,19 +246,19 @@ public partial class SalesService
                     EventType = "SaleCompleted",
                     Payload = JsonSerializer.Serialize(new
                     {
-                        SaleId = _sale.Id,
-                        InvoiceNumber = _sale.InvoiceNumber.Value,
-                        Date = _sale.Date,
-                        TotalUSD = _sale.TotalUSD,
-                        TotalBsS = _sale.TotalBsS,
-                        CashierId = _sale.CashierId
+                        SaleId = sale.Id,
+                        InvoiceNumber = sale.InvoiceNumber.Value,
+                        Date = sale.Date,
+                        TotalUSD = sale.TotalUSD,
+                        TotalBsS = sale.TotalBsS,
+                        CashierId = sale.CashierId
                     }),
                     CreatedAtUtc = DateTime.UtcNow,
                     NextRetryUtc = DateTime.UtcNow,
                     Status = "Pending"
                 });
 
-                RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(_sale)));
+                RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)));
 
                 await _context.SaveChangesAsync();
 
@@ -286,35 +292,35 @@ public partial class SalesService
 
             try
             {
-                var itemsSnapshot = _sale.Items.Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity)).ToList();
-                var saleMadeEvent = new SaleMadeEvent(_sale.Id, _sale.Date, itemsSnapshot, _sale.InvoiceNumber.Value);
+                var itemsSnapshot = sale.Items.Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity)).ToList();
+                var saleMadeEvent = new SaleMadeEvent(sale.Id, sale.Date, itemsSnapshot, sale.InvoiceNumber.Value);
                 await _mediator.Publish(saleMadeEvent);
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "[SalesService] Publicación secundaria de SaleMadeEvent falló para Venta #{SaleId}, pero está respaldada en Outbox.", _sale.Id);
+                _logger?.LogWarning(ex, "[SalesService] Publicación secundaria de SaleMadeEvent falló para Venta #{SaleId}, pero está respaldada en Outbox.", sale.Id);
             }
             });
         }
         else
         {
-            _sale.Status = SaleStatus.OnHold;
-            _sale.DeliveryStatus = SaleDeliveryStatus.PendingPickup;
-            RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(_sale)));
+            sale.Status = SaleStatus.OnHold;
+            sale.DeliveryStatus = SaleDeliveryStatus.PendingPickup;
+            RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)));
             await _context.SaveChangesAsync();
         }
 
-        await PopulateItemsMetadataAsync(_sale);
-        return MapToDto(_sale);
+        await PopulateItemsMetadataAsync(sale);
+        return MapToDto(sale);
     }
 
     public async Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false)
     {
-        var _sale = await GetSaleEntityAsync(saleId);
-        if (_sale.Status != SaleStatus.OnHold)
+        var sale = await GetSaleEntityAsync(saleId);
+        if (sale.Status != SaleStatus.OnHold)
             throw new InvalidOperationException("Solo se pueden modificar productos en ventas que estén en estado en espera (OnHold).");
 
-        decimal totalPaidUsd = _sale.Payments != null ? _sale.Payments.Sum(p => p.Amount) : 0;
+        decimal totalPaidUsd = sale.Payments != null ? sale.Payments.Sum(p => p.Amount) : 0;
 
         // Calcular nuevo total USD a partir de la lista de ítems enviada
         decimal newTotalUsd = 0;
@@ -358,14 +364,14 @@ public partial class SalesService
 
                 decimal unitPriceUsd = reqItem.UnitPrice > 0 ? reqItem.UnitPrice : catalogPrice;
                 decimal subtotalUsd = Math.Round(unitPriceUsd * adjustedQty, 2, MidpointRounding.AwayFromZero);
-                decimal unitPriceBsS = Math.Round(unitPriceUsd * _sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
-                decimal subtotalBsS = Math.Round(subtotalUsd * _sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
+                decimal unitPriceBsS = Math.Round(unitPriceUsd * sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
+                decimal subtotalBsS = Math.Round(subtotalUsd * sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
 
                 newTotalUsd += subtotalUsd;
 
                 newItemsList.Add(new SaleItem
                 {
-                    SaleId = _sale.Id,
+                    SaleId = sale.Id,
                     ProductId = reqItem.ProductId,
                     ProductName = productName,
                     Quantity = adjustedQty,
@@ -386,34 +392,34 @@ public partial class SalesService
         }
 
         // Reemplazar los ítems existentes
-        if (_sale.Items != null && _sale.Items.Any())
+        if (sale.Items != null && sale.Items.Any())
         {
-            _context.SaleItems.RemoveRange(_sale.Items);
-            _sale.Items.Clear();
+            _context.SaleItems.RemoveRange(sale.Items);
+            sale.Items.Clear();
         }
 
-        _sale.Items ??= new List<SaleItem>();
+        sale.Items ??= new List<SaleItem>();
         foreach (var newItem in newItemsList)
         {
-            _sale.Items.Add(newItem);
+            sale.Items.Add(newItem);
         }
 
-        await RecalculateTotalAsync(_sale);
+        await RecalculateTotalAsync(sale);
         await _context.SaveChangesAsync();
 
-        return MapToDto(_sale);
+        return MapToDto(sale);
     }
 
     public async Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null)
     {
-        var _sale = await GetSaleEntityAsync(saleId);
-        if (_sale.Status != SaleStatus.OnHold)
+        var sale = await GetSaleEntityAsync(saleId);
+        if (sale.Status != SaleStatus.OnHold)
             throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
 
         // 8.6-B3/8.5-A5: Tasa del abono anclada a la BCV del día cuando el cliente la envía.
         decimal rate = request.ExchangeRate > 0
-            ? await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: "AddPaymentToHoldSale", referenceId: _sale.Id)
-            : _sale.AppliedRate;
+            ? await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: "AddPaymentToHoldSale", referenceId: sale.Id)
+            : sale.AppliedRate;
         decimal amountUsd = request.AmountUSD > 0 
             ? Math.Round(request.AmountUSD, 2, MidpointRounding.AwayFromZero) 
             : (rate > 0 ? Math.Round(request.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
@@ -423,8 +429,8 @@ public partial class SalesService
             throw new ArgumentException("El monto del abono debe ser mayor a cero.");
         }
 
-        decimal currentPaidUsd = _sale.Payments.Sum(p => p.Amount);
-        if (currentPaidUsd + amountUsd > _sale.TotalUSD + 0.05m)
+        decimal currentPaidUsd = sale.Payments.Sum(p => p.Amount);
+        if (currentPaidUsd + amountUsd > sale.TotalUSD + 0.05m)
         {
             throw new InvalidOperationException("El monto del abono excede el total pendiente de la venta.");
         }
@@ -449,7 +455,7 @@ public partial class SalesService
         {
             var paymentEntity = new SalePayment
             {
-                SaleId = _sale.Id,
+                SaleId = sale.Id,
                 PaymentMethodId = request.PaymentMethodId,
                 Amount = Math.Round(amountUsd, 2, MidpointRounding.AwayFromZero),
                 AmountBsS = Math.Round(request.AmountBsS, 2, MidpointRounding.AwayFromZero),
@@ -475,13 +481,13 @@ public partial class SalesService
                     IsPhysicalCash = true,
                     Description = $"Abono Venta #{saleId}",
                     TransactionTime = DateTime.UtcNow,
-                    SaleId = _sale.Id,
+                    SaleId = sale.Id,
                     PaymentMethodId = request.PaymentMethodId
                 };
                 _context.CashTransactions.Add(cashTx);
             }
 
-            RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/payments", System.Text.Json.JsonSerializer.Serialize(MapToDto(_sale)));
+            RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/payments", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)));
 
             await _context.SaveChangesAsync();
 
@@ -490,7 +496,7 @@ public partial class SalesService
                 await dbTransaction.CommitAsync();
             }
 
-            return MapToDto(_sale);
+            return MapToDto(sale);
         }
         catch (Exception ex)
         {
@@ -508,11 +514,15 @@ public partial class SalesService
         });
     }
 
-    public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync(int? cashierId = null)
+    public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync(int? cashierId = null, int limit = 200, int offset = 0)
     {
         // 8.7-B6: los GET no escriben. El recálculo masivo de OnHold ocurre en el POST de tasa
         // (ExchangeRateController → RecalculateOnHoldSalesAsync) e invalida/redifunde por SignalR.
         // 8.9-B2: scope por cajero — un cajero solo vio sus propias ventas OnHold; Admin/Manager todo.
+        // 8.2-M9: tope de la cola (default 200, max 1000 en el controlador) — acota memoria/CPU.
+        // 8.14-N1: paginación real por offset (los clientes pueden pedir más páginas).
+        if (limit <= 0) limit = 200;
+        if (offset < 0) offset = 0;
 
         var sales = await _context.Sales
             .AsNoTracking()
@@ -525,11 +535,21 @@ public partial class SalesService
             .Where(s => s.Status == SaleStatus.OnHold)
             .Where(s => !cashierId.HasValue || s.CashierId == cashierId.Value)
             .OrderByDescending(s => s.Date)
+            .Skip(offset)
+            .Take(limit)
             .ToListAsync();
 
         await PopulateItemsMetadataAsync(sales);
 
         return sales.Select(s => MapToDto(s));
+    }
+
+    public async Task<int> CountPendingSalesAsync(int? cashierId = null)
+    {
+        return await _context.Sales
+            .AsNoTracking()
+            .CountAsync(s => s.Status == SaleStatus.OnHold
+                && (!cashierId.HasValue || s.CashierId == cashierId.Value));
     }
 
     public async Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(

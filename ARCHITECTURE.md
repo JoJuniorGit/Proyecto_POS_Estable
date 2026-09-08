@@ -897,7 +897,10 @@ Proyecto_POS_Estable/
 │
 ├── installer/                      # Inno Setup
 │   ├── setup.iss                   # Script del instalador
-│   └── icons/                      # Iconos
+│   ├── app.ico                     # Icono de la aplicación
+│   ├── Configure-PosService.ps1    # Script de configuración idempotente
+│   ├── download-nssm.ps1           # Descarga de NSSM
+│   └── nssm.exe                    # Non-Sucking Service Manager
 │
 ├── scripts/                        # Build & deploy scripts
 │   ├── build-release.ps1           # Build completo
@@ -905,8 +908,8 @@ Proyecto_POS_Estable/
 │
 ├── CommandCenter.slnx              # Solution file
 ├── .env                            # Variables de entorno (dev)
-├── README.md                       # Documentación de configuración
-└── INSTALLATION.md                 # Guía de instalación
+├── docs/INSTALLATION.md            # Guía de instalación y configuración
+└── ARCHITECTURE.md                 # Documento de arquitectura
 ```
 
 ---

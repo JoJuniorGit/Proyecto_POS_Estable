@@ -182,7 +182,7 @@ begin
     'Servidor de Actualizaciones Automáticas', 'Configuración de actualizaciones',
     'Ingrese la URL del servidor de parches y actualizaciones en la red.');
   UpdatePage.Add('URL Servidor de Actualizaciones:', False);
-  UpdatePage.Values[0] := 'http://localhost:5000/updates/';
+  UpdatePage.Values[0] := 'https://localhost:5001/updates/';
 end;
 
 // Función auxiliar: escapa comillas dobles en un valor para uso en líneas de comandos.
@@ -326,6 +326,10 @@ begin
   JwtEnv := 'JWT_SETTINGS_KEY=' + GetOrGenerateJwtKey;
   CertPassEnv := 'HTTPS_CERT_PASSWORD=' + GetOrGenerateCertPass;
 
+  // 8U-M2: los secretos se escriben en secrets.json protegido (el backend los carga con
+  // máxima precedencia); AppEnvironmentExtra conserva solo lo no sensible (negocio/usuario).
+  WriteProtectedSecretsFile(AppDir, ConnString, GetOrGenerateJwtKey, GetOrGenerateCertPass, AdminPage.Values[2]);
+
   if UseNssm then
   begin
     if ServiceExists then
@@ -371,6 +375,34 @@ begin
   if Code <> 0 then
     MsgBox('No se pudo iniciar el servicio ' + ServiceName + '. Revise los registros en ' +
       AppDir + '\logs para más detalles.', mbError, MB_OK);
+end;
+
+// 8U-M2: escribe los secretos en secrets.json con ACL restrictiva (solo SYSTEM/Administradores)
+// y los retira de la línea de comandos del servicio (AppEnvironmentExtra). Se usa
+// SaveStringToFile + icacls (nunca se pasan secretos por línea de comandos).
+procedure WriteProtectedSecretsFile(AppDir: String; ConnString, JwtKey, CertPass, SeedPass: String);
+var
+  SecretsPath, JsonLines: String;
+  Code: Integer;
+begin
+  SecretsPath := AppDir + '\secrets.json';
+  JsonLines := '{' +
+    '"ConnectionStrings__DefaultConnection": "' + StringChange(ConnString, '"', '\"') + '",' +
+    '"SystemSettings__AdminSeedPassword": "' + StringChange(SeedPass, '"', '\"') + '",' +
+    '"JWT_SETTINGS_KEY": "' + StringChange(JwtKey, '"', '\"') + '",' +
+    '"HTTPS_CERT_PASSWORD": "' + StringChange(CertPass, '"', '\"') + '"}';
+
+  if SaveStringToFile(SecretsPath, JsonLines, False) then
+  begin
+    // ACL: bloqueo de herencia, solo SYSTEM y Administradores (icacls no expone secretos).
+    Code := RunCmd('icacls.exe', '""' + SecretsPath + '"" /inheritance:r /grant:r "SYSTEM:(F)" "Administrators:(F)"');
+    if Code <> 0 then
+      MsgBox('Aviso: no se pudieron restringir los permisos de ' + SecretsPath +
+        ' (código ' + IntToStr(Code) + ').', mbInformation, MB_OK);
+  end
+  else
+    MsgBox('Aviso: no se pudo crear el archivo de secretos protegido ' + SecretsPath + '.',
+      mbInformation, MB_OK);
 end;
 
 procedure ConfigureServiceWithPowerShell;

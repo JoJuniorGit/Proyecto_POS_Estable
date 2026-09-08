@@ -342,6 +342,30 @@ export const api = {
   get: (endpoint, signal) =>
     apiFetch(endpoint, { method: 'GET', signal }),
 
+  // 8.14-N1: GET devolviendo { data, totalCount } para paginación (X-Total-Count).
+  getWithMeta: async (endpoint, signal) => {
+    const url = `${CURRENT_BASE_URL}${endpoint}`;
+    const response = await fetch(url, {
+      credentials: 'include',
+      method: 'GET',
+      signal,
+      headers: {
+        'Accept': 'application/json',
+        'X-Client-Platform': 'Web',
+        'X-Client-Version': '1.0.0',
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    }
+    const totalCount = Number(response.headers.get('X-Total-Count') || 0);
+    const contentType = response.headers.get('content-type');
+    const data = contentType && contentType.includes('application/json')
+      ? await response.json()
+      : await response.text();
+    return { data, totalCount };
+  },
+
   post: (endpoint, body, optionsOrSignal) => {
     const opts = (optionsOrSignal && typeof optionsOrSignal === 'object' && !('aborted' in optionsOrSignal))
       ? optionsOrSignal

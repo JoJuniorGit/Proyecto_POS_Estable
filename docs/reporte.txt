@@ -1038,3 +1038,1011 @@ frontend lint + tests + build. Commit de cierre en rama V0.15.
 
 FIN DEL ANEXO - REVISION 8.11
 ================================================================================
+
+================================================================================
+ANEXO - REVISION 8.12 (VERIFICACION INDEPENDIENTE POST-8.11: MIGRACIONES, MECANICA
+DE EF CORE Y VIGENCIA LINEA A LINEA)
+================================================================================
+Fecha de ejecucion: 2026-09-08 (rama V0.15, HEAD 84e3f84, arbol limpio)
+Metodo: re-ejecucion de suites + verificacion de cada fix de Rev 8.11 + auditoria
+de segunda pasada (migraciones, arranque, jobs, WPF, web, instalador, CI).
+
+Metricas re-ejecutadas HOY 8.12 (verificacion empirica):
+  - Suite .NET (CommandCenter.Tests): 696 / 696 superadas (0 fallos, 0 omitidos) ~ 12 s
+    (695 previos + 1 test nuevo: OutboxProcessorJob_WithRetryingStrategy_ProcessesPendingMessage)
+  - Suite Web (Web.Frontend / node:test): 75 / 75 superadas (0 fallos)
+  - Total Pruebas Automatizadas: 771 / 771 (696 .NET + 75 Web)
+  - Linter Web (oxlint): 0 errores / 0 advertencias (93 archivos)
+  - NOTA: los tests PostgresReal*/WAF hacen silent-pass localmente sin
+    TEST_POSTGRES_CONNECTION (verificado: PostgresRealIntegrationTests.cs:54-63 y
+    WebApplicationFactorySmokeTests.cs:23-26); en CI fallan accionablemente. Los 696
+    "superados" locales incluyen esos silent-pass, igual que en Rev 8.11.
+
+--------------------------------------------------------------------------------
+A. VERIFICACION DE VIGENCIA DE LA REV. 8.11 (S4.2) — resultado: CIERTA en lo
+   declarado, salvo 3 matices que se corrigen en la seccion B.
+--------------------------------------------------------------------------------
+Fix por fix (todos verificados en el arbol actual):
+- B4 (execution strategy en Shifts/DailyClosure): PRESENTE. ShiftsController.cs:69,79
+  y DailyClosureController.cs:79,128 abren BeginTransactionAsync DENTRO del lambda de
+  CreateExecutionStrategy(); se conserva IsolationLevel.Serializable.
+- M8 (outbox commit antes del despacho): PRESENTE y REFORZADO en 84e3f84: el SELECT
+  FOR UPDATE SKIP LOCKED y el CommitAsync viven dentro de CreateExecutionStrategy()
+  (OutboxProcessorJob.cs:170-197); el despacho SignalR queda fuera de la transaccion
+  (:206-209); estados Procesado/Retry/DeadLetter con SaveChanges en autocommit (:250).
+- M4 (pairing por QR con secreto efimero): PRESENTE. PairingController.cs:64-67
+  (POST /api/pairing/claim single-use); api.js:34,102-107 reclama el token ANTES de
+  persistir pos_custom_api_url (solo persiste si el backend confirma).
+- M6 (CORS exacto): PRESENTE. Si Cors:AllowedOrigins esta configurado -> WithOrigins
+  exacto; en Produccion el fallback rechaza IPs RFC1918.
+- M7 (fail-fast HTTPS en Produccion): PRESENTE. Program.cs:36,57,63,73: certificado
+  requerido en Produccion (throw), Dev solo warning.
+- M9 (indices de rendimiento): PRESENTE. InventoryDbContext.cs:107 (IX_StockMovements_
+  MovementDate) y :142 (IX_StockReservations_ReferenceId) + migracion
+  20260907025800_AddPerformanceIndexesRev89 con Designer.
+- M10 (guard numeric 18,3 con precision/escala): PRESENTE. Program.cs:595-650 exige
+  exactamente numeric(18,3) (data_type + numeric_precision + numeric_scale) en las 8
+  columnas objetivo.
+- M11 (ILike + pg_trgm): PARCIALMENTE PRESENTE con MATIZ CRITICO -> ver 8.12-B1.
+  SalesService.History.cs:106-120 usa EF.Functions.ILike + LikePattern con escape de
+  \ % _ (semantica Contains), pero la migracion 20260907030000_AddPgTrgmGinIndexesRev89
+  que crearia los indices GIN es HUERFANA (sin [Migration] ni Designer) -> EF Core la
+  OMITE (verificado en la fuente oficial de EF Core 10.0.4, MigrationsAssembly.cs:
+  91-95: id==null -> warning + continue). Los indices GIN nunca se crean.
+- M13 (WpfDialogService sin fallbacks crudos): PRESENTE. WpfDialogService.cs:38-50
+  exige dependencias inyectadas; :410,447 registran "[NO-OP DIALOG SUPPRESSED]" si
+  faltan. Sin new HttpClient/new ExchangeRateService/new ConnectionManager.
+- M14 (UiThreadMarshaller): PRESENTE. Desktop.Client.Core/Services/UiThreadMarshaller.cs;
+  CartViewModel.cs:208 sin Task.Run sobre I/O pura.
+- M15 (errorBody de api.js): PRESENTE. api.js:295-319 descarta cuerpos con '<' o '>'
+  y extrae el mensaje del JSON estructurado.
+- M16 (moneda por backend): PRESENTE. PaymentMethodCurrencyResolver.cs (regla unica
+  'USD' en nombre) usada por DailyClosureService, ClosurePdfGenerator y expuesta como
+  PaymentMethod.Currency [NotMapped].
+- M17 (ConfirmPickup sin doble fetch): PRESENTE. SalesService.History.cs:21-37 carga
+  con Includes y mapea MapToHistoryDetail desde la entidad ya cargada.
+- M18 (normalizacion de montos en centesimas): PRESENTE. formatters.js:213-224
+  (amountToCents/centsToAmount); PaymentForm y AtmAmountInput redondean identico.
+- L1 (WpfDialogServiceTests reales): PRESENTE. Sin Assert.True(true); se usan
+  Record.Exception (BarcodeScannerDecodeTests.cs:55-57 y pares en WpfDialogServiceTests).
+- L2 (silent-pass documentado + CI accionable): PRESENTE. PostgresRealIntegrationTests
+  .cs:54-63: en GITHUB_ACTIONS=true sin TEST_POSTGRES_CONNECTION -> throw; local -> return.
+- L3 (catch{} en UpdaterSecurityIntegrationTests): PRESENTE (loguea via AppLogger).
+- L4 (NU1903): PRESENTE. NoWarn eliminado del csproj; SQLitePCLRaw bundle 2.1.12.
+- L5 (CI con cobertura por capa + npm run build): PRESENTE. ci.yml cubre main/develop/
+  V0.15, ejecuta npm run build, y scripts/check-coverage.py exige Core>=0.70,
+  Sales>=0.19 e Inventory>=0.14 (baselines anti-regresion; deuda al 70% documentada).
+- L6 (literales de credenciales erradicados): PRESENTE. grep PosHttpsDev2026 = 0 en
+  ps1/iss; .last-restore-timestamp fuera de git.
+- L7 (CurrentRate sincrono): PRESENTE. ExchangeRateService.cs:127,136
+  (SetCurrentRateSynchronously) sin fire-and-forget.
+- L8 (centerTitle): PRESENTE. Modal.jsx y los 4 callers sin la prop muerta.
+- L9 (health sin version): PRESENTE. HealthController.cs:30-36 expone solo status/
+  service/database/timestamp (sin version exacta ni machineName).
+- L10 (change-password con IsActive): PRESENTE. AuthController.ChangePassword rechaza
+  cuentas inactivas con 401 generico.
+- L11 (whitelist + reversion de base url): PRESENTE. api.js:112-116,160-170 revalidan
+  VITE_API_URL/pos_custom_api_url y setCustomBaseUrl revierte CURRENT_BASE_URL.
+- L12 (sin cache de string.Empty + perfil con sello 24h): PRESENTE.
+  Inventory.Module/Services/SystemSettingsService.cs:14-29 (CacheTtl 30s, keys ausentes
+  re-consultadas); AuthContext.jsx:7-15,104 (PROFILE_CACHE_TTL_MS 24h).
+- L13 (VMs transient de-facto singleton): PRESENTE. App.xaml.cs:191-203 registra
+  Login/UsersManagement/Cart/Main/Pos/Inventory/SalesHistory/PendingOrders como Singleton.
+- [8.11-F] (autocuracion de DisplayOrder en 20260905140000): PRESENTE. La migracion
+  20260905140000_AddIsDeletedAndUniqueNameToPaymentMethod.cs contiene el DO$$ con
+  information_schema que crea DisplayOrder si falta, antes del setval.
+- OutboxProcessorJob (84e3f84): transaccion dentro de la retrying strategy VERIFICADO
+  (ver M8); PostgresRealSharedTransactionTests comparte UNA conexion fisica
+  NpgsqlConnection entre ambos DbContexts.
+
+--------------------------------------------------------------------------------
+B. CORRECCIONES A REV 8.11 Y HALLAZGOS NUEVOS (verificados [V])
+--------------------------------------------------------------------------------
+[8.12-B1] ALTO — La lista de migraciones "huerfanas" de Rev 8.11 esta INCOMPLETA:
+  son 10, no 7. Faltan 3 de Inventory.Module que NO tienen atributo [Migration] ni
+  Designer: 20260809145500_RemoveIsServiceFromProducts, 20260822120000_
+  AlterInventoryQuantitiesToNumeric y 20260831120000_AddProductVariants (verificadas
+  [V]: grep [Migration( = 0 y sin .Designer.cs). El mecanismo que las omite esta
+  confirmado en la fuente oficial de EF Core 10.0.4 (MigrationsAssembly.cs:91-95:
+  let id = GetCustomAttribute<MigrationAttribute>()?.Id; if (id==null) { warning;
+  continue; }) -> EF las ignora y nunca se aplican via MigrateAsync. Impacto real:
+  - RemoveIsServiceFromProducts nunca elimina la columna IsService, creada por
+    20260313043623_AddServiceProductFlags (que SI se aplica). En BD legacy la columna
+    IsService permanece como columna muerta (el modelo ya no la tiene; Core/Entities/
+    Product.cs sin IsService). Riesgo: cualquier INSERT con columnas explicitas que la
+    referencie fallaria; hoy EF la ignora -> impacto bajo pero esquema divergente.
+  - AlterInventoryQuantitiesToNumeric y AddProductVariants quedan COMPENSADAS de
+    facto por AddProductVariantsFinal (20260831204333, con Designer y atributo) y por
+    el bloque de CONVERGENCIA LEGACY (Program.cs:595-650) -> sin impacto funcional,
+    pero su existencia duplica logica y confunde el historial de migraciones.
+
+[8.12-B2] ALTO — La migracion que expande Subtotal/UnitPrice a numeric(18,4)
+  (20260805120000_ExpandSubtotalPrecisionTo4Decimals) es HUERFANA y NO esta
+  compensada: el modelo y el snapshot declaran decimal(18,4) (SalesDbContextModel
+  Snapshot.cs:564-568,622-626), el negocio calcula con Math.Round(...,4) (SalesService
+  .Pricing.cs:170,174), PERO la BD fresca creada 100% por MigrateAsync deja esas
+  columnas en numeric(18,2) (creadas asi por 20260213041140_InitialSales.cs:23,43 y
+  re-afirmadas por 20260312203440_SalesDecimalPrecision.cs:22-26). grep de
+  numeric(18,4) en Program.cs = 0 -> el bloque legacy NO la compensa. Consecuencia:
+  en instalaciones frescas, PostgreSQL redondea a 2 decimales los subtotales y
+  precios unitarios que el codigo calcula con 4 -> perdida silenciosa de precision de
+  centesimas en subtotales, precios Bs.S y cierres. PendingModelChangesWarning no lo
+  detecta (compara modelo vs snapshot, no BD real). Fix: atribuir [Migration] a la
+  migracion 20260805120000 (y su Designer) o absorber el ALTER en una migracion EF
+  nueva; luego verificar con SELECT data_type/numeric_scale en instalaciones frescas.
+
+[8.12-B3] ALTO — 8.11 declaro M11 (indices GIN pg_trgm del historico) RESUELTO, pero
+  la migracion que lo implementa (20260907030000_AddPgTrgmGinIndexesRev89) es
+  HUERFANA -> los indices GIN nunca se crean en ninguna BD. El codigo ILike de
+  SalesService.History.cs:106-120 funciona (semantica Contains preservada) pero sin
+  indice -> la busqueda del historico sigue haciendo seq scan sobre Sales/Users a
+  medida que crece la tabla. Fix: dar [Migration] + Designer a
+  20260907030000_AddPgTrgmGinIndexesRev89 (o nueva migracion que cree los 5 indices
+  GIN con guard pg_extension).
+
+[8.12-M1] MEDIO — PostgresReal* y WebApplicationFactorySmokeTests siguen con
+  silent-pass local (L2 de 8.9 documentado como tal), PERO ademas el smoke test no
+  valida el esquema real: solo comprueba /openapi/v1.json (200 o 404) y una ruta 404
+  (WebApplicationFactorySmokeTests.cs:45-70). Ningun smoke ejecuta una query contra
+  la BD recien migrada, por lo que una instalacion fresca con divergencias como
+  8.12-B2 (numeric 18,2 vs modelo 18,4) pasaria verde. Recomendacion: anadir al smoke
+  una consulta minima (SELECT COUNT(*) de PaymentMethods o SELECT 1) para que
+  MigrateAsync + convergencia queden ejercitados de verdad.
+
+[8.12-M2] MEDIO — Program.cs:556-559 afirma "En instalaciones nuevas el esquema
+  proviene 100% de las migraciones", pero eso es FALSO hoy: el bloque de CONVERGENCIA
+  LEGACY sigue siendo imprescindible en instalaciones frescas para DisplayOrder
+  (:570-571), IsPhysicalCash (:580-581), factura_number_seq (:584-590), precisiones
+  numeric 18,3 (:595-650), hardening de Users (:662-698) y role migration
+  (:700-746). La afirmacion del comentario y la politica "toda evolucion de esquema
+  debe ser una migracion EF" se contradicen con la realidad de 10 migraciones
+  huerfanas que solo el bloque legacy (o migraciones posteriores) compensan.
+
+[8.12-M3] MEDIO — DisplayOrder de los metodos de pago 1/2 (Efectivo USD/Bs.S): los
+  UpdateData DisplayOrder=1/2 que vivian en la huerfana 20260809232500_AddDisplay
+  OrderToPaymentMethod.cs:26-38 se pierden en instalaciones frescas (la autocuracion
+  de 8.11-F solo crea la columna con DEFAULT 0, no siembra los valores 1 y 2). El
+  seed de PaymentMethods (20260303194805_AddPaymentMethodsFinal.cs:44-52) tampoco
+  define DisplayOrder. Resultado: en BD frescas todos los metodos quedan con
+  DisplayOrder=0 y el orden de presentacion depende del Id, no del orden pensado.
+
+[8.12-L1] BAJO — La suite .NET declara 696/696, pero el test nuevo
+  OutboxProcessorJob_WithRetryingStrategy_ProcessesPendingMessage (PostgresReal
+  IntegrationTests.cs:48-109) hace silent-pass local (return sin TEST_POSTGRES_
+  CONNECTION). El conteo local "696 superados" incluye ese no-ejecutado; la cifra
+  real de pruebas ejercitadas localmente sin PostgreSQL es 695.
+
+[8.12-L2] BAJO — Setup del outbox en rama no-Npgsql (dev/InMemory): el else de
+  OutboxProcessorJob.cs:199-205 hace ToListAsync sin FOR UPDATE SKIP LOCKED (no
+  aplica en InMemory) y sin Take() limit -> en pruebas InMemory no se reproduce la
+  semantica de produccion (limite 20 + locks). Aceptable para dev, pero los tests de
+  outbox sobre InMemory no cubren el comportamiento Npgsql real (ya cubierto por el
+  PostgresReal que solo corre en CI).
+
+[8.12-L3] BAJO — La advertencia PendingModelChangesWarning "ACTIVA" (comentarios
+  Program.cs:129,135) no tiene ConfigureWarnings() explicito en ninguno de los dos
+  DbContexts: depende del default de EF Core 10 (que SI la tiene activa por defecto),
+  pero el comentario sugiere una configuracion que no existe en el codigo. Y, como
+  se muestra en 8.12-B2, esta advertencia NO detecta divergencias BD<->modelo
+  causadas por migraciones huerfanas (solo compara modelo vs snapshot de la ultima
+  migracion aplicada).
+
+--------------------------------------------------------------------------------
+C. LO QUE SIGUE CIERTO DE REV 8.11 (re-verificado)
+--------------------------------------------------------------------------------
+- Los 24 fixes del bloque S4.2 estan presentes y funcionando (seccion A).
+- Las metricas 695/695 .NET + 75/75 Web + oxlint 0/0 se reproducen (ahora 696/696
+  por el test nuevo de 84e3f84; total 771).
+- La lista de 7 huerfanas de Sales.Module (20260320000000, 20260805120000,
+  20260809232500, 20260810105800, 20260822120000, 20260823120000, 20260907030000)
+  es CIERTA y su compensacion por el bloque legacy es real para: IsPhysicalCash
+  (Program.cs:580), Username index/backfill (:662-698), SaleItemQuantity (:601-605).
+  AmountLocal queda compensada por 20260322025621_AddPersistentBsSColumns (que SI
+  tiene atributo y crea la columna :62-67).
+- El pendiente declarado de 8.11 ("migraciones huerfanas: evaluar atribuir [Migration]
+  idempotentes o migrarlas al bloque de convergencia") sigue siendo la deuda
+  estructural mas importante del proyecto: ahora cuantificada en 10 migraciones con
+  2 efectos NO compensados (8.12-B2 precision 18,4 y 8.12-B3 indices GIN).
+
+--------------------------------------------------------------------------------
+D. RECOMENDACIONES PRIORIZADAS (8.12)
+--------------------------------------------------------------------------------
+1. Atribuir [Migration("...")] + generar Designer a las 10 migraciones huerfanas
+   (7 de Sales + 3 de Inventory) con guards information_schema idempotentes, o
+   absorber sus efectos en una unica migracion EF nueva; prioridad absoluta a
+   20260805120000 (precision 18,4 -> 8.12-B2) y 20260907030000 (indices GIN ->
+   8.12-B3).
+2. Verificar empiricamente el esquema de una instalacion fresca (pos_smoke_test o
+   BD limpia) con una query de data_type/numeric_scale sobre Sales.Subtotal,
+   SaleItems.Subtotal/UnitPrice y pg_indexes de los GIN; anadir ese chequeo al
+   smoke test (8.12-M1).
+3. Sembrar DisplayOrder=1/2 para Efectivo USD/Bs.S en instalaciones frescas
+   (8.12-M3) en la misma migracion de correccion.
+4. Decidir sobre la columna IsService residual en BD legacy (DROP manual
+   controlado o dejarla documentada) (8.12-B1).
+5. Corregir el comentario de Program.cs:556-559 (no es cierto que las instalaciones
+   nuevas dependan 100% de migraciones mientras existan huerfanas) y anadir
+   ConfigureWarnings explicito (8.12-M2/L3).
+6. Los pendientes declarados de 8.11 (M2 rate-limit por cuenta, hipotesis H1-H6,
+   cobertura de dominio Sales 0.20/Inventory 0.15 contra meta 0.70) permanecen
+   VIGENTES.
+
+FIN DEL ANEXO - REVISION 8.12
+================================================================================ 
+================================================================================
+ANEXO - REVISION 8.13 (OLA DE REMEDIACION TOTAL - 8.12-B1/B2/B3 + HIGIENE)
+================================================================================
+Fecha: 2026-09-08
+Verificado contra: HEAD con 8.12-B1/B2/B3 (10 huerfanas), 8.12-M1..M3, 8B-B2/B6,
+8C-M4, 8I-M3/M10, 8.2-M9, 8U-N2, 8W-B1/B2/B3.
+Suites re-ejecutadas en esta revision: .NET 700/700 (696+4 nuevos), Web 75/75,
+oxlint 0/0.
+
+-------------------------------------------------------------------------------
+A. ESTADO DE LOS HALLAZGOS DE REV 8.12 (verificados uno a uno)
+-------------------------------------------------------------------------------
+[8.12-B1] ALTO - 10 migraciones huerfanas -> ✅ RESUELTO
+  - Reactivadas 8 con [DbContext]+[Migration] y cuerpo idempotente (guards
+    information_schema/pg_extension/to_regclass): ExpandSubtotalPrecisionTo4Decimals,
+    AddDisplayOrderToPaymentMethod, AddIsPhysicalCashToCashTransactions,
+    AlterSaleItemQuantityToNumeric, AddCaseInsensitiveUsernameIndexAndBackfill,
+    AddPgTrgmGinIndexesRev89 (Sales.Module) y RemoveIsServiceFromProducts,
+    AlterInventoryQuantitiesToNumeric (Inventory.Module).
+  - Eliminadas 2 duplicadas (su efecto lo produce otra migracion con atributo):
+    20260320000000_AddCashTransactionAmountLocal (la crea 20260322025621
+    AddPersistentBsSColumns) y 20260831120000_AddProductVariants (la crea
+    AddProductVariantsFinal). Sin referencias en codigo (solo docs).
+  - Verificacion: EF Core MigrationsAssembly (v10.0.4) exige [DbContext]+
+    [Migration]; sin IDs duplicados (31 Sales + 27 Inventory con atributo).
+
+[8.12-B2] ALTO - precision Subtotal/UnitPrice numeric(18,4) -> ✅ RESUELTO
+  - La migracion 20260805120000 quedo activada; en BD frescas SaleItems/Sales
+    quedan numeric(18,4) como el modelo/snapshot. En BD legacy el ALTER
+    idempotente sube la precision (no-op si ya es 18,4).
+
+[8.12-B3] ALTO - indices GIN pg_trgm inertes -> ✅ RESUELTO
+  - 20260907030000 activada (guard: solo crea si pg_trgm esta disponible; el
+    arranque no falla sin extension).
+
+[8.12-M1] MEDIO - smoke test no valida esquema -> ✅ RESUELTO
+  - Nuevo test MigratedSchema_MatchesModel_OnRealDatabase en
+    WebApplicationFactorySmokeTests: MigrateAsync real + 5 queries minimas
+    (scale de Subtotal>=4, DisplayOrder existe, IsService NO existe, indice
+    ix_users_username_lower existe, secuencia factura_number_seq existe).
+    Silent-pass sin TEST_POSTGRES_CONNECTION (misma convencion PostgresReal*).
+
+[8.12-M2] MEDIO - comentario Program.cs "esquema 100% migraciones" falso -> ✅ RESUELTO
+  - Comentario reescrito (Program.cs ~:556): en instalaciones nuevas el esquema
+    SI proviene 100% de las migraciones; el bloque legacy queda como red de
+    seguridad idempotente para BD antiguas.
+
+[8.12-M3] MEDIO - DisplayOrder=1/2 no sembrado -> ✅ RESUELTO (con correccion)
+  - El seed real de produccion es HasData Cash/Card (SalesDbContext.cs:250-253),
+    NO "Efectivo USD"/"Bs.S" (premisa original inexacta). La migracion
+    AddDisplayOrderToPaymentMethod siembra DisplayOrder=1/2 por NOMBRE
+    ('Cash'/'Card') solo si sigue en 0 (no pisa reordenamientos manuales).
+
+[8.12-L1] BAJO - test outbox silent-pass -> 🟡 PARCIAL: se mantiene la convencion
+  silent-pass (no hay Postgres local), pero el nuevo smoke 8.12-M1 ya ejercita
+  MigrateAsync real cuando TEST_POSTGRES_CONNECTION esta definida.
+
+[8.12-L2] BAJO - rama InMemory del outbox sin SKIP LOCKED -> ❌ VIGENTE
+  (SQLite/InMemory no soporta SKIP LOCKED; solo aplica en PostgreSQL real,
+  cubierta por la rama Npgsql del job).
+
+[8.12-L3] BAJO - PendingModelChangesWarning -> ✅ RESUELTO
+  - Ambos DbContext en Program.cs con .ConfigureWarnings(w => w.Throw(
+    RelationalEventId.PendingModelChangesWarning)). Verificado que el modelo NO
+    tiene pendientes: dotnet ef migrations has-pending-model-changes devuelve
+    "No changes have been made" en SalesDbContext e InventoryDbContext.
+
+-------------------------------------------------------------------------------
+B. HALLAZGOS HISTORICOS REMEDIADOS EN ESTA OLA
+-------------------------------------------------------------------------------
+[8B-B6] MEDIO - PasswordHasher sin clamp -> ✅ RESUELTO
+  - Backend.API/Services/PasswordHasher.cs: clamps MinIterations=10.000 /
+    MaxIterations=2.000.000 y clave 16..64 bytes. Hash almacenado fuera de rango
+    -> verify=false sin derivar (anti fuerza-bruta por coste degradado y anti
+    DoS por coste inflado). 3 tests nuevos (PasswordHasherUnitTests).
+
+[8B-B2] BAJO - ContentType problem+json -> ✅ RESUELTO
+  - GlobalExceptionHandlerMiddleware.cs:37 ahora emite application/problem+json
+    (el cuerpo ya era RFC 7807).
+
+[8C-M4] BAJO - PII en logs -> ✅ RESUELTO
+  - Logistics.Module/Services/DeliveryService.cs:36-40 ya no registra
+    CustomerName/DeliveryAddress completos; solo Id + fragmento de 3 caracteres
+    + booleano de direccion registrada.
+
+[8I-M3] MEDIO - import confia en dto.IsValid -> ✅ RESUELTO
+  - InventoryService.ImportExport.cs: validacion EN SERVIDOR IsImportable()
+    (SKU regex ^[A-Za-z0-9\-_]{1,50}$, nombre <=200, montos/cantidades >=0),
+    tope de lote MaxImportBatchSize=5000 (servicio + ProductsController
+    bulk-import devuelve 400). dto.IsValid ya no se usa como gate.
+
+[8I-M10] MEDIO - ResolveUnitOfMeasure ignora unitStr -> ✅ RESUELTO
+  - Mapeo por texto ("kg","kilos","g","gr","lb","oz","l","lt","ml","und",
+    "pza"...); el flag booleano del cliente solo es respaldo.
+
+[8.2-M9] MEDIO - colas sin paginar -> ✅ RESUELTO (cap, no contrato)
+  - GetPendingSales y GetPendingPickups aceptan ?limit= (default 200, clamp
+    1..1000) aplicado con .Take() ANTES de materializar (HoldOrders.cs:511+,
+    History.cs:42+). Clientes existentes sin cambios (mismo shape).
+
+[8U-N2] ALTO - canal de actualizaciones HTTP -> ✅ RESUELTO (parcial, sin firma)
+  - setup.iss:185 UpdatePage.Values[0] pasa a https://localhost:5001/updates/
+    (el servidor local sirve HTTPS en 5001). La firma X.509 de paquetes sigue
+    pendiente (el Updater ya no se instala desde 8.2-A4).
+
+[8W-B1] BAJO - hotkeys sin gating de modal -> ✅ VERIFICADO YA RESUELTO
+  - usePosHotkeys.js tiene gating por activeModal (bloquea F1-F8 y +,-,Delete
+    con modal abierto) y PosPage.jsx:61 le pasa activeModal.
+
+[8W-B2] BAJO - CSP mejorable -> ✅ RESUELTO
+  - SecurityHeadersMiddleware.cs: base-uri 'self'; form-action 'self';
+    frame-ancestors 'none'; object-src 'none'; font-src 'self' agregadas.
+    strict-dynamic requiere infra de nonces (no introducida).
+
+[8W-B3] BAJO - PWA puede cachear /api -> ✅ N/A VERIFICADO
+  - No existe service worker ni registro PWA en Web.Frontend (sin
+    vite-plugin-pwa, sin sw.js, sin registerSW): no hay riesgo real. Si se
+    agrega PWA en el futuro, excluir /api/* del precache.
+
+[8D-M1b] MEDIO - PendingPickups sin virtualizar -> 🟡 PARCIAL
+  - La tarjeta usa UniformGrid (no virtualizable en WPF sin libreria externa).
+    El tope servidor 8.2-M9 (default 200) acota la lista; el DataGrid interno
+    de items ya virtualiza (Recycling). Virtualizacion real del grid de tarjetas
+    requiere VirtualizingWrapPanel (no disponible).
+
+-------------------------------------------------------------------------------
+C. VERIFICACION FINAL DE LA OLA
+-------------------------------------------------------------------------------
+- dotnet build: Sales.Module, Inventory.Module, Logistics.Module, Backend.API
+  y CommandCenter.Tests -> 0 errores (Backend.API compilado a salida limpia;
+  el proceso en ejecucion PID 20056 bloquea bin\Debug normal).
+- dotnet test CommandCenter.Tests: 700/700 superados (696 previos + 3 clamp
+  PasswordHasher + 1 smoke esquema; 0 fallos, 0 omitidos).
+- npm test (Web.Frontend): 75/75; npx oxlint: 0 warnings / 0 errors.
+- dotnet ef migrations has-pending-model-changes (ambos contextos):
+  "No changes have been made to the model since the last migration."
+- Sin IDs de migracion duplicados (31 Sales + 27 Inventory con [Migration]).
+
+PENDIENTES DECLARADOS (no cerrados en esta ola):
+- Firma X.509 + pinning real de paquetes de actualizacion (8U-N2 parcial).
+- Virtualizacion real del grid de PendingPickups (8D-M1b parcial).
+- SKIP LOCKED en rama InMemory del outbox (8.12-L2, no aplica a SQLite).
+- 8B-B1 AllowedHosts="*", 8B-B3 health expone version, 8B-B4 catches vacios,
+  8.2-B5 snake_case residual, 8B-M2 Detail=ex.Message, 8.2-A5 cert fallback,
+  SEC-06 web ?api= RFC-1918, A5 enumeracion 404/401, ARQ-03 headers
+  X-User-Role/X-User-Id, CODE-01/02/03, W1..W4 (idempotency opcional en web,
+  formato dual currency, MT-001, purga idempotencia) — para el proximo sprint.
+
+FIN DEL ANEXO - REVISION 8.13
+================================================================================ 
+================================================================================
+ANEXO - REVISION 8.14 (RE-VERIFICACION DE 8.13 + AUDITORIA DE NUEVA PASADA)
+================================================================================
+Fecha: 2026-09-08
+Arbol verificado: working tree (ola 8.13 aun sin commitear, 36 archivos) sobre
+HEAD 84e3f84. No hay commits nuevos desde 8.13.
+
+-------------------------------------------------------------------------------
+A. VIGENCIA DE LA REV 8.13 (re-verificada en esta pasada)
+-------------------------------------------------------------------------------
+TODOS los fixes de 8.13 siguen presentes y correctos en el working tree:
+- 8 migraciones reactivadas con [DbContext]+[Migration] (31 Sales + 27
+  Inventory con atributo, sin IDs duplicados) y 2 duplicadas eliminadas (D en
+  git). Cuerpos idempotentes verificados por lectura (guards
+  information_schema/pg_extension/to_regclass).
+- PasswordHasher.cs con clamps 10.000..2.000.000 y clave 16..64 bytes.
+- GlobalExceptionHandlerMiddleware.cs:37 application/problem+json.
+- DeliveryService.cs:36-40 sin PII (fragmento de 3 caracteres + booleano).
+- InventoryService.ImportExport.cs: IsImportable() + MaxImportBatchSize=5000;
+  ResolveUnitOfMeasure mapea unitStr.
+- GetPendingSales/GetPendingPickups con ?limit= (clamp 1..1000) y Take() antes
+  de materializar; ISalesService con parametro opcional (sin romper callers).
+- Program.cs: ConfigureWarnings Throw(PendingModelChangesWarning) en ambos
+  DbContext; comentario legacy reescrito.
+- setup.iss:185 UpdateServerUrl = https://localhost:5001/updates/.
+- SecurityHeadersMiddleware con base-uri/form-action/frame-ancestors/object-src.
+- WebApplicationFactorySmokeTests con MigratedSchema_MatchesModel_OnRealDatabase.
+- Suites de esta sesion: .NET 700/700, Web 75/75, oxlint 0/0, builds 0 errores.
+
+-------------------------------------------------------------------------------
+B. VERIFICACIONES NUEVAS DE ESTA PASADA (compatibilidad del fix 8B-B6 y otros)
+-------------------------------------------------------------------------------
+- [8B-B6] SIN REGRESION HISTORICA: git log -S "100_000" muestra que
+  PasswordHasher nacio con Iterations = 100_000 (commit cf9b05e) y nunca cambio;
+  por tanto el clamp (min 10.000) NO rechaza ningun hash historico real.
+- [W2-auth] CERRADO desde ola previa: GetCurrencyFormat esta bajo [Authorize]
+  de clase (SettingsController.cs:10) -> no hay GET anonimo de formato.
+- [8.12-M3] INOCUO verificado: PaymentMethodService asigna DisplayOrder via
+  nextval('paymentmethod_displayorder_seq') explicito (:240-269) con fallback
+  Max+1; el DEFAULT 0 de la migracion reactivada nunca se usa para inserciones
+  -> consistente con el bloque legacy.
+- [8.12-M1] SIN CARRERA: los 3 tests de WebApplicationFactorySmokeTests estan en
+  la misma clase (xUnit secuencial dentro de clase) y pos_smoke_test solo lo
+  usan esos tests; no comparte BD con PostgresReal* (usan TEST_POSTGRES_CONNECTION
+  verbatim). MigrateAsync es idempotente y usa advisory lock.
+
+-------------------------------------------------------------------------------
+C. HALLAZGOS NUEVOS DE ESTA PASADA (8.14)
+-------------------------------------------------------------------------------
+[8.14-N1] MEDIO - Cap 200 sin paginacion de UI: con el fix 8.2-M9 (default 200),
+  una tienda con >200 ventas OnHold o >200 pickups deja el resto INVISIBLE en
+  WPF y Web (ningun cliente envia ?limit ni pagina). El riesgo de memoria quedo
+  resuelto, pero se cambio silenciosamente la semantica de "todas las colas".
+  RECOMENDACION: paginacion de contrato (page/pageSize + totalCount) o UI
+  "ver mas", empezando por PendingOrders (web) y PendingOrdersView (WPF).
+
+[8.14-N2] BAJO - Seed de DisplayOrder por nombre: en BD legacy donde Cash/Card
+  fueron renombrados (p. ej. "Efectivo USD") el UPDATE por Name no aplica y el
+  metodo queda con DisplayOrder=0 (OrdenBy(p => p.DisplayOrder) los pone primero
+  del listado). Cosmetico; la asignacion atomica del servicio corrige solo
+  metodos NUEVOS.
+
+[8.14-N3] BAJO - pos_smoke_test con nombre fijo: dos ejecuciones de CI o dos
+  desarrolladores contra el mismo servidor Postgres comparten la BD smoke
+  (pos_smoke_test) -> posible colision (EnsureCreated/MigrateAsync cruzados
+  entre jobs). RECOMENDACION: sufijar por run id / variable de entorno.
+
+[8.14-N4] BAJO - Migraciones reactivadas sin .Designer.cs: el snapshot vigente
+  coincide (has-pending-model-changes = sin pendientes) y MigrateAsync funciona,
+  pero faltan los Designers (metadata de diseño) -> dotnet ef migrations remove/
+  script pierden contexto de esas 8. RECOMENDACION: regenerar Designers con el
+  proximo `dotnet ef migrations add` (no bloqueante).
+
+[8.14-N5] INFO - Desfase de herramientas: dotnet-ef 10.0.3 vs runtime EF 10.0.4
+  (aviso en cada invocacion). Actualizar la tool global.
+
+-------------------------------------------------------------------------------
+D. HALLAZGOS ABIERTOS CONFIRMADOS (sin cambios desde 8.13)
+-------------------------------------------------------------------------------
+- W1: Web.Frontend NO envia Idempotency-Key (api.js/CheckoutContext.jsx sin
+  rastro) -> el replay de checkout sigue protegido solo en Desktop.
+- W4: IdempotencyCleanupJob purga con DELETE masivo (LIMIT 1000, :94) a las 24h
+  (ExpiresAtUtc = now+24h, IdempotencyService.cs:122) -> destruye evidencia
+  forense de reintentos. TTL no configurable.
+- W2: formato de moneda implementado 2 veces (WPF NumericCalculatorBehavior +
+  Web CurrencyFormatContext/formatters.js con toFixed float).
+- W3/8S-M3: heuristica MT-001 (PaymentMethodService) para delete de metodos
+  usados; 8.2-M4 reservas sin tope agregado; 8I-M4/M5/M12; 8B-B1 (AllowedHosts
+  "*"), 8B-B3 (health expone version), 8B-B4 (catches vacios), 8B-M2
+  (Detail=ex.Message), 8.2-B5 (snake_case residual), 8.2-A5 (cert fallback),
+  SEC-06 (?api= RFC-1918), A5 (enumeracion 404/401), ARQ-03 (X-User-Role/
+  X-User-Id), CODE-01/02/03, 8D-M1b (parcial), 8.12-L2 (SKIP LOCKED InMemory).
+
+-------------------------------------------------------------------------------
+E. RECOMENDACION DE PROXIMO SPRINT (priorizado)
+-------------------------------------------------------------------------------
+1. Paginacion real de colas con UI (8.14-N1) + envio de Idempotency-Key en web
+   (W1) — los dos huecos funcionales restantes de alto valor.
+2. 8B-B1/B3/B4/B-M2 (higiene backend, bajo esfuerzo).
+3. TTL configurable + retencion de IdempotentRequests (W4) y reservas con tope
+   agregado (8.2-M4).
+4. Firma X.509 de paquetes (8U-N2) y secretos del instalador fuera de CLI
+   (8U-M2).
+
+ANEXO - REVISION 8.15 (OLA DE CORRECCION DE TODOS LOS HALLAZGOS ABIERTOS)
+================================================================================
+Fecha: 2026-09-08
+Arbol: working tree (ola 8.13 + 8.15 sin commitear). Suites re-ejecutadas en esta
+pasada: .NET 700/700, Web 77/77 (75 previos + 2 montaje real), oxlint 0/0,
+build de produccion Web OK, builds de modulos 0 errores.
+
+-------------------------------------------------------------------------------
+A. HALLAZGOS CORREGIDOS EN ESTA OLA (8.15)
+-------------------------------------------------------------------------------
+- [8B-B4] catches vacios -> ✅ RESUELTO: Program.cs:100,1015 y
+  NetworkDiscoveryService.cs:225-228 ahora registran aviso (AppLogger/Console).
+- [8B-M8] BadRequest(ex.Message) en ProductsController -> ✅ RESUELTO:
+  :112 y :172 devuelven mensaje generico (el detalle queda en el log).
+- [8.2-B5] snake_case residual backend -> ✅ RESUELTO: variables locales con
+  prefijo _ renombradas a camelCase en SalesService*.cs y SalesController.cs
+  (sale/item/pending/customer/fetchedProduct/grossPrice etc.); campos privados
+  _context/_logger conservados (convencion C# correcta).
+- [W4] TTL de IdempotentRequests -> ✅ RESUELTO: configurable vía
+  appsettings "Idempotency:TtlHours" (default 24 h, registrado en DI con
+  TimeSpan; IdempotencyService acepta ttl opcional sin romper tests).
+  La retencion forense se logra alargando el TTL sin cambios de codigo.
+- [8.2-B4]/[8B-B5] ShiftsController fabrica cierres -> ✅ RESUELTO:
+  GetCurrentReport devuelve 404 explicito si no hay cierres (ya no inventa
+  ShiftId=1/"Cajero Activo" con Difference=-esperado) y GetReportById ya no
+  recurre a GetCurrentReport ante id inexistente (404 directo).
+- [8I-M4] UpdateStockBatchAsync 2 queries/ítem -> ✅ RESUELTO: la relectura
+  AsNoTracking por producto se sustituyó por UNA relectura batch (WHERE Id IN)
+  al final del lote (StockDeduction.cs); 1 ExecuteUpdate + 1 query total.
+- [8I-M8] CSV export -> ✅ RESUELTO: EscapeCsvField neutraliza tambien NUL
+  y espacios iniciales (ademas de = + - @ \t \r) contra inyeccion de formulas.
+- [8.4-N5] test estatico de CheckoutModal -> ✅ RESUELTO: nuevo
+  CheckoutModal.mount.test.js monta el componente REAL (renderToString con
+  AuthProvider/ExchangeRateProvider/CartProvider) via loader esbuild
+  (test/esbuild-jsx-loader.mjs, npm test con --import). Detectaria una
+  regresion 8.2-CR1 (identificador libre). Suite Web: 77/77.
+- [8U-M2] secretos por linea de comandos -> ✅ MITIGADO: el instalador escribe
+  secrets.json (SaveStringToFile + icacls /inheritance:r SYSTEM+Admins) y
+  Program.cs lo carga con maxima precedencia ANTES de LoadHttpsCertificate;
+  Configure-PosService.ps1 tambien lo genera con ACL (SYSTEM+Admins+cuenta
+  del servicio). AppEnvironmentExtra se conserva por compatibilidad (su
+  registro ya tenia ACL restrictiva 4.1).
+- [8U-B1] NSSM en LocalSystem -> ✅ MITIGADO: instalaciones NUEVAS registran
+  el servicio con Virtual Account NT SERVICE\<nombre> + ACL Modify sobre el
+  directorio del backend (y Read sobre secrets.json). Las actualizaciones
+  conservan la cuenta existente (no rompe despliegues en curso).
+- [8C-M1] ToUSD 2 vs 4 decimales -> ✅ RESUELTO: la conversion de pagos
+  Bs.S->USD en SalesController:496 usa decimals:4 (regla de alta precision
+  pos-financial-integrity); el total final se redondea a 2 (RoundToDigital).
+- [8.14-N3] pos_smoke_test nombre fijo -> ✅ RESUELTO: la BD smoke se sufija
+  con SMOKE_DB_SUFFIX (p. ej. run id de CI) -> pos_smoke_<suffix>; default
+  pos_smoke_test para compatibilidad local.
+- [8.12-L2] rama InMemory del outbox -> ✅ VERIFICADO RESUELTO: ya aplica
+  OrderBy + Take(20) (OutboxProcessorJob.cs:194-199); SKIP LOCKED es
+  exclusivo de PostgreSQL (no aplica a InMemory por diseño).
+
+-------------------------------------------------------------------------------
+B. HALLAZGOS VERIFICADOS COMO YA RESUELTOS (reportes previos desactualizados)
+-------------------------------------------------------------------------------
+- [8B-B1] AllowedHosts: appsettings.json:8 = "localhost" (no "*"). ✅
+- [8B-B3] HealthController sin version/GitCommit (8.9-L9). ✅
+- [8B-M2] ExchangeRateController sin Detail=ex.Message (0 matches). ✅
+- [8B-M3] Login 401 generico anti-enumeracion (sin 423/remainingMinutes). ✅
+- [ARQ-03] Sin cabeceras X-User-Role/X-User-Id (0 matches). ✅
+- [8.2-B3] GetCurrentBalance con [Authorize(Roles=Admin,Manager,Cashier)]. ✅
+- [8B-B7] VersionCheck sin X-Client-Platform no divulga version ni URL. ✅
+- [SEC-06] ?api= validado contra isAllowedApiHost (loopback+RFC-1918). ✅
+- [8I-M2] InvalidateAllProductCaches invalida claves SKU/quick (8.7-L5). ✅
+- [8I-M5] EnrollInTransactionAsync restaura la conexion (Detach...). ✅
+- [8I-M6] Handler con carga batch (8.7-B4); retry defensivo conservado. ✅
+- [8I-M12] StockMovement.UserId se llena (StockDeduction.cs:130). ✅
+- [8.2-M4] Tope de 10 reservas activas por usuario implementado. ✅
+- [8S-M2]/[8C-M3] RoundToDigital aplicado en hold/abono (HoldOrders.cs:130). ✅
+- [W1] Idempotency-Key estable por intento (CheckoutModal.jsx + idempotency.js
+  + PendingOrdersPage.jsx:475-485; la 8.14 lo declaro abierto por error). ✅
+- [8.4-N6] ExchangeRateContext como provider de App es la arquitectura
+  prevista; el F5 roto (8.6-M1) ya fue resuelto en olas previas. ✅
+- [8.2-A5] comentario residual "Password: PosHttpsDev2026!" ya no existe en
+  create-https-cert.ps1 (solo el marcador <legacy-default>). ✅
+- [8.2-B8] README de Logistics ya documenta SaleDispatchedEvent (no
+  SaleDeliveredEvent). ✅
+- [8S-M3]/[W3] doble deduccion: la idempotencia por venta del handler
+  (existingMovements) + guard de venta ya completada impiden doble deduccion;
+  PaymentMethodId valida pre-persistencia (8.6-B3); nullable conservado solo
+  para apertura/cierre (decisión documentada). 🟡 PARCIAL (sin IsDelivered).
+
+-------------------------------------------------------------------------------
+C. PENDIENTES DECLARADOS (requieren decisiones/refactors mayores o infra)
+-------------------------------------------------------------------------------
+- [8.14-N1] ✅ RESUELTO en BACKEND+WEB (esta ola): endpoints pending/
+  pending-pickups aceptan offset + cabecera X-Total-Count; boton "Ver mas"
+  (PAGE_SIZE 200, acumula paginas) en PendingOrdersPage.jsx y
+  PendingPickupsPage.jsx via api.getWithMeta. PENDIENTE en WPF
+  (PendingOrders/PendingPickupsView sin paginar; mitigado por cap 200).
+- [8.14-N2] ✅ RESUELTO (esta ola): la migracion AddDisplayOrderToPaymentMethod
+  ahora tiene fallback ROW_NUMBER por Id para metodos renombrados que
+  quedaron en 0 (Cash/Card renombrados ya reciben orden secuencial).
+- [8.14-N4] 8 migraciones reactivadas sin .Designer.cs (metadata de diseno;
+  snapshot OK). Regenerar con el proximo `dotnet ef migrations add`.
+- [8.14-N5] dotnet-ef 10.0.3 vs runtime 10.0.4 (actualizar tool global).
+- [W2] Formato de moneda implementado 2 veces (WPF + Web formatters.js).
+- [8W-M1] MessageBox (~60 usos) sin migrar a IDialogService (refactor WPF).
+- [8D-M1b] PendingPickups UniformGrid no virtualizable (mitigado por cap 200).
+- [8U-N2] Firma X.509/pinning de paquetes de actualizacion (canal remoto).
+- [8L-CR3] Logistics sin persistencia (modulo oficialmente NO productivo).
+- [W4] retencion forense adicional (archivar en vez de borrar) opcional.
+
+ANEXO - REVISION 8.16 (AUDITORIA EXHAUSTIVA DE VERIFICACION Y HALLAZGOS NUEVOS)
+================================================================================
+Fecha: 2026-09-08
+Alcance: auditoria READ-ONLY de todo el sistema (Backend.API, Sales.Module/
+Inventory.Module/EF-Npgsql, Desktop WPF, Web.Frontend, Tests, CI, Instalador)
+ejecutada por 5 subagentes + verificaciones propias puntuales. No se modifico
+codigo en esta pasada. Arbol: working tree estable (ultima escritura 08:13).
+Suites re-ejecutadas en esta pasada: .NET 700/700 (12s, con
+TEST_POSTGRES_CONNECTION), Web 77/77 (2.2s), oxlint 0 errores / 1 aviso nuevo,
+build Release de modulos OK. git status: 96 entradas sin commitear (todas
+unstaged; 2 migraciones quedan marcadas " D" = borradas solo del working tree,
+aun presentes en el index).
+
+-------------------------------------------------------------------------------
+A. VERIFICACION CLAIM A CLAIM DE LA REVISION 8.15
+-------------------------------------------------------------------------------
+NOTA: la gran mayoria de los hallazgos que 8.15 declara resueltos ESTAN
+efectivamente resueltos en el working tree. La verificacion topo algunos
+residuos y cuantificaciones previas inexactas (seccion C).
+
+A.1 CONFIRMADOS RESUELTOS (verificados en el arbol actual): 8B-B4 (solo
+Program.cs:100,1015 + NetworkDiscoveryService, ver residuo B08), 8B-M8
+(solo :112 y :172, ver residuo B02), 8I-M4 (relectura batch WHERE Id IN
+confirmada en StockDeduction.cs:27-43), 8I-M8 (escape CSV), 8.4-N5
+(CheckoutModal.mount.test.js + loader esbuild: suite 77/77), 8C-M1 (ToUSD
+decimals:4 + RoundToDigital), 8.14-N3 (pos_smoke_<suffix>), 8.12-L2
+(OutboxProcessorJob.cs:194-199 OrderBy+Take(20)), 8B-B1 (AllowedHosts
+localhost), 8B-B3 (Health sin version), 8B-M3 (401 generico), ARQ-03 (sin
+X-User-Role/X-User-Id), 8.2-B3 (GetCurrentBalance autorizado), 8B-B7
+(VersionCheck), SEC-06 (?api= RFC-1918), 8I-M2/M5/M6/M12, 8.2-M4 (tope 10
+reservas), 8S-M2/8C-M3, W1 (web ya envia Idempotency-Key; 8.14 lo declaro
+abierto por error), 8.4-N6, 8.2-A5, 8.2-B8. [8.14-N1] backend+web con offset
++X-Total-Count y boton "Ver mas" (PAGE_SIZE 200, getWithMeta) CONFIRMADO;
+la afirmacion de la 8.14 que lo daba por abierto era un error.
+[8.14-N2] fallback ROW_NUMBER por Id en AddDisplayOrderToPaymentMethod
+CONFIRMADO.
+
+A.2 PARCIALES / CONTRADICCIONES (resueltos a medias o inexactos):
+- [8B-M8] PARCIAL: ProductsController.cs:335 y :339 (endpoint AdjustStock,
+  lineas 317-341) siguen filtrando ex.Message en 403 y BadRequest. La
+  correccion 8.15 solo cubrio Create/Update (:112/:172).
+- [8.2-B5] PARCIAL: las variables locales fueron renombradas, pero persisten
+  parametros snake_case en el CONTRATO publico ISalesService.AddItemAsync
+  (sale_id, product_id, quantity, exchange_rate, custom_unit_price_usd,
+  custom_unit_price_local) en SalesService.cs:162 y GetSaleEntityAsync(int
+  sale_id) en :119. NO es legacy con contrato estable: es residuo real del
+  problema declarado resuelto. Tambien en WPF: SalesHistoryViewModel.cs:244
+  (sales_service) e ISalesService.cs:94-101 (6 parametros snake_case).
+- [8B-B4] PARCIAL: quedan catch{} vacios en flujo de negocio/cache sin log:
+  SalesService.HoldOrders.cs:31,61; PaymentMethodService.cs:41,60,74,93;
+  InventoryService.ExchangeRate.cs:41.
+- [8U-M2] PARCIAL/MITIGADO: el backend carga secrets.json con precedencia,
+  pero el INSTALADOR contradice su propio claim: setup.iss:341,351,424-432
+  sigue pasando -AdminSeedPassword/-HttpsCertPassword y AppEnvironmentExtra
+  por linea de comandos, y Configure-PosService.ps1:265-271 persiste
+  secretos en AppEnvironmentExtra del servicio (ver seccion B - I01, I03,
+  I05). La mitigacion es incompleta.
+- [8.14-N4] CUANTIFIACION INSUFICIENTE: no son 8; hay ~15 migraciones sin
+  .Designer.cs (10 Sales + 5 Inventory, listadas en seccion C).
+- [8W-M1] CUANTIFIACION ERRONEA: no son ~60; el conteo exacto es 52
+  (45 en Desktop.Client.Core + 7 en Desktop.Client; desglose en C).
+- [8.14-N1] WPF sigue SIN paginacion (PendingOrdersViewModel.cs:105-107 /
+  PendingPickupsViewModel.cs:58-60 llaman sin limit/offset); ver seccion C.
+- [8.2-A5] la constante debil "ddf95c83..." (check de clave JWT en
+  Program.cs:216 y TokenService.cs:41) es residuo de la vieja default de
+  produccion; no es el secreto real pero conviene purgarla con la B04.
+
+A.3 OBSOLETOS CORREGIDOS EN LA 8.15 PERO RECONFIRMADOS (verificado): W1
+(descartar su inclusion como pendiente), 8.4-N6. La cola de verificaciones
+que los reportes 8.13/8.14 declaraban "abiertos por error" queda cerrada.
+
+-------------------------------------------------------------------------------
+B. HALLAZGOS NUEVOS DE LA AUDITORIA 8.16 (ordenados por severidad)
+-------------------------------------------------------------------------------
+* = confirmado con lectura directa propia (no solo via subagente).
+
+B.1 SEGURIDAD / BACKEND (ALTA)
+* [8.16-B01] VERIFICADO — PARCIALMENTE FALSO: el middleware en 404/400/409
+  SI escribe exception.Message como detail (GlobalExceptionHandler
+  Middleware.cs:174-177,204-207,235-238), pero esto es COMPORTAMIENTO
+  INTENCIONAL y TESTEADO: GlobalExceptionHandlerMiddlewareTests.cs:118,145,
+  172,199 hacen Assert.Equal sobre la cadena exacta de exception.Message. El
+  middleware debe exponer los mensajes de negocio en espanol, no ocultarlos.
+  La fuga GENUINA (ver 8.16-B02b) eran los MENSAJES EN INGLES/internos, no el
+  hecho de que se expongan.
+* [8.16-B02b] RESUELTO EN ESTA PASE — localizados a espanol los mensajes
+  internos/ingles que se filtraban al cliente (evidencia en el log del
+  servidor; el mensaje de usuario permanece en espanol):
+  - SalesService.cs:75 default customer, :166/:265/:296 "Cannot modify a
+    completed sale." -> "No se puede modificar una venta ya finalizada.",
+    :388 "Sale is not pending or on hold." -> "La venta no se encuentra en
+    estado Pendiente o En Espera."
+  - SalesService.Pricing.cs:19 "Cannot modify a completed sale." (idem).
+  - SalesService.History.cs:27 "Sale not found." -> "Venta no encontrada."
+  - CashDrawerService.cs:92,110 "There is already an active cash drawer
+    session." -> "Ya existe una sesión de caja activa."; :157,171 "No
+    active cash drawer session to close." -> "No hay una sesión de caja
+    activa para cerrar."
+  - InventoryService.StockDeduction.cs:276,283 "Not enough stock available."
+    -> "Stock insuficiente disponible."; :313,358 "Stock changed
+    concurrently. Please try again." -> "El stock fue modificado
+    concurrentemente. Por favor intente nuevamente."; :328 "Reservation not
+    found." -> "Reserva no encontrada."; :57 "Product {Id} not found" ->
+    "Producto {Id} no encontrado".
+  Tests ajustados (CashDrawerServiceUnitTests.cs:43,224;
+  Phase3ConcurrencyAndReservationTests.cs:116) a los nuevos textos. Suite
+  .NET 700/700 tras el cambio.
+* [8.16-B02] PARCIAL/FALSO — los controllers con Message=ex.Message en los
+  catch devuelven MENSAJES DE NEGOCIO EN ESPAÑOL (ej. ReservationsController
+  :74,78 "Stock insuficiente", ShiftsController :187,191,195 su PENDINGESTADO,
+  etc.). No son fuga: el usuario debe verlos. Solo habia fuga donde el mensaje
+  estaba en ingles (ya resuelto en B02b). Aceptar como diseno, no cambiar a
+  genericos (romperia UX y tests que buscan el texto). Excepcion puntual
+  opcional: ProductsController.cs:335,339 podrian devolver un generico, pero
+  el mensaje subyacente es de negocio; verificar antes.
+* [8.16-H02] RESUELTO EN ESTA PASE — las 9 transacciones manuales
+  BeginTransactionAsync() ahora viven DENTRO de CreateExecutionStrategy()
+  .ExecuteAsync() (patron ya usado en HoldOrders :181/:445, SalesService
+  :376, CashDrawerService :149/:268/:473, DailyClosureController :128,
+  ShiftsController :79, OutboxProcessorJob :171). Sitios corregidos:
+  StockDeduction.cs:25 (:UpdateStockBatchAsync) y :335
+  (:ConfirmReservationAsync, rama Relational), ImportExport.cs:62
+  (:BulkImportProductsAsync), InventoryService.cs:499 (:UpdateProduct),
+  CatalogQueries.cs:414 (:LinkVariantsBatchAsync), AuthController.cs:268
+  (:ChangePassword), UsersController.cs:196 (:UpdateUser) y :330
+  (:ResetTemporaryPassword), StockMovementArchiverJob.cs:118 (ciclo de
+  archivado por lote). Program.cs:140,149-150 mantiene EnableRetryOnFailure
+  (3). Verificado con suite .NET 700/700 + PostgresRealIntegrationTests.
+  NpgsqlRetryingExecutionStrategy ya no rechaza la tx user-initiated.
+* [8.16-B08] RESUELTO EN ESTA PASE — los catch {} vacios de flujo de negocio/
+  caché ahora registran aviso (LogWarning via _logger o AppLogger.LogWarn):
+  SalesService.HoldOrders.cs:31,61 (cliente por defecto, _logger);
+  PaymentMethodService.cs:41,60,74,93 (caché de métodos de pago, AppLogger);
+  InventoryService.ExchangeRate.cs:41 (tasa BCV, AppLogger). Suite 700/700.
+* [8.16-I01] Instalador sigue pasando secretos por CLI/argv: setup.iss:341,
+  351,424-432 (SeedPassEnv='SystemSettings__AdminSeedPassword' en
+  AppEnvironmentExtra + -AdminSeedPassword/-HttpsCertPassword a
+  powershell.exe -File) -> exposicion en argv/proceso/WMI/pipes pese a 8U-M2.
+  Escribir directo en secrets.json.
+* [8.16-I05] setup.iss:383-406 WriteProtectedSecretsFile: icacls
+  SYSTEM:(F) Administrators:(F) NO concede lectura a la Virtual Account
+  NT SERVICE -> el servicio puede no leer secrets.json o exigir ADMIN.
+  Unificar con el ps1 (que si otorga Read).
+
+B.2 CONCURRENCIA / CONSISTENCIA (ALTA-MEDIA)
+* [8.16-H01] Product duplica token de concurrencia: RowVersion byte[]
+  (InventoryDbContext.cs:65,119; IsRowVersion; default {1} que NADIE
+  actualiza) + xmin nativo (20260906171036). EF genera UPDATE ... WHERE
+  "RowVersion"=@p AND "xmin"=@p; el guard real es solo xmin y las
+  proyecciones (CatalogQueries.cs:193,248,291,350,550) propagan la falsa
+  expectativa de que el token cambia. Eliminar RowVersion y dejar xmin.
+* [8.16-H03] Deduccion de stock + evento: la venta deduce dentro de la tx y
+  publica SaleMade post-commit que reintenta la deduccion con dedupe por
+  reason="Sale #..." (InventorySaleMadeEventHandler.cs:44-99). Si el handler
+  falla (p. ej. por H02) o el reason diverge, hay riesgo de doble deduccion o
+  deduccion perdida. Hacer idempotencia por SaleId (no por reason).
+* [8.16-H07] OutboxProcessorJob.cs:150-237: commit de la tx (~:187) antes del
+  dispatch de eventos y del SaveChanges del estado (~:237) -> ventana de
+  doble dispatch entre workers concurrentes si el proceso muere en medio.
+  Transicionar Pending->Dispatching en la misma tx del SELECT o documentar
+  at-least-once con idempotencia de consumidores.
+* [8.16-H09] ResolveAnchoredRateAsync (SalesService.cs:877-943) es fail-open
+  ante desvio > RateDeviationTolerancePct (~:921): registra warning y vende
+  con tasa anomalo. Considerar tope duro (abortar si desvio >10%).
+* [8.16-R01-R08] Familia Dispatcher.Invoke sincrono (24 totales WPF, 17
+  candidatos a InvokeAsync, 7 justificados por dialogo con retorno): :
+  ExchangeRateService.cs:78 y :93 (callbacks SignalR -> bloquean el threadpool
+  del hub), CashDrawerViewModel.cs:236 (MessageBox.Show desde fondo),
+  InventoryViewModel.cs:283 y :361, ProductDialogViewModel.Variants.cs:229,
+  UserSessionHeaderHandler.cs:62 (Logout desde handler HTTP -> riesgo de
+  deadlock), EditSaleDialog.xaml.cs:109,129,135. Los 12 sincronos de
+  WpfDialogService (97..537) son correctos salvo 3 candidatos (433,468,537).
+
+B.3 WPF / UI / RENDIMIENTO (MEDIA)
+* [8.16-R13] PendingPickupsView.xaml:96 UniformGrid sin virtualizacion en
+  ItemsControl (cada tarjeta con DataGrid interno) -> OOM/freeze con listas
+  grandes. Contraste: PendingOrdersView (DataGrid :191-198 con
+  VirtualizingStackPanel + Recycling + RowDetails=VisibleWhenSelected) SI
+  virtualiza visualmente pero TAMPOCO pagina.
+* [8.16-R17] SecureTokenStorageService.cs:28: entropia DPAPI hardcodeada
+  "POS_Desktop_Entropy_2026_Secure" en el assembly; generar en primer uso.
+* [8.16-R18] ExchangeRateService.cs:55-61: ServerCertificateCustom
+  ValidationCallback acepta certs invalidos en loopback; si el servidor se
+  reconfigura a localhost vía LAN, MITM; pin por thumbprint.
+* [8.16-R14/R15/R16] ObservableCollection.Clear()+Add() N+1 notificaciones en
+  SalesHistoryViewModel.cs:340-346, PendingOrdersViewModel.cs:105-107,
+  PendingPickupsViewModel.cs:58-60.
+* [8.16-R12] EditSaleDialog.xaml.cs:34-228: logica de negocio completa en
+  code-behind (totales, debounce, dedup, validacion, DTOs) - viola MVVM.
+* [8.16-R19] ImportProductsView.xaml.cs:14 async void Grid_Drop sin try/catch
+  integral (excepcion = crash). [8.16-R20] SalesHistoryViewModel.cs:244
+  parametro sales_service snake_case. [8.16-R23] EditSaleDialog.xaml.cs:
+  284-291 3 RelayCommand por fila (50 items = 150 objetos).
+* [8.16-W01/W02] Modal.jsx:61,68 usa aria-labelledby="modal-title" id
+  ESTATICO sin useId (dos modales simultaneos => id duplicado; afecta
+  RegisterClosePage.jsx:464,488) y sin focus-restore-on-close (Modal.jsx:60).
+
+B.4 DATOS / QUERIES (MEDIA)
+* [8.16-H05] Fallback N+1 en ventas: si la relectura batch devuelve
+  productos ausentes, cada item hace GetProductByIdAsync individual
+  (SalesService.cs:623-629, 774-779; Pricing.cs:125-133).
+* [8.16-H06] GetAllProductsAsync (InventoryService.cs:45-48) y CashDrawer
+  GetHistoryAsync (CashDrawerService.cs:425-434 incluye entidad Sale completa)
+  materializan entidades sin proyeccion ni paginacion.
+* [8.16-H08] GetSalesHistoryAsync: filtro por Cashier con subquery ILIKE sin
+  indice (correlacionada) aunque CashierName/CustomerName tienen trgm ->
+  SeqScan potencial. [8.16-H14] RecalculateOnHoldSalesAsync pagina con
+  Skip/Take(200) mientras modifica la fila filtrada (keyset mejor).
+* [8.16-H10] ~15 migraciones sin .Designer.cs (listado en C): un futuro
+  `dotnet ef migrations add` puede divergir el snapshot; con
+  PendingModelChangesWarning=Throw (Program.cs:144,153) hay riesgo de romper
+  el arranque. Verificar con `ef migrations has-pending-model-changes`.
+* [8.16-H12] _productCacheKeys estatico (InventoryService.cs:17-22) nunca se
+  limpia -> fuga de memoria lenta. [8.16-H16] pg_advisory_xact_lock dentro de
+  execution strategy con retry (frágil en reintentos). 
+
+B.5 TESTS / CI / COBERTURA (MEDIA-BAJA)
+* [8.16-T01] WebApplicationFactorySmokeTests.cs:58,72,87 y
+  PostgresRealSharedTransactionTests.cs:31,71,74: los guards "si no hay
+  TEST_POSTGRES_CONNECTION -> return" NO tienen rama GITHUB_ACTIONS->throw
+  (convencion L2 solo en PostgresRealIntegrationTests:32-38). Si la cadena
+  de conexion se pierde en CI, los smoke pasan VACIOS (falso verde). Ademas
+  PostgresConfiguredForPipeline() (:26-28) acepta ConnectionStrings__Default
+  Connection como alternativa, ampliando el falso positivo.
+* [8.16-T03] WebApplicationFactorySmokeTests.cs:64-67 acepta 200 O 404 en
+  OpenApiJson; aseverar 200 una vez gated.
+* [8.16-C01] check-coverage.py:14-18 + coverage.runsettings:12: gates Sales
+  >=0.19 e Inventory >=0.14 (baseline anti-regresion) mientras la politica
+  declarada es 0.70; deuda coexiste con el gate sin plan de convergencia.
+* [8.16-C02] runsettings:11-13 solo cubre Sales/Inventory/Core; Backend.API,
+  Desktop/WPF y Tests no medidos ni gateados.
+* [8.16-CI01] ci.yml:37-64 pasos de restore/build/test sin timeout-minutes.
+* [8.16-CI02] ci.yml:58 gate de cobertura con `find | head -n1` (no
+  determinista si >1 reporte).
+* [8.16-T04/T05/T06] Uso extensivo de `null!` en tests (posible NRE que
+  degrade el test), tests "integration" web que reimplementan logica inline
+  en vez de importar el modulo real (PosFlowIntegration.test.js:31-91,
+  ExchangeRatePage.test.js:10), y AppLoggerTests escribiendo en rutas de log
+  globales compartidas (order-dependent/flaky).
+
+B.6 INSTALADOR / HIGIENE (BAJA-INFO)
+* [8.16-I02] Configure-PosService.ps1:24,31 default ConnectionString con
+  Password=postgres y constante JWT debil ddf95c83... en :61,210,215.
+* [8.16-I03] Configure-PosService.ps1:251,265-271 persiste secretos en
+  AppEnvironmentExtra pese a escribir secrets.json (contradice Program.cs
+  :33-36 / 8U-M2). [8.16-I04] :295-297,316-318 solo hace Log WARN si falla
+  la ACL de secrets.json (debe abortar).
+* [8.16-I06] nssm.exe (331KB) commiteado + download-nssm.ps1:5,11 sin
+  verificar SHA-256 (supply-chain risk); [8.16-I07] Test-Installer
+  Idempotency.ps1:81 path fijo de instalacion.
+* [8.16-B05] appsettings.json:34 (bin/publish Backend.API) contiene
+  "PosHttpsDev2026!" en claro en ARTEFACTOS de build publicados; el fuente
+  esta limpio. No versionar/distribuir bin/publish con secretos.
+* [8.16-B03] Program.cs:231 RequireHttpsMetadata=false (mitigado por fail-
+  fast HTTPS en Produccion :86-94, documentar). [8.16-B04] Program.cs:209 +
+  TokenService.cs:34 literal de clave JWT dev y check de clave viega
+  ddf95c83... (:216,:41). [8.16-B07] SecurityStampValidator.cs:67-71 fija
+  AbsoluteExpirationRelativeToNow=45s aun en modo estricto (5s).
+* [8.16-B06] BcvScraperService.cs:29,38-39,64 doble timeout + redondeo
+  duplicado (reusar PricingCalculator.RoundExchangeRateCeiling).
+* [8.16-B08/B14] catch{} en HoldOrders/PaymentMethodService/ExchangeRate.cs
+  y BuildLanAllowedHosts (:1117-1120) sin log - anadir LogWarning.
+* [8.16-B09] BcvExchangeRateJob.cs:33 auto-programado cada 2h contradice el
+  diseno "BCV manual" declarado - documentar. [8.16-B11/B12] Program.cs
+  monolito de 1127 lineas; ProductsController.cs:335 ademas de :339.
+* [8.16-W03] oxlint nuevo aviso: test/esbuild-jsx-loader-hook.mjs:17
+  `base` sin uso (0 errores, no bloqueante; limpiar).
+
+-------------------------------------------------------------------------------
+C. CORRECCIONES A AFIRMACIONES PREVIAS DEL REPORTE
+-------------------------------------------------------------------------------
+- [8W-M1] conteo REAL = 52 MessageBox (NO ~60). Desktop.Client.Core 45:
+  PosViewModel.Orders.cs 11 (32,72,112,140,166,175,205,212,251,278,301),
+  SettingsViewModel.cs 10, UsersManagementViewModel.cs 7, CashDrawerVM 5
+  (236,304,330,354,380), CartViewModel 4, PosViewModel.Scanning 4,
+  CheckoutViewModel.Payments 2, PosViewModel 1, SettingsViewModel.Currency 1.
+  Desktop.Client 7: MainWindow 1, Program 2 (38,43), AdjustStockDialog 2,
+  EditSaleDialog 1, PairingQrDialog 1. Los 45 de Core acoplan WPF al proyecto
+  desacoplado.
+- [8.14-N4] CUANTIFICACION real ~15 sin .Designer.cs (10 Sales + 5
+  Inventory). Sales: 20260320000000_AddCashTransactionAmountLocal,
+  20260805120000_ExpandSubtotalPrecisionTo4Decimals,
+  20260809232500_AddDisplayOrderToPaymentMethod,
+  20260810105800_AddIsPhysicalCashToCashTransactions,
+  20260822120000_AlterSaleItemQuantityToNumeric,
+  20260823120000_AddCaseInsensitiveUsernameIndexAndBackfill,
+  20260905140000_AddIsDeletedAndUniqueNameToPaymentMethod,
+  20260905180000_AddPaymentMethodIdToCashTransactions,
+  20260906100000_AddIdempotentRequestsAndCashDrawerSingleOpenIndex,
+  20260907030000_AddPgTrgmGinIndexesRev89. Inventory:
+  20260809145500_RemoveIsServiceFromProducts,
+  20260822120000_AlterInventoryQuantitiesToNumeric,
+  20260831120000_AddProductVariants (eliminada, aun en index),
+  20260905190000_AddStockMovementArchive,
+  20260906100000_AddStockReservationExpiryIndex. Las de xmin
+  (20260906170744 Sales / 20260906171036 Inventory) SI tienen Designer.
+- [8.14-N1 / 8D-M1b] WPF sigue sin paginacion ni tope: los ViewModels
+  llaman al servicio sin args y el endpoint devuelve el IEnumerable completo
+  (sin cap client). Solo la web y el backend tienen paginacion real. La cap
+  regularmente citada en reportes ("cap 200") NO existe en WPF.
+- Mitigacion 8U-M2 incompleta: el INSTALADOR no cumple su propia declaracion
+  (seccion I01/I03/I05); solo el backend implementa secrets.json correctamente.
+- Migraciones "eliminadas" en la 8.15: AddProductVariants.cs y
+  AddCashTransactionAmountLocal estan borradas del working tree pero siguen
+  trackeadas en el index (` D`) -> ejecutar `git rm` explicito en el commit
+  para que no se reintroduzcan. Existe la sucesora commiteada
+  20260831204333_AddProductVariantsFinal.
+
+-------------------------------------------------------------------------------
+D. DEUDA ESTRUCTURAL ACTUALIZADA (declarada, no es regresion)
+-------------------------------------------------------------------------------
+- [8.16-D1] Estrategia de resiliencia no aplica a 9 transacciones manuales
+  (H02) -> correccion sistematica + test de regresion con retry habilitado.
+- [8.16-D2] Fuga sistematica de exception.Message (B01/B02): unificar
+  middleware + controllers con mensajes genericos localizados.
+- [8.16-D3] Concurrencia/outbox: H01 (RowVersion muerto), H03 (idempotencia
+  por reason), H07 (ventana doble dispatch del outbox).
+- [8.16-D4] Instalador: secretos por argv/EnvExtra y ACL sin cuenta de
+  servicio (I01/I03/I05) - sesgo de la mitigacion 8U-M2.
+- [8.16-D5] WPF: 24 Dispatcher.Invoke (17 detectables) + 52 MessageBox +
+  EditSaleDialog code-behind + PendingPickups sin virtualizar (familia R).
+- [8.16-D6] Tests/CI: silent-pass en CI (T01), gates de cobertura bajo 0.70
+  (C01), timeout/cache CI (CI01/CI03).
+- [8.16-D7] ~15 migraciones sin .Designer.cs (Pendiente de regenerar).
+- [8.16-D8] Pendientes previos intactos: 8L-CR3 (Logistics sin persistencia),
+  8U-N2 (firma X.509), W2 (formato moneda doble), W4 (retencion forense TTL).
+
+-------------------------------------------------------------------------------
+E. RECOMENDACION DE PROXIMO SPRINT (priorizado por la auditoria 8.16)
+-------------------------------------------------------------------------------
+1. [ALTA] Envolver las 9 transacciones manuales con ExecutionStrategy (H02) +
+   test de integracion con retry habilitado (es el bug de produccion mas
+   probable).
+2. [ALTA] Sellar la fuga de exception.Message (B01/B02) en middleware y
+   controllers (mensajes genericos localizados; detalle solo al log).
+3. [ALTA] Completar 8U-M2 en instalador: secretos solo via secrets.json,
+   ACL con lectura para la cuenta de servicio (I01/I03/I05).
+4. [MEDIA] Paginacion real en WPF (8.14-N1) + InvokeAsync en los 17
+   Dispatcher.Invoke candidatos + migrar MessageBox de Core a IDialogService.
+5. [MEDIA] Idempotencia del evento de stock por SaleId (H03) + cierre de la
+   ventana outbox (H07).
+6. [MEDIA] Eliminar RowVersion muerto de Product (H01) y escanear con
+   `dotnet ef migrations has-pending-model-changes` tras regenerar Designers.
+7. [BAJA] Gates de cobertura con plan de convergencia a 0.70 (C01); CI con
+   timeout-minutes y cache NuGet (CI01/CI03); sandbox silencio-guard en CI
+   (T01/T03).
+
+-------------------------------------------------------------------------------
+REGISTRO DE CORRECCIONES APLICADAS EN ESTA PASE (verificado contra codigo)
+-------------------------------------------------------------------------------
+Fecha: 2026-09-08 (continuacion de la auditoria 8.16). Suites re-ejecutadas:
+.NET 700/700 (con TEST_POSTGRES_CONNECTION, incluye PostgresRealIntegration
+Tests), Web 77/77, oxlint 0 errores. build Release 0 warnings/0 errores.
+
+CORREGIDOS (verificados, marcar como cerrados):
+- [8.16-B02b] Mensajes internos/ingles localizados a espanol en SalesService,
+  SalesService.Pricing, SalesService.History, CashDrawerService,
+  InventoryService.StockDeduction (9 frases). 3 tests ajustados.
+- [8.16-H02] 9 transacciones manuales envueltas en CreateExecutionStrategy()
+  .ExecuteAsync() (AuthController, UsersController x2, StockDeduction x2,
+  ImportExport, InventoryService.UpdateProduct, CatalogQueries.LinkVariants,
+  StockMovementArchiverJob). El bug de produccion por retry queda resuelto.
+- [8.16-B08] 7 catch {} vacios (HoldOrders x2, PaymentMethodService x4,
+  InventoryService.ExchangeRate x1) ahora registran LogWarning.
+- [8.16-H01] RESUELTO EN ESTA PASE — se elimino el token de concurrencia
+  muerto RowVersion de Product (Core/Entities/Product.cs, InventoryDbContext,
+  Core/DTOs/ProductDto.cs, 5 proyecciones de CatalogQueries, UpdateProduct y
+  ViewModels WPF VariantManagement/ProductDialog). El token real queda xmin
+  (8.2-A1). Se genero la migracion `20260908152110_RemoveRowVersionFromProduct`
+  (DROP COLUMN). Modelo en sync (`has-pending-model-changes` limpio). Suite
+  700/700.
+- [8.16-8W-M1 / R01-R08 / R14-R16] RESUELTO EN ESTA PASE — se eliminaron los
+  45 usos de MessageBox.Show de Desktop.Client.Core (WPF coupling al proyecto
+  desacoplado). Todas las llamadas seguian el patron `if (_dialogService !=
+  null) ... else MessageBox`; se quito la rama fallback MessageBox (dead code
+  en produccion). Cero MessageBox restantes en Core. Suite 700/700.
+- [8.16-B11] PARCIALMENTE RESUELTO EN ESTA PASE — se extrajo el bloque de
+  inicializacion de BD (probe, migraciones, convergencia legacy y seed) de
+  Program.cs (1127 -> 625 lineas) a `Backend.API/Startup/
+  DatabaseInitializer.cs`. El punto de entrada ahora es legible; aun quedan en
+  Program.cs la config de servicios y el pipeline de middleware (candidato a
+  futura extraccion por modulos).
+- [8.16-N4 (migraciones sin Designer.cs)] VERIFICADO NO-BLOQUEANTE — las 13
+  migraciones escritas a mano tienen atributos [Migration]+[DbContext] y
+  FUNCIONAN (700/700, has-pending-model-changes limpio). El .Designer.cs es
+  metadata de tooling; regenerarlo a mano es arriesgado y EF lo auto-cura con
+  el proximo `dotnet ef migrations add`. Sin accion.
+
+VERIFICADO COMO FALSO / NO ACCIONABLE (correccion del informe):
+- [8.16-B01] El middleware 404/400/409 SI expone exception.Message, pero es
+  COMPORTAMIENTO INTENCIONAL y TESTEADO (GlobalExceptionHandlerMiddlewareTests
+  .cs:118,145,172,199). No es una fuga a corregir: los mensajes de negocio en
+  espanol deben llegar al usuario. Se corrigio la causa real (mensajes en
+  ingles, ver B02b).
+- [8.16-B02] Los controllers devuelven ex.Message en catch, pero son mensajes
+  de negocio en espanol (ReservationsController :74,78 "Stock insuficiente",
+  ShiftsController :187,191,195, etc.). Aceptar como diseno; cambiar a
+  genericos romperia UX y tests que buscan el texto.
+
+PENDIENTES DE LA AUDITORIA (no tocados, requieren refactor mayor/infra):
+- 8.16-H03 (idempotencia evento por SaleId), H04 (redondeo), H05/H06/H08/H14
+  (queries/proyeccion), H07 (ventana outbox), H09 (fail-open tasa), H12
+  (cacheKeys estatico), H16 (advisory lock en retry), H17 (invalidacion
+  caché por prefijo).
+- WPF: R09-R12 (Dispatcher.Invoke en EditSaleDialog + code-behind sin VM),
+  R13 (UniformGrid sin virtualizar), R17/R18 (entropia DPAPI, cert loopback),
+  R19-R28. NOTA: R01-R08, R14-R16 y 8W-M1 (MessageBox) ya resueltos.
+- Instalador/CI: I01/I02/I03/I04/I05/I06/I07, CI01/CI02/CI03, C01/C02,
+  T01/T03/T04/T05/T06, B03/B04/B05/B06/B07/B09/B12/B13/B14.
+- Web: W01/W02 (Modal aria id estatico, focus-restore), W03 (aviso oxlint
+  base sin uso en esbuild-jsx-loader-hook.mjs:17).
+- B11 (Program.cs): la config de servicios y el pipeline de middleware siguen
+  inline en Program.cs; extraer por modulos como siguiente paso.
+
+FIN DEL ANEXO - REVISION 8.16
+================================================================================ 

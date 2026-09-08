@@ -113,7 +113,7 @@ public class Phase3ConcurrencyAndReservationTests
             await service.OpenSessionAsync(50m, 60m);
         });
 
-        Assert.Contains("already an active cash drawer session", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("sesión de caja activa", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

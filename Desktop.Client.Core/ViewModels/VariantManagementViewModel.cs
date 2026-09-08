@@ -124,7 +124,6 @@ public partial class VariantManagementViewModel : ObservableObject, IDisposable
 
                 prod.Name = item.Name.Trim();
                 prod.IsActive = item.IsActive;
-                prod.RowVersion = item.RowVersion ?? prod.RowVersion;
 
                 if (HasIndependentPricing)
                 {
@@ -290,7 +289,6 @@ public partial class VariantItemViewModel : ObservableObject
     public string SKU { get; set; }
     public bool CanEditPrices { get; }
     public bool CanEditStock { get; }
-    public byte[]? RowVersion { get; set; }
 
     [ObservableProperty]
     private string _name;
@@ -350,7 +348,6 @@ public partial class VariantItemViewModel : ObservableObject
         _minWholesaleQuantity = dto.MinWholesaleQuantity > 0 ? dto.MinWholesaleQuantity : 6m;
         _stockQuantity = dto.StockQuantity;
         _conversionFactor = dto.ConversionFactor > 0 ? dto.ConversionFactor : 1.0000m;
-        RowVersion = dto.RowVersion;
 
         CanEditPrices = hasIndependentPricing;
         CanEditStock = !isStockShared;

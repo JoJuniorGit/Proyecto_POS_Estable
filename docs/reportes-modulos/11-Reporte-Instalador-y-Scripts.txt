@@ -148,3 +148,74 @@ Cruce con docs/reporte.txt §13 (Rev. 8.4):
 ===============================================================================
 FIN DEL REPORTE Instalador y Scripts — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================
+=================================================================================
+7. ADENDA REV. 8.12 — VERIFICACION POST-OLAS S1..S4.2 (HEAD 84e3f84)
+=================================================================================
+Metodo: verificacion contra el arbol actual (2026-09-08).
+
+CAMBIOS DE ESTADO (hallazgos previos de este modulo):
+  - [8.2-CR2] (secretos versionados) -> ✅ RESUELTO: git ls-files no lista
+    appsettings.Development.json, docs/JWT_Key.md ni .env (0 resultados en 8.12);
+    .freebuff-test-out/ y .freebuff/desktop-v2.db ya no estan trackeados.
+  - [8.2-A5] (PosHttpsDev2026!) -> ✅ RESUELTO: grep del literal = 0 en ps1/iss
+    (S4.2-L6); generacion CSPRNG por instalacion en setup.iss + Configure-PosService.ps1.
+  - [8.2-A4] (UpdaterService empaquetado e inerte) -> ✅ RESUELTO (fuera del instalador).
+  - [8.2-A6] (.bat con ruta hardcodeada) -> ✅ RESUELTO (ruta dinamica NSSM, parada
+    suave con timeout; residual taskkill /F como fallback).
+  - [8.2-B8] (exit codes/ExecutionPolicy) -> ✅ RESUELTO.
+  - [8U-N2] (canal de actualizacion HTTP) -> ❌ VIGENTE: setup.iss:185 sigue con
+    default 'http://localhost:5000/updates/' heredado a Production (:271).
+  - [8U-M2] (secretos por linea de comandos/AppEnvironmentExtra) -> ❌ VIGENTE
+    (visibles con administrador de tareas).
+  - [8U-M3] -> ✅ subsumido por 8.2-A6. [8U-M4] (pfx corto/users-modify/ignoreversion)
+    -> 🟡 PARCIAL. [8U-B1] (NSSM en LocalSystem) -> ❌ VIGENTE.
+  - C1/INS-1 -> ✅ (clave CSPRNG 512 bits en HKLM con ACLs).
+
+HALLAZGOS NUEVOS 8.12 RELACIONADOS:
+  - [8.12-B1] El instalador desplegara BDs cuyo esquema depende del bloque legacy: con
+    10 migraciones huerfanas (7 Sales + 3 Inventory), la precision 18,2 vs 18,4 (B2)
+    y los indices GIN ausentes (B3) se materializan en TODA instalacion nueva
+    desplegada por este instalador. Revisar la politica "esquema 100% migraciones"
+    (Program.cs:556-559) al lanzar el proximo release.
+=================================================================================
+================================================================================
+ADENDA REV. 8.13 (OLA DE REMEDIACION TOTAL)
+================================================================================
+- [8U-N2] canal de actualizaciones HTTP -> ✅ RESUELTO (parcial): setup.iss:185
+  UpdatePage.Values[0] = https://localhost:5001/updates/ (HTTPS local). La
+  firma X.509/pinning de paquetes sigue pendiente para canal remoto.
+- Impacto 8.12-B1/B2/B3 en instalacion nueva: las 8 migraciones reactivadas
+  corren en el primer arranque (Precision 18,4, GIN si hay pg_trgm, DisplayOrder
+  sembrado, IsService eliminada); las 2 duplicadas eliminadas no se ejecutan.
+- [8U-M2] secretos por linea de comandos -> ❌ VIGENTE; [8U-B1] LocalSystem ->
+  ❌ VIGENTE.
+
+================================================================================
+ADENDA REV. 8.14 (RE-VERIFICACION 8.13 + HALLAZGOS NUEVOS)
+================================================================================
+- Sin cambios en 8.14. [8U-N2] parcial confirmado: UpdateServerUrl HTTPS
+  (setup.iss:185) pero firma X.509 de paquetes pendiente.
+- [8.14-N1] impacto en instalacion: el cap de colas (200) aplica a toda
+  instalacion nueva sin paginacion de UI -> visible a partir de 200 OnHold/
+  pickups.
+- [8U-M2] secretos por linea de comandos -> ❌ VIGENTE; [8U-B1] LocalSystem ->
+  ❌ VIGENTE; [8U-M4] pfx -> ✅ (8.2).
+
+ADENDA REV. 8.15 (OLA DE CORRECCION TOTAL — estados actualizados)
+================================================================================
+- [8U-M2] secretos por linea de comandos -> ✅ MITIGADO: setup.iss escribe
+  secrets.json con SaveStringToFile + icacls (/inheritance:r
+  SYSTEM+Admins); Configure-PosService.ps1 lo genera con ACL (SYSTEM+
+  Admins+cuenta del servicio); Program.cs lo carga con maxima precedencia
+  ANTES de LoadHttpsCertificate. AppEnvironmentExtra conservado por
+  compatibilidad (registro ya con ACL restrictiva).
+- [8U-B1] LocalSystem -> ✅ MITIGADO: instalaciones nuevas usan Virtual
+  Account NT SERVICE\<nombre> + ACL Modify sobre BackendDir (actualizaciones
+  conservan la cuenta existente).
+- [8.2-A5] comentario PosHttpsDev2026 residual -> ✅ VERIFICADO RESUELTO
+  (solo marcador <legacy-default> en create-https-cert.ps1).
+- Pendientes: 8U-N2 (firma X.509 de paquetes), 8U-M4 residual
+  (users-modify/ignoreversion), 8.14-N1 (cap 200 en instalaciones nuevas).
+
+FIN DEL REPORTE Instalador y Scripts — ADENDA REV. 8.15
+=================================================================================

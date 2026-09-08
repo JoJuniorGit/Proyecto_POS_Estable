@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getPendingSales, completeSale, addPaymentToHoldSale, cancelSale } from '../services/salesApi';
+import { getPendingSalesPage, completeSale, addPaymentToHoldSale, cancelSale } from '../services/salesApi';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import CheckoutModal from '../components/checkout/CheckoutModal';
 import EditSaleModal from '../components/pos/EditSaleModal';
@@ -26,12 +26,19 @@ export default function PendingOrdersPage() {
   const [selectedSaleForCheckout, setSelectedSaleForCheckout] = useState(null);
   const [selectedSaleForEdit, setSelectedSaleForEdit] = useState(null);
 
+  // 8.14-N1: paginación de UI — página actual (offset) y si hay más para el botón "Ver más".
+  const PAGE_SIZE = 200;
+  const [hasMore, setHasMore] = useState(false);
+  const [pageOffset, setPageOffset] = useState(0);
+
   const loadPendingData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const pendingData = await getPendingSales();
-      setSales(pendingData || []);
+      const { items, totalCount } = await getPendingSalesPage({ limit: PAGE_SIZE, offset: 0 });
+      setSales(items || []);
+      setPageOffset(items?.length || 0);
+      setHasMore(totalCount > (items?.length || 0));
     } catch (err) {
       console.error(err);
       setError('No se pudieron cargar las cuentas abiertas.');
@@ -39,6 +46,26 @@ export default function PendingOrdersPage() {
       setLoading(false);
     }
   }, []);
+
+  // 8.14-N1: carga la siguiente página y la agrega a la lista ("Ver más").
+  const loadMore = useCallback(async () => {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { items, totalCount } = await getPendingSalesPage({ limit: PAGE_SIZE, offset: pageOffset });
+      if (items.length > 0) {
+        setSales(prev => [...(prev || []), ...items]);
+        setPageOffset(prev => prev + items.length);
+      }
+      setHasMore(totalCount > pageOffset + items.length);
+    } catch (err) {
+      console.error(err);
+      setError('No se pudieron cargar más cuentas.');
+    } finally {
+      setLoading(false);
+    }
+  }, [loading, pageOffset]);
 
   useEffect(() => {
     loadPendingData();
@@ -463,6 +490,22 @@ export default function PendingOrdersPage() {
               );
             })}
           </div>
+
+          {/* 8.14-N1: botón "Ver más" para paginar la cola sin perder las ya cargadas. */}
+          {hasMore && (
+            <div className="text-center mt-3 mb-1">
+              <button
+                type="button"
+                className="btn btn-outline flex-align-center gap-2 mx-auto"
+                onClick={loadMore}
+                disabled={loading}
+                style={{ minWidth: '180px' }}
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}
+                {loading ? 'Cargando...' : 'Ver más cuentas'}
+              </button>
+            </div>
+          )}
         </>
       )}
 

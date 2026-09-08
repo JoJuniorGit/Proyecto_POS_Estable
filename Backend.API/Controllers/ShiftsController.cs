@@ -210,29 +210,11 @@ public class ShiftsController : ControllerBase
             return await GetReportById(latestClosure.Id);
         }
 
-        decimal exchangeRate = await GetTodayExchangeRateAsync();
-        var expectedTotals = await _dailyClosureService.GetExpectedTotalsByPaymentMethodAsync(DateTime.UtcNow);
-
-        var details = expectedTotals.Select(e => new ShiftReportDetailDto
-        {
-            PaymentMethodId = e.PaymentMethodId,
-            PaymentMethodName = e.PaymentMethodName,
-            Currency = (e.PaymentMethodName.ToLower().Contains("usd") || e.PaymentMethodName.ToLower().Contains("dolar") || e.PaymentMethodName.Contains("$")) ? "USD" : "Bs.S",
-            DeclaredAmount = 0m,
-            SystemAmount = e.ExpectedAmountBsS,
-            Difference = -e.ExpectedAmountBsS,
-            Status = "Shortage"
-        }).ToList();
-
-        return Ok(new ShiftReportDto
-        {
-            ShiftId = 1,
-            CashierName = "Cajero Activo",
-            CashierCedula = "V-00000000",
-            ClosedAt = DateTime.UtcNow,
-            ExchangeRate = exchangeRate,
-            Details = details
-        });
+        // 8.2-B4/8B-B5: NO fabricar un cierre sintético (ShiftId=1, "Cajero Activo",
+        // Difference=-esperado) cuando aún no existe ningún cierre real — un reporte falso
+        // distorsionaría arqueos y la recuperación de reportes. Se responde 404 con mensaje
+        // explícito para que el cliente lo muestre como "aún no hay cierres".
+        return NotFound(new { Message = "No existe ningún cierre de caja registrado todavía." });
     }
 
     [HttpGet("{id}/report")]
@@ -265,7 +247,9 @@ public class ShiftsController : ControllerBase
 
         if (closure == null)
         {
-            return await GetCurrentReport();
+            // 8.2-B4: sin recursión a GetCurrentReport — un id inexistente no debe fabricar
+            // ni devolver el cierre más reciente (semántica de recurso).
+            return NotFound(new { Message = "El reporte de cierre solicitado no existe." });
         }
 
         var details = closure.Details.Select(d =>

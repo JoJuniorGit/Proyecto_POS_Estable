@@ -89,7 +89,7 @@ public class CashDrawerService : ICashDrawerService
 
         if (await GetActiveSessionAsync() != null)
         {
-            throw new InvalidOperationException("There is already an active cash drawer session.");
+            throw new InvalidOperationException("Ya existe una sesión de caja activa.");
         }
 
         var session = new CashDrawerSession
@@ -107,7 +107,7 @@ public class CashDrawerService : ICashDrawerService
         }
         catch (DbUpdateException ex)
         {
-            throw new InvalidOperationException("There is already an active cash drawer session.", ex);
+            throw new InvalidOperationException("Ya existe una sesión de caja activa.", ex);
         }
 
         await AddTransactionAsync(
@@ -154,7 +154,7 @@ public class CashDrawerService : ICashDrawerService
                 var session = await GetActiveSessionAsync();
                 if (session == null)
                 {
-                    throw new InvalidOperationException("No active cash drawer session to close.");
+                    throw new InvalidOperationException("No hay una sesión de caja activa para cerrar.");
                 }
 
                 // 8.5-A2: Serializar cierres concurrentes. El advisory lock garantiza que el segundo cierre
@@ -168,7 +168,7 @@ public class CashDrawerService : ICashDrawerService
                         .FirstOrDefaultAsync(s => s.Id == session.Id && s.Status == CashDrawerStatus.Open);
                     if (session == null)
                     {
-                        throw new InvalidOperationException("No active cash drawer session to close.");
+                        throw new InvalidOperationException("No hay una sesión de caja activa para cerrar.");
                     }
                 }
 

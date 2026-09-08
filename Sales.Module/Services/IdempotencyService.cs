@@ -17,6 +17,11 @@ public class IdempotencyService : IIdempotencyService
     private static readonly Regex KeyRegex = new(@"^[a-zA-Z0-9_\-\.]{1,128}$", RegexOptions.Compiled);
     private readonly SalesDbContext _context;
 
+    // 8.14-W4: TTL configurable (horas). Default 24 h = comportamiento histórico; las
+    // instalaciones pueden alargarlo (retención forense de reintentos) vía appsettings
+    // "Idempotency:TtlHours" sin tocar el código.
+    private readonly TimeSpan _ttl;
+
     // 8.7-M5: contadores por-instancia (servicio Scoped), no estáticos — el estado mutable no
     // debe compartirse entre scopes de request.
     private long _hits;
@@ -27,9 +32,12 @@ public class IdempotencyService : IIdempotencyService
     public long Misses => Interlocked.Read(ref _misses);
     public long Conflicts => Interlocked.Read(ref _conflicts);
 
-    public IdempotencyService(SalesDbContext context)
+    public IdempotencyService(SalesDbContext context, TimeSpan? ttl = null)
     {
         _context = context;
+        // 8.14-W4: si TtlHours <= 0 se ignora y se usa el default de 24 h.
+        var configured = ttl ?? TimeSpan.FromHours(24);
+        _ttl = configured > TimeSpan.Zero ? configured : TimeSpan.FromHours(24);
     }
 
     public static bool IsValidKey(string? key)
@@ -119,7 +127,8 @@ public class IdempotencyService : IIdempotencyService
             StatusCode = statusCode,
             ResponseBody = responseBody,
             CreatedAtUtc = DateTime.UtcNow,
-            ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
+            // 8.14-W4: TTL configurable en vez del 24 h fijo.
+            ExpiresAtUtc = DateTime.UtcNow.Add(_ttl)
         };
 
         _context.IdempotentRequests.Add(record);

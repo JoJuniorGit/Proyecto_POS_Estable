@@ -463,7 +463,6 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
             ResultProduct.Id = _initialProduct.Id;
             ResultProduct.IsActive = _initialProduct.IsActive;
             ResultProduct.ReservedQuantity = (IsCashAdvance || (IsGroupHeader && !IsStockShared) || isSharedChild) ? 0m : _initialProduct.ReservedQuantity;
-            ResultProduct.RowVersion = _initialProduct.RowVersion;
 
             if (IsEditMode)
             {

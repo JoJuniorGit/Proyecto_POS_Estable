@@ -110,3 +110,50 @@ Cruce con docs/reporte.txt §13 (Rev. 8.4):
 ===============================================================================
 FIN DEL REPORTE UpdaterService — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================
+=================================================================================
+7. ADENDA REV. 8.12 — VERIFICACION POST-OLAS S1..S4.2 (HEAD 84e3f84)
+=================================================================================
+Metodo: verificacion contra el arbol actual (2026-09-08).
+
+CAMBIOS DE ESTADO (hallazgos previos de este modulo):
+  - [8.2-A4] (orfandad del servicio) -> ✅ RESUELTO: UpdaterService fuera de setup.iss;
+    documentado como herramienta desacoplada/externa (installer/README.md).
+  - [SEC-01]/[UPD-2] -> ✅ verificados (extraccion canonica sin symlinks; resolucion
+    de rutas).
+  - [8U-N2] (canal HTTP sin TLS) -> ❌ VIGENTE: installer/setup.iss:185 conserva el
+    default 'http://localhost:5000/updates/' (HTTP plano, heredado a Production :271).
+  - [8U-N5] (fail-open de actualizacion) -> ❌ VIGENTE: Program.cs:33-56 sigue con
+    verificacion de hash no bloqueante; el servicio no esta integrado en produccion.
+  - [8U-M1]/[8U-B1] -> ❌ VIGENTES (errores tragados; sin Event Log).
+  - Nota 8.12: la relevancia operativa sigue siendo nula (servicio fuera del flujo);
+    el unico canal de actualizacion efectivo sigue siendo el navegador del desktop
+    (VersionLockoutViewModel).
+=================================================================================
+================================================================================
+ADENDA REV. 8.13 (OLA DE REMEDIACION TOTAL)
+================================================================================
+- Sin cambios de codigo en este modulo en la ola 8.13.
+- [8U-N2] canal HTTPS -> ✅ RESUELTO en el INSTALADOR (setup.iss:185 pasa a
+  https://localhost:5001/updates/). La firma X.509 de paquetes sigue pendiente.
+- [UPD-1/4/5] -> ❌ VIGENTES; [UPD-2] zip-slip -> ✅ (8.12).
+
+================================================================================
+ADENDA REV. 8.14 (RE-VERIFICACION 8.13 + HALLAZGOS NUEVOS)
+================================================================================
+- Sin cambios en 8.14. [8U-N2] parcial confirmado: URL HTTPS en setup.iss pero
+  firma X.509/pinning de paquetes pendiente.
+- [UPD-1/4/5] -> ❌ VIGENTES; [UPD-2] zip-slip -> ✅ (8.12).
+- [8.14-N5] INFO — dotnet-ef 10.0.3 vs runtime EF 10.0.4.
+
+ADENDA REV. 8.15 (OLA DE CORRECCION TOTAL — estados actualizados)
+================================================================================
+- Sin cambios de codigo en este modulo en la ola 8.15.
+- [8U-M2] secretos por linea de comandos -> ✅ MITIGADO en el INSTALADOR
+  (secrets.json con ACL restrictiva; Program.cs carga con maxima
+  precedencia). El servicio permanece fuera del flujo de produccion.
+- Pendientes: [8U-N2] firma X.509 de paquetes, [8U-N5]/[8U-M1]/[UPD-1/4/5]
+  fail-open y errores tragados (relevantes solo si se reintegra el
+  servicio).
+
+FIN DEL REPORTE UpdaterService — ADENDA REV. 8.15
+=================================================================================

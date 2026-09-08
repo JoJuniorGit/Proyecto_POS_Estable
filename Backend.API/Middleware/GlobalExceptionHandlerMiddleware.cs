@@ -34,7 +34,8 @@ public class GlobalExceptionHandlerMiddleware
     private static async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         var requestPath = $"{context.Request.Method} {context.Request.Path}";
-        context.Response.ContentType = "application/json";
+        // 8B-B2: RFC 7807 — el cuerpo ya es un problem+json (WriteProblemDetailsAsync).
+        context.Response.ContentType = "application/problem+json";
 
         // 1. PostgreSQL specific exceptions (H-API-6 / H-API-20)
         var postgresEx = FindException<PostgresException>(exception);

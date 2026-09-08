@@ -162,7 +162,6 @@ public partial class UsersManagementViewModel : ObservableObject
                 {
                     StatusMessage = "El Administrador principal del sistema no se puede desactivar.";
                     if (_dialogService != null) _dialogService.ShowWarning("Operación No Permitida", StatusMessage);
-                    else if (System.Windows.Application.Current != null) System.Windows.MessageBox.Show(StatusMessage, "Operación No Permitida", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                     return;
                 }
 
@@ -170,7 +169,6 @@ public partial class UsersManagementViewModel : ObservableObject
                 {
                     StatusMessage = "No puedes desactivar tu propia cuenta actualmente en sesión.";
                     if (_dialogService != null) _dialogService.ShowWarning("Operación No Permitida", StatusMessage);
-                    else if (System.Windows.Application.Current != null) System.Windows.MessageBox.Show(StatusMessage, "Operación No Permitida", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                     return;
                 }
 
@@ -221,7 +219,6 @@ public partial class UsersManagementViewModel : ObservableObject
                 {
                     StatusMessage = "El Administrador principal del sistema no se puede desactivar.";
                     if (_dialogService != null) _dialogService.ShowWarning("Operación No Permitida", StatusMessage);
-                    else if (System.Windows.Application.Current != null) System.Windows.MessageBox.Show(StatusMessage, "Operación No Permitida", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                     return;
                 }
 
@@ -229,7 +226,6 @@ public partial class UsersManagementViewModel : ObservableObject
                 {
                     StatusMessage = "No puedes desactivar tu propia cuenta actualmente en sesión.";
                     if (_dialogService != null) _dialogService.ShowWarning("Operación No Permitida", StatusMessage);
-                    else if (System.Windows.Application.Current != null) System.Windows.MessageBox.Show(StatusMessage, "Operación No Permitida", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                     return;
                 }
 
@@ -261,7 +257,6 @@ public partial class UsersManagementViewModel : ObservableObject
         {
             StatusMessage = "El Administrador principal del sistema no se puede eliminar.";
             if (_dialogService != null) _dialogService.ShowWarning("Operación No Permitida", StatusMessage);
-            else if (System.Windows.Application.Current != null) System.Windows.MessageBox.Show(StatusMessage, "Operación No Permitida", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
             return;
         }
 
@@ -269,7 +264,6 @@ public partial class UsersManagementViewModel : ObservableObject
         {
             StatusMessage = "No puedes eliminar tu propia cuenta actualmente en sesión.";
             if (_dialogService != null) _dialogService.ShowWarning("Operación No Permitida", StatusMessage);
-            else if (System.Windows.Application.Current != null) System.Windows.MessageBox.Show(StatusMessage, "Operación No Permitida", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
             return;
         }
 
@@ -277,11 +271,7 @@ public partial class UsersManagementViewModel : ObservableObject
             ? _dialogService.ShowConfirm(
                 "Confirmar Eliminación Definitiva",
                 $"¿Está seguro de que desea eliminar PERMANENTEMENTE al usuario '{target.Name}' (Usuario: {target.Cedula})?\n\nEsta acción eliminará el usuario de la base de datos de forma definitiva.")
-            : (System.Windows.Application.Current != null && System.Windows.MessageBox.Show(
-                $"¿Está seguro de que desea eliminar PERMANENTEMENTE al usuario '{target.Name}' (Usuario: {target.Cedula})?\n\nEsta acción eliminará el usuario de la base de datos de forma definitiva.",
-                "Confirmar Eliminación Definitiva",
-                System.Windows.MessageBoxButton.YesNo,
-                System.Windows.MessageBoxImage.Warning) == System.Windows.MessageBoxResult.Yes);
+            : false;
 
         if (!confirmed) return;
 

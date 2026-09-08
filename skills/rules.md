@@ -5,21 +5,23 @@
 - Mandatory Flow (No Vibe Coding): BEFORE modifying any code, generate a plan in Markdown format and wait for my approval. Do not assume unspecified business rules; stop and ask.
 - Boundaries: - NEVER modify the database schema without first performing an EF Core migration.
 - No comments: NEVER use comments unless I ask for them directly
-- Naming (C#): fields privados/campos = `_camelCase` (p. ej. `_productService`), métodos async terminan en `Async`, propiedades públicas = `PascalCase` — conforme a `.editorconfig`. snake_case SOLO para nombres de propiedad JSON del contrato de la API cuando el backend lo exige.
-- No Code-Behind: NEVER use Code-Behind (`.xaml.cs`). Everything must be handled using ViewModels or Behaviors.
+- Naming (C#): fields privados/campos = `_camelCase` (p. ej. `_productService`), métodos async terminan en `Async`, propiedades públicas = `PascalCase` — conforme a `.editorconfig`. camelCase para nombres de propiedad JSON del contrato de la API (estándar del proyecto).
+- Code-Behind (WPF): Prohibido para lógica de negocio o presentación. La ÚNICA excepción permitida es el método `OnClosed` para liberar memoria llamando a `(DataContext as IDisposable)?.Dispose()`, según la directriz de `wpf-architecture.md`.
 
 2.  Project Commands (Run these to validate your work)
 
 - Compile: `dotnet build`
-- Generate Migration: `dotnet ef migrations add <MigrationName> --project src/Infrastructure`
-- Update Database: `dotnet ef database update --project src/Infrastructure`
+- Generate Migration (Sales): `dotnet ef migrations add <MigrationName> --project Sales.Module --startup-project Backend.API`
+- Generate Migration (Inventory): `dotnet ef migrations add <MigrationName> --project Inventory.Module --startup-project Backend.API`
+- Update Database (Sales): `dotnet ef database update --project Sales.Module --startup-project Backend.API`
+- Update Database (Inventory): `dotnet ef database update --project Inventory.Module --startup-project Backend.API`
 
 3.  Domain Business Rules (CRITICAL)
 
 - Tax-Free System: It is prohibited to write, calculate, or reference VAT, IVA, or taxes in the database, backend, or UI. The price is based 100% on: `Cost * (1 + (Margin / 100))`.
 - Currency Handling (Bs.S and USD):
 - USD (Dollars): Use decimal with a maximum of 2 decimal places.
-- Cash (Immutable Flow): Cash on hand is stored with the exact physical amount in Bs.S. Do not recalculate past values ​​by multiplying by historical exchange rates.
+- Cash (Immutable Flow): Cash on hand is stored with the exact physical amount in Bs.S. Do not recalculate past values by multiplying by historical exchange rates.
 - Time Zones: Store dates in the database in `UTC`. When mapping to the DTO, convert to `America/Caracas` (or the time zone configured in `SystemSettings`).
 
 4.  Architecture and Code Style
@@ -53,7 +55,7 @@ c. Contract Verification:
 
 - When updating an existing endpoint, verify the `Model` used by the WPF view. If you change the name of a property in the API's JSON, the agent must correct the Binding in the XAML or the DTO in the C# client.
 
-5. Code Patterns
+6. Code Patterns
    Correct: Calculated Property in ViewModel
 
 ```csharp
@@ -66,7 +68,7 @@ private decimal _costPrice;
 private decimal _profitMargin;
 
 
-public decimal SellingPriceBsS => (decimal)Math.Round(CostPrice * (1 + (ProfitMargin / 100)) * ExchangeRate);
+public decimal SellingPriceBsS => Math.Round(CostPrice * (1 + (ProfitMargin / 100)) * ExchangeRate, 2, MidpointRounding.AwayFromZero);
 ```
 
 Correct: Asynchronous method with CancellationToken and Debounce

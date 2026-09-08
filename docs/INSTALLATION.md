@@ -14,126 +14,54 @@ Guía para que el proyecto funcione correctamente tras una instalación limpia, 
 | Verificación | `/health` → `Healthy` / `Connected`, `/api/products` → 200 |
 | Firewall de Windows (puertos 5000/5001) | Regla de entrada `Sistema POS - Backend API (TCP 5000/5001)` creada, solo subred local |
 
-Los cambios de configuración de esta máquina están documentados en `README.md`.
+La convención de configuración está documentada en la §3 de este mismo documento.
 
-## 2. Correcciones que deben aplicarse en el código fuente
+## 2. Seguridad implementada en el código fuente
 
-El repositorio C# vive en `C:\Users\Lenovo IdeaPad 3\Desktop\Proyecto_POS_Estable\V0.1\` (rutas inferidas de los stack traces; ajustar nombres reales de archivos si difieren). Sin estos cambios, una instalación limpia volverá a fallar.
+Las siguientes correcciones, originalmente pendientes, ya están integradas en el repositorio:
 
-### 2.1 `Backend.API/Program.cs` — arranque robusto (fail-fast + auto-crear BD)
+- **Arranque robusto fail-fast + auto-creación de BD** (`Program.cs`): El backend conecta primero contra la BD de mantenimiento `postgres` para validar credenciales. Si la BD objetivo no existe, la crea automáticamente. Si PostgreSQL no responde, el proceso aborta con código de salida ≠ 0.
+- **Seed con `MustChangePassword`**: El usuario admin sembrado queda marcado con `MustChangePassword = true`. La contraseña semilla se lee exclusivamente desde `IConfiguration` (variable de entorno `SystemSettings__AdminSeedPassword`).
+- **Login con cambio obligatorio de contraseña**: Si `MustChangePassword == true`, el login responde `403` con `requiresPasswordChange`. El endpoint `POST /api/auth/change-password` permite actualizar la contraseña sin emitir token previo.
+- **Cliente WPF**: Si el login devuelve `403`, se presenta el diálogo de cambio de contraseña antes de acceder a la ventana principal.
+- **Configuración de `appsettings`**: Los secretos se inyectan vía variables de entorno del servicio NSSM. Los archivos JSON no contienen credenciales en producción.
 
-**Problema actual:** el chequeo `CanConnectAsync` se hace contra la base de datos objetivo. Si la BD no existe, parece un fallo de credenciales y, además, el error solo se registra y la app sigue arrancando sirviendo 503.
+## 3. Convención de configuración del Backend
 
-**Cambio:** conectar primero contra la BD de mantenimiento `postgres`, crear la BD si falta, aplicar migraciones y **abortar** el arranque si algo falla:
+La configuración del backend (`Backend.API`) se fusiona en este orden (las fuentes posteriores sobreescriben a las anteriores):
 
-```csharp
-// 1) Probar conexión contra la BD de mantenimiento "postgres" para distinguir
-//    credenciales incorrectas de base de datos inexistente.
-var maintenanceCs = new NpgsqlConnectionStringBuilder(connectionString)
-{
-    Database = "postgres"
-}.ConnectionString;
+1. `appsettings.json` — valores **compartidos y sin secretos** (fuente única de lo común).
+2. `appsettings.{Environment}.json` — solo **overrides por entorno** (`Development`, `Production`, ...). El entorno activo lo define `ASPNETCORE_ENVIRONMENT` (si no se define, el valor por defecto es `Production`).
+3. Variables de entorno del proceso (convención `Seccion__Clave`).
 
-await using var probe = new NpgsqlConnection(maintenanceCs);
-try
-{
-    await probe.OpenAsync(ct);
-}
-catch (Exception ex)
-{
-    logger.LogCritical("[ERROR CRÍTICO] No se pudo conectar a PostgreSQL. " +
-        "Verifique que el servicio de BD esté activo y que la variable de entorno " +
-        "ConnectionStrings__DefaultConnection (o el appsettings) sea correcta. {0}", ex.Message);
-    Environment.ExitCode = 1;
-    return; // NO seguir arrancando: evita servir peticiones que devuelven 503
-}
+### Qué va en cada archivo
 
-// 2) Crear la base de datos si no existe (idempotente).
-await using (var cmd = probe.CreateCommand())
-{
-    cmd.CommandText = "SELECT 1 FROM pg_database WHERE datname = @db";
-    cmd.Parameters.AddWithValue("db", dbName);
-    var exists = await cmd.ExecuteScalarAsync(ct) != null;
-    if (!exists)
-    {
-        logger.LogInformation("[START] Creando base de datos {Db}...", dbName);
-        await using var create = probe.CreateCommand();
-        create.CommandText = $"CREATE DATABASE \"{dbName}\" OWNER postgres";
-        await create.ExecuteNonQueryAsync(ct);
-    }
-}
+| Archivo | Contenido | Secretos |
+|---|---|---|
+| `appsettings.json` | Compartido: `Logging`, `AllowedHosts`, `MinimumClientVersion`, `ServerVersion`, `UpdateServerUrl`, `AdminSeedUsername`, `BusinessName` | **Ninguno** |
+| `appsettings.Production.json` | Solo overrides reales de producción: `AdminSeedUsername` (`Junior`), `BusinessName` (`Inversiones Junior`) | **Ninguno** |
+| `appsettings.Development.json` | Valores de desarrollo local: `ConnectionStrings`, `AdminSeedPassword` | Dev only (aceptable en local) |
 
-// 3) Aplicar migraciones (crea el esquema y __EFMigrationsHistory).
-await db.Database.MigrateAsync(ct);
-```
+### Reglas
 
-> `MigrateAsync` sobre Npgsql crea la BD si no existe, pero conviene el paso 2 explícito para que el mensaje de error sea claro cuando las credenciales fallan.
+- **Una sola fuente por valor.** Si un valor es idéntico en todos los entornos, vive solo en `appsettings.json`; los archivos de entorno no lo repiten.
+- **Los secretos nunca van en `appsettings.json` ni en `appsettings.Production.json`.** Van en variables de entorno del proceso (producción) o en `appsettings.Development.json` (desarrollo local).
+- `UpdateServerUrl` hoy apunta a `localhost:5000` en todos los entornos. Si producción llegara a usar un servidor de actualizaciones remoto, ese es el valor que debe sobrescribirse **solo** en `appsettings.Production.json`.
 
-### 2.2 Seed del admin — contraseña desde configuración/env y cambio obligatorio
+### Variables de entorno requeridas en producción
 
-**Problema actual:** la contraseña semilla viene de `AdminSeedPassword` en config; si la clave falta (tras quitarla de los JSON), el seed puede crear un usuario roto.
+El servicio `PosBackendService` (registrado con NSSM) necesita estas variables. Sin ellas, el backend no tiene credenciales de base de datos ni contraseña semilla:
 
-**Cambio:**
-1. En el código del seed, leer la contraseña solo desde `IConfiguration` (la variable de entorno `SystemSettings__AdminSeedPassword` la sobreescribe automáticamente):
-   ```csharp
-   var seedPassword = config["SystemSettings:AdminSeedPassword"];
-   if (string.IsNullOrWhiteSpace(seedPassword))
-   {
-       logger.LogCritical("[ERROR CRÍTICO] Falta SystemSettings__AdminSeedPassword. " +
-           "Establezca la variable de entorno del servicio antes de arrancar.");
-       Environment.ExitCode = 1;
-       return;
-   }
-   ```
-2. Añadir `public bool MustChangePassword { get; set; }` a la entidad `User` (migración EF nueva) y marcar `MustChangePassword = true` al usuario admin creado por el seed.
+| Variable | Valor (este despliegue) | Qué configura |
+|---|---|---|
+| `ConnectionStrings__DefaultConnection` | `Host=localhost;Port=5432;Database=CommandCenterDb;Username=postgres;Password=postgres` | Cadena de conexión a PostgreSQL |
+| `SystemSettings__AdminSeedPassword` | `Admin123!` | Contraseña inicial del usuario admin (solo se usa al sembrar si el usuario no existe) |
 
-### 2.3 Login — forzar cambio de contraseña en el primer acceso
+Se guardan en el registro en `HKLM\SYSTEM\CurrentControlSet\Services\PosBackendService\Parameters\AppEnvironmentExtra` (REG_MULTI_SZ).
 
-En el controlador/servicio de autenticación (`AuthController`/`AuthService`), tras validar credenciales:
+> **Importante:** si el instalador vuelve a registrar el servicio (NSSM) durante una actualización, estas variables se pierden y hay que volver a establecerlas. Si el arranque falla con "las credenciales son incorrectas", revisa primero que las variables estén presentes.
 
-```csharp
-if (user.MustChangePassword)
-{
-    return StatusCode(403, new
-    {
-        requiresPasswordChange = true,
-        message = "Debe cambiar su contraseña antes de continuar."
-    });
-}
-```
-
-Nuevo endpoint (no emite token hasta que se complete el cambio):
-
-```csharp
-[HttpPost("change-password")]
-public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req)
-{
-    var user = await _userService.GetByUsernameAsync(req.Username);
-    if (user is null || !VerifyPassword(req.CurrentPassword, user.PasswordHash))
-        return Unauthorized(new { message = "Usuario o contraseña actual incorrectos." });
-
-    user.PasswordHash = HashPassword(req.NewPassword);
-    user.MustChangePassword = false;
-    await _userService.UpdateAsync(user);
-    return Ok(new { message = "Contraseña actualizada." });
-}
-```
-
-### 2.4 Cliente WPF (`Desktop.Client`) — flujo de cambio de contraseña
-
-- Si el login responde `403` con `requiresPasswordChange = true`, abrir un diálogo "Cambiar contraseña" (actual + nueva) en lugar de mostrar la ventana principal.
-- Llamar a `POST /api/auth/change-password` y, al obtener 200, reintentar el login con la nueva contraseña.
-- Mantener la resiliencia ya existente (reintentos + sondeo de `/health`).
-
-### 2.5 `appsettings.*` en el repositorio fuente
-
-Aplicar la misma estructura que en el despliegue (ver `README.md`):
-- `appsettings.json`: solo valores compartidos, **sin secretos**.
-- `appsettings.Production.json`: solo `AdminSeedUsername` y `BusinessName`.
-- `appsettings.Development.json`: cadena de conexión y `AdminSeedPassword` de desarrollo.
-- Los secretos de producción se inyectan como variables de entorno del servicio.
-
-## 3. Pasos de instalación en una máquina nueva
+## 4. Pasos de instalación en una máquina nueva
 
 1. **Prerrequisitos:** PostgreSQL 18 con usuario `postgres` y contraseña conocida; runtime .NET compatible (el que use el build).
 2. **Abrir los puertos en el firewall** (permite que dispositivos externos de la red local accedan al backend; consola elevada):
@@ -161,7 +89,7 @@ Aplicar la misma estructura que en el despliegue (ver `README.md`):
    La primera vez, el backend crea la BD (con los cambios de §2.1), aplica migraciones y siembra el admin (que exigirá cambio de contraseña, §2.2–2.3).
 7. **Instalar el cliente** en el/los equipos de caja apuntando a `http://localhost:5000` (o la IP del servidor; para ello el firewall del paso 2 debe estar aplicado).
 
-## 4. Checklist de verificación
+## 5. Checklist de verificación
 
 | # | Prueba | Esperado |
 |---|---|---|
@@ -174,7 +102,7 @@ Aplicar la misma estructura que en el despliegue (ver `README.md`):
 | 7 | `BackendAPI/logs/start.log` | "Database Connection successful", "Migrations applied", sin errores críticos |
 | 8 | Reiniciar el servicio con PostgreSQL detenido | El proceso **aborta** con mensaje claro (con §2.1), no arranca en falso |
 
-## 5. Sugerencias adicionales
+## 6. Sugerencias adicionales
 
 - **Auto-crear la BD** (§2.1) elimina de raíz el incidente 503 de esta semana: la instalación pasa a ser "copiar, registrar, arrancar".
 - **Rotar `Admin123!`** en producción: al estar el cambio de contraseña forzado (§2.2–2.3), el valor inicial deja de ser una exposición permanente.

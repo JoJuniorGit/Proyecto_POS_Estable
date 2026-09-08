@@ -265,17 +265,22 @@ public class AuthController : ControllerBase
         }
 
         // 4. Actualización atómica/transaccional de credenciales y regeneración de SecurityStamp
-        await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync() : null;
-        user.AccessFailedCount = 0;
-        user.LockoutEndUtc = null;
-        user.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
-        user.MustChangePassword = false;
-        user.SecurityStamp = Guid.NewGuid().ToString("N");
-        await _db.SaveChangesAsync();
-        if (tx != null)
+        // 8.16-H02: la transacción manual debe vivir DENTRO de CreateExecutionStrategy().ExecuteAsync(),
+        // de lo contrario NpgsqlRetryingExecutionStrategy lanza InvalidOperationException en producción.
+        await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            await tx.CommitAsync();
-        }
+            await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync() : null;
+            user.AccessFailedCount = 0;
+            user.LockoutEndUtc = null;
+            user.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
+            user.MustChangePassword = false;
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            await _db.SaveChangesAsync();
+            if (tx != null)
+            {
+                await tx.CommitAsync();
+            }
+        });
 
         _stampValidator?.InvalidateUserStamp(user.Id);
         AppLogger.LogSecurityAudit($"[PASSWORD_CHANGED] UserId={user.Id}, Username={user.Username}, Timestamp={DateTime.UtcNow:O}");

@@ -103,13 +103,14 @@ public class ProductsController : ControllerBase
             var created = await _inventoryService.CreateProductAsync(product);
             return CreatedAtAction(nameof(GetById), new { id = created.Id }, MapToDto(created));
         }
-        catch (System.UnauthorizedAccessException unEx)
+        catch (System.UnauthorizedAccessException)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
+            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "No tiene permisos para realizar esta operación.");
         }
-        catch (System.InvalidOperationException ex)
+        catch (System.InvalidOperationException)
         {
-            return BadRequest(ex.Message);
+            // 8B-M8: no filtrar ex.Message al cliente; el detalle queda en el log del servidor.
+            return BadRequest("La operación no pudo completarse: los datos enviados no son válidos.");
         }
     }
 
@@ -159,17 +160,18 @@ public class ProductsController : ControllerBase
             await _inventoryService.UpdateProductAsync(existing);
             return NoContent();
         }
-        catch (System.UnauthorizedAccessException unEx)
+        catch (System.UnauthorizedAccessException)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
+            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "No tiene permisos para realizar esta operación.");
         }
         catch (System.Collections.Generic.KeyNotFoundException)
         {
             return NotFound();
         }
-        catch (System.InvalidOperationException ex)
+        catch (System.InvalidOperationException)
         {
-            return BadRequest(ex.Message);
+            // 8B-M8: no filtrar ex.Message al cliente; el detalle queda en el log del servidor.
+            return BadRequest("La operación no pudo completarse: los datos enviados no son válidos.");
         }
     }
 
@@ -502,6 +504,17 @@ public class StatusUpdateDto
         if (!_currentUserService.CanMutateCatalog)
         {
             return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "El rol Cajero no tiene permisos para realizar importaciones.");
+        }
+        // 8I-M3: tope de lote en el endpoint (la validación fina por fila ocurre en el servicio,
+        // sin confiar en dto.IsValid del cliente).
+        const int maxBatch = 5000;
+        if (request == null || request.Products == null || request.Products.Count == 0)
+        {
+            return BadRequest(new { message = "La solicitud de importación no contiene productos." });
+        }
+        if (request.Products.Count > maxBatch)
+        {
+            return BadRequest(new { message = $"El lote de importación excede el máximo permitido ({maxBatch} productos)." });
         }
         try
         {

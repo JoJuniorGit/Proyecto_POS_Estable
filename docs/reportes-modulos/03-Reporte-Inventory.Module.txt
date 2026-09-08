@@ -187,3 +187,89 @@ Cruce con docs/reporte.txt §13 (Rev. 8.4):
 ===============================================================================
 FIN DEL REPORTE Inventory.Module — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================
+=================================================================================
+7. ADENDA REV. 8.12 — VERIFICACION POST-OLAS S1..S4.2 (HEAD 84e3f84)
+=================================================================================
+Metodo: verificacion linea a linea contra el arbol actual (2026-09-08).
+
+CAMBIOS DE ESTADO (hallazgos previos de este modulo):
+  - [8.2-A1] (xmin) -> ✅ RESUELTO en fase6: InventoryDbContext.cs:119 IsRowVersion()
+    + :126 Property<uint>("xmin"); migracion 20260906171036.
+  - [8I-CR2]/[8.2-M4] (reservas sin expiracion) -> ✅ RESUELTO: ReservationExpiryJob
+    + migracion 20260906100000_AddStockReservationExpiryIndex.
+  - [8I-CR1] (HoldOrders no atomico) -> ✅ RESUELTO (EnrollInTransactionAsync).
+  - [8.2-A3] (handler con IsCashAdvance) -> ✅ RESUELTO (snapshot filtrado).
+  - [8.2-M1] (OR Variante en idempotencia) -> ✅ RESUELTO: matcheo exacto con suffix
+    "| {reason}" (InventorySaleMadeEventHandler.cs:62-64).
+  - [8I-M1] (reservas check-then-act) -> ✅ RESUELTO: ExecuteUpdate condicional
+    (StockDeduction.cs:236,277).
+  - [8I-M7] (indices faltantes) -> ✅ RESUELTO (IX_StockMovements_MovementDate :107 y
+    IX_StockReservations_ReferenceId :142 + migracion 20260907025800).
+  - [8I-M5] (conexion sin restaurar) -> ✅ RESUELTO (8.7-B7 restaura la conexion).
+  - [8I-M3] (import confia en dto.IsValid) -> ❌ VIGENTE: ImportExport.cs:24,36 siguen
+    usando dto.IsValid (ProductImportDto.cs:39 default true).
+  - [8I-M4] (2 queries por item) -> 🟡 PARCIAL: carga en 1 query (IN), pero el update
+    sigue ExecuteUpdateAsync por item (StockDeduction.cs:81,97) + relectura.
+  - [8I-M10] (unitStr ignorado) -> ❌ VIGENTE (ImportExport.cs:484).
+  - [8I-M8]/[8I-M11]/[8I-M12] -> ❌ VIGENTES (sin cambios desde 8.2).
+
+HALLAZGOS NUEVOS 8.12 EN ESTE MODULO (el mas afectado de los 11):
+  - [8.12-B1] ALTO — La lista de migraciones huerfanas de Rev 8.11 (7) esta INCOMPLETA:
+    este modulo aporta 3 MAS sin atributo [Migration] ni Designer:
+    * 20260809145500_RemoveIsServiceFromProducts: nunca elimina la columna IsService
+      (creada por 20260313043623, que SI se aplica) -> columna muerta en BD legacy.
+    * 20260822120000_AlterInventoryQuantitiesToNumeric: COMPENSADA de facto por
+      AddProductVariantsFinal + bloque legacy (Program.cs:595-650) -> sin impacto
+      funcional, duplica logica.
+    * 20260831120000_AddProductVariants: COMPENSADA por AddProductVariantsFinal
+      (20260831204333, con atributo, mismas columnas/indices/FK).
+    Mecanismo confirmado en EF Core 10.0.4 (MigrationsAssembly.cs:91-95: id==null ->
+    warning + continue). Total real de huerfanas: 10 (7 Sales + 3 Inventory).
+=================================================================================
+================================================================================
+ADENDA REV. 8.13 (OLA DE REMEDIACION TOTAL)
+================================================================================
+- [8.12-B1] -> ✅ RESUELTO en este modulo: RemoveIsServiceFromProducts reactivada
+  ([Migration]+[DbContext], guard information_schema; en BD legacy elimina la
+  columna muerta IsService, en BD fresca la crea la migracion base y esta la
+  elimina -> modelo coincide). AlterInventoryQuantitiesToNumeric reactivada
+  (numeric(18,3) con guard de precision/escala). AddProductVariants ELIMINADA
+  (duplicada por AddProductVariantsFinal).
+- [8I-M3] import confia en dto.IsValid -> ✅ RESUELTO: validacion EN SERVIDOR
+  IsImportable() (SKU regex ^[A-Za-z0-9\-_]{1,50}$, nombre <=200, montos >=0);
+  tope MaxImportBatchSize=5000 en servicio y 400 en ProductsController
+  bulk-import.
+- [8I-M10] ResolveUnitOfMeasure ignora unitStr -> ✅ RESUELTO: mapeo por texto
+  (kg/kilos/g/gr/lb/oz/l/lt/ml/und/pza...); el flag booleano es respaldo.
+- [8I-M3b] Smoke 8.12-M1 verifica que Products.IsService NO existe tras
+  MigrateAsync real.
+- [8I-M4/M5/M12, 8.2-M4] -> ❌ VIGENTES (siguiente sprint).
+
+================================================================================
+ADENDA REV. 8.14 (RE-VERIFICACION 8.13 + HALLAZGOS NUEVOS)
+================================================================================
+- VIGENCIA 8.13 confirmada: RemoveIsServiceFromProducts y
+  AlterInventoryQuantitiesToNumeric con [DbContext]+[Migration] y guards;
+  AddProductVariants eliminada; IsImportable() + MaxImportBatchSize=5000;
+  ResolveUnitOfMeasure mapea unitStr.
+- [8.14-N4] BAJO — las 2 migraciones reactivadas de Inventory no tienen
+  .Designer.cs (metadata de diseno perdida; snapshot vigente).
+- [8.14-N5] INFO — dotnet-ef 10.0.3 vs runtime EF 10.0.4.
+- ABIERTOS confirmados: [8I-M4/M5/M12], [8.2-M4] reservas sin tope agregado.
+
+ADENDA REV. 8.15 (OLA DE CORRECCION TOTAL — estados actualizados)
+================================================================================
+- [8I-M4] UpdateStockBatchAsync 2 queries/ítem -> ✅ RESUELTO: relectura
+  batch unica (WHERE Id IN) al final del lote (StockDeduction.cs);
+  1 ExecuteUpdate + 1 query en vez de 2 queries por producto.
+- [8I-M8] CSV export -> ✅ RESUELTO: EscapeCsvField neutraliza NUL y
+  espacios iniciales ademas de = + - @ \t \r.
+- [8I-M2] invalida claves SKU/quick -> ✅ VERIFICADO RESUELTO (8.7-L5).
+- [8I-M5] restaura conexion -> ✅ VERIFICADO RESUELTO (DetachFromTransaction).
+- [8I-M12] StockMovement.UserId -> ✅ VERIFICADO RESUELTO (StockDeduction.cs:130).
+- [8.2-M4] tope de reservas -> ✅ VERIFICADO RESUELTO (10 activas por usuario).
+- [8I-M6] handler batch -> ✅ VERIFICADO (8.7-B4); retry defensivo conservado.
+- Pendiente: 8.14-N4 (Designers en migraciones reactivadas).
+
+FIN DEL REPORTE Inventory.Module — ADENDA REV. 8.15
+=================================================================================

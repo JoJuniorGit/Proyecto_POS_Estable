@@ -222,9 +222,10 @@ public class NetworkDiscoveryService : INetworkDiscoveryService
                 primaryCandidate.IsPrimary = true;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Silenciosamente retornar lo que se haya podido recopilar
+            // 8B-B4: catch vacío convertido en aviso (se devuelve lo recopilado hasta el fallo).
+            Core.Logging.AppLogger.LogWarn($"[NETWORK_DISCOVERY] Error recopilando interfaces de red: {ex.Message}");
         }
 
         return results;

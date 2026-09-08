@@ -20,7 +20,7 @@ public interface ISalesService
     Task CancelSaleAsync(int saleId);
     Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<PaymentInfo> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleHistoryDto> ConfirmPickupAsync(int saleId);
-    Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync(int? cashierId = null);
+    Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync(int? cashierId = null, int limit = 200, int offset = 0);
     Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, System.DateTime? startDate, System.DateTime? endDate, string? search = null, int? cashierId = null);
     Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId);
 
@@ -28,7 +28,13 @@ public interface ISalesService
     Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null);
     Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false);
     Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null);
-    Task<IEnumerable<SaleDto>> GetPendingSalesAsync(int? cashierId = null);
+    Task<IEnumerable<SaleDto>> GetPendingSalesAsync(int? cashierId = null, int limit = 200, int offset = 0);
+
+    /// <summary>8.14-N1: total de ventas OnHold para paginación de UI.</summary>
+    Task<int> CountPendingSalesAsync(int? cashierId = null);
+
+    /// <summary>8.14-N1: total de retiros pendientes para paginación de UI.</summary>
+    Task<int> CountPendingPickupsAsync(int? cashierId = null);
     Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId);
     Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(string? query = null, int page = 1, int pageSize = 20, bool recentOnly = false);
 

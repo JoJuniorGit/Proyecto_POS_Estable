@@ -189,3 +189,87 @@ Cruce con docs/reporte.txt §13 (Rev. 8.4):
 ===============================================================================
 FIN DEL REPORTE Web.Frontend — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================
+=================================================================================
+7. ADENDA REV. 8.12 — VERIFICACION POST-OLAS S1..S4.2 (HEAD 84e3f84)
+=================================================================================
+Metodo: re-ejecucion de la suite (75/75, oxlint 0/0) y verificacion contra el arbol
+actual (2026-09-08).
+
+CAMBIOS DE ESTADO (hallazgos previos de este modulo):
+  - [8.2-CR1] (useRef faltante) -> ✅ RESUELTO: CheckoutModal.jsx:1 importa useRef y
+    resetea checkoutKeyRef en 'Descartar y Salir'.
+  - [8W-ZT] (preview canonico) -> ✅ RESUELTO DE VERDAD (la 8.4 lo declaro atribucion
+    falsa): CheckoutModal.jsx:29-30,154,157 consume el preview del backend sin
+    fallback local de redondeo (verificado en 8.12).
+  - [8.2-M6] (Idempotency-Key hold/abonos) -> ✅ RESUELTO (la SPA envia la clave y el
+    backend ahora la valida en /hold y /payments; cross 04).
+  - [8.2-M7]/[8.2-M8] (races y montos digitados) -> ✅ RESUELTOS (cartRequestIdRef;
+    deps estables).
+  - [8.2-B6]/[8.2-B7] (a11y y window.confirm/alert) -> ✅ RESUELTOS (Modal compartido
+    con focus trap; ConfirmModal; 0 alert/confirm nativos).
+  - [8.4-N3] (PartialPaymentModal) -> ✅ RESUELTO (migrado al Modal compartido +
+    validacion de referencia; 8.7-M13).
+  - [8.4-N1] (Bearer/localStorage muerto) -> 🟡 PARCIAL: api.js:279 conserva solo el
+    removeItem('pos_token') (higiene menor); AuthContext guarda pos_user (PII) en
+    localStorage con sello de 24 h (8.9-L12).
+  - [8.4-N5] (test estatico de CheckoutModal) -> ❌ VIGENTE: sigue leyendo el fuente
+    con fs.readFileSync; no es un montaje real.
+  - [8W-B1]/[8W-B2]/[8W-B3] (hotkeys, CSP, PWA) -> 🟡/❌ VIGENTES (H5: hotkeys globales
+    F5/F1-F12; CSP connect-src sin host; service worker puede cachear /api/*).
+  - [8.4-N6] (ExchangeRateContext global) -> ❌ VIGENTE.
+
+HALLAZGOS NUEVOS 8.12 RELACIONADOS:
+  - [8.12-M1] El WebApplicationFactorySmokeTests (Web.Frontend no participa, pero su
+    backend si) solo valida /openapi/v1.json y una ruta 404: una BD fresca con
+    divergencias como 8.12-B2 (numeric 18,2 vs modelo 18,4) pasaria verde. El SPA
+    heredaria montos redondeados a 2 decimales en instalaciones frescas.
+  - [8.12-B2] Impacto visible en la UI: subtotales/precios Bs.S calculados con 4
+    decimales (Pricing.cs) se redondean en BD fresca -> el preview canonico del
+    backend devolveria montos distintos entre instalaciones legacy y frescas.
+=================================================================================
+================================================================================
+ADENDA REV. 8.13 (OLA DE REMEDIACION TOTAL)
+================================================================================
+- [8W-B1] hotkeys sin gating -> ✅ VERIFICADO YA RESUELTO: usePosHotkeys.js
+  aplica gating por activeModal (bloquea F1-F8 y +,-,Delete con modal abierto)
+  y PosPage.jsx:61 le pasa activeModal.
+- [8W-B2] CSP -> ✅ RESUELTO: SecurityHeadersMiddleware.cs agrega base-uri
+  'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none';
+  font-src 'self' (strict-dynamic pendiente de infra de nonces).
+- [8W-B3] PWA caches /api -> ✅ N/A VERIFICADO: NO existe service worker ni
+  registro PWA en Web.Frontend (sin vite-plugin-pwa, sw.js ni registerSW).
+- [8W-ZT] -> ✅ (8.12); [8.4-N5/N6, 8W-B1..B3 historicos] -> ❌ VIGENTES.
+
+================================================================================
+ADENDA REV. 8.14 (RE-VERIFICACION 8.13 + HALLAZGOS NUEVOS)
+================================================================================
+- [8.14-N1] MEDIO (lado web) — las paginas PendingOrdersPage/PendingPickupsPage
+  no envian ?limit ni pagina: con el cap servidor 200, el excedente queda
+  invisible. Pendiente: paginacion de UI.
+- [W1] CONFIRMADO ABIERTO: api.js/CheckoutContext.jsx no envian Idempotency-Key
+  -> el checkout web no tiene proteccion de replay (solo Desktop).
+- [W2] formato de moneda dual (CurrencyFormatContext + formatters.js con
+  toFixed float) -> ❌ VIGENTE.
+- [8W-B1/B2/B3] -> ✅ (8.13); [8.4-N5/N6] -> ❌ VIGENTES.
+
+ADENDA REV. 8.15 (OLA DE CORRECCION TOTAL — estados actualizados)
+================================================================================
+- [8.4-N5] test estatico de CheckoutModal -> ✅ RESUELTO: nuevo
+  CheckoutModal.mount.test.js (montaje REAL con renderToString + providers)
+  via loader esbuild (test/esbuild-jsx-loader.mjs; npm test con --import).
+  Suite Web: 77/77 (75 + 2 nuevos).
+- [W1] Idempotency-Key -> ✅ VERIFICADO RESUELTO (la 8.14 lo declaro abierto
+  por error): CheckoutModal.jsx genera clave estable por intento
+  (createCheckoutKeyHolder) y la pasa a completeSale y onCompleteSale
+  (PendingOrdersPage.jsx:475-485); salesApi.js envia el header en
+  holdSale/addPaymentToHoldSale/completeSale.
+- [8.4-N6] ExchangeRateContext global -> ✅ RESUELTO por decision: provider
+  de App es la arquitectura prevista; el F5 roto ya fue arreglado (8.6-M1).
+- [SEC-06] ?api= -> ✅ VERIFICADO (isAllowedApiHost loopback+RFC-1918).
+- [8.14-N1] paginacion de UI -> ✅ RESUELTO: boton "Ver mas" (PAGE_SIZE 200,
+  acumula paginas) en PendingOrdersPage.jsx y PendingPickupsPage.jsx con
+  api.getWithMeta (X-Total-Count) y getPendingSalesPage/getPendingPickupsPage.
+- Pendiente: W2 (formato de moneda dual WPF/Web).
+
+FIN DEL REPORTE Web.Frontend — ADENDA REV. 8.15
+=================================================================================

@@ -118,9 +118,19 @@ export async function getCheckoutPreview(saleId, exchangeRate, payments) {
 
 /**
  * Obtiene las ventas que se encuentran en espera (OnHold / Cuentas abiertas).
+ * Devuelve el array (compatibilidad con callers existentes).
  */
 export async function getPendingSales() {
   return await api.get('/api/sales/pending');
+}
+
+/**
+ * 8.14-N1: página de ventas OnHold con totalCount (paginación de UI "ver más").
+ * @returns {Promise<{items: Array, totalCount: number}>}
+ */
+export async function getPendingSalesPage({ limit = 200, offset = 0 } = {}) {
+  const { data, totalCount } = await api.getWithMeta(`/api/sales/pending?limit=${limit}&offset=${offset}`);
+  return { items: Array.isArray(data) ? data : [], totalCount };
 }
 
 /**

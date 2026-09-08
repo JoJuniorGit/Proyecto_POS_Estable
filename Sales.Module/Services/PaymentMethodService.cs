@@ -38,7 +38,10 @@ public class PaymentMethodService : IPaymentMethodService
                 return cached;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[PaymentMethodService] Fallo al leer métodos de pago activos desde la caché; se consulta a la base de datos. {ex.Message}");
+        }
 
         var methods = await _context.PaymentMethods
             .AsNoTracking()
@@ -57,7 +60,10 @@ public class PaymentMethodService : IPaymentMethodService
                 Size = 1
             });
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[PaymentMethodService] Fallo al escribir métodos de pago activos en la caché. {ex.Message}");
+        }
 
         return result;
     }
@@ -71,7 +77,10 @@ public class PaymentMethodService : IPaymentMethodService
                 return cached;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[PaymentMethodService] Fallo al leer métodos de pago desde la caché; se consulta a la base de datos. {ex.Message}");
+        }
 
         var methods = await _context.PaymentMethods
             .AsNoTracking()
@@ -90,7 +99,10 @@ public class PaymentMethodService : IPaymentMethodService
                 Size = 1
             });
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[PaymentMethodService] Fallo al escribir métodos de pago en la caché. {ex.Message}");
+        }
 
         return result;
     }

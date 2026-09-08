@@ -190,7 +190,6 @@ public partial class InventoryService
                 ConsolidatedStock = p.IsGroupHeader
                     ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                     : p.StockQuantity,
-                RowVersion = p.RowVersion
             })
             .ToListAsync(token);
 
@@ -245,7 +244,6 @@ public partial class InventoryService
                 ConversionFactor = p.ConversionFactor,
                 GroupKey = p.GroupKey,
                 ConsolidatedStock = isStockShared ? parentStock : p.StockQuantity,
-                RowVersion = p.RowVersion
             })
             .ToListAsync();
     }
@@ -288,7 +286,6 @@ public partial class InventoryService
                 ConsolidatedStock = p.IsStockShared 
                     ? p.StockQuantity 
                     : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m),
-                RowVersion = p.RowVersion
             })
             .ToListAsync();
     }
@@ -347,7 +344,6 @@ public partial class InventoryService
                 ConversionFactor = p.ConversionFactor,
                 GroupKey = p.GroupKey,
                 ConsolidatedStock = p.StockQuantity,
-                RowVersion = p.RowVersion
             })
             .ToListAsync(token);
 
@@ -411,9 +407,13 @@ public partial class InventoryService
             }
         }
 
-        await using var tx = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync(token) : null;
-        try
+        // 8.16-H02: la transacción manual debe vivir DENTRO de CreateExecutionStrategy().ExecuteAsync()
+        // para no lanzar InvalidOperationException bajo NpgsqlRetryingExecutionStrategy en producción.
+        return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
+            await using var tx = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync(token) : null;
+            try
+            {
             foreach (var child in candidates)
             {
                 child.ParentProductId = parent.Id;
@@ -452,15 +452,16 @@ public partial class InventoryService
             Core.Logging.AppLogger.LogSecurityAudit($"[Catalog] Vinculación masiva de variantes al padre ID {parentId} ({parent.SKU}): {string.Join(", ", candidates.Select(c => $"{c.Id}:{c.SKU}"))} por usuario: {_currentUserService?.UserId ?? "System"}");
 
             return await GetVariantOptionsAsync(parentId);
-        }
-        catch (Exception)
-        {
-            if (tx != null)
-            {
-                await tx.RollbackAsync(token);
             }
-            throw;
-        }
+            catch (Exception)
+            {
+                if (tx != null)
+                {
+                    await tx.RollbackAsync(token);
+                }
+                throw;
+            }
+        });
     }
 
     public async Task<Core.DTOs.ProductDto> UnlinkVariantAsync(int parentId, int variantId, System.Threading.CancellationToken token = default)
@@ -547,7 +548,6 @@ public partial class InventoryService
             ConversionFactor = variant.ConversionFactor,
             GroupKey = variant.GroupKey,
             ConsolidatedStock = variant.StockQuantity,
-            RowVersion = variant.RowVersion
         };
     }
 }

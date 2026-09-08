@@ -116,3 +116,80 @@ Métricas re-ejecutadas por el auditor en esta revisión (cruce con reporte.txt 
 ===============================================================================
 FIN DEL REPORTE CommandCenter.Tests — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================
+=================================================================================
+7. ADENDA REV. 8.12 — RE-EJECUCION EMPIRICA POST-OLAS S1..S4.2 (HEAD 84e3f84)
+=================================================================================
+Metricas re-ejecutadas por el auditor HOY (2026-09-08):
+  - Suite .NET: 696 / 696 superadas (0 fallos, 0 omitidos, ~12 s)
+    (695 de la Rev 8.11 + 1 test nuevo: OutboxProcessorJob_WithRetryingStrategy_).
+  - Suite Web: 75 / 75 superadas (~616 ms).
+  - Total: 771 / 771 sin regresiones. oxlint 0/0 (93 archivos).
+
+CAMBIOS DE ESTADO (hallazgos previos de este modulo):
+  - [8.6-B6] (sin WebApplicationFactory) -> ✅ RESUELTO: WebApplicationFactorySmokeTests
+    arranca el pipeline real contra BD aislada pos_smoke_test (env Development).
+  - [8.9-L2] (silent-pass) -> 🟡 DOCUMENTADO: local -> return; en CI (GITHUB_ACTIONS)
+    -> throw accionable (PostgresRealIntegrationTests.cs:54-63).
+  - [8.9-L1] (Assert.True(true)) -> ✅ RESUELTO (Record.Exception + asserts reales).
+  - [8.9-L4] (NoWarn NU1903) -> ✅ RESUELTO (SQLitePCLRaw fijado en 2.1.12).
+  - [8.9-L5] (CI sin build web ni gate cobertura) -> ✅ RESUELTO: ci.yml con npm run
+    build + scripts/check-coverage.py (Core>=0.70; Sales>=0.19; Inventory>=0.14
+    baselines anti-regresion; deuda al 70% documentada).
+  - [8.4-N5] (CheckoutModal.test.js estatico) -> ❌ VIGENTE: sigue fs.readFileSync,
+    sin montaje jsdom real.
+  - PostgresRealSharedTransaction: ✅ comparte UNA conexion fisica NpgsqlConnection
+    entre SalesDbContext e InventoryDbContext (84e3f84).
+
+HALLAZGOS NUEVOS 8.12 EN ESTE MODULO:
+  - [8.12-M1] MEDIO — Los smoke tests NO validan el esquema: solo /openapi/v1.json
+    (200 o 404) y una ruta 404 (WebApplicationFactorySmokeTests.cs:45-70); ninguna
+    query contra la BD recien migrada. Una instalacion fresca con divergencias (B2:
+    numeric 18,2 vs 18,4; B3: sin indices GIN) pasa verde. Anadir SELECT COUNT(*) de
+    PaymentMethods o SELECT 1.
+  - [8.12-L1] BAJO — El test nuevo OutboxProcessorJob_WithRetryingStrategy_Processes
+    PendingMessage (PostgresRealIntegrationTests.cs:48-109) hace silent-pass local:
+    el conteo 696 incluye un no-ejecutado sin TEST_POSTGRES_CONNECTION (reales
+    ejercitados localmente: 695).
+  - [8.12-L2] BAJO — Los tests de outbox sobre InMemory no reproducen SKIP LOCKED ni
+    Take(20) (rama no-Npgsql del job).
+=================================================================================
+================================================================================
+ADENDA REV. 8.13 (OLA DE REMEDIACION TOTAL)
+================================================================================
+- Metricas re-ejecutadas hoy: .NET 700/700 (696 + 3 clamp PasswordHasher +
+  1 smoke esquema), Web 75/75, oxlint 0/0.
+- [8.12-M1] -> ✅ RESUELTO: nuevo test MigratedSchema_MatchesModel_OnRealDatabase
+  (WebApplicationFactorySmokeTests) ejecuta MigrateAsync real contra la BD
+  smoke aislada (pos_smoke_test) y valida 5 puntos de esquema: Subtotal scale>=4
+  (B2), DisplayOrder existe (M3/B1), Products.IsService NO existe (B1),
+  ix_users_username_lower existe, factura_number_seq existe. Silent-pass sin
+  TEST_POSTGRES_CONNECTION (convencion PostgresReal*).
+- [8.12-L1] test outbox silent-pass -> 🟡 PARCIAL (mantiene convencion; el nuevo
+  smoke si ejercita MigrateAsync cuando hay Postgres).
+- [TST-1/3] -> 🟡 VIGENTES (siguiente sprint).
+
+================================================================================
+ADENDA REV. 8.14 (RE-VERIFICACION 8.13 + HALLAZGOS NUEVOS)
+================================================================================
+- [8.14-N3] BAJO — pos_smoke_test con nombre fijo: dos CI/jobs concurrentes
+  contra el mismo Postgres comparten la BD smoke -> posible colision. Fix
+  recomendado: sufijar por run id / env var.
+- [8.12-M1] SIN CARRERA verificado: los 3 tests de WebApplicationFactorySmokeTests
+  estan en la misma clase (secuencial dentro de clase) y pos_smoke_test solo lo
+  usan esos tests (PostgresReal* usan TEST_POSTGRES_CONNECTION verbatim).
+- Metricas re-verificadas: .NET 700/700, Web 75/75, oxlint 0/0.
+- [8.14-N5] INFO — dotnet-ef 10.0.3 vs runtime EF 10.0.4 (CI tool).
+
+ADENDA REV. 8.15 (OLA DE CORRECCION TOTAL — estados actualizados)
+================================================================================
+- [8.14-N3] pos_smoke_test nombre fijo -> ✅ RESUELTO: SmokeDatabaseName
+  sufijado con SMOKE_DB_SUFFIX (pos_smoke_<suffix>; default pos_smoke_test).
+- [8.4-N5] test estatico de CheckoutModal -> ✅ RESUELTO: CheckoutModal.mount
+  .test.js con montaje real (renderToString) via esbuild loader; suite Web
+  77/77.
+- [8.12-L2] rama InMemory del outbox -> ✅ VERIFICADO (Take(20) presente;
+  SKIP LOCKED es de PostgreSQL).
+- Metricas re-ejecutadas: .NET 700/700, Web 77/77, oxlint 0/0.
+
+FIN DEL REPORTE CommandCenter.Tests — ADENDA REV. 8.15
+=================================================================================

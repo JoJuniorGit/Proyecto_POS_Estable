@@ -72,9 +72,9 @@ public partial class SalesService : ISalesService
                            ?? await _context.Customers.FirstOrDefaultAsync(c => c.Id == 1);
         
         if (defaultCustomer == null)
-            throw new InvalidOperationException("Default customer not found in system configuration. Ensure database is properly seeded.");
+            throw new InvalidOperationException("Cliente por defecto no encontrado en la configuración del sistema. Verifique que la base de datos esté correctamente sembrada.");
 
-        var _sale = new Sale
+        var sale = new Sale
         {
             Date = DateTime.UtcNow,
             Status = SaleStatus.Pending,
@@ -85,20 +85,20 @@ public partial class SalesService : ISalesService
             DeliveryStatus = SaleDeliveryStatus.PendingPickup
         };
 
-        _context.Sales.Add(_sale);
+        _context.Sales.Add(sale);
         await _context.SaveChangesAsync();
 
         // 8.5-M2: Evitar write-on-read (GetSaleAsync re-recarga/recalcula la venta con side effects).
         // La venta recién creada no tiene items ni pagos; se mapea directamente sin round-trip.
         return new SaleDto
         {
-            Id = _sale.Id,
-            Date = _sale.Date,
-            Status = _sale.Status.ToString(),
-            CashierId = _sale.CashierId,
+            Id = sale.Id,
+            Date = sale.Date,
+            Status = sale.Status.ToString(),
+            CashierId = sale.CashierId,
             CustomerName = defaultCustomer.Name,
             CustomerCedula = defaultCustomer.CedulaOrRif,
-            DeliveryStatus = _sale.DeliveryStatus.ToString(),
+            DeliveryStatus = sale.DeliveryStatus.ToString(),
             PriceListType = "Retail",
             Items = new System.Collections.Generic.List<SaleItemDto>(),
             Payments = new System.Collections.Generic.List<SalePaymentDto>()
@@ -107,13 +107,13 @@ public partial class SalesService : ISalesService
 
     public async Task<SaleDto> GetSaleAsync(int sale_id)
     {
-        var _sale = await GetSaleEntityAsync(sale_id, includeCashier: true);
+        var sale = await GetSaleEntityAsync(sale_id, includeCashier: true);
 
         // 8.7-B6: los GET no escriben. La tasa de las OnHold se recalcula en el POST de tasa
         // (RecalculateOnHoldSalesAsync) y se re-difunde por SignalR; aquí solo se lee.
 
-        await PopulateItemsMetadataAsync(_sale);
-        return MapToDto(_sale);
+        await PopulateItemsMetadataAsync(sale);
+        return MapToDto(sale);
     }
 
     private async Task<Sale> GetSaleEntityAsync(int sale_id, bool includeCashier = false)
@@ -125,12 +125,12 @@ public partial class SalesService : ISalesService
             .Include(s => s.Payments)
                 .ThenInclude(p => p.PaymentMethod);
 
-        var _sale = includeCashier
+        var sale = includeCashier
             ? await query.Include(s => s.Cashier).FirstOrDefaultAsync(s => s.Id == sale_id)
             : await query.FirstOrDefaultAsync(s => s.Id == sale_id);
 
-        if (_sale == null) throw new KeyNotFoundException($"Sale {sale_id} not found.");
-        return _sale;
+        if (sale == null) throw new KeyNotFoundException($"Sale {sale_id} not found.");
+        return sale;
     }
 
     private static decimal ValidateAndAdjustQuantity(Product? product, decimal quantity)
@@ -161,9 +161,9 @@ public partial class SalesService : ISalesService
 
     public async Task<SaleDto> AddItemAsync(int sale_id, int product_id, decimal quantity, decimal exchange_rate, decimal? custom_unit_price_usd = null, decimal? custom_unit_price_local = null, bool isPriceOverrideAuthorized = false)
     {
-        var _sale = await GetSaleEntityAsync(sale_id);
-        if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold) 
-            throw new InvalidOperationException("Cannot modify a completed sale.");
+        var sale = await GetSaleEntityAsync(sale_id);
+        if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
+            throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
         Product? product = null;
         if (_inventoryService != null)
@@ -194,153 +194,153 @@ public partial class SalesService : ISalesService
             throw new ArgumentException("La tasa de cambio debe ser mayor a cero.", nameof(exchange_rate));
         }
 
-        _sale.AppliedRate = exchange_rate;
+        sale.AppliedRate = exchange_rate;
 
-        var _existing_item = _sale.Items.FirstOrDefault(i => i.ProductId == product_id);
-        if (_existing_item != null)
+        var existingItem = sale.Items.FirstOrDefault(i => i.ProductId == product_id);
+        if (existingItem != null)
         {
-            if (custom_unit_price_usd.HasValue && _existing_item.UnitPrice != custom_unit_price_usd.Value)
+            if (custom_unit_price_usd.HasValue && existingItem.UnitPrice != custom_unit_price_usd.Value)
             {
-                 var _item = new SaleItem
+                 var item = new SaleItem
                 {
                     SaleId = sale_id,
                     ProductId = product_id,
-                    ProductName = _existing_item.ProductName,
+                    ProductName = existingItem.ProductName,
                     UnitPrice = Math.Round(custom_unit_price_usd.Value, 4),
                     UnitPriceBsS = custom_unit_price_local.HasValue ? Math.Round(custom_unit_price_local.Value, 4) : 0,
                     Quantity = quantity
                 };
-                _sale.Items.Add(_item);
+                sale.Items.Add(item);
             }
             else
             {
-                _existing_item.Quantity += quantity;
-                var _product_info = (custom_unit_price_usd.HasValue && custom_unit_price_local.HasValue)
+                existingItem.Quantity += quantity;
+                var productInfo = (custom_unit_price_usd.HasValue && custom_unit_price_local.HasValue)
                     ? null
                     : await _inventoryService!.GetProductByIdAsync(product_id);
 
-                decimal _gross_price = custom_unit_price_usd ?? _product_info?.PriceUSD ?? _existing_item.UnitPrice;
-                decimal _gross_price_bs_s = custom_unit_price_local ?? _product_info?.PriceBsS ?? _existing_item.UnitPriceBsS;
+                decimal grossPrice = custom_unit_price_usd ?? productInfo?.PriceUSD ?? existingItem.UnitPrice;
+                decimal grossPriceBsS = custom_unit_price_local ?? productInfo?.PriceBsS ?? existingItem.UnitPriceBsS;
                 
-                _existing_item.UnitPrice = Math.Round(_gross_price, 4);
-                _existing_item.UnitPriceBsS = Math.Round(_gross_price_bs_s, 4);
+                existingItem.UnitPrice = Math.Round(grossPrice, 4);
+                existingItem.UnitPriceBsS = Math.Round(grossPriceBsS, 4);
             }
         }
         else
         {
-            var _product = await _inventoryService!.GetProductByIdAsync(product_id);
-            if (_product == null) throw new KeyNotFoundException($"Product {product_id} not found.");
+            var fetchedProduct = await _inventoryService!.GetProductByIdAsync(product_id);
+            if (fetchedProduct == null) throw new KeyNotFoundException($"Product {product_id} not found.");
 
-            if (_product.IsGroupHeader)
+            if (fetchedProduct.IsGroupHeader)
             {
-                throw new InvalidOperationException($"El producto '{_product.Name}' es un grupo de variantes. Debe seleccionar una variante específica para la venta.");
+                throw new InvalidOperationException($"El producto '{fetchedProduct.Name}' es un grupo de variantes. Debe seleccionar una variante específica para la venta.");
             }
 
-            decimal _gross_price = custom_unit_price_usd ?? _product.PriceUSD;
-            decimal _gross_price_bs_s = custom_unit_price_local ?? _product.PriceBsS;
+            decimal grossPrice = custom_unit_price_usd ?? fetchedProduct.PriceUSD;
+            decimal grossPriceBsS = custom_unit_price_local ?? fetchedProduct.PriceBsS;
 
-            var _item = new SaleItem
+            var item = new SaleItem
             {
                 SaleId = sale_id,
                 ProductId = product_id,
-                ProductName = _product.Name,
-                UnitPrice = Math.Round(_gross_price, 4),
-                UnitPriceBsS = Math.Round(_gross_price_bs_s, 4),
+                ProductName = fetchedProduct.Name,
+                UnitPrice = Math.Round(grossPrice, 4),
+                UnitPriceBsS = Math.Round(grossPriceBsS, 4),
                 Quantity = quantity
             };
-            _sale.Items.Add(_item);
+            sale.Items.Add(item);
         }
 
-        await RecalculateTotalAsync(_sale);
-        ValidateHoldSaleTotal(_sale);
+        await RecalculateTotalAsync(sale);
+        ValidateHoldSaleTotal(sale);
 
         await _context.SaveChangesAsync();
-        return MapToDto(_sale);
+        return MapToDto(sale);
     }
 
     public async Task<SaleDto> RemoveItemAsync(int sale_id, int item_id, decimal exchange_rate)
     {
-        var _sale = await GetSaleEntityAsync(sale_id);
-        if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold) 
-            throw new InvalidOperationException("Cannot modify a completed sale.");
+        var sale = await GetSaleEntityAsync(sale_id);
+        if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
+            throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
-        _sale.AppliedRate = exchange_rate;
+        sale.AppliedRate = exchange_rate;
 
-        var _item = _sale.Items.FirstOrDefault(i => i.Id == item_id);
-        if (_item != null)
+        var item = sale.Items.FirstOrDefault(i => i.Id == item_id);
+        if (item != null)
         {
-            _sale.Items.Remove(_item);
-            _context.SaleItems.Remove(_item);
-            if (_sale.Items.Count == 0)
+            sale.Items.Remove(item);
+            _context.SaleItems.Remove(item);
+            if (sale.Items.Count == 0)
             {
-                _sale.Subtotal = 0;
-                _sale.SubtotalBsS = 0;
-                _sale.TotalUSD = 0;
-                _sale.TotalBsS = 0;
+                sale.Subtotal = 0;
+                sale.SubtotalBsS = 0;
+                sale.TotalUSD = 0;
+                sale.TotalBsS = 0;
             }
             else
             {
-                await RecalculateTotalAsync(_sale);
+                await RecalculateTotalAsync(sale);
             }
-            ValidateHoldSaleTotal(_sale);
+            ValidateHoldSaleTotal(sale);
             await _context.SaveChangesAsync();
         }
 
-        return MapToDto(_sale);
+        return MapToDto(sale);
     }
 
     public async Task<SaleDto> UpdateItemQuantityAsync(int sale_id, int item_id, decimal quantity, decimal exchange_rate)
     {
-        var _sale = await GetSaleEntityAsync(sale_id);
-        if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold) 
-            throw new InvalidOperationException("Cannot modify a completed sale.");
+        var sale = await GetSaleEntityAsync(sale_id);
+        if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
+            throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
-        _sale.AppliedRate = exchange_rate;
+        sale.AppliedRate = exchange_rate;
 
-        var _item = _sale.Items.FirstOrDefault(i => i.Id == item_id);
-        if (_item != null)
+        var item = sale.Items.FirstOrDefault(i => i.Id == item_id);
+        if (item != null)
         {
             if (quantity <= 0m)
             {
-                _sale.Items.Remove(_item);
-                _context.SaleItems.Remove(_item);
-                if (_sale.Items.Count == 0)
+                sale.Items.Remove(item);
+                _context.SaleItems.Remove(item);
+                if (sale.Items.Count == 0)
                 {
-                    _sale.Subtotal = 0;
-                    _sale.SubtotalBsS = 0;
-                    _sale.TotalUSD = 0;
-                    _sale.TotalBsS = 0;
+                    sale.Subtotal = 0;
+                    sale.SubtotalBsS = 0;
+                    sale.TotalUSD = 0;
+                    sale.TotalBsS = 0;
                 }
                 else
                 {
-                    await RecalculateTotalAsync(_sale);
+                    await RecalculateTotalAsync(sale);
                 }
             }
             else
             {
-                quantity = await ValidateAndAdjustQuantityForProductAsync(_item.ProductId, quantity);
-                _item.Quantity = quantity;
-                await RecalculateTotalAsync(_sale);
+                quantity = await ValidateAndAdjustQuantityForProductAsync(item.ProductId, quantity);
+                item.Quantity = quantity;
+                await RecalculateTotalAsync(sale);
             }
-            ValidateHoldSaleTotal(_sale);
+            ValidateHoldSaleTotal(sale);
             await _context.SaveChangesAsync();
         }
-        return MapToDto(_sale);
+        return MapToDto(sale);
     }
 
     public async Task CancelSaleAsync(int sale_id)
     {
-        var _sale = await GetSaleEntityAsync(sale_id);
-        if (_sale.Status == SaleStatus.Completed) 
+        var sale = await GetSaleEntityAsync(sale_id);
+        if (sale.Status == SaleStatus.Completed) 
             throw new InvalidOperationException("No se puede anular una venta que ya ha sido completada.");
-        if (_sale.Status == SaleStatus.Cancelled) 
+        if (sale.Status == SaleStatus.Cancelled) 
             throw new InvalidOperationException("La venta ya se encuentra anulada.");
-        if (_sale.Payments != null && _sale.Payments.Any()) 
+        if (sale.Payments != null && sale.Payments.Any()) 
             throw new InvalidOperationException("No se puede anular un pedido que posee abonos acumulados. Reembolse o reversa los abonos antes de anular.");
-        if (_sale.DeliveryStatus == SaleDeliveryStatus.Delivered && _sale.PickupDate.HasValue) 
+        if (sale.DeliveryStatus == SaleDeliveryStatus.Delivered && sale.PickupDate.HasValue) 
             throw new InvalidOperationException("No se puede anular un pedido que ya ha sido entregado al cliente.");
 
-        _sale.Status = SaleStatus.Cancelled;
+        sale.Status = SaleStatus.Cancelled;
         await _context.SaveChangesAsync();
         _logger?.LogInformation("Pedido #{SaleId} fue anulado exitosamente.", sale_id);
     }
@@ -363,38 +363,38 @@ public partial class SalesService : ISalesService
         return await strategy.ExecuteAsync(async () =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var _sale = await GetSaleEntityAsync(sale_id);
+            var sale = await GetSaleEntityAsync(sale_id);
 
             // Idempotency check: if sale is already completed, return existing InvoiceNumber immediately
-            if (_sale.Status == SaleStatus.Completed && _sale.InvoiceNumber.HasValue)
+            if (sale.Status == SaleStatus.Completed && sale.InvoiceNumber.HasValue)
             {
-                _logger?.LogInformation("[SalesService] Idempotency: Venta #{SaleId} ya se encontraba completada con Factura N° {InvoiceNumber}. Retornando consecutivo.", sale_id, _sale.InvoiceNumber.Value);
-                return _sale.InvoiceNumber.Value;
+                _logger?.LogInformation("[SalesService] Idempotency: Venta #{SaleId} ya se encontraba completada con Factura N° {InvoiceNumber}. Retornando consecutivo.", sale_id, sale.InvoiceNumber.Value);
+                return sale.InvoiceNumber.Value;
             }
 
-            await using var _transaction = _context.Database.IsRelational()
+            await using var transaction = _context.Database.IsRelational()
                 ? await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
                 : null;
 
-            if (_transaction != null && _inventoryService != null)
+            if (transaction != null && _inventoryService != null)
             {
-                var rawDbTx = _transaction.GetDbTransaction();
+                var rawDbTx = transaction.GetDbTransaction();
                 await _inventoryService.EnrollInTransactionAsync(rawDbTx, cancellationToken);
             }
 
             try
             {
-                if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold) 
-                    throw new InvalidOperationException("Sale is not pending or on hold.");
+                if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
+                    throw new InvalidOperationException("La venta no se encuentra en estado Pendiente o En Espera.");
 
             if (isPendingPickup)
             {
-                if (!_sale.CustomerId.HasValue)
+                if (!sale.CustomerId.HasValue)
                 {
                     throw new InvalidOperationException("Para registrar un apartado pagado (mercancía en custodia), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono).");
                 }
 
-                var cust = await _context.Customers.FindAsync(_sale.CustomerId.Value);
+                var cust = await _context.Customers.FindAsync(sale.CustomerId.Value);
                 if (cust == null || cust.IsDefault || cust.CedulaOrRif == "V-00000000" || cust.Name.StartsWith("Consumidor Final", StringComparison.OrdinalIgnoreCase) || cust.Name.StartsWith("Cliente General", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidOperationException("Para registrar un apartado pagado (mercancía en custodia), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono).");
@@ -403,7 +403,7 @@ public partial class SalesService : ISalesService
 
             if (cashierId.HasValue)
             {
-                _sale.CashierId = cashierId.Value;
+                sale.CashierId = cashierId.Value;
             }
 
             if (exchange_rate <= 0)
@@ -420,8 +420,8 @@ public partial class SalesService : ISalesService
                 contextLabel: "CompleteSale",
                 referenceId: sale_id);
 
-            _sale.AppliedRate = exchange_rate;
-            await RecalculateTotalAsync(_sale);
+            sale.AppliedRate = exchange_rate;
+            await RecalculateTotalAsync(sale);
 
             // 8.7-B2: Acotar el ajuste de redondeo a un límite operacional (refuerzo del [Range]).
             if (Math.Abs(roundingAdjustment) > 1000m)
@@ -429,14 +429,14 @@ public partial class SalesService : ISalesService
                 throw new InvalidOperationException($"Rechazo Defensivo: el ajuste de redondeo ({roundingAdjustment:F2}) excede el límite operacional de ±1000.");
             }
 
-            _sale.RoundingAdjustment = roundingAdjustment;
+            sale.RoundingAdjustment = roundingAdjustment;
 
-            decimal existingPaidUsd = _sale.Payments.Sum(p => p.Amount);
+            decimal existingPaidUsd = sale.Payments.Sum(p => p.Amount);
             decimal newPaymentsPaidUsd = payments != null 
                 ? payments.Sum(p => p.Amount > 0 ? p.Amount : (p.AmountLocal > 0 && exchange_rate > 0 ? Math.Round(p.AmountLocal / exchange_rate, 2, MidpointRounding.AwayFromZero) : 0m)) 
                 : 0m;
             decimal totalPaidUsd = Math.Round(existingPaidUsd + newPaymentsPaidUsd, 2, MidpointRounding.AwayFromZero);
-            decimal remainingBalanceUsd = Math.Round(_sale.TotalUSD - totalPaidUsd, 2, MidpointRounding.AwayFromZero);
+            decimal remainingBalanceUsd = Math.Round(sale.TotalUSD - totalPaidUsd, 2, MidpointRounding.AwayFromZero);
 
             if (isPendingPickup)
             {
@@ -445,18 +445,18 @@ public partial class SalesService : ISalesService
                     throw new InvalidOperationException("Para registrar un apartado en custodia (Mercancía Pendiente por Retirar), la venta debe estar pagada al 100% (saldo restante $0.00).");
                 }
 
-                bool isDefaultCust = _sale.CustomerId == null || _sale.Customer == null || _sale.Customer.IsDefault || (_sale.CustomerName != null && _sale.CustomerName.ToLower().Contains("consumidor final"));
+                bool isDefaultCust = sale.CustomerId == null || sale.Customer == null || sale.Customer.IsDefault || (sale.CustomerName != null && sale.CustomerName.ToLower().Contains("consumidor final"));
                 if (isDefaultCust)
                 {
                     throw new InvalidOperationException("Para registrar un apartado en custodia (Mercancía Pendiente por Retirar), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono).");
                 }
             }
 
-            var _active_session = await _cashDrawerService.GetOrCreateActiveSessionAsync(exchange_rate);
+            var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(exchange_rate);
 
-            if (!_sale.InvoiceNumber.HasValue)
+            if (!sale.InvoiceNumber.HasValue)
             {
-                _sale.InvoiceNumber = await GenerateNextInvoiceNumberAsync();
+                sale.InvoiceNumber = await GenerateNextInvoiceNumberAsync();
             }
 
             var paymentMethodsDict = new Dictionary<int, PaymentMethod>();
@@ -467,10 +467,10 @@ public partial class SalesService : ISalesService
                     .Where(pm => paymentMethodIds.Contains(pm.Id))
                     .ToDictionaryAsync(pm => pm.Id);
 
-                foreach (var _p in payments)
+                foreach (var p in payments)
                 {
-                    decimal amountUsd = _p.Amount;
-                    decimal amountLocal = _p.AmountLocal;
+                    decimal amountUsd = p.Amount;
+                    decimal amountLocal = p.AmountLocal;
 
                     if (amountUsd <= 0 && amountLocal > 0 && exchange_rate > 0)
                     {
@@ -481,13 +481,13 @@ public partial class SalesService : ISalesService
                         amountLocal = Math.Round(amountUsd * exchange_rate, 2, MidpointRounding.AwayFromZero);
                     }
 
-                    paymentMethodsDict.TryGetValue(_p.PaymentMethodId, out var _payment_method);
+                    paymentMethodsDict.TryGetValue(p.PaymentMethodId, out var paymentMethod);
 
                     // 8.6-B3: Validación pre-persistencia del método de pago: un PaymentMethodId inexistente
                     // o inactivo aborta el cobro (evita asociar pagos a configuraciones inválidas).
-                    if (_payment_method == null || !_payment_method.IsActive)
+                    if (paymentMethod == null || !paymentMethod.IsActive)
                     {
-                        throw new InvalidOperationException($"Método de pago inválido o inactivo: PaymentMethodId={_p.PaymentMethodId}. Verifique la configuración de métodos de pago.");
+                        throw new InvalidOperationException($"Método de pago inválido o inactivo: PaymentMethodId={p.PaymentMethodId}. Verifique la configuración de métodos de pago.");
                     }
 
                     // 8.7-B2: Rechazo de montos NEGATIVOS por método. Sin esta validación, un pago con
@@ -497,46 +497,46 @@ public partial class SalesService : ISalesService
                     // convierten arriba.
                     if (amountUsd < 0m || amountLocal < 0m)
                     {
-                        throw new InvalidOperationException($"La validación del método de pago (PaymentMethodId={_p.PaymentMethodId}) rechaza montos negativos. Monto USD={_p.Amount}, Monto Bs.S={_p.AmountLocal}.");
+                        throw new InvalidOperationException($"La validación del método de pago (PaymentMethodId={p.PaymentMethodId}) rechaza montos negativos. Monto USD={p.Amount}, Monto Bs.S={p.AmountLocal}.");
                     }
 
                     // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
-                    if (_payment_method != null && _payment_method.IsCash && amountLocal % 1 != 0)
+                    if (paymentMethod != null && paymentMethod.IsCash && amountLocal % 1 != 0)
                     {
                         throw new InvalidOperationException("El método de pago en efectivo solo acepta montos enteros.");
                     }
 
-                    _logger?.LogDebug("[CURRENCY CONVERSION DEBUG] Método: {Method}, Monto Bs.S: {BsS}, Tasa AppliedRate: {Rate}, Monto USD Calculado: {Usd}", _p.PaymentMethodId, amountLocal, exchange_rate, amountUsd);
+                    _logger?.LogDebug("[CURRENCY CONVERSION DEBUG] Método: {Method}, Monto Bs.S: {BsS}, Tasa AppliedRate: {Rate}, Monto USD Calculado: {Usd}", p.PaymentMethodId, amountLocal, exchange_rate, amountUsd);
 
-                    var _payment_entity = new SalePayment
+                    var paymentEntity = new SalePayment
                     {
-                        SaleId = _sale.Id,
-                        PaymentMethodId = _p.PaymentMethodId,
+                        SaleId = sale.Id,
+                        PaymentMethodId = p.PaymentMethodId,
                         Amount = Math.Round(amountUsd, 2, MidpointRounding.AwayFromZero),
                         AmountBsS = Math.Round(amountLocal, 2, MidpointRounding.AwayFromZero),
                         ExchangeRate = exchange_rate,
-                        ReferenceNumber = _p.Reference,
+                        ReferenceNumber = p.Reference,
                         CreatedAt = DateTime.UtcNow
                     };
-                    _sale.Payments.Add(_payment_entity);
+                    sale.Payments.Add(paymentEntity);
 
-                    if (amountUsd > 0 && _payment_method != null && _payment_method.IsCash)
+                    if (amountUsd > 0 && paymentMethod != null && paymentMethod.IsCash)
                     {
-                        var _cash_tx = new CashTransaction
+                        var cashTx = new CashTransaction
                         {
-                            SessionId = _active_session.Id,
+                            SessionId = activeSession.Id,
                             Type = CashTransactionType.Income,
                             Source = CashTransactionSource.SalePayment,
                             AmountUsd = amountUsd,
                             ExchangeRate = exchange_rate,
                             AmountLocal = amountLocal,
                             IsPhysicalCash = true,
-                            Description = $"Factura N° {_sale.InvoiceNumber}",
+                            Description = $"Factura N° {sale.InvoiceNumber}",
                             TransactionTime = DateTime.UtcNow,
-                            SaleId = _sale.Id,
-                            PaymentMethodId = _p.PaymentMethodId
+                            SaleId = sale.Id,
+                            PaymentMethodId = p.PaymentMethodId
                         };
-                        _context.CashTransactions.Add(_cash_tx);
+                        _context.CashTransactions.Add(cashTx);
                     }
                 }
             }
@@ -547,53 +547,53 @@ public partial class SalesService : ISalesService
             if (remainingBalanceUsd < -0.05m)
             {
                 decimal changeUsd = Math.Abs(remainingBalanceUsd);
-                if (changeUsd > 100m && changeUsd > _sale.TotalUSD)
+                if (changeUsd > 100m && changeUsd > sale.TotalUSD)
                 {
                     throw new InvalidOperationException($"El sobrepago o vuelto requerido (${changeUsd:F2} USD) excede los límites operacionales de seguridad.");
                 }
 
-                int? cashMethodId = _sale.Payments.FirstOrDefault(p => paymentMethodsDict.TryGetValue(p.PaymentMethodId, out var pm) && pm.IsCash)?.PaymentMethodId;
+                int? cashMethodId = sale.Payments.FirstOrDefault(p => paymentMethodsDict.TryGetValue(p.PaymentMethodId, out var pm) && pm.IsCash)?.PaymentMethodId;
 
                 decimal changeBsS = Math.Round(changeUsd * exchange_rate, 2, MidpointRounding.AwayFromZero);
 
                 // Ingresos cash de la venta aún en el tracker (persistidos junto con todo el cobro): se informan
                 // al chequeo de saldo para que el vuelto NO se rechace por no verlos aún en la BD.
                 decimal pendingCashIncomeBsS = _context.CashTransactions.Local
-                    .Where(t => t.SessionId == _active_session.Id
+                    .Where(t => t.SessionId == activeSession.Id
                              && t.Type == CashTransactionType.Income
                              && t.Source == CashTransactionSource.SalePayment
                              && t.IsPhysicalCash)
                     .Sum(t => t.AmountLocal);
 
                 await _cashDrawerService.RecordSaleChangeAsync(
-                    sessionId: _active_session.Id,
+                    sessionId: activeSession.Id,
                     changeUsd: changeUsd,
                     changeBsS: changeBsS,
                     exchangeRate: exchange_rate,
-                    description: $"Vuelto Factura N° {_sale.InvoiceNumber}",
-                    saleId: _sale.Id,
+                    description: $"Vuelto Factura N° {sale.InvoiceNumber}",
+                    saleId: sale.Id,
                     cashPaymentMethodId: cashMethodId,
                     pendingCashIncomeBsS: pendingCashIncomeBsS);
                 _logger?.LogInformation("[SalesService] Vuelto registrado en caja: ${ChangeUsd} USD / Bs. {ChangeBsS} para Factura N° {InvoiceNumber}",
-                    changeUsd, changeBsS, _sale.InvoiceNumber);
+                    changeUsd, changeBsS, sale.InvoiceNumber);
             }
 
             // 1. Defensive Aggregated Total Validation:
-            if (_sale.Payments.Sum(p => p.Amount) <= 0 && !_sale.IsZeroAmountOrder)
+            if (sale.Payments.Sum(p => p.Amount) <= 0 && !sale.IsZeroAmountOrder)
             {
                 throw new InvalidOperationException("Rechazo Defensivo: El total acumulado de los métodos de pago es <= 0. Se aborta el guardado local.");
             }
 
-            if (_sale.AppliedRate <= 0)
+            if (sale.AppliedRate <= 0)
             {
                 throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio AppliedRate inválida o no inicializada (<= 0).");
             }
 
             // 2. Pre-Persistence Sanitation compatible with EF Core Change Tracker:
-            var paymentsToRemove = _sale.Payments.Where(p => p.Amount == 0).ToList();
+            var paymentsToRemove = sale.Payments.Where(p => p.Amount == 0).ToList();
             foreach (var payment in paymentsToRemove)
             {
-                _sale.Payments.Remove(payment);
+                sale.Payments.Remove(payment);
             }
 
             if (remainingBalanceUsd > 0.05m)
@@ -602,19 +602,19 @@ public partial class SalesService : ISalesService
             }
 
             // Es liquidación total
-            _sale.Status = SaleStatus.Completed;
-            _sale.DeliveryStatus = isPendingPickup ? SaleDeliveryStatus.PendingPickup : SaleDeliveryStatus.Delivered;
-            _sale.Date = DateTime.UtcNow;
-            _sale.AppliedRate = exchange_rate;
-            await RecalculateTotalAsync(_sale);
-            _sale.FinalPaidAmountBsS = _sale.Payments.Sum(p => p.AmountBsS);
-            _sale.RoundingAdjustment = roundingAdjustment;
+            sale.Status = SaleStatus.Completed;
+            sale.DeliveryStatus = isPendingPickup ? SaleDeliveryStatus.PendingPickup : SaleDeliveryStatus.Delivered;
+            sale.Date = DateTime.UtcNow;
+            sale.AppliedRate = exchange_rate;
+            await RecalculateTotalAsync(sale);
+            sale.FinalPaidAmountBsS = sale.Payments.Sum(p => p.AmountBsS);
+            sale.RoundingAdjustment = roundingAdjustment;
 
             // Synchronous Stock Deduction inside Transaction (H-SAL-2 / H-INV-1 / A1)
             var productsDict = new Dictionary<int, Product>();
-            if (_inventoryService != null && _sale.Items != null)
+            if (_inventoryService != null && sale.Items != null)
             {
-                var productIds = _sale.Items.Select(i => i.ProductId).Distinct().ToList();
+                var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
                 var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
                 if (fetched != null && fetched.Count > 0)
                 {
@@ -630,7 +630,7 @@ public partial class SalesService : ISalesService
                 }
 
                 var stockDeductions = new List<StockDeductionRequest>();
-                foreach (var item in _sale.Items)
+                foreach (var item in sale.Items)
                 {
                     if (productsDict.TryGetValue(item.ProductId, out var product) && product.IsCashAdvance)
                     {
@@ -640,7 +640,7 @@ public partial class SalesService : ISalesService
                     stockDeductions.Add(new StockDeductionRequest(
                         item.ProductId,
                         -item.Quantity,
-                        $"Sale #{_sale.InvoiceNumber.Value}"));
+                        $"Sale #{sale.InvoiceNumber.Value}"));
                 }
 
                 if (stockDeductions.Count > 0)
@@ -655,14 +655,14 @@ public partial class SalesService : ISalesService
             // Transactional Outbox Message creation (A1 / H-SAL-2)
             var outboxPayload = JsonSerializer.Serialize(new
             {
-                SaleId = _sale.Id,
-                InvoiceNumber = _sale.InvoiceNumber.Value,
-                Date = _sale.Date,
-                TotalUSD = _sale.TotalUSD,
-                TotalBsS = _sale.TotalBsS,
-                CashierId = _sale.CashierId,
+                SaleId = sale.Id,
+                InvoiceNumber = sale.InvoiceNumber.Value,
+                Date = sale.Date,
+                TotalUSD = sale.TotalUSD,
+                TotalBsS = sale.TotalBsS,
+                CashierId = sale.CashierId,
                 IdempotencyKey = idempotencyKey,
-                Items = _sale.Items?.Select(i => new { i.ProductId, i.Quantity, i.UnitPrice, i.Subtotal }).ToList()
+                Items = sale.Items?.Select(i => new { i.ProductId, i.Quantity, i.UnitPrice, i.Subtotal }).ToList()
             });
 
             _context.OutboxMessages.Add(new OutboxMessage
@@ -685,18 +685,18 @@ public partial class SalesService : ISalesService
                     RequestPath = $"/api/sales/{sale_id}/complete",
                     PayloadHash = idempotencyPayloadHash,
                     StatusCode = 200,
-                    ResponseBody = JsonSerializer.Serialize(_sale.InvoiceNumber.Value),
+                    ResponseBody = JsonSerializer.Serialize(sale.InvoiceNumber.Value),
                     CreatedAtUtc = DateTime.UtcNow,
                     ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
                 });
             }
 
-            _logger?.LogInformation("[EF CORE ENTITY DEBUG] Persistiendo Sale ID: {SaleId}. Entidades SalePayment reales: {@Payments}", _sale.Id, _sale.Payments);
+            _logger?.LogInformation("[EF CORE ENTITY DEBUG] Persistiendo Sale ID: {SaleId}. Entidades SalePayment reales: {@Payments}", sale.Id, sale.Payments);
 
             await _context.SaveChangesAsync(cancellationToken);
-            if (_transaction != null)
+            if (transaction != null)
             {
-                await _transaction.CommitAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
                 // 8.7-B7: ya committeado, el InventoryDbContext vuelve a su propia conexión
                 // (el handler de evento y las operaciones posteriores no comparten la ajena).
                 if (_inventoryService != null)
@@ -705,29 +705,29 @@ public partial class SalesService : ISalesService
                 }
             }
 
-            _logger?.LogInformation("[TX_COMMIT] CorrelationId={CorrelationId}, SaleId={SaleId}, InvoiceNumber={InvoiceNumber}", correlationId, sale_id, _sale.InvoiceNumber.Value);
+            _logger?.LogInformation("[TX_COMMIT] CorrelationId={CorrelationId}, SaleId={SaleId}, InvoiceNumber={InvoiceNumber}", correlationId, sale_id, sale.InvoiceNumber.Value);
 
             try
             {
-                var _items_snapshot = (_sale.Items ?? Enumerable.Empty<SaleItem>())
+                var itemsSnapshot = (sale.Items ?? Enumerable.Empty<SaleItem>())
                     .Where(i => !productsDict.TryGetValue(i.ProductId, out var prod) || !prod.IsCashAdvance)
                     .Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity))
                     .ToList();
-                var _sale_made_event = new SaleMadeEvent(_sale.Id, _sale.Date, _items_snapshot, _sale.InvoiceNumber.Value);
-                await _mediator.Publish(_sale_made_event, cancellationToken);
+                var saleMadeEvent = new SaleMadeEvent(sale.Id, sale.Date, itemsSnapshot, sale.InvoiceNumber.Value);
+                await _mediator.Publish(saleMadeEvent, cancellationToken);
             }
             catch (Exception ex)
             {
                 _logger?.LogWarning(ex, "[SalesService] Publicación de evento secundario SaleMadeEvent falló, pero la venta y el Outbox están garantizados en base de datos.");
             }
 
-            return _sale.InvoiceNumber.Value;
+            return sale.InvoiceNumber.Value;
         }
         catch (OperationCanceledException opEx)
         {
-            if (_transaction != null)
+            if (transaction != null)
             {
-                await _transaction.RollbackAsync(System.Threading.CancellationToken.None);
+                await transaction.RollbackAsync(System.Threading.CancellationToken.None);
                 if (_inventoryService != null)
                 {
                     await _inventoryService.DetachFromTransactionAsync(System.Threading.CancellationToken.None);
@@ -738,9 +738,9 @@ public partial class SalesService : ISalesService
         }
         catch (Exception ex)
         {
-            if (_transaction != null)
+            if (transaction != null)
             {
-                await _transaction.RollbackAsync(System.Threading.CancellationToken.None);
+                await transaction.RollbackAsync(System.Threading.CancellationToken.None);
                 if (_inventoryService != null)
                 {
                     await _inventoryService.DetachFromTransactionAsync(System.Threading.CancellationToken.None);

@@ -14,14 +14,14 @@ public partial class SalesService
 {
     public async Task<SaleDto> UpdateExchangeRateAsync(int sale_id, decimal exchange_rate)
     {
-        var _sale = await GetSaleEntityAsync(sale_id);
-        if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold) 
-            throw new InvalidOperationException("Cannot modify a completed sale.");
+        var sale = await GetSaleEntityAsync(sale_id);
+        if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
+            throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
-        _sale.AppliedRate = exchange_rate;
-        await RecalculateTotalAsync(_sale);
+        sale.AppliedRate = exchange_rate;
+        await RecalculateTotalAsync(sale);
         await _context.SaveChangesAsync();
-        return MapToDto(_sale);
+        return MapToDto(sale);
     }
 
     /// <inheritdoc />

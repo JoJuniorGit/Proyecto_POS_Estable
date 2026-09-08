@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
-    "test": "node --test \"src/**/*.test.js\"",
+    "test": "node --import ./test/esbuild-jsx-loader.mjs --test \"src/**/*.test.js\"",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -21,6 +21,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "esbuild": "^0.28.2",
     "oxlint": "^1.71.0",
     "vite": "^8.1.1"
   }

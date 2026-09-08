@@ -491,63 +491,63 @@ public partial class InventoryService : IInventoryService
         ValidateProductSku(product.SKU, product.IsGroupHeader);
         ValidateAndCalculateProductPrices(product);
 
-        if (product.RowVersion == null || product.RowVersion.Length == 0)
+        // 8.16-H02: la transacción manual debe vivir DENTRO de CreateExecutionStrategy().ExecuteAsync()
+        // para no lanzar InvalidOperationException bajo NpgsqlRetryingExecutionStrategy en producción.
+        await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            product.RowVersion = existing.RowVersion;
-        }
+            await using var tx = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync() : null;
 
-        await using var tx = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync() : null;
+            _context.Entry(existing).CurrentValues.SetValues(product);
+            existing.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
 
-        _context.Entry(existing).CurrentValues.SetValues(product);
-        existing.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-
-        // If updating a parent product with HasIndependentPricing == false, propagate prices/costs to all active variants in batch
-        if (product.IsGroupHeader && !product.HasIndependentPricing)
-        {
-            if (_context.Database.IsRelational())
+            // If updating a parent product with HasIndependentPricing == false, propagate prices/costs to all active variants in batch
+            if (product.IsGroupHeader && !product.HasIndependentPricing)
             {
-                await _context.Products
-                    .Where(p => p.ParentProductId == product.Id && !p.IsDeleted)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(p => p.PriceRetailUSD, product.PriceRetailUSD)
-                        .SetProperty(p => p.PriceWholesaleUSD, product.PriceWholesaleUSD)
-                        .SetProperty(p => p.CostPriceUSD, product.CostPriceUSD)
-                        .SetProperty(p => p.ProfitMarginRetail, product.ProfitMarginRetail)
-                        .SetProperty(p => p.ProfitMarginWholesale, product.ProfitMarginWholesale)
-                        .SetProperty(p => p.HasWholesale, product.HasWholesale)
-                        .SetProperty(p => p.MinWholesaleQuantity, product.MinWholesaleQuantity)
-                        .SetProperty(p => p.PriceUSD, product.PriceRetailUSD)
-                        .SetProperty(p => p.Cost, product.CostPriceUSD)
-                        .SetProperty(p => p.ProfitPercentage, product.ProfitMarginRetail)
-                        .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
-            }
-            else
-            {
-                // In-memory or non-relational fallback
-                var variants = await _context.Products.Where(p => p.ParentProductId == product.Id && !p.IsDeleted).ToListAsync();
-                foreach (var v in variants)
+                if (_context.Database.IsRelational())
                 {
-                    v.PriceRetailUSD = product.PriceRetailUSD;
-                    v.PriceWholesaleUSD = product.PriceWholesaleUSD;
-                    v.CostPriceUSD = product.CostPriceUSD;
-                    v.ProfitMarginRetail = product.ProfitMarginRetail;
-                    v.ProfitMarginWholesale = product.ProfitMarginWholesale;
-                    v.HasWholesale = product.HasWholesale;
-                    v.MinWholesaleQuantity = product.MinWholesaleQuantity;
-                    v.PriceUSD = product.PriceRetailUSD;
-                    v.Cost = product.CostPriceUSD;
-                    v.ProfitPercentage = product.ProfitMarginRetail;
-                    v.UpdatedAt = DateTime.UtcNow;
+                    await _context.Products
+                        .Where(p => p.ParentProductId == product.Id && !p.IsDeleted)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(p => p.PriceRetailUSD, product.PriceRetailUSD)
+                            .SetProperty(p => p.PriceWholesaleUSD, product.PriceWholesaleUSD)
+                            .SetProperty(p => p.CostPriceUSD, product.CostPriceUSD)
+                            .SetProperty(p => p.ProfitMarginRetail, product.ProfitMarginRetail)
+                            .SetProperty(p => p.ProfitMarginWholesale, product.ProfitMarginWholesale)
+                            .SetProperty(p => p.HasWholesale, product.HasWholesale)
+                            .SetProperty(p => p.MinWholesaleQuantity, product.MinWholesaleQuantity)
+                            .SetProperty(p => p.PriceUSD, product.PriceRetailUSD)
+                            .SetProperty(p => p.Cost, product.CostPriceUSD)
+                            .SetProperty(p => p.ProfitPercentage, product.ProfitMarginRetail)
+                            .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
                 }
-                await _context.SaveChangesAsync();
+                else
+                {
+                    // In-memory or non-relational fallback
+                    var variants = await _context.Products.Where(p => p.ParentProductId == product.Id && !p.IsDeleted).ToListAsync();
+                    foreach (var v in variants)
+                    {
+                        v.PriceRetailUSD = product.PriceRetailUSD;
+                        v.PriceWholesaleUSD = product.PriceWholesaleUSD;
+                        v.CostPriceUSD = product.CostPriceUSD;
+                        v.ProfitMarginRetail = product.ProfitMarginRetail;
+                        v.ProfitMarginWholesale = product.ProfitMarginWholesale;
+                        v.HasWholesale = product.HasWholesale;
+                        v.MinWholesaleQuantity = product.MinWholesaleQuantity;
+                        v.PriceUSD = product.PriceRetailUSD;
+                        v.Cost = product.CostPriceUSD;
+                        v.ProfitPercentage = product.ProfitMarginRetail;
+                        v.UpdatedAt = DateTime.UtcNow;
+                    }
+                    await _context.SaveChangesAsync();
+                }
             }
-        }
 
-        if (tx != null)
-        {
-            await tx.CommitAsync();
-        }
+            if (tx != null)
+            {
+                await tx.CommitAsync();
+            }
+        });
 
         InvalidateProductSkuCache(product.SKU);
         if (product.IsGroupHeader || product.ParentProductId != null)

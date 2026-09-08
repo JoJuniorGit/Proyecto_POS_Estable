@@ -257,7 +257,6 @@ public partial class PosViewModel : ObservableObject, IDisposable
         {
             System.Diagnostics.Debug.WriteLine($"[POS] StartNewSaleAsync FAILED: {ex.GetType().Name}: {ex.Message}");
             if (_dialogService != null) _dialogService.ShowError("Sale Error", $"Error starting sale: {ex.Message}");
-            else if (Application.Current != null) MessageBox.Show($"Error starting sale: {ex.Message}", "Sale Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {

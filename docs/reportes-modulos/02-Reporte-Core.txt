@@ -126,3 +126,62 @@ Cruce con docs/reporte.txt §13 (Rev. 8.4):
 ===============================================================================
 FIN DEL REPORTE Core — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================
+=================================================================================
+7. ADENDA REV. 8.12 — VERIFICACION POST-OLAS S1..S4.2 (HEAD 84e3f84)
+=================================================================================
+Metodo: verificacion linea a linea contra el arbol actual (2026-09-08).
+
+CAMBIOS DE ESTADO (hallazgos previos de este modulo):
+  - [8.2-A1] (RowVersion bytea inerte) -> ✅ RESUELTO en fase6: InventoryDbContext.cs:119
+    IsRowVersion() + :126 Property<uint>("xmin") (xmin real de PostgreSQL); migraciones
+    20260906171036 (Inventory) y 20260906170744 (Sales). El WHERE de concurrencia ya no
+    es codigo muerto.
+  - [8C-M1]/[8C-M3] (redondeo canonico) -> ✅ RESUELTO (RoundToDigital unificado).
+  - [8.2-CR2]/[H-CORE-2] (secretos en config) -> ✅ RESUELTO: git ls-files sin
+    appsettings.Development.json ni docs/JWT_Key.md (0 resultados en 8.12).
+  - [8C-M4] (PII en logs de DeliveryService) -> ❌ VIGENTE: Logistics sigue no productivo
+    y DeliveryService.cs:36-37 conserva CustomerName + DeliveryAddress.
+  - H-CORE-1/3/6, CODE-02, DOM-VAL-01, A6, PERF-04 -> ✅ sin cambios, siguen vigentes.
+
+HALLAZGOS NUEVOS 8.12 RELACIONADOS:
+  - [8.12-B2] El modelo declara Subtotal/SubtotalBsS/UnitPrice como decimal(18,4)
+    (SalesDbContextModelSnapshot.cs:564-568,622-626) pero la migracion que expande las
+    columnas a numeric(18,4) (20260805120000) es HUERFANA (sin [Migration]) y no esta
+    compensada -> la BD fresca queda numeric(18,2). Afecta a este modulo porque el
+    contrato del dominio (PricingCalculator.RoundToDigital con 4 decimales) promete
+    precision que PostgreSQL redondea en persistencia. Ver 8.12-B2 en 04 y en
+    docs/reporte.txt.
+=================================================================================
+================================================================================
+ADENDA REV. 8.13 (OLA DE REMEDIACION TOTAL)
+================================================================================
+- [8C-M4] PII en logs -> ✅ RESUELTO: Logistics.Module/Services/DeliveryService.cs
+  ya no registra CustomerName/DeliveryAddress completos (solo Id + fragmento de
+  3 caracteres + booleano de direccion).
+- [8C-M1] PricingCalculator redondeo 2 decimales -> ❌ VIGENTE (deriva de
+  centavos en conversiones; consensuar con regla de 4 decimales).
+- [8C-M3] redondeo canonico unico -> ❌ VIGENTE (pendiente RoundToDigital en
+  hold/abono).
+
+================================================================================
+ADENDA REV. 8.14 (RE-VERIFICACION 8.13 + HALLAZGOS NUEVOS)
+================================================================================
+- Sin cambios de codigo en Core en 8.14; los fixes 8.13 que lo tocaban
+  (8C-M4 PII en DeliveryService de Logistics) siguen vigentes.
+- [8.14-N5] INFO — desfase dotnet-ef 10.0.3 vs EF runtime 10.0.4.
+- ABIERTOS confirmados: [8C-M1] PricingCalculator redondeo 2 decimales vs regla
+  de 4, [8C-M3] redondeo canonico unico RoundToDigital pendiente en hold/abono.
+
+ADENDA REV. 8.15 (OLA DE CORRECCION TOTAL — estados actualizados)
+================================================================================
+- [8C-M1] ToUSD 2 vs 4 decimales -> ✅ RESUELTO: la conversion Bs.S->USD de
+  pagos usa decimals:4 (SalesController.cs:496) manteniendo el redondeo final
+  a 2 via RoundToDigital (regla pos-financial-integrity).
+- [8C-M3] RoundToDigital en hold/abono -> ✅ VERIFICADO APLICADO
+  (SalesService.HoldOrders.cs:130).
+- [8.14-N3] pos_smoke_test con nombre fijo -> ✅ RESUELTO en tests
+  (sufijo SMOKE_DB_SUFFIX; impacto config en este modulo: nulo).
+- Sin cambios de codigo en Core en esta ola.
+
+FIN DEL REPORTE Core — ADENDA REV. 8.15
+=================================================================================

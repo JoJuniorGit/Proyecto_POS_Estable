@@ -7,12 +7,13 @@ Este documento describe la arquitectura, proceso de compilación, políticas de 
 ## 1. Compilación del Instalador
 
 ### Requisitos Previos
-1. **Inno Setup 6:** Descargar e instalar desde [jrsoftware.org](https://jrsoftware.org/isdl.php).
+1. **Inno Setup 6 o superior:** Descargar e instalar desde [jrsoftware.org](https://jrsoftware.org/isdl.php). El script `setup.iss` es compatible con Inno Setup 6 y 7.
 2. **Binarios Autónomos Publicados:** Antes de compilar el instalador, los tres proyectos deben haber sido publicados en la carpeta `publish/`:
    ```powershell
    # Desde la raíz del repositorio
    dotnet publish Backend.API/Backend.API.csproj -c Release -r win-x64 --self-contained -o publish/BackendAPI
    dotnet publish Desktop.Client/Desktop.Client.csproj -c Release -r win-x64 --self-contained -o publish/DesktopClient
+   dotnet publish UpdaterService/UpdaterService.csproj -c Release -r win-x64 --self-contained -o publish/UpdaterService
    ```
 3. **NSSM:** Debe existir `installer/nssm.exe` (Non-Sucking Service Manager v2.24 o superior). Si no existe, ejecute:
    ```powershell
@@ -22,7 +23,7 @@ Este documento describe la arquitectura, proceso de compilación, políticas de 
 ### Comando de Compilación
 Ejecutar el compilador de Inno Setup desde la raíz del proyecto:
 ```cmd
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\setup.iss
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\setup.iss    &:: Ajustar ruta si usa Inno Setup 7
 ```
 El instalador generado se ubicará en:
 `dist_installer\POS_System_Setup_v1.0.0.exe`

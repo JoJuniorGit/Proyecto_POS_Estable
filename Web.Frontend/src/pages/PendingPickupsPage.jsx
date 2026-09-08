@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getPendingPickups, confirmPickup } from '../services/pendingPickupApi';
+import { getPendingPickupsPage, confirmPickup } from '../services/pendingPickupApi';
 import { formatBsS, formatUSD, formatQuantity } from '../utils/formatters';
 import Modal from '../components/ui/Modal';
 import {
@@ -25,12 +25,19 @@ export default function PendingPickupsPage() {
   const [isConfirming, setIsConfirming] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
 
+  // 8.14-N1: paginación de UI — página actual (offset) y si hay más para el botón "Ver más".
+  const PAGE_SIZE = 200;
+  const [hasMore, setHasMore] = useState(false);
+  const [pageOffset, setPageOffset] = useState(0);
+
   const loadPickups = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getPendingPickups();
-      setPickups(data || []);
+      const { items, totalCount } = await getPendingPickupsPage({ limit: PAGE_SIZE, offset: 0 });
+      setPickups(items || []);
+      setPageOffset(items?.length || 0);
+      setHasMore(totalCount > (items?.length || 0));
     } catch (err) {
       console.error('[PendingPickupsPage] Error cargando retiros pendientes:', err);
       setError('No se pudieron cargar los pedidos pendientes por retirar.');
@@ -38,6 +45,26 @@ export default function PendingPickupsPage() {
       setLoading(false);
     }
   }, []);
+
+  // 8.14-N1: carga la siguiente página y la agrega a la lista ("Ver más").
+  const loadMore = useCallback(async () => {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { items, totalCount } = await getPendingPickupsPage({ limit: PAGE_SIZE, offset: pageOffset });
+      if (items.length > 0) {
+        setPickups(prev => [...(prev || []), ...items]);
+        setPageOffset(prev => prev + items.length);
+      }
+      setHasMore(totalCount > pageOffset + items.length);
+    } catch (err) {
+      console.error('[PendingPickupsPage] Error cargando más retiros:', err);
+      setError('No se pudieron cargar más pedidos pendientes.');
+    } finally {
+      setLoading(false);
+    }
+  }, [loading, pageOffset]);
 
   useEffect(() => {
     loadPickups();
@@ -406,6 +433,22 @@ export default function PendingPickupsPage() {
               );
             })}
           </div>
+
+          {/* 8.14-N1: botón "Ver más" para paginar la cola sin perder las ya cargadas. */}
+          {hasMore && (
+            <div className="text-center mt-3 mb-1">
+              <button
+                type="button"
+                className="btn btn-outline flex-align-center gap-2 mx-auto"
+                onClick={loadMore}
+                disabled={loading}
+                style={{ minWidth: '180px' }}
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}
+                {loading ? 'Cargando...' : 'Ver más retiros'}
+              </button>
+            </div>
+          )}
         </>
       )}
 

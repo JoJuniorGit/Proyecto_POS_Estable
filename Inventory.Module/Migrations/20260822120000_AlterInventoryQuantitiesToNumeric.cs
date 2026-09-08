@@ -1,10 +1,14 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Inventory.Module.Data;
 
 #nullable disable
 
 namespace Inventory.Module.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(InventoryDbContext))]
+    [Migration("20260822120000_AlterInventoryQuantitiesToNumeric")]
     public partial class AlterInventoryQuantitiesToNumeric : Migration
     {
         /// <inheritdoc />

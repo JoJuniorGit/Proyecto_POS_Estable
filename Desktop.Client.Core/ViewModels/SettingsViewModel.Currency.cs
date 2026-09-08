@@ -72,7 +72,6 @@ public partial class SettingsViewModel
         catch (Exception ex)
         {
             if (_dialogService != null) _dialogService.ShowError("Settings Error", $"Error al guardar formato de moneda: {ex.Message}");
-            else if (Application.Current != null) MessageBox.Show($"Error al guardar formato de moneda: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

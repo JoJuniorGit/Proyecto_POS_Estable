@@ -137,6 +137,27 @@ if (-not $existingService) {
         Log $msg "ERROR"
         throw $msg
     }
+
+    # 8U-B1: Virtual Account (SID NT SERVICE\<nombre>) en vez de LocalSystem: solo los
+    # permisos necesarios para el servicio, sin privilegios Machine-wide. La Virtual Account
+    # necesita ACL de lectura/ejecución sobre el directorio del backend.
+    try {
+        $virtualAccount = "NT SERVICE\$ServiceName"
+        & $Nssm set $ServiceName ObjectName $virtualAccount | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            # Conceder Modificar sobre el directorio del backend (lectura/ejecución de binarios
+            # + escritura de logs y certs) a la cuenta virtual. Solo esta carpeta, no Machine-wide.
+            $dirAcl = Get-Acl -Path $BackendDir
+            $vaRule = New-Object System.Security.AccessControl.FileSystemAccessRule($virtualAccount, "Modify", "ContainerInherit,ObjectInherit", "None", "Allow")
+            $dirAcl.AddAccessRule($vaRule)
+            Set-Acl -Path $BackendDir -AclObject $dirAcl
+            Log "Servicio registrado con Virtual Account (NT SERVICE\$ServiceName) y ACL sobre $BackendDir."
+        } else {
+            Log "Aviso: no se pudo fijar Virtual Account; se conserva la cuenta por defecto de NSSM." "WARN"
+        }
+    } catch {
+        Log "Aviso al configurar Virtual Account: $($_.Exception.Message)" "WARN"
+    }
 } else {
     Log "Servicio '$ServiceName' detectado. Actualizando ruta de ejecutable..."
     & $Nssm set $ServiceName Application $BackendExe | Out-Null
@@ -234,7 +255,48 @@ if ($LASTEXITCODE -ne 0) {
     throw $msg
 }
 
-# 4.1 Protección ACL del Registro (Restringir parámetros del servicio a SYSTEM y Administradores)
+# ---------------------------------------------------------------------
+# 4.1 (8U-M2) Archivo de secretos protegido (secrets.json con ACL restrictiva).
+# Los secretos viven en un archivo con ACL de solo SYSTEM/Administradores en vez de
+# exponerse por línea de comandos del servicio (AppEnvironmentExtra visible en
+# administrador de tareas / WMI). El backend lo carga con máxima precedencia.
+# ---------------------------------------------------------------------
+$secretsFile = Join-Path $BackendDir "secrets.json"
+try {
+    $secretMap = @{
+        "ConnectionStrings__DefaultConnection" = $merged["ConnectionStrings__DefaultConnection"]
+        "SystemSettings__AdminSeedPassword"   = $merged["SystemSettings__AdminSeedPassword"]
+        "JWT_SETTINGS_KEY"                     = $merged["JWT_SETTINGS_KEY"]
+        "HTTPS_CERT_PASSWORD"                  = $merged["HTTPS_CERT_PASSWORD"]
+    }
+    $secretJson = $secretMap | ConvertTo-Json -Depth 3
+    [System.IO.File]::WriteAllText($secretsFile, $secretJson, [System.Text.Encoding]::UTF8)
+    Log "Secretos escritos en $secretsFile (ACL restrictiva)."
+
+    # ACL: heredación bloqueada; SYSTEM/Administradores (FullControl) + la cuenta del
+    # servicio (8U-B1: Virtual Account) con lectura, para que el backend pueda leerlos.
+    $acl = Get-Acl -Path $secretsFile
+    $acl.SetAccessRuleProtection($true, $false)
+    $systemSid = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::LocalSystemSid, $null)
+    $adminSid = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+    $ruleSystem = New-Object System.Security.AccessControl.FileSystemAccessRule($systemSid, "FullControl", "None", "None", "Allow")
+    $ruleAdmin = New-Object System.Security.AccessControl.FileSystemAccessRule($adminSid, "FullControl", "None", "None", "Allow")
+    $acl.ResetAccessRule($ruleSystem)
+    $acl.AddAccessRule($ruleAdmin)
+    try {
+        $vaSid = (New-Object System.Security.Principal.NTAccount("NT SERVICE\$ServiceName")).Translate([System.Security.Principal.SecurityIdentifier])
+        $ruleService = New-Object System.Security.AccessControl.FileSystemAccessRule($vaSid, "Read", "None", "None", "Allow")
+        $acl.AddAccessRule($ruleService)
+    } catch {
+        # La Virtual Account aún no existe (servicio viejo o fallo previo); se ignora.
+    }
+    Set-Acl -Path $secretsFile -AclObject $acl
+    Log "ACL aplicada sobre $secretsFile (SYSTEM, Administradores y cuenta del servicio)."
+} catch {
+    Log "Aviso al crear secrets.json con ACL: $($_.Exception.Message)" "WARN"
+}
+
+# 4.1b Protección ACL del Registro (Restringir parámetros del servicio a SYSTEM y Administradores)
 try {
     $serviceRegPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName\Parameters"
     if (Test-Path $serviceRegPath) {

@@ -255,7 +255,6 @@ public partial class ProductDialogViewModel
             MinWholesaleQuantity = MinWholesaleQuantity,
             IsFractional = IsFractional,
             UnitOfMeasure = UnitOfMeasureType,
-            RowVersion = _initialProduct.RowVersion
         };
         await _dialogService.ShowVariantManagementDialogAsync(parentDto);
         await LoadMetadataAsync();

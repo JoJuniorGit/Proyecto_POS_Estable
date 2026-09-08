@@ -167,3 +167,62 @@ Cruce con docs/reporte.txt §13 (Rev. 8.4):
 ===============================================================================
 FIN DEL REPORTE Desktop.Client.Core — REV. 8.4 (RE-CONTRASTACIÓN)
 ================================================================================
+=================================================================================
+7. ADENDA REV. 8.12 — VERIFICACION POST-OLAS S1..S4.2 (HEAD 84e3f84)
+=================================================================================
+Metodo: verificacion linea a linea contra el arbol actual (2026-09-08).
+
+CAMBIOS DE ESTADO (hallazgos previos de este modulo):
+  - [8D-CR1] (TLS deshabilitado) -> ✅ RESUELTO: validacion estricta con excepcion
+    solo self-signed en loopback (ExchangeRateService.cs:55-61).
+  - [8D-A1] (hub sin auth) -> ✅ RESUELTO (AccessTokenProvider + RequireAuthorization).
+  - [8D-M2] (sync-over-async en Dispose) -> ✅ RESUELTO en S2: apagado best-effort con
+    ShutdownTimeout 3s, sin .Wait/.Result (el unico _semaphore.Wait() en :138 es un
+    semaforo, no sync-over-async de tarea).
+  - [8.2-M9]/[8.5-M6] (VersionLockout Process.Start) -> ✅ MITIGADO: validacion estricta
+    http/https (:43-52) con reset de IsDownloading en el catch (:49-52); RESIDUAL: el
+    host no se valida (acepta IPs privadas maliciosas).
+  - [8W-M2] (fire-and-forget) -> ✅ RESUELTO (SafeFireAndForget sancionado, 57 usos).
+  - [STYLE-WPF]/[GOD-VM] -> ✅ RESUELTOS (snake->camel completo; VMs < 500 lineas).
+  - [8W-M1] (MessageBox) -> ❌ VIGENTE: 60 usos de MessageBox contados hoy entre
+    Desktop.Client.Core y Desktop.Client (la migracion a IDialogService no cubrio todo).
+
+HALLAZGOS NUEVOS 8.12 RELACIONADOS:
+  - [8.12-L2] La rama no-Npgsql del OutboxProcessorJob (dev/InMemory) no aplica
+    SKIP LOCKED ni Take(20): cualquier test de outbox sobre InMemory en este modulo
+    no reproduce la semantica de produccion (OutboxProcessorJob.cs:199-205).
+  - Los hallazgos 8.12-B1/B2/B3 (migraciones huerfanas) no tocan codigo de este
+    modulo, pero afectan al desktop indirectamente: la precision 18,2 vs 18,4 (B2)
+    altera los montos que el cliente muestra/registra en instalaciones frescas.
+=================================================================================
+================================================================================
+ADENDA REV. 8.13 (OLA DE REMEDIACION TOTAL)
+================================================================================
+- Sin cambios de codigo en este modulo en la ola 8.13 (las colas ahora vienen
+  acotadas por el servidor: GetPendingSales/GetPendingPickups limit 200/1000 —
+  el cliente sigue recibiendo el mismo shape).
+- [H-DCC-*] -> estados sin cambios; MessageBox sin fallbacks -> ❌ VIGENTE.
+
+================================================================================
+ADENDA REV. 8.14 (RE-VERIFICACION 8.13 + HALLAZGOS NUEVOS)
+================================================================================
+- [8.14-N1] MEDIO (lado cliente) — el servidor capo las colas en 200 (8.2-M9)
+  y el cliente (GetPendingSalesAsync/GetPendingPickupsAsync de SalesService.cs)
+  no envia ?limit ni pagina: mas de 200 OnHold/pickups quedan invisibles en WPF.
+  Pendiente: paginacion de contrato en ISalesService del cliente + VM.
+- [8C-M1/M3] redondeo canonico -> ❌ VIGENTES (afectan cierres/hold del cliente).
+- Resto (MessageBox sin fallbacks) -> ❌ VIGENTE.
+
+ADENDA REV. 8.15 (OLA DE CORRECCION TOTAL — estados actualizados)
+================================================================================
+- [8.12-L2] rama InMemory del outbox -> ✅ VERIFICADO RESUELTO: ya aplica
+  OrderBy + Take(20) (OutboxProcessorJob.cs:194-199); SKIP LOCKED es
+  exclusivo de PostgreSQL.
+- [8.14-N1] cap 200 sin paginacion -> sigue pendiente del lado cliente
+  (WPF no envia ?limit ni pagina) — 8.14-N1 abierto.
+- [8C-M1]/[8C-M3] redondeo canonico -> ✅ RESUELTOS (backend; el cliente
+  hereda montos consistentes).
+- Pendiente: [8W-M1] MessageBox ~60 usos (migracion a IDialogService).
+
+FIN DEL REPORTE Desktop.Client.Core — ADENDA REV. 8.15
+=================================================================================

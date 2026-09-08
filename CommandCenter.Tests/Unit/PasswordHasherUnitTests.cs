@@ -69,4 +69,39 @@ public class PasswordHasherUnitTests
         Assert.False(PasswordHasher.VerifyPassword("any", "PBKDF2$not_an_int$bad_salt$bad_hash"));
         Assert.False(PasswordHasher.VerifyPassword("any", "PBKDF2$100000$not_valid_base64!$bad_hash!"));
     }
+
+    [Fact]
+    public void VerifyPassword_WithDegradedIterations_IsRejected()
+    {
+        // 8B-B6: un hash que declara pocas iteraciones degradaria el coste de derivacion
+        // (fuerza bruta trivial); debe rechazarse sin derivar.
+        string hash = PasswordHasher.HashPassword("Secret123#");
+        var parts = hash.Split('$');
+        string downgraded = $"PBKDF2$1${parts[2]}${parts[3]}";
+
+        Assert.False(PasswordHasher.VerifyPassword("Secret123#", downgraded));
+    }
+
+    [Fact]
+    public void VerifyPassword_WithInflatedIterations_IsRejected()
+    {
+        // 8B-B6: un hash que declara millones de iteraciones convertiria cada login en un
+        // DoS de CPU; debe rechazarse sin derivar.
+        string hash = PasswordHasher.HashPassword("Secret123#");
+        var parts = hash.Split('$');
+        string inflated = $"PBKDF2$2147483647${parts[2]}${parts[3]}";
+
+        Assert.False(PasswordHasher.VerifyPassword("Secret123#", inflated));
+    }
+
+    [Fact]
+    public void VerifyPassword_WithOutOfRangeKeyLength_IsRejected()
+    {
+        // 8B-B6: clave fuera de 16..64 bytes debe rechazarse sin derivar.
+        string hash = PasswordHasher.HashPassword("Secret123#");
+        var parts = hash.Split('$');
+        string tinyKey = $"PBKDF2$100000${parts[2]}${Convert.ToBase64String(new byte[1])}";
+
+        Assert.False(PasswordHasher.VerifyPassword("Secret123#", tinyKey));
+    }
 }

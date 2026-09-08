@@ -40,7 +40,7 @@ public class CashDrawerServiceUnitTests
         await service.OpenSessionAsync(1000m, 50m);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.OpenSessionAsync(500m, 50m));
-        Assert.Contains("already an active cash drawer session", ex.Message);
+        Assert.Contains("sesión de caja activa", ex.Message);
     }
 
     [Fact]
@@ -221,6 +221,6 @@ public class CashDrawerServiceUnitTests
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.CloseSessionAsync(500m, 50m));
-        Assert.Contains("No active cash drawer session", ex.Message);
+        Assert.Contains("sesión de caja activa", ex.Message);
     }
 }
