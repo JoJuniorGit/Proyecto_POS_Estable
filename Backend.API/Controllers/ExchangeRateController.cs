@@ -71,7 +71,11 @@ public class ExchangeRateController : ControllerBase
             result = new { Value = record.Rate, Date = record.Date, UpdatedAt = record.UpdatedAt, UpdatedAtLocal = (DateTime?)local };
         }
 
-        _cache?.Set(cacheKey, result, TimeSpan.FromSeconds(20));
+        _cache?.Set(cacheKey, result, new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(20),
+            Size = 1
+        });
         return Ok(result);
     }
 
@@ -218,7 +222,11 @@ public class ExchangeRateController : ControllerBase
             .FirstOrDefaultAsync();
 
         var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
-        _cache?.Set("er_tz", tz, TimeSpan.FromMinutes(10));
+        _cache?.Set("er_tz", tz, new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
+            Size = 1
+        });
         return tz;
     }
 }

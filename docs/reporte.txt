@@ -2056,6 +2056,30 @@ CORREGIDOS (verificados, marcar como cerrados):
   es una decision de politica (baseline anti-regresion vs 0.70) que requiere
   aumentar cobertura real, no un cambio de codigo.
 
+--- ANEXO 8.17 (hallazgo de produccion): TASA DE CAMBIO EN 0 SIN HISTORIAL ---
+- SINTOMA REPORTADO: "la tasa de cambio perdio todo el historial y no se
+  actualiza, esta en 0" en el cliente (WPF/Web).
+- DIAGNOSTICO: la base CommandCenterDb conservaba el historial completo
+  (59 filas, hoy 2026-09-08 = 814.70) y la logica de lectura/escritura era
+  correcta; el backend arrancaba y scrapeaba el BCV (814.70). PERO el endpoint
+  `GET /api/exchange-rate/today` devolvia 409 Conflict, lo que provoca que el
+  cliente (`GetCurrentRateAsync`, EnsureSuccessStatusCode -> catch devuelve
+  (0m, null)) muestre tasa 0 y el historial vacio.
+- CAUSA RAIZ: el IMemoryCache compartido se registra con SizeLimit=10000
+  (Startup/ServiceCollectionExtensions.cs AddMemoryCache) y el MemoryCache
+  exige que cada Set() especifique Size. ExchangeRateController usaba el
+  overload `_cache.Set(key, value, TimeSpan)` SIN Size en 2 puntos (cache
+  `/today`:74 y cache de timezone `er_tz`:221) -> InvalidOperationException
+  "Cache entry must specify a value for Size when SizeLimit is set" ->
+  GlobalExceptionHandlerMiddleware lo mapea a 409 "Conflicto de Operacion".
+  El resto de servicios (Inventory, SecurityStamp, SystemSettings,
+  PaymentMethod, HoldOrders) ya usaba MemoryCacheEntryOptions con Size=1.
+- CORRECCION (pendiente de commit): migrados ambos Set a
+  `MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = ..., Size = 1 }`.
+- VERIFICACION: `GET /api/exchange-rate/today` -> HTTP 200 con
+  {"value":814.7000,...} (tasa real de hoy); `/history` protegido (401 sin
+  token, esperado); build Release 0/0; suite .NET 700/700.
+
 VERIFICADO COMO FALSO / NO ACCIONABLE (correccion del informe):
 - [8.16-B01] El middleware 404/400/409 SI expone exception.Message, pero es
   COMPORTAMIENTO INTENCIONAL y TESTEADO (GlobalExceptionHandlerMiddlewareTests
@@ -2068,17 +2092,19 @@ VERIFICADO COMO FALSO / NO ACCIONABLE (correccion del informe):
   genericos romperia UX y tests que buscan el texto.
 
 PENDIENTES DE LA AUDITORIA (no tocados, requieren refactor mayor/infra):
-- 8.16-H03 (idempotencia evento por SaleId), H04 (redondeo), H05/H06/H08/H14
-  (queries/proyeccion), H07 (ventana outbox), H09 (fail-open tasa), H12
-  (cacheKeys estatico), H16 (advisory lock en retry), H17 (invalidacion
-  caché por prefijo).
+- 8.16-H03 (idempotencia evento por SaleId), H06/H08/H14 (proyeccion a DTO /
+  indices, diferidos por cambio de firma), H07 (ventana outbox), H09
+  (fail-open tasa), H16 (advisory lock en retry). NOTA: H04 queda verificado
+  correcto por diseño (no-bug), H05/H12/H17 resueltos/verificados en el pase
+  de mantenibilidad (ver arriba).
 - WPF: R09-R12 (Dispatcher.Invoke en EditSaleDialog + code-behind sin VM),
   R13 (UniformGrid sin virtualizar), R17/R18 (entropia DPAPI, cert loopback),
   R19-R28. NOTA: R01-R08, R14-R16 y 8W-M1 (MessageBox) ya resueltos.
-- Instalador/CI: I01/I02/I03/I04/I05/I06/I07, CI01/CI02/CI03, C01/C02,
-  T01/T03/T04/T05/T06, B03/B04/B05/B06/B07/B09/B12/B13/B14.
-- Web: W01/W02 (Modal aria id estatico, focus-restore), W03 (aviso oxlint
-  base sin uso en esbuild-jsx-loader-hook.mjs:17).
+- Instalador/CI: I01/I02/I03/I04/I05/I07 (I06 resuelto en el pase), CI02,
+  C01/C02, T01/T03/T04/T05/T06, B03/B04/B05/B06/B07/B09/B12/B13/B14.
+  NOTA: CI01/CI03 resueltos en el pase de mantenibilidad.
+- Web: W03 (aviso oxlint base sin uso en esbuild-jsx-loader-hook.mjs:17).
+  NOTA: W01/W02 (Modal aria id, focus-restore) resueltos en el pase.
 
-FIN DEL ANEXO - REVISION 8.16
+FIN DEL ANEXO - REVISION 8.16/8.17
 ================================================================================ 
