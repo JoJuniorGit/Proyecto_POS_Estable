@@ -1,0 +1,438 @@
+================================================================================
+ REPORTE DE ESTADO - SISTEMA POS ADMINISTRADOR (COMMANDCENTER)
+================================================================================
+ DOCUMENTO VIVO (LIVING DOCUMENT) - FUENTE UNICA DE VERDAD DEL REPOSITORIO
+--------------------------------------------------------------------------------
+Este archivo es el punto de entrada para cualquier ingeniero que se incorpore
+al desarrollo. Debe evolucionar CONTINUAMENTE a la par del repositorio: toda
+migracion de BD, nuevo contrato de API, periférico o cierre de incidencia
+obliga a actualizarlo (ver seccion 5 - Protocolo de Evolucion y Mantenimiento).
+
+Fuentes complementarias: docs/reporte.txt (auditorias y trazabilidad por
+revision), ARCHITECTURE.md (diagramas de flujo), docs/INSTALLATION.md
+(despliegue), .agents/skills/ (convenciones por area).
+
+--------------------------------------------------------------------------------
+HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
+--------------------------------------------------------------------------------
+| Version  | Fecha       | Commit/Bif.  | Cambio
+|----------|-------------|--------------|----------------------------------------------------------
+| v1.1.0   | 2026-09-08  | V0.15 (sin)  | fix: cierre 8.20-C01 - migracion 20260908153000
+|          |             | commit)      | reactivada con [DbContext]+[Migration] y Up()/Down()
+|          |             |              | idempotentes (guards to_regclass + information_schema);
+|          |             |              | smoke test MigratedSchema valida SaleId + indice
+|          |             |              | IX_StockMovements_SaleId en BD real. Suites ok:
+|          |             |              | .NET 706/706, Web 77/77, build D/R 0/0,
+|          |             |              | has-pending-model-changes limpio (ambos contextos).
+| v1.0.0   | 2026-09-08  | bdb7e55      | Creacion del documento vivo. Consolidacion del estado
+|          |             |              | tras ANEXO 8.20 (auditoria exhaustiva de mantenibilidad):
+|          |             |              | - Topologia y stack documentados (secciones 1-3).
+|          |             |              | - Metricas base: .NET 706/706, Web 77/77, build 0/0.
+|          |             |              | - Deuda tecnica activa trazada (C01..D8 + pendientes previos).
+|          |             |              | - Protocolo de evolucion definido (seccion 5).
+
+================================================================================
+1. ARQUITECTURA Y STACK TECNOLOGICO
+================================================================================
+
+1.1 Vision general
+--------------------------------------------------------------------------------
+Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
+
+  Backend API   -> ASP.NET Core 10 (.NET 10.0.101, Kestrel). REST + SignalR.
+                   Servicio Windows PosBackendService (NSSM). Es el unico
+                   consumidor de PostgreSQL. Sirve tambien el build React
+                   (wwwroot) estaticamente para la LAN.
+  Web Frontend  -> React 19 + Vite 8 (cliente cajas/tablet, touch-first).
+  Desktop       -> WPF .NET 10 (Desktop.Client) + Desktop.Client.Core (MVVM,
+                   CommunityToolkit.Mvvm 8.4, MaterialDesignThemes 5.3).
+  Core          -> Libreria compartida sin dependencias (entidades, DTOs,
+                   interfaces, eventos MediatR, helpers, logging).
+  Tests         -> CommandCenter.Tests (xUnit + Moq + coverlet + WebApplication
+                   Factory). Suites Web aparte (node:test, 77/77).
+  UpdaterService-> Auto-update del cliente WPF. Publicado pero NO integrado al
+                   instalador (deuda activa 8.20-M08).
+  Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
+                   efimero en ConcurrentDictionary (sin persistencia), aunque
+                   sigue registrado en el DI de produccion (deuda 8.20-M08).
+
+1.2 Topologia de servicios y puertos
+--------------------------------------------------------------------------------
+  Servicio/Componente      Tipo                          Puerto        Notas
+  ------------------------ ----------------------------- ------------- ---------------
+  PosBackendService (.NET) Servicio Windows (NSSM)       5000 (HTTP)   LAN
+                                                         5001 (HTTPS)  cert autofirma/
+                                                                       Store/pfx
+  PostgreSQL 16/18         Servicio externo              5432          CommandCenterDb
+  Vite dev server          Solo desarrollo              5173          Web.Frontend
+  Web (produccion)         Servida por Backend API      5000/5001     Backend.API/wwwroot
+  UpdaterService           Independiente (no instalado) -             servidor /updates
+                                                                      NO existe (8.20-M08)
+
+  Acceso LAN: parear caja via QR efimero (?pair= single-use, whitelist de
+  hosts RFC-1918). Sin eso, el cliente no persiste la URL del servidor.
+
+1.3 Capas activas del stack (declaradas y en produccion)
+--------------------------------------------------------------------------------
+  * ASP.NET Core 10 (REST)
+      - 14 controladores (Auth, CashDrawer, DailyClosure, ExchangeRate, Health,
+        Pairing, PaymentMethods, Products, Reservations, Sales, Settings,
+        Shifts, Users, VersionCheck).
+      - Middleware: GlobalExceptionHandler (RFC 7807 ProblemDetails),
+        VersionCheck, MustChangePassword, SecurityHeaders, CORS con whitelist
+        LAN, rate limiting, idempotencia (Idempotency-Key + SHA-256).
+      - Error handling: mensajes de negocio en ESPANOL llegan al usuario por
+        diseno (comportamiento testeado); el detalle interno va al log.
+  * SignalR (ExchangeRateHub) - tasas, formato moneda, ventas en espera,
+      eventos de venta completada (via OutboxProcessorJob).
+  * React 19 + Vite 8 (Web) - 11 paginas, 35 componentes, 3 contexts
+      (Auth/ExchangeRate/Cart), formatters.js (parseAmount/formatUSD/
+      formatBsS), usePosHotkeys con gating de modales, useAtmKeypad.
+  * WPF/XAML (Desktop) - MVVM, 42 archivos de ViewModel (clases + parciales),
+      WpfDialogService (IDialogService), WeakReferenceMessenger, UIConexion
+      a traves de UiThreadMarshaller (candidato a migrar, ver deuda 8.20-M01).
+  * Cache en memoria (IMemoryCache) - SizeLimit=10000 con Size=1 OBLIGATORIO
+      en cada Set (omision causa 409, incidente 8.17). Claves: bcv_rate_today,
+      er_tz, settings, payment methods, products.
+  * EF Core 10 + Npgsql 10.0.3 - 59 clases de migracion (30 Sales + 29
+      Inventory) sobre 2 DbContext en la MISMA BD/schema (SalesDbContext y
+      InventoryDbContext), transaccion compartida en el flujo de venta.
+      Concurrencia optimista nativa por xmin (SQLSTATE 88P01/marcado EF).
+
+  Stack de paquetes clave (Directory.Packages.props): EF Core 10.0.4,
+  Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3, MediatR 14.0.0,
+  Microsoft.Extensions.* 10.0.5, Swashbuckle 10.2.3, CommunityToolkit.Mvvm
+  8.4.0, MaterialDesignThemes 5.3.0, ZXing.Net.Bindings.Windows.Compatibility
+  0.16.14, ClosedXML 0.105.0, HtmlAgilityPack 1.12.4, DotNetEnv 3.1.1,
+  xunit 2.9.3, Moq 4.20.72, SQLitePCLRaw.bundle_e_sqlite3 2.1.12 (pin CVE).
+  dotnet-ef local fijado en 10.0.3 (deuda 8.20-B02: actualizar a 10.0.4).
+
+1.4 Grafo de dependencias
+--------------------------------------------------------------------------------
+  Core (raiz, sin dependencias)
+   |-- Sales.Module (ventas, caja, cierres, outbox, idempotencia)
+   |-- Inventory.Module (productos, stock, reservas, tasas BCV)
+   |-- Backend.API  -> Core + Sales + Inventory + MediatR + BackgroundServices
+   |-- Desktop.Client.Core -> Core + HTTP
+   |-- Desktop.Client       -> Desktop.Client.Core + Core (WPF)
+   |-- CommandCenter.Tests  -> referencia todos
+   Web.Frontend / UpdaterService / Logistics -> independientes (HTTP directo)
+
+1.5 Configuracion y secretos
+--------------------------------------------------------------------------------
+  Jerarquia: appsettings.json -> appsettings.{Env}.json -> env vars ->
+  secrets.json (Produccion; instalador debe escribir aqui, NO en argv/EnvExtra
+  - deuda 8.20-A01) -> .env solo desarrollo local.
+  Requeridas en Produccion: ConnectionStrings__DefaultConnection,
+  SystemSettings__AdminSeedPassword. HTTPS: HTTPS_CERT_THUMBPRINT o
+  certs/pos-https.pfx + HTTPS_CERT_PASSWORD.
+  PENDIENTE CRITICO: migracion 20260908153000_AddSaleIdToStockMovement SIN
+  atributo [Migration] -> columna SaleId nunca se aplica en BD real
+  (hallazgo 8.20-C01, ver seccion 4).
+
+================================================================================
+2. DOMINIO Y REGLAS DE NEGOCIO CRITICAS
+================================================================================
+
+2.1 Doble moneda y tasa BCV
+--------------------------------------------------------------------------------
+  * Los datos viajan como decimal (USD y Bs.S); la presentacion aplica 2
+    formatos (Venezolano contable por defecto / Internacional) via formatters
+    (web) y NumericCalculatorBehavior (WPF). La BD SIEMPRE guarda numeros.
+  * Tasa: -> 1 registro/dia en ExchangeRateHistory. BcvScraperService scrapea
+    el portal BCV (redondeo ceiling a 2 decimales via
+    PricingCalculator.RoundExchangeRateCeiling - unico punto de redondeo).
+  * Anclaje de venta: ante desvio > tolerancia, la venta ANCLA la tasa BCV del
+    dia; desvio >= +-100% RECHAZA la venta. Unico fail-open restante (auditable
+    y congelado por tests): tasa BCV INDISPONIBLE (0/error) -> se usa la tasa
+    del cliente (continuidad de negocio).
+  * Venta en espera: recalcualdo por KEYSET (WHERE Status=OnHold AND Id>
+    lastId, batch 200) al cambiar la tasa (revision 8.19-H14).
+
+2.2 Precios y redondeo (modelo financiero)
+--------------------------------------------------------------------------------
+  * Tax-Free Cost+Margin: precio USD de venta se deriva del costo + margen
+    (sin impuestos; IVA no aplica/reservado de la logica de precio).
+  * Redondeo: items/subtotales con 4 decimales (precision alta); totales y
+    pagos con 2 decimales (RoundToDigital). UNIFICAR ESTO ROMPE LA INTEGRIDAD
+    FINANCIERA (verificado no-bug en 8.16). Redondeo de precio hacia arriba
+    (RoundPriceUp) centralizado en Core/Helpers/PricingCalculator.cs.
+  * Zero-trust backend: el servidor recalcula/valida precios y redondeos
+    aunque el cliente envie sus calculos (preview canonico).
+
+2.3 Ventas, stock y consistencia
+--------------------------------------------------------------------------------
+  * Flujo CompleteSaleAsync: ExecutionStrategy -> transaccion compartida
+    (SalesDbContext + InventoryDbContext en el mismo DbTransaction,
+    ReadCommitted) -> deduccion sincrona de stock -> venta/pagos/caja/outbox/
+    idempotencia -> commit atomico.
+  * Idempotencia de venta: Idempotency-Key (regex) + SHA-256(Method+Path+Body);
+    HIT=200 cacheado (X-Cache-Lookup), MISMATCH=422 + LogSecurityAudit.
+  * Idempotencia de stock: dedupe POR SaleId (no por string Reason), campo
+    StockMovement.SaleId (FASE 1 / 8.18-H03). CRITICO: la migracion que crea
+    la columna no se aplica en produccion (8.20-C01).
+  * Outbox: OutboxProcessorJob consume OutboxMessages con estado Dispatching
+    + reclaim de stale >90s (FASE 1 / 8.18-H07), procesa con OrderBy+Take(20),
+    purga Processed > 7d, dispatch at-least-once de eventos SignalR/MediatR.
+  * Estados de venta: Pendiente, OnHold (en espera), Completada, Cacelada +
+    DeliveryStatus para despacho. Ninguna modificacion a venta Finalizada.
+
+2.4 Caja y corte
+--------------------------------------------------------------------------------
+  * Sesion de caja UNICA por usuario (indice single-open): apertura con fondo,
+    movimientos Inflow/Outflow (fisico vs digital - IsPhysicalCash), cierre
+    diario con tOtales por metodo de pago (ClosureDetails) + calculo de vuelto
+    cruzados de divisa. Integridad monitoreada por pos-financial-integrity.
+  * Adelanto de efectivo (ADV-001, IsCashAdvance): no deduce stock fisico.
+  * BCV manual vs automatico: BcvExchangeRateJob auto-programado cada 2h
+    contradice el diseno "BCV manual" declarado (deuda 8.16-B09/8.20-B10).
+
+2.5 Seguridad y permisos
+--------------------------------------------------------------------------------
+  * JWT Bearer HMAC-SHA256 (JWT_SETTINGS_KEY), ClockSkew=0, roles
+    Admin/Cashier/Driver/Manager; MustChangePassword para seeds (rotacion
+    obligatoria en 8.9-B1). PasswordHasher PBKDF2.
+  * RBAC por [Authorize] en cada endpoint; no hay X-User-Role confiable del
+    cliente (el backend deriva el rol del token).
+  * Quiebres de concurrencia: xmin como token nativo (8.2-A1); detalles de
+    stock conmensurados con Numeric(18,3).
+
+2.6 Reglas inviolables de integridad (los tests las congelan)
+--------------------------------------------------------------------------------
+  * Unificar productos/subtotales 4d y totales 2d rompe la integridad.
+  * Ocultar mensajes de negocio (es. "Stock insuficiente") rompe UX y tests.
+  * Prohibido formateadores de moneda ad-hoc fuera de formatters.js /
+    NumericCalculatorBehavior.
+  * Toda evolucion de esquema DEBE ser una migracion EF con atributo
+    [Migration] (nunca ALTER TABLE inline en Program.cs Legacy Block).
+
+================================================================================
+3. INTEGRACION DE HARDWARE
+================================================================================
+
+3.1 Escaneres de codigo de barras
+--------------------------------------------------------------------------------
+  * CLIENTE WPF (cajas fijas): soporta pistolas USB/Bluetooth HID de tipo
+    "keyboard wedge" (emulan teclado). Implementacion:
+      - KeyboardWedgeScannerListener (Desktop.Client/Helpers/): listener global
+        no intrusivo que discrimina rafagas de escaner (intervalo entre
+        caracteres <= 60ms, configurable 20-150) vs tipeo humano; con guarda de
+        foco (no intercepta cuando el cajero edita campos de texto
+        interactivos). Se acopla/desacopla a la raiz de la vista.
+      - PosViewModel.Scanning.cs: validacion con BarcodeValidator y semaforo
+        compartido (_scannerLock) con la busqueda/sugerencia para evitar
+        intercalaciones.
+      - POS actualiza la linea del DataGrid al escanear; DataGrid_CellEditEnding
+        commitea cantidad.
+  * CLIENTE WEB (tablets): BarcodeScannerModal con @zxing/library (camara del
+    dispositivo). Sin gating de permisos de camara adicional (API estandar).
+  * Retroalimentacion auditiva/visual: ScannerFeedbackService (WPF) genera
+    tonos PCM en memoria (880/440/220 Hz) identicos al web, sin bloquear UI.
+
+3.2 Emparejamiento por QR (pairing)
+--------------------------------------------------------------------------------
+  * QrCodeHelper (Desktop.Client/Helpers/) genera el QR con ZXing
+    BarcodeWriterPixelData. El QR codifica https://IP:5001/?paired=true; el
+    reclamo single-use via ?pair= TOKEN efimero (backend /api/pairing/info) es
+    DEFENSE-IN-DEPTH pendiente de reforzar en web (deuda 8.20-F20-05).
+
+3.3 Despues del turno: entrada numerica ATM
+--------------------------------------------------------------------------------
+  * Teclados num. vendidos: AtmBehavior, NumericCalculatorBehavior (WPF) y
+    useAtmKeypad/ATMInput (web) para montos con doble divisa. Son software
+    (no perifericos).
+
+3.4 PERIFERICOS NO INTEGRADOS (estado declarado al 2026-09-08)
+--------------------------------------------------------------------------------
+  * NO hay impresion termica/fiscal (no existe ESC/POS, PrintDocument o
+    driver de impresora). La factura/cierre se generan como PDF por
+    ClosurePdfGenerator; la impresion es trabajo futuro.
+  * NO hay basculas/escala, lectores de tarjeta, gaveta de efectivo fisica,
+    puertos serie (SerialPort) ni integracion con hardware fiscal SNTT.
+  * El "scanner" de red SubnetScannerService NO es periferico: descubre el
+    servidor backend en la LAN durante el primer emparejamiento.
+
+  REGLA: toda adicion de periferico en la seccion 3 requiere: (a) interfaz
+  abstraida en Desktop.Client.Core (no WPF), (b) actualizacion de este archivo
+  (obligatorio, ver seccion 5), (c) actualizacion de ARCHITECTURE.md.
+
+================================================================================
+4. ESTADO OPERATIVO Y METRICAS
+================================================================================
+
+4.1 Fases concluidas (linea de tiempo)
+--------------------------------------------------------------------------------
+  * S1-A / S2 / S4 (Rev 8.9-8.10): remediacion de credenciales por defecto,
+    IDOR de ventas, lockout, fallback ROW_NUMBER, 8.9 waves de seguridad.
+  * Waves Rev 8.11-8.14 (c8a904c, b9fb9c0, 84e3f84): resolucion B4/B7/
+    M4-M18/L1-L13, trgm GIN + indices de rendimiento, coverage gates por capa,
+    PendingOrders cap 200, fallback ROW_NUMBER AddDisplayOrder, pos_smoke.
+  * Auditoria 8.16 + PASE DE MANTENIBILIDAD (4f6c797, cda4cc7):
+    localizacion de mensajes, 9 transacciones en ExecutionStrategy, catch{}
+    con LogWarning, eliminacion de RowVersion (migracion 20260908152110),
+    eliminacion de los 45 MessageBox del Core, descomposicion de Program.cs
+    (1127 -> 132 lineas en Startup/), consolidacion de PricingCalculator,
+    Modal.jsx useId + focus restore, cache keys limpiado, nssm SHA-256,
+    CI timeouts + NuGet cache. Fix de produccion 8.17 (MemoryCache Size). 
+  * FASE 1 (b79d1dc): H03 idempotencia stock por SaleId, H07 outbox
+    Dispatching + reclaim, H09 tests fail-open de tasa. -> Nota historica:
+    la migracion de H03 quedo SIN atributo [Migration] y no se aplicaba en BD
+    real (hallazgo 8.20-C01, CORREGIDO en v1.1.0 de este documento).
+  * FASE 2 (bdb7e55): H14 keyset en RecalculateOnHoldSalesAsync + test de 450
+    ventas; verificados H08 (trgm ya cubre historial) y H10
+    (has-pending-model-changes limpio en ambos contextos).
+  * Auditoria 8.20 (2026-09-08): evaluacion exhaustiva instalador/CI/WPF/web/
+    modulos; hallazgos C01 y A01-A05 (ver 4.4 y docs/reporte.txt ANEXO 8.20).
+  * Fix 8.20-C01 (2026-09-08): migracion 20260908153000 reactivada y
+    idempotente; sale a produccion la deduccion de stock por SaleId de la
+    FASE 1 (ver 4.4 / changelog v1.1.0).
+
+4.2 Balance de pruebas automatizadas (linea base verificada 2026-09-08)
+--------------------------------------------------------------------------------
+  Suite .NET (CommandCenter.Tests, xUnit + Moq + WebApplicationFactory):
+      estado : 706/706 PASAN   (10s, con TEST_POSTGRES_CONNECTION)
+      entorno: PostgreSQL real para tests de integracion (PostgresReal* +
+               WebApplicationFactorySmoke con BD aislada pos_smoke_<sufijo>,
+               EnsureCreated para la mayoria de unit tests).
+  Suite Web (node:test en Web.Frontend):
+      estado : 77/77 PASAN     (2.1s); 21 suites.
+      lint   : oxlint 0 errores, 1 aviso preexistente (W03: variable `base`
+               sin uso en test/esbuild-jsx-loader-hook.mjs:17).
+  Build:
+      Debug  : 0 errores / 0 avisos (TreatWarningsAsErrors=true).
+      Release: 0 errores / 0 avisos.
+  Cobertura (gate CI, scripts/check-coverage.py + coverage.runsettings):
+      Sale >= 19%, Inventory >= 14% (baseline anti-regresion) - politica
+      declarada 0.70; convergencia pendiente (deuda C01).
+
+  COMANDOS PARA REPRODUCIR:
+    $env:TEST_POSTGRES_CONNECTION="Host=localhost;Database=CommandCenterDb_test;
+      Username=postgres;Password=123456"
+    dotnet build Backend.API/Backend.API.csproj -c Release
+    dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-restore
+    cd Web.Frontend && npm test && npm run lint
+
+4.3 Estado de despliegue
+--------------------------------------------------------------------------------
+  * Produccion: PosBackendService (NSSM), PostgreSQL 16, puertos 5000/5001.
+  * Working tree: limpio en bdb7e55 al cierre de la auditoria 8.20. Tras el
+    fix de 8.20-C01 quedaron cambios SIN commitear (migracion + smoke test +
+    docs): pendientes de commit en la rama V0.15.
+  * INSTALLATION.md documenta Admin123! y "secretos por env vars" -> OBSOLETO
+    (secrets.json); desalineado con ARCHITECTURE.md para UpdaterService (8.20-B05).
+
+4.4 Deuda tecnica activa (ALTA / CRITICO)
+--------------------------------------------------------------------------------
+  CRITICO:
+  * [8.20-C01] CERRADO en v1.1.0 (2026-09-08) -> migracion
+    20260908153000_AddSaleIdToStockMovement reactivada con
+    [DbContext]+[Migration], Up()/Down() idempotentes (guards to_regclass +
+    information_schema) y validacion de SaleId/indice en el smoke test
+    MigratedSchema. Verificado en BD real (pos_smoke): migracion aplicada por
+    MigrateAsync; has-pending-model-changes limpio. Detalle en changelog 5.3 y
+    docs/reporte.txt ANEXO 8.21.
+  ALTA:
+  * [8.20-A01] Instalador expone secretos en argv y AppEnvironmentExtra del
+    servicio (setup.iss:341,351,424-432; Configure-PosService.ps1:249-251).
+    FIX: secretos solo en secrets.json.
+  * [8.20-A02] BackendHelpers.cs:79-130 siempre genera cert autofirmado
+    efimero -> fail-fast HTTPS de Produccion (Program.cs:76-84) es dead code.
+  * [8.20-A03] UpdaterService instala paquetes sin verificar si no hay hash
+    (fail-open) y sin firma X.509 (8U-N2).
+  * [8.20-A04] publish/BackendAPI/appsettings.json:34 expone "PosHttpsDev2026!"
+    en claro y se empaqueta con pfx stale en el instalador.
+  * [8.20-A05] Abonos parciales web (PendingOrdersPage.jsx:551-558) no
+    atomicos, con Idempotency-Key nueva por pago -> duplicacion si falla la red.
+  MEDIA (resumen; detalle en ANEXO 8.20):
+  * WPF: acoplamiento Core->WPF en 20 archivos (M01), Dispatcher.Invoke
+    bloqueante (M02), HealthPolling sin timeout real - el "8.9-M12" del
+    comentario no existe (M03), UniformGrid sin virtualizar (M04), paginacion
+    parcial (M05).
+  * CI/Tests: coverage sin Backend.API/WPF/Tests (M06), gate find|head
+    indeterminista (M06), silent-pass en smoke/shared (M06), OpenAPI 200-o-404
+    (M06), locks NuGet ausente y runner solo Linux (B03).
+  * Infra: ACL de secrets.json sin NT SERVICE y fail-open (M07), Logistics en
+    DI de produccion sin persistencia (M08), Updater sin integracion (M08).
+  PENDIENTES PREVIOS NO CERRADOS:
+  * 8.16-H06 (proyeccion a DTO de GetAllProductsAsync/CashDrawer.GetHistory),
+    8.16-H16 (advisory lock x1, frágil en retry).
+  * WPF R09-R12 (EditSaleDialog code-behind), R13 (UniformGrid), R17 (entropia
+    DPAPI hardcodeada), R18 (cert loopback sin pinning), R19-R28,
+    8.14-N1 WPF sin paginacion en PendingOrders/PendingPickups.
+  * Instalador/CI: I01..I07 (I06 cerrado), CI02, C01/C02, T01/T03/T04/T05/T06.
+  * Backend: B03 (RequireHttpsMetadata=false), B04 (residuo JWT debil
+    ddf95c83...), B05 (appsettings en artifacts), B06 (BcvScraper doble
+    timeout), B07 (SecurityStampValidator 45s vs 5s), B09 (2h auto BCV),
+    B12 (ProductsController AdjustStock filtra ex.Message), B13/B14.
+  * 8.2-B5 (snake_case en ISalesService publico).
+  * Web: W03 (aviso oxlint), W04 (retencion forense).
+
+  REGLA: mover una incidencia de este bloque a "cerradas" SOLO cuando haya
+  commit + tests verdes + entrada en changelog (seccion 5).
+
+================================================================================
+5. PROTOCOLO DE EVOLUCION Y MANTENIMIENTO
+================================================================================
+
+5.1 Reglas OBLIGATORIAS de actualizacion de ESTE archivo
+--------------------------------------------------------------------------------
+ Este archivo es la fuente unica de verdad del estado actual del repositorio.
+ En CUALQUIERA de estos escenarios, la tarea NO esta completa si este archivo
+ no se actualizo y commiteo junto con el codigo:
+
+  * Cambios de esquema de BD (NUEVA migracion EF, hand-written o generada):
+      - Registrar la migracion en la seccion 4 (fases) / tablas 1 y 2 si aplica.
+      - Verificar el atributo [Migration] en TODA migracion (previene 8.20-C01).
+      - Si cambia StockMovements/Sale o cualquier entidad con concurrencia,
+        registrar en la seccion 2. Implementar con dotnet ef migrations add e
+        invariante: `dotnet ef migrations has-pending-model-changes` limpio.
+  * Nuevos contratos de API (endpoint, DTO, verbo, headers, ErrorCodes):
+      - Actualizar 1.3 (paras controllers/endpoints) y 2 (reglas de negocio).
+      - Declarar el contrato en el GlobalExceptionHandler (mapeo RFC 7807) si
+        introduce excepciones nuevas.
+      - NO usar snake_case en contratos publicos (deuda 8.2-B5).
+  * Adicion de perifericos o cambios de integracion de hardware:
+      - Actualizar OBLIGATORIAMENTE la seccion 3 (implementado / no integrado)
+        con la interfaz abstraida correspondiente (nada de WPF en Core).
+  * Cierre de incidencias/deuda tecnica:
+      - Mover la incidencia de 4.4 a una fila del changelog (5.3) con la
+        referencia del commit; actualizar metricas de 4.2 si cambian suites.
+  * Cambios de stack, versiones de paquetes o puertos/topologia:
+      - Actualizar 1.1/1.2/1.3 (y Directory.Packages.props con versiones).
+  * Cambios en reglas de negocio (precios, divisas, caja, roles):
+      - Actualizar 2.x y referenciar los tests que congelan el comportamiento.
+  * Incorporacion de un nuevo ingeniero:
+      - Debe leer este documento + .agents/skills del area antes de codear.
+
+5.2 Invariantes de integridad del documento
+--------------------------------------------------------------------------------
+  * APPEND-ONLY para el changelog: nunca se edita una fila historica; la
+    rectificacion se registra como nueva entrada.
+  * Cada entrada del changelog DEBE llevar: version, fecha, hash de commit (o
+    rama si aun no se commitea), y resumen accionable.
+  * Toda cifra (tests, cobertura, conteos) DEBE reproducirse al modificarse:
+    ejecutar build + suites antes de escribir la nueva metrica.
+  * Alineacion con docs/reporte.txt: las revisiones de auditoria se nombran por
+    su ANEXO (8.16, 8.17, 8.18, 8.19, 8.20...) y pueden referenciarse aqui,
+    pero este archivo mantiene el ESTADO VIVO (resueltas/pendientes), mientras
+    reporte.txt guarda la TRAZABILIDAD historica.
+
+5.3 Formato de entrada del changelog
+--------------------------------------------------------------------------------
+  Al cerrar una deuda o incorporar un cambio mayor, agregar fila al inicio:
+
+    | vX.Y.Z | YYYY-MM-DD | <hash|rama> | <Tipo>: <resumen conciso con
+    |        |            |            | referencia al hallazgo cerrado
+    |        |            |            | (p. ej. 8.20-C01) + suites ok>.
+
+  Tipos aceptados: fix / feat / refactor / security / perf / docs / test / ci.
+
+5.4 Estado de vigencia
+--------------------------------------------------------------------------------
+  Ultima verificacion: 2026-09-08 (fix 8.20-C01 aplicado; arbol con cambios sin
+  commitear en V0.15). Proxima revision obligatoria: con cada PR que toque BD,
+  API, perifericos o cierres deuda.
+
+================================================================================
+FIN DEL DOCUMENTO - REPORTE DE ESTADO v1.1.0
+================================================================================

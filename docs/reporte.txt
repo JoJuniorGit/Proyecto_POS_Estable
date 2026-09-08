@@ -2226,4 +2226,359 @@ nuevo, keyset H14); suite Web 77/77; oxlint 0 errores (1 aviso preexistente
 W03).
 
 FIN DEL ANEXO - REVISION 8.16/8.17/8.18/8.19
+================================================================================
+
+================================================================================
+ANEXO 8.20 - AUDITORIA EXHAUSTIVA DE MANTENIBILIDAD Y ESCALABILIDAD [2026-09-08]
+================================================================================
+Fecha: 2026-09-08
+Alcance: auditoria READ-ONLY de TODO el sistema (Backend.API + Startup/,
+Controladores, Middleware, Jobs, Sales.Module, Inventory.Module, Core,
+Desktop WPF, Web.Frontend, Tests, Instalador, CI, UpdaterService, Logistics),
+ejecutada por 5 subagentes de auditoria sectorial + verificaciones propias
+puntuales de los hallazgos criticos. No se modifico codigo en esta pasada.
+Working tree: limpio en bdb7e55 (FASE 2). Suites re-ejecutadas: .NET 706/706
+(10s, con TEST_POSTGRES_CONNECTION), Web 77/77 (2.1s). oxlint sin cambios en
+web (mantiene el aviso W03 preexistente).
+
+-------------------------------------------------------------------------------
+A. HALLAZGOS NUEVOS (ordenados por severidad)
+-------------------------------------------------------------------------------
+* = confirmado con lectura directa propia (no solo via subagente).
+
+A.1 CRITICO - DISPONIBILIDAD DE LA COLUMNA SaleId EN PRODUCCION
+* [8.20-C01] DEFINITIVO (verificado por lectura directa de archivos y del
+  atributo EF). La migracion
+  Inventory.Module/Migrations/20260908153000_AddSaleIdToStockMovement.cs
+  (creada en FASE 1 para el hallazgo H03 / idempotencia de deduccion por
+  SaleId) NO tiene el atributo [Migration("...")] en la clase principal y NO
+  tiene archivo .Designer.cs. EF Core solo descubre migraciones con atributo
+  [Migration]; sin el, MigrateAsync (DatabaseInitializer.cs:96-97) la OMITE en
+  silencio y nunca la aplica. Consecuencia: las columnas "SaleId" de
+  StockMovements y StockMovements_Archive, junto al indice IX_StockMovements_
+  SaleId, SOLO existen en bases creadas con EnsureCreated (tests) — por eso la
+  suite 706/706 (que usa EnsureCreated/InMemory) no lo detecta. En una BD de
+  PRODUCCION (cualquier instalacion existente o fresca) la columna NO existe:
+  toda venta finalizada que deduzca stock escribiendo SaleId
+  (SalesService.cs:632, SalesService.HoldOrders.cs:228, InventorySaleMadeEvent
+  Handler con dedupe por SaleId) lanza PostgresException "column SaleId of
+  relation StockMovements does not exist" -> la venta NO completa. El smoke
+  MigratedSchema_MatchesModel_OnRealDatabase (WebApplicationFactorySmokeTests.
+  cs:106-107) migra la BD fresca pero no valida la existencia de SaleId/indice
+  (solo scale de Subtotal), por lo que pasa en falso.
+  FIX RECOMENDADO (patron 8.12-B1/B2/B3 de las migraciones reactivadas):
+  (1) anadir [Migration("20260908153000_AddSaleIdToStockMovement")] a la clase;
+  (2) convertir Up() en idempotente con guards de information_schema /
+      CREATE INDEX IF NOT EXISTS para poder aplicarse en cualquier estado;
+  (3) ampliar el smoke test para validar la columna SaleId y el indice
+      IX_StockMovements_SaleId tras MigrateAsync.
+  IMPACTO EN REPORTE PREVIO: la afirmacion "8.16-H03 RESUELTO en FASE 1"
+  (ANEXO 8.18) es INCORRECTA para produccion: el codigo es correcto, pero la
+  migracion nunca llega a la BD real. La FASE 1 requiere este fix para
+  considerarse completa.
+
+A.2 SEGURIDAD / DESPLIEGUE (ALTA)
+- [8.20-A01] (previa I01/I03, CIERTA). Installer/setup.iss:341,351,424-432 y
+  Configure-PosService.ps1:249-251 siguen pasando ConnectionStrings__Default
+  Connection, SystemSettings__AdminSeedPassword, JWT_SETTINGS_KEY y
+  HTTPS_CERT_PASSWORD por argv y AppEnvironmentExtra del servicio NSSM
+  (visibles por WMI/taskmgr/registro), pese al comment 8U-M2 de setup.iss:
+  329-331. FIX: escribir solo en secrets.json y eliminar esas variables del
+  EnvExtra y del argv.
+- [8.20-A02] (* NUEVO + contexto 8.16-B03). BackendHelpers.cs:79-130: el
+  fallback dinamico SIEMPRE genera y devuelve un certificado autofirmado en
+  memoria (solo devuelve null si falla RSA/PFX). Por tanto Program.cs:69 entra
+  siempre por la rama "cert != null" y el fail-fast HTTPS de Produccion
+  (Program.cs:76-84, "si no hay certificado en Produccion -> abortar") es dead
+  code: una produccion sin certificado persistido configurado arranca con un
+  cert efimero por cada arranque (sin aviso critico). FIX: en Produccion,
+  registrar advertencia critica/abortar si no se resolvio cert desde Store o
+  pfx persistido, reservando el fallback efimero para dev; o documentar la
+  decision como diseno y gatear el 8.16-B03 consecuente (RequireHttpsMetadata=
+  false en ServiceCollectionExtensions.cs:115).
+- [8.20-A03] (previa 8U-N2 + NUEVO). UpdaterService/Program.cs:40-56: la
+  verificacion esta condicionada a que exista expectedHash; si el paquete no
+  lleva --hash ni sidecar .sha256 se SALTA toda verificacion y se extrae
+  (fail-open). Ademas sigue sin firma X.509/Authenticode (8U-N2 pendiente).
+  RCE silenciosa en el servidor POS si el canal de updates se compromete.
+  FIX: fail-closed (rechazar la instalacion sin hash) + firma X.509 con pinning
+  de la clave publica del editor.
+- [8.20-A04] (previa 8.16-B05, CIERTA a nivel artefacto). El fuente tracked de
+  Backend.API/appsettings.json esta limpio, pero publish/BackendAPI/appsettings
+  .json:34 contiene "PosHttpsDev2026!" en claro, y setup.iss:31 empaqueta
+  publish\BackendAPI\* (excluyendo solo Production/Development) junto con
+  certs/pos-https.pfx stale. Todo instalador/update distribuye la clave del
+  pfx. FIX: build-release.ps1 debe sanear appsettings.json (password vacio) y
+  excluir certs/*.pfx de los artefactos instalables.
+- [8.20-A05] (NUEVO, integridad financiera web). PendingOrdersPage.jsx:551-558:
+  el abono parcial ejecuta un for...of con addPaymentToHoldSale por pago, y
+  cada llamada genera su propia Idempotency-Key interna (salesApi.js:100-107),
+  mientras el onCompleteSale de CheckoutModal ya resetea la key tras la
+  primera operacion (CheckoutModal.jsx:231/243). Si la red falla a mitad del
+  bucle quedan abonos parciales registrados y un reintento los duplica (nueva
+  key por operacion). FIX: endpoint backend que registre la lista de pagos en
+  una sola transaccion con una unica Idempotency-Key, o pasar la key desde el
+  caller a cada addPaymentToHoldSale.
+
+A.3 WPF / MVVM (MEDIA)
+- [8.20-M01] (NUEVO W20-01/02/05/06, consolidado). Desktop.Client.Core esta
+  acoplado a WPF en 20 archivos: System.Windows/Application.Current/Dispatcher
+  (ViewModels: AddProductViewModel.cs:9, CartViewModel.cs:12/172/233,
+  CashDrawerViewModel.cs:10/139/153, CheckoutViewModel.cs:9/331/350/365,
+  ImportProductsViewModel.cs:15, InterruptedTransactionViewModel.cs:4/33,
+  InventoryViewModel.cs:13/281/283/359/361, LoginViewModel.cs:144-146,
+  PendingOrdersViewModel.cs:12/13/151, PendingPickupsViewModel.cs:9,
+  PosViewModel.cs:14/144/209/281, PosViewModel.Orders.cs:9/172,
+  PosViewModel.Scanning.cs:9, ProductDialogViewModel.cs:22/153,
+  ProductDialogViewModel.Variants.cs:227-229, SalesHistoryViewModel.cs:8-9/
+  249-253, SettingsViewModel.cs:9/442-444, SettingsViewModel.Currency.cs:7,
+  UsersManagementViewModel.cs:55, VersionLockoutViewModel.cs:4/74, Services:
+  UiThreadMarshaller.cs:2/29, UserSessionHeaderHandler.cs:62), ademas de
+  MaterialDesignThemes.Wpf.DialogHost en VMs (CheckoutViewModel, PosViewModel.
+  Orders.cs:172), Microsoft.Win32.OpenFileDialog (ImportProductsViewModel.cs:7)
+  y System.Windows.Threading.DispatcherTimer (ProductDialogViewModel.cs:22,153).
+  Viola la regla de capa desacoplada y vuelve el comportamiento de tests sin
+  STA distinto al de produccion (UiThreadMarshaller ejecuta inline con
+  Application.Current null). FIX: abstraccion async IDispatcherInvoker +
+  IFilePickerDialog; apertura/cierre de dialogos via IDialogService/vistas
+  (RequestClose).
+- [8.20-M02] (* previos R01-R08 actualizados). Dispatcher.Invoke bloqueante en
+  Core que espera al dispatcher: CashDrawerViewModel.cs:139,153; Inventory
+  ViewModel.cs:283,361; ProductDialogViewModel.Variants.cs:227-229;
+  UserSessionHeaderHandler.cs:62 (logout desde callback HTTP 401 -> riesgo de
+  deadlock); UiThreadMarshaller.cs:29; PosViewModel.cs:144/209/281,
+  CartViewModel.cs:172/233 y SalesHistoryViewModel.cs:249-253 via marshaller.
+  LoginViewModel.cs:146 y SettingsViewModel.cs:444 ya usan InvokeAsync (patron
+  a replicar). FIX: await Dispatcher.InvokeAsync / BeginInvoke.
+- [8.20-M03] (NUEVO W20-04). HealthPollingService.cs:48-92: StartPolling crea
+  un CTS sin timeout enlazado y el HttpClient "HealthPolling" se registra sin
+  Timeout (App.xaml.cs:142-145); el comentario App.xaml.cs:141 afirma el fix
+  "8.9-M12" pero NO existe en codigo. Un servidor que acepte la conexion y
+  cuelgue deja el polling parado ~100s. FIX: CTS.CreateLinkedTokenSource(cts.
+  Token, new CTS(3000ms).Token) por request o client.Timeout=3s.
+- [8.20-M04] (previos R13/R14-R16, CIERTOS). PendingPickupsView.xaml:96:
+  UniformGrid en ItemsControl sin virtualizacion; patron Clear()+Add() N+1 en
+  SalesHistoryViewModel.cs:340-346, PendingOrdersViewModel.cs:105-107 y
+  PendingPickupsViewModel.cs:58-60 (reemplazar por SetProperty de coleccion
+  completa/reset).
+- [8.20-M05] (previa 8.14-N1, PARCIAL). Paginacion real en WPF solo en
+  SalesHistoryViewModel (GetSalesHistoryAsync(CurrentPage, PageSize, ...) :
+  336); PendingOrdersViewModel.cs:104 y PendingPickupsViewModel.cs:57 llaman
+  GetPendingSalesAsync/GetPendingPickupsAsync (SalesService.cs:204-207,
+  295-299) SIN limit/offset cargando listas completas.
+
+A.4 CI / TESTS / INFRA (MEDIA-BAJA)
+- [8.20-M06] (previas C02/CI02/T01/T03, CIERTAS). coverage.runsettings:12 solo
+  mide [Sales.Module]*,[Inventory.Module]*,[Core]* (Backend.API/WPF/Tests sin
+  medir ni gatear); ci.yml:67 gate con `find ... | head -n 1` (indeterminista
+  si >1 reporte); PostgresRealSharedTransactionTests.cs:31,70-74 y
+  WebApplicationFactorySmokeTests.cs:58,72,87 sin rama GITHUB_ACTIONS->throw
+  (falso verde si la cadena se pierde en CI; la convencion existe en
+  PostgresRealIntegrationTests.cs:32-38); smoke acepta 200 O 404 en OpenAPI
+  (:64-66).
+- [8.20-M07] (previas I04/I05/I02, CIERTAS). ACL de secrets.json falla solo
+  con WARN y continua (Configure-PosService.ps1:295-297,316-318); setup.iss:
+  398 concede solo SYSTEM:(F) Administrators:(F) sin NT SERVICE (Virtual
+  Account) -> el servicio puede no leer secrets.json y depender de la
+  redundancia de A01; default ConnectionString Password=postgres
+  (Configure-PosService.ps1:24, setup.iss:161) y residuo JWT debil
+  "ddf95c83..." en Configure-PosService.ps1:61,210,215 y setup.iss:114.
+  FIX: ACL fail-closed con la cuenta del servicio.
+- [8.20-M08] (NUEVOS M06/M07/M10 infra). UpdatePackageExtractor.cs:68-69 no
+  preserva secrets.json al instalar paquetes (un paquete malicioso lo
+  sobrescribe); UpdaterService publicado (scripts/build-release.ps1:23,39)
+  pero NO integrado al instalador (setup.iss:29-42) ni existe servidor para
+  /updates (UpdateServerUrl apunta a localhost:5000/updates sin implementar);
+  Logistics.Module vive en memoria (DeliveryService.cs:21 ConcurrentDictionary)
+  pese a lo cual se registra en el DI de PRODUCCION
+  (ServiceCollectionExtensions.cs:72,75) -> estado de entregas se pierde al
+  reiniciar. FIX: integrar o retirar UpdaterService; no registrar Logistics en
+  Produccion o implementar su persistencia.
+- [8.20-M09] (NUEVOS web F20-02/03/04). Timers sin cleanup: SettingsPage.jsx:
+  57,140,143, CashAdvanceModal.jsx:102, HoldSaleModal.jsx:126, Customer
+  SelectorCard.jsx:54,122 (el patron correcto existe en Modal.jsx:43,
+  ConfirmModal.jsx:56, HistoryPage.jsx:44-63 y CartContext); ExchangeRatePage.
+  jsx:34-36 sin guard de cancelacion; @zxing/library entra en el bundle inicial
+  con import eager en BarcodeScannerModal.jsx:2 (pos es la vista inicial) ->
+  React.lazy del escaner.
+- [8.20-M10] (previa 8.16-B14 + residuo). Program.cs:51-55 calcula
+  computedAllowedHosts y nunca lo loguea; BuildLanAllowedHosts conserva un
+  catch{} silencioso (BackendHelpers.cs:189-192) a diferencia de los demas
+  puntos ya migrados a LogWarning.
+
+A.5 BAJA / INFO
+- [8.20-B01] (previa T04, CIERTA). 17 usos de `null!` en tests que enmascaran
+  dependencias rotas de DI (p.ej. DataIntegritySprint1Tests.cs:111,158;
+  Phase3ConcurrencyAndReservationTests.cs:103,124,141).
+- [8.20-B02] (previa 8.14-N5, CIERTA). dotnet-tools.json (raiz) fija
+  dotnet-ef 10.0.3 con rollForward=false mientras los paquetes EF son 10.0.4.
+  Actualizar el tool (dotnet tool update) para evitar divergencias de snapshot.
+- [8.20-B03] (NUEVO CI). ci.yml sin `permissions:`; cache key de NuGet solo
+  hashFiles('**/*.csproj') (no incluye Directory.Packages.props/dotnet-tools.
+  json -> cache stale); runner solo ubuntu-latest (el proyecto net10.0-windows
+  se compila con EnableWindowsTargeting pero el WPF nunca se ejecuta en CI);
+  sin packages.lock.json -> restauracion no reproducible (Recomendado:
+  RestorePackagesWithLockFile + RestoreLockedMode).
+- [8.20-B04] (NUEVO despliegue dev). publish_backend/ stale (build-release.ps1
+  :17-23 no lo limpia); Program.cs:93-106 carga .env desde BaseDirectory hacia
+  arriba -> si un .env de dev llega junto al backend se inyectan credenciales
+  de desarrollo en produccion.
+- [8.20-B05] (NUEVO docs). docs/INSTALLATION.md:58 documenta
+  SystemSettings__AdminSeedPassword = Admin123! (secreto difundido en un doc
+  tracked; mitigado por MustChangePassword); :13,:27,:48 afirman que los
+  secretos solo van en variables de entorno (obsoleto: secrets.json + EnvExtra
+  segun A01); INSTALLATION.md:72 pide copiar UpdaterService contradiciendo
+  ARCHITECTURE.md:14 (ver M08).
+- [8.20-B06] (previa T06, CIERTA). AppLoggerTests.cs:13-38 escriben en rutas de
+  log globales compartidas (order-dependent/flaky).
+- [8.20-B07] (previa 8W-M1, actualizado). MessageBox en Desktop.Client.Core = 0
+  (CONFIRMADO, mejora de 8.16). Restan 7 en Desktop.Client: Program.cs:38,43;
+  MainWindow.xaml.cs:31; AdjustStockDialog.xaml.cs:34,48; EditSaleDialog.xaml
+  .cs:211; PairingQrDialog.xaml.cs:25. Los de Program.cs (pre-UI) son
+  aceptables.
+- [8.20-B08] (previas R12/R23, CIERTAS). EditSaleDialog.xaml.cs (293 lineas):
+  validacion/totales/abonos/DTOs en code-behind (XAML con eventos en vez de
+  CommandBinding) + 3 RelayCommand por fila (:280-291) en EditableSaleItemVm.
+- [8.20-B09] (previa T03 web, CIERTA). PosFlowIntegration.test.js:31-91 y
+  ExchangeRatePage.test.js:10 reimplementan logica de negocio inline en vez de
+  importar los modulos reales.
+- [8.20-B10] (previa 8.16-B09, CIERTA). BcvExchangeRateJob.cs:33 auto-
+  programado cada 2h contradice el diseno declarado "BCV manual"; documentar o
+  hacerlo configurable.
+
+-------------------------------------------------------------------------------
+B. VERIFICACION CLAIM-A-CLAIM (estado de hallazgos previos, resumen)
+-------------------------------------------------------------------------------
+CIERTOS/MANTENIDOS: 8.16-H01 (RowVersion eliminado, migracion con Designer),
+H08 (indices trgm cubren ILIKE del historial), H12 (cache keys limpiado),
+H14 (keyset en SalesService.Pricing.cs:28-45), 8.2-A1 (xmin como token),
+8.12-L2 (OrderBy+Take(20) en Outbox), 8.14-N3 (pos_smoke_<suffix>),
+W01/W02 (Modal.jsx useId + focus restore), W1 (Idempotency-Key web),
+8.16-B02b (mensajes localizados a espanol), 8.16-B11 (Program.cs 132 lineas),
+I06 (SHA-256 del nssm verificado), CI01/CI03 (timeouts + cache NuGet),
+8W-M1 (Core con 0 MessageBox). H04 no-bug, H17 no-bug, W2 no mergeable.
+RESUELTO ADICIONAL EN ESTA PASE: 8.16-R19 (ImportProductsView Grid_Drop ya
+tiene try/catch y delega en vm).
+PARCIALES: 8B-B4/B14 (catch{} en BuildLanAllowedHosts sigue sin log, 8.20-M10),
+8U-M2 (el backend implementa secrets.json pero el instalador NO: 8.20-A01),
+8.16-H06 (proyeccion a DTO diferida: GetAllProductsAsync ademas es codigo
+muerto - ningun controller lo llama, la API usa GetProductsPagedAsync),
+8.16-R17 (entropia DPAPI hardcodeada), 8.16-R18 (cert loopback sin pinning),
+8.2-B5 (snake_case sigue en el contrato publico ISalesService.cs:94-101,
+SalesService.cs:119/162, SalesHistoryViewModel.cs:244).
+DEFERIDOS: 8.16-H16 (advisory lock), 8L-CR3 (Logistics sin persistencia, agrava
+8.20-M08), 8U-N2 (firma X.509, agrava 8.20-A03), W4 (retencion forense TTL).
+
+-------------------------------------------------------------------------------
+C. CORRECCIONES A AFIRMACIONES PREVIAS DEL REPORTE
+-------------------------------------------------------------------------------
+- [ANEXO 8.18 / H03 "RESUELTO en FASE 1"] SEGUN 8.20-C01: el codigo resolvio el
+  dedupe por SaleId, PERO la migracion 20260908153000 nunca se aplica en BD de
+  produccion (sin [Migration] ni Designer). La FASE 1 NO quedo completa hasta
+  aplicar el fix de C01.
+- [ANEXO 8.19] "sln local no lo fija" (dotnet-ef): INCORRECTO. Existe
+  dotnet-tools.json en la RAZ del repo fijando dotnet-ef 10.0.3 con
+  rollForward=false (8.20-B02).
+- [8.16-A.1] "8B-B4 resuelto": PARCIAL. El catch de HoldOrders/PaymentMethod/
+  ExchangeRate ya loguea (B08), pero BuildLanAllowedHosts conserva catch{}
+  silencioso (BackendHelpers.cs:189-192).
+- [8W-M1] conteo actualizado: Core = 0 MessageBox; Desktop.Client = 7
+  (listados en 8.20-B07).
+- [~15 migraciones sin Designer] hoy son 14 hand-written: 13 con [Migration]
+  OK + 1 (20260908153000) SIN atributo = 8.20-C01. El snapshot
+  (InventoryDbContextModelSnapshot.cs:242,258-259,299) SI modela SaleId, por
+  lo que has-pending-model-changes sigue limpio e HIPOCRITA: un futuro
+  `dotnet ef migrations add` no generaria la reparacion de la columna.
+- [8.16-H06] GET products: GetAllProductsAsync es hoy codigo muerto (nadie lo
+  llama); el hallazgo de rendimiento real se limita a CashDrawer
+  GetHistoryAsync (CashDrawerService.cs:425-434 incluye entidad Sale completa).
+
+-------------------------------------------------------------------------------
+D. DEUDA ESTRUCTURAL ACTUALIZADA
+-------------------------------------------------------------------------------
+- [8.20-D1] CRITICA: migracion sin atributo [Migration] (20260908153000) =
+  columna SaleId ausente en produccion (C01). Riesgo de quiebre total de
+  ventas al desplegar la FASE 1.
+- [8.20-D2] Instalador: secretos por argv/EnvExtra + ACL sin cuenta de
+  servicio (A01/M07) - sesgo de la mitigacion 8U-M2.
+- [8.20-D3] TLS: cert efimero en Produccion hace dead code el fail-fast (A02)
+  + RequireHttpsMetadata=false (8.16-B03) sin gate.
+- [8.20-D4] Updater fail-open sin firma X.509 (A03) y sin integracion real
+  (M08).
+- [8.20-D5] WPF: acoplamiento Core->WPF en 20 archivos (M01) + Dispatcher.
+  Invoke bloqueante (M02) + falta timeout health (M03) + paginacion parcial
+  (M05) + UniformGrid sin virtualizar (M04).
+- [8.20-D6] CI/Tests: coverage parcial (M06), silent-pass (M06), sin locks
+  NuGet/runner Windows (B03).
+- [8.20-D7] Artefactos: secrets en publish/ + pfx stale (A04) y publish_backend
+  sin limpiar (B04).
+- [8.20-D8] Pendientes previos intactos: H16, 8L-CR3, 8U-N2, W4; parciales
+  H06, R17, R18, 8.2-B5.
+
+-------------------------------------------------------------------------------
+E. RECOMENDACION DE PROXIMO SPRINT (priorizado por la auditoria 8.20)
+-------------------------------------------------------------------------------
+1. [CRITICO] Fix 8.20-C01 (atributo [Migration] + guards idempotentes +
+   validacion de SaleId en el smoke test) y verificar en BD real/fresca que la
+   columna e indice se crean. Sin esto, la FASE 1 rompe las ventas en
+   produccion.
+2. [ALTA] Instalador: secretos SOLO via secrets.json (A01), ACL fail-closed con
+   NT SERVICE (M07) y saneamiento de artefactos (A04: appsettings.json sin
+   password + excluir pfx).
+3. [ALTA] Updater: fail-closed sin hash + firma X.509 con pinning (A03/M08).
+4. [MEDIA] Desacoplar Desktop.Client.Core de WPF (M01) y unificar marshalling
+   no bloqueante (M02) + timeout real de HealthPolling (M03).
+5. [MEDIA] Integridad financiera web: abonos parciales atomicos con
+   Idempotency-Key unica (A05).
+6. [MEDIA] CI: gate deterministico (M06), guards GITHUB_ACTIONS->throw en
+   smoke/shared, cobertura de Backend.API, locks NuGet y runner Windows (B03).
+7. [BAJA] TLS de produccion (A02), localizar detalle del cert JM, limpiar
+   residuos (docs, publish_backend, ddf95c83, Admin123!), paginacion WPF
+   restante (M05) y virtualizacion (M04).
+
+FIN DEL ANEXO - REVISION 8.20
+================================================================================ 
+
+-------------------------------------------------------------------------------
+ANEXO 8.21 - CIERRE DEL HALLAZGO CRITICO 8.20-C01 (migracion 20260908153000)
+-------------------------------------------------------------------------------
+Fecha: 2026-09-08 | Rama/Bif: V0.15 (cambios SIN commitear al cierre del ANEXO)
+
+A. ACCIONES APLICADAS
+1. Migracion reactivada: en Inventory.Module/Migrations/
+   20260908153000_AddSaleIdToStockMovement.cs se anadio el atributo
+   [DbContext(typeof(InventoryDbContext))] + [Migration("20260908153000_
+   AddSaleIdToStockMovement")] (patron identico al reactivado 8.12-B3 /
+   20260907030000_AddPgTrgmGinIndexesRev89). Up() y Down() reescritos como
+   bloques DO $$ idempotentes con guards to_regclass + information_schema:
+   la columna SaleId solo se crea si no existe y el indice usa
+   CREATE INDEX IF NOT EXISTS -> re-aplicacion es un no-op (sin drift).
+2. Smoke test endurecido: MigratedSchema_MatchesModel_OnRealDatabase (que usa
+   MigrateAsync real sobre la BD aislada pos_smoke_) ahora valida 3
+   invariantes nuevos: SaleId en StockMovements, SaleId en StockMovements_
+   Archive e indice IX_StockMovements_SaleId (informacion_schema/pg_indexes).
+   Si la migracion volviera a quedar huefana, los asserts fallan -> la
+   regresion vuelve a ser detectada por la suite.
+
+B. VERIFICACION (2026-09-08, arbol tras el fix)
+   * dotnet build (Debug y Release): 0 errores / 0 avisos (TreatWarningsAsErrors).
+   * Suite .NET: 706/706 pasan (10s; los asserts del punto A.2 pasan).
+   * Suite Web: 77/77 (2.1s); oxlint 0 errores / 1 aviso preexistente (W03).
+   * dotnet ef migrations has-pending-model-changes: "No changes" en
+     InventoryDbContext y SalesDbContext (sin drift de modelo tras reactivar).
+   * Efecto en BD real: MigrateAsync sobre pos_smoke_ aplico la migracion y
+     materializo columna + indice (deja de existir el escenario en que SaleId
+     solo vive en BDs creadas con EnsureCreated).
+
+C. CONSECUENCIAS
+   * Cierra la recomendacion E.1 del ANEXO 8.20 y completa la correccion del
+     ANEXO 8.18: H03 (deduccion de stock por SaleId) ya llega a BDs reales
+     via migraciones. En produccion, la proxima ejecucion de MigrateAsync
+     durante el arranque (DatabaseInitializer) aplicara la columna e indice;
+     el Up() idempotente la hace segura incluso si una BD ya tuviera SaleId.
+   * PENDIENTE: commit de los cambios (migracion + smoke test + docs) en la
+     rama V0.15. Nuevos hallazgos vigentes de la auditoria 8.20: A01-A05 y
+     M01-M10/B01-B10 (ver ANEXO 8.20, secciones A.2 y B deuda estructural).
+
+FIN DEL ANEXO - REVISION 8.21
 ================================================================================ 

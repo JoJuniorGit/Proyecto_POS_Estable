@@ -138,5 +138,25 @@ public class WebApplicationFactorySmokeTests
             "SELECT COUNT(*)::int AS \"Value\" FROM pg_class WHERE relkind = 'S' AND relname = 'factura_number_seq'")
             .FirstOrDefaultAsync();
         Assert.Equal(1, invoiceSeq);
+
+        // 8.20-C01: SaleId (idempotencia de stock H03) e índice deben materializarse en BD
+        // real vía MigrateAsync. Antes la migración era huérfana (sin [Migration]) y solo
+        // existía en BDs creadas con EnsureCreated.
+        var stockMoveSaleId = await inventoryDb.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.columns " +
+            "WHERE table_schema = 'public' AND table_name = 'StockMovements' AND column_name = 'SaleId'")
+            .FirstOrDefaultAsync();
+        Assert.Equal(1, stockMoveSaleId);
+
+        var archiveSaleId = await inventoryDb.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.columns " +
+            "WHERE table_schema = 'public' AND table_name = 'StockMovements_Archive' AND column_name = 'SaleId'")
+            .FirstOrDefaultAsync();
+        Assert.Equal(1, archiveSaleId);
+
+        var saleIdIndex = await inventoryDb.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*)::int AS \"Value\" FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'IX_StockMovements_SaleId'")
+            .FirstOrDefaultAsync();
+        Assert.Equal(1, saleIdIndex);
     }
 }
