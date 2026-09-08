@@ -87,7 +87,8 @@ public class Phase7ClosureWithoutRateTests
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         Assert.NotNull(badRequest.Value);
-        var message = badRequest.Value?.GetType().GetProperty("Message")?.GetValue(badRequest.Value)?.ToString();
+        var payload = Assert.IsAssignableFrom<System.Collections.Generic.IDictionary<string, object?>>(badRequest.Value);
+        var message = payload.TryGetValue("message", out var msg) ? msg?.ToString() : null;
         Assert.Contains("tasa BCV", message, StringComparison.OrdinalIgnoreCase);
 
         // No closure should be persisted and no cash drawer rollover should occur
@@ -167,7 +168,9 @@ public class Phase7ClosureWithoutRateTests
         var result = await controller.CloseShift(request);
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-        var message = badRequest.Value?.ToString();
+        Assert.NotNull(badRequest.Value);
+        var payload = Assert.IsAssignableFrom<System.Collections.Generic.IDictionary<string, object?>>(badRequest.Value);
+        var message = payload.TryGetValue("message", out var msg) ? msg?.ToString() : null;
         Assert.Contains("tasa BCV", message, StringComparison.OrdinalIgnoreCase);
 
         mockDailyClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Times.Never);

@@ -182,17 +182,17 @@ public class ShiftsController : ControllerBase
             return Ok(report);
             });
         }
-        catch (DbUpdateException ex)
+        catch (DbUpdateException)
         {
-            return Conflict(new { Message = "Conflicto de concurrencia al cerrar el turno. Ya se encuentra un cierre en ejecución.", Details = ex.Message });
+            return this.ApiConflict("Conflicto de concurrencia al cerrar el turno. Ya se encuentra un cierre en ejecución.");
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { Message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { Message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 

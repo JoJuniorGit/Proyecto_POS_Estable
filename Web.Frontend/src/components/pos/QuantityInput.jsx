@@ -5,8 +5,6 @@ export default function QuantityInput({ item, value, isFractional: isFractionalP
     isFractionalProp ?? (
       item?.isFractional ||
       item?.isFractionable ||
-      item?.IsFractional ||
-      item?.IsFractionable ||
       (item?.unitOfMeasure && item.unitOfMeasure !== 'Und' && item.unitOfMeasure !== 0)
     )
   );

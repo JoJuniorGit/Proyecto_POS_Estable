@@ -91,25 +91,14 @@ export default function Sidebar({ currentView, onNavigate, isOpen, onClose }) {
         </nav>
 
         {/* Footer */}
-        <div className="sidebar-footer" style={{ flexDirection: 'column', gap: '0.75rem', alignItems: 'stretch' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="sidebar-footer">
+          <div className="d-flex flex-align-center justify-between">
             <ThemeToggle />
             <button
               type="button"
               onClick={logout}
               title="Cerrar Sesión"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#ef4444',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-                fontSize: '0.8rem',
-                padding: '0.25rem 0.5rem',
-                borderRadius: '0.25rem',
-              }}
+              className="sidebar-logout"
             >
               <LogOut size={16} /> Salir
             </button>

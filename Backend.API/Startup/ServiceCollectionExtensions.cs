@@ -159,6 +159,7 @@ public static class ServiceCollectionExtensions
             options.Filters.Add<Backend.API.Filters.ModelStateValidationFilter>();
         }).AddJsonOptions(x =>
         {
+            x.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
             x.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
         });
 

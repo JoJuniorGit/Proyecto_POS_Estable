@@ -71,11 +71,11 @@ public class ReservationsController : ControllerBase
         catch (InvalidOperationException ex)
         {
             // Stock not available or concurrency conflict
-            return Conflict(new { Message = ex.Message });
+            return this.ApiConflict(ex.Message);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return NotFound(new { Message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
     }
 
@@ -107,7 +107,7 @@ public class ReservationsController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            return Conflict(new { Message = ex.Message });
+            return this.ApiConflict(ex.Message);
         }
     }
 
@@ -135,7 +135,7 @@ public class ReservationsController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            return Conflict(new { Message = ex.Message });
+            return this.ApiConflict(ex.Message);
         }
     }
 

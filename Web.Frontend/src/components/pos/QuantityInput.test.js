@@ -72,17 +72,15 @@ describe('QuantityInput Fractional vs Non-Fractional Validation Tests', () => {
     assert.strictEqual(validatedQty2, 2.5, 'Fractional item quantity must preserve 2.5');
   });
 
-  test('6. QuantityInput correctly evaluates isFractionable, IsFractional and unitOfMeasure fallbacks', () => {
+  test('6. QuantityInput correctly evaluates isFractionable, isFractional and unitOfMeasure', () => {
     const resolveIsFractional = (item) => Boolean(
       item?.isFractional ||
       item?.isFractionable ||
-      item?.IsFractional ||
-      item?.IsFractionable ||
       (item?.unitOfMeasure && item.unitOfMeasure !== 'Und' && item.unitOfMeasure !== 0)
     );
 
     assert.strictEqual(resolveIsFractional({ isFractionable: true }), true);
-    assert.strictEqual(resolveIsFractional({ IsFractional: true }), true);
+    assert.strictEqual(resolveIsFractional({ IsFractional: true }), false);
     assert.strictEqual(resolveIsFractional({ isFractional: true }), true);
     assert.strictEqual(resolveIsFractional({ unitOfMeasure: 'Kg' }), true);
     assert.strictEqual(resolveIsFractional({ unitOfMeasure: 'Grs' }), true);

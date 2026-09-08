@@ -332,11 +332,11 @@ public class StatusUpdateDto
         }
         catch (System.UnauthorizedAccessException unEx)
         {
-            return StatusCode(StatusCodes.Status403Forbidden, unEx.Message);
+            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { Message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -432,21 +432,21 @@ public class StatusUpdateDto
             var updatedVariants = await _inventoryService.LinkVariantsBatchAsync(parentId, productIds, token);
             return Ok(updatedVariants);
         }
-        catch (DbUpdateConcurrencyException ex)
+        catch (DbUpdateConcurrencyException)
         {
-            return StatusCode(StatusCodes.Status409Conflict, new { message = "Conflicto de concurrencia al vincular variantes. Los datos fueron modificados por otro usuario.", details = ex.Message });
+            return this.ApiConflict("Conflicto de concurrencia al vincular variantes. Los datos fueron modificados por otro usuario.");
         }
         catch (KeyNotFoundException knfEx)
         {
-            return NotFound(new { message = knfEx.Message });
+            return this.ApiNotFound(knfEx.Message);
         }
         catch (InvalidOperationException invEx)
         {
-            return BadRequest(new { message = invEx.Message });
+            return this.ApiBadRequest(invEx.Message);
         }
         catch (UnauthorizedAccessException unEx)
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = unEx.Message });
+            return this.ApiForbidden(unEx.Message);
         }
     }
 
@@ -479,21 +479,21 @@ public class StatusUpdateDto
             var unlinked = await _inventoryService.UnlinkVariantAsync(parentId, variantId, token);
             return Ok(unlinked);
         }
-        catch (DbUpdateConcurrencyException ex)
+        catch (DbUpdateConcurrencyException)
         {
-            return StatusCode(StatusCodes.Status409Conflict, new { message = "Conflicto de concurrencia al desvincular la variante. Los datos fueron modificados por otro usuario.", details = ex.Message });
+            return this.ApiConflict("Conflicto de concurrencia al desvincular la variante. Los datos fueron modificados por otro usuario.");
         }
         catch (KeyNotFoundException knfEx)
         {
-            return NotFound(new { message = knfEx.Message });
+            return this.ApiNotFound(knfEx.Message);
         }
         catch (InvalidOperationException invEx)
         {
-            return BadRequest(new { message = invEx.Message });
+            return this.ApiBadRequest(invEx.Message);
         }
         catch (UnauthorizedAccessException unEx)
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = unEx.Message });
+            return this.ApiForbidden(unEx.Message);
         }
     }
 
@@ -523,7 +523,7 @@ public class StatusUpdateDto
         }
         catch (System.UnauthorizedAccessException unEx)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
+            return this.ApiForbidden(unEx.Message);
         }
     }
 
@@ -546,7 +546,7 @@ public class StatusUpdateDto
         }
         catch (System.UnauthorizedAccessException unEx)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
+            return this.ApiForbidden(unEx.Message);
         }
     }
 
@@ -569,7 +569,7 @@ public class StatusUpdateDto
         }
         catch (System.UnauthorizedAccessException unEx)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
+            return this.ApiForbidden(unEx.Message);
         }
     }
 }

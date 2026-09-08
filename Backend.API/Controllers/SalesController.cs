@@ -171,15 +171,15 @@ public class SalesController : ControllerBase
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return NotFound(new { message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
         catch (System.ArgumentException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (System.InvalidOperationException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -212,15 +212,15 @@ public class SalesController : ControllerBase
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return NotFound(new { message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
         catch (System.ArgumentException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (System.InvalidOperationException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -240,19 +240,19 @@ public class SalesController : ControllerBase
         }
         catch (System.UnauthorizedAccessException ex)
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            return this.ApiForbidden(ex.Message);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return NotFound(new { message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
         catch (System.ArgumentException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (System.InvalidOperationException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -285,15 +285,15 @@ public class SalesController : ControllerBase
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return NotFound(new { message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
         catch (System.ArgumentException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (System.InvalidOperationException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -327,15 +327,15 @@ public class SalesController : ControllerBase
         }
         catch (System.InvalidOperationException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return NotFound(new { message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
         catch (System.ArgumentException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -385,15 +385,15 @@ public class SalesController : ControllerBase
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return NotFound(new { message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
         catch (System.ArgumentException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (System.InvalidOperationException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -408,11 +408,11 @@ public class SalesController : ControllerBase
         }
         catch (System.ArgumentException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (System.InvalidOperationException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -427,15 +427,15 @@ public class SalesController : ControllerBase
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return NotFound(new { message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
         catch (System.ArgumentException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (System.InvalidOperationException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -450,15 +450,15 @@ public class SalesController : ControllerBase
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return NotFound(new { message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
         catch (System.ArgumentException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (System.InvalidOperationException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -764,11 +764,11 @@ public class SalesController : ControllerBase
         }
         catch (System.ArgumentException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (System.InvalidOperationException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -841,15 +841,15 @@ public class SalesController : ControllerBase
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
-            return NotFound(new { Message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
         catch (System.ArgumentException ex)
         {
-            return BadRequest(new { Message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (System.InvalidOperationException ex)
         {
-            return BadRequest(new { Message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 }

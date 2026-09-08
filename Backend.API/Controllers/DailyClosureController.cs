@@ -164,17 +164,17 @@ public class DailyClosureController : ControllerBase
             return Ok(result);
             });
         }
-        catch (DbUpdateException ex)
+        catch (DbUpdateException)
         {
-            return Conflict(new { Message = "Conflicto de concurrencia al registrar el cierre diario. Es posible que ya se haya ejecutado otro cierre en paralelo.", Details = ex.Message });
+            return this.ApiConflict("Conflicto de concurrencia al registrar el cierre diario. Es posible que ya se haya ejecutado otro cierre en paralelo.");
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { Message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { Message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 

@@ -2582,3 +2582,199 @@ C. CONSECUENCIAS
 
 FIN DEL ANEXO - REVISION 8.21
 ================================================================================ 
+
+-------------------------------------------------------------------------------
+ANEXO 8.22 - VERIFICACION DE ALINEACION CON docs/coding-guidelines.md v1.0.0
+-------------------------------------------------------------------------------
+Fecha: 2026-09-08 | Rama/Bif: V0.15 | Alcance: revision READ-ONLY (sin cambios
+de codigo; solo trazabilidad en este archivo).
+
+A. METODO
+Busquedas objetivas con path explicito a la raiz del repo, lecturas selectivas
+y muestreo por regla. Nota de proceso: las primeras busquedas SIN path
+buscan en el dir actual (carpeta .agents/), produciendo falsos "no matches";
+los resultados validos se re-ejecutaron con path a la raiz. Suites no
+re-ejecutadas en este anexo (estado conocido del dia: .NET 706/706, Web
+77/77, build D/R 0/0).
+
+B. REGLAS CUMPLIDAS (verificado con evidencia)
+1. [_snake_case §2.1/§4.1] 0 campos "private _foo_bar" en el repo.
+2. [async void §2.2] Solo TaskExtensions.SafeFireAndForget (patron sancionado),
+   App.OnStartup y MainWindow.OnClosing (overrides WPF); 2 handlers directos
+   puntuales (ver C.8).
+3. [EF Core §2.3] AsNoTracking/AsSplitQuery: 100+ usos (historial, catalogos,
+   hold orders, archiver). Tokens xmin: IsConcurrencyToken en
+   SalesDbContext.cs:228/240/246 e InventoryDbContext.cs:124 + migraciones.
+   DDL solo en Migrations/* (CreateTable/AddColumn/CreateIndex); MigrateAsync
+   como unica fuente de verdad. Multi-contexto con rawDbTx.UseTransaction
+   (SalesService.cs:381, CashAdvance.cs:25-28, InventoryService.cs:716
+   UseTransactionAsync).
+4. [Financiero §2.4] 0 float/double monetarios (solo CacheMetrics
+   HitRatePercentage e ImportProductsViewModel _progressValue, no monetarios).
+   Redondeo fiscal MidpointRounding.AwayFromZero 2d: 84 usos (PricingCalculator,
+   SalesService.*, CashDrawer, Cart*). Historial inmutable: AppliedRate/
+   TotalUSD/TotalBsS como snapshot; recalculado solo en on-hold, nunca en
+   cerradas.
+5. [HTTP §2.5] GlobalExceptionHandlerMiddleware RFC 7807 completo (20+ ramas;
+   23502/23503/23505 mapeadas; traceId) + GlobalExceptionHandlerMiddlewareTests
+   dedicado. (Sin embargo, los controllers lo bypasean - ver C.2.)
+6. [WPF §4.1] CommunityToolkit MVVM: [ObservableProperty]/[RelayCommand]
+   masivos (100+). Virtualizacion §4.2: IsVirtualizing=True +
+   VirtualizationMode=Recycling en 10+ DataGrid (PosView, InventoryView,
+   SalesHistoryView, PendingOrders/Pickups, UsersManagement, Variants,
+   CashDrawerView, EditSaleDialog).
+7. [Testing §6.1] Naming "Metodo_Escenario_Resultado" dominante (100+
+   confirmados). Namespaces file-scoped: Core 100% "namespace X;".
+
+C. INCUMPLIMIENTOS / DESVIACIONES (con evidencia)
+C.1 [ALTA] §3.2 Contrato camelCase de DTOs: no existe PropertyNamingPolicy
+    (`AddJsonOptions` solo configura ReferenceHandler=IgnoreCycles,
+    ServiceCollectionExtensions.cs:160-163) y el frontend accede al ejemplo
+    prohibido del doc (item.IsFractional) en EditSaleModal.jsx:25/55/111/212,
+    QuantityInput.jsx:8 y QuantityInput.test.js:79. La API serializa
+    PascalCase; coexisten accesos PascalCase (IsFractional) y camelCase
+    (totalUSD en HistoryPage). Riesgo: contrato por accidente.
+C.2 [ALTA] §2.5 Fuga de ex.Message en controllers: ~74 returns
+    "new { Message = ex.Message }" que bypasean el middleware y no son RFC
+    7807: SalesController.cs (aprox. 40), PaymentMethodsController.cs, 
+    ReservationsController.cs, ShiftsController.cs, DailyClosureController.cs
+    :169-177, ProductsController.cs:339,437,484. Contrato de error
+    inconsistente (Message vs message). (Deuda parcial ya declarada: B12.)
+C.3 [ALTA] §3.3 Cero estilos inline: >100 matches "style={{...}}" en
+    CatalogPage.jsx, ExchangeRatePage.jsx, ClosingPage.jsx, HistoryPage.jsx,
+    ErrorBoundary.jsx y otros, con valores fijos arbitrarios (colores, font)
+    en lugar de design tokens.
+C.4 [MEDIA] §2.4 Redondeo de tasa BCV: PricingCalculator.cs:27-30
+    RoundExchangeRateCeiling usa Math.Ceiling(rate*100m)/100m (2 decimales);
+    la guia exige 4 (Math.Ceiling(rate*10000m)/10000m). DECISION DE NEGOCIO
+    PENDIENTE (ver E).
+C.5 [MEDIA] §1.1 Umbral 500 lineas: 10 archivos de produccion lo superan aun
+    sin ser God Objects: SalesService.cs (936), SalesController.cs (905),
+    InventoryService.cs (743), CashDrawerService.cs (570),
+    ProductsController.cs (575), partials CatalogQueries.cs (553) e
+    ImportExport.cs (578), ProductImportService.cs (551),
+    WpfDialogService.cs (542), SalesHistoryViewModel.cs (515). Unico >1000:
+    CommandCenter.Tests/Unit/ProductVariantsTests.cs (2886). SalesService ya
+    sigue estrategia tactica (partials Pricing/HoldOrders/CashAdvance/History).
+C.6 [MEDIA] §5 Multi-branch: BranchId / ProductBranchStock: 0 ocurrencias en
+    entidades transaccionales; la separacion "stock por sucursal" no existe.
+    Deuda declarada; puede ser intencion y no requisito (ver E).
+C.7 [MEDIA] §6.1 Cobertura minima 70%: Sales 20% / Inventory 15% vs 70%
+    exigido; vigentes gates anti-regresion 19/14 (scripts/check-coverage.py).
+C.8 [BAJA] §4.2/§2.2 IDisposable/OnClosed parcial: OnClosed o
+    Closed+=ViewModel.Dispose() en 4 vistas (MainWindow:66, ProductDialog:22,
+    SuccessDialogWindow:37, VariantManagementDialog:23); no se audito
+    exhaustivamente VMs con timers/CTS. 2 handlers async void directos en
+    vistas: ImportProductsView.xaml.cs:14 (Grid_Drop) y
+    EditSaleDialog.xaml.cs:80 (TxtProductSearch_TextChanged) - candidatos a
+    SafeFireAndForget.
+
+D. EVALUACION DE RENTABILIDAD Y VALOR DEL DOCUMENTO (conclusion)
+El documento ya amortizo su costo: las waves 8.9-8.20 (snake_case eliminado,
+partials, toolkit MVVM, RFC 7807, virtualizacion, AsNoTracking) se ejecutaron
+contra este estandar. Su valor futuro:
+- Memoria de convenciones auditable y revisable en PR.
+- Previene regresiones de tipo 8.20-C01 (invariante "verificar [Migration]"
+  ya adoptado en Reporte de estado.txt 5.1).
+- Reduce onboarding y ruido de review.
+Riesgo principal: clausulas que describen un mundo inexistente (camelCase
+afirmado pero no configurado; BCV 4d vs 2d real) desacreditan TODA la guia.
+Por tanto: alinear el CODIGO en los 4 hallazgos altos y alinear la GUIA donde
+la decision de producto es valida (E). Los absolutos (500 lineas, 70%,
+BranchId) son horizonte, no gate.
+Se recomienda NO perseguir 100% de cumplimiento como objetivo en si; si
+cerrar las desconexiones "altas" y gobernar el ciclo guia<->deuda.
+
+E. DECISIONES PENDIENTES (requieren desicion de negocio/arquitectura)
+E.1 BCV: mantener redondeo ceilings 2d (producto) o adoptar 4d de la guia.
+    Registrar la decision en la guia (amend) o en la deuda.
+E.2 Contrato JSON: decidir camelCase (alinearse a la guia + frontend) o
+    cerrar el gap documentando PascalCase como contrato. Hoy es accidental.
+E.3 Multi-branch (BranchId): confirmar si es requisito futuro o intencion
+    arquitectonica dormida; si no se planea corto plazo, marcar §5 como
+    "intencion" en la guia.
+E.4 Cobertura 70%: fijar plan de convergencia o declarar la meta con
+    horizontes por capa.
+
+F. ESTADO DEL ARBOL
+Revision READ-ONLY: no hubo cambios de codigo. Solo este anexo en
+docs/reporte.txt (append).
+
+FIN DEL ANEXO - REVISION 8.22
+================================================================================ 
+
+-------------------------------------------------------------------------------
+ANEXO 8.23 - EJECUCION DEL PLAN DE REMEDIACION (objetivo ANEXO 8.22 C1-C3)
+-------------------------------------------------------------------------------
+Fecha: 2026-09-08 | Rama/Bif: V0.15 | Objetivo: alinear el codigo con las
+"4 desconexiones altas" C1 (camelCase), C2 (RFC 7807 ex.Message) y C3 (estilos
+inline) de la verificacion 8.22. Alcance acordado con el usuario: 2 y commit
+al final.
+
+A. CAMBIOS APLICADOS
+A.1 [C2] Helper de respuestas RFC 7807 - nuevo Backend.API/Controllers/
+    ApiProblemResults.cs con extensiones ApiBadRequest/ApiNotFound/
+    ApiConflict/ApiForbidden/ApiUnprocessableEntity. Devuelven tipos concretos
+    (BadRequestObjectResult/NotFoundObjectResult/ConflictObjectResult/ObjectResult)
+    con payload ProblemDetails (type/title/status/error/message/detail/instance/
+    traceId), preservando el status por endpoint y SIN filtrar ex.Message. Los
+    controllers directos se mantienen compatibles con los tests que esperan
+    el tipo concreto (no se convierte idempotencia/hardcoded/ownership/403).
+A.2 [C2] Controllers convertidos (retiran "new { Message = ex.Message }"):
+    PaymentMethodsController (3 cortes), ReservationsController (3),
+    ShiftsController (1), DailyClosureController (1), SalesController
+    (mapeos mayoritarios via replaceAll + bloque UpdatePriceList; quedan
+    intactos los 403 de ownership y los prototipos 422/409 hardcodeados e
+    idempotencia) y ProductsController (AdjustStock 400/403
+    "StatusCode(403, unEx.Message)" -> ApiForbidden, LinkVariantsBatch y
+    UnlinkVariant: fuga "details = ex.Message" eliminada -> mensajes seguros
+    hardcodeados ApiConflict).
+A.3 [C2] Mensajes sellados literales (NO ex.Message) que no se tocan porque
+    no vulneran §2.5: AuthController, CashDrawerController, PairingController,
+    ExchangeRateController (502/504 BCV), y mensajes fijos de validacion/
+    permisos en Sales/Products/Shifts/Reservations/DailyClosure.
+A.4 [C2] Tests ajustados por el cambio de payload: Phase7ClosureWithoutRateTests
+    lee ahora IDictionary<string,object?>["message"] en lugar de
+    GetProperty("Message")/.ToString(). ProductVariantsTests, Phase2/4,
+    SecurityHardeningSprint2 y RbacPermissionTests NO requieren cambios
+    (sus returns hardcodeados/idempotencia/ownership no se convirtieron).
+A.5 [C1] Contrato camelCase explicito: AddJsonOptions ahora setea
+    JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    (ServiceCollectionExtensions.cs:160-163). La API YA serializaba camelCase
+    por defecto (JsonSerializerDefaults.Web); la directiva es defensiva y sin
+    cambio de comportamiento (el Desktop no parsea con las opciones y ya leia
+    camelCase). Fallbacks muertos PascalCase removidos: item.IsFractional/
+    IsFractionable en EditSaleModal.jsx (4 sitios), QuantityInput.jsx:8 y su
+    test (assert actualizado a isFractional:false-camelCase y el fallback
+    IsFractional ahora evalua false).
+A.6 [C3] Estilos inline -> clases/tokens en componentes compartidos
+    (lado server, +regresa no_trace el arbol): TopBar (icono de tasa
+    desactualizada -> clase .rate-outdated-icon), Sidebar (footer flex-col +
+    boton logout -> .sidebar-logout), ErrorBoundary (9 bloques estaticos ->
+    clases .error-boundary-shell/card/icon/title/message/details/actions/btn).
+    NORMAS/CSS agregadas en index.css (no se reutilizan utilidades: se
+    centraliza con tokens de diseno).
+A.7 [C3] No convertidos en esta sesion (deuda C.7): >90 espots inline
+    estáticos/dinámicos restantes en CatalogPage, ExchangeRatePage, HistoryPage,
+    ClosingPage, PendingOrdersPage, RegisterClosePage, CheckoutModal,
+    ConfirmModal (color dinamico por danger/warning), BarcodeScannerModal,
+    FullScreenLoader, etc. Muchos llevan valores por estado (colores) y
+    estan en superficie tactil POS; conversion full requiere mas presupuesto.
+    Pendiente de inventario y conversion incremental.
+
+B. VERIFICACION FINAL (todas en el commit)
+- dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errors.
+- dotnet test (TEST_POSTGRES_CONNECTION Test_db): 706/706 superado.
+- Web npm test: 77/77; npm run lint: 0 errores (1 aviso preexistente
+  no relacionado test/esbuild-jsx-loader-hook.mjs:17); npm run build: OK.
+- git status: solo changes de la remediacion + regeneracion de
+  Backend.API/wwwroot (bundle de build web). SIN cambios de modelo/migraciones.
+
+C. CIERRE
+Se ejecuto el punto 2 del alcance (4 desconexiones altas C1-C3) y se hace
+commit final. Los absolutos de la guia (lineas 500, cobertura 70%, BranchId)
+quedan como horizontes/deuda documentados (C4-C8 de 8.22); BCV 2d vs 4d sigue
+en E.1 (decision de negocio pendiente).
+
+FIN DEL ANEXO - REVISION 8.23
+================================================================================ 

@@ -22,8 +22,6 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
         const isFractional = Boolean(
           i.isFractional ||
           i.isFractionable ||
-          i.IsFractional ||
-          i.IsFractionable ||
           (i.unitOfMeasure && i.unitOfMeasure !== 'Und' && i.unitOfMeasure !== 0)
         );
 
@@ -52,8 +50,6 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
     const isFrac = Boolean(
       prod.isFractional ||
       prod.isFractionable ||
-      prod.IsFractional ||
-      prod.IsFractionable ||
       (prod.unitOfMeasure && prod.unitOfMeasure !== 'Und' && prod.unitOfMeasure !== 0)
     );
     const unitOfMeasure = prod.unitOfMeasure || 'Und';
@@ -108,8 +104,6 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
     const isFrac = Boolean(
       targetItem?.isFractional ||
       targetItem?.isFractionable ||
-      targetItem?.IsFractional ||
-      targetItem?.IsFractionable ||
       (targetItem?.unitOfMeasure && targetItem.unitOfMeasure !== 'Und' && targetItem.unitOfMeasure !== 0)
     );
     const qty = isNaN(rawNum) ? 1 : rawNum;
@@ -209,8 +203,6 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
                 const isFrac = Boolean(
                   item.isFractional ||
                   item.isFractionable ||
-                  item.IsFractional ||
-                  item.IsFractionable ||
                   (item.unitOfMeasure && item.unitOfMeasure !== 'Und' && item.unitOfMeasure !== 0)
                 );
                 const step = !isFrac ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);

@@ -72,6 +72,17 @@ jobs:
           fi
           python scripts/check-coverage.py "${report}"
 
+      # RFC/DoD 7 : sin dependencias vulnerables conocidas (dotnet list package --vulnerable).
+      - name: Vulnerable Packages Audit (.NET)
+        if: always()
+        run: |
+          audit=$(dotnet list CommandCenter.slnx package --vulnerable --include-transitive 2>&1 || true)
+          printf "%s\n" "${audit}"
+          if printf "%s\n" "${audit}" | grep -qE "has the following vulnerable packages|Vulnerable packages|vulnerabilities were found"; then
+            echo "::error::Se detectaron dependencias con vulnerabilidades conocidas en el backend."
+            exit 1
+          fi
+
       - name: Upload Coverage Results
         uses: actions/upload-artifact@v4
         if: always()
@@ -105,6 +116,11 @@ jobs:
 
       - name: Run Frontend Tests
         run: npm test
+        working-directory: Web.Frontend
+
+      # RFC/DoD 7 : sin dependencias vulnerables conocidas en dependencias directas/transitivas.
+      - name: Vulnerable Dependencies Audit (npm)
+        run: npm audit --audit-level=high
         working-directory: Web.Frontend
 
       # 8.9-L5: gate de build del bundle (evita que el bundle Web de Backend.API/wwwroot quede stale).

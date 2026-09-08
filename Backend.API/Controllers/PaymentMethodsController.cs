@@ -72,7 +72,7 @@ public class PaymentMethodsController : ControllerBase
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -106,15 +106,15 @@ public class PaymentMethodsController : ControllerBase
         }
         catch (KeyNotFoundException ex)
         {
-            return NotFound(new { message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (InvalidOperationException ex)
         {
-            return Conflict(new { message = ex.Message });
+            return this.ApiConflict(ex.Message);
         }
     }
 
@@ -129,11 +129,11 @@ public class PaymentMethodsController : ControllerBase
         }
         catch (KeyNotFoundException ex)
         {
-            return NotFound(new { message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
         catch (InvalidOperationException ex)
         {
-            return Conflict(new { message = ex.Message });
+            return this.ApiConflict(ex.Message);
         }
     }
 }
