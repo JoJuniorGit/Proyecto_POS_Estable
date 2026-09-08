@@ -33,8 +33,12 @@ public partial class SalesService
         // 8.9-B5: procesamiento por lotes (paginado) para no cargar todo el conjunto OnHold en
         // memoria; cada página se graba al terminar. El recálculo unitario (RecalculateTotalAsync)
         // ya usa batch fetch de productos, de modo que el costo por página se mantiene acotado.
+        // 8.16-H14: paginación por KEYSET (WHERE Id > último) en lugar de Skip/Take: la fila
+        // filtrada no cambia su Id durante el recalculo (solo AppliedRate/totales), de modo que
+        // el keyset es estable y evita el re-escaneo Offset del Skip en cada página.
         const int batchSize = 200;
         int totalUpdated = 0;
+        int lastId = 0;
 
         while (true)
         {
@@ -42,9 +46,8 @@ public partial class SalesService
                 .AsSplitQuery()
                 .Include(s => s.Items)
                 .Include(s => s.Payments)
-                .Where(s => s.Status == SaleStatus.OnHold)
+                .Where(s => s.Status == SaleStatus.OnHold && s.Id > lastId)
                 .OrderBy(s => s.Id)
-                .Skip(totalUpdated)
                 .Take(batchSize)
                 .ToListAsync();
 
@@ -59,6 +62,7 @@ public partial class SalesService
 
             await _context.SaveChangesAsync();
             totalUpdated += batch.Count;
+            lastId = batch[batch.Count - 1].Id;
         }
 
         return totalUpdated;

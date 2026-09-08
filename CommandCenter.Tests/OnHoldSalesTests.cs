@@ -553,6 +553,40 @@ public class OnHoldSalesTests
     }
 
     [Fact]
+    public async Task RecalculateOnHoldSalesAsync_Keyset_ProcessesAllBatches_WithoutSkipOrDuplicate()
+    {
+        using var context = GetInMemoryDbContext();
+        var mockInventory = new Mock<IInventoryService>();
+        var mockMediator = new Mock<IMediator>();
+        var mockCashDrawer = new Mock<ICashDrawerService>();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        // 450 ventas OnHold: cruza 3 lotes de 200 sin dejar ninguna sin recalcular
+        // (8.16-H14: keyset WHERE Id > lastId, no Skip/Take).
+        var sales = System.Linq.Enumerable.Range(1, 450).Select(i => new Sale
+        {
+            Id = i,
+            Status = SaleStatus.OnHold,
+            AppliedRate = 50m,
+            TotalUSD = 100m,
+            TotalBsS = 5000m
+        }).ToList();
+
+        context.Sales.AddRange(sales);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
+        int count = await service.RecalculateOnHoldSalesAsync(60m);
+
+        Assert.Equal(450, count);
+        var updated = await context.Sales.Where(s => s.Status == SaleStatus.OnHold).ToListAsync();
+        Assert.Equal(450, updated.Count);
+        Assert.All(updated, s => Assert.Equal(60m, s.AppliedRate));
+        Assert.All(updated, s => Assert.Equal(6000m, s.TotalBsS));
+    }
+
+    [Fact]
     public async Task GetPendingSalesAsync_IsReadOnly_RecalcHappensAtRateUpsert()
     {
         using var context = GetInMemoryDbContext();

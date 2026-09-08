@@ -2092,10 +2092,12 @@ VERIFICADO COMO FALSO / NO ACCIONABLE (correccion del informe):
   genericos romperia UX y tests que buscan el texto.
 
 PENDIENTES DE LA AUDITORIA (no tocados, requieren refactor mayor/infra):
-- 8.16-H06/H08/H14 (proyeccion a DTO / indices, diferidos por cambio de
-  firma), H16 (advisory lock en retry). NOTA: H04 queda verificado correcto
-  por diseño (no-bug), H03/H07/H09 resueltos en FASE 1 (ver ANEXO 8.18),
-  H05/H12/H17 resueltos/verificados en el pase de mantenibilidad.
+- 8.16-H06 (proyeccion a DTO de GetAllProductsAsync / GetHistoryAsync,
+  diferido por cambio de firma), H16 (advisory lock en retry). NOTA: H04
+  queda verificado correcto por diseño (no-bug), H03/H07/H09 resueltos en
+  FASE 1 (ver ANEXO 8.18), H14 resuelto y H08/H10 verificados en FASE 2
+  (ver ANEXO 8.19), H05/H12/H17 resueltos/verificados en el pase de
+  mantenibilidad.
 - WPF: R09-R12 (Dispatcher.Invoke en EditSaleDialog + code-behind sin VM),
   R13 (UniformGrid sin virtualizar), R17/R18 (entropia DPAPI, cert loopback),
   R19-R28. NOTA: R01-R08, R14-R16 y 8W-M1 (MessageBox) ya resueltos.
@@ -2173,5 +2175,55 @@ menor riesgo posible, congelando comportamiento con tests.
 VERIFICACION (FASE 1): build Debug y Release 0/0; suite .NET 705/705 (5 tests
 nuevos); suite Web 77/77; oxlint 0 errores (1 aviso preexistente W03).
 
-FIN DEL ANEXO - REVISION 8.16/8.17/8.18
+============================================================================
+ANEXO 8.19 - FASE 2 APLICADA (H14 / verificaciones H08-H10)  [2026-09-08]
+============================================================================
+Objetivo: reducir el riesgo de datos de la FASE 2 sin tocar firmas publicas
+(H06 permanece diferido por cambio de firma) ni reescribir migraciones.
+
+- [8.16-H14] Paginacion de RecalculateOnHoldSalesAsync. RESUELTO.
+  Sales.Module/Services/SalesService.Pricing.cs: se reemplazo el Skip/Take(200)
+  por paginacion por KEYSET (`WHERE Status=OnHold AND Id > lastId
+  ORDER BY Id TAKE 200`). La fila filtrada no cambia su Id durante el recalculo
+  (solo AppliedRate/totales) => el keyset es estable y evita el re-escaneo
+  Offset del Skip en cada pagina (O(n^2) -> O(n)). El comportamiento es
+  identico (recorre todo el conjunto OnHold en lotes, graba por pagina).
+  TESTS: OnHoldSalesTests.cs ->
+  RecalculateOnHoldSalesAsync_Keyset_ProcessesAllBatches_WithoutSkipOrDuplicate
+  (450 ventas OnHold => cruza 3 lotes de 200; las 450 quedan recalculadas con
+  AppliedRate=60 y sin duplicados/saltos).
+
+- [8.16-H08] GetSalesHistoryAsync (filtro por Cashier con ILIKE). VERIFICADO:
+  la mitigacion por indice YA existia. La busqueda multicampo usa ILIKE sobre
+  "Users" (Cashier).Name/FullName/Cedula y sobre Sales.CashierName/
+  CustomerName/CustomerCedula, y los indices GIN pg_trgm correspondientes fueron
+  creados por la migracion 20260907030000_AddPgTrgmGinIndexesRev89 (8.9-M11),
+  ademas del indice compuesto (Status, Date) y (Status, DeliveryStatus) para el
+  escaneo por estado. No se requieren indices adicionales; la consulta ya
+  proyecta a SaleHistoryDto con AsNoTracking (SalesService.History.cs:143-163).
+
+- [8.16-H10] Migraciones sin .Designer.cs / PendingModelChangesWarning=Throw.
+  VERIFICADO: `dotnet ef migrations has-pending-model-changes` reporta "No
+  changes have been made to the model since the last migration" para AMBOS
+  contextos (InventoryDbContext y SalesDbContext). El snapshot esta alineado
+  con el modelo a pesar de las ~15 migraciones hand-written sin .Designer.cs,
+  por lo que el riesgo de romper el arranque por divergencia (warning Throw en
+  Program.cs:144,153) NO esta presente hoy. Se descarta regenerar .Designer.cs
+  retroactivamente: seria un refactor de alto riesgo sin beneficio operativo
+  verificable (el snapshot es la unica fuente que el validador compara).
+  NOTA: la version de dotnet-ef invocada es 10.0.3 mientras el runtime EF es
+  10.0.4 (aviso inocuo: el tool local/global puede actualizarse con
+  `dotnet tool update -g dotnet-ef`, sln local no lo fija).
+
+- [8.16-H06] GetAllProductsAsync / CashDrawer.GetHistoryAsync (proyeccion a
+  DTO). NO APLICADO en FASE 2: proyectar a DTO cambia la firma publica de
+  IInventoryService/ICashDrawerService y el contrato del endpoint /history
+  (CashDrawerController devuelve `IEnumerable<CashTransaction>`). Queda
+  diferido (documentado) por cambio de firma.
+
+VERIFICACION (FASE 2): build Debug y Release 0/0; suite .NET 706/706 (1 test
+nuevo, keyset H14); suite Web 77/77; oxlint 0 errores (1 aviso preexistente
+W03).
+
+FIN DEL ANEXO - REVISION 8.16/8.17/8.18/8.19
 ================================================================================ 
