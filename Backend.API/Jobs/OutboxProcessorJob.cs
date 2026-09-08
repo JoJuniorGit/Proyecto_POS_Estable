@@ -28,6 +28,10 @@ public class OutboxProcessorJob : BackgroundService
 
     private DateTime _lastPurgeCheckUtc = DateTime.MinValue;
 
+    // 8.16-H07: un mensaje Dispatching es reclamado (reatribuido) si su claim excede este umbral.
+    // Cubre el crash del worker entre el commit de la tx y el SaveChanges del estado final.
+    private static readonly TimeSpan StaleDispatchThreshold = TimeSpan.FromSeconds(90);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("[OutboxProcessor] Background Service iniciado con ciclo de polling de 2 segundos.");
@@ -170,8 +174,11 @@ return totalPurged;
 
                     await using var tx = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
+                    // 8.16-H07: además de Pendientes elegibles, se reclaman mensajes Dispatching con
+                    // claim stale (> StaleDispatchThreshold) para cubrir crashes entre commit y estado final.
                     var pending = await dbContext.OutboxMessages
-                        .FromSqlRaw("SELECT * FROM \"OutboxMessages\" WHERE \"Status\" = 'Pending' AND \"NextRetryUtc\" <= NOW() ORDER BY \"CreatedAtUtc\" LIMIT 20 FOR UPDATE SKIP LOCKED")
+                        .FromSqlRaw("SELECT * FROM \"OutboxMessages\" WHERE ((\"Status\" = 'Pending' AND \"NextRetryUtc\" <= NOW()) OR (\"Status\" = 'Dispatching' AND \"DispatchedAtUtc\" < NOW() - MAKE_INTERVAL(secs => {0}))) ORDER BY \"CreatedAtUtc\" LIMIT 20 FOR UPDATE SKIP LOCKED",
+                            new object[] { StaleDispatchThreshold.TotalSeconds })
                         .ToListAsync(cancellationToken);
 
                     if (!pending.Any())
@@ -179,6 +186,18 @@ return totalPurged;
                         await tx.RollbackAsync(cancellationToken);
                         return;
                     }
+
+                    // 8.16-H07: transición Pending->Dispatching DENTRO de la misma tx del SELECT FOR
+                    // UPDATE. El commit subsiguiente libera el lock, pero otro worker ya NO re-selecciona
+                    // estos Ids (no cumplen Status='Pending'), cerrando la ventana de doble dispatch.
+                    var claimedAtUtc = DateTime.UtcNow;
+                    foreach (var message in pending)
+                    {
+                        message.Status = "Dispatching";
+                        message.DispatchedAtUtc = claimedAtUtc;
+                        message.ErrorMessage = null;
+                    }
+                    await dbContext.SaveChangesAsync(cancellationToken);
 
                     // 8.9-M8: el despacho SignalR (llamada de red a todos los clientes) se ejecuta
                     // FUERA de la transacción. El commit ANTES de difundir libera el lock FOR UPDATE
@@ -191,12 +210,29 @@ return totalPurged;
             }
             else
             {
+                // InMemory (unit tests): no hay locking; se replica la semántica del claim con un
+                // filtro de staleness equivalente para poder probar la ventana de doble dispatch.
                 var now = DateTime.UtcNow;
+                var staleThreshold = now - StaleDispatchThreshold;
                 messages = await dbContext.OutboxMessages
-                    .Where(m => m.Status == "Pending" && m.NextRetryUtc <= now)
+                    .Where(m =>
+                        (m.Status == "Pending" && m.NextRetryUtc <= now)
+                        || (m.Status == "Dispatching" && m.DispatchedAtUtc.HasValue && m.DispatchedAtUtc.Value < staleThreshold))
                     .OrderBy(m => m.CreatedAtUtc)
                     .Take(20)
                     .ToListAsync(cancellationToken);
+
+                if (messages.Count > 0)
+                {
+                    var claimedAtUtc = DateTime.UtcNow;
+                    foreach (var message in messages)
+                    {
+                        message.Status = "Dispatching";
+                        message.DispatchedAtUtc = claimedAtUtc;
+                        message.ErrorMessage = null;
+                    }
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                }
             }
 
             if (messages == null || messages.Count == 0) return;
@@ -221,6 +257,9 @@ return totalPurged;
                         var delaySeconds = Math.Pow(2, message.RetryCount);
                         message.NextRetryUtc = DateTime.UtcNow.AddSeconds(delaySeconds);
                         message.ErrorMessage = ex.Message;
+                        // 8.16-H07: el claim puso el mensaje en Dispatching; al fallar se revierte a
+                        // Pending para que el siguiente ciclo (ya con backoff cumplido) lo reintente.
+                        message.Status = "Pending";
                         _logger.LogWarning(ex, "[OutboxProcessor] Error al despachar mensaje {MessageId} (Intento {Attempt}/5). Próximo reintento en {Delay}s.",
                             message.Id, message.RetryCount, delaySeconds);
                     }

@@ -239,6 +239,9 @@ namespace Inventory.Module.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int?>("SaleId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -251,6 +254,9 @@ namespace Inventory.Module.Migrations
                         .HasDatabaseName("IX_StockMovements_MovementDate");
 
                     b.HasIndex("ProductId");
+
+                    b.HasIndex("SaleId")
+                        .HasDatabaseName("IX_StockMovements_SaleId");
 
                     b.ToTable("StockMovements");
                 });
@@ -289,6 +295,9 @@ namespace Inventory.Module.Migrations
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int?>("SaleId")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");

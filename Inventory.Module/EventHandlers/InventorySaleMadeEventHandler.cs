@@ -59,10 +59,11 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
             .AsNoTracking()
             .Where(sm =>
                 effectiveIds.Contains(sm.ProductId)
-                && (sm.Reason == reason
+                && (sm.SaleId == notification.SaleId
+                    || sm.Reason == reason
                     || sm.Reason.EndsWith($"| {reason}")
                     || (invoiceReason != null && (sm.Reason == invoiceReason || sm.Reason.EndsWith($"| {invoiceReason}")))))
-            .Select(sm => new { sm.ProductId, sm.Reason })
+            .Select(sm => new { sm.ProductId, sm.Reason, sm.SaleId })
             .ToListAsync(cancellationToken);
 
         // Elegibilidad por ítem: omitir ya procesados (no depender de índices) y servicios sin stock.
@@ -85,7 +86,8 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
 
             var already = existingMovements.Any(m =>
                 (m.ProductId == item.ProductId || m.ProductId == effectiveProductId)
-                && (m.Reason == reason
+                && (m.SaleId == notification.SaleId
+                    || m.Reason == reason
                     || m.Reason.EndsWith($"| {reason}")
                     || (invoiceReason != null && (m.Reason == invoiceReason || m.Reason.EndsWith($"| {invoiceReason}")))));
 
@@ -95,7 +97,7 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
                 continue;
             }
 
-            pending.Add(new Core.Interfaces.StockDeductionRequest(item.ProductId, -item.Quantity, invoiceReason ?? reason));
+            pending.Add(new Core.Interfaces.StockDeductionRequest(item.ProductId, -item.Quantity, invoiceReason ?? reason, notification.SaleId));
         }
 
         if (pending.Count == 0)

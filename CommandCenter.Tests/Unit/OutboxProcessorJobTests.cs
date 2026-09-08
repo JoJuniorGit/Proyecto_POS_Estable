@@ -164,6 +164,77 @@ public class OutboxProcessorJobTests
     }
 
     [Fact]
+    public async Task OutboxProcessorJob_MessageInDispatchingState_IsNotRedispatched_ClosesDoubleDispatchWindow()
+    {
+        string dbName = Guid.NewGuid().ToString();
+        using var dbContext = CreateInMemoryDbContext(dbName);
+
+        // Mensaje recién reclamado por otro worker (Dispatching fresco): NO debe re-despacharse.
+        var messageId = Guid.NewGuid();
+        dbContext.OutboxMessages.Add(new OutboxMessage
+        {
+            Id = messageId,
+            EventType = "SaleCompleted",
+            Payload = JsonSerializer.Serialize(new { SaleId = 10, InvoiceNumber = 100 }),
+            CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1),
+            DispatchedAtUtc = DateTime.UtcNow.AddSeconds(-10),
+            Status = "Dispatching",
+            RetryCount = 0
+        });
+        await dbContext.SaveChangesAsync();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddScoped(_ => CreateInMemoryDbContext(dbName));
+        var serviceProvider = services.BuildServiceProvider();
+        var job = new OutboxProcessorJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), Mock.Of<ILogger<OutboxProcessorJob>>());
+
+        await job.ProcessPendingMessagesAsync(CancellationToken.None);
+
+        using var verifyContext = CreateInMemoryDbContext(dbName);
+        var updated = await verifyContext.OutboxMessages.FindAsync(messageId);
+        Assert.NotNull(updated);
+        Assert.Equal("Dispatching", updated.Status);
+        Assert.Equal(0, updated.RetryCount);
+        Assert.Null(updated.ProcessedAtUtc);
+    }
+
+    [Fact]
+    public async Task OutboxProcessorJob_StaleDispatchingMessage_IsReclaimedAndDispatched()
+    {
+        string dbName = Guid.NewGuid().ToString();
+        using var dbContext = CreateInMemoryDbContext(dbName);
+
+        // Claim stale (crash de worker entre commit y estado final): se reclama y despacha.
+        var messageId = Guid.NewGuid();
+        dbContext.OutboxMessages.Add(new OutboxMessage
+        {
+            Id = messageId,
+            EventType = "SaleCompleted",
+            Payload = JsonSerializer.Serialize(new { SaleId = 11, InvoiceNumber = 101 }),
+            CreatedAtUtc = DateTime.UtcNow.AddMinutes(-5),
+            DispatchedAtUtc = DateTime.UtcNow.AddMinutes(-3),
+            Status = "Dispatching",
+            RetryCount = 0
+        });
+        await dbContext.SaveChangesAsync();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddScoped(_ => CreateInMemoryDbContext(dbName));
+        var serviceProvider = services.BuildServiceProvider();
+        var job = new OutboxProcessorJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), Mock.Of<ILogger<OutboxProcessorJob>>());
+
+        await job.ProcessPendingMessagesAsync(CancellationToken.None);
+
+        using var verifyContext = CreateInMemoryDbContext(dbName);
+        var updated = await verifyContext.OutboxMessages.FindAsync(messageId);
+        Assert.NotNull(updated);
+        Assert.Equal("Processed", updated.Status);
+        Assert.NotNull(updated.ProcessedAtUtc);
+    }
+
+    [Fact]
     public async Task CompleteSaleAsync_WithIdempotencyKey_ReturnsExistingInvoice_WhenAlreadyCompleted()
     {
         string dbName = Guid.NewGuid().ToString();

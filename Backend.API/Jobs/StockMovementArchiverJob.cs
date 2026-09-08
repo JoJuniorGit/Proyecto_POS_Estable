@@ -90,6 +90,7 @@ public class StockMovementArchiverJob : BackgroundService
                     m.QuantityChange,
                     m.NewStockLevel,
                     m.Reason,
+                    m.SaleId,
                     m.MovementDate,
                     m.UserId
                 })
@@ -107,6 +108,7 @@ public class StockMovementArchiverJob : BackgroundService
                 QuantityChange = m.QuantityChange,
                 NewStockLevel = m.NewStockLevel,
                 Reason = m.Reason,
+                SaleId = m.SaleId,
                 MovementDate = m.MovementDate,
                 UserId = m.UserId,
                 ArchivedAtUtc = DateTime.UtcNow

@@ -100,6 +100,8 @@ public class InventoryDbContext : DbContext
         modelBuilder.Entity<StockMovement>().Property(m => m.NewStockLevel).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
         // 8.9-M9: el archiver recorre por MovementDate (StockMovementArchiverJob).
         modelBuilder.Entity<StockMovement>().HasIndex(m => m.MovementDate).HasDatabaseName("IX_StockMovements_MovementDate");
+        // 8.16-H03: lookup de idempotencia por SaleId (dedupe de deducción, handler de inventario).
+        modelBuilder.Entity<StockMovement>().HasIndex(m => m.SaleId).HasDatabaseName("IX_StockMovements_SaleId");
 
         modelBuilder.Entity<StockMovementArchive>(entity =>
         {

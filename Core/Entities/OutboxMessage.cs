@@ -5,6 +5,7 @@ namespace Core.Entities;
 public enum OutboxStatus
 {
     Pending,
+    Dispatching,
     Processed,
     DeadLetter
 }

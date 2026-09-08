@@ -2092,11 +2092,10 @@ VERIFICADO COMO FALSO / NO ACCIONABLE (correccion del informe):
   genericos romperia UX y tests que buscan el texto.
 
 PENDIENTES DE LA AUDITORIA (no tocados, requieren refactor mayor/infra):
-- 8.16-H03 (idempotencia evento por SaleId), H06/H08/H14 (proyeccion a DTO /
-  indices, diferidos por cambio de firma), H07 (ventana outbox), H09
-  (fail-open tasa), H16 (advisory lock en retry). NOTA: H04 queda verificado
-  correcto por diseño (no-bug), H05/H12/H17 resueltos/verificados en el pase
-  de mantenibilidad (ver arriba).
+- 8.16-H06/H08/H14 (proyeccion a DTO / indices, diferidos por cambio de
+  firma), H16 (advisory lock en retry). NOTA: H04 queda verificado correcto
+  por diseño (no-bug), H03/H07/H09 resueltos en FASE 1 (ver ANEXO 8.18),
+  H05/H12/H17 resueltos/verificados en el pase de mantenibilidad.
 - WPF: R09-R12 (Dispatcher.Invoke en EditSaleDialog + code-behind sin VM),
   R13 (UniformGrid sin virtualizar), R17/R18 (entropia DPAPI, cert loopback),
   R19-R28. NOTA: R01-R08, R14-R16 y 8W-M1 (MessageBox) ya resueltos.
@@ -2106,5 +2105,73 @@ PENDIENTES DE LA AUDITORIA (no tocados, requieren refactor mayor/infra):
 - Web: W03 (aviso oxlint base sin uso en esbuild-jsx-loader-hook.mjs:17).
   NOTA: W01/W02 (Modal aria id, focus-restore) resueltos en el pase.
 
-FIN DEL ANEXO - REVISION 8.16/8.17
+============================================================================
+ANEXO 8.18 - FASE 1 APLICADA (H03 / H07 / H09)  [2026-09-08]
+============================================================================
+Objetivo: aplicar los 3 hallazgos de dinero de la auditoria 8.16 con el
+menor riesgo posible, congelando comportamiento con tests.
+
+- [8.16-H03] Idempotencia de stock POR SaleId (no por reason). RESUELTO.
+  Motivo original: la venta deduce dentro de la tx con reason "Sale #N" y
+  publica SaleMade post-commit que reintenta con dedupe por string Reason
+  (InventorySaleMadeEventHandler.cs:44-99); si el reason diverge o el formato
+  cambia, riesgo de doble deduccion. Cambios:
+  * Core/Entities/StockMovement.cs: nuevo campo `int? SaleId` (clave
+    estructurada, independiente del string Reason; nullable por compatibilidad
+    con movimientos historicos y no-venta).
+  * Core/Interfaces/IInventoryService.cs: StockDeductionRequest gana parametro
+    opcional `int? SaleId = null` (firma retro-compatible, 3-arg sigue
+    compilando).
+  * Inventory.Module/Services/InventoryService.StockDeduction.cs: propaga
+    SaleId desde el request al StockMovement a traves de pendingMovements.
+  * Inventory.Module/EventHandlers/InventorySaleMadeEventHandler.cs: el dedupe
+    ahora matchea `sm.SaleId == notification.SaleId` ANTES que el Reason string
+    (fallback por Reason conservado para registros historicos sin SaleId); el
+    lote de deduccion envia SaleId.
+  * Sales.Module/Services/SalesService.cs:632 y
+    Sales.Module/Services/SalesService.HoldOrders.cs:228: la deduccion
+    sincrona pasa sale.Id para que el movimiento quede vinculado.
+  * Backend.API/Jobs/StockMovementArchiverJob.cs + Core/Entities/
+    StockMovementArchive.cs: el archivo conserva SaleId (auditoria).
+  * Migracion hand-written 20260908153000_AddSaleIdToStockMovement.cs
+    (ADD COLUMN nullable + indice IX_StockMovements_SaleId; archivo tambien
+    recibe la columna) + snapshot actualizado.
+  TESTS: FinancialRobustnessTests.cs -> InventoryEventHandler_IdempotencyBy
+  SaleId_RareReasonDivergence_StillSkipsDuplicate (reason divergente pero mismo
+  SaleId => NO doble deduccion). El test previo (reason igual) sigue pasando.
+
+- [8.16-H07] Ventana de doble dispatch del outbox. RESUELTO.
+  Motivo original: OutboxProcessorJob commitaba la tx del SELECT FOR UPDATE
+  (~:187) dejando los mensajes en 'Pending' hasta el SaveChanges del estado
+  (~:237); entre ambos, un segundo worker los re-seleccionaba -> doble dispatch.
+  Cambios (Backend.API/Jobs/OutboxProcessorJob.cs):
+  * Nuevo estado OutboxStatus.Dispatching (Core/Entities/OutboxMessage.cs).
+  * En Npgsql, dentro de la MISMA tx del SELECT FOR UPDATE SKIP LOCKED se
+    transicionan los mensajes a 'Dispatching' + DispatchedAtUtc y se commitea:
+    otro worker ya no los re-selecciona (no cumplen Status='Pending').
+  * Recuperacion de crashes: el SELECT tambien reclama 'Dispatching' con
+    DispatchedAtUtc anterior a StaleDispatchThreshold (90 s).
+  * Rama InMemory replica la semantica de claim (para tests unitarios).
+  * En fallo de dispatch (<5 intentos) el mensaje se revierte a 'Pending' con
+    backoff (no queda atascado en Dispatching hasta el umbral).
+  TESTS: OutboxProcessorJobTests.cs -> MessageInDispatchingState_IsNot
+  Redispatched_ClosesDoubleDispatchWindow (fresco no se toca) +
+  StaleDispatchingMessage_IsReclaimedAndDispatched (stale se redespacha).
+
+- [8.16-H09] Fail-open de tasa con desvio anomalo. VERIFICADO COMO
+  COMPORTAMIENTO INTENCIONAL + COBERTURA CONGELADA. El informe citaba
+  SalesService.cs:877-943 "vende con tasa anomalo ante desvio > tolerancia";
+  ese bloque ya fue corregido en pase anterior: hoy un desvio > tolerancia
+  ANCLA la tasa BCV del dia (8.5-A5/8.6-B3, SalesService.cs:926-930) y un
+  desvio >= +-100% RECHAZA la venta (:902-906). El unico fail-open restante es
+  cuando la tasa BCV NO esta disponible (0 o servicio lanza): es EXTRANJERO al
+  anclaje, es fail-open AUDITABLE de continuidad de negocio. TESTS anadidos en
+  FinancialRobustnessTests.cs: CompleteSaleAsync_BcvRateAnchor_
+  FailsOpenWhenBcvRateIsZero_UsesClientRate y
+  FailsOpenWhenBcvThrows_UsesClientRate -> congelan ese comportamiento.
+
+VERIFICACION (FASE 1): build Debug y Release 0/0; suite .NET 705/705 (5 tests
+nuevos); suite Web 77/77; oxlint 0 errores (1 aviso preexistente W03).
+
+FIN DEL ANEXO - REVISION 8.16/8.17/8.18
 ================================================================================ 

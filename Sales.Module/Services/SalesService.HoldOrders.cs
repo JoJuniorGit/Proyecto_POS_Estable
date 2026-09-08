@@ -228,7 +228,8 @@ public partial class SalesService
                         stockDeductions.Add(new StockDeductionRequest(
                             item.ProductId,
                             -item.Quantity,
-                            $"Sale #{sale.InvoiceNumber.Value}"));
+                            $"Sale #{sale.InvoiceNumber.Value}",
+                            sale.Id));
                     }
 
                     if (stockDeductions.Count > 0)

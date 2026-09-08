@@ -617,4 +617,129 @@ public class FinancialRobustnessTests
         Assert.True(invoiceNum > 0);
         Assert.Equal(51m, savedSale.AppliedRate); // Desvío 2% <= tolerancia 10% -> se acepta
     }
+
+    [Fact]
+    public async Task CompleteSaleAsync_BcvRateAnchor_FailsOpenWhenBcvRateIsZero_UsesClientRate()
+    {
+        using var context = GetInMemorySalesDbContext();
+        var mockInventory = new Mock<IInventoryService>();
+        var mockMediator = new Mock<IMediator>();
+        var mockCashDrawer = new Mock<ICashDrawerService>();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        // Sin tasa BCV del día registrada (devuelve 0): fail-open auditable, se usa la tasa recibida.
+        mockInventory.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(0m);
+        mockCashDrawer
+            .Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
+            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+
+        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
+        var sale = new Sale
+        {
+            Id = 90,
+            TotalUSD = 100m,
+            Subtotal = 100m,
+            AppliedRate = 40m,
+            TotalBsS = 4000m,
+            SubtotalBsS = 4000m,
+            Status = SaleStatus.Pending
+        };
+        context.Sales.Add(sale);
+        context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true });
+        await context.SaveChangesAsync();
+
+        var payments = new List<PaymentInfo>
+        {
+            new PaymentInfo(1, 100m, 4000m, null)
+        };
+
+        int invoiceNum = await service.CompleteSaleAsync(sale.Id, 40m, payments);
+
+        var savedSale = await context.Sales.FindAsync(sale.Id);
+        Assert.NotNull(savedSale);
+        Assert.Equal(SaleStatus.Completed, savedSale.Status);
+        Assert.True(invoiceNum > 0);
+        Assert.Equal(40m, savedSale.AppliedRate); // Fail-open: sin BCV, se acepta la tasa recibida
+    }
+
+    [Fact]
+    public async Task CompleteSaleAsync_BcvRateAnchor_FailsOpenWhenBcvThrows_UsesClientRate()
+    {
+        using var context = GetInMemorySalesDbContext();
+        var mockInventory = new Mock<IInventoryService>();
+        var mockMediator = new Mock<IMediator>();
+        var mockCashDrawer = new Mock<ICashDrawerService>();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        // El servicio BCV falla (p. ej. red): fail-open auditable (8.5-A5), NO se aborta la venta.
+        mockInventory.Setup(i => i.GetTodayExchangeRateAsync()).ThrowsAsync(new HttpRequestException("BCV no disponible"));
+        mockCashDrawer
+            .Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
+            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+
+        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
+        var sale = new Sale
+        {
+            Id = 91,
+            TotalUSD = 100m,
+            Subtotal = 100m,
+            AppliedRate = 45m,
+            TotalBsS = 4500m,
+            SubtotalBsS = 4500m,
+            Status = SaleStatus.Pending
+        };
+        context.Sales.Add(sale);
+        context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true });
+        await context.SaveChangesAsync();
+
+        var payments = new List<PaymentInfo>
+        {
+            new PaymentInfo(1, 100m, 4500m, null)
+        };
+
+        int invoiceNum = await service.CompleteSaleAsync(sale.Id, 45m, payments);
+
+        var savedSale = await context.Sales.FindAsync(sale.Id);
+        Assert.NotNull(savedSale);
+        Assert.Equal(SaleStatus.Completed, savedSale.Status);
+        Assert.True(invoiceNum > 0);
+        Assert.Equal(45m, savedSale.AppliedRate); // Fail-open: fallo de BCV, se usa la tasa recibida
+    }
+
+    [Fact]
+    public async Task InventoryEventHandler_IdempotencyBySaleId_RareReasonDivergence_StillSkipsDuplicate()
+    {
+        using var db = GetInMemoryInventoryDbContext();
+        var mockInventoryService = new Mock<IInventoryService>();
+
+        var handler = new InventorySaleMadeEventHandler(mockInventoryService.Object, db);
+
+        // Reason divergente (formato no estándar / cambio de numeración antigua), pero SaleId presente.
+        var saleEvent = new SaleMadeEvent(
+            SaleId: 1234,
+            SaleDate: DateTime.UtcNow,
+            Items: new List<SaleItemSnapshot>
+            {
+                new SaleItemSnapshot(ProductId: 202, Quantity: 3m)
+            }
+        );
+
+        db.StockMovements.Add(new StockMovement
+        {
+            ProductId = 202,
+            QuantityChange = -3m,
+            NewStockLevel = 7m,
+            Reason = "Pasaje manual #ABCD-xyz", // diverge del formato "Sale #..."
+            SaleId = 1234,
+            MovementDate = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        await handler.Handle(saleEvent, CancellationToken.None);
+
+        // 8.16-H03: aunque el reason diverja, la idempotencia por SaleId evita doble deducción.
+        mockInventoryService.Verify(s => s.UpdateStockBatchAsync(It.IsAny<IEnumerable<Core.Interfaces.StockDeductionRequest>>(), It.IsAny<string?>(), It.IsAny<bool>()), Times.Never);
+    }
 }

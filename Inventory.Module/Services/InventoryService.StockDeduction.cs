@@ -54,7 +54,7 @@ public partial class InventoryService
 
             // 8I-M4: se recopila el detalle de cada ítem para construir los movimientos DESPUÉS de
             // la relectura batch (antes: una relectura AsNoTracking por ítem = 2 queries por producto).
-            var pendingMovements = new List<(int TargetProductId, decimal QuantityChange, string Reason)>();
+            var pendingMovements = new List<(int TargetProductId, decimal QuantityChange, string Reason, int? SaleId)>();
             var updatedTargetIds = new HashSet<int>();
 
             foreach (var item in itemList)
@@ -128,7 +128,7 @@ public partial class InventoryService
                     targetProd.UpdatedAt = DateTime.UtcNow;
                 }
 
-                pendingMovements.Add((targetProductId, effectiveQuantityChange, movementReason));
+                pendingMovements.Add((targetProductId, effectiveQuantityChange, movementReason, item.SaleId));
 
                 if (!string.IsNullOrWhiteSpace(productData.SKU)) skusToInvalidate.Add(productData.SKU);
                 if (!string.IsNullOrWhiteSpace(productData.ParentSKU)) skusToInvalidate.Add(productData.ParentSKU);
@@ -151,7 +151,7 @@ public partial class InventoryService
                 }
             }
 
-            foreach (var (targetId, quantityChange, movementReason) in pendingMovements)
+            foreach (var (targetId, quantityChange, movementReason, saleId) in pendingMovements)
             {
                 decimal stockAfter;
                 if (_context.Database.IsRelational())
@@ -170,6 +170,8 @@ public partial class InventoryService
                     QuantityChange = quantityChange,
                     NewStockLevel = stockAfter,
                     Reason = movementReason,
+                    // 8.16-H03: idempotencia estructurada por SaleId (si el caller lo provee).
+                    SaleId = saleId,
                     MovementDate = DateTime.UtcNow,
                     UserId = _currentUserService?.UserId ?? userId
                 });

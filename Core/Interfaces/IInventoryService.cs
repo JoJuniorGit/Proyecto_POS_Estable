@@ -46,4 +46,4 @@ public interface IInventoryService
     Task DetachFromTransactionAsync(System.Threading.CancellationToken cancellationToken = default);
 }
 
-public record StockDeductionRequest(int ProductId, decimal QuantityChange, string Reason);
+public record StockDeductionRequest(int ProductId, decimal QuantityChange, string Reason, int? SaleId = null);
