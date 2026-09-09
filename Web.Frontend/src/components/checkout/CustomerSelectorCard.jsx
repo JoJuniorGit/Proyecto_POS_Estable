@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { User, Search, UserPlus, X, ChevronDown, ChevronUp, Loader2, Check } from 'lucide-react';
 import { getCustomers, createCustomer } from '../../services/customerApi';
 import useDebounce from '../../hooks/useDebounce';
+import './CustomerSelectorCard.css';
 
 export default function CustomerSelectorCard({
   currentCustomer,
@@ -210,39 +211,28 @@ export default function CustomerSelectorCard({
   return (
     <div
       ref={containerRef}
+      className="csc-card"
       style={{
-        borderRadius: '10px',
         border: isWarningHighlight ? '1px solid #f59e0b' : '1px solid var(--border)',
-        backgroundColor: isWarningHighlight ? 'rgba(245, 158, 11, 0.06)' : 'var(--bg-surface)',
-        padding: '10px 14px',
-        marginBottom: '12px',
-        transition: 'all 0.2s ease',
-        position: 'relative'
+        backgroundColor: isWarningHighlight ? 'rgba(245, 158, 11, 0.06)' : 'var(--bg-surface)'
       }}
     >
       {/* Ficha Resumida Superior */}
       <div className="flex-align-center justify-between gap-2">
-        <div className="flex-align-center gap-2" style={{ minWidth: 0, flex: 1 }}>
+        <div className="flex-align-center gap-2 csc-fill">
           <div
+            className="flex-center flex-shrink-0 csc-avatar"
             style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
               backgroundColor: isDefaultCust ? 'var(--bg-hover, #374151)' : 'rgba(99, 102, 241, 0.15)',
-              color: isDefaultCust ? 'var(--text-muted)' : 'var(--accent-primary, #6366f1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0
+              color: isDefaultCust ? 'var(--text-muted)' : 'var(--accent-primary, #6366f1)'
             }}
           >
             <User size={18} />
           </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="csc-fill">
             <div className="text-xs text-muted font-medium">Cliente Asignado:</div>
             <div
-              className="font-bold text-sm text-primary"
-              style={{ lineHeight: '1.2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '280px' }}
+              className="font-bold text-sm text-primary text-truncate csc-cust-name"
               title={isDefaultCust ? 'Consumidor Final (V-00000000)' : `${currentCustomer.name || currentCustomer.customerName}`}
             >
               {isDefaultCust
@@ -257,15 +247,10 @@ export default function CustomerSelectorCard({
             type="button"
             disabled={disabled || saving}
             onClick={handleToggleExpand}
-            className="btn btn-sm btn-outline-secondary d-inline-flex flex-align-center gap-1"
+            className="btn btn-sm btn-outline-secondary d-inline-flex flex-align-center gap-1 flex-shrink-0 csc-toggle-btn"
             style={{
-              fontSize: '0.8rem',
-              padding: '4px 10px',
-              borderRadius: '6px',
               borderColor: isWarningHighlight ? '#f59e0b' : 'var(--border)',
-              color: isWarningHighlight ? '#f59e0b' : 'var(--text-primary)',
-              backgroundColor: 'var(--bg-card, rgba(255, 255, 255, 0.04))',
-              flexShrink: 0
+              color: isWarningHighlight ? '#f59e0b' : 'var(--text-primary)'
             }}
           >
             {saving ? (
@@ -296,40 +281,33 @@ export default function CustomerSelectorCard({
 
       {/* Buscador Colapsable */}
       {isExpanded && (
-        <div className="mt-3 pt-3 border-top" style={{ borderColor: 'var(--border)', position: 'relative' }}>
+        <div className="mt-3 pt-3 border-top csc-relative">
           {error && (
-            <div className="alert alert-danger mb-2 py-1 px-2 text-xs" style={{ borderRadius: '6px' }}>
+            <div className="alert alert-danger mb-2 py-1 px-2 text-xs csc-radius-6">
               {error}
             </div>
           )}
 
           {!isCreatingCustomer ? (
-            <div style={{ position: 'relative' }}>
-              <div className="d-flex gap-2 mb-2" style={{ position: 'relative' }}>
-                <div style={{ position: 'relative', flex: 1 }}>
+            <div className="csc-relative">
+              <div className="d-flex gap-2 mb-2 csc-relative">
+                <div className="csc-relative flex-1">
                   <input
                     ref={searchInputRef}
                     type="text"
-                    className="form-input text-sm"
+                    className="form-input text-sm csc-search-input"
                     placeholder="Buscar por Nombre o Cédula/RIF..."
                     value={query}
                     onChange={handleSearchChange}
                     onFocus={handleInputFocus}
                     onBlur={handleInputBlur}
-                    style={{
-                      paddingLeft: '32px',
-                      paddingRight: '28px',
-                      backgroundColor: 'var(--bg-input, #111827)',
-                      color: 'var(--text-primary)',
-                      borderColor: 'var(--border-hover, #4b5563)'
-                    }}
                   />
-                  <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <Search size={15} className="csc-search-icon" />
                   {query && (
                     <button
                       type="button"
                       onClick={() => { setQuery(''); setIsDropdownOpen(true); loadCustomers(''); }}
-                      style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                      className="csc-clear-btn"
                     >
                       <X size={14} />
                     </button>
@@ -339,16 +317,7 @@ export default function CustomerSelectorCard({
                 <button
                   type="button"
                   onClick={() => setIsCreatingCustomer(true)}
-                  className="btn btn-sm btn-primary d-inline-flex flex-align-center gap-1"
-                  style={{
-                    fontSize: '0.8rem',
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                    fontWeight: '600',
-                    backgroundColor: 'var(--accent-primary, #6366f1)',
-                    color: '#ffffff',
-                    borderColor: 'transparent'
-                  }}
+                  className="btn btn-sm btn-primary d-inline-flex flex-align-center gap-1 flex-shrink-0 text-nowrap font-semibold csc-create-btn"
                 >
                   <UserPlus size={14} /> + Crear
                 </button>
@@ -357,23 +326,10 @@ export default function CustomerSelectorCard({
               {/* Lista de Resultados Desplegable Flotante (Floating Dropdown Overlay) */}
               {isDropdownOpen && (
                 <div
-                  className="custom-scrollbar"
+                  className="custom-scrollbar csc-dropdown"
                   onMouseDown={(e) => {
                     // Evitar que el mousedown robe el foco al input antes del onClick
                     e.preventDefault();
-                  }}
-                  style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 4px)',
-                    left: 0,
-                    right: 0,
-                    zIndex: 60,
-                    maxHeight: '200px',
-                    overflowY: 'auto',
-                    backgroundColor: 'var(--bg-surface, #1f2937)',
-                    border: '1px solid var(--border-hover, #4b5563)',
-                    borderRadius: '10px',
-                    boxShadow: '0 16px 36px rgba(0, 0, 0, 0.65)'
                   }}
                 >
                   {loadingCustomers ? (
@@ -394,26 +350,21 @@ export default function CustomerSelectorCard({
                             e.preventDefault();
                           }}
                           onClick={() => handleChooseCustomer(c)}
-                          className="d-flex justify-between flex-align-center px-3 py-2 text-left"
+                          className="d-flex justify-between flex-align-center px-3 py-2 text-left cursor-pointer border-bottom csc-result-item"
                           style={{
-                            cursor: 'pointer',
-                            padding: '10px 14px',
-                            backgroundColor: isChosen ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                            borderBottom: '1px solid var(--border)',
-                            transition: 'background-color 0.15s ease'
+                            backgroundColor: isChosen ? 'rgba(99, 102, 241, 0.15)' : 'transparent'
                           }}
                           onMouseEnter={(e) => { if (!isChosen) e.currentTarget.style.backgroundColor = 'var(--bg-hover, rgba(255,255,255,0.06))'; }}
                           onMouseLeave={(e) => { if (!isChosen) e.currentTarget.style.backgroundColor = 'transparent'; }}
                         >
-                          <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="csc-fill">
                             <div
-                              className="font-bold text-sm text-primary text-truncate"
-                              style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}
+                              className="font-bold text-sm text-primary text-truncate csc-result-name"
                               title={c.name}
                             >
                               {c.name}
                             </div>
-                            <div className="text-xs text-muted" style={{ marginTop: '2px' }}>
+                            <div className="text-xs text-muted csc-result-meta">
                               {c.cedulaOrRif} {c.phone ? `• ${c.phone}` : ''}
                             </div>
                           </div>
@@ -427,26 +378,24 @@ export default function CustomerSelectorCard({
             </div>
           ) : (
             /* Formulario de Creación de Cliente */
-            <form onSubmit={handleCreateCustomerSubmit} className="p-3 border rounded" style={{ backgroundColor: 'var(--bg-card, rgba(17, 24, 39, 0.6))', borderColor: 'var(--border-hover, #4b5563)' }}>
+            <form onSubmit={handleCreateCustomerSubmit} className="p-3 border rounded csc-create-form">
               <div className="font-bold text-xs text-primary mb-2">➕ Registrar Nuevo Cliente</div>
 
               <div className="d-flex gap-2 mb-2">
                 <input
                   type="text"
-                  className="form-input text-xs"
+                  className="form-input text-xs csc-create-input"
                   placeholder="Cédula / RIF (ej. V-12345678)"
                   value={newCustomer.cedulaOrRif}
                   onChange={(e) => setNewCustomer({ ...newCustomer, cedulaOrRif: e.target.value })}
-                  style={{ backgroundColor: 'var(--bg-input, #111827)', borderColor: 'var(--border-hover, #4b5563)', color: 'var(--text-primary)' }}
                   required
                 />
                 <input
                   type="text"
-                  className="form-input text-xs"
+                  className="form-input text-xs csc-create-input"
                   placeholder="Nombre completo"
                   value={newCustomer.name}
                   onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
-                  style={{ backgroundColor: 'var(--bg-input, #111827)', borderColor: 'var(--border-hover, #4b5563)', color: 'var(--text-primary)' }}
                   required
                 />
               </div>
@@ -454,27 +403,17 @@ export default function CustomerSelectorCard({
               <div className="d-flex gap-2 mb-3">
                 <input
                   type="text"
-                  className="form-input text-xs"
+                  className="form-input text-xs csc-create-input"
                   placeholder="Teléfono (Opcional)"
                   value={newCustomer.phone}
                   onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
-                  style={{ backgroundColor: 'var(--bg-input, #111827)', borderColor: 'var(--border-hover, #4b5563)', color: 'var(--text-primary)' }}
                 />
               </div>
 
               <div className="d-flex justify-end gap-2">
                 <button
                   type="button"
-                  className="btn btn-xs btn-outline-secondary"
-                  style={{
-                    padding: '5px 14px',
-                    borderRadius: '6px',
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid var(--border-hover, #4b5563)',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                    fontSize: '0.8rem'
-                  }}
+                  className="btn btn-xs btn-outline-secondary csc-cancel-btn"
                   onClick={() => setIsCreatingCustomer(false)}
                 >
                   Cancelar
@@ -482,8 +421,7 @@ export default function CustomerSelectorCard({
                 <button
                   type="submit"
                   disabled={saving}
-                  className="btn btn-xs btn-primary d-inline-flex flex-align-center gap-1"
-                  style={{ padding: '5px 14px', fontSize: '0.8rem' }}
+                  className="btn btn-xs btn-primary d-inline-flex flex-align-center gap-1 csc-save-btn"
                 >
                   {saving ? <Loader2 className="animate-spin" size={12} /> : <Check size={12} />}
                   Guardar y Asignar

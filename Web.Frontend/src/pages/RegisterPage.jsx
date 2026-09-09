@@ -16,6 +16,7 @@ import {
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { useAuth } from '../context/AuthContext';
 import { formatBsS, formatUSD, formatNumberEs, formatDate } from '../utils/formatters';
+import './RegisterPage.css';
 
 import CashInModal from '../components/register/CashInModal';
 import CashOutModal from '../components/register/CashOutModal';
@@ -159,7 +160,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="register-page container-fluid p-4" style={{ maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="register-page container-fluid p-4 reg-page-container">
       
       {/* ── Requisito 1: Reestructuración del Encabezado (Título + Sesión/Tasa + Cuadrícula de Botones Táctiles en Móvil) ── */}
       <div className="register-header-container mb-4">
@@ -225,10 +226,9 @@ export default function RegisterPage() {
       {/* ── Requisito 2: Aviso de Acceso Limitado (Alineado al Inicio Superior con la Primera Línea del Texto) ── */}
       {!isAdmin && (
         <div 
-          className="alert alert-warning mb-4 text-sm p-3 border-warning bg-warning-light"
-          style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}
+          className="alert alert-warning mb-4 text-sm p-3 border-warning bg-warning-light d-flex align-start reg-alert-gap"
         >
-          <ShieldAlert size={18} className="color-warning flex-shrink-0" style={{ marginTop: '2px' }} />
+          <ShieldAlert size={18} className="color-warning flex-shrink-0 reg-alert-icon" />
           <span>Acceso limitado: Los botones <strong>CASH IN</strong> y <strong>CASH OUT</strong> están restringidos a usuarios con rol <strong>Administrador</strong>.</span>
         </div>
       )}
@@ -241,21 +241,21 @@ export default function RegisterPage() {
       ) : (
         <>
           {/* ── Requisito 3: Tarjetas de Resumen (Espaciado Tipográfico Garantizado entre Número y Divisa Bs.S) ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', width: '100%', marginBottom: '20px' }}>
+          <div className="grid w-full gap-4 reg-summary-grid">
             
             {/* Tarjeta 1: EFECTIVO ESPERADO EN CAJA */}
-            <div className="card shadow-sm p-4 bg-surface flex-between flex-align-center" style={{ borderLeft: '4px solid var(--primary-color, #6366f1)', backgroundColor: 'rgba(99, 102, 241, 0.04)' }}>
+            <div className="card shadow-sm p-4 bg-surface flex-between flex-align-center reg-card-indigo">
               <div className="flex-1 pr-3 flex flex-column justify-content-between">
                 <span className="stat-label text-xs font-bold text-muted uppercase tracking-wider block mb-1">
                   EFECTIVO ESPERADO EN CAJA
                 </span>
                 
                 {/* Requisito 3: Espaciado en la divisa (26,673.74 Bs.S) */}
-                <div className="stat-val mb-1 flex-align-baseline gap-2" style={{ whiteSpace: 'nowrap' }}>
+                <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
                   <span className="text-3xl font-extrabold color-primary">
                     {formatNumberEs(expectedCashBsS, 2)}
                   </span>
-                  <span className="text-base font-bold color-primary" style={{ marginLeft: '6px' }}>
+                  <span className="text-base font-bold color-primary reg-currency-gap">
                     Bs.S
                   </span>
                 </div>
@@ -265,26 +265,26 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              <div className="flex-align-center justify-content-center p-2 rounded-lg flex-shrink-0" style={{ width: '48px', height: '48px', backgroundColor: 'rgba(99, 102, 241, 0.12)' }}>
+              <div className="flex-align-center justify-content-center p-2 rounded-lg flex-shrink-0 reg-card-icon-circle">
                 <Landmark size={26} className="color-primary" />
               </div>
             </div>
 
             {/* Tarjeta 2: TOTAL INGRESOS EN EFECTIVO */}
-            <div className="card shadow-sm p-4 bg-surface flex flex-column justify-content-between" style={{ borderLeft: '4px solid #10B981', backgroundColor: 'rgba(16, 185, 129, 0.04)' }}>
+            <div className="card shadow-sm p-4 bg-surface flex flex-column justify-content-between reg-card-green">
               <div className="flex-align-center gap-2 mb-1">
                 <TrendingUp size={18} className="color-success flex-shrink-0" />
-                <span className="stat-label text-xs font-bold uppercase tracking-wider" style={{ color: '#059669' }}>
+                <span className="stat-label text-xs font-bold uppercase tracking-wider reg-label-green">
                   TOTAL INGRESOS EN EFECTIVO
                 </span>
               </div>
 
               {/* Requisito 3: Espaciado en la divisa */}
-              <div className="stat-val mb-1 flex-align-baseline gap-2" style={{ whiteSpace: 'nowrap' }}>
+              <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
                 <span className="text-2xl font-extrabold color-success">
                   {formatNumberEs(totalIncomeBsS, 2)}
                 </span>
-                <span className="text-sm font-bold color-success" style={{ marginLeft: '6px' }}>
+                <span className="text-sm font-bold color-success reg-currency-gap">
                   Bs.S
                 </span>
               </div>
@@ -295,20 +295,20 @@ export default function RegisterPage() {
             </div>
 
             {/* Tarjeta 3: TOTAL EGRESOS EN EFECTIVO */}
-            <div className="card shadow-sm p-4 bg-surface flex flex-column justify-content-between" style={{ borderLeft: '4px solid #EF4444', backgroundColor: 'rgba(239, 68, 68, 0.04)' }}>
+            <div className="card shadow-sm p-4 bg-surface flex flex-column justify-content-between reg-card-red">
               <div className="flex-align-center gap-2 mb-1">
                 <TrendingDown size={18} className="color-danger flex-shrink-0" />
-                <span className="stat-label text-xs font-bold uppercase tracking-wider" style={{ color: '#DC2626' }}>
+                <span className="stat-label text-xs font-bold uppercase tracking-wider reg-label-red">
                   TOTAL EGRESOS EN EFECTIVO
                 </span>
               </div>
 
               {/* Requisito 3: Espaciado en la divisa */}
-              <div className="stat-val mb-1 flex-align-baseline gap-2" style={{ whiteSpace: 'nowrap' }}>
+              <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
                 <span className="text-2xl font-extrabold color-danger">
                   {formatNumberEs(totalExpenseBsS, 2)}
                 </span>
-                <span className="text-sm font-bold color-danger" style={{ marginLeft: '6px' }}>
+                <span className="text-sm font-bold color-danger reg-currency-gap">
                   Bs.S
                 </span>
               </div>
@@ -323,7 +323,7 @@ export default function RegisterPage() {
           <div className="grid grid-1 gap-4">
 
             {/* CARRUSEL DE ÚLTIMOS INGRESOS */}
-            <div className="card shadow-sm p-4 bg-surface mb-4 w-100 max-w-100 overflow-hidden" style={{ width: '100%', maxWidth: '100%' }}>
+            <div className="card shadow-sm p-4 bg-surface mb-4 w-100 max-w-100 overflow-hidden reg-fullwidth">
               <div className="flex-between flex-align-center mb-4">
                 <h3 className="card-title text-base font-bold flex-align-center gap-2 m-0 color-success">
                   <CheckCircle size={20} className="color-success" /> ÚLTIMOS INGRESOS RECIBIDOS
@@ -339,13 +339,7 @@ export default function RegisterPage() {
                 </div>
               ) : (
                 <div
-                  className="recent-incomes-scroll-container flex gap-3.5 py-1 custom-scrollbar w-100"
-                  style={{
-                    overflowX: 'auto',
-                    overflowY: 'hidden',
-                    scrollSnapType: 'x mandatory',
-                    WebkitOverflowScrolling: 'touch'
-                  }}
+                  className="recent-incomes-scroll-container flex gap-3.5 py-1 custom-scrollbar w-100 reg-income-scroll"
                 >
                   {recentIncomes.map((tx, idx) => {
                     const invoiceTitle = (tx.sale?.invoiceNumber || tx.invoiceNumber)
@@ -357,34 +351,27 @@ export default function RegisterPage() {
                     return (
                       <div
                         key={tx.id || idx}
-                        className="recent-income-card rounded-lg border flex flex-column justify-content-between shadow-xs flex-shrink-0 p-3"
-                        style={{
-                          flex: '0 0 220px',
-                          minWidth: '220px',
-                          scrollSnapAlign: 'start',
-                          textAlign: 'left'
-                        }}
+                        className="recent-income-card rounded-lg border flex flex-column justify-content-between shadow-xs flex-shrink-0 p-3 reg-income-card"
                       >
                         <div>
                           <div
                             className="font-bold text-sm text-truncate mb-1.5 text-left w-100"
-                            style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
                             title={invoiceTitle}
                           >
                             {invoiceTitle}
                           </div>
 
                           <div className="text-xs text-muted mb-3 flex-align-center gap-1.5 w-100 text-left">
-                            <Clock size={13} className="flex-shrink-0" style={{ marginRight: '4px' }} />
+                            <Clock size={13} className="flex-shrink-0 reg-clock-mr" />
                             <span>{formatTime(tx.transactionTimeLocal || tx.transactionTime)}</span>
                           </div>
                         </div>
 
                         <div className="flex-align-baseline gap-2 pt-2 border-top w-100 flex-wrap text-left">
-                          <span className="font-extrabold text-sm color-success" style={{ whiteSpace: 'nowrap' }}>
+                          <span className="font-extrabold text-sm color-success text-nowrap">
                             {formatBsS(tx.amountLocal)}
                           </span>
-                          <span className="text-xs text-muted font-medium" style={{ whiteSpace: 'nowrap' }}>
+                          <span className="text-xs text-muted font-medium text-nowrap">
                             &nbsp;({formatUSD(amountUsd)})
                           </span>
                         </div>
@@ -396,7 +383,7 @@ export default function RegisterPage() {
             </div>
 
             {/* ── ÁREA 3: TABLA DE MOVIMIENTOS FÍSICOS ── */}
-            <div className="card shadow-sm p-4 bg-surface overflow-hidden w-100 max-w-100" style={{ width: '100%', maxWidth: '100%' }}>
+            <div className="card shadow-sm p-4 bg-surface overflow-hidden w-100 max-w-100 reg-fullwidth">
               
               {/* ── Requisito 4: Cabecera en 2 Niveles para Móvil (Título arriba, Selectores 50% abajo) ── */}
               <div className="register-table-header-container mb-3">
@@ -461,18 +448,18 @@ export default function RegisterPage() {
                 </div>
               ) : (
                 <>
-                  <div className="w-100 overflow-x-auto custom-scrollbar border rounded history-table-wrapper" style={{ width: '100%', maxWidth: '100%', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                    <table className="table table-hover w-100 m-0 cart-table history-main-table" style={{ minWidth: '780px' }}>
+                  <div className="w-100 overflow-x-auto custom-scrollbar border rounded history-table-wrapper reg-table-scroll">
+                    <table className="table table-hover w-100 m-0 cart-table history-main-table reg-table-min">
                       <thead className="sticky-header">
                         <tr className="bg-light">
-                          <th style={{ width: '125px', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--bg-surface)' }}>FECHA / HORA</th>
-                          <th style={{ width: '105px', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--bg-surface)' }}>Tipo</th>
-                          <th style={{ width: '135px', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--bg-surface)' }}>Origen</th>
-                          <th style={{ minWidth: '180px', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--bg-surface)' }}>Concepto / Detalle</th>
-                          <th className="text-right" style={{ width: '140px', textAlign: 'right', paddingRight: '16px', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--bg-surface)', whiteSpace: 'nowrap' }}>
+                          <th className="reg-th-date">FECHA / HORA</th>
+                          <th className="reg-th-type">Tipo</th>
+                          <th className="reg-th-origin">Origen</th>
+                          <th className="reg-th-concept">Concepto / Detalle</th>
+                          <th className="text-right reg-th-amount">
                             MONTO (BS.S)
                           </th>
-                          <th className="text-right" style={{ width: '120px', textAlign: 'right', paddingRight: '16px', position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--bg-surface)', whiteSpace: 'nowrap' }}>
+                          <th className="text-right reg-th-usd">
                             EQUIV. (USD)
                           </th>
                         </tr>
@@ -486,29 +473,28 @@ export default function RegisterPage() {
                           return (
                             <tr key={tx.id || idx}>
                               {/* Fecha / Hora (Columna Apilada) */}
-                              <td style={{ whiteSpace: 'nowrap' }}>
-                                <div className="flex-col" style={{ lineHeight: '1.25' }}>
-                                  <span className="font-semibold text-xs" style={{ color: 'var(--text-primary)' }}>
+                              <td className="text-nowrap">
+                                <div className="flex-col reg-cell-stack">
+                                  <span className="font-semibold text-xs text-primary">
                                     {formatDate(tx.transactionTimeLocal || tx.transactionTime)}
                                   </span>
-                                  <span className="text-muted font-mono" style={{ fontSize: '0.75rem' }}>
+                                  <span className="text-muted font-mono text-xs">
                                     {formatTime(tx.transactionTimeLocal || tx.transactionTime)}
                                   </span>
                                 </div>
                               </td>
 
                               {/* Tipo Badge */}
-                              <td style={{ whiteSpace: 'nowrap', width: '105px' }}>
+                              <td className="reg-td-type">
                                 <span 
-                                  className={`badge ${isIncome ? 'badge-success' : 'badge-danger'} text-xs font-bold`}
-                                  style={{ width: '90px', display: 'inline-flex', justifyContent: 'center', textAlign: 'center' }}
+                                  className={`badge ${isIncome ? 'badge-success' : 'badge-danger'} text-xs font-bold d-inline-flex justify-center text-center reg-badge-type`}
                                 >
                                   {isIncome ? 'INGRESO' : 'EGRESO'}
                                 </span>
                               </td>
 
                               {/* Origen */}
-                              <td style={{ whiteSpace: 'nowrap' }}>
+                              <td className="text-nowrap">
                                 <span className="badge badge-outline text-xs font-mono">
                                   {getSourceLabel(tx.source)}
                                 </span>
@@ -516,25 +502,19 @@ export default function RegisterPage() {
 
                               {/* Concepto / Detalle (Truncado sin romper fila) */}
                               <td
-                                className="text-sm font-medium text-truncate"
-                                style={{
-                                  maxWidth: '220px',
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis'
-                                }}
+                                className="text-sm font-medium text-truncate reg-concept-cell"
                                 title={conceptStr}
                               >
                                 {conceptStr}
                               </td>
 
                               {/* Monto Bs.S (Alineado a la derecha) */}
-                              <td className={`text-right font-extrabold text-sm ${isIncome ? 'color-success' : 'color-danger'}`} style={{ textAlign: 'right', whiteSpace: 'nowrap', paddingRight: '16px' }}>
+                              <td className={`text-right font-extrabold text-sm ${isIncome ? 'color-success' : 'color-danger'} reg-amount-cell`}>
                                 {isIncome ? '+' : '-'}{formatBsS(tx.amountLocal)}
                               </td>
 
                               {/* Equiv USD (Alineado a la derecha) */}
-                              <td className="text-right text-xs text-muted font-medium" style={{ textAlign: 'right', whiteSpace: 'nowrap', paddingRight: '16px' }}>
+                              <td className="text-right text-xs text-muted font-medium reg-amount-cell">
                                 {formatUSD(amountUsd)}
                               </td>
                             </tr>

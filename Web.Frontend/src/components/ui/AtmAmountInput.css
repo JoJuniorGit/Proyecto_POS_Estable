@@ -1,0 +1,34 @@
+/* AtmAmountInput.css - Campo de monto tipo ATM con prefijo de moneda */
+
+/* ── AtmAmountInput ── */
+.atm-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.atm-prefix {
+  position: absolute;
+  left: 8px;
+  font-weight: 700;
+  color: var(--text-muted);
+  pointer-events: none;
+  user-select: none;
+  z-index: 2;
+  white-space: nowrap;
+}
+
+.atm-prefix-sign {
+  font-size: 0.85rem;
+}
+
+.atm-prefix-text {
+  font-size: 0.72rem;
+}
+
+.atm-field {
+  padding-right: 14px;
+  height: 42px;
+  font-family: monospace;
+}

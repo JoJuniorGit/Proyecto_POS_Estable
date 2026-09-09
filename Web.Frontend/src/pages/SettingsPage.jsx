@@ -11,6 +11,7 @@ import { Settings, CreditCard, Plus, Loader2, Check, QrCode, Server, Wifi, Copy,
 import { useCurrencyFormat } from '../context/CurrencyFormatContext';
 import { copyTextToClipboard } from '../utils/clipboard';
 import ConfirmModal from '../components/ui/ConfirmModal';
+import './SettingsPage.css';
 
 // 8.7-L6: pinta el QR de emparejamiento dentro de un contenedor dado (reutilizable de forma
 // aislada para pruebas y con limpieza previa del contenedor).
@@ -226,7 +227,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="settings-page" style={{ maxWidth: '900px', margin: '0 auto', padding: '16px' }}>
+    <div className="settings-page set-page">
       <h2 className="page-title mb-4 font-bold text-xl sm:text-2xl flex-align-center gap-2">
         <Settings size={24} className="color-primary flex-shrink-0" />
         <span>Configuración del Sistema</span>
@@ -259,7 +260,7 @@ export default function SettingsPage() {
             <div>Cargando datos de emparejamiento de red...</div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+          <div className="grid set-pairing-grid">
             
             {/* Columna Izquierda: Código QR y Controles */}
             <div className="flex-column flex-align-center text-center p-3 border rounded-lg bg-surface">
@@ -268,21 +269,9 @@ export default function SettingsPage() {
               <div 
                 ref={qrRef} 
                 className="qr-code-container mb-2" 
-                style={{ 
-                  backgroundColor: '#FFFFFF',
-                  width: '224px', 
-                  height: '224px', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  padding: '12px',
-                  borderRadius: '10px',
-                  border: '1px solid #E2E8F0',
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)'
-                }}
               />
 
-              <p className="text-xs text-muted mb-3" style={{ maxWidth: '240px' }}>
+              <p className="text-xs text-muted mb-3 set-qr-hint">
                 Apunta con la cámara de tu teléfono o tablet para abrir y sincronizar el Punto de Venta.
               </p>
 
@@ -365,8 +354,8 @@ export default function SettingsPage() {
               </div>
 
               {/* Alerta Wi-Fi */}
-              <div className="p-3 border rounded-lg text-xs flex-align-start gap-2" style={{ backgroundColor: 'rgba(0, 128, 255, 0.08)', borderColor: 'rgba(0, 128, 255, 0.25)' }}>
-                <Wifi size={18} className="flex-shrink-0" style={{ color: '#0080FF', marginTop: '2px' }} />
+              <div className="p-3 border rounded-lg text-xs flex-align-start gap-2 set-wifi-alert">
+                <Wifi size={18} className="flex-shrink-0 set-wifi-icon" />
                 <span>
                   <strong>Nota de Red:</strong> Asegúrese de que los teléfonos, tablets o terminales estén conectados a la <strong>misma red Wi-Fi / LAN</strong> que este equipo servidor.
                 </span>
@@ -389,7 +378,7 @@ export default function SettingsPage() {
           Seleccione cómo desea visualizar y formatear los montos monetarios en todo el sistema (cierres, checkout, reportes y catálogo).
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }} className="mb-4">
+        <div className="grid gap-4 set-format-grid mb-4">
           {/* Opción 1: Venezolano contable */}
           <div
             onClick={() => handleFormatChange('Venezuelan')}
@@ -411,7 +400,7 @@ export default function SettingsPage() {
                 value="Venezuelan"
                 checked={currencyFormat === 'Venezuelan'}
                 onChange={() => handleFormatChange('Venezuelan')}
-                style={{ cursor: 'pointer' }}
+                className="cursor-pointer"
               />
             </div>
             <p className="text-xs text-muted mb-2">
@@ -443,7 +432,7 @@ export default function SettingsPage() {
                 value="International"
                 checked={currencyFormat === 'International'}
                 onChange={() => handleFormatChange('International')}
-                style={{ cursor: 'pointer' }}
+                className="cursor-pointer"
               />
             </div>
             <p className="text-xs text-muted mb-2">
@@ -460,7 +449,7 @@ export default function SettingsPage() {
           <span className="text-xs font-bold text-muted uppercase tracking-wider block mb-2">
             Vista Previa Activa en el Sistema:
           </span>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px' }} className="text-xs sm:text-sm">
+          <div className="grid gap-2 set-preview-grid text-xs sm:text-sm">
             <div className="flex-between p-2 rounded bg-background border">
               <span className="text-muted">Monto en Bolívares (Bs.S):</span>
               <span className="font-mono font-bold color-primary">{formatBsS(172786.94, 2)}</span>
@@ -497,9 +486,8 @@ export default function SettingsPage() {
                     <div className="flex-align-center gap-2">
                       <button
                         type="button"
-                        className={`btn btn-sm ${m.isActive ? 'btn-primary' : 'btn-danger'} text-xs font-bold px-3`}
+                        className={`btn btn-sm ${m.isActive ? 'btn-primary' : 'btn-danger'} text-xs font-bold px-3 set-state-btn`}
                         onClick={() => handleToggleActive(m)}
-                        style={{ borderRadius: '14px', minWidth: '76px' }}
                         title="Alternar estado activo"
                         aria-label={`Alternar estado activo para ${m.name}`}
                       >
@@ -507,11 +495,10 @@ export default function SettingsPage() {
                       </button>
                       <button
                         type="button"
-                        className="btn btn-sm btn-outline text-danger p-1"
+                        className="btn btn-sm btn-outline text-danger p-1 set-delete-btn"
                         onClick={() => handleDeleteMethod(m)}
                         title="Eliminar método de pago"
                         aria-label={`Eliminar método ${m.name}`}
-                        style={{ color: '#DC2626', borderColor: '#FCA5A5' }}
                       >
                         <Trash2 size={15} />
                       </button>
@@ -524,11 +511,9 @@ export default function SettingsPage() {
                       <span className="text-muted text-xs">Tipo:</span>
                       <button
                         type="button"
-                        className={`btn btn-xs ${m.isCash ? 'btn-success' : 'btn-outline'} text-xs font-bold`}
+                        className={`btn btn-xs ${m.isCash ? 'btn-success' : 'btn-outline'} text-xs font-bold set-chip-btn`}
                         onClick={() => handleToggleCash(m)}
                         style={{
-                          borderRadius: '10px',
-                          padding: '2px 10px',
                           backgroundColor: m.isCash ? '#DCFCE7' : 'transparent',
                           color: m.isCash ? '#166534' : 'inherit',
                           borderColor: m.isCash ? '#86EFAC' : 'var(--border)'
@@ -544,9 +529,8 @@ export default function SettingsPage() {
                       <span className="text-muted text-xs">Requiere Ref.:</span>
                       <button
                         type="button"
-                        className={`btn btn-xs ${m.requiresReference ? 'btn-primary' : 'btn-outline'} text-xs font-bold`}
+                        className={`btn btn-xs ${m.requiresReference ? 'btn-primary' : 'btn-outline'} text-xs font-bold set-chip-btn`}
                         onClick={() => handleToggleRef(m)}
-                        style={{ borderRadius: '10px', padding: '2px 10px' }}
                         title="Alternar requerimiento de referencia"
                         aria-label={`Alternar requerimiento de referencia para ${m.name}`}
                       >
@@ -578,10 +562,8 @@ export default function SettingsPage() {
                       <td className="text-center">
                         <button
                           type="button"
-                          className={`btn btn-sm ${m.isCash ? 'btn-success' : 'btn-outline'} text-xs font-bold`}
+                          className={`btn btn-sm ${m.isCash ? 'btn-success' : 'btn-outline'} text-xs font-bold set-table-chip`}
                           style={{
-                            borderRadius: '12px',
-                            padding: '3px 12px',
                             backgroundColor: m.isCash ? '#DCFCE7' : 'transparent',
                             color: m.isCash ? '#166534' : 'inherit',
                             borderColor: m.isCash ? '#86EFAC' : 'var(--border)'
@@ -618,11 +600,10 @@ export default function SettingsPage() {
                       <td className="text-center">
                         <button
                           type="button"
-                          className="btn btn-sm btn-outline text-danger p-1.5"
+                          className="btn btn-sm btn-outline text-danger p-1.5 set-delete-btn"
                           onClick={() => handleDeleteMethod(m)}
                           title="Eliminar método de pago"
                           aria-label={`Eliminar método ${m.name}`}
-                          style={{ color: '#DC2626', borderColor: '#FCA5A5' }}
                         >
                           <Trash2 size={16} />
                         </button>
@@ -639,7 +620,7 @@ export default function SettingsPage() {
         <form onSubmit={handleAddMethod} className="border-top pt-3 mt-2">
           <h4 className="font-bold mb-3 text-sm sm:text-base">Agregar Nuevo Método de Pago</h4>
           <div className="form-row align-end flex-wrap gap-3">
-            <div className="form-group flex-2 mb-0" style={{ minWidth: '220px' }}>
+            <div className="form-group flex-2 mb-0 set-form-name">
               <label className="form-label text-xs text-muted mb-1 block">Nombre del Método</label>
               <input
                 type="text"
@@ -651,7 +632,7 @@ export default function SettingsPage() {
               />
             </div>
 
-            <div className="form-group mb-0 flex-align-center" style={{ paddingBottom: '8px' }}>
+            <div className="form-group mb-0 flex-align-center pb-2">
               <label className="form-label cursor-pointer flex-align-center gap-2 text-sm mb-0" title="Desmarcado por defecto: se creará como Digital">
                 <input
                   type="checkbox"
@@ -662,7 +643,7 @@ export default function SettingsPage() {
               </label>
             </div>
 
-            <div className="form-group mb-0 flex-align-center" style={{ paddingBottom: '8px' }}>
+            <div className="form-group mb-0 flex-align-center pb-2">
               <label className="form-label cursor-pointer flex-align-center gap-2 text-sm mb-0">
                 <input
                   type="checkbox"

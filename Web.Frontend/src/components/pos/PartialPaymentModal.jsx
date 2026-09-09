@@ -3,6 +3,7 @@ import Modal from '../ui/Modal';
 import { ShieldCheck, AlertCircle } from 'lucide-react';
 import AtmAmountInput from '../ui/AtmAmountInput';
 import { formatBsS, formatUSD, formatNumberEs } from '../../utils/formatters';
+import './PartialPaymentModal.css';
 
 export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment, sale, exchangeRate, paymentMethods = [] }) {
   const [amountBsS, setAmountBsS] = useState(0);
@@ -82,28 +83,28 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Registrar Abono" maxWidth="520px">
       <form onSubmit={handleSubmit}>
-          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="pp-form-body d-flex flex-column gap-4">
             {error && (
-              <div className="alert alert-danger" style={{ fontSize: '0.85em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="alert alert-danger pp-alert-error d-flex align-center gap-2">
                 <AlertCircle size={16} />
                 <span>{error}</span>
               </div>
             )}
 
             {/* Info header */}
-            <div style={{ padding: '12px', borderRadius: '8px', backgroundColor: 'var(--bg-tertiary, rgba(128,128,128,0.1))', fontSize: '0.85em', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <div className="pp-balance-box d-flex justify-between align-center flex-wrap gap-2 p-3">
               <div>
                 <span>Tasa Activa: <strong>{formatNumberEs(exchangeRate)} Bs.S / USD</strong></span>
               </div>
               <div>
                 <span>Saldo Pendiente: </span>
-                <strong style={{ color: '#ef4444', fontSize: '1.05rem' }}>{formatBsS((sale?.remainingBalanceUSD || 0) * exchangeRate)}</strong>
-                <span className="text-muted" style={{ fontSize: '0.8rem', marginLeft: '6px' }}>({formatUSD(sale?.remainingBalanceUSD || 0)})</span>
+                <strong className="pp-danger-amount">{formatBsS((sale?.remainingBalanceUSD || 0) * exchangeRate)}</strong>
+                <span className="text-muted pp-muted-note">({formatUSD(sale?.remainingBalanceUSD || 0)})</span>
               </div>
             </div>
 
             {/* Amount inputs */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="grid grid-2 gap-3">
               <div>
                 <label className="input-label">Monto en Bolívares (Bs.S) *</label>
                 <AtmAmountInput
@@ -113,7 +114,7 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
                   allowDecimals={!isCashSelected}
                 />
                 {isCashSelected && (
-                  <small className="text-muted" style={{ display: 'block', marginTop: '4px', fontSize: '0.75rem', color: 'var(--accent-primary, #6366f1)' }}>
+                  <small className="d-block mt-1 text-xs pp-cash-hint">
                     El pago en efectivo solo acepta montos enteros.
                   </small>
                 )}
@@ -130,7 +131,7 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
             </div>
 
             {/* Payment Method & Reference */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="grid grid-2 gap-3">
               <div>
                 <label className="input-label">Método de Pago *</label>
                 <select
@@ -157,15 +158,15 @@ export default function PartialPaymentModal({ isOpen, onClose, onConfirmPayment,
             </div>
 
             {/* Protection Guarantee Notice */}
-            <div style={{ padding: '12px', borderRadius: '8px', backgroundColor: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.3)', display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <ShieldCheck size={28} style={{ color: '#6366f1', flexShrink: 0 }} />
-              <div style={{ fontSize: '0.85em', color: 'var(--text-color)' }}>
+            <div className="pp-guarantee-box d-flex align-center p-3">
+              <ShieldCheck size={28} className="pp-shield-icon flex-shrink-0" />
+              <div className="pp-guarantee-text">
                 <strong>Regla Anti-Devaluación:</strong> Este abono de <strong className="color-primary">{formatBsS(bsValue)}</strong> equivale a <strong>{formatUSD(usdValue)}</strong> al cambio actual. La deuda restante del cliente bajará a <strong className="color-danger">{formatBsS(Math.max(0, remainingUsd) * exchangeRate)}</strong> ({formatUSD(Math.max(0, remainingUsd))}).
               </div>
             </div>
           </div>
 
-          <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '15px 20px', borderTop: '1px solid var(--border-color)' }}>
+          <div className="modal-footer pp-modal-footer d-flex justify-end">
             <button type="button" className="btn btn-outline" onClick={onClose}>Cancelar</button>
             <button type="submit" className="btn btn-primary" disabled={usdValue <= 0 || remainingUsd < -0.01 || (isCashSelected && bsValue % 1 !== 0)}>
               Confirmar Abono

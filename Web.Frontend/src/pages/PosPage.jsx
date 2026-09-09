@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useCartState, useCartActions } from '../context/CartContext';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { usePosHotkeys } from '../hooks/usePosHotkeys';
+import './PosPage.css';
 import { useScannerTrap } from '../hooks/useScannerTrap';
 import { usePosModalFlow } from '../hooks/usePosModalFlow';
 import { useMobileBackGuard } from '../hooks/useMobileBackGuard';
@@ -186,51 +187,31 @@ export default function PosPage({
 
   useScannerTrap(handleScannedCode);
 
-  return (
+return (
     <div className="pos-page">
       {error && (
-        <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert-danger mb-4">
           {error}
         </div>
       )}
 
-      <div className="d-flex align-items-center justify-content-center gap-2 mb-3 px-1 flex-wrap text-center" style={{ fontSize: '0.875rem', minHeight: '32px' }}>
-        <span style={{ fontWeight: '500', color: '#94a3b8', display: 'inline-flex', alignItems: 'center' }}>
+      <div className="d-flex align-items-center justify-content-center gap-2 mb-3 px-1 flex-wrap text-center pos-customer-bar">
+        <span className="pos-customer-label">
           Cliente:&nbsp;
         </span>
-        <strong style={{ fontWeight: '700', color: 'var(--text-main, #f8fafc)', letterSpacing: '0.02em', display: 'inline-flex', alignItems: 'center' }}>
+        <strong className="pos-customer-name">
           {currentSale?.customerName || 'Consumidor Final'}
         </strong>
         {currentSale?.customerCedula && (
-          <span 
-            className="badge d-inline-flex align-items-center justify-content-center" 
-            style={{ 
-              backgroundColor: 'rgba(148, 163, 184, 0.15)', 
-              color: 'var(--text-main, #f8fafc)', 
-              fontSize: '0.75rem', 
-              fontWeight: '600', 
-              border: '1px solid rgba(148, 163, 184, 0.3)',
-              padding: '3px 10px',
-              borderRadius: '12px',
-              height: '22px',
-              lineHeight: '1'
-            }}
+          <span
+            className="badge d-inline-flex align-items-center justify-content-center pos-cust-cedula-badge"
           >
             {currentSale.customerCedula}
           </span>
         )}
-        <button 
-          type="button" 
-          className="btn btn-sm d-inline-flex align-items-center justify-content-center gap-1 ms-1"
-          style={{ 
-            fontSize: '0.75rem', 
-            fontWeight: '600', 
-            padding: '2px 8px',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-            color: '#3b82f6',
-            border: '1px solid rgba(59, 130, 246, 0.3)',
-            borderRadius: '6px'
-          }}
+        <button
+          type="button"
+          className="btn btn-sm d-inline-flex align-items-center justify-content-center gap-1 ms-1 pos-customer-edit-btn"
           onClick={() => setIsCustomerModalOpen(true)}
           title="Cambiar cliente (F3)"
         >
@@ -239,8 +220,8 @@ export default function PosPage({
         </button>
       </div>
 
-      <div className="pos-search-bar mb-3" style={{ display: 'flex', gap: '0.6rem', alignItems: 'stretch', width: '100%' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="pos-search-bar mb-3 pos-search-row">
+        <div className="pos-search-input-wrap">
           <SearchBar
             ref={searchBarRef}
             onSelectProduct={handleSelectProduct}
@@ -254,21 +235,7 @@ export default function PosPage({
           aria-label="Escanear código de barras con la cámara"
           title="Escanear código de barras con la cámara"
           onClick={() => setIsScannerOpen(true)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 48,
-            height: 48,
-            flexShrink: 0,
-            color: 'var(--primary-color, #673AB7)',
-            backgroundColor: 'var(--bg-surface, #1e293b)',
-            border: '1px solid var(--border, #334155)',
-            borderRadius: 'var(--radius-md, 8px)',
-            boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.1))',
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-          }}
+          className="pos-scanner-btn"
         >
           <ScanLine size={20} />
         </button>

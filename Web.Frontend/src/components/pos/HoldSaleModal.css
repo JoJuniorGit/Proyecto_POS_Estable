@@ -1,0 +1,215 @@
+/* HoldSaleModal */
+
+.hold-modal-pad {
+  padding: 0 6px;
+}
+
+.hold-card {
+  border-radius: 10px;
+  padding: 12px;
+  background-color: var(--bg-surface);
+}
+
+.hold-label-upper {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.hold-change-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.hold-customer-name {
+  font-size: 1.05rem;
+}
+
+.hold-customer-meta {
+  font-size: 0.85rem;
+  margin-top: 2px;
+}
+
+.hold-form-label {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.hold-search-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hold-field {
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.hold-search-input {
+  padding-left: 36px;
+  padding-right: 36px;
+  height: 38px;
+  width: 100%;
+  box-sizing: border-box;
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.hold-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+}
+
+.hold-search-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.hold-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  max-height: 240px;
+  overflow-y: auto;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.hold-dropdown-item {
+  cursor: pointer;
+  padding: 10px 12px;
+  transition: background-color 0.15s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.hold-item-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 12px;
+}
+
+.hold-item-name {
+  font-size: 0.925rem;
+}
+
+.hold-meta {
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+
+.hold-create-btn {
+  height: 38px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background-color: transparent;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.hold-toggle-row {
+  user-select: none;
+}
+
+.hold-toggle-title {
+  font-size: 0.95rem;
+  line-height: 24px;
+  display: inline-block;
+}
+
+.hold-toggle-track {
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  padding: 2px;
+  transition: background-color 0.25s ease;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
+}
+
+.hold-toggle-knob {
+  width: 20px;
+  height: 20px;
+  background-color: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.25s ease;
+}
+
+.hold-cash-hint {
+  margin-top: 2px;
+}
+
+.hold-subtext {
+  font-size: 0.8rem;
+  margin-top: 2px;
+  text-align: center;
+}
+
+.hold-summary-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 16px;
+  align-items: baseline;
+  width: 100%;
+}
+
+.hold-total-lg {
+  font-size: 1.15rem;
+}
+
+.hold-total-md {
+  font-size: 1.05rem;
+}
+
+.hold-footer-btn {
+  height: 42px;
+  padding: 0 24px;
+  margin: 0;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.hold-confirm-btn {
+  height: 42px;
+  padding: 0 24px;
+  gap: 8px;
+  margin: 0;
+  line-height: 1;
+  border-radius: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: all 0.2s ease;
+}

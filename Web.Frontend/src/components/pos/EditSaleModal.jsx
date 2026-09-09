@@ -5,6 +5,7 @@ import QuantityInput from './QuantityInput';
 import { updateSaleItems } from '../../services/salesApi';
 import { formatBsS, formatUSD, formatNumberEs } from '../../utils/formatters';
 import { Trash2, AlertTriangle, Save, Loader2, Plus, Minus } from 'lucide-react';
+import './EditSaleModal.css';
 
 export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onSuccess }) {
   const [items, setItems] = useState([]);
@@ -173,15 +174,15 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       )}
 
       {/* Buscador de Productos (Mismo componente del POS) */}
-      <div className="mb-3" style={{ position: 'relative', zIndex: 1000 }}>
+      <div className="mb-3 es-search-area">
         <label className="font-medium text-sm mb-1 d-block text-muted">Agregar producto al pedido:</label>
         <SearchBar onSelectProduct={handleAddProduct} />
       </div>
 
       {/* Tabla de Productos Editables con Estilo del Carrito del POS */}
-      <div className="cart-table-wrapper custom-scrollbar mb-4" style={{ maxHeight: '250px', overflowY: 'auto' }}>
+      <div className="cart-table-wrapper custom-scrollbar mb-4 es-table-wrapper">
         {items.length === 0 ? (
-          <div className="text-center py-4 text-muted border-dashed" style={{ borderRadius: '8px' }}>
+          <div className="text-center py-4 text-muted border-dashed es-empty-table">
             No hay productos en la lista.
           </div>
         ) : (
@@ -192,7 +193,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
                 <th className="text-center">Cant.</th>
                 <th className="text-right">Precio Bs.S</th>
                 <th className="text-right">Subtotal Bs.S</th>
-                <th className="text-center" style={{ width: '50px' }}>Acción</th>
+                <th className="text-center es-th-action">Acción</th>
               </tr>
             </thead>
             <tbody>
@@ -273,7 +274,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
 
       {/* Alertas de Validación */}
       {isBelowPaidAmount && (
-        <div className="alert alert-warning mb-3 flex-align-center gap-2" style={{ fontSize: '0.85rem' }}>
+        <div className="alert alert-warning mb-3 flex-align-center gap-2 es-warning">
           <AlertTriangle size={18} className="flex-shrink-0" />
           <span>El nuevo total ({formatUSD(newTotalUSD)}) no puede ser menor a lo ya abonado por el cliente ({formatUSD(totalPaidUSD)}).</span>
         </div>
@@ -281,24 +282,19 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
 
       {/* Resumen Financiero */}
       <div 
-        className="border text-sm mb-4"
-        style={{ 
-          backgroundColor: 'var(--bg-secondary, rgba(255,255,255,0.03))', 
-          borderRadius: '8px', 
-          padding: '12px 16px'
-        }}
+        className="border text-sm mb-4 es-summary-box"
       >
         <div className="flex-between mb-1">
           <span className="text-muted">Nuevo Total:</span>
-          <span className="font-bold"><span className="color-primary font-bold" style={{ fontSize: '1.05rem' }}>{formatBsS(newTotalBsS)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newTotalUSD)})</span></span>
+          <span className="font-bold"><span className="color-primary font-bold es-total-bs">{formatBsS(newTotalBsS)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newTotalUSD)})</span></span>
         </div>
         <div className="flex-between mb-1">
           <span className="text-muted">Total Ya Abonado:</span>
-          <span className="font-bold text-success"><span style={{ fontSize: '1.05rem' }}>{formatBsS(totalPaidUSD * rateToUse)}</span> <span className="text-muted text-xs font-normal">({formatUSD(totalPaidUSD)})</span></span>
+          <span className="font-bold text-success"><span className="es-total-bs">{formatBsS(totalPaidUSD * rateToUse)}</span> <span className="text-muted text-xs font-normal">({formatUSD(totalPaidUSD)})</span></span>
         </div>
         <div className="flex-between mb-1">
           <span className="text-muted">Nuevo Saldo Restante:</span>
-          <span className="font-bold text-danger"><span style={{ fontSize: '1.05rem' }}>{formatBsS(newRemainingBalanceUSD * rateToUse)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newRemainingBalanceUSD)})</span></span>
+          <span className="font-bold text-danger"><span className="es-total-bs">{formatBsS(newRemainingBalanceUSD * rateToUse)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newRemainingBalanceUSD)})</span></span>
         </div>
       </div>
 

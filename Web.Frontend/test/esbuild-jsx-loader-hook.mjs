@@ -45,6 +45,12 @@ export async function load(url, context, nextLoad) {
   const isJsx = pathname.endsWith('.jsx');
   const isJs = pathname.endsWith('.js') || pathname.endsWith('.mjs');
 
+  // CSS imports son side-effect en Vite; en node:test se resuelven como modulo vacio
+  // para permitir el montaje de componentes que importan su hoja de estilos.
+  if (pathname.endsWith('.css')) {
+    return { format: 'module', source: '', shortCircuit: true };
+  }
+
   if (!isJsx && !isJs) {
     return nextLoad(url, context);
   }

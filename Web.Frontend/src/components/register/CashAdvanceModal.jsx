@@ -4,6 +4,7 @@ import { FastForward, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { api } from '../../services/api';
 import { getActivePaymentMethods } from '../../services/paymentApi';
 import { formatBsS, formatUSD } from '../../utils/formatters';
+import './RegisterModals.css';
 
 export default function CashAdvanceModal({ isOpen, onClose, sessionId, availableCashBsS, exchangeRate, user, onSuccess }) {
   const [amountBsS, setAmountBsS] = useState('');
@@ -193,11 +194,11 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
             </div>
           </div>
 
-          <div className="modal-actions flex-center gap-3 pt-2" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <button type="button" className="btn btn-outline flex-center" onClick={handleClose} disabled={loading} style={{ minWidth: '130px', justifyContent: 'center' }}>
+          <div className="modal-actions flex-center gap-3 pt-2 regmod-actions">
+            <button type="button" className="btn btn-outline flex-center regmod-btn-130" onClick={handleClose} disabled={loading}>
               Cancelar
             </button>
-            <button type="submit" className="btn btn-primary flex-center gap-2 font-bold" disabled={loading || numRequested <= 0} style={{ minWidth: '180px', justifyContent: 'center' }}>
+            <button type="submit" className="btn btn-primary flex-center gap-2 font-bold regmod-btn-180" disabled={loading || numRequested <= 0}>
               {loading ? <Loader2 size={16} className="animate-spin" /> : <FastForward size={16} />}
               Procesar Adelanto
             </button>

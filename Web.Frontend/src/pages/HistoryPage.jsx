@@ -4,6 +4,7 @@ import { Search, Loader2, Calendar, ChevronRight, ChevronDown, RefreshCw, CheckC
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime, formatQuantity } from '../utils/formatters';
 import Pagination from '../components/ui/Pagination';
+import './HistoryPage.css';
 
 const PAGE_SIZE = 25;
 
@@ -165,14 +166,14 @@ export default function HistoryPage() {
       {error && <div className="alert alert-danger mb-4">{error}</div>}
 
       {/* ── Contenido del Historial (Escritorio vs Móvil) ── */}
-      <div className="card padding-none overflow-hidden" style={{ borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+      <div className="card padding-none overflow-hidden hist-table-card">
         {loading ? (
-          <div className="flex-center p-5" style={{ padding: '60px', textAlign: 'center' }}>
+          <div className="flex-center hist-state-pad">
             <Loader2 className="animate-spin mb-2 mx-auto" size={28} />
             <div>Cargando historial de ventas...</div>
           </div>
         ) : sales.length === 0 ? (
-          <div className="text-center p-5 text-muted" style={{ padding: '60px' }}>
+          <div className="text-center hist-state-pad text-muted">
             <Calendar size={48} className="mx-auto mb-2 opacity-50" />
             <p>No se encontraron registros de ventas.</p>
           </div>
@@ -200,13 +201,7 @@ export default function HistoryPage() {
                 return (
                   <div
                     key={sale.id}
-                    className="history-mobile-card d-flex flex-column mb-3"
-                    style={{
-                      padding: '14px',
-                      gap: '10px',
-                      borderRadius: '10px',
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)'
-                    }}
+                    className="history-mobile-card d-flex flex-column mb-3 hist-m-card"
                   >
 
                     {/* Piso Superior: Identificación y Estado */}
@@ -214,7 +209,7 @@ export default function HistoryPage() {
                       onClick={() => toggleExpand(sale.id)}
                       className="d-flex flex-between flex-align-center pb-2 border-bottom cursor-pointer"
                     >
-                      <div className="d-flex flex-align-center font-bold" style={{ gap: '6px', fontSize: '0.95rem' }}>
+                      <div className="d-flex flex-align-center font-bold hist-sale-id-row">
                         {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                         <span className="text-primary">N° {invoiceNum}</span>
                       </div>
@@ -237,56 +232,52 @@ export default function HistoryPage() {
                     </div>
 
                     {/* Piso Medio: Datos Operativos con Etiquetas Contextuales */}
-                    <div
-                      className="d-flex flex-column pb-2 border-bottom"
-                      style={{ gap: '6px', fontSize: '0.8rem' }}
-                    >
+                    <div className="d-flex flex-column pb-2 border-bottom hist-mid-row">
                       {/* Cliente + Cédula en su propia línea */}
                       <div>
-                        <div className="d-flex flex-align-center" style={{ gap: '6px' }}>
+                        <div className="d-flex flex-align-center hist-gap-6">
                           <span className="text-label">Cliente:</span>
                           <span
-                            className="text-primary font-semibold text-truncate"
-                            style={{ maxWidth: '200px' }}
+                            className="text-primary font-semibold text-truncate hist-truncate-200"
                             title={customerName}
                           >
                             {customerName}
                           </span>
                         </div>
-                        <div className="text-label font-mono" style={{ marginLeft: '16px' }}>
+                        <div className="text-label font-mono ml-4">
                           {sale.customerCedula || 'V-00000000'}
                         </div>
                       </div>
 
                       {/* Cajero */}
-                      <div className="d-flex flex-align-center" style={{ gap: '6px' }}>
+                      <div className="d-flex flex-align-center hist-gap-6">
                         <span className="text-label">Cajero:</span>
                         <span className="text-primary font-semibold">{cashierName}</span>
                       </div>
 
                       {/* Fecha (Sólo fecha plana sin hora) */}
-                      <div className="d-flex flex-align-center" style={{ gap: '6px' }}>
+                      <div className="d-flex flex-align-center hist-gap-6">
                         <span className="text-label">Fecha:</span>
                         <span className="text-primary font-semibold font-mono">{dateOnlyStr}</span>
                       </div>
                     </div>
 
                     {/* Piso Inferior: Finanzas Resaltadas */}
-                    <div className="d-flex flex-between flex-align-center w-full" style={{ fontSize: '0.8rem', paddingTop: '2px' }}>
+                    <div className="d-flex flex-between flex-align-center w-full hist-fin-row">
                       <div>
-                        <span className="text-label" style={{ display: 'block', fontSize: '0.7rem', marginBottom: '2px' }}>Total USD:</span>
-                        <span className="text-primary font-semibold font-mono" style={{ fontSize: '0.875rem' }}>{formatUSD(sale.totalUSD || 0)}</span>
+                        <span className="text-label hist-total-label">Total USD:</span>
+                        <span className="text-primary font-semibold font-mono text-sm">{formatUSD(sale.totalUSD || 0)}</span>
                       </div>
 
-                      <div style={{ textAlign: 'right' }}>
-                        <span className="text-label" style={{ display: 'block', fontSize: '0.7rem', marginBottom: '2px' }}>Total Bs.S:</span>
-                        <span className="text-primary font-semibold font-mono" style={{ fontSize: '0.95rem' }}>{formatNumberEs(totalBsS)}</span>
+                      <div className="text-right">
+                        <span className="text-label hist-total-label">Total Bs.S:</span>
+                        <span className="text-primary font-semibold font-mono hist-total-amnt">{formatNumberEs(totalBsS)}</span>
                       </div>
                     </div>
 
                     {/* Fila Desplegable de Detalle en Móvil */}
                     {isExpanded && (
-                      <div className="border-top-dashed pt-3" style={{ fontSize: '0.8rem' }}>
+                      <div className="border-top-dashed pt-3 hist-fs-08">
                         {detailState?.loading ? (
                           <div className="flex-center p-3 text-muted">
                             <Loader2 className="animate-spin mr-2" size={18} /> Cargando detalles...
@@ -294,34 +285,34 @@ export default function HistoryPage() {
                         ) : detailState?.error ? (
                           <div className="alert alert-danger text-xs p-2">{detailState.error}</div>
                         ) : detailState?.data ? (
-                          <div className="d-flex flex-column" style={{ gap: '12px' }}>
+                          <div className="d-flex flex-column hist-gap-12">
 
-                            <div style={{ padding: '10px', borderRadius: '8px', backgroundColor: 'var(--bg-tertiary, rgba(128,128,128,0.08))' }}>
-                              <div className="font-bold text-xs mb-1" style={{ marginBottom: '4px' }}>
+                            <div className="hist-invoice-box">
+                              <div className="font-bold text-xs mb-1">
                                 Factura N° {detailState.data.invoiceNumber || sale.id}
                               </div>
-                              <div className="text-label font-mono" style={{ fontSize: '0.7rem' }}>
+                              <div className="text-label font-mono hist-fs-07">
                                 Hora de Emisión: <strong className="text-primary font-semibold">{new Date(detailState.data.date || sale.date).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}</strong>
                               </div>
                             </div>
 
                             <div>
-                              <h4 className="font-bold text-xs" style={{ marginBottom: '6px' }}>📦 Artículos Vendidos ({detailState.data.items?.length || 0})</h4>
-                              <div className="border" style={{ borderRadius: '8px', overflow: 'hidden' }}>
-                                <table className="cart-table" style={{ width: '100%', fontSize: '0.7rem' }}>
+                              <h4 className="font-bold text-xs hist-h4-sm">📦 Artículos Vendidos ({detailState.data.items?.length || 0})</h4>
+                              <div className="border hist-radius-8 overflow-hidden">
+                                <table className="cart-table w-full hist-fs-07 hist-cell-pad">
                                   <thead>
                                     <tr>
-                                      <th className="text-secondary" style={{ padding: '6px' }}>Producto</th>
-                                      <th className="text-right text-secondary" style={{ padding: '6px' }}>Cant.</th>
-                                      <th className="text-right text-secondary" style={{ padding: '6px' }}>Subtotal Bs.S</th>
+                                      <th className="text-secondary">Producto</th>
+                                      <th className="text-right text-secondary">Cant.</th>
+                                      <th className="text-right text-secondary">Subtotal Bs.S</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {(detailState.data.items || []).map((item) => (
                                       <tr key={item.id}>
-                                        <td className="font-medium" style={{ padding: '6px' }}>{item.productName}</td>
-                                        <td className="text-right font-mono" style={{ padding: '6px' }}>{formatQuantity(item.quantity)}</td>
-                                        <td className="text-right font-mono font-bold" style={{ padding: '6px' }}>{formatBsS(item.subtotalBsS)}</td>
+                                        <td className="font-medium">{item.productName}</td>
+                                        <td className="text-right font-mono">{formatQuantity(item.quantity)}</td>
+                                        <td className="text-right font-mono font-bold">{formatBsS(item.subtotalBsS)}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -331,18 +322,12 @@ export default function HistoryPage() {
 
                             {detailState.data.payments?.length > 0 && (
                               <div>
-                                <h4 className="font-bold text-xs" style={{ marginBottom: '6px' }}>💳 Métodos de Pago</h4>
+                                <h4 className="font-bold text-xs hist-h4-sm">💳 Métodos de Pago</h4>
                                 <div className="d-flex flex-column gap-1">
                                   {detailState.data.payments.map((pay, idx) => (
                                     <div
                                       key={idx}
-                                      className="d-flex flex-between flex-align-center border"
-                                      style={{
-                                        padding: '6px 8px',
-                                        borderRadius: '8px',
-                                        backgroundColor: 'var(--bg-surface)',
-                                        fontSize: '0.7rem'
-                                      }}
+                                      className="d-flex flex-between flex-align-center border hist-pay-item"
                                     >
                                       <span>{pay.methodName} {pay.reference ? `(Ref: ${pay.reference})` : ''}</span>
                                       <span className="font-bold font-mono">{formatBsS(pay.amountBsS || 0)}</span>
@@ -370,7 +355,7 @@ export default function HistoryPage() {
                     <th className="text-left text-secondary font-semibold text-nowrap">N° Factura</th>
                     <th className="text-secondary font-semibold text-nowrap">Cliente</th>
                     <th className="text-secondary font-semibold text-nowrap">Cajero</th>
-                    <th className="text-right text-secondary font-semibold text-nowrap" style={{ paddingRight: '16px' }}>Total Bs.S</th>
+                    <th className="text-right text-secondary font-semibold text-nowrap hist-pr-16">Total Bs.S</th>
                     <th className="text-center text-secondary font-semibold text-nowrap">Estado</th>
                   </tr>
                 </thead>
@@ -404,11 +389,10 @@ export default function HistoryPage() {
                             </div>
                           </td>
 
-                          <td className="text-nowrap" style={{ maxWidth: '180px' }}>
+                          <td className="text-nowrap hist-truncate-180">
                             <div
-                              className="font-medium text-truncate"
+                              className="font-medium text-truncate hist-truncate-180"
                               title={customerName}
-                              style={{ maxWidth: '180px' }}
                             >
                               {customerName}
                             </div>
@@ -421,7 +405,7 @@ export default function HistoryPage() {
                             <span className="font-medium">{sale.cashierName || 'Usuario Desconocido'}</span>
                           </td>
 
-                          <td className="text-right text-nowrap" style={{ paddingRight: '16px' }}>
+                          <td className="text-right text-nowrap hist-pr-16">
                             <div className="font-mono font-bold text-primary">{formatBsS(totalBsS)}</div>
                             <div className="text-xs text-muted">
                               {formatUSD(sale.totalUSD || 0)}
@@ -458,18 +442,18 @@ export default function HistoryPage() {
                                 <div className="alert alert-danger text-sm">{detailState.error}</div>
                               ) : detailState?.data ? (
                                 <>
-                                  <div className="d-flex flex-align-center" style={{ gap: '6px', marginBottom: '14px', fontSize: '0.875rem' }}>
+                                  <div className="d-flex flex-align-center hist-detail-date-row">
                                     <Calendar size={16} className="flex-shrink-0" />
                                     <span className="font-semibold">
                                       {formatDate(detailState.data.date)} — {formatTime(detailState.data.date)}
                                     </span>
                                   </div>
-                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+                                  <div className="grid hist-detail-grid gap-4">
 
                                   <div>
-                                    <h4 className="font-bold mb-2" style={{ fontSize: '0.95rem' }}>Artículos Vendidos ({detailState.data.items?.length || 0})</h4>
-                                    <div className="border" style={{ borderRadius: '8px', overflowX: 'auto' }}>
-                                      <table className="cart-table" style={{ width: '100%', fontSize: '0.8rem' }}>
+                                    <h4 className="font-bold mb-2 hist-h4-lg">Artículos Vendidos ({detailState.data.items?.length || 0})</h4>
+                                    <div className="border hist-scroll-x">
+                                      <table className="cart-table w-full hist-fs-08">
                                         <thead>
                                           <tr>
                                             <th className="text-left text-secondary font-semibold text-nowrap">Producto</th>
@@ -493,8 +477,8 @@ export default function HistoryPage() {
                                   </div>
 
                                   <div>
-                                    <h4 className="font-bold mb-2" style={{ fontSize: '0.95rem' }}>Resumen Financiero</h4>
-                                    <div className="border text-sm p-3" style={{ borderRadius: '8px', marginBottom: '12px', backgroundColor: 'var(--bg-surface)' }}>
+                                    <h4 className="font-bold mb-2 hist-h4-lg">Resumen Financiero</h4>
+                                    <div className="border text-sm p-3 hist-summary-box">
                                       <div className="d-flex flex-between mb-1">
                                         <span className="text-muted">Cliente:</span>
                                         <span className="font-bold">{detailState.data.customerName || 'Consumidor Final'}</span>
@@ -517,7 +501,7 @@ export default function HistoryPage() {
                                       </div>
                                     </div>
 
-                                    <h4 className="font-bold mb-2" style={{ fontSize: '0.95rem' }}>Métodos de Pago</h4>
+                                    <h4 className="font-bold mb-2 hist-h4-lg">Métodos de Pago</h4>
                                     {detailState.data.payments?.length > 0 ? (
                                       <div className="d-flex flex-column gap-2">
                                         {detailState.data.payments.map((pay, idx) => (

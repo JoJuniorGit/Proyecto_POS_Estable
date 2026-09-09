@@ -489,7 +489,7 @@ export default function BarcodeScannerModal({
     <Modal isOpen={isOpen} onClose={handleClose} title="Escanear código de barras" maxWidth="540px">
       <div className="scanner-container">
         {/* Canvas de procesamiento oculto para filtros de laptop */}
-        <canvas ref={filterCanvasRef} style={{ display: 'none' }} />
+        <canvas ref={filterCanvasRef} className="scanner-filter-canvas" />
 
         {/* Visor de Video + HUD Canvas Superpuesto */}
         <BarcodeScannerHud

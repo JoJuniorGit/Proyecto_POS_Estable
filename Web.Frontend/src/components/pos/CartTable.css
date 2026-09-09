@@ -1,0 +1,22 @@
+/* CartTable.css - Estilos propios de la tabla del carrito
+   (reemplazan estilos inline estáticos en CartTable.jsx, prefijo ct-) */
+
+/* ── Encabezados ── */
+.ct-qty-col { min-width: 130px; }
+.ct-price-col { padding-right: 1rem; }
+.ct-action-col { width: 60px; }
+
+/* ── Badges Mayorista / Detal ── */
+.ct-badge {
+  margin-left: 8px;
+  font-size: 0.72rem;
+  color: #ffffff;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.ct-badge-wholesale { background-color: #10b981; font-weight: 700; }
+.ct-badge-retail { background-color: #f59e0b; font-weight: 500; }
+
+/* ── Celdas ── */
+.ct-valign-middle { vertical-align: middle; }
+.ct-qty-center { margin: 0 auto; }

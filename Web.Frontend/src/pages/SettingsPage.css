@@ -1,0 +1,68 @@
+/* ══════════════════════════════════════════════════════════
+   Estilos propios de SettingsPage (prefijo set-)
+   Reemplazan estilos inline style={{...}}. El prefijo :root
+   eleva la especificidad a (0,2,0) para ganar a index.css
+   (.btn-outline, .text-danger, .form-group) sin importar el
+   orden de concatenación del bundle.
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Layout y contenedor de página ── */
+:root .set-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* ── Emparejamiento QR y conectividad de red ── */
+:root .set-pairing-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+:root .set-qr-hint {
+  max-width: 240px;
+}
+
+:root .set-wifi-alert {
+  background-color: rgba(0, 128, 255, 0.08);
+  border-color: rgba(0, 128, 255, 0.25);
+}
+
+:root .set-wifi-icon {
+  color: #0080FF;
+  margin-top: 2px;
+}
+
+/* ── Formato numérico y de moneda ── */
+:root .set-format-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+:root .set-preview-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+/* ── Métodos de pago ── */
+:root .set-state-btn {
+  border-radius: 14px;
+  min-width: 76px;
+}
+
+:root .set-delete-btn {
+  color: #DC2626;
+  border-color: #FCA5A5;
+}
+
+:root .set-chip-btn {
+  border-radius: 10px;
+  padding: 2px 10px;
+}
+
+:root .set-table-chip {
+  border-radius: 12px;
+  padding: 3px 12px;
+}
+
+:root .set-form-name {
+  min-width: 220px;
+}

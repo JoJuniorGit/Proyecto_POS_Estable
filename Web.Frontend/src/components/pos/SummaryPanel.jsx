@@ -1,6 +1,7 @@
 import { Trash2, CreditCard, Loader2, Clock } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { formatBsS, formatUSD } from '../../utils/formatters';
+import './SummaryPanel.css';
 
 export default function SummaryPanel({ onCheckout, onHold }) {
   const {
@@ -45,9 +46,9 @@ export default function SummaryPanel({ onCheckout, onHold }) {
       </div>
 
       <div className="summary-details">
-        <div className="summary-row" style={{ alignItems: 'center', marginBottom: '0.75rem' }}>
+        <div className="summary-row align-center mb-3">
           <span className="summary-label">Lista de Precios</span>
-          <div style={{ display: 'flex', gap: '6px' }}>
+          <div className="sp-price-list-toggle">
             <button
               type="button"
               className={`btn btn-sm ${priceListType === 'Retail' ? 'btn-pricelist-active' : 'btn-pricelist-inactive'}`}

@@ -3,6 +3,7 @@ import { useExchangeRate } from '../../context/ExchangeRateContext';
 import QuantityInput from './QuantityInput';
 import { useCart } from '../../context/CartContext';
 import { formatBsS, getLineAmounts } from '../../utils/formatters';
+import './CartTable.css';
 
 export default function CartTable({ items, selectedItemId, onSelectItem, onUpdateQty, onUpdateQuantity, onRemoveItem }) {
   const { exchangeRate } = useExchangeRate();
@@ -16,10 +17,10 @@ export default function CartTable({ items, selectedItemId, onSelectItem, onUpdat
         <thead>
           <tr>
             <th>Producto</th>
-            <th className="text-center" style={{ textAlign: 'center', minWidth: '130px' }}>Cant.</th>
-            <th className="text-right" style={{ textAlign: 'right', paddingRight: '1rem' }}>Precio Bs.S</th>
-            <th className="text-right" style={{ textAlign: 'right', paddingRight: '1rem' }}>Subtotal Bs.S</th>
-            <th className="text-center" style={{ width: '60px', textAlign: 'center' }}>Acción</th>
+            <th className="text-center ct-qty-col">Cant.</th>
+            <th className="text-right ct-price-col">Precio Bs.S</th>
+            <th className="text-right ct-price-col">Subtotal Bs.S</th>
+            <th className="text-center ct-action-col">Acción</th>
           </tr>
         </thead>
         <tbody>
@@ -39,19 +40,19 @@ export default function CartTable({ items, selectedItemId, onSelectItem, onUpdat
                   {item.displayProductName || (item.unitOfMeasure && item.unitOfMeasure !== 'Und' ? `${item.productName} (${item.unitOfMeasure})` : item.productName)}
                   {isWholesaleMode && (
                     isWholesaleApplied ? (
-                      <span style={{ marginLeft: '8px', fontSize: '0.72rem', backgroundColor: '#10b981', color: '#ffffff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                      <span className="ct-badge ct-badge-wholesale">
                         Mayorista
                       </span>
                     ) : (
-                      <span style={{ marginLeft: '8px', fontSize: '0.72rem', backgroundColor: '#f59e0b', color: '#ffffff', padding: '2px 6px', borderRadius: '4px', fontWeight: '500' }}>
+                      <span className="ct-badge ct-badge-retail">
                         Detal
                       </span>
                     )
                   )}
                 </td>
 
-                <td className="text-center" style={{ textAlign: 'center', verticalAlign: 'middle' }}>
-                  <div className="qty-controls" style={{ display: 'inline-flex', margin: '0 auto' }} onClick={(e) => e.stopPropagation()}>
+                <td className="text-center ct-valign-middle">
+                  <div className="qty-controls ct-qty-center" onClick={(e) => e.stopPropagation()}>
                     {(() => {
                       const step = !item.isFractional ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
                       const isAtMin = item.quantity <= step;
@@ -88,15 +89,15 @@ export default function CartTable({ items, selectedItemId, onSelectItem, onUpdat
                   </div>
                 </td>
 
-                <td className="text-right font-medium" style={{ textAlign: 'right', paddingRight: '1rem', whiteSpace: 'nowrap' }}>
+                <td className="text-right font-medium text-nowrap ct-price-col">
                   {formatBsS(unitBsS)}
                 </td>
 
-                <td className="text-right font-bold color-primary" style={{ textAlign: 'right', paddingRight: '1rem', whiteSpace: 'nowrap' }}>
+                <td className="text-right font-bold color-primary text-nowrap ct-price-col">
                   {formatBsS(subtotalBsS)}
                 </td>
 
-                <td className="text-center" style={{ textAlign: 'center', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
+                <td className="text-center ct-valign-middle" onClick={(e) => e.stopPropagation()}>
                   <button
                     type="button"
                     className="delete-btn"

@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { ClipboardCheck, Loader2, RefreshCw } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD } from '../utils/formatters';
+import './ClosingPage.css';
 
 export default function ClosingPage() {
   const [expectedTotals, setExpectedTotals] = useState([]);
@@ -27,7 +28,7 @@ export default function ClosingPage() {
   }, [loadExpected]);
 
   return (
-    <div className="closing-page" style={{ maxWidth: '800px', margin: '0 auto' }}>
+    <div className="closing-page cls-container">
       <div className="page-header flex-between mb-4">
         <h2 className="page-title flex-align-center gap-2">
           <ClipboardCheck size={24} /> Arqueo y Cierre Diario de Caja

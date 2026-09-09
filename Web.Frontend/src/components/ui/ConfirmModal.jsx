@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import './ConfirmModal.css';
 
 /**
  * ConfirmModal
@@ -73,37 +74,20 @@ export default function ConfirmModal({
   const isWarning = variant === 'warning';
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 1200 }} onClick={onClose}>
+    <div className="modal-overlay cfm-overlay" onClick={onClose}>
       <div
         ref={modalRef}
-        className="modal-container card"
-        style={{
-          maxWidth: '430px',
-          width: '92%',
-          padding: '1.75rem 1.5rem',
-          textAlign: 'center',
-          borderRadius: '12px',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.35), 0 10px 10px -5px rgba(0, 0, 0, 0.2)',
-          border: '1px solid var(--border)',
-          backgroundColor: 'var(--bg-surface)',
-          color: 'var(--text-primary)',
-          margin: 'auto',
-        }}
+        className="modal-container card cfm-container"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
       >
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.1rem' }}>
+        <div className="cfm-icon-row">
           {icon || (
             <div
+              className="cfm-icon-circle"
               style={{
-                width: '56px',
-                height: '56px',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
                 backgroundColor: isDanger ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
                 color: isDanger ? '#ef4444' : '#f59e0b',
               }}
@@ -115,58 +99,28 @@ export default function ConfirmModal({
 
         <h3
           id="confirm-dialog-title"
-          style={{
-            fontSize: '1.25rem',
-            fontWeight: 700,
-            marginBottom: '0.6rem',
-            color: 'var(--text-primary)',
-            textAlign: 'center',
-          }}
+          className="cfm-title"
         >
           {title}
         </h3>
 
-        <p
-          style={{
-            fontSize: '0.95rem',
-            lineHeight: '1.45',
-            color: 'var(--text-secondary, var(--text-muted))',
-            marginBottom: '1.75rem',
-            padding: '0 0.5rem',
-          }}
-        >
+        <p className="cfm-message">
           {message}
         </p>
 
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+        <div className="d-flex gap-3 justify-center">
           <button
             type="button"
-            className="btn btn-outline"
-            style={{
-              flex: 1,
-              padding: '0.75rem 1rem',
-              fontWeight: 600,
-              fontSize: '0.95rem',
-              borderRadius: '8px',
-              cursor: 'pointer',
-            }}
+            className="btn btn-outline cfm-btn"
             onClick={onClose}
           >
             {cancelText}
           </button>
           <button
             type="button"
-            className="btn"
+            className="btn cfm-btn cfm-btn-confirm"
             style={{
-              flex: 1,
-              padding: '0.75rem 1rem',
-              fontWeight: 600,
-              fontSize: '0.95rem',
-              borderRadius: '8px',
               backgroundColor: isDanger ? '#ef4444' : isWarning ? '#f59e0b' : 'var(--color-primary)',
-              color: '#ffffff',
-              border: 'none',
-              cursor: 'pointer',
             }}
             onClick={onConfirm}
           >

@@ -375,3 +375,8 @@
   text-align: center;
   margin: 0;
 }
+
+/* Canvas de procesamiento oculto para el pipeline de filtros de laptop */
+.scanner-filter-canvas {
+  display: none;
+}

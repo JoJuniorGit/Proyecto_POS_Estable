@@ -1,5 +1,6 @@
 import { Loader2 } from 'lucide-react';
 import { formatNumberEs } from '../../utils/formatters';
+import './SuggestionList.css';
 
 export default function SuggestionList({ suggestions, isLoading, onSelectSuggestion, exchangeRate }) {
   if (isLoading) {
@@ -30,7 +31,7 @@ export default function SuggestionList({ suggestions, isLoading, onSelectSuggest
             onClick={() => onSelectSuggestion(item)}
           >
             <div className="suggestion-info">
-              <div className="flex-center-gap" style={{ justifyContent: 'flex-start', flexWrap: 'wrap', gap: '6px' }}>
+              <div className="flex-center-gap sl-tags-row">
                 <span className="suggestion-name">{item.name}</span>
                 {item.isGroupHeader && (
                   <span className="badge-variant-group">

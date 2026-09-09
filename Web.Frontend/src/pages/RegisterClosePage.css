@@ -1,0 +1,74 @@
+/* ══════════════════════════════════════════════════════════
+   REGISTER CLOSE PAGE — estilos propios de la página (rcl-)
+   ══════════════════════════════════════════════════════════ */
+
+/* Contenedores de página (vista Reporte Z y formulario activo) */
+.rcl-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.rcl-zreport-container {
+  max-width: 850px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* Encabezados del Reporte Z sin margen por defecto */
+.rcl-reset-margin {
+  margin: 0;
+}
+
+/* Banner informativo del Reporte Z */
+.rcl-info-banner {
+  background-color: rgba(99, 102, 241, 0.12);
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+/* Bloque de metadatos del Reporte Z */
+.rcl-meta-box {
+  background-color: var(--bg-tertiary, rgba(128, 128, 128, 0.1));
+  font-size: 0.85rem;
+}
+
+/* Tarjeta móvil del Reporte Z (borde y radio exactos) */
+.rcl-zmobile-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+/* Tabla del Reporte Z (vista escritorio) */
+.rcl-z-table {
+  width: 100%;
+  min-width: 600px;
+  font-size: 0.9rem;
+}
+
+/* Tabla de pre-envío del modal de confirmación */
+.rcl-pre-table {
+  width: 100%;
+  min-width: 400px;
+  font-size: 0.875rem;
+}
+
+/* Celdas numéricas alineadas a la derecha con aire lateral */
+.rcl-th-pad-right {
+  padding-right: 14px;
+}
+
+/* Botones de acción */
+.rcl-btn-lg {
+  height: 48px;
+}
+
+.rcl-btn-print {
+  height: 44px;
+  font-size: 0.9rem;
+}
+
+/* Tarjeta de información superior del cierre ciego */
+.rcl-top-info {
+  border-radius: 12px;
+}

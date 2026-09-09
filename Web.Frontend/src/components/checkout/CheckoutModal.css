@@ -1,0 +1,44 @@
+/* ── CheckoutModal: estilos propios (prefijo chk-) ── */
+
+:root .chk-font-total {
+  font-size: 1.2rem;
+}
+
+:root .chk-font-paid {
+  font-size: 1.05rem;
+}
+
+:root .chk-font-remaining {
+  font-size: 1.15rem;
+}
+
+:root .chk-pickup-box {
+  padding: 12px 14px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+:root .chk-pickup-label {
+  font-size: 0.9rem;
+}
+
+:root .chk-pickup-checkbox {
+  width: 18px;
+  height: 18px;
+}
+
+:root .chk-warning-note {
+  color: #f59e0b;
+  line-height: 1.4;
+}
+
+:root .chk-info-note {
+  line-height: 1.4;
+}
+
+:root .chk-alert-note {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  padding: 10px 14px;
+  border-radius: 8px;
+}

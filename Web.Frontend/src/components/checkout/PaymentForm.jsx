@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { formatNumberEs, amountToCents } from '../../utils/formatters';
+import './PaymentForm.css';
 
 export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAddPayment }) {
   const [selectedMethodId, setSelectedMethodId] = useState('');
@@ -144,11 +145,8 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
           />
           {isCashSelected && (
             <small
-              className="form-text"
+              className="form-text pf-hint"
               style={{
-                display: 'block',
-                marginTop: '4px',
-                fontSize: '0.75rem',
                 color: hasDecimalError ? '#ef4444' : 'var(--text-muted)',
                 fontWeight: hasDecimalError ? 600 : 400
               }}
@@ -182,7 +180,7 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
             required
           />
           {referenceError && (
-            <small style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+            <small className="pf-error-hint">
               {referenceError}
             </small>
           )}

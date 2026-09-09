@@ -2778,3 +2778,67 @@ en E.1 (decision de negocio pendiente).
 
 FIN DEL ANEXO - REVISION 8.23
 ================================================================================ 
+
+-------------------------------------------------------------------------------
+ANEXO 8.24 - COMPLETION C4: ELIMINACION TOTAL DE ESTILOS INLINE (Deuda C.7/8.23)
+-------------------------------------------------------------------------------
+Fecha: 2026-09-08 | Rama/Bif: V0.15 | Objetivo: cerrar la deuda ">90 estilos
+inline" declarada en el ANEXO 8.23 (C.7 de la verificacion 8.22), que NO se
+incluyo en la remediacion del commit e9911c1 por presupuesto.
+
+A. ALCANCE REAL (inventario completo previo)
+desde ~576 estilos inline en 30 archivos (pages + components), segun
+barrido con Select-String por archivo: PendingPickupsPage 80, CatalogPage 66,
+PendingOrdersPage 50, HistoryPage 45, RegisterPage 42, HoldSaleModal 39,
+RegisterClosePage 36, CustomerSelectorCard 26, CustomerModal 26, SettingsPage
+21, CheckoutModal 14, VariantSelectorModal 12, PartialPaymentModal 12,
+CartTable 11, PosPage 9, EditSaleModal 9, ConfirmModal 9, ExchangeRatePage 7,
+register modals 9, SuccessScreen 3/AtmAmountInput 3, SummaryPanel 2,
+PaymentForm 2, ClosingPage/CartList/BarcodeScannerModal/Modal/SuggestionList 1.
+
+B. EJECUCION
+Conversiones en 2 oleadas de subagentes paralelos con archivos disjuntos y
+contrato estricto (REPRODUCIBLE): solo editar sus archivos + CSS propios;
+reemplazar por utilidades existentes verificadas 1:1 (verificandolas en
+utilities.css e index.css); estilo sin utilidad -> clase propia en hoja de
+estilos modulada por prefijo del componente/pagina (catalog cat-, historia
+hist-, checkout chk-...); valores EXACTOS (px/rem/rgba/var con fallback);
+los estilos DINAMICOS por estado/props (ternarios, spreads, toggle tracks,
+colores condicionales de estado de venta/formato, diffColor del z-report,
+paddingRight condicional de validacion) SE CONSERVAN inline como excepcion
+documentada; iconos lucide con size intacto; sin tocar index.css/utilities.css.
+La convencion `:root `.selector (especificidad 0,2,0) se reutilizo donde la
+regla base del bundle (p.ej. .cart-table th, .badge oscuro) ganaria despues.
+Resultado: de ~576 inline a 35 (todos dinamicos/excepciones), vertebrados por
+archivo en la seccion B del anexo 8.23 (p.ej. HoldSaleModal dejar 5, Catalog
+dejar 5: wholesaleColor/isIndepParent, CheckoutModal 3 isPendingPickup,
+CartList 1 por limitacion de prop `style` de QuantityInput - documentada).
+
+C. AJUSTES DE INFRAESTRUCTURA DE TESTS (necesarios por los nuevos .css)
+test/esbuild-jsx-loader-hook.mjs: el hook de node:test no resolvia imports
+.css (ERR_UNKNOWN_FILE_EXTENSION al montar componentes con hoja de estilos).
+Se anade: si el modulo termina en .css -> modulo ESM vacio (side-effect),
+igual que hace Vite en produccion. Esto habilita el montaje real de
+componentes (p.ej. CheckoutModal.mount.test.js) sin tocar el pipeline.
+
+D. VERIFICACION FINAL
+- npm run lint: 0 errores (1 warning preexistente test/esbuild-jsx-loader-
+  hook.mjs:17 variable `base` no usada, NO introducido por este anexo).
+- npm test: 77/77 superado (incluye CheckoutModal.mount.test.js que monta
+  CheckoutModal y CustomerSelectorCard y CustomerModal con sus .css nuevos).
+- npm run build: OK (regeneracion de Backend.API/wwwroot - bundles con
+  hashes nuevos y PendingOrdersPage-*.css/PosPage-*.css).
+- Inventario final de estilos inline: 35 (todos dinamicos o excepciones
+  documentadas), 0 estaticos restantes.
+- Sin cambios de modelo/migraciones; solo Web.Frontend + test hook + wwwroot.
+
+E. CIERRE
+Deuda C.7/§3.3 (estilos inline) queda CERRADA en su parte estatica: ahora el
+100% de los estilos repetibles viven en hojas CSS con tokens de diseno; los 35
+residuales son valores condicionales por estado, imposibles de expresar como
+CSS estatico y conservados a proposito. Quedan pendientes de la 8.22 solo las
+decisiones de negocio/arquitectura (E.1 BCV 2d/4d, C.6 BranchId) y el
+horizonte C.7 cobertura 70% (Sales/Inventory).
+
+FIN DEL ANEXO - REVISION 8.24
+================================================================================ 

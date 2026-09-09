@@ -4,6 +4,7 @@ import { getCustomers, createCustomer } from '../../services/customerApi';
 import useDebounce from '../../hooks/useDebounce';
 import { Search, UserPlus, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
 import { formatBsS } from '../../utils/formatters';
+import './CustomerModal.css';
 
 const VALID_RIF_PREFIXES = ['V', 'E', 'J', 'G', 'P'];
 const VALID_PHONE_PREFIXES = [
@@ -241,25 +242,24 @@ export default function CustomerModal({
       <div className="checkout-section">
         {tab === 'search' ? (
           <div>
-            <div className="form-group" style={{ position: 'relative' }}>
+            <div className="form-group cm-search-wrapper">
               <input
                 id="customer-search-input"
                 name="customerSearch"
                 type="text"
-                className="form-control"
+                className="form-control cm-search-input"
                 placeholder="Buscar por Cédula/RIF o Nombre..."
                 value={query}
                 onChange={handleSearchChange}
-                style={{ paddingLeft: '35px' }}
               />
-              <Search size={18} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />
+              <Search size={18} className="cm-search-icon" />
             </div>
 
-            <div className="customer-list border custom-scrollbar" style={{ maxHeight: '220px', overflowY: 'auto', borderRadius: '8px', marginTop: '10px' }}>
+            <div className="customer-list border custom-scrollbar cm-customer-list">
               {loading ? (
-                <p className="text-center" style={{ padding: '15px' }}>Cargando clientes...</p>
+                <p className="text-center cm-list-state">Cargando clientes...</p>
               ) : !Array.isArray(customers) || customers.length === 0 ? (
-                <p className="text-center" style={{ padding: '15px', color: '#888' }}>No se encontraron clientes registrados.</p>
+                <p className="text-center cm-list-state cm-list-empty">No se encontraron clientes registrados.</p>
               ) : (
                 customers.map((c) => {
                   const isSelected = selectedCustomer?.id === c.id;
@@ -276,10 +276,6 @@ export default function CustomerModal({
                       style={{
                         backgroundColor: isSelected ? 'var(--primary-light)' : 'transparent',
                         borderLeft: isSelected ? '4px solid var(--primary-color)' : '4px solid transparent',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
                       }}
                     >
                       <div className="customer-modal-item-info">
@@ -294,8 +290,7 @@ export default function CustomerModal({
                       {mode === 'select' && (
                         <button
                           type="button"
-                          className="btn btn-sm btn-primary"
-                          style={{ marginLeft: '12px', padding: '5px 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                          className="btn btn-sm btn-primary cm-select-btn"
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedCustomer(c);
@@ -312,12 +307,12 @@ export default function CustomerModal({
             </div>
           </div>
         ) : (
-          <form onSubmit={handleCreateCustomer} className="customer-modal-create-form d-flex flex-column" style={{ gap: '15px' }}>
+          <form onSubmit={handleCreateCustomer} className="customer-modal-create-form d-flex flex-column cm-create-form">
             <div className="customer-modal-form-grid">
               {/* Cédula / RIF Input Controlado */}
               <div className="form-group mb-0 customer-form-group">
                 <label htmlFor="customer-cedula-input">Cédula o RIF *</label>
-                <div className="w-full" style={{ position: 'relative' }}>
+                <div className="w-full cm-input-wrap">
                   <input
                     id="customer-cedula-input"
                     name="cedulaOrRif"
@@ -332,7 +327,7 @@ export default function CustomerModal({
                   {isCedulaValid && (
                     <CheckCircle2
                       size={18}
-                      style={{ position: 'absolute', right: '10px', top: '10px', color: 'var(--success-color, #10b981)' }}
+                      className="cm-valid-icon"
                       title="Formato Cédula/RIF válido"
                     />
                   )}
@@ -343,7 +338,7 @@ export default function CustomerModal({
               {/* Teléfono Input Controlado */}
               <div className="form-group mb-0 customer-form-group">
                 <label htmlFor="customer-phone-input">Teléfono *</label>
-                <div className="w-full" style={{ position: 'relative' }}>
+                <div className="w-full cm-input-wrap">
                   <input
                     id="customer-phone-input"
                     name="phone"
@@ -357,7 +352,7 @@ export default function CustomerModal({
                   {isPhoneValid && (
                     <CheckCircle2
                       size={18}
-                      style={{ position: 'absolute', right: '10px', top: '10px', color: 'var(--success-color, #10b981)' }}
+                      className="cm-valid-icon"
                       title="Teléfono de 11 dígitos válido"
                     />
                   )}
@@ -383,13 +378,12 @@ export default function CustomerModal({
                 />
               </div>
               <div className="d-flex flex-between flex-align-center w-full mt-1 customer-name-counter-wrapper">
-                <small className="form-text text-muted" style={{ margin: 0 }}>Máximo 50 caracteres para facturas impresas</small>
+                <small className="form-text text-muted cm-form-hint">Máximo 50 caracteres para facturas impresas</small>
                 <span
+                  className="cm-name-counter"
                   style={{
-                    fontSize: '0.8rem',
                     fontWeight: name.length >= 42 ? '700' : '400',
                     color: name.length >= 42 ? 'var(--warning-color, #d97706)' : 'var(--text-muted, #64748b)',
-                    whiteSpace: 'nowrap'
                   }}
                 >
                   {name.length} / 50
@@ -429,7 +423,7 @@ export default function CustomerModal({
 
             {enableInitialPayment && (
               <div className="d-flex flex-wrap gap-2 mt-3 p-3 border">
-                <div className="flex-1 form-group mb-0" style={{ minWidth: '200px' }}>
+                <div className="flex-1 form-group mb-0 cm-payment-col">
                   <label htmlFor="initial-payment-bss">Monto Abonado (Bs.S)</label>
                   <input
                     id="initial-payment-bss"
@@ -448,13 +442,13 @@ export default function CustomerModal({
                     }}
                   />
                   {isCashSelected ? (
-                    <span className="form-text" style={{ color: 'var(--accent-primary, #6366f1)' }}>El pago en efectivo solo acepta montos enteros.</span>
+                    <span className="form-text cm-cash-note">El pago en efectivo solo acepta montos enteros.</span>
                   ) : (
                     <span className="form-text text-muted">Equivale a: ${initialUsd.toFixed(2)} USD</span>
                   )}
                 </div>
 
-                <div className="flex-1 form-group mb-0" style={{ minWidth: '200px' }}>
+                <div className="flex-1 form-group mb-0 cm-payment-col">
                   <label htmlFor="payment-method-id">Método de Pago</label>
                   <select
                     id="payment-method-id"
@@ -474,11 +468,11 @@ export default function CustomerModal({
 
           {/* Resumen Financiero */}
           {selectedCustomer && (
-            <div className="checkout-summary-box" style={{ marginTop: '15px' }}>
+            <div className="checkout-summary-box cm-summary-box">
               <div className="checkout-summary-row">
                 <span>Total Pedido:</span>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="font-bold text-primary" style={{ fontSize: '1.1rem' }}>
+                <div className="text-right">
+                  <div className="font-bold text-primary cm-summary-total">
                     {formatBsS(safeSaleTotalUSD * safeExchangeRate)}
                   </div>
                   <div className="text-xs text-muted">
@@ -488,7 +482,7 @@ export default function CustomerModal({
               </div>
               <div className="checkout-summary-row text-success">
                 <span>Abono Inicial:</span>
-                <div style={{ textAlign: 'right' }}>
+                <div className="text-right">
                   <div className="font-bold">
                     {formatBsS(finalInitialBs)}
                   </div>
@@ -499,8 +493,8 @@ export default function CustomerModal({
               </div>
               <div className="checkout-summary-row highlight">
                 <span>Deuda Restante:</span>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="font-bold" style={{ fontSize: '1.1rem' }}>
+                <div className="text-right">
+                  <div className="font-bold cm-summary-total">
                     {formatBsS(remainingDebtUsd * safeExchangeRate)}
                   </div>
                   <div className="text-xs text-muted">

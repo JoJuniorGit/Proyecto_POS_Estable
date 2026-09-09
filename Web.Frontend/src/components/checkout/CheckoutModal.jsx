@@ -13,6 +13,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatBsS } from '../../utils/formatters';
 import CustomerSelectorCard from './CustomerSelectorCard';
 import { Check, Loader2, PackageCheck } from 'lucide-react';
+import './CheckoutModal.css';
 
 const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale = null, onCompleteSale = null }, ref) {
   const { currentSale, totalBsS: cartTotalBsS, totalUSD: cartTotalUSD, resetCart, updateCustomer } = useCart();
@@ -284,24 +285,24 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       <div className="checkout-summary-box">
         <div className="checkout-summary-row">
           <span>{overrideSale ? "Saldo Pendiente:" : "Total Venta:"}</span>
-          <div style={{ textAlign: 'right' }}>
-            <div className="font-bold color-primary" style={{ fontSize: '1.2rem' }}>{formatBsS(targetTotalBsS || 0)}</div>
+          <div className="text-right">
+            <div className="font-bold color-primary chk-font-total">{formatBsS(targetTotalBsS || 0)}</div>
             <div className="text-xs text-muted font-medium">Ref: ${targetTotalUSD.toFixed(2)} USD</div>
           </div>
         </div>
 
         <div className="checkout-summary-row text-success">
           <span>Total Pagado Ahora:</span>
-          <div style={{ textAlign: 'right' }}>
-            <div className="font-bold" style={{ fontSize: '1.05rem' }}>{formatBsS(paidBsS)}</div>
+          <div className="text-right">
+            <div className="font-bold chk-font-paid">{formatBsS(paidBsS)}</div>
             <div className="text-xs text-muted font-medium">Ref: ${paidUsd.toFixed(2)} USD</div>
           </div>
         </div>
 
         <div className="checkout-summary-row text-danger highlight">
           <span>Restante Tras Cobro:</span>
-          <div style={{ textAlign: 'right' }}>
-            <div className="font-bold" style={{ fontSize: '1.15rem' }}>{formatBsS(remainingBsS)}</div>
+          <div className="text-right">
+            <div className="font-bold chk-font-remaining">{formatBsS(remainingBsS)}</div>
             <div className="text-xs text-muted font-medium">Ref: ${remainingUsd.toFixed(2)} USD</div>
           </div>
         </div>
@@ -321,37 +322,35 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       </div>
 
       <div className="checkout-section mt-3">
-        <div
+        <div className="chk-pickup-box"
           style={{
-            padding: '12px 14px',
-            borderRadius: '8px',
             border: isPendingPickup ? '1px solid #f59e0b' : '1px solid var(--border)',
             backgroundColor: isPendingPickup ? 'rgba(245, 158, 11, 0.08)' : 'var(--bg-surface)',
-            transition: 'all 0.2s ease',
             opacity: (!isFullLiquidation || isDefaultCust) ? 0.8 : 1
           }}
         >
-          <label className="flex-align-center gap-2 cursor-pointer font-bold" style={{ fontSize: '0.9rem', color: isPendingPickup ? '#f59e0b' : 'var(--text-primary)' }}>
+          <label className="flex-align-center gap-2 cursor-pointer font-bold chk-pickup-label" style={{ color: isPendingPickup ? '#f59e0b' : 'var(--text-primary)' }}>
             <input
               type="checkbox"
               checked={isPendingPickup}
               disabled={!isFullLiquidation || isDefaultCust}
               onChange={(e) => setIsPendingPickup(e.target.checked)}
-              style={{ width: '18px', height: '18px', cursor: (!isFullLiquidation || isDefaultCust) ? 'not-allowed' : 'pointer' }}
+              className="chk-pickup-checkbox"
+              style={{ cursor: (!isFullLiquidation || isDefaultCust) ? 'not-allowed' : 'pointer' }}
             />
             <span>📦 Mercancía en Custodia (Pendiente por Retirar)</span>
           </label>
 
           {!isFullLiquidation ? (
-            <div className="text-xs text-warning mt-2 pl-6" style={{ color: '#f59e0b', lineHeight: '1.4' }}>
+            <div className="text-xs text-warning mt-2 pl-6 chk-warning-note">
               ⚠️ Requiere pagar el 100% de la venta para poder enviar a Retiros Pendientes.
             </div>
           ) : isDefaultCust ? (
-            <div className="text-xs text-warning mt-2 pl-6" style={{ color: '#f59e0b', lineHeight: '1.4' }}>
+            <div className="text-xs text-warning mt-2 pl-6 chk-warning-note">
               ⚠️ Requiere seleccionar un cliente real (Nombre, Cédula y Teléfono) para activar la entrega posterior.
             </div>
           ) : isPendingPickup && (
-            <div className="text-xs text-muted mt-2 pl-6" style={{ lineHeight: '1.4' }}>
+            <div className="text-xs text-muted mt-2 pl-6 chk-info-note">
               El cliente cancela la factura al 100% en caja y deja los productos resguardados en el local para su retiro posterior. El inventario se descuenta inmediatamente.
             </div>
           )}
@@ -360,11 +359,11 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
 
       <div className="checkout-footer">
         {displayError ? (
-          <div className="alert alert-danger mb-3" style={{ fontSize: '0.85rem', lineHeight: '1.4', padding: '10px 14px', borderRadius: '8px' }}>
+          <div className="alert alert-danger mb-3 chk-alert-note">
             {displayError}
           </div>
         ) : (noPaymentsNotice && (
-          <div className="alert alert-warning mb-3" style={{ fontSize: '0.85rem', lineHeight: '1.4', padding: '10px 14px', borderRadius: '8px' }}>
+          <div className="alert alert-warning mb-3 chk-alert-note">
             {noPaymentsNotice}
           </div>
         ))}

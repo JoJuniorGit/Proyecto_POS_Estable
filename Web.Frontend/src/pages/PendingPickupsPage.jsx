@@ -14,6 +14,7 @@ import {
   ChevronRight,
   ChevronDown
 } from 'lucide-react';
+import './PendingPickupsPage.css';
 
 export default function PendingPickupsPage() {
   const [pickups, setPickups] = useState([]);
@@ -126,32 +127,30 @@ export default function PendingPickupsPage() {
 
       {/* ── 2. Controles de Búsqueda e Indicador ── */}
       <div className="pending-orders-controls-bar">
-        <div className="pending-orders-search-wrapper" style={{ height: '42px' }}>
+        <div className="pending-orders-search-wrapper ppk-search-wrapper">
           <input
             type="text"
-            className="input-field"
+            className="input-field w-full ppk-search-input"
             placeholder="Buscar por N° de Factura, Nombre o Cédula/RIF..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: '100%', height: '42px', paddingLeft: '36px', boxSizing: 'border-box' }}
           />
-          <Search size={18} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }} />
+          <Search size={18} className="ppk-search-icon opacity-50" />
         </div>
 
-        <div className="pending-orders-bcv-badge" style={{ height: '42px', display: 'inline-flex', alignItems: 'center', boxSizing: 'border-box', margin: 0 }}>
-          Mercancía en Custodia: <span style={{ color: 'var(--primary-color, #818cf8)', fontWeight: 700, marginLeft: '6px' }}>{filteredPickups.length} {filteredPickups.length === 1 ? 'Pedido' : 'Pedidos'}</span>
+        <div className="pending-orders-bcv-badge ppk-bcv-badge">
+          Mercancía en Custodia: <span className="ppk-bcv-count">{filteredPickups.length} {filteredPickups.length === 1 ? 'Pedido' : 'Pedidos'}</span>
         </div>
       </div>
 
       {successMessage && (
-        <div className="alert-box success-alert mb-4 flex-align-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', borderRadius: '8px', backgroundColor: 'rgba(16, 185, 129, 0.12)', border: '1px solid #10b981', color: '#10b981' }}>
+        <div className="alert-box success-alert mb-4 flex-align-center gap-2 ppk-success-alert">
           <CheckCircle size={20} className="flex-shrink-0" />
           <span>{successMessage}</span>
           <button
             type="button"
-            className="btn btn-sm btn-link text-success ml-auto"
+            className="btn btn-sm btn-link text-success ml-auto ppk-alert-close"
             onClick={() => setSuccessMessage(null)}
-            style={{ marginLeft: 'auto', color: '#10b981', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
           >
             Aceptar
           </button>
@@ -166,30 +165,30 @@ export default function PendingPickupsPage() {
       )}
 
       {loading && pickups.length === 0 ? (
-        <div style={{ padding: '60px', textAlign: 'center' }}>
-          <Loader2 size={40} className="spin color-primary" style={{ margin: '0 auto 16px auto' }} />
+        <div className="ppk-loading text-center">
+          <Loader2 size={40} className="spin color-primary mb-4 mx-auto" />
           <p>Cargando pedidos pendientes por retirar...</p>
         </div>
       ) : filteredPickups.length === 0 ? (
-        <div className="card p-5 text-center text-muted" style={{ padding: '40px', textAlign: 'center' }}>
-          <ShoppingBag size={48} className="mx-auto mb-3 text-muted" style={{ opacity: 0.5, margin: '0 auto 12px auto' }} />
-          <h3 className="font-bold text-lg mb-1" style={{ fontSize: '1.2rem', fontWeight: 700 }}>No hay mercancía pendiente por retirar</h3>
-          <p className="text-sm" style={{ opacity: 0.7 }}>
+        <div className="card p-5 text-center text-muted ppk-empty-card">
+          <ShoppingBag size={48} className="mx-auto mb-3 text-muted opacity-50" />
+          <h3 className="font-bold text-lg mb-1 ppk-empty-title">No hay mercancía pendiente por retirar</h3>
+          <p className="text-sm ppk-faded">
             {searchQuery ? 'No se encontraron pedidos que coincidan con la búsqueda.' : 'Todos los apartados pagados han sido entregados a sus respectivos clientes.'}
           </p>
         </div>
       ) : (
         <>
           {/* ── 3A. VISTA ESCRITORIO (TABLA TRADICIONAL ESTRUCTURA CUENTAS ABIERTAS) ── */}
-          <div className="pending-desktop-view dark-card" style={{ overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <div className="pending-desktop-view dark-card overflow-hidden">
+            <table className="ppk-table">
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary, rgba(255,255,255,0.03))' }}>
-                  <th style={{ padding: '14px 16px' }}>Factura N° / Fecha</th>
-                  <th style={{ padding: '14px 16px' }}>Cliente</th>
-                  <th style={{ padding: '14px 16px', textAlign: 'right' }}>TOTAL FACTURA (Bs.S)</th>
-                  <th style={{ padding: '14px 16px', textAlign: 'center' }}>Estado</th>
-                  <th style={{ padding: '14px 16px', textAlign: 'right' }}>Acciones</th>
+                <tr className="ppk-border-bottom ppk-thead-bg">
+                  <th className="ppk-table-pad">Factura N° / Fecha</th>
+                  <th className="ppk-table-pad">Cliente</th>
+                  <th className="ppk-table-pad text-right">TOTAL FACTURA (Bs.S)</th>
+                  <th className="ppk-table-pad text-center">Estado</th>
+                  <th className="ppk-table-pad text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -199,81 +198,66 @@ export default function PendingPickupsPage() {
                   return (
                     <React.Fragment key={pickup.saleId}>
                       <tr
+                        className="ppk-border-bottom cursor-pointer"
                         style={{
-                          borderBottom: '1px solid var(--border-color)',
-                          cursor: 'pointer',
                           backgroundColor: isExpanded ? 'var(--bg-secondary, rgba(255,255,255,0.05))' : 'transparent',
                         }}
                         onClick={() => toggleExpand(pickup.saleId)}
                       >
-                        <td style={{ padding: '14px 16px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <td className="ppk-table-pad">
+                          <div className="flex-align-center">
                             {isExpanded ? (
-                              <ChevronDown size={18} style={{ marginRight: '12px', flexShrink: 0, color: 'var(--primary-color, #818cf8)' }} />
+                              <ChevronDown size={18} className="ppk-caret ppk-caret-active" />
                             ) : (
-                              <ChevronRight size={18} style={{ marginRight: '12px', flexShrink: 0, opacity: 0.6 }} />
+                              <ChevronRight size={18} className="ppk-caret ppk-caret-inactive" />
                             )}
                             <div>
                               <strong>Factura N° {pickup.invoiceNumber || pickup.saleId}</strong>
-                              <div style={{ fontSize: '0.78rem', opacity: 0.6, marginTop: '2px' }}>
+                              <div className="ppk-invoice-date">
                                 {new Date(pickup.date).toLocaleDateString()} {new Date(pickup.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </div>
                             </div>
                           </div>
                         </td>
 
-                        <td style={{ padding: '14px 16px', maxWidth: '240px' }}>
+                        <td className="ppk-table-pad ppk-maxw240">
                           <div
-                            className="font-medium text-truncate"
+                            className="font-medium text-truncate ppk-maxw240"
                             title={pickup.customerName || 'Consumidor Final'}
-                            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}
                           >
                             <strong>{pickup.customerName || 'Consumidor Final'}</strong>
                           </div>
-                          <div className="text-muted text-truncate" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', opacity: 0.7, marginTop: '2px' }}>
+                          <div className="text-muted text-truncate ppk-customer-meta ppk-mt-2px">
                             RIF/Cédula: {pickup.customerCedula || 'N/A'}
                           </div>
                           {pickup.customerPhone && (
-                            <div className="text-muted text-truncate" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', opacity: 0.7 }}>
+                            <div className="text-muted text-truncate ppk-customer-meta">
                               Tel: {pickup.customerPhone}
                             </div>
                           )}
                         </td>
 
-                        <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                          <strong className="font-mono" style={{ fontSize: '0.95rem', display: 'block', textAlign: 'right' }}>
+                        <td className="ppk-table-pad text-right">
+                          <strong className="font-mono ppk-total-mono">
                             {formatBsS(pickup.totalBsS).replace(/^Bs\.S\s?/, '')}
                           </strong>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400, marginTop: '2px', textAlign: 'right' }}>
+                          <div className="text-muted font-normal text-xs text-right ppk-mt-2px">
                             {formatUSD(pickup.totalUSD || 0)}
                           </div>
                         </td>
 
-                        <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                          <span className="badge badge-warning" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', padding: '4px 12px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 600 }}>
+                        <td className="ppk-table-pad text-center">
+                          <span className="badge badge-warning ppk-custody-badge ppk-custody-badge-xl">
                             En Custodia
                           </span>
                         </td>
 
-                        <td style={{ padding: '14px 16px', textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        <td className="ppk-table-pad text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="d-flex gap-2 justify-end">
                             <button
                               type="button"
-                              className="btn btn-sm btn-outline flex-align-center gap-1"
+                              className="btn btn-sm btn-outline flex-align-center gap-1 ppk-confirm-btn"
                               onClick={() => handleConfirmPickupClick(pickup)}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                color: '#818cf8',
-                                borderColor: 'rgba(99, 102, 241, 0.4)',
-                                backgroundColor: 'rgba(99, 102, 241, 0.08)',
-                                fontWeight: 600,
-                                fontSize: '0.82rem',
-                                padding: '6px 12px',
-                                borderRadius: '6px',
-                                transition: 'all 0.2s ease'
-                              }}
                             >
                               <PackageCheck size={15} /> Confirmar Retiro
                             </button>
@@ -284,25 +268,25 @@ export default function PendingPickupsPage() {
                       {/* Expanded Detail Desktop */}
                       {isExpanded && (
                         <tr className="history-detail-row">
-                          <td colSpan="6" className="history-detail-cell" style={{ padding: '20px', backgroundColor: 'var(--bg-secondary, rgba(0,0,0,0.2))' }}>
+                          <td colSpan="6" className="history-detail-cell ppk-detail-cell">
                             <div>
-                              <h4 style={{ margin: '0 0 10px 0', fontSize: '0.95rem' }}>📦 Productos del Pedido a Entregar ({pickup.items?.length || 0})</h4>
-                              <table style={{ width: '100%', fontSize: '0.9em', borderCollapse: 'collapse' }}>
+                              <h4 className="ppk-detail-h4">📦 Productos del Pedido a Entregar ({pickup.items?.length || 0})</h4>
+                              <table className="w-full ppk-detail-table">
                                 <thead>
-                                  <tr style={{ borderBottom: '1px solid var(--border-color)', opacity: 0.7 }}>
-                                    <th style={{ textAlign: 'left', padding: '8px 12px 8px 0', width: 'auto' }}>Producto</th>
-                                    <th style={{ textAlign: 'right', padding: '8px 12px', width: '80px', whiteSpace: 'nowrap' }}>Cant.</th>
-                                    <th style={{ textAlign: 'right', padding: '8px 12px', width: '160px', whiteSpace: 'nowrap' }}>P. Unit Bs.S</th>
-                                    <th style={{ textAlign: 'right', padding: '8px 12px', width: '180px', whiteSpace: 'nowrap' }}>Subtotal Bs.S</th>
+                                  <tr className="ppk-border-bottom ppk-faded">
+                                    <th className="ppk-detail-th-first">Producto</th>
+                                    <th className="ppk-detail-th-mid ppk-th-cant">Cant.</th>
+                                    <th className="ppk-detail-th-mid ppk-th-punit">P. Unit Bs.S</th>
+                                    <th className="ppk-detail-th-mid ppk-th-subtotal">Subtotal Bs.S</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {(pickup.items || []).map((item, idx) => (
-                                      <tr key={`${item.productName}-${item.quantity}-${idx}`} style={{ borderBottom: '1px dashed var(--border-color)' }}>
-                                      <td style={{ padding: '6px 12px 6px 0', fontWeight: 500 }}>{item.productName}</td>
-                                      <td style={{ textAlign: 'right', padding: '6px 12px', fontWeight: 700, whiteSpace: 'nowrap' }}>{formatQuantity(item.quantity)}</td>
-                                      <td style={{ textAlign: 'right', padding: '6px 12px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatBsS(item.unitPriceBsS)}</td>
-                                      <td style={{ textAlign: 'right', padding: '6px 12px', fontFamily: 'monospace', fontWeight: 700, whiteSpace: 'nowrap' }}>{formatBsS(item.subtotalBsS)}</td>
+                                      <tr key={`${item.productName}-${item.quantity}-${idx}`} className="ppk-border-dashed">
+                                      <td className="ppk-item-name">{item.productName}</td>
+                                      <td className="text-right font-bold text-nowrap ppk-item-cell">{formatQuantity(item.quantity)}</td>
+                                      <td className="text-right font-mono text-nowrap ppk-item-cell">{formatBsS(item.unitPriceBsS)}</td>
+                                      <td className="text-right font-mono font-bold text-nowrap ppk-item-cell">{formatBsS(item.subtotalBsS)}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -328,8 +312,8 @@ export default function PendingPickupsPage() {
                   {/* Card Header */}
                   <div className="pending-mobile-card-header">
                     <div>
-                      <div className="font-bold text-base flex-align-center gap-1" onClick={() => toggleExpand(pickup.saleId)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {isExpanded ? <ChevronDown size={18} style={{ marginRight: '4px' }} /> : <ChevronRight size={18} style={{ marginRight: '4px' }} />}
+                      <div className="font-bold text-base flex-align-center gap-1 cursor-pointer" onClick={() => toggleExpand(pickup.saleId)}>
+                        {isExpanded ? <ChevronDown size={18} className="ppk-caret-mobile" /> : <ChevronRight size={18} className="ppk-caret-mobile" />}
                         Factura N° {pickup.invoiceNumber || pickup.saleId}
                       </div>
                       <div className="text-xs text-muted mt-1">
@@ -337,29 +321,23 @@ export default function PendingPickupsPage() {
                       </div>
                     </div>
 
-                    <span className="badge badge-warning" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', padding: '4px 10px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 600 }}>
+                    <span className="badge badge-warning ppk-custody-badge ppk-custody-badge-md">
                       En Custodia
                     </span>
                   </div>
 
                   {/* Customer Info Box */}
                   <div className="pending-mobile-card-customer">
-                    <div className="flex-align-center gap-1 font-bold pending-mobile-card-customer-name" style={{ overflow: 'hidden', minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div className="flex-align-center gap-1 font-bold pending-mobile-card-customer-name overflow-hidden ppk-customer-mobile">
                       <User size={15} className="text-muted flex-shrink-0" />
                       <span
                         title={pickup.customerName || 'Consumidor Final'}
-                        style={{
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          display: 'inline-block',
-                          maxWidth: '100%'
-                        }}
+                        className="text-truncate d-inline-block ppk-maxw100"
                       >
                         {pickup.customerName || 'Consumidor Final'}
                       </span>
                     </div>
-                    <div className="text-xs text-muted mt-1 ml-4" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <div className="text-xs text-muted mt-1 ml-4 d-flex flex-column ppk-customer-meta-col">
                       <span>RIF/Cédula: <strong>{pickup.customerCedula || 'N/A'}</strong></span>
                       {pickup.customerPhone && <span>Tel: <strong>{pickup.customerPhone}</strong></span>}
                     </div>
@@ -367,16 +345,15 @@ export default function PendingPickupsPage() {
 
                   {/* Financial Breakdown Grid */}
                   <div
-                    className="pending-mobile-card-summary"
-                    style={{ gridTemplateColumns: '1fr 1fr', gap: '12px' }}
+                    className="pending-mobile-card-summary ppk-summary-grid"
                   >
                     <div>
                       <div className="text-xs text-muted mb-1">Total (USD)</div>
-                      <div className="font-bold" style={{ fontSize: '1.1rem', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{formatUSD(pickup.totalUSD)}</div>
+                      <div className="font-bold text-primary text-nowrap ppk-total-sm">{formatUSD(pickup.totalUSD)}</div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div className="text-right">
                       <div className="text-xs text-muted mb-1">Total (Bs.S)</div>
-                      <div className="font-bold font-mono" style={{ fontSize: '1.1rem', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{formatBsS(pickup.totalBsS).replace(/^Bs\.S\s?/, '')}</div>
+                      <div className="font-bold font-mono text-primary text-nowrap ppk-total-sm">{formatBsS(pickup.totalBsS).replace(/^Bs\.S\s?/, '')}</div>
                     </div>
                   </div>
 
@@ -384,29 +361,16 @@ export default function PendingPickupsPage() {
                   <div className="pending-mobile-card-actions">
                     <button
                       type="button"
-                      className="btn btn-outline flex-1 flex-align-center justify-center gap-1"
+                      className="btn btn-outline flex-1 flex-align-center justify-center gap-1 ppk-confirm-btn-mobile"
                       onClick={() => handleConfirmPickupClick(pickup)}
-                      style={{
-                        height: '42px',
-                        fontSize: '0.9rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '8px',
-                        color: '#818cf8',
-                        borderColor: 'rgba(99, 102, 241, 0.4)',
-                        backgroundColor: 'rgba(99, 102, 241, 0.08)',
-                        fontWeight: 600
-                      }}
                     >
                       <PackageCheck size={18} /> Confirmar Retiro
                     </button>
 
                     <button
                       type="button"
-                      className="btn btn-outline flex-1 flex-align-center justify-center gap-1"
+                      className="btn btn-outline flex-1 flex-align-center justify-center gap-1 w-full ppk-toggle-btn"
                       onClick={() => toggleExpand(pickup.saleId)}
-                      style={{ height: '38px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                     >
                       {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />} Detalle ({pickup.items?.length || 0} productos)
                     </button>
@@ -414,16 +378,16 @@ export default function PendingPickupsPage() {
 
                   {/* Mobile Collapsible Detail */}
                   {isExpanded && (
-                    <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '12px', marginTop: '4px', fontSize: '0.85rem' }}>
-                      <h4 style={{ margin: '0 0 8px 0', fontSize: '0.9rem' }}>📦 Productos del Pedido</h4>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div className="ppk-border-top-dashed pt-3 mt-1 ppk-detail-mobile">
+                      <h4 className="ppk-detail-h4-mobile">📦 Productos del Pedido</h4>
+                      <div className="d-flex flex-column ppk-items-col">
                         {(pickup.items || []).map((item, idx) => (
-                          <div key={`${item.productName}-${item.quantity}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: '1px solid var(--border-color)' }}>
-                            <div style={{ flex: '1 1 auto', minWidth: 0, paddingRight: '12px' }}>
+                          <div key={`${item.productName}-${item.quantity}-${idx}`} className="flex-between align-start ppk-item-row ppk-border-bottom">
+                            <div className="ppk-item-main">
                               <div><strong>{item.productName}</strong></div>
                               <div className="text-xs text-muted">{formatQuantity(item.quantity)} unds x {formatBsS(item.unitPriceBsS)}</div>
                             </div>
-                            <div className="font-bold font-mono" style={{ textAlign: 'right', whiteSpace: 'nowrap', flexShrink: 0 }}>{formatBsS(item.subtotalBsS)}</div>
+                            <div className="font-bold font-mono text-right text-nowrap flex-shrink-0">{formatBsS(item.subtotalBsS)}</div>
                           </div>
                         ))}
                       </div>
@@ -439,10 +403,9 @@ export default function PendingPickupsPage() {
             <div className="text-center mt-3 mb-1">
               <button
                 type="button"
-                className="btn btn-outline flex-align-center gap-2 mx-auto"
+                className="btn btn-outline flex-align-center gap-2 mx-auto ppk-load-more"
                 onClick={loadMore}
                 disabled={loading}
-                style={{ minWidth: '180px' }}
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}
                 {loading ? 'Cargando...' : 'Ver más retiros'}
@@ -460,44 +423,32 @@ export default function PendingPickupsPage() {
           title="Confirmar Entrega de Mercancía"
           maxWidth="480px"
         >
-          <div className="p-2 text-center" style={{ padding: '10px 4px', textAlign: 'center' }}>
-            <div style={{
-              width: '56px',
-              height: '56px',
-              borderRadius: '50%',
-              backgroundColor: 'rgba(99, 102, 241, 0.15)',
-              color: 'var(--primary-color, #818cf8)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 16px auto'
-            }}>
+          <div className="p-2 text-center ppk-modal-body">
+            <div className="ppk-confirm-icon">
               <PackageCheck size={28} />
             </div>
 
-            <h4 className="font-bold mb-2 text-primary" style={{ fontSize: '1.15rem', fontWeight: 700, lineHeight: 1.4 }}>
-              ¿Entregar pedido a <span style={{ color: '#ffffff', fontWeight: 700 }}>{selectedPickup.customerName || 'Consumidor Final'}</span>?
+            <h4 className="font-bold mb-2 text-primary ppk-modal-title">
+              ¿Entregar pedido a <span className="ppk-customer-white">{selectedPickup.customerName || 'Consumidor Final'}</span>?
             </h4>
-            <p className="text-muted text-sm mb-4" style={{ opacity: 0.85, marginBottom: '24px', lineHeight: 1.5 }}>
-              Se registrará la salida física de la mercancía correspondiente a la <span style={{ color: 'var(--primary-color, #818cf8)', fontWeight: 700 }}>Factura N° {selectedPickup.invoiceNumber || selectedPickup.saleId}</span>.
+            <p className="text-muted text-sm mb-4 ppk-modal-text">
+              Se registrará la salida física de la mercancía correspondiente a la <span className="font-bold ppk-modal-highlight">Factura N° {selectedPickup.invoiceNumber || selectedPickup.saleId}</span>.
             </p>
 
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+            <div className="d-flex justify-center gap-3 ppk-modal-actions ppk-border-top-solid">
               <button
                 type="button"
-                className="btn btn-outline"
+                className="btn btn-outline ppk-btn-min110"
                 onClick={() => setSelectedPickup(null)}
                 disabled={isConfirming}
-                style={{ minWidth: '110px' }}
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-primary d-inline-flex flex-align-center justify-center gap-2 ppk-btn-confirm"
                 onClick={handleExecutePickup}
                 disabled={isConfirming}
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', minWidth: '170px' }}
               >
                 {isConfirming ? (
                   <>

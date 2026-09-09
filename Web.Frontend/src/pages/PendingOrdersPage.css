@@ -131,3 +131,157 @@
 :root[data-theme="dark"] .total-bss-highlight {
   color: #ef4444 !important;
 }
+
+/* ── 5. Clases propias de la página (antes estilos inline) ── */
+
+/* PendingOrders */
+:root .ppo-danger-btn {
+  padding: 8px 16px;
+  font-size: 0.875rem;
+}
+
+:root .ppo-danger-btn-active {
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
+  transition: all 0.2s ease;
+}
+
+:root .ppo-danger-btn-disabled:disabled {
+  opacity: 0.4;
+}
+
+:root .ppo-search-input {
+  padding-left: 36px;
+}
+
+:root .ppo-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+:root .ppo-loading {
+  padding: 60px;
+}
+
+:root .ppo-faded {
+  opacity: 0.7;
+}
+
+:root .ppo-subtext {
+  font-size: 0.8em;
+  opacity: 0.6;
+}
+
+:root .ppo-total-bss {
+  font-size: 0.95rem;
+}
+
+:root .ppo-usd-sub {
+  font-size: 0.8em;
+}
+
+:root .ppo-maxw220 {
+  max-width: 220px;
+}
+
+:root .ppo-maxw100 {
+  max-width: 100%;
+}
+
+:root .ppo-detail-border {
+  border-top: 1px dashed rgba(99, 102, 241, 0.25);
+}
+
+:root .ppo-detail-grid {
+  gap: 20px;
+}
+
+:root .ppo-detail-h4 {
+  margin: 0 0 10px 0;
+}
+
+:root .ppo-abonos-h4 {
+  gap: 6px;
+}
+
+:root .ppo-detail-h4-sm {
+  margin: 0 0 8px 0;
+  font-size: 0.9rem;
+}
+
+:root .ppo-abonos-h4-mobile {
+  gap: 4px;
+}
+
+:root .ppo-detail-table {
+  font-size: 0.9em;
+  border-collapse: collapse;
+}
+
+:root .ppo-detail-throw {
+  opacity: 0.7;
+}
+
+:root .ppo-cell-pad {
+  padding: 6px 0;
+}
+
+:root .ppo-no-abonos {
+  font-size: 0.9em;
+  opacity: 0.6;
+}
+
+:root .ppo-btn-tall {
+  height: 44px;
+  font-size: 0.95rem;
+}
+
+:root .ppo-btn-sm38 {
+  height: 38px;
+}
+
+:root .ppo-detail-mobile {
+  font-size: 0.85rem;
+}
+
+:root .ppo-items-list {
+  margin-bottom: 14px;
+}
+
+:root .ppo-item-row {
+  padding: 4px 0;
+}
+
+:root .ppo-payment-row {
+  font-size: 0.8rem;
+}
+
+:root .ppo-item-main {
+  min-width: 0;
+  margin-right: 12px;
+}
+
+:root .ppo-item-total {
+  margin-left: auto;
+}
+
+:root .ppo-load-more {
+  min-width: 180px;
+}
+
+:root .ppo-cancel-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px auto;
+}
+
+:root .ppo-confirm-note {
+  line-height: 1.5;
+}

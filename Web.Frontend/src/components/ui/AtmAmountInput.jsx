@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useCurrencyFormat } from '../../context/CurrencyFormatContext';
 import { amountToCents } from '../../utils/formatters';
+import './AtmAmountInput.css';
 
 export default function AtmAmountInput({
   value = '',
@@ -96,20 +97,10 @@ export default function AtmAmountInput({
   const prefixPadding = prefix ? '32px' : (style.paddingLeft || '12px');
 
   return (
-    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+    <div className="atm-input-wrapper">
       {prefix && (
         <span 
-          style={{ 
-            position: 'absolute', 
-            left: '8px', 
-            fontSize: prefix === '$' ? '0.85rem' : '0.72rem', 
-            fontWeight: 700,
-            color: 'var(--text-muted)', 
-            pointerEvents: 'none',
-            userSelect: 'none',
-            zIndex: 2,
-            whiteSpace: 'nowrap'
-          }}
+          className={`atm-prefix ${prefix === '$' ? 'atm-prefix-sign' : 'atm-prefix-text'}`}
         >
           {prefix}
         </span>
@@ -118,7 +109,7 @@ export default function AtmAmountInput({
         ref={inputRef}
         type="text"
         inputMode={allowDecimals ? 'decimal' : 'numeric'}
-        className={`atm-amount-input ${className}`}
+        className={`atm-amount-input ${className} atm-field`}
         value={displayValue}
         onChange={handleChange}
         onFocus={handleFocus}
@@ -129,10 +120,7 @@ export default function AtmAmountInput({
         aria-label={props['aria-label'] || `Monto en ${prefix || 'dinero'}`}
         style={{
           paddingLeft: prefixPadding,
-          paddingRight: '14px',
-          height: '42px',
           textAlign: style.textAlign || 'right',
-          fontFamily: 'monospace',
           ...style
         }}
         {...props}

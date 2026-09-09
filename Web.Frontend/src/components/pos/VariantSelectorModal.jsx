@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Loader2, Package, Check, AlertCircle, Link2 } from 'lucide-react';
 import { api } from '../../services/api';
 import { formatUSD, formatBsS } from '../../utils/formatters';
+import './VariantSelectorModal.css';
 
 function formatVariantTitle(variantName, parentName) {
   if (!variantName) return '';
@@ -91,41 +92,41 @@ export default function VariantSelectorModal({ isOpen, onClose, parentProduct, o
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content variant-selector-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header variant-modal-header" style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
-          <div className="variant-modal-title-box" style={{ display: 'flex', justifyContent: 'center', width: '100%', padding: '0 36px' }}>
-            <div className="variant-modal-title-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+        <div className="modal-header variant-modal-header vs-relative d-flex justify-center align-center text-center">
+          <div className="variant-modal-title-box d-flex justify-center w-full vs-title-box">
+            <div className="variant-modal-title-row d-flex align-center justify-center gap-2">
               <div className="variant-header-icon-wrap">
                 <Package size={20} className="variant-header-icon" />
               </div>
-              <h3 style={{ margin: 0, textAlign: 'center' }}>{parentProduct.name}</h3>
+              <h3 className="vs-modal-title text-center">{parentProduct.name}</h3>
             </div>
           </div>
-          <button className="btn-close" onClick={onClose} aria-label="Cerrar modal" style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)' }}>
+          <button className="btn-close vs-btn-close" onClick={onClose} aria-label="Cerrar modal">
             <X size={20} />
           </button>
         </div>
 
         <div className="modal-body variant-selector-body">
-          <p className="variant-modal-subtitle" style={{ textAlign: 'center' }}>
+          <p className="variant-modal-subtitle text-center">
             Selecciona el sabor o presentación deseada para agregar a la venta:
           </p>
 
           {loading && (
-            <div className="flex-center" style={{ padding: '2.5rem 0', flexDirection: 'column', gap: '10px' }}>
+            <div className="flex-center flex-column vs-loading">
               <Loader2 className="animate-spin color-primary" size={32} />
               <span className="text-muted">Cargando sabores y presentaciones...</span>
             </div>
           )}
 
           {error && (
-            <div className="alert-error flex-center-gap" style={{ padding: '12px', borderRadius: '8px', marginBottom: '12px' }}>
+            <div className="alert-error flex-center-gap p-3 mb-3 vs-alert-error">
               <AlertCircle size={20} />
               <span>{error}</span>
             </div>
           )}
 
           {!loading && !error && variants.length === 0 && (
-            <div className="empty-state" style={{ padding: '2.5rem 0', textAlign: 'center' }}>
+            <div className="empty-state text-center vs-empty">
               <p className="text-muted">Este producto no tiene presentaciones activas registradas.</p>
             </div>
           )}
@@ -149,11 +150,11 @@ export default function VariantSelectorModal({ isOpen, onClose, parentProduct, o
                       <div className="variant-card-meta">
                         <span className="variant-sku">SKU: {v.sku || '-'}</span>
                       </div>
-                      <div className="variant-card-price" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.2 }}>
-                        <span className="font-bold text-primary" style={{ fontSize: '1rem', color: 'var(--accent-primary, #6366f1)' }}>
+                      <div className="variant-card-price d-flex flex-column align-end vs-card-price">
+                        <span className="font-bold vs-price-bs text-base">
                           {exchangeRate > 0 ? formatBsS((v.priceRetailUSD || basePriceUSD) * exchangeRate) : ''}
                         </span>
-                        <span className="text-xs text-muted" style={{ fontSize: '0.75rem' }}>
+                        <span className="text-xs text-muted">
                           Ref: {formatUSD(v.priceRetailUSD || basePriceUSD)}
                         </span>
                       </div>
