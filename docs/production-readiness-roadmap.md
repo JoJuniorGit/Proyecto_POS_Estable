@@ -17,6 +17,7 @@ el avance real de cada fase.
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F5   | Runbooks operativos en INSTALLATION 13 + baseline de observabilidad verificada (8.44) | F5 avanzado; alertas/monitoreo externo pendiente |
 | 2026-09-09  | F4   | Artefacto Release reproducido y verificado (0 pfx/0 secretos/sin appsettings.Development); matriz config + checklist por cliente en INSTALLATION 11/12 (8.43) | F4 avanzado; ISCC/firma pendiente |
 | 2026-09-09  | F3   | Inmutabilidad del historial vs PostgreSQL real (58ac014) | F3 avanzado; suites .NET 754/754 |
 | 2026-09-09  | F2   | N+1/H06 productos verificados sin accion; plan esquema/rollback en INSTALLATION seccion 10 (8.40) | F2: checklist parcial completo |
@@ -43,7 +44,7 @@ el avance real de cada fase.
 | F2   | Refactorizacion critica y endurecimiento | EN CURSO | M2: revision arquitectonica aprobada | -       |
 | F3   | QA, concurrencia y pruebas de estres     | EN CURSO | M3: evidencia reproducible | -            |
 | F4   | Release engineering y despliegue         | EN CURSO | M4: RC firmado y probado   | -            |
-| F5   | Observabilidad y operacion               | PENDIENTE | M5: soporte sin desarrollo | -            |
+| F5   | Observabilidad y operacion               | EN CURSO | M5: soporte sin desarrollo | -            |
 | F6   | Piloto controlado                        | PENDIENTE | M6: aceptacion del cliente | -            |
 | FIN  | Certificacion Go/No-Go                   | PENDIENTE | Firmas RM/ARQ/CLI          | -            |
 
@@ -275,19 +276,17 @@ maquina limpia.
 
 ---
 
-## 8. FASE 5 - Observabilidad y operacion (PENDIENTE)
+## 8. FASE 5 - Observabilidad y operacion (EN CURSO)
 
 Hito M5: operacion monitorizada; soporte capaz de recuperar el sistema sin el
 equipo de desarrollo.
 
-- [ ] Logs estructurados con traceId/usuario/rol/SaleId/resultado (sin secretos).
-- [ ] Separacion de logs app/seguridad/BD/backup/servicio.
-- [ ] Health checks backend, PostgreSQL, migraciones, tasa BCV, disco, ultimo
-      backup exitoso.
-- [ ] Alertas: servicio caido, backup fallando, errores BD, concurrencia alta,
-      disco bajo, cert por expirar.
-- [ ] Retencion/exportacion de logs; runbooks (servicio caido, restore, cert,
-      BCV, stock, rollback); responsable de soporte y ventana de mantenimiento.
+- [x] Logs estructurados con traceId/usuario/rol/SaleId/resultado (sin secretos) (baseline: ILogger semantico + AppLogger).
+- [x] Separacion de logs app/seguridad/BD/backup/servicio (AppLogger: start/crash/db-errors/security-audit/warn).
+- [x] Health checks backend, PostgreSQL (y metricas de cache) (HealthController: /health + /api/health/metrics).
+- [ ] Health checks de migraciones/tasa BCV/disco/ultimo backup (requiere tooling de monitoreo).
+- [ ] Alertas: servicio caido, backup fallando, errores BD, concurrencia alta, disco bajo, cert por expirar (requiere monitoreo externo).
+- [x] Retencion/exportacion de logs; runbooks (servicio caido, restore, cert, BCV, stock, rollback); responsable de soporte y ventana de mantenimiento (INSTALLATION 13, 8.44).
 
 ---
 

@@ -267,3 +267,38 @@ Checklist de release (por versión):
 4. `scripts/build-release.ps1`: publish con scrub OK (0 literales, 0 `*.pfx`, sin `appsettings.Development.json`).
 5. `dotnet ef migrations has-pending-model-changes` limpio en ambos contextos (si cambió el modelo).
 6. Backup del puesto previo al despliegue (ver §10.2).
+
+## 13. Runbooks operativos (Fase 5, 8.44)
+
+### 13.1 Servicio backend caído
+1. `Get-Service "Sistema POS Backend"` → si `Stopped`, `Start-Service`.
+2. Revisar `logs\crash.log` y `logs\start.log` del directorio del backend.
+3. Si falla al arrancar: validar `secrets.json` (connection string/JWT/cert password) y que PostgreSQL esté arriba (`pg_isready`).
+4. Tras recuperar, validar `GET http://localhost:5000/health` (status Healthy + database Connected).
+
+### 13.2 Certificado HTTPS inválido / expirado
+1. `Configure-PosService.ps1` regenera el pfx por sitio cuando detecta pfx stale o contraseña nueva (sección 4.2) y lo coloca en `BackendAPI\certs`.
+2. Verificar que `secrets.json` (`Kestrel.Certificates.Default.Password`) casa con el pfx.
+3. Reiniciar el servicio; validar `https://localhost:5001` (o distribuir el nuevo `.cer` en las cajas).
+
+### 13.3 Tasa BCV no disponible / sin internet
+1. Si no hay red: fijar `BcvSettings:AutoSyncIntervalMinutes` ≤ 0 y reiniciar.
+2. Registrar la tasa del día como Admin: `POST /api/exchange-rate { "value": <tasa> }` (ceil 4 decimales). Sin tasa vigente, la venta se rechaza explícitamente (sin montos inventados). Detalle: §7.
+
+### 13.4 Stock inconsistente / sospecha de sobreventa
+1. Revisar `StockMovements` del producto y el historial de la venta (los snapshots no se recalculan, §10/rules.md).
+2. Si hay discrepancia real, ajustar manualmente con permiso de Admin (`AdjustStock`) y registrar el movimiento.
+3. Validar que no hubo deducción doble (idempotencia por SaleId).
+
+### 13.5 Restore / rollback
+1. Restore: §8.1 (`pg_restore --clean --if-exists --no-owner`; detener el servicio antes; smoke vía `/health`).
+2. Rollback de versión: §10.3 (binarios previos o restore del volcado; sin recalcular historial).
+
+### 13.6 Backup fallando
+1. Verificar la tarea programada `Sistema POS - Backup PostgreSQL` (`schtasks /Query`) y ejecutar `backup-postgres.ps1` manualmente.
+2. Comprobar espacio en disco del destino (`C:\Backups\CommandCenter`) y las credenciales en `secrets.json`.
+3. Confirmar que el último volcado es reciente antes de cualquier operación de restore.
+
+### 13.7 Responsable y ventana de mantenimiento
+1. Designar un responsable operativo en el sitio (RQ de la Fase 0).
+2. Ventana de mantenimiento recomendada: nocturna (fuera de horario de caja); el backup corre a las 03:00.

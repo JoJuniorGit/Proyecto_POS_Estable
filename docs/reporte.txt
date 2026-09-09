@@ -3838,4 +3838,34 @@ C2. PENDIENTE (requiere entorno): compilacion ISCC real del instalador y
     prueba en maquina limpia (R-001) y firmado de instalador/binarios (cert).
 
 FIN DEL ANEXO - REVISION 8.43
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.44 (FASE 5: OBSERVABILIDAD Y OPERACION - RUNBOOKS)
+===============================================================================
+Alcance: Fase 5 del roadmap (observabilidad y operacion): verificar el baseline
+de observabilidad y documentar los runbooks operativos. Verificacion: build
+Release 0w/0e; dotnet 754/754; web 80/80.
+
+A. BASELINE DE OBSERVABILIDAD (verificado por codigo)
+A1. Logs separados por categoria via AppLogger: start.log, crash.log,
+    db-errors.log, security-audit.log y warn.log (Core/Logging/AppLogger.cs).
+    Logs de framework ILogger con parametros semanticos en los servicios.
+A2. HealthController: /health anonimo verifica backend + conexion PostgreSQL
+    (CanConnectAsync) y /api/health/metrics (Admin/Manager) expone metricas de
+    cache (hits/misses/hitRate).
+
+B. RUNBOOKS OPERATIVOS (docs/INSTALLATION.md seccion 13)
+B1. Cubren: servicio caido, certificado invalido/expirado, tasa BCV sin red,
+    stock inconsistente, restore/rollback, backup fallando y responsable/ventana
+    de mantenimiento. Referencian los procedimientos de restore (8.1),
+    upgrade/rollback (10) y BCV offline (7).
+
+C. ESTADO DE FASE 5
+C1. Completado: separacion de logs, health checks backend+BD+metricas, runbooks.
+C2. PENDIENTE (requiere tooling de monitoreo externo): health checks de
+    migraciones/tasa BCV/disco/ultimo backup, y alertas proactivas (servicio
+    caido, backup fallando, errores BD, concurrencia alta, disco bajo, cert por
+    expirar).
+
+FIN DEL ANEXO - REVISION 8.44
 ================================================================================
