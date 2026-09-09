@@ -28,6 +28,7 @@ public partial class SalesService : ISalesService
     private readonly ISystemSettingsService _settingsService;
     private readonly Microsoft.Extensions.Logging.ILogger<SalesService>? _logger;
     private readonly IMemoryCache? _cache;
+    private readonly Sales.Module.Receipts.IReceiptPrintQueue? _receiptPrintQueue;
     private const string DefaultCustomerCacheKey = "default_customer_cache";
 
     public SalesService(
@@ -37,7 +38,8 @@ public partial class SalesService : ISalesService
         ICashDrawerService cashDrawerService,
         ISystemSettingsService settingsService,
         Microsoft.Extensions.Logging.ILogger<SalesService>? logger = null,
-        IMemoryCache? cache = null)
+        IMemoryCache? cache = null,
+        Sales.Module.Receipts.IReceiptPrintQueue? receiptPrintQueue = null)
     {
         _context = context;
         _inventoryService = inventoryService;
@@ -46,6 +48,7 @@ public partial class SalesService : ISalesService
         _settingsService = settingsService;
         _logger = logger;
         _cache = cache;
+        _receiptPrintQueue = receiptPrintQueue;
     }
 
     private async Task<int> GenerateNextInvoiceNumberAsync()
@@ -697,6 +700,8 @@ public partial class SalesService : ISalesService
                     await _inventoryService.DetachFromTransactionAsync(cancellationToken);
                 }
             }
+
+            _receiptPrintQueue?.Enqueue(Sales.Module.Receipts.SaleReceiptContext.CreateFrom(sale));
 
             _logger?.LogInformation("[TX_COMMIT] CorrelationId={CorrelationId}, SaleId={SaleId}, InvoiceNumber={InvoiceNumber}", correlationId, saleId, sale.InvoiceNumber.Value);
 

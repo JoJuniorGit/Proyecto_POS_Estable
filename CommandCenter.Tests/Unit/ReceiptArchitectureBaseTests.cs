@@ -71,9 +71,9 @@ public class ReceiptArchitectureBaseTests
     public void NullReceiptPrintQueue_Enqueue_DoesNotThrow()
     {
         var queue = new NullReceiptPrintQueue();
-        var document = new ReceiptDocument(ReceiptDocumentKind.NonFiscalSaleReceipt, "contenido", "recibo.txt");
+        var context = new SaleReceiptContext { SaleId = 1 };
 
-        var ex = Record.Exception(() => queue.Enqueue(document));
+        var ex = Record.Exception(() => queue.Enqueue(context));
 
         Assert.Null(ex);
     }

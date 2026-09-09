@@ -170,6 +170,12 @@ public static class ServiceCollectionExtensions
         builder.Services.AddHostedService<Backend.API.Jobs.BcvExchangeRateJob>();
         builder.Services.AddHostedService<Backend.API.Jobs.OutboxProcessorJob>();
 
+        builder.Services.AddSingleton<Backend.API.Services.ChannelReceiptPrintQueue>();
+        builder.Services.AddSingleton<Sales.Module.Receipts.IReceiptPrintQueue>(
+            sp => sp.GetRequiredService<Backend.API.Services.ChannelReceiptPrintQueue>());
+        builder.Services.AddSingleton<Sales.Module.Receipts.IReceiptDocumentRenderer, Sales.Module.Receipts.SaleReceiptRenderer>();
+        builder.Services.AddHostedService<Backend.API.Jobs.ReceiptPrintBackgroundService>();
+
         // Rate Limiting (H-15)
         builder.Services.AddRateLimiter(options =>
         {
