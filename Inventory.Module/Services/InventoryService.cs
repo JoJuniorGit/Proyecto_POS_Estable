@@ -697,8 +697,6 @@ public partial class InventoryService : IInventoryService
             .FirstOrDefaultAsync();
     }
 
-    private System.Data.Common.DbConnection? _originalConnection;
-
     public async Task EnrollInTransactionAsync(System.Data.Common.DbTransaction transaction, System.Threading.CancellationToken cancellationToken = default)
     {
         if (_context.Database.IsRelational() && transaction != null)
@@ -706,10 +704,6 @@ public partial class InventoryService : IInventoryService
             var txConn = transaction.Connection;
             if (txConn != null && _context.Database.GetDbConnection() != txConn)
             {
-                // 8.7-B7: conservar la conexión propia del scope para restaurarla al salir de la
-                // transacción compartida (evita que SalesDbContext recicle una conexión ajena
-                // que InventoryDbContext sigue referenciando).
-                _originalConnection ??= _context.Database.GetDbConnection();
                 await _context.Database.CloseConnectionAsync();
                 _context.Database.SetDbConnection(txConn);
             }
@@ -719,25 +713,11 @@ public partial class InventoryService : IInventoryService
 
     public async Task DetachFromTransactionAsync(System.Threading.CancellationToken cancellationToken = default)
     {
-        if (!_context.Database.IsRelational() || _originalConnection == null)
+        if (!_context.Database.IsRelational())
         {
             return;
         }
 
-        // Ya committeada/revertida la transacción ajena: soltar la conexión prestada y restaurar
-        // la del scope. La restauración es perezosa (EF la abre al siguiente query).
-        try
-        {
-            await _context.Database.CloseConnectionAsync();
-        }
-        catch
-        {
-            // La conexión ajena puede haber sido clausurada por el ciclo de vida del otro scope.
-        }
-        finally
-        {
-            _context.Database.SetDbConnection(_originalConnection);
-            _originalConnection = null;
-        }
+        await _context.Database.UseTransactionAsync(null, cancellationToken);
     }
 }

@@ -693,8 +693,6 @@ public partial class SalesService : ISalesService
             if (transaction != null)
             {
                 await transaction.CommitAsync(cancellationToken);
-                // 8.7-B7: ya committeado, el InventoryDbContext vuelve a su propia conexión
-                // (el handler de evento y las operaciones posteriores no comparten la ajena).
                 if (_inventoryService != null)
                 {
                     await _inventoryService.DetachFromTransactionAsync(cancellationToken);
