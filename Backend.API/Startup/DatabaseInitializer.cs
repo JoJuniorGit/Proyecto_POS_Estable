@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Sales.Module.Entities;
 
 namespace Backend.API.Startup;
 
@@ -437,6 +438,21 @@ END $$;");
                 });
                 invDb.SaveChanges();
                 AppLogger.LogStart("[Seed] Created default Cash Advance System Product.");
+            }
+
+            var defaultMethods = Sales.Module.PaymentMethodDefaults.CreateDefault();
+            var existingMethodNames = salesDb.PaymentMethods
+                .Where(m => !m.IsDeleted)
+                .Select(m => m.Name)
+                .ToList();
+            var missingMethods = defaultMethods
+                .Where(m => !existingMethodNames.Contains(m.Name, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+            if (missingMethods.Count > 0)
+            {
+                salesDb.PaymentMethods.AddRange(missingMethods);
+                salesDb.SaveChanges();
+                AppLogger.LogStart("[Seed] Ensured default payment methods (Efectivo, Tarjeta PDV, Transferencia/Pago Movil, Divisas USD).");
             }
         }
         catch (System.Exception ex)
