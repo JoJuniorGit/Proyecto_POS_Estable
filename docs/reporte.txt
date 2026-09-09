@@ -4148,4 +4148,41 @@ D2. dotnet test CommandCenter.slnx -c Release: 766/766 superadas / 0 fallidas.
 D3. Sin cambio de modelo persistente -> sin migracion EF.
 
 FIN DEL ANEXO - REVISIONES 8.56-8.57
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.58 (FASE 2: RETIRO DE LOGISTICS DEL DI Y DOTNET-EF)
+===============================================================================
+Alcance: cerrar las deudas Fase 2 M08 (Logistics.Module en DI) y B02
+(dotnet-ef 10.0.3 -> 10.0.4) y verificar la reproducibilidad del bundle web.
+Verificacion: build Release 0w/0e; dotnet 766/766 (DeliveryServiceTests 6/6).
+
+A. LOGISTICS.MODULE DESREGISTRADO DEL DI (M08)
+A1. ServiceCollectionExtensions: se eliminan using Logistics.Module.Extensions,
+    RegisterServicesFromAssembly(DeliveryService) en AddMediatR y
+    AddLogisticsModule(). Logistics era experimental/no-produccion (estado
+    efimero en memoria, 8L-CR3). Sin consumidores (IDeliveryService solo se
+    inyecta dentro del propio modulo; no hay DeliveryController; SaleDispatched
+    Event no tiene productor en produccion).
+A2. Se conserva el ProjectReference a Logistics.Module (permite re-integracion
+    futura y que DeliveryServiceTests compilen); la deuda M08 queda cerrada.
+
+B. DOTNET-EF 10.0.4 (B02)
+B1. dotnet-tools.json: dotnet-ef 10.0.3 -> 10.0.4, alineado con
+    Microsoft.EntityFrameworkCore 10.0.4 en Directory.Packages.props. Sin cambio
+    de modelo -> sin migracion.
+
+C. BUNDLE WEB REPRODUCIBLE
+C1. npm run build regenero Backend.API/wwwroot SIN cambios de hash (mismos
+    assets): el bundle ya estaba al dia respecto a la fuente; se confirma
+    reproducibilidad (no requiere commit de assets).
+
+D. REVISION REVIEWER (8.58): REVISAR sin bloqueantes. Aplicado: registro del
+    ANEXO.
+
+E. VERIFICACION
+E1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+E2. dotnet test CommandCenter.slnx -c Release: 766/766 superadas / 0 fallidas.
+E3. Sin cambio de modelo persistente -> sin migracion EF.
+
+FIN DEL ANEXO - REVISION 8.58
 ================================================================================

@@ -63,6 +63,7 @@ Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F2   | Logistics.Module fuera del DI (M08) + dotnet-ef 10.0.4 (B02) + bundle web reproducible (8.58) | Suites .NET 766/766 |
 | 2026-09-09  | -    | Fusion del roadmap con el plan de certificacion (v0.2.0) | Documento consolidado; contenido nuevo + formato existente |
 | 2026-09-09  | F2   | Stock negativo configurable (8.56) + import de variantes (8.57) | Suites .NET 766/766 |
 | 2026-09-09  | F2/F4/F5 | Metricas de latencia/error (8.52), cancelacion del cobro (8.53), scaffolding ISCC/firma (8.54) | Items 1-3 del plan preparados en codigo; suites .NET 761/761 |
@@ -273,8 +274,9 @@ seguridad o disponibilidad.
 - [x] Versionado de esquema y plan upgrade/rollback (INSTALLATION 10, 8.40).
 - [x] Separacion config publica / secretos por sitio / artefactos dev (previa en 8.29).
 - [x] Fail-fast de configuracion al arranque (previo).
-- [ ] Desregistrar `Logistics.Module` del DI en produccion (M08).
-- [ ] Actualizar dotnet-ef a 10.0.4 (B02) - alinear con EF Core 10.0.4.
+- [x] Desregistrar `Logistics.Module` del DI en produccion (M08, 8.58).
+- [x] Actualizar dotnet-ef a 10.0.4 (B02, 8.58) - alineado con EF Core 10.0.4.
+- [x] Regenerar el bundle web `wwwroot` (reproducible, sin cambios de hash - 8.58).
 - [ ] Corregir UI bloqueante WPF; cancelacion cooperativa en operaciones largas (parcial 8.53: checkout; general pendiente).
 - [ ] Validar edge cases del stock negativo con el cliente (8.56).
 
