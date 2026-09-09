@@ -4,7 +4,7 @@
 // una file:// URL válida (no un path con '/C:/').
 import { transformSync } from 'esbuild';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const JSX_TAG_RE = /<\/?[A-Za-z][A-Za-z0-9.-]*(\s|>|\/)/;
 
@@ -13,9 +13,6 @@ export async function resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('.') && !/\.[a-zA-Z0-9]+$/.test(specifier)) {
     const parentUrl = context.parentURL;
     if (parentUrl && parentUrl.startsWith('file:')) {
-      const parentPath = fileURLToPath(parentUrl);
-      const base = new URL(specifier, pathToFileURL(parentPath + '/')).pathname;
-      // URL relativa correcta desde el directorio del padre
       const baseUrl = new URL(specifier, parentUrl);
       const candidates = [
         baseUrl.href,

@@ -7,6 +7,7 @@ using Core.Entities;
 using Inventory.Module.Data;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -18,19 +19,32 @@ public class BcvExchangeRateJob : BackgroundService
     // 8.7-M4: se inyecta IServiceScopeFactory (no IServiceProvider) para acotar la superficie del contenedor.
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BcvExchangeRateJob> _logger;
+    private readonly IConfiguration _configuration;
 
-    public BcvExchangeRateJob(IServiceScopeFactory scopeFactory, ILogger<BcvExchangeRateJob> logger)
+    public BcvExchangeRateJob(IServiceScopeFactory scopeFactory, ILogger<BcvExchangeRateJob> logger, IConfiguration configuration)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _configuration = configuration;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("BCV Exchange Rate Background Service is starting with a 2-hour periodic sync cycle.");
+        // 8.16-B09/B10: la sincronizacion automatica del BCV es CONFIGURABLE.
+        // "BcvSettings:AutoSyncIntervalMinutes" (default 120 = 2h); un valor <= 0 desactiva
+        // el ciclo periodico (modo manual exclusivo, diseno declarado del BCV).
+        int intervalMinutes = _configuration.GetValue<int?>("BcvSettings:AutoSyncIntervalMinutes") ?? 120;
 
-        // Periodic timer every 2 hours as per system specifications
-        using var timer = new PeriodicTimer(TimeSpan.FromHours(2));
+        if (intervalMinutes <= 0)
+        {
+            _logger.LogInformation("BCV Exchange Rate Background Service auto-sync is DISABLED (BcvSettings:AutoSyncIntervalMinutes <= 0). It will only sync on demand.");
+            return;
+        }
+
+        _logger.LogInformation("BCV Exchange Rate Background Service is starting with a {Minutes}-minute periodic sync cycle.", intervalMinutes);
+
+        // Periodic timer; el intervalo se resuelve desde configuracion (8.16-B10).
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(intervalMinutes));
 
         try
         {

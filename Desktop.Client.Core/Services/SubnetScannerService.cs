@@ -38,11 +38,6 @@ public interface ISubnetScannerService
 
 public class SubnetScannerService : ISubnetScannerService
 {
-    // Pinning de fingerprint por host (TOFU). En memoria por proceso: un cambio legítimo de certificado
-    // se resuelve reiniciando la app o usando un certificado emitido por una CA.
-    // (Declarado ANTES que SharedScannerClient: el inicializador estático de este último lo referencia).
-    private static readonly ConcurrentDictionary<string, string> KnownThumbprints = new(StringComparer.OrdinalIgnoreCase);
-
     private static readonly HttpClient SharedScannerClient = new HttpClient(new SocketsHttpHandler
     {
         ConnectTimeout = TimeSpan.FromSeconds(3),
@@ -50,31 +45,16 @@ public class SubnetScannerService : ISubnetScannerService
         {
             RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
             {
-                if (errors == System.Net.Security.SslPolicyErrors.None)
-                {
-                    return true;
-                }
-
+                // 8.9-M4 (TOFU pinning) + 8.16-R18: pinning Trust-On-First-Use compartido.
+                // El primer fingerprint visto por host queda registrado y cualquier certificado
+                // distinto posterior es rechazado (mitiga MITM LAN). Solo aplica a hosts
+                // privados/locales; los públicos se validan con la cadena de confianza.
                 if (sender is System.Net.Http.HttpRequestMessage req && req.RequestUri != null)
                 {
-                    // 8.9-M4 (TOFU pinning): en hosts privados/local se tolera un certificado no emitido
-                    // por una CA solo bajo pinning Trust-On-First-Use: el primer fingerprint visto queda
-                    // registrado y cualquier certificado distinto posterior es rechazado (mitiga MITM LAN).
-                    var host = req.RequestUri.Host;
-                    if (!IsPrivateOrLocalAddress(host)) return false;
-
-                    var thumbprint = cert?.GetCertHashString() ?? string.Empty;
-                    if (string.IsNullOrEmpty(thumbprint)) return false;
-
-                    var pinned = KnownThumbprints.AddOrUpdate(
-                        host,
-                        thumbprint,
-                        (_, existing) => existing);
-
-                    return string.Equals(pinned, thumbprint, StringComparison.OrdinalIgnoreCase);
+                    return CertificatePinning.IsTrusted(req.RequestUri.Host, cert, errors);
                 }
 
-                return false;
+                return errors == System.Net.Security.SslPolicyErrors.None;
             }
         }
     })

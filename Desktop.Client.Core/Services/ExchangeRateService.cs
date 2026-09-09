@@ -51,13 +51,13 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
                 {
                     if (handler is HttpClientHandler clientHandler)
                     {
-                        // Validate SSL certificate: accept valid certs, or self-signed certs ONLY on loopback / localhost
+                        // 8.16-R18: pinning TOFU compartido. Acepta certificados válidos o, en hosts
+                        // privados/locales, autofirmados bajo Trust-On-First-Use (primer fingerprint
+                        // registrado; certificados distintos posteriores son rechazados). Ya no se acepta
+                        // cualquier certificado inválido por el único hecho de ser loopback.
                         clientHandler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
                         {
-                            if (errors == SslPolicyErrors.None)
-                                return true;
-
-                            return baseAddress.IsLoopback;
+                            return CertificatePinning.IsTrusted(message.RequestUri?.Host ?? baseAddress.Host, cert, errors);
                         };
                     }
                     return handler;

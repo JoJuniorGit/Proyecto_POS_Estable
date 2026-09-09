@@ -241,9 +241,9 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _totalBsSForThePeriod, value);
     }
 
-    public SalesHistoryViewModel(ISalesService sales_service, Action<Action>? dispatchAction = null)
+    public SalesHistoryViewModel(ISalesService salesService, Action<Action>? dispatchAction = null)
     {
-        _salesService = sales_service;
+        _salesService = salesService;
         _dispatchAction = dispatchAction ?? (action =>
         {
             var dispatcher = System.Windows.Application.Current?.Dispatcher;

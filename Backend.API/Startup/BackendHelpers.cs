@@ -196,9 +196,10 @@ public static class BackendHelpers
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Sin DNS/disponibilidad de red: se mantiene la base localhost.
+            // 8.20-M10: el catch vacío pasa a aviso; se mantiene la base localhost.
+            AppLogger.LogWarn($"[AllowedHosts] No se pudo enumerar hosts DNS/adaptadores: {ex.Message}", "BackendHelpers.BuildLanAllowedHosts");
         }
 
         return string.Join(";", hosts);

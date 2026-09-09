@@ -12,13 +12,13 @@ namespace Sales.Module.Services;
 
 public partial class SalesService
 {
-    public async Task<SaleDto> UpdateExchangeRateAsync(int sale_id, decimal exchange_rate)
+    public async Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate)
     {
-        var sale = await GetSaleEntityAsync(sale_id);
+        var sale = await GetSaleEntityAsync(saleId);
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
-        sale.AppliedRate = exchange_rate;
+        sale.AppliedRate = exchangeRate;
         await RecalculateTotalAsync(sale);
         await _context.SaveChangesAsync();
         return MapToDto(sale);

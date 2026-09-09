@@ -29,31 +29,39 @@ class Program
         Console.WriteLine($"[Updater] Target Directory: {targetDir}");
         Console.WriteLine($"[Updater] Package Path: {packagePath}");
 
-        // Step 0: SHA-256 Integrity Verification
-        if (!string.IsNullOrWhiteSpace(packagePath) && File.Exists(packagePath))
+        // Step 0: SHA-256 Integrity Verification (fail-closed — 8.20-A03/8U-N2)
+        // Sin paquete o sin hash esperado la actualización se ABORTA: nunca se extrae ni
+        // se reinicia el servicio con binarios no verificados.
+        if (string.IsNullOrWhiteSpace(packagePath) || !File.Exists(packagePath))
         {
-            if (string.IsNullOrWhiteSpace(expectedHash) && File.Exists(packagePath + ".sha256"))
-            {
-                expectedHash = File.ReadAllText(packagePath + ".sha256").Trim();
-            }
-
-            if (!string.IsNullOrWhiteSpace(expectedHash))
-            {
-                Console.WriteLine("[Updater] Verificando integridad SHA-256 del paquete de actualización...");
-                using var fs = File.OpenRead(packagePath);
-                using var sha256 = System.Security.Cryptography.SHA256.Create();
-                var hashBytes = sha256.ComputeHash(fs);
-                var actualHash = Convert.ToHexString(hashBytes);
-
-                if (!actualHash.Equals(expectedHash.Trim(), StringComparison.OrdinalIgnoreCase))
-                {
-                    Console.WriteLine($"[Updater] ERROR CRÍTICO DE INTEGRIDAD: Hash calculado ({actualHash}) no coincide con esperado ({expectedHash}). Cancelando actualización.");
-                    return;
-                }
-
-                Console.WriteLine($"[Updater] Verificación SHA-256 completada exitosamente ({actualHash}).");
-            }
+            Console.WriteLine("[Updater] ERROR CRÍTICO: No se proporcionó un paquete de actualización. Cancelando.");
+            return;
         }
+
+        if (string.IsNullOrWhiteSpace(expectedHash) && File.Exists(packagePath + ".sha256"))
+        {
+            expectedHash = File.ReadAllText(packagePath + ".sha256").Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(expectedHash))
+        {
+            Console.WriteLine("[Updater] ERROR CRÍTICO DE INTEGRIDAD: No se proporcionó hash esperado (ni --hash ni sidecar .sha256). Fail-closed: cancelando la actualización.");
+            return;
+        }
+
+        Console.WriteLine("[Updater] Verificando integridad SHA-256 del paquete de actualización...");
+        using var fs = File.OpenRead(packagePath);
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var hashBytes = sha256.ComputeHash(fs);
+        var actualHash = Convert.ToHexString(hashBytes);
+
+        if (!actualHash.Equals(expectedHash.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine($"[Updater] ERROR CRÍTICO DE INTEGRIDAD: Hash calculado ({actualHash}) no coincide con esperado ({expectedHash}). Cancelando actualización.");
+            return;
+        }
+
+        Console.WriteLine($"[Updater] Verificación SHA-256 completada exitosamente ({actualHash}).");
 
         // Step 1: Graceful Shutdown of Windows Service
         Console.WriteLine("[Updater] Performing Graceful Shutdown of Backend Service...");

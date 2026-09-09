@@ -19,6 +19,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -94,7 +95,7 @@ public class ExchangeRateJobTests
         var serviceProvider = services.BuildServiceProvider();
         var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
 
-        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object);
+        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object, new ConfigurationBuilder().Build());
 
         // Act - should NOT throw
         await job.SyncRateAsync(CancellationToken.None);
@@ -144,7 +145,7 @@ public class ExchangeRateJobTests
         var serviceProvider = services.BuildServiceProvider();
         var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
 
-        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object);
+        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object, new ConfigurationBuilder().Build());
 
         // Act
         await job.SyncRateAsync(CancellationToken.None);
@@ -191,7 +192,7 @@ public class ExchangeRateJobTests
         var serviceProvider = services.BuildServiceProvider();
         var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
 
-        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object);
+        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object, new ConfigurationBuilder().Build());
 
         // Act
         await job.SyncRateAsync(CancellationToken.None);
@@ -323,7 +324,7 @@ public class ExchangeRateJobTests
         var serviceProvider = services.BuildServiceProvider();
         var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
 
-        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object);
+        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object, new ConfigurationBuilder().Build());
         var controller = new ExchangeRateController(
             dbContext,
             userMock.Object);
@@ -461,5 +462,49 @@ public class ExchangeRateJobTests
         Assert.NotNull(historyLocalProp);
         var historyLocalTime = Assert.IsType<DateTime>(historyLocalProp);
         Assert.Equal(new DateTime(2026, 9, 4, 23, 55, 0), historyLocalTime);
+    }
+
+    [Fact]
+    public async Task BcvExchangeRateJob_WhenAutoSyncDisabled_ReturnsWithoutWaitingOrSyncing()
+    {
+        // Arrange: BcvSettings:AutoSyncIntervalMinutes <= 0 desactiva el ciclo periodico
+        // (modo manual exclusivo, 8.16-B09/B10).
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["BcvSettings:AutoSyncIntervalMinutes"] = "0"
+            })
+            .Build();
+
+        // Provider sin servicios: si el job intentara sincronizar fallaria al resolver
+        // InventoryDbContext; el path desactivado no debe crearlo.
+        var serviceProvider = new ServiceCollection().BuildServiceProvider();
+        var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
+        var job = new ExposedBcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object, configuration);
+
+        // Act
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await job.RunAsync(CancellationToken.None);
+        sw.Stop();
+
+        // Assert: retorna de inmediato (sin el retardo inicial de 5s) y sin excepciones.
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3), "Con auto-sync desactivado el job debe retornar sin esperar el retardo inicial.");
+        jobLogger.Verify(l => l.Log(
+            LogLevel.Information,
+            It.IsAny<EventId>(),
+            It.IsAny<It.IsAnyType>(),
+            It.IsAny<Exception?>(),
+            It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.AtLeastOnce);
+    }
+
+    private sealed class ExposedBcvExchangeRateJob : BcvExchangeRateJob
+    {
+        public ExposedBcvExchangeRateJob(IServiceScopeFactory scopeFactory, ILogger<BcvExchangeRateJob> logger, IConfiguration configuration)
+            : base(scopeFactory, logger, configuration)
+        {
+        }
+
+        public Task RunAsync(CancellationToken cancellationToken) => ExecuteAsync(cancellationToken);
     }
 }

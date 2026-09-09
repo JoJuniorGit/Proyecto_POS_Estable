@@ -91,14 +91,14 @@ public interface ISalesService
     SaleDto? CurrentSale { get; }
     Task<SaleDto> GetSaleAsync(int saleId);
     Task<SaleDto> StartSaleAsync(int? cashierId = null);
-    Task<SaleDto> AddItemAsync(int sale_id, int product_id, decimal quantity, decimal exchange_rate, decimal? custom_unit_price_usd = null, decimal? custom_unit_price_bs_s = null);
-    Task<SaleDto> RemoveItemAsync(int sale_id, int item_id, decimal exchange_rate);
-    Task<SaleDto> UpdateItemQuantityAsync(int sale_id, int item_id, decimal quantity, decimal exchange_rate);
-    Task<SaleDto> UpdateExchangeRateAsync(int sale_id, decimal exchange_rate);
+    Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceBsS = null);
+    Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate);
+    Task<SaleDto> UpdateItemQuantityAsync(int saleId, int itemId, decimal quantity, decimal exchangeRate);
+    Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate);
     Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType);
-    Task<int> CompleteSaleAsync(int sale_id, decimal exchange_rate, IEnumerable<SalePaymentDto> payments, decimal rounding_adjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null);
-    Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int page_size, System.DateTime? start_date = null, System.DateTime? end_date = null, string? search = null, System.Threading.CancellationToken cancellation_token = default);
-    Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int sale_id, System.Threading.CancellationToken cancellation_token = default);
+    Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<SalePaymentDto> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null);
+    Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, System.DateTime? startDate = null, System.DateTime? endDate = null, string? search = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request);
     Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request);
     Task<IEnumerable<SaleDto>> GetPendingSalesAsync();

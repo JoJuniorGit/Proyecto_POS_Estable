@@ -327,7 +327,7 @@ public class SalesServiceUnitTests
         inventoryMock.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(50m);
 
         var sale = await service.StartSaleAsync();
-        var itemAdded = await service.AddItemAsync(sale.Id, 99, 1, 50m, custom_unit_price_usd: 10m, custom_unit_price_local: 500m);
+        var itemAdded = await service.AddItemAsync(sale.Id, 99, 1, 50m, customUnitPriceUsd: 10m, customUnitPriceLocal: 500m);
         Assert.NotNull(itemAdded);
 
         var payments = new List<PaymentInfo>

@@ -14,9 +14,9 @@ public class SalesService : ISalesService
     private readonly object _saleLock = new object();
     private SaleDto? _currentSale;
 
-    public SalesService(HttpClient http_client)
+    public SalesService(HttpClient httpClient)
     {
-        _httpClient = http_client;
+        _httpClient = httpClient;
     }
 
     public SaleDto? CurrentSale
@@ -58,10 +58,10 @@ public class SalesService : ISalesService
         return sale;
     }
 
-    public async Task<SaleDto> AddItemAsync(int sale_id, int product_id, decimal quantity, decimal exchange_rate, decimal? custom_unit_price_usd = null, decimal? custom_unit_price_bs_s = null)
+    public async Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUSD = null, decimal? customUnitPriceBsS = null)
     {
-        var _request = new { ProductId = product_id, Quantity = quantity, ExchangeRate = exchange_rate, CustomUnitPriceUSD = custom_unit_price_usd, CustomUnitPriceBsS = custom_unit_price_bs_s };
-        var _response = await _httpClient.PostAsJsonAsync($"api/sales/{sale_id}/items", _request);
+        var _request = new { ProductId = productId, Quantity = quantity, ExchangeRate = exchangeRate, CustomUnitPriceUSD = customUnitPriceUSD, CustomUnitPriceBsS = customUnitPriceBsS };
+        var _response = await _httpClient.PostAsJsonAsync($"api/sales/{saleId}/items", _request);
         if (!_response.IsSuccessStatusCode)
         {
             var err = await _response.Content.ReadFromJsonAsync<System.Text.Json.Nodes.JsonObject>();
@@ -73,19 +73,19 @@ public class SalesService : ISalesService
         return sale;
     }
 
-    public async Task<SaleDto> RemoveItemAsync(int sale_id, int item_id, decimal exchange_rate)
+    public async Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate)
     {
-        var _response = await _httpClient.DeleteAsync($"api/sales/{sale_id}/items/{item_id}?exchangeRate={exchange_rate}");
+        var _response = await _httpClient.DeleteAsync($"api/sales/{saleId}/items/{itemId}?exchangeRate={exchangeRate}");
         _response.EnsureSuccessStatusCode();
         var sale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to remove item.");
         SetCurrentSale(sale);
         return sale;
     }
 
-    public async Task<SaleDto> UpdateItemQuantityAsync(int sale_id, int item_id, decimal quantity, decimal exchange_rate)
+    public async Task<SaleDto> UpdateItemQuantityAsync(int saleId, int itemId, decimal quantity, decimal exchangeRate)
     {
-        var _request = new { Quantity = quantity, ExchangeRate = exchange_rate };
-        var _response = await _httpClient.PutAsJsonAsync($"api/sales/{sale_id}/items/{item_id}", _request);
+        var _request = new { Quantity = quantity, ExchangeRate = exchangeRate };
+        var _response = await _httpClient.PutAsJsonAsync($"api/sales/{saleId}/items/{itemId}", _request);
         if (!_response.IsSuccessStatusCode)
         {
             var err = await _response.Content.ReadFromJsonAsync<System.Text.Json.Nodes.JsonObject>();
@@ -97,9 +97,9 @@ public class SalesService : ISalesService
         return sale;
     }
 
-    public async Task<SaleDto> UpdateExchangeRateAsync(int sale_id, decimal exchange_rate)
+    public async Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate)
     {
-        var _response = await _httpClient.PutAsync($"api/sales/{sale_id}/exchange-rate?exchangeRate={exchange_rate}", null);
+        var _response = await _httpClient.PutAsync($"api/sales/{saleId}/exchange-rate?exchangeRate={exchangeRate}", null);
         _response.EnsureSuccessStatusCode();
         var sale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to update exchange rate.");
         SetCurrentSale(sale);
@@ -121,10 +121,10 @@ public class SalesService : ISalesService
         return sale;
     }
 
-    public async Task<int> CompleteSaleAsync(int sale_id, decimal exchange_rate, IEnumerable<SalePaymentDto> payments, decimal rounding_adjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null)
+    public async Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<SalePaymentDto> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null)
     {
-        var _request = new { ExchangeRate = exchange_rate, Payments = payments, RoundingAdjustment = rounding_adjustment, CashierId = cashierId, IsPendingPickup = isPendingPickup };
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"api/sales/{sale_id}/complete")
+        var _request = new { ExchangeRate = exchangeRate, Payments = payments, RoundingAdjustment = roundingAdjustment, CashierId = cashierId, IsPendingPickup = isPendingPickup };
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"api/sales/{saleId}/complete")
         {
             Content = JsonContent.Create(_request)
         };
@@ -142,26 +142,26 @@ public class SalesService : ISalesService
         return invoiceNumber;
     }
 
-    public async Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int page_size, System.DateTime? start_date = null, System.DateTime? end_date = null, string? search = null, System.Threading.CancellationToken cancellation_token = default)
+    public async Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, System.DateTime? startDate = null, System.DateTime? endDate = null, string? search = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        var _url = $"api/sales/history?page={page}&pageSize={page_size}";
-        if (start_date.HasValue) _url += $"&startDate={start_date.Value:yyyy-MM-dd}";
-        if (end_date.HasValue) _url += $"&endDate={end_date.Value:yyyy-MM-dd}";
+        var _url = $"api/sales/history?page={page}&pageSize={pageSize}";
+        if (startDate.HasValue) _url += $"&startDate={startDate.Value:yyyy-MM-dd}";
+        if (endDate.HasValue) _url += $"&endDate={endDate.Value:yyyy-MM-dd}";
         if (!string.IsNullOrWhiteSpace(search)) _url += $"&search={System.Uri.EscapeDataString(search.Trim())}";
 
-        var _response = await _httpClient.GetAsync(_url, cancellation_token);
+        var _response = await _httpClient.GetAsync(_url, cancellationToken);
         _response.EnsureSuccessStatusCode();
 
-        var _result = await _response.Content.ReadFromJsonAsync<SalesHistoryResponse>(cancellationToken: cancellation_token);
+        var _result = await _response.Content.ReadFromJsonAsync<SalesHistoryResponse>(cancellationToken: cancellationToken);
         return (_result?.Items ?? new List<SaleHistoryDto>(), _result?.TotalCount ?? 0);
     }
 
-    public async Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int sale_id, System.Threading.CancellationToken cancellation_token = default)
+    public async Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId, System.Threading.CancellationToken cancellationToken = default)
     {
-        var _response = await _httpClient.GetAsync($"api/sales/{sale_id}/history-detail", cancellation_token);
+        var _response = await _httpClient.GetAsync($"api/sales/{saleId}/history-detail", cancellationToken);
         _response.EnsureSuccessStatusCode();
 
-        return await _response.Content.ReadFromJsonAsync<SaleHistoryDto>(cancellationToken: cancellation_token)
+        return await _response.Content.ReadFromJsonAsync<SaleHistoryDto>(cancellationToken: cancellationToken)
             ?? throw new System.Exception("Failed to load sale history detail.");
     }
 
