@@ -3701,4 +3701,38 @@ D1. H06 aplicado a PaymentMethodsController. PENDIENTE: CashDrawer.GetHistory
     disposicion, auditoria de acciones, esquema/rollback).
 
 FIN DEL ANEXO - REVISION 8.39
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.40 (FASE 2: AUDITORIA N+1/DTO Y PLAN DE ESQUEMA/ROLLBACK)
+===============================================================================
+Alcance: cerrar por conveniencia los items de Fase 2 auditables en este entorno.
+Verificacion: build Release 0w/0e; dotnet 753/753 (sin cambios de logica);
+web 80/80.
+
+A. DTO / H06 (verificacion)
+A1. GetAllProductsAsync (entidad List<Product>) NO se expone via controlador
+    (solo uso interno/tests); el catalogo usa GetProductsPagedAsync -> DTO
+    paginado. Sin fuga -> sin accion.
+A2. CashDrawer.GetHistory sigue devolviendo la entidad CashTransaction (queda
+    como item pendiente: requiere enriquecer InvoiceNumber a nivel superior).
+
+B. N+1 / AsNoTracking (verificacion)
+B1. Rutas calientes revisadas: lookups FindAsync/FirstOrDefaultAsync son
+    consultas individuales (no en bucles); GetAllProductsAsync/GetProductsByIds
+    usan AsNoTracking. Sin N+1 identificado -> sin accion.
+
+C. PLAN DE ESQUEMA / UPGRADE / ROLLBACK
+C1. Nueva seccion 10 en docs/INSTALLATION.md: politica de migraciones EF
+    ([Migration], has-pending-model-changes, smoke MigratedSchema), procedimiento
+    de actualizacion (backup previo, detener servicio, preservar secrets.json,
+    MigrateAsync fail-fast, verificacion /health) y de rollback (restore
+    pg_restore --clean --if-exists --no-owner; sin recalcualo del historial).
+
+D. ESTADO DE FASE 2
+D1. Completado por conveniencia: DTO productos (verificado), N+1 (verificado),
+    plan esquema/rollback (documentado). Pendientes: CashDrawer.GetHistory DTO,
+    instalador idempotente, WPF UI/disposicion, auditoria de acciones
+    administrativas.
+
+FIN DEL ANEXO - REVISION 8.40
 ================================================================================

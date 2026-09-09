@@ -17,6 +17,11 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.13.0  | 2026-09-09  | (8.40)       | REVISION 8.40 / Fase 2 (por conveniencia): verificados
+|          |             |              | DTO productos (no expuesto) y N+1 (sin accion); plan de
+|          |             |              | esquema/upgrade/rollback documentado en INSTALLATION
+|          |             |              | seccion 10. Sin cambios de logica; .NET 753/753, web 80/80.
+|          |             |              | Detalle: ANEXO 8.40.
 | v1.12.0  | 2026-09-09  | 7035b96      | REVISION 8.39 / Fase 2 (8.16-H06): aislamiento Entidad->
 |          |             | (8.39)       | DTO en PaymentMethodsController (5 endpoints via
 |          |             |              | PaymentMethodDto, shape JSON identico 8.9-M16); sin

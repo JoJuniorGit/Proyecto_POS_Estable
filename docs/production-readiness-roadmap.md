@@ -17,6 +17,7 @@ el avance real de cada fase.
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F2   | N+1/H06 productos verificados sin accion; plan esquema/rollback en INSTALLATION seccion 10 (8.40) | F2: checklist parcial completo |
 | 2026-09-09  | F2   | H06: aislamiento Entidad->DTO en PaymentMethodsController (7035b96) | F2 EN CURSO; DTO parcial |
 | 2026-09-09  | F1   | Auditoria de seguridad de codigo: JWT/revocacion/lockout/MustChangePassword, CORS, pairing, rate limiting, headers, RBAC verificados (8.38, DQ-006) | F1 checklist 4.2 seguridad COMPLETA |
 | 2026-09-09  | F1   | Auditoria de seguridad: .NET 0 vuln, npm fix nanoid, escaneo secretos OK (f2e4f34) | F1 EN CURSO; checklist 4.2 seguridad parcial |
@@ -218,16 +219,16 @@ Hito M1: cero riesgos P0 abiertos y matriz de riesgos firmada.
 Hito M2: revision arquitectonica aprobada; sin defectos P0/P1 de datos,
 seguridad o disponibilidad.
 
-- [x] Completar proyecciones DTO en historial/caja/catalogo (parcial: PaymentMethods 8.39).
+- [x] Completar proyecciones DTO en historial/caja/catalogo (parcial: PaymentMethods 8.39; productos verificado no expuesto 8.40).
 - [ ] Instalador idempotente (re-ejecucion segura, upgrade sin perder secretos,
       rollback por etapa).
 - [ ] Separacion config publica / secretos por sitio / artefactos dev (previa en 8.29).
 - [ ] Fail-fast de configuracion al arranque con mensajes operativos (previo).
-- [ ] Eliminar N+1; aplicar AsNoTracking/AsSplitQuery.
+- [x] Eliminar N+1; aplicar AsNoTracking/AsSplitQuery (verificado sin N+1 en rutas calientes 8.40).
 - [ ] Corregir UI bloqueante WPF; cancelacion cooperativa en operaciones largas.
 - [ ] Dispose de timers/messenger/sockets/CancellationTokenSource.
 - [ ] Auditoria de acciones administrativas y eventos de seguridad.
-- [ ] Versionado de esquema y plan upgrade/rollback.
+- [x] Versionado de esquema y plan upgrade/rollback (INSTALLATION seccion 10, 8.40).
 
 ---
 

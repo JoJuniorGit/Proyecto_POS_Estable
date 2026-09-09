@@ -208,3 +208,27 @@ Precauciones: `--no-owner` evita errores si el rol del volcado difiere; detener 
 - **Actualizaciones automáticas del cliente:** el UpdaterService no se empaqueta en el instalador (8.20-M08); el rol se validará con firma X.509 (8U-N2).
 - **Multi-sucursal:** sin `BranchId` todavía (intención arquitectónica futura, no requisito del piloto; ver `coding-guidelines.md` §5).
 - **Certificado HTTPS autofirmado:** los clientes web/WPF verán una advertencia "no confiable" al primer acceso por host remoto; para evadirla, importar el `.cer` del puesto en el almacén raíz de confianza de cada caja (ver §6).
+
+## 10. Plan de actualización y rollback de esquema (Fase 2, 8.39)
+
+### 10.1 Política de versionado de esquema
+
+- El esquema se versiona **exclusivamente** con migraciones EF (`dotnet ef migrations add`). Toda evolución de modelo persistente DEBE acompañarse de una migración con atributo `[Migration]` (regla de `rules.md`/`AGENTS`; previene incidentes tipo 8.20-C01).
+- Invariante obligatorio antes de cada release: `dotnet ef migrations has-pending-model-changes` limpio en **ambos** contextos (`SalesDbContext` e `InventoryDbContext`).
+- Verificación por ejecución real: el smoke `MigratedSchema` valida que `MigrateAsync()` aplica el esquema y que las columnas/índices críticos existen (p. ej. `StockMovement.SaleId`).
+
+### 10.2 Procedimiento de actualización (upgrade)
+
+1. **Respaldar antes de actualizar:** ejecutar el backup programado (`backup-postgres.ps1`) o un `pg_dump -Fc` manual; confirmar que el volcado es reciente.
+2. **Publicar el nuevo artefacto** Release firmado (ver Fase 4) y copiarlo al puesto.
+3. **Detener el servicio** `Sistema POS Backend` (`Stop-Service`).
+4. **Reemplazar los binarios** preservando `BackendAPI\secrets.json` (las credenciales por sitio no viajan en el publish).
+5. **Iniciar el servicio**: el arranque ejecuta `MigrateAsync()` (fail-fast: si la migración falla, aborta sin servir tráfico).
+6. **Verificar** con el smoke `MigratedSchema` y `GET /health`; confirmar que el esquema migró sin errores.
+
+### 10.3 Procedimiento de rollback
+
+- **Si el esquema no cambió** (release solo de código): basta reemplazar los binarios por la versión anterior y reiniciar.
+- **Si el esquema cambió y la migración es aditiva/no destructiva:** suele bastar con degradar los binarios; la base queda compatible hacia atrás.
+- **Si el esquema cambió y se necesita revertir datos:** restaurar el volcado previo (`pg_restore --clean --if-exists --no-owner`, ver §8.1) sobre la base, deteniendo antes el servicio, y arrancar la versión anterior.
+- Regla de integridad: el rollback nunca recalcula el historial de ventas; los snapshots (`AppliedRate`, `TotalUSD`, `TotalBsS`, `FinalPaidAmountBsS`) se restauran tal cual del volcado (ver `rules.md` §1).
