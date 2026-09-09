@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 8.9-L5: la cobertura se mide sobre las capas criticas de dominio
      (Sales.Module, Inventory.Module, Core) segun politica Rev 8.2 / coding-guidelines.md.
-     El gate de CI consume este conjunto con scripts/check-coverage.py. -->
+     8.26-E4: el reporte cubre los ensamblados completos; el GATE de CI (scripts/check-coverage.py)
+     computa la tasa de DOMINIO excluyendo el scaffolding generado por dotnet-ef (*.Migrations.*,
+     verificado por ejecucion real via smoke MigratedSchema / MigrateAsync). -->
 <RunSettings>
   <DataCollectionRunSettings>
     <DataCollectors>

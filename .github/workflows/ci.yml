@@ -58,9 +58,10 @@ jobs:
           TEST_POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=pos_test;Username=postgres;Password=testpass"
         run: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build --configuration Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings --verbosity normal
 
-      # 8.9-L5: gate de cobertura por capa (scripts/check-coverage.py).
-      # Core >= 70% (politica cumplida); Sales.Module/Inventory.Module = baseline anti-regresion
-      # con la deuda hacia 70% documentada en docs/reporte.txt Rev 8.11.
+      # 8.9-L5 + 8.26-E4: gate de cobertura por capa de DOMINIO (scripts/check-coverage.py),
+      # excluye el scaffolding de migraciones (*.Migrations.*) verificado por ejecucion real
+      # via smoke MigratedSchema. Core >= 0.70 (politica); Sales.Module >= 0.80 e
+      # Inventory.Module >= 0.72 (baselines 8.26-E4, deuda Rev 8.11 saldada).
       - name: Enforce Coverage Gate (by layer, >= thresholds)
         if: always()
         run: |

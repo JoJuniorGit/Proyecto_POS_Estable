@@ -236,7 +236,7 @@ Con el fin de evitar refactorizaciones traumáticas cuando el sistema se desplie
 ### 6.1. Estándar de Pruebas Automatizadas
 * **Nomenclatura:** `Metodo_Escenario_ResultadoEsperado`  
   *Ejemplo:* `RegisterDeliveryOrderAsync_WhenOrderIdZero_ThrowsArgumentException`
-* **Cobertura Mínima:** $\ge 70\%$ en capas críticas de dominio (`Sales.Module`, `Inventory.Module`, `Core`).
+* **Cobertura Mínima:** $\ge 70\%$ en capas críticas de dominio (`Sales.Module`, `Inventory.Module`, `Core`). Medición de **código de dominio**: el gate de CI (`scripts/check-coverage.py`) excluye el scaffolding generado por `dotnet-ef` (`*.Migrations.*`), que se verifica por ejecución real vía el smoke `MigratedSchema`/`MigrateAsync` (decisión 8.26-E4). Línea base 8.26-E4: `Core ≥ 0.70`, `Sales.Module ≥ 0.80`, `Inventory.Module ≥ 0.72`.
 * **Pruebas de Integración:**
   * En **CI (GitHub Actions):** Se ejecutan sobre el contenedor nativo de servicio `postgres:16` mediante la variable `TEST_POSTGRES_CONNECTION`.
   * En **Local:** Se admite el servicio local de PostgreSQL o contenedores con *Testcontainers*.
@@ -245,7 +245,7 @@ Con el fin de evitar refactorizaciones traumáticas cuando el sistema se desplie
 El flujo automatizado en GitHub Actions valida en cada Pull Request y Push a `main`/`develop`:
 1. **Frontend:** Ejecución de `npm run lint` (`oxlint`) y `npm test` en `Web.Frontend`.
 2. **Backend:** Compilación estricta con `TreatWarningsAsErrors=true` en Release.
-3. **Suite Completa:** Ejecución de las 677 pruebas .NET (`dotnet test`) y 73 pruebas Web (`node --test`) con recolección de cobertura Cobertura XML.
+3. **Suite Completa:** Ejecución de las 729 pruebas .NET (`dotnet test`) y 77 pruebas Web (`node --test`) con recolección de cobertura Cobertura XML.
 
 ---
 

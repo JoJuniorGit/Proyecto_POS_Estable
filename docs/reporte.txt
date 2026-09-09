@@ -2915,3 +2915,64 @@ horizonte documentado, no gate.
 
 FIN DEL ANEXO - REVISION 8.25
 ================================================================================ 
+
+ANEXO 8.26 - CIERRE E.4: PLAN DE CONVERGENCIA DE COBERTURA 70% EN CAPAS DE DOMINIO
+------------------------------------------------------------------------------
+Fecha: 2026-09-08 | Rama/Bif: V0.15 | Objetivo: cerrar la ultima decision
+pendiente de 8.22 (E.4, cobertura minima 70% en Sales.Module/Inventory.Module/Core).
+
+A. DIAGNOSTICO MEDIDO (linea base 8.26-E4, suite completa con migraciones incluidas)
+   - Base 8.22/8.26 previa (707-729 tests): Core 0.8312 OK, Sales.Module 0.1873
+     FAIL gate 0.19, Inventory.Module 0.1643 OK gate 0.14.
+   - Desglose por area de Sales.Module: Migraciones 9.990 lineas a 0.000 = 78% de
+     las lineas "sin cubrir" del modulo; Inventory.Module: Migraciones 6.829
+     lineas a 0.000 = 78%. Los SERVICIOS de dominio ya estaban en 83% (Sales) /
+     74% (Inventory) / 93% (Core) antes de esta revision.
+   - CONCLUSION: el dato agregado estaba distorsionado por scaffolding generado
+     por dotnet-ef (migraciones + ModelSnapshot), no por logica de dominio.
+
+B. DECISION E.4 (alineacion de la medicion al intento de la politica Rev 8.2)
+B.1 El gate de CI (scripts/check-coverage.py) computa la tasa de DOMINIO por capa
+    sobre el reporte cobertura, excluyendo las clases bajo *.Migrations.*: ese
+    codigo se verifica por EJECUCION real via smoke MigratedSchema/MigrateAsync e
+    integraciones, no por cobertura de lineas (mismas premisas que la regla 8.9).
+B.2 Umbrales nuevos que reemplazan los anti-regresion 0.19/0.14 de Rev 8.11
+    (deuda saldada):
+       Core             >= 0.70 (enforced, politica)
+       Sales.Module     >= 0.80 (baseline medido 0.889 - margen 8.9pp)
+       Inventory.Module >= 0.72 (baseline medido 0.759 - margen 3.9pp)
+B.3 coverage.runsettings: sigue restringiendo la medicion a las tres capas
+    (Sales.Module, Inventory.Module, Core); el scope de dominio vive en el gate,
+    no en el recolector (coverlet 6.0.4 ignoro el Exclude de namespaces aqui).
+
+C. PRIMERA TANDA DE TESTS DE CONVERGENCIA (dominio real, no scaffolding)
+   CommandCenter.Tests/Unit/CoverageConvergenceTests.cs (23 tests, 23/23 OK):
+   - SalesService.GetPendingPickupsAsync: filtro Completed+PendingPickup, scope
+     por cajero, offset/limit descendente por fecha.
+   - SalesService.CountPendingPickupsAsync: conteo + filtro cajero.
+   - SalesService.UpdateSaleCustomerAsync: exito en pending, bloqueo en
+     completed/cancelled, bloqueo on-hold con pagos, cliente inexistente.
+   - SalesService.CountPendingSalesAsync: conteo on-hold + filtro cajero.
+   - SalesService.GetCustomersAsync: filtro por nombre/cedula y paginacion
+     ordenada (ramas no-recent que estaban parcialmente cubiertas).
+   - SalesService.DeleteCustomerAsync: alta limpia, proteccion Consumidor Final,
+     proteccion con ventas asociadas, no-encontrado.
+   - CashDrawerService.GetOrCreateActiveSessionAsync: sesion activa devuelta;
+     rollover con saldo de la sesion cerrada previa; OpenSessionAsync con saldo
+     negativo y tasa <= 0.
+   - PaymentMethodService.CreateAsync: auto-asignacion de DisplayOrder (fallback
+     InMemory Max+1).
+
+D. VERIFICACION FINAL
+   - dotnet test Release (TEST_POSTGRES_CONNECTION local): 729/729 OK.
+   - Gate check-coverage.py sobre reporte completo: Core 0.8326 OK;
+     Sales.Module 0.8888 OK; Inventory.Module 0.7589 OK.
+   - dotnet build Solution Release: 0 warnings / 0 errores.
+
+E. HORIZONTES (no gates)
+   - Los que ya estaban documentados en 8.22 (C.5 umbral 500 lineas, etc.)
+     permanecen como horizonte; E.4 queda CERRADO con tres capas medidas en
+     dominio >= 70% y margenes positivos.
+
+FIN DEL ANEXO - REVISION 8.26
+================================================================================
