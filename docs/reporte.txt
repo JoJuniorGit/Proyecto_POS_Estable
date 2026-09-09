@@ -4322,4 +4322,33 @@ C1. Se detecto que la carpeta Desktop.Client aparecia movida a Backend.API\ (por
     CommandCenter.slnx. No forma parte de este commit.
 
 FIN DEL ANEXO - REVISION 8.63
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.64 (INSTALADOR: ELIMINAR ICACLS INLINE - AVISO 1332)
+===============================================================================
+Alcance: eliminar el aviso "no se pudieron restringir los permisos" (codigo 1332)
+del instalador. El aviso persistia aunque el icacls inline otorgaba solo
+SYSTEM/Administradores.
+
+A. CAUSA RAIZ
+A1. El bloqueo de ACL via icacls inline (RunCmd -> Exec de Inno Setup) falla con
+    ERROR_MAPPING_NOT_FOUND (1332) cuando la ruta tiene espacios (p. ej.
+    "C:\Program Files (x86)\Sistema POS Administrador\BackendAPI\secrets.json").
+    Inno Setup Exec no re-parsea las comillas anidadas igual que el shell de
+    Windows, por lo que la cuenta Administrators no se mapea.
+
+B. SOLUCION
+B1. Se elimino el icacls inline de WriteProtectedSecretsFile en setup.iss.
+B2. El ACL restrictivo de secrets.json (SYSTEM/Administradores + cuenta del
+    servicio NT SERVICE\<servicio>) lo aplica EXCLUSIVAMENTE Configure-PosService.ps1
+    mediante Set-Acl (robusto con rutas con espacios) tras registrar el servicio,
+    cuando la Virtual Account ya existe.
+B3. WriteProtectedSecretsFile ahora solo escribe el archivo; se quito tambien el
+    MsgBox de aviso y la variable Code.
+
+C. VERIFICACION
+C1. Instalador recompilado con ISCC 0: POS_System_Setup_v1.0.0.exe (6:45pm).
+C2. Build Release 0/0 previo sin cambios adicionales de .NET.
+
+FIN DEL ANEXO - REVISION 8.64
 ================================================================================

@@ -403,7 +403,6 @@ end;
 procedure WriteProtectedSecretsFile(AppDir: String; ConnString, JwtKey, CertPass, SeedPass: String);
 var
   SecretsPath, JsonLines: String;
-  Code: Integer;
 begin
   SecretsPath := AppDir + '\secrets.json';
   // Formato ANIDADO compatible con el sistema de configuración .NET:
@@ -417,19 +416,11 @@ begin
     '"Kestrel": { "Certificates": { "Default": { "Password": "' + JsonEsc(CertPass) + '" } } }' +
     '}';
 
-  if SaveStringToFile(SecretsPath, JsonLines, False) then
-  begin
-    // ACL inicial: bloqueo de herencia; SYSTEM y Administradores. La cuenta del servicio
-    // (NT SERVICE\PosBackendService) se agrega DESPUÉS en Configure-PosService.ps1, cuando
-    // la Virtual Account ya existe; aquí aún no está registrada (código 1132 si se intenta).
-    Code := RunCmd('icacls.exe', '"' + SecretsPath + '" /inheritance:r /grant:r "SYSTEM:(F)" "Administrators:(F)"');
-    if Code <> 0 then
-      MsgBox('Aviso: no se pudieron restringir los permisos de ' + SecretsPath +
-        ' (código ' + IntToStr(Code) + ').', mbInformation, MB_OK);
-  end
-  else
-    MsgBox('Aviso: no se pudo crear el archivo de secretos protegido ' + SecretsPath + '.',
-      mbInformation, MB_OK);
+  SaveStringToFile(SecretsPath, JsonLines, False);
+  // El ACL restrictivo (SYSTEM/Administradores + cuenta del servicio) lo aplica
+  // Configure-PosService.ps1 (Set-Acl) tras registrar el servicio, cuando la Virtual
+  // Account ya existe. No se usa icacls inline: con paths que tienen espacios y Exec
+  // de Inno Setup falla con ERROR_MAPPING_NOT_FOUND (1332).
 end;
 
 procedure ConfigureServiceWithPowerShell;

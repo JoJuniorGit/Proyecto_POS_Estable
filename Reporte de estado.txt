@@ -17,6 +17,11 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.30.0  | 2026-09-09  | (8.64)       | REVISION 8.64 / Instalador: eliminado el icacls inline de
+|          |             |              | WriteProtectedSecretsFile (aviso 1332 por Exec+espacios
+|          |             |              | no mapea Administrators); el ACL de secrets.json lo aplica
+|          |             |              | solo Configure-PosService.ps1 (Set-Acl). Instalador
+|          |             |              | recompilado. Detalle: ANEXO 8.64.
 | v1.29.0  | 2026-09-09  | (8.63)       | REVISION 8.63 / Instalador: fix ACL icacls (codigo 1132
 |          |             |              | por NT SERVICE inexistente al momento del icacls; el ACL
 |          |             |              | del servicio lo aplica Configure-PosService.ps1) y
@@ -685,9 +690,9 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.63 / instalador fix ACL 1132 + politica
-  contrasena admin 4+letra+numero, .NET 769/769, build Release 0/0). Proxima revision
-  obligatoria: con cada PR que toque BD, API, perifericos o cierres deuda.
+  Ultima verificacion: 2026-09-09 (REVISION 8.64 / instalador sin icacls inline, aviso
+  1332 resuelto; instalador ISCC 0). Proxima revision obligatoria:
+  con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================
 FIN DEL DOCUMENTO - REPORTE DE ESTADO v1.5.0
