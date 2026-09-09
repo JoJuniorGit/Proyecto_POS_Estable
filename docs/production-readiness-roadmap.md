@@ -17,6 +17,7 @@ el avance real de cada fase.
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F3   | Req.4 ampliado: idempotencia concurrente vs PostgreSQL real (4e4eae7) | Req.4 PARCIAL ampliado; suites .NET 753/753 |
 | 2026-09-09  | F3   | Req.4 parcial: QA de fallos del Outbox vs PostgreSQL real (4b732ee) | Req.4 PARCIAL; suites .NET 752/752 |
 | 2026-09-09  | F2   | Req.3 base implementada: contratos de facturacion digital + impresion no bloqueante (48bad9a) | Req.3 BASE IMPLEMENTADA (generacion diferida); suites .NET 750/750 |
 | 2026-09-09  | F3   | Req.1 implementado: auditoria de concurrencia 4 cajas vs PostgreSQL real (fd63b76) | Req.1 IMPLEMENTADO; suites .NET 746/746 |
@@ -161,7 +162,7 @@ Cada uno lleva: definicion, alcance, aprobacion, fase de ejecucion y estado.
 | Req.1 | Concurrencia de 4 cajas | Auditoria de capacidad: certificar mediante pruebas que la arquitectura y las medidas actuales de concurrencia (`xmin`, transaccion compartida Sales/Inventory) soportan 4 terminales simultaneas sin conflictos de estado ni cuellos de botella de BD | Aprobado | F3 (QA/estres) | IMPLEMENTADO (8.34) |
 | Req.2 | Metodos de pago | Habilitar 4 metodos de pago para el cierre de transacciones: Efectivo, Tarjeta (Punto de Venta), Transferencia / Pago Movil, Divisas (USD) | APROBADO (punto 2) | F2 (configuracion) | IMPLEMENTADO (8.33) |
 | Req.3 | Facturacion digital | Implementacion DIFERIDA: NO generar la factura aun. Objetivo actual: dejar preparada la base arquitectonica (interfaces/stubs) para implementarla sin fricciones en la siguiente fase; base preparada para impresion fisica asincrona (proceso en background estrictamente no bloqueante para el cajero) | Aprobado | F2 (base arquitectonica) | BASE IMPLEMENTADA (8.35); generacion DIFERIDA |
-| Req.4 | Garantia de confiabilidad (QA) | Someter el sistema a pruebas rigurosas de estres y manejo de fallos para validar plena confiabilidad antes de produccion | Aprobado | F3 (QA/estres) | PARCIAL (8.36: fallos del Outbox); estres completo pendiente |
+| Req.4 | Garantia de confiabilidad (QA) | Someter el sistema a pruebas rigurosas de estres y manejo de fallos para validar plena confiabilidad antes de produccion | Aprobado | F3 (QA/estres) | PARCIAL (8.36: fallos del Outbox + idempotencia concurrente); estres end-to-end checkout pendiente |
 | Req.5-8 | Resto del plan | Puntos 5, 6, 7 y 8 del plan general: correctos y aprobados para ejecucion sin modificaciones | APROBADOS | segun fase | ABIERTO |
 
 ### 3.8 Estado de aprobaciones del plan general

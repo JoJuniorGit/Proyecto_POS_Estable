@@ -3551,14 +3551,22 @@ A2. OutboxDrain_UnderBacklog_ProcessesAllMessages: siembra 50 mensajes Pending
 A3. Aislamiento: BD efimera pos_fault_<guid> creada y DROPeada en finally con
     DROP ... WITH (FORCE); guard de TEST_POSTGRES_CONNECTION coherente con
     PostgresRealIntegrationTests.
+A4. (Ampliacion 8.36-b) ConcurrentDuplicateSubmission_SameIdempotencyKey_
+    PersistsExactlyOnce: 5 envios concurrentes con la MISMA Idempotency-Key
+    (cada uno con su propio SalesDbContext + IdempotencyService, Scoped-por-
+    peticion) -> el indice unico IX_IdempotentRequests_Key_RequestPath hace que
+    exactamente 1 inserte y los demas reciban DbUpdateException resuelta con
+    HandleConcurrentCollisionAsync -> Replay. Aserta: 1 registro persistido y
+    CheckAsync final devuelve Replay (prevencion de duplicados bajo concurrencia).
 
 B. REVISION REVIEWER (8.36): REVISAR sin bloqueantes. Aplicados [ESTILO]:
     setup EF alineado con EnableRetryOnFailure(3) (fidelidad con produccion y
-    8.9-B4) y nombre del test de drenaje ajustado al resultado aseverado.
+    8.9-B4), nombre del test de drenaje ajustado al resultado aseverado, using
+    System.Text y EOF newline.
 
 C. VERIFICACION
 C1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
-C2. dotnet test CommandCenter.slnx -c Release: 752/752 superadas / 0 fallidas
+C2. dotnet test CommandCenter.slnx -c Release: 753/753 superadas / 0 fallidas
     (con TEST_POSTGRES_CONNECTION).
 C3. Sin cambio de modelo persistente ni codigo de produccion -> sin migracion EF.
 
