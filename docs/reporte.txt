@@ -3896,4 +3896,44 @@ B2. Dependencias de entorno operativo (no ejecutables aqui): instalador ISCC,
     restore real con RTO y ejecucion del piloto en una sucursal del cliente.
 
 FIN DEL ANEXO - REVISION 8.45
+===============================================================================
+===============================================================================
+ANEXO - REVISIONES 8.46-8.49 (COBERTURA DE PUNTOS ABORDABLES DESDE EL CODIGO)
+===============================================================================
+Alcance: implementar los puntos del plan que pueden cubrirse desde el codigo
+(DTO residual, health checks, QA de fallos, instalador). Verificacion: build
+Release 0w/0e; dotnet 755/755; web 80/80.
+
+A. 8.46 - AISLAMIENTO ENTIDAD->DTO EN CashDrawer.GetHistory
+A1. NUEVO Backend.API/DTOs/CashDrawerDtos.cs (CashTransactionDto de lectura) y
+    CashDrawerController.GetHistory proyecta la entidad -> DTO, enriqueciendo
+    InvoiceNumber desde Sale y sin doble fetch/N+1 (navegacion precargada).
+A2. Reviewer: APROBAR.
+
+B. 8.47 - HEALTH CHECKS AMPLIADOS
+B1. NUEVO endpoint protegido /api/health/details (Admin/Manager): migraciones
+    aplicadas/pendientes, tasa BCV del dia (VET via TimeZoneHelper) y ultima,
+    disco libre/total y expiracion del certificado (best-effort). /health anonimo
+    se mantiene minimo (8.9-L9). Constructor de HealthController ampliado
+    (SalesDbContext, InventoryDbContext, IConfiguration, IWebHostEnvironment).
+B2. Reviewer: REVISAR; corregida la fecha del dia BCV a hora venezolana.
+
+C. 8.48 - QA DE FALLOS (DRENAJE MULTI-WORKER)
+C1. FaultToleranceTests: ConcurrentWorkers_OutboxDrain_CompletesWithoutLossOr-
+    Starvation: 3 workers concurrentes drenan 50 mensajes (FOR UPDATE SKIP
+    LOCKED) sin perdida ni bloqueos. Reviewer: REVISAR (nombre acotado al
+    alcance observable: drenaje sin perdida; la garantia exactly-once depende
+    de SKIP LOCKED y hub no observado en el test).
+
+D. 8.49 - ENDURECIMIENTO DEL INSTALADOR
+D1. Configure-PosService.ps1: verificacion de salud HTTP post-arranque
+    (http 5000 / https 5001, best-effort, log de status Health/Connected).
+    PARSE OK.
+
+E. PENDIENTE (requiere entorno/infraestructura)
+E1. Metricas de latencia/error de checkout (requiere instrumentacion y
+    plataforma de monitoreo externa). WPF UI bloqueante/cancelacion cooperativa
+    (requiere runtime WPF). ISCC/firma. E2E/restore/SLOs bajo carga real.
+
+FIN DEL ANEXO - REVISIONES 8.46-8.49
 ================================================================================

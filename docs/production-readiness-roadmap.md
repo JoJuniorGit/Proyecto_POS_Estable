@@ -17,6 +17,7 @@ el avance real de cada fase.
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F2/F3/F4/F5 | Cobertura desde codigo: DTO CashDrawer (8.46), health details (8.47), outbox multi-worker (8.48), instalador health post-arranque (8.49) | Suites .NET 755/755 |
 | 2026-09-09  | F5   | Runbooks operativos en INSTALLATION 13 + baseline de observabilidad verificada (8.44) | F5 avanzado; alertas/monitoreo externo pendiente |
 | 2026-09-09  | F4   | Artefacto Release reproducido y verificado (0 pfx/0 secretos/sin appsettings.Development); matriz config + checklist por cliente en INSTALLATION 11/12 (8.43) | F4 avanzado; ISCC/firma pendiente |
 | 2026-09-09  | F3   | Inmutabilidad del historial vs PostgreSQL real (58ac014) | F3 avanzado; suites .NET 754/754 |
@@ -222,7 +223,7 @@ Hito M1: cero riesgos P0 abiertos y matriz de riesgos firmada.
 Hito M2: revision arquitectonica aprobada; sin defectos P0/P1 de datos,
 seguridad o disponibilidad.
 
-- [x] Completar proyecciones DTO en historial/caja/catalogo (parcial: PaymentMethods 8.39; productos verificado no expuesto 8.40).
+- [x] Completar proyecciones DTO en historial/caja/catalogo (PaymentMethods 8.39; productos 8.40; CashDrawer.GetHistory 8.46).
 - [ ] Instalador idempotente (re-ejecucion segura, upgrade sin perder secretos,
       rollback por etapa).
 - [ ] Separacion config publica / secretos por sitio / artefactos dev (previa en 8.29).

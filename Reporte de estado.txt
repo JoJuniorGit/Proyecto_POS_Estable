@@ -17,6 +17,12 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.19.0  | 2026-09-09  | e34b193      | REVISIONES 8.46-8.49 / cobertura desde codigo: DTO
+|          |             | (8.49)       | CashDrawer.GetHistory (8.46), health checks ampliados
+|          |             |              | /api/health/details (8.47), drenaje Outbox multi-worker
+|          |             |              | (8.48), health post-arranque del instalador (8.49).
+|          |             |              | Suites: .NET 755/755, web 80/80, build R 0/0.
+|          |             |              | Detalle: ANEXO 8.46-8.49.
 | v1.18.0  | 2026-09-09  | (8.45)       | REVISION 8.45 / Fase 6: plan del piloto controlado y
 |          |             |              | criterios de aceptacion M6 en INSTALLATION 14. Suites:
 |          |             |              | .NET 754/754, web 80/80. Detalle: ANEXO 8.45.
@@ -619,8 +625,9 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.45 / Fase 6: plan del piloto,
-  .NET 754/754, web 80/80, build Release 0/0). Proxima revision obligatoria:
+  Ultima verificacion: 2026-09-09 (REVISIONES 8.46-8.49: DTO CashDrawer, health
+  checks ampliados, drenaje Outbox multi-worker, instalador; .NET 755/755,
+  web 80/80, build Release 0/0). Proxima revision obligatoria:
   con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================
