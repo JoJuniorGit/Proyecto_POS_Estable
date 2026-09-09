@@ -17,6 +17,18 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.3.0   | 2026-09-09  | V0.15        | REVISION 8.29: cierre de secretos del instalador y
+|          |             | (pendiente)  | abonos por lote. Secretos ANIDADOS en secrets.json (el
+|          |             |              | formato plano __ solo vale para env vars; vector de
+|          |             |              | registro HKLM\Software\POS eliminado), fuera de argv/
+|          |             |              | EnvExtra con ACL por sitio; backups ON por defecto
+|          |             |              | (-SkipScheduledBackup opt-out); plan offline BCV
+|          |             |              | documentado (sin preconfiguracion); endpoint atomico
+|          |             |              | POST /api/sales/{id}/payments/batch (lote todo-o-nada);
+|          |             |              | appsettings.Development.json excluido del publish
+|          |             |              | Release; ci.yml permissions=read + cache ampliada.
+|          |             |              | Suites: .NET 738/738, Web 80/80, build R 0/0, lint 0/0.
+|          |             |              | Detalle: docs/reporte.txt ANEXO 8.29.
 | v1.2.0   | 2026-09-08  | V0.15        | ANEXO 8.27: endurecimiento para entrega a cliente
 |          |             | (pendiente)  | (instalador). HTTPS fail-fast vivo en Produccion (sin
 |          |             |              | cert efimero), scrub de secretos en build-release.ps1,
@@ -90,7 +102,8 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
         Shifts, Users, VersionCheck).
       - Middleware: GlobalExceptionHandler (RFC 7807 ProblemDetails),
         VersionCheck, MustChangePassword, SecurityHeaders, CORS con whitelist
-        LAN, rate limiting, idempotencia (Idempotency-Key + SHA-256).
+        LAN, rate limiting, idempotencia (Idempotency-Key + SHA-256; ahora
+        tambien en el endpoint batch de abonos 8.29-A05).
       - Error handling: mensajes de negocio en ESPANOL llegan al usuario por
         diseno (comportamiento testeado); el detalle interno va al log.
   * SignalR (ExchangeRateHub) - tasas, formato moneda, ventas en espera,
@@ -129,16 +142,23 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
    Web.Frontend / UpdaterService / Logistics -> independientes (HTTP directo)
 
 1.5 Configuracion y secretos
---------------------------------------------------------------------------------
-  Jerarquia: appsettings.json -> appsettings.{Env}.json -> env vars ->
-  secrets.json (Produccion; instalador debe escribir aqui, NO en argv/EnvExtra
-  - deuda 8.20-A01) -> .env solo desarrollo local.
-  Requeridas en Produccion: ConnectionStrings__DefaultConnection,
-  SystemSettings__AdminSeedPassword. HTTPS: HTTPS_CERT_THUMBPRINT o
-  certs/pos-https.pfx + HTTPS_CERT_PASSWORD.
-  PENDIENTE CRITICO: migracion 20260908153000_AddSaleIdToStockMovement SIN
-  atributo [Migration] -> columna SaleId nunca se aplica en BD real
-  (hallazgo 8.20-C01, ver seccion 4).
+-------------------------------------------------------------------------------
+   Jerarquia: appsettings.json -> appsettings.{Env}.json -> secrets.json
+   (Produccion; maxima precedencia) -> .env solo desarrollo local (gated a
+   Development, 8.29-B04/E2).
+   SECRETOS (8.29-A1): viven EXCLUSIVAMENTE en BackendAPI/secrets.json con ACL
+   (SYSTEM, Administradores, "NT SERVICE\<ServiceName>") y formato ANIDADO:
+   ConnectionStrings.DefaultConnection, SystemSettings.AdminSeedPassword,
+   JwtSettings.Key, Kestrel.Certificates.Default.Password. NO en argv ni en
+   AppEnvironmentExtra. Los archivos JSON NO contienen credenciales en
+   produccion; appsettings.Development.json (dev only) se EXCLUYE del publish
+   Release (8.29-A4). El instalador crea el pfx por sitio y persiste su
+   password en secrets.json (nunca por argv). Vector legacy HKLM\Software\POS
+   (JwtSecretKey/HttpsCertPassword) ELIMINADO en 8.29-A5.
+   HTTPS: certificado autofirmado generado por sitio (scripts/create-https-cert
+   .ps1) con password en secrets.json; fail-fast aborta en Produccion sin cert.
+   PENDIENTE/CERRADO: la columna StockMovement.SaleId ya se aplica por
+   migracion reactivada [Migration] (8.20-C01 CERRADO en v1.1.0).
 
 ================================================================================
 2. DOMINIO Y REGLAS DE NEGOCIO CRITICAS
@@ -150,14 +170,22 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
     formatos (Venezolano contable por defecto / Internacional) via formatters
     (web) y NumericCalculatorBehavior (WPF). La BD SIEMPRE guarda numeros.
   * Tasa: -> 1 registro/dia en ExchangeRateHistory. BcvScraperService scrapea
-    el portal BCV (redondeo ceiling a 2 decimales via
-    PricingCalculator.RoundExchangeRateCeiling - unico punto de redondeo).
+    el portal BCV (redondeo ceiling a 4 decimales via
+    PricingCalculator.RoundExchangeRateCeiling - unico punto de redondeo,
+    decision 8.25-E1).
   * Anclaje de venta: ante desvio > tolerancia, la venta ANCLA la tasa BCV del
     dia; desvio >= +-100% RECHAZA la venta. Unico fail-open restante (auditable
     y congelado por tests): tasa BCV INDISPONIBLE (0/error) -> se usa la tasa
     del cliente (continuidad de negocio).
   * Venta en espera: recalcualdo por KEYSET (WHERE Status=OnHold AND Id>
     lastId, batch 200) al cambiar la tasa (revision 8.19-H14).
+  * Operacion offline (8.29-B1, solo documentado): si no hay red, se puede
+    desactivar el auto-sync (BcvSettings:AutoSyncIntervalMinutes <= 0),
+    fijar la tasa del dia via POST /api/exchange-rate (Admin; ceil 4 decimales)
+    o POST /api/exchange-rate/sync-bcv para re-sincronizar. Sin tasa vigente
+    del dia, la venta se RECHAZA explicitamente (sin montos inventados).
+    AppliedRate queda anclada por peticion y persiste por venta (inmutable).
+    Detalle: docs/INSTALLATION.md seccion 7.
 
 2.2 Precios y redondeo (modelo financiero)
 --------------------------------------------------------------------------------
@@ -179,13 +207,21 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
   * Idempotencia de venta: Idempotency-Key (regex) + SHA-256(Method+Path+Body);
     HIT=200 cacheado (X-Cache-Lookup), MISMATCH=422 + LogSecurityAudit.
   * Idempotencia de stock: dedupe POR SaleId (no por string Reason), campo
-    StockMovement.SaleId (FASE 1 / 8.18-H03). CRITICO: la migracion que crea
-    la columna no se aplica en produccion (8.20-C01).
+    StockMovement.SaleId (FASE 1 / 8.18-H03). La migracion que crea la columna
+    (20260908153000) queda aplicada en BD real desde v1.1.0 (8.20-C01 CERRADO).
   * Outbox: OutboxProcessorJob consume OutboxMessages con estado Dispatching
     + reclaim de stale >90s (FASE 1 / 8.18-H07), procesa con OrderBy+Take(20),
     purga Processed > 7d, dispatch at-least-once de eventos SignalR/MediatR.
   * Estados de venta: Pendiente, OnHold (en espera), Completada, Cacelada +
     DeliveryStatus para despacho. Ninguna modificacion a venta Finalizada.
+  * Abonos parciales sobre ventas en espera (8.29-A05): endpoint atomico
+    POST /api/sales/{id}/payments/batch acepta un LOTE de hasta 50 pagos con
+    UN solo Idempotency-Key; validaciones (lote vacio, tasa vigente, montos,
+    limite acumulado runningPaidUsd, efectivo en enteros) se resuelven ANTES
+    de persistir, en una unica transaccion todo-o-nada. El flujo singular
+    (hold/payments) comparte el helper ComputePaymentInputsAsync. Web envia el
+    lote completo en una llamada y reutiliza la clave de idempotencia en
+    reintentos (libera la clave solo tras recargar).
 
 2.4 Caja y corte
 --------------------------------------------------------------------------------
@@ -194,8 +230,9 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
     diario con tOtales por metodo de pago (ClosureDetails) + calculo de vuelto
     cruzados de divisa. Integridad monitoreada por pos-financial-integrity.
   * Adelanto de efectivo (ADV-001, IsCashAdvance): no deduce stock fisico.
-  * BCV manual vs automatico: BcvExchangeRateJob auto-programado cada 2h
-    contradice el diseno "BCV manual" declarado (deuda 8.16-B09/8.20-B10).
+  * BCV manual vs automatico: BcvExchangeRateJob con intervalo configurable
+    via BcvSettings:AutoSyncIntervalMinutes (default 120 min; <= 0 desactiva el
+    auto-sync y queda bajo demanda) - corregido en 8.28-B1.
 
 2.5 Seguridad y permisos
 --------------------------------------------------------------------------------
@@ -296,24 +333,29 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
   * Fix 8.20-C01 (2026-09-08): migracion 20260908153000 reactivada y
     idempotente; sale a produccion la deduccion de stock por SaleId de la
     FASE 1 (ver 4.4 / changelog v1.1.0).
+  * REVISION 8.29 (2026-09-09): cierre de secretos del instalador (A01/A04),
+    abonos por lote atomico (A05), backups ON por defecto (A06), plan offline
+    BCV documentado (A02) y pipeline/higiene (B03/B04). Detalle en seccion 4.4
+    y changelog v1.3.0.
 
-4.2 Balance de pruebas automatizadas (linea base verificada 2026-09-08)
---------------------------------------------------------------------------------
+4.2 Balance de pruebas automatizadas (linea base verificada 2026-09-09)
+-------------------------------------------------------------------------------
   Suite .NET (CommandCenter.Tests, xUnit + Moq + WebApplicationFactory):
-      estado : 706/706 PASAN   (10s, con TEST_POSTGRES_CONNECTION)
+      estado : 738/738 PASAN   (con TEST_POSTGRES_CONNECTION; 732 + 6 batch)
       entorno: PostgreSQL real para tests de integracion (PostgresReal* +
                WebApplicationFactorySmoke con BD aislada pos_smoke_<sufijo>,
                EnsureCreated para la mayoria de unit tests).
   Suite Web (node:test en Web.Frontend):
-      estado : 77/77 PASAN     (2.1s); 21 suites.
-      lint   : oxlint 0 errores, 1 aviso preexistente (W03: variable `base`
-               sin uso en test/esbuild-jsx-loader-hook.mjs:17).
+      estado : 80/80 PASAN     (77 + 3 batch/salesApi); 23 suites.
+      lint   : oxlint 0 errores / 0 avisos (W03 corregido en 8.28-C1).
   Build:
       Debug  : 0 errores / 0 avisos (TreatWarningsAsErrors=true).
       Release: 0 errores / 0 avisos.
   Cobertura (gate CI, scripts/check-coverage.py + coverage.runsettings):
-      Sale >= 19%, Inventory >= 14% (baseline anti-regresion) - politica
-      declarada 0.70; convergencia pendiente (deuda C01).
+      medicion de DOMINIO excluyendo *.Migrations.* (8.26-E4).
+      Umbrales: Core >= 0.70 (politica), Sales.Module >= 0.80,
+      Inventory.Module >= 0.72 (baselines 8.26-E4; reemplazan los
+      anti-regresion 0.19/0.14 de Rev 8.11).
 
   COMANDOS PARA REPRODUCIR:
     $env:TEST_POSTGRES_CONNECTION="Host=localhost;Database=CommandCenterDb_test;
@@ -323,13 +365,19 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
     cd Web.Frontend && npm test && npm run lint
 
 4.3 Estado de despliegue
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
   * Produccion: PosBackendService (NSSM), PostgreSQL 16, puertos 5000/5001.
-  * Working tree: limpio en bdb7e55 al cierre de la auditoria 8.20. Tras el
-    fix de 8.20-C01 quedaron cambios SIN commitear (migracion + smoke test +
-    docs): pendientes de commit en la rama V0.15.
-  * INSTALLATION.md documenta Admin123! y "secretos por env vars" -> OBSOLETO
-    (secrets.json); desalineado con ARCHITECTURE.md para UpdaterService (8.20-B05).
+  * Secretos de produccion: en BackendAPI/secrets.json con ACL (SYSTEM,
+    Administradores, NT SERVICE\PosBackendService) y formato anidado; NO en
+    AppEnvironmentExtra ni en argv (8.29-A1). pfx generado por sitio y backup
+    PostgreSQL programado (tarea "Sistema POS - Backup PostgreSQL", default ON
+    - 8.29-A6).
+  * Working tree: en la rama V0.15 quedan SIN commitear los cambios de la
+    REVISION 8.29 (secretos instalador, batch de abonos, backups, pipeline) y
+    el cierre 8.20-C01/documentos previos.
+  * INSTALLATION.md ACTUALIZADO (8.29) a secrets.json anidado, operacion
+    offline BCV (seccion 7) y backup automatico (seccion 8); desalineado con
+    ARCHITECTURE.md para UpdaterService sigue vigente (8.20-B05).
 
 4.4 Deuda tecnica activa (ALTA / CRITICO)
 --------------------------------------------------------------------------------
@@ -342,50 +390,53 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
     MigrateAsync; has-pending-model-changes limpio. Detalle en changelog 5.3 y
     docs/reporte.txt ANEXO 8.21.
   ALTA:
-  * [8.20-A01] Instalador expone secretos en argv y AppEnvironmentExtra del
-    servicio (setup.iss:341,351,424-432; Configure-PosService.ps1:249-251).
-    FIX: secretos solo en secrets.json. [8.27: reforzado - secrets.json con ACL
-    NT SERVICE + registro NSSM con ACL; ver ANEXO 8.27 A3. Pendiente cierre formal.]
-  * [8.20-A02] BackendHelpers.cs:79-130 siempre genera cert autofirmado
-    efimero -> fail-fast HTTPS de Produccion (Program.cs:76-84) es dead code.
-    [8.27-A2: IMPLEMENTADO - el efimero queda solo en Development; Produccion
-    aborta sin cert real; pfx regenerado por sitio en Configure-PosService 4.2.]
+  * [8.20-A01] CERRADO en 8.29 (2026-09-09) -> secretos SOLO en
+    BackendAPI/secrets.json (formato ANIDADO) con ACL (SYSTEM, Administradores,
+    "NT SERVICE\<ServiceName>"); fuera de argv y AppEnvironmentExtra; vector
+    legacy HKLM\Software\POS eliminado (8.29-A5). Nunca por CLI en
+    Configure-PosService.ps1 ni create-https-cert.ps1. Detalle: ANEXO 8.29 A1/A3.
+  * [8.20-A02] CERRADO en 8.29 (2026-09-09) -> cert autofirmado EFIMERO solo en
+    Development; Produccion aborta sin cert real (fail-fast); pfx generado por
+    sitio (create-https-cert.ps1) con password persistida en secrets.json.
+    Detalle: ANEXO 8.29 A3.
   * [8.20-A03] UpdaterService instala paquetes sin verificar si no hay hash
-    (fail-open) y sin firma X.509 (8U-N2). [8.27-C: decision pendiente - se
-    recomienda no instalarlo en el cliente mientras no se firmen paquetes.]
-  * [8.20-A04] publish/BackendAPI/appsettings.json:34 expone "PosHttpsDev2026!"
-    en claro y se empaqueta con pfx stale en el instalador. [8.27-A1:
-    IMPLEMENTADO - fuente ya limpio; build-release.ps1 aborta si publish/
-    contiene literales conocidos; setup.iss excluye certs\pos-https.pfx.]
-  * [8.20-A05] Abonos parciales web (PendingOrdersPage.jsx:551-558) no
-    atomicos, con Idempotency-Key nueva por pago -> duplicacion si falla la red.
-    [8.27-B1: IMPLEMENTADO - clave estable por lote (batchId por saleId).]
-  [NUEVO 8.27-B2] Leak de costos/margenes en GET /api/products/{id} para roles
-    sin CanMutateCatalog (GetAll si censuraba; GetById no). IMPLEMENTADO en
-    ProductsController.GetById + tests (ver ANEXO 8.27 B2).
+    (fail-open) y sin firma X.509 (8U-N2). Parcial 8.28-A1 (fail-closed sin
+    hash); PENDIENTE el firmado X.509; no instalarlo en el cliente (8.27-C).
+  * [8.20-A04] CERRADO en 8.29 (2026-09-09) -> build-release.ps1 aborta si
+    publish/ contiene literales conocidos; setup.iss excluye certs\pos-https
+    .pfx; appsettings.Development.json EXCLUIDO del publish Release
+    (Backend.API.csproj, 8.29-A4). publish\BackendAPI verificada sin
+    appsettings.Development ni secrets.json.
+  * [8.20-A05] CERRADO en 8.29 (2026-09-09) -> abonos por LOTE atomico:
+    POST /api/sales/{id}/payments/batch (todo-o-nada en una transaccion, un
+    SaveChanges) + web envia el lote en una llamada con clave de idempotencia
+    estable liberada solo tras recargar. Tests: BatchPaymentTests (6).
+    Detalle: ANEXO 8.29 C1-C5.
+  * [8.27-B2] CERRADO (2026-09-08) -> censura de costos/margenes en
+    GET /api/products/{id} para roles sin CanMutateCatalog (ver ANEXO 8.27 B2).
   MEDIA (resumen; detalle en ANEXO 8.20):
   * WPF: acoplamiento Core->WPF en 20 archivos (M01), Dispatcher.Invoke
-    bloqueante (M02), HealthPolling sin timeout real - el "8.9-M12" del
-    comentario no existe (M03), UniformGrid sin virtualizar (M04), paginacion
-    parcial (M05).
+    bloqueante (M02), HealthPolling sin timeout real (M03), UniformGrid sin
+    virtualizar (M04), paginacion parcial (M05).
   * CI/Tests: coverage sin Backend.API/WPF/Tests (M06), gate find|head
-    indeterminista (M06), silent-pass en smoke/shared (M06), OpenAPI 200-o-404
-    (M06), locks NuGet ausente y runner solo Linux (B03).
-  * Infra: ACL de secrets.json sin NT SERVICE y fail-open (M07), Logistics en
-    DI de produccion sin persistencia (M08), Updater sin integracion (M08).
+    indeterminista (M06), OpenAPI 200-o-404 (M06), locks NuGet ausente y
+    runner solo Linux (B03; 8.29 anadio permissions=read y cache ampliada).
+  * Infra: Logistics en DI de produccion sin persistencia (M08), Updater sin
+    integracion (M08). M07 (ACL secrets.json sin NT SERVICE) CERRADO en
+    8.29-A1/A5.
+  CERRADAS EN 8.28 (referencia): R17 (entropia DPAPI per-usuario CSPRNG,
+    SecureTokenStorageService), R18 (CertificatePinning TOFU en loopback),
+    B09 (auto-sync BCV configurable via BcvSettings:AutoSyncIntervalMinutes),
+    8.2-B5 (snake_case en contratos publicos), W03 (aviso oxlint).
   PENDIENTES PREVIOS NO CERRADOS:
   * 8.16-H06 (proyeccion a DTO de GetAllProductsAsync/CashDrawer.GetHistory),
     8.16-H16 (advisory lock x1, frágil en retry).
-  * WPF R09-R12 (EditSaleDialog code-behind), R13 (UniformGrid), R17 (entropia
-    DPAPI hardcodeada), R18 (cert loopback sin pinning), R19-R28,
+  * WPF R09-R12 (EditSaleDialog code-behind), R13 (UniformGrid), R19-R28,
     8.14-N1 WPF sin paginacion en PendingOrders/PendingPickups.
   * Instalador/CI: I01..I07 (I06 cerrado), CI02, C01/C02, T01/T03/T04/T05/T06.
-  * Backend: B03 (RequireHttpsMetadata=false), B04 (residuo JWT debil
-    ddf95c83...), B05 (appsettings en artifacts), B06 (BcvScraper doble
-    timeout), B07 (SecurityStampValidator 45s vs 5s), B09 (2h auto BCV),
-    B12 (ProductsController AdjustStock filtra ex.Message), B13/B14.
-  * 8.2-B5 (snake_case en ISalesService publico).
-  * Web: W03 (aviso oxlint), W04 (retencion forense).
+  * Backend: B03 (RequireHttpsMetadata=false), B06 (BcvScraper doble
+    timeout), B07 (SecurityStampValidator 45s vs 5s), B13/B14.
+  * Web: W04 (retencion forense).
 
   REGLA: mover una incidencia de este bloque a "cerradas" SOLO cuando haya
   commit + tests verdes + entrada en changelog (seccion 5).
@@ -449,10 +500,11 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-08 (fix 8.20-C01 aplicado; arbol con cambios sin
-  commitear en V0.15). Proxima revision obligatoria: con cada PR que toque BD,
-  API, perifericos o cierres deuda.
+  Ultima verificacion: 2026-09-09 (REVISION 8.29: secretos anidados, abonos
+  batch, backups ON, .NET 738/738, Web 80/80, build Release 0/0, lint 0/0;
+  arbol con cambios sin commitear en V0.15). Proxima revision obligatoria:
+  con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================
-FIN DEL DOCUMENTO - REPORTE DE ESTADO v1.1.0
+FIN DEL DOCUMENTO - REPORTE DE ESTADO v1.3.0
 ================================================================================

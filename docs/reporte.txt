@@ -3055,3 +3055,219 @@ E. HORIZONTE
 
 FIN DEL ANEXO - REVISION 8.27
 ================================================================================
+
+================================================================================
+ANEXO - REVISION 8.28 (SEGURIDAD DE ALTO IMPACTO: CIERRE DE HALLAZGOS VIGENTES)
+================================================================================
+Alcance: correccion de hallazgos de seguridad de alto impacto todavia presentes
+en el codigo, registrados en revisiones previas. Todas las correcciones
+verificadas con build Release 0w/0e + dotnet test (731) + npm lint (0/0) +
+npm test (77).
+
+A. SEGURIDAD / INTEGRIDAD
+A1. [8.20-A03 + 8U-N2 parche] UpdaterService/Program.cs: la verificacion SHA-256
+    era fail-open: si se invocaba el actualizador sin --hash ni sidecar .sha256
+    se SALTAba toda verificacion y se extraia (y re-arrancaba) el servicio con
+    binarios no verificados. Fix: fail-closed en Step 0:
+      - Sin packagePath o paquete inexistente -> error critico + return (no detiene
+        el servicio).
+      - Sin hash esperado (--hash ni sidecar) -> error critico + return.
+      - Hash distinto -> error critico + return (comportamiento previo preservado).
+    Queda pendiente de infraestructura (NO bloquea) la firma X.509 completa de
+    paquetes (8U-N2); mientras tanto el instalador ya no empaqueta el Updater y
+    este exige hash verificable para operar.
+A2. [8.16-R17] SecureTokenStorageService: se elimino la entropia DPAPI estatica
+    ("POS_Desktop_Entropy_2026_Secure") como fuente primaria. Ahora se genera una
+    entropia por-usuario de 32 bytes CSPRNG (RandomNumberGenerator.GetBytes) en el
+    primer uso, persistida en entropy.dat protegida con DPAPI CurrentUser. La
+    entropia legacy queda SOLO como fallback de migracion (re-cifrado automatico
+    al primer LoadToken exitoso con legacy); ante fallo de generacion/lectura de
+    entropy.dat la persistencia de tokens se ABORTA (fail-safe) en lugar de cifrar
+    con la entropia estatica (ajuste post-revision reviewer 8.28). Tests usan
+    InMemoryTokenStorage (fake) -> sin impacto en la suite.
+A3. [8.16-R18] ExchangeRateService (SignalR/SSE) aceptaba CUALQUIER certificado
+    invalido en loopback (fail-open a MITM LAN). Fix: helper estatico compartido
+    CertificatePinning (Desktop.Client.Core) con pinning TOFU por host:
+      - Certificado valido -> aceptado.
+      - Certificado invalido en host privado/local -> primer thumbprint registrado,
+        posteriores distintos rechazados (mitiga MITM LAN).
+      - Host publico con certificado invalido -> rechazado.
+    SubnetScannerService (8.9-M4) refactorizado para usar el MISMO repositorio de
+    pins (coherencia de host entre escaneo y hub de tasas).
+A4. [8.20-M10] BackendHelpers.BuildLanAllowedHosts: el catch silencioso ya no traga
+    el error; registra AppLogger.LogWarn con contexto para diagnostico sin filtrar
+
+B. CONFIGURACION / NOMENCLATURA
+B1. [8.16-B09/B10] BcvExchangeRateJob: el ciclo automatico de 2h fijo contradijo el
+    diseno manual/opcional declarado del BCV. Fix: intervalo configurable via
+    "BcvSettings:AutoSyncIntervalMinutes" (default 120 min; <= 0 desactiva el
+    auto-sync y solo sincroniza bajo demanda). AppSettings actualizado con la clave.
+    Tests del job actualizados al nuevo constructor (IConfiguration).
+B2. [8.2-B5] snake_case en contratos publicos -> camelCase (guia tabla 2.1):
+    - Desktop.Client.Core/ISalesService.cs: parametros sale_id/product_id/item_id/
+      exchange_rate/custom_unit_price_usd/custom_unit_price_bs_s/rounding_adjustment/
+      page_size/start_date/end_date/cancellation_token renombrados (AddItemAsync,
+      RemoveItemAsync, UpdateItemQuantityAsync, UpdateExchangeRateAsync,
+      CompleteSaleAsync, GetSalesHistoryAsync, GetSaleHistoryDetailAsync).
+    - Desktop.Client.Core/Services/SalesService.cs: implementacion alineada +
+      constructor http_client -> httpClient.
+    - Desktop.Client.Core/ViewModels/SalesHistoryViewModel.cs: ctor sales_service
+      -> salesService.
+    - Sales.Module/Services/SalesService.cs (impl) + SalesService.Pricing.cs:
+      parametros alineados con la interfaz camelCase ya vigente
+      (saleId/productId/itemId/exchangeRate/customUnitPriceUsd/customUnitPriceLocal).
+
+
+C. WEB
+C1. [W03] Web.Frontend/test/esbuild-jsx-loader-hook.mjs: eliminada variable muerta
+    `base` y el import pathToFileURL que generaban el aviso de oxlint sin uso.
+
+D. VERIFICACION
+    - dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+    - dotnet test -c Release --no-build: 732 superadas / 0 fallidas (incluye
+      nuevo test BcvExchangeRateJob_WhenAutoSyncDisabled_ReturnsWithoutWaitingOrSyncing).
+    - npm run lint (Web.Frontend): 0 warnings / 0 errores.
+    - npm test (Web.Frontend): 77/77 superadas.
+    - Reviewer 8.28: sin [BLOQUEANTE]; 3 hallazgos de estilo aplicados
+      (legacy solo migracion, private en SharedScannerClient, test path desactivado).
+    Nota: sin cambios de modelo persistente -> sin migracion EF en esta revision.
+
+E. HORIZONTE
+    - Firmado X.509 de paquetes (8U-N2) y re-integracion/registro del UpdaterService
+      cuando la firma exista.
+    - Revisar BudgetBandMetadata/BudgetBandPeriod en scripts de generacion de
+      reportes (pendiente).
+
+FIN DEL ANEXO - REVISION 8.28
+===============================================================================
+
+===============================================================================
+ANEXO - REVISION 8.29 (ENDU RECIMIENTO ENTREGA: SECRETOS EN SITIO, ABONOS
+POR LOTE Y RE-EMPAQUETADO SIN CREDENCIALES DE DESARROLLO)
+===============================================================================
+Alcance: cierre de los items del informe de seguridad del instalador
+(8.27-A1/A2/A4/A5/A6 + B03/B04 del pipeline) con la decision del usuario:
+abonos parciales por LOTE atomico (opcion A), backups automaticos ACTIVADOS
+por defecto (opt-out) y plan offline de tasa BCV SOLO documentado (sin
+preconfiguracion en el instalador). Todas las correcciones verificadas.
+
+A. SECRETOS EN SITIO (8.27-A1, + variante M07 en el path del servicio)
+A1. HALLAZGO DE INTEGRACION RESUELTO: el sistema de configuracion de .NET NO
+    interpreta claves planas con "__" en archivos JSON (solo en variables de
+    entorno). El secrets.json "plano" previo SOLO funcionaba para
+    JWT_SETTINGS_KEY; ConnectionStrings__DefaultConnection,
+    SystemSettings__AdminSeedPassword y la password HTTPS planas eran
+    IGNORADAS por el backend al provenir de un archivo JSON. Consecuencia:
+    - installer/setup.iss (WriteProtectedSecretsFile) ahora escribe JSON
+      ANIDADO: ConnectionStrings.DefaultConnection, SystemSettings.Admin
+      SeedPassword, JwtSettings.Key y Kestrel.Certificates.Default.Password.
+    - Configure-PosService.ps1 (seccion 4.1 reescrita) escribe el mismo
+      formato con ConvertTo-Json -Depth 10 y MIGRA automaticamente cualquier
+      secrets.json legacy (claves planas) al formato anidado. 4.2 llama a
+      create-https-cert.ps1 con -SecretsFile y NUNCA pasa la password del
+      certificado por argv.
+    - El backend ya leia estas rutas (Program.cs, DatabaseInitializer.cs,
+      ServiceCollectionExtensions.cs, BackendHelpers.cs): NO requirio cambios.
+A2. ACL POR SITIO: WriteProtectedSecretsFile aplica icacls con
+    /inheritance:r y grants a SYSTEM:(F), Administrators:(F) y
+    "NT SERVICE\<ServiceName>:(R)" (cubre la variante M07: ejecutables del
+    servicio con cuenta de servicio dedicada bajo NSSM). El certificado se
+    ubica solo bajo C:\ProgramData\Sistema POS\ con ACL de propietario.
+A3. scripts/create-https-cert.ps1: nuevo parametro -SecretsFile; la password
+    del certificado se resuelve desde secrets.json (anidada con fallback
+    plano), o env var, o -certPassword SOLO en modo desarrollo, y se
+    PERSISTE en secrets.json si fue generada por CSPRNG. Nunca queda en el
+    argv de la instalacion de produccion.
+A4. Config de desarrollo fuera del empaquetado: Backend.API.csproj añade el
+    Condition Configuration=='Release' para CopyToPublishDirectory=Never de
+    appsettings.Development.json (evita que las credenciales locales
+    postgres/123456 y AdminSeedPassword lleguen al instalador del cliente).
+    Verificado: publish\BackendAPI\ solo contiene appsettings.json y
+    appsettings.Production.json.
+A5. REVISION REVIEWER (8.29): se eliminó el vector de persistencia en el
+    registro. setup.iss GetOrGenerateJwtKey/GetOrGenerateCertPass ya NO
+    escriben en HKLM\Software\POS (JwtSecretKey/HttpsCertPassword); generan
+    por CSPRNG y solo los entregan en memoria a WriteProtectedSecretsFile ->
+    secrets.json. Los secretos quedan ÚNICAMENTE en el archivo con ACL.
+    En reinstalaciones se preservan desde secrets.json (Configure-PosService.ps1).
+
+B. TASA BCV SIN CONEXION (8.27-A2, SOLO DOCUMENTADO)
+B1. Procedimiento manual registrado en docs/INSTALLATION.md seccion 7:
+    - BcvSettings:AutoSyncIntervalMinutes <= 0 desactiva el auto-sync (el
+      job queda bajo demanda; si no hay tasa vigente del dia la venta se
+      rechaza explicitamente, sin montos inventados).
+    - POST /api/exchange-rate (Admin) con {value} para fijar la tasa del dia
+      (redondeo ceil a 4 decimales via PricingCalculator).
+    - POST /api/exchange-rate/sync-bcv re-sincroniza contra el portal.
+    - AppliedRate queda persistida por venta; el historial es inmutable
+      (rules.md). NO se preconfiguro intervalo en el instalador (decision).
+
+C. ABONOS PARCIALES POR LOTE ATOMICO (8.27-A5, opcion A elegida)
+C1. Backend: ISalesService.AddPaymentsBatchToHoldSaleAsync + implementacion
+    en SalesService.HoldOrders.cs. Extraccion del helper compartido privado
+    ComputePaymentInputsAsync (misma aritmetica, tasa anclada por peticion,
+    efectivo en enteros, limite acumulado runningPaidUsd) y el record
+    ComputedPaymentInput. Validaciones ANTES del guardado para
+    todo-o-nada dentro de UNA transaccion y UN SaveChanges (un unico
+    Idempotency-Key por lote). Lote vacio o > 50 pagos -> ArgumentException.
+C2. API: SalesController nuevo endpoint [HttpPost("{id}/payments/batch")]
+    que replica el patron del abono individual (ResolveIdempotencyAsync +
+    HandleIdempotencyCollisionAsync + header X-Cache-Lookup MISS). Roles y
+    autorizacion identicos (Pendiente: cierre de caja admin).
+C3. Web: salesApi.js añade addPaymentsBatchToHoldSale (body = lista,
+    cabecera aplicada por api.js). PendingOrdersPage envía el lote completo
+    en UNA llamada cuando el usuario "abona todo"; abonoBatchKeysRef
+    estabiliza el Idempotency-Key por lote para reintentos. La funcion
+    singular addPaymentToHoldSale queda intacta.
+C4. Tests: CommandCenter.Tests/BatchPaymentTests.cs (6): lote valido persiste
+    todos; un pago excede -> NINGUNO persiste; acumulado excede -> ninguno;
+    lote vacio -> ArgumentException; > 50 -> ArgumentException; efectivo
+    fraccionario -> ninguno. Suite completa 738/738 (732 previos + 6).
+C5. REVISION REVIEWER (8.29): la clave de idempotencia del lote en
+    PendingOrdersPage se libera SOLO despues de confirmar loadPendingData();
+    si la recarga falla, el reintento reutiliza la misma clave y el servidor
+    lo descarta (evita doble abono en la ventana de respuesta perdida).
+
+D. BACKUPS POR DEFECTO (8.27-A6)
+D1. Configure-PosService.ps1 (4.3) crea la tarea programada "Sistema POS -
+    Backup PostgreSQL" por defecto; -SkipScheduledBackup la omite (opt-out).
+    setup.iss no contradice el default.
+D2. scripts/backup-postgres.ps1 alineado al formato ANIDADO con fallback
+    legacy: lee $secrets.ConnectionStrings.DefaultConnection (y
+    "ConnectionStrings__DefaultConnection" si el archivo es antiguo) del
+    mismo secrets.json protegido; nunca credenciales por CLI.
+
+E. PIPELINE / HIGIENE DE PUBLICACION
+E1. (8.27-B03) ci.yml: permissions: contents: read; cache de restauracion
+    ampliada a hashFiles de Directory.Packages.props,
+    Directory.Build.props y dotnet-tools.json.
+E2. (8.27-B04) scripts/build-release.ps1 [1/6] elimina publish_backend/ y
+    dist_installer/ preexistentes; Program.cs carga Backend.API/.env solo si
+    builder.Environment.IsDevelopment().
+
+F. VERIFICACION
+    - dotnet build CommandCenter.slnx -c Release: 0 errores / 0 advertencias.
+    - dotnet test -c Release --no-build: 738 superadas / 0 fallidas.
+    - npm run lint (Web.Frontend): 0 errores.  npm test: 80/80.
+    - build-release.ps1 completo: web build OK, 3 publicaciones self-contained
+      win-x64 OK, SCRUB [6/6] "publish/ sin literales conocidos".
+    - Estado final del bundle: publish_backend eliminado, dist_installer
+      ausente, publish\BackendAPI sin appsettings.Development.json ni
+      secrets.json.
+    - Parseo PS (scriptblock): Configure-PosService.ps1, create-https-cert.ps1
+      y backup-postgres.ps1 PARSE OK.
+    - setup.iss no compilable en esta maquina (ISCC no instalado): se valido
+      por review estructural como en revisiones previas.
+    - Reviewer 8.29: sin [BLOQUEANTE]. Atendidos: vector de registro removido
+      (A5), doble abono por liberacion temprana de clave (C5), indentacion del
+      lambda execution strategy en HoldOrders.cs. Restantes, preexistentes o
+      intencionales (ver nota en la propia salida del reviewer).
+
+G. HORIZONTE
+    - Firmado X.509 de paquetes (8U-N2) y reintegracion del UpdaterService
+      cuando exista firma.
+    - Ejecucion real del instalador ISCC en una maquina de cliente para el
+      smoke E2E de secrets.json + ACL (pendiente de entorno con Inno Setup).
+
+FIN DEL ANEXO - REVISION 8.29
+================================================================================

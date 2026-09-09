@@ -28,6 +28,10 @@ public interface ISalesService
     Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null);
     Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false);
     Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null);
+
+    /// <summary>8.29-A05: aplica varios abonos a una venta en espera en UNA sola transacción
+    /// (todo o nada): si CUALQUIER abono del lote falla la validación, ninguno se persiste.</summary>
+    Task<SaleDto> AddPaymentsBatchToHoldSaleAsync(int saleId, List<AddPaymentRequestDto> payments, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null);
     Task<IEnumerable<SaleDto>> GetPendingSalesAsync(int? cashierId = null, int limit = 200, int offset = 0);
 
     /// <summary>8.14-N1: total de ventas OnHold para paginación de UI.</summary>

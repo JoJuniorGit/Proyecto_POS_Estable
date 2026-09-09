@@ -16,6 +16,7 @@ Start-Sleep -Milliseconds 300
 
 Write-Host "[1/6] Limpiando carpetas de salida preexistentes..." -ForegroundColor Cyan
 if (Test-Path "$rootDir\publish") { Remove-Item "$rootDir\publish" -Recurse -Force }
+if (Test-Path "$rootDir\publish_backend") { Remove-Item "$rootDir\publish_backend" -Recurse -Force }
 if (Test-Path "$rootDir\dist_installer") { Remove-Item "$rootDir\dist_installer" -Recurse -Force }
 
 New-Item -ItemType Directory -Path "$rootDir\publish\BackendAPI" | Out-Null

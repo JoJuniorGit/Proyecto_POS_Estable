@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { getPendingSalesPage, completeSale, addPaymentToHoldSale, cancelSale } from '../services/salesApi';
+import { getPendingSalesPage, completeSale, addPaymentsBatchToHoldSale, cancelSale } from '../services/salesApi';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import CheckoutModal from '../components/checkout/CheckoutModal';
 import EditSaleModal from '../components/pos/EditSaleModal';
@@ -22,8 +22,9 @@ export default function PendingOrdersPage() {
   
   const { exchangeRate } = useExchangeRate();
 
-  // 8.27-A05: claves de idempotencia estables por lote de abonos (saleId -> batchId).
-  // Se reutilizan en reintentos para que un fallo de red no duplique pagos ya acreditados.
+  // 8.29-A05: clave de idempotencia estable POR LOTE de abonos (saleId -> batchId).
+  // Se reutiliza en reintentos para que un fallo de red no duplique pagos ya acreditados;
+  // el batch es atómico (todo-o-nada) y un replay no persiste NINGÚN abono repetido.
   const abonoBatchKeysRef = useRef(new Map());
 
   // Modals state
@@ -532,6 +533,8 @@ export default function PendingOrdersPage() {
                   });
                 }
               } else {
+                // 8.29-A05: el lote de abonos se envía en UNA sola petición atómica
+                // (POST /payments/batch, todo-o-nada) con ÚNICA clave estable por lote.
                 let batchId = abonoBatchKeysRef.current.get(targetSaleId);
                 if (!batchId) {
                   batchId = (typeof crypto !== 'undefined' && crypto.randomUUID
@@ -539,17 +542,22 @@ export default function PendingOrdersPage() {
                     : `abono-${targetSaleId}-${Date.now()}`);
                   abonoBatchKeysRef.current.set(targetSaleId, batchId);
                 }
-                for (let i = 0; i < paymentList.length; i++) {
-                  await addPaymentToHoldSale(targetSaleId, {
-                    paymentMethodId: paymentList[i].paymentMethodId,
-                    amountBsS: paymentList[i].amountBsS || paymentList[i].amountLocal,
+                await addPaymentsBatchToHoldSale(
+                  targetSaleId,
+                  paymentList.map((p) => ({
+                    paymentMethodId: p.paymentMethodId,
+                    amountBsS: p.amountBsS || p.amountLocal,
                     exchangeRate: exchangeRate,
-                    referenceNumber: paymentList[i].referenceNumber || null
-                  }, `${batchId}-${i}`);
-                }
-                abonoBatchKeysRef.current.delete(targetSaleId);
+                    referenceNumber: p.referenceNumber || null,
+                  })),
+                  batchId
+                );
                 setSelectedSaleForCheckout(null);
                 await loadPendingData();
+                // 8.29-A05: la clave de idempotencia del lote se libera solo DESPUÉS de
+                // confirmar la recarga; si ésta falla, el reintento reutiliza la misma
+                // clave y el servidor lo descarta (evita doble abono en ventana perdida).
+                abonoBatchKeysRef.current.delete(targetSaleId);
 
                 setCompletedLiquidation({
                   invoiceNumber: null,

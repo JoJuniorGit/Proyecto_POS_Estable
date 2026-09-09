@@ -46,7 +46,12 @@ if ([string]::IsNullOrWhiteSpace($ConnectionString)) {
     if (Test-Path -LiteralPath $SecretsFile) {
         try {
             $secrets = Get-Content -Raw -LiteralPath $SecretsFile | ConvertFrom-Json
-            $ConnectionString = $secrets."ConnectionStrings__DefaultConnection"
+            # 8.29-A1: formato ANIDADO (ConnectionStrings.DefaultConnection) con
+            # fallback al formato legacy (claves planas "__").
+            $ConnectionString = $secrets.ConnectionStrings.DefaultConnection
+            if ([string]::IsNullOrWhiteSpace($ConnectionString)) {
+                $ConnectionString = $secrets."ConnectionStrings__DefaultConnection"
+            }
             Write-Log "Cadena de conexión leída de $SecretsFile (sin exponer credenciales)."
         } catch {
             throw "No se pudo leer ${SecretsFile}: $($_.Exception.Message)"

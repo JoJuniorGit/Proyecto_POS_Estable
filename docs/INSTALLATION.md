@@ -10,7 +10,9 @@ Guía para que el proyecto funcione correctamente tras una instalación limpia, 
 | Migraciones EF Core | Aplicadas |
 | Datos semilla (admin, cliente, producto) | Sembrados |
 | `appsettings.json` / `appsettings.Production.json` | Sin secretos en claro |
-| `ConnectionStrings__DefaultConnection` y `SystemSettings__AdminSeedPassword` | Como variables de entorno del servicio `PosBackendService` (NSSM) |
+| Secretos (conexión, admin semilla, JWT, certificado HTTPS) | En `BackendAPI\secrets.json`, archivo protegido con ACL (SYSTEM, Administradores y `NT SERVICE\PosBackendService`) — 8.29-A1 |
+| Certificado HTTPS (puerto 5001) | Autofirmado **generado en el puesto** por `scripts/create-https-cert.ps1` (CN/SAN del equipo), contraseña en `secrets.json` |
+| Backup de PostgreSQL | Tarea programada 03:00 **activa por defecto** (`Sistema POS - Backup PostgreSQL`), opt-out con `-SkipScheduledBackup` — 8.29-A6 |
 | Verificación | `/health` → `Healthy` / `Connected`, `/api/products` → 200 |
 | Firewall de Windows (puertos 5000/5001) | Regla de entrada `Sistema POS - Backend API (TCP 5000/5001)` creada, solo subred local |
 
@@ -24,7 +26,7 @@ Las siguientes correcciones, originalmente pendientes, ya están integradas en e
 - **Seed con `MustChangePassword`**: El usuario admin sembrado queda marcado con `MustChangePassword = true`. La contraseña semilla se lee exclusivamente desde `IConfiguration` (variable de entorno `SystemSettings__AdminSeedPassword`).
 - **Login con cambio obligatorio de contraseña**: Si `MustChangePassword == true`, el login responde `403` con `requiresPasswordChange`. El endpoint `POST /api/auth/change-password` permite actualizar la contraseña sin emitir token previo.
 - **Cliente WPF**: Si el login devuelve `403`, se presenta el diálogo de cambio de contraseña antes de acceder a la ventana principal.
-- **Configuración de `appsettings`**: Los secretos se inyectan vía variables de entorno del servicio NSSM. Los archivos JSON no contienen credenciales en producción.
+- **Configuración segura de secretos (8.29-A1)**: Los secretos viven en `BackendAPI\secrets.json`, **no** en variables de entorno del proceso ni en `appsettings.*.json`. El instalador (`setup.iss` / `Configure-PosService.ps1`) escribe el archivo con formato **anidado** y lo protege con ACL. La contraseña del certificado HTTPS nunca viaja por argumentos de línea de comandos.
 
 ## 3. Convención de configuración del Backend
 
@@ -32,7 +34,7 @@ La configuración del backend (`Backend.API`) se fusiona en este orden (las fuen
 
 1. `appsettings.json` — valores **compartidos y sin secretos** (fuente única de lo común).
 2. `appsettings.{Environment}.json` — solo **overrides por entorno** (`Development`, `Production`, ...). El entorno activo lo define `ASPNETCORE_ENVIRONMENT` (si no se define, el valor por defecto es `Production`).
-3. Variables de entorno del proceso (convención `Seccion__Clave`).
+3. `secrets.json` (máxima precedencia, `AddJsonFile` con `reloadOnChange` en `Program.cs`) — únicamente secretos: `ConnectionStrings.DefaultConnection`, `SystemSettings.AdminSeedPassword`, `JwtSettings.Key`, `Kestrel.Certificates.Default.Password`.
 
 ### Qué va en cada archivo
 
@@ -41,25 +43,38 @@ La configuración del backend (`Backend.API`) se fusiona en este orden (las fuen
 | `appsettings.json` | Compartido: `Logging`, `AllowedHosts`, `MinimumClientVersion`, `ServerVersion`, `UpdateServerUrl`, `AdminSeedUsername`, `BusinessName` | **Ninguno** |
 | `appsettings.Production.json` | Solo overrides reales de producción: `AdminSeedUsername` (`Junior`), `BusinessName` (`Inversiones Junior`) | **Ninguno** |
 | `appsettings.Development.json` | Valores de desarrollo local: `ConnectionStrings`, `AdminSeedPassword` | Dev only (aceptable en local) |
+| `secrets.json` | Solo secretos (producción), formato **anidado** | **Sí** — protegido con ACL |
 
 ### Reglas
 
 - **Una sola fuente por valor.** Si un valor es idéntico en todos los entornos, vive solo en `appsettings.json`; los archivos de entorno no lo repiten.
-- **Los secretos nunca van en `appsettings.json` ni en `appsettings.Production.json`.** Van en variables de entorno del proceso (producción) o en `appsettings.Development.json` (desarrollo local).
+- **Los secretos nunca van en `appsettings.json`, `appsettings.Production.json` ni en variables de entorno del servicio.** Van en `secrets.json` (producción) o en `appsettings.Development.json` (desarrollo local).
 - `UpdateServerUrl` hoy apunta a `localhost:5000` en todos los entornos. Si producción llegara a usar un servidor de actualizaciones remoto, ese es el valor que debe sobrescribirse **solo** en `appsettings.Production.json`.
 
-### Variables de entorno requeridas en producción
+### Formato de `secrets.json` (producción)
 
-El servicio `PosBackendService` (registrado con NSSM) necesita estas variables. Sin ellas, el backend no tiene credenciales de base de datos ni contraseña semilla:
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=CommandCenterDb;Username=postgres;Password=<secreto>"
+  },
+  "SystemSettings": {
+    "AdminSeedPassword": "<secreto>"
+  },
+  "JwtSettings": {
+    "Key": "<secreto>"
+  },
+  "Kestrel": {
+    "Certificates": {
+      "Default": {
+        "Password": "<secreto>"
+      }
+    }
+  }
+}
+```
 
-| Variable | Valor (este despliegue) | Qué configura |
-|---|---|---|
-| `ConnectionStrings__DefaultConnection` | `Host=localhost;Port=5432;Database=CommandCenterDb;Username=postgres;Password=postgres` | Cadena de conexión a PostgreSQL |
-| `SystemSettings__AdminSeedPassword` | `Admin123!` | Contraseña inicial del usuario admin (solo se usa al sembrar si el usuario no existe) |
-
-Se guardan en el registro en `HKLM\SYSTEM\CurrentControlSet\Services\PosBackendService\Parameters\AppEnvironmentExtra` (REG_MULTI_SZ).
-
-> **Importante:** si el instalador vuelve a registrar el servicio (NSSM) durante una actualización, estas variables se pierden y hay que volver a establecerlas. Si el arranque falla con "las credenciales son incorrectas", revisa primero que las variables estén presentes.
+> **Importante para scripts externos:** .NET interpreta las claves **anidadas** (`ConnectionStrings:DefaultConnection`) en los archivos JSON; las variantes planas `ConnectionStrings__DefaultConnection` solo aplican a variables de entorno. `Configure-PosService.ps1`, `create-https-cert.ps1` y `backup-postgres.ps1` ya leen/escriben el formato anidado (con migración automática desde el legacy si aparece).
 
 ## 4. Pasos de instalación en una máquina nueva
 
@@ -75,19 +90,31 @@ Se guardan en el registro en `HKLM\SYSTEM\CurrentControlSet\Services\PosBackendS
    nssm install PosBackendService "C:\...\BackendAPI\Backend.API.exe"
    nssm set PosBackendService AppDirectory "C:\...\BackendAPI"
    ```
-5. **Establecer las variables de entorno del servicio** (¡paso crítico!):
-   ```bat
-   nssm set PosBackendService AppEnvironmentExtra ^
-     "SystemSettings__AdminSeedPassword=Admin123!" ^
-     "ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=CommandCenterDb;Username=postgres;Password=postgres"
+5. **Crear `BackendAPI\secrets.json` con los secretos** (¡paso crítico!). Una forma segura es ejecutar el instalador (`Configure-PosService.ps1` los genera con CSPRNG y gestiona la ACL automáticamente). A mano, con una consola elevada:
+
+   ```powershell
+   $secrets = @{
+     ConnectionStrings = @{ DefaultConnection = "Host=localhost;Port=5432;Database=CommandCenterDb;Username=postgres;Password=<secreto>" }
+     SystemSettings     = @{ AdminSeedPassword = "<secreto>" }
+     JwtSettings        = @{ Key = "<secreto>" }
+     Kestrel            = @{ Certificates = @{ Default = @{ Password = "<secreto>" } } }
+   }
+   $secrets | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8 -LiteralPath "C:\...\BackendAPI\secrets.json"
+   icacls "C:\...\BackendAPI\secrets.json" /inheritance:r /grant:r "SYSTEM:(F)" "Administrators:(F)" "NT SERVICE\PosBackendService:(R)"
    ```
-   > Si el instalador (Inno Setup / NSSM) re-registra el servicio en cada actualización, estas variables se pierden: añádelas al script del instalador o a un script de primer arranque. Sin `ConnectionStrings__DefaultConnection`, el backend no tiene dónde conectar.
-6. **Arrancar**:
+
+   > El instalador (Inno Setup / NSSM) crea este archivo por ti y bloquea el acceso salvo SYSTEM/Administradores y la cuenta del servicio. Las claves son **anidadas**; no uses variantes `__`.
+6. **Generar el certificado HTTPS del puesto** (si se usará el puerto 5001 con un cliente externo):
+   ```powershell
+   .\scripts\create-https-cert.ps1 -Subject "CN=<nombre-del-equipo>" -SecretsFile "C:\...\BackendAPI\secrets.json"
+   ```
+   El script genera un autofirmado con **CN/SAN del equipo**, guarda el certificado y el PFX, y persiste la contraseña en `secrets.json` (nunca por argumentos).
+7. **Arrancar**:
    ```bat
    sc start PosBackendService
    ```
    La primera vez, el backend crea la BD (con los cambios de §2.1), aplica migraciones y siembra el admin (que exigirá cambio de contraseña, §2.2–2.3).
-7. **Instalar el cliente** en el/los equipos de caja apuntando a `http://localhost:5000` (o la IP del servidor; para ello el firewall del paso 2 debe estar aplicado).
+8. **Instalar el cliente** en el/los equipos de caja apuntando a `http://localhost:5000` (o la IP del servidor; para ello el firewall del paso 2 debe estar aplicado).
 
 ## 5. Checklist de verificación
 
@@ -109,5 +136,40 @@ Se guardan en el registro en `HKLM\SYSTEM\CurrentControlSet\Services\PosBackendS
 - **Preservar las env vars al actualizar:** revisar el script del instalador (Inno Setup) y, si re-registra el servicio, que también ejecute el `nssm set AppEnvironmentExtra`.
 - **Validar la config en el cliente:** que los mensajes de error de red distingan "servidor apagado", "credenciales de BD" y "versión incompatible" para facilitar el soporte en caja.
 - **Acceso de dispositivos externos:** la regla de firewall queda limitada a la subred local. Si una caja está en otra VLAN/subred, añade su IP (`remoteip=<IP>`) en lugar de abrir la regla a todas las redes.
-- **HTTPS real en el 5001:** el certificado actual es el de desarrollo; para clientes externos conviene instalar un certificado de confianza en el servidor o limitarse a HTTP (5000) dentro de la LAN.
-- **Automatizar el firewall en el instalador:** igual que con las env vars, si el instalador se re-ejecuta, que también verifique/recree la regla de firewall (añadirla al script de Inno Setup o a un script de primer arranque).
+- **HTTPS real en el 5001:** el certificado generado por `create-https-cert.ps1` es autofirmado y por equipo; para clientes externos conviene instalar su entidad raíz de confianza en el servidor o en las cajas, o limitarse a HTTP (5000) dentro de la LAN.
+- **Automatizar el firewall en el instalador:** el instalador ya recrea la regla de firewall en cada ejecución (consulta confirmatoria).
+
+## 7. Operación sin conexión a Internet (tasa BCV manual, 8.29-A2)
+
+El sistema sincroniza la tasa oficial del BCV automáticamente (intervalo configurable `BcvSettings:AutoSyncIntervalMinutes`, por defecto 120 min). Si el puesto queda sin red y el auto-sync falla, la operación **continúa** siempre que exista una tasa vigente **para el día**; una venta que no encuentre tasa vigente se rechaza explícitamente (con mensaje al cajero, sin montos inventados).
+
+Procedimiento cuando no hay red:
+
+1. **Desactivar el auto-sync** (opcional, evita reintentos periódicos): en `BackendAPI\appsettings.json` o en la configuración del backend, fijar `BcvSettings:AutoSyncIntervalMinutes` a `0` (o negativo) y reiniciar el servicio. Con esto, la sincronización queda **solo bajo demanda**.
+2. **Obtener la tasa** del día (portal del BCV, banca, prensa) e **ingresarla manualmente** como Admin:
+   ```http
+   POST http://localhost:5000/api/exchange-rate
+   Authorization: Bearer <token-admin>
+   Content-Type: application/json
+
+   { "value": 73.25 }
+   ```
+   El backend redondea hacia arriba a 4 decimales (`Math.Ceiling`) y la guarda como la tasa oficial del día. Una vez registrada, la venta usa esa tasa (anclada por petición) aunque la red siga caída.
+3. Si la red se recupera, `POST /api/exchange-rate/sync-bcv` fuerza un rastreo manual del portal para corregir el valor si el banco lo ajustó; o se vuelve a activar el auto-sync (intervalo > 0).
+4. **Integridad:** la tasa del día queda como `AppliedRate` persistida en cada venta; el historial nunca se recalcula con la tasa actual (`rules.md` §1).
+
+## 8. Backup automático de PostgreSQL (8.29-A6)
+
+El instalador crea **por defecto** la tarea programada `Sistema POS - Backup PostgreSQL` (diaria 03:00, ejecución como SYSTEM) que invoca `scripts/backup-postgres.ps1`:
+
+- Volcado en formato `custom` (`pg_dump -Fc`) con compresión máxima y blobs, destino por defecto `C:\Backups\CommandCenter`.
+- Retención de 14 días (configurable con `-RetentionDays`).
+- Las credenciales se leen **exclusivamente** de `BackendAPI\secrets.json` (clave `ConnectionStrings.DefaultConnection`), nunca por línea de comandos.
+- Se desactiva la creación automática durante la instalación solo con `-SkipScheduledBackup`.
+
+Verificación manual del backup:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Program Files (x86)\Sistema POS Administrador\tools\backup-postgres.ps1" -BackupDir "C:\Backups\CommandCenter"
+schtasks /Query /TN "Sistema POS - Backup PostgreSQL"
+```

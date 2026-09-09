@@ -297,6 +297,49 @@ public class SalesController : ControllerBase
         }
     }
 
+    // 8.29-A05: abonos atómicos por lote (todo o nada) en una venta en espera. Un único
+    // Idempotency-Key protege el lote completo: un replay no duplica NINGÚN abono.
+    [HttpPost("{id}/payments/batch")]
+    public async Task<ActionResult<SaleDto>> AddPaymentsBatch(int id, [FromBody] System.Collections.Generic.List<AddPaymentRequestDto> request)
+    {
+        string requestPath = $"/api/sales/{id}/payments/batch";
+        string bodyJson = System.Text.Json.JsonSerializer.Serialize(request);
+
+        var resolved = await ResolveIdempotencyAsync(requestPath, bodyJson);
+        if (resolved.ShouldStop) return resolved.BlockingResult!;
+
+        try
+        {
+            if (!await IsAuthorizedForSaleAsync(id))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+            }
+
+            var sale = await _salesService.AddPaymentsBatchToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash);
+            if (Response?.Headers != null)
+            {
+                Response.Headers["X-Cache-Lookup"] = "MISS";
+            }
+            return Ok(sale);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.Message.Contains("IX_IdempotentRequests") || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505"))
+        {
+            return await HandleIdempotencyCollisionAsync(ex, requestPath, resolved.Key, resolved.PayloadHash);
+        }
+        catch (System.Collections.Generic.KeyNotFoundException ex)
+        {
+            return this.ApiNotFound(ex.Message);
+        }
+        catch (System.ArgumentException ex)
+        {
+            return this.ApiBadRequest(ex.Message);
+        }
+        catch (System.InvalidOperationException ex)
+        {
+            return this.ApiBadRequest(ex.Message);
+        }
+    }
+
     [HttpGet("pending")]
     public async Task<ActionResult<System.Collections.Generic.IEnumerable<SaleDto>>> GetPendingSales([FromQuery] int limit = 200, [FromQuery] int offset = 0)
     {

@@ -27,6 +27,12 @@
     <ProjectReference Include="..\Logistics.Module\Logistics.Module.csproj" />
   </ItemGroup>
 
+  <!-- 8.29-A4: la configuracion de desarrollo (credenciales locales) no debe
+       empaquetarse en la publicacion Release destinada a instaladores de clientes. -->
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
   <!-- Certificado HTTPS autofirmado (ver scripts/create-https-cert.ps1): se copia a la salida
        para que funcione tanto en desarrollo (dotnet run) como en el servicio publicado. -->
   <ItemGroup>

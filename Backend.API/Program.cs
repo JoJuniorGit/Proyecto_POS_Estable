@@ -89,25 +89,30 @@ try
     // Enable Windows Service integration (allows sc.exe to manage service natively without Error 1053)
     builder.Host.UseWindowsService();
 
-    // Load .env file searching from BaseDirectory up to root
-    try
+    // 8.29-B4: carga de .env SOLO en Desarrollo. En Producción/Stage no se recorre el
+    // directorio base en busca de .env: evita que un .env residual de un publish/build
+    // viejos (o una carpeta de trabajo) inyecte conexiones/secretos en producción.
+    if (builder.Environment.IsDevelopment())
     {
-        var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
-        while (dir != null)
+        try
         {
-            var envCandidate = Path.Combine(dir.FullName, ".env");
-            if (File.Exists(envCandidate))
+            var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+            while (dir != null)
             {
-                Env.Load(envCandidate);
-                break;
+                var envCandidate = Path.Combine(dir.FullName, ".env");
+                if (File.Exists(envCandidate))
+                {
+                    Env.Load(envCandidate);
+                    break;
+                }
+                dir = dir.Parent;
             }
-            dir = dir.Parent;
         }
-    }
-    catch (Exception ex)
-    {
-        // 8B-B4: no dejar el catch vacío; registrar el fallo del recorrido de directorios.
-        Console.WriteLine($"[STARTUP] Aviso: no se pudo recorrer el directorio base en busca de configuracion: {ex.Message}");
+        catch (Exception ex)
+        {
+            // 8B-B4: no dejar el catch vacío; registrar el fallo del recorrido de directorios.
+            Console.WriteLine($"[STARTUP] Aviso: no se pudo recorrer el directorio base en busca de configuracion: {ex.Message}");
+        }
     }
 
     // Prioritize Connection String from appsettings.json / appsettings.Production.json

@@ -7,11 +7,12 @@
 #      eliminando reglas duplicadas o residuales de instalaciones previas.
 #   3. Registra o actualiza el servicio Windows 'PosBackendService' con NSSM.
 #   4. Aplica la Política de Fusión de Variables de Entorno (AppEnvironmentExtra):
-#      - Variables Sensibles (SystemSettings__AdminSeedPassword): NO se sobrescriben si ya existen.
-#      - Variables Criptográficas (JWT_SETTINGS_KEY): Se preservan a menos que se use -RotateJwt.
-#      - Variables de Conexión y Negocio: Se actualizan con los valores provistos,
-#        conservando cualquier variable personalizada agregada manualmente.
-#      - Variables Nuevas: Se agregan automáticamente.
+#      - SECRETOS FUERA de AppEnvironmentExtra: cadena de conexión, contraseña semilla,
+#        clave JWT y contraseña del certificado viven ÚNICAMENTE en secrets.json
+#        (ACL restrictiva), legibles solo por SYSTEM/Administradores/el servicio.
+#      - Variables NO sensibles (negocio, usuario semilla): se actualizan con los
+#        valores provistos, conservando cualquier variable personalizada.
+#      - Se RETIRAN los secretos heredados de instalaciones legacy (EnvExtra -> secrets.json).
 #   5. Inicia o reinicia el servicio con un bucle de reintentos resiliente.
 # =====================================================================
 
@@ -21,8 +22,8 @@ param(
     [string]$ServiceName = "PosBackendService",
     [string]$BackendExe = "$InstallDir\BackendAPI\Backend.API.exe",
     [string]$Nssm = "$InstallDir\BackendAPI\nssm.exe",
-    [string]$ConnectionString = "Host=localhost;Port=5432;Database=CommandCenterDb;Username=postgres;Password=postgres",
-    # 8.9-B1: sin valor por defecto - se exige una clave fuerte para el admin semilla.
+    [string]$ConnectionString = "",
+    # 8.9-B1: sin valor por defecto - se exige una clave fuerte para el admin semilla (solo primera instalación).
     [string]$AdminSeedPassword = "",
     [string]$AdminSeedUsername = "admin",
     [string]$AdminSeedName = "Administrador Principal",
@@ -30,7 +31,8 @@ param(
     [string]$JwtSecretKey = "",
     [string]$HttpsCertPassword = "",
     [switch]$RotateJwt = $false,
-    [switch]$EnableScheduledBackup = $false
+    # 8.29-A1: backups automáticos por defecto; -SkipScheduledBackup los omite/elimina.
+    [switch]$SkipScheduledBackup = $false
 )
 
 $ErrorActionPreference = 'Stop'
@@ -52,19 +54,6 @@ function Log([string]$message, [string]$level = "INFO") {
 }
 
 Log "=== Iniciando configuración del servicio POS y Firewall ==="
-
-# 8.9-B1: validación obligatoria de la clave del admin semilla (sin defaults conocidos).
-if ([string]::IsNullOrWhiteSpace($AdminSeedPassword)) {
-    throw "Se requiere -AdminSeedPassword. Proporcione una contraseña fuerte para el administrador semilla (mín. 8 caracteres, con mayúscula, minúscula, dígito y carácter especial). El backend abortará en Producción si la clave no cumple la política."
-}
-
-# Generar clave JWT aleatoria segura si no fue provista o si coincide con la predeterminada débil
-if ([string]::IsNullOrWhiteSpace($JwtSecretKey) -or $JwtSecretKey -eq "ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795") {
-    $bytes = New-Object byte[] 64
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-    $JwtSecretKey = [System.BitConverter]::ToString($bytes).Replace("-", "").ToLower()
-    Log "Generada nueva clave criptográfica aleatoria de 512 bits para JWT."
-}
 
 # ---------------------------------------------------------------------
 # 1. Validación y Auto-Recuperación de NSSM
@@ -187,43 +176,32 @@ foreach ($line in $currentLines) {
 
 Log "Variables preexistentes en el servicio: $($merged.Count)"
 
-# --- Política de Fusión ---
+# --- Política de Fusión (8.29-A1) ---
+# SECRETOS FUERA de AppEnvironmentExtra. La cadena de conexión, la contraseña semilla,
+# la clave JWT y la contraseña del certificado viven ÚNICAMENTE en secrets.json
+# (ACL restrictiva). AppEnvironmentExtra del servicio es legible por cualquier proceso
+# con permisos de consulta (WMI/administrador de tareas/registro). Además se RETIRAN
+# aquí los secretos heredados de instalaciones legacy para migrarlos a secrets.json.
 
-# A) Cadena de Conexión a Base de Datos
-if (-not [string]::IsNullOrWhiteSpace($ConnectionString)) {
-    $merged["ConnectionStrings__DefaultConnection"] = $ConnectionString
-}
+$legacySecretKeys = @(
+    "ConnectionStrings__DefaultConnection",
+    "SystemSettings__AdminSeedPassword",
+    "JWT_SETTINGS_KEY",
+    "HTTPS_CERT_PASSWORD"
+)
 
-# B) Contraseña de Administrador Semilla (Sensible: NO sobrescribir si ya existe)
-if ($merged.ContainsKey("SystemSettings__AdminSeedPassword") -and -not [string]::IsNullOrWhiteSpace($merged["SystemSettings__AdminSeedPassword"])) {
-    Log "Conservando contraseña de administrador semilla preexistente en el servicio."
-} else {
-    if (-not [string]::IsNullOrWhiteSpace($AdminSeedPassword)) {
-        $merged["SystemSettings__AdminSeedPassword"] = $AdminSeedPassword
-        Log "Asignando contraseña de administrador semilla inicial."
+$secretsRemoved = @()
+foreach ($secretKey in $legacySecretKeys) {
+    if ($merged.ContainsKey($secretKey)) {
+        $secretsRemoved += $secretKey
+        $merged.Remove($secretKey) | Out-Null
     }
 }
-
-# C) Clave Secreta JWT (Criptográfica: Preservar en actualizaciones salvo rotación explícita)
-$existingJwt = if ($merged.ContainsKey("JWT_SETTINGS_KEY")) { $merged["JWT_SETTINGS_KEY"] } else { $null }
-$isExistingValid = (-not [string]::IsNullOrWhiteSpace($existingJwt)) -and 
-                   ($existingJwt.Length -ge 32) -and 
-                   ($existingJwt -ne "ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795")
-
-if ($isExistingValid -and (-not $RotateJwt)) {
-    Log "Conservando clave secreta JWT preexistente en el servicio (actualización detectada)."
-} else {
-    if ([string]::IsNullOrWhiteSpace($JwtSecretKey) -or $JwtSecretKey -eq "ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795") {
-        $bytes = New-Object byte[] 64
-        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-        $JwtSecretKey = [System.BitConverter]::ToString($bytes).Replace("-", "").ToLower()
-        Log "Generada nueva clave criptográfica aleatoria de 512 bits para JWT."
-    }
-    $merged["JWT_SETTINGS_KEY"] = $JwtSecretKey
-    Log "Asignando clave secreta JWT al servicio."
+if ($secretsRemoved.Count -gt 0) {
+    Log "Secretos retirados de AppEnvironmentExtra (migración a secrets.json): $($secretsRemoved -join ', ')"
 }
 
-# D) Parámetros de Negocio y Usuario Semilla
+# Variables NO sensibles del negocio y del usuario semilla (siguen en AppEnvironmentExtra)
 if (-not [string]::IsNullOrWhiteSpace($AdminSeedUsername)) {
     $merged["SystemSettings__AdminSeedUsername"] = $AdminSeedUsername
 }
@@ -234,21 +212,9 @@ if (-not [string]::IsNullOrWhiteSpace($BusinessName)) {
     $merged["SystemSettings__BusinessName"] = $BusinessName
 }
 
-# E) Contraseña de Certificado HTTPS
-if (-not [string]::IsNullOrWhiteSpace($HttpsCertPassword)) {
-    $merged["HTTPS_CERT_PASSWORD"] = $HttpsCertPassword
-    Log "Asignando contraseña de certificado HTTPS provista al servicio."
-} elseif (-not $merged.ContainsKey("HTTPS_CERT_PASSWORD") -or $merged["HTTPS_CERT_PASSWORD"] -eq "<legacy-default>") {
-    $bytes = New-Object byte[] 24
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-    $randPass = [System.BitConverter]::ToString($bytes).Replace("-", "")
-    $merged["HTTPS_CERT_PASSWORD"] = $randPass
-    Log "Generada nueva contraseña criptográfica aleatoria para el certificado HTTPS."
-}
-
 # Aplicar las variables fusionadas a NSSM vía splatting
 $setArgs = @($ServiceName, "AppEnvironmentExtra") + ($merged.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" })
-Log "Aplicando $($merged.Count) variables de entorno a AppEnvironmentExtra..."
+Log "Aplicando $($merged.Count) variables de entorno NO sensibles a AppEnvironmentExtra..."
 & $Nssm set @setArgs
 if ($LASTEXITCODE -ne 0) {
     $msg = "Error crítico: 'nssm set $ServiceName AppEnvironmentExtra' falló con código $LASTEXITCODE"
@@ -257,25 +223,125 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # ---------------------------------------------------------------------
-# 4.1 (8U-M2) Archivo de secretos protegido (secrets.json con ACL restrictiva).
-# Los secretos viven en un archivo con ACL de solo SYSTEM/Administradores en vez de
-# exponerse por línea de comandos del servicio (AppEnvironmentExtra visible en
-# administrador de tareas / WMI). El backend lo carga con máxima precedencia.
+# 4.1 (8.29-A1) Archivo de secretos protegido (secrets.json con ACL restrictiva):
+# ÚNICA fuente de secretos del servicio. Se PRESERVA lo existente (reinstalaciones y
+# actualizaciones) y solo se crea/reemplaza cuando falta, está vacío o degrada
+# (clave débil o heredada). El backend lo carga con máxima precedencia.
 # ---------------------------------------------------------------------
 $secretsFile = Join-Path $BackendDir "secrets.json"
-try {
-    $secretMap = @{
-        "ConnectionStrings__DefaultConnection" = $merged["ConnectionStrings__DefaultConnection"]
-        "SystemSettings__AdminSeedPassword"   = $merged["SystemSettings__AdminSeedPassword"]
-        "JWT_SETTINGS_KEY"                     = $merged["JWT_SETTINGS_KEY"]
-        "HTTPS_CERT_PASSWORD"                  = $merged["HTTPS_CERT_PASSWORD"]
-    }
-    $secretJson = $secretMap | ConvertTo-Json -Depth 3
-    [System.IO.File]::WriteAllText($secretsFile, $secretJson, [System.Text.Encoding]::UTF8)
-    Log "Secretos escritos en $secretsFile (ACL restrictiva)."
+$connString = $null
+$seedPass = $null
+$jwtKey = $null
+$certPass = $null
 
-    # ACL: heredación bloqueada; SYSTEM/Administradores (FullControl) + la cuenta del
-    # servicio (8U-B1: Virtual Account) con lectura, para que el backend pueda leerlos.
+if (Test-Path $secretsFile) {
+    try {
+        $existingSecrets = Get-Content -Path $secretsFile -Raw | ConvertFrom-Json
+        if ($null -ne $existingSecrets) {
+            # Convierte formato anidado actual y formato legacy (claves planas __).
+            $connString = $existingSecrets.ConnectionStrings.DefaultConnection
+            if ([string]::IsNullOrWhiteSpace($connString)) { $connString = $existingSecrets."ConnectionStrings__DefaultConnection" }
+            $seedPass = $existingSecrets.SystemSettings.AdminSeedPassword
+            if ([string]::IsNullOrWhiteSpace($seedPass)) { $seedPass = $existingSecrets."SystemSettings__AdminSeedPassword" }
+            $jwtKey = $existingSecrets.JwtSettings.Key
+            if ([string]::IsNullOrWhiteSpace($jwtKey)) { $jwtKey = $existingSecrets."JWT_SETTINGS_KEY" }
+            $certPass = $existingSecrets.Kestrel.Certificates.Default.Password
+            if ([string]::IsNullOrWhiteSpace($certPass)) { $certPass = $existingSecrets."HTTPS_CERT_PASSWORD" }
+        }
+    } catch {
+        Log "Aviso: no se pudo leer secrets.json existente; se recreará desde parámetros." "WARN"
+    }
+}
+
+$needsWrite = -not (Test-Path $secretsFile)
+
+# Cadena de conexión: fuera de AppEnvironmentExtra; solo en secrets.json.
+if ([string]::IsNullOrWhiteSpace($connString)) {
+    if ([string]::IsNullOrWhiteSpace($ConnectionString)) {
+        throw "No se pudo resolver la cadena de conexión: proporcione -ConnectionString o un secrets.json previo válido."
+    }
+    $connString = $ConnectionString
+    $needsWrite = $true
+}
+
+# Contraseña del administrador semilla: requerida solo en la primera instalación.
+if ([string]::IsNullOrWhiteSpace($seedPass)) {
+    if ([string]::IsNullOrWhiteSpace($AdminSeedPassword)) {
+        throw "Se requiere -AdminSeedPassword (o un secrets.json previo válido) para la primera instalación."
+    }
+    $seedPass = $AdminSeedPassword
+    $needsWrite = $true
+} else {
+    Log "Conservando contraseña de administrador semilla preexistente (secrets.json)."
+}
+
+# Clave JWT: preservar salvo rotación explícita; respetar -JwtSecretKey si se fuerza
+# (instalación manual) y generar CSPRNG 512 bits si falta o es débil.
+$isJwtWeak = ([string]::IsNullOrWhiteSpace($jwtKey)) -or
+             ($jwtKey.Length -lt 32) -or
+             ($jwtKey -eq "ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795")
+
+if (-not $isJwtWeak -and -not $RotateJwt) {
+    Log "Conservando clave secreta JWT preexistente (secrets.json, actualización detectada)."
+} else {
+    $manualJwt = $JwtSecretKey
+    $isManualJwtValid = (-not [string]::IsNullOrWhiteSpace($manualJwt)) -and
+                        ($manualJwt.Length -ge 32) -and
+                        ($manualJwt -ne "ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795")
+    if ($isManualJwtValid) {
+        $jwtKey = $manualJwt
+        Log "Usando clave JWT provista por parámetro (-JwtSecretKey)."
+    } else {
+        $bytes = New-Object byte[] 64
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        $jwtKey = [System.BitConverter]::ToString($bytes).Replace("-", "").ToLower()
+        Log "Generada nueva clave criptográfica aleatoria de 512 bits para JWT."
+    }
+    $needsWrite = $true
+}
+
+# Contraseña del certificado HTTPS: preservar o generar CSPRNG.
+$isCertWeak = ([string]::IsNullOrWhiteSpace($certPass)) -or
+              ($certPass.Length -lt 16) -or
+              ($certPass -eq "<legacy-default>")
+
+if (-not $isCertWeak) {
+    Log "Conservando contraseña de certificado HTTPS preexistente (secrets.json)."
+} else {
+    if (-not [string]::IsNullOrWhiteSpace($HttpsCertPassword)) {
+        $certPass = $HttpsCertPassword
+    } else {
+        $bytes = New-Object byte[] 16
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        $certPass = [System.BitConverter]::ToString($bytes).Replace("-", "")
+        Log "Generada nueva contraseña criptográfica aleatoria para el certificado HTTPS."
+    }
+    $needsWrite = $true
+}
+
+# Escritura en formato ANIDADO compatible con el sistema de configuración .NET:
+# ConnectionStrings:DefaultConnection, SystemSettings:AdminSeedPassword, JwtSettings:Key
+# y Kestrel:Certificates:Default:Password. Las claves planas __ solo tienen semántica
+# para variables de entorno, NO para archivos JSON; no se escriben más.
+if ($needsWrite) {
+    try {
+        $secretMap = [ordered]@{
+            ConnectionStrings = @{ DefaultConnection = $connString }
+            SystemSettings    = @{ AdminSeedPassword = $seedPass }
+            JwtSettings       = @{ Key = $jwtKey }
+            Kestrel           = @{ Certificates = @{ Default = @{ Password = $certPass } } }
+        }
+        $secretJson = $secretMap | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($secretsFile, $secretJson, [System.Text.Encoding]::UTF8)
+        Log "Secretos escritos en $secretsFile (formato anidado, ACL restrictiva)."
+    } catch {
+        throw "No se pudo escribir $secretsFile; los secretos quedan solo en el archivo protegido: $($_.Exception.Message)"
+    }
+}
+
+# ACL: heredación bloqueada; SYSTEM/Administradores (FullControl) + la cuenta del
+# servicio (8U-B1: Virtual Account) con lectura, para que el backend pueda leerlos.
+try {
     $acl = Get-Acl -Path $secretsFile
     $acl.SetAccessRuleProtection($true, $false)
     $systemSid = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::LocalSystemSid, $null)
@@ -294,7 +360,7 @@ try {
     Set-Acl -Path $secretsFile -AclObject $acl
     Log "ACL aplicada sobre $secretsFile (SYSTEM, Administradores y cuenta del servicio)."
 } catch {
-    Log "Aviso al crear secrets.json con ACL: $($_.Exception.Message)" "WARN"
+    Log "Aviso al aplicar ACL sobre ${secretsFile}: $($_.Exception.Message)" "WARN"
 }
 
 # 4.1b Protección ACL del Registro (Restringir parámetros del servicio a SYSTEM y Administradores)
@@ -338,7 +404,7 @@ if (-not (Test-Path $certTools)) {
         $needsRegen = $true
     } else {
         try {
-            $probeCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxPath, ($merged["HTTPS_CERT_PASSWORD"]))
+            $probeCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxPath, $certPass)
             if ($probeCert.Subject -notmatch [regex]::Escape("CN=$env:COMPUTERNAME")) {
                 $needsRegen = $true
             }
@@ -349,7 +415,9 @@ if (-not (Test-Path $certTools)) {
     }
     if ($needsRegen) {
         Log "Generando certificado HTTPS con SANs del puesto ($env:COMPUTERNAME)..."
-        $certArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$certTools`" -certPassword `"$($merged["HTTPS_CERT_PASSWORD"])`""
+        # La contraseña del pfx la lee create-https-cert.ps1 desde secrets.json
+        # (nunca viaja por línea de comandos del proceso PowerShell).
+        $certArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$certTools`" -SecretsFile `"$secretsFile`""
         $certProc = Start-Process -FilePath "powershell.exe" -ArgumentList $certArgs -Wait -PassThru -NoNewWindow
         if ($certProc.ExitCode -ne 0) {
             Log "ADVERTENCIA: create-https-cert.ps1 retornó código $($certProc.ExitCode); el backend abortará sin HTTPS en Producción." "WARN"
@@ -362,18 +430,27 @@ if (-not (Test-Path $certTools)) {
 }
 
 # ---------------------------------------------------------------------
-# 4.3 (8.27-A4) Backup diario opcional: agenda una tarea programada que ejecuta
-# backup-postgres.ps1 todos los días a las 03:00. Activación explícita con
-# -EnableScheduledBackup para no alterar instalaciones existentes.
+# 4.3 (8.29-A6) Backup diario: agenda una tarea programada que ejecuta
+# backup-postgres.ps1 todos los días a las 03:00. ACTIVO POR DEFECTO en toda
+# instalación; -SkipScheduledBackup lo omite o elimina si ya existía.
 # ---------------------------------------------------------------------
-if ($EnableScheduledBackup) {
-    $backupScript = Join-Path $InstallDir "tools\backup-postgres.ps1"
+$taskName = "Sistema POS - Backup PostgreSQL"
+$backupScript = Join-Path $InstallDir "tools\backup-postgres.ps1"
+
+if ($SkipScheduledBackup) {
+    if (Test-Path $backupScript) {
+        $existingTask = Get-ScheduledTask -TaskName $taskName -TaskPath "\" -ErrorAction SilentlyContinue
+        if ($null -ne $existingTask) {
+            Unregister-ScheduledTask -TaskName $taskName -TaskPath "\" -Confirm:$false | Out-Null
+            Log "Backup desactivado: tarea programada '$taskName' eliminada." "WARN"
+        }
+    }
+} else {
     if (Test-Path $backupScript) {
         try {
-            $taskName = "Sistema POS - Backup PostgreSQL"
             $taskTr = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$backupScript`""
             & schtasks.exe /Create /TN $taskName /SC DAILY /ST 03:00 /RU SYSTEM /RL HIGHEST /TR $taskTr /F | Out-Null
-            Log "Tarea programada creada: $taskName (diaria 03:00)." "SUCCESS"
+            Log "Tarea programada asegurada: $taskName (diaria 03:00)." "SUCCESS"
         } catch {
             Log "Aviso al crear la tarea de backup: $($_.Exception.Message)" "WARN"
         }

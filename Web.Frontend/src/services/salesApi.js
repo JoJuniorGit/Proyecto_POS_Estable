@@ -107,6 +107,23 @@ export async function addPaymentToHoldSale(saleId, paymentReq, idempotencyKey = 
 }
 
 /**
+ * 8.29-A05: aplica varios abonos a una venta en espera de forma ATÓMICA (todo o nada)
+ * en UNA sola transacción, con un ÚNICO Idempotency-Key para el lote completo.
+ * Si un reintento alcanza al servidor, un replay no duplica NINGÚN abono del lote.
+ * @param {number} saleId
+ * @param {Array} paymentRequests - [{ paymentMethodId, amountBsS, exchangeRate, referenceNumber }]
+ * @param {string} [idempotencyKey]
+ */
+export async function addPaymentsBatchToHoldSale(saleId, paymentRequests, idempotencyKey = null) {
+  const key = idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `pay-batch-${saleId}-${Date.now()}`);
+  return await api.post(`/api/sales/${saleId}/payments/batch`, paymentRequests, {
+    headers: {
+      'Idempotency-Key': key,
+    },
+  });
+}
+
+/**
  * Obtiene la previsualización canónica de cobro, redondeo y vuelto calculada por el backend.
  */
 export async function getCheckoutPreview(saleId, exchangeRate, payments) {

@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main, develop, V0.15 ]
 
+# 8.29-B3: mínimo privilegio — el workflow solo necesita contenido de solo lectura;
+# evitar tokens GITHUB_TOKEN con permisos de escritura por defecto.
+permissions:
+  contents: read
+
 jobs:
   backend-build-and-test:
     name: Backend Build & Test (.NET 10 + PostgreSQL)
@@ -39,7 +44,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props', '**/Directory.Build.props', '**/dotnet-tools.json') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
