@@ -170,6 +170,7 @@ public partial class PosViewModel
 
         var checkoutVm = new CheckoutViewModel(Cart.CurrentSale, ActivePaymentMethods, _salesService, CurrentExchangeRate, _userSession, overrideSale: null, dialogService: _dialogService);
         var result = await MaterialDesignThemes.Wpf.DialogHost.Show(checkoutVm, "RootDialog");
+        checkoutVm.Dispose();
 
         if (result is int realInvoice)
         {

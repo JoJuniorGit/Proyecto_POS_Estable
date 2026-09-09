@@ -96,7 +96,7 @@ public interface ISalesService
     Task<SaleDto> UpdateItemQuantityAsync(int saleId, int itemId, decimal quantity, decimal exchangeRate);
     Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate);
     Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType);
-    Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<SalePaymentDto> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null);
+    Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<SalePaymentDto> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null, System.Threading.CancellationToken cancellationToken = default);
     Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, System.DateTime? startDate = null, System.DateTime? endDate = null, string? search = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request);

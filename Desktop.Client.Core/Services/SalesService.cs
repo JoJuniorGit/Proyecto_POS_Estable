@@ -132,7 +132,7 @@ public class SalesService : ISalesService
         return sale;
     }
 
-    public async Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<SalePaymentDto> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null)
+    public async Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<SalePaymentDto> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null, System.Threading.CancellationToken cancellationToken = default)
     {
         var _request = new { ExchangeRate = exchangeRate, Payments = payments, RoundingAdjustment = roundingAdjustment, CashierId = cashierId, IsPendingPickup = isPendingPickup };
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"api/sales/{saleId}/complete")
@@ -141,7 +141,7 @@ public class SalesService : ISalesService
         };
         var effectiveKey = !string.IsNullOrWhiteSpace(idempotencyKey) ? idempotencyKey : Guid.NewGuid().ToString("N");
         httpRequest.Headers.Add("Idempotency-Key", effectiveKey);
-        var _response = await _httpClient.SendAsync(httpRequest);
+        var _response = await _httpClient.SendAsync(httpRequest, cancellationToken);
         if (!_response.IsSuccessStatusCode)
         {
             var errorContent = await _response.Content.ReadAsStringAsync();

@@ -19,7 +19,7 @@ namespace Desktop.Client.ViewModels;
 /// Manages the payment collection process, enforcing centralized rounding 
 /// and ensuring accounting integrity with RoundingAdjustments.
 /// </summary>
-public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdatedMessage>
+public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdatedMessage>, System.IDisposable
 {
     private readonly ISalesService _salesService;
     private readonly SaleDto _sale;
@@ -159,6 +159,21 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
     {
         get => _isProcessing;
         set => SetProperty(ref _isProcessing, value);
+    }
+
+    private System.Threading.CancellationTokenSource? _cts;
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _cts = null;
+    }
+
+    [RelayCommand]
+    private void CancelCheckout()
+    {
+        _cts?.Cancel();
     }
 
     private bool _focusAmountInput;
@@ -304,6 +319,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         }
 
         IsProcessing = true;
+        _cts = new System.Threading.CancellationTokenSource();
         try
         {
             var rawPayments = Payments.Select(p => new SalePaymentDto(p.Dto.PaymentMethodId, p.Dto.Amount, p.AmountBsS, p.Dto.ReferenceNumber));
@@ -323,7 +339,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
                     int realId = await _salesService.CompleteSaleAsync(
                         targetSale.Id, CurrentExchangeRate, rawPayments,
                         RoundingAdjustment, _userSession?.CurrentUser?.Id, IsPendingPickup,
-                        _currentIdempotencyKey);
+                        _currentIdempotencyKey, _cts.Token);
 
                     _currentIdempotencyKey = null;
                     WeakReferenceMessenger.Default.Unregister<CartUpdatedMessage>(this);
@@ -358,12 +374,16 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
                 int realId = await _salesService.CompleteSaleAsync(
                     _sale.Id, CurrentExchangeRate, paymentsList,
                     RoundingAdjustment, _userSession?.CurrentUser?.Id, IsPendingPickup,
-                    _currentIdempotencyKey);
+                    _currentIdempotencyKey, _cts.Token);
 
                 _currentIdempotencyKey = null;
                 WeakReferenceMessenger.Default.Unregister<CartUpdatedMessage>(this);
                 DialogHost.CloseDialogCommand.Execute(realId, null);
             }
+        }
+        catch (System.OperationCanceledException)
+        {
+            ShowWarning("Cobro Cancelado", "El proceso de cobro fue cancelado.");
         }
         catch (System.Exception ex)
         {
@@ -371,6 +391,8 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         }
         finally
         {
+            _cts?.Dispose();
+            _cts = null;
             IsProcessing = false;
         }
     }

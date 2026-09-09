@@ -37,7 +37,7 @@ public sealed class RequestMetricsRegistry
 
     private sealed class EndpointMetric
     {
-        private readonly List<int> _samples = new();
+        private readonly List<double> _samples = new();
         private long _total;
         private long _errors;
         private double _sumMs;
@@ -55,7 +55,7 @@ public sealed class RequestMetricsRegistry
             {
                 _maxMs = milliseconds;
             }
-            _samples.Add((int)milliseconds);
+            _samples.Add(milliseconds);
             if (_samples.Count > MaxSamples)
             {
                 _samples.RemoveAt(0);

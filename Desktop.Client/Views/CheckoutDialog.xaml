@@ -205,6 +205,23 @@
                         Style="{DynamicResource MaterialDesignOutlinedButton}" 
                         HorizontalAlignment="Left"
                         Height="40" Padding="20,0"/>
+
+                <Button Content="CANCELAR"
+                        Command="{Binding CancelCheckoutCommand}"
+                        HorizontalAlignment="Center"
+                        Height="40" Padding="15,0"
+                        Foreground="#DC2626">
+                    <Button.Style>
+                        <Style BasedOn="{StaticResource MaterialDesignFlatButton}" TargetType="Button">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsProcessing}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
                         
                 <Button Content="{Binding FinalizeSaleButtonLabel}" 
                         Command="{Binding FinalizeSaleCommand}"

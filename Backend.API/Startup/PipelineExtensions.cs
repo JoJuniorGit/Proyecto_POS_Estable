@@ -29,7 +29,6 @@ public static class PipelineExtensions
         // Security Headers (M-07)
         app.UseMiddleware<Backend.API.Middleware.SecurityHeadersMiddleware>();
 
-        // Observabilidad: registra latencia y status de cada petición (SLO de checkout)
         app.UseMiddleware<Backend.API.Middleware.RequestMetricsMiddleware>();
 
         // 8.7-B10: Con certificado presente, en Producción se fuerza HTTPS para el cliente Web:
