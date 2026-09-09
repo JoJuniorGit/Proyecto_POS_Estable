@@ -4284,4 +4284,42 @@ D1. docs/reportes-modulos/11-Reporte-Instalador-y-Scripts.txt ya asumia
 D2. Archivo ajeno sin trackear: docs/clear-products.ps1 (no se incluye).
 
 FIN DEL ANEXO - REVISION 8.62
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.63 (INSTALADOR: FIX ACL 1132 + RELAJACION DE POLITICA DE
+CONTRASENA DEL ADMIN)
+===============================================================================
+Alcance: corregir el aviso del instalador por permisos (codigo 1132) y el fallo
+de arranque del backend cuando la contrasena semilla del admin no cumplia la
+politica. Verificado: build Release 0/0, politica 16/16, suite .NET 769/769,
+instalador ISCC 0.
+
+A. FIX ACL EN SETUP.ISS (CODIGO 1132 = ERROR_MAPPING_NOT_FOUND)
+A1. WriteProtectedSecretsFile ejecutaba icacls otorgando NT SERVICE\<servicio>
+    ANTES de que la cuenta virtual existiera (el servicio aun no se registraba),
+    por lo que icacls no podia mapear el nombre a un SID -> 1132.
+A2. Se corrigio: el icacls inline ahora otorga solo SYSTEM y Administradores. La
+    cuenta del servicio la agrega Configure-PosService.ps1 DESPUES de registrar
+    el servicio (cuando la Virtual Account ya existe), con manejo de error.
+
+B. RELAJACION DE POLITICA DE CONTRASENA DEL ADMIN (DECISION DEL USUARIO)
+B1. Antes: PasswordPolicyService exigia minimo 8 + mayuscula + minuscula + numero
+    + caracter especial. La contrasena debia cumplirla el seed al arrancar el
+    backend en Production (DatabaseInitializer).
+B2. Ahora: minimo 4 caracteres + 1 letra + 1 numero, en tres puntos alineados:
+    - Core/Services/PasswordPolicyService.cs (validacion backend + seed).
+    - installer/setup.iss (nueva funcion PasswordHasLetterAndDigit + minimo 4 en
+      NextButtonClick).
+    - CommandCenter.Tests/Unit/Phase3AuthenticationAndPolicyTests.cs actualizado
+      a la regla nueva.
+B3. Impacto real detectado: el sistema "se trababa" (backend no terminaba de
+    arrancar en Production) cuando la contrasena semilla no cumplia la politica
+    estricta; al alinear instalador y backend desaparece la traba.
+
+C. NOTA OPERATIVA (fuera del commit)
+C1. Se detecto que la carpeta Desktop.Client aparecia movida a Backend.API\ (por
+    un build/uso externo). Se restauro a la raiz, donde la referencia
+    CommandCenter.slnx. No forma parte de este commit.
+
+FIN DEL ANEXO - REVISION 8.63
 ================================================================================

@@ -17,6 +17,13 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.29.0  | 2026-09-09  | (8.63)       | REVISION 8.63 / Instalador: fix ACL icacls (codigo 1132
+|          |             |              | por NT SERVICE inexistente al momento del icacls; el ACL
+|          |             |              | del servicio lo aplica Configure-PosService.ps1) y
+|          |             |              | relajacion de politica de contrasena del admin a minimo
+|          |             |              | 4 + 1 letra + 1 numero (alineada en PasswordPolicyService,
+|          |             |              | instalador y tests). Suites 769/769, build 0/0.
+|          |             |              | Detalle: ANEXO 8.63.
 | v1.28.0  | 2026-09-09  | (8.62)       | REVISION 8.62 / Ordenamiento de la raiz: scripts
 |          |             |              | operativos movidos a scripts/ (start.bat, build-clean.ps1,
 |          |             |              | actualizar_servicio_y_sistema.bat, deshabilitar_) con
@@ -678,9 +685,9 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.62 / ordenamiento de la raiz,
-  Build Release 0/0; suites .NET previas 769/769). Proxima revision obligatoria:
-  con cada PR que toque BD, API, perifericos o cierres deuda.
+  Ultima verificacion: 2026-09-09 (REVISION 8.63 / instalador fix ACL 1132 + politica
+  contrasena admin 4+letra+numero, .NET 769/769, build Release 0/0). Proxima revision
+  obligatoria: con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================
 FIN DEL DOCUMENTO - REPORTE DE ESTADO v1.5.0

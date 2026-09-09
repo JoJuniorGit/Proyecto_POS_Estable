@@ -216,6 +216,25 @@ begin
 end;
 
 // Validación de la página AdminPage antes de avanzar al siguiente paso.
+function PasswordHasLetterAndDigit(const Value: String): Boolean;
+var
+  i: Integer;
+  HasLetter, HasDigit: Boolean;
+  c: Char;
+begin
+  HasLetter := False;
+  HasDigit := False;
+  for i := 1 to Length(Value) do
+  begin
+    c := Value[i];
+    if ((c >= 'A') and (c <= 'Z')) or ((c >= 'a') and (c <= 'z')) then
+      HasLetter := True
+    else if (c >= '0') and (c <= '9') then
+      HasDigit := True;
+  end;
+  Result := HasLetter and HasDigit;
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   Username, Password, Confirm: String;
@@ -239,6 +258,14 @@ begin
     if Length(Password) < 4 then
     begin
       MsgBox('La contraseña debe tener al menos 4 caracteres.',
+        mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+
+    if not PasswordHasLetterAndDigit(Password) then
+    begin
+      MsgBox('La contraseña debe contener al menos 1 letra y 1 número.',
         mbError, MB_OK);
       Result := False;
       Exit;
@@ -392,8 +419,10 @@ begin
 
   if SaveStringToFile(SecretsPath, JsonLines, False) then
   begin
-    // ACL: bloqueo de herencia; solo SYSTEM, Administradores y la cuenta del servicio.
-    Code := RunCmd('icacls.exe', '""' + SecretsPath + '"" /inheritance:r /grant:r "SYSTEM:(F)" "Administrators:(F)" "NT SERVICE\' + ServiceName + ':(R)"');
+    // ACL inicial: bloqueo de herencia; SYSTEM y Administradores. La cuenta del servicio
+    // (NT SERVICE\PosBackendService) se agrega DESPUÉS en Configure-PosService.ps1, cuando
+    // la Virtual Account ya existe; aquí aún no está registrada (código 1132 si se intenta).
+    Code := RunCmd('icacls.exe', '"' + SecretsPath + '" /inheritance:r /grant:r "SYSTEM:(F)" "Administrators:(F)"');
     if Code <> 0 then
       MsgBox('Aviso: no se pudieron restringir los permisos de ' + SecretsPath +
         ' (código ' + IntToStr(Code) + ').', mbInformation, MB_OK);

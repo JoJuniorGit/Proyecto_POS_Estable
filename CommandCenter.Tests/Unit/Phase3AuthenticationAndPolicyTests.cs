@@ -27,8 +27,8 @@ public class Phase3AuthenticationAndPolicyTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("Ab1!")]
-    [InlineData("Short1!")]
+    [InlineData("Ab1")]     // 3 caracteres (mínimo 4)
+    [InlineData("12a")]     // 3 caracteres (mínimo 4)
     public void ValidatePassword_RejectsShortOrEmptyPasswords(string password)
     {
         var (isValid, errorMsg) = _policyService.ValidatePassword(password);
@@ -48,25 +48,20 @@ public class Phase3AuthenticationAndPolicyTests
     [Fact]
     public void ValidatePassword_RejectsMissingCharacterClasses()
     {
-        // Falta mayúscula
-        var (v1, e1) = _policyService.ValidatePassword("nouppercase123!");
+        // Falta letra
+        var (v1, e1) = _policyService.ValidatePassword("12345");
         Assert.False(v1);
-        Assert.Contains("mayúscula", e1);
+        Assert.Contains("letra", e1);
 
-        // Falta minúscula
-        var (v2, e2) = _policyService.ValidatePassword("NOLOWERCASE123!");
+        // Falta número
+        var (v2, e2) = _policyService.ValidatePassword("sololetras");
         Assert.False(v2);
-        Assert.Contains("minúscula", e2);
+        Assert.Contains("número", e2);
 
-        // Falta dígito
-        var (v3, e3) = _policyService.ValidatePassword("NoDigitsSpecial!@");
-        Assert.False(v3);
-        Assert.Contains("número", e3);
-
-        // Falta especial
-        var (v4, e4) = _policyService.ValidatePassword("NoSpecialChars123");
-        Assert.False(v4);
-        Assert.Contains("especial", e4);
+        // Cumple regla mínima: 4+ caracteres, con letra y número (aceptada sin mayúscula/especial)
+        var (v3, e3) = _policyService.ValidatePassword("solo1");
+        Assert.True(v3);
+        Assert.Null(e3);
     }
 
     [Fact]

@@ -47,9 +47,9 @@ public class PasswordPolicyService : IPasswordPolicyService
             return (false, "La contraseña no puede estar vacía.");
         }
 
-        if (password.Length < 8)
+if (password.Length < 4)
         {
-            return (false, "La contraseña debe tener al menos 8 caracteres.");
+            return (false, "La contrase\u00f1a debe tener al menos 4 caracteres.");
         }
 
         if (password.Length > 128)
@@ -63,24 +63,14 @@ public class PasswordPolicyService : IPasswordPolicyService
             return (false, "La contraseña ingresada es demasiado común o predecible. Elija una contraseña más segura.");
         }
 
-        if (!password.Any(char.IsUpper))
+        if (!password.Any(char.IsLetter))
         {
-            return (false, "La contraseña debe incluir al menos una letra mayúscula.");
-        }
-
-        if (!password.Any(char.IsLower))
-        {
-            return (false, "La contraseña debe incluir al menos una letra minúscula.");
+            return (false, "La contraseña debe incluir al menos una letra.");
         }
 
         if (!password.Any(char.IsDigit))
         {
             return (false, "La contraseña debe incluir al menos un número o dígito.");
-        }
-
-        if (!password.Any(ch => !char.IsLetterOrDigit(ch)))
-        {
-            return (false, "La contraseña debe incluir al menos un carácter especial (!@#$%^&*...).");
         }
 
         // Validación frente a username / cédula
