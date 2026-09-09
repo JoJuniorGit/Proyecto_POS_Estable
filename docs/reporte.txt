@@ -4185,4 +4185,29 @@ E2. dotnet test CommandCenter.slnx -c Release: 766/766 superadas / 0 fallidas.
 E3. Sin cambio de modelo persistente -> sin migracion EF.
 
 FIN DEL ANEXO - REVISION 8.58
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.59 (F5: HEALTH CHECK DE FRESCURA DEL ULTIMO BACKUP)
+===============================================================================
+Alcance: cerrar la metrica de observabilidad pendiente de "frescura del ultimo
+backup" en /api/health/details (indica el RPO real). Riesgo de regresion bajo
+(aditivo, read-only). Verificacion: build Release 0w/0e; dotnet 769/769
+(766 + 3 nuevos).
+
+A. IMPLEMENTACION
+A1. NUEVO Backend.API/Metrics/BackupFreshnessEvaluator.cs (helper puro y
+    testeable): dado Backup:Directory (default C:\Backups\CommandCenter) y
+    Backup:MaxAgeHours (default 24), busca el .dump mas reciente y devuelve
+    LastBackupUtc, AgeMinutes e IsFresh (age <= maxAge). Best-effort (null/false
+    si falta el directorio o no hay .dump). Sin dependencias de BD.
+A2. /api/health/details (Admin/Manager): anade lastBackupUtc, lastBackupAgeMinutes
+    y lastBackupFresh. Endpoint read-only; sin cambio de modelo -> sin migracion.
+A3. Tests: BackupFreshnessEvaluatorTests (3): dump reciente -> fresh; dump viejo
+    -> no fresh; directorio inexistente -> missing.
+
+B. VERIFICACION
+B1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+B2. dotnet test CommandCenter.slnx -c Release: 769/769 superadas / 0 fallidas.
+
+FIN DEL ANEXO - REVISION 8.59
 ================================================================================

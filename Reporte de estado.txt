@@ -17,6 +17,10 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.26.0  | 2026-09-09  | b46ad7c      | REVISION 8.59 / F5: health check de frescura del ultimo
+|          |             | (8.59)       | backup en /api/health/details (RPO visible); helper
+|          |             |              | BackupFreshnessEvaluator testeable. Suites: .NET 769/769.
+|          |             |              | Detalle: ANEXO 8.59.
 | v1.25.0  | 2026-09-09  | c69a1fe      | REVISION 8.58 / Fase 2 (M08, B02): desregistrar
 |          |             | (8.58)       | Logistics.Module del DI de produccion y dotnet-ef
 |          |             |              | 10.0.4; bundle web regenerado sin cambios (reproducible).
@@ -661,9 +665,8 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.58 / Fase 2: Logistics fuera del DI,
-  dotnet-ef 10.0.4, bundle reproducible, .NET 766/766, build Release 0/0).
-  Proxima revision obligatoria:
+  Ultima verificacion: 2026-09-09 (REVISION 8.59 / F5: frescura del ultimo backup,
+  .NET 769/769, build Release 0/0). Proxima revision obligatoria:
   con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================

@@ -63,6 +63,7 @@ Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F5   | Health check de frescura del ultimo backup (8.59) | Suites .NET 769/769 |
 | 2026-09-09  | F2   | Logistics.Module fuera del DI (M08) + dotnet-ef 10.0.4 (B02) + bundle web reproducible (8.58) | Suites .NET 766/766 |
 | 2026-09-09  | -    | Fusion del roadmap con el plan de certificacion (v0.2.0) | Documento consolidado; contenido nuevo + formato existente |
 | 2026-09-09  | F2   | Stock negativo configurable (8.56) + import de variantes (8.57) | Suites .NET 766/766 |
@@ -371,9 +372,9 @@ equipo de desarrollo.
 - [x] Separacion de logs: app/seguridad/BD/backup/servicio.
 - [x] Health checks: `/health` + `/api/health/metrics` + `/api/health/requests` (8.52).
 - [x] Health checks avanzados: migraciones / tasa BCV / disco / expiracion de cert (`/api/health/details`, 8.47).
+- [x] Health check de frescura del ultimo backup (8.59, `/api/health/details`).
 - [x] Metricas de latencia/error por peticion (8.52).
 - [x] Runbooks en INSTALLATION 13: servicio caido, restore, cert, BCV, stock, rollback.
-- [ ] Health check de frescura del ultimo backup (requiere leer log/carpeta de backups).
 - [ ] Alertas externas: servicio caido, backup fallando, errores BD, disco bajo (requiere monitoreo externo).
 - [ ] Cert por expirar: alerta proactiva (solo si HTTPS real).
 
