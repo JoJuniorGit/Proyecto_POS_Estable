@@ -237,4 +237,73 @@ public class FaultToleranceTests
             return false;
         }
     }
+
+    [Fact]
+    public async Task ConcurrentWorkers_OutboxDrain_CompletesWithoutLossOrStarvation()
+    {
+        var connStr = ConnectionString();
+        if (string.IsNullOrWhiteSpace(connStr))
+        {
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")))
+                throw new InvalidOperationException("TEST_POSTGRES_CONNECTION no definida en CI.");
+            return;
+        }
+
+        var dbName = "pos_fault_" + Guid.NewGuid().ToString("N")[..8];
+        var isolated = new NpgsqlConnectionStringBuilder(connStr) { Database = dbName }.ConnectionString;
+        const int total = 50;
+
+        try
+        {
+            await CreateIsolatedDatabaseAsync(connStr, dbName);
+            var scopeFactory = await CreateScopeFactoryAsync(isolated);
+
+            using (var scope = scopeFactory.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<SalesDbContext>();
+                db.OutboxMessages.AddRange(Enumerable.Range(0, total).Select(i => new OutboxMessage
+                {
+                    Id = Guid.NewGuid(),
+                    EventType = "SaleCompleted",
+                    Payload = $"{{\"SaleId\":{i}}}",
+                    Status = "Pending",
+                    NextRetryUtc = DateTime.UtcNow.AddMinutes(-1),
+                    RetryCount = 0,
+                    CreatedAtUtc = DateTime.UtcNow
+                }));
+                await db.SaveChangesAsync();
+            }
+
+            var workers = Enumerable.Range(0, 3).Select(_ => DrainOutboxAsync(scopeFactory));
+            await Task.WhenAll(workers);
+
+            using var check = scopeFactory.CreateScope();
+            var processed = await check.ServiceProvider.GetRequiredService<SalesDbContext>().OutboxMessages
+                .AsNoTracking()
+                .CountAsync(m => m.Status == "Processed");
+            var remaining = await check.ServiceProvider.GetRequiredService<SalesDbContext>().OutboxMessages
+                .AsNoTracking()
+                .CountAsync(m => m.Status != "Processed");
+            Assert.Equal(total, processed);
+            Assert.Equal(0, remaining);
+        }
+        finally
+        {
+            await DropIsolatedDatabaseAsync(connStr, dbName);
+        }
+    }
+
+    private static async Task DrainOutboxAsync(IServiceScopeFactory scopeFactory)
+    {
+        var job = new OutboxProcessorJob(scopeFactory, NullLogger<OutboxProcessorJob>.Instance);
+        for (var pass = 0; pass < 20; pass++)
+        {
+            await job.ProcessPendingMessagesAsync();
+            using var scope = scopeFactory.CreateScope();
+            var remaining = await scope.ServiceProvider.GetRequiredService<SalesDbContext>().OutboxMessages
+                .AsNoTracking()
+                .CountAsync(m => m.Status != "Processed");
+            if (remaining == 0) return;
+        }
+    }
 }
