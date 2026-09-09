@@ -123,6 +123,7 @@ public class HealthController : ControllerBase
             .FirstOrDefaultAsync();
 
         DateTime? certExpiryUtc = ResolveCertificateExpiry();
+        var (lastBackupUtc, lastBackupAgeMinutes, lastBackupFresh) = ResolveLastBackup();
 
         return Ok(new
         {
@@ -135,6 +136,9 @@ public class HealthController : ControllerBase
             diskFreeMb = GetDiskFreeMb(),
             diskTotalMb = GetDiskTotalMb(),
             certExpiryUtc = certExpiryUtc,
+            lastBackupUtc = lastBackupUtc,
+            lastBackupAgeMinutes = lastBackupAgeMinutes,
+            lastBackupFresh = lastBackupFresh,
             timestamp = DateTime.UtcNow.ToString("o")
         });
     }
@@ -191,5 +195,13 @@ public class HealthController : ControllerBase
         {
             return 0;
         }
+    }
+
+    private (DateTime? LastBackupUtc, double? AgeMinutes, bool IsFresh) ResolveLastBackup()
+    {
+        var result = Backend.API.Metrics.BackupFreshnessEvaluator.Evaluate(
+            _configuration["Backup:Directory"],
+            _configuration.GetValue<double?>("Backup:MaxAgeHours"));
+        return (result.LastBackupUtc, result.AgeMinutes, result.IsFresh);
     }
 }
