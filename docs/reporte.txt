@@ -3489,4 +3489,44 @@ E2. dotnet test CommandCenter.slnx -c Release: 746/746 superadas / 0 fallidas
 E3. Sin cambio de modelo persistente -> sin migracion EF.
 
 FIN DEL ANEXO - REVISION 8.34
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.35 (REQ.3: BASE ARQUITECTONICA DE FACTURACION DIGITAL)
+===============================================================================
+Alcance: dejar preparada SOLO la base arquitectonica (interfaces/stubs) de la
+facturacion digital (nota de entrega / recibo no fiscal), preparada para una
+futura impresion fisica ASINCRONA (proceso en background no bloqueante para el
+cajero). NO se genera la factura en esta fase y NO se conecta al flujo de venta.
+Verificacion: build Release 0w/0e; dotnet test 750/750 (746 + 4 nuevos).
+
+A. CONTRATOS (Sales.Module.Receipts)
+A1. IReceiptDocumentRenderer: Render(SaleReceiptContext) -> ReceiptDocument
+    (contrato de generacion del comprobante digital, DIFERIDO a la siguiente
+    fase; StubReceiptRenderer lanza NotImplementedException como marcador).
+A2. IReceiptPrintQueue: Enqueue(ReceiptDocument) -> void (fire-and-forget,
+    NO bloqueante al cajero; base para la impresion fisica asincrona futura).
+    NullReceiptPrintQueue: implementacion no-op.
+A3. SaleReceiptContext: snapshot INMUTABLE de la venta (SaleId, InvoiceNumber,
+    Date, Customer, Subtotal, TotalUSD, TotalBsS, AppliedRate, RoundingAdjustment,
+    FinalPaidAmountBsS, Lines, Payments) proyectado por CreateFrom(Sale). Replica
+    exactamente los campos de rules.md seccion 1 SIN recalcular con la tasa
+    actual (proyeccion Entidad->DTO pura, sin ExchangeRateService ni N+1).
+
+B. DESIGN DECISIONS
+B1. Diferimiento: la generacion del comprobante no se implementa (Req.3 difiere).
+B2. No bloqueo: el cajero nunca espera a la impresion; el render sincrono
+    produce el documento y la impresion queda desacoplada a una cola futura
+    (implementacion Channel/BackgroundService en la siguiente fase).
+
+C. REVISION REVIEWER (8.35): APROBAR, sin bloqueantes. Aplicado [ESTILO]:
+    nomenclatura del test de contratos corregida.
+
+D. VERIFICACION
+D1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+D2. dotnet test CommandCenter.slnx -c Release: 750/750 superadas / 0 fallidas.
+D3. Sin cambio de modelo persistente -> sin migracion EF. Cobertura de dominio
+    Sales.Module no degradada de forma apreciable (codigo nuevo: records/stub
+    salvo CreateFrom, que esta cubierto por test).
+
+FIN DEL ANEXO - REVISION 8.35
 ================================================================================
