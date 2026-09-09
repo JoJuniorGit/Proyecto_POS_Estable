@@ -204,7 +204,20 @@ Precauciones: `--no-owner` evita errores si el rol del volcado difiere; detener 
 
 ## 9. Limitaciones pre-piloto (8.31-B2)
 
-- **Impresión de recibos y cierres de caja:** aún **no implementada** (no hay salida a impresora térmica en WPF ni en web). En el piloto la venta y el cierre se consultan en pantalla (consulta de historial y cierre electrónico). Confirmar esta expectativa con el cliente antes del piloto; la impresión quedará como trabajo futuro.
+- **Impresión de recibos y cierres de caja:** los recibos de venta (factura digital NO fiscal / nota de entrega) y los cierres se generan como **PDF** y se guardan en segundo plano (carpeta `Receipts\` del backend para los recibos; `Documentos\Registro de cierres` y `Descargas` para los cierres), de forma **no bloqueante** para el cajero. No hay salida a impresora térmica física todavía (se puede imprimir el PDF desde la carpeta); confirmar esta expectativa con el cliente antes del piloto.
+
+## 9A. Factura digital NO fiscal (8.50)
+
+Cada venta completada emite un comprobante NO fiscal (recibo / nota de entrega) en PDF de forma **asíncrona y no bloqueante**:
+
+- Al completarse la venta (`CompleteSaleAsync`), el flujo **encola** el snapshot de la venta en una cola `Channel` (fire-and-forget) — el cajero no espera.
+- Un servicio en segundo plano (`ReceiptPrintBackgroundService`) drena la cola, **genera el PDF** (`SaleReceiptPdfGenerator`) usando exclusivamente los **snapshots inmutables** (`AppliedRate`, `TotalUSD`, `TotalBsS`, `FinalPaidAmountBsS`, `RoundingAdjustment` — `rules.md` §1) y lo guarda en `<backend>\Receipts\`.
+- Nombre del archivo: `Recibo_<FacturaD5>_<SaleId>_<fecha>.pdf`.
+- Los montos se formatean con cultura invariante (punto decimal) para consistencia del documento.
+- El renderer y la cola se registran en DI (`IReceiptDocumentRenderer` singleton, `IReceiptPrintQueue` singleton + hosted service).
+- La salida es **best-effort no durable**: si el servicio se reinicia entre el commit y el guardado, el recibo de esa venta no se re-emite (adecuado para comprobante NO fiscal; la venta ya queda persistida).
+
+Sin impresora física térmica integrada: el PDF queda en la carpeta `Receipts\` para imprimir/conservar. La integración de impresora térmica asíncrona es trabajo futuro sobre esta base.
 - **Actualizaciones automáticas del cliente:** el UpdaterService no se empaqueta en el instalador (8.20-M08); el rol se validará con firma X.509 (8U-N2).
 - **Multi-sucursal:** sin `BranchId` todavía (intención arquitectónica futura, no requisito del piloto; ver `coding-guidelines.md` §5).
 - **Certificado HTTPS autofirmado:** los clientes web/WPF verán una advertencia "no confiable" al primer acceso por host remoto; para evadirla, importar el `.cer` del puesto en el almacén raíz de confianza de cada caja (ver §6).

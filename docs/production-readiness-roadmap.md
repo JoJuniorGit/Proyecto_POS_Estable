@@ -17,6 +17,7 @@ el avance real de cada fase.
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F2   | Req.3 factura digital NO fiscal + impresion asincrona NO bloqueante (e07644b) | Req.3 IMPLEMENTADO; suites .NET 757/757 |
 | 2026-09-09  | F2/F3/F4/F5 | Cobertura desde codigo: DTO CashDrawer (8.46), health details (8.47), outbox multi-worker (8.48), instalador health post-arranque (8.49) | Suites .NET 755/755 |
 | 2026-09-09  | F5   | Runbooks operativos en INSTALLATION 13 + baseline de observabilidad verificada (8.44) | F5 avanzado; alertas/monitoreo externo pendiente |
 | 2026-09-09  | F4   | Artefacto Release reproducido y verificado (0 pfx/0 secretos/sin appsettings.Development); matriz config + checklist por cliente en INSTALLATION 11/12 (8.43) | F4 avanzado; ISCC/firma pendiente |
@@ -175,7 +176,7 @@ Cada uno lleva: definicion, alcance, aprobacion, fase de ejecucion y estado.
 |----|---------------|----------------------|------------|----------------|--------|
 | Req.1 | Concurrencia de 4 cajas | Auditoria de capacidad: certificar mediante pruebas que la arquitectura y las medidas actuales de concurrencia (`xmin`, transaccion compartida Sales/Inventory) soportan 4 terminales simultaneas sin conflictos de estado ni cuellos de botella de BD | Aprobado | F3 (QA/estres) | IMPLEMENTADO (8.34) |
 | Req.2 | Metodos de pago | Habilitar 4 metodos de pago para el cierre de transacciones: Efectivo, Tarjeta (Punto de Venta), Transferencia / Pago Movil, Divisas (USD) | APROBADO (punto 2) | F2 (configuracion) | IMPLEMENTADO (8.33) |
-| Req.3 | Facturacion digital | Implementacion DIFERIDA: NO generar la factura aun. Objetivo actual: dejar preparada la base arquitectonica (interfaces/stubs) para implementarla sin fricciones en la siguiente fase; base preparada para impresion fisica asincrona (proceso en background estrictamente no bloqueante para el cajero) | Aprobado | F2 (base arquitectonica) | BASE IMPLEMENTADA (8.35); generacion DIFERIDA |
+| Req.3 | Facturacion digital | Factura digital NO fiscal (recibo/nota de entrega) IMPLEMENTADA como PDF asincrono no bloqueante (SaleReceiptPdfGenerator + cola Channel + BackgroundService, enqueue post-commit) | Aprobado | F2 (base + implementacion) | IMPLEMENTADO (8.50); impresora termica futura |
 | Req.4 | Garantia de confiabilidad (QA) | Someter el sistema a pruebas rigurosas de estres y manejo de fallos para validar plena confiabilidad antes de produccion | Aprobado | F3 (QA/estres) | PARCIAL (8.36: fallos del Outbox + idempotencia concurrente); estres end-to-end checkout pendiente |
 | Req.5-8 | Resto del plan | Puntos 5, 6, 7 y 8 del plan general: correctos y aprobados para ejecucion sin modificaciones | APROBADOS | segun fase | ABIERTO |
 

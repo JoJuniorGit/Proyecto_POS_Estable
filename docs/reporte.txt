@@ -3936,4 +3936,47 @@ E1. Metricas de latencia/error de checkout (requiere instrumentacion y
     (requiere runtime WPF). ISCC/firma. E2E/restore/SLOs bajo carga real.
 
 FIN DEL ANEXO - REVISIONES 8.46-8.49
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.50 (FACTURA DIGITAL NO FISCAL + IMPRESION ASINCRONA)
+===============================================================================
+Alcance: implementar el soporte de factura digital (recibo/nota de entrega NO
+fiscal) y su salida/impresion asincrona NO bloqueante, sobre la base
+Sales.Module.Receipts (Req.3). Verificacion: build Release 0w/0e; dotnet
+757/757 (755 + 2 nuevos); web 80/80.
+
+A. DECISION
+A1. La emision del comprobante NO fiscal es ASINCRONA y NO bloqueante para el
+    cajero: al completar la venta se encola el snapshot (fire-and-forget) y un
+    BackgroundService genera el PDF y lo guarda en <backend>\Receipts\.
+A2. La salida es best-effort NO durable: si el servicio se reinicia entre el
+    commit y el guardado, el recibo de esa venta no se re-emite (la venta ya
+    queda persistida; adecuado para comprobante NO fiscal de sucursal unica).
+
+B. IMPLEMENTACION
+B1. SaleReceiptPdfGenerator: genera PDF (patron ClosurePdfGenerator) de recibo/
+    nota de entrega usando SOLO los snapshots inmutables (rules.md s1), con
+    montos y geometria invariantes a cultura.
+B2. SaleReceiptRenderer: implementa IReceiptDocumentRenderer -> ReceiptDocument
+    (PDF bytes + filename). Registrado como singleton (stateless).
+B3. ChannelReceiptPrintQueue: cola Channel unbounded, Enqueue = TryWrite
+    (NO bloqueante). Registrada como singleton + IReceiptPrintQueue.
+B4. ReceiptPrintBackgroundService: drena la cola, renderiza y guarda el PDF.
+B5. SalesService.CompleteSaleAsync: tras el commit encola
+    SaleReceiptContext.CreateFrom(sale) (no bloqueante; no emite ventas que
+    reviertan). Constructor ampliado con IReceiptPrintQueue opcional.
+B6. ReceiptDocument ampliado con Bytes y ContentType; IReceiptPrintQueue ahora
+    Enqueue(SaleReceiptContext).
+
+C. REVISION REVIEWER (8.50): REVISAR sin bloqueantes. Aplicados [ESTILO]:
+    invariante de cultura en geometria/fecha del PDF y EOF en 3 archivos.
+    Documentados: canal unbounded (best-effort no durable) y que la rama
+    DeliveryNote queda como variante futura del renderer.
+
+D. VERIFICACION
+D1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+D2. dotnet test CommandCenter.slnx -c Release: 757/757 superadas / 0 fallidas.
+D3. npm test: 80/80. Sin cambio de modelo persistente -> sin migracion EF.
+
+FIN DEL ANEXO - REVISION 8.50
 ================================================================================
