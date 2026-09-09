@@ -17,8 +17,8 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
-| v1.5.0   | 2026-09-09  | V0.15        | REVISION 8.31 (cierre de provisionamiento e higiene de
-|          |             | (pendiente)  | instalador): CORREGIDO el desajuste de rutas del pfx
+| v1.5.0   | 2026-09-09  | 4a5e360      | REVISION 8.31 (cierre de provisionamiento e higiene de
+|          |             |              | instalador): CORREGIDO el desajuste de rutas del pfx
 |          |             |              | (8.30-E1) - create-https-cert.ps1 acepta -CertOutputDir
 |          |             |              | y Configure-PosService lo fija a {app}\BackendAPI\certs
 |          |             |              | (ruta que resuelve el runtime), de modo que el fail-fast
@@ -33,11 +33,11 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 |          |             |              | Suites: .NET 738/738, Web 80/80, build R 0/0, lint 0/0,
 |          |             |              | gate cobertura sin variacion.
 |          |             |              | Detalle: docs/reporte.txt ANEXO 8.31.
-| v1.4.0   | 2026-09-09  | V0.15        | REVISION 8.30 (verificacion del plan priorizado tipo ANEXO
-|          |             | (pendiente)  | 8.27): pfx de desarrollo fuera del publish Release
+| v1.4.0   | 2026-09-09  | e028581      | REVISION 8.30 (verificacion del plan priorizado tipo ANEXO
+|          |             |              | 8.27): pfx de desarrollo fuera del publish Release
 |          |             |              | (A04 reforzado + assert anti-pfx en build-release.ps1);
-|          |             |              | RequireHttpsMetadata configurable via Security:Require-
-|          |             |              | HttpsMetadata (B03, default false por topologia LAN);
+|          |             |              | RequireHttpsMetadata configurable via SecuritySettings:
+|          |             |              | RequireHttpsMetadata (B03, default false por LAN);
 |          |             |              | verificado A02 (fail-fast HTTPS vivo) y censura de
 |          |             |              | costos en GetById; B06 cerrado (BCV con un unico
 |          |             |              | timeout configurable); restore documentado en
@@ -47,8 +47,8 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 |          |             |              | Suites: .NET 738/738, Web 80/80, build R 0/0, lint 0/0,
 |          |             |              | gate cobertura OK (Core 0.83, Sales 0.88, Inv. 0.76).
 |          |             |              | Detalle: docs/reporte.txt ANEXO 8.30.
-| v1.3.0   | 2026-09-09  | V0.15        | REVISION 8.29: cierre de secretos del instalador y
-|          |             | (pendiente)  | abonos por lote. Secretos ANIDADOS en secrets.json (el
+| v1.3.0   | 2026-09-09  | 877dd5b      | REVISION 8.29: cierre de secretos del instalador y
+|          |             |              | abonos por lote. Secretos ANIDADOS en secrets.json (el
 |          |             |              | formato plano __ solo vale para env vars; vector de
 |          |             |              | registro HKLM\Software\POS eliminado), fuera de argv/
 |          |             |              | EnvExtra con ACL por sitio; backups ON por defecto
@@ -59,8 +59,8 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 |          |             |              | Release; ci.yml permissions=read + cache ampliada.
 |          |             |              | Suites: .NET 738/738, Web 80/80, build R 0/0, lint 0/0.
 |          |             |              | Detalle: docs/reporte.txt ANEXO 8.29.
-| v1.2.0   | 2026-09-08  | V0.15        | ANEXO 8.27: endurecimiento para entrega a cliente
-|          |             | (pendiente)  | (instalador). HTTPS fail-fast vivo en Produccion (sin
+| v1.2.0   | 2026-09-08  | c5d084d      | ANEXO 8.27: endurecimiento para entrega a cliente
+|          |             |              | (instalador). HTTPS fail-fast vivo en Produccion (sin
 |          |             |              | cert efimero), scrub de secretos en build-release.ps1,
 |          |             |              | pfx por sitio en la maquina destino (setup.iss excluye
 |          |             |              | certs\pos-https.pfx), backup-postgres.ps1 (pg_dump -Fc,
@@ -69,8 +69,8 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 |          |             |              | en GET /api/products/{id} para roles sin catalogo,
 |          |             |              | sin ex.Message al cliente en ProductsController y
 |          |             |              | ApiErrorParser RFC 7807 en WPF. Detalle: docs/reporte.txt ANEXO 8.27.
-| v1.1.0   | 2026-09-08  | V0.15 (sin)  | fix: cierre 8.20-C01 - migracion 20260908153000
-|          |             | commit)      | reactivada con [DbContext]+[Migration] y Up()/Down()
+| v1.1.0   | 2026-09-08  | 17e6bae      | fix: cierre 8.20-C01 - migracion 20260908153000
+|          |             |              | reactivada con [DbContext]+[Migration] y Up()/Down()
 |          |             |              | idempotentes (guards to_regclass + information_schema);
 |          |             |              | smoke test MigratedSchema valida SaleId + indice
 |          |             |              | IX_StockMovements_SaleId en BD real. Suites ok:
@@ -101,7 +101,7 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
   Core          -> Libreria compartida sin dependencias (entidades, DTOs,
                    interfaces, eventos MediatR, helpers, logging).
   Tests         -> CommandCenter.Tests (xUnit + Moq + coverlet + WebApplication
-                   Factory). Suites Web aparte (node:test, 77/77).
+                   Factory). Suites Web aparte (node:test, 80/80).
   UpdaterService-> Auto-update del cliente WPF. Publicado pero NO integrado al
                    instalador (deuda activa 8.20-M08).
   Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
@@ -147,7 +147,7 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
   * Cache en memoria (IMemoryCache) - SizeLimit=10000 con Size=1 OBLIGATORIO
       en cada Set (omision causa 409, incidente 8.17). Claves: bcv_rate_today,
       er_tz, settings, payment methods, products.
-  * EF Core 10 + Npgsql 10.0.3 - 59 clases de migracion (30 Sales + 29
+  * EF Core 10 + Npgsql 10.0.3 - 61 clases de migracion (32 Sales + 29
       Inventory) sobre 2 DbContext en la MISMA BD/schema (SalesDbContext y
       InventoryDbContext), transaccion compartida en el flujo de venta.
       Concurrencia optimista nativa por xmin (SQLSTATE 88P01/marcado EF).
@@ -266,7 +266,7 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 2.5 Seguridad y permisos
 --------------------------------------------------------------------------------
-  * JWT Bearer HMAC-SHA256 (JWT_SETTINGS_KEY), ClockSkew=0, roles
+  * JWT Bearer HMAC-SHA256 (JWT_SETTINGS_KEY | JwtSettings:Key), ClockSkew=0, roles
     Admin/Cashier/Driver/Manager; MustChangePassword para seeds (rotacion
     obligatoria en 8.9-B1). PasswordHasher PBKDF2.
   * RBAC por [Authorize] en cada endpoint; no hay X-User-Role confiable del
@@ -363,10 +363,23 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
   * Fix 8.20-C01 (2026-09-08): migracion 20260908153000 reactivada y
     idempotente; sale a produccion la deduccion de stock por SaleId de la
     FASE 1 (ver 4.4 / changelog v1.1.0).
+  * REVISION 8.27/8.28 (2026-09-08/09): endurecimiento de entrega a cliente
+    (HTTPS fail-fast, scrub de secretos, abonos idempotentes, censura de
+    costos, RFC 7807 en WPF) y seguridad de alto impacto (entropia DPAPI
+    per-usuario, CertificatePinning TOFU, auto-sync BCV configurable, camelCase
+    en ISalesService). Detalle en ANEXOS 8.27/8.28.
   * REVISION 8.29 (2026-09-09): cierre de secretos del instalador (A01/A04),
     abonos por lote atomico (A05), backups ON por defecto (A06), plan offline
     BCV documentado (A02) y pipeline/higiene (B03/B04). Detalle en seccion 4.4
     y changelog v1.3.0.
+  * REVISION 8.30 (2026-09-09): pfx de desarrollo fuera del publish Release,
+    RequireHttpsMetadata configurable, restore documentado, crash logs del
+    raiz eliminados. Detalle: ANEXO 8.30 / changelog v1.4.0.
+  * REVISION 8.31 (2026-09-09): cierre de provisionamiento del puesto
+    (rutas del pfx alineadas con -CertOutputDir), default postgres eliminado
+    del formulario del instalador, publish limpio, bundle web regenerado y
+    limitaciones pre-piloto documentadas. Detalle: ANEXO 8.31 / changelog
+    v1.5.0.
 
 4.2 Balance de pruebas automatizadas (linea base verificada 2026-09-09)
 -------------------------------------------------------------------------------
@@ -402,10 +415,12 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
     AppEnvironmentExtra ni en argv (8.29-A1). pfx generado por sitio y backup
     PostgreSQL programado (tarea "Sistema POS - Backup PostgreSQL", default ON
     - 8.29-A6). El pfx/cert HTTPS del sitio NO viaja en el publish Release
-    (8.30-A4: csproj + assert de build-release.ps1).
-  * Working tree: la REVISION 8.29 quedo commiteada (2de5c79 = 8.28, 877dd5b =
-    8.29). A esta version le siguen los cambios de la REVISION 8.30 (plan
-    priorizado de seguridad del artefacto) pendientes de commit.
+    (8.30-A4: csproj + assert de build-release.ps1) y se genera en
+    {app}\BackendAPI\certs con la ruta alineada al directorio del servicio
+    (8.31-A1).
+  * Working tree: V0.15 esta completa hasta la REVISION 8.31 con 5 commits:
+    c5d084d = 8.27, 2de5c79 = 8.28, 877dd5b = 8.29, e028581 = 8.30,
+    4a5e360 = 8.31. Arbol limpio; pendiente solo el push al remoto.
   * INSTALLATION.md ACTUALIZADO (8.29) a secrets.json anidado, operacion
     offline BCV (seccion 7) y backup automatico (seccion 8); el restore quedo
     documentado en 8.1 (8.30-C1). desalineado con ARCHITECTURE.md para
@@ -537,11 +552,11 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.29: secretos anidados, abonos
-  batch, backups ON, .NET 738/738, Web 80/80, build Release 0/0, lint 0/0;
-  arbol con cambios sin commitear en V0.15). Proxima revision obligatoria:
+  Ultima verificacion: 2026-09-09 (REVISION 8.31: rutas del pfx alineadas,
+  publish limpio, .NET 738/738, Web 80/80, build Release 0/0, lint 0/0;
+  arbol limpio en V0.15, 5 commits sin push). Proxima revision obligatoria:
   con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================
-FIN DEL DOCUMENTO - REPORTE DE ESTADO v1.3.0
+FIN DEL DOCUMENTO - REPORTE DE ESTADO v1.5.0
 ================================================================================

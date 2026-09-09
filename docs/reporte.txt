@@ -3142,7 +3142,7 @@ FIN DEL ANEXO - REVISION 8.28
 ===============================================================================
 
 ===============================================================================
-ANEXO - REVISION 8.29 (ENDU RECIMIENTO ENTREGA: SECRETOS EN SITIO, ABONOS
+ANEXO - REVISION 8.29 (ENDURECIMIENTO ENTREGA: SECRETOS EN SITIO, ABONOS
 POR LOTE Y RE-EMPAQUETADO SIN CREDENCIALES DE DESARROLLO)
 ===============================================================================
 Alcance: cierre de los items del informe de seguridad del instalador
@@ -3171,8 +3171,10 @@ A1. HALLAZGO DE INTEGRACION RESUELTO: el sistema de configuracion de .NET NO
 A2. ACL POR SITIO: WriteProtectedSecretsFile aplica icacls con
     /inheritance:r y grants a SYSTEM:(F), Administrators:(F) y
     "NT SERVICE\<ServiceName>:(R)" (cubre la variante M07: ejecutables del
-    servicio con cuenta de servicio dedicada bajo NSSM). El certificado se
-    ubica solo bajo C:\ProgramData\Sistema POS\ con ACL de propietario.
+    servicio con cuenta de servicio dedicada bajo NSSM). El pfx del sitio se
+    genera en {app}\BackendAPI\certs (directorio del backend asegurado con ACL
+    de la cuenta virtual; ver tambien 8.31-A1) y su password viaja SOLO en
+    secrets.json.
 A3. scripts/create-https-cert.ps1: nuevo parametro -SecretsFile; la password
     del certificado se resuelve desde secrets.json (anidada con fallback
     plano), o env var, o -certPassword SOLO en modo desarrollo, y se
