@@ -226,8 +226,8 @@ seguridad o disponibilidad.
 - [ ] Fail-fast de configuracion al arranque con mensajes operativos (previo).
 - [x] Eliminar N+1; aplicar AsNoTracking/AsSplitQuery (verificado sin N+1 en rutas calientes 8.40).
 - [ ] Corregir UI bloqueante WPF; cancelacion cooperativa en operaciones largas.
-- [ ] Dispose de timers/messenger/sockets/CancellationTokenSource.
-- [ ] Auditoria de acciones administrativas y eventos de seguridad.
+- [x] Dispose de timers/messenger/sockets/CancellationTokenSource (verificado 8.41: ViewModels IDisposable).
+- [x] Auditoria de acciones administrativas y eventos de seguridad (verificado 8.41: LogSecurityAudit + SecurityAuditMiddleware).
 - [x] Versionado de esquema y plan upgrade/rollback (INSTALLATION seccion 10, 8.40).
 
 ---

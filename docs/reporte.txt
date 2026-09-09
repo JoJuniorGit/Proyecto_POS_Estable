@@ -3735,4 +3735,42 @@ D1. Completado por conveniencia: DTO productos (verificado), N+1 (verificado),
     administrativas.
 
 FIN DEL ANEXO - REVISION 8.40
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.41 (FASE 2: AUDITORIA DE ACCIONES Y DISPOSICION)
+===============================================================================
+Alcance: verificar por codigo los items de Fase 2 de auditoria de acciones
+administrativas y disposicion de recursos. Verificacion: lectura de codigo;
+sin cambios (auditoria). Suite sin variacion (753/753, web 80/80).
+
+A. AUDITORIA DE ACCIONES ADMINISTRATIVAS Y EVENTOS DE SEGURIDAD
+A1. Acciones administrativas especificas auditadas con AppLogger.LogSecurityAudit:
+    UsersController (crear/actualizar/desactivar/reactivar/eliminar/desbloquear/
+    reset de contrasena temporal), AuthController (cuenta bloqueada, contrasena
+    cambiada), SalesController (mismatch de idempotencia), InventoryService
+    CatalogQueries (vinculacion/desvinculacion masiva de variantes), jobs
+    (StockMovementArchiver, ReservationExpiry, OutboxPurge, IdempotencyPurge) y
+    DailyClosureController.
+A2. SecurityAuditMiddleware: registra toda denegacion 401/403 con IP, metodo,
+    path (sin query), usuario, rol, status y razon.
+A3. Sin fugas de datos en el log (path sin query string; sin secretos).
+
+B. DISPOSICION DE RECURSOS (WPF ViewModels)
+B1. Los ViewModels implementan IDisposable: BaseViewModel (abstract), CartViewModel,
+    InventoryViewModel, LoginViewModel, MainViewModel, PosViewModel,
+    ProductDialogViewModel, SalesHistoryViewModel, SettingsViewModel,
+    VariantManagementViewModel.
+B2. Cancelacion cooperativa via CancellationTokenSource con debounce (search/
+    selection/sku); ProductDialogViewModel dispone el DispatcherTimer y el CTS.
+    MainViewModel dispone los ViewModels hijo que implementan IDisposable.
+B3. Conforme a coding-guidelines seccion 4.2 (prevencion de fugas de memoria).
+
+C. ESTADO DE FASE 2
+C1. Completado por conveniencia: DTO productos/N+1 (8.40), plan esquema/rollback
+    (8.40), auditoria de acciones (8.41), disposicion WPF (8.41).
+C2. Pendientes (mayor riesgo/esfuerzo, requieren entorno o contrato): CashDrawer
+    .GetHistory DTO, instalador idempotente (ISCC), UI bloqueante WPF (M02) y
+    cancelacion cooperativa en flujos largos.
+
+FIN DEL ANEXO - REVISION 8.41
 ================================================================================
