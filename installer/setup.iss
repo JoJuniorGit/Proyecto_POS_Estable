@@ -85,6 +85,23 @@ var
   AdminPage: TInputQueryWizardPage;
   UpdatePage: TInputQueryWizardPage;
 
+procedure WriteProtectedSecretsFile(AppDir: String; ConnString, JwtKey, CertPass, SeedPass: String); forward;
+
+function JsonEsc(const S: String): String;
+var
+  i: Integer;
+  c: Char;
+begin
+  Result := '';
+  for i := 1 to Length(S) do
+  begin
+    c := S[i];
+    if c = '\' then Result := Result + '\\'
+    else if c = '"' then Result := Result + '\"'
+    else Result := Result + c;
+  end;
+end;
+
 function HasNssm: Boolean;
 begin
   Result := FileExists(ExpandConstant('{app}\BackendAPI\nssm.exe'));
@@ -117,6 +134,7 @@ end;
 function GenerateCryptoSecret(Bytes: Integer): String;
 var
   OutFile, PS: String;
+  Raw: AnsiString;
   ResCode: Integer;
 begin
   Result := '';
@@ -128,8 +146,9 @@ begin
     '[System.BitConverter]::ToString($b).Replace('' '','''').Replace(''-'','''').ToLower())"';
   try
     if Exec('powershell.exe', PS, '', SW_HIDE, ewWaitUntilTerminated, ResCode) and (ResCode = 0) and
-       LoadStringFromFile(OutFile, Result) and (Length(Result) > 0) then
+       LoadStringFromFile(OutFile, Raw) and (Length(Raw) > 0) then
     begin
+      Result := String(Raw);
       DeleteFile(OutFile);
       Exit;
     end;
@@ -365,10 +384,10 @@ begin
   // config["JwtSettings:Key"] y config["Kestrel:Certificates:Default:Password"].
   // Las claves planas con "__" solo funcionan en variables de entorno, no en JSON.
   JsonLines := '{' +
-    '"ConnectionStrings": { "DefaultConnection": "' + StringChange(ConnString, '"', '\"') + '" },' +
-    '"SystemSettings": { "AdminSeedPassword": "' + StringChange(SeedPass, '"', '\"') + '" },' +
-    '"JwtSettings": { "Key": "' + StringChange(JwtKey, '"', '\"') + '" },' +
-    '"Kestrel": { "Certificates": { "Default": { "Password": "' + StringChange(CertPass, '"', '\"') + '" } } }' +
+    '"ConnectionStrings": { "DefaultConnection": "' + JsonEsc(ConnString) + '" },' +
+    '"SystemSettings": { "AdminSeedPassword": "' + JsonEsc(SeedPass) + '" },' +
+    '"JwtSettings": { "Key": "' + JsonEsc(JwtKey) + '" },' +
+    '"Kestrel": { "Certificates": { "Default": { "Password": "' + JsonEsc(CertPass) + '" } } }' +
     '}';
 
   if SaveStringToFile(SecretsPath, JsonLines, False) then
