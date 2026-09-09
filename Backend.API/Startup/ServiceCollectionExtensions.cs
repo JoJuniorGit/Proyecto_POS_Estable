@@ -112,7 +112,9 @@ public static class ServiceCollectionExtensions
         })
         .AddJwtBearer(options =>
         {
-            options.RequireHttpsMetadata = false;
+            // 8.30-B03: RequireHttpsMetadata configurable (SecuritySettings:RequireHttpsMetadata,
+            // default false por topologia LAN; puede elevarse a true en despliegues solo-HTTPS).
+            options.RequireHttpsMetadata = builder.Configuration.GetValue<bool>("SecuritySettings:RequireHttpsMetadata", false);
             options.SaveToken = true;
             options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
             {

@@ -82,7 +82,7 @@ public static class BackendHelpers
         // aborta el arranque en Producción (fail-fast HTTPS vivo).
         if (!env.IsDevelopment())
         {
-            AppLogger.LogStart("[HTTPS] [AVISO] No se usará certificado efímero en Producción; se requiere HTTPS_CERT_THUMBPRINT o certs/pos-https.pfx con HTTPS_CERT_PASSWORD.");
+            AppLogger.LogStart("[HTTPS] [AVISO] No se usará certificado efímero en Producción; se requiere HTTPS_CERT_THUMBPRINT (Windows Store) o un pfx generado por sitio (scripts/create-https-cert.ps1) con su HTTPS_CERT_PASSWORD.");
             return null;
         }
 

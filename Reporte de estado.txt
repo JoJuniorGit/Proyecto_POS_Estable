@@ -17,6 +17,20 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.4.0   | 2026-09-09  | V0.15        | REVISION 8.30 (verificacion del plan priorizado tipo ANEXO
+|          |             | (pendiente)  | 8.27): pfx de desarrollo fuera del publish Release
+|          |             |              | (A04 reforzado + assert anti-pfx en build-release.ps1);
+|          |             |              | RequireHttpsMetadata configurable via Security:Require-
+|          |             |              | HttpsMetadata (B03, default false por topologia LAN);
+|          |             |              | verificado A02 (fail-fast HTTPS vivo) y censura de
+|          |             |              | costos en GetById; B06 cerrado (BCV con un unico
+|          |             |              | timeout configurable); restore documentado en
+|          |             |              | INSTALLATION.md 8.1 (pg_restore --clean --no-owner);
+|          |             |              | UpdateServerUrl sin cambio (Updater sin integracion,
+|          |             |              | 8.20-M08/8U-N2); crash logs del raiz eliminados (D1).
+|          |             |              | Suites: .NET 738/738, Web 80/80, build R 0/0, lint 0/0,
+|          |             |              | gate cobertura OK (Core 0.83, Sales 0.88, Inv. 0.76).
+|          |             |              | Detalle: docs/reporte.txt ANEXO 8.30.
 | v1.3.0   | 2026-09-09  | V0.15        | REVISION 8.29: cierre de secretos del instalador y
 |          |             | (pendiente)  | abonos por lote. Secretos ANIDADOS en secrets.json (el
 |          |             |              | formato plano __ solo vale para env vars; vector de
@@ -371,13 +385,15 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
     Administradores, NT SERVICE\PosBackendService) y formato anidado; NO en
     AppEnvironmentExtra ni en argv (8.29-A1). pfx generado por sitio y backup
     PostgreSQL programado (tarea "Sistema POS - Backup PostgreSQL", default ON
-    - 8.29-A6).
-  * Working tree: en la rama V0.15 quedan SIN commitear los cambios de la
-    REVISION 8.29 (secretos instalador, batch de abonos, backups, pipeline) y
-    el cierre 8.20-C01/documentos previos.
+    - 8.29-A6). El pfx/cert HTTPS del sitio NO viaja en el publish Release
+    (8.30-A4: csproj + assert de build-release.ps1).
+  * Working tree: la REVISION 8.29 quedo commiteada (2de5c79 = 8.28, 877dd5b =
+    8.29). A esta version le siguen los cambios de la REVISION 8.30 (plan
+    priorizado de seguridad del artefacto) pendientes de commit.
   * INSTALLATION.md ACTUALIZADO (8.29) a secrets.json anidado, operacion
-    offline BCV (seccion 7) y backup automatico (seccion 8); desalineado con
-    ARCHITECTURE.md para UpdaterService sigue vigente (8.20-B05).
+    offline BCV (seccion 7) y backup automatico (seccion 8); el restore quedo
+    documentado en 8.1 (8.30-C1). desalineado con ARCHITECTURE.md para
+    UpdaterService sigue vigente (8.20-B05).
 
 4.4 Deuda tecnica activa (ALTA / CRITICO)
 --------------------------------------------------------------------------------
@@ -402,11 +418,13 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
   * [8.20-A03] UpdaterService instala paquetes sin verificar si no hay hash
     (fail-open) y sin firma X.509 (8U-N2). Parcial 8.28-A1 (fail-closed sin
     hash); PENDIENTE el firmado X.509; no instalarlo en el cliente (8.27-C).
-  * [8.20-A04] CERRADO en 8.29 (2026-09-09) -> build-release.ps1 aborta si
+  * [8.20-A04] CERRADO en 8.29/8.30 (2026-09-09) -> build-release.ps1 aborta si
     publish/ contiene literales conocidos; setup.iss excluye certs\pos-https
     .pfx; appsettings.Development.json EXCLUIDO del publish Release
-    (Backend.API.csproj, 8.29-A4). publish\BackendAPI verificada sin
-    appsettings.Development ni secrets.json.
+    (Backend.API.csproj, 8.29-A4). En 8.30-A4 se refuerza: certs\pos-https.pfx
+    ya NO se copia al publish Release (ItemGroup condicionado a != Release) y
+    build-release.ps1 ABORTA si reaparece. publish\BackendAPI verificada sin
+    appsettings.Development, secrets.json ni pfx dev.
   * [8.20-A05] CERRADO en 8.29 (2026-09-09) -> abonos por LOTE atomico:
     POST /api/sales/{id}/payments/batch (todo-o-nada en una transaccion, un
     SaveChanges) + web envia el lote en una llamada con clave de idempotencia
@@ -434,8 +452,11 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
   * WPF R09-R12 (EditSaleDialog code-behind), R13 (UniformGrid), R19-R28,
     8.14-N1 WPF sin paginacion en PendingOrders/PendingPickups.
   * Instalador/CI: I01..I07 (I06 cerrado), CI02, C01/C02, T01/T03/T04/T05/T06.
-  * Backend: B03 (RequireHttpsMetadata=false), B06 (BcvScraper doble
-    timeout), B07 (SecurityStampValidator 45s vs 5s), B13/B14.
+  * Backend: B07 (SecurityStampValidator 45s vs 5s), B13/B14.
+  CERRADAS EN 8.30 (referencia): B03 (RequireHttpsMetadata configurable),
+  B06 (BcvScraper con un unico timeout configurable), pfx de desarrollo fuera
+  del publish Release, restore documentado (INSTALLATION 8.1), crash logs del
+  raiz eliminados (D1). Detalle: docs/reporte.txt ANEXO 8.30.
   * Web: W04 (retencion forense).
 
   REGLA: mover una incidencia de este bloque a "cerradas" SOLO cuando haya

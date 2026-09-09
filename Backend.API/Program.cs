@@ -77,7 +77,7 @@ try
         {
             AppLogger.LogCrash(
                 new InvalidOperationException(
-                    "[FATAL] HTTPS no disponible en Producción. No se puede iniciar el backend sin canal cifrado. Configure HTTPS_CERT_THUMBPRINT / HTTPS_CERT_PASSWORD o certs/pos-https.pfx."),
+                    "[FATAL] HTTPS no disponible en Producción. No se puede iniciar el backend sin canal cifrado. Configure HTTPS_CERT_THUMBPRINT (Windows Store) o genere el pfx por sitio (scripts/create-https-cert.ps1) y provea su HTTPS_CERT_PASSWORD."),
                 "Backend.API.Program.Startup.HttpsRequired");
             throw new InvalidOperationException(
                 "[FATAL] HTTPS no disponible en Producción. El backend se niega a arrancar sin canal cifrado. Consulte el log.");

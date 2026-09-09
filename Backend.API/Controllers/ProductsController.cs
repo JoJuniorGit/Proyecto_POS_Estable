@@ -253,9 +253,9 @@ public class ProductsController : ControllerBase
             await _inventoryService.SetProductStatusAsync(id, dto.IsActive, dto.IsDeleted);
             return Ok(new { message = "Status updated successfully" });
         }
-        catch (System.UnauthorizedAccessException unEx)
+        catch (System.UnauthorizedAccessException)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
+            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "No tiene permisos para realizar esta operación.");
         }
     }
 
@@ -272,9 +272,9 @@ public class ProductsController : ControllerBase
             await _inventoryService.RestoreProductAsync(id);
             return Ok(new { message = "Product restored successfully" });
         }
-        catch (System.UnauthorizedAccessException unEx)
+        catch (System.UnauthorizedAccessException)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
+            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "No tiene permisos para realizar esta operación.");
         }
     }
 

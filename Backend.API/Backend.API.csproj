@@ -33,9 +33,10 @@
     <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
-  <!-- Certificado HTTPS autofirmado (ver scripts/create-https-cert.ps1): se copia a la salida
-       para que funcione tanto en desarrollo (dotnet run) como en el servicio publicado. -->
-  <ItemGroup>
+  <!-- Certificado HTTPS de desarrollo (scripts/create-https-cert.ps1): se copia a la salida en
+       builds de desarrollo. En Release NO se empaqueta: en el sitio el certificado se genera por
+       estación y se provee por Windows Store (thumbprint) o pfx local fuera del publish. -->
+  <ItemGroup Condition="'$(Configuration)' != 'Release'">
     <None Include="certs\pos-https.pfx" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

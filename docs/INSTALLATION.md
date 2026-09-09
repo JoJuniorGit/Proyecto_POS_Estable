@@ -173,3 +173,31 @@ Verificación manual del backup:
 powershell -ExecutionPolicy Bypass -File "C:\Program Files (x86)\Sistema POS Administrador\tools\backup-postgres.ps1" -BackupDir "C:\Backups\CommandCenter"
 schtasks /Query /TN "Sistema POS - Backup PostgreSQL"
 ```
+
+### 8.1. Restauración desde un volcado (8.30-C1)
+
+Procedimiento de restore verificado sobre un volcado `custom` (`pg_dump -Fc`). Ejecutar como **Administrador/SYSTEM** en la máquina del puesto:
+
+```powershell
+# 1) Identificar el volcado más reciente y el nombre de la base (debe coincidir con
+#    ConnectionStrings.DefaultConnection::Database de BackendAPI\secrets.json).
+$backup = Get-ChildItem "C:\Backups\CommandCenter\*.dump" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+# Ej.: C:\Backups\CommandCenter\commandcenter_20260909_030000.dump
+
+# 2) Confirmar el contenido del volcado (listado, sin restaurar).
+& "C:\Program Files\PostgreSQL\16\bin\pg_restore.exe" --list $backup.FullName | Select-Object -First 5
+
+# 3) Asegurar que la base destino existe. Si el servicio nunca arrancó (MigrateAsync no la creó),
+#    pg_restore --clean --if-exists falla con "database does not exist"; crearla primero:
+& "C:\Program Files\PostgreSQL\16\bin\createdb.exe" --username "postgres" --host localhost --port 5432 "commandcenter"
+
+# 4) Restaurar con --clean --if-exists (base ya existente) y --no-owner.
+& "C:\Program Files\PostgreSQL\16\bin\pg_restore.exe" --verbose --clean --if-exists --no-owner `
+    --username "postgres" --host localhost --port 5432 --dbname "commandcenter" $backup.FullName
+
+# 5) Verificar el smoke tras el restore: la migración de schema es idéntica a la del
+#    installer (MigratedSchema) y la ruta de salud responde.
+Invoke-RestMethod "http://localhost:5000/health" -Method Get
+```
+
+Precauciones: `--no-owner` evita errores si el rol del volcado difiere; detener primero el servicio `Sistema POS Backend` (`Stop-Service "Sistema POS Backend"`) y arrancarlo tras el restore; los snapshots de ventas (`AppliedRate`, `TotalUSD`, `TotalBsS`, `FinalPaidAmountBsS`) se restauran tal cual porque el volcado es una copia punto a punto de la base.

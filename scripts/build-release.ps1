@@ -58,4 +58,16 @@ if ($leakLines) {
 }
 Write-Host "Scrub de secretos OK: publish/ sin literales conocidos." -ForegroundColor Green
 
+# 8.30-A4: el certificado HTTPS de desarrollo (certs\pos-https.pfx) tampoco debe empaquetarse:
+# en el sitio el certificado se genera por estacion (scripts/create-https-cert.ps1) y se provee
+# por Windows Store o pfx local fuera del publish. Si vuelve a colarse en CUALQUIER subcarpeta del
+# publish (BackendAPI, DesktopClient o UpdaterService), el build se ABORTA.
+$leakedPfx = Get-ChildItem "$rootDir\publish" -Recurse -File -Filter "*.pfx" -ErrorAction SilentlyContinue
+if ($leakedPfx) {
+    Write-Host "ABORTANDO: se empaquetaron certificados .pfx de desarrollo en el publish Release:" -ForegroundColor Red
+    $leakedPfx | ForEach-Object { Write-Host "  $($_.FullName)" -ForegroundColor Red }
+    throw "build-release abortado: los certificados de desarrollo no deben viajar en el instalador de cliente."
+}
+Write-Host "Verificacion de pfx OK: publish/ sin certs .pfx de desarrollo." -ForegroundColor Green
+
 Write-Host "=== Publicación Autónoma completada exitosamente ===" -ForegroundColor Green

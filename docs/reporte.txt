@@ -3271,3 +3271,83 @@ G. HORIZONTE
 
 FIN DEL ANEXO - REVISION 8.29
 ================================================================================
+================================================================================
+ANEXO - REVISION 8.30 (SEGURIDAD DEL ARTEFACTO E HIGIENE DE ENTREGA)
+================================================================================
+Alcance: verificacion del plan priorizado (estilo ANEXO 8.27) contra el codigo
+actual y correccion de los hallazgos aun presentes. Verificaciones con build
+Release 0w/0e, dotnet test 738/738, npm lint 0/0, npm test 80/80 y gate de
+cobertura 8.26-E4 OK (Core 0.83 >= 0.70; Sales.Module 0.88 >= 0.80;
+Inventory.Module 0.76 >= 0.72).
+
+A. SEGURIDAD DEL ARTEFACTO (Fase 1)
+A1. [8.29-A04 refuerzo] certs\pos-https.pfx (cert HTTPS de desarrollo) seguia
+    copiandose al publish Release (CopyToOutputDirectory incondicional) y viajaba
+    en el instalador. Fix: Backend.API.csproj condiciona el ItemGroup del pfx a
+    configuracion != Release, y build-release.ps1 ABORTA en la fase de
+    verificacion si aparece cualquier *.pfx en el tree publish/ (incluidos
+    DesktopClient y UpdaterService). El certificado del sitio se genera por
+    estacion (scripts/create-https-cert.ps1) y se provee por Windows Store
+    (HTTPS_CERT_THUMBPRINT) o pfx local fuera del publish. Mensajes fail-fast de
+    Program.cs y BackendHelpers ya no listan certs\pos-https.pfx como opcion en
+    Produccion.
+A2. [8.27-A02] Verificado VIVO: en Produccion no se genera cert efimero
+    (BackendHelpers: solo IsDevelopment lo genera); sin cert real el arranque
+    aborta en Produccion ([FATAL] fail-fast HTTPS). Sin cambios.
+A3. [8.27-B2 nuevo] Verificado: GetById censura costos (CostPriceUSD, Profit,
+    Cost, ProfitPercentage) con CanMutateCatalog a traves de MapToDto, identico a
+    GetAll/MaskCostsForCurrentRole. Sin cambios.
+A4. [8.16-B03] RequireHttpsMetadata estaba hardcodeado en false. Fix: ahora
+    configurable via SecuritySettings:RequireHttpsMetadata (seccion de flags de
+    hardening junto a SecuritySettings:PasswordBlacklist; default false por
+    topologia LAN donde el token puede llegar por HTTP interno; puede elevarse a
+    true en despliegues solo-HTTPS).
+A5. [8.27-B12/2.3] Verificado: sin ex.Message filtrados al cliente en
+    ProductsController (mensajes fijos + helpers RFC 7807); WPF parsea
+    ProblemDetails via ApiErrorParser (ProductService, SalesService). Se
+    eliminaron los ex.Message explicitos residuales en RestoreProduct y
+    SetStatus reemplazandolos por el mensaje fijo de permisos consistente con la
+    clase (revision de reviewer: SetStatus:258 conservaba el patron de fuga).
+
+B. INTEGRIDAD FINANCIERA (Fase 2)
+B1. [8.27-A05 + 8.29-C] Verificado: abonos parciales web atomicos con
+    Idempotency-Key del lote reutilizada en retry, POST /api/sales/{id}/payments/
+    batch todo-o-nada con validacion server-side y BatchPaymentTests en la suite.
+    Sin cambios.
+
+C. OPERACION / CONTINUIDAD (Fase 3)
+C1. [8.29-A6 + nuevo] Backup automatico verificado (tarea 'Sistema POS - Backup
+    PostgreSQL', pg_dump -Fc, retencion 14 dias, credenciales solo de
+    secrets.json). Restore documentado como procedimiento verificado en
+    docs/INSTALLATION.md (8.1): pg_restore --list + --clean --if-exists
+    --no-owner y smoke via /health. La ejecucion real queda como tarea operativa
+    en la maquina del cliente cuando exista la BD.
+C2. [8.16-B06 + 8.28-B9] BCV offline/manual decidido y documentado (INSTALLATION
+    seccion 7: BcvSettings:AutoSyncIntervalMinutes<=0 + POST /api/exchange-rate);
+    BcvScraper consolidado a UNICO timeout configurable (BcvSettings:Timeout-
+    Seconds). UpdateServerUrl permanece en http://localhost:5000/updates/ sin
+    cambio: UpdaterService no esta integrado/empaquetado (8.20-M08) y su
+    reintroduccion requiere firma X.509 (8U-N2); se parametrizara por sitio vía
+    secrets.json cuando exista el servidor de actualizaciones.
+
+D. HIGIENE DE ENTREGA (Fase 4)
+D1. Eliminados los crash logs ad-hoc del raiz (crash.txt, crash_dailyclosure.txt,
+    no versionados). Los crash se registran solo via AppLogger.LogCrash.
+D2. La regeneracion de secretos por sitio (JWT, cert y conexion en secrets.json
+    con ACL) es tarea del instalador (setup.iss + Configure-PosService.ps1) en la
+    maquina del cliente, no del repositorio.
+D3. Verificacion final: build Release 0w/0e; dotnet test 738/738; npm lint 0/0;
+    npm test 80/80; gate 8.26-E4 OK; publish verificado en 8.29 y reforzado con
+    el assert anti-pfx de build-release.ps1.
+
+E. HORIZONTE
+E1. Smoke E2E pendiente de entorno con Inno Setup (compilacion ISCC real y
+    ejecucion del instalador en maquina cliente) y smoke de restore cuando exista
+    la BD del cliente. Verificar en ese smoke la coherencia de rutas del pfx
+    generado por sitio: create-https-cert.ps1 escribe {app}\Backend.API\certs\
+    pos-https.pfx mientras el servicio busca {app}\BackendAPI\certs\pos-https.pfx
+    (base dir del proceso) — desajuste pre-existente (>=8.27) a validar con el
+    layout real del instalador.
+
+FIN DEL ANEXO - REVISION 8.30
+================================================================================
