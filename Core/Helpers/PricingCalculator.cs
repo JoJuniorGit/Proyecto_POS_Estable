@@ -21,12 +21,12 @@ public static class PricingCalculator
     }
 
     /// <summary>
-    /// Rounds an exchange rate up to 2 decimal places (ceiling rounding).
-    /// Example: 804.6301 -> 804.64, 804.6300 -> 804.63.
+    /// Rounds an exchange rate up to 4 decimal places (ceiling rounding), alineado a la guia §2.4.
+    /// Example: 804.63001 -> 804.6301, 804.6301 -> 804.6301 (identidad al tope de precision).
     /// </summary>
     public static decimal RoundExchangeRateCeiling(decimal rate)
     {
-        return Math.Ceiling(rate * 100m) / 100m;
+        return Math.Ceiling(rate * 10000m) / 10000m;
     }
 
     /// <summary>

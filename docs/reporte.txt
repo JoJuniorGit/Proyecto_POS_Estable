@@ -2754,7 +2754,7 @@ A.6 [C3] Estilos inline -> clases/tokens en componentes compartidos
     clases .error-boundary-shell/card/icon/title/message/details/actions/btn).
     NORMAS/CSS agregadas en index.css (no se reutilizan utilidades: se
     centraliza con tokens de diseno).
-A.7 [C3] No convertidos en esta sesion (deuda C.7): >90 espots inline
+A.7 [C3] No convertidos en esta sesion (deuda C.3): >90 espots inline
     estáticos/dinámicos restantes en CatalogPage, ExchangeRatePage, HistoryPage,
     ClosingPage, PendingOrdersPage, RegisterClosePage, CheckoutModal,
     ConfirmModal (color dinamico por danger/warning), BarcodeScannerModal,
@@ -2780,7 +2780,7 @@ FIN DEL ANEXO - REVISION 8.23
 ================================================================================ 
 
 -------------------------------------------------------------------------------
-ANEXO 8.24 - COMPLETION C4: ELIMINACION TOTAL DE ESTILOS INLINE (Deuda C.7/8.23)
+ANEXO 8.24 - COMPLETION C4: ELIMINACION TOTAL DE ESTILOS INLINE (Deuda C.3/8.22, expirada en 8.23/8.24)
 -------------------------------------------------------------------------------
 Fecha: 2026-09-08 | Rama/Bif: V0.15 | Objetivo: cerrar la deuda ">90 estilos
 inline" declarada en el ANEXO 8.23 (C.7 de la verificacion 8.22), que NO se
@@ -2833,7 +2833,7 @@ D. VERIFICACION FINAL
 - Sin cambios de modelo/migraciones; solo Web.Frontend + test hook + wwwroot.
 
 E. CIERRE
-Deuda C.7/§3.3 (estilos inline) queda CERRADA en su parte estatica: ahora el
+Deuda C.3/§3.3 (estilos inline) queda CERRADA en su parte estatica: ahora el
 100% de los estilos repetibles viven en hojas CSS con tokens de diseno; los 35
 residuales son valores condicionales por estado, imposibles de expresar como
 CSS estatico y conservados a proposito. Quedan pendientes de la 8.22 solo las
@@ -2841,4 +2841,77 @@ decisiones de negocio/arquitectura (E.1 BCV 2d/4d, C.6 BranchId) y el
 horizonte C.7 cobertura 70% (Sales/Inventory).
 
 FIN DEL ANEXO - REVISION 8.24
+================================================================================ 
+
+-------------------------------------------------------------------------------
+ANEXO 8.25 - CIERRE DE DECISIONES PENDIENTES 8.22 (E.1 BCV 4d + E.3 BranchId)
+-------------------------------------------------------------------------------
+Fecha: 2026-09-08 | Rama/Bif: V0.15 | Objetivo: ejecutar las decisiones de
+negocio/arquitectura que el ANEXO 8.22 dejo abiertas por el usuario.
+
+A. DECISIONES TOMADAS POR EL USUARIO
+E.1 (C.4 techo de tasa BCV): adoptar REDONDEO HACIA ARRIBA A 4 DECIMALES de la
+    guia (opcion a), en codigo + ajuste de tests de anclaje/vuelto afectados.
+E.3 (C.6 multi-branch): es INTENCION ARQUITECTONICA FUTURA, no requisito actual;
+    operar como sucursal unica y marcar §5 de la guia como intencion (sin gate).
+
+B. IMPLEMENTACION (E.1)
+B.1 Core/Helpers/PricingCalculator.cs: RoundExchangeRateCeiling pasa de
+    Math.Ceiling(rate * 100m) / 100m a Math.Ceiling(rate * 10000m) / 10000m
+    (alineado a la guia §2.4). XML doc actualizado (804.63001 -> 804.6301).
+B.2 Backend.API/Jobs/BcvExchangeRateJob.cs: comentario del paso de redondeo
+    actualizado a 4 decimales (sigue llamando al helper unico 8C-M1).
+B.3 ARCHITECTURE.md (2.2 Flujo BCV): seccion "Redondeo Hacia Arriba" actualizada
+    de 2d/804.6301->804.64 a 4d/804.63005->804.6301.
+B.4 Tests (CommandCenter.Tests/Unit/ExchangeRateJobTests.cs):
+    - Teoria PricingCalculator_RoundExchangeRateCeiling_RoundsUpToCent renombrada
+      a RoundsUpTo4Decimals con datos 4d: 804.63001->804.6301, 804.6301->804.6301
+      (identidad al tope), 805.123456->805.1235, 800.00001->800.0001,
+      36.456789->36.4568.
+    - Job test BcvExchangeRateJob_WhenNewValidRateDetected...: feed bruto
+      804.63001 -> persistido 804.6301; asserts RecalculateOnHoldSalesAsync(804.6301)
+      y payload SignalR ReceiveRateUpdate 804.6301.
+B.5 Migracion de esquema 20260909002108_ExpandExchangeRateColumnsTo4Decimals
+    (Sales.Module/SalesDbContext): ensancha a numeric(18,4) las columnas de tasa
+    snapshot para que el 4d NO se trunque al persistir: Sales.AppliedRate,
+    SalePayments.ExchangeRate, CashTransactions.ExchangeRate,
+    CashDrawerSessions.OpeningExchangeRate y ClosingExchangeRate. ExchangeRateHistory
+    .Rate ya era decimal(18,4) (no requiere cambio). Entidades + fluent config
+    actualizados en coherencia (atributo [Column] == DbContext).
+B.6 Smoke test MigratedSchema_MatchesModel_OnRealDatabase (WebApplicationFactory
+    SmokeTests.cs): nuevas aserciones de scale >= 4 en Sales.AppliedRate y
+    SalePayments.ExchangeRate, siguiendo el patron B2/existente.
+NOTA de alcance: redondeos de PRECIO (Math.Ceiling(x*100m)/100m en RoundPriceUp,
+ProductImportService, ProductDialogViewModel, ProductBuilder) NO se tocan: son la
+regla de precio por unidad a centavos, distinta del techo de TASA de la guia.
+
+C. IMPLEMENTACION (E.3)
+C.1 docs/coding-guidelines.md §5: bloque "DECISION DE NEGOCIO (8.25-E3)" al inicio
+    declara el multi-branch como intencion futura: operacion actual de sucursal
+    unica (BranchId implicito 1), 0 ocurrencias deliberadas (8.22-C6), directrices
+    convertidas de "debe" a "debera cuando se habilite" y sin valor de gate.
+
+D. AJUSTES DE CONSISTENCIA EN EL REPORTE
+D.1 Colision de etiquetas "C.7" resuelta: en 8.22, C.7 = cobertura 70%; en
+    8.23/8.24 se usaba "deuda C.7" para estilos inline (que es el hallazgo C.3 de
+    8.22). Se corrigieron las 3 referencias (A.7 de 8.23, titulo y cierre de
+    8.24) a "C.3" para numeracion consistente.
+
+E. VERIFICACION FINAL
+- dotnet build Release: 0 warnings / 0 errors esperado (validado en CI de la
+  sesion).
+- dotnet test (TEST_POSTGRES_CONNECTION local): suite completa esperado 706/706
+  (incluye smoke MigratedSchema con la nueva migracion aplicada por MigrateAsync).
+- npm run lint / npm run build (Web.Frontend): sin cambios, se mantienen 0 errores.
+- Sin cambios de modelo no intencionados: la migracion solo altera las 5 columnas.
+
+F. CIERRE
+De la verificacion 8.22 queda resuelto E.1 (BCV 4d adoptado y persistido), E.2
+(camelCase, ya cerrado en 8.23-C1) y E.3 (BranchId = intencion futura, guia
+enmendada). Resta UNA sola decision abierta: E.4 (cobertura 70%: plan de
+convergencia o horizontes por capa) - hoy con gates anti-regresion 19/14
+vigentes en scripts/check-coverage.py. El umbral 500 lineas (C.5) queda como
+horizonte documentado, no gate.
+
+FIN DEL ANEXO - REVISION 8.25
 ================================================================================ 

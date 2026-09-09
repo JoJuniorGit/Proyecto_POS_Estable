@@ -41,7 +41,7 @@ public class CashTransaction
     [Column(TypeName = "decimal(18,2)")]
     public decimal AmountUsd { get; set; }
 
-    [Column(TypeName = "decimal(18,2)")]
+    [Column(TypeName = "decimal(18,4)")]
     public decimal ExchangeRate { get; set; }
 
     // Amount stored in local currency (Bs.S) so the cash register can be computed without

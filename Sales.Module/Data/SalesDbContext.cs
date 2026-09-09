@@ -109,7 +109,7 @@ modelBuilder.Entity<User>().HasData(
 
         modelBuilder.Entity<Sale>()
             .Property(s => s.AppliedRate)
-            .HasColumnType("decimal(18,2)");
+            .HasColumnType("decimal(18,4)");
 
         modelBuilder.Entity<Sale>().Property(s => s.TotalBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<Sale>().Property(s => s.SubtotalBsS).HasColumnType("decimal(18,4)");
@@ -153,7 +153,7 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<SaleItem>().Property(i => i.SubtotalBsS).HasColumnType("decimal(18,4)");
 
         modelBuilder.Entity<SalePayment>().Property(p => p.AmountBsS).HasColumnType("decimal(18,2)");
-        modelBuilder.Entity<SalePayment>().Property(p => p.ExchangeRate).HasColumnType("decimal(18,2)");
+        modelBuilder.Entity<SalePayment>().Property(p => p.ExchangeRate).HasColumnType("decimal(18,4)");
 
         // Cash Drawer Configurations
         modelBuilder.Entity<CashDrawerSession>()
@@ -190,12 +190,12 @@ modelBuilder.Entity<User>().HasData(
             .HasDatabaseName("IX_CashTransactions_PaymentMethodId");
 
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningBalanceLocal).HasColumnType("decimal(18,2)");
-        modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningExchangeRate).HasColumnType("decimal(18,2)");
+        modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningExchangeRate).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingBalanceLocal).HasColumnType("decimal(18,2)");
-        modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingExchangeRate).HasColumnType("decimal(18,2)");
+        modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingExchangeRate).HasColumnType("decimal(18,4)");
 
         modelBuilder.Entity<CashTransaction>().Property(t => t.AmountUsd).HasColumnType("decimal(18,2)");
-        modelBuilder.Entity<CashTransaction>().Property(t => t.ExchangeRate).HasColumnType("decimal(18,2)");
+        modelBuilder.Entity<CashTransaction>().Property(t => t.ExchangeRate).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashTransaction>().Property(t => t.AmountLocal).HasColumnType("decimal(18,2)");
 
         // Daily Closure Configurations

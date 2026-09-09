@@ -50,7 +50,7 @@ public class Sale
     [Column(TypeName = "decimal(18,2)")]
     public decimal TotalUSD { get; set; }
     
-    [Column(TypeName = "decimal(18,2)")]
+    [Column(TypeName = "decimal(18,4)")]
     public decimal AppliedRate { get; set; }
 
     [Column(TypeName = "decimal(18,2)")]

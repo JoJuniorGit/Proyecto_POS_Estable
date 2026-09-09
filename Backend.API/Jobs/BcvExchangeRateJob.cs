@@ -133,7 +133,7 @@ await ExecuteSyncInternalAsync(scope, cancellationToken);
             return;
         }
 
-        // Ceiling rounding to 2 decimal places (redondeo hacia arriba: ej. 804.6301 -> 804.64)
+        // Ceiling rounding to 4 decimal places (redondeo hacia arriba, guia §2.4: ej. 804.63005 -> 804.6301)
         decimal roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(rawRate.Value);
 
         // 8.7-M3: upsert + invalidación de caché + recálculo OnHold + broadcast centralizados.

@@ -158,5 +158,19 @@ public class WebApplicationFactorySmokeTests
             "SELECT COUNT(*)::int AS \"Value\" FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'IX_StockMovements_SaleId'")
             .FirstOrDefaultAsync();
         Assert.Equal(1, saleIdIndex);
+
+        // 8.25-E1: tras adoptar el techo de tasa BCV a 4 decimales, las columnas de tasa
+        // snapshot deben tener scale >= 4 (migracion ExpandExchangeRateColumnsTo4Decimals).
+        var appliedRateScale = await salesDb.Database.SqlQueryRaw<int>(
+            "SELECT COALESCE(MAX(CASE WHEN column_name = 'AppliedRate' THEN numeric_scale END), 0)::int AS \"Value\" " +
+            "FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Sales'")
+            .FirstOrDefaultAsync();
+        Assert.True(appliedRateScale >= 4, $"Sales.AppliedRate debe tener scale >= 4 (E1), se obtuvo {appliedRateScale}");
+
+        var paymentRateScale = await salesDb.Database.SqlQueryRaw<int>(
+            "SELECT COALESCE(MAX(CASE WHEN column_name = 'ExchangeRate' THEN numeric_scale END), 0)::int AS \"Value\" " +
+            "FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'SalePayments'")
+            .FirstOrDefaultAsync();
+        Assert.True(paymentRateScale >= 4, $"SalePayments.ExchangeRate debe tener scale >= 4 (E1), se obtuvo {paymentRateScale}");
     }
 }

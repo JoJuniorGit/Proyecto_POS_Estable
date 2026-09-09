@@ -218,10 +218,12 @@ flowchart TD
 
 ## 5. Preparación para Múltiples Sucursales (Multi-Branch Readiness)
 
+> **DECISIÓN DE NEGOCIO (8.25-E3):** El multi-branch es **intención arquitectónica futura**, no requisito actual. El sistema opera hoy como sucursal única (una sola tienda/caja), por lo que **ninguna entidad transaccional implementa `BranchId`** todavía (0 ocurrencias verificadas en 8.22-C6). Esta sección es un **mapa de ruta** para evitar refactorizaciones traumáticas cuando el despliegue multitienda se confirme; las directrices no aplican como gate de cumplimiento hasta entonces.
+
 Con el fin de evitar refactorizaciones traumáticas cuando el sistema se despliegue en múltiples tiendas, se establecen las siguientes directrices estructurales:
 
 1. **Discriminador de Sucursal (`BranchId`):**
-   Toda nueva entidad transaccional (`Sale`, `CashDrawerSession`, `DailyClosure`, `StockMovement`) debe incluir un campo `BranchId` (por defecto `1` en instalaciones de sucursal única).
+   Cuando se habilite el modo multiusuario, toda entidad transaccional (`Sale`, `CashDrawerSession`, `DailyClosure`, `StockMovement`) deberá incluir un campo `BranchId` (por defecto `1` en instalaciones de sucursal única). Hoy el `BranchId` implícito de la instalación es `1`.
 2. **Secuencias de Facturación Scoped:**
    La numeración de facturas legales debe admitir prefijos por sucursal y caja (ej. `B01-C01-0001245`), evitando colisiones de claves en operaciones offline que se sincronicen posteriormente.
 3. **Desacoplamiento de Stock de Producto:**
