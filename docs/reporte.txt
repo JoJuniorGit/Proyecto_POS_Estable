@@ -4014,4 +4014,48 @@ D2. dotnet test CommandCenter.slnx -c Release: 759/759 superadas / 0 fallidas.
 D3. Sin cambio de modelo persistente -> sin migracion EF.
 
 FIN DEL ANEXO - REVISION 8.51
+===============================================================================
+===============================================================================
+ANEXO - REVISIONES 8.52-8.54 (METRICAS, CANCELACION Y SCAFFOLDING DE FIRMA)
+===============================================================================
+Alcance: preparar desde el codigo tres items del plan de "Pendiente a Completado"
+que son factibles en el repo (metricas, cancelacion, scaffolding de firma).
+Verificacion: build Release 0w/0e; dotnet 761/761 (759 + 2 metricas); web 80/80.
+
+A. 8.52 - METRICAS DE LATENCIA/ERROR (item 1 del plan)
+A1. RequestMetricsRegistry (singleton, thread-safe): registra por endpoint
+    (method+path) TotalCount, ErrorCount (5xx), AverageMs, MaxMs y P95Ms
+    (muestras acotadas a 1000). Refinado: muestras en double (sin truncar).
+A2. RequestMetricsMiddleware: mide cada peticion con Stopwatch y registra.
+    Registrado en el pipeline y DI.
+A3. GET /api/health/requests (Admin/Manager) expone el snapshot.
+A4. Tests: RequestMetricsRegistryTests (2): conteos/errores y p95.
+A5. Permite certificar el SLO (p95 < 500 ms, error tecnico < 1%) sin depender del
+    cajero. Prometheus/Grafana quedan como monitoreo continuo opcional.
+
+B. 8.53 - CANCELACION COOPERATIVA EN EL MODAL DE COBRO (item 2 del plan)
+B1. ISalesService/SalesService (cliente): CompleteSaleAsync acepta
+    CancellationToken opcional y lo propaga a SendAsync.
+B2. CheckoutViewModel: CTS creado en FinalizeSale y pasado a CompleteSaleAsync;
+    catch OperationCanceledException (muestra "Cobro Cancelado", no error);
+    finally dispose; RelayCommand CancelCheckout; implementa IDisposable
+    (cancela/dispone el CTS) y se dispone en PosViewModel tras cerrar el dialogo.
+B3. CheckoutDialog.xaml: boton "CANCELAR" visible solo si IsProcessing.
+B4. El test manual de UI (Clumsy: arrastrar ventana + cancelar) requiere runtime WPF.
+
+C. 8.54 - SCAFFOLDING DE INSTALADOR Y FIRMA (item 3 del plan)
+C1. build-release.ps1: paso OPCIONAL de compilacion Inno Setup (iscc) y firma
+    (signtool) guiado por env ISCC_PATH/SIGNTOOL_PATH/CODE_SIGNING_PFX/
+    CODE_SIGNING_PASSWORD; se omite con aviso si no estan configurados.
+C2. .gitignore: tools/local/, build.local.env, *.code-signing.pfx (el certificado
+    y el tooling no se versionan ni entran al instalador).
+C3. La compilacion real (iscc) y la firma requieren el tooling y el certificado
+    (infraestructura externa); el script queda listo.
+
+D. ESTADO
+D1. Completado desde codigo: metricas (SLO medible), cancelacion (plumbing),
+    scaffolding de firma. PENDIENTE (entorno): Prometheus/Grafana opcional,
+    test manual con Clumsy, compilacion/firma real con ISCC y certificado.
+
+FIN DEL ANEXO - REVISIONES 8.52-8.54
 ================================================================================

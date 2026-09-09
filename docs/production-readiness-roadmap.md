@@ -17,6 +17,7 @@ el avance real de cada fase.
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F2/F4/F5 | Metricas de latencia/error (8.52), cancelacion del cobro (8.53), scaffolding ISCC/firma (8.54) | Items 1-3 del plan preparados en codigo; suites .NET 761/761 |
 | 2026-09-09  | F2   | Req.3 UI: endpoint recibo on-demand + integracion en modal de venta completada (279372d) | Req.3 IMPLEMENTADO; suites .NET 759/759 |
 | 2026-09-09  | F2   | Req.3 factura digital NO fiscal + impresion asincrona NO bloqueante (e07644b) | Req.3 IMPLEMENTADO; suites .NET 757/757 |
 | 2026-09-09  | F2/F3/F4/F5 | Cobertura desde codigo: DTO CashDrawer (8.46), health details (8.47), outbox multi-worker (8.48), instalador health post-arranque (8.49) | Suites .NET 755/755 |
@@ -287,6 +288,7 @@ equipo de desarrollo.
 - [x] Logs estructurados con traceId/usuario/rol/SaleId/resultado (sin secretos) (baseline: ILogger semantico + AppLogger).
 - [x] Separacion de logs app/seguridad/BD/backup/servicio (AppLogger: start/crash/db-errors/security-audit/warn).
 - [x] Health checks backend, PostgreSQL (y metricas de cache) (HealthController: /health + /api/health/metrics).
+- [x] Metricas de latencia/error por peticion (RequestMetricsRegistry + /api/health/requests, 8.52).
 - [ ] Health checks de migraciones/tasa BCV/disco/ultimo backup (requiere tooling de monitoreo).
 - [ ] Alertas: servicio caido, backup fallando, errores BD, concurrencia alta, disco bajo, cert por expirar (requiere monitoreo externo).
 - [x] Retencion/exportacion de logs; runbooks (servicio caido, restore, cert, BCV, stock, rollback); responsable de soporte y ventana de mantenimiento (INSTALLATION 13, 8.44).

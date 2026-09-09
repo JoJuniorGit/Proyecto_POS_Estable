@@ -17,6 +17,12 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.22.0  | 2026-09-09  | d6cd971      | REVISIONES 8.52-8.54: metricas de latencia/error por
+|          |             | (8.54)       | peticion (/api/health/requests), cancelacion cooperativa
+|          |             |              | en el modal de cobro (CTS + boton CANCELAR), scaffolding
+|          |             |              | ISCC/firma en build-release.ps1 + .gitignore.
+|          |             |              | Suites: .NET 761/761, build R 0/0.
+|          |             |              | Detalle: ANEXO 8.52-8.54.
 | v1.21.0  | 2026-09-09  | 279372d      | REVISION 8.51 / Req.3 UI: endpoint GET /api/sales/{id}/
 |          |             | (8.51)       | receipt (PDF on-demand, AsSplitQuery, RFC 7807) e
 |          |             |              | integracion del recibo en el modal de venta completada
@@ -636,8 +642,8 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.51 / Req.3 UI: recibo en modal de
-  venta completada, .NET 759/759, web 80/80, build Release 0/0). Proxima
+  Ultima verificacion: 2026-09-09 (REVISIONES 8.52-8.54: metricas, cancelacion
+  del cobro y scaffolding de firma, .NET 761/761, build Release 0/0). Proxima
   revision obligatoria:
   con cada PR que toque BD, API, perifericos o cierres deuda.
 
