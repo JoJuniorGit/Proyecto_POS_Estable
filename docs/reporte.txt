@@ -3443,4 +3443,50 @@ D2. dotnet test CommandCenter.slnx -c Release: 744/744 superadas / 0 fallidas.
 D3. Sin cambio de modelo persistente -> sin migracion EF.
 
 FIN DEL ANEXO - REVISION 8.33
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.34 (REQ.1: AUDITORIA DE CAPACIDAD DE CONCURRENCIA 4 CAJAS)
+===============================================================================
+Alcance: certificar mediante pruebas que la concurrencia actual soporta 4
+terminales simultaneas sin conflictos de estado ni cuellos de botella de BD.
+Verificacion: build Release 0w/0e; dotnet test 746/746 (744 + 2 nuevos) contra
+PostgreSQL real (servicio local postgresql-x64-18, credenciales postgres/123456).
+
+A. MECANISMO BAJO PRUEBA
+A1. La deduccion de stock de la venta usa InventoryService.UpdateStockBatchAsync,
+    cuyo decremento es un UPDATE ATOMICO CONDICIONAL por fila en PostgreSQL:
+    WHERE StockQuantity + qty >= 0 (InventoryService.StockDeduction.cs:89-93).
+    Bajo READ COMMITTED las escrituras concurrentes serializan por fila y
+    PostgreSQL re-evalua el WHERE tras el lock -> sin lost updates ni oversell.
+
+B. PRUEBAS (CommandCenter.Tests/Integration/ConcurrencyCapacityTests.cs)
+B1. FourConcurrentTerminals_DeductingSameProduct_NoLostUpdatesNorOversell:
+    BD aislada pos_conc_<guid>, producto stock=4, 4 cajas concurrentes (cada una
+    con SU PROPIO InventoryDbContext + InventoryService, fiel al Scoped-por-
+    peticion de produccion; sin DbContext compartido entre hilos). Aserta stock
+    final 0 (todas las deducciones aplicadas, sin perdidas ni sobreventa).
+B2. ConcurrentOversell_DeductingSameProduct_NeverNegativeStock: stock=2, 4 cajas
+    concurrentes -> exactamente 2 exito y 2 InvalidOperationException("Stock
+    insuficiente"), stock final 0 (nunca negativo).
+B3. Aislamiento: la BD efimera se crea y se DROPea en finally con
+    DROP ... WITH (FORCE); no contamina otras pruebas (verificado: 0 residuales
+    pos_conc_*). Guard de TEST_POSTGRES_CONNECTION coherente con
+    PostgresRealIntegrationTests (throw en CI sin config; skip silencioso local).
+
+C. REVISION REVIEWER (8.34): APROBAR, sin bloqueantes. Aplicado [ESTILO]:
+    catch estrechado a "Stock insuficiente" para no atribuir fallos de conexion
+    como sobreventa.
+
+D. PRECONDICIONES DE EJECUCION
+D1. Requiere PostgreSQL real accesible y TEST_POSTGRES_CONNECTION con usuario con
+    privilegio CREATEDB (para la BD aislada de mantenimiento). En CI se ejecuta
+    sobre el contenedor postgres:16 (superusuario) via CI.yml.
+
+E. VERIFICACION
+E1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+E2. dotnet test CommandCenter.slnx -c Release: 746/746 superadas / 0 fallidas
+    (con TEST_POSTGRES_CONNECTION).
+E3. Sin cambio de modelo persistente -> sin migracion EF.
+
+FIN DEL ANEXO - REVISION 8.34
 ================================================================================

@@ -17,6 +17,11 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.7.0   | 2026-09-09  | fd63b76      | REVISION 8.34 / Req.1: auditoria de capacidad de
+|          |             | (8.34)       | concurrencia de 4 cajas vs PostgreSQL real (BD aislada
+|          |             |              | pos_conc): sin lost updates ni oversell; oversell nunca
+|          |             |              | negativo (UPDATE atomico condicional). Suites: .NET
+|          |             |              | 746/746, build R 0/0. Detalle: ANEXO 8.34.
 | v1.6.0   | 2026-09-09  | f68a40b      | REVISION 8.33 / Req.2: garantizar los 4 metodos de pago
 |          |             | (8.33)       | estandar (Efectivo, Tarjeta PDV, Transferencia/Pago Movil,
 |          |             |              | Divisas USD) con seed idempotente por nombre faltante
@@ -391,7 +396,7 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 4.2 Balance de pruebas automatizadas (linea base verificada 2026-09-09)
 -------------------------------------------------------------------------------
   Suite .NET (CommandCenter.Tests, xUnit + Moq + WebApplicationFactory):
-      estado : 744/744 PASAN   (con TEST_POSTGRES_CONNECTION; 738 + 6 batch)
+      estado : 746/746 PASAN   (con TEST_POSTGRES_CONNECTION; 744 + 2 concurrencia)
       entorno: PostgreSQL real para tests de integracion (PostgresReal* +
                WebApplicationFactorySmoke con BD aislada pos_smoke_<sufijo>,
                EnsureCreated para la mayoria de unit tests).
@@ -559,9 +564,8 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.33 / Req.2: metodos de pago,
-  .NET 744/744, build Release 0/0; pendiente push del roadmap y Req.2).
-  Proxima revision obligatoria:
+  Ultima verificacion: 2026-09-09 (REVISION 8.34 / Req.1: concurrencia 4 cajas,
+  .NET 746/746, build Release 0/0). Proxima revision obligatoria:
   con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================
