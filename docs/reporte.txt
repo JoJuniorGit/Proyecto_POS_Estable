@@ -4099,4 +4099,53 @@ D2. dotnet test CommandCenter.slnx -c Release: 761/761 superadas / 0 fallidas.
 D3. Sin cambio de modelo persistente -> sin migracion EF.
 
 FIN DEL ANEXO - REVISION 8.55
+===============================================================================
+===============================================================================
+ANEXO - REVISIONES 8.56-8.57 (STOCK NEGATIVO CONFIGURABLE Y IMPORT DE VARIANTES)
+===============================================================================
+Alcance: (1) permitir al usuario elegir si se permite el stock negativo, via la
+seccion de Ajustes; (2) verificar/actualizar la seccion de importacion para
+soportar variantes (padres/hijos). Verificacion: build Release 0w/0e;
+dotnet 766/766 (764 + 2); web 80/80.
+
+A. 8.56 - STOCK NEGATIVO CONFIGURABLE
+A1. NUEVO ajuste Inventory.AllowNegativeStock (Core/Constants/SettingKeys.cs).
+    SettingsController: GET/PUT allow-negative-stock (Admin + CanMutateSettings),
+    usando ISystemSettingsService (Get/Set invalidan la cache 8.7-M6 para que el
+    toggle surta efecto inmediato en el guard de stock).
+A2. SalesService.CompleteSaleAsync y HoldOrders leen el ajuste y lo propagan a
+    UpdateStockBatchAsync(allowNegativeStock) (antes hardcodeado false).
+A3. Cliente: ISettingsService/SettingsService Get/SetAllowNegativeStockAsync;
+    SettingsViewModel (AllowNegativeStock + ToggleAllowNegativeStockCommand);
+    SettingsView: ToggleButton (MaterialDesignSwitchToggleButton) 'Permitir stock
+    negativo' en la seccion de formato.
+A4. Tests: AllowNegativeStockSettingsTests (3). El toggle NO altera montos/tasas
+    (rules.md s1 intacto); solo el guard de stock.
+A5. NOTA/DECISION: el InventorySaleMadeEventHandler (via evento post-commit)
+    sigue con allowNegativeStock: true hardcodeado (comportamiento preexistente);
+    el ajuste gobierna la via directa de venta (CompleteSale/HoldOrders). Se
+    documenta como limite conocido.
+
+B. 8.57 - IMPORTACION DE VARIANTES
+B1. Verificacion: el backend de importacion YA soportaba variantes (ProductType
+    Grupo/Variante, GroupNameOrKey, IsStockShared, ConversionFactor, vincula
+    hijos a padres). El cliente de importacion YA parseaba esos campos.
+B2. GAP corregido: el EXPORT y la PLANTILLA no emitian las columnas de variantes.
+    Ahora ExportProductsAsync y GenerateTemplateAsync (xlsx+csv) incluyen
+    TipoProducto/Grupo/CompartirStock/FactorConversion; ResolveProductType y
+    ResolveGroupName (diccionario de grupos por Id, resuelve el grupo del padre).
+B3. Cliente: ProductImportService reconoce 'CompartirStock' (alias); ImportProducts
+    ViewModel.AvailableProperties + MapHeaderToProperty incluyen las propiedades
+    de variantes; preview DataGrid muestra Tipo/Grupo. Round-trip completo.
+B4. Tests: ProductImportVariantExportTests (2).
+
+C. REVISION REVIEWER (8.56/8.57): REVISAR sin bloqueantes. Aplicados:
+    coherencia de cache del ajuste, indentacion ISettingsService, EOF SettingKeys.
+
+D. VERIFICACION
+D1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+D2. dotnet test CommandCenter.slnx -c Release: 766/766 superadas / 0 fallidas.
+D3. Sin cambio de modelo persistente -> sin migracion EF.
+
+FIN DEL ANEXO - REVISIONES 8.56-8.57
 ================================================================================

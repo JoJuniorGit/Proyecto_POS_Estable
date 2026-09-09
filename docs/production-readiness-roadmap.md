@@ -17,6 +17,7 @@ el avance real de cada fase.
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F2   | Stock negativo configurable (8.56) + import de variantes (8.57) | Suites .NET 766/766 |
 | 2026-09-09  | F2/F4/F5 | Metricas de latencia/error (8.52), cancelacion del cobro (8.53), scaffolding ISCC/firma (8.54) | Items 1-3 del plan preparados en codigo; suites .NET 761/761 |
 | 2026-09-09  | F2   | Req.3 UI: endpoint recibo on-demand + integracion en modal de venta completada (279372d) | Req.3 IMPLEMENTADO; suites .NET 759/759 |
 | 2026-09-09  | F2   | Req.3 factura digital NO fiscal + impresion asincrona NO bloqueante (e07644b) | Req.3 IMPLEMENTADO; suites .NET 757/757 |
