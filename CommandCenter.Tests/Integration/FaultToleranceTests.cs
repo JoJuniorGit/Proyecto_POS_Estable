@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Backend.API.Jobs;
 using Core.Entities;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Sales.Module.Data;
+using Sales.Module.Services;
 using Xunit;
 
 namespace CommandCenter.Tests.Integration;
@@ -159,6 +161,80 @@ public class FaultToleranceTests
         finally
         {
             await DropIsolatedDatabaseAsync(connStr, dbName);
+        }
+    }
+
+    [Fact]
+    public async Task ConcurrentDuplicateSubmission_SameIdempotencyKey_PersistsExactlyOnce()
+    {
+        var connStr = ConnectionString();
+        if (string.IsNullOrWhiteSpace(connStr))
+        {
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")))
+                throw new InvalidOperationException("TEST_POSTGRES_CONNECTION no definida en CI.");
+            return;
+        }
+
+        var dbName = "pos_fault_" + Guid.NewGuid().ToString("N")[..8];
+        var isolated = new NpgsqlConnectionStringBuilder(connStr) { Database = dbName }.ConnectionString;
+        const string key = "batch-idempotency-key-42";
+        const string path = "/api/sales/10/payments/batch";
+        var hash = IdempotencyService.ComputePayloadHash("POST", path, Encoding.UTF8.GetBytes("{\"amount\":100}"));
+
+        try
+        {
+            await CreateIsolatedDatabaseAsync(connStr, dbName);
+            var scopeFactory = await CreateScopeFactoryAsync(isolated);
+
+            var attempts = Enumerable.Range(0, 5)
+                .Select(_ => AttemptIdempotentCommitAsync(scopeFactory, key, path, hash));
+            var committed = await Task.WhenAll(attempts);
+
+            Assert.Equal(1, committed.Count(c => c));
+
+            using var check = scopeFactory.CreateScope();
+            var context = check.ServiceProvider.GetRequiredService<SalesDbContext>();
+            var stored = await context.IdempotentRequests
+                .AsNoTracking()
+                .Where(r => r.Key == key && r.RequestPath == path)
+                .ToListAsync();
+            Assert.Single(stored);
+
+            var service = new IdempotencyService(context);
+            var replay = await service.CheckAsync(key, path, hash);
+            Assert.True(replay.IsReplay);
+            Assert.Equal(200, replay.StoredStatusCode);
+        }
+        finally
+        {
+            await DropIsolatedDatabaseAsync(connStr, dbName);
+        }
+    }
+
+    private static async Task<bool> AttemptIdempotentCommitAsync(
+        IServiceScopeFactory scopeFactory, string key, string path, byte[] hash)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<SalesDbContext>();
+        var service = new IdempotencyService(context);
+
+        var result = await service.CheckAsync(key, path, hash);
+        if (!result.IsNew)
+        {
+            Assert.True(result.IsReplay);
+            return false;
+        }
+
+        try
+        {
+            await service.RegisterSuccessAsync(key, path, hash, 200, "{\"status\":\"ok\"}");
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            var collision = await service.HandleConcurrentCollisionAsync(key, path, hash);
+            Assert.True(collision.IsReplay);
+            return false;
         }
     }
 }
