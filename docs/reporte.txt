@@ -3529,4 +3529,38 @@ D3. Sin cambio de modelo persistente -> sin migracion EF. Cobertura de dominio
     salvo CreateFrom, que esta cubierto por test).
 
 FIN DEL ANEXO - REVISION 8.35
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.36 (REQ.4: QA DE ESTRES Y MANEJO DE FALLOS - OUTBOX)
+===============================================================================
+Alcance: someter a pruebas de manejo de fallos y carga al proceso de despacho
+de eventos (Outbox) contra PostgreSQL real, validando recuperacion de crash y
+drenaje de backlog. Verificacion: build Release 0w/0e; dotnet test 752/752
+(750 + 2 nuevos) contra PostgreSQL real (postgresql-x64-18).
+
+A. PRUEBAS (CommandCenter.Tests/Integration/FaultToleranceTests.cs)
+A1. OutboxCrashRecovery_ReclaimsStaleDispatchingMessage_AndDispatches: siembra
+    un mensaje en estado "Dispatching" con claim stale (DispatchedAtUtc=now-2min,
+    umbral 90s), simula un crash del worker entre el commit y el estado final;
+    ejecuta OutboxProcessorJob.ProcessPendingMessagesAsync y aserta que el
+    mensaje se reclama (reclaim) y llega a "Processed" sin ErrorMessage
+    (recuperacion de crash, entrega at-least-once).
+A2. OutboxDrain_UnderBacklog_ProcessesAllMessages: siembra 50 mensajes Pending
+    elegibles y drena iterando ProcessPendingMessagesAsync (lote de 20); aserta
+    que los 50 llegan a "Processed" (carga/estres del processor).
+A3. Aislamiento: BD efimera pos_fault_<guid> creada y DROPeada en finally con
+    DROP ... WITH (FORCE); guard de TEST_POSTGRES_CONNECTION coherente con
+    PostgresRealIntegrationTests.
+
+B. REVISION REVIEWER (8.36): REVISAR sin bloqueantes. Aplicados [ESTILO]:
+    setup EF alineado con EnableRetryOnFailure(3) (fidelidad con produccion y
+    8.9-B4) y nombre del test de drenaje ajustado al resultado aseverado.
+
+C. VERIFICACION
+C1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+C2. dotnet test CommandCenter.slnx -c Release: 752/752 superadas / 0 fallidas
+    (con TEST_POSTGRES_CONNECTION).
+C3. Sin cambio de modelo persistente ni codigo de produccion -> sin migracion EF.
+
+FIN DEL ANEXO - REVISION 8.36
 ================================================================================

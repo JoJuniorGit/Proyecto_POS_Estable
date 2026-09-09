@@ -17,6 +17,11 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.9.0   | 2026-09-09  | 4b732ee      | REVISION 8.36 / Req.4 (parcial): QA de manejo de fallos
+|          |             | (8.36)       | del Outbox vs PostgreSQL real - recuperacion de crash
+|          |             |              | (reclaim Dispatching stale) y drenaje de backlog de 50
+|          |             |              | mensajes; EnableRetryOnFailure alineado a produccion.
+|          |             |              | Suites: .NET 752/752, build R 0/0. Detalle: ANEXO 8.36.
 | v1.8.0   | 2026-09-09  | 48bad9a      | REVISION 8.35 / Req.3: base arquitectonica de facturacion
 |          |             | (8.35)       | digital (Sales.Module.Receipts) - contratos
 |          |             |              | IReceiptDocumentRenderer e IReceiptPrintQueue (impresion
@@ -403,7 +408,7 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 4.2 Balance de pruebas automatizadas (linea base verificada 2026-09-09)
 -------------------------------------------------------------------------------
   Suite .NET (CommandCenter.Tests, xUnit + Moq + WebApplicationFactory):
-      estado : 750/750 PASAN   (con TEST_POSTGRES_CONNECTION; 746 + 4 base facturacion)
+      estado : 752/752 PASAN   (con TEST_POSTGRES_CONNECTION; 750 + 2 fallos Outbox)
       entorno: PostgreSQL real para tests de integracion (PostgresReal* +
                WebApplicationFactorySmoke con BD aislada pos_smoke_<sufijo>,
                EnsureCreated para la mayoria de unit tests).
@@ -571,8 +576,8 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.35 / Req.3: base facturacion,
-  .NET 750/750, build Release 0/0). Proxima revision obligatoria:
+  Ultima verificacion: 2026-09-09 (REVISION 8.36 / Req.4 parcial: fallos Outbox,
+  .NET 752/752, build Release 0/0). Proxima revision obligatoria:
   con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================
