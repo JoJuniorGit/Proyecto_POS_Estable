@@ -17,6 +17,12 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.11.0  | 2026-09-09  | (8.38)       | REVISION 8.38 / Fase 1 (seguridad de codigo): verificada
+|          |             |              | por codigo la pila JWT/revocacion/lockout/MustChange-
+|          |             |              | Password, HTTP/HTTPS (decision DQ-006), CORS, pairing,
+|          |             |              | rate limiting, headers y RBAC. Checklist 4.2 seguridad
+|          |             |              | completa. Sin cambios de codigo; .NET 753/753.
+|          |             |              | Detalle: ANEXO 8.38.
 | v1.10.0  | 2026-09-09  | f2e4f34      | REVISION 8.37 / Fase 1 (seguridad): auditoria de
 |          |             | (8.37)       | vulnerabilidades - .NET 0 vuln; npm fix nanoid 3.3.18
 |          |             |              | (0 vuln); escaneo de secretos sin fugas en produccion.

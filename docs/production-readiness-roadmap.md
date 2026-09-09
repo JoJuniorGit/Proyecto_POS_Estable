@@ -17,6 +17,7 @@ el avance real de cada fase.
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F1   | Auditoria de seguridad de codigo: JWT/revocacion/lockout/MustChangePassword, CORS, pairing, rate limiting, headers, RBAC verificados (8.38, DQ-006) | F1 checklist 4.2 seguridad COMPLETA |
 | 2026-09-09  | F1   | Auditoria de seguridad: .NET 0 vuln, npm fix nanoid, escaneo secretos OK (f2e4f34) | F1 EN CURSO; checklist 4.2 seguridad parcial |
 | 2026-09-09  | F3   | Req.4 ampliado: idempotencia concurrente vs PostgreSQL real (4e4eae7) | Req.4 PARCIAL ampliado; suites .NET 753/753 |
 | 2026-09-09  | F3   | Req.4 parcial: QA de fallos del Outbox vs PostgreSQL real (4b732ee) | Req.4 PARCIAL; suites .NET 752/752 |
@@ -83,6 +84,12 @@ contrato operativo del roadmap.
 - **DQ-005 - Metricas de aceptacion heredadas.** Umbrales vigentes del proyecto:
   cobertura de dominio Core >= 0.70, Sales.Module >= 0.80, Inventory.Module >=
   0.72 (8.26-E4); `TreatWarningsAsErrors` en Release.
+- **DQ-006 - Topologia HTTP/HTTPS (F1, 8.38).** En el piloto (LAN aislada) se
+  opera con HTTP 5000 (API/Web POS) + HTTPS 5001 autofirmado por sitio;
+  `SecuritySettings:RequireHttpsMetadata` default `false` para permitir el token
+  por HTTP interno. En cualquier despliegue que no sea LAN aislada (acceso
+  remoto/otra VLAN) se exige elevar `RequireHttpsMetadata=true` y certificado de
+  CA confiable; esta decision queda registrada y es revisable por el cliente.
 
 ### 3.3 SLOs y objetivos de recuperacion (propuesta a validar)
 
@@ -192,10 +199,10 @@ Hito M1: cero riesgos P0 abiertos y matriz de riesgos firmada.
 
 ### 4.2 Seguridad
 - [x] `dotnet list package --vulnerable`, `npm audit`, escaneo de secretos (8.37).
-- [ ] Revision JWT/expiración/revocacion/lockout/MustChangePassword.
-- [ ] Decision explicita sobre HTTP 5000 (LAN) o HTTPS forzado.
-- [ ] Revision CORS, pairing QR, rate limiting, security headers, RBAC.
-- [ ] Updater fuera del cliente hasta firma X.509.
+- [x] Revision JWT/expiración/revocacion/lockout/MustChangePassword (8.38).
+- [x] Decision explicita sobre HTTP 5000 (LAN) o HTTPS forzado (8.38, DQ-006).
+- [x] Revision CORS, pairing QR, rate limiting, security headers, RBAC (8.38).
+- [x] Updater fuera del cliente hasta firma X.509 (preexistente, no instalado).
 
 ### 4.3 Arquitectura
 - [ ] Definir politica BCV offline (sin fail-open financiero no documentado).

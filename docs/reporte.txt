@@ -3612,4 +3612,54 @@ D2. dotnet test CommandCenter.slnx -c Release: 753/753 (sin cambios de logica).
 D3. npm test: 80/80; npm run lint: 0/0; npm audit: 0 vulnerabilidades.
 
 FIN DEL ANEXO - REVISION 8.37
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.38 (FASE 1: AUDITORIA DE SEGURIDAD DE CODIGO - STACK)
+===============================================================================
+Alcance: verificar por codigo los controles de seguridad de la Fase 1 del
+roadmap (seccion 4.2) restantes: JWT/revocacion/lockout/MustChangePassword,
+decision HTTP/HTTPS, CORS, pairing, rate limiting, security headers y RBAC.
+Verificacion: lectura de Backend.API (auth/controllers/middleware/startup).
+Sin cambios de codigo (auditoria); suite sin variacion (753/753).
+
+A. JWT / EXPIRACION / REVOCACION / LOCKOUT / MUST-CHANGE
+A1. TokenService.cs: JWT HMAC-SHA256, ExpiryMinutes configurable (default 120),
+    claims scope + security_stamp + must_change_password + jti; rechaza la clave
+    JWT de desarrollo en produccion (fail-closed, TokenService.cs:41).
+A2. TokenValidationParameters: ValidateIssuerSigningKey/Issuer/Audience/Lifetime
+    = true y ClockSkew=0 (ServiceCollectionExtensions.cs:119-129).
+A3. Revocacion: SecurityStampValidator (caché + rotacion del stamp en logout y
+    cambio de contrasena) y [RequireSecurityStampValidation] fuerza verificacion
+    inmediata en BD en endpoints sensibles (caja, venta, cierres, reservas).
+A4. Lockout: 5 intentos fallidos -> LockoutEndUtc = +15 min, no re-extendible;
+    se reinicia al exito; aplica tambien al cambio de contrasena
+    (AuthController.cs:73-110, 233-274).
+A5. MustChangePassword: middleware + seeds con rotacion obligatoria al primer
+    login (DatabaseInitializer y MustChangePasswordMiddleware).
+
+B. HTTP/HTTPS (decision DQ-006)
+B1. SecuritySettings:RequireHttpsMetadata configurable (default false por LAN);
+    en despliegues no-LAN se exige true + cert de CA. Decision registrada en
+    roadmap DQ-006.
+
+C. CORS / PAIRING / RATE LIMITING / HEADERS / RBAC
+C1. CORS: lista explicita Cors:AllowedOrigins en Produccion (cero apertura LAN);
+    en local usa verificacion de host LAN/loopback (ServiceCollectionExtensions.
+    cs:205-227).
+C2. Rate limiting: AuthRateLimit (10/min por IP) y GeneralApiRateLimit
+    (200/min por IP) -> 429; AuthController [EnableRateLimiting("AuthRateLimit")]
+    y MapControllers().RequireRateLimiting("GeneralApiRateLimit").
+C3. Security headers: SecurityHeadersMiddleware en el pipeline.
+C4. RBAC: [Authorize(Roles=...)] por endpoint + politicas de scope
+    DesktopOnly/WebOnly/WebOrDesktop; el rol se deriva del token (no del cliente).
+C5. Pairing QR: token efimero single-use (Reporte seccion 3.2); Updater no
+    instalado en el cliente hasta firma X.509 (8.20-A03/8U-N2).
+
+D. ESTADO DE FASE 1
+D1. Checklist 4.2 de seguridad del roadmap COMPLETO y verificado.
+D2. PENDIENTE para cerrar M1 (cero P0): smoke E2E del instalador Inno Setup en
+    maquina limpia (R-001) y restore real de PostgreSQL con RTO medido (R-002),
+    ambos requieren entorno operativo.
+
+FIN DEL ANEXO - REVISION 8.38
 ================================================================================
