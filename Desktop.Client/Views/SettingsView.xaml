@@ -225,6 +225,25 @@
                             </StackPanel>
                         </Border>
                     </Grid>
+
+                    <!-- Toggle: permitir stock negativo -->
+                    <Grid Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Permitir stock negativo" FontWeight="SemiBold"/>
+                            <TextBlock Text="Si se activa, las ventas pueden dejar existencias negativas al superar el stock disponible (no bloquea el cobro)." 
+                                       TextWrapping="Wrap" Foreground="{DynamicResource MaterialDesignBodyLight}" FontSize="12"/>
+                        </StackPanel>
+                        <ToggleButton Grid.Column="1" 
+                                                     Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                     IsChecked="{Binding AllowNegativeStock, Mode=TwoWay}"
+                                                     Command="{Binding ToggleAllowNegativeStockCommand}"
+                                                     IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                                     VerticalAlignment="Center"/>
+                    </Grid>
                 </StackPanel>
             </Border>
 

@@ -51,7 +51,26 @@ public class SettingsService : ISettingsService
         var request = new { Format = format };
         await _httpClient.PutAsJsonAsync("api/settings/currency-format", request);
     }
-    
+
+    public async Task<bool> GetAllowNegativeStockAsync()
+    {
+        try
+        {
+            var response = await _httpClient.GetFromJsonAsync<AllowNegativeStockResponse>("api/settings/allow-negative-stock");
+            return response?.Allowed ?? false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task SetAllowNegativeStockAsync(bool allowed)
+    {
+        var request = new { Allowed = allowed };
+        await _httpClient.PutAsJsonAsync("api/settings/allow-negative-stock", request);
+    }
+
     private class TimeZoneResponse
     {
         public string Id { get; set; } = string.Empty;
@@ -60,5 +79,10 @@ public class SettingsService : ISettingsService
     private class CurrencyFormatResponse
     {
         public string Format { get; set; } = "Venezuelan";
+    }
+
+    private class AllowNegativeStockResponse
+    {
+        public bool Allowed { get; set; }
     }
 }

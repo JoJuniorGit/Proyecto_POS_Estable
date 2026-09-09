@@ -212,6 +212,45 @@ public class SettingsController : ControllerBase
 
         return Ok(new { Format = normalizedFormat, LastUpdated = setting.LastUpdated });
     }
+
+    [HttpGet("allow-negative-stock")]
+    public async Task<ActionResult> GetAllowNegativeStock()
+    {
+        var setting = await _context.SystemSettings.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Key == Core.Constants.SettingKeys.AllowNegativeStock);
+        var allowed = setting != null && bool.TryParse(setting.Value, out var value) && value;
+        return Ok(new { allowed });
+    }
+
+    [HttpPut("allow-negative-stock")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> SetAllowNegativeStock([FromBody] SetAllowNegativeStockRequest request)
+    {
+        if (!_currentUserService.CanMutateSettings)
+        {
+            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "El rol Cajero no tiene permisos para actualizar esta configuración.");
+        }
+
+        var setting = await _context.SystemSettings.FirstOrDefaultAsync(s => s.Key == Core.Constants.SettingKeys.AllowNegativeStock);
+        if (setting == null)
+        {
+            setting = new SystemSetting
+            {
+                Key = Core.Constants.SettingKeys.AllowNegativeStock,
+                Value = request.Allowed.ToString(),
+                LastUpdated = DateTime.UtcNow
+            };
+            _context.SystemSettings.Add(setting);
+        }
+        else
+        {
+            setting.Value = request.Allowed.ToString();
+            setting.LastUpdated = DateTime.UtcNow;
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok(new { allowed = request.Allowed });
+    }
 }
 
 public class SetExchangeRateRequest
@@ -227,4 +266,9 @@ public class SetTimeZoneRequest
 public class SetCurrencyFormatRequest
 {
     public string Format { get; set; } = "Venezuelan";
+}
+
+public class SetAllowNegativeStockRequest
+{
+    public bool Allowed { get; set; }
 }

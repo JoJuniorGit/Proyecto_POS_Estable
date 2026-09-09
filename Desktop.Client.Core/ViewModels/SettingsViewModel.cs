@@ -44,6 +44,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _connectionStatusColor = "#27AE60";
 
+    [ObservableProperty]
+    private bool _allowNegativeStock;
+
     public ObservableCollection<PaymentMethodDto> PaymentMethods { get; } = new();
     public ObservableCollection<TimeZoneInfo> AvailableTimeZones { get; } = new();
 
@@ -98,11 +101,30 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             await LoadMethodsAsync();
             await LoadTimeZonesAsync();
             await LoadCurrencyFormatAsync();
+            await LoadAllowNegativeStockAsync();
             _hasLoaded = true;
         }
     }
 
     public UserSession? UserSession { get; }
+
+    private async Task LoadAllowNegativeStockAsync()
+    {
+        AllowNegativeStock = await _settingsService.GetAllowNegativeStockAsync();
+    }
+
+    [RelayCommand]
+    private async Task ToggleAllowNegativeStockAsync()
+    {
+        try
+        {
+            await _settingsService.SetAllowNegativeStockAsync(AllowNegativeStock);
+        }
+        catch (Exception ex)
+        {
+            _dialogService?.ShowError("Stock Negativo", $"No se pudo guardar la configuración: {ex.Message}");
+        }
+    }
 
     [RelayCommand]
     private async Task LoadMethodsAsync()

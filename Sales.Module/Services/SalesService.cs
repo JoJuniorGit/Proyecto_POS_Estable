@@ -51,6 +51,12 @@ public partial class SalesService : ISalesService
         _receiptPrintQueue = receiptPrintQueue;
     }
 
+    private async Task<bool> IsAllowNegativeStockEnabledAsync()
+    {
+        var value = await _settingsService.GetSettingAsync(Core.Constants.SettingKeys.AllowNegativeStock);
+        return bool.TryParse(value, out var allowed) && allowed;
+    }
+
     private async Task<int> GenerateNextInvoiceNumberAsync()
     {
         if (_context.Database.IsNpgsql())
@@ -641,10 +647,11 @@ public partial class SalesService : ISalesService
 
                 if (stockDeductions.Count > 0)
                 {
+                    var allowNegativeStock = await IsAllowNegativeStockEnabledAsync();
                     await _inventoryService.UpdateStockBatchAsync(
                         stockDeductions,
                         userId: cashierId?.ToString(),
-                        allowNegativeStock: false);
+                        allowNegativeStock: allowNegativeStock);
                 }
             }
 

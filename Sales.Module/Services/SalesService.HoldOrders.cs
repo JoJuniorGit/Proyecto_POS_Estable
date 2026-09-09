@@ -234,9 +234,10 @@ public partial class SalesService
 
                     if (stockDeductions.Count > 0)
                     {
+                        var allowNegativeStock = await IsAllowNegativeStockEnabledAsync();
                         await _inventoryService.UpdateStockBatchAsync(
                             stockDeductions,
-                            allowNegativeStock: false);
+                            allowNegativeStock: allowNegativeStock);
                     }
                 }
 
