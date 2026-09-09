@@ -5,7 +5,6 @@ using Inventory.Module.Services;
 using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.HttpOverrides;
-using Logistics.Module.Extensions;
 using Backend.API.Services;
 
 namespace Backend.API.Startup;
@@ -69,10 +68,7 @@ public static class ServiceCollectionExtensions
         {
             cfg.RegisterServicesFromAssembly(typeof(Sales.Module.Services.SalesService).Assembly);
             cfg.RegisterServicesFromAssembly(typeof(Inventory.Module.Services.InventoryService).Assembly);
-            cfg.RegisterServicesFromAssembly(typeof(Logistics.Module.Services.DeliveryService).Assembly);
         });
-        // Logistics.Module (Clasificado formalmente como NO-PRODUCCIÓN / EXPERIMENTAL - almacenamiento en memoria [8L-CR3])
-        builder.Services.AddLogisticsModule();
 
         // BCV Services (Sincronización exclusivamente manual a demanda)
         builder.Services.AddHttpClient<BcvScraperService>();
