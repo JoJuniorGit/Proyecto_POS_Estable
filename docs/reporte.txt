@@ -3868,4 +3868,32 @@ C2. PENDIENTE (requiere tooling de monitoreo externo): health checks de
     expirar).
 
 FIN DEL ANEXO - REVISION 8.44
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.45 (FASE 6: PILOTO CONTROLADO - PLAN Y CRITERIOS)
+===============================================================================
+Alcance: definir el plan del piloto controlado (Fase 6 del roadmap) y sus
+criterios de aceptacion (M6). Verificacion: documentacion; sin cambios de
+logica. Suites sin variacion (754/754, web 80/80).
+
+A. PLAN (docs/INSTALLATION.md seccion 14)
+A1. Version congelada (V0.15), una sucursal, duracion inicial 1-2 semanas.
+A2. Registro diario (plantilla: ventas, cierres, errores, latencia, backup,
+    intervenciones) por el responsable del sitio.
+A3. Actividades: revision diaria de incidencias, al menos UN restore de
+    validacion en copia aislada, verificacion diaria del backup y /health,
+    operacion offline BCV si aplica.
+A4. Criterios de aceptacion M6: cero incidentes criticos / cero perdida de
+    datos, operacion dentro de SLOs, backup + restore de validacion OK,
+    sin duplicados bajo reintentos, aceptacion formal del cliente.
+
+B. ESTADO DEL ROADMAP
+B1. Fase 0 (F0) completada; F1 (seguridad) auditada; F2/F3/F4/F5 avanzadas por
+    conveniencia con evidencia reproducible; F6 definida (pendiente de ejecucion
+    en un sitio real).
+B2. Dependencias de entorno operativo (no ejecutables aqui): instalador ISCC,
+    firmado, E2E sobre instalacion real, medicion de SLOs bajo carga sostenida,
+    restore real con RTO y ejecucion del piloto en una sucursal del cliente.
+
+FIN DEL ANEXO - REVISION 8.45
 ================================================================================

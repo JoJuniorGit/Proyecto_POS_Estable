@@ -17,6 +17,9 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.18.0  | 2026-09-09  | (8.45)       | REVISION 8.45 / Fase 6: plan del piloto controlado y
+|          |             |              | criterios de aceptacion M6 en INSTALLATION 14. Suites:
+|          |             |              | .NET 754/754, web 80/80. Detalle: ANEXO 8.45.
 | v1.17.0  | 2026-09-09  | (8.44)       | REVISION 8.44 / Fase 5: baseline de observabilidad
 |          |             |              | verificado (logs separados, /health + metrics) y
 |          |             |              | runbooks operativos en INSTALLATION 13. Suites: .NET
@@ -616,9 +619,9 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.44 / Fase 5: observabilidad y
-  runbooks, .NET 754/754, web 80/80, build Release 0/0). Proxima revision
-  obligatoria: con cada PR que toque BD, API, perifericos o cierres deuda.
+  Ultima verificacion: 2026-09-09 (REVISION 8.45 / Fase 6: plan del piloto,
+  .NET 754/754, web 80/80, build Release 0/0). Proxima revision obligatoria:
+  con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================
 FIN DEL DOCUMENTO - REPORTE DE ESTADO v1.5.0

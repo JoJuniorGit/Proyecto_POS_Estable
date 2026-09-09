@@ -302,3 +302,33 @@ Checklist de release (por versión):
 ### 13.7 Responsable y ventana de mantenimiento
 1. Designar un responsable operativo en el sitio (RQ de la Fase 0).
 2. Ventana de mantenimiento recomendada: nocturna (fuera de horario de caja); el backup corre a las 03:00.
+
+## 14. Plan del piloto controlado (Fase 6, 8.45)
+
+Alcance y reglas:
+
+1. **Versión congelada:** desplegar la Release Candidate (V0.15) en UNA sucursal; durante el piloto NO se incorporan funcionalidades nuevas (solo correcciones aprobadas).
+2. **Duración inicial:** 1-2 semanas.
+3. **SLOs de referencia:** `RPO <= 24 h`, `RTO <= 4 h`, checkout sin duplicados, sin pérdida de datos (ver roadmap §3.3).
+4. **Sin cambios de esquema** no planificados; cualquier migración se trata como una actualización (§10.2) con backup previo.
+
+Registro diario (por el responsable del sitio):
+
+| Día | Ventas | Cierres | Errores | Latencia (checkout) | Backup OK (03:00) | Intervenciones |
+|-----|--------|---------|---------|---------------------|-------------------|----------------|
+|     |        |         |         |                     |                   |                |
+
+Actividades durante el piloto:
+
+1. Revisión diaria de incidencias y de la tabla de registro; sin funcionalidades nuevas.
+2. Ejecutar al menos **un restore de validación** en una copia aislada (vía §8.1) y confirmar conteos (ventas/pagos/tasas/cierres) e integridad de snapshots.
+3. Verificar diariamente el backup (tarea `Sistema POS - Backup PostgreSQL`) y `/health`.
+4. Confirmar operación offline de la tasa BCV (§7) si el puesto queda sin red.
+
+Criterios de aceptación (M6) — se cumplen TODOS:
+
+- [ ] Cero incidentes críticos y cero pérdida de datos durante el piloto.
+- [ ] Operación dentro de los SLOs de referencia (§3).
+- [ ] Backup diario OK y al menos un restore de validación exitoso.
+- [ ] Sin duplicados de venta/abono bajo reintentos (idempotencia).
+- [ ] Aceptación formal del cliente (firma Go/No-Go de Fase 6).

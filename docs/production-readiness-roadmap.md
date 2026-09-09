@@ -45,7 +45,7 @@ el avance real de cada fase.
 | F3   | QA, concurrencia y pruebas de estres     | EN CURSO | M3: evidencia reproducible | -            |
 | F4   | Release engineering y despliegue         | EN CURSO | M4: RC firmado y probado   | -            |
 | F5   | Observabilidad y operacion               | EN CURSO | M5: soporte sin desarrollo | -            |
-| F6   | Piloto controlado                        | PENDIENTE | M6: aceptacion del cliente | -            |
+| F6   | Piloto controlado                        | EN CURSO | M6: aceptacion del cliente | -            |
 | FIN  | Certificacion Go/No-Go                   | PENDIENTE | Firmas RM/ARQ/CLI          | -            |
 
 ---
@@ -290,16 +290,16 @@ equipo de desarrollo.
 
 ---
 
-## 9. FASE 6 - Piloto controlado (PENDIENTE)
+## 9. FASE 6 - Piloto controlado (EN CURSO)
 
 Hito M6: piloto sin incidentes criticos, sin perdida de datos y dentro de SLOs.
 
 - [ ] Desplegar en una sucursal; duracion inicial 1-2 semanas; version congelada.
 - [ ] Registro diario: ventas, cierres, errores, latencia, backups,
-      intervenciones.
+      intervenciones (plantilla en INSTALLATION 14).
 - [ ] Restore en copia aislada durante el piloto.
 - [ ] Revision diaria de incidencias; sin funcionalidades nuevas.
-- [ ] Aceptacion formal del cliente.
+- [ ] Aceptacion formal del cliente (criterios en INSTALLATION 14).
 
 ---
 
