@@ -18,17 +18,20 @@ public class HealthController : ControllerBase
     private readonly InventoryDbContext _inventoryDb;
     private readonly IConfiguration _configuration;
     private readonly IWebHostEnvironment _environment;
+    private readonly Backend.API.Metrics.RequestMetricsRegistry _requestMetrics;
 
     public HealthController(
         SalesDbContext salesDb,
         InventoryDbContext inventoryDb,
         IConfiguration configuration,
-        IWebHostEnvironment environment)
+        IWebHostEnvironment environment,
+        Backend.API.Metrics.RequestMetricsRegistry requestMetrics)
     {
         _salesDb = salesDb;
         _inventoryDb = inventoryDb;
         _configuration = configuration;
         _environment = environment;
+        _requestMetrics = requestMetrics;
     }
 
     [AllowAnonymous]
@@ -85,6 +88,17 @@ public class HealthController : ControllerBase
             cacheHits = hits,
             cacheMisses = misses,
             hitRatePercentage = Math.Round(hitRate, 2),
+            timestamp = DateTime.UtcNow.ToString("o")
+        });
+    }
+
+    [HttpGet("api/health/requests")]
+    [Authorize(Roles = "Admin,Manager")]
+    public IActionResult GetRequestMetrics()
+    {
+        return Ok(new
+        {
+            endpoints = _requestMetrics.GetSnapshot(),
             timestamp = DateTime.UtcNow.ToString("o")
         });
     }

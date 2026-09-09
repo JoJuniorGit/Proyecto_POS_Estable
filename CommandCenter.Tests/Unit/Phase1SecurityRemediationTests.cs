@@ -109,7 +109,7 @@ public class Phase1SecurityRemediationTests
         var config = new ConfigurationBuilder().AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>()).Build();
         var env = new Mock<IWebHostEnvironment>();
         env.SetupGet(e => e.ContentRootPath).Returns(AppContext.BaseDirectory);
-        var controller = new HealthController(db, inventoryDb, config, env.Object);
+        var controller = new HealthController(db, inventoryDb, config, env.Object, new Backend.API.Metrics.RequestMetricsRegistry());
 
         // Act
         var result = await controller.CheckHealth();
