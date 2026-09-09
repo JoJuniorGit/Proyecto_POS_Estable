@@ -4058,4 +4058,45 @@ D1. Completado desde codigo: metricas (SLO medible), cancelacion (plumbing),
     test manual con Clumsy, compilacion/firma real con ISCC y certificado.
 
 FIN DEL ANEXO - REVISIONES 8.52-8.54
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.55 (FIX: ObjectDisposedException POST-COMMIT EN TX COMPARTIDA)
+===============================================================================
+Alcance: corregir el fallo del InventorySaleMadeEventHandler tras completar una
+venta (System.ObjectDisposedException: NpgsqlConnection dispuesto). Verificacion:
+build Release 0w/0e; dotnet 761/761 (incl. SaleFlow/PostgresReal/Liquidation).
+
+A. CAUSA RAIZ
+A1. En EF Core, Database.SetDbConnection() DISPONE la conexion anterior al
+    reasignarla. EnrollInTransactionAsync guardaba _originalConnection y luego
+    SetDbConnection(txConn) disponia el original. DetachFromTransactionAsync
+    restauraba _originalConnection via SetDbConnection (conexion YA dispuesta)
+    -> el handler de evento post-commit consultaba InventoryDbContext con una
+    conexion dispuesta.
+
+B. FIX
+B1. EnrollInTransactionAsync: se elimina la captura de _originalConnection (el
+    swap a txConn sigue; el original se descarta).
+B2. DetachFromTransactionAsync: ya NO restaura _originalConnection; solo hace
+    UseTransactionAsync(null) para soltar la transaccion, conservando la conexion
+    compartida (txConn del scope de ventas, abierta tras el commit) para que el
+    handler de evento pueda consultar.
+B3. Se elimina el campo _originalConnection (sin uso) y el comentario obsoleto en
+    SalesService.cs que describia el comportamiento contrario.
+B4. Cambio de estrategia respecto a 8.7-B7: ya no se devuelve el InventoryDbContext
+    a una conexion propia; la conexion compartida se conserva el resto del scope
+    (seguro en CompleteSale: el handler es el ultimo uso de inventario y ambos
+    contextos Scoped se disponen juntos; el doble-dispose de NpgsqlConnection es
+    idempotente). Riesgo latente documentado si un uso posterior del inventario
+    ocurriera en un scope donde Sales ya se dispuso.
+
+C. REVISION REVIEWER (8.55): REVISAR sin bloqueantes. Aplicado: eliminacion del
+    comentario desactualizado.
+
+D. VERIFICACION
+D1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+D2. dotnet test CommandCenter.slnx -c Release: 761/761 superadas / 0 fallidas.
+D3. Sin cambio de modelo persistente -> sin migracion EF.
+
+FIN DEL ANEXO - REVISION 8.55
 ================================================================================

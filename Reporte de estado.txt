@@ -17,6 +17,13 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.23.0  | 2026-09-09  | f57d110      | REVISION 8.55 / fix: ObjectDisposedException post-commit
+|          |             | (8.55)       | en transaccion compartida - DetachFromTransactionAsync
+|          |             |              | ya no restaura una conexion dispuesta (SetDbConnection
+|          |             |              | de EF dispone la anterior); conserva la conexion
+|          |             |              | compartida para el InventorySaleMadeEventHandler.
+|          |             |              | Suites: .NET 761/761, build R 0/0.
+|          |             |              | Detalle: ANEXO 8.55.
 | v1.22.0  | 2026-09-09  | d6cd971      | REVISIONES 8.52-8.54: metricas de latencia/error por
 |          |             | (8.54)       | peticion (/api/health/requests), cancelacion cooperativa
 |          |             |              | en el modal de cobro (CTS + boton CANCELAR), scaffolding
@@ -642,9 +649,8 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISIONES 8.52-8.54: metricas, cancelacion
-  del cobro y scaffolding de firma, .NET 761/761, build Release 0/0). Proxima
-  revision obligatoria:
+  Ultima verificacion: 2026-09-09 (REVISION 8.55 / fix transaccion compartida,
+  .NET 761/761, build Release 0/0). Proxima revision obligatoria:
   con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================
