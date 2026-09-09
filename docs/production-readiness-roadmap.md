@@ -17,6 +17,7 @@ el avance real de cada fase.
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F2   | H06: aislamiento Entidad->DTO en PaymentMethodsController (7035b96) | F2 EN CURSO; DTO parcial |
 | 2026-09-09  | F1   | Auditoria de seguridad de codigo: JWT/revocacion/lockout/MustChangePassword, CORS, pairing, rate limiting, headers, RBAC verificados (8.38, DQ-006) | F1 checklist 4.2 seguridad COMPLETA |
 | 2026-09-09  | F1   | Auditoria de seguridad: .NET 0 vuln, npm fix nanoid, escaneo secretos OK (f2e4f34) | F1 EN CURSO; checklist 4.2 seguridad parcial |
 | 2026-09-09  | F3   | Req.4 ampliado: idempotencia concurrente vs PostgreSQL real (4e4eae7) | Req.4 PARCIAL ampliado; suites .NET 753/753 |
@@ -36,7 +37,7 @@ el avance real de cada fase.
 |------|------------------------------------------|-----------|---------------------------|--------------|
 | F0   | Definicion de alcance y criterios        | EN CURSO  | M0: alcance/SLOs/riesgos firmados | -        |
 | F1   | Auditoria de deuda tecnica y seguridad   | EN CURSO | M1: cero P0 abiertos      | -            |
-| F2   | Refactorizacion critica y endurecimiento | PENDIENTE | M2: revision arquitectonica aprobada | -       |
+| F2   | Refactorizacion critica y endurecimiento | EN CURSO | M2: revision arquitectonica aprobada | -       |
 | F3   | QA, concurrencia y pruebas de estres     | PENDIENTE | M3: evidencia reproducible | -            |
 | F4   | Release engineering y despliegue         | PENDIENTE | M4: RC firmado y probado   | -            |
 | F5   | Observabilidad y operacion               | PENDIENTE | M5: soporte sin desarrollo | -            |
@@ -212,16 +213,16 @@ Hito M1: cero riesgos P0 abiertos y matriz de riesgos firmada.
 
 ---
 
-## 5. FASE 2 - Refactorizacion critica y endurecimiento (PENDIENTE)
+## 5. FASE 2 - Refactorizacion critica y endurecimiento (EN CURSO)
 
 Hito M2: revision arquitectonica aprobada; sin defectos P0/P1 de datos,
 seguridad o disponibilidad.
 
+- [x] Completar proyecciones DTO en historial/caja/catalogo (parcial: PaymentMethods 8.39).
 - [ ] Instalador idempotente (re-ejecucion segura, upgrade sin perder secretos,
       rollback por etapa).
-- [ ] Separacion config publica / secretos por sitio / artefactos dev.
-- [ ] Fail-fast de configuracion al arranque con mensajes operativos.
-- [ ] Completar proyecciones DTO en historial/caja/catalogo.
+- [ ] Separacion config publica / secretos por sitio / artefactos dev (previa en 8.29).
+- [ ] Fail-fast de configuracion al arranque con mensajes operativos (previo).
 - [ ] Eliminar N+1; aplicar AsNoTracking/AsSplitQuery.
 - [ ] Corregir UI bloqueante WPF; cancelacion cooperativa en operaciones largas.
 - [ ] Dispose de timers/messenger/sockets/CancellationTokenSource.

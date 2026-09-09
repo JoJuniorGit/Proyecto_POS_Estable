@@ -3662,4 +3662,43 @@ D2. PENDIENTE para cerrar M1 (cero P0): smoke E2E del instalador Inno Setup en
     ambos requieren entorno operativo.
 
 FIN DEL ANEXO - REVISION 8.38
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.39 (FASE 2 / 8.16-H06: AISLAMIENTO ENTIDAD->DTO PAYMENT METHODS)
+===============================================================================
+Alcance: Fase 2 del Production Readiness Roadmap (refactorizacion critica y
+endurecimiento), item 8.16-H06 (proyeccion a DTO). Aislar las entidades de EF
+de PaymentMethod que se exponian al cliente en PaymentMethodsController.
+Verificacion: build Release 0w/0e; dotnet 753/753; web 80/80.
+
+A. CAMBIO
+A1. NUEVO Backend.API/DTOs/PaymentMethodDto.cs (en PaymentMethodDtos.cs): DTO de
+    lectura con 8 campos (Id, Name, IsActive, RequiresReference, IsCash,
+    Currency, DisplayOrder, IsDeleted), identico al shape que consume el cliente
+    (Desktop.Client.Core/Services/IPaymentService.cs). Currency = propiedad
+    computada [NotMapped] (fuente de verdad 8.9-M16).
+A2. PaymentMethodsController: los 5 endpoints de lectura/escritura (GetActive-
+    Methods, GetAllMethods, GetMethod, CreateMethod, UpdateMethod) proyectan la
+    entidad PaymentMethod -> PaymentMethodDto via ToDto privado; ya no se
+    serializa la entidad EF al cliente (AGENTS regla 3 / guia 2.3).
+A3. Sin doble fetch (proyeccion sobre coleccion/entidad ya materializada); sin
+    cambio de contrato HTTP (shape identico) -> web/desktop no se rompen.
+
+B. REVISION REVIEWER (8.39)
+B1. [BLOQUEANTE] resuelto: GetActiveMethods devolvia la entidad; se envolvio en
+    ToDto, dejando los 5 endpoints aislados de forma uniforme.
+
+C. VERIFICACION
+C1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+C2. dotnet test CommandCenter.slnx -c Release: 753/753 (sin cambios de logica).
+C3. npm test: 80/80 (contrato JSON preservado).
+C4. Sin cambio de modelo persistente -> sin migracion EF (Currency es [NotMapped]).
+
+D. ESTADO DE FASE 2
+D1. H06 aplicado a PaymentMethodsController. PENDIENTE: CashDrawer.GetHistory
+    (requiere enriquecer InvoiceNumber a nivel superior) y GetAllProductsAsync;
+    resto del checklist de la Fase 2 (instalador idempotente, N+1, WPF,
+    disposicion, auditoria de acciones, esquema/rollback).
+
+FIN DEL ANEXO - REVISION 8.39
 ================================================================================
