@@ -3400,4 +3400,47 @@ C1. El bundle web contenido en Backend.API/wwwroot se regenero (nuevos hashes):
     refleja el codigo actual y viaja en el publish.
 
 FIN DEL ANEXO - REVISION 8.31
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.33 (REQ.2: HABILITAR 4 METODOS DE PAGO ESTANDAR)
+===============================================================================
+Alcance: implementacion de Req.2 del Production Readiness Roadmap (seccion 3.7):
+garantizar en el sistema los 4 metodos de pago del cliente. Verificacion:
+build Release 0w/0e; dotnet test 744/744 (738 + 6 nuevos).
+
+A. DECISION DE NEGOCIO (Req.2, punto 2 del plan, aprobado)
+A1. Los 4 metodos estandar que deben estar habilitados: Efectivo (Bs.S, cash),
+    Tarjeta (Punto de Venta) (electronico, requiere referencia), Transferencia /
+    Pago Movil (electronico, requiere referencia) y Divisas (USD) (cash fisico
+    USD). Clasificacion de moneda por PaymentMethodCurrencyResolver: solo los
+    nombres con 'USD' se consideran dolarizados (Divisas (USD) -> USD; el resto
+    -> Bs.S), coherente con la decision 8.9-M16.
+
+B. IMPLEMENTACION
+B1. NUEVO Sales.Module/PaymentMethodDefaults.cs: helper puro CreateDefault()
+    que retorna los 4 metodos estandar con IsActive/IsCash/RequiresReference/
+    DisplayOrder. Sin comentarios; clase pura sin dependencias (anti-god-object).
+B2. Backend.API/Startup/DatabaseInitializer.cs: seed idempotente por NOMBRE
+    faltante (no por tabla vacia). Se anade solo el metodo estandar cuyo nombre
+    no exista activo/no-eliminado. No pisa personalizacion del admin y no exige
+    migracion (DML, no DDL). No se sobreescribe a los metodos legacy Cash/Card
+    que ya siembra HasData en las migraciones (SalesDbContext.OnModelCreating).
+B3. Tests: CommandCenter.Tests/Unit/PaymentMethodDefaultsTests.cs (6): conteo,
+    flags por metodo (IsCash/RequiresReference/DisplayOrder) y resolucion de
+    moneda (USD vs Bs.S). Nomenclatura Metodo_Escenario_ResultadoEsperado.
+
+C. REVISION REVIEWER (8.33)
+C1. [BLOQUEANTE] resuelto: el guard inicial Any() era codigo muerto porque HasData
+    (Cash/Card) ya puebla PaymentMethods durante MigrateAsync. Se reescribio el
+    guard para sembrar por nombre faltante (B2).
+C2. [ESTILO] atendido: RequiresReference=true para Tarjeta (Punto de Venta) y
+    Transferencia / Pago Movil (coherente con el Card original y el flujo de
+    checkout que exige referencia), y false para efectivo/divisas.
+
+D. VERIFICACION
+D1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+D2. dotnet test CommandCenter.slnx -c Release: 744/744 superadas / 0 fallidas.
+D3. Sin cambio de modelo persistente -> sin migracion EF.
+
+FIN DEL ANEXO - REVISION 8.33
 ================================================================================

@@ -17,6 +17,13 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.6.0   | 2026-09-09  | f68a40b      | REVISION 8.33 / Req.2: garantizar los 4 metodos de pago
+|          |             | (8.33)       | estandar (Efectivo, Tarjeta PDV, Transferencia/Pago Movil,
+|          |             |              | Divisas USD) con seed idempotente por nombre faltante
+|          |             |              | (PaymentMethodDefaults + DatabaseInitializer); Requires
+|          |             |              | Reference para electronicos; sin migracion (DML).
+|          |             |              | Suites: .NET 744/744, build R 0/0.
+|          |             |              | Detalle: docs/reporte.txt ANEXO 8.33.
 | v1.5.0   | 2026-09-09  | 4a5e360      | REVISION 8.31 (cierre de provisionamiento e higiene de
 |          |             |              | instalador): CORREGIDO el desajuste de rutas del pfx
 |          |             |              | (8.30-E1) - create-https-cert.ps1 acepta -CertOutputDir
@@ -384,7 +391,7 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 4.2 Balance de pruebas automatizadas (linea base verificada 2026-09-09)
 -------------------------------------------------------------------------------
   Suite .NET (CommandCenter.Tests, xUnit + Moq + WebApplicationFactory):
-      estado : 738/738 PASAN   (con TEST_POSTGRES_CONNECTION; 732 + 6 batch)
+      estado : 744/744 PASAN   (con TEST_POSTGRES_CONNECTION; 738 + 6 batch)
       entorno: PostgreSQL real para tests de integracion (PostgresReal* +
                WebApplicationFactorySmoke con BD aislada pos_smoke_<sufijo>,
                EnsureCreated para la mayoria de unit tests).
@@ -552,9 +559,9 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.31: rutas del pfx alineadas,
-  publish limpio, .NET 738/738, Web 80/80, build Release 0/0, lint 0/0;
-  arbol limpio en V0.15, 5 commits sin push). Proxima revision obligatoria:
+  Ultima verificacion: 2026-09-09 (REVISION 8.33 / Req.2: metodos de pago,
+  .NET 744/744, build Release 0/0; pendiente push del roadmap y Req.2).
+  Proxima revision obligatoria:
   con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================

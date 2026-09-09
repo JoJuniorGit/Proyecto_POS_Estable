@@ -17,6 +17,7 @@ el avance real de cada fase.
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F2   | Req.2 implementado: seed idempotente de los 4 metodos de pago estandar (f68a40b) | Req.2 IMPLEMENTADO; suites .NET 744/744 |
 | 2026-09-09  | F0   | Registro formal de Req.1-4 y aprobaciones (3.7/3.8): 4 cajas, 4 metodos de pago, facturacion digital diferida (base), QA | Requerimientos Req.1-4 ABIERTOS; Req.2 y 5-8 aprobados |
 | 2026-09-09  | F0   | Respuestas preliminares RM/ARQ a las 8 preguntas del alcance (3.5.1); setup.iss revertido | Documento v0.1.0; pendiente validar con CLI |
 | 2026-09-09  | F0   | Creacion del roadmap y formalizacion Fase 0 | Documento v0.1.0; DQ-001 a DQ-005 definidas |
@@ -155,7 +156,7 @@ Cada uno lleva: definicion, alcance, aprobacion, fase de ejecucion y estado.
 | ID | Requerimiento | Definicion / alcance | Aprobacion | Fase ejecucion | Estado |
 |----|---------------|----------------------|------------|----------------|--------|
 | Req.1 | Concurrencia de 4 cajas | Auditoria de capacidad: certificar mediante pruebas que la arquitectura y las medidas actuales de concurrencia (`xmin`, transaccion compartida Sales/Inventory) soportan 4 terminales simultaneas sin conflictos de estado ni cuellos de botella de BD | Aprobado | F3 (QA/estres) | ABIERTO |
-| Req.2 | Metodos de pago | Habilitar 4 metodos de pago para el cierre de transacciones: Efectivo, Tarjeta (Punto de Venta), Transferencia / Pago Movil, Divisas (USD) | APROBADO (punto 2) | F2 (configuracion) | ABIERTO |
+| Req.2 | Metodos de pago | Habilitar 4 metodos de pago para el cierre de transacciones: Efectivo, Tarjeta (Punto de Venta), Transferencia / Pago Movil, Divisas (USD) | APROBADO (punto 2) | F2 (configuracion) | IMPLEMENTADO (8.33) |
 | Req.3 | Facturacion digital | Implementacion DIFERIDA: NO generar la factura aun. Objetivo actual: dejar preparada la base arquitectonica (interfaces/stubs) para implementarla sin fricciones en la siguiente fase; base preparada para impresion fisica asincrona (proceso en background estrictamente no bloqueante para el cajero) | Aprobado | F2 (base arquitectonica) | ABIERTO (solo base) |
 | Req.4 | Garantia de confiabilidad (QA) | Someter el sistema a pruebas rigurosas de estres y manejo de fallos para validar plena confiabilidad antes de produccion | Aprobado | F3 (QA/estres) | ABIERTO |
 | Req.5-8 | Resto del plan | Puntos 5, 6, 7 y 8 del plan general: correctos y aprobados para ejecucion sin modificaciones | APROBADOS | segun fase | ABIERTO |
