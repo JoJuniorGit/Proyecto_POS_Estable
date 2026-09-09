@@ -17,6 +17,11 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.10.0  | 2026-09-09  | f2e4f34      | REVISION 8.37 / Fase 1 (seguridad): auditoria de
+|          |             | (8.37)       | vulnerabilidades - .NET 0 vuln; npm fix nanoid 3.3.18
+|          |             |              | (0 vuln); escaneo de secretos sin fugas en produccion.
+|          |             |              | Suites: .NET 753/753, web 80/80, lint 0/0.
+|          |             |              | Detalle: ANEXO 8.37.
 | v1.9.0   | 2026-09-09  | 4e4eae7      | REVISION 8.36 / Req.4 (parcial, ampliado): QA de fallos
 |          |             | (8.36)       | del Outbox vs PostgreSQL real - recuperacion de crash,
 |          |             |              | drenaje de backlog y idempotencia concurrente (5 envios
@@ -576,8 +581,8 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.36 / Req.4 ampliado: fallos Outbox +
-  idempotencia concurrente, .NET 753/753, build Release 0/0). Proxima revision
+  Ultima verificacion: 2026-09-09 (REVISION 8.37 / Fase 1: dependencias 0 vuln y
+  secretos OK, .NET 753/753, web 80/80, build Release 0/0). Proxima revision
   obligatoria: con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================

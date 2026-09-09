@@ -3571,4 +3571,45 @@ C2. dotnet test CommandCenter.slnx -c Release: 753/753 superadas / 0 fallidas
 C3. Sin cambio de modelo persistente ni codigo de produccion -> sin migracion EF.
 
 FIN DEL ANEXO - REVISION 8.36
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.37 (FASE 1: AUDITORIA DE SEGURIDAD - DEPENDENCIAS Y SECRETOS)
+===============================================================================
+Alcance: ejecutar las auditorias de seguridad de la Fase 1 del Production
+Readiness Roadmap (roadmap seccion 4.2): vulnerabilidades de dependencias y
+escaneo de secretos. Verificacion: dotnet y npm audit; escaneo de literales.
+
+A. VULNERABILIDADES DE DEPENDENCIAS
+A1. .NET: dotnet list CommandCenter.slnx package --vulnerable --include-transitive
+    -> NINGUN paquete vulnerable en los 9 proyectos (Backend.API, Core,
+    CommandCenter.Tests, Desktop.Client(.Core), Inventory.Module,
+    Logistics.Module, Sales.Module, UpdaterService).
+A2. Web: npm audit -> 1 alta: nanoid <3.3.18 (GHSA-2v37-7h3g-55p8, transitiva de
+    postcss@8.5.24 via vite@8.1.5). npm audit fix eleva a nanoid@3.3.18
+    (package-lock.json). Re-audit: 0 vulnerabilidades. Web 80/80, lint 0/0.
+
+B. ESCANEO DE SECRETOS (fuente backend, sin Migrations/tests)
+B1. Sin fugas en produccion: la unica credencial literal es
+    appsettings.Development.json (AdminSeedPassword "Admin123!", SOLO desarrollo,
+    excluido del publish Release por 8.29-A4). Las copias en bin/ no estan
+    versionadas.
+B2. La clave JWT de desarrollo (ddf95c83...) solo aparece como GUARDA de bloqueo
+    en produccion (TokenService.cs, ServiceCollectionExtensions.cs) para abortar
+    si alguien despliega con la clave dev -> fail-closed correcto.
+B3. PasswordPolicyService.cs blacklist de claves debiles (admin123!, postgres,
+    etc.) es el mecanismo de politicas, no una fuga.
+
+C. ESTADO DE FASE 1
+C1. Completado: auditoria de vulnerabilidades (.NET + web) y escaneo de secretos.
+C2. PENDIENTE para cerrar M1 (cero P0): smoke E2E del instalador Inno Setup en
+    maquina limpia (R-001), restore real de PostgreSQL con RTO medido (R-002),
+    revision JWT/expira cion/lockout, decision HTTP 5000 vs HTTPS, revision
+    CORS/pairing/rate limiting/RBAC.
+
+D. VERIFICACION
+D1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+D2. dotnet test CommandCenter.slnx -c Release: 753/753 (sin cambios de logica).
+D3. npm test: 80/80; npm run lint: 0/0; npm audit: 0 vulnerabilidades.
+
+FIN DEL ANEXO - REVISION 8.37
 ================================================================================

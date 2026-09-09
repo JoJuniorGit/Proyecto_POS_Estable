@@ -17,6 +17,7 @@ el avance real de cada fase.
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F1   | Auditoria de seguridad: .NET 0 vuln, npm fix nanoid, escaneo secretos OK (f2e4f34) | F1 EN CURSO; checklist 4.2 seguridad parcial |
 | 2026-09-09  | F3   | Req.4 ampliado: idempotencia concurrente vs PostgreSQL real (4e4eae7) | Req.4 PARCIAL ampliado; suites .NET 753/753 |
 | 2026-09-09  | F3   | Req.4 parcial: QA de fallos del Outbox vs PostgreSQL real (4b732ee) | Req.4 PARCIAL; suites .NET 752/752 |
 | 2026-09-09  | F2   | Req.3 base implementada: contratos de facturacion digital + impresion no bloqueante (48bad9a) | Req.3 BASE IMPLEMENTADA (generacion diferida); suites .NET 750/750 |
@@ -33,7 +34,7 @@ el avance real de cada fase.
 | Fase | Nombre                                   | Estado    | Hito de salida            | Fecha salida |
 |------|------------------------------------------|-----------|---------------------------|--------------|
 | F0   | Definicion de alcance y criterios        | EN CURSO  | M0: alcance/SLOs/riesgos firmados | -        |
-| F1   | Auditoria de deuda tecnica y seguridad   | PENDIENTE | M1: cero P0 abiertos      | -            |
+| F1   | Auditoria de deuda tecnica y seguridad   | EN CURSO | M1: cero P0 abiertos      | -            |
 | F2   | Refactorizacion critica y endurecimiento | PENDIENTE | M2: revision arquitectonica aprobada | -       |
 | F3   | QA, concurrencia y pruebas de estres     | PENDIENTE | M3: evidencia reproducible | -            |
 | F4   | Release engineering y despliegue         | PENDIENTE | M4: RC firmado y probado   | -            |
@@ -190,7 +191,7 @@ Hito M1: cero riesgos P0 abiertos y matriz de riesgos firmada.
 - [ ] Decidir formalmente impresion fiscal (bloqueante o limitacion).
 
 ### 4.2 Seguridad
-- [ ] `dotnet list package --vulnerable`, `npm audit`, escaneo de secretos.
+- [x] `dotnet list package --vulnerable`, `npm audit`, escaneo de secretos (8.37).
 - [ ] Revision JWT/expiración/revocacion/lockout/MustChangePassword.
 - [ ] Decision explicita sobre HTTP 5000 (LAN) o HTTPS forzado.
 - [ ] Revision CORS, pairing QR, rate limiting, security headers, RBAC.
