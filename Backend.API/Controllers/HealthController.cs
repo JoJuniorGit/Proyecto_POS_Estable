@@ -1,9 +1,12 @@
 using System;
+using System.IO;
 using System.Net;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Inventory.Module.Data;
 using Sales.Module.Data;
 
 namespace Backend.API.Controllers;
@@ -12,10 +15,20 @@ namespace Backend.API.Controllers;
 public class HealthController : ControllerBase
 {
     private readonly SalesDbContext _salesDb;
+    private readonly InventoryDbContext _inventoryDb;
+    private readonly IConfiguration _configuration;
+    private readonly IWebHostEnvironment _environment;
 
-    public HealthController(SalesDbContext salesDb)
+    public HealthController(
+        SalesDbContext salesDb,
+        InventoryDbContext inventoryDb,
+        IConfiguration configuration,
+        IWebHostEnvironment environment)
     {
         _salesDb = salesDb;
+        _inventoryDb = inventoryDb;
+        _configuration = configuration;
+        _environment = environment;
     }
 
     [AllowAnonymous]
@@ -74,5 +87,95 @@ public class HealthController : ControllerBase
             hitRatePercentage = Math.Round(hitRate, 2),
             timestamp = DateTime.UtcNow.ToString("o")
         });
+    }
+
+    [HttpGet("api/health/details")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> GetDetails()
+    {
+        var applied = await _salesDb.Database.GetAppliedMigrationsAsync();
+        var pending = await _salesDb.Database.GetPendingMigrationsAsync();
+
+        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
+        decimal? bcvToday = await _inventoryDb.ExchangeRateHistory
+            .AsNoTracking()
+            .Where(e => e.Date == today)
+            .Select(e => (decimal?)e.Rate)
+            .FirstOrDefaultAsync();
+        decimal? bcvLatest = await _inventoryDb.ExchangeRateHistory
+            .AsNoTracking()
+            .OrderByDescending(e => e.Date)
+            .Select(e => (decimal?)e.Rate)
+            .FirstOrDefaultAsync();
+
+        DateTime? certExpiryUtc = ResolveCertificateExpiry();
+
+        return Ok(new
+        {
+            status = "Healthy",
+            migrationsApplied = applied.Count(),
+            pendingMigrations = pending.Count(),
+            bcvTodayRate = bcvToday,
+            bcvLatestRate = bcvLatest,
+            bcvFreshToday = bcvToday.HasValue,
+            diskFreeMb = GetDiskFreeMb(),
+            diskTotalMb = GetDiskTotalMb(),
+            certExpiryUtc = certExpiryUtc,
+            timestamp = DateTime.UtcNow.ToString("o")
+        });
+    }
+
+    private DateTime? ResolveCertificateExpiry()
+    {
+        try
+        {
+            var path = _configuration["Kestrel:Certificates:Default:Path"];
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            var certPath = Path.IsPathRooted(path) ? path : Path.Combine(_environment.ContentRootPath, path);
+            if (!System.IO.File.Exists(certPath))
+            {
+                return null;
+            }
+
+            var password = _configuration["Kestrel:Certificates:Default:Password"];
+            using var cert = string.IsNullOrEmpty(password)
+                ? System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12FromFile(certPath, null)
+                : System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12FromFile(certPath, password);
+            return cert.NotAfter.ToUniversalTime();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private double GetDiskFreeMb()
+    {
+        try
+        {
+            var drive = new DriveInfo(_environment.ContentRootPath);
+            return Math.Round(drive.AvailableFreeSpace / 1024d / 1024d, 0);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private double GetDiskTotalMb()
+    {
+        try
+        {
+            var drive = new DriveInfo(_environment.ContentRootPath);
+            return Math.Round(drive.TotalSize / 1024d / 1024d, 0);
+        }
+        catch
+        {
+            return 0;
+        }
     }
 }

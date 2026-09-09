@@ -7,6 +7,8 @@ using Backend.API.Services;
 using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
+using Inventory.Module.Data;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -102,7 +104,12 @@ public class Phase1SecurityRemediationTests
     {
         // Arrange
         using var db = CreateInMemorySalesDbContext();
-        var controller = new HealthController(db);
+        var inventoryDb = new InventoryDbContext(
+            new DbContextOptionsBuilder<InventoryDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>()).Build();
+        var env = new Mock<IWebHostEnvironment>();
+        env.SetupGet(e => e.ContentRootPath).Returns(AppContext.BaseDirectory);
+        var controller = new HealthController(db, inventoryDb, config, env.Object);
 
         // Act
         var result = await controller.CheckHealth();
