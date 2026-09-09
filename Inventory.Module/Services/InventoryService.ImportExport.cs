@@ -366,6 +366,11 @@ public partial class InventoryService
 
         var products = await query.OrderBy(p => p.SKU).ToListAsync(cancellationToken);
 
+        var groupKeysById = await _context.Products
+            .AsNoTracking()
+            .Where(p => p.IsGroupHeader && !p.IsDeleted)
+            .ToDictionaryAsync(p => p.Id, p => !string.IsNullOrWhiteSpace(p.GroupKey) ? p.GroupKey : p.Name, cancellationToken);
+
         bool isXlsx = string.Equals(format, "xlsx", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "excel", StringComparison.OrdinalIgnoreCase);
 
         if (isXlsx)
@@ -377,7 +382,8 @@ public partial class InventoryService
             {
                 "SKU", "Nombre", "Descripción", "CostoUSD", "MargenDetal%",
                 "MargenMayor%", "CantMinMayorista", "HabilitarMayorista",
-                "EsFraccionable", "StockActual", "UmbralMinimo"
+                "EsFraccionable", "StockActual", "UmbralMinimo",
+                "TipoProducto", "Grupo", "CompartirStock", "FactorConversion"
             };
 
             for (int col = 0; col < headers.Length; col++)
@@ -403,6 +409,10 @@ public partial class InventoryService
                 worksheet.Cell(row, 9).Value = p.IsFractional ? "SI" : "NO";
                 worksheet.Cell(row, 10).Value = p.StockQuantity;
                 worksheet.Cell(row, 11).Value = p.LowStockThreshold;
+                worksheet.Cell(row, 12).Value = ResolveProductType(p);
+                worksheet.Cell(row, 13).Value = ResolveGroupName(p, groupKeysById);
+                worksheet.Cell(row, 14).Value = p.IsStockShared ? "SI" : "NO";
+                worksheet.Cell(row, 15).Value = p.ConversionFactor;
                 row++;
             }
 
@@ -415,7 +425,7 @@ public partial class InventoryService
         else
         {
             var csvBuilder = new StringBuilder();
-            csvBuilder.AppendLine("SKU;Nombre;Descripción;CostoUSD;MargenDetal%;MargenMayor%;CantMinMayorista;HabilitarMayorista;EsFraccionable;StockActual;UmbralMinimo");
+            csvBuilder.AppendLine("SKU;Nombre;Descripción;CostoUSD;MargenDetal%;MargenMayor%;CantMinMayorista;HabilitarMayorista;EsFraccionable;StockActual;UmbralMinimo;TipoProducto;Grupo;CompartirStock;FactorConversion");
 
             foreach (var p in products)
             {
@@ -431,7 +441,11 @@ public partial class InventoryService
                     p.HasWholesale ? "SI" : "NO",
                     p.IsFractional ? "SI" : "NO",
                     p.StockQuantity.ToString(),
-                    p.LowStockThreshold.ToString()
+                    p.LowStockThreshold.ToString(),
+                    ResolveProductType(p),
+                    EscapeCsvField(ResolveGroupName(p, groupKeysById)),
+                    p.IsStockShared ? "SI" : "NO",
+                    p.ConversionFactor.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)
                 }));
             }
 
@@ -453,7 +467,8 @@ public partial class InventoryService
             {
                 "SKU", "Nombre", "Descripción", "CostoUSD", "MargenDetal%",
                 "MargenMayor%", "CantMinMayorista", "HabilitarMayorista",
-                "EsFraccionable", "StockActual", "UmbralMinimo"
+                "EsFraccionable", "StockActual", "UmbralMinimo",
+                "TipoProducto", "Grupo", "CompartirStock", "FactorConversion"
             };
 
             for (int col = 0; col < headers.Length; col++)
@@ -477,6 +492,10 @@ public partial class InventoryService
             worksheet.Cell(2, 9).Value = "NO";
             worksheet.Cell(2, 10).Value = 100;
             worksheet.Cell(2, 11).Value = 5;
+            worksheet.Cell(2, 12).Value = "Normal";
+            worksheet.Cell(2, 13).Value = "";
+            worksheet.Cell(2, 14).Value = "NO";
+            worksheet.Cell(2, 15).Value = 1.0000m;
 
             worksheet.Columns().AdjustToContents();
 
@@ -487,8 +506,8 @@ public partial class InventoryService
         else
         {
             var csvBuilder = new StringBuilder();
-            csvBuilder.AppendLine("SKU;Nombre;Descripción;CostoUSD;MargenDetal%;MargenMayor%;CantMinMayorista;HabilitarMayorista;EsFraccionable;StockActual;UmbralMinimo");
-            csvBuilder.AppendLine("1001;Producto Ejemplo;Descripción breve de ejemplo;10.00;30.00;20.00;6.000;SI;NO;100;5");
+            csvBuilder.AppendLine("SKU;Nombre;Descripción;CostoUSD;MargenDetal%;MargenMayor%;CantMinMayorista;HabilitarMayorista;EsFraccionable;StockActual;UmbralMinimo;TipoProducto;Grupo;CompartirStock;FactorConversion");
+            csvBuilder.AppendLine("1001;Producto Ejemplo;Descripción breve de ejemplo;10.00;30.00;20.00;6.000;SI;NO;100;5;Normal;;NO;1.0000");
 
             return Task.FromResult(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csvBuilder.ToString())).ToArray());
         }
@@ -574,5 +593,25 @@ public partial class InventoryService
             return "\"" + field.Replace("\"", "\"\"") + "\"";
         }
         return field;
+    }
+
+    private static string ResolveProductType(Core.Entities.Product p)
+    {
+        if (p.IsGroupHeader) return "Grupo";
+        if (p.ParentProductId.HasValue) return "Variante";
+        return "Normal";
+    }
+
+    private static string ResolveGroupName(Core.Entities.Product p, System.Collections.Generic.Dictionary<int, string> groupKeysById)
+    {
+        if (p.IsGroupHeader)
+        {
+            return !string.IsNullOrWhiteSpace(p.GroupKey) ? p.GroupKey : p.Name;
+        }
+        if (p.ParentProductId.HasValue && groupKeysById.TryGetValue(p.ParentProductId.Value, out var groupName))
+        {
+            return groupName;
+        }
+        return string.Empty;
     }
 }

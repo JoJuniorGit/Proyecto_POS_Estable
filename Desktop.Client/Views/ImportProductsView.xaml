@@ -133,6 +133,8 @@
                 <DataGridCheckBoxColumn Header="Mayorista" Binding="{Binding HasWholesale}" Width="75"/>
                 <DataGridCheckBoxColumn Header="Fraccionable" Binding="{Binding IsFractional}" Width="85"/>
                 <DataGridTextColumn Header="Unidad" Binding="{Binding UnitOfMeasure}" Width="70"/>
+                <DataGridTextColumn Header="Tipo" Binding="{Binding ProductType}" Width="80"/>
+                <DataGridTextColumn Header="Grupo" Binding="{Binding GroupNameOrKey}" Width="90"/>
                 <DataGridTextColumn Header="Stock" Binding="{Binding StockQuantity}" Width="70"/>
                 
                 <DataGridTextColumn Header="Estado / Error" Binding="{Binding ErrorMessage}" Foreground="DarkRed" Width="SizeToCells" MinWidth="150">

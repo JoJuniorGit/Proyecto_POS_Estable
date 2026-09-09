@@ -100,7 +100,11 @@ public partial class ImportProductsViewModel : ObservableObject
         "Enable Wholesale",
         "Is Fractional",
         "Current Stock",
-        "Low Stock Threshold"
+        "Low Stock Threshold",
+        "ProductType",
+        "GroupNameOrKey",
+        "IsStockShared",
+        "ConversionFactor"
     };
 
     public static string MapHeaderToProperty(string header)
@@ -163,6 +167,26 @@ public partial class ImportProductsViewModel : ObservableObject
             cleanHeader.Contains("LowStockThreshold", StringComparison.OrdinalIgnoreCase) ||
             cleanHeader.Contains("Low Stock", StringComparison.OrdinalIgnoreCase))
             return "LowStockThreshold";
+
+        if (cleanHeader.Contains("TipoProducto", StringComparison.OrdinalIgnoreCase) ||
+            cleanHeader.Contains("ProductType", StringComparison.OrdinalIgnoreCase) ||
+            cleanHeader.Contains("Tipo", StringComparison.OrdinalIgnoreCase))
+            return "ProductType";
+
+        if (cleanHeader.Contains("Grupo", StringComparison.OrdinalIgnoreCase) ||
+            cleanHeader.Contains("GroupNameOrKey", StringComparison.OrdinalIgnoreCase) ||
+            cleanHeader.Contains("GrupoPadre", StringComparison.OrdinalIgnoreCase))
+            return "GroupNameOrKey";
+
+        if (cleanHeader.Contains("CompartirStock", StringComparison.OrdinalIgnoreCase) ||
+            cleanHeader.Contains("IsStockShared", StringComparison.OrdinalIgnoreCase) ||
+            cleanHeader.Contains("StockCompartido", StringComparison.OrdinalIgnoreCase))
+            return "IsStockShared";
+
+        if (cleanHeader.Contains("FactorConversion", StringComparison.OrdinalIgnoreCase) ||
+            cleanHeader.Contains("ConversionFactor", StringComparison.OrdinalIgnoreCase) ||
+            cleanHeader.Contains("Equivalencia", StringComparison.OrdinalIgnoreCase))
+            return "ConversionFactor";
 
         return "Ignore";
     }

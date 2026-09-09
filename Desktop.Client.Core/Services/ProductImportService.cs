@@ -335,7 +335,7 @@ public class ProductImportService : IProductImportService
             if (string.IsNullOrWhiteSpace(dto.ProductType)) dto.ProductType = "Normal";
 
             dto.GroupNameOrKey = GetCsvStr("GroupNameOrKey", "GrupoPadre", "Grupo", "Padre");
-            dto.IsStockShared = GetCsvBool("IsStockShared", "StockCompartido", "StockPool");
+            dto.IsStockShared = GetCsvBool("IsStockShared", "StockCompartido", "StockPool", "CompartirStock");
             dto.HasIndependentPricing = GetCsvBool("HasIndependentPricing", "PreciosIndependientes", "PrecioIndependiente");
 
             decimal csvConvFactor = GetCsvDec("ConversionFactor", "FactorConversion", "Equivalencia", "Factor");
