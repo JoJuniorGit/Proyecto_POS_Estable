@@ -2480,6 +2480,57 @@ public class ProductVariantsTests
     }
 
     [Fact]
+    public async Task ProductsController_GetById_AsCashier_CensorsCostAndMargins()
+    {
+        var product = new Product
+        {
+            Id = 1,
+            Name = "Item de Prueba",
+            CostPriceUSD = 50m,
+            ProfitMarginRetail = 25m,
+            ProfitMarginWholesale = 15m,
+            ProfitPercentage = 20m
+        };
+        var mockService = new Mock<IInventoryService>();
+        mockService.Setup(s => s.GetProductByIdAsync(1)).ReturnsAsync(product);
+        var mockUser = new Mock<ICurrentUserService>();
+        mockUser.Setup(u => u.CanMutateCatalog).Returns(false);
+
+        var controller = new ProductsController(mockService.Object, mockUser.Object);
+        var result = await controller.GetById(1);
+
+        var dto = Assert.IsType<ProductDto>(result.Value);
+        Assert.Equal(0m, dto.CostPriceUSD);
+        Assert.Equal(0m, dto.Cost);
+        Assert.Equal(0m, dto.ProfitMarginRetail);
+        Assert.Equal(0m, dto.ProfitMarginWholesale);
+        Assert.Equal(0m, dto.ProfitPercentage);
+    }
+
+    [Fact]
+    public async Task ProductsController_GetById_AsManager_SeesCostAndMargins()
+    {
+        var product = new Product
+        {
+            Id = 1,
+            Name = "Item de Prueba",
+            CostPriceUSD = 50m,
+            ProfitMarginRetail = 25m
+        };
+        var mockService = new Mock<IInventoryService>();
+        mockService.Setup(s => s.GetProductByIdAsync(1)).ReturnsAsync(product);
+        var mockUser = new Mock<ICurrentUserService>();
+        mockUser.Setup(u => u.CanMutateCatalog).Returns(true);
+
+        var controller = new ProductsController(mockService.Object, mockUser.Object);
+        var result = await controller.GetById(1);
+
+        var dto = Assert.IsType<ProductDto>(result.Value);
+        Assert.Equal(50m, dto.CostPriceUSD);
+        Assert.Equal(25m, dto.ProfitMarginRetail);
+    }
+
+    [Fact]
     public void ProductQuickInfoDto_DisplayPrice_ShowsPreciosIndivWhenIndependentPricingEnabled()
     {
         var dto = new ProductQuickInfoDto

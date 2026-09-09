@@ -76,7 +76,17 @@ public static class BackendHelpers
             }
         }
 
-        // 3. Fallback dinámico: Generar certificado autofirmado en memoria para asegurar disponibilidad de HTTPS
+        // 3. (8.27-A02) Fallback dinámico SOLO en Desarrollo: en Producción un certificado
+        // efímero en memoria no es válido (cambia en cada arranque y su CN/SAN son del
+        // puesto de build). Se exige un certificado real configurado; sin él, Program.cs
+        // aborta el arranque en Producción (fail-fast HTTPS vivo).
+        if (!env.IsDevelopment())
+        {
+            AppLogger.LogStart("[HTTPS] [AVISO] No se usará certificado efímero en Producción; se requiere HTTPS_CERT_THUMBPRINT o certs/pos-https.pfx con HTTPS_CERT_PASSWORD.");
+            return null;
+        }
+
+        // 3. Fallback dinámico (Desarrollo): Generar certificado autofirmado en memoria para asegurar disponibilidad de HTTPS
         try
         {
             using var rsa = RSA.Create(2048);

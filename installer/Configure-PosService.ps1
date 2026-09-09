@@ -29,7 +29,8 @@ param(
     [string]$BusinessName = "Mi Negocio POS",
     [string]$JwtSecretKey = "",
     [string]$HttpsCertPassword = "",
-    [switch]$RotateJwt = $false
+    [switch]$RotateJwt = $false,
+    [switch]$EnableScheduledBackup = $false
 )
 
 $ErrorActionPreference = 'Stop'
@@ -315,6 +316,70 @@ try {
     }
 } catch {
     Log "Aviso al aplicar ACL sobre el registro de NSSM: $($_.Exception.Message)" "WARN"
+}
+
+# ---------------------------------------------------------------------
+# 4.2 (8.27-A02) Certificado HTTPS del PUESTO: se genera en la máquina destino con
+# CN/SAN del equipo. Un pfx stale (del puesto de build) o una contraseña nueva se
+# detectan y regeneran aquí, de modo que HTTPS_CERT_PASSWORD y el pfx siempre casan
+# y el backend nunca intente arrancar en Producción sin certificado real.
+# ---------------------------------------------------------------------
+$certDir = "$BackendDir\certs"
+$pfxPath = "$certDir\pos-https.pfx"
+$certTools = Join-Path $InstallDir "tools\create-https-cert.ps1"
+if (-not (Test-Path $certTools)) {
+    $certTools = Join-Path $PSScriptRoot "..\..\scripts\create-https-cert.ps1"
+}
+if (-not (Test-Path $certTools)) {
+    Log "AVISO: scripts/create-https-cert.ps1 no encontrado; el backend abortará sin HTTPS en Producción." "WARN"
+} else {
+    $needsRegen = $false
+    if (-not (Test-Path $pfxPath)) {
+        $needsRegen = $true
+    } else {
+        try {
+            $probeCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxPath, ($merged["HTTPS_CERT_PASSWORD"]))
+            if ($probeCert.Subject -notmatch [regex]::Escape("CN=$env:COMPUTERNAME")) {
+                $needsRegen = $true
+            }
+        } catch {
+            # El pfx no se abre con la contraseña actual (cambió o es un artefacto stale).
+            $needsRegen = $true
+        }
+    }
+    if ($needsRegen) {
+        Log "Generando certificado HTTPS con SANs del puesto ($env:COMPUTERNAME)..."
+        $certArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$certTools`" -certPassword `"$($merged["HTTPS_CERT_PASSWORD"])`""
+        $certProc = Start-Process -FilePath "powershell.exe" -ArgumentList $certArgs -Wait -PassThru -NoNewWindow
+        if ($certProc.ExitCode -ne 0) {
+            Log "ADVERTENCIA: create-https-cert.ps1 retornó código $($certProc.ExitCode); el backend abortará sin HTTPS en Producción." "WARN"
+        } else {
+            Log "Certificado HTTPS del puesto listo: $pfxPath"
+        }
+    } else {
+        Log "Certificado HTTPS del puesto ya existe y es válido con la contraseña actual."
+    }
+}
+
+# ---------------------------------------------------------------------
+# 4.3 (8.27-A4) Backup diario opcional: agenda una tarea programada que ejecuta
+# backup-postgres.ps1 todos los días a las 03:00. Activación explícita con
+# -EnableScheduledBackup para no alterar instalaciones existentes.
+# ---------------------------------------------------------------------
+if ($EnableScheduledBackup) {
+    $backupScript = Join-Path $InstallDir "tools\backup-postgres.ps1"
+    if (Test-Path $backupScript) {
+        try {
+            $taskName = "Sistema POS - Backup PostgreSQL"
+            $taskTr = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$backupScript`""
+            & schtasks.exe /Create /TN $taskName /SC DAILY /ST 03:00 /RU SYSTEM /RL HIGHEST /TR $taskTr /F | Out-Null
+            Log "Tarea programada creada: $taskName (diaria 03:00)." "SUCCESS"
+        } catch {
+            Log "Aviso al crear la tarea de backup: $($_.Exception.Message)" "WARN"
+        }
+    } else {
+        Log "AVISO: backup-postgres.ps1 no encontrado en tools; no se agenda backup." "WARN"
+    }
 }
 
 # ---------------------------------------------------------------------

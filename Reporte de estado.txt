@@ -17,6 +17,16 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.2.0   | 2026-09-08  | V0.15        | ANEXO 8.27: endurecimiento para entrega a cliente
+|          |             | (pendiente)  | (instalador). HTTPS fail-fast vivo en Produccion (sin
+|          |             |              | cert efimero), scrub de secretos en build-release.ps1,
+|          |             |              | pfx por sitio en la maquina destino (setup.iss excluye
+|          |             |              | certs\pos-https.pfx), backup-postgres.ps1 (pg_dump -Fc,
+|          |             |              | credenciales via secrets.json), abonos web atomicos
+|          |             |              | (Idempotency-Key estable por lote), censura de costos
+|          |             |              | en GET /api/products/{id} para roles sin catalogo,
+|          |             |              | sin ex.Message al cliente en ProductsController y
+|          |             |              | ApiErrorParser RFC 7807 en WPF. Detalle: docs/reporte.txt ANEXO 8.27.
 | v1.1.0   | 2026-09-08  | V0.15 (sin)  | fix: cierre 8.20-C01 - migracion 20260908153000
 |          |             | commit)      | reactivada con [DbContext]+[Migration] y Up()/Down()
 |          |             |              | idempotentes (guards to_regclass + information_schema);
@@ -334,15 +344,25 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
   ALTA:
   * [8.20-A01] Instalador expone secretos en argv y AppEnvironmentExtra del
     servicio (setup.iss:341,351,424-432; Configure-PosService.ps1:249-251).
-    FIX: secretos solo en secrets.json.
+    FIX: secretos solo en secrets.json. [8.27: reforzado - secrets.json con ACL
+    NT SERVICE + registro NSSM con ACL; ver ANEXO 8.27 A3. Pendiente cierre formal.]
   * [8.20-A02] BackendHelpers.cs:79-130 siempre genera cert autofirmado
     efimero -> fail-fast HTTPS de Produccion (Program.cs:76-84) es dead code.
+    [8.27-A2: IMPLEMENTADO - el efimero queda solo en Development; Produccion
+    aborta sin cert real; pfx regenerado por sitio en Configure-PosService 4.2.]
   * [8.20-A03] UpdaterService instala paquetes sin verificar si no hay hash
-    (fail-open) y sin firma X.509 (8U-N2).
+    (fail-open) y sin firma X.509 (8U-N2). [8.27-C: decision pendiente - se
+    recomienda no instalarlo en el cliente mientras no se firmen paquetes.]
   * [8.20-A04] publish/BackendAPI/appsettings.json:34 expone "PosHttpsDev2026!"
-    en claro y se empaqueta con pfx stale en el instalador.
+    en claro y se empaqueta con pfx stale en el instalador. [8.27-A1:
+    IMPLEMENTADO - fuente ya limpio; build-release.ps1 aborta si publish/
+    contiene literales conocidos; setup.iss excluye certs\pos-https.pfx.]
   * [8.20-A05] Abonos parciales web (PendingOrdersPage.jsx:551-558) no
     atomicos, con Idempotency-Key nueva por pago -> duplicacion si falla la red.
+    [8.27-B1: IMPLEMENTADO - clave estable por lote (batchId por saleId).]
+  [NUEVO 8.27-B2] Leak de costos/margenes en GET /api/products/{id} para roles
+    sin CanMutateCatalog (GetAll si censuraba; GetById no). IMPLEMENTADO en
+    ProductsController.GetById + tests (ver ANEXO 8.27 B2).
   MEDIA (resumen; detalle en ANEXO 8.20):
   * WPF: acoplamiento Core->WPF en 20 archivos (M01), Dispatcher.Invoke
     bloqueante (M02), HealthPolling sin timeout real - el "8.9-M12" del

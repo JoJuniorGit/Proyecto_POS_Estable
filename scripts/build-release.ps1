@@ -14,7 +14,7 @@ foreach ($proc in $processes) {
 }
 Start-Sleep -Milliseconds 300
 
-Write-Host "[1/5] Limpiando carpetas de salida preexistentes..." -ForegroundColor Cyan
+Write-Host "[1/6] Limpiando carpetas de salida preexistentes..." -ForegroundColor Cyan
 if (Test-Path "$rootDir\publish") { Remove-Item "$rootDir\publish" -Recurse -Force }
 if (Test-Path "$rootDir\dist_installer") { Remove-Item "$rootDir\dist_installer" -Recurse -Force }
 
@@ -22,20 +22,39 @@ New-Item -ItemType Directory -Path "$rootDir\publish\BackendAPI" | Out-Null
 New-Item -ItemType Directory -Path "$rootDir\publish\DesktopClient" | Out-Null
 New-Item -ItemType Directory -Path "$rootDir\publish\UpdaterService" | Out-Null
 
-Write-Host "[2/5] Compilando React Web.Frontend en Backend.API/wwwroot..." -ForegroundColor Cyan
+Write-Host "[2/6] Compilando React Web.Frontend en Backend.API/wwwroot..." -ForegroundColor Cyan
 Set-Location "$rootDir\Web.Frontend"
 if (Test-Path "package.json") {
     npm run build
 }
 Set-Location $rootDir
 
-Write-Host "[3/5] Publicando Backend.API (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
+Write-Host "[3/6] Publicando Backend.API (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
 dotnet publish "$rootDir\Backend.API\Backend.API.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$rootDir\publish\BackendAPI"
 
-Write-Host "[4/5] Publicando Desktop.Client (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
+Write-Host "[4/6] Publicando Desktop.Client (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
 dotnet publish "$rootDir\Desktop.Client\Desktop.Client.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$rootDir\publish\DesktopClient"
 
-Write-Host "[5/5] Publicando UpdaterService (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
+Write-Host "[5/6] Publicando UpdaterService (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
 dotnet publish "$rootDir\UpdaterService\UpdaterService.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$rootDir\publish\UpdaterService"
+
+# 8.27-A04: verificación de que los artefactos publicados NO contienen literales de
+# credenciales conocidos (p. ej. PosHttpsDev2026! o la clave JWT dev histórica). Si un
+# publish stale o un cambio deja escapar estos valores, el build se ABORTA antes de
+# empaquetar el instalador que recibiría un cliente.
+Write-Host "[6/6] Escaneando publish/ por secretos conocidos..." -ForegroundColor Cyan
+$forbidden = @('PosHttpsDev2026!', 'ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795')
+$leakLines = foreach ($needle in $forbidden) {
+    Get-ChildItem "$rootDir\publish" -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -in '.json', '.config', '.xml', '.txt', '.iss', '.ps1' } |
+        Select-String -SimpleMatch -Pattern $needle -ErrorAction SilentlyContinue |
+        ForEach-Object { "{0}:{1} -> {2}" -f $_.Path, $_.LineNumber, $needle }
+}
+if ($leakLines) {
+    Write-Host "ABORTANDO: secreto conocido detectado en artefactos publicados:" -ForegroundColor Red
+    $leakLines | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+    throw "build-release abortado: los artefactos contienen literales de credenciales conocidos."
+}
+Write-Host "Scrub de secretos OK: publish/ sin literales conocidos." -ForegroundColor Green
 
 Write-Host "=== Publicación Autónoma completada exitosamente ===" -ForegroundColor Green

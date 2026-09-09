@@ -2976,3 +2976,82 @@ E. HORIZONTES (no gates)
 
 FIN DEL ANEXO - REVISION 8.26
 ================================================================================
+
+================================================================================
+ANEXO - REVISION 8.27: ENDURECIMIENTO PARA ENTREGA A CLIENTE
+Fecha: 2026-09-08 | Rama: V0.15 | Canal de entrega: instalador (codigo solo en extremo)
+================================================================================
+Contexto: solicitud del usuario de evaluar y habilitar la entrega del sistema a un
+cliente. Veredicto de readiness: desplegable y en uso en un sitio, pero con
+bloqueantes de seguridad del artefacto, integridad financiera y continuidad.
+Este ANEXO registra la implementacion por fases priorizadas.
+
+A. FASE A - SEGURIDAD DEL ARTEFACTO (instalador)
+A1. [8.20-A04] Literal 'PosHttpsDev2026!' y pfx stale: confirmado que el literal ya
+    estaba erradicado del fuente (8.2-A5 resuelto); el riesgo provenia del artefacto
+    stale en publish/. Fixes aplicados en repositorio:
+    - scripts/build-release.ps1: nuevo paso [6/6] de SCRUB que aborta el build si
+      publish/ contiene literales conocidos ('PosHttpsDev2026!' o la clave JWT dev
+      historica). El paso [1/6] ya elimina publish/ y dist_installer en cada build.
+    - installer/setup.iss: BackendAPI excluye certs\pos-https.pfx (se genera en la
+      maquina destino) y se despliegan scripts/create-https-cert.ps1 y
+      backup-postgres.ps1 en tools\.
+A2. [8.20-A02] HTTPS fail-fast vivo: BackendHelpers.LoadHttpsCertificate ya NO genera
+    certificado efimero en memoria en Produccion (solo Development). En Produccion,
+    sin HTTPS_CERT_THUMBPRINT o certs/pos-https.pfx + HTTPS_CERT_PASSWORD, Program.cs
+    aborta el arranque (fail-fast que era dead code).
+    installer/Configure-PosService.ps1 (seccion 4.2): genera/regenera el pfx en la
+    maquina destino con CN/SAN del equipo; detecta pfx stale o contrasena nueva y
+    regenera, de modo que HTTPS_CERT_PASSWORD y el pfx siempre casan.
+A3. [8.20-A01/M07] Provisionamiento por sitio: Configure-PosService.ps1 mantiene la
+    generacion CSPRNG de JWT (512 bits), escritura de secrets.json con ACL restrictiva
+    (SYSTEM, Administradores, NT SERVICE\<servicio>) y ACL del registro NSSM; sin
+    defaults reutilizables.
+A4. [continuidad 8.27-A4] Nuevo scripts/backup-postgres.ps1: pg_dump -Fc con blobs,
+    compresion -Z9, retencion por dias; lee credenciales desde BackendAPI\secrets.json
+    (nunca por linea de comandos). Documentado el schtasks sugerido y
+    Configure-PosService.ps1 (seccion 4.3) agenda la tarea diaria 03:00 solo con
+    conmutador explicito -EnableScheduledBackup.
+
+B. FASE B - INTEGRIDAD FINANCIERA Y UX EN EL PUESTO
+B1. [8.20-A05] Abonos parciales web atomicos: el backend /api/sales/{id}/payments ya
+    era idempotente (IIdempotencyService, PayloadHash, tests
+    AddPayment_WithSameIdempotencyKey_AppliesAbonoOnlyOnce). El bug estaba en
+    Web.Frontend PendingOrdersPage.jsx: el loop de abonos generaba una
+    Idempotency-Key NUEVA por reintento (salesApi.addPaymentToHoldSale con
+    crypto.randomUUID), lo que duplicaba pagos ante fallos de red. Fix: clave estable
+    por lote (batchId por saleId persistido en useRef; clave '<batchId>-<i>' por pago),
+    reutilizada en retries y liberada solo tras exito.
+B2. [NUEVO 8.27] Leak de costos en GET /api/products/{id}: GetAll censuraba
+    CostPriceUSD/Cost/margenes para roles sin CanMutateCatalog pero GetById no. Fix:
+    misma politica de censura en GetById. Tests:
+    ProductsController_GetById_AsCashier_CensorsCostAndMargins y
+    ProductsController_GetById_AsManager_SeesCostAndMargins.
+B3. [8.20-B12 + UX] ProductsController ya no filtra ex.Message en Delete/AdjustStock
+    (mensajes genericos en espanol, mismos status codes). Nuevo ApiErrorParser en
+    Desktop.Client.Core (namespace Desktop.Client.Services) extrae
+    message/detail/title/errors de respuestas RFC 7807; ProductService y SalesService
+    (WPF) muestran mensajes legibles en vez del JSON crudo.
+
+C. FASE C - DECISIONES PENDIENTES (requieren confirmacion del usuario/cliente)
+   - Impresion de recibos/cierres: ClosurePdfGenerator es futuro; definir con el
+     cliente (no bloquea piloto si se documenta como limitacion).
+   - Tasa BCV sin internet (8.16-B09/B10, B06): definir plan manual por config.
+   - UpdaterService (8.20-A03): se recomienda NO instalarlo en el cliente hasta firmar
+     paquetes (fail-open). UpdateServerUrl apunta a localhost.
+   - Regenerar secretos por sitio en cada instalacion (proceso ya automatizado).
+
+D. VERIFICACION
+   - Scripts PS validados con [scriptblock]::Create (parsing OK en los 4).
+   - dotnet build Solution Release: 0 warnings/0 errores (pasada completa en el commit).
+   - dotnet test Release: 729 previos + 2 nuevos (GetById censura).
+   - npm test / npm run lint (Web.Frontend) con el cambio en PendingOrdersPage.jsx.
+   - installer/setup.iss y Configure-PosService.ps1 no ejecutables desde esta sesion
+     (requieren ISCC y servicio NSSM); cambios minimos y estructurales.
+
+E. HORIZONTE
+   - Cierre oficial de los items 8.20-A02/A04/A05 y B12 (movimiento a 'cerradas' en
+     Reporte de estado) tras commit + suite verde + esta entrada.
+
+FIN DEL ANEXO - REVISION 8.27
+================================================================================

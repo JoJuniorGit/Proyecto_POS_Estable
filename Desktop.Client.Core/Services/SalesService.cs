@@ -134,7 +134,7 @@ public class SalesService : ISalesService
         if (!_response.IsSuccessStatusCode)
         {
             var errorContent = await _response.Content.ReadAsStringAsync();
-            throw new System.Exception(!string.IsNullOrWhiteSpace(errorContent) ? errorContent : $"Error del servidor ({(int)_response.StatusCode})");
+            throw new System.Exception(ApiErrorParser.FromBody(errorContent, $"Error del servidor ({(int)_response.StatusCode})"));
         }
         var contentStr = await _response.Content.ReadAsStringAsync();
         var invoiceNumber = int.Parse(contentStr);
@@ -176,7 +176,7 @@ public class SalesService : ISalesService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, "Error del servidor"));
         }
         var sale = await response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to hold sale.");
         SetCurrentSale(sale);
@@ -194,7 +194,7 @@ public class SalesService : ISalesService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, "Error del servidor"));
         }
         var sale = await response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to add payment.");
         SetCurrentSale(sale);
@@ -247,7 +247,7 @@ public class SalesService : ISalesService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, "Error del servidor"));
         }
         return await response.Content.ReadFromJsonAsync<CustomerDto>() ?? throw new System.Exception("Failed to create customer.");
     }
@@ -258,7 +258,7 @@ public class SalesService : ISalesService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, "Error del servidor"));
         }
         return await response.Content.ReadFromJsonAsync<CustomerDto>() ?? throw new System.Exception("Failed to update customer.");
     }
@@ -269,7 +269,7 @@ public class SalesService : ISalesService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, "Error del servidor"));
         }
     }
 
@@ -285,7 +285,7 @@ public class SalesService : ISalesService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, "Error del servidor"));
         }
         var sale = await response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to update sale customer.");
         SetCurrentSale(sale);
@@ -304,7 +304,7 @@ public class SalesService : ISalesService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, "Error del servidor"));
         }
     }
 
@@ -315,7 +315,7 @@ public class SalesService : ISalesService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, "Error del servidor"));
         }
     }
 }

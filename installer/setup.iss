@@ -28,7 +28,10 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; Publicación Autónoma Backend API (.NET Self-Contained)
-Source: "..\publish\BackendAPI\*"; DestDir: "{app}\BackendAPI"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "appsettings.Production.json,appsettings.Development.json"
+; 8.27-A01/A04: se excluyen appsettings de entorno y el pfx stale del puesto de build;
+; el certificado HTTPS se genera en la MÁQUINA DESTINO (tools\create-https-cert.ps1) para
+; que sus SANs correspondan al cliente y nunca viajen credenciales de desarrollo.
+Source: "..\publish\BackendAPI\*"; DestDir: "{app}\BackendAPI"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "appsettings.Production.json,appsettings.Development.json,certs\pos-https.pfx"
 ; Publicación Autónoma Cliente WPF Desktop (.NET Self-Contained)
 Source: "..\publish\DesktopClient\*"; DestDir: "{app}\DesktopClient"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NSSM ejecutable y Licencia (Opcional: Si está presente se empaqueta, si no se usa el fallback sc.exe)
@@ -40,6 +43,9 @@ Source: "NSSM_LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 #endif
 ; Script PowerShell de Configuración Idempotente (Firewall, NSSM, Env Vars)
 Source: "Configure-PosService.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
+; 8.27-A02/A4: scripts de operación desplegados al puesto: certificado HTTPS por sitio y backup PostgreSQL
+Source: "..\scripts\create-https-cert.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
+Source: "..\scripts\backup-postgres.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 
 
 [Dirs]

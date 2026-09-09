@@ -58,7 +58,16 @@ public class ProductsController : ControllerBase
     {
         var product = await _inventoryService.GetProductByIdAsync(id);
         if (product == null) return NotFound();
-        return MapToDto(product);
+        var dto = MapToDto(product);
+        if (!_currentUserService.CanMutateCatalog)
+        {
+            dto.CostPriceUSD = 0m;
+            dto.Cost = 0m;
+            dto.ProfitMarginRetail = 0m;
+            dto.ProfitMarginWholesale = 0m;
+            dto.ProfitPercentage = 0m;
+        }
+        return dto;
     }
 
     /// <summary>
@@ -282,9 +291,9 @@ public class ProductsController : ControllerBase
             var result = await _inventoryService.DeleteProductAsync(id, forceHardDelete: hardDelete);
             return Ok(new { result });
         }
-        catch (System.UnauthorizedAccessException unEx)
+        catch (System.UnauthorizedAccessException)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
+            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "No tiene permisos para realizar esta operación.");
         }
     }
 
@@ -330,13 +339,13 @@ public class StatusUpdateDto
         {
             return NotFound();
         }
-        catch (System.UnauthorizedAccessException unEx)
+        catch (System.UnauthorizedAccessException)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, unEx.Message);
+            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "No tiene permisos para realizar esta operación.");
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
-            return this.ApiBadRequest(ex.Message);
+            return this.ApiBadRequest("La operación no pudo completarse: los datos enviados no son válidos.");
         }
     }
 

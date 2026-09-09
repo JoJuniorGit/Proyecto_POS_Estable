@@ -26,7 +26,7 @@ public class ProductService : IProductService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
         var rawJson = await response.Content.ReadAsStringAsync();
         return System.Text.Json.JsonSerializer.Deserialize<Product>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
@@ -38,7 +38,7 @@ public class ProductService : IProductService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
         var rawJson = await response.Content.ReadAsStringAsync();
         var created = System.Text.Json.JsonSerializer.Deserialize<Product>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
@@ -51,7 +51,7 @@ public class ProductService : IProductService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
     }
 
@@ -61,7 +61,7 @@ public class ProductService : IProductService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
     }
 
@@ -71,7 +71,7 @@ public class ProductService : IProductService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
         var resObj = await response.Content.ReadFromJsonAsync<DeleteResultResponse>();
         return resObj?.Result ?? "ok";
@@ -83,7 +83,7 @@ public class ProductService : IProductService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
     }
 
@@ -96,7 +96,7 @@ public class ProductService : IProductService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
     }
 
@@ -192,9 +192,9 @@ public class ProductService : IProductService
             var err = await response.Content.ReadAsStringAsync(token);
             if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             {
-                throw new System.Net.Http.HttpRequestException(string.IsNullOrWhiteSpace(err) ? "Conflicto de concurrencia al vincular variantes." : err, null, System.Net.HttpStatusCode.Conflict);
+                throw new System.Net.Http.HttpRequestException(ApiErrorParser.FromBody(err, "Conflicto de concurrencia al vincular variantes."), null, System.Net.HttpStatusCode.Conflict);
             }
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
         var rawJson = await response.Content.ReadAsStringAsync(token);
         return System.Text.Json.JsonSerializer.Deserialize<List<Core.DTOs.ProductDto>>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
@@ -209,9 +209,9 @@ public class ProductService : IProductService
             var err = await response.Content.ReadAsStringAsync(token);
             if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             {
-                throw new System.Net.Http.HttpRequestException(string.IsNullOrWhiteSpace(err) ? "Conflicto de concurrencia al desvincular variante." : err, null, System.Net.HttpStatusCode.Conflict);
+                throw new System.Net.Http.HttpRequestException(ApiErrorParser.FromBody(err, "Conflicto de concurrencia al desvincular variante."), null, System.Net.HttpStatusCode.Conflict);
             }
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
         var rawJson = await response.Content.ReadAsStringAsync(token);
         return System.Text.Json.JsonSerializer.Deserialize<Core.DTOs.ProductDto>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })

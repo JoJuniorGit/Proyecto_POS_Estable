@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getPendingSalesPage, completeSale, addPaymentToHoldSale, cancelSale } from '../services/salesApi';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import CheckoutModal from '../components/checkout/CheckoutModal';
@@ -21,6 +21,10 @@ export default function PendingOrdersPage() {
   const [completedLiquidation, setCompletedLiquidation] = useState(null);
   
   const { exchangeRate } = useExchangeRate();
+
+  // 8.27-A05: claves de idempotencia estables por lote de abonos (saleId -> batchId).
+  // Se reutilizan en reintentos para que un fallo de red no duplique pagos ya acreditados.
+  const abonoBatchKeysRef = useRef(new Map());
 
   // Modals state
   const [selectedSaleForCheckout, setSelectedSaleForCheckout] = useState(null);
@@ -528,14 +532,22 @@ export default function PendingOrdersPage() {
                   });
                 }
               } else {
-                for (const p of paymentList) {
-                  await addPaymentToHoldSale(targetSaleId, {
-                    paymentMethodId: p.paymentMethodId,
-                    amountBsS: p.amountBsS || p.amountLocal,
-                    exchangeRate: exchangeRate,
-                    referenceNumber: p.referenceNumber || null
-                  });
+                let batchId = abonoBatchKeysRef.current.get(targetSaleId);
+                if (!batchId) {
+                  batchId = (typeof crypto !== 'undefined' && crypto.randomUUID
+                    ? crypto.randomUUID()
+                    : `abono-${targetSaleId}-${Date.now()}`);
+                  abonoBatchKeysRef.current.set(targetSaleId, batchId);
                 }
+                for (let i = 0; i < paymentList.length; i++) {
+                  await addPaymentToHoldSale(targetSaleId, {
+                    paymentMethodId: paymentList[i].paymentMethodId,
+                    amountBsS: paymentList[i].amountBsS || paymentList[i].amountLocal,
+                    exchangeRate: exchangeRate,
+                    referenceNumber: paymentList[i].referenceNumber || null
+                  }, `${batchId}-${i}`);
+                }
+                abonoBatchKeysRef.current.delete(targetSaleId);
                 setSelectedSaleForCheckout(null);
                 await loadPendingData();
 
