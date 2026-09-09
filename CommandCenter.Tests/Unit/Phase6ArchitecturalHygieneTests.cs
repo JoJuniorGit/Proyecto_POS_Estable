@@ -6,6 +6,7 @@ using Core.Entities;
 using Core.Helpers;
 using Core.Interfaces;
 using Inventory.Module.Data;
+using Inventory.Module.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
@@ -56,7 +57,7 @@ public class Phase6ArchitecturalHygieneTests
         var currentUserServiceMock = new Mock<ICurrentUserService>();
         currentUserServiceMock.Setup(c => c.CanMutateSettings).Returns(true);
 
-        var controller = new SettingsController(db, currentUserServiceMock.Object);
+        var controller = new SettingsController(db, currentUserServiceMock.Object, new SystemSettingsService(db));
 
         var request = new SetExchangeRateRequest { Value = 45.75m };
         var result = await controller.SetExchangeRate(request);

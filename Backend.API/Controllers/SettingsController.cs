@@ -14,15 +14,18 @@ public class SettingsController : ControllerBase
 {
     private readonly InventoryDbContext _context;
     private readonly Core.Interfaces.ICurrentUserService _currentUserService;
+    private readonly Core.Interfaces.ISystemSettingsService _settingsService;
     private readonly Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? _hubContext;
 
     public SettingsController(
         InventoryDbContext context, 
         Core.Interfaces.ICurrentUserService currentUserService,
+        Core.Interfaces.ISystemSettingsService settingsService,
         Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? hubContext = null)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _settingsService = settingsService;
         _hubContext = hubContext;
     }
 
@@ -216,9 +219,8 @@ public class SettingsController : ControllerBase
     [HttpGet("allow-negative-stock")]
     public async Task<ActionResult> GetAllowNegativeStock()
     {
-        var setting = await _context.SystemSettings.AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Key == Core.Constants.SettingKeys.AllowNegativeStock);
-        var allowed = setting != null && bool.TryParse(setting.Value, out var value) && value;
+        var value = await _settingsService.GetSettingAsync(Core.Constants.SettingKeys.AllowNegativeStock);
+        var allowed = bool.TryParse(value, out var parsed) && parsed;
         return Ok(new { allowed });
     }
 
@@ -231,24 +233,7 @@ public class SettingsController : ControllerBase
             return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "El rol Cajero no tiene permisos para actualizar esta configuración.");
         }
 
-        var setting = await _context.SystemSettings.FirstOrDefaultAsync(s => s.Key == Core.Constants.SettingKeys.AllowNegativeStock);
-        if (setting == null)
-        {
-            setting = new SystemSetting
-            {
-                Key = Core.Constants.SettingKeys.AllowNegativeStock,
-                Value = request.Allowed.ToString(),
-                LastUpdated = DateTime.UtcNow
-            };
-            _context.SystemSettings.Add(setting);
-        }
-        else
-        {
-            setting.Value = request.Allowed.ToString();
-            setting.LastUpdated = DateTime.UtcNow;
-        }
-
-        await _context.SaveChangesAsync();
+        await _settingsService.SetSettingAsync(Core.Constants.SettingKeys.AllowNegativeStock, request.Allowed.ToString());
         return Ok(new { allowed = request.Allowed });
     }
 }
