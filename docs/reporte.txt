@@ -3773,4 +3773,37 @@ C2. Pendientes (mayor riesgo/esfuerzo, requieren entorno o contrato): CashDrawer
     cancelacion cooperativa en flujos largos.
 
 FIN DEL ANEXO - REVISION 8.41
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.42 (FASE 3: INMUTABILIDAD DEL HISTORIAL)
+===============================================================================
+Alcance: Fase 3 del roadmap (QA), validar la inmutabilidad del historial de
+ventas (rules.md seccion 1) bajo cambio de tasa contra PostgreSQL real.
+Verificacion: build Release 0w/0e; dotnet test 754/754 (753 + 1 nuevo).
+
+A. TEST (CommandCenter.Tests/Integration/HistoryImmutabilityTests.cs)
+A1. CompletedSaleSnapshot_AfterRateChange_RemainsUnchanged: siembra una venta
+    COMPLETADA con snapshot (AppliedRate=73, TotalUSD=10, TotalBsS=730,
+    FinalPaidAmountBsS=730, RoundingAdjustment=0), crea/actualiza la tasa del dia
+    (ExchangeRateHistory) a 75 (tasa POSTERIOR), y aserta que el snapshot
+    persistido NO cambia (nunca se recalcula con la tasa vigente). Limpia la
+    venta y restaura la tasa en finally (aislamiento de datos, SaleId unico).
+A2. Nota de esquema: la BD compartida de tests solo tiene esquema Sales; el test
+    crea ExchangeRateHistory con CREATE TABLE IF NOT EXISTS (SQL crudo idempotente
+    consistente con la entidad Core/Entities/ExchangeRateHistory.cs).
+
+B. REVISION REVIEWER (8.42): APROBAR, sin bloqueantes.
+
+C. VERIFICACION
+C1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+C2. dotnet test CommandCenter.slnx -c Release: 754/754 superadas / 0 fallidas.
+C3. Sin cambio de modelo persistente de produccion -> sin migracion EF.
+
+D. ESTADO DE FASE 3
+D1. Avanzado: concurrencia 4 cajas (8.34), fallos Outbox e idempotencia (8.36),
+    inmutabilidad del historial (8.42). PENDIENTE: E2E sobre instalacion real,
+    medir SLOs de latencia (API p95, checkout p95) bajo carga, prueba sostenida
+    >= 8h, reinicio de BD/backend y restore real con RTO (requiere entorno).
+
+FIN DEL ANEXO - REVISION 8.42
 ================================================================================

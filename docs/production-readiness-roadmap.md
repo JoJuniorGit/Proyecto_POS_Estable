@@ -17,6 +17,7 @@ el avance real de cada fase.
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F3   | Inmutabilidad del historial vs PostgreSQL real (58ac014) | F3 avanzado; suites .NET 754/754 |
 | 2026-09-09  | F2   | N+1/H06 productos verificados sin accion; plan esquema/rollback en INSTALLATION seccion 10 (8.40) | F2: checklist parcial completo |
 | 2026-09-09  | F2   | H06: aislamiento Entidad->DTO en PaymentMethodsController (7035b96) | F2 EN CURSO; DTO parcial |
 | 2026-09-09  | F1   | Auditoria de seguridad de codigo: JWT/revocacion/lockout/MustChangePassword, CORS, pairing, rate limiting, headers, RBAC verificados (8.38, DQ-006) | F1 checklist 4.2 seguridad COMPLETA |
@@ -39,7 +40,7 @@ el avance real de cada fase.
 | F0   | Definicion de alcance y criterios        | EN CURSO  | M0: alcance/SLOs/riesgos firmados | -        |
 | F1   | Auditoria de deuda tecnica y seguridad   | EN CURSO | M1: cero P0 abiertos      | -            |
 | F2   | Refactorizacion critica y endurecimiento | EN CURSO | M2: revision arquitectonica aprobada | -       |
-| F3   | QA, concurrencia y pruebas de estres     | PENDIENTE | M3: evidencia reproducible | -            |
+| F3   | QA, concurrencia y pruebas de estres     | EN CURSO | M3: evidencia reproducible | -            |
 | F4   | Release engineering y despliegue         | PENDIENTE | M4: RC firmado y probado   | -            |
 | F5   | Observabilidad y operacion               | PENDIENTE | M5: soporte sin desarrollo | -            |
 | F6   | Piloto controlado                        | PENDIENTE | M6: aceptacion del cliente | -            |
@@ -244,11 +245,11 @@ reproducible.
 - [ ] Errores RFC 7807 visibles en WPF y Web.
 
 ### 6.2 Concurrencia y fallos
-- [ ] Ventas concurrentes sobre mismo producto / dos cajas descontando stock.
-- [ ] Reintentos con misma Idempotency-Key.
+- [x] Ventas concurrentes sobre mismo producto / dos cajas descontando stock (8.34).
+- [x] Reintentos con misma Idempotency-Key (8.36).
 - [ ] Corte de red en pagos/cierres/abonos; reinicio durante transaccion.
-- [ ] Recuperacion de Outbox en estado Dispatching (reclaim stale).
-- [ ] Cambio de tasa con ventas en espera; historial inmutable.
+- [x] Recuperacion de Outbox en estado Dispatching (reclaim stale) (8.36).
+- [x] Cambio de tasa con ventas en espera; historial inmutable (8.42).
 
 ### 6.3 Rendimiento y recuperacion
 - [ ] API p95 < 500 ms; checkout p95 < 1 s; error tecnico < 1 %.
