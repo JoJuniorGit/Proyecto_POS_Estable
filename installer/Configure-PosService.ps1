@@ -417,7 +417,7 @@ if (-not (Test-Path $certTools)) {
         Log "Generando certificado HTTPS con SANs del puesto ($env:COMPUTERNAME)..."
         # La contraseña del pfx la lee create-https-cert.ps1 desde secrets.json
         # (nunca viaja por línea de comandos del proceso PowerShell).
-        $certArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$certTools`" -SecretsFile `"$secretsFile`""
+        $certArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$certTools`" -SecretsFile `"$secretsFile`" -CertOutputDir `"$certDir`""
         $certProc = Start-Process -FilePath "powershell.exe" -ArgumentList $certArgs -Wait -PassThru -NoNewWindow
         if ($certProc.ExitCode -ne 0) {
             Log "ADVERTENCIA: create-https-cert.ps1 retornó código $($certProc.ExitCode); el backend abortará sin HTTPS en Producción." "WARN"

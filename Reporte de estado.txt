@@ -17,6 +17,22 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.5.0   | 2026-09-09  | V0.15        | REVISION 8.31 (cierre de provisionamiento e higiene de
+|          |             | (pendiente)  | instalador): CORREGIDO el desajuste de rutas del pfx
+|          |             |              | (8.30-E1) - create-https-cert.ps1 acepta -CertOutputDir
+|          |             |              | y Configure-PosService lo fija a {app}\BackendAPI\certs
+|          |             |              | (ruta que resuelve el runtime), de modo que el fail-fast
+|          |             |              | HTTPS (8.27-A02) ya no aborta la instalacion por pfx
+|          |             |              | mal ubicado; default de contrasena Postgres del
+|          |             |              | formulario del instalador eliminado (setup.iss);
+|          |             |              | regenerado el publish completo (scrub 0 literales +
+|          |             |              | 0 pfx) y el bundle web; nueva seccion 9
+|          |             |              | "Limitaciones pre-piloto" en INSTALLATION.md (impresion
+|          |             |              | de recibos/cierres pendiente, Updater sin empaquetar,
+|          |             |              | multi-sucursal futura, cert autofirmado en cajas).
+|          |             |              | Suites: .NET 738/738, Web 80/80, build R 0/0, lint 0/0,
+|          |             |              | gate cobertura sin variacion.
+|          |             |              | Detalle: docs/reporte.txt ANEXO 8.31.
 | v1.4.0   | 2026-09-09  | V0.15        | REVISION 8.30 (verificacion del plan priorizado tipo ANEXO
 |          |             | (pendiente)  | 8.27): pfx de desarrollo fuera del publish Release
 |          |             |              | (A04 reforzado + assert anti-pfx en build-release.ps1);

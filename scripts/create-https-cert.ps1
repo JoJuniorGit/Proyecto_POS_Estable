@@ -1,7 +1,9 @@
 # =====================================================================
 # Genera el certificado autofirmado HTTPS para Backend.API
 # ---------------------------------------------------------------------
-# Salida:  Backend.API\certs\pos-https.pfx
+# Salida:  Backend.API\certs\pos-https.pfx por defecto, o el directorio
+#          indicado con -CertOutputDir (el instalador lo fija a
+#          {app}\BackendAPI\certs, que es donde el servicio lo busca).
 # Password: la resuelve en este orden (la contraseña NUNCA debe viajar por
 # línea de comandos en el flujo de instalación del servicio):
 #   1) secrets.json (clave Kestrel.Certificates.Default.Password) si -SecretsFile
@@ -21,13 +23,18 @@
 # luego elimina el certificado, dejando solo el archivo .pfx).
 param(
     [string]$SecretsFile = "",
-    [string]$certPassword = ""
+    [string]$certPassword = "",
+    [string]$CertOutputDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $rootDir = Split-Path -Path $PSScriptRoot -Parent
-$certDir = Join-Path $rootDir "Backend.API\certs"
+if (-not [string]::IsNullOrWhiteSpace($CertOutputDir)) {
+    $certDir = $CertOutputDir
+} else {
+    $certDir = Join-Path $rootDir "Backend.API\certs"
+}
 $certPath = Join-Path $certDir "pos-https.pfx"
 
 function Resolve-SecretPassword {

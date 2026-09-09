@@ -201,3 +201,10 @@ Invoke-RestMethod "http://localhost:5000/health" -Method Get
 ```
 
 Precauciones: `--no-owner` evita errores si el rol del volcado difiere; detener primero el servicio `Sistema POS Backend` (`Stop-Service "Sistema POS Backend"`) y arrancarlo tras el restore; los snapshots de ventas (`AppliedRate`, `TotalUSD`, `TotalBsS`, `FinalPaidAmountBsS`) se restauran tal cual porque el volcado es una copia punto a punto de la base.
+
+## 9. Limitaciones pre-piloto (8.31-B2)
+
+- **Impresión de recibos y cierres de caja:** aún **no implementada** (no hay salida a impresora térmica en WPF ni en web). En el piloto la venta y el cierre se consultan en pantalla (consulta de historial y cierre electrónico). Confirmar esta expectativa con el cliente antes del piloto; la impresión quedará como trabajo futuro.
+- **Actualizaciones automáticas del cliente:** el UpdaterService no se empaqueta en el instalador (8.20-M08); el rol se validará con firma X.509 (8U-N2).
+- **Multi-sucursal:** sin `BranchId` todavía (intención arquitectónica futura, no requisito del piloto; ver `coding-guidelines.md` §5).
+- **Certificado HTTPS autofirmado:** los clientes web/WPF verán una advertencia "no confiable" al primer acceso por host remoto; para evadirla, importar el `.cer` del puesto en el almacén raíz de confianza de cada caja (ver §6).

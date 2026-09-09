@@ -169,7 +169,7 @@ begin
   DbPage.Values[1] := '5432';
   DbPage.Values[2] := 'CommandCenterDb';
   DbPage.Values[3] := 'postgres';
-  DbPage.Values[4] := 'postgres';
+  DbPage.Values[4] := '';
 
   // Página 2: Credenciales Semilla del Administrador
   AdminPage := CreateInputQueryPage(DbPage.ID,

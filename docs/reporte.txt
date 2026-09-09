@@ -3349,5 +3349,53 @@ E1. Smoke E2E pendiente de entorno con Inno Setup (compilacion ISCC real y
     (base dir del proceso) — desajuste pre-existente (>=8.27) a validar con el
     layout real del instalador.
 
-FIN DEL ANEXO - REVISION 8.30
+===============================================================================
+ANEXO - REVISION 8.31 (CIERRE DE PROVISIONAMIENTO E HIGIENE DE INSTALADOR)
+===============================================================================
+Alcance: cierre de los hallazgos restantes del plan priorizado (estilo ANEXO
+8.27/8.30). Verificaciones: build Release 0w/0e, dotnet test 738/738, npm lint
+0/0, npm test 80/80, PARSE OK de scripts PowerShell modificados y gate 8.26-E4
+sin variacion (no se toco codigo de dominio).
+
+A. PROVISIONAMIENTO DEL PUESTO (Hallazgo E1 de 8.30 - AHORA CORREGIDO)
+A1. Desajuste de rutas del pfx (creado en 8.30-E1) CONFIRMADO y resuelto:
+    create-https-cert.ps1 fijaba la salida en {root}\Backend.API\certs, por lo
+    que al ejecutarse desde tools\ en el layout instalado escribia el certificado
+    en {app}\Backend.API\certs, mientras el servicio lo busca en
+    {app}\BackendAPI\certs (AppContext.BaseDirectory). Resultado: el fail-fast
+    HTTPS (8.27-A02) abortaria el servicio tras la instalacion. Fix:
+    create-https-cert.ps1 acepta -CertOutputDir y Configure-PosService.ps1 lo
+    invoca con {app}\BackendAPI\certs, de modo que el pfx generado por el
+    instalador coincide con la ruta que resuelve el runtime (BackendHelpers:
+    AppContext.BaseDirectory\certs\pos-https.pfx).
+A2. Verificado (sin cambios): Configure-PosService.ps1 provisiona por sitio
+    service NSSM 'Sistema POS Backend' con Virtual Account + ACL sobre el
+    directorio, regla de firewall TCP 5000/5001 limitada a la subred local,
+    secretos CSPRNG (JWT 512 bits, build 24-bytes cert) persistidos en
+    secrets.json con ACL y preservados en reinstalacion, backup programado
+    diario 03:00 (8.29-A6) y arranque con reintentos (3 intentos x 5 s).
+    La creacion de BD, migraciones y seed admin (MustChangePassword) quedan a
+    cargo del backend en el primer arranque (fail-fast MigrateAsync), tal como
+    documenta docs/INSTALLATION.md.
+A3. Defaults de formulario del instalador: la contraseña de 'Contraseña
+    Postgres' quedo vacia (setup.iss) en lugar de 'postgres'; no se envia
+    credencial adivinable en el empaquetado. El usuario administrador ya exigia
+    valor operador (campo vacio por defecto).
+
+B. ARTEFACTO (Verificacion final 8.30-A1)
+B1. Re-ejecutada la publicacion autónoma completa (scripts/build-release.ps1):
+    scrub de secretos OK (0 literales conocidos en publish/) y verificacion OK
+    (0 *.pfx en el arbol publish/). El artefacto queda sin cert dev, sin
+    appsettings.Development.json y con appsettings.json sin credenciales.
+B2. Nueva seccion "9. Limitaciones pre-piloto" en docs/INSTALLATION.md:
+    impresion de recibos/cierres pendiente (no implementada en WPF/web; el
+    piloto consulta la venta y el cierre en pantalla), UpdaterService sin
+    empaquetar (8.20-M08), multi-sucursal como intencion futura (seccion 5 de
+    coding-guidelines), advertencia de cert autofirmado para cajas remotas.
+
+C. HIGIENE DE ENTREGA
+C1. El bundle web contenido en Backend.API/wwwroot se regenero (nuevos hashes):
+    refleja el codigo actual y viaja en el publish.
+
+FIN DEL ANEXO - REVISION 8.31
 ================================================================================
