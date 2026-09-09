@@ -63,6 +63,7 @@ Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F4   | Instalador compilado con ISCC 7 (fixes setup.iss: AnsiString/forward/JsonEsc) | POS_System_Setup_v1.0.0.exe generado (8.61) |
 | 2026-09-09  | F5   | Health check de frescura del ultimo backup (8.59) | Suites .NET 769/769 |
 | 2026-09-09  | F2   | Logistics.Module fuera del DI (M08) + dotnet-ef 10.0.4 (B02) + bundle web reproducible (8.58) | Suites .NET 766/766 |
 | 2026-09-09  | -    | Fusion del roadmap con el plan de certificacion (v0.2.0) | Documento consolidado; contenido nuevo + formato existente |
@@ -345,7 +346,7 @@ maquina limpia.
 - [x] Checklist de instalacion por cliente; matriz config dev/QA/piloto/prod (INSTALLATION 11/12, 8.43).
 - [x] Procedimiento de migracion/rollback y upgrade sin perder secrets.json (INSTALLATION 10, 8.40).
 - [x] Scaffolding de instalador Inno Setup y firma en build-release.ps1 (8.54).
-- [ ] Compilacion ISCC real del instalador (requiere Inno Setup).
+- [x] Compilacion ISCC real del instalador (8.61: POS_System_Setup_v1.0.0.exe).
 - [ ] Firmado de instalador/binarios con X.509 (requiere certificado).
 - [ ] Smoke test en maquina virgen.
 - [ ] Regenerar el bundle web en `wwwroot` (`npm run build` final) y verificarlo en el artefacto.

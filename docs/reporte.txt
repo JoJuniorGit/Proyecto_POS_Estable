@@ -4210,4 +4210,39 @@ B1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
 B2. dotnet test CommandCenter.slnx -c Release: 769/769 superadas / 0 fallidas.
 
 FIN DEL ANEXO - REVISION 8.59
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.61 (F4: PUBLICAR BINARIOS Y COMPILAR EL INSTALADOR)
+===============================================================================
+Alcance: publicar los binarios del release y compilar el instalador con Inno
+Setup (ISCC 7). Se detecto que setup.iss nunca se habia compilado con ISCC
+(solo review estructural) y arrastraba errores latentes de compilacion.
+Verificacion: build-release 0w/0e; ISCC compila OK -> POS_System_Setup_v1.0.0.exe.
+
+A. PUBLICACION DE BINARIOS
+A1. build-release.ps1 completo: publish\ (BackendAPI, DesktopClient, UpdaterService)
+    con scrub OK (0 literales, 0 pfx, sin appsettings.Development.json).
+
+B. FIXES DE COMPILACION DE SETUP.ISS (requeridos para que ISCC 7 compile)
+B1. GenerateCryptoSecret: LoadStringFromFile exige AnsiString en Inno Setup 7
+    (Unicode); se carga en Raw: AnsiString y se convierte a String.
+B2. WriteProtectedSecretsFile se llamaba ANTES de definirse (forward-reference);
+    se anade su declaracion forward al inicio de [Code].
+B3. StringChange(...,'\ "') causaba Type mismatch (espera AnsiString/var); se
+    reemplaza por un helper JsonEsc (escape manual de \ y ") para construir el
+    secrets.json anidado.
+B4. Nota: se revirtio el refactor previo (DBServiceWriteSecretsFile) por el
+    comentario '--' invalido y falta de valor funcional; los fixes de compilacion
+    se aplican sobre la version commiteada.
+
+C. RESULTADO
+C1. ISCC 7 compila: Successful compile; POS_System_Setup_v1.0.0.exe (87.6 MB) en
+    dist_installer\ (gitignored). Advertencia no bloqueante: UninstallIconFile
+    obsoleto.
+C2. El instalador empaqueta el publish limpio (sin secretos/pfx dev).
+
+D. ESTADO F4
+D1. Pendiente aun: smoke E2E del instalador en maquina limpia y firma X.509.
+
+FIN DEL ANEXO - REVISION 8.61
 ================================================================================
