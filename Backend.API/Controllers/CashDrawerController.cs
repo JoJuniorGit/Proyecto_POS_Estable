@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 
 using Core.Interfaces;
 using Backend.API.Attributes;
+using Backend.API.DTOs;
 using Inventory.Module.Data;
 
 namespace Backend.API.Controllers;
@@ -76,7 +77,7 @@ public class CashDrawerController : ControllerBase
     /// </summary>
     [HttpGet("history")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
-    public async Task<ActionResult<IEnumerable<CashTransaction>>> GetHistory([FromQuery] int limit = 300)
+    public async Task<ActionResult<IEnumerable<CashTransactionDto>>> GetHistory([FromQuery] int limit = 300)
     {
         limit = Math.Clamp(limit, 1, 300);
         var transactions = await _cashDrawerService.GetHistoryAsync(limit);
@@ -84,16 +85,31 @@ public class CashDrawerController : ControllerBase
         var tzId = await _settingsService.GetSettingAsync("SelectedTimeZoneId");
         var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
 
-        foreach (var tx in transactions)
+        return Ok(transactions.Select(tx => ToDto(tx, tz)));
+    }
+
+    private static CashTransactionDto ToDto(CashTransaction tx, TimeZoneInfo tz)
+    {
+        string description = tx.Description;
+        if (tx.Sale != null && tx.Sale.InvoiceNumber.HasValue)
         {
-            tx.TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(tx.TransactionTime, tz);
-            if (tx.Sale != null && tx.Sale.InvoiceNumber.HasValue)
-            {
-                tx.Description = $"Factura N° {tx.Sale.InvoiceNumber.Value}";
-            }
+            description = $"Factura N° {tx.Sale.InvoiceNumber.Value}";
         }
 
-        return Ok(transactions);
+        return new CashTransactionDto
+        {
+            Id = tx.Id,
+            TransactionTimeLocal = TimeZoneInfo.ConvertTimeFromUtc(tx.TransactionTime, tz),
+            Description = description,
+            InvoiceNumber = tx.Sale?.InvoiceNumber,
+            AmountUsd = tx.AmountUsd,
+            AmountLocal = tx.AmountLocal,
+            ExchangeRate = tx.ExchangeRate,
+            Type = tx.Type,
+            Source = tx.Source,
+            IsPhysicalCash = tx.IsPhysicalCash,
+            PaymentMethodId = tx.PaymentMethodId
+        };
     }
 
     [RequireSecurityStampValidation]
