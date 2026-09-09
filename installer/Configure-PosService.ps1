@@ -496,5 +496,24 @@ if ($isStarted) {
     Log "ADVERTENCIA: El servicio '$ServiceName' no alcanzó el estado 'Running'. Revise: $LogDir\crash.log y $LogDir\db-errors.log" "WARN"
 }
 
+$healthOk = $false
+foreach ($baseUrl in @("http://localhost:5000/health", "https://localhost:5001/health")) {
+    try {
+        $resp = Invoke-RestMethod -Uri $baseUrl -TimeoutSec 10 -ErrorAction Stop
+        if ($resp.status -eq 'Healthy' -and $resp.database -eq 'Connected') {
+            Log "Health check OK: $baseUrl -> $($resp.status) / $($resp.database)" "SUCCESS"
+            $healthOk = $true
+            break
+        } else {
+            Log "Health check: $baseUrl -> status=$($resp.status), database=$($resp.database)" "WARN"
+        }
+    } catch {
+        Log "Health check no disponible en $baseUrl (el servicio puede estar aún arrancando): $($_.Exception.Message)" "WARN"
+    }
+}
+if (-not $healthOk) {
+    Log "AVISO: No se pudo confirmar la salud HTTP del servicio; revise los logs de arranque." "WARN"
+}
+
 Log "=== Configuración finalizada con éxito ==="
 exit 0
