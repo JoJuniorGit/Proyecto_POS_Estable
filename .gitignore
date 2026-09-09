@@ -423,3 +423,8 @@ build_output.txt
 desktop.ini
 Thumbs.db
 
+
+# Local build tooling / code-signing (no versionados; 8.54)
+tools/local/
+build.local.env
+*.code-signing.pfx

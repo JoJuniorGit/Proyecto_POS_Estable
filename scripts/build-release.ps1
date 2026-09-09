@@ -70,4 +70,30 @@ if ($leakedPfx) {
 }
 Write-Host "Verificacion de pfx OK: publish/ sin certs .pfx de desarrollo." -ForegroundColor Green
 
+$iscc = $env:ISCC_PATH
+if ($iscc -and (Test-Path $iscc)) {
+    $setupIss = Join-Path $rootDir "installer\setup.iss"
+    $installerOutput = Join-Path $rootDir "dist_installer"
+    New-Item -ItemType Directory -Path $installerOutput -Force | Out-Null
+    Write-Host "Compilando instalador con Inno Setup (ISCC)..." -ForegroundColor Cyan
+    & $iscc "/O$installerOutput" $setupIss
+    if ($LASTEXITCODE -ne 0) {
+        throw "iscc.exe fallo al compilar el instalador (codigo $LASTEXITCODE)."
+    }
+    $builtInstaller = Get-ChildItem $installerOutput -Filter *.exe | Select-Object -First 1
+    if ($builtInstaller -and $env:SIGNTOOL_PATH -and (Test-Path $env:SIGNTOOL_PATH) -and $env:CODE_SIGNING_PFX -and (Test-Path $env:CODE_SIGNING_PFX)) {
+        Write-Host "Firmando instalador: $($builtInstaller.Name)..." -ForegroundColor Cyan
+        & $env:SIGNTOOL_PATH sign /fd SHA256 /f $env:CODE_SIGNING_PFX /p $env:CODE_SIGNING_PASSWORD $builtInstaller.FullName
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "ADVERTENCIA: signtool fallo; el instalador queda sin firmar." -ForegroundColor Yellow
+        } else {
+            Write-Host "Instalador firmado correctamente." -ForegroundColor Green
+        }
+    } else {
+        Write-Host "Firma omitida: configure SIGNTOOL_PATH y CODE_SIGNING_PFX (opcional)." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "ISCC no configurado (env ISCC_PATH); se omite la compilacion del instalador." -ForegroundColor Yellow
+}
+
 Write-Host "=== Publicación Autónoma completada exitosamente ===" -ForegroundColor Green
