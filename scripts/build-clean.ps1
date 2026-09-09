@@ -24,7 +24,7 @@ foreach ($proc in $processes) {
 # 2. Breve espera para liberar handles de archivo
 Start-Sleep -Milliseconds 300
 
-$rootDir = $PSScriptRoot
+$rootDir = Split-Path -Path $PSScriptRoot -Parent
 $slnPath = Join-Path $rootDir "CommandCenter.slnx"
 $timestampFile = Join-Path $rootDir ".last-restore-timestamp"
 

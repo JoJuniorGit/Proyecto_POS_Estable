@@ -31,7 +31,7 @@ echo   Starting POS System
 echo ==========================================
 
 echo [1/3] Launching Backend API...
-start "Backend API" cmd /k "cd /d %~dp0 && set ASPNETCORE_ENVIRONMENT=Development&& dotnet run --project Backend.API\Backend.API.csproj"
+start "Backend API" cmd /k "cd /d %~dp0.. && set ASPNETCORE_ENVIRONMENT=Development&& dotnet run --project Backend.API\Backend.API.csproj"
 
 echo Waiting for API (polling localhost:%PORT%)...
 :wait
@@ -46,13 +46,13 @@ if %ERRORLEVEL% NEQ 0 (
 echo API is ready.
 
 echo [2/3] Launching Desktop Client...
-start "Desktop Client" cmd /k "cd /d %~dp0 && dotnet run --project Desktop.Client\Desktop.Client.csproj"
+start "Desktop Client" cmd /k "cd /d %~dp0.. && dotnet run --project Desktop.Client\Desktop.Client.csproj"
 
 echo Waiting 5 seconds for Desktop Client to compile...
 timeout /t 5 /nobreak >nul
 
 echo [3/3] Launching Web Frontend...
-start "Web Frontend" cmd /k "cd /d %~dp0\Web.Frontend && npm run dev"
+start "Web Frontend" cmd /k "cd /d %~dp0..\Web.Frontend && npm run dev"
 
 echo.
 echo ==========================================

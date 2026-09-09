@@ -17,6 +17,14 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.28.0  | 2026-09-09  | (8.62)       | REVISION 8.62 / Ordenamiento de la raiz: scripts
+|          |             |              | operativos movidos a scripts/ (start.bat, build-clean.ps1,
+|          |             |              | actualizar_servicio_y_sistema.bat, deshabilitar_) con
+|          |             |              | ajustes de ruta (%~dp0.. / $PSScriptRoot) y referencias
+|          |             |              | (tasks.json, App.xaml.cs GetCrashPath); limpieza de
+|          |             |              | artefactos regenerables/vacios. publish/ y dist_installer/
+|          |             |              | quedan en raiz (build-release + setup.iss dependen).
+|          |             |              | Build Release 0/0. Detalle: ANEXO 8.62.
 | v1.27.0  | 2026-09-09  | 69aa5d8      | REVISION 8.61 / F4: publicar binarios y compilar el
 |          |             | (8.61)       | instalador - fixes de setup.iss (AnsiString, forward,
 |          |             |              | JsonEsc) para compilar con ISCC 7; genera
@@ -670,8 +678,8 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.61 / F4: instalador compilado con
-  ISCC 7, .NET 769/769, build Release 0/0). Proxima revision obligatoria:
+  Ultima verificacion: 2026-09-09 (REVISION 8.62 / ordenamiento de la raiz,
+  Build Release 0/0; suites .NET previas 769/769). Proxima revision obligatoria:
   con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================

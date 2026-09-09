@@ -36,7 +36,7 @@ public partial class App : Application
             var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
             while (dir != null)
             {
-                if (File.Exists(Path.Combine(dir.FullName, "start.bat")) || File.Exists(Path.Combine(dir.FullName, "Start.bat")))
+                if (File.Exists(Path.Combine(dir.FullName, "start.bat")) || File.Exists(Path.Combine(dir.FullName, "Start.bat")) || File.Exists(Path.Combine(dir.FullName, "scripts", "start.bat")))
                 {
                     return Path.Combine(dir.FullName, "crash.txt");
                 }

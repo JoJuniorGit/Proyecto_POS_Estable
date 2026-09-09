@@ -4245,4 +4245,43 @@ D. ESTADO F4
 D1. Pendiente aun: smoke E2E del instalador en maquina limpia y firma X.509.
 
 FIN DEL ANEXO - REVISION 8.61
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.62 (ORDENAMIENTO DE LA RAIZ)
+===============================================================================
+Alcance: ordenar la raiz del repositorio moviendo scripts operativos a
+scripts/ y eliminando artefactos regenerables/o archivos vacios que saturaban
+la raiz. Validado con build Release 0/0.
+
+A. PLAN B: SCRIPTS OPERATIVOS A scripts/
+A1. Movidos con git mv: start.bat, build-clean.ps1, actualizar_servicio_y_sistema.bat
+    y deshabilitar_servicio_windows.bat -> scripts/.
+A2. Ajustes de rutas internas (las rutas relativas se referenciaban a la raiz
+    via %~dp0 / $PSScriptRoot):
+    - start.bat: los comandos ahora usan '%~dp0..'
+    - build-clean.ps1: $rootDir = Split-Path -Parent $PSScriptRoot
+    - actualizar_servicio_y_sistema.bat: 'cd /d "%~dp0.."'
+    - deshabilitar_servicio_windows.bat: autonomo, sin cambio funcional.
+A3. Referencias externas actualizadas: .vscode/tasks.json apunta a
+    scripts/build-clean.ps1; Desktop.Client/App.xaml.cs (GetCrashPath, deteccion
+    de entorno dev) reconoce tambien scripts\start.bat para el crash.log.
+
+B. PLAN A: LIMPIEZA DE ARTEFACTOS REGENERABLES/VACIOS
+B1. Eliminados de la raiz: build_output.txt (log obsoleto de otro proyecto),
+    crash.txt (regenerado por la app), .freebuff/ y .freebuff-test-out/
+    (salidas de la herramienta de test), .last-restore-timestamp (regenerado
+    por build-clean), Proyecto_Pos_Estable/ (carpeta vacia).
+B2. .env restaurado (config dev, gitignored) - no era candidato del plan A.
+
+C. QUEDAN EN RAIZ INTENCIONALMENTE
+C1. publish/ y dist_installer/: salidas regenerables que build-release.ps1
+    recrea en la raiz; installer/setup.iss referencia ..\publish\... y
+    OutputDir=..\dist_installer. Moverlas romperia el build del instalador.
+
+D. NOTA
+D1. docs/reportes-modulos/11-Reporte-Instalador-y-Scripts.txt ya asumia
+    scripts/actualizar_servicio_y_sistema.bat (correcto tras el movimiento).
+D2. Archivo ajeno sin trackear: docs/clear-products.ps1 (no se incluye).
+
+FIN DEL ANEXO - REVISION 8.62
 ================================================================================
