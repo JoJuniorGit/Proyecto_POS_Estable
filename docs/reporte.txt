@@ -3979,4 +3979,39 @@ D2. dotnet test CommandCenter.slnx -c Release: 757/757 superadas / 0 fallidas.
 D3. npm test: 80/80. Sin cambio de modelo persistente -> sin migracion EF.
 
 FIN DEL ANEXO - REVISION 8.50
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.51 (INTEGRACION DEL RECIBO EN LA UI DEL CAJERO)
+===============================================================================
+Alcance: integrar el recibo (factura digital NO fiscal) en la UI del cajero en
+el flujo de venta completada, y exponer la descarga del PDF on-demand.
+Verificacion: build Release 0w/0e; dotnet 759/759 (757 + 2 nuevos); web 80/80.
+
+A. ENDPOINT ON-DEMAND (complementa 8.50)
+A1. NUEVO Backend.API/Controllers/ReceiptsController.cs: GET /api/sales/
+    {saleId}/receipt [Authorize Admin,Manager,Cashier] - carga la venta
+    (AsNoTracking + AsSplitQuery + Include Items + Payments.PaymentMethod),
+    devuelve 404 si no existe, 400 (RFC 7807) si no tiene InvoiceNumber, y
+    File(PDF) generado on-demand por IReceiptDocumentRenderer.
+A2. Complementa la emision asincrona best-effort (8.50) con regeneracion SINCRONA
+    on-demand, de modo que la UI puede mostrar el recibo inmediatamente.
+
+B. CLIENTE WPF
+B1. ISalesService/SalesService (cliente): GetReceiptAsync(int saleId) -> byte[]
+    (404 -> null).
+B2. PosViewModel.Orders.cs: tras ShowSuccessDialog de la venta completada, si el
+    usuario confirma ("Desea abrir el recibo (PDF)?"), obtiene los bytes, los
+    guarda en %TEMP%\CommandCenterReceipts y los abre con Process.Start
+    (UseShellExecute). Captura el saleId ANTES de StartNewSaleAsync.
+
+C. REVISION REVIEWER (8.51): REVISAR sin bloqueantes. Aplicados [ESTILO]:
+    AsSplitQuery en la consulta, RFC 7807 via ApiProblemResults, usings sin uso
+    eliminados.
+
+D. VERIFICACION
+D1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+D2. dotnet test CommandCenter.slnx -c Release: 759/759 superadas / 0 fallidas.
+D3. Sin cambio de modelo persistente -> sin migracion EF.
+
+FIN DEL ANEXO - REVISION 8.51
 ================================================================================

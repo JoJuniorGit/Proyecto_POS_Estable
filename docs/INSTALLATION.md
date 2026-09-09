@@ -217,7 +217,11 @@ Cada venta completada emite un comprobante NO fiscal (recibo / nota de entrega) 
 - El renderer y la cola se registran en DI (`IReceiptDocumentRenderer` singleton, `IReceiptPrintQueue` singleton + hosted service).
 - La salida es **best-effort no durable**: si el servicio se reinicia entre el commit y el guardado, el recibo de esa venta no se re-emite (adecuado para comprobante NO fiscal; la venta ya queda persistida).
 
-Sin impresora física térmica integrada: el PDF queda en la carpeta `Receipts\` para imprimir/conservar. La integración de impresora térmica asíncrona es trabajo futuro sobre esta base.
+### Acceso desde la caja (8.51)
+
+En el flujo de **venta completada** (WPF), tras el modal de éxito, el cajero puede confirmar "¿Desea abrir el recibo (PDF)?" y la aplicación obtiene el PDF on-demand vía `GET /api/sales/{id}/receipt` (endpoint protegido Admin/Manager/Cashier), lo guarda en `%TEMP%\CommandCenterReceipts` y lo abre con el visor PDF del sistema. Este endpoint **regenera el PDF de forma síncrona** a partir del snapshot persistido de la venta (independiente de la emisión asíncrona de la carpeta `Receipts\`).
+
+Sin impresora física térmica integrada: el PDF se abre/conserva para imprimir. La integración de impresora térmica asíncrona es trabajo futuro sobre esta base.
 - **Actualizaciones automáticas del cliente:** el UpdaterService no se empaqueta en el instalador (8.20-M08); el rol se validará con firma X.509 (8U-N2).
 - **Multi-sucursal:** sin `BranchId` todavía (intención arquitectónica futura, no requisito del piloto; ver `coding-guidelines.md` §5).
 - **Certificado HTTPS autofirmado:** los clientes web/WPF verán una advertencia "no confiable" al primer acceso por host remoto; para evadirla, importar el `.cer` del puesto en el almacén raíz de confianza de cada caja (ver §6).
