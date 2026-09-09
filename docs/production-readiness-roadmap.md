@@ -17,6 +17,7 @@ el avance real de cada fase.
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F4   | Artefacto Release reproducido y verificado (0 pfx/0 secretos/sin appsettings.Development); matriz config + checklist por cliente en INSTALLATION 11/12 (8.43) | F4 avanzado; ISCC/firma pendiente |
 | 2026-09-09  | F3   | Inmutabilidad del historial vs PostgreSQL real (58ac014) | F3 avanzado; suites .NET 754/754 |
 | 2026-09-09  | F2   | N+1/H06 productos verificados sin accion; plan esquema/rollback en INSTALLATION seccion 10 (8.40) | F2: checklist parcial completo |
 | 2026-09-09  | F2   | H06: aislamiento Entidad->DTO en PaymentMethodsController (7035b96) | F2 EN CURSO; DTO parcial |
@@ -41,7 +42,7 @@ el avance real de cada fase.
 | F1   | Auditoria de deuda tecnica y seguridad   | EN CURSO | M1: cero P0 abiertos      | -            |
 | F2   | Refactorizacion critica y endurecimiento | EN CURSO | M2: revision arquitectonica aprobada | -       |
 | F3   | QA, concurrencia y pruebas de estres     | EN CURSO | M3: evidencia reproducible | -            |
-| F4   | Release engineering y despliegue         | PENDIENTE | M4: RC firmado y probado   | -            |
+| F4   | Release engineering y despliegue         | EN CURSO | M4: RC firmado y probado   | -            |
 | F5   | Observabilidad y operacion               | PENDIENTE | M5: soporte sin desarrollo | -            |
 | F6   | Piloto controlado                        | PENDIENTE | M6: aceptacion del cliente | -            |
 | FIN  | Certificacion Go/No-Go                   | PENDIENTE | Firmas RM/ARQ/CLI          | -            |
@@ -259,18 +260,18 @@ reproducible.
 
 ---
 
-## 7. FASE 4 - Release engineering y despliegue (PENDIENTE)
+## 7. FASE 4 - Release engineering y despliegue (EN CURSO)
 
 Hito M4: Release Candidate instalable, firmado, reproducible y probado en
 maquina limpia.
 
-- [ ] Rama de release congelada; artefacto unico desde CI.
-- [ ] Verificacion automatica: 0 secretos, 0 pfx dev, 0
-      appsettings.Development.json, hashes, dependencias aprobadas.
-- [ ] Compilacion ISCC real y prueba del instalador.
-- [ ] Firmado de instalador/binarios.
-- [ ] Checklist de instalacion por cliente; matriz config dev/QA/piloto/prod.
-- [ ] Procedimiento de migracion/rollback y upgrade sin perder secrets.json.
+- [x] Rama de release congelada; artefacto unico desde CI (V0.15, build-release.ps1).
+- [x] Verificacion automatica: 0 secretos, 0 pfx dev, 0
+      appsettings.Development.json, hashes, dependencias aprobadas (build-release.ps1 8.43).
+- [ ] Compilacion ISCC real y prueba del instalador (requiere ISCC).
+- [ ] Firmado de instalador/binarios (requiere cert de firma).
+- [x] Checklist de instalacion por cliente; matriz config dev/QA/piloto/prod (INSTALLATION 11/12, 8.43).
+- [x] Procedimiento de migracion/rollback y upgrade sin perder secrets.json (INSTALLATION 10, 8.40).
 
 ---
 

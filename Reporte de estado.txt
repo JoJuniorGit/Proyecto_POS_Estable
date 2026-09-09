@@ -17,6 +17,11 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.16.0  | 2026-09-09  | (8.43)       | REVISION 8.43 / Fase 4: artefacto Release reproducido y
+|          |             |              | verificado (0 pfx/0 secretos/sin appsettings.Development);
+|          |             |              | matriz de config por ambiente y checklist de instalacion
+|          |             |              | en INSTALLATION 11/12. Suites: .NET 754/754, web 80/80.
+|          |             |              | Detalle: ANEXO 8.43.
 | v1.15.0  | 2026-09-09  | 58ac014      | REVISION 8.42 / Fase 3: test de inmutabilidad del
 |          |             | (8.42)       | historial vs PostgreSQL real (snapshot de la venta
 |          |             |              | completada no se recalcula con tasa posterior, rules.md
@@ -607,9 +612,9 @@ Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.42 / Fase 3: inmutabilidad del
-  historial, .NET 754/754, build Release 0/0). Proxima revision obligatoria:
-  con cada PR que toque BD, API, perifericos o cierres deuda.
+  Ultima verificacion: 2026-09-09 (REVISION 8.43 / Fase 4: artefacto Release
+  reproducible, .NET 754/754, web 80/80, build Release 0/0). Proxima revision
+  obligatoria: con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================
 FIN DEL DOCUMENTO - REPORTE DE ESTADO v1.5.0

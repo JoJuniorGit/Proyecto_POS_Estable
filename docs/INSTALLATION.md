@@ -232,3 +232,38 @@ Precauciones: `--no-owner` evita errores si el rol del volcado difiere; detener 
 - **Si el esquema cambió y la migración es aditiva/no destructiva:** suele bastar con degradar los binarios; la base queda compatible hacia atrás.
 - **Si el esquema cambió y se necesita revertir datos:** restaurar el volcado previo (`pg_restore --clean --if-exists --no-owner`, ver §8.1) sobre la base, deteniendo antes el servicio, y arrancar la versión anterior.
 - Regla de integridad: el rollback nunca recalcula el historial de ventas; los snapshots (`AppliedRate`, `TotalUSD`, `TotalBsS`, `FinalPaidAmountBsS`) se restauran tal cual del volcado (ver `rules.md` §1).
+
+## 11. Matriz de configuración por ambiente (Fase 4, 8.43)
+
+| Parámetro | Desarrollo | QA | Piloto | Producción |
+|-----------|-----------|-----|--------|-----------|
+| `ASPNETCORE_ENVIRONMENT` | Development | Production | Production | Production |
+| `ConnectionStrings.DefaultConnection` | local dev | BD QA dedicada | BD del puesto | BD del puesto (secrets.json) |
+| `SystemSettings.AdminSeedPassword` | dev-only (appsettings.Development) | CSPRNG por sitio | CSPRNG por sitio | CSPRNG por sitio (secrets.json) |
+| `JwtSettings.Key` | clave dev (bloqueada en prod) | CSPRNG 512 bits | CSPRNG 512 bits | CSPRNG 512 bits (secrets.json) |
+| `Kestrel.Certificates.Default.Password` | - | por sitio | por sitio | por sitio (secrets.json) |
+| `SecuritySettings:RequireHttpsMetadata` | false | false (LAN) | false (LAN) | true si no es LAN aislada |
+| `BcvSettings:AutoSyncIntervalMinutes` | 120 | 120 | 120 (o 0 offline) | 120 (o 0 offline) |
+| `appsettings.Development.json` en publish | - | NO | NO | NO (excluido 8.29-A4) |
+
+## 12. Checklist de instalación por cliente (Fase 4, 8.43)
+
+Preparación del sitio (una sola vez):
+
+1. **PostgreSQL 16/18** instalado y arrancado como servicio; credencial `postgres` con privilegio `CREATEDB`.
+2. **Requisitos de red**: puertos 5000/5001 abiertos en firewall (subred local); decidir HTTP/HTTPS (DQ-006).
+3. **Instalar** el paquete del instalador (Inno Setup) y ejecutarlo como Administrador.
+4. **Formulario**: host/puerto/BD/usuario postgres + contraseña; usuario admin + nombre + contraseña (debe cumplir política); nombre del negocio.
+5. **Verificar** que `Configure-PosService.ps1` registró: servicio NSSM `Sistema POS Backend` (Virtual Account + ACL), reglas de firewall, `secrets.json` con ACL, certificado HTTPS por sitio y tarea de backup diaria 03:00.
+6. **Probar** `GET http://localhost:5000/health` y el smoke `MigratedSchema`.
+7. **Cajas**: importar el `.cer` del puesto en la raíz de confianza de cada caja (si usan HTTPS 5001).
+8. **Cambio obligatorio de contraseña** del admin en el primer login (MustChangePassword).
+
+Checklist de release (por versión):
+
+1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings / 0 errores.
+2. `dotnet test` (con `TEST_POSTGRES_CONNECTION`): suite completa verde (754).
+3. `npm run lint` y `npm test` (Web.Frontend): 0 / 80.
+4. `scripts/build-release.ps1`: publish con scrub OK (0 literales, 0 `*.pfx`, sin `appsettings.Development.json`).
+5. `dotnet ef migrations has-pending-model-changes` limpio en ambos contextos (si cambió el modelo).
+6. Backup del puesto previo al despliegue (ver §10.2).

@@ -3806,4 +3806,36 @@ D1. Avanzado: concurrencia 4 cajas (8.34), fallos Outbox e idempotencia (8.36),
     >= 8h, reinicio de BD/backend y restore real con RTO (requiere entorno).
 
 FIN DEL ANEXO - REVISION 8.42
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.43 (FASE 4: RELEASE ENGINEERING - ARTEFACTO Y MATRIZ)
+===============================================================================
+Alcance: Fase 4 del roadmap (release engineering y despliegue): reproducir y
+verificar el artefacto Release y documentar la matriz de configuracion y el
+checklist de instalacion. Verificacion: build Release 0w/0e; dotnet 754/754;
+web 80/80.
+
+A. ARTEFACTO RELEASE
+A1. scripts/build-release.ps1 ejecutado completo: scrubs OK (0 literales
+    conocidos en publish/) y verificacion OK (0 *.pfx). publish\BackendAPI solo
+    contiene appsettings.json, appsettings.Production.json y staticwebassets
+    (sin appsettings.Development.json, excluido por 8.29-A4).
+A2. Reproducibilidad: el bundle web (Backend.API/wwwroot) NO cambio respecto al
+    commit previo (mismos hashes de assets) -> el artefacto es estable y
+    reproducible (no se regeneran hashes sin cambios de fuente web).
+
+B. DOCUMENTACION (docs/INSTALLATION.md)
+B1. Seccion 11: matriz de configuracion por ambiente (Desarrollo/QA/Piloto/
+    Produccion) para ASPNETCORE_ENVIRONMENT, connection string, seed, JWT, cert,
+    RequireHttpsMetadata y BcvSettings.
+B2. Seccion 12: checklist de instalacion por cliente (preparacion del sitio y
+    checklist de release).
+
+C. ESTADO DE FASE 4
+C1. Completado: artefacto reproducible y verificado, matriz de config y
+    checklist de instalacion, procedimiento upgrade/rollback (INSTALLATION 10).
+C2. PENDIENTE (requiere entorno): compilacion ISCC real del instalador y
+    prueba en maquina limpia (R-001) y firmado de instalador/binarios (cert).
+
+FIN DEL ANEXO - REVISION 8.43
 ================================================================================
