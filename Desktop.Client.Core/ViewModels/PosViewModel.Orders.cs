@@ -178,8 +178,38 @@ public partial class PosViewModel
                 : $"¡Factura N° {realInvoice:D5} completada con éxito!";
 
             _dialogService?.ShowSuccessDialog(formattedMessage);
-            
+
+            var completedSaleId = Cart.CurrentSale?.Id;
+            if (completedSaleId.HasValue
+                && _dialogService?.ShowConfirm("Recibo de venta", "¿Desea abrir el recibo (PDF) de esta venta?") == true)
+            {
+                await OpenSaleReceiptAsync(completedSaleId.Value);
+            }
+
             StartNewSaleAsync().SafeFireAndForget("PosViewModel.Orders.PostCheckoutStartNewSale");
+        }
+    }
+
+    private async Task OpenSaleReceiptAsync(int saleId)
+    {
+        try
+        {
+            var bytes = await _salesService.GetReceiptAsync(saleId);
+            if (bytes == null || bytes.Length == 0)
+            {
+                _dialogService?.ShowWarning("Recibo", "El recibo aún no está disponible para esta venta.");
+                return;
+            }
+
+            var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "CommandCenterReceipts");
+            System.IO.Directory.CreateDirectory(dir);
+            var filePath = System.IO.Path.Combine(dir, $"Recibo_{saleId}_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
+            System.IO.File.WriteAllBytes(filePath, bytes);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(filePath) { UseShellExecute = true });
+        }
+        catch (System.Exception ex)
+        {
+            _dialogService?.ShowError("Recibo", $"No se pudo abrir el recibo: {ex.Message}");
         }
     }
 

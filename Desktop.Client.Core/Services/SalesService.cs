@@ -48,6 +48,17 @@ public class SalesService : ISalesService
         return sale;
     }
 
+    public async Task<byte[]?> GetReceiptAsync(int saleId)
+    {
+        var response = await _httpClient.GetAsync($"api/sales/{saleId}/receipt");
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsByteArrayAsync();
+    }
+
     public async Task<SaleDto> StartSaleAsync(int? cashierId = null)
     {
         string url = cashierId.HasValue ? $"api/sales/start?cashierId={cashierId.Value}" : "api/sales/start";

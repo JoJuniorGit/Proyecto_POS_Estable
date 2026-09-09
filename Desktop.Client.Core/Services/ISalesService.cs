@@ -113,6 +113,7 @@ public interface ISalesService
     Task<IEnumerable<PendingPickupClientDto>> GetPendingPickupsAsync();
     Task ConfirmPickupAsync(int saleId);
     Task UpdateSaleItemsAsync(int saleId, IEnumerable<UpdateSaleItemDto> items, decimal exchangeRate);
+    Task<byte[]?> GetReceiptAsync(int saleId);
 }
 
 /// <summary>DTO for updating an item quantity in a pending/OnHold sale.</summary>
