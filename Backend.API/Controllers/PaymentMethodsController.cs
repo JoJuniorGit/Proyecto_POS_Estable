@@ -22,14 +22,15 @@ public class PaymentMethodsController : ControllerBase
     public async Task<IActionResult> GetActiveMethods()
     {
         var methods = await _paymentService.GetActiveMethodsAsync();
-        return Ok(methods);
+        return Ok(methods.Select(ToDto));
     }
 
     [HttpGet]
     public async Task<IActionResult> GetAllMethods()
     {
         var methods = await _paymentService.GetAllAsync();
-        return Ok(methods);
+        var dtos = methods.Select(ToDto).ToList();
+        return Ok(dtos);
     }
 
     [HttpGet("{id}")]
@@ -38,7 +39,7 @@ public class PaymentMethodsController : ControllerBase
         try
         {
             var method = await _paymentService.GetByIdAsync(id);
-            return Ok(method);
+            return Ok(ToDto(method));
         }
         catch (KeyNotFoundException)
         {
@@ -68,7 +69,7 @@ public class PaymentMethodsController : ControllerBase
             };
 
             var created = await _paymentService.CreateAsync(method);
-            return CreatedAtAction(nameof(GetMethod), new { id = created.Id }, created);
+            return CreatedAtAction(nameof(GetMethod), new { id = created.Id }, ToDto(created));
         }
         catch (ArgumentException ex)
         {
@@ -102,7 +103,7 @@ public class PaymentMethodsController : ControllerBase
             };
 
             var updated = await _paymentService.UpdateAsync(method);
-            return Ok(updated);
+            return Ok(ToDto(updated));
         }
         catch (KeyNotFoundException ex)
         {
@@ -135,5 +136,20 @@ public class PaymentMethodsController : ControllerBase
         {
             return this.ApiConflict(ex.Message);
         }
+    }
+
+    private static PaymentMethodDto ToDto(PaymentMethod method)
+    {
+        return new PaymentMethodDto
+        {
+            Id = method.Id,
+            Name = method.Name,
+            IsActive = method.IsActive,
+            RequiresReference = method.RequiresReference,
+            IsCash = method.IsCash,
+            Currency = method.Currency,
+            DisplayOrder = method.DisplayOrder,
+            IsDeleted = method.IsDeleted
+        };
     }
 }
