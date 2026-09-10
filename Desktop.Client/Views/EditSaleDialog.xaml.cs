@@ -205,12 +205,14 @@ public partial class EditSaleDialog : Window
             return;
         }
 
+        ValidationMessageText.Visibility = Visibility.Collapsed;
+
         decimal newTotalUsd = _items.Sum(i => i.Subtotal);
         if (newTotalUsd < _sale.TotalPaidUSD - 0.05m)
         {
-            MessageBox.Show(
-                $"El nuevo total del pedido (${newTotalUsd:N2}) no puede ser menor al monto ya abonado por el cliente (${_sale.TotalPaidUSD:N2}).",
-                "Restricción del Pedido", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ValidationMessageText.Text =
+                $"El nuevo total del pedido (${newTotalUsd:N2}) no puede ser menor al monto ya abonado por el cliente (${_sale.TotalPaidUSD:N2}).";
+            ValidationMessageText.Visibility = Visibility.Visible;
             return;
         }
 

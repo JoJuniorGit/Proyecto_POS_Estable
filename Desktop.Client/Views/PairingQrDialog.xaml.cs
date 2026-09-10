@@ -22,7 +22,8 @@ public partial class PairingQrDialog : Window
             try
             {
                 Clipboard.SetText(textToCopy);
-                MessageBox.Show($"Copiado al portapapeles:\n{textToCopy}", "Copiado", MessageBoxButton.OK, MessageBoxImage.Information);
+                CopyStatusText.Text = "Enlace copiado al portapapeles.";
+                CopyStatusText.Visibility = Visibility.Visible;
             }
             catch { }
         };

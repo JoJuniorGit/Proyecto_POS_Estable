@@ -245,18 +245,21 @@
             </Border>
 
             <!-- 5. Botones de Acción -->
-            <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="BtnCancel" Content="Cancelar"
-                        Style="{DynamicResource MaterialDesignOutlinedButton}"
-                        Margin="0,0,12,0" Height="40" Padding="16,0" Click="BtnCancel_Click"/>
-                <Button x:Name="BtnSave"
-                        Style="{DynamicResource MaterialDesignRaisedButton}"
-                        Height="40" Padding="16,0" Click="BtnSave_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="ContentSave" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <TextBlock Text="Guardar Cambios" FontWeight="Bold" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
+            <StackPanel Grid.Row="4">
+                <TextBlock x:Name="ValidationMessageText" Foreground="#C0392B" FontWeight="SemiBold" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,0,0,10" HorizontalAlignment="Right" MaxWidth="560"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="BtnCancel" Content="Cancelar"
+                            Style="{DynamicResource MaterialDesignOutlinedButton}"
+                            Margin="0,0,12,0" Height="40" Padding="16,0" Click="BtnCancel_Click"/>
+                    <Button x:Name="BtnSave"
+                            Style="{DynamicResource MaterialDesignRaisedButton}"
+                            Height="40" Padding="16,0" Click="BtnSave_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="ContentSave" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="Guardar Cambios" FontWeight="Bold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
             </StackPanel>
         </Grid>
     </Border>
