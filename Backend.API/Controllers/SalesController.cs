@@ -33,6 +33,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpPost("start")]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult<SaleDto>> StartSale([FromQuery] int? cashierId = null)
     {
         int? effectiveCashierId = _currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid) 
