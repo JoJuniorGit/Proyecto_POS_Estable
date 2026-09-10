@@ -5144,3 +5144,66 @@ D. VIGENCIA DE DEUDA
      P6 (R13 UniformGrid sin virtualizar), P11-P17 (infra/decisión).
 
 FIN DEL ANEXO - REVISION 8.75
+
+=========================================================================
+ANEXO - REVISION 8.76 (P11-P17 INFRA/DECISION: DQ-007 B VPN WIREGUARD +
+ACTUALIZACION DE ESTADO DEL BLOQUE)
+=========================================================================
+Fecha: 2026-09-10. Bloque del plan general "infra/decisión" (P11-P17).
+No hay cambio de codigo: es REGISTRO DE DECISIONES + ACTUALIZACION DE
+ESTADO. El roadmap (production-readiness-roadmap.md) y el Reporte de
+estado se sincronizan con este ANEXO. DQ-007 se cierra con la opcion B
+(decision del RM 2026-09-10, confirmada por el usuario).
+
+A. P11-P17: MAPEO Y ESTADO TRAS ESTA REVISION
+   - [P11 R-001] Smoke E2E del instalador en maquina limpia (M1/M4):
+     PENDIENTE - BLOQUEADO POR ENTORNO. Requiere una VM Windows
+     desechable (Hyper-V Quick Create o VirtualBox) sin .NET ni
+     PostgreSQL para ejecutar ISCC + NSSM + servicio + tarea backup.
+     El scaffolding (build-release.ps1 con ISCC real, 8.61) existe.
+   - [P12 R-002/R-009] Restore PostgreSQL con RTO medido (M1/M3):
+     PENDIENTE - BLOQUEADO POR ENTORNO. Requiere instancia PostgreSQL
+     real + un volcado pg_dump -Fc. Procedimiento documentado en
+     INSTALLATION 8.1 (--clean --if-exists --no-owner) y runbook 13.5.
+     Se ejecutara en F3 con la BD del piloto (R-009).
+   - [P13 8U-N2] Firma X.509 de instalador/binarios (M4):
+     PENDIENTE - BLOQUEADO POR CERTIFICADO EXTERNO + TIMESTAMP.
+     Firmar con SignTool + timestamp RFC 3161 (ver 8.66). Riesgo
+     aceptado para el piloto (SmartScreen avisara una vez por PC);
+     habilita UpdaterService en produccion estable post-piloto.
+   - [P14 8.20-M08/R-007] UpdaterService no instalado:
+     DECISION MANTENIDA (ya registrada 5.3): permanece DESHABILITADO
+     hasta que exista firma X.509 (P13). No se incluye en el instalador.
+   - [P15 DQ-007] Topologia de supervision remota:
+     DECISION ABIERTA → CERRADA EN ESTA REVISION: opcion **B: HTTPS
+     real + VPN WireGuard**. A (puerto 443 directo) descartada por
+     superficie de ataque; B elegida sobre C (Cloudflare Tunnel) por:
+     control de acceso completo, sin dependencia de proveedor externo,
+     sin requerir salida a Internet del puesto, bajo overhead.
+     Requiere: levantar WireGuard en el puesto (tunel site-to-site o
+     peer fijo) y distribuir el .cer de la CA en las cajas remotas
+     (cierra R-003). RequireHttpsMetadata=true cuando aplique (DQ-006).
+   - [P16 Brecha 5/M5] Alertas de monitoreo:
+     DECISION MANTENIDA (ya registrada 12.4): script local
+     docs/monitor-health.ps1 consultando /health cada 5 min con
+     notificacion tras 3 fallos consecutivos + frescura del backup
+     (-DetailsUrl). Cero costo, sin dependencia cloud (endpoint publico
+     no aplica en LAN). Programar via Programador de tareas.
+   - [P17 Brecha 3/M3] Prueba de estres sostenida >= 8 h con 4
+     terminales: PENDIENTE - BLOQUEADO POR ENTORNO. Requiere operacion
+     real o simulada con BD del piloto; se incluye en F3/F6.
+
+B. IMPACTOS EN OTROS ARTEFACTOS
+   - production-readiness-roadmap.md: changelog + DQ-007 (B elegida) +
+     estado P11-P17.
+   - Reporte de estado.txt: changelog (v1.42.0).
+   - No hay migraciones, DTO, contratos de API ni codigo afectado.
+
+C. LO QUE QUEDA PENDIENTE DEL PLAN GENERAL (proximos)
+   - P2 (C3 unificacion 400/409 para InvalidOperationException) - diferida
+     por contrato con el cliente.
+   - P6 (R13 UniformGrid sin virtualizar) - mitigada por cap 200.
+   - P11/P12/P13/P17 - bloqueados por entorno (VM, instancia PostgreSQL,
+     certificado X.509, operacion real); requieren provision externa.
+
+FIN DEL ANEXO - REVISION 8.76

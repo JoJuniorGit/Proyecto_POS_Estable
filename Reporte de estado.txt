@@ -17,6 +17,14 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.42.0  | 2026-09-10  | (8.76)       | BLOQUE P11-P17 INFRA/DECISION: sin cambio de codigo.
+|          |             |              | DQ-007 cerrada con opcion B (HTTPS real + VPN WireGuard)
+|          |             |              | para supervision remota (A descartada, C en desventaja).
+|          |             |              | P14/R-007 Updater mantiene politica deshabilitado hasta
+|          |             |              | firma X.509 (P13); P16 monitoreo confirma plan local
+|          |             |              | monitor-health.ps1 (12.4); P11 (VM limpia), P12 (restore
+|          |             |              | RTO), P13 (certificado X.509) y P17 (estres >=8h) quedan
+|          |             |              | BLOQUEADOS por entorno. Roadmap v0.5.0 + ANEXO 8.76.
 | v1.41.0  | 2026-09-10  | (8.75)       | CIERRE P8-P10 backend menor: B07 SecurityStampValidator
 |          |             |              | (ResolveCacheWindow = StrictWindow 5s en modo estricto,
 |          |             |              | unica fuente de verdad read/write); B13 (LogStart de
@@ -716,6 +724,11 @@ Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
   del publish Release, restore documentado (INSTALLATION 8.1), crash logs del
   raiz eliminados (D1). Detalle: docs/reporte.txt ANEXO 8.30.
   * Web: W04 (retencion forense).
+  CERRADAS EN 8.72-8.76 (plan general): C4 God Objects (8.72), P3-P4 (8.73),
+  P5+P7 (8.74), P8-P10 (8.75), P11-P17 como BLOQUE INFRA/DECISION (8.76):
+  DQ-007 cerrada con B (VPN WireGuard); los items bloqueados por entorno
+  (P11 VM, P12 restore RTO, P13 certificado X.509, P17 estres) siguen
+  PENDIENTES; P14 (Updater) y P16 (monitoreo) mantienen politica documentada.
 
   REGLA: mover una incidencia de este bloque a "cerradas" SOLO cuando haya
   commit + tests verdes + entrada en changelog (seccion 5).

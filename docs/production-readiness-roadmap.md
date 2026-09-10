@@ -6,12 +6,12 @@ el avance real de cada fase. Es la capa ejecutiva/operativa del plan de
 certificacion; el detalle por revision vive en `docs/reporte.txt` (ANEXOS) y el
 estado tecnico en `Reporte de estado.txt`.
 
-- **Version documento:** 0.4.0 (Req.9 reinicio facil implementado 8.69)
-- **Fecha:** 2026-09-09
+- **Version documento:** 0.5.0 (P11-P17 infra/decision; DQ-007 B elegida 8.76)
+- **Fecha:** 2026-09-10
 - **Estado general:** Fases F0-F6 en curso; F0 avanza a M0 con confirmaciones del cliente
 - **Rama base:** V0.15
 - **Responsables:** Release Manager (RM) / Arquitecto (ARQ) / Cliente (CLI)
-- **Fuente de estado del sistema:** `Reporte de estado.txt` (v1.34.0) y `docs/reporte.txt` (ANEXOS)
+- **Fuente de estado del sistema:** `Reporte de estado.txt` (v1.42.0) y `docs/reporte.txt` (ANEXOS)
 
 ---
 
@@ -44,16 +44,18 @@ estado tecnico en `Reporte de estado.txt`.
 
 ### 1.2 Brechas criticas para produccion
 
-> Las 5 brechas bloquean la certificacion. Ninguna requiere desarrollo de
-> funcionalidades nuevas: todas son verificacion, pruebas operativas y configuracion.
+> Las brechas 1-5 requieren entorno operativo o decisiones; la unica decision
+> abierta del bloque infra (DQ-007 topologia remota) se cerro en 8.76 (B: VPN
+> WireGuard). Las demas permanecen bloqueadas por provision externa (VM,
+> instancia PostgreSQL real, certificado X.509, operacion del piloto).
 
-| # | Brecha | Esfuerzo estimado | Bloquea |
-|---|--------|-------------------|---------|
-| 1 | Instalador nunca probado E2E en maquina limpia | 1-2 dias | M1, M4 |
-| 2 | Restore de PostgreSQL nunca ejecutado con RTO medido | 1 dia | M1, M3 |
-| 3 | Prueba de estres sostenida (>= 8h, 4 terminales) sin ejecutar | 2-3 dias | M3 |
-| 4 | Firma de codigo del instalador/binarios pendiente | 1 dia (con cert) | M4 |
-| 5 | Alertas de monitoreo externo no configuradas | 1-2 dias | M5 |
+| # | Brecha | Esfuerzo estimado | Bloquea | Estado en 8.76 |
+|---|--------|-------------------|---------|----------------|
+| 1 | Instalador nunca probado E2E en maquina limpia | 1-2 dias | M1, M4 | PENDIENTE - requiere VM |
+| 2 | Restore de PostgreSQL nunca ejecutado con RTO medido | 1 dia | M1, M3 | PENDIENTE - requiere instancia real |
+| 3 | Prueba de estres sostenida (>= 8h, 4 terminales) sin ejecutar | 2-3 dias | M3 | PENDIENTE - requiere operacion real |
+| 4 | Firma de codigo del instalador/binarios pendiente | 1 dia (con cert) | M4 | PENDIENTE - requiere certificado (P13) |
+| 5 | Alertas de monitoreo externo no configuradas | 1-2 dias | M5 | PLAN DEFINIDO: monitor-health.ps1 local (12.4) |
 
 Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
@@ -77,6 +79,7 @@ Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-10  | F0/F1 | P11-P17 infra/decision: DQ-007 cierra con **B (HTTPS + VPN WireGuard)** para supervision remota; unica decision abierta del bloque resuelta. Updater mantiene R-007 deshabilitado; monitoreo confirma `monitor-health.ps1` (12.4); P11/P12/P13/P17 quedan BLOQUEADOS por entorno (VM, instancia PostgreSQL, certificado X.509, operacion real) | (8.76) Sin cambios de codigo; DQ-007 registrada B; roadmap v0.5.0 + ANEXO 8.76 |
 | 2026-09-10  | F2   | Req.9 reinicio facil implementado: endpoint admin + RestartPOS.bat + acceso directo instalador + boton WPF/Web (+ tests) | (8.69) Req.9 IMPLEMENTADO; suites .NET 776/776 + Web 81/81. Roadmap v0.4.0 + ANEXO 8.69 |
 | 2026-09-09  | F0   | Confirmaciones del cliente 4.5 (#1-6, #8, #9 cerradas; #7 03:00 + reinicio facil DQ-009); DQ-007 red + DQ-008 ventana; §12 respondidas; WPF=gestion definitiva | (8.68) Sin cambios de codigo; suites sin variacion. Roadmap v0.3.0 + ANEXO 8.68 |
 | 2026-09-09  | -    | PROPUESTA IMP-1..IMP-5: mejoras preventivas post-incidente (smoke migracion desde cero, paridad instalador/backend, backup config sitio, Defender en caja, migracion datos previos) | ANEXO 8.67; pendiente de aprobacion para editar |
@@ -163,7 +166,12 @@ contrato operativo del roadmap.
   (WireGuard/OpenVPN), (C) HTTPS real + tunel gestionado (Cloudflare Tunnel).
   Recomendacion ARQ: para el piloto LAN mantener HTTP+autofirmado ya instalado,
   habilitar supervision remota via B o C (sin abrir puertos directos). La opcion
-  A queda descartada por defecto por superficie de ataque.
+  A queda descartada por defecto por superficie de ataque. **CIERRE 2026-09-10
+  (8.76): opcion B elegida = HTTPS real + VPN WireGuard.** Control de acceso
+  completo, sin dependencia de proveedor externo, sin requerir salida a Internet
+  del puesto, bajo overhead. Requiere levantar WireGuard en el puesto (tunel
+  site-to-site o peer fijo) y distribuir el `.cer` de la CA en las cajas remotas
+  (cierra R-003); `RequireHttpsMetadata=true` cuando aplique (DQ-006).
 - **DQ-008 - Ventana de mantenimiento.** 03:00 cualquier dia es buen momento
   (respuesta cliente #7). Backup diario 03:00 confirmado.
 - **DQ-009 - Reinicio facil del sistema (Req.9, opcion C aprobada).** Implementar
@@ -199,11 +207,11 @@ cerrarse antes de la certificacion.
 |----|--------|---------|-------------------|--------|
 | R-001 | Instalador Inno Setup sin smoke E2E en maquina limpia | P1 | F1: ejecucion real ISCC + checklist | ABIERTO |
 | R-002 | Restore de PostgreSQL nunca ejecutado en entorno operativo | P1 | F1/F3: restore real + medicion RTO | ABIERTO |
-| R-003 | Certificado HTTPS autofirmado; advertencia en cajas remotas | P2 | Distribuir `.cer` en raiz de confianza o HTTPS real | ABIERTO |
-| R-004 | Puerto HTTP 5000 expuesto en LAN | P2 | Aceptar topologia LAN o forzar HTTPS (RequireHttpsMetadata) | ABIERTO |
+| R-003 | Certificado HTTPS autofirmado; advertencia en cajas remotas | P2 | Distribuir `.cer` en raiz de confianza o HTTPS real (via VPN WireGuard, DQ-007 B) | PARCIAL (plan definido; ejecucion en piloto) |
+| R-004 | Puerto HTTP 5000 expuesto en LAN | P2 | Aceptar topologia LAN o forzar HTTPS (RequireHttpsMetadata) | ABIERTO (aceptado en LAN; HTTPS remoto via WireGuard) |
 | R-005 | Tasa BCV: fail-open documentado ante tasa indisponible; plan offline manual | P1 | Confirmar politica offline con cliente; pruebas en F3 | PARCIAL (politica aceptada 8.68; prueba offline F3 pendiente) |
 | R-006 | Impresion de recibos/cierres no implementada (termica) | P2 | Confirmar expectativa del cliente (F1, DQ-003) | ABIERTO |
-| R-007 | UpdaterService sin firma X.509; no instalado | P3 | Mantener deshabilitado; roadmap tras piloto | ABIERTO |
+| R-007 | UpdaterService sin firma X.509; no instalado | P3 | Mantener deshabilitado; roadmap tras piloto | CERRADO-POLITICA (registrado 5.3; se mantiene deshabilitado hasta firma X.509, 8U-N2) |
 | R-008 | Operacion multi-sucursal sin `BranchId` | P3 | Intencion futura; fuera de alcance (coding-guidelines 5) | ABIERTO |
 | R-009 | Smoke de restauracion/migracion depende de BD real del cliente | P1 | Provisionar entorno QA con PostgreSQL dedicado en F1/F3 | ABIERTO |
 | R-010 | deuda WPF/CI/rendimiento (M01..M06, R09..R28, I01..I07...) | P2/P3 | Clasificada en F1 (mayoria post-produccion) | PARCIAL |
@@ -232,7 +240,7 @@ cerrada**: ventana confirmada (03:00, DQ-008) y reinicio facil registrado
 | 2 | Metodos de pago | Ya definidos e incorporados como seed | 4 metodos seed (Req.2) confirmados |
 | 3 | Impresion | Implementacion a medio plazo | No bloquea piloto (DQ-003); termica/fiscal futuro |
 | 4 | Operacion sin red | Opera sin conexion; tasa manual | Politica offline aceptada (R-005 cierra); prueba F3 pendiente |
-| 5 | Topologia | Ideal HTTPS para supervision remota | DQ-007: LAN en piloto + VPN/tunel para remoto |
+| 5 | Topologia | Ideal HTTPS para supervision remota | DQ-007: LAN en piloto + **VPN WireGuard (B)** para remoto; A descartada |
 | 6 | Regulatorio/fiscal | Sin requisitos fiscales | Cierra alcance fiscal |
 | 7 | Ventana/responsable | 03:00 cualquier dia | DQ-008; responsable por nombrar + reinicio facil (DQ-009) |
 | 8 | Piloto | 2 semanas, turnos 14h, sin caidas/duplicados/stock doble | Criterios 10.2 actualizados |
@@ -514,20 +522,24 @@ Cliente:          _________________________ Fecha: ___________
    PostgreSQL y la tarea de backup NO se pueden ejecutar en un contenedor Windows
    (no hay Service Control Manager). Para la certificacion completa se requiere
    una VM Windows desechable (Hyper-V Quick Create o VirtualBox). **Pendiente:
-   disponer una VM virgen.**
+   disponer una VM virgen.** (P11, sin cambio en 8.76.)
 3. **Certificado de firma X.509:** no prioridad por ahora; riesgos aceptados para
    el piloto (SmartScreen advertirá una vez por PC). Beneficios reales: confianza
    de SmartScreen/Defender en PCs nuevas, integridad/identidad del editor, habilita
    UpdaterService (hoy deshabilitado por 8.20-A03) y es requisito en clientes
-   corporativos. Habilitar en produccion estable post-piloto.
+   corporativos. Habilitar en produccion estable post-piloto. (P13, sin cambio en 8.76.)
 4. **Herramienta de monitoreo/alertas para el piloto:** se adopta el script
    PowerShell local (`docs/monitor-health.ps1`, consulta `/health` cada 5 min,
    notifica tras 3 fallos consecutivos). Es 0 costo y no depende de proveedor
-   cloud; UptimeRobot free requeriría endpoint publico (no aplica en LAN).
+   cloud; UptimeRobot free requeriría endpoint publico (no aplica en LAN). (P16,
+   decision mantenida en 8.76.)
 5. **Clasificacion de deuda WPF como post-produccion:** CONFIRMADO (8.68).
    La plataforma de ventas prioritaria es la WEB; el cliente WPF queda como
    herramienta de gestion. La optimizacion de la UI de escritorio se realizara
    en el futuro. La deuda WPF no bloquea el piloto.
+6. **Supervision remota del piloto (DQ-007):** cerrada en 8.76 con la opcion B
+   (HTTPS real + VPN WireGuard). Pendiente de provision: levantar el tunel
+   WireGuard en el puesto y distribuir el `.cer` de la CA en las cajas remotas.
 
 ---
 
