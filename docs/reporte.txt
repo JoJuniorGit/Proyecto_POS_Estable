@@ -4352,3 +4352,42 @@ C2. Build Release 0/0 previo sin cambios adicionales de .NET.
 
 FIN DEL ANEXO - REVISION 8.64
 ================================================================================
+===============================================================================
+ANEXO - REVISION 8.65 (MIGRACION: 42703 IsDeleted EN INSTALACION DESDE CERO)
+===============================================================================
+Alcance: corregir el error 42703 "no existe la columna IsDeleted" durante el
+arranque en instalaciones con base de datos nueva (MigrateAsync desde cero).
+
+A. SINTOMA
+A1. Backend aborta con Database.MigrateException: Npgsql.PostgresException 42703
+    "no existe la columna «IsDeleted»" POSITION 203, en DatabaseInitializer.cs:98.
+
+B. CAUSA RAIZ
+B1. La migracion 20260809232500_AddDisplayOrderToPaymentMethod.cs (Sales.Module,
+    del 09/08) ejecuta en su bloque SQL un WHERE "DisplayOrder" = 0 AND
+    "IsDeleted" = FALSE para el fallback de reordenamiento por Id.
+B2. La columna IsDeleted de PaymentMethods se crea UN MES DESPUES, en la migracion
+    20260905140000_AddIsDeletedAndUniqueNameToPaymentMethod (05/09).
+B3. En bases de datos legacy el defecto era invisible (la columna ya existia por
+    migraciones previas); en una instalacion desde cero EF aplica las migraciones
+    en orden cronologico y al llegar a la de 09/08 la columna aun no existe
+    -> 42703. El bloque de la migracion 05/09 que maneja DisplayOrder no aplica
+    por el orden (el guard de DisplayOrder en 05/09 es un respaldo, no la causa).
+
+C. SOLUCION
+C1. Se elimino el filtro redundante "AND ""IsDeleted"" = FALSE" del bloque ranked
+    de la migracion 09/08. El WHERE "DisplayOrder" = 0 es suficiente para el
+    proposito (reordenar por Id los metodos que sigan en 0); la columna IsDeleted
+    no existe en ese punto de la cadena.
+
+D. VERIFICACION
+D1. dotnet build Release 0/0.
+D2. Base nueva CommandCenterDb_migtest: dotnet ef database update sobre
+    SalesDbContext EXIT 0 aplicando todas las migraciones (incluidas las
+    historicas que antes fallaban).
+D3. Idem InventoryDbContext EXIT 0 (esquema completo).
+D4. information_schema confirma IsDeleted en PaymentMethods y Products.
+D5. Base de prueba eliminada tras la verificacion.
+
+FIN DEL ANEXO - REVISION 8.65
+================================================================================

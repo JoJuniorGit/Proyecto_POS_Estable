@@ -44,7 +44,7 @@ END $$;");
                 WITH ranked AS (
                     SELECT ""Id"", ROW_NUMBER() OVER (ORDER BY ""Id"") AS rn
                     FROM ""PaymentMethods""
-                    WHERE ""DisplayOrder"" = 0 AND ""IsDeleted"" = FALSE
+                    WHERE ""DisplayOrder"" = 0
                 )
                 UPDATE ""PaymentMethods"" p
                 SET ""DisplayOrder"" = r.rn

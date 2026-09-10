@@ -17,6 +17,12 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.31.0  | 2026-09-09  | (8.65)       | REVISION 8.65 / Fix migracion 42703 en instalacion desde
+|          |             |              | cero: migracion 20260809_AddDisplayOrderToPaymentMethod
+|          |             |              | referenciaba IsDeleted (creada un mes despues, 20260905);
+|          |             |              | eliminado el AND IsDeleted=FALSE del ranked. Verificado
+|          |             |              | MigrateAsync Sales e Inventory sobre BD nueva (EXIT 0).
+|          |             |              | Detalle: ANEXO 8.65.
 | v1.30.0  | 2026-09-09  | (8.64)       | REVISION 8.64 / Instalador: eliminado el icacls inline de
 |          |             |              | WriteProtectedSecretsFile (aviso 1332 por Exec+espacios
 |          |             |              | no mapea Administrators); el ACL de secrets.json lo aplica
