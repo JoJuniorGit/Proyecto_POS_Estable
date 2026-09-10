@@ -17,6 +17,15 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.35.0  | 2026-09-10  | (8.69)       | REVISION 8.69 / Req.9 reinicio facil IMPLEMENTADO (DQ-009
+|          |             |              | opcion C): endpoint admin POST /api/administration/restart
+|          |             |              | (Admin, RFC 7807, 202/403/409, idempotente con
+|          |             |              | ServiceRestartCoordinator nssm/sc.exe diferido); acceso
+|          |             |              | directo RestartPOS.bat autoelevado en Instalador
+|          |             |              | ([Files]+acceso directo escritorio/menu); boton
+|          |             |              | "Reiniciar Sistema" en Settings WPF y Web con
+|          |             |              | confirmacion. Suites .NET 776/776 + Web 81/81, build
+|          |             |              | 0/0. Roadmap v0.4.0; ANEXO 8.69.
 | v1.34.0  | 2026-09-09  | (8.68)       | REVISION 8.68 / Confirmaciones del cliente 4.5 (#1-6, #8,
 |          |             |              | #9 cerradas; #7 ventana 03:00 + reinicio facil Req.9 opcion
 |          |             |              | C DQ-009); decisiones DQ-007 topologia HTTPS (A descartada;
@@ -254,17 +263,20 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 Sistema POS multiplataforma (Venezuela, doble moneda USD / Bs.S) compuesto por:
 
-  Backend API   -> ASP.NET Core 10 (.NET 10.0.101, Kestrel). REST + SignalR.
-                   Servicio Windows PosBackendService (NSSM). Es el unico
-                   consumidor de PostgreSQL. Sirve tambien el build React
-                   (wwwroot) estaticamente para la LAN.
+Backend API   -> ASP.NET Core 10 (.NET 10.0.101, Kestrel). REST + SignalR.
+                    Servicio Windows PosBackendService (NSSM). Es el unico
+                    consumidor de PostgreSQL. Sirve tambien el build React
+                    (wwwroot) estaticamente para la LAN.
+                    Reinicio del servicio (Req.9, 8.69): POST /api/administration
+                    /restart (Admin) programa reinicio diferido via nssm/sc.exe,
+                    o RestartPOS.bat autoelevado desplegado por el instalador.
   Web Frontend  -> React 19 + Vite 8 (cliente cajas/tablet, touch-first).
   Desktop       -> WPF .NET 10 (Desktop.Client) + Desktop.Client.Core (MVVM,
                    CommunityToolkit.Mvvm 8.4, MaterialDesignThemes 5.3).
   Core          -> Libreria compartida sin dependencias (entidades, DTOs,
                    interfaces, eventos MediatR, helpers, logging).
-  Tests         -> CommandCenter.Tests (xUnit + Moq + coverlet + WebApplication
-                   Factory). Suites Web aparte (node:test, 80/80).
+Tests         -> CommandCenter.Tests (xUnit + Moq + coverlet + WebApplication
+                    Factory). Suites Web aparte (node:test, 81/81).
   UpdaterService-> Auto-update del cliente WPF. Publicado pero NO integrado al
                    instalador (deuda activa 8.20-M08).
   Logistics     -> Modulo experimental NO productivo: DeliveryService con estado

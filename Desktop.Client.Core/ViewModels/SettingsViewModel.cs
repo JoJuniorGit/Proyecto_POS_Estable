@@ -471,30 +471,6 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void UpdateConnectionStatusDisplay(ConnectionStatus status)
-    {
-        switch (status)
-        {
-            case ConnectionStatus.Connected:
-                ConnectionStatusText = "Conectado";
-                ConnectionStatusColor = "#27AE60"; // Verde esmeralda
-                break;
-            case ConnectionStatus.Connecting:
-                ConnectionStatusText = "Conectando...";
-                ConnectionStatusColor = "#F39C12"; // Ámbar
-                break;
-            case ConnectionStatus.Scanning:
-                ConnectionStatusText = "Buscando servidor...";
-                ConnectionStatusColor = "#F39C12"; // Ámbar
-                break;
-            case ConnectionStatus.Disconnected:
-            default:
-                ConnectionStatusText = "Desconectado";
-                ConnectionStatusColor = "#E74C3C"; // Rojo coral
-                break;
-        }
-    }
-
     public void Dispose()
     {
         Dispose(true);

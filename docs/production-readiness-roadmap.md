@@ -6,7 +6,7 @@ el avance real de cada fase. Es la capa ejecutiva/operativa del plan de
 certificacion; el detalle por revision vive en `docs/reporte.txt` (ANEXOS) y el
 estado tecnico en `Reporte de estado.txt`.
 
-- **Version documento:** 0.3.0 (respuestas del cliente 4.5 + DQ-007/008/009 + WPF=gestion)
+- **Version documento:** 0.4.0 (Req.9 reinicio facil implementado 8.69)
 - **Fecha:** 2026-09-09
 - **Estado general:** Fases F0-F6 en curso; F0 avanza a M0 con confirmaciones del cliente
 - **Rama base:** V0.15
@@ -77,6 +77,7 @@ Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-10  | F2   | Req.9 reinicio facil implementado: endpoint admin + RestartPOS.bat + acceso directo instalador + boton WPF/Web (+ tests) | (8.69) Req.9 IMPLEMENTADO; suites .NET 776/776 + Web 81/81. Roadmap v0.4.0 + ANEXO 8.69 |
 | 2026-09-09  | F0   | Confirmaciones del cliente 4.5 (#1-6, #8, #9 cerradas; #7 03:00 + reinicio facil DQ-009); DQ-007 red + DQ-008 ventana; §12 respondidas; WPF=gestion definitiva | (8.68) Sin cambios de codigo; suites sin variacion. Roadmap v0.3.0 + ANEXO 8.68 |
 | 2026-09-09  | -    | PROPUESTA IMP-1..IMP-5: mejoras preventivas post-incidente (smoke migracion desde cero, paridad instalador/backend, backup config sitio, Defender en caja, migracion datos previos) | ANEXO 8.67; pendiente de aprobacion para editar |
 | 2026-09-09  | F5   | Health check de frescura del ultimo backup (8.59) | Suites .NET 769/769 |
@@ -170,6 +171,9 @@ contrato operativo del roadmap.
   `RestartPOS.bat` en escritorio que reinicia el servicio NSSM, y (B) boton
   "Reiniciar sistema" en UI de gestion (WPF/Web) que invoca el endpoint de
   servicio. Requiere aprobacion RM por ser funcionalidad nueva (excepcion DQ-001).
+  **IMPLEMENTADO en 8.69: endpoint `POST /api/administration/restart` (Admin only,
+  RFC 7807, 202/403/409), acceso directo del instalador `RestartPOS.bat`
+  autoelevado (nssm/sc.exe), boton en Settings (WPF + Web).**
 
 ### 4.3 SLOs y objetivos de recuperacion (propuesta a validar)
 
@@ -252,7 +256,7 @@ cerrada**: ventana confirmada (03:00, DQ-008) y reinicio facil registrado
 | Req.3 | Facturacion digital | Recibo/nota de entrega NO fiscal PDF asincrono + endpoint on-demand + UI de cajero | Aprobado | F2 | IMPLEMENTADO (8.51); impresora termica futura |
 | Req.4 | Garantia de confiabilidad (QA) | Pruebas de estres y manejo de fallos antes de produccion | Aprobado | F3 | PARCIAL (8.36 fallos/idempotencia); estres end-to-end pendiente |
 | Req.5-8 | Resto del plan | Puntos 5, 6, 7 y 8 del plan general aprobados sin modificaciones | APROBADOS | segun fase | ABIERTO |
-| Req.9 | Reinicio facil del sistema | Doble via para recuperacion sin capacitacion: (A) acceso directo `RestartPOS.bat` que reinicia el servicio NSSM, y (B) boton "Reiniciar sistema" en UI de gestion (WPF/Web). Opcion C aprobada | APROBADO (8.68, DQ-009) | F2 | PENDIENTE DE IMPLEMENTAR; requiere aprobacion RM (excepcion DQ-001) |
+| Req.9 | Reinicio facil del sistema | Doble via para recuperacion sin capacitacion: (A) acceso directo `RestartPOS.bat` que reinicia el servicio NSSM, y (B) boton "Reiniciar sistema" en UI de gestion (WPF/Web). Opcion C aprobada | APROBADO (8.68, DQ-009) | F2 | IMPLEMENTADO (8.69) |
 
 ---
 

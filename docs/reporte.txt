@@ -4523,3 +4523,77 @@ E1. El roadmap se edito directamente (seccion 4.1, 4.2, 4.3, 4.5, 4.5.1, 4.7,
 
 FIN DEL ANEXO - REVISION 8.68
 ================================================================================
+
+===============================================================================
+ANEXO - REVISION 8.69 (REQ.9 REINICIO FACIL IMPLEMENTADO - DQ-009 OPCION C)
+===============================================================================
+Alcance: implementacion completa del Req.9 (reinicio facil del sistema) segun
+decision DQ-009 opcion C aprobada en 8.68: doble via de recuperacion.
+
+A. FUNCIONALIDAD NUEVA (excepcion DQ-001, aprobada 8.68)
+A1. Endpoint POST /api/administration/restart (AdministrationController).
+    - Autorizacion: [Authorize(Roles="Admin")] + CanMutateSettings (mismo
+      patron dual de SettingsController). Cajero -> 403 RFC 7807.
+    - Idempotencia: IServiceRestartCoordinator singleton con Interlocked;
+      segunda peticion mientras hay reinicio pendiente -> 409 RFC 7807
+      ("Ya hay un reinicio del sistema en curso").
+    - Respuesta 202 Accepted inmediata { status: restarting } SIN esperar el
+      reinicio real (el cliente recibe la confirmacion antes del corte).
+    - ServiceRestartCoordinator difiere ~2s, luego ejecuta nssm restart
+      PosBackendService (nssm.exe junto al binario); fallback sc.exe
+      stop/start si no existe nssm. Se ignora el proceso de reinicio para no
+      romper la respuesta HTTP ya enviada.
+    - Seam de pruebas RunDeferredRestart() virtual para no ejecutar sc.exe/
+      nssm.exe contra el servicio real en tests.
+A2. RestartPOS.bat (instalador) autoelevado.
+    - Deteccion de elevacion via "net session"; si no es admin, re-invoca con
+      PowerShell Start-Process -Verb RunAs (UAC).
+    - Usa nssm.exe relativo a la instalacion (%~dp0BackendAPI\nssm.exe);
+      fallback sc.exe stop/start del servicio PosBackendService.
+    - Mensaje en pantalla y espera (timeout 6s) para cerrar consola.
+A3. setup.iss: se empaqueta RestartPOS.bat en {app} ([Files]) y se crean
+    accesos directos [Icons]: Inicio+Escritorio "Reiniciar Sistema POS"
+    (escritorio ligado a la tarea desktopicon como el acceso al cliente).
+A4. UI WPF (SettingsView): nueva seccion "Reiniciar Sistema" (Grid.Row 4;
+    metodos de pago pasan a Row 5) con boton solo Admin, confirmacion
+    IDialogService.ShowConfirm, indicador de progreso IsRestarting y
+    retroalimentacion ShowInfo/ShowError. SettingsViewModel.RestartSystemAsync
+    + ISettingsService.RestartSystemAsync (POST sin body).
+A5. UI Web (SettingsPage): nueva tarjeta "Reiniciar Sistema" con boton,
+    ConfirmModal (variant primary, icono Power), spinner mientras reinicia y
+    alerta success/danger con mensajes RFC 7807.
+
+B. PRUEBAS AGREGADAS
+B1. AdministrationControllerTests (4): 202 admin, 403 cajero (sin llamar al
+    coordinador), 409 con reinicio ya pendiente, idempotencia del coordinador
+    real con NoOpRestartCoordinator (seal de pruebas).
+B2. SystemRestartTests (3): confirmado llama a RestartSystemAsync + ShowInfo;
+    no confirmado no llama; fallo del servicio muestra ShowError.
+B3. Web (api.test.js, +1): api.post('/api/administration/restart') -> POST sin
+    body, 202, header X-Client-Platform Web.
+
+C. VERIFICACION
+C1. build CommandCenter.slnx -c Release: 0 errores / 0 advertencias.
+C2. Suites .NET 776/776 (769 + 7 nuevas) y Web 81/81; oxlint 0 warnings.
+C3. publish/ regenerado (build-release.ps1): BackendAPI 116 / DesktopClient 11 /
+    UpdaterService 2 archivos; scrub secretos y pfx OK; ISCC omitido (el
+    usuario compila el instalador). RestartPOS.bat se toma del folder
+    installer\ (no requiere publish).
+
+D. DOCUMENTACION
+D1. Roadmap v0.4.0: changelog 2026-09-10, DQ-009 marcado IMPLEMENTADO,
+    Req.9 IMPLEMENTADO (8.69).
+D2. Reporte de estado v1.35.0: changelog + seccion 1.1 (endpoint de reinicio)
+    + suites web 81/81.
+D3. La rama quedo lista para recompilar el instalador con ISCC.
+
+E. RISK/COMENTARIOS
+E1. El endpoint reinicia el servicio via orquestador Singleton en memoria:
+    reinicios simultaneos entre cajas se serializan correctamente.
+E2. En produccion el servicio corre como LocalSystem bajo NSSM, por lo que
+    puede reiniciarse a si mismo sin elevacion adicional.
+E3. Si el servicio se ejecuta fuera de NSSM (dev), el reinicio falla silencioso
+    (catch en ExecuteRestart); la respuesta 202 se mantiene honesta porque la
+    operacion es asincrona por diseno.
+
+FIN DEL ANEXO - REVISION 8.69

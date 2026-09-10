@@ -20,6 +20,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -247,8 +248,53 @@
                 </StackPanel>
             </Border>
 
-            <!-- SECCIÓN 4: ADMINISTRACIÓN DE MÉTODOS DE PAGO -->
+            <!-- SECCIÓN 4: GESTIÓN DEL SISTEMA / REINICIO -->
             <Border Grid.Row="4" Background="{DynamicResource MaterialDesignPaper}" 
+                    BorderBrush="{DynamicResource MaterialDesignDivider}" 
+                    BorderThickness="1" 
+                    CornerRadius="10" 
+                    Padding="20" 
+                    Margin="0,0,0,20">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,20,0">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
+                            <materialDesign:PackIcon Kind="Restart" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <TextBlock Text="Reiniciar Sistema" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Text="Reinicia el servicio del sistema POS cuando presente lentitud o comportamiento anómalo. Las ventas y la configuración se conservan; la caja se restablece en segundos."
+                                   TextWrapping="Wrap" Foreground="{DynamicResource MaterialDesignBodyLight}" FontSize="12" Margin="34,0,0,0"/>
+                    </StackPanel>
+
+                    <Button Grid.Column="1"
+                            Command="{Binding RestartSystemCommand}"
+                            IsEnabled="{Binding UserSession.CanMutateSettings}"
+                            Style="{DynamicResource MaterialDesignRaisedButton}"
+                            Height="42"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Padding="14,0"
+                            Foreground="White"
+                            ToolTip="Reiniciar el servicio del sistema POS">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}"
+                                         Value="0" IsIndeterminate="True"
+                                         Width="18" Height="18" Margin="0,0,8,0"
+                                         Visibility="{Binding IsRestarting, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                            <materialDesign:PackIcon Kind="Restart" Width="18" Height="18" Margin="0,0,6,0" VerticalAlignment="Center"
+                                                     Visibility="{Binding IsRestarting, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+                            <TextBlock Text="Reiniciar Sistema" FontWeight="Bold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- SECCIÓN 5: ADMINISTRACIÓN DE MÉTODOS DE PAGO -->
+            <Border Grid.Row="5" Background="{DynamicResource MaterialDesignPaper}" 
                     BorderBrush="{DynamicResource MaterialDesignDivider}" 
                     BorderThickness="1" 
                     CornerRadius="10" 

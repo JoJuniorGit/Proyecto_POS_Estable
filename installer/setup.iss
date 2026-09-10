@@ -46,6 +46,8 @@ Source: "Configure-PosService.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 ; 8.27-A02/A4: scripts de operación desplegados al puesto: certificado HTTPS por sitio y backup PostgreSQL
 Source: "..\scripts\create-https-cert.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "..\scripts\backup-postgres.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
+; 8.69-A1: reinicio fácil del servicio (Req.9, DQ-009 opción C); detecta nssm.exe relativo a la instalación
+Source: "RestartPOS.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 
 [Dirs]
@@ -54,6 +56,8 @@ Name: "{commonappdata}\Registro de cierres"; Permissions: users-modify
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\DesktopClient\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\DesktopClient\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}\Reiniciar Sistema POS"; Filename: "{app}\RestartPOS.bat"; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"
+Name: "{autodesktop}\Reiniciar Sistema POS"; Filename: "{app}\RestartPOS.bat"; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 ; El registro/actualización del servicio y la regla de firewall se gestionan en [Code] (ssPostInstall):

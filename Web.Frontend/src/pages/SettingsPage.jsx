@@ -7,7 +7,7 @@ import {
   deletePaymentMethod 
 } from '../services/paymentApi';
 import { BrowserQRCodeSvgWriter } from '@zxing/library';
-import { Settings, CreditCard, Plus, Loader2, Check, QrCode, Server, Wifi, Copy, RefreshCw, Trash2, DollarSign } from 'lucide-react';
+import { Settings, CreditCard, Plus, Loader2, Check, QrCode, Server, Wifi, Copy, RefreshCw, Trash2, DollarSign, Power } from 'lucide-react';
 import { useCurrencyFormat } from '../context/CurrencyFormatContext';
 import { copyTextToClipboard } from '../utils/clipboard';
 import ConfirmModal from '../components/ui/ConfirmModal';
@@ -47,6 +47,8 @@ export default function SettingsPage() {
   const [newMethodRequiresRef, setNewMethodRequiresRef] = useState(false);
   const [message, setMessage] = useState(null);
   const [methodToDelete, setMethodToDelete] = useState(null);
+  const [restarting, setRestarting] = useState(false);
+  const [restartModalOpen, setRestartModalOpen] = useState(false);
 
   const handleFormatChange = async (newFmt) => {
     try {
@@ -199,6 +201,26 @@ export default function SettingsPage() {
       console.error('[SettingsPage] Error eliminando método:', err);
       setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al eliminar método de pago.' });
       loadMethods();
+    }
+  };
+
+  const handleRestartSystem = async () => {
+    setRestartModalOpen(false);
+    setRestarting(true);
+    try {
+      await api.post('/api/administration/restart');
+      setMessage({
+        type: 'success',
+        text: 'Reinicio del servicio iniciado. La conexión se restablecerá en unos segundos.',
+      });
+    } catch (err) {
+      console.error('[SettingsPage] Error reiniciando sistema:', err);
+      setMessage({
+        type: 'danger',
+        text: err?.response?.data?.message || err?.message || 'Error al reiniciar el sistema. El servicio podría ya estar reiniciando.',
+      });
+    } finally {
+      setRestarting(false);
     }
   };
 
@@ -462,6 +484,33 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* ── SECCIÓN 3: REINICIO DEL SISTEMA ── */}
+      <div className="card mb-4 p-3 sm:p-4">
+        <div className="flex-between flex-align-center flex-wrap gap-3">
+          <div className="flex-1 min-w-0">
+            <h3 className="card-title flex-align-center gap-2 text-base font-bold mb-2">
+              <Power size={20} className="color-primary flex-shrink-0" />
+              <span>Reiniciar Sistema</span>
+            </h3>
+            <p className="text-muted text-xs sm:text-sm mb-0 set-restart-hint">
+              Reinicie el servicio del sistema POS cuando presente lentitud o comportamiento anómalo.
+              Las ventas y la configuración se conservan; la caja se restablece en segundos.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary flex-align-center gap-1 text-sm flex-shrink-0"
+            onClick={() => setRestartModalOpen(true)}
+            disabled={restarting}
+            title="Reiniciar el servicio del sistema POS"
+            aria-label="Reiniciar el servicio del sistema POS"
+          >
+            {restarting ? <Loader2 size={16} className="animate-spin" /> : <Power size={16} />}
+            <span>{restarting ? 'Reiniciando...' : 'Reiniciar Sistema'}</span>
+          </button>
+        </div>
+      </div>
+
       {/* Métodos de Pago */}
       <div className="card mb-4 p-3 sm:p-4">
         <h3 className="card-title mb-3 flex-align-center gap-2 text-base font-bold">
@@ -672,6 +721,18 @@ export default function SettingsPage() {
         confirmText="Eliminar Método"
         cancelText="Cancelar"
         variant="danger"
+      />
+
+      <ConfirmModal
+        isOpen={restartModalOpen}
+        onClose={() => setRestartModalOpen(false)}
+        onConfirm={handleRestartSystem}
+        title="¿Reiniciar el sistema POS?"
+        message="El servicio se reiniciará durante unos segundos. Ninguna venta ni configuración se perderá, pero las operaciones en curso se interrumpirán brevemente."
+        confirmText="Reiniciar Sistema"
+        cancelText="Cancelar"
+        variant="primary"
+        icon={<Power size={20} />}
       />
     </div>
   );

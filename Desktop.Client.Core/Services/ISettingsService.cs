@@ -10,4 +10,5 @@ public interface ISettingsService
     Task SetCurrencyFormatAsync(string format);
     Task<bool> GetAllowNegativeStockAsync();
     Task SetAllowNegativeStockAsync(bool allowed);
+    Task RestartSystemAsync();
 }

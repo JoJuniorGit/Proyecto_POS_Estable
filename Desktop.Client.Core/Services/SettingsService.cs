@@ -71,6 +71,12 @@ public class SettingsService : ISettingsService
         await _httpClient.PutAsJsonAsync("api/settings/allow-negative-stock", request);
     }
 
+    public async Task RestartSystemAsync()
+    {
+        using var response = await _httpClient.PostAsync("api/administration/restart", null);
+        response.EnsureSuccessStatusCode();
+    }
+
     private class TimeZoneResponse
     {
         public string Id { get; set; } = string.Empty;

@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { resolveBaseUrl, setCustomBaseUrl, apiFetch } from './api.js';
+import { resolveBaseUrl, setCustomBaseUrl, apiFetch, api } from './api.js';
 
 describe('api.js resolveBaseUrl & setCustomBaseUrl', () => {
   let originalWindow;
@@ -262,6 +262,31 @@ describe('apiFetch ProblemDetails and validation error extraction', () => {
     assert.strictEqual(capturedConfig.headers['Content-Type'], 'application/json');
     assert.strictEqual(capturedConfig.headers['Accept'], 'application/json');
     assert.strictEqual(capturedConfig.headers['Idempotency-Key'], 'test-uuid-123');
+    assert.strictEqual(capturedConfig.headers['X-Client-Platform'], 'Web');
+  });
+
+  it('7. api.post restarts the POS service via /api/administration/restart', async () => {
+    let capturedUrl = null;
+    let capturedConfig = null;
+    originalFetch = global.fetch;
+    global.fetch = async (url, config) => {
+      capturedUrl = url;
+      capturedConfig = config;
+      return {
+        ok: true,
+        status: 202,
+        headers: { get: () => 'application/json' },
+        text: async () => JSON.stringify({ status: 'restarting' }),
+        json: async () => ({ status: 'restarting' })
+      };
+    };
+
+    const result = await api.post('/api/administration/restart');
+
+    assert.ok(capturedUrl.endsWith('/api/administration/restart'));
+    assert.strictEqual(capturedConfig.method, 'POST');
+    assert.strictEqual(capturedConfig.body, undefined);
+    assert.strictEqual(result.status, 'restarting');
     assert.strictEqual(capturedConfig.headers['X-Client-Platform'], 'Web');
   });
 });

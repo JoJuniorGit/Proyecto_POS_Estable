@@ -43,6 +43,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
         builder.Services.AddScoped<ITokenService, TokenService>();
         builder.Services.AddScoped<ISecurityStampValidator, SecurityStampValidator>();
+        builder.Services.AddSingleton<IServiceRestartCoordinator, ServiceRestartCoordinator>();
         var customPasswordBlacklist = builder.Configuration.GetSection("SecuritySettings:PasswordBlacklist").Get<string[]>();
         builder.Services.AddSingleton<Core.Interfaces.IPasswordPolicyService>(new Core.Services.PasswordPolicyService(customPasswordBlacklist));
         builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
