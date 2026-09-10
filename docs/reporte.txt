@@ -4990,3 +4990,54 @@ C. DEUDA ESTRUCTURAL VIGENTE (no tocada en esta revision)
    - P1 del plan general (C4 frontend/Desktop/tests) queda RESUELTO.
 
 FIN DEL ANEXO - REVISION 8.72
+
+=======================================================================
+ANEXO - REVISION 8.73 (CIERRE P3 8.16-H06 + P4 8.16-H16)
+=======================================================================
+Fecha: 2026-09-10. Suites al cierre: .NET 790/790, build Release 0/0.
+Cierra dos pendientes del plan general: P3 (H06 proyeccion a DTO) y
+P4 (H16 advisory lock en reintentos). Commit 02741ce.
+
+A. P3 / 8.16-H06 (aislamiento entidad->DTO)
+   - [GetAllProductsAsync] ELIMINADO: era codigo muerto (cero llamadores,
+     verificado por grep global incluyendo tests; solo referencias
+     documentales). Se quito de IInventoryService e InventoryService.
+     El catalogo usa GetProductsPagedAsync -> DTO paginado.
+   - [CashDrawer.GetHistoryAsync] PROYECCION: se reemplazo
+     `.Include(t => t.Sale)` (materializaba la entidad Sale COMPLETA) por
+     `.Select(...)` que materializa CashTransaction + navegacion Sale con
+     SOLO Id e InvoiceNumber. Sin cambio de firma ni contrato
+     (Task<List<CashTransaction>>) -> no se rompen mocks. El controller
+     ToDto usa `tx.Sale?.InvoiceNumber` (funciona igual). AsNoTracking
+     conservado; traduccion SQL = LEFT JOIN estandar.
+   - Test nuevo: GetHistoryAsync_ProjectsInvoiceNumberFromSale_
+     WithoutLoadingFullSaleEntity (verifica InvoiceNumber proyectado).
+   - Reviewer APROBADO (movimiento correcto, integridad financiera intacta).
+
+B. P4 / 8.16-H16 (advisory lock frágil en reintentos)
+   - Raiz: `RecordSaleChangeAsync` adquiria `pg_advisory_xact_lock` sin
+     garantizar transaccion ambiente. En PostgreSQL, un xact_lock en
+     autocommit se libera al terminar la instruccion -> el lock NO protege
+     nada si se invoca standalone.
+   - Fix: fail-fast. Si no es InMemory y NO hay transaccion ambiente
+     (CurrentTransaction == null), lanza InvalidOperationException exigiendo
+     la transaccion compartida del cobro. El flujo real (CompleteSaleAsync
+     -> RecordSaleChangeAsync) SIEMPRE esta dentro de una transaccion
+     (mismo SalesDbContext Scoped), asi que no se rompe.
+   - Los otros 2 usos de advisory lock (CloseSessionAsync y
+     AddTransactionAsync) ya estan dentro del delegado de
+     CreateExecutionStrategy que abre transaccion -> correctos sin cambio.
+   - Test relacional nuevo (gated TEST_POSTGRES_CONNECTION):
+     RecordSaleChangeAsync_WithoutAmbientTransaction_ThrowsInvalidOperation
+     Exception. El test de concurrencia real existente
+     (ConcurrentPhysicalExpenses_CannotOverdrawBalance) sigue validando el
+     TOCTOU bajo advisory lock.
+   - Reviewer APROBADO (guard correcto, coherente con
+     efcore-postgres-concurrency).
+
+C. VIGENCIA DE DEUDA
+   - 8.16-H06 y 8.16-H16 quedan CERRADOS.
+   - Siguen pendientes del plan general: P2 (C3 unificacion 400/409),
+     P5-P7 (deuda WPF), P8-P10 (backend menor), P11-P17 (infra/decisión).
+
+FIN DEL ANEXO - REVISION 8.73
