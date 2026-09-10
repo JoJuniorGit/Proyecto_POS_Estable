@@ -4927,3 +4927,66 @@ D. VIGENCIA DE DEUDA ESTRUCTURAL
      8.20-M08 (Updater no instalado).
 
 FIN DEL ANEXO - REVISION 8.71
+
+=======================================================================
+ANEXO - REVISION 8.72 (CIERRE C4 FRONTEND/DESKTOP/TESTS - GOD OBJECTS)
+=======================================================================
+Fecha: 2026-09-10. Suites al cierre: .NET 788/788, Web 84/84, oxlint 0/0,
+build Release 0/0, gate de cobertura por capas OK (Core 0.83/Sales 0.88/
+Inventory 0.82). Cierra la parte de C4 pendiente del ANEXO 8.71: los God
+Objects de frontend, Desktop y tests. Movimiento puro verificado por
+reviewer en los archivos de produccion; los tests verificados por conteo
+exacto de [Fact] y suite verde.
+
+A. ARCHIVOS PARTICIONADOS (todos <500 lineas)
+   - [SettingsPage.jsx 739->4 componentes] Commit 67ec640.
+     * SettingsPage.jsx (136): composicion + estado global + reinicio.
+     * SettingsPairing.jsx (195): QR/red (renderPairingQr exportado aqui).
+     * SettingsCurrencyFormat.jsx (97): formato de moneda.
+     * SettingsPaymentMethods.jsx (294): metodos de pago.
+     El reviewer detecto una regresion BLOQUEANTE (loadPairingInfo no se
+     invocaba al montar) corregida con useEffect de montaje en
+     SettingsPairing. Web 84/84 + lint 0/0.
+   - [WpfDialogService.cs 542->2 parciales] Commit 35a4958.
+     * WpfDialogService.cs (157): base con interfaz, campos, constructor,
+       ShowConfirm/Error/Warning/Info/Notification, TrackModal/ModalScope.
+     * WpfDialogService.Modals.cs (397): los 15 dialogos restantes.
+     Movimiento puro byte a byte (reviewer APROBADO); gating de hotkeys
+     (_openModalCount) intacto. WpfDialogService tests 5/5.
+   - [ProductImportService.cs 551->2 parciales] Commit b1983eb.
+     * ProductImportService.cs (137): base + template/headers/commit/export.
+     * ProductImportService.Parsing.cs (429): parsers xlsx/csv + helpers.
+     Movimiento puro 11/11 (reviewer APROBADO). Import tests 20/20.
+   - [OnHoldSalesTests.cs 906->2 parciales] Commit 2831056.
+     * OnHoldSalesTests.cs (481) + OnHoldSalesTests.Liquidation.cs (444).
+     26/26 tests verdes.
+   - [PriceListTests.cs 931->3 parciales] Commit 291959d.
+     * PriceListTests.cs (249) + .Wholesale.cs (294) + .Products.cs (377).
+     37/37 tests verdes.
+   - [ProductVariantsTests.cs 2994->9 parciales] Commit c5b9b38.
+     * ProductVariantsTests.cs (488, base+helpers) + Core/Pricing/Stock/
+       ConversionFactor/IndependentPricing/AdjustStock/Controllers/
+       VariantManagement/Linking (todos <500).
+     82/82 tests verdes. Se eliminaron las directivas #region/#endregion
+     (organizativas) para permitir cortes limpios.
+
+B. RESULTADO
+   - C4 queda CERRADO en su totalidad: todos los God Objects >500 lineas
+     listados en el ANEXO 8.70 (SalesController, SalesService,
+     ProductsController, InventoryService, SettingsPage.jsx,
+     WpfDialogService, ProductImportService, ProductVariantsTests,
+     PriceListTests, OnHoldSalesTests) fueron particionados por parciales
+     o componentes, sin cambio de comportamiento.
+   - Evidencia: build Release 0/0, .NET 788/788, Web 84/84, lint 0/0,
+     cobertura por capas OK, reviewer APROBADO en cada refactor de
+     produccion.
+
+C. DEUDA ESTRUCTURAL VIGENTE (no tocada en esta revision)
+   - [C3] unificacion 400/409 para InvalidOperationException (diferida por
+     contrato con el cliente).
+   - [D11] RequireHttpsMetadata (documentado con controles compensatorios).
+   - Sin cambios: 8U-N2 (firma X.509), W4 (retencion forense TTL),
+     8L-CR3, 8.20-M08 (Updater no instalado).
+   - P1 del plan general (C4 frontend/Desktop/tests) queda RESUELTO.
+
+FIN DEL ANEXO - REVISION 8.72

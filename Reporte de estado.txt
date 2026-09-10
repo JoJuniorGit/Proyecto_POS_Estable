@@ -17,6 +17,14 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.38.0  | 2026-09-10  | (8.72)       | CIERRE C4 FRONTEND/DESKTOP/TESTS (God Objects): particion
+|          |             |              | <500 lineas de SettingsPage.jsx (4 componentes), WpfDialog
+|          |             |              | Service (2 parciales), ProductImportService (2), OnHoldSales
+|          |             |              | Tests (2), PriceListTests (3) y ProductVariantsTests (9).
+|          |             |              | Movimiento puro verificado por reviewer; corrige regresion de
+|          |             |              | carga inicial de pairing. C4 queda CERRADO en su totalidad.
+|          |             |              | Suites .NET 788/788 + Web 84/84 + lint 0/0 + build 0/0 +
+|          |             |              | cobertura por capas OK.
 | v1.37.0  | 2026-09-10  | (8.71)       | CIERRE REMEDIACION ANEXO 8.70 + REFACTOR C4 (backend):
 |          |             |              | C1 precio personalizado preservado (flag SaleItem.
 |          |             |              | IsCustomPrice + migracion); C2 abono HoldSale ancla a
