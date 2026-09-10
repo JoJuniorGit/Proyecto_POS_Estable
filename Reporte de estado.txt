@@ -17,6 +17,11 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.32.0  | 2026-09-09  | (8.66)       | REVISION 8.66 / Firma instalador con timestamp RFC 3161
+|          |             |              | (/tr timestamp.digicert.com /td sha256) en build-release.
+|          |             |              | Sin timestamp la firma expiraba con el cert; se descarto
+|          |             |              | SignTool= en setup.iss (firma doble y contrasena en claro).
+|          |             |              | Detalle: ANEXO 8.66.
 | v1.31.0  | 2026-09-09  | (8.65)       | REVISION 8.65 / Fix migracion 42703 en instalacion desde
 |          |             |              | cero: migracion 20260809_AddDisplayOrderToPaymentMethod
 |          |             |              | referenciaba IsDeleted (creada un mes despues, 20260905);

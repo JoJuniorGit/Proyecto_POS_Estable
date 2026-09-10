@@ -4391,3 +4391,33 @@ D5. Base de prueba eliminada tras la verificacion.
 
 FIN DEL ANEXO - REVISION 8.65
 ================================================================================
+===============================================================================
+ANEXO - REVISION 8.66 (FIRMA DEL INSTALADOR: TIMESTAMP RFC 3161)
+===============================================================================
+Alcance: agregar timestamp RFC 3161 a la firma del instalador en el pipeline de
+release para que la firma sobreviva la expiracion del certificado.
+
+A. DETONANTE / OPCIONES
+A1. Elegido sobre dos opciones: (a) SignTool= en setup.iss con config de Inno
+    Setup GUI, o (b) firmar en build-release.ps1 tras el compile de ISCC.
+A2. Se descarto (a) por firma doble/redundante al convivir con (b) y por dejar
+    la contrasena del PFX hardcodeada en texto plano en la config de ISCC.
+
+B. CAMBIO
+B1. scripts/build-release.ps1: la invocacion de signtool ahora firma con
+    timestamp RFC 3161:
+      signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td sha256 \
+        /f <pfx> /p <password> <instalador.exe>
+B2. Sin timestamp la firma moria al expirar el certificado (1-3 anios) y
+    Windows la trataria como invalida; con /tr RFC 3161 la firma queda
+    certificada desde el momento de firmar y persiste post-expiracion.
+
+C. ACTIVACION (requisitos)
+C1. El bloque de firma solo se ejecuta si estan definidos y existen:
+    SIGNTOOL_PATH, CODE_SIGNING_PFX y CODE_SIGNING_PASSWORD.
+C2. Requiere certificado de firma de codigo comercial (Sectigo/DigiCert/
+    GlobalSign) para produccion real; sin el cert el instalador sale sin firmar
+    y SmartScreen seguira advirtiendo.
+
+FIN DEL ANEXO - REVISION 8.66
+================================================================================

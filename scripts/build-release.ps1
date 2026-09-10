@@ -83,7 +83,7 @@ if ($iscc -and (Test-Path $iscc)) {
     $builtInstaller = Get-ChildItem $installerOutput -Filter *.exe | Select-Object -First 1
     if ($builtInstaller -and $env:SIGNTOOL_PATH -and (Test-Path $env:SIGNTOOL_PATH) -and $env:CODE_SIGNING_PFX -and (Test-Path $env:CODE_SIGNING_PFX)) {
         Write-Host "Firmando instalador: $($builtInstaller.Name)..." -ForegroundColor Cyan
-        & $env:SIGNTOOL_PATH sign /fd SHA256 /f $env:CODE_SIGNING_PFX /p $env:CODE_SIGNING_PASSWORD $builtInstaller.FullName
+        & $env:SIGNTOOL_PATH sign /fd SHA256 /tr http://timestamp.digicert.com /td sha256 /f $env:CODE_SIGNING_PFX /p $env:CODE_SIGNING_PASSWORD $builtInstaller.FullName
         if ($LASTEXITCODE -ne 0) {
             Write-Host "ADVERTENCIA: signtool fallo; el instalador queda sin firmar." -ForegroundColor Yellow
         } else {
