@@ -6,7 +6,7 @@ el avance real de cada fase. Es la capa ejecutiva/operativa del plan de
 certificacion; el detalle por revision vive en `docs/reporte.txt` (ANEXOS) y el
 estado tecnico en `Reporte de estado.txt`.
 
-- **Version documento:** 0.7.0 (follow-ups 8.78: deuda tecnica ANEXO 8.77)
+- **Version documento:** 0.8.0 (IMP-1..4 implementadas 8.79; IMP-5 cerrada)
 - **Fecha:** 2026-09-10
 - **Estado general:** Fases F0-F6 en curso; F0 avanza a M0 con confirmaciones del cliente
 - **Rama base:** V0.15
@@ -59,19 +59,20 @@ estado tecnico en `Reporte de estado.txt`.
 
 Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
-### 1.3 Mejoras preventivas post-incidente (PROPUESTA)
+### 1.3 Mejoras preventivas post-incidente
 
 > Identificadas tras los incidentes reales de instalacion/operacion (8.63-8.66).
 > Son preventivas: evitan reproducir fallos ya vividos. Registro de detalle en
-> ANEXO 8.67. Estado: PROPUESTA, pendiente de aprobacion del RM para incorporar.
+> ANEXO 8.67. IMP-1..IMP-4 APROBADAS e IMPLEMENTADAS en 8.79; IMP-5 cerrada
+> por el cliente (8.68-A9: "sin datos para cargar").
 
-| ID | Mejora | Fase | Como | Evita / Detecta |
-|----|--------|------|------|-----------------|
-| IMP-1 | Smoke de migracion "desde cero" automatizado | F3/F4 | BD temporal vacia + MigrateAsync de todos los contextos + comparar esquema contra snapshot + descartar; en CI y release | 8.65 (42703 IsDeleted) |
-| IMP-2 | Validacion cruzada instalador <-> backend | F1/F4 | Checklist paridad: validador de contrasena == PasswordPolicyService, puertos, ACL, topico de secrets.json | 8.63 (politica contrasena) |
-| IMP-3 | Backup y recuperacion de la configuracion del sitio | F5 | Incluir en backup: secrets.json, cert HTTPS por sitio, client_settings.json, credenciales postgres; paso de reinstalacion que restaure config previa | perdida total del equipo |
-| IMP-4 | Windows Defender / SmartScreen en caja LAN | F1/F4 | Documentar exclusiones operativas para bins self-contained + NSSM, ademas de la firma X.509 | bloqueo de ejecutables nuevos |
-| IMP-5 | Migracion de datos del software anterior del cliente | F0 | Pregunta abierta al cliente sobre catalogo/existencias previas + plan de carga (existe import de variantes, 8.57) | perdida/omision de datos heredados |
+| ID | Mejora | Fase | Como | Evita / Detecta | Estado |
+|----|--------|------|------|-----------------|--------|
+| IMP-1 | Smoke de migracion "desde cero" automatizado | F3/F4 | BD temporal vacia + MigrateAsync de todos los contextos + comparar esquema contra snapshot + descartar; en CI y release | 8.65 (42703 IsDeleted), 8.79 (factura_number_seq no materializada) | IMPLEMENTADO (8.79): test `MigratedSchema_FromEmptyDatabase_AppliesAllMigrationsCleanly` + hallazgo corregido con migracion `20260910180000_EnsureFacturaNumberSequence` |
+| IMP-2 | Validacion cruzada instalador <-> backend | F1/F4 | Checklist paridad: validador de contrasena == PasswordPolicyService, puertos, ACL, topico de secrets.json | 8.63 (politica contrasena) | IMPLEMENTADO (8.79): INSTALLATION §5.1 |
+| IMP-3 | Backup y recuperacion de la configuracion del sitio | F5 | Incluir en backup: secrets.json, cert HTTPS por sitio, client_settings.json, credenciales postgres; paso de reinstalacion que restaure config previa | perdida total del equipo | IMPLEMENTADO (8.79): INSTALLATION §8.2 |
+| IMP-4 | Windows Defender / SmartScreen en caja LAN | F1/F4 | Documentar exclusiones operativas para bins self-contained + NSSM, ademas de la firma X.509 | bloqueo de ejecutables nuevos | IMPLEMENTADO (8.79): INSTALLATION §6A |
+| IMP-5 | Migracion de datos del software anterior del cliente | F0 | Pregunta abierta al cliente sobre catalogo/existencias previas + plan de carga (existe import de variantes, 8.57) | perdida/omision de datos heredados | CERRADA (8.68-A9): client confirma "sin datos para cargar" |
 
 ---
 
@@ -79,6 +80,8 @@ Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-10  | F2   | HALLAZGO 8.79-H: el smoke migracion desde cero destapo que la secuencia de facturacion `factura_number_seq` NO se materializaba con MigrateAsync (solo en runtime via DatabaseInitializer) -> nueva migracion idempotente `20260910180000_EnsureFacturaNumberSequence` (IF NOT EXISTS); smoke `MigratedSchema_MatchesModel` pasa en BD 100% nueva | (8.79) ambos smokes migratorios + suite completa verdes con sufijo fresco (798/798); build Release 0/0 |
+| 2026-09-10  | F0/F3/F5 | IMP-1..IMP-5 (ANEXO 8.67) APROBADAS: IMP-1 smoke migracion desde cero automatizado (test `MigratedSchema_FromEmptyDatabase_AppliesAllMigrationsCleanly`, crea BD temporal vacia, MigrateAsync de ambos contextos, descarta; detectaria el 42703 de 8.65); IMP-2 checklist paridad instalador/backend (INSTALLATION §5.1); IMP-3 backup config sitio (INSTALLATION §8.2); IMP-4 exclusiones Defender (INSTALLATION §6A); IMP-5 CERRADA (8.68-A9 cliente sin datos) | (8.79) IMP-1..4 IMPLEMENTADOS; suite .NET con nuevo smoke; build Release 0/0. Roadmap v0.8.0 + ANEXO 8.79 |
 | 2026-09-10  | F2   | FOLLOW-UPS de deuda tecnica de ANEXO 8.77: eliminados los 3 catch-locales redundantes de `InvalidOperationException` en ReservationsController (409 via middleware sin filtrar ex.Message; KeyNotFound->404 conservados por diseno); padre inexistente en ProductCrud.cs:77 recalsificado a `KeyNotFoundException`->404 (mensaje unificado con VariantQueries.cs); reindentacion boy-scout en SalesService.Checkout.cs (diff -w vacio, semantica identica); test nuevo de padre inexistente | (8.78) Suite .NET 797/797, build Release 0/0. Roadmap v0.7.0 + ANEXO 8.78 |
 | 2026-09-10  | F2   | P2=C3 unificacion 400/409 reme**diada**: validacion pura -> `ArgumentException` (400 via middleware), conflictos de estado/Rechazos Defensivos -> `InvalidOperationException` (409); eliminados catch-locales de controllers; 27 tests actualizados + test 8.2-M2 corregido (fallback a tasa de apertura = conducta valida, decision usuario 8.77-D2) | (8.77) Suite .NET 796/796, build Release 0/0. Roadmap v0.6.0 + ANEXO 8.77 |
 | 2026-09-10  | F0/F1 | P11-P17 infra/decision: DQ-007 cierra con **B (HTTPS + VPN WireGuard)** para supervision remota; unica decision abierta del bloque resuelta. Updater mantiene R-007 deshabilitado; monitoreo confirma `monitor-health.ps1` (12.4); P11/P12/P13/P17 quedan BLOQUEADOS por entorno (VM, instancia PostgreSQL, certificado X.509, operacion real) | (8.76) Sin cambios de codigo; DQ-007 registrada B; roadmap v0.5.0 + ANEXO 8.76 |

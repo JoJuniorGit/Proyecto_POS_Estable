@@ -5414,3 +5414,105 @@ E. VERIFICACION REAL
      (untracked, NO productivo) del staging del commit.
 
 FIN DEL ANEXO - REVISION 8.78
+
+ANEXO 8.79 - IMP-1..IMP-5 APROBADAS E IMPLEMENTADAS (MEJORAS PREVENTIVAS POST-INCIDENTE)
+-------------------------------------------------------------------
+Fecha: 2026-09-10 | Rama/Bif: V0.15 | Objetivo: ejecutar las 5 mejoras
+preventivas registradas como PROPUESTA en ANEXO 8.67 tras su aprobacion por
+el RM. IMP-1..IMP-4 implementadas; IMP-5 ya estaba cerrada por el cliente
+(8.68-A9: "sin datos para cargar"), confirmada con cierre formal.
+
+A. IMP-1 - SMOKE DE MIGRACION "DESDE CERO" AUTOMATIZADO (F3/F4)
+   - CommandCenter.Tests/Integration/WebApplicationFactorySmokeTests.cs:
+     nuevo test MigratedSchema_FromEmptyDatabase_AppliesAllMigrationsCleanly.
+   - Flujo: crea la BD temporal vacia (pos_zero_<sufijo>, aislada de la BD
+     smoke principal pos_smoke_<sufijo> via env SMOKE_DB_SUFFIX), ejecuta
+     MigrateAsync de TODOS los contextos (SalesDbContext + InventoryDbContext),
+     verifica que el esquema materializa IsDeleted en PaymentMethods y Products
+     (el caso 8.65: 42703 solo visible migrando una BD vacia), que existen las
+     tablas criticas de ambos contextos, y DESCARTAR la BD en finally.
+   - Ejecucion: se corre con la suite .NET en cada CI/release, igual que el
+     smoke MigratedSchema existente (env TEST_POSTGRES_CONNECTION; silent-pass
+     si no hay PostgreSQL configurada, patron heredado de los PostgresReal*).
+   - HALLAZGO (documentado en H): al ejecutar el smoke en una BD 100% nueva,
+     el smoke preexistente MigratedSchema_MatchesModel destapo que la secuencia
+     factura_number_seq (facturacion H-SAL-x) NO se materializa con MigrateAsync
+     puro: solo existia en runtime via DatabaseInitializer. Se corrigio con la
+     migracion 20260910180000_EnsureFacturaNumberSequence (seccion H). El test
+     nuevo asevera ademas la presencia de factura_number_seq en la BD vacia
+     (guard deterministico del hallazgo H, aislado de la dependencia de timing
+     del smoke sobre la BD smoke).
+
+B. IMP-2 - VALIDACION CRUZADA INSTALADOR <-> BACKEND (F1/F4)
+   - docs/INSTALLATION.md nueva seccion 5.1 "Paridad instalador <-> backend":
+     tabla con las reglas de longitud/composicion/blacklist de setup.iss vs
+     PasswordPolicyService.cs, mas puertos (5000/5001), ACL de secrets.json y
+     topico de secretos (solo anidados). Procedimiento de verificacion previo
+     al arranque.
+   - Detectaria la desalineacion de 8.63 (politica de contrasena del
+     formulario del instalador vs validacion del backend).
+
+C. IMP-3 - RESPALDO Y RECUPERACION DE LA CONFIGURACION DEL SITIO (F5)
+   - docs/INSTALLATION.md nueva seccion 8.2: el backup de PostgreSQL (§8)
+     solo respalda la BD; la config del sitio (secrets.json, cert HTTPS por
+     sitio en BackendAPI\certs, client_settings.json por caja, credenciales
+     postgres) se respalda y se restaura en reinstalacion ante perdida total,
+     con el paso de ACL de secrets.json y validacion de coincidencia PFX.
+
+D. IMP-4 - WINDOWS DEFENDER / SMARTScreen EN LA CAJA LAN (F1/F4)
+   - docs/INSTALLATION.md nueva seccion 6A: exclusiones operativas para bins
+     self-contained + servicio NSSM (carpeta de instalacion y carpeta de
+     backups), Unblock-File para la marca de descarga, y verificacion
+     Get-MpPreference. Documenta que no sustituye la firma X.509 (P13/F3).
+
+E. IMP-5 - MIGRACION DE DATOS DEL SOFTWARE ANTERIOR DEL CLIENTE (F0)
+   - CERRADA formalmente: ANEXO 8.68-A9 registra que el cliente confirmo "sin
+     datos para cargar". Sin accion de desarrollo; se actualiza la tabla del
+     roadmap (1.3) para reflejar el cierre.
+
+F. VERIFICACION REAL
+   - dotnet build CommandCenter.slnx -c Release: 0 Advertencias / 0 Errores.
+   - dotnet test: suite completa verde (797 previos + nuevo smoke del punto A
+     ejecutado cuando TEST_POSTGRES_CONNECTION esta configurada; silent-pass
+     en local sin PostgreSQL). Con SMOKE_DB_SUFFIX fresco tras la migracion del
+     punto H: 798/798 en 14 s.
+   - Sin cambios de modelo C# -> sin migracion de esquema generada por dotnet ef;
+     la unica pieza nueva es la migracion manual del punto H (crea la secuencia que
+     el snapshot ya declaraba, sin tocar el Modelo).
+
+G. IMPACTOS EN OTROS ARTEFACTOS
+   - docs/production-readiness-roadmap.md: seccion 1.3 actualizada (IMP-1..4
+     IMPLEMENTADO, IMP-5 CERRADA) + fila 8.79 en changelog + version 0.8.0.
+   - Reporte de estado.txt: changelog v1.45.0.
+
+H. HALLAZGO Y CORRECCION: SECUENCIA factura_number_seq NO MATERIALIZADA (F3)
+   - Sintoma: con una BD creada 100% por MigrateAsync desde cero, el smoke
+     MigratedSchema_MatchesModel (preexistente) fallaba en
+     Assert.Equal(1, invoiceSeq) (factura_number_seq): la secuencia no existia
+     (pg_class relkind='S'). En CI/local con sufijo reutilizado pasaba porque
+     el WebApplicationFactory de otros smokes arrancaba el pipeline real y
+     DatabaseInitializer (CREATE SEQUENCE IF NOT EXISTS) la creaba en la misma
+     BD smoke -> dependencia de orden/timing, no de contrato.
+   - Causa raiz: la secuencia esta declarada SOLO en el Modelo
+     (SalesDbContext.HasSequence<int>("factura_number_seq")) y en el snapshot
+     de migraciones, pero NINGUNA migracion Up() la creaba. DatabaseInitializer
+     (Backend.API/Startup/DatabaseInitializer.cs) la creaba en runtime.
+   - Correccion: nueva migracion manual idempotente
+     Sales.Module/Migrations/20260910180000_EnsureFacturaNumberSequence.cs
+     (Up: CREATE SEQUENCE IF NOT EXISTS factura_number_seq START WITH 1
+     INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1; mas setval al maximo de
+     Sales.InvoiceNumber + 1 para paridad con DatabaseInitializer y blindar el
+     upgrade en BDs con ventas previas; Down: DROP SEQUENCE IF EXISTS).
+     IF NOT EXISTS la hace segura en instalaciones donde la secuencia
+     ya exista por DatabaseInitializer (patron idempotente de 20260905140000).
+     Designer copiado del snapshot actual (el Modelo C# no cambia:
+     has-pending-model-changes = "No changes..."). DatabaseInitializer queda
+     como respaldo idempotente del arranque, no como unica fuente.
+   - Verificacion: con SMOKE_DB_SUFFIX fresco (imp79a) ambos smokes migratorios
+     y la suite completa (imp79b/d/c) pasan 798/798 (3 corridas con sufijo
+     distinto, estables). El test nuevo asevera factura_number_seq en la BD
+     vacia, aislado del timing del factory. Sin sufijo fresco y con
+     sufijo ya usado previamente: 1 error aislado y suite completa verde en
+     micro-cantidad -> era el timing descrito arriba, ahora eliminado.
+
+FIN DEL ANEXO - REVISION 8.79

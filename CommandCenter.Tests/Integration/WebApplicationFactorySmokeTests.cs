@@ -23,6 +23,15 @@ public class WebApplicationFactorySmokeTests
             ? $"pos_smoke_{suffix}"
             : "pos_smoke_test";
 
+    // IMP-1 (ANEXO 8.67-B1): BD de migración "desde cero" única por ejecución. El smoke
+    // MigratedSchema_MatchesModel_OnRealDatabase migra sobre una BD existente; el fallo
+    // 8.65 (42703 IsDeleted) solo se materializaba al migrar una BD VACÍA. Este nombre
+    // aislado garantiza que el flujo de prueba no colisione con la BD smoke principal.
+    internal static string EmptyDatabaseName =>
+        Environment.GetEnvironmentVariable("SMOKE_DB_SUFFIX") is { Length: > 0 } suffix
+            ? $"pos_zero_{suffix}"
+            : "pos_zero_test";
+
     private static bool PostgresConfiguredForPipeline() =>
         !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION"))
         || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection"));
@@ -172,5 +181,94 @@ public class WebApplicationFactorySmokeTests
             "FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'SalePayments'")
             .FirstOrDefaultAsync();
         Assert.True(paymentRateScale >= 4, $"SalePayments.ExchangeRate debe tener scale >= 4 (E1), se obtuvo {paymentRateScale}");
+    }
+
+    [Fact]
+    public async Task MigratedSchema_FromEmptyDatabase_AppliesAllMigrationsCleanly()
+    {
+        // IMP-1 (ANEXO 8.67-B1): smoke de migración "desde cero". El smoke existente
+        // (MigratedSchema_MatchesModel_OnRealDatabase) migra sobre la BD smoke ya poblada;
+        // el incidente 8.65 (42703 IsDeleted) solo aparecía al migrar una BD VACÍA, donde
+        // EF aplica las migraciones en orden cronológico estricto. Este test crea una BD
+        // temporal vacía, ejecuta MigrateAsync de TODOS los contextos y verifica que el
+        // esquema se materializa completo, para luego descartar la BD.
+        if (!PostgresConfiguredForPipeline()) return;
+
+        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connStr)) return;
+
+        var csb = new Npgsql.NpgsqlConnectionStringBuilder(connStr) { Database = EmptyDatabaseName };
+        var zeroConnectionString = csb.ConnectionString;
+
+        // Conexión administrativa (sin BD explícita) para crear/descartar la BD temporal.
+        var adminCsb = new Npgsql.NpgsqlConnectionStringBuilder(connStr) { Database = "postgres" };
+
+        try
+        {
+            await using (var admin = new Npgsql.NpgsqlConnection(adminCsb.ConnectionString))
+            {
+                await admin.OpenAsync();
+                await using var dropOld = new Npgsql.NpgsqlCommand(
+                    $"DROP DATABASE IF EXISTS \"{EmptyDatabaseName}\" WITH (FORCE)", admin);
+                await dropOld.ExecuteNonQueryAsync();
+                await using var create = new Npgsql.NpgsqlCommand(
+                    $"CREATE DATABASE \"{EmptyDatabaseName}\"", admin);
+                await create.ExecuteNonQueryAsync();
+            }
+
+            var salesOptions = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<Sales.Module.Data.SalesDbContext>()
+                .UseNpgsql(zeroConnectionString)
+                .Options;
+            var inventoryOptions = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<Inventory.Module.Data.InventoryDbContext>()
+                .UseNpgsql(zeroConnectionString)
+                .Options;
+
+            await using var salesDb = new Sales.Module.Data.SalesDbContext(salesOptions);
+            await using var inventoryDb = new Inventory.Module.Data.InventoryDbContext(inventoryOptions);
+
+            await salesDb.Database.MigrateAsync();
+            await inventoryDb.Database.MigrateAsync();
+
+            // 8.65: la cadena completa de migraciones DEBE incluir IsDeleted en
+            // PaymentMethods y Products (histórico: la de 09/08 referenciaba la columna
+            // antes de su creación en 05/09; el bug solo era visible desde BD vacía).
+            var pmIsDeleted = await salesDb.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.columns " +
+                "WHERE table_schema = 'public' AND table_name = 'PaymentMethods' AND column_name = 'IsDeleted'")
+                .FirstOrDefaultAsync();
+            Assert.Equal(1, pmIsDeleted);
+
+            var productIsDeleted = await inventoryDb.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.columns " +
+                "WHERE table_schema = 'public' AND table_name = 'Products' AND column_name = 'IsDeleted'")
+                .FirstOrDefaultAsync();
+            Assert.Equal(1, productIsDeleted);
+
+            // Sanidad básica: el esquema migrado contiene las tablas críticas de ambos contextos.
+            var salesTables = await salesDb.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.tables " +
+                "WHERE table_schema = 'public' AND table_name IN ('Sales', 'SaleItems', 'SalePayments', 'PaymentMethods', 'Customers')")
+                .FirstOrDefaultAsync();
+            Assert.Equal(5, salesTables);
+
+            var inventoryTables = await inventoryDb.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.tables " +
+                "WHERE table_schema = 'public' AND table_name IN ('Products', 'StockMovements', 'StockMovements_Archive')")
+                .FirstOrDefaultAsync();
+            Assert.Equal(3, inventoryTables);
+
+            var invoiceSeq = await salesDb.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*)::int AS \"Value\" FROM pg_class WHERE relkind = 'S' AND relname = 'factura_number_seq'")
+                .FirstOrDefaultAsync();
+            Assert.Equal(1, invoiceSeq);
+        }
+        finally
+        {
+            await using var admin = new Npgsql.NpgsqlConnection(adminCsb.ConnectionString);
+            await admin.OpenAsync();
+            await using var drop = new Npgsql.NpgsqlCommand(
+                $"DROP DATABASE IF EXISTS \"{EmptyDatabaseName}\" WITH (FORCE)", admin);
+            await drop.ExecuteNonQueryAsync();
+        }
     }
 }

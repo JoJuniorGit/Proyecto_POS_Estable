@@ -129,6 +129,27 @@ La configuración del backend (`Backend.API`) se fusiona en este orden (las fuen
 | 7 | `BackendAPI/logs/start.log` | "Database Connection successful", "Migrations applied", sin errores críticos |
 | 8 | Reiniciar el servicio con PostgreSQL detenido | El proceso **aborta** con mensaje claro (con §2.1), no arranca en falso |
 
+### 5.1. Paridad instalador ↔ backend (IMP-2, 8.67-B2)
+
+Checklist de paridad para verificar que el instalador (Inno Setup) y el backend validan los mismos valores. Cualquier desviación aquí puede producir un usuario que el backend rechaza al sembrar el admin (8.63).
+
+| Regla | Instalador (`setup.iss`) | Backend (`PasswordPolicyService`) |
+|---|---|---|
+| Longitud mínima | `>= 4` caracteres | `>= 4` caracteres |
+| Longitud máxima | sin límite en el formulario | `<= 128` caracteres |
+| Composición | al menos 1 letra y 1 número | al menos 1 letra y 1 número |
+| Blacklist de comunes | no validada | sí (28 entradas + custom) |
+| Contiene username/cédula | no validado | rechazado (nombre y dígitos de cédula >= 4) |
+| Caracteres ambiguos en generación | n/a (no genera) | alfabeto sin `0/O/l/I/8/B` |
+
+> Procedimiento: tras instalar y antes de arrancar, ejecutar `PasswordPolicyService.ValidatePassword` con la contraseña del formulario del instalador. Si el valor elegido la rechaza, configurar la contraseña directamente vía `secrets.json`/backend con una que cumpla la política completa. El seed del admin se valida en el arranque (`DatabaseInitializer.cs`) y aborta (fail-fast) si no cumple la política.
+
+Puertos y secretos:
+
+- **Puertos:** establecer los mismos `5000` (HTTP) / `5001` (HTTPS) en el firewall del instalador y en `Kestrel`/`UpdateServerUrl` del backend (`appsettings.json`).
+- **ACL de `secrets.json`:** el instalador (`Configure-PosService.ps1`) aplica `SYSTEM:(F)` / `Administrators:(F)` / cuenta del servicio `(R)` con herencia deshabilitada; respetar esa ACL en restauraciones manuales (§8.2).
+- **Tópico de `secrets.json`:** solo secretos anidados (`ConnectionStrings:DefaultConnection`, `SystemSettings:AdminSeedPassword`, `JwtSettings:Key`, `Kestrel:Certificates.Default.Password`); nunca `__` plano ni variables de entorno del servicio.
+
 ## 6. Sugerencias adicionales
 
 - **Auto-crear la BD** (§2.1) elimina de raíz el incidente 503 de esta semana: la instalación pasa a ser "copiar, registrar, arrancar".
@@ -138,6 +159,23 @@ La configuración del backend (`Backend.API`) se fusiona en este orden (las fuen
 - **Acceso de dispositivos externos:** la regla de firewall queda limitada a la subred local. Si una caja está en otra VLAN/subred, añade su IP (`remoteip=<IP>`) en lugar de abrir la regla a todas las redes.
 - **HTTPS real en el 5001:** el certificado generado por `create-https-cert.ps1` es autofirmado y por equipo; para clientes externos conviene instalar su entidad raíz de confianza en el servidor o en las cajas, o limitarse a HTTP (5000) dentro de la LAN.
 - **Automatizar el firewall en el instalador:** el instalador ya recrea la regla de firewall en cada ejecución (consulta confirmatoria).
+
+## 6A. Windows Defender / SmartScreen en la caja LAN (IMP-4, 8.67-B4)
+
+Los binarios del sistema son **self-contained** (no dependen del runtime instalado) y se ejecutan como servicio vía **NSSM**; Windows Defender puede marcar los ejecutables nuevos (especialmente tras cada release) y SmartScreen puede bloquear el instalador. Excluir operativas documentadas (además de la firma X.509, pendiente en P13):
+
+1. **SmartScreen / Mark-of-the-Web:** si el instalador o los binarios llegan descargados (ZIP), desbloquear con `Unblock-File` antes de ejecutar. Para instalaciones internas firmadas, SmartScreen no debe pedir confirmación una vez la marca de descarga se elimina.
+2. **Exclusiones de Microsoft Defender (por carpeta del puesto):** añadir como exclusiones de proceso/archivo las carpetas de instalación (p. ej. `C:\Program Files (x86)\Sistema POS Administrador\`) y de datos/backup (`C:\Backups\CommandCenter\`). Comando (consola elevada):
+
+   ```powershell
+   Add-MpPreference -ExclusionPath "C:\Program Files (x86)\Sistema POS Administrador"
+   Add-MpPreference -ExclusionPath "C:\Backups\CommandCenter"
+   ```
+
+3. **Servicio NSSM (`PosBackendService`):** el proceso `Backend.API.exe` servido por NSSM no debe ser bloqueado al arrancar; la exclusión por carpeta de la instalación cubre `Backend.API.exe`, `Desktop.Client.exe`, `UpdaterService.exe` y `resources\` (runtime self-contained).
+4. **Verificación post-exclusión:** `Get-MpPreference | Select-Object -ExpandProperty ExclusionPath` y reiniciar el servicio para confirmar que no queda `0x80070005`/bloqueos de Defender en el arranque.
+
+> La exclusión es **operativa y local al puesto**, no sustituye la firma X.509 del release (P13/F3): el binario firmado reduce la dependencia de exclusiones y habilita SmartScreen silencioso en las cajas.
 
 ## 7. Operación sin conexión a Internet (tasa BCV manual, 8.29-A2)
 
@@ -201,6 +239,25 @@ Invoke-RestMethod "http://localhost:5000/health" -Method Get
 ```
 
 Precauciones: `--no-owner` evita errores si el rol del volcado difiere; detener primero el servicio `Sistema POS Backend` (`Stop-Service "Sistema POS Backend"`) y arrancarlo tras el restore; los snapshots de ventas (`AppliedRate`, `TotalUSD`, `TotalBsS`, `FinalPaidAmountBsS`) se restauran tal cual porque el volcado es una copia punto a punto de la base.
+
+### 8.2. Respaldo y recuperación de la configuración del sitio (IMP-3, 8.67-B3)
+
+El volcado de PostgreSQL (§8) respalda **solo la base de datos**; ante pérdida total del equipo (disco/caja), la configuración del sitio debe restaurarse también. La copia de seguridad operativa del sitio incluye además:
+
+| Elemento | Ruta (puesto) | Contenido |
+|---|---|---|
+| `secrets.json` | `BackendAPI\secrets.json` | Cadena de conexión (password de PostgreSQL), `AdminSeedPassword`, `JwtSettings.Key`, password del certificado |
+| Certificado HTTPS por sitio | `BackendAPI\certs` (PFX + `.cer` público) | Identidad del puesto para el puerto 5001 |
+| `client_settings.json` | carpeta del cliente en cada caja | Configuración del cliente desktop por caja |
+| Credenciales de PostgreSQL | información del formulario del instalador | Usuario/contraseña `postgres` (hoy conocida por el operador) |
+
+Paso de **reinstalación** ante pérdida total (restaura la config previa):
+
+1. Reinstalar el paquete del instalador en la máquina nueva.
+2. **Restaurar `secrets.json`** del respaldo del sitio en `BackendAPI\secrets.json` con la misma ACL (`icacls ... /inheritance:r /grant:r "SYSTEM:(F)" "Administrators:(F)" "NT SERVICE\PosBackendService:(R)"`), o hacer que el instalador regenere los secretos (CSPRNG) si el respaldo no existe.
+3. **Restaurar el certificado** `certs\` (PFX) y verificar que la `Kestrel.Certificates.Default.Password` del `secrets.json` casa con ese PFX (§13.2).
+4. **Restaurar la base** desde el volcado más reciente (§8.1).
+5. Verificar `/health` y la lista de cajas (cada caja restaura su `client_settings.json` apuntando al puesto).
 
 ## 9. Limitaciones pre-piloto (8.31-B2)
 

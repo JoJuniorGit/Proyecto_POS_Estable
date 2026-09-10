@@ -17,6 +17,22 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.45.0  | 2026-09-10  | (8.79)       | IMP-1..IMP-5 (ANEXO 8.67) APROBADAS E IMPLEMENTADAS: IMP-1
+|          |             |              | smoke migracion "desde cero" automatizado (nuevo test
+|          |             |              | MigratedSchema_FromEmptyDatabase_AppliesAllMigrationsCleanly:
+|          |             |              | BD temporal vacia + MigrateAsync de ambos contextos +
+|          |             |              | descarte; detecta el 42703 de 8.65 en CI/release); IMP-2
+|          |             |              | checklist paridad instalador/backend (INSTALLATION 5.1);
+|          |             |              | IMP-3 backup y recuperacion de config del sitio
+|          |             |              | (INSTALLATION 8.2); IMP-4 exclusiones Windows
+|          |             |              | Defender/SmartScreen (INSTALLATION 6A); IMP-5 CERRADA
+|          |             |              | (8.68-A9: cliente sin datos para cargar). HALLAZGO 8.79-H:
+|          |             |              | el smoke desde cero destapo que la secuencia de facturacion
+|          |             |              | factura_number_seq NO se materializaba con MigrateAsync
+|          |             |              | (solo en runtime via DatabaseInitializer) -> nueva migracion
+|          |             |              | idempotente 20260910180000_EnsureFacturaNumberSequence
+|          |             |              | (IF NOT EXISTS). Suite .NET 798/798 con sufijo fresco,
+|          |             |              | build Release 0/0. ANEXO 8.79, roadmap v0.8.0.
 | v1.44.0  | 2026-09-10  | (8.78)       | FOLLOW-UPS DE DEUDA TECNICA DE ANEXO 8.77: eliminados
 |          |             |              | los 3 catch-locales redundantes de InvalidOperationException
 |          |             |              | en ReservationsController (ReserveStock/ConfirmReservation/
