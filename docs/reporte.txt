@@ -5355,3 +5355,62 @@ I. IMPACTOS EN OTROS ARTEFACTOS
      snapshots (rules.md 1 inmutable). Solo cambio el contrato HTTP.
 
 FIN DEL ANEXO - REVISION 8.77
+
+ANEXO 8.78 - FOLLOW-UPS DE DEUDA TECNICA REGISTRADOS EN ANEXO 8.77
+-------------------------------------------------------------------
+Fecha: 2026-09-10 | Rama/Biff: V0.15 | Objetivo: ejecutar los 3 follow-ups de
+deuda tecnica no bloqueante citados en ANEXO 8.77 seccion G (archivos y lineas),
+mas el hallazgo boy-scout de indentacion detectado por el reviewer.
+
+A. RESERVATIONSCONTROLLER.CS - ELIMINACION DE CATCH-LOCALES REDUNDANTES (8.77-G1)
+   - Backend.API/Controllers/ReservationsController.cs: se eliminaron los 3
+     catch-locales `catch (InvalidOperationException ex) { return this.ApiConflict(ex.Message); }`
+     de ReserveStock (L71), ConfirmReservation (L108) y CancelReservation (L136).
+     Eran una duplicacion del mapeo del GlobalExceptionHandlerMiddleware
+     (InvalidOperationException -> 409 Conflict) y filtraban ex.Message en la
+     respuesta (fuga contra el contrato RFC 7807). El middleware global lo
+     resuelve igual (409) sin exponer el mensaje interno.
+   - Se CONSERVAN los catches de KeyNotFoundException -> ApiNotFound/NotFound,
+     dado que devuelven una respuesta mas especifica (404) que la generica del
+     middleware para ese tipo; patron conservado por diseno en C3 (ANEXO 8.77-A).
+   - CancelReservation quedo sin try/catch envolvente (era el unico catch del
+     metodo); el ownership-check 8.5-A3 se conserva intacto (403Forbidden via
+     StatusCode) y los errores de CancelReservationAsync escalan al middleware.
+
+B. INVENTORYSERVICE.PRODUCTCRUD.CS:77 - RECLASIFICACION A 404 (8.77-G2)
+   - Cambio: InvalidOperationException("El producto padre especificado no existe
+     o ha sido eliminado.") -> KeyNotFoundException("Producto padre con ID {id} no encontrado.")
+     cuando el ParentProductId apunta a un producto inexistente o eliminado.
+   - Razon: "padre inexistente" es un recurso no encontrado -> 404, no un
+     conflicto de estado -> 409. El mensaje nuevo replica el patron de
+     VariantQueries.cs L182/L284 (KeyNotFoundException, mismo formato de texto),
+     lo que unifica la semantica de la familia de variantes.
+   - Verificacion: grep exhaustivo -> 0 referencias al mensaje anterior en todo
+     el repo (tests, Web.Frontend, WPF Desktop). Ningun test aseveraba
+     InvalidOperationException para el padre faltante.
+
+C. SALESSERVICE.CHECKOUT.CS - REINDENTACION BOY-SCOUT (8.77-G3 + reviewer)
+   - Se reindentaron los bloques `if (cashierId.HasValue)`, `if (exchangeRate <= 0)`,
+     el comentario/llamada 8.5-A5 (ResolveAnchoredRateAsync) y el bloque 8.7-B2
+     (ajuste de redondeo) de 12 a 16 espacios, alineandolos como cuerpo del try
+     (L61). La linea del primer comentario 8.5-A5 (L90) se alineo igualmente.
+   - Semantica verificada identica: `git diff -w HEAD` sobre el archivo -> vacio.
+     No hubo cambio de codigo; unicamente indentacion (required por el reviewer:
+     el bloque 8.5-A5 estaba desalineado con el cuerpo del try tras 8.77).
+
+D. TEST NUEVO (COBERTURA DEL CASO B)
+   - CommandCenter.Tests/Unit/InventoryServiceUnitTests.cs:
+     CreateProductAsync_WhenParentProductMissing_ThrowsKeyNotFoundException
+     (nomenclatura Metodo_Escenario_ResultadoEsperado). Crea una variante con
+     ParentProductId = 999 (inexistente) y asevera KeyNotFoundException con el
+     mensaje "Producto padre con ID 999 no encontrado." (Assert.Contains).
+
+E. VERIFICACION REAL
+   - dotnet build CommandCenter.slnx -c Release: 0 Advertencias / 0 Errores
+     (TreatWarningsAsErrors=true).
+   - dotnet test CommandCenter.slnx -c Release: 797/797 superadas (0 fallos),
+     sin regresiones (796 anteriores + 1 nueva de la seccion D).
+   - Reviewer subagente: APROBADO; unico accionable fue excluir docs/clear-products.ps1
+     (untracked, NO productivo) del staging del commit.
+
+FIN DEL ANEXO - REVISION 8.78

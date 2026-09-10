@@ -74,7 +74,7 @@ public partial class InventoryService
             var parent = await _context.Products.FindAsync(product.ParentProductId.Value);
             if (parent == null || parent.IsDeleted)
             {
-                throw new InvalidOperationException("El producto padre especificado no existe o ha sido eliminado.");
+                throw new KeyNotFoundException($"Producto padre con ID {product.ParentProductId.Value} no encontrado.");
             }
 
             product.IsGroupHeader = false;

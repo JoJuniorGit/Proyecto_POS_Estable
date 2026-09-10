@@ -6,7 +6,7 @@ el avance real de cada fase. Es la capa ejecutiva/operativa del plan de
 certificacion; el detalle por revision vive en `docs/reporte.txt` (ANEXOS) y el
 estado tecnico en `Reporte de estado.txt`.
 
-- **Version documento:** 0.6.0 (P2=C3 unificacion 400/409 cerrada 8.77)
+- **Version documento:** 0.7.0 (follow-ups 8.78: deuda tecnica ANEXO 8.77)
 - **Fecha:** 2026-09-10
 - **Estado general:** Fases F0-F6 en curso; F0 avanza a M0 con confirmaciones del cliente
 - **Rama base:** V0.15
@@ -79,6 +79,7 @@ Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-10  | F2   | FOLLOW-UPS de deuda tecnica de ANEXO 8.77: eliminados los 3 catch-locales redundantes de `InvalidOperationException` en ReservationsController (409 via middleware sin filtrar ex.Message; KeyNotFound->404 conservados por diseno); padre inexistente en ProductCrud.cs:77 recalsificado a `KeyNotFoundException`->404 (mensaje unificado con VariantQueries.cs); reindentacion boy-scout en SalesService.Checkout.cs (diff -w vacio, semantica identica); test nuevo de padre inexistente | (8.78) Suite .NET 797/797, build Release 0/0. Roadmap v0.7.0 + ANEXO 8.78 |
 | 2026-09-10  | F2   | P2=C3 unificacion 400/409 reme**diada**: validacion pura -> `ArgumentException` (400 via middleware), conflictos de estado/Rechazos Defensivos -> `InvalidOperationException` (409); eliminados catch-locales de controllers; 27 tests actualizados + test 8.2-M2 corregido (fallback a tasa de apertura = conducta valida, decision usuario 8.77-D2) | (8.77) Suite .NET 796/796, build Release 0/0. Roadmap v0.6.0 + ANEXO 8.77 |
 | 2026-09-10  | F0/F1 | P11-P17 infra/decision: DQ-007 cierra con **B (HTTPS + VPN WireGuard)** para supervision remota; unica decision abierta del bloque resuelta. Updater mantiene R-007 deshabilitado; monitoreo confirma `monitor-health.ps1` (12.4); P11/P12/P13/P17 quedan BLOQUEADOS por entorno (VM, instancia PostgreSQL, certificado X.509, operacion real) | (8.76) Sin cambios de codigo; DQ-007 registrada B; roadmap v0.5.0 + ANEXO 8.76 |
 | 2026-09-10  | F2   | Req.9 reinicio facil implementado: endpoint admin + RestartPOS.bat + acceso directo instalador + boton WPF/Web (+ tests) | (8.69) Req.9 IMPLEMENTADO; suites .NET 776/776 + Web 81/81. Roadmap v0.4.0 + ANEXO 8.69 |

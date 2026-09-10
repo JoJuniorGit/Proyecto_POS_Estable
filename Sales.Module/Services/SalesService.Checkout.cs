@@ -77,35 +77,35 @@ public partial class SalesService
                     }
                 }
 
-            if (cashierId.HasValue)
-            {
-                sale.CashierId = cashierId.Value;
-            }
+                if (cashierId.HasValue)
+                {
+                    sale.CashierId = cashierId.Value;
+                }
 
-            if (exchangeRate <= 0)
-            {
-                throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio AppliedRate inválida o no inicializada (<= 0).");
-            }
+                if (exchangeRate <= 0)
+                {
+                    throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio AppliedRate inválida o no inicializada (<= 0).");
+                }
 
-            // 8.5-A5/8.6-B3: Anclaje de tasa BCV del día vs. tasa recibida del cliente.
-            // Si el desvío supera la tolerancia configurable (>10% por defecto) la tasa BCEV del día
-            // se ANCLA como tasa efectiva (evita manipulación del AppliedRate / shortage enmascarado);
-            // desvíos ≥ ±100% se rechazan. Sin catch-swallow: los errores del BCV se auditan.
-            exchangeRate = await ResolveAnchoredRateAsync(
-                exchangeRate,
-                contextLabel: "CompleteSale",
-                referenceId: saleId);
+                // 8.5-A5/8.6-B3: Anclaje de tasa BCV del día vs. tasa recibida del cliente.
+                // Si el desvío supera la tolerancia configurable (>10% por defecto) la tasa BCEV del día
+                // se ANCLA como tasa efectiva (evita manipulación del AppliedRate / shortage enmascarado);
+                // desvíos ≥ ±100% se rechazan. Sin catch-swallow: los errores del BCV se auditan.
+                exchangeRate = await ResolveAnchoredRateAsync(
+                    exchangeRate,
+                    contextLabel: "CompleteSale",
+                    referenceId: saleId);
 
-            sale.AppliedRate = exchangeRate;
-            await RecalculateTotalAsync(sale);
+                sale.AppliedRate = exchangeRate;
+                await RecalculateTotalAsync(sale);
 
-            // 8.7-B2: Acotar el ajuste de redondeo a un límite operacional (refuerzo del [Range]).
-            if (Math.Abs(roundingAdjustment) > 1000m)
-            {
-                throw new InvalidOperationException($"Rechazo Defensivo: el ajuste de redondeo ({roundingAdjustment:F2}) excede el límite operacional de ±1000.");
-            }
+                // 8.7-B2: Acotar el ajuste de redondeo a un límite operacional (refuerzo del [Range]).
+                if (Math.Abs(roundingAdjustment) > 1000m)
+                {
+                    throw new InvalidOperationException($"Rechazo Defensivo: el ajuste de redondeo ({roundingAdjustment:F2}) excede el límite operacional de ±1000.");
+                }
 
-            sale.RoundingAdjustment = roundingAdjustment;
+                sale.RoundingAdjustment = roundingAdjustment;
 
             decimal existingPaidUsd = sale.Payments.Sum(p => p.Amount);
             decimal newPaymentsPaidUsd = payments != null 

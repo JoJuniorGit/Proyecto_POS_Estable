@@ -91,6 +91,22 @@ public class InventoryServiceUnitTests
     }
 
     [Fact]
+    public async Task CreateProductAsync_WhenParentProductMissing_ThrowsKeyNotFoundException()
+    {
+        var (service, context, _) = CreateService();
+
+        var variant = new Product
+        {
+            SKU = "10004",
+            Name = "Variante Sin Padre",
+            ParentProductId = 999
+        };
+
+        var ex = await Assert.ThrowsAsync<KeyNotFoundException>(() => service.CreateProductAsync(variant));
+        Assert.Contains("Producto padre con ID 999 no encontrado", ex.Message);
+    }
+
+    [Fact]
     public async Task UpdateStockAsync_DeductsExactFractionalQuantity_WithoutTruncation()
     {
         var (service, context, _) = CreateService();

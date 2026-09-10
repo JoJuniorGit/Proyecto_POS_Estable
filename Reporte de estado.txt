@@ -17,6 +17,19 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.44.0  | 2026-09-10  | (8.78)       | FOLLOW-UPS DE DEUDA TECNICA DE ANEXO 8.77: eliminados
+|          |             |              | los 3 catch-locales redundantes de InvalidOperationException
+|          |             |              | en ReservationsController (ReserveStock/ConfirmReservation/
+|          |             |              | CancelReservation; el middleware ya mapea a 409 sin filtrar
+|          |             |              | ex.Message; se conservan catches de KeyNotFound->404 por
+|          |             |              | diseno); padre inexistente en ProductCrud.cs:77 recalsificado
+|          |             |              | a KeyNotFoundException->404 (mensaje unificado con
+|          |             |              | VariantQueries.cs); reindentacion boy-scout en
+|          |             |              | SalesService.Checkout.cs (bloques 8.5-A5 y 8.7-B2 al cuerpo
+|          |             |              | del try, diff -w vacio = semantica identica). Test nuevo
+|          |             |              | CreateProductAsync_WhenParentProductMissing_ThrowsKeyNotFound
+|          |             |              | Exception. Suite 797/797 verde, build Release 0/0.
+|          |             |              | ANEXO 8.78, roadmap v0.7.0.
 | v1.43.0  | 2026-09-10  | (8.77)       | CIERRE P2=C3 UNIFICACION 400/409 InvalidOperationException/
 |          |             |              | ArgumentException: validacion pura de entrada pasa a
 |          |             |              | ArgumentException->400 via middleware (RFC 7807, sin

@@ -68,11 +68,6 @@ public class ReservationsController : ControllerBase
             );
             return Ok(new { ReservationId = reservationId });
         }
-        catch (InvalidOperationException ex)
-        {
-            // Stock not available or concurrency conflict
-            return this.ApiConflict(ex.Message);
-        }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
             return this.ApiNotFound(ex.Message);
@@ -105,38 +100,27 @@ public class ReservationsController : ControllerBase
         {
             return NotFound();
         }
-        catch (InvalidOperationException ex)
-        {
-            return this.ApiConflict(ex.Message);
-        }
     }
 
     [HttpPost("cancel/{id}")]
     public async Task<IActionResult> CancelReservation(int id)
     {
-        try
+        // 8.5-A3: Verificar ownership — solo el usuario que creó la reserva puede cancelarla
+        if (_inventoryContext != null)
         {
-            // 8.5-A3: Verificar ownership — solo el usuario que creó la reserva puede cancelarla
-            if (_inventoryContext != null)
-            {
-                var reservation = await _inventoryContext.StockReservations
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(r => r.Id == id);
+            var reservation = await _inventoryContext.StockReservations
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Id == id);
 
-                if (reservation == null) return NotFound();
+            if (reservation == null) return NotFound();
 
-                if (!IsReservationOwner(reservation))
-                    return StatusCode(StatusCodes.Status403Forbidden,
-                        new { Message = "Acceso denegado: no tiene permisos para cancelar esta reserva." });
-            }
-
-            await _inventoryService.CancelReservationAsync(id);
-            return NoContent();
+            if (!IsReservationOwner(reservation))
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    new { Message = "Acceso denegado: no tiene permisos para cancelar esta reserva." });
         }
-        catch (InvalidOperationException ex)
-        {
-            return this.ApiConflict(ex.Message);
-        }
+
+        await _inventoryService.CancelReservationAsync(id);
+        return NoContent();
     }
 
     private bool IsReservationOwner(Core.Entities.StockReservation reservation)
