@@ -236,6 +236,28 @@ export function setCustomBaseUrl(url) {
 }
 
 
+const API_TIMEOUT_MS = 15000;
+const RETRYABLE_STATUS = new Set([503, 504]);
+const MAX_RETRIES = 1;
+
+function createRequestSignal(signal) {
+  if (typeof AbortSignal === 'undefined' || typeof AbortSignal.timeout !== 'function') {
+    return signal;
+  }
+  const timeoutSignal = AbortSignal.timeout(API_TIMEOUT_MS);
+  if (signal && typeof AbortSignal.any === 'function') {
+    return AbortSignal.any([signal, timeoutSignal]);
+  }
+  return signal || timeoutSignal;
+}
+
+function shouldRetry(config, response) {
+  if (!RETRYABLE_STATUS.has(response.status)) return false;
+  const method = (config.method || 'GET').toUpperCase();
+  if (method === 'GET' || method === 'DELETE') return true;
+  return Boolean(config.headers && config.headers['Idempotency-Key']);
+}
+
 /**
  * Realiza una petición HTTP al backend.
  * @param {string} endpoint - Ruta relativa (ej: "/api/products/suggestions")
@@ -245,7 +267,7 @@ export function setCustomBaseUrl(url) {
 export async function apiFetch(endpoint, options = {}) {
   const url = `${CURRENT_BASE_URL}${endpoint}`;
 
-  const { headers: customHeaders, ...restOptions } = options;
+  const { headers: customHeaders, signal: callerSignal, _includeMeta, ...restOptions } = options;
   const config = {
     credentials: 'include',
     ...restOptions,
@@ -263,11 +285,16 @@ export async function apiFetch(endpoint, options = {}) {
     delete config.headers['Content-Type'];
   }
 
-  const response = await fetch(url, config);
+  let response;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    response = await fetch(url, { ...config, signal: createRequestSignal(callerSignal) });
+    if (attempt === MAX_RETRIES || !shouldRetry(config, response)) break;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
 
   // 204 No Content — no hay body que parsear
   if (response.status === 204) {
-    return null;
+    return _includeMeta ? { data: null, totalCount: 0 } : null;
   }
 
   if (!response.ok) {
@@ -328,11 +355,15 @@ export async function apiFetch(endpoint, options = {}) {
 
   // Intentar parsear como JSON, si falla retornar texto plano
   const contentType = response.headers.get('content-type');
-  if (contentType && contentType.includes('application/json')) {
-    return response.json();
-  }
+  const data = contentType && contentType.includes('application/json')
+    ? await response.json()
+    : await response.text();
 
-  return response.text();
+  if (_includeMeta) {
+    const totalCount = Number(response.headers.get('X-Total-Count') || 0);
+    return { data, totalCount };
+  }
+  return data;
 }
 
 /**
@@ -343,28 +374,8 @@ export const api = {
     apiFetch(endpoint, { method: 'GET', signal }),
 
   // 8.14-N1: GET devolviendo { data, totalCount } para paginación (X-Total-Count).
-  getWithMeta: async (endpoint, signal) => {
-    const url = `${CURRENT_BASE_URL}${endpoint}`;
-    const response = await fetch(url, {
-      credentials: 'include',
-      method: 'GET',
-      signal,
-      headers: {
-        'Accept': 'application/json',
-        'X-Client-Platform': 'Web',
-        'X-Client-Version': '1.0.0',
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`Error ${response.status}: ${response.statusText}`);
-    }
-    const totalCount = Number(response.headers.get('X-Total-Count') || 0);
-    const contentType = response.headers.get('content-type');
-    const data = contentType && contentType.includes('application/json')
-      ? await response.json()
-      : await response.text();
-    return { data, totalCount };
-  },
+  getWithMeta: (endpoint, signal) =>
+    apiFetch(endpoint, { method: 'GET', signal, _includeMeta: true }),
 
   post: (endpoint, body, optionsOrSignal) => {
     const opts = (optionsOrSignal && typeof optionsOrSignal === 'object' && !('aborted' in optionsOrSignal))

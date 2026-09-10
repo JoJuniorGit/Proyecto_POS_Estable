@@ -289,5 +289,81 @@ describe('apiFetch ProblemDetails and validation error extraction', () => {
     assert.strictEqual(result.status, 'restarting');
     assert.strictEqual(capturedConfig.headers['X-Client-Platform'], 'Web');
   });
+
+  it('8. Retries once on 503 and then succeeds', async () => {
+    let calls = 0;
+    originalFetch = global.fetch;
+    global.fetch = async () => {
+      calls++;
+      if (calls === 1) {
+        return {
+          ok: false,
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { get: () => 'application/json' },
+          text: async () => '{}',
+          json: async () => ({})
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        text: async () => JSON.stringify({ recovered: true }),
+        json: async () => ({ recovered: true })
+      };
+    };
+
+    const result = await apiFetch('/api/test');
+
+    assert.strictEqual(calls, 2);
+    assert.deepStrictEqual(result, { recovered: true });
+  });
+
+  it('9. Retries only once on persistent 504 and surfaces the error', async () => {
+    let calls = 0;
+    originalFetch = global.fetch;
+    global.fetch = async () => {
+      calls++;
+      return {
+        ok: false,
+        status: 504,
+        statusText: 'Gateway Timeout',
+        headers: { get: () => 'application/json' },
+        text: async () => '{}',
+        json: async () => ({})
+      };
+    };
+
+    await assert.rejects(
+      async () => await apiFetch('/api/test'),
+      { message: 'Error 504: Gateway Timeout' }
+    );
+    assert.strictEqual(calls, 2);
+  });
+
+  it('10. getWithMeta unifies with apiFetch and returns X-Total-Count', async () => {
+    let capturedSignal = null;
+    originalFetch = global.fetch;
+    global.fetch = async (url, config) => {
+      capturedSignal = config.signal;
+      return {
+        ok: true,
+        status: 200,
+        headers: {
+          get: (h) => (h.toLowerCase() === 'content-type' ? 'application/json'
+            : h.toLowerCase() === 'x-total-count' ? '42' : null)
+        },
+        text: async () => JSON.stringify([{ id: 1 }]),
+        json: async () => [{ id: 1 }]
+      };
+    };
+
+    const { data, totalCount } = await api.getWithMeta('/api/sales/pending');
+
+    assert.ok(capturedSignal, 'signal should be a combined AbortSignal');
+    assert.strictEqual(totalCount, 42);
+    assert.deepStrictEqual(data, [{ id: 1 }]);
+  });
 });
 
