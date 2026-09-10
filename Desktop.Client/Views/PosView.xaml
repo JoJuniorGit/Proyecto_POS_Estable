@@ -52,7 +52,7 @@
                 <Grid Margin="0,0,0,10">
                     <TextBox x:Name="SearchInput"
                              Tag="PosSearchBox"
-                             materialDesign:HintAssist.Hint="Enter the desired product"
+                             materialDesign:HintAssist.Hint="Ingrese el producto deseado"
                              materialDesign:TextFieldAssist.HasClearButton="True"
                              Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
                              Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">

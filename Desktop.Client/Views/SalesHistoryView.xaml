@@ -182,6 +182,7 @@
                   EnableColumnVirtualization="True"
                   VirtualizingStackPanel.IsVirtualizing="True"
                   VirtualizingStackPanel.VirtualizationMode="Recycling"
+                  VirtualizingPanel.ScrollUnit="Pixel"
                   materialDesign:DataGridAssist.CellPadding="12,8,12,8"
                   materialDesign:DataGridAssist.ColumnHeaderPadding="12,10,12,10"
                   RowDetailsVisibilityMode="Collapsed">
