@@ -4421,3 +4421,46 @@ C2. Requiere certificado de firma de codigo comercial (Sectigo/DigiCert/
 
 FIN DEL ANEXO - REVISION 8.66
 ================================================================================
+===============================================================================
+ANEXO - REVISION 8.67 (BRECHAS DETECTADAS EN EL PLAN DE PRODUCCION - PROPUESTA)
+===============================================================================
+Alcance: registrar 5 mejoras al plan de produccion (production-readiness-roadmap)
+identificadas tras los incidentes reales 8.63-8.66. Todas son PREVENTIVAS:
+evitan reproducir fallos ya vividos. Pendiente de aprobacion del RM para editar
+el roadmap.
+
+A. MOTIVACION
+A1. Cada mejora nace de un incidente verificado en produccion/instalacion:
+    - Migracion 42703 (8.65): fallo solo visible al migrar una BD VACIA; el smoke
+      MigratedSchema migra sobre BD existente y no lo detecto.
+    - Politica de contrasena (8.63): desalineada entre instalador y backend.
+    - ACL de secrets.json (8.63/8.64): duplicado y en conflicto (icacls inline vs
+      Configure-PosService.ps1).
+    - Credenciales y config del sitio no respaldadas (solo se respalda la BD).
+
+B. MEJORAS PROPUESTAS
+B1. Smoke de migracion "desde cero" automatizado (F3/F4).
+    - Crear BD temporal vacia, ejecutar MigrateAsync de TODOS los contextos,
+      comparar esquema contra el snapshot, descartar la BD.
+    - Ejecutar en CI y en cada release; habria detectado 8.65.
+B2. Validacion cruzada instalador <-> backend (F1/F4).
+    - Checklist de paridad: validador de contrasena del instalador ==
+      PasswordPolicyService; puertos; ACL; topico de secrets.json.
+B3. Respaldo y recuperacion de la configuracion del sitio (F5/runbooks).
+    - Incluir en el backup: secrets.json (contiene password BD), cert HTTPS por
+      sitio, client_settings.json, credenciales de postgres (hoy conocida).
+    - Paso de reinstalacion que restaure la config previa tras perdida total.
+B4. Windows Defender / SmartScreen en la caja LAN (F1/F4 checklist).
+    - Documentar exclusiones operativas para bins self-contained + NSSM, ademas
+      de la firma X.509.
+B5. Migracion de datos del software anterior del cliente (F0, open question).
+    - Agregar pregunta al cliente sobre catalogo/existencias previas y plan de
+      carga (existe import de variantes, 8.57).
+
+C. DECISION
+C1. Estado: PROPUESTA. No se ha modificado el roadmap. Aprobar edicion y
+    asignar revision de roadmap para incorporar B1-B5 (B1-B3 prioritarias:
+    evitan/ detectan fallos reales).
+
+FIN DEL ANEXO - REVISION 8.67
+================================================================================

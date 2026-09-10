@@ -57,13 +57,27 @@ estado tecnico en `Reporte de estado.txt`.
 
 Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
+### 1.3 Mejoras preventivas post-incidente (PROPUESTA)
+
+> Identificadas tras los incidentes reales de instalacion/operacion (8.63-8.66).
+> Son preventivas: evitan reproducir fallos ya vividos. Registro de detalle en
+> ANEXO 8.67. Estado: PROPUESTA, pendiente de aprobacion del RM para incorporar.
+
+| ID | Mejora | Fase | Como | Evita / Detecta |
+|----|--------|------|------|-----------------|
+| IMP-1 | Smoke de migracion "desde cero" automatizado | F3/F4 | BD temporal vacia + MigrateAsync de todos los contextos + comparar esquema contra snapshot + descartar; en CI y release | 8.65 (42703 IsDeleted) |
+| IMP-2 | Validacion cruzada instalador <-> backend | F1/F4 | Checklist paridad: validador de contrasena == PasswordPolicyService, puertos, ACL, topico de secrets.json | 8.63 (politica contrasena) |
+| IMP-3 | Backup y recuperacion de la configuracion del sitio | F5 | Incluir en backup: secrets.json, cert HTTPS por sitio, client_settings.json, credenciales postgres; paso de reinstalacion que restaure config previa | perdida total del equipo |
+| IMP-4 | Windows Defender / SmartScreen en caja LAN | F1/F4 | Documentar exclusiones operativas para bins self-contained + NSSM, ademas de la firma X.509 | bloqueo de ejecutables nuevos |
+| IMP-5 | Migracion de datos del software anterior del cliente | F0 | Pregunta abierta al cliente sobre catalogo/existencias previas + plan de carga (existe import de variantes, 8.57) | perdida/omision de datos heredados |
+
 ---
 
 ## 2. Registro de avance (changelog)
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
-| 2026-09-09  | F4   | Instalador compilado con ISCC 7 (fixes setup.iss: AnsiString/forward/JsonEsc) | POS_System_Setup_v1.0.0.exe generado (8.61) |
+| 2026-09-09  | -    | PROPUESTA IMP-1..IMP-5: mejoras preventivas post-incidente (smoke migracion desde cero, paridad instalador/backend, backup config sitio, Defender en caja, migracion datos previos) | ANEXO 8.67; pendiente de aprobacion para editar |
 | 2026-09-09  | F5   | Health check de frescura del ultimo backup (8.59) | Suites .NET 769/769 |
 | 2026-09-09  | F2   | Logistics.Module fuera del DI (M08) + dotnet-ef 10.0.4 (B02) + bundle web reproducible (8.58) | Suites .NET 766/766 |
 | 2026-09-09  | -    | Fusion del roadmap con el plan de certificacion (v0.2.0) | Documento consolidado; contenido nuevo + formato existente |
@@ -180,6 +194,7 @@ cerrarse antes de la certificacion.
 6. Requisitos regulatorios/fiscales de facturacion y conservacion.
 7. Ventana de mantenimiento y responsable operativo en el sitio.
 8. Duracion y criterios de exito del piloto (1-2 semanas iniciales).
+9. Existen datos previos (catalogo/existencias) en otro sistema que deban importarse? (IMP-5)
 
 ### 4.5.1 Respuestas preliminares (RM/ARQ) - para validar con el cliente
 
@@ -228,6 +243,8 @@ Hito M1: cero riesgos P0 abiertos y matriz de riesgos firmada.
 | Validar migracion, creacion de BD y seed admin con cambio de contrasena obligatorio | R-001 | PENDIENTE |
 | Ejecutar backup + restore real en instancia PostgreSQL separada; medir RTO | R-002, R-009 | PENDIENTE |
 | Verificar reinicio del servicio, actualizacion de binarios y rollback de esquema | R-002 | PENDIENTE |
+| Validacion cruzada instalador <-> backend: paridad de politica de contrasena, puertos, ACL y topico de secrets.json (IMP-2) | R-001 | PENDIENTE |
+| Documentar y aplicar exclusiones de Windows Defender/SmartScreen para bins self-contained + NSSM en la caja (IMP-4) | R-001 | PENDIENTE |
 
 > CAUTION: R-001 y R-002 son P1 activos que deben cerrarse antes de cualquier
 > despliegue. El instalador nunca ha sido probado E2E en maquina limpia y el
@@ -250,6 +267,7 @@ Hito M1: cero riesgos P0 abiertos y matriz de riesgos firmada.
 | Impresion de recibos/cierres | R-006 (P2) | Confirmar con cliente: obligatoria u opcional (DQ-003) |
 | UpdaterService | R-007 (P3) | Mantener deshabilitado; no incluir en instalador |
 | Multi-sucursal | R-008 (P3) | Fuera de alcance; documentado |
+| Migracion de datos previos del cliente (catalogo/existencias) | (IMP-5) | Confirmar con cliente (Pregunta 4.5 #9); plan de carga via import de variantes (8.57) |
 
 ### 5.4 Clasificacion de deuda tecnica
 
@@ -330,9 +348,11 @@ reproducible.
 | Prueba | Objetivo | Estado |
 |--------|----------|--------|
 | Backup PostgreSQL (`pg_dump -Fc`) | RPO <= 24 h | Tarea programada configurada; ejecucion real PENDIENTE |
+| Backup de configuracion del sitio: secrets.json, cert HTTPS por sitio, client_settings.json, credenciales postgres (IMP-3) | 0 perdida de config | PENDIENTE de incorporar |
 | Restore + conteos | 0 ventas perdidas | PENDIENTE |
 | Medicion RTO | <= 4 h | PENDIENTE |
 | Rollback de migracion | Esquema anterior funcional | Plan documentado (INSTALLATION 10); ejecucion PENDIENTE |
+| Smoke de migracion "desde cero" automatizado: BD vacia + MigrateAsync todos los contextos + comparar esquema vs snapshot (IMP-1) | Esquema reproducible en instalacion limpia | PENDIENTE de incorporar; detecta fallo 8.65 |
 
 ---
 
@@ -350,6 +370,7 @@ maquina limpia.
 - [ ] Firmado de instalador/binarios con X.509 (requiere certificado).
 - [ ] Smoke test en maquina virgen.
 - [ ] Regenerar el bundle web en `wwwroot` (`npm run build` final) y verificarlo en el artefacto.
+- [ ] Smoke de migracion desde cero automatizado en el release (IMP-1, ver 7.4).
 
 ### 8.1 Matriz de configuracion por ambiente
 
