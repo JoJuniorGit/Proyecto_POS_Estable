@@ -29,6 +29,28 @@ public class CashDrawerService : ICashDrawerService
         return _serviceProvider?.GetService(typeof(ISalesService)) as ISalesService;
     }
 
+    private Core.Interfaces.ISystemSettingsService? GetSettingsService()
+    {
+        return _serviceProvider?.GetService(typeof(Core.Interfaces.ISystemSettingsService)) as Core.Interfaces.ISystemSettingsService;
+    }
+
+    private async Task<decimal> GetCommissionPercentageAsync(bool isTransfer)
+    {
+        var key = isTransfer
+            ? Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct
+            : Core.Constants.SettingKeys.CashAdvanceCashCommissionPct;
+        var fallback = isTransfer ? 7.0m : 10.0m;
+
+        var settingsService = GetSettingsService();
+        var value = settingsService != null
+            ? await settingsService.GetSettingAsync(key)
+            : null;
+
+        return decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var percentage) && percentage > 0
+            ? percentage
+            : fallback;
+    }
+
     public async Task<CashDrawerSession?> GetActiveSessionAsync()
     {
         // 8.5-M1: Sin Include de Transactions — liviano para accesos internos (cierre, apertura, rollover).
@@ -476,7 +498,7 @@ public class CashDrawerService : ICashDrawerService
         try
         {
             string activeUserName = !string.IsNullOrWhiteSpace(userName) ? userName : "Usuario";
-            decimal commissionPercentage = isTransfer ? 7.0m : 10.0m;
+            decimal commissionPercentage = await GetCommissionPercentageAsync(isTransfer);
             decimal commissionAmountLocal = Math.Round(roundedRequested * (commissionPercentage / 100.0m), 2, MidpointRounding.AwayFromZero);
             decimal totalChargedLocal = roundedRequested + commissionAmountLocal;
 

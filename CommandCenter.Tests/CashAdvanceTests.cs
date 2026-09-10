@@ -229,6 +229,63 @@ public class CashAdvanceTests
     }
 
     [Fact]
+    public async Task ProcessCashAdvance_Transfer_UsesConfiguredCommissionFromSystemSettings()
+    {
+        using var context = GetInMemoryDbContext();
+
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("5.5");
+
+        var services = new ServiceCollection();
+        services.AddScoped<ISystemSettingsService>(_ => settingsMock.Object);
+        var provider = services.BuildServiceProvider();
+
+        var service = new ServerCashService.CashDrawerService(context, provider);
+        var session = await service.OpenSessionAsync(2000m, 50.0m);
+
+        var result = await service.ProcessCashAdvanceAsync(
+            sessionId: session.Id,
+            requestedAmountLocal: 1000m,
+            paymentMethodId: 2,
+            paymentMethodName: "Transferencia Bancaria",
+            isTransfer: true,
+            exchangeRate: 50.0m
+        );
+
+        Assert.Equal(55m, result.CommissionAmountLocal); // 5.5% of 1,000
+        Assert.Equal(5.5m, result.CommissionPercentage);
+    }
+
+    [Fact]
+    public async Task ProcessCashAdvance_Cash_FallsBackTo10Percent_WhenSettingsMissing()
+    {
+        using var context = GetInMemoryDbContext();
+
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
+
+        var services = new ServiceCollection();
+        services.AddScoped<ISystemSettingsService>(_ => settingsMock.Object);
+        var provider = services.BuildServiceProvider();
+
+        var service = new ServerCashService.CashDrawerService(context, provider);
+        var session = await service.OpenSessionAsync(2000m, 50.0m);
+
+        var result = await service.ProcessCashAdvanceAsync(
+            sessionId: session.Id,
+            requestedAmountLocal: 1000m,
+            paymentMethodId: 2,
+            paymentMethodName: "Punto de Venta",
+            isTransfer: false,
+            exchangeRate: 50.0m
+        );
+
+        Assert.Equal(100m, result.CommissionAmountLocal); // fallback 10% of 1,000
+        Assert.Equal(10.0m, result.CommissionPercentage);
+    }
+
+    [Fact]
     public async Task ProcessCashAdvance_InsufficientCash_ThrowsInvalidOperationException()
     {
         using var context = GetInMemoryDbContext();
