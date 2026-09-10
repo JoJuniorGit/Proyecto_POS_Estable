@@ -11,17 +11,15 @@ namespace Backend.API.Services;
 
 public class TokenService : ITokenService
 {
-    private readonly IConfiguration _configuration;
+    private readonly SymmetricSecurityKey _securityKey;
+    private readonly string _issuer;
+    private readonly string _audience;
+    private readonly int _expiryMinutes;
 
     public TokenService(IConfiguration configuration)
     {
-        _configuration = configuration;
-    }
-
-    public string GenerateToken(User user, string scope = "pos:desktop")
-    {
-        var jwtKey = _configuration["JWT_SETTINGS_KEY"] 
-                  ?? _configuration["JwtSettings:Key"] 
+        var jwtKey = configuration["JWT_SETTINGS_KEY"]
+                  ?? configuration["JwtSettings:Key"]
                   ?? Environment.GetEnvironmentVariable("JWT_SETTINGS_KEY");
 
         var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
@@ -43,16 +41,20 @@ public class TokenService : ITokenService
             throw new InvalidOperationException("CRITICAL: Default or historically leaked development JWT secret cannot be used in production. A secure random key must be generated.");
         }
 
-        var issuer = _configuration["JwtSettings:Issuer"] ?? "SolucionesPos";
-        var audience = _configuration["JwtSettings:Audience"] ?? "PosClient";
-        var expiryMinutesStr = _configuration["JwtSettings:ExpiryMinutes"] ?? "120";
+        _securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+        _issuer = configuration["JwtSettings:Issuer"] ?? "SolucionesPos";
+        _audience = configuration["JwtSettings:Audience"] ?? "PosClient";
+        var expiryMinutesStr = configuration["JwtSettings:ExpiryMinutes"] ?? "120";
         if (!int.TryParse(expiryMinutesStr, out var expiryMinutes) || expiryMinutes <= 0)
         {
             expiryMinutes = 120;
         }
+        _expiryMinutes = expiryMinutes;
+    }
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+    public string GenerateToken(User user, string scope = "pos:desktop")
+    {
+        var credentials = new SigningCredentials(_securityKey, SecurityAlgorithms.HmacSha256);
 
         var displayName = string.IsNullOrWhiteSpace(user.Name) ? user.FullName : user.Name;
 
@@ -81,9 +83,9 @@ public class TokenService : ITokenService
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(claims),
-            Expires = DateTime.UtcNow.AddMinutes(expiryMinutes),
-            Issuer = issuer,
-            Audience = audience,
+            Expires = DateTime.UtcNow.AddMinutes(_expiryMinutes),
+            Issuer = _issuer,
+            Audience = _audience,
             SigningCredentials = credentials
         };
 

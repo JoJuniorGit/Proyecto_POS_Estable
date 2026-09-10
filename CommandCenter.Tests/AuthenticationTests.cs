@@ -250,9 +250,7 @@ public class AuthenticationTests
             var emptyConfig = new ConfigurationBuilder()
                 .AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>())
                 .Build();
-            var serviceEmpty = new TokenService(emptyConfig);
-            var user = new User { Id = 1, Cedula = "V-1", Name = "U1" };
-            Assert.Throws<InvalidOperationException>(() => serviceEmpty.GenerateToken(user));
+            Assert.Throws<InvalidOperationException>(() => new TokenService(emptyConfig));
 
             // Caso B: Clave secreta por defecto de desarrollo en producción
             var devKeyConfig = new ConfigurationBuilder()
@@ -261,8 +259,7 @@ public class AuthenticationTests
                     {"JWT_SETTINGS_KEY", "POS_System_Default_Development_Secret_Key_At_Least_32_Chars!"}
                 })
                 .Build();
-            var serviceDevKey = new TokenService(devKeyConfig);
-            Assert.Throws<InvalidOperationException>(() => serviceDevKey.GenerateToken(user));
+            Assert.Throws<InvalidOperationException>(() => new TokenService(devKeyConfig));
         }
         finally
         {

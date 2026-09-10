@@ -27,6 +27,18 @@ public class AuthController : ControllerBase
     // no existe (cierra el oráculo de timing por enumeración de cuenta).
     private static readonly string _dummyPasswordHash = PasswordHasher.HashPassword("dummy-ooac0f8b");
 
+    private async Task<Core.Entities.User?> FindUserByCedulaAsync(string searchInput)
+    {
+        var searchLower = searchInput.ToLower();
+        var withV = searchInput.StartsWith("V-", StringComparison.OrdinalIgnoreCase) ? searchLower : "v-" + searchLower;
+        var digitsOnly = System.Text.RegularExpressions.Regex.Replace(searchInput, @"[^\d]", "");
+
+        return await _db.Users.FirstOrDefaultAsync(u => u.Username.ToLower() == searchLower ||
+                                                       u.Cedula.ToLower() == searchLower ||
+                                                       u.Cedula.ToLower() == withV ||
+                                                       (digitsOnly.Length > 0 && (u.Cedula.ToLower() == "v-" + digitsOnly || u.Cedula == digitsOnly)));
+    }
+
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public AuthController(
         SalesDbContext db, 
@@ -49,16 +61,8 @@ public class AuthController : ControllerBase
             return BadRequest(new { Message = "El usuario es requerido." });
         }
 
-        var searchInput = request.Cedula.Trim();
-        var searchLower = searchInput.ToLower();
-        var withV = searchInput.StartsWith("V-", StringComparison.OrdinalIgnoreCase) ? searchLower : "v-" + searchLower;
-        var digitsOnly = System.Text.RegularExpressions.Regex.Replace(searchInput, @"[^\d]", "");
-
-        var user = await _db.Users
-            .FirstOrDefaultAsync(u => u.Username.ToLower() == searchLower || 
-                                      u.Cedula.ToLower() == searchLower || 
-                                      u.Cedula.ToLower() == withV || 
-                                      (digitsOnly.Length > 0 && (u.Cedula.ToLower() == "v-" + digitsOnly || u.Cedula == digitsOnly)));
+var searchInput = request.Cedula.Trim();
+        var user = await FindUserByCedulaAsync(searchInput);
 
         if (user == null)
         {
@@ -214,14 +218,7 @@ public class AuthController : ControllerBase
         }
 
         var searchInput = request.Cedula.Trim();
-        var searchLower = searchInput.ToLower();
-        var withV = searchInput.StartsWith("V-", StringComparison.OrdinalIgnoreCase) ? searchLower : "v-" + searchLower;
-        var digitsOnly = System.Text.RegularExpressions.Regex.Replace(searchInput, @"[^\d]", "");
-
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Username.ToLower() == searchLower || 
-                                                           u.Cedula.ToLower() == searchLower || 
-                                                           u.Cedula.ToLower() == withV || 
-                                                           (digitsOnly.Length > 0 && (u.Cedula.ToLower() == "v-" + digitsOnly || u.Cedula == digitsOnly)));
+        var user = await FindUserByCedulaAsync(searchInput);
         if (user == null)
         {
             // 8.9-M3: PBKDF2 dummy anti-oráculo de timing en change-password.
