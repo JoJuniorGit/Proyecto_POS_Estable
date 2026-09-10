@@ -118,7 +118,7 @@ public partial class InventoryService
                             existingProduct.ParentProductId = null;
                             if (existingProduct.IsStockShared)
                             {
-                                existingProduct.StockQuantity = Math.Max(0, dto.StockQuantity);
+                                existingProduct.StockQuantity = existingProduct.StockQuantity + Math.Max(0, dto.StockQuantity);
                                 existingProduct.LowStockThreshold = Math.Max(0, dto.LowStockThreshold);
                             }
                             else
@@ -175,7 +175,7 @@ public partial class InventoryService
                                 }
                                 else
                                 {
-                                    existingProduct.StockQuantity = Math.Max(0, dto.StockQuantity);
+                                    existingProduct.StockQuantity = existingProduct.StockQuantity + Math.Max(0, dto.StockQuantity);
                                     existingProduct.LowStockThreshold = Math.Max(0, dto.LowStockThreshold);
                                     existingProduct.ConversionFactor = 1.0000m;
                                 }
@@ -195,7 +195,7 @@ public partial class InventoryService
                                 existingProduct.HasWholesale = hasWholesale;
                                 existingProduct.IsFractional = isFractional;
                                 existingProduct.UnitOfMeasure = unitEnum;
-                                existingProduct.StockQuantity = Math.Max(0, dto.StockQuantity);
+                                existingProduct.StockQuantity = existingProduct.StockQuantity + Math.Max(0, dto.StockQuantity);
                                 existingProduct.LowStockThreshold = Math.Max(0, dto.LowStockThreshold);
                             }
                         }

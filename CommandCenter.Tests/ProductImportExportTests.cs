@@ -111,6 +111,51 @@ public class ProductImportExportTests
     }
 
     [Fact]
+    public async Task BulkImport_WithOverwriteMerge_AccumulatesExistingStock()
+    {
+        var db = CreateInMemoryDbContext();
+        db.Products.Add(new Product
+        {
+            SKU = "100320",
+            Name = "Merge Stock Product",
+            CostPriceUSD = 2.00m,
+            ProfitMarginRetail = 50.00m,
+            PriceRetailUSD = 3.00m,
+            StockQuantity = 50m,
+            LowStockThreshold = 5m,
+            UnitOfMeasure = UnitOfMeasureType.Und,
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+
+        var service = new InventoryService(db);
+        var importList = new List<ProductImportDto>
+        {
+            new ProductImportDto
+            {
+                SKU = "100320",
+                Name = "Merge Stock Product",
+                CostPriceUSD = 2.00m,
+                ProfitMarginRetail = 50.00m,
+                PriceRetailUSD = 3.00m,
+                StockQuantity = 20m,
+                LowStockThreshold = 6m,
+                UnitOfMeasure = "UND",
+                IsValid = true
+            }
+        };
+
+        var (added, updated) = await service.BulkImportProductsAsync(importList, overwriteMerge: true);
+
+        Assert.Equal(0, added);
+        Assert.Equal(1, updated);
+        var product = await db.Products.FirstOrDefaultAsync(p => p.SKU == "100320");
+        Assert.NotNull(product);
+        Assert.Equal(70m, product!.StockQuantity);
+        Assert.Equal(6m, product.LowStockThreshold);
+    }
+
+    [Fact]
     public async Task ExportProductsAsync_ReturnsCsvWith11HeaderColumns()
     {
         var db = CreateInMemoryDbContext();
