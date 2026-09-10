@@ -42,11 +42,6 @@ public partial class InventoryService : IInventoryService
         }
     }
 
-    public async Task<List<Product>> GetAllProductsAsync()
-    {
-        return await _context.Products.AsNoTracking().ToListAsync();
-    }
-
     public async Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds)
     {
         var idList = productIds.Distinct().ToList();

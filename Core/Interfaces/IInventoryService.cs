@@ -7,7 +7,6 @@ namespace Core.Interfaces;
 
 public interface IInventoryService
 {
-    Task<List<Product>> GetAllProductsAsync();
     Task<decimal> GetTodayExchangeRateAsync();
     void InvalidateTodayExchangeRateCache();
     Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds);

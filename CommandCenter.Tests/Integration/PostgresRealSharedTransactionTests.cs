@@ -121,4 +121,39 @@ public class PostgresRealSharedTransactionTests
             }
         });
     }
+
+    [Fact]
+    public async Task RecordSaleChangeAsync_WithoutAmbientTransaction_ThrowsInvalidOperationException()
+    {
+        var connStr = GetConnectionString();
+        if (connStr == null) return;
+
+        using var ctx = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
+        if (ctx == null) return;
+
+        var service = new CashDrawerService(ctx);
+        var session = await service.OpenSessionAsync(1000m, 50m);
+        try
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.RecordSaleChangeAsync(
+                    sessionId: session.Id,
+                    changeUsd: 0.4m,
+                    changeBsS: 20m,
+                    exchangeRate: 50m,
+                    description: "Vuelto sin transacción",
+                    saleId: 1,
+                    cashPaymentMethodId: 1));
+
+            Assert.Contains("transacción compartida del cobro", ex.Message);
+        }
+        finally
+        {
+            var active = await service.GetActiveSessionAsync();
+            if (active != null)
+            {
+                await service.CloseSessionAsync(await service.GetCurrentBalanceLocalAsync(active.Id), 50m);
+            }
+        }
+    }
 }

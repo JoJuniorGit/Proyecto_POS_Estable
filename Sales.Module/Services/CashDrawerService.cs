@@ -387,6 +387,10 @@ public class CashDrawerService : ICashDrawerService
 
         if (!isInMemory)
         {
+            if (_context.Database.CurrentTransaction == null)
+            {
+                throw new InvalidOperationException("RecordSaleChangeAsync debe ejecutarse dentro de la transacción compartida del cobro para que el advisory lock sea efectivo.");
+            }
             await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", sessionId);
         }
 
@@ -448,10 +452,26 @@ public class CashDrawerService : ICashDrawerService
     {
         return await _context.CashTransactions
             .AsNoTracking()
-            .Include(t => t.Sale)
             .Where(t => t.IsPhysicalCash)
             .OrderByDescending(t => t.TransactionTime)
             .Take(limit)
+            .Select(t => new CashTransaction
+            {
+                Id = t.Id,
+                SessionId = t.SessionId,
+                TransactionTime = t.TransactionTime,
+                Type = t.Type,
+                Source = t.Source,
+                AmountUsd = t.AmountUsd,
+                ExchangeRate = t.ExchangeRate,
+                AmountLocal = t.AmountLocal,
+                Description = t.Description,
+                ReferenceId = t.ReferenceId,
+                SaleId = t.SaleId,
+                Sale = t.Sale != null ? new Sale { Id = t.Sale.Id, InvoiceNumber = t.Sale.InvoiceNumber } : null,
+                IsPhysicalCash = t.IsPhysicalCash,
+                PaymentMethodId = t.PaymentMethodId
+            })
             .ToListAsync();
     }
 

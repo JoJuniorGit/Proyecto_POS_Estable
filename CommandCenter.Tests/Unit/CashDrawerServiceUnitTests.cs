@@ -223,4 +223,44 @@ public class CashDrawerServiceUnitTests
             service.CloseSessionAsync(500m, 50m));
         Assert.Contains("sesión de caja activa", ex.Message);
     }
+
+    [Fact]
+    public async Task GetHistoryAsync_ProjectsInvoiceNumberFromSale_WithoutLoadingFullSaleEntity()
+    {
+        var (service, context) = CreateService();
+        var session = await service.OpenSessionAsync(500m, 50m);
+
+        var sale = new Sale
+        {
+            Id = 700,
+            Status = SaleStatus.Completed,
+            InvoiceNumber = 4242,
+            Date = DateTime.UtcNow,
+            AppliedRate = 50m
+        };
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        context.CashTransactions.Add(new CashTransaction
+        {
+            SessionId = session.Id,
+            Type = CashTransactionType.Income,
+            Source = CashTransactionSource.SalePayment,
+            AmountUsd = 10m,
+            AmountLocal = 500m,
+            ExchangeRate = 50m,
+            IsPhysicalCash = true,
+            Description = "Pago en efectivo",
+            TransactionTime = DateTime.UtcNow,
+            SaleId = sale.Id
+        });
+        await context.SaveChangesAsync();
+
+        var history = await service.GetHistoryAsync(10);
+
+        var item = Assert.Single(history, t => t.SaleId == sale.Id);
+        Assert.NotNull(item.Sale);
+        Assert.Equal(4242, item.Sale!.InvoiceNumber);
+        Assert.Equal(700, item.SaleId);
+    }
 }
