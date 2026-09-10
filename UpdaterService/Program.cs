@@ -66,7 +66,11 @@ class Program
         // Step 1: Graceful Shutdown of Windows Service
         Console.WriteLine("[Updater] Performing Graceful Shutdown of Backend Service...");
         ControlService("stop", serviceName, targetDir);
-        Thread.Sleep(3000); // Give processes time to release file locks
+        if (!WaitForServiceStopped(serviceName))
+        {
+            Console.WriteLine("[Updater] ERROR CRÍTICO: El servicio no se detuvo dentro del tiempo límite. Cancelando la actualización para no reemplazar binarios en ejecución.");
+            return;
+        }
 
         // Step 2: Replace Binaries preserving appsettings.Production.json safely
         if (!string.IsNullOrWhiteSpace(packagePath) && File.Exists(packagePath))
@@ -142,7 +146,7 @@ class Program
         return false;
     }
 
-    static void RunCommand(string fileName, string arguments)
+    static string RunCommand(string fileName, string arguments)
     {
         try
         {
@@ -156,12 +160,59 @@ class Program
                 RedirectStandardError = true
             };
             using var p = Process.Start(psi);
-            p?.WaitForExit(10000);
+            if (p == null)
+            {
+                Console.WriteLine($"[Updater] No se pudo iniciar el proceso ({fileName} {arguments}).");
+                return string.Empty;
+            }
+
+            var stdoutTask = p.StandardOutput.ReadToEndAsync();
+            var stderrTask = p.StandardError.ReadToEndAsync();
+
+            if (!p.WaitForExit(20000))
+            {
+                Console.WriteLine($"[Updater] El comando excedió 20s y fue terminado ({fileName} {arguments}).");
+                try { p.Kill(entireProcessTree: true); }
+                catch { }
+            }
+
+            var stdout = stdoutTask.Result;
+            var stderr = stderrTask.Result;
+
+            if (!string.IsNullOrWhiteSpace(stdout))
+            {
+                Console.WriteLine($"[Updater] {fileName} {arguments} -> {stdout.Trim()}");
+            }
+            if (!string.IsNullOrWhiteSpace(stderr))
+            {
+                Console.WriteLine($"[Updater] {fileName} {arguments} (stderr) -> {stderr.Trim()}");
+            }
+            return stdout ?? string.Empty;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[Updater] Command failed ({fileName} {arguments}): {ex.Message}");
+            return string.Empty;
         }
+    }
+
+    static bool WaitForServiceStopped(string serviceName, int timeoutMs = 20000)
+    {
+        if (string.IsNullOrWhiteSpace(serviceName)) return true;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < timeoutMs)
+        {
+            var status = RunCommand("sc.exe", $"query \"{serviceName}\"");
+            if (status.Contains("STOPPED", StringComparison.OrdinalIgnoreCase) ||
+                status.Contains("SERVICE_NOT_FOUND", StringComparison.OrdinalIgnoreCase) ||
+                status.Contains("1060", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            Thread.Sleep(500);
+        }
+        return false;
     }
 }
 
