@@ -5096,3 +5096,51 @@ C. VIGENCIA DE DEUDA
      P11-P17 (infra/decisión).
 
 FIN DEL ANEXO - REVISION 8.74
+
+=======================================================================
+ANEXO - REVISION 8.75 (CIERRE P8 8.16-B07 + P9 8.16-B13/B14 + P10 8L-CR3)
+=======================================================================
+Fecha: 2026-09-10. Suites al cierre: .NET 796/796, build Release 0/0.
+Cierra tres pendientes "backend menor" del plan general. Commit P8+P9
+(7914366); P10 es verificacion/documentacion (sin cambio de codigo).
+
+A. P8 / 8.16-B07 (SecurityStampValidator: TTL fijo 45s en modo estricto)
+   - Raiz: el write path del cache siempre fijaba
+     AbsoluteExpirationRelativeToNow=CacheDuration (45s) aunque se
+     invocara con forceImmediateCheck=true (ventana estricta 5s,
+     8.7-M8). El read path si respetaba StrictWindow como maxAge, pero la
+     entrada se quedaba 45s en memoria.
+   - Fix: nuevo helper internal static ResolveCacheWindow(bool) =
+     forceImmediateCheck ? StrictWindow : CacheDuration, usado por AMBOS
+     paths (read maxAge y write AbsoluteExpirationRelativeToNow). Unica
+     fuente de verdad; sin 45s hardcodeados residuales (grep verificado).
+   - InternalsVisibleTo("CommandCenter.Tests") en la cabecera del archivo
+     (exposicion minima, solo al ensamblado de pruebas).
+   - Test nuevo: ResolveCacheWindow_StrictMode_ReturnsStrictWindow
+     (assert estatico 5s vs 45s). Reviewer APROBADO.
+
+B. P9 / 8.16-B13/B14 + 8.20-M10 residuo (catch silencioso + whitelist sin log)
+   - B14 verificado YA RESUELTO: BackendHelpers.cs:199-203 registra
+     AppLogger.LogWarn en el catch de BuildLanAllowedHosts (8.20-M10).
+   - B13 (residuo) resuelto: Program.cs:56 agrega AppLogger.LogStart de la
+     whitelist de hosts CALCULADA (solo el COUNT de hosts, sin IPs ni
+     hostnames -> sin fuga de datos). Reviewer APROBADO.
+
+C. P10 / 8L-CR3 (Logistics sin persistencia, NO PRODUCTIVO)
+   - Verificado CONFIRMADO (sin cambio de codigo): DeliveryService solo en
+     memoria (ConcurrentDictionary); AddLogisticsModule() sin call sites en
+     produccion; DI de produccion (ServiceCollectionExtensions) registra
+     solo Sales/Inventory (AddMediatR sin Logistics -> SaleDispatched
+     EventHandler no se enruta); DeliveryService solo instanciado en
+     DeliveryServiceTests (mock); README de Logistics.Module rotulado
+     "NO PRODUCTIVO / EXPERIMENTAL" con cita [8L-CR3].
+   - Nota pre-existente (fuera del alcance P8-P10): Backend.API.csproj:27
+     conserva ProjectReference a Logistics.Module (permite compilar los
+     tests y re-integracion futura); inerte en runtime.
+
+D. VIGENCIA DE DEUDA
+   - P8 (B07), P9 (B13/B14) y P10 (8L-CR3) CERRADOS.
+   - Siguen pendientes del plan general: P2 (C3 unificacion 400/409),
+     P6 (R13 UniformGrid sin virtualizar), P11-P17 (infra/decisión).
+
+FIN DEL ANEXO - REVISION 8.75

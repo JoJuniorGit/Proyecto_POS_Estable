@@ -17,6 +17,13 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.41.0  | 2026-09-10  | (8.75)       | CIERRE P8-P10 backend menor: B07 SecurityStampValidator
+|          |             |              | (ResolveCacheWindow = StrictWindow 5s en modo estricto,
+|          |             |              | unica fuente de verdad read/write); B13 (LogStart de
+|          |             |              | whitelist AllowedHosts calculada, count sin datos
+|          |             |              | sensibles); B14 verificado saneado; 8L-CR3 Logistics
+|          |             |              | confirmado NO PRODUCTIVO/out-DI. Suites .NET 796/796 +
+|          |             |              | build 0/0.
 | v1.40.0  | 2026-09-10  | (8.74)       | CIERRE P5+P7 deuda WPF: EditSaleDialog code-behind -> MVVM
 |          |             |              | (EditSaleDialogViewModel + EditableSaleItemVm, code-behind
 |          |             |              | delgado, IDisposable, 5 tests); paginacion PendingOrders/
