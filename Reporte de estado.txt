@@ -17,6 +17,14 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.36.0  | 2026-09-10  | (8.70)       | AUDITORIA INTEGRAL EXHAUSTIVA + verif. vigencia del reporte
+|          |             |              | (ANEXO 8.70): hallazgos criticos (precio personalizado
+|          |             |              | destruido por RecalculateTotalAsync, tasa de abono HoldSale
+|          |             |              | no anclada, fuga ex.Message en middleware/local, God
+|          |             |              | Objects >500 lineas, api.js sin timeout) y deuda
+|          |             |              | 8.70-C1..C3/D1..D16; correcciones de vigencia en este
+|          |             |              | reporte (Logistics fuera del DI desde 8.58; contexts web
+|          |             |              | ahora 5, no 3). Suites .NET 776/776 + Web 81/81.
 | v1.35.0  | 2026-09-10  | (8.69)       | REVISION 8.69 / Req.9 reinicio facil IMPLEMENTADO (DQ-009
 |          |             |              | opcion C): endpoint admin POST /api/administration/restart
 |          |             |              | (Admin, RFC 7807, 202/403/409, idempotente con
@@ -279,9 +287,12 @@ Tests         -> CommandCenter.Tests (xUnit + Moq + coverlet + WebApplication
                     Factory). Suites Web aparte (node:test, 81/81).
   UpdaterService-> Auto-update del cliente WPF. Publicado pero NO integrado al
                    instalador (deuda activa 8.20-M08).
-  Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
-                   efimero en ConcurrentDictionary (sin persistencia), aunque
-                   sigue registrado en el DI de produccion (deuda 8.20-M08).
+Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
+                    efimero en ConcurrentDictionary (sin persistencia). NO esta
+                    registrado en el DI de produccion desde 8.58 (deuda
+                    8.20-M08 resuelta): Backend.API no lo referencia; queda
+                    como libreria colgante. Si se reactiva, requiere
+                    persistencia y firma X.509 (8U-N2).
 
 1.2 Topologia de servicios y puertos
 --------------------------------------------------------------------------------
@@ -313,8 +324,8 @@ Tests         -> CommandCenter.Tests (xUnit + Moq + coverlet + WebApplication
         diseno (comportamiento testeado); el detalle interno va al log.
   * SignalR (ExchangeRateHub) - tasas, formato moneda, ventas en espera,
       eventos de venta completada (via OutboxProcessorJob).
-  * React 19 + Vite 8 (Web) - 11 paginas, 35 componentes, 3 contexts
-      (Auth/ExchangeRate/Cart), formatters.js (parseAmount/formatUSD/
+  * React 19 + Vite 8 (Web) - 11 paginas, 35 componentes, 5 contexts
+      (Auth/ExchangeRate/Cart/CurrencyFormat/Theme), formatters.js (parseAmount/formatUSD/
       formatBsS), usePosHotkeys con gating de modales, useAtmKeypad.
   * WPF/XAML (Desktop) - MVVM, 42 archivos de ViewModel (clases + parciales),
       WpfDialogService (IDialogService), WeakReferenceMessenger, UIConexion

@@ -4597,3 +4597,224 @@ E3. Si el servicio se ejecuta fuera de NSSM (dev), el reinicio falla silencioso
     operacion es asincrona por diseno.
 
 FIN DEL ANEXO - REVISION 8.69
+
+===============================================================================
+ANEXO - REVISION 8.70 (AUDITORIA INTEGRAL EXHAUSTIVA DEL SISTEMA + VIGENCIA DEL REPORTE)
+===============================================================================
+Fecha: 2026-09-10. Commit base: 78fd4ab (8.69). Suites al cierre: .NET 776/776,
+Web 81/81, oxlint 0/0, build Release 0/0.
+
+A. METODOLOGIA
+   Auditoria de 4 frentes en paralelo (Backend.API; dominio Sales/Inventory/Core;
+   Web.Frontend; y Desktop WPF/Updater/Logistics/scripts/instalador/CI/tests),
+   seguida de VERIFICACION MANUAL claim por claim leyendo el codigo (regla
+   "no inventar APIs ni problemas": todo hallazgo fue corroborado en el archivo
+   antes de documentarse). Los claims de los auditores que NO resistieron la
+   verificacion se listan como correcciones (seccion D) y NO se registran como
+   deuda.
+
+B. VERIFICACION DE VIGENCIA DEL REPORTE (claim vs realidad)
+   El documento conserva su vigencia estructural. Se verificaron:
+   - [B1 VERIFICADO] "61 clases de migracion (32 Sales + 29 Inventory)": se
+     contaron 32 atributos [Migration] en Sales.Module\Migrations y 29 en
+     Inventory.Module -> 61. Descripcion 1.3 vigente.
+   - [B2 VERIFICADO] Suites y build: 8.69 declara .NET 776/776, Web 81/81,
+     build 0/0. Re-ejecutados en esta revision -> iguales. Vigente.
+   - [B3 VERIFICADO] Gate de cobertura 8.26-E4 (Core>=0.70, Sales>=0.80,
+     Inventory>=0.72, excluye *.Migrations.*): scripts/check-coverage.py
+     contiene exactamente esos umbrales y sustituyo los anti-regresion 0.19/0.14
+     de 8.11. Vigente y coherente.
+   - [B4 VERIFICADO] "11 paginas, 35 componentes" (Reporte §1.3): 11 pages,
+     35 components (Recurse). "42 archivos de ViewModel WPF": 42 ficheros *.cs
+     en ViewModels de Desktop.Client.Core/Desktop.Client. Vigente.
+   - [B5 CORREGIDO] Reporte §1.3 declara "3 contexts (Auth/ExchangeRate/Cart)".
+     Hoy existen 5 en src/context: Auth, Cart, ExchangeRate, CurrencyFormat y
+     Theme. Desactualizado -> se corrige en Reporte de estado (v1.36.0).
+   - [B6 CORREGIDO] Reporte §1.1 declara "Logistics ... sigue registrado en el
+     DI de produccion (deuda 8.20-M08)". Desde 8.58 (M08) Backend.API NO
+     referencia Logistics.Module (0 ocurrencias en Backend.API); el extension
+     AddSingleton<IDeliveryService> queda como libreria colgante/unreferenciada
+     y su estado es efimero en memoria si algun dia se registra. La afirmacion
+     del Reporte era correcta antes de 8.58 y quedo obsoleta -> se corrige.
+   - [B7 VERIFICADO] Firma X.509 de paquetes (8U-N2) y retencion forense TTL
+     (W4): siguen PENDIENTES, sin cobertura nueva. Vigente.
+   - [B8 VERIFICADO] Deuda 8.20-M08 Updater no integrado al instalador:
+     confirmado (el instalador no empaqueta UpdaterService). Vigente.
+   - [B9 VERIFICADO] Dependencias: no se encontraron vulnerabilidades conocidas
+     nuevas en el arbol de dependencias; el pin SQLitePCLRaw (CVE) se mantiene.
+
+C. HALLAZGOS CRITICOS/ALTOS NUEVOS (verificados leyendo el codigo)
+   [8.70-C1 | CRITICO - INTEGRIDAD FINANCIERA] El precio personalizado
+   autorizado se DESTRUYE en silencio.
+   Evidencia: AddItemAsync (SalesService.cs:171-267) aplica CustomUnitPriceUsd/
+   Local (con autorizacion Admin/Manager, SalesController.cs:125-131) y luego
+   RecalculateTotalAsync (SalesService.Pricing.cs:157-166) SOBREESCRIBE
+   item.UnitPrice con el precio de catalogo si el producto existe:
+   "item.UnitPrice = wholesaleApplied ? product.PriceWholesaleUSD : product.PriceRetailUSD;"".
+   Idem en UpdateSaleItemsAsync (HoldOrders.cs:362-409, pese a
+   isPriceOverrideAuthorized) y en CompleteSaleAsync (SalesService.cs:618,
+   recalc pre-persistencia). La Web no envia CustomUnitPrice (grep 0 jsx);
+   el flujo WPF (PosViewModel.Orders.cs:102-132) y el endpoint items/{id}
+   si lo hacen. Una rebaja/negociacion que el Supervisor autoriza NUNCA llega
+   al registro -> discrepancias de auditoria y posible perdida de ingreso.
+Recomendacion: el overwrite ocurre dentro de RecalculateTotalAsync
+    (Pricing.cs:157-166), invocado desde AddItemAsync:263 y
+    CompleteSaleAsync:618; el fix debe ir en Pricing.cs: persistir un flag
+    por item (IsCustomPrice) y respetar item.UnitPrice cuando este seteado
+    (solo recalcular la tasa si no estaba anclada); agregar test de
+    integracion que asevere el UnitPrice persistido.
+   Nota: el test Actual (SalesServiceUnitTests.cs:330) solo hace
+   Assert.NotNull(itemAdded), por eso no detecta el bug.
+   [8.70-C2 | ALTO - INTEGRIDAD FINANCIERA] Abono inicial de HoldSale con tasa
+   NO anclada.
+   Evidencia: HoldSaleAsync ancla sale.AppliedRate via ResolveAnchoredRateAsync
+   (HoldOrders.cs:106) pero el pago inicial usa
+   "decimal rate = payment.ExchangeRate > 0 ? payment.ExchangeRate : sale.AppliedRate"
+   (HoldOrders.cs:126). El resto de vias (CompleteSale, AddPaymentToHoldSale,
+   ComputePaymentInputsAsync, CashAdvance) anclan a BCV; esta permite tasa del
+   cliente -> el cajero abrir caja a una tasa manipulable a traves del abono.
+   Recomendacion: usar ResolveAnchoredRateAsync tambien para el pago inicial
+   del abono.
+   [8.70-C3 | ALTO - SEGURIDAD] Fuga sistematica de exception.Message al
+   cliente, aun en el codigo centralizado de excepciones.
+   Evidencia: GlobalExceptionHandlerMiddleware.cs:174/204/234 pasa
+   exception.Message como message para KeyNotFoundException/ArgumentException/
+   InvalidOperationException (InvalidOperationException puede contener detalle
+   de EF/interno). Ademas los catch locales redundantes de ~15 endpoints de
+   SalesController.cs y otros controllers hacen "return this.ApiBadRequest(
+   ex.Message)". Es la misma deuda 8.16-D2, que NO se cerro y sigue activa.
+   Recomendacion: el middleware debe mapear mensajes seguros por tipo (con
+   detalle solo al log), eliminar los catch locales que solo reemiten
+   ex.Message y unificar 400 vs 409 para InvalidOperationException.
+   [8.70-C4 | ALTO - CALIDAD] God Objects sobre el limite de 500 lineas.
+   SalesController.cs (948), ProductsController.cs (584), SettingsPage.jsx
+   (739), WpfDialogService.cs (542), ProductImportService.cs (551, en
+   Desktop.Client.Core/Services) y InventoryService.cs (723) y
+   SalesService.cs (946) superan el umbral §1.1.
+   Mismos patrones en tests: ProductVariantsTests.cs (2937), PriceListTests
+   (931), OnHoldSalesTests (807). SalesController ademas concentra 75 lineas de
+   logica de checkout/redondeo (GetCheckoutPreview, 509-584) que deberian vivir
+   en el servicio.
+   Recomendacion: particion por parciales por subdominio (patron ya usado en
+   SalesService.Pricing.cs / SettingsViewModel.Restart.cs): SalesController.
+   Payments.cs/.Checkout.cs; SettingsPage.PaymentMethods.jsx/.Pairing.jsx;
+   WpfDialogService.Modals.cs; extraer el calculo de checkout a ISalesService.
+   [8.70-C5 | MEDIO - VULN/REND] Web api.js sin timeout ni reintentos.
+   Evidencia: apiFetch (Web.Frontend/src/services/api.js:245-266) hace
+   fetch() sin AbortSignal.timeout() ni retry. En LAN caida, el cajero
+   tactil queda sin feedback indefinido. getWithMeta (346-367) ademas
+   duplica headers y no pasa por la deserializacion ProblemDetails.
+   Recomendacion: AbortSignal.timeout(15000) + 1 retry en 503/504; unificar
+   getWithMeta para reusar apiFetch.
+   [8.70-C6 | MEDIO - REND] CancellationToken no propagado en la mayoria de
+   endpoints (SalesController 20+, UsersController, CashDrawer, DailyClosure,
+   Shifts, Reservations) ni en ISettingsService.RestartSystemAsync (8.69).
+   Recomendacion: anadir CancellationToken cancellationToken = default y
+   propagarlo (guia §2.2).
+
+D. HALLAZGOS MEDIOS/BAJOS (resumen, todos verificados)
+   - [8.70-D1 MEDIO] Productos con IsDeleted siguen vendibles: AddItemAsync
+     (SalesService.cs:180) y GetProductQuickInfoAsync (InventoryService.cs:670)
+     no filtran IsActive/IsDeleted; los controllers si lo hacen. Recomendacion:
+     filtro en las consultas de venta.
+   - [8.70-D2 MEDIO/REND] HardDeleteUser (UsersController.cs:284-288) carga
+     TODAS las ventas del usuario con ToListAsync para nullificar CashierId;
+     usar ExecuteUpdateAsync (UPDATE en BD sin traer datos).
+   - [8.70-D3 MEDIO] Import merge de InventoryService.ImportExport.cs:178/198
+     sobrescribe StockQuantity existente (Math.Max(0,dto)) en vez de acumular;
+     parametrizar si el import debe tocar stock.
+   - [8.70-D4 MEDIO] Variante existente pierde el vinculo al padre cuando el
+     grupo es NUEVO en el mismo import (ImportExport.cs:138 asigna ParentId
+     cuando el Id del grupo aun es 0). Recomendacion: vincular por navegacion
+     tras persistir grupos.
+   - [8.70-D5 MEDIO] Sin expiracion automatica de reservas de stock (solo
+     indice IX_StockReservations_ExpiryDate_IsConfirmed; no hay job de
+     expiracion): añadir seeded job o documentar como pendiente.
+   - [8.70-D6 MEDIO] Sin manejo de OperationCanceledException en el middleware
+     global (GlobalExceptionHandlerMiddleware.cs:28-31): una cancelacion da 500
+     + LogCrash; deberia ser 408/499 sin alarmar.
+   - [8.70-D7 MEDIO/SEG] setup.iss (262-274) y PasswordPolicyService exigen
+     solo 4 caracteres + 1 letra + 1 numero (relajacion deliberada 8.63-8.64).
+     Se respeta la decision documentada, pero para un Admin de un POS la
+     politica es debil; recomendacion (no bloqueante): subir a 8 chars/
+     mayuscula/especial y revisar la migracion de las password activas.
+   - [8.70-D8 BAJO/REND] Cache de SKU normaliza a UPPER la clave pero la BD
+     es case-sensitive (InventoryService.cs:106-123): "A1" vs "a1" colisionan
+     en cache; normalizar tambien la query o quitar la normalizacion.
+   - [8.70-D9 BAJO] Comision de avance de caja hardcodeada
+     (CashDrawerService.cs:479: transfer 7%, efectivo 10%): mover a
+     SystemSettings/PaymentMethod con fallback (config-over-code).
+   - [8.70-D10 BAJO] StartSale (SalesController.cs:35-44) sin restriccion de
+     roles: cualquier autenticado incluyendo Driver puede abrir venta que luego
+     no podra completar; anadir [Authorize(Roles="Admin,Manager,Cashier")].
+   - [8.70-D11 BAJO] RequireHttpsMetadata default false
+     (ServiceCollectionExtensions.cs:114): en topologia LAN con HTTP es
+     aceptable si se documenta con controles compensatorios (cookie Secure,
+     redirect condicional). Decidir y documentar.
+   - [8.70-D12 BAJO] UpdaterService: Thread.Sleep(3000) fijo tras stop
+     (Program.cs:69) en vez de verificar estado; output de RunCommand no se
+     loguea (Program.cs:159); solo hash SHA-256 sin firma (8U-N2, pendiente).
+   - [8.70-D13 BAJO] Setup WPF: Regex nueva por pulsacion en
+     InventoryView.xaml.cs:95 (volver static readonly); SalesHistoryView.xaml
+     sin VirtualizingPanel.ScrollUnit="Pixel"; PosView hint en ingles ("Enter
+     the desired product") viola idioma unificado §4; EditSaleDialog.xaml.cs y
+     AdjustStockDialog.xaml.cs usan MessageBox.Show en code-behind.
+   - [8.70-D14 BAJO] ExchangeRateService.cs:138 semaforo con Wait() sincrono
+     puede colgar UI si se invoca desde el hilo de UI; preferir WaitAsync en
+     paths fuera del UI thread o documento de las restricciones.
+   - [8.70-D15 BAJO] CI: sin concurrency group (pushes rapidos lanzan 2 run);
+     sin upload de resultados xunit (solo coverage).
+   - [8.70-D16 BAJO] Clean code: SettingsController.SetTimeZone y
+     SetAllowNegativeStock devuelven respuestas en ingles/string crudo en vez
+     de ProblemDetails (SettingsController.cs:73/76); TokenService relee JWT
+     key por llamada; duplicacion Login/ChangePassword (AuthController.cs:57/
+     221). Contadores derivados sin useMemo en RegisterPage.jsx, CartContext.jsx,
+     ExchangeRateContext.jsx; estilos inline en CheckoutModal/HoldSaleModal/
+     CartList (violan §3).
+
+E. VERIFICACIONES DE CORRECCION (claims de auditores que NO son bug - no deuda)
+   - [8.70-E1] SettingsController.SetExchangeRate "sin transaccion" NO es bug:
+     SystemSettings y ExchangeRateHistory viven en el mismo DbContext y
+     SaveChangesAsync (SettingsController.cs:117) es atomico en una transaccion
+     implicita. El 400/string crudo en ingles si se corrige (ver D16).
+   - [8.70-E2] "RBAC puramente client-side en RegisterPage.jsx:30" NO es
+     vulnerabilidad: el backend refuerza CashIn/CashOut/ManualAdjustment
+     (CashDrawerController.cs:156-158) ademas de [Authorize(Roles)] en el resto.
+     El gating frontend es solo UX.
+   - [8.70-E3] Configuracion JWT/CORS/RateLimit desde 8.37-8.38 sigue entre las
+     buenas practicas: sin JWT en localStorage (credenciales por cookies),
+     sin dangerouslySetInnerHTML, code-splitting con React.lazy en paginas,
+     design tokens CSS, virtualizacion por pixel ya cubierta en PosView/
+     InventoryView (falta solo SalesHistory, ver D13).
+   - [8.70-E4] Se busco de mas y se verifico: deduccion de stock atomica condicionada
+     (EvalPlanQual con produccion sin sobreventa), advisory locks en
+     AddTransactionAsync, decimales 18,4/18,2/18,3 consistentes,
+     PricingCalculator como unico punto de redondeo BCV (ceil 4d) y fiscal
+     (2d AwayFromZero), historial de ventas con snapshots (rules.md §1),
+     concurrencia xmin nativa correcta y no hay async void en servicios.
+
+F. DEUDA ESTRUCTURAL ACTUALIZADA (acumulada, anexos previos vigentes)
+   - [8.70-C1..C3, D1..D16] Listados en C/D.
+   - Sin cambios: 8U-N2 (firma X.509), W4 (retencion forense TTL), 8L-CR3
+     (Logistics sin persistencia; ahora ademas NO registrado desde 8.58 ->
+     riesgo eliminado), 8.20-M08 Updater no instalado.
+   - La deuda 8.16-D2 (fuga de ex.Message) queda REABIERTA y ahora es top-1
+     de seguridad (C3).
+
+G. RECOMENDACIONES PRIORIZADAS (proximo sprint propuesto)
+   1. [CRITICO] C1: persistir el precio personalizado autorizado (flag por
+      item) + test de integracion que asevere UnitPrice. Blindaje de ingresos.
+   2. [ALTO] C2: anclar la tasa del abono inicial de HoldSale a BCV.
+   3. [ALTO] C3: sellar la fuga de ex.Message en middleware + catch locales;
+      unificar 400/409 para InvalidOperationException. Cierra 8.16-D2.
+   4. [ALTO] C4: particion de God Objects (SalesController + SettingsPage son
+      los de mayor carga mantenible). Sin cambio de comportamiento.
+   5. [MEDIO] C5/C6: timeout/retry en api.js y CancellationToken en el API.
+   6. [MEDIO] D1/D2/D3/D4/D5: filtros IsDeleted en venta, ExecuteUpdateAsync,
+      import sin pisar stock, vinculo de variantes, job de expiracion reservas.
+   7. [BAJO] D7..D16 y operaciones de higiene (useMemo, static Regex, labels
+      aria, tiempos de Setup, concurrency CI).
+Nota de gestion: el plan ya contempla los sprints de remediacion; este anexo
+   provee la entrada priorizada por severidad.
+
+FIN DEL ANEXO - REVISION 8.70
