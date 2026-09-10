@@ -70,10 +70,14 @@ public class SettingsController : ControllerBase
     {
         if (!_currentUserService.CanMutateSettings)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "El rol Cajero no tiene permisos para actualizar la configuración.");
+            return Problem(
+                detail: "Su rol no tiene permisos para actualizar la configuración de tasa de cambio.",
+                statusCode: 403,
+                title: "Permiso denegado",
+                type: "https://tools.ietf.org/html/rfc7231#section-6.5.3");
         }
         if (request.Value <= 0 || request.Value > 1_000_000m)
-            return BadRequest("Exchange rate must be greater than zero and less than or equal to 1,000,000.");
+            return ValidationProblem("La tasa de cambio debe ser mayor a cero y menor o igual a 1.000.000.", title: "Valor fuera de rango");
 
         var roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(request.Value);
 
@@ -132,7 +136,11 @@ public class SettingsController : ControllerBase
     {
         if (!_currentUserService.CanMutateSettings)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "El rol Cajero no tiene permisos para actualizar la zona horaria.");
+            return Problem(
+                detail: "Su rol no tiene permisos para actualizar la zona horaria.",
+                statusCode: 403,
+                title: "Permiso denegado",
+                type: "https://tools.ietf.org/html/rfc7231#section-6.5.3");
         }
         var setting = await _context.SystemSettings.FirstOrDefaultAsync(s => s.Key == "SelectedTimeZoneId");
         if (setting == null)
@@ -175,14 +183,18 @@ public class SettingsController : ControllerBase
     {
         if (!_currentUserService.CanMutateSettings)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "El rol Cajero no tiene permisos para actualizar el formato de moneda.");
+            return Problem(
+                detail: "Su rol no tiene permisos para actualizar el formato de moneda.",
+                statusCode: 403,
+                title: "Permiso denegado",
+                type: "https://tools.ietf.org/html/rfc7231#section-6.5.3");
         }
 
         if (string.IsNullOrWhiteSpace(request?.Format) ||
             (!request.Format.Equals("Venezuelan", StringComparison.OrdinalIgnoreCase) &&
              !request.Format.Equals("International", StringComparison.OrdinalIgnoreCase)))
         {
-            return BadRequest("El formato debe ser 'Venezuelan' o 'International'.");
+            return ValidationProblem("El formato debe ser 'Venezuelan' o 'International'.", title: "Formato inválido");
         }
 
         var normalizedFormat = request.Format.Equals("International", StringComparison.OrdinalIgnoreCase)
@@ -230,7 +242,11 @@ public class SettingsController : ControllerBase
     {
         if (!_currentUserService.CanMutateSettings)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "El rol Cajero no tiene permisos para actualizar esta configuración.");
+            return Problem(
+                detail: "Su rol no tiene permisos para actualizar esta configuración.",
+                statusCode: 403,
+                title: "Permiso denegado",
+                type: "https://tools.ietf.org/html/rfc7231#section-6.5.3");
         }
 
         await _settingsService.SetSettingAsync(Core.Constants.SettingKeys.AllowNegativeStock, request.Allowed.ToString());
