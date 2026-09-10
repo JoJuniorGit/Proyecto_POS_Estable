@@ -281,11 +281,9 @@ public class UsersController : ControllerBase
             return BadRequest(new { Message = "No puede eliminar su propia cuenta de usuario en sesión." });
         }
 
-        var sales = await _db.Sales.Where(s => s.CashierId == id).ToListAsync();
-        foreach (var s in sales)
-        {
-            s.CashierId = null;
-        }
+        await _db.Sales
+            .Where(s => s.CashierId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(s => s.CashierId, (int?)null));
 
         _stampValidator?.InvalidateUserStamp(id);
         AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={id}, Username={user.Username}, Reason=UserPermanentlyDeleted");
