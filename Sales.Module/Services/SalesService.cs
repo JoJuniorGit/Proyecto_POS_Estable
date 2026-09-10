@@ -180,6 +180,11 @@ public partial class SalesService : ISalesService
             product = await _inventoryService.GetProductByIdAsync(productId);
         }
 
+        if (product != null && (product.IsDeleted || !product.IsActive))
+        {
+            throw new InvalidOperationException($"El producto '{product.Name}' no está disponible para la venta.");
+        }
+
         bool isCashAdvance = product?.IsCashAdvance == true;
         if ((customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue) && !isPriceOverrideAuthorized && !isCashAdvance)
         {

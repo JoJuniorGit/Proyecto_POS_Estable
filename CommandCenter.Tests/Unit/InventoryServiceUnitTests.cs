@@ -273,4 +273,47 @@ public class InventoryServiceUnitTests
         Assert.Equal(0m, reloaded.StockQuantity);
         Assert.Equal(0m, reloaded.ReservedQuantity);
     }
+
+    [Fact]
+    public async Task GetProductQuickInfoAsync_WithDeletedProduct_ReturnsNull()
+    {
+        var (service, context, _) = CreateService();
+
+        var product = new Product
+        {
+            SKU = "10020",
+            Name = "Producto Eliminado QuickCheck",
+            PriceUSD = 5.00m,
+            IsActive = true,
+            IsDeleted = true
+        };
+        context.Products.Add(product);
+        await context.SaveChangesAsync();
+
+        var result = await service.GetProductQuickInfoAsync("10020", useCache: false);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetProductQuickInfoAsync_WithActiveProduct_ReturnsDto()
+    {
+        var (service, context, _) = CreateService();
+
+        var product = new Product
+        {
+            SKU = "10021",
+            Name = "Producto Activo QuickCheck",
+            PriceUSD = 5.00m,
+            IsActive = true
+        };
+        context.Products.Add(product);
+        await context.SaveChangesAsync();
+
+        var result = await service.GetProductQuickInfoAsync("10021", useCache: false);
+
+        Assert.NotNull(result);
+        Assert.Equal("10021", result.SKU);
+        Assert.Equal("Producto Activo QuickCheck", result.Name);
+    }
 }

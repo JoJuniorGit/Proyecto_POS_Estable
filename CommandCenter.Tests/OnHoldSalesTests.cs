@@ -710,6 +710,61 @@ public class OnHoldSalesTests
     }
 
     [Fact]
+    public async Task AddItemAsync_WithDeletedProduct_ThrowsInvalidOperationException()
+    {
+        using var context = GetInMemoryDbContext();
+        var mockInventory = new Mock<IInventoryService>();
+        var mockMediator = new Mock<IMediator>();
+        var mockCashDrawer = new Mock<ICashDrawerService>();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        mockInventory.Setup(i => i.GetProductByIdAsync(20)).ReturnsAsync(new Product
+        {
+            Id = 20,
+            Name = "Producto Eliminado",
+            PriceUSD = 5.00m,
+            IsActive = true,
+            IsDeleted = true
+        });
+
+        var sale = new Sale { Id = 1, Status = SaleStatus.Pending };
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddItemAsync(1, 20, 1m, 60m));
+        Assert.Contains("no está disponible", ex.Message);
+    }
+
+    [Fact]
+    public async Task AddItemAsync_WithInactiveProduct_ThrowsInvalidOperationException()
+    {
+        using var context = GetInMemoryDbContext();
+        var mockInventory = new Mock<IInventoryService>();
+        var mockMediator = new Mock<IMediator>();
+        var mockCashDrawer = new Mock<ICashDrawerService>();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        mockInventory.Setup(i => i.GetProductByIdAsync(21)).ReturnsAsync(new Product
+        {
+            Id = 21,
+            Name = "Producto Inactivo",
+            PriceUSD = 5.00m,
+            IsActive = false
+        });
+
+        var sale = new Sale { Id = 1, Status = SaleStatus.Pending };
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddItemAsync(1, 21, 1m, 60m));
+        Assert.Contains("no está disponible", ex.Message);
+    }
+
+    [Fact]
     public async Task HoldSaleAsync_SmallAmountFractionalProduct_StaysOnHoldWhenUnpaid()
     {
         using var context = GetInMemoryDbContext();

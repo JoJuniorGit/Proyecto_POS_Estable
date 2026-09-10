@@ -670,7 +670,7 @@ public partial class InventoryService : IInventoryService
         var normalized = sku.Trim().ToUpperInvariant();
         return await _context.Products
             .AsNoTracking()
-            .Where(p => p.SKU == normalized)
+            .Where(p => p.SKU == normalized && !p.IsDeleted)
             .Select(p => new Core.DTOs.ProductQuickInfoDto
             {
                 Id = p.Id,
