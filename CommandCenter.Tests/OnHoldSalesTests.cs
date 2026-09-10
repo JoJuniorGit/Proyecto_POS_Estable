@@ -97,6 +97,50 @@ public class OnHoldSalesTests
     }
 
     [Fact]
+    public async Task HoldSale_InitialPayment_AnchorsClientRateToBcv()
+    {
+        using var context = GetInMemoryDbContext();
+        var mockInventory = new Mock<IInventoryService>();
+        var mockMediator = new Mock<IMediator>();
+        var mockCashDrawer = new Mock<ICashDrawerService>();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        // Tasa BCV del día = 65. Cliente envía 90 (desvío >10% pero <100%): debe anclarse a 65.
+        mockInventory.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(65m);
+
+        var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 50m };
+        context.Customers.Add(customer);
+
+        var sale = new Sale { Id = 1, TotalUSD = 100m, Status = SaleStatus.Pending };
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
+        var request = new HoldSaleRequestDto
+        {
+            CustomerId = 1,
+            ExchangeRate = 90m,
+            InitialPayment = new AddPaymentRequestDto
+            {
+                PaymentMethodId = 1,
+                AmountBsS = 3250m,
+                ExchangeRate = 90m
+            }
+        };
+
+        var result = await service.HoldSaleAsync(1, request);
+
+        Assert.Equal("OnHold", result.Status);
+        Assert.Equal(50m, result.TotalPaidUSD);
+        Assert.Equal(50m, result.RemainingBalanceUSD);
+
+        var storedPayment = await context.SalePayments.FirstAsync(p => p.SaleId == 1);
+        Assert.Equal(65m, storedPayment.ExchangeRate);
+        Assert.Equal(50m, storedPayment.Amount);
+    }
+
+    [Fact]
     public async Task AddPaymentToHoldSale_ConvertsBsSToUSD_AntiDevaluation()
     {
         using var context = GetInMemoryDbContext();

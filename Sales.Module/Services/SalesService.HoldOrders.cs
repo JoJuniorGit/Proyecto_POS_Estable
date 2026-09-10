@@ -123,7 +123,9 @@ public partial class SalesService
                     throw new InvalidOperationException($"La validación del abono (PaymentMethodId={payment.PaymentMethodId}) rechaza montos negativos.");
                 }
 
-                decimal rate = payment.ExchangeRate > 0 ? payment.ExchangeRate : sale.AppliedRate;
+                decimal rate = payment.ExchangeRate > 0
+                    ? await ResolveAnchoredRateAsync(payment.ExchangeRate, contextLabel: "HoldSaleInitialPayment", referenceId: sale.Id)
+                    : sale.AppliedRate;
                 decimal amountUsd = payment.AmountUSD > 0 
                     ? Math.Round(payment.AmountUSD, 2, MidpointRounding.AwayFromZero) 
                     : (rate > 0 ? Math.Round(payment.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
