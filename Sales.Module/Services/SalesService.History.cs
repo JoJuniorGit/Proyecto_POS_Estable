@@ -208,7 +208,8 @@ public partial class SalesService
                 Quantity = i.Quantity,
                 UnitPrice = i.UnitPrice,
                 UnitPriceBsS = i.UnitPriceBsS,
-                SubtotalBsS = i.SubtotalBsS
+                SubtotalBsS = i.SubtotalBsS,
+                IsCustomPrice = i.IsCustomPrice
             }).ToList(),
             Payments = sale.Payments.Select(p => new PaymentDetailDto
             {
