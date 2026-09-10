@@ -172,6 +172,7 @@ public class GlobalExceptionHandlerMiddleware
         // 3. Known domain & business exceptions
         if (exception is KeyNotFoundException)
         {
+            AppLogger.LogCrash(exception, $"Handled KeyNotFoundException in Request: {requestPath}");
             await WriteProblemDetailsAsync(
                 context,
                 StatusCodes.Status404NotFound,
@@ -187,6 +188,7 @@ public class GlobalExceptionHandlerMiddleware
 
         if (exception is UnauthorizedAccessException)
         {
+            AppLogger.LogCrash(exception, $"Handled UnauthorizedAccessException in Request: {requestPath}");
             await WriteProblemDetailsAsync(
                 context,
                 StatusCodes.Status403Forbidden,
@@ -202,6 +204,7 @@ public class GlobalExceptionHandlerMiddleware
 
         if (exception is ArgumentException)
         {
+            AppLogger.LogCrash(exception, $"Handled ArgumentException in Request: {requestPath}");
             await WriteProblemDetailsAsync(
                 context,
                 StatusCodes.Status400BadRequest,
@@ -217,6 +220,7 @@ public class GlobalExceptionHandlerMiddleware
 
         if (exception is Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
         {
+            AppLogger.LogCrash(exception, $"Handled DbUpdateConcurrencyException in Request: {requestPath}");
             string msg = "El registro fue modificado concurrentemente por otro usuario o proceso. Por favor recargue e intente nuevamente.";
             await WriteProblemDetailsAsync(
                 context,
@@ -233,6 +237,7 @@ public class GlobalExceptionHandlerMiddleware
 
         if (exception is InvalidOperationException)
         {
+            AppLogger.LogCrash(exception, $"Handled InvalidOperationException in Request: {requestPath}");
             await WriteProblemDetailsAsync(
                 context,
                 StatusCodes.Status409Conflict,
