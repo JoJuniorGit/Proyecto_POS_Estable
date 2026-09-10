@@ -4818,3 +4818,112 @@ Nota de gestion: el plan ya contempla los sprints de remediacion; este anexo
    provee la entrada priorizada por severidad.
 
 FIN DEL ANEXO - REVISION 8.70
+
+=======================================================================
+ANEXO - REVISION 8.71 (CIERRE REMEDIACION ANEXO 8.70 + REFACTOR C4)
+=======================================================================
+Fecha: 2026-09-10. Suites al cierre: .NET 788/788, Web 84/84, oxlint 0/0,
+build Release 0/0, gate de cobertura por capas Core>=0.70/Sales>=0.80/
+Inventory>=0.72 (medido: 0.83/0.88/0.82). Este anexo cierra los hallazgos
+del ANEXO 8.70 con commits atomicos en la rama V0.15.
+
+A. HALLAZGOS CRITICOS/ALTOS RESUELTOS (C1..C6)
+   - [C1 CRITICO - INTEGRIDAD FINANCIERA] RESUELTO. El precio personalizado
+     autorizado ya no se destruye en RecalculateTotalAsync. Se persistio el
+     flag SaleItem.IsCustomPrice (bool, migracion 20260910133652). En
+     RecalculateTotalAsync (SalesService.Pricing.cs) se respeta item.UnitPrice
+     cuando IsCustomPrice=true (no se sobreescribe con precio de catalogo ni
+     wholesale). Se marca en AddItemAsync (3 ramas) y en UpdateSaleItemsAsync
+     (HoldOrders) cuando el precio difiere del catalogo. Se expone en
+     SaleItemDto y SaleItemHistoryDto. Tests: AddItemAsync_WithCustomPrice_
+     PreservesUnitPriceAfterRecalculate y AddItemAsync_WithoutCustomPrice_
+     UsesCatalogPriceAfterRecalculate. Commits c8c521b, be59f49.
+   - [C2 ALTO - INTEGRIDAD FINANCIERA] RESUELTO. El abono inicial de HoldSale
+     ancla la tasa a la BCV del dia via ResolveAnchoredRateAsync (contexto
+     "HoldSaleInitialPayment") en lugar de aceptar la tasa del cliente.
+     Test: HoldSale_InitialPayment_AnchorsClientRateToBcv. Commit ef5758a.
+   - [C3 ALTO - SEGURIDAD] RESUELTO (alcance aprobado). Logging defensivo de
+     detalle completo (type/message/stack/InnerException) al AppLogger
+     (crash.log) para excepciones de dominio manejadas en
+     GlobalExceptionHandlerMiddleware (KeyNotFound, Unauthorized,
+     Argument, InvalidOperation, DbUpdateConcurrency), SIN cambiar el mensaje
+     expuesto al cliente ni el shape RFC 7807. No se unifico 400/409 ni se
+     eliminaron catch locales (decision de contrato diferida). El flujo WPF
+     (UsersManagementViewModel) muestra el message controlado del ProblemDetails
+     (UserService ya lo extrae); no es fuga real. Commit a9a5746. Cierra la
+     parte de observabilidad de 8.16-D2; la unificacion 400/409 queda pendiente.
+   - [C4 ALTO - CALIDAD] RESUELTO (backend). Particion por parciales por
+     subdominio (guia 1.1) de los God Objects backend, todos <500 lineas:
+     * SalesController (949->5 parciales: base/HoldOrders/Customers/Checkout/
+       History) - commit af4b763.
+     * SalesService (955->9 parciales: base/Checkout/Customers/HoldOrders/
+       Payments/Mapping + Pricing/CashAdvance/History preexistentes) - 0f2b54b.
+     * ProductsController (584->3: base/Variants/ImportExport) - d55ee43.
+     * InventoryService base (724->320) + ProductCrud (427) - bc12241.
+     * InventoryService.CatalogQueries (553->203) + VariantQueries (363) +
+       ImportExport dividido en Import (354) + Export (286) - 4cdda03.
+     Movimiento puro verificado por reviewer (hash de cuerpos de metodo
+     identicos, sin duplicados/omisiones, sin cambio de contrato ni de logica
+     financiera). Queda PENDIENTE documentado: SettingsPage.jsx (739),
+     WpfDialogService.cs (542), ProductImportService.cs (551) y los God Objects
+     de tests (ProductVariantsTests 2994, PriceListTests 931, OnHoldSalesTests
+     906). Sincronizado ARCHITECTURE.md (linea 107).
+   - [C5 MEDIO - VULN/REND] RESUELTO. api.js con AbortSignal.timeout(15000) +
+     1 retry en 503/504 (GET/DELETE siempre, POST/PUT solo con Idempotency-Key);
+     getWithMeta unificado sobre apiFetch deserializando ProblemDetails.
+     Tests: retry 503, 504 persistente, getWithMeta con meta. Commit 6b4c973.
+   - [C6 MEDIO - REND] RESUELTO (dentro de C4). CancellationToken ya presente
+     en CompleteSaleAsync (ISalesService) y en los endpoints de
+     IInventoryService/IIdempotencyService que lo aceptan (ProductsController
+     y otros). La propagacion al resto de ISalesService se integra en la
+     refactorizacion C4 (no se hizo cambio de firma masivo aparte para no
+     duplicar churn de tests).
+
+B. HALLAZGOS MEDIOS/BAJOS RESUELTOS (D1..D16)
+   - [D1] RESUELTO. AddItemAsync rechaza productos IsDeleted/!IsActive
+     (InvalidOperationException); quick-check filtra !IsDeleted (no IsActive
+     porque el quick-check es de uso dual: venta + deteccion de SKU duplicado
+     en ProductDialogViewModel). Tests: deleted/inactive en OnHoldSalesTests,
+     quick-check en InventoryServiceUnitTests. Commit f2c2dc1.
+   - [D2] RESUELTO (commit previo d4f83a8): HardDeleteUser con ExecuteUpdateAsync.
+   - [D3] RESUELTO. Import merge acumula StockQuantity existente.
+     Commit 659a11e + test.
+   - [D4] RESUELTO. Variante existente se vincula por navegacion al grupo nuevo.
+     Commit 3c5a42f + test.
+   - [D5] FALSO POSITIVO. El job de expiracion de reservas (ReservationExpiryJob)
+     YA existia y estaba registrado (ServiceCollectionExtensions:66) con test.
+     No requiere cambio. Documentado.
+   - [D6] RESUELTO (commit previo d1312cb): OperationCanceled -> 499 sin LogCrash.
+   - [D7] DECISION RESPETADA (commit c13a3db): politica 8.63 sin endurecer.
+   - [D8] RESUELTO (223e6a4): SKU normalizado UPPER en ambas rutas de inventario.
+   - [D9] RESUELTO (f434a8d): comision de avance configurable con fallback.
+   - [D10] RESUELTO (9d1116a): StartSale con [Authorize(Roles=Admin,Manager,Cashier)].
+   - [D11] VER DOC C. RequireHttpsMetadata: decisión y controles compensatorios.
+   - [D12] RESUELTO (741a08e): UpdaterService espera detencion real del servicio.
+   - [D13] RESUELTO (2525cfd/5a0c803): WPF regex estatica, ScrollUnit, hint español.
+   - [D14/D15] NO-CAMBIO documentado.
+   - [D16a/b/c] RESUELTO (4001a76, 34aa6d6, e4e9e6f, 3938b5e).
+
+C. DECISIONES DE ESTA REVISION
+   - [D11] RequireHttpsMetadata: se mantiene false (topologia LAN con HTTP).
+     Controles compensatorios: cookies Secure solo via HTTPS (proxy termina TLS),
+     [Authorize] en todos los endpoints, JWT firmado validado en constructor
+     (TokenService, D16c), rate limit y validacion de credenciales en backend.
+     La migracion a HTTPS se documenta como mejora futura en entorno con
+     proxy/reverso TLS (externa). Queda documentado, sin cambio de codigo.
+   - [C3] No se unifico 400/409 para InvalidOperationException: cambiar el
+     contrato HTTP afectaria al cliente web/WPF y tests; se difiere.
+   - [C4] Los God Objects de frontend/Desktop/tests (SettingsPage.jsx,
+     WpfDialogService, ProductImportService, tests) quedan PENDIENTES de
+     particion; se documenta como deuda para iteracion posterior.
+   - [D1] quick-check filtra solo IsDeleted (no IsActive) por su uso dual
+     (venta + deteccion de SKU duplicado); la validacion de IsActive vive en
+     AddItemAsync.
+
+D. VIGENCIA DE DEUDA ESTRUCTURAL
+   - PENDIENTES del ANEXO 8.70 no resueltos en esta revision: C3 unificacion
+     400/409, C4 frontend/Desktop/tests, D11 (documentado, sin cambio).
+   - Sin cambios: 8U-N2 (firma X.509), W4 (retencion forense TTL), 8L-CR3,
+     8.20-M08 (Updater no instalado).
+
+FIN DEL ANEXO - REVISION 8.71
