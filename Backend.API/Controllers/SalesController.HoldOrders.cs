@@ -35,18 +35,6 @@ public partial class SalesController
         {
             return await HandleIdempotencyCollisionAsync(ex, requestPath, resolved.Key, resolved.PayloadHash);
         }
-        catch (System.Collections.Generic.KeyNotFoundException ex)
-        {
-            return this.ApiNotFound(ex.Message);
-        }
-        catch (System.ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
     }
 
     [HttpPut("{id}/items")]
@@ -66,18 +54,6 @@ public partial class SalesController
         catch (System.UnauthorizedAccessException ex)
         {
             return this.ApiForbidden(ex.Message);
-        }
-        catch (System.Collections.Generic.KeyNotFoundException ex)
-        {
-            return this.ApiNotFound(ex.Message);
-        }
-        catch (System.ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -107,18 +83,6 @@ public partial class SalesController
         catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.Message.Contains("IX_IdempotentRequests") || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505"))
         {
             return await HandleIdempotencyCollisionAsync(ex, requestPath, resolved.Key, resolved.PayloadHash);
-        }
-        catch (System.Collections.Generic.KeyNotFoundException ex)
-        {
-            return this.ApiNotFound(ex.Message);
-        }
-        catch (System.ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
         }
     }
 
@@ -151,18 +115,6 @@ public partial class SalesController
         {
             return await HandleIdempotencyCollisionAsync(ex, requestPath, resolved.Key, resolved.PayloadHash);
         }
-        catch (System.Collections.Generic.KeyNotFoundException ex)
-        {
-            return this.ApiNotFound(ex.Message);
-        }
-        catch (System.ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
     }
 
     [HttpGet("pending")]
@@ -183,27 +135,12 @@ public partial class SalesController
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<IActionResult> CancelSale(int id)
     {
-        try
+        if (!await IsAuthorizedForSaleAsync(id))
         {
-            if (!await IsAuthorizedForSaleAsync(id))
-            {
-                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para anular esta venta." });
-            }
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para anular esta venta." });
+        }
 
-            await _salesService.CancelSaleAsync(id);
-            return Ok(new { message = $"Pedido #{id} anulado exitosamente." });
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (System.Collections.Generic.KeyNotFoundException ex)
-        {
-            return this.ApiNotFound(ex.Message);
-        }
-        catch (System.ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
+        await _salesService.CancelSaleAsync(id);
+        return Ok(new { message = $"Pedido #{id} anulado exitosamente." });
     }
 }

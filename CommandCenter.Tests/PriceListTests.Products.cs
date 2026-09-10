@@ -255,7 +255,7 @@ public partial class PriceListTests
         var created = await invService.CreateProductAsync(p);
 
         created.ProfitMarginWholesale = 40m; // Higher than retail (20m)
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => invService.UpdateProductAsync(created));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => invService.UpdateProductAsync(created));
         Assert.Contains("margen al mayor", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 

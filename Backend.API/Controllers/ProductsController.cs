@@ -116,11 +116,6 @@ public partial class ProductsController : ControllerBase
         {
             return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "No tiene permisos para realizar esta operación.");
         }
-        catch (System.InvalidOperationException)
-        {
-            // 8B-M8: no filtrar ex.Message al cliente; el detalle queda en el log del servidor.
-            return BadRequest("La operación no pudo completarse: los datos enviados no son válidos.");
-        }
     }
 
     /// <summary>
@@ -176,11 +171,6 @@ public partial class ProductsController : ControllerBase
         catch (System.Collections.Generic.KeyNotFoundException)
         {
             return NotFound();
-        }
-        catch (System.InvalidOperationException)
-        {
-            // 8B-M8: no filtrar ex.Message al cliente; el detalle queda en el log del servidor.
-            return BadRequest("La operación no pudo completarse: los datos enviados no son válidos.");
         }
     }
 
@@ -342,10 +332,6 @@ public class StatusUpdateDto
         catch (System.UnauthorizedAccessException)
         {
             return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "No tiene permisos para realizar esta operación.");
-        }
-        catch (InvalidOperationException)
-        {
-            return this.ApiBadRequest("La operación no pudo completarse: los datos enviados no son válidos.");
         }
     }
 

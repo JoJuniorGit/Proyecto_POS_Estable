@@ -106,7 +106,7 @@ public class PendingPickupTests
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
         var payments = new List<PaymentInfo> { new PaymentInfo(1, 20m, 800m, null) };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             service.CompleteSaleAsync(11, 40m, payments, 0, 1, isPendingPickup: true));
 
         Assert.Contains("cliente real", ex.Message);

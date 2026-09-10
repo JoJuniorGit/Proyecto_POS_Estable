@@ -243,7 +243,7 @@ public class FinancialRobustnessTests
             ExchangeRate = 50m
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddPaymentToHoldSaleAsync(sale.Id, request));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.AddPaymentToHoldSaleAsync(sale.Id, request));
         Assert.Contains("excede el total pendiente", ex.Message);
     }
 
@@ -568,7 +568,7 @@ public class FinancialRobustnessTests
             new PaymentInfo(1, 100m, 5000m, null)
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             service.CompleteSaleAsync(sale.Id, 200m, payments));
 
         Assert.Contains("excede ±100% de la tasa BCV oficial", ex.Message);

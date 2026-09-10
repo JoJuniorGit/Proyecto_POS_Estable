@@ -183,7 +183,7 @@ public partial class InventoryService
         }
         if (!parent.IsGroupHeader)
         {
-            throw new InvalidOperationException($"El producto '{parent.Name}' (ID {parentId}) no está configurado como producto padre / agrupador.");
+            throw new ArgumentException($"El producto '{parent.Name}' (ID {parentId}) no está configurado como producto padre / agrupador.");
         }
 
         var candidates = await _context.Products
@@ -205,15 +205,15 @@ public partial class InventoryService
             }
             if (prod.IsGroupHeader)
             {
-                throw new InvalidOperationException($"El producto '{prod.Name}' (ID {prod.Id}) es un producto padre y no puede ser vinculado como variante.");
+                throw new ArgumentException($"El producto '{prod.Name}' (ID {prod.Id}) es un producto padre y no puede ser vinculado como variante.");
             }
             if (prod.IsCashAdvance)
             {
-                throw new InvalidOperationException($"El producto '{prod.Name}' (ID {prod.Id}) es de avance de efectivo y no puede ser variante.");
+                throw new ArgumentException($"El producto '{prod.Name}' (ID {prod.Id}) es de avance de efectivo y no puede ser variante.");
             }
             if (prod.Id == parentId)
             {
-                throw new InvalidOperationException("Un producto no puede ser variante de sí mismo.");
+                throw new ArgumentException("Un producto no puede ser variante de sí mismo.");
             }
         }
 
@@ -292,7 +292,7 @@ public partial class InventoryService
 
         if (variant.ParentProductId != parentId)
         {
-            throw new InvalidOperationException($"El producto '{variant.Name}' (ID {variantId}) no pertenece al producto padre ID {parentId}.");
+            throw new ArgumentException($"El producto '{variant.Name}' (ID {variantId}) no pertenece al producto padre ID {parentId}.");
         }
 
         if (variant.ReservedQuantity > 0)

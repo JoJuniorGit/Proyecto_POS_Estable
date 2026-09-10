@@ -21,11 +21,11 @@ public partial class InventoryService
         {
             if (product.IsGroupHeader)
             {
-                throw new InvalidOperationException("Un producto configurado como Servicio de Adelanto de Efectivo no puede ser un grupo de variantes.");
+                throw new ArgumentException("Un producto configurado como Servicio de Adelanto de Efectivo no puede ser un grupo de variantes.");
             }
             if (product.ParentProductId.HasValue)
             {
-                throw new InvalidOperationException("Un producto configurado como Servicio de Adelanto de Efectivo no puede ser variante de un producto padre.");
+                throw new ArgumentException("Un producto configurado como Servicio de Adelanto de Efectivo no puede ser variante de un producto padre.");
             }
 
             product.IsFractional = false;
@@ -88,7 +88,7 @@ public partial class InventoryService
                 product.LowStockThreshold = 0m;
                 if (product.ConversionFactor < 0.0001m || product.ConversionFactor > 1_000_000m)
                 {
-                    throw new InvalidOperationException(Core.Constants.InventoryMessages.ConversionFactorOutOfRange);
+                    throw new ArgumentException(Core.Constants.InventoryMessages.ConversionFactorOutOfRange);
                 }
             }
             else
@@ -172,11 +172,11 @@ public partial class InventoryService
         {
             if (product.IsGroupHeader)
             {
-                throw new InvalidOperationException("Un producto configurado como Servicio de Adelanto de Efectivo no puede ser un grupo de variantes.");
+                throw new ArgumentException("Un producto configurado como Servicio de Adelanto de Efectivo no puede ser un grupo de variantes.");
             }
             if (product.ParentProductId.HasValue)
             {
-                throw new InvalidOperationException("Un producto configurado como Servicio de Adelanto de Efectivo no puede ser variante de un producto padre.");
+                throw new ArgumentException("Un producto configurado como Servicio de Adelanto de Efectivo no puede ser variante de un producto padre.");
             }
 
             product.IsFractional = false;
@@ -237,7 +237,7 @@ public partial class InventoryService
                     decimal factor = product.ConversionFactor > 0 ? product.ConversionFactor : (originalConversionFactor > 0 ? originalConversionFactor : 1.0000m);
                     if (factor < 0.0001m || factor > 1_000_000m)
                     {
-                        throw new InvalidOperationException(Core.Constants.InventoryMessages.ConversionFactorOutOfRange);
+                        throw new ArgumentException(Core.Constants.InventoryMessages.ConversionFactorOutOfRange);
                     }
                     product.ConversionFactor = factor;
                 }

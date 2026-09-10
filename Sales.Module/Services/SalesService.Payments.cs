@@ -220,14 +220,14 @@ public partial class SalesService
 
         if (runningPaidUsd + amountUsd > sale.TotalUSD + 0.05m)
         {
-            throw new InvalidOperationException("El monto del abono excede el total pendiente de la venta.");
+            throw new ArgumentException("El monto del abono excede el total pendiente de la venta.");
         }
 
         // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
         var method = await _context.PaymentMethods.FindAsync(request.PaymentMethodId);
         if (method != null && method.IsCash && request.AmountBsS % 1 != 0)
         {
-            throw new InvalidOperationException("El método de pago en efectivo solo acepta montos enteros.");
+            throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");
         }
 
         return new ComputedPaymentInput(rate, amountUsd, request.AmountBsS, method);

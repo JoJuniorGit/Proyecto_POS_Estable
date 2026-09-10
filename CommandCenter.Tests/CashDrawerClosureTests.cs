@@ -257,7 +257,7 @@ public class CashDrawerClosureTests
         var session = await serverService.OpenSessionAsync(1000m, 50m);
 
         // El efectivo entregado al cliente solo acepta montos enteros
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             serverService.ProcessCashAdvanceAsync(session.Id, 10.50m, 2, "Card", false, 50m));
         Assert.Contains("número entero sin decimales", ex.Message);
     }

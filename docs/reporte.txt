@@ -5207,3 +5207,151 @@ C. LO QUE QUEDA PENDIENTE DEL PLAN GENERAL (proximos)
      certificado X.509, operacion real); requieren provision externa.
 
 FIN DEL ANEXO - REVISION 8.76
+
+ANEXO - REVISION 8.77 (P2=C3 UNIFICACION 400/409 InvalidOperationException ArgumentException)
+==================================================================================
+Fecha: 2026-09-10. Bloque P2 del plan general: remediacion C3 (ticket de
+calidad): unificar el contrato HTTP de errores de backend. Antes de C3,
+varios controllers capturaban `InvalidOperationException` (o
+`ArgumentException`) y respondian BadRequest filtrando `ex.Message`, mientras
+que el middleware GlobalExceptionHandler ya estaba configurado para mapear
+por tipo: ArgumentException/ValidationException -> 400, InvalidOperationException/
+DbUpdateConcurrencyException -> 409, KeyNotFoundException -> 404,
+UnauthorizedAccessException -> Forbidden. Resultaba en contratos
+inconsistentes: el mismo error devolvia 400 en un endpoint y 409 en otro.
+
+[CAMBIO DE CODIGO] Este ANEXO documenta el cambio de codigo completo de C3.
+
+A. DECISION 8.77-D1: MAPEO UNICO POR TIPO DE EXCEPCION VIA MIDDLEWARE
+   - Las validaciones PURAS de entrada pasan a `ArgumentException` -> 400
+     (con `GlobalExceptionHandlerMiddleware` transformandolas en ProblemDetails
+     RFC 7807 sin filtrar `ex.Message`).
+   - Los conflictos de ESTADO / invariantes de negocio que representan un
+     choque con el estado actual de la operacion se conservan como
+     `InvalidOperationException` -> 409.
+   - Se ELIMINAN todos los catch-locales `catch (InvalidOperationException/
+     ArgumentException) => BadRequest(ex.Message)` en controllers. Tras C3 no
+     queda ninguno (grep global de control). Conservados por diseno:
+     KeyNotFoundException -> 404/ApiNotFound, DbUpdateException y
+     DbUpdateConcurrencyException -> ApiConflict (409), UnauthorizedAccess
+     -> ApiForbidden, guard `when` de idempotencia (IX_IdempotentRequests/
+     23505) en SalesController.HoldOrders, y ExchangeRateController:174 -> 502
+     sanitizado (sin filtrar ex.Message).
+
+B. RECLASIFICADOS A ArgumentException (400) EN SALES.MODULE
+   - SalesService.Checkout.cs:70,76 (cliente real en apartado pagado),
+     :121,127 (apartado en custodia requiere pago 100% + cliente real),
+     :166 (metodo de pago invalido/inactivo), :176 (montos negativos por
+     metodo), :182 (efectivo solo montos enteros), :228 (sobrepago/vuelto
+     excede limites operacionales), :277 (no cubre totalidad - liquidacion
+     al 100%).
+   - SalesService.HoldOrders.cs:33 (cliente distinto al Consumidor Final),
+     :53, :327 (nuevo total menor al monto ya abonado).
+   - SalesService.Payments.cs:223 (abono excede total pendiente), :230
+     (efectivo solo montos enteros).
+   - SalesService.Mapping.cs:135 (desvio de tasa excede A1: 8.23-A1 manipular
+     tasa -> 400; el resto del hash de tasa queda como confidencialidad de
+     validacion). Nota: el "Rechazo Defensivo" de Mapping.cs:103 (ajuste de
+     redondeo fuera de +-1000) se conserva como 409 (ver seccion C).
+   - SalesService.cs:252 (grupo de variantes), SalesService.Pricing.cs:104
+     (precio menor al abonado) y :202.
+   - CashDrawerService.cs:496 (avance de caja requiere entero).
+
+C. RECLASIFICADOS A ArgumentException (400) EN INVENTORY.MODULE
+   - InventoryService.cs:195,200,228 (crear producto: SKU, nombre, precio
+     minimo, precios negativos o nulos).
+   - InventoryService.ProductCrud.cs:24,28 (crear adelanto: SKU/nombre),
+     :91 y :240 (factor de conversion fuera de rango), :175,179 (adelanto
+     como grupo y como variante).
+   - InventoryService.VariantQueries.cs:186,208,212,216,295 (variantes:
+     grupo padre head/variant, factor de conversion fuera de rango, limites
+     de grupo/variante, conversion landa fuera de rango).
+   - Se conservan como InvalidOperationException (409): ProductCrud.cs:77
+     (familia padre inexistente), :127 (grupo con variantes), :156
+     (variantes escombro), :165, :377 (advertir y abortar estados de
+     negocio), y StockDeduction.cs completo (stock insuficiente = estado de
+     inventario, conflictos).
+
+D. RECHAZOS DEFENSIVOS CONSERVADOS COMO 409 (INTENCIONAL)
+   - Los mensajes "Rechazo Defensivo" en SalesService.Checkout.cs:87,105,260,
+     265 y SalesService.Mapping.cs:103 representan invariantes de integridad
+     interna (tasa <= 0, total acumulado de pagos <= 0, ajuste de redondeo
+     fuera de limites, AppliedRate no inicializada). No son validacion de
+     entrada del usuario sino guardas de consistencia del snapshot/pipeline
+     financiero; por eso se mapean como 409 (conflicto de estado) y NO como
+     400. Los tests existentes ya las verifican como
+     InvalidOperationException (CheckoutAndPaymentTests.cs:142,287).
+   - `InventoryService.ProductCrud.cs:77` (familia padre inexistente) se
+     conserva 409; candidata a KeyNotFound->404 en follow-up (fuera del
+     alcance declarado de esta revision).
+
+E. CORRECCION DE TEST 8.2-M2 (DECISION DE USUARIO)
+   - El test pre-existente `DailyClosure_WithBcvRate_ButNoRegistration_
+     IsBlockedEvenWithActiveSessionOpeningRate` afirmaba que el cierre debia
+     bloquearse cuando NO existia registro BCV del dia, incluso con una sesion
+     activa que tenia tasa de apertura. Eso contradecia la conducta real de
+     produccion: `ExchangeRateWriteService.cs:105-108` (ExchangeRateResolver,
+     commit 62a9238) cae a la tasa de apertura de la sesion activa como tasa de
+     reserva explicita (8.2-M2 "rechaza <=0" y tasa de reserva, registrado en
+     docs/reportes-modulos/04-Reporte-Sales.Module.txt:59). El fallo era
+     PRE-EXISTENTE y estaba en los 27 fallos iniciales de la fase de tests.
+   - DECISION 8.77-D2 (confirmada por el usuario, pregunta 2026-09-10): el
+     fallback a la tasa de apertura de la sesion activa es conducta VALIDA e
+     INTENCIONAL. NO se modifica produccion. Se reescribe el test como
+     `CreateClosure_WhenNoTodayBcvRate_ButActiveSessionHasOpeningRate_
+     UsesFallbackRateAndProceeds` verificando el flujo completo (crea cierre,
+     hace rollover con 50m, OkObjectResult) y se renombran los dos tests
+     restantes a `DailyClosure_WhenNoTodayBcvRateAndNoActiveSessionRate_
+     ThrowsInvalidOperationException` y `ShiftsClose_WhenNoTodayBcvRateAnd
+     NoActiveSessionRate_ThrowsInvalidOperationException` (nomenclatura
+     Metodo_Escenario_ResultadoEsperado).
+
+F. TESTS ACTUALIZADOS (FASE D, 27 casos)
+   - Phase7ClosureWithoutRateTests.cs (renombrados los 3, 1 reescrito),
+     DataIntegritySprint1Tests.cs, FinancialRobustnessTests.cs, CashDrawer
+     ClosureTests.cs, Unit/CashDrawerServiceUnitTests.cs, BatchPaymentTests.cs
+     (3), CheckoutAndPaymentTests.cs (2), OnHoldSalesTests.cs (3),
+     OnHoldSalesTests.Liquidation.cs, PendingPickupTests.cs, PriceListTests.cs
+     (3), PriceListTests.Products.cs, Unit/InventoryServiceUnitTests.cs (2),
+     Unit/SalesServiceUnitTests.cs, Unit/ProductVariantsTests.cs,
+     Unit/ProductVariantsTests.VariantManagement.cs (incl. ProductsController_
+     AdjustStock caso bloqueo pasa de BadRequestObjectResult a
+     ThrowsAsync<InvalidOperationException> porque el controller ya no captura
+     y el middleware responde 409). Verificacion: suite completa 796/796
+     superados, build Release 0 errores / 0 advertencias.
+
+G. VERIFICACION DE CODIGO (POS-REVIEWER)
+   - Reviewer subagente: PASA en (a) sin catch-locales IOE/AE->BadRequest,
+     (b) 409 conservados solo estado/conflicto + Rechazos Defensivos,
+     (c) indentacion coherente de Checkout.cs (diff -w = solo 8 cambios
+     semanticos), (d) sin comentarios/estilos/snake_case/doble fetch,
+     (e) 248 tests del subset verdes. Unico bloqueante: falta del ANEXO
+     (este ANEXO lo cierra). Hallazgos de estilo no bloqueantes:
+     ReservationsController.cs:71,108,136 (catch-local redundante
+     pre-existente en modulo Logistics NO PRODUCTIVO, follow-up sugerido),
+     Checkout.cs:80 (indentacion pre-existente 12 bajo try a 16, Boy Scout
+     de oportunidad), ProductCrud.cs:77 candidata a 404 en follow-up.
+
+H. ARCHIVOS TOCADOS (37)
+   - Servicios: Sales.Module/Services/{CashDrawerService, SalesService,
+     SalesService.Checkout, SalesService.HoldOrders, SalesService.Mapping,
+     SalesService.Payments, SalesService.Pricing}.cs y
+     Inventory.Module/Services/{InventoryService, InventoryService.ProductCrud,
+     InventoryService.VariantQueries}.cs.
+   - Controllers: Backend.API/Controllers/{CashDrawerController,
+     DailyClosureController, PaymentMethodsController, ProductsController,
+     ProductsController.Variants, SalesController, SalesController.Checkout,
+     SalesController.Customers, SalesController.History,
+     SalesController.HoldOrders, ShiftsController}.cs.
+   - Tests: 19 archivos (13 suite + 6 Unit).
+   - No hay migraciones, DTO, contratos de API, ni cambios de esquema.
+   - `docs/clear-products.ps1` (untracked, NO PRODUCTIVO) queda EXCLUIDO
+     explicitamente del commit (no pertenece a P2=C3).
+
+I. IMPACTOS EN OTROS ARTEFACTOS
+   - Reporte de estado.txt: changelog (v1.43.0).
+   - production-readiness-roadmap.md: changelog (v0.5.0).
+   - Semantica de negocio intacta: no se cambiaron montos, tasas ni
+     snapshots (rules.md 1 inmutable). Solo cambio el contrato HTTP.
+
+FIN DEL ANEXO - REVISION 8.77

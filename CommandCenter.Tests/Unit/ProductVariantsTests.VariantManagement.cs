@@ -144,7 +144,7 @@ public partial class ProductVariantsTests
             ConversionFactor = 2_000_000m // Mayor a 1,000,000
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             service.CreateProductAsync(variant));
 
         Assert.Equal(Core.Constants.InventoryMessages.ConversionFactorOutOfRange, ex.Message);
@@ -263,11 +263,12 @@ public partial class ProductVariantsTests
         var result204 = await controller.AdjustStock(1, new AdjustStockDto { QuantityChange = 10m, Reason = "Ajuste OK" });
         Assert.IsType<NoContentResult>(result204);
 
-        // 2. Operación Inválida (Bloqueo de inventario) -> 400 BadRequest
+        // 2. Operación Inválida (Bloqueo de inventario) -> InvalidOperationException (409 por middleware)
         mockService.Setup(s => s.AdjustStockAsync(2, 10m, "Ajuste Bloqueado", null))
             .ThrowsAsync(new InvalidOperationException(Core.Constants.InventoryMessages.GroupIndividualStockAdjustmentBlocked));
-        var result400 = await controller.AdjustStock(2, new AdjustStockDto { QuantityChange = 10m, Reason = "Ajuste Bloqueado" });
-        Assert.IsType<BadRequestObjectResult>(result400);
+        var exBlocked = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await controller.AdjustStock(2, new AdjustStockDto { QuantityChange = 10m, Reason = "Ajuste Bloqueado" }));
+        Assert.Equal(Core.Constants.InventoryMessages.GroupIndividualStockAdjustmentBlocked, exBlocked.Message);
 
         // 3. Usuario sin permisos (Cajero) -> 403 Forbidden
         mockUser.Setup(u => u.CanMutateCatalog).Returns(false);

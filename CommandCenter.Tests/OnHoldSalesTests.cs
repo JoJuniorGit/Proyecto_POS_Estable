@@ -196,7 +196,7 @@ public partial class OnHoldSalesTests
 
         // Abono parcial de $40 USD vía CompleteSaleAsync debe lanzar excepción
         var payments = new[] { new Sales.Module.Interfaces.PaymentInfo(1, 40m, 2000m, null) };
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteSaleAsync(1, 50m, payments));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.CompleteSaleAsync(1, 50m, payments));
         Assert.Contains("El flujo de cobro requiere liquidación al 100%", ex.Message);
     }
 
@@ -224,7 +224,7 @@ public partial class OnHoldSalesTests
             ExchangeRate = 40m
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.HoldSaleAsync(1, request));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.HoldSaleAsync(1, request));
         Assert.Contains("Asigne un cliente distinto al Consumidor Final", ex.Message);
     }
 
@@ -354,7 +354,7 @@ public partial class OnHoldSalesTests
             }
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateSaleItemsAsync(1, request));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateSaleItemsAsync(1, request));
         Assert.Contains("no puede ser menor al monto total ya abonado", ex.Message);
 
         // Salvaguarda financiera: la venta NO fue modificada (total, abonos e ítems intactos)

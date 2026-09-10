@@ -170,7 +170,7 @@ public class CheckoutAndPaymentTests
             new PaymentInfo(1, 50m, 2500.50m, null)
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteSaleAsync(sale.Id, 50m, payments));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.CompleteSaleAsync(sale.Id, 50m, payments));
         Assert.Contains("solo acepta montos enteros", ex.Message);
     }
 
@@ -241,7 +241,7 @@ public class CheckoutAndPaymentTests
             ExchangeRate = 50m
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddPaymentToHoldSaleAsync(sale.Id, request));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.AddPaymentToHoldSaleAsync(sale.Id, request));
         Assert.Contains("solo acepta montos enteros", ex.Message);
     }
 

@@ -168,14 +168,6 @@ public partial class SalesController : ControllerBase
         {
             return this.ApiNotFound(ex.Message);
         }
-        catch (System.ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
     }
 
     private async Task<(bool ShouldStop, ActionResult? BlockingResult, string? Key, byte[]? PayloadHash)> ResolveIdempotencyAsync(string requestPath, string bodyJson)

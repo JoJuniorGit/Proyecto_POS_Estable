@@ -101,7 +101,7 @@ public partial class SalesService
             decimal totalPaidUsd = sale.Payments.Sum(p => p.Amount);
             if (sale.TotalUSD < totalPaidUsd)
             {
-                throw new InvalidOperationException("No se puede cambiar la lista de precios: el nuevo total en USD es menor al monto ya abonado por el cliente.");
+                throw new ArgumentException("No se puede cambiar la lista de precios: el nuevo total en USD es menor al monto ya abonado por el cliente.");
             }
         }
 
@@ -199,7 +199,7 @@ public partial class SalesService
             decimal totalPaidUsd = sale.Payments.Sum(p => p.Amount);
             if (sale.TotalUSD < totalPaidUsd)
             {
-                throw new InvalidOperationException($"El nuevo total de la venta (${sale.TotalUSD:F2}) no puede ser menor al monto que ya ha sido abonado por el cliente (${totalPaidUsd:F2}).");
+                throw new ArgumentException($"El nuevo total de la venta (${sale.TotalUSD:F2}) no puede ser menor al monto que ya ha sido abonado por el cliente (${totalPaidUsd:F2}).");
             }
         }
     }

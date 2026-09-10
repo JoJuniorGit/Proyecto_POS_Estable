@@ -186,14 +186,6 @@ public class ShiftsController : ControllerBase
         {
             return this.ApiConflict("Conflicto de concurrencia al cerrar el turno. Ya se encuentra un cierre en ejecución.");
         }
-        catch (InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
     }
 
     [HttpGet("current/report")]

@@ -96,10 +96,6 @@ public partial class ProductsController
         {
             return this.ApiNotFound(knfEx.Message);
         }
-        catch (InvalidOperationException invEx)
-        {
-            return this.ApiBadRequest(invEx.Message);
-        }
         catch (UnauthorizedAccessException unEx)
         {
             return this.ApiForbidden(unEx.Message);
@@ -142,10 +138,6 @@ public partial class ProductsController
         catch (KeyNotFoundException knfEx)
         {
             return this.ApiNotFound(knfEx.Message);
-        }
-        catch (InvalidOperationException invEx)
-        {
-            return this.ApiBadRequest(invEx.Message);
         }
         catch (UnauthorizedAccessException unEx)
         {

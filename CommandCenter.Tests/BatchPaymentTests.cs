@@ -83,7 +83,7 @@ public class BatchPaymentTests
         var service = await CreateServiceWithHeldSaleAsync(10m);
         var held = await salesDb.Sales.Include(s => s.Payments).OrderByDescending(s => s.Id).LastAsync();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<ArgumentException>(() =>
             service.AddPaymentsBatchToHoldSaleAsync(held.Id, new List<AddPaymentRequestDto>
             {
                 new() { PaymentMethodId = 1, AmountUSD = 6m, AmountBsS = 300m, ExchangeRate = 50m },
@@ -103,7 +103,7 @@ public class BatchPaymentTests
         var held = await salesDb.Sales.Include(s => s.Payments).OrderByDescending(s => s.Id).LastAsync();
 
         // Cada abono por separado cabe (4 <= 10.05), pero el ACUMULADO del lote (4+4+4 > 10) no.
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<ArgumentException>(() =>
             service.AddPaymentsBatchToHoldSaleAsync(held.Id, new List<AddPaymentRequestDto>
             {
                 new() { PaymentMethodId = 1, AmountUSD = 4m, AmountBsS = 200m, ExchangeRate = 50m },
@@ -147,7 +147,7 @@ public class BatchPaymentTests
         salesDb.ChangeTracker.Clear();
         var held = await salesDb.Sales.FirstAsync(s => s.Status == SaleStatus.OnHold);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<ArgumentException>(() =>
             service.AddPaymentsBatchToHoldSaleAsync(held.Id, new List<AddPaymentRequestDto>
             {
                 new() { PaymentMethodId = 1, AmountUSD = 0m, AmountBsS = 10.50m, ExchangeRate = 50m }

@@ -168,14 +168,6 @@ public class DailyClosureController : ControllerBase
         {
             return this.ApiConflict("Conflicto de concurrencia al registrar el cierre diario. Es posible que ya se haya ejecutado otro cierre en paralelo.");
         }
-        catch (InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
     }
 
     [HttpGet("{id}")]

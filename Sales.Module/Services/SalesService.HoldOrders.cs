@@ -30,7 +30,7 @@ public partial class SalesService
         if (customer == null) throw new KeyNotFoundException($"Cliente con ID {request.CustomerId} no encontrado.");
         
         if (customer.IsDefault || customer.CedulaOrRif == "V-00000000")
-            throw new InvalidOperationException("Las ventas en espera requieren un cliente real identificable. Asigne un cliente distinto al Consumidor Final.");
+            throw new ArgumentException("Las ventas en espera requieren un cliente real identificable. Asigne un cliente distinto al Consumidor Final.");
 
         // 8.6-B3: La tasa del HOLD se ancla a la tasa BCV del día (misma política que CompleteSale).
         sale.AppliedRate = await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: "HoldSale", referenceId: sale.Id);
@@ -50,7 +50,7 @@ public partial class SalesService
                 // 8.7-B2: Rechazo de montos negativos en abonos (misma política que CompleteSale).
                 if (payment.AmountUSD < 0m || payment.AmountBsS < 0m)
                 {
-                    throw new InvalidOperationException($"La validación del abono (PaymentMethodId={payment.PaymentMethodId}) rechaza montos negativos.");
+                    throw new ArgumentException($"La validación del abono (PaymentMethodId={payment.PaymentMethodId}) rechaza montos negativos.");
                 }
 
                 decimal rate = payment.ExchangeRate > 0
@@ -324,7 +324,7 @@ public partial class SalesService
         // 1. Validar que el nuevo total no sea menor a lo ya abonado por el cliente
         if (newTotalUsd < totalPaidUsd)
         {
-            throw new InvalidOperationException($"El nuevo total del pedido (${newTotalUsd:F2} USD) no puede ser menor al monto total ya abonado por el cliente (${totalPaidUsd:F2} USD).");
+            throw new ArgumentException($"El nuevo total del pedido (${newTotalUsd:F2} USD) no puede ser menor al monto total ya abonado por el cliente (${totalPaidUsd:F2} USD).");
         }
 
         // Reemplazar los ítems existentes

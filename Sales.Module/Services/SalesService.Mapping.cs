@@ -132,7 +132,7 @@ public partial class SalesService
         if (deviationPct >= 1.0m)
         {
             _logger?.LogError("[A5-AUDIT] Tasa rechazada por posible manipulación. {Context} #{Ref}, TasaRecibida={Received}, TasaBCV={Official}, Desvío={Deviation:P2}", contextLabel, referenceId, clientRate, officialRate, deviationPct);
-            throw new InvalidOperationException($"La tasa de cambio {clientRate} fue rechazada: excede ±100% de la tasa BCV oficial ({officialRate}). Contacte al supervisor.");
+            throw new ArgumentException($"La tasa de cambio {clientRate} fue rechazada: excede ±100% de la tasa BCV oficial ({officialRate}). Contacte al supervisor.");
         }
 
         decimal tolerancePct = 0.10m;

@@ -322,7 +322,7 @@ public partial class ProductVariantsTests
         salesDb.Sales.Add(sale);
         await salesDb.SaveChangesAsync();
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             salesService.AddItemAsync(sale.Id, parent.Id, 1, 40.00m));
 
         Assert.Contains("grupo de variantes", ex.Message, StringComparison.OrdinalIgnoreCase);

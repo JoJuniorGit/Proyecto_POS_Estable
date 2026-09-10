@@ -249,7 +249,7 @@ public partial class SalesService : ISalesService
 
             if (fetchedProduct.IsGroupHeader)
             {
-                throw new InvalidOperationException($"El producto '{fetchedProduct.Name}' es un grupo de variantes. Debe seleccionar una variante específica para la venta.");
+                throw new ArgumentException($"El producto '{fetchedProduct.Name}' es un grupo de variantes. Debe seleccionar una variante específica para la venta.");
             }
 
             decimal grossPrice = customUnitPriceUsd ?? fetchedProduct.PriceUSD;

@@ -55,7 +55,7 @@ public class Phase7ClosureWithoutRateTests
     }
 
     [Fact]
-    public async Task DailyClosure_WithoutTodayBcvRate_ReturnsBadRequestWithClearMessage()
+    public async Task DailyClosure_WhenNoTodayBcvRateAndNoActiveSessionRate_ThrowsInvalidOperationException()
     {
         using var salesDb = CreateInMemorySalesDbContext();
         using var inventoryDb = CreateInMemoryInventoryDbContext();
@@ -83,13 +83,8 @@ public class Phase7ClosureWithoutRateTests
             }
         };
 
-        var result = await controller.CreateClosure(request);
-
-        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.NotNull(badRequest.Value);
-        var payload = Assert.IsAssignableFrom<System.Collections.Generic.IDictionary<string, object?>>(badRequest.Value);
-        var message = payload.TryGetValue("message", out var msg) ? msg?.ToString() : null;
-        Assert.Contains("tasa BCV", message, StringComparison.OrdinalIgnoreCase);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => await controller.CreateClosure(request));
+        Assert.Contains("tasa BCV", ex.Message, StringComparison.OrdinalIgnoreCase);
 
         // No closure should be persisted and no cash drawer rollover should occur
         mockClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Times.Never);
@@ -97,10 +92,10 @@ public class Phase7ClosureWithoutRateTests
     }
 
     [Fact]
-    public async Task DailyClosure_WithBcvRate_ButNoRegistration_IsBlockedEvenWithActiveSessionOpeningRate()
+    public async Task CreateClosure_WhenNoTodayBcvRate_ButActiveSessionHasOpeningRate_UsesFallbackRateAndProceeds()
     {
-        // Even if an active cash drawer session has an opening rate, a closure without a
-        // registered BCV rate for today must be blocked (8.2-M2 stricter than fallback).
+        // 8.2-M2: la tasa de apertura de la sesión activa es la tasa de reserva explícita para
+        // cierres sin registro BCV del día (ExchangeRateResolver), evitando distorsiones con 1.0.
         using var salesDb = CreateInMemorySalesDbContext();
         using var inventoryDb = CreateInMemoryInventoryDbContext();
         var mockClosure = new Mock<IDailyClosureService>();
@@ -111,6 +106,13 @@ public class Phase7ClosureWithoutRateTests
 
         mockCashDrawer.Setup(c => c.GetActiveSessionAsync()).ReturnsAsync(
             new Sales.Module.Entities.CashDrawerSession { OpeningExchangeRate = 50m });
+        mockClosure.Setup(c => c.GetExpectedTotalsByPaymentMethodAsync(It.IsAny<DateTime>()))
+            .ReturnsAsync(new List<ExpectedTotalDto>
+            {
+                new ExpectedTotalDto { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 1000m }
+            });
+        mockClosure.Setup(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()))
+            .ReturnsAsync((DailyClosure closure) => closure);
 
         var controller = new DailyClosureController(
             mockClosure.Object,
@@ -132,13 +134,14 @@ public class Phase7ClosureWithoutRateTests
 
         var result = await controller.CreateClosure(request);
 
-        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.NotNull(badRequest.Value);
-        mockClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Times.Never);
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.NotNull(ok.Value);
+        mockClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Times.Once);
+        mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(50m), Times.Once);
     }
 
     [Fact]
-    public async Task ShiftsClose_WithoutTodayBcvRate_ReturnsBadRequestWithClearMessage()
+    public async Task ShiftsClose_WhenNoTodayBcvRateAndNoActiveSessionRate_ThrowsInvalidOperationException()
     {
         using var salesDb = CreateInMemorySalesDbContext();
         using var inventoryDb = CreateInMemoryInventoryDbContext();
@@ -165,13 +168,8 @@ public class Phase7ClosureWithoutRateTests
             DeclaredAmounts = new List<DeclaredAmountDto>()
         };
 
-        var result = await controller.CloseShift(request);
-
-        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.NotNull(badRequest.Value);
-        var payload = Assert.IsAssignableFrom<System.Collections.Generic.IDictionary<string, object?>>(badRequest.Value);
-        var message = payload.TryGetValue("message", out var msg) ? msg?.ToString() : null;
-        Assert.Contains("tasa BCV", message, StringComparison.OrdinalIgnoreCase);
+        var ex3 = await Assert.ThrowsAsync<InvalidOperationException>(async () => await controller.CloseShift(request));
+        Assert.Contains("tasa BCV", ex3.Message, StringComparison.OrdinalIgnoreCase);
 
         mockDailyClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Times.Never);
         mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);

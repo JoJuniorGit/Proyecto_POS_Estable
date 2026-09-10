@@ -54,33 +54,14 @@ public partial class SalesController
         {
             return this.ApiNotFound(ex.Message);
         }
-        catch (System.ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
     }
 
     [HttpPost("customers")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<CustomerDto>> CreateCustomer([FromBody] CreateCustomerDto request)
     {
-        try
-        {
-            var customer = await _salesService.CreateCustomerAsync(request);
-            return Ok(customer);
-        }
-        catch (System.ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
+        var customer = await _salesService.CreateCustomerAsync(request);
+        return Ok(customer);
     }
 
     [HttpPut("customers/{id}")]
@@ -96,14 +77,6 @@ public partial class SalesController
         {
             return this.ApiNotFound(ex.Message);
         }
-        catch (System.ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
     }
 
     [HttpDelete("customers/{id}")]
@@ -118,14 +91,6 @@ public partial class SalesController
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
             return this.ApiNotFound(ex.Message);
-        }
-        catch (System.ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
         }
     }
 }

@@ -177,8 +177,8 @@ public class DataIntegritySprint1Tests
                 PaymentMethodId = 1
             }));
 
-        // 2. Payment exceeding $10 (e.g. $15) must throw InvalidOperationException
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        // 2. Payment exceeding $10 (e.g. $15) must throw ArgumentException
+        await Assert.ThrowsAsync<ArgumentException>(() =>
             salesService.AddPaymentToHoldSaleAsync(sale.Id, new AddPaymentRequestDto
             {
                 AmountUSD = 15m,

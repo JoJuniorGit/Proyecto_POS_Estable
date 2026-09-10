@@ -493,7 +493,7 @@ public class CashDrawerService : ICashDrawerService
         // Validación de integridad: el efectivo entregado solo acepta montos enteros (sin centavos).
         if (requestedAmountLocal % 1 != 0)
         {
-            throw new InvalidOperationException("El monto de efectivo a entregar debe ser un número entero sin decimales.");
+            throw new ArgumentException("El monto de efectivo a entregar debe ser un número entero sin decimales.", nameof(requestedAmountLocal));
         }
 
         var availableCash = await GetCurrentBalanceLocalAsync(sessionId);

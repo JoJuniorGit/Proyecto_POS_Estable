@@ -244,14 +244,6 @@ public partial class SalesController
         {
             return NotFound();
         }
-        catch (System.ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
     }
 
     [HttpGet("pending-pickups")]

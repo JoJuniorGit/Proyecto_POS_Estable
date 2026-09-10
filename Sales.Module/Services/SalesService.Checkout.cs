@@ -63,19 +63,19 @@ public partial class SalesService
                 if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
                     throw new InvalidOperationException("La venta no se encuentra en estado Pendiente o En Espera.");
 
-            if (isPendingPickup)
-            {
-                if (!sale.CustomerId.HasValue)
+                if (isPendingPickup)
                 {
-                    throw new InvalidOperationException("Para registrar un apartado pagado (mercancía en custodia), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono).");
-                }
+                    if (!sale.CustomerId.HasValue)
+                    {
+                        throw new ArgumentException("Para registrar un apartado pagado (mercancía en custodia), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono).");
+                    }
 
-                var cust = await _context.Customers.FindAsync(sale.CustomerId.Value);
-                if (cust == null || cust.IsDefault || cust.CedulaOrRif == "V-00000000" || cust.Name.StartsWith("Consumidor Final", StringComparison.OrdinalIgnoreCase) || cust.Name.StartsWith("Cliente General", StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new InvalidOperationException("Para registrar un apartado pagado (mercancía en custodia), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono).");
+                    var cust = await _context.Customers.FindAsync(sale.CustomerId.Value);
+                    if (cust == null || cust.IsDefault || cust.CedulaOrRif == "V-00000000" || cust.Name.StartsWith("Consumidor Final", StringComparison.OrdinalIgnoreCase) || cust.Name.StartsWith("Cliente General", StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new ArgumentException("Para registrar un apartado pagado (mercancía en custodia), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono).");
+                    }
                 }
-            }
 
             if (cashierId.HasValue)
             {
@@ -118,13 +118,13 @@ public partial class SalesService
             {
                 if (remainingBalanceUsd > 0.05m)
                 {
-                    throw new InvalidOperationException("Para registrar un apartado en custodia (Mercancía Pendiente por Retirar), la venta debe estar pagada al 100% (saldo restante $0.00).");
+                    throw new ArgumentException("Para registrar un apartado en custodia (Mercancía Pendiente por Retirar), la venta debe estar pagada al 100% (saldo restante $0.00).");
                 }
 
                 bool isDefaultCust = sale.CustomerId == null || sale.Customer == null || sale.Customer.IsDefault || (sale.CustomerName != null && sale.CustomerName.ToLower().Contains("consumidor final"));
                 if (isDefaultCust)
                 {
-                    throw new InvalidOperationException("Para registrar un apartado en custodia (Mercancía Pendiente por Retirar), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono).");
+                    throw new ArgumentException("Para registrar un apartado en custodia (Mercancía Pendiente por Retirar), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono).");
                 }
             }
 
@@ -163,7 +163,7 @@ public partial class SalesService
                     // o inactivo aborta el cobro (evita asociar pagos a configuraciones inválidas).
                     if (paymentMethod == null || !paymentMethod.IsActive)
                     {
-                        throw new InvalidOperationException($"Método de pago inválido o inactivo: PaymentMethodId={p.PaymentMethodId}. Verifique la configuración de métodos de pago.");
+                        throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={p.PaymentMethodId}. Verifique la configuración de métodos de pago.");
                     }
 
                     // 8.7-B2: Rechazo de montos NEGATIVOS por método. Sin esta validación, un pago con
@@ -173,13 +173,13 @@ public partial class SalesService
                     // convierten arriba.
                     if (amountUsd < 0m || amountLocal < 0m)
                     {
-                        throw new InvalidOperationException($"La validación del método de pago (PaymentMethodId={p.PaymentMethodId}) rechaza montos negativos. Monto USD={p.Amount}, Monto Bs.S={p.AmountLocal}.");
+                        throw new ArgumentException($"La validación del método de pago (PaymentMethodId={p.PaymentMethodId}) rechaza montos negativos. Monto USD={p.Amount}, Monto Bs.S={p.AmountLocal}.");
                     }
 
                     // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
                     if (paymentMethod != null && paymentMethod.IsCash && amountLocal % 1 != 0)
                     {
-                        throw new InvalidOperationException("El método de pago en efectivo solo acepta montos enteros.");
+                        throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");
                     }
 
                     _logger?.LogDebug("[CURRENCY CONVERSION DEBUG] Método: {Method}, Monto Bs.S: {BsS}, Tasa AppliedRate: {Rate}, Monto USD Calculado: {Usd}", p.PaymentMethodId, amountLocal, exchangeRate, amountUsd);
@@ -225,7 +225,7 @@ public partial class SalesService
                 decimal changeUsd = Math.Abs(remainingBalanceUsd);
                 if (changeUsd > 100m && changeUsd > sale.TotalUSD)
                 {
-                    throw new InvalidOperationException($"El sobrepago o vuelto requerido (${changeUsd:F2} USD) excede los límites operacionales de seguridad.");
+                    throw new ArgumentException($"El sobrepago o vuelto requerido (${changeUsd:F2} USD) excede los límites operacionales de seguridad.");
                 }
 
                 int? cashMethodId = sale.Payments.FirstOrDefault(p => paymentMethodsDict.TryGetValue(p.PaymentMethodId, out var pm) && pm.IsCash)?.PaymentMethodId;
@@ -274,7 +274,7 @@ public partial class SalesService
 
             if (remainingBalanceUsd > 0.05m)
             {
-                throw new InvalidOperationException("El monto ingresado no cubre la totalidad de la venta. El flujo de cobro requiere liquidación al 100%. Para abonos parciales o guardar pedidos en espera, utilice la opción 'Guardar en Espera'.");
+                throw new ArgumentException("El monto ingresado no cubre la totalidad de la venta. El flujo de cobro requiere liquidación al 100%. Para abonos parciales o guardar pedidos en espera, utilice la opción 'Guardar en Espera'.");
             }
 
             // Es liquidación total

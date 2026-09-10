@@ -247,7 +247,7 @@ public class SalesServiceUnitTests
             ExchangeRate = 50m
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.HoldSaleAsync(31, request));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.HoldSaleAsync(31, request));
         Assert.Contains("Las ventas en espera requieren un cliente real identificable", ex.Message);
     }
 

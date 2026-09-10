@@ -132,7 +132,7 @@ public class CashDrawerServiceUnitTests
         var session = await service.OpenSessionAsync(5000m, 50m);
 
         // Monto con centavos (100.50 BsS) no es permitido para entrega en efectivo físico
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             service.ProcessCashAdvanceAsync(
                 sessionId: session.Id,
                 requestedAmountLocal: 100.50m,

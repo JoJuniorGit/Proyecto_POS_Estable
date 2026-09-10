@@ -222,7 +222,7 @@ public class InventoryServiceUnitTests
             IsCashAdvance = true,
             IsGroupHeader = true
         };
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateProductAsync(groupAdvance));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.CreateProductAsync(groupAdvance));
 
         // 3. Reject if ParentProductId is set
         var parentProduct = new Product
@@ -241,7 +241,7 @@ public class InventoryServiceUnitTests
             IsCashAdvance = true,
             ParentProductId = parentProduct.Id
         };
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateProductAsync(variantAdvance));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.CreateProductAsync(variantAdvance));
     }
 
     [Fact]

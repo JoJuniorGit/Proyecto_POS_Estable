@@ -63,13 +63,5 @@ public partial class SalesController
         {
             return this.ApiNotFound(ex.Message);
         }
-        catch (System.ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (System.InvalidOperationException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
     }
 }

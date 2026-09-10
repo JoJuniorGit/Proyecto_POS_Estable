@@ -66,7 +66,7 @@ public partial class PriceListTests
 
         var service = new SalesService(context, mockInv.Object, Mock.Of<IMediator>(), Mock.Of<ICashDrawerService>(), Mock.Of<ISystemSettingsService>());
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdatePriceListAsync(1, "Wholesale"));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.UpdatePriceListAsync(1, "Wholesale"));
         Assert.Contains("menor al monto ya abonado", ex.Message);
     }
 
@@ -268,7 +268,7 @@ public partial class PriceListTests
             HasWholesale = true
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => invService.CreateProductAsync(invalidProduct));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => invService.CreateProductAsync(invalidProduct));
         Assert.Contains("precio al mayor", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -294,7 +294,7 @@ public partial class PriceListTests
             HasWholesale = true
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => invService.CreateProductAsync(invalidProduct));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => invService.CreateProductAsync(invalidProduct));
         Assert.Contains("margen al mayor", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 

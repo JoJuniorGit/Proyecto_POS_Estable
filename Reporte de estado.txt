@@ -17,6 +17,19 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.43.0  | 2026-09-10  | (8.77)       | CIERRE P2=C3 UNIFICACION 400/409 InvalidOperationException/
+|          |             |              | ArgumentException: validacion pura de entrada pasa a
+|          |             |              | ArgumentException->400 via middleware (RFC 7807, sin
+|          |             |              | filtrar ex.Message); eliminados todos los catch-locales
+|          |             |              | de controllers (KeyNotFound->404, DbUpdate*->409,
+|          |             |              | UnauthorizedAccess->Forbidden, idempotencia con guard when,
+|          |             |              | ExchangeRate->502 conservados). "Rechazos Defensivos" y
+|          |             |              | estados de negocio conservados como 409 intencional.
+|          |             |              | 27 tests actualizados; test 8.2-M2 reescrito (fallback a
+|          |             |              | tasa de apertura de sesion activa = conducta valida,
+|          |             |              | decision de usuario 8.77-D2, sin cambio de produccion).
+|          |             |              | Suite 796/796 verde, build Release 0/0. ANEXO 8.77,
+|          |             |              | roadmap v0.5.0.
 | v1.42.0  | 2026-09-10  | (8.76)       | BLOQUE P11-P17 INFRA/DECISION: sin cambio de codigo.
 |          |             |              | DQ-007 cerrada con opcion B (HTTPS real + VPN WireGuard)
 |          |             |              | para supervision remota (A descartada, C en desventaja).

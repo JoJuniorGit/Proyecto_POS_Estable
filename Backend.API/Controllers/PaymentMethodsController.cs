@@ -57,9 +57,7 @@ public class PaymentMethodsController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        try
-        {
-            var method = new PaymentMethod
+        var method = new PaymentMethod
             {
                 Name = dto.Name,
                 RequiresReference = dto.RequiresReference,
@@ -70,11 +68,6 @@ public class PaymentMethodsController : ControllerBase
 
             var created = await _paymentService.CreateAsync(method);
             return CreatedAtAction(nameof(GetMethod), new { id = created.Id }, ToDto(created));
-        }
-        catch (ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
     }
 
     /// <summary>
@@ -109,14 +102,6 @@ public class PaymentMethodsController : ControllerBase
         {
             return this.ApiNotFound(ex.Message);
         }
-        catch (ArgumentException ex)
-        {
-            return this.ApiBadRequest(ex.Message);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return this.ApiConflict(ex.Message);
-        }
     }
 
     [HttpDelete("{id}")]
@@ -131,10 +116,6 @@ public class PaymentMethodsController : ControllerBase
         catch (KeyNotFoundException ex)
         {
             return this.ApiNotFound(ex.Message);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return this.ApiConflict(ex.Message);
         }
     }
 
