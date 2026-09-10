@@ -53,6 +53,7 @@ try
         ? Backend.API.Startup.BackendHelpers.BuildLanAllowedHosts()
         : Backend.API.Startup.BackendHelpers.BuildLanAllowedHosts() + ";" + rawAllowedHosts;
     builder.Configuration["AllowedHosts"] = computedAllowedHosts;
+    AppLogger.LogStart($"[AllowedHosts] Whitelist de hosts permitidos calculada ({computedAllowedHosts.Split(';', StringSplitOptions.RemoveEmptyEntries).Length} hosts).");
 
     int httpPort = int.TryParse(Environment.GetEnvironmentVariable("PORT") ?? Environment.GetEnvironmentVariable("ASPNETCORE_HTTP_PORT"), out int p) ? p : 5000;
     int httpsPort = httpPort + 1;

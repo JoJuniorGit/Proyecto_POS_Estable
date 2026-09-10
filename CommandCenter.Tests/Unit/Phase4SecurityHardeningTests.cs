@@ -198,6 +198,13 @@ public class Phase4SecurityHardeningTests
     }
 
     [Fact]
+    public void ResolveCacheWindow_StrictMode_ReturnsStrictWindow()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(5), SecurityStampValidator.ResolveCacheWindow(forceImmediateCheck: true));
+        Assert.Equal(TimeSpan.FromSeconds(45), SecurityStampValidator.ResolveCacheWindow(forceImmediateCheck: false));
+    }
+
+    [Fact]
     public void UserRole_Manager_PermissionsAndDisplay_AreProperlyConfigured()
     {
         var session = new UserSession();

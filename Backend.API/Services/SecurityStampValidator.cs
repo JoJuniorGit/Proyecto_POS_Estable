@@ -6,6 +6,8 @@ using Microsoft.Extensions.Caching.Memory;
 using Sales.Module.Data;
 using Core.Logging;
 
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("CommandCenter.Tests")]
+
 namespace Backend.API.Services;
 
 /// <summary>
@@ -40,8 +42,7 @@ public class SecurityStampValidator : ISecurityStampValidator
 
         if (_cache.TryGetValue(cacheKey, out CachedStamp? cached))
         {
-            // 8.7-M8: el modo estricto solo esquiva el caché si la entrada supera la ventana corta.
-            var maxAge = forceImmediateCheck ? StrictWindow : CacheDuration;
+            var maxAge = ResolveCacheWindow(forceImmediateCheck);
             if (cached != null
                 && string.Equals(cached.Value, tokenStamp, StringComparison.Ordinal)
                 && DateTime.UtcNow - cached.IssuedAtUtc < maxAge)
@@ -66,7 +67,7 @@ public class SecurityStampValidator : ISecurityStampValidator
         {
             _cache.Set(cacheKey, new CachedStamp(user.SecurityStamp, DateTime.UtcNow), new MemoryCacheEntryOptions
             {
-                AbsoluteExpirationRelativeToNow = CacheDuration,
+                AbsoluteExpirationRelativeToNow = ResolveCacheWindow(forceImmediateCheck),
                 Size = 1
             });
             return true;
@@ -76,6 +77,9 @@ public class SecurityStampValidator : ISecurityStampValidator
         _cache.Remove(cacheKey);
         return false;
     }
+
+    internal static TimeSpan ResolveCacheWindow(bool forceImmediateCheck)
+        => forceImmediateCheck ? StrictWindow : CacheDuration;
 
     public void InvalidateUserStamp(int userId)
     {
