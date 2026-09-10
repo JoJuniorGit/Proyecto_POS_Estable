@@ -4464,3 +4464,62 @@ C1. Estado: PROPUESTA. No se ha modificado el roadmap. Aprobar edicion y
 
 FIN DEL ANEXO - REVISION 8.67
 ================================================================================
+===============================================================================
+ANEXO - REVISION 8.68 (RESPUESTAS DEL CLIENTE 4.5 + TOPOLOGIA + REINICIO FACIL)
+===============================================================================
+Alcance: registrar las confirmaciones del cliente sobre las preguntas abiertas
+del roadmap (4.5) y las decisiones operativas resultantes. EL ROADMAP YA FUE
+EDITADO (proceso 8.68).
+
+A. CONFIRMACIONES DEL CLIENTE (4.5, 2026-09-09)
+A1. #1 Cajas: 4 cajas con ventas concurrentes -> Req.1 real (ya certificado 8.34).
+A2. #2 Metodos de pago: ya definidos e incorporados como seed (4 metodos).
+A3. #3 Impresion: implementacion a medio plazo; no bloquea el piloto.
+A4. #4 Operacion sin red: el sistema opera sin conexion; tasa BCV manual
+    aceptada (cierra R-005 como decision; la prueba offline en F3 sigue pendiente).
+A5. #5 Topologia: ideal HTTPS para supervision remota; decisión en DQ-007.
+A6. #6 Fiscales: sin requisitos fiscales.
+A7. #7 Ventana: 03:00 cualquier dia es buen momento; pendiente nombrar
+    responsable + plan de reinicio facil (DQ-009 / Req.9).
+A8. #8 Piloto: 2 semanas, turnos 14h, sin caidas, sin ventas descuentos de stock
+    dobles; criterios 10.2 actualizados.
+A9. #9 Datos previos: sin datos para cargar -> IMP-5 queda cerrado.
+
+B. DECISIONES DE ARQUITECTURA (DQ)
+B1. DQ-007 - Topologia moderna: preferencia HTTPS para supervision remota. Opc.
+    A (puerto 443 abierto) descartada por superficie de ataque; recomendacion
+    ARQ: LAN HTTP+autofirmado en piloto + VPN (WireGuard/OpenVPN) o tunnel
+    gestionado (Cloudflare Tunnel) para remoto. Eleccion final del cliente
+    pendiente entre B/C.
+B2. DQ-008 - Ventana de mantenimiento: 03:00 cualquier dia.
+B3. DQ-009 - Reinicio facil (Req.9, opcion C aprobada por cliente): doble via
+    (A) RestartPOS.bat en escritorio que reinicia el NSSM service + (B) boton
+    "Reiniciar sistema" en UI de gestion (WPF/Web) via endpoint. Funcionalidad
+    nueva que requiere aprobacion RM como excepcion a DQ-001.
+B4. Confirmacion que el cliente WPF queda como herramienta de GESTION; la
+    plataforma de ventas prioritaria es la WEB. Optimizacion UI WPF futura.
+
+C. RESPUESTAS OPERATIVAS (roadmap seccion 12)
+C1. Consolidacion de documentos: se mantienen DOS (roadmap = capa ejecutiva por
+    fase; reporte = historial completo). No se consolidan.
+C2. Maquina limpia: Docker permite smoke PARCIAL (extraccion + Backend.API como
+    consola); NSSM/PG-service/tarea backup NO corren en contenedor Windows (sin
+    Service Control Manager). Para certificacion completa: VM Windows desechable
+    (Hyper-V Quick Create o VirtualBox). Pendiente: proveer VM virgen.
+C3. Certificado X.509: no prioridad en el piloto; riesgos aceptados (SmartScreen
+    advierte una vez por PC). Beneficios documentados para produccion estable.
+C4. Monitoreo: se adopta docs/monitor-health.ps1 (script local /health cada 5min,
+    notifica tras 3 fallos). 0 costo, sin cloud.
+C5. WPF: deuda de UI clasificada post-produccion (confirmado).
+
+D. CRITERIOS DE ACEPTACION DEL PILOTO ACTUALIZADOS (10.2)
+D1. Nueva fila "Venta con doble descuento de stock = 0" (auditoria StockMovement).
+D2. Disponibilidad >= 99.5% en jornada con turnos 14h, 2 semanas.
+D3. Aceptacion del operador: positiva con operacion sin capacitacion.
+
+E. ULTIMA DECISION (8.68)
+E1. El roadmap se edito directamente (seccion 4.1, 4.2, 4.3, 4.5, 4.5.1, 4.7,
+    10.1, 10.2, 12 y changelog) para reflejar estas confirmaciones.
+
+FIN DEL ANEXO - REVISION 8.68
+================================================================================

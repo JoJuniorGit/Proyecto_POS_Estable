@@ -17,6 +17,13 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.34.0  | 2026-09-09  | (8.68)       | REVISION 8.68 / Confirmaciones del cliente 4.5 (#1-6, #8,
+|          |             |              | #9 cerradas; #7 ventana 03:00 + reinicio facil Req.9 opcion
+|          |             |              | C DQ-009); decisiones DQ-007 topologia HTTPS (A descartada;
+|          |             |              | B VPN o C tunnel para remoto) y DQ-008 ventana; seccion 12
+|          |             |              | respondida (2 documentos separados, docker parcial, X.509
+|          |             |              | no prioridad, monitor-health.ps1, WPF=gestion). Roadmap
+|          |             |              | v0.3.0 editado; ANEXO 8.68.
 | v1.33.0  | 2026-09-09  | (8.67)       | REVISION 8.67 / PROPUESTA: 5 mejoras preventivas al plan de
 |          |             |              | produccion (roadmap) por incidentes reales: IMP-1 smoke
 |          |             |              | migracion desde cero automatizado (detecta 8.65), IMP-2

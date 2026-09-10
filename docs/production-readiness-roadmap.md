@@ -6,12 +6,12 @@ el avance real de cada fase. Es la capa ejecutiva/operativa del plan de
 certificacion; el detalle por revision vive en `docs/reporte.txt` (ANEXOS) y el
 estado tecnico en `Reporte de estado.txt`.
 
-- **Version documento:** 0.2.0 (fusion con el plan de certificacion consolidado)
+- **Version documento:** 0.3.0 (respuestas del cliente 4.5 + DQ-007/008/009 + WPF=gestion)
 - **Fecha:** 2026-09-09
-- **Estado general:** Fases F0-F6 en curso; bloquean la certificacion 5 brechas operativas
+- **Estado general:** Fases F0-F6 en curso; F0 avanza a M0 con confirmaciones del cliente
 - **Rama base:** V0.15
 - **Responsables:** Release Manager (RM) / Arquitecto (ARQ) / Cliente (CLI)
-- **Fuente de estado del sistema:** `Reporte de estado.txt` (v1.24.0) y `docs/reporte.txt` (ANEXOS)
+- **Fuente de estado del sistema:** `Reporte de estado.txt` (v1.34.0) y `docs/reporte.txt` (ANEXOS)
 
 ---
 
@@ -77,6 +77,7 @@ Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-09  | F0   | Confirmaciones del cliente 4.5 (#1-6, #8, #9 cerradas; #7 03:00 + reinicio facil DQ-009); DQ-007 red + DQ-008 ventana; §12 respondidas; WPF=gestion definitiva | (8.68) Sin cambios de codigo; suites sin variacion. Roadmap v0.3.0 + ANEXO 8.68 |
 | 2026-09-09  | -    | PROPUESTA IMP-1..IMP-5: mejoras preventivas post-incidente (smoke migracion desde cero, paridad instalador/backend, backup config sitio, Defender en caja, migracion datos previos) | ANEXO 8.67; pendiente de aprobacion para editar |
 | 2026-09-09  | F5   | Health check de frescura del ultimo backup (8.59) | Suites .NET 769/769 |
 | 2026-09-09  | F2   | Logistics.Module fuera del DI (M08) + dotnet-ef 10.0.4 (B02) + bundle web reproducible (8.58) | Suites .NET 766/766 |
@@ -124,14 +125,19 @@ contrato operativo del roadmap.
 | Aspecto | Estado actual | Confirmacion cliente |
 |---------|---------------|----------------------|
 | Topologia | Una sucursal / un puesto (sin `BranchId`, intencion futura) | PENDIENTE |
-| Cajas | 4 terminales simultaneas (Req. 1); WPF fija + Web tablet | PENDIENTE |
+| Cajas | 4 terminales simultaneas (Req. 1); WPF fija + Web tablet | CONFIRMADO (4 cajas concurrentes) |
 | Moneda | Doble: USD referencia + Bs.S a tasa BCV; ventas mixtas y vuelto cruzado | PENDIENTE |
-| Metodos de pago | 4 habilitados: Efectivo, Tarjeta (Punto de Venta), Transferencia/Pago Movil, Divisas (USD) | Aprobado (punto 2) |
+| Metodos de pago | 4 habilitados: Efectivo, Tarjeta (Punto de Venta), Transferencia/Pago Movil, Divisas (USD) | CONFIRMADO (ya seed) |
 | Impresion fiscal | NO implementada (limitacion pre-piloto, INSTALLATION 9) | PENDIENTE |
 | Facturacion digital | IMPLEMENTADA: recibo/nota de entrega NO fiscal PDF asincrono + endpoint on-demand (Req. 3) | PENDIENTE |
-| Operacion sin red | Tasa BCV manual documentada (INSTALLATION 7) | PENDIENTE |
-| Entorno | LAN (HTTP 5000 + HTTPS 5001 autofirmado por sitio) | PENDIENTE |
+| Operacion sin red | Tasa BCV manual documentada (INSTALLATION 7) | CONFIRMADO (4) |
+| Entorno | LAN (HTTP 5000 + HTTPS 5001 autofirmado por sitio) | CONFIRMADO (5) |
 | Updater | NO instalado (sin firma X.509, 8.20-A03/8U-N2) | PENDIENTE |
+
+> Confirmaciones obtenidas el 2026-09-09 (§4.5): 1 (cajas=4), 2 (metodos seed),
+> 3 (impresion a medio plazo, no bloques piloto), 4 (operacion sin red aceptada),
+> 5 (topologia LAN; HTTPS ideal a futuro), 6 (sin fiscales), 8 (piloto 2 semanas,
+> turnos 14h, sin duplicados), 9 (sin datos previos). Pendiente: solo #7 (ver 4.5).
 
 ### 4.2 Decisiones tomadas (registro DQ)
 
@@ -150,12 +156,26 @@ contrato operativo del roadmap.
 - **DQ-006 - Topologia HTTP/HTTPS (F1, 8.38).** Piloto LAN aislada con HTTP 5000 +
   HTTPS 5001 autofirmado; `SecuritySettings:RequireHttpsMetadata` default false.
   Fuera de LAN se exige `true` + cert de CA.
+- **DQ-007 - Topologia de red moderna (2026-09-09, decision cliente).** El cliente
+  prefiere HTTPS para supervision remota. Se evaluaron opciones: (A) puerto 443
+  abierto directo (riesgo alto, exponer POS a Internet), (B) HTTPS real + VPN
+  (WireGuard/OpenVPN), (C) HTTPS real + tunel gestionado (Cloudflare Tunnel).
+  Recomendacion ARQ: para el piloto LAN mantener HTTP+autofirmado ya instalado,
+  habilitar supervision remota via B o C (sin abrir puertos directos). La opcion
+  A queda descartada por defecto por superficie de ataque.
+- **DQ-008 - Ventana de mantenimiento.** 03:00 cualquier dia es buen momento
+  (respuesta cliente #7). Backup diario 03:00 confirmado.
+- **DQ-009 - Reinicio facil del sistema (Req.9, opcion C aprobada).** Implementar
+  doble via para recuperacion por personal sin capacitacion: (A) acceso directo
+  `RestartPOS.bat` en escritorio que reinicia el servicio NSSM, y (B) boton
+  "Reiniciar sistema" en UI de gestion (WPF/Web) que invoca el endpoint de
+  servicio. Requiere aprobacion RM por ser funcionalidad nueva (excepcion DQ-001).
 
 ### 4.3 SLOs y objetivos de recuperacion (propuesta a validar)
 
 | Metrica | Propuesta | Como se mide / evidencia | Estado |
 |---------|-----------|--------------------------|--------|
-| Disponibilidad mensual | >= 99.5 % | Uptime del servicio en jornada | PENDIENTE medicion |
+| Disponibilidad mensual | >= 99.5 % | Uptime del servicio en jornada (turnos 14h, 2 semanas piloto) | PENDIENTE medicion |
 | RPO | <= 24 h | Backup diario 03:00 (tarea programada, 8.29-A6) | PENDIENTE validar real |
 | RTO | <= 4 h | Restore documentado (INSTALLATION 8.1) + ejecucion real F3 | PENDIENTE ejecutar |
 | Checkout sin duplicados | 100 % ante reintentos | Idempotency-Key + tests de abonos/lote | PARCIAL (tests verdes) |
@@ -177,7 +197,7 @@ cerrarse antes de la certificacion.
 | R-002 | Restore de PostgreSQL nunca ejecutado en entorno operativo | P1 | F1/F3: restore real + medicion RTO | ABIERTO |
 | R-003 | Certificado HTTPS autofirmado; advertencia en cajas remotas | P2 | Distribuir `.cer` en raiz de confianza o HTTPS real | ABIERTO |
 | R-004 | Puerto HTTP 5000 expuesto en LAN | P2 | Aceptar topologia LAN o forzar HTTPS (RequireHttpsMetadata) | ABIERTO |
-| R-005 | Tasa BCV: fail-open documentado ante tasa indisponible; plan offline manual | P1 | Confirmar politica offline con cliente; pruebas en F3 | ABIERTO |
+| R-005 | Tasa BCV: fail-open documentado ante tasa indisponible; plan offline manual | P1 | Confirmar politica offline con cliente; pruebas en F3 | PARCIAL (politica aceptada 8.68; prueba offline F3 pendiente) |
 | R-006 | Impresion de recibos/cierres no implementada (termica) | P2 | Confirmar expectativa del cliente (F1, DQ-003) | ABIERTO |
 | R-007 | UpdaterService sin firma X.509; no instalado | P3 | Mantener deshabilitado; roadmap tras piloto | ABIERTO |
 | R-008 | Operacion multi-sucursal sin `BranchId` | P3 | Intencion futura; fuera de alcance (coding-guidelines 5) | ABIERTO |
@@ -186,28 +206,33 @@ cerrarse antes de la certificacion.
 
 ### 4.5 Preguntas abiertas al cliente (bloquean M0)
 
-1. Numero de cajas y usuarios concurrentes por jornada.
-2. Metodos de pago requeridos en el piloto.
-3. Impresion de recibos/cierres: obligatoria u opcional en el piloto.
-4. Operacion sin internet: politica de tasa manual aceptada?
-5. Topologia de red: LAN sola, o HTTPS real/remoto.
-6. Requisitos regulatorios/fiscales de facturacion y conservacion.
-7. Ventana de mantenimiento y responsable operativo en el sitio.
-8. Duracion y criterios de exito del piloto (1-2 semanas iniciales).
-9. Existen datos previos (catalogo/existencias) en otro sistema que deban importarse? (IMP-5)
+Estado al 2026-09-09: **#1-#6, #8, #9 cerradas** (ver 4.5.1). **#7 parcialmente
+cerrada**: ventana confirmada (03:00, DQ-008) y reinicio facil registrado
+(DQ-009); pendiente solo nombrar al responsable operativo.
 
-### 4.5.1 Respuestas preliminares (RM/ARQ) - para validar con el cliente
+1. Numero de cajas y usuarios concurrentes por jornada. → **RESUELTO: 4 cajas con ventas concurrentes.**
+2. Metodos de pago requeridos en el piloto. → **RESUELTO: ya definidos e incorporados como seed (4 metodos).**
+3. Impresion de recibos/cierres: obligatoria u opcional en el piloto. → **RESUELTO: para el piloto, implementacion a medio plazo (no bloquea).**
+4. Operacion sin internet: politica de tasa manual aceptada? → **RESUELTO: el sistema opera sin conexion; tasa BCV manual aceptada.**
+5. Topologia de red: LAN sola, o HTTPS real/remoto. → **RESUELTO: ideal HTTPS para supervision remota; ver DQ-007.**
+6. Requisitos regulatorios/fiscales de facturacion y conservacion. → **RESUELTO: sin requisitos fiscales.**
+7. Ventana de mantenimiento y responsable operativo en el sitio. → **RESUELTO: 03:00 cualquier dia es buen momento; pendiente nombrar responsable + plan de reinicio facil (DQ-009).**
+8. Duracion y criterios de exito del piloto (1-2 semanas iniciales). → **RESUELTO: 2 semanas sin caidas, ventas descuentos de stock dobles en turnos de 14 horas.**
+9. Existen datos previos (catalogo/existencias) en otro sistema que deban importarse? (IMP-5) → **RESUELTO: sin datos para cargar.**
 
-| # | Pregunta | Respuesta preliminar RM/ARQ | Necesita confirmacion CLI |
-|---|----------|-----------------------------|---------------------------|
-| 1 | Cajas/usuario | Sin limite fijo; concurrencia critica por `xmin`. Recomendacion: iniciar con 2 cajas y <= 5 usuarios; validar p95 en F3. | Numero real del cliente |
-| 2 | Metodos de pago | Catalogo configurable (Admin); efectivo fisico/digital + vuelto cruzado. Recomendacion: efectivo + los que el cliente indique. | Catalogo del negocio |
-| 3 | Impresion | Recibo/nota de entrega NO fiscal en PDF (implementado 8.50-8.51); impresion termica no integrada. Si se exige termica/fiscal, escala a P0. | Obligatoria u opcional |
-| 4 | Offline BCV | Auto-sync configurable; tasa manual por Admin; rechazo sin tasa vigente; fail-open documentado (R-005). | Aceptar politica manual |
-| 5 | Topologia | LAN HTTP+HTTPS autofirmado (DQ-006); remoto/otra VLAN exige HTTPS real. | Topologia real |
-| 6 | Regulatorio/fiscal | NO es facturador fiscal (sin SNTT/IVA). Facturacion legal seria P0 nuevo. | Si aplica |
-| 7 | Mantenimiento/responsable | NSSM auto-start; backup 03:00; ventana nocturna; responsable con runbook. | Horario/responsable |
-| 8 | Piloto | 1 sucursal, 1-2 semanas, version congelada, dentro de SLOs, >= 1 restore de validacion. | Duracion/criterios |
+### 4.5.1 Respuestas del cliente (confirmadas 2026-09-09)
+
+| # | Pregunta | Confirmacion CLI | Decision final |
+|---|----------|------------------|----------------|
+| 1 | Cajas/usuario | 4 cajas con ventas concurrentes | Req.1 alcance real; SLO concurrencia = 4 |
+| 2 | Metodos de pago | Ya definidos e incorporados como seed | 4 metodos seed (Req.2) confirmados |
+| 3 | Impresion | Implementacion a medio plazo | No bloquea piloto (DQ-003); termica/fiscal futuro |
+| 4 | Operacion sin red | Opera sin conexion; tasa manual | Politica offline aceptada (R-005 cierra); prueba F3 pendiente |
+| 5 | Topologia | Ideal HTTPS para supervision remota | DQ-007: LAN en piloto + VPN/tunel para remoto |
+| 6 | Regulatorio/fiscal | Sin requisitos fiscales | Cierra alcance fiscal |
+| 7 | Ventana/responsable | 03:00 cualquier dia | DQ-008; responsable por nombrar + reinicio facil (DQ-009) |
+| 8 | Piloto | 2 semanas, turnos 14h, sin caidas/duplicados/stock doble | Criterios 10.2 actualizados |
+| 9 | Datos previos | Sin datos para cargar | IMP-5 cierra |
 
 ### 4.6 Criterios de salida de Fase 0 (M0)
 
@@ -227,6 +252,7 @@ cerrarse antes de la certificacion.
 | Req.3 | Facturacion digital | Recibo/nota de entrega NO fiscal PDF asincrono + endpoint on-demand + UI de cajero | Aprobado | F2 | IMPLEMENTADO (8.51); impresora termica futura |
 | Req.4 | Garantia de confiabilidad (QA) | Pruebas de estres y manejo de fallos antes de produccion | Aprobado | F3 | PARCIAL (8.36 fallos/idempotencia); estres end-to-end pendiente |
 | Req.5-8 | Resto del plan | Puntos 5, 6, 7 y 8 del plan general aprobados sin modificaciones | APROBADOS | segun fase | ABIERTO |
+| Req.9 | Reinicio facil del sistema | Doble via para recuperacion sin capacitacion: (A) acceso directo `RestartPOS.bat` que reinicia el servicio NSSM, y (B) boton "Reiniciar sistema" en UI de gestion (WPF/Web). Opcion C aprobada | APROBADO (8.68, DQ-009) | F2 | PENDIENTE DE IMPLEMENTAR; requiere aprobacion RM (excepcion DQ-001) |
 
 ---
 
@@ -263,11 +289,11 @@ Hito M1: cero riesgos P0 abiertos y matriz de riesgos firmada.
 
 | Decision | Impacto | Accion |
 |----------|---------|--------|
-| Politica BCV offline formal | R-005 (P1) | Confirmar con cliente: tasa manual + rechazo sin tasa |
-| Impresion de recibos/cierres | R-006 (P2) | Confirmar con cliente: obligatoria u opcional (DQ-003) |
+| Politica BCV offline formal | R-005 (P1) | CONFIRMADO (8.68): tasa manual aceptada; prueba offline F3 pendiente |
+| Impresion de recibos/cierres | R-006 (P2) | CONFIRMADO (8.68): a medio plazo; no bloquea piloto (DQ-003) |
 | UpdaterService | R-007 (P3) | Mantener deshabilitado; no incluir en instalador |
 | Multi-sucursal | R-008 (P3) | Fuera de alcance; documentado |
-| Migracion de datos previos del cliente (catalogo/existencias) | (IMP-5) | Confirmar con cliente (Pregunta 4.5 #9); plan de carga via import de variantes (8.57) |
+| Migracion de datos previos del cliente (catalogo/existencias) | (IMP-5) | CERRADO (8.68): sin datos previos a migrar |
 
 ### 5.4 Clasificacion de deuda tecnica
 
@@ -412,9 +438,9 @@ Hito M6: piloto sin incidentes criticos, sin perdida de datos y dentro de SLOs.
 
 ### 10.1 Plan del piloto
 
-1. Desplegar en UNA sucursal; duracion inicial 1-2 semanas; version congelada.
-2. Dias 1-3: operacion supervisada; dias 4-14: operacion autonoma con monitoreo.
-3. Sin funcionalidades nuevas durante el piloto.
+1. Desplegar en UNA sucursal; **duracion 2 semanas** (confirmado 8.68); version congelada.
+2. **Turnos de 14 horas**; dias 1-3 de operacion supervisada; restante autonoma con monitoreo.
+3. Sin funcionalidades nuevas durante el piloto (excepcion: solo correcciones aprobadas).
 4. Ejecutar al menos UN restore de validacion en copia aislada y confirmar conteos.
 5. Verificar diariamente el backup y `/health`.
 6. Confirmar operacion offline de la tasa BCV si el puesto queda sin red.
@@ -427,10 +453,11 @@ Hito M6: piloto sin incidentes criticos, sin perdida de datos y dentro de SLOs.
 | Perdida de datos | 0 ventas | Conteo BD vs recibos fisicos |
 | Incidentes P0 | 0 | Registro diario de incidencias |
 | Duplicacion de ventas | 0 | Query `GROUP BY Idempotency-Key HAVING COUNT > 1` |
-| Disponibilidad | >= 99.5 % en jornada | Health check monitoring |
+| Venta con doble descuento de stock | 0 | Auditoria de StockMovement por venta (criterio de integridad del piloto, turnos 14h) |
+| Disponibilidad | >= 99.5 % en jornada (turnos 14h, 2 semanas) | Health check monitoring |
 | Restore exitoso | 1 ejecucion durante el piloto | Restore en copia aislada + conteos |
-| Backups | 100 % de ejecuciones programadas | Log de tarea Windows |
-| Aceptacion del operador | Positiva | Encuesta/entrevista |
+| Backups | 100 % de ejecuciones programadas (03:00) | Log de tarea Windows |
+| Aceptacion del operador | Positiva (operacion sin capacitacion) | Encuesta/entrevista |
 
 ### 10.3 Registro diario durante el piloto
 
@@ -474,15 +501,29 @@ Cliente:          _________________________ Fecha: ___________
 ## 12. Open Questions / Dependencias
 
 1. **Rama / consolidacion:** el roadmap consolidado es ahora la capa ejecutiva; el
-   detalle por revision queda en `docs/reporte.txt`. Confirmar que no se requieren
-   dos documentos separados.
+   detalle por revision queda en `docs/reporte.txt`. Se prefiere mantener ambos
+   documentos: uno evoluciona por fase (roadmap) y el otro acompaña el historial
+   completo (reporte). Confirmado por RM.
 2. **Maquina limpia (sin .NET/PostgreSQL) para el instalador:** bloquea F1 y F4.
-3. **Certificado de firma X.509:** sin el, el firmado (criterio 6) queda como
-   riesgo aceptado para el piloto.
-4. **Herramienta de monitoreo/alertas para el piloto:** script PowerShell simple
-   (minimo viable), UptimeRobot (SaaS) o Prometheus+Grafana (on-premise).
-5. **Clasificacion de deuda WPF como post-produccion:** confirmar para priorizar
-   instalador y pruebas operativas sobre refactoring cosmetico de la UI.
+   Evaluacion: Docker permite un smoke parcial (extraccion de archivos + arranque
+   de Backend.API como consola), pero NSSM (servicio Windows), el servicio de
+   PostgreSQL y la tarea de backup NO se pueden ejecutar en un contenedor Windows
+   (no hay Service Control Manager). Para la certificacion completa se requiere
+   una VM Windows desechable (Hyper-V Quick Create o VirtualBox). **Pendiente:
+   disponer una VM virgen.**
+3. **Certificado de firma X.509:** no prioridad por ahora; riesgos aceptados para
+   el piloto (SmartScreen advertirá una vez por PC). Beneficios reales: confianza
+   de SmartScreen/Defender en PCs nuevas, integridad/identidad del editor, habilita
+   UpdaterService (hoy deshabilitado por 8.20-A03) y es requisito en clientes
+   corporativos. Habilitar en produccion estable post-piloto.
+4. **Herramienta de monitoreo/alertas para el piloto:** se adopta el script
+   PowerShell local (`docs/monitor-health.ps1`, consulta `/health` cada 5 min,
+   notifica tras 3 fallos consecutivos). Es 0 costo y no depende de proveedor
+   cloud; UptimeRobot free requeriría endpoint publico (no aplica en LAN).
+5. **Clasificacion de deuda WPF como post-produccion:** CONFIRMADO (8.68).
+   La plataforma de ventas prioritaria es la WEB; el cliente WPF queda como
+   herramienta de gestion. La optimizacion de la UI de escritorio se realizara
+   en el futuro. La deuda WPF no bloquea el piloto.
 
 ---
 
