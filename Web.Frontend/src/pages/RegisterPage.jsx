@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '../services/api';
 import { 
   Landmark, 
@@ -72,37 +72,38 @@ export default function RegisterPage() {
   }, [loadSession]);
 
   // Derived state calculations
-  const transactions = session?.transactions || [];
+  const transactions = useMemo(() => session?.transactions || [], [session]);
   const openingBsS = session?.openingBalanceLocal || 0;
   
   // Physical cash income & expense totals
-  const totalIncomeBsS = transactions
-    .filter(t => t.type === 0 && t.source !== 0 && t.isPhysicalCash)
-    .reduce((sum, t) => sum + (t.amountLocal || 0), 0);
-
-  const totalExpenseBsS = transactions
-    .filter(t => t.type === 1 && t.isPhysicalCash)
-    .reduce((sum, t) => sum + (t.amountLocal || 0), 0);
+  const { totalIncomeBsS, totalExpenseBsS } = useMemo(() => ({
+    totalIncomeBsS: transactions
+      .filter(t => t.type === 0 && t.source !== 0 && t.isPhysicalCash)
+      .reduce((sum, t) => sum + (t.amountLocal || 0), 0),
+    totalExpenseBsS: transactions
+      .filter(t => t.type === 1 && t.isPhysicalCash)
+      .reduce((sum, t) => sum + (t.amountLocal || 0), 0)
+  }), [transactions]);
 
   const expectedCashBsS = openingBsS + totalIncomeBsS - totalExpenseBsS;
   const expectedCashUsd = (exchangeRate && exchangeRate > 0) ? expectedCashBsS / exchangeRate : 0;
 
   // Last 7 received incomes (sorted most recent first)
-  const recentIncomes = [...transactions]
+  const recentIncomes = useMemo(() => [...transactions]
     .filter(t => t.type === 0 && t.source !== 0 && t.isPhysicalCash)
     .sort((a, b) => new Date(b.transactionTimeLocal || b.transactionTime) - new Date(a.transactionTimeLocal || a.transactionTime))
-    .slice(0, 7);
+    .slice(0, 7), [transactions]);
 
   // Historial completo de movimientos físicos (sesión activa + sesiones anteriores):
   // se conserva tras el cierre de caja para mantener la trazabilidad de auditoría.
   // La tabla de movimientos usa este historial; las tarjetas de resumen (INGRESOS/EGRESOS/ESPERADO)
   // siguen calculándose únicamente con la sesión activa, que inicia con acumuladores limpios.
-  const orderedTransactions = [...historyTransactions]
+  const orderedTransactions = useMemo(() => [...historyTransactions]
     .filter(t => t.isPhysicalCash)
-    .sort((a, b) => new Date(b.transactionTimeLocal || b.transactionTime) - new Date(a.transactionTimeLocal || a.transactionTime));
+    .sort((a, b) => new Date(b.transactionTimeLocal || b.transactionTime) - new Date(a.transactionTimeLocal || a.transactionTime)), [historyTransactions]);
 
   // Discrete filtered movements
-  const filteredTransactions = orderedTransactions.filter((tx) => {
+  const filteredTransactions = useMemo(() => orderedTransactions.filter((tx) => {
     if (typeFilter === 'income' && tx.type !== 0) return false;
     if (typeFilter === 'expense' && tx.type !== 1) return false;
 
@@ -113,12 +114,12 @@ export default function RegisterPage() {
     if (sourceFilter === 'cashout' && tx.source !== 6) return false;
 
     return true;
-  });
+  }), [orderedTransactions, typeFilter, sourceFilter]);
 
   // Pagination derived calculations
   const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE) || 1;
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedTransactions = filteredTransactions.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const paginatedTransactions = useMemo(() => filteredTransactions.slice(startIndex, startIndex + ITEMS_PER_PAGE), [filteredTransactions, startIndex]);
 
   function getSourceLabel(source) {
     switch (source) {

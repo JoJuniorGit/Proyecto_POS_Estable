@@ -322,21 +322,15 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       </div>
 
       <div className="checkout-section mt-3">
-        <div className="chk-pickup-box"
-          style={{
-            border: isPendingPickup ? '1px solid #f59e0b' : '1px solid var(--border)',
-            backgroundColor: isPendingPickup ? 'rgba(245, 158, 11, 0.08)' : 'var(--bg-surface)',
-            opacity: (!isFullLiquidation || isDefaultCust) ? 0.8 : 1
-          }}
+        <div className={`chk-pickup-box${isPendingPickup ? ' chk-pickup-box--pending' : ''}${(!isFullLiquidation || isDefaultCust) ? ' chk-pickup-box--disabled' : ''}`}
         >
-          <label className="flex-align-center gap-2 cursor-pointer font-bold chk-pickup-label" style={{ color: isPendingPickup ? '#f59e0b' : 'var(--text-primary)' }}>
+          <label className={`flex-align-center gap-2 cursor-pointer font-bold chk-pickup-label${isPendingPickup ? ' chk-pickup-label--pending' : ''}`}>
             <input
               type="checkbox"
               checked={isPendingPickup}
               disabled={!isFullLiquidation || isDefaultCust}
               onChange={(e) => setIsPendingPickup(e.target.checked)}
-              className="chk-pickup-checkbox"
-              style={{ cursor: (!isFullLiquidation || isDefaultCust) ? 'not-allowed' : 'pointer' }}
+              className={`chk-pickup-checkbox${(!isFullLiquidation || isDefaultCust) ? ' chk-pickup-checkbox--disabled' : ''}`}
             />
             <span>📦 Mercancía en Custodia (Pendiente por Retirar)</span>
           </label>

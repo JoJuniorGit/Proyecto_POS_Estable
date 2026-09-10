@@ -7,13 +7,6 @@ import { formatNumberEs, formatBsS, formatUSD } from '../../utils/formatters';
 import { Search, UserPlus, Clock, Loader2, RefreshCw, X } from 'lucide-react';
 import './HoldSaleModal.css';
 
-// Token reutilizable que no es utilitario de escala (borde/borde-redondeado lo da .border)
-const cardStyle = {
-  borderRadius: '10px',
-  padding: '12px',
-  backgroundColor: 'var(--bg-surface)',
-};
-
 export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer, saleTotalUSD, saleTotalBsS = 0, exchangeRate, onSuccess }) {
   const [query, setQuery] = useState('');
   const [customers, setCustomers] = useState([]);
@@ -288,18 +281,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
                             <div
                               key={c.id}
                               onClick={() => { setSelectedCustomer(c); setIsDropdownOpen(false); }}
-                              className="d-flex flex-between flex-align-center text-left hold-dropdown-item"
-                              style={{
-                                backgroundColor: isItemChosen ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                                borderLeft: isItemChosen ? '4px solid var(--accent-primary, #6366f1)' : '4px solid transparent',
-                                borderBottom: idx < customers.length - 1 ? '1px solid var(--border)' : 'none'
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!isItemChosen) e.currentTarget.style.backgroundColor = 'var(--bg-hover, rgba(255, 255, 255, 0.05))';
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isItemChosen) e.currentTarget.style.backgroundColor = 'transparent';
-                              }}
+                              className={`d-flex flex-between flex-align-center text-left hold-dropdown-item${isItemChosen ? ' hold-dropdown-item--selected' : ''}${idx < customers.length - 1 ? ' hold-dropdown-item--divider' : ''}`}
                             >
                               <div className="hold-item-main">
                                 <strong
@@ -331,8 +313,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
               {isCreatingCustomer && (
                 <form
                   onSubmit={handleCreateCustomer}
-                  className="border"
-                  style={{ ...cardStyle, marginBottom: '12px', textAlign: 'center' }}
+                  className="border hold-new-customer-form"
                 >
                   <div className="font-bold mb-2 text-center text-primary">Registrar Nuevo Cliente</div>
                   <div className="d-flex gap-2 mb-2">
@@ -361,16 +342,10 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
 
             {/* Toggle Switch */}
             <div
-              className="hold-toggle-track"
-              style={{
-                backgroundColor: enablePayment ? '#6366f1' : 'rgba(148, 163, 184, 0.3)'
-              }}
+              className={`hold-toggle-track${enablePayment ? ' hold-toggle-track--on' : ''}`}
             >
               <div
-                className="hold-toggle-knob"
-                style={{
-                  transform: enablePayment ? 'translateX(20px)' : 'translateX(0px)'
-                }}
+                className={`hold-toggle-knob${enablePayment ? ' hold-toggle-knob--on' : ''}`}
               />
             </div>
           </div>
@@ -482,14 +457,6 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
             onClick={handleConfirmHold}
             disabled={!selectedCustomer || submitting || (enablePayment && isCashSelected && cents % 100 !== 0)}
             className="hold-confirm-btn"
-            style={{
-              backgroundColor: (!selectedCustomer || submitting) ? 'rgba(148, 163, 184, 0.2)' : '#6366f1',
-              color: (!selectedCustomer || submitting) ? '#94a3b8' : '#ffffff',
-              border: (!selectedCustomer || submitting) ? '1px solid rgba(148, 163, 184, 0.25)' : '1px solid #6366f1',
-              boxShadow: (!selectedCustomer || submitting) ? 'none' : '0 2px 10px rgba(99, 102, 241, 0.45)',
-              cursor: (!selectedCustomer || submitting) ? 'not-allowed' : 'pointer',
-              opacity: (!selectedCustomer || submitting) ? 0.65 : 1
-            }}
           >
             {submitting ? <Loader2 className="animate-spin" size={16} /> : <Clock size={16} />}
             <span>Guardar</span>

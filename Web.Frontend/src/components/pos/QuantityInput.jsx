@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-export default function QuantityInput({ item, value, isFractional: isFractionalProp, onUpdateQty, onChange, style }) {
+export default function QuantityInput({ item, value, isFractional: isFractionalProp, onUpdateQty, onChange, className, style }) {
   const isFractional = Boolean(
     isFractionalProp ?? (
       item?.isFractional ||
@@ -109,7 +109,7 @@ export default function QuantityInput({ item, value, isFractional: isFractionalP
     <input
       type="text"
       inputMode={isFractional ? "decimal" : "numeric"}
-      className="qty-val-input"
+      className={className || "qty-val-input"}
       value={localVal}
       onChange={handleChange}
       onBlur={handleBlur}
@@ -118,17 +118,7 @@ export default function QuantityInput({ item, value, isFractional: isFractionalP
         e.stopPropagation();
         e.target.select();
       }}
-      style={style || {
-        width: '56px',
-        textAlign: 'center',
-        border: '1px solid var(--border)',
-        borderRadius: '4px',
-        padding: '2px 4px',
-        fontSize: '0.875rem',
-        fontWeight: 'bold',
-        backgroundColor: 'var(--bg-input, var(--bg-card))',
-        color: 'var(--text-primary)'
-      }}
+      style={style}
     />
   );
 }

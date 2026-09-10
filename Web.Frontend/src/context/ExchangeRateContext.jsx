@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '../services/api';
 import { connectRateHub, disconnectRateHub } from '../services/signalr';
 
@@ -56,7 +56,10 @@ export function ExchangeRateProvider({ children }) {
     };
   }, []);
 
-  const isRateOutdated = !lastUpdated || (Date.now() - new Date(lastUpdated).getTime() > 24 * 60 * 60 * 1000);
+  const isRateOutdated = useMemo(
+    () => !lastUpdated || (Date.now() - new Date(lastUpdated).getTime() > 24 * 60 * 60 * 1000),
+    [lastUpdated]
+  );
 
   // 8.6-M1: F5 ahora expone syncBcvRate real. Llama al endpoint que raspa el portal BCV y
   // re-difunde la tasa vía SignalR a todos los clientes.

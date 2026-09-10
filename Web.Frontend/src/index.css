@@ -812,6 +812,19 @@ input:focus, select:focus, textarea:focus {
   font-size: 0.875rem;
 }
 
+.cart-qty-input,
+.qty-val-input {
+  width: 52px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 0.875rem;
+  font-weight: bold;
+  background-color: var(--bg-input, var(--bg-card));
+  color: var(--text-primary);
+}
+
 .delete-btn {
   color: #94a3b8;
   padding: 6px;

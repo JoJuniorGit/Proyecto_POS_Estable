@@ -16,15 +16,36 @@
   padding: 12px 14px;
   border-radius: 8px;
   transition: all 0.2s ease;
+  border: 1px solid var(--border);
+  background-color: var(--bg-surface);
+}
+
+:root .chk-pickup-box.chk-pickup-box--pending {
+  border-color: #f59e0b;
+  background-color: rgba(245, 158, 11, 0.08);
+}
+
+:root .chk-pickup-box.chk-pickup-box--disabled {
+  opacity: 0.8;
 }
 
 :root .chk-pickup-label {
   font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+:root .chk-pickup-label.chk-pickup-label--pending {
+  color: #f59e0b;
 }
 
 :root .chk-pickup-checkbox {
   width: 18px;
   height: 18px;
+  cursor: pointer;
+}
+
+:root .chk-pickup-checkbox.chk-pickup-checkbox--disabled {
+  cursor: not-allowed;
 }
 
 :root .chk-warning-note {

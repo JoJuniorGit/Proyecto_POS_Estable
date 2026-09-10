@@ -344,14 +344,21 @@ const resetCart = useCallback(async () => {
     }
   }, [currentSale?.id]);
 
-  const items = useMemo(() => currentSale?.items || [], [currentSale?.items]);
-  const subtotalUSD = currentSale?.subtotal ?? items.reduce((acc, item) => acc + (item.subtotal || 0), 0);
+const items = useMemo(() => currentSale?.items || [], [currentSale?.items]);
+  const subtotalUSD = useMemo(
+    () => currentSale?.subtotal ?? items.reduce((acc, item) => acc + (item.subtotal || 0), 0),
+    [currentSale?.subtotal, items]
+  );
   const totalUSD = currentSale?.totalUSD ?? subtotalUSD;
   const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale?.appliedRate || 1);
 
-  const itemsSubtotalBsS = items.reduce((acc, item) => acc + getLineAmounts(item, rateToUse).subtotalBsS, 0);
-  const subtotalBsS = (currentSale?.subtotalBsS > 0) ? currentSale.subtotalBsS : itemsSubtotalBsS;
-  const totalBsS = (currentSale?.totalBsS > 0) ? currentSale.totalBsS : itemsSubtotalBsS;
+  const { subtotalBsS, totalBsS } = useMemo(() => {
+    const calculated = items.reduce((acc, item) => acc + getLineAmounts(item, rateToUse).subtotalBsS, 0);
+    return {
+      subtotalBsS: (currentSale?.subtotalBsS > 0) ? currentSale.subtotalBsS : calculated,
+      totalBsS: (currentSale?.totalBsS > 0) ? currentSale.totalBsS : calculated,
+    };
+  }, [items, rateToUse, currentSale?.subtotalBsS, currentSale?.totalBsS]);
 
   const stateValue = useMemo(() => ({
     currentSale,

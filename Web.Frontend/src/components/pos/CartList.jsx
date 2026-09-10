@@ -61,17 +61,7 @@ export default function CartList({ items, selectedItemId, onSelectItem, onUpdate
                       </button>
                     );
                   })()}
-                  <QuantityInput item={item} isFractional={item.isFractional} onUpdateQty={updateQty} style={{
-                    width: '52px',
-                    textAlign: 'center',
-                    border: '1px solid var(--border)',
-                    borderRadius: '4px',
-                    padding: '2px 4px',
-                    fontSize: '0.85rem',
-                    fontWeight: 'bold',
-                    backgroundColor: 'var(--bg-input, var(--bg-card))',
-                    color: 'var(--text-primary)'
-                  }} />
+                  <QuantityInput item={item} isFractional={item.isFractional} onUpdateQty={updateQty} className="cart-qty-input" />
                   <button
                     type="button"
                     className="qty-btn"
