@@ -5516,3 +5516,62 @@ H. HALLAZGO Y CORRECCION: SECUENCIA factura_number_seq NO MATERIALIZADA (F3)
      micro-cantidad -> era el timing descrito arriba, ahora eliminado.
 
 FIN DEL ANEXO - REVISION 8.79
+
+ANEXO 8.80 - F3/F4 AVANZADOS (RUNBOOK Y ARTEFACTO; FIRMA Y EJECUCION REAL PENDIENTES)
+-------------------------------------------------------------------
+Fecha: 2026-09-10 | Rama/Bif: V0.15 | Objetivo: avanzar el release artifact y
+los runbooks operativos (plan F3/F4, bloques "IMFuE"/piloto del plan de
+certificacion), dejando EXPLICITAMENTE pendientes el firma X.509/ISCC firmado
+y la ejecucion real (smoke en maquina virgen, entorno QA/VM) que requieren
+certificado y entorno que hoy esta bloqueado (P11/P12/P17, ANEXO 8.76).
+
+A. WAF/ARTEFACTO - build-release.ps1 (F4, verificar y endurecer el artefacto)
+   - Nuevo paso 2/7 ampliado: tras `npm run build`, verifica que
+     Backend.API/wwwroot tiene index.html + assets con hash (Vite outDir);
+     si falta o esta vacio, ABORTA (evita publicar un Backend sin UI).
+   - Nueva verificacion tras el scrub de pfx (8.30-A4): 0 archivos
+     appsettings.Development.json en publish/ (refuerza 8.29-A4 y la matriz
+     INSTALLATION 11: Development NO va a produccion).
+   - Nuevo paso 7/7 (OPCIONAL y defensivo): si TEST_POSTGRES_CONNECTION esta
+     definida (o en .env), ejecuta `dotnet test --filter MigratedSchema`
+     (incluye el smoke de BD vacia IMP-1) contra la BD indicada; si falla,
+     ABORTA. Si no esta definida, omite con aviso. Prerequisito: binarios
+     Release de pruebas previos (dotnet build -c Release) por el --no-build.
+     Empaqueta el smoke IMP-1 dentro del release sin exigir PostgreSQL
+     (gradual con los PostgresReal*).
+   - ISCC real, firma con signtool (si SIGNTOOL_PATH+CODE_SIGNING_PFX) y
+     numeracion de pasos actualizada a 7 ítems.
+
+B. RUNBOOKS - docs/INSTALLATION.md seccion 13 (F3/F5)
+   - 13.8 Monitoreo minimo del piloto: programar docs\monitor-health.ps1 cada 5
+     min (HealthUrl /health, DetailsUrl /api/health/details, NotifyUrl webhook),
+     FailsToAlert=3, verificar schtasks y monitor.log, supervisar remoto via
+     VPN WireGuard (DQ-007 B) sin exponer puertos.
+   - 13.9 Paridad instalador <-> backend post-instalacion (acciona IMP-2/8.67):
+     crear admin con la contrasena aceptada por el instalador y confirmar que
+     el backend la acepta; crear una rechazada y confirmar 401/400; divergencia
+     = paridad rota -> PasswordPolicyService como fuente y corregir setup.iss;
+     confirmar puertos y ACL; registrar en checklist del cliente.
+   - 13.10 Pre-despliegue y verificacion del artefacto: build-release.ps1 con
+     ISCC_PATH, smoke paso 7/7 con TEST_POSTGRES_CONNECTION, build Release 0/0,
+     has-pending-model-changes limpio, instalar por checklist 12 y correr 13.9;
+     deja explicitos los pasos pendientes (firma X.509, smoke maquina virgen).
+
+C. IMPACTOS EN OTROS ARTEFACTOS
+   - docs/production-readiness-roadmap.md: F4 checklist avanza 3 items
+     (bundle web verificado, smoke IMP-1 en release, 0 appsettings.Dev);
+     7.4 IMP-1 pasa a IMPLEMENTADO(8.79/8.80); fila 8.80 en changelog;
+     version 0.9.0. Pendientes explicitos: firma X.509, smoke en maquina virgen
+     e ISCC firmado/ejecucion real en QA/VM.
+   - Reporte de estado.txt: changelog v1.46.0.
+   - Sin cambios de codigo C#/Web/WPF -> sin migracion EF, sin impacto en
+     suite .NET (sigue 798/798) ni en npm test/lint.
+
+D. VERIFICACION REAL
+   - build-release.ps1 no se ejecuta en esta revision (iria contra el proceso
+     vivo en 5000/5001 y publicaria artefactos); se valida sintaxis PowerShell
+     y se deja documentado el flujo. ISCC firma + ejecucion real -> PENDIENTES.
+   - No hay cambios de codigo de aplicacion: guardas verificables en proxima
+     corrida de release/CI.
+
+FIN DEL ANEXO - REVISION 8.80

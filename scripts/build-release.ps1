@@ -14,7 +14,7 @@ foreach ($proc in $processes) {
 }
 Start-Sleep -Milliseconds 300
 
-Write-Host "[1/6] Limpiando carpetas de salida preexistentes..." -ForegroundColor Cyan
+Write-Host "[1/7] Limpiando carpetas de salida preexistentes..." -ForegroundColor Cyan
 if (Test-Path "$rootDir\publish") { Remove-Item "$rootDir\publish" -Recurse -Force }
 if (Test-Path "$rootDir\publish_backend") { Remove-Item "$rootDir\publish_backend" -Recurse -Force }
 if (Test-Path "$rootDir\dist_installer") { Remove-Item "$rootDir\dist_installer" -Recurse -Force }
@@ -23,27 +23,43 @@ New-Item -ItemType Directory -Path "$rootDir\publish\BackendAPI" | Out-Null
 New-Item -ItemType Directory -Path "$rootDir\publish\DesktopClient" | Out-Null
 New-Item -ItemType Directory -Path "$rootDir\publish\UpdaterService" | Out-Null
 
-Write-Host "[2/6] Compilando React Web.Frontend en Backend.API/wwwroot..." -ForegroundColor Cyan
+Write-Host "[2/7] Compilando React Web.Frontend en Backend.API/wwwroot..." -ForegroundColor Cyan
 Set-Location "$rootDir\Web.Frontend"
 if (Test-Path "package.json") {
     npm run build
 }
 Set-Location $rootDir
 
-Write-Host "[3/6] Publicando Backend.API (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
+# 8.80-F3/F4: verificacion del bundle web en wwwroot (index.html + assets con
+# hash). Vite emite a Backend.API/wwwroot (outDir) con emptyOutDir; si el build
+# fallase o se omitiera, el artefacto publicaria un Backend sin UI -> abort.
+$webIndex = Join-Path $rootDir "Backend.API\wwwroot\index.html"
+$webAssets = Join-Path $rootDir "Backend.API\wwwroot\assets"
+if (-not (Test-Path $webIndex) -or -not (Test-Path $webAssets)) {
+    Write-Host "ABORTANDO: bundle web ausente en Backend.API/wwwroot (falta npm run build)." -ForegroundColor Red
+    throw "build-release abortado: el bundle web no se regenero en wwwroot."
+}
+$assetFiles = Get-ChildItem $webAssets -File -ErrorAction SilentlyContinue
+if (-not $assetFiles) {
+    Write-Host "ABORTANDO: Backend.API/wwwroot/assets vacio: el bundle web no tiene JS/CSS." -ForegroundColor Red
+    throw "build-release abortado: assets del bundle web vacios."
+}
+Write-Host "Bundle web OK: index.html + $($assetFiles.Count) assets en wwwroot." -ForegroundColor Green
+
+Write-Host "[3/7] Publicando Backend.API (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
 dotnet publish "$rootDir\Backend.API\Backend.API.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$rootDir\publish\BackendAPI"
 
-Write-Host "[4/6] Publicando Desktop.Client (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
+Write-Host "[4/7] Publicando Desktop.Client (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
 dotnet publish "$rootDir\Desktop.Client\Desktop.Client.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$rootDir\publish\DesktopClient"
 
-Write-Host "[5/6] Publicando UpdaterService (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
+Write-Host "[5/7] Publicando UpdaterService (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
 dotnet publish "$rootDir\UpdaterService\UpdaterService.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$rootDir\publish\UpdaterService"
 
 # 8.27-A04: verificación de que los artefactos publicados NO contienen literales de
 # credenciales conocidos (p. ej. PosHttpsDev2026! o la clave JWT dev histórica). Si un
 # publish stale o un cambio deja escapar estos valores, el build se ABORTA antes de
 # empaquetar el instalador que recibiría un cliente.
-Write-Host "[6/6] Escaneando publish/ por secretos conocidos..." -ForegroundColor Cyan
+Write-Host "[6/7] Escaneando publish/ por secretos conocidos..." -ForegroundColor Cyan
 $forbidden = @('PosHttpsDev2026!', 'ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795')
 $leakLines = foreach ($needle in $forbidden) {
     Get-ChildItem "$rootDir\publish" -Recurse -File -ErrorAction SilentlyContinue |
@@ -69,6 +85,43 @@ if ($leakedPfx) {
     throw "build-release abortado: los certificados de desarrollo no deben viajar en el instalador de cliente."
 }
 Write-Host "Verificacion de pfx OK: publish/ sin certs .pfx de desarrollo." -ForegroundColor Green
+
+# 8.29-A4/8.80: el archivo de configuracion de desarrollo debe quedar excluido del
+# publish (matriz INSTALLATION 11: appsettings.Development.json -> NO en produccion).
+# Si una publicacion accidentada lo incluye, el build se ABORTA antes del instalador.
+$leakedDevConfig = Get-ChildItem "$rootDir\publish" -Recurse -File -Filter "appsettings.Development.json" -ErrorAction SilentlyContinue
+if ($leakedDevConfig) {
+    Write-Host "ABORTANDO: se empaqueto appsettings.Development.json en el publish Release:" -ForegroundColor Red
+    $leakedDevConfig | ForEach-Object { Write-Host "  $($_.FullName)" -ForegroundColor Red }
+    throw "build-release abortado: appsettings.Development.json no debe viajar en el artefacto de cliente."
+}
+Write-Host "Verificacion de config dev OK: publish/ sin appsettings.Development.json." -ForegroundColor Green
+
+# 8.80-F3/F4 (IMP-1): smoke de migracion "desde cero" opcional en el release. Si
+# TEST_POSTGRES_CONNECTION esta definida, se ejecutan los smokes MigratedSchema
+# (incl. el de BD vacia) ANTES de empaquetar; si fallan, se aborta. Valor por defecto
+# se toma de .env cuando exista.
+$testConn = $env:TEST_POSTGRES_CONNECTION
+if (-not $testConn) {
+    $envFile = Join-Path $rootDir ".env"
+    if (Test-Path $envFile) {
+        $envLine = Get-Content $envFile | Where-Object { $_ -match '^TEST_POSTGRES_CONNECTION=' } | Select-Object -First 1
+        if ($envLine) {
+            $testConn = ($envLine -split '=', 2)[1].Trim('"').Trim()
+        }
+    }
+}
+if ($testConn) {
+    Write-Host "[7/7] Ejecutando smoke de migracion (IMP-1 / MigratedSchema) contra TEST_POSTGRES_CONNECTION..." -ForegroundColor Cyan
+    $env:TEST_POSTGRES_CONNECTION = $testConn
+    dotnet test "$rootDir\CommandCenter.Tests\CommandCenter.Tests.csproj" -c Release --no-build --filter "FullyQualifiedName~MigratedSchema" 2>&1 | Select-Object -Last 3
+    if ($LASTEXITCODE -ne 0) {
+        throw "build-release abortado: el smoke de migracion (IMP-1/MigratedSchema) fallo en el release."
+    }
+    Write-Host "Smoke de migracion OK." -ForegroundColor Green
+} else {
+    Write-Host "[7/7] Smoke de migracion omitido (TEST_POSTGRES_CONNECTION no definida)." -ForegroundColor Yellow
+}
 
 $iscc = $env:ISCC_PATH
 if ($iscc -and (Test-Path $iscc)) {

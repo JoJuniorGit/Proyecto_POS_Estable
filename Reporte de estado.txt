@@ -17,6 +17,17 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.46.0  | 2026-09-10  | (8.80)       | F3/F4 AVANZADOS (runbook + artefacto; ISCC firma y ejecucion
+|          |             |              | real pendientes): build-release.ps1 verifica bundle web en
+|          |             |              | wwwroot (index.html+assets, aborta si falta), 0
+|          |             |              | appsettings.Development.json en publish, y smoke de migracion
+|          |             |              | desde cero (IMP-1/MigratedSchema) como paso 7/7 opcional con
+|          |             |              | TEST_POSTGRES_CONNECTION; INSTALLATION 13.8 monitoreo piloto
+|          |             |              | (monitor-health.ps1), 13.9 paridad instalador/backend
+|          |             |              | post-instalacion, 13.10 pre-despliegue/verificacion del
+|          |             |              | artefacto. Roadmap v0.9.0 (F4 +3 items, 7.4 IMP-1
+|          |             |              | IMPLEMENTADO). Sin cambios de codigo; suite .NET 798/798.
+|          |             |              | ANEXO 8.80.
 | v1.45.0  | 2026-09-10  | (8.79)       | IMP-1..IMP-5 (ANEXO 8.67) APROBADAS E IMPLEMENTADAS: IMP-1
 |          |             |              | smoke migracion "desde cero" automatizado (nuevo test
 |          |             |              | MigratedSchema_FromEmptyDatabase_AppliesAllMigrationsCleanly:

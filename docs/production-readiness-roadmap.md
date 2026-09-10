@@ -6,12 +6,12 @@ el avance real de cada fase. Es la capa ejecutiva/operativa del plan de
 certificacion; el detalle por revision vive en `docs/reporte.txt` (ANEXOS) y el
 estado tecnico en `Reporte de estado.txt`.
 
-- **Version documento:** 0.8.0 (IMP-1..4 implementadas 8.79; IMP-5 cerrada)
+- **Version documento:** 0.9.0 (F3/F4 avanzados 8.80; ISCC firma + ejecucion real pendientes)
 - **Fecha:** 2026-09-10
 - **Estado general:** Fases F0-F6 en curso; F0 avanza a M0 con confirmaciones del cliente
 - **Rama base:** V0.15
 - **Responsables:** Release Manager (RM) / Arquitecto (ARQ) / Cliente (CLI)
-- **Fuente de estado del sistema:** `Reporte de estado.txt` (v1.42.0) y `docs/reporte.txt` (ANEXOS)
+- **Fuente de estado del sistema:** `Reporte de estado.txt` (v1.46.0) y `docs/reporte.txt` (ANEXOS)
 
 ---
 
@@ -80,6 +80,7 @@ Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-10  | F3/F4/F5 | F3/F4 AVANZADOS (runbook + artefacto): build-release.ps1 ahora verifica el bundle web en wwwroot (index.html + assets, aborta si falta), verifica 0 appsettings.Development.json en publish, y ejecuta el smoke de migracion desde cero (IMP-1/MigratedSchema) como paso 7/7 opcional cuando TEST_POSTGRES_CONNECTION esta definida; INSTALLATION 13.8 monitoreo piloto (monitor-health.ps1), 13.9 paridad instalador/backend post-instalacion, 13.10 pre-despliegue/verificacion del artefacto | (8.80) ISCC firma X.509 + smoke en maquina virgen y ejecucion real PENDIENTES (requieren certificado/VM). Roadmap v0.9.0 + ANEXO 8.80, Reporte v1.46.0 |
 | 2026-09-10  | F2   | HALLAZGO 8.79-H: el smoke migracion desde cero destapo que la secuencia de facturacion `factura_number_seq` NO se materializaba con MigrateAsync (solo en runtime via DatabaseInitializer) -> nueva migracion idempotente `20260910180000_EnsureFacturaNumberSequence` (IF NOT EXISTS); smoke `MigratedSchema_MatchesModel` pasa en BD 100% nueva | (8.79) ambos smokes migratorios + suite completa verdes con sufijo fresco (798/798); build Release 0/0 |
 | 2026-09-10  | F0/F3/F5 | IMP-1..IMP-5 (ANEXO 8.67) APROBADAS: IMP-1 smoke migracion desde cero automatizado (test `MigratedSchema_FromEmptyDatabase_AppliesAllMigrationsCleanly`, crea BD temporal vacia, MigrateAsync de ambos contextos, descarta; detectaria el 42703 de 8.65); IMP-2 checklist paridad instalador/backend (INSTALLATION §5.1); IMP-3 backup config sitio (INSTALLATION §8.2); IMP-4 exclusiones Defender (INSTALLATION §6A); IMP-5 CERRADA (8.68-A9 cliente sin datos) | (8.79) IMP-1..4 IMPLEMENTADOS; suite .NET con nuevo smoke; build Release 0/0. Roadmap v0.8.0 + ANEXO 8.79 |
 | 2026-09-10  | F2   | FOLLOW-UPS de deuda tecnica de ANEXO 8.77: eliminados los 3 catch-locales redundantes de `InvalidOperationException` en ReservationsController (409 via middleware sin filtrar ex.Message; KeyNotFound->404 conservados por diseno); padre inexistente en ProductCrud.cs:77 recalsificado a `KeyNotFoundException`->404 (mensaje unificado con VariantQueries.cs); reindentacion boy-scout en SalesService.Checkout.cs (diff -w vacio, semantica identica); test nuevo de padre inexistente | (8.78) Suite .NET 797/797, build Release 0/0. Roadmap v0.7.0 + ANEXO 8.78 |
@@ -395,7 +396,7 @@ reproducible.
 | Restore + conteos | 0 ventas perdidas | PENDIENTE |
 | Medicion RTO | <= 4 h | PENDIENTE |
 | Rollback de migracion | Esquema anterior funcional | Plan documentado (INSTALLATION 10); ejecucion PENDIENTE |
-| Smoke de migracion "desde cero" automatizado: BD vacia + MigrateAsync todos los contextos + comparar esquema vs snapshot (IMP-1) | Esquema reproducible en instalacion limpia | PENDIENTE de incorporar; detecta fallo 8.65 |
+| Smoke de migracion "desde cero" automatizado: BD vacia + MigrateAsync todos los contextos + comparar esquema vs snapshot (IMP-1) | Esquema reproducible en instalacion limpia | IMPLEMENTADO (8.79/8.80): test `MigratedSchema_FromEmptyDatabase_AppliesAllMigrationsCleanly` + paso 7/7 (opcional) en build-release.ps1 cuando TEST_POSTGRES_CONNECTION esta definida |
 
 ---
 
@@ -410,10 +411,12 @@ maquina limpia.
 - [x] Procedimiento de migracion/rollback y upgrade sin perder secrets.json (INSTALLATION 10, 8.40).
 - [x] Scaffolding de instalador Inno Setup y firma en build-release.ps1 (8.54).
 - [x] Compilacion ISCC real del instalador (8.61: POS_System_Setup_v1.0.0.exe).
+- [x] Verificacion del bundle web en el artefacto: build-release.ps1 aborta si `wwwroot` no tiene index.html + assets (8.80).
+- [x] Smoke de migracion desde cero automatizado en el release (IMP-1, 8.79/8.80): paso 7/7 de build-release.ps1 cuando TEST_POSTGRES_CONNECTION esta definida.
+- [x] Verificacion explicita 0 appsettings.Development.json en publish/ (8.80).
 - [ ] Firmado de instalador/binarios con X.509 (requiere certificado).
 - [ ] Smoke test en maquina virgen.
-- [ ] Regenerar el bundle web en `wwwroot` (`npm run build` final) y verificarlo en el artefacto.
-- [ ] Smoke de migracion desde cero automatizado en el release (IMP-1, ver 7.4).
+- [ ] ISCC firmado y ejecucion real del instalador en entorno QA/VM.
 
 ### 8.1 Matriz de configuracion por ambiente
 

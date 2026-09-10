@@ -377,6 +377,39 @@ Checklist de release (por versión):
 1. Designar un responsable operativo en el sitio (RQ de la Fase 0).
 2. Ventana de mantenimiento recomendada: nocturna (fuera de horario de caja); el backup corre a las 03:00.
 
+### 13.8 Monitoreo mínimo del piloto (F5/8.80)
+1. Programar `docs\monitor-health.ps1` con el Programador de tareas cada 5 min
+   (`HealthUrl=http://localhost:5000/health`, `DetailsUrl=http://localhost:5000/api/health/details`,
+   `NotifyUrl=<webhook opcional>`), como recomienda roadmap §9.
+2. El script incrementa un contador de fallos consecutivos y notifica al tercer fallo
+   (`FailsToAlert`); también alerta si el último backup no está fresco (RPO).
+3. Verificar `schtasks /Query` y el log `monitor.log`; un fallo aislado no es alerta.
+4. Para supervisión remota del piloto: VPN WireGuard (DQ-007 opción B), no exponer puertos a Internet.
+
+### 13.9 Paridad instalador ↔ backend post-instalación (IMP-2/8.80)
+Ejecutar justo después de instalar/actualizar, contra el checklist de §5.1:
+1. Crear el admin con la contraseña del formulario y confirmar que el backend **acepta** exactamente
+   lo que el instalador recomienda (misma política: longitud, composición, blacklist).
+2. Crear una cuenta con la contraseña que el instalador **rechaza** y confirmar que el backend la
+   **rechaza** igualmente (401/400). Cualquier divergencia = paridad rota → usar `PasswordPolicyService`
+   como fuente y corregir `setup.iss` antes de seguir.
+3. Confirmar puertos 5000/5001 y ACL de `secrets.json` (§3) tras la instalación.
+4. Registrar el resultado en el checklist del cliente (§12).
+
+### 13.10 Pre-despliegue y verificación del artefacto (F4/8.80)
+Antes de instalar una Release Candidate en el puesto (o en QA), validar el artefacto:
+1. `scripts\build-release.ps1` con `ISCC_PATH` definido: verifica bundle web en `wwwroot`
+   (index.html + assets), scrub de secretos, 0 `*.pfx`, 0 `appsettings.Development.json`.
+2. Prerequisito del smoke (paso 7/7): asegurar binarios Release de las pruebas
+   (`dotnet build CommandCenter.slnx -c Release`) antes de `dotnet test --no-build`.
+3. Ejecutar el paso de smoke (7/7) definiendo `TEST_POSTGRES_CONNECTION`: corre
+   `MigratedSchema` (incl. el smoke de BD vacía IMP-1).
+4. `dotnet build CommandCenter.slnx -c Release` (0/0) y `dotnet ef migrations has-pending-model-changes`
+   limpio en ambos contextos si cambió el modelo.
+5. Instalar en el puesto por §12 checklist e inmediatamente ejecutar §13.9 (paridad).
+6. Firma X.509 e ISCC firmado y smoke en máquina virgen quedan PENDIENTES hasta disponer de
+   certificado y entorno QA/VM (roadmap §8, items sin marcar).
+
 ## 14. Plan del piloto controlado (Fase 6, 8.45)
 
 Alcance y reglas:
