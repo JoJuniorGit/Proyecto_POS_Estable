@@ -5041,3 +5041,58 @@ C. VIGENCIA DE DEUDA
      P5-P7 (deuda WPF), P8-P10 (backend menor), P11-P17 (infra/decisión).
 
 FIN DEL ANEXO - REVISION 8.73
+
+=======================================================================
+ANEXO - REVISION 8.74 (CIERRE P5 8.16-R12 + P7 8.14-N1 WPF)
+=======================================================================
+Fecha: 2026-09-10. Suites al cierre: .NET 795/795, build Release 0/0.
+Cierra dos pendientes del plan general de la deuda WPF. Commit (P5+P7).
+
+A. P5 / 8.16-R12 (EditSaleDialog code-behind -> MVVM)
+   - NUEVO `EditSaleDialogViewModel` (Desktop.Client.Core/ViewModels,
+     namespace Desktop.Client.ViewModels): ObservableObject con
+     Title/Subheader/NewTotalText/TotalPaidText/RemainingText/SearchText/
+     ValidationMessage/HasValidationError/IsSuggestionsOpen/Suggestions/
+     SelectedSuggestion + comandos [RelayCommand] SelectSuggestion/Cancel/
+     Save + debounce de busqueda (200ms, CancellationTokenSource) +
+     RefreshSummary + evento CloseRequested + IDisposable (cancela/dispone
+     _searchCts via Interlocked.Exchange).
+   - NUEVO `EditableSaleItemVm` (movido de Desktop.Client.Views a
+     ViewModels): Quantity con SetProperty, UnitPrice/UnitPriceBsS/Subtotal
+     calculadas, Increase/Decrease/RemoveItemCommand.
+   - `EditSaleDialog.xaml`: bindings MVVM (Items, Title, Subheader,
+     SearchText, Suggestions, SelectedSuggestion, ValidationMessage,
+     comandos). Boton Cerrar=CancelCommand, Guardar=SaveCommand.
+   - `EditSaleDialog.xaml.cs`: DELGADO - solo InitializeComponent,
+     DataContext, conecta CloseRequested, LoadSale delega al vm, handler
+     LstSuggestions_SelectionChanged, OnClosed -> vm.Dispose().
+   - API publica LoadSale/HasChanges/ModifiedItems preservada para
+     WpfDialogService.ShowEditSaleDialogAsync.
+   - Tests nuevos (5): EditSaleDialogViewModelTests - carga/items/summary,
+     validacion total<abonado, save OK con ModifiedItems, dedup (incrementa),
+     nuevo producto (agrega). Reviewer APROBADO (code-behind delgado, MVVM).
+
+B. P7 / 8.14-N1 (paginacion WPF PendingOrders/PendingPickups)
+   - `ISalesService` (Desktop): +GetPendingSalesPagedAsync(limit,offset) y
+     +GetPendingPickupsPagedAsync(limit,offset) devolviendo (Items,
+     TotalCount). Se eliminaron los metodos originales sin uso
+     (GetPendingSalesAsync/GetPendingPickupsAsync) -> sin codigo muerto.
+   - `SalesService` (Desktop): implementaciones leen X-Total-Count de la
+     cabecera HTTP.
+   - `PendingOrdersViewModel` y `PendingPickupsViewModel`: +HasMore/
+     IsLoadingMore/PageSize=200/_totalCount/_loaded; EnsureLoadedAsync usa
+     la variante paginada; +LoadMoreAsync (acumula paginas, dedup por Id o
+     SaleId); UpdateHasMore.
+   - `PendingOrdersView.xaml` y `PendingPickupsView.xaml`: +fila Grid.Row=3
+     con boton "Cargar mas" (LoadMoreCommand) visible con HasMore.
+   - Coherente con el backend (SalesController.HoldOrders.cs y Checkout.cs
+     ya soportan limit/offset + X-Total-Count desde 8.14-N1).
+   - Reviewer APROBADO (paginacion correcta, no rompe mocks de ISalesService).
+
+C. VIGENCIA DE DEUDA
+   - P5 (R12) y P7 (8.14-N1 WPF) CERRADOS.
+   - Siguen pendientes del plan general: P2 (C3 unificacion 400/409),
+     P6 (R13 UniformGrid sin virtualizar), P8-P10 (backend menor),
+     P11-P17 (infra/decisión).
+
+FIN DEL ANEXO - REVISION 8.74

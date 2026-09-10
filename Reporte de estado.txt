@@ -17,6 +17,12 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.40.0  | 2026-09-10  | (8.74)       | CIERRE P5+P7 deuda WPF: EditSaleDialog code-behind -> MVVM
+|          |             |              | (EditSaleDialogViewModel + EditableSaleItemVm, code-behind
+|          |             |              | delgado, IDisposable, 5 tests); paginacion PendingOrders/
+|          |             |              | PendingPickups (GetPendingSales/PickupsPagedAsync con
+|          |             |              | X-Total-Count + boton Cargar mas). Suites .NET 795/795 +
+|          |             |              | build 0/0.
 | v1.39.0  | 2026-09-10  | (8.73)       | CIERRE P3/P4 del plan general: 8.16-H06 (proyeccion a DTO:
 |          |             |              | GetHistoryAsync sin cargar entidad Sale completa; eliminado
 |          |             |              | GetAllProductsAsync codigo muerto) + 8.16-H16 (advisory lock:
