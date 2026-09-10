@@ -162,6 +162,13 @@ public class GlobalExceptionHandlerMiddleware
             return;
         }
 
+        // 3. Request cancellation, client aborted: do not alarm
+        if (exception is OperationCanceledException)
+        {
+            context.Response.StatusCode = StatusCodes.Status499ClientClosedRequest;
+            return;
+        }
+
         // 3. Known domain & business exceptions
         if (exception is KeyNotFoundException)
         {

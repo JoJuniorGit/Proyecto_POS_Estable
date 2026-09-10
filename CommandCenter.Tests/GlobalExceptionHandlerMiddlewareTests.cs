@@ -2,10 +2,12 @@ using System;
 using System.IO;
 using System.Net;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Middleware;
 using Core.Logging;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Npgsql;
 using Xunit;
 
@@ -282,5 +284,45 @@ public class GlobalExceptionHandlerMiddlewareTests
         Assert.Contains("referencia un registro inexistente", doc.RootElement.GetProperty("message").GetString());
         Assert.Equal("23503", doc.RootElement.GetProperty("sqlState").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
+    }
+
+    [Fact]
+    public async Task Middleware_CatchesOperationCanceled_ReturnsHttp499WithoutAlarming()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/sales/1";
+        context.Request.Method = "GET";
+        context.Response.Body = new MemoryStream();
+
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+        context.Features.Set<IHttpRequestLifetimeFeature>(new CanceledLifetimeFeature(cts.Token));
+
+        var middleware = new GlobalExceptionHandlerMiddleware(innerContext =>
+            {
+                throw new OperationCanceledException(innerContext.RequestAborted);
+            });
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(499, context.Response.StatusCode);
+    }
+
+    private sealed class CanceledLifetimeFeature : IHttpRequestLifetimeFeature
+    {
+        private readonly CancellationToken _aborted;
+
+        public CanceledLifetimeFeature(CancellationToken aborted)
+        {
+            _aborted = aborted;
+        }
+
+        public CancellationToken RequestAborted
+        {
+            get => _aborted;
+            set => _ = value;
+        }
+
+        public void Abort() { }
     }
 }
