@@ -135,7 +135,14 @@ public partial class InventoryService
 
                             if (isVariant && !string.IsNullOrWhiteSpace(dto.GroupNameOrKey) && groupDictionary.TryGetValue(dto.GroupNameOrKey.Trim(), out var parentGrp))
                             {
-                                existingProduct.ParentProductId = parentGrp.Id > 0 ? parentGrp.Id : (int?)null;
+                                if (parentGrp.Id > 0)
+                                {
+                                    existingProduct.ParentProductId = parentGrp.Id;
+                                }
+                                else
+                                {
+                                    existingProduct.ParentProduct = parentGrp;
+                                }
                                 if (!parentGrp.HasIndependentPricing)
                                 {
                                     existingProduct.CostPriceUSD = parentGrp.CostPriceUSD;

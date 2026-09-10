@@ -429,6 +429,63 @@ public class ProductVariantsTests
     }
 
     [Fact]
+    public async Task BulkImportProducts_ExistingVariant_LinksToNewGroupInSameImport()
+    {
+        var db = CreateInMemoryInventoryDb(Guid.NewGuid().ToString());
+        var userMock = CreateAdminUserServiceMock();
+        var service = new InventoryService(db, userMock.Object);
+
+        db.Products.Add(new Product
+        {
+            SKU = "759888001",
+            Name = "Yogurt Fresa 1L",
+            IsActive = true,
+            CostPriceUSD = 1.00m,
+            ProfitMarginRetail = 100m,
+            PriceRetailUSD = 2.00m
+        });
+        await db.SaveChangesAsync();
+
+        var importDtos = new List<ProductImportDto>
+        {
+            new ProductImportDto
+            {
+                SKU = "GRP-YOGURT",
+                Name = "Yogurt Líquido 1L",
+                ProductType = "Grupo",
+                GroupNameOrKey = "YOG-1L",
+                PriceRetailUSD = 2.00m,
+                CostPriceUSD = 1.00m,
+                ProfitMarginRetail = 100m,
+                UnitOfMeasure = "Und",
+                IsValid = true
+            },
+            new ProductImportDto
+            {
+                SKU = "759888001",
+                Name = "Yogurt Fresa 1L",
+                ProductType = "Variante",
+                GroupNameOrKey = "YOG-1L",
+                StockQuantity = 15m,
+                LowStockThreshold = 3m,
+                IsValid = true
+            }
+        };
+
+        var result = await service.BulkImportProductsAsync(importDtos, overwriteMerge: true);
+
+        Assert.Equal(1, result.added);
+        Assert.Equal(1, result.updated);
+
+        var groupProduct = await db.Products.FirstOrDefaultAsync(p => p.SKU == "GRP-YOGURT");
+        Assert.NotNull(groupProduct);
+
+        var variant = await db.Products.FirstOrDefaultAsync(p => p.SKU == "759888001");
+        Assert.NotNull(variant);
+        Assert.Equal(groupProduct.Id, variant!.ParentProductId);
+    }
+
+    [Fact]
     public async Task ProductDialogViewModel_LoadsParentProducts_AndSelectsExistingParent()
     {
         var mockProductService = new Mock<Desktop.Client.Services.IProductService>();
