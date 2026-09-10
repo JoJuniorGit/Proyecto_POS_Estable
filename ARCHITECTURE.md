@@ -104,7 +104,7 @@ Dependencias: `Core`
 
 | Componente | Archivos | Descripción |
 |---|---|---|
-| `Services/` | `InventoryService` (orquestador particionado: `InventoryService.cs`, `InventoryService.ExchangeRate.cs`, `InventoryService.StockDeduction.cs`, `InventoryService.CatalogQueries.cs`, `InventoryService.ImportExport.cs`), SystemSettingsService | Servicios de inventario modularizados en partial classes (<500 líneas/archivo) |
+| `Services/` | `InventoryService` (orquestador particionado: `InventoryService.cs`, `InventoryService.ExchangeRate.cs`, `InventoryService.StockDeduction.cs`, `InventoryService.CatalogQueries.cs`, `InventoryService.VariantQueries.cs`, `InventoryService.Import.cs`, `InventoryService.Export.cs`, `InventoryService.ProductCrud.cs`), SystemSettingsService | Servicios de inventario modularizados en partial classes (<500 líneas/archivo) |
 | `Data/` | InventoryDbContext | DbContext de inventario |
 | `EventHandlers/` | InventorySaleMadeEventHandler | Consumidor de SaleMadeEvent (MediatR) |
 | `Migrations/` | 26 archivos | Migraciones EF Core de inventario |
