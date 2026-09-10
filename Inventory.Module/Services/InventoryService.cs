@@ -107,7 +107,7 @@ public partial class InventoryService : IInventoryService
 
         if (!useCache || _cache == null)
         {
-            return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == sku);
+            return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == normalized);
         }
 
         var cacheKey = $"product_sku_{normalized}";
@@ -120,7 +120,7 @@ public partial class InventoryService : IInventoryService
         Core.Metrics.CacheMetrics.RecordMiss();
         try
         {
-            var product = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == sku);
+            var product = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == normalized);
             if (product != null)
             {
                 RegisterProductCacheKey(cacheKey);
@@ -667,9 +667,10 @@ public partial class InventoryService : IInventoryService
 
     private async Task<Core.DTOs.ProductQuickInfoDto?> FetchProductQuickInfoFromDbAsync(string sku)
     {
+        var normalized = sku.Trim().ToUpperInvariant();
         return await _context.Products
             .AsNoTracking()
-            .Where(p => p.SKU == sku)
+            .Where(p => p.SKU == normalized)
             .Select(p => new Core.DTOs.ProductQuickInfoDto
             {
                 Id = p.Id,
