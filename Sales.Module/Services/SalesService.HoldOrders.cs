@@ -370,6 +370,7 @@ public partial class SalesService
                 decimal subtotalUsd = Math.Round(unitPriceUsd * adjustedQty, 2, MidpointRounding.AwayFromZero);
                 decimal unitPriceBsS = Math.Round(unitPriceUsd * sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
                 decimal subtotalBsS = Math.Round(subtotalUsd * sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
+                bool isCustomPrice = reqItem.UnitPrice > 0 && (product == null || reqItem.UnitPrice != catalogPrice);
 
                 newTotalUsd += subtotalUsd;
 
@@ -382,7 +383,8 @@ public partial class SalesService
                     UnitPrice = unitPriceUsd,
                     UnitPriceBsS = unitPriceBsS,
                     Subtotal = subtotalUsd,
-                    SubtotalBsS = subtotalBsS
+                    SubtotalBsS = subtotalBsS,
+                    IsCustomPrice = isCustomPrice
                 });
             }
         }

@@ -347,6 +347,60 @@ public class SalesServiceUnitTests
     }
 
     [Fact]
+    public async Task AddItemAsync_WithCustomPrice_PreservesUnitPriceAfterRecalculate()
+    {
+        var (service, context, inventoryMock, _, _) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var product = new ProductBuilder().WithId(60)
+            .WithSku("SKU-60")
+            .WithName("Producto Negociable")
+            .WithCostAndMargin(20.00m, 25.00m)
+            .Build();
+        inventoryMock.Setup(i => i.GetProductByIdAsync(60)).ReturnsAsync(product);
+
+        var sale = await service.StartSaleAsync();
+        var itemAdded = await service.AddItemAsync(sale.Id, 60, 2, 50.00m, customUnitPriceUsd: 15.00m, customUnitPriceLocal: 750.00m, isPriceOverrideAuthorized: true);
+
+        Assert.NotNull(itemAdded);
+        var addedItem = itemAdded.Items.Single(i => i.ProductId == 60);
+        Assert.Equal(15.00m, addedItem.UnitPrice);
+        Assert.True(addedItem.IsCustomPrice);
+
+        var recalculated = await service.UpdateExchangeRateAsync(sale.Id, 62.00m);
+
+        var recalculatedItem = recalculated.Items.Single(i => i.ProductId == 60);
+        Assert.Equal(15.00m, recalculatedItem.UnitPrice);
+        Assert.True(recalculatedItem.IsCustomPrice);
+        Assert.Equal(Math.Round(2 * 15.00m, 2, MidpointRounding.AwayFromZero), recalculated.TotalUSD);
+        Assert.Equal(Math.Round(recalculated.TotalUSD * 62.00m, 2, MidpointRounding.AwayFromZero), recalculated.TotalBsS);
+    }
+
+    [Fact]
+    public async Task AddItemAsync_WithoutCustomPrice_UsesCatalogPriceAfterRecalculate()
+    {
+        var (service, context, inventoryMock, _, _) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var product = new ProductBuilder().WithId(61)
+            .WithSku("SKU-61")
+            .WithName("Producto Catalogo")
+            .WithCostAndMargin(10.00m, 50.00m)
+            .Build();
+        inventoryMock.Setup(i => i.GetProductByIdAsync(61)).ReturnsAsync(product);
+
+        var sale = await service.StartSaleAsync();
+        await service.AddItemAsync(sale.Id, 61, 1, 50.00m);
+
+        var recalculated = await service.UpdateExchangeRateAsync(sale.Id, 62.00m);
+
+        var item = recalculated.Items.Single(i => i.ProductId == 61);
+        Assert.False(item.IsCustomPrice);
+        Assert.Equal(product.PriceRetailUSD, item.UnitPrice);
+        Assert.Equal(Math.Round(item.UnitPrice * 62.00m, 2, MidpointRounding.AwayFromZero), item.UnitPriceBsS);
+    }
+
+    [Fact]
     public void GetUtcRange_CalculatesVenezuelaDayBoundsCorrectly()
     {
         var testDate = new DateTime(2026, 9, 4, 0, 0, 0, DateTimeKind.Unspecified);

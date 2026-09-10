@@ -33,6 +33,8 @@ public class SaleItem
     [NotMapped]
     public bool IsWholesaleApplied { get; set; }
 
+    public bool IsCustomPrice { get; set; } = false;
+
     [NotMapped]
     public bool IsFractional { get; set; }
 

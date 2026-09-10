@@ -222,7 +222,8 @@ public partial class SalesService : ISalesService
                     ProductName = existingItem.ProductName,
                     UnitPrice = Math.Round(customUnitPriceUsd.Value, 4),
                     UnitPriceBsS = customUnitPriceLocal.HasValue ? Math.Round(customUnitPriceLocal.Value, 4) : 0,
-                    Quantity = quantity
+                    Quantity = quantity,
+                    IsCustomPrice = true
                 };
                 sale.Items.Add(item);
             }
@@ -238,6 +239,7 @@ public partial class SalesService : ISalesService
                 
                 existingItem.UnitPrice = Math.Round(grossPrice, 4);
                 existingItem.UnitPriceBsS = Math.Round(grossPriceBsS, 4);
+                existingItem.IsCustomPrice = existingItem.IsCustomPrice || customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue;
             }
         }
         else
@@ -260,7 +262,8 @@ public partial class SalesService : ISalesService
                 ProductName = fetchedProduct.Name,
                 UnitPrice = Math.Round(grossPrice, 4),
                 UnitPriceBsS = Math.Round(grossPriceBsS, 4),
-                Quantity = quantity
+                Quantity = quantity,
+                IsCustomPrice = customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue
             };
             sale.Items.Add(item);
         }
@@ -858,7 +861,8 @@ public partial class SalesService : ISalesService
                 Subtotal = i.Subtotal,
                 UnitPriceBsS = i.UnitPriceBsS,
                 SubtotalBsS = i.SubtotalBsS,
-                IsWholesaleApplied = i.IsWholesaleApplied
+                IsWholesaleApplied = i.IsWholesaleApplied,
+                IsCustomPrice = i.IsCustomPrice
             }).ToList(),
             Payments = sale.Payments.Select(p => new SalePaymentDto
             {

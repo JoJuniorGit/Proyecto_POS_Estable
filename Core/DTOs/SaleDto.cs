@@ -48,6 +48,7 @@ public class SaleItemDto
     public decimal UnitPriceBsS { get; set; }
     public decimal SubtotalBsS { get; set; }
     public bool IsWholesaleApplied { get; set; }
+    public bool IsCustomPrice { get; set; }
 
     public string DisplayProductName => UnitOfMeasure != Core.Entities.UnitOfMeasureType.Und
         ? $"{ProductName} ({UnitOfMeasure})"

@@ -154,7 +154,11 @@ public partial class SalesService
 
                     var minWholesaleQty = product.MinWholesaleQuantity > 0 ? product.MinWholesaleQuantity : 6m;
 
-                    if (string.Equals(sale.PriceListType, "Wholesale", StringComparison.OrdinalIgnoreCase) && product.HasWholesale && item.Quantity >= minWholesaleQty)
+                    if (item.IsCustomPrice)
+                    {
+                        item.IsWholesaleApplied = false;
+                    }
+                    else if (string.Equals(sale.PriceListType, "Wholesale", StringComparison.OrdinalIgnoreCase) && product.HasWholesale && item.Quantity >= minWholesaleQty)
                     {
                         item.UnitPrice = wholesalePrice;
                         item.IsWholesaleApplied = true;
