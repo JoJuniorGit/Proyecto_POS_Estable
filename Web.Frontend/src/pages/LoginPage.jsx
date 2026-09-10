@@ -59,8 +59,16 @@ export default function LoginPage() {
 
   const handleChangePasswordSubmit = async (e) => {
     e.preventDefault();
-    if (!newPassword || newPassword.length < 6) {
-      setError('La nueva contraseña debe tener al menos 6 caracteres.');
+    if (!newPassword || newPassword.length < 4) {
+      setError('La nueva contraseña debe tener al menos 4 caracteres.');
+      return;
+    }
+    if (!/[a-zA-Z]/.test(newPassword)) {
+      setError('La nueva contraseña debe incluir al menos una letra.');
+      return;
+    }
+    if (!/[0-9]/.test(newPassword)) {
+      setError('La nueva contraseña debe incluir al menos un número.');
       return;
     }
     if (newPassword !== confirmPassword) {

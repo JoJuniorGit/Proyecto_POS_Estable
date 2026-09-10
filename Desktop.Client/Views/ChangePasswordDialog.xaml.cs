@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Windows;
 
 namespace Desktop.Client.Views;
@@ -36,6 +37,18 @@ public partial class ChangePasswordDialog : Window
         if (NewPasswordBox.Password.Length < 4)
         {
             ShowError("La nueva contraseña debe tener al menos 4 caracteres.");
+            return;
+        }
+
+        if (!NewPasswordBox.Password.Any(char.IsLetter))
+        {
+            ShowError("La nueva contraseña debe incluir al menos una letra.");
+            return;
+        }
+
+        if (!NewPasswordBox.Password.Any(char.IsDigit))
+        {
+            ShowError("La nueva contraseña debe incluir al menos un número.");
             return;
         }
 

@@ -153,6 +153,18 @@ public partial class UsersManagementViewModel : ObservableObject
             return;
         }
 
+        if (!string.IsNullOrWhiteSpace(Password) && !Password.Any(char.IsLetter))
+        {
+            StatusMessage = "La contraseña personalizada debe incluir al menos una letra.";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Password) && !Password.Any(char.IsDigit))
+        {
+            StatusMessage = "La contraseña personalizada debe incluir al menos un número.";
+            return;
+        }
+
         try
         {
             if (IsEditing && SelectedUser != null)
