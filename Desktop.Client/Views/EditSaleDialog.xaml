@@ -14,17 +14,20 @@
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
         WindowStyle="None" AllowsTransparency="True">
 
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+    </Window.Resources>
+
     <Border BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="10" Background="{DynamicResource MaterialDesignPaper}">
         <Grid Margin="24">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/> <!-- 1. Encabezado -->
-                <RowDefinition Height="Auto"/> <!-- 2. Área de Búsqueda -->
-                <RowDefinition Height="*"/>    <!-- 3. Tabla de Productos -->
-                <RowDefinition Height="Auto"/> <!-- 4. Resumen Financiero -->
-                <RowDefinition Height="Auto"/> <!-- 5. Botones de Acción -->
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- 1. Encabezado -->
             <Grid Grid.Row="0" Margin="0,0,0,16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -34,43 +37,40 @@
                 <StackPanel Grid.Column="0">
                     <StackPanel Orientation="Horizontal">
                         <materialDesign:PackIcon Kind="Pencil" Width="26" Height="26" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="TxtTitle" Text="Editar Productos del Pedido #000"
+                        <TextBlock Text="{Binding Title}"
                                    Style="{DynamicResource MaterialDesignHeadline5TextBlock}"
                                    FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
-                    <TextBlock x:Name="TxtSubheader" Text="Cliente: - | Abonado: $0.00 USD"
+                    <TextBlock Text="{Binding Subheader}"
                                FontSize="12" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="36,4,0,0"/>
                 </StackPanel>
 
                 <Button Grid.Column="1" Style="{DynamicResource MaterialDesignIconButton}"
-                        Click="BtnCancel_Click" ToolTip="Cerrar ventana" VerticalAlignment="Top">
+                        Command="{Binding CancelCommand}" ToolTip="Cerrar ventana" VerticalAlignment="Top">
                     <materialDesign:PackIcon Kind="Close" Width="22" Height="22"/>
                 </Button>
             </Grid>
 
-            <!-- 2. Área de Búsqueda de Productos (Importada del POS) -->
             <StackPanel Grid.Row="1" Margin="0,0,0,16">
                 <TextBlock Text="Agregar producto al pedido:" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,6"/>
                 <Grid x:Name="SearchGrid">
                     <materialDesign:PackIcon Kind="Magnify" Width="20" Height="20"
                                              HorizontalAlignment="Left" VerticalAlignment="Center"
                                              Margin="12,0,0,0" Foreground="{DynamicResource MaterialDesignBodyLight}" Panel.ZIndex="1"/>
-                    <TextBox x:Name="TxtProductSearch"
+                    <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                              materialDesign:HintAssist.Hint="Buscar producto por nombre o código (SKU)..."
                              Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                             Padding="38,8,12,8" FontSize="13"
-                             TextChanged="TxtProductSearch_TextChanged"/>
+                             Padding="38,8,12,8" FontSize="13"/>
 
-                    <!-- Popup emergente de sugerencias (estilo POS) -->
-                    <Popup x:Name="PopupSuggestions"
+                    <Popup IsOpen="{Binding IsSuggestionsOpen}"
                            StaysOpen="False"
                            PlacementTarget="{Binding ElementName=SearchGrid}"
                            Placement="Bottom"
-                           IsOpen="False"
                            AllowsTransparency="True"
                            PopupAnimation="Slide">
                         <materialDesign:Card MaxHeight="250" Width="{Binding ElementName=SearchGrid, Path=ActualWidth}">
-                            <ListBox x:Name="LstSuggestions"
+                            <ListBox ItemsSource="{Binding Suggestions}"
+                                     SelectedItem="{Binding SelectedSuggestion}"
                                      SelectionChanged="LstSuggestions_SelectionChanged"
                                      BorderThickness="0"
                                      ScrollViewer.HorizontalScrollBarVisibility="Hidden"
@@ -121,14 +121,12 @@
                 </Grid>
             </StackPanel>
 
-            <!-- 3. Tabla de Productos -->
             <Border Grid.Row="2" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="8" Padding="2" Margin="0,0,0,16">
-                <DataGrid x:Name="GridItems" AutoGenerateColumns="False" CanUserAddRows="False" SelectionMode="Single" HeadersVisibility="Column" Background="Transparent"
+                <DataGrid ItemsSource="{Binding Items}" AutoGenerateColumns="False" CanUserAddRows="False" SelectionMode="Single" HeadersVisibility="Column" Background="Transparent"
                           VirtualizingStackPanel.IsVirtualizing="True"
                           VirtualizingStackPanel.VirtualizationMode="Recycling"
                           VirtualizingPanel.ScrollUnit="Pixel">
                     <DataGrid.Columns>
-                        <!-- PRODUCTO -->
                         <DataGridTemplateColumn Header="PRODUCTO" Width="*">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -137,7 +135,6 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- CANT. (Stepper Limpio Unificado) -->
                         <DataGridTemplateColumn Header="CANT." Width="150">
                             <DataGridTemplateColumn.HeaderStyle>
                                 <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
@@ -168,7 +165,6 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- PRECIO BS.S (Alineado a la Derecha, Solo Bs.S) -->
                         <DataGridTemplateColumn Width="140">
                             <DataGridTemplateColumn.Header>
                                 <TextBlock Text="PRECIO BS.S" HorizontalAlignment="Right" TextAlignment="Right"/>
@@ -181,7 +177,6 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- SUBTOTAL BS.S (Alineado a la Derecha, Solo Bs.S) -->
                         <DataGridTemplateColumn Width="150">
                             <DataGridTemplateColumn.Header>
                                 <TextBlock Text="SUBTOTAL BS.S" HorizontalAlignment="Right" TextAlignment="Right"/>
@@ -195,7 +190,6 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- ACCIÓN -->
                         <DataGridTemplateColumn Width="85">
                             <DataGridTemplateColumn.Header>
                                 <TextBlock Text="ACCIÓN" HorizontalAlignment="Center" TextAlignment="Center"/>
@@ -215,7 +209,6 @@
                 </DataGrid>
             </Border>
 
-            <!-- 4. Resumen Financiero (Equivalencia en $ mantenida únicamente aquí) -->
             <Border Grid.Row="3" Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="8" Padding="16,12" Margin="0,0,0,16">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -226,34 +219,33 @@
                     <StackPanel Grid.Column="0">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Nuevo Total USD / Bs.S: " FontWeight="Bold" FontSize="13"/>
-                            <TextBlock x:Name="TxtNewTotal" Text="$0.00 (Bs.S 0,00)" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                            <TextBlock Text="{Binding NewTotalText}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="Total Ya Abonado: " FontWeight="SemiBold" FontSize="12" Foreground="Gray"/>
-                            <TextBlock x:Name="TxtTotalPaid" Text="$0.00" FontWeight="Bold" FontSize="12" Foreground="#059669"/>
+                            <TextBlock Text="{Binding TotalPaidText}" FontWeight="Bold" FontSize="12" Foreground="#059669"/>
                         </StackPanel>
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" HorizontalAlignment="Right">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Nuevo Saldo Restante: " FontWeight="Bold" FontSize="13"/>
-                            <TextBlock x:Name="TxtRemaining" Text="$0.00" FontWeight="Bold" FontSize="13" Foreground="#C0392B"/>
+                            <TextBlock Text="{Binding RemainingText}" FontWeight="Bold" FontSize="13" Foreground="#C0392B"/>
                         </StackPanel>
-
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <!-- 5. Botones de Acción -->
             <StackPanel Grid.Row="4">
-                <TextBlock x:Name="ValidationMessageText" Foreground="#C0392B" FontWeight="SemiBold" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,0,0,10" HorizontalAlignment="Right" MaxWidth="560"/>
+                <TextBlock Text="{Binding ValidationMessage}" Foreground="#C0392B" FontWeight="SemiBold" TextWrapping="Wrap"
+                           Visibility="{Binding HasValidationError, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="0,0,0,10" HorizontalAlignment="Right" MaxWidth="560"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="BtnCancel" Content="Cancelar"
+                    <Button Content="Cancelar"
                             Style="{DynamicResource MaterialDesignOutlinedButton}"
-                            Margin="0,0,12,0" Height="40" Padding="16,0" Click="BtnCancel_Click"/>
-                    <Button x:Name="BtnSave"
-                            Style="{DynamicResource MaterialDesignRaisedButton}"
-                            Height="40" Padding="16,0" Click="BtnSave_Click">
+                            Margin="0,0,12,0" Height="40" Padding="16,0" Command="{Binding CancelCommand}"/>
+                    <Button Style="{DynamicResource MaterialDesignRaisedButton}"
+                            Height="40" Padding="16,0" Command="{Binding SaveCommand}">
                         <StackPanel Orientation="Horizontal">
                             <materialDesign:PackIcon Kind="ContentSave" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <TextBlock Text="Guardar Cambios" FontWeight="Bold" VerticalAlignment="Center"/>

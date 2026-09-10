@@ -37,6 +37,16 @@ public partial class PendingOrdersViewModel : ObservableObject
     [ObservableProperty]
     private string? _successMessage;
 
+    [ObservableProperty]
+    private bool _hasMore;
+
+    [ObservableProperty]
+    private bool _isLoadingMore;
+
+    private const int PageSize = 200;
+    private int _totalCount;
+    private bool _loaded;
+
     public ObservableCollection<SaleDto> PendingSales { get; } = new();
 
     public IEnumerable<SaleDto> FilteredPendingSales
@@ -101,14 +111,16 @@ public partial class PendingOrdersViewModel : ObservableObject
             var rateInfo = await _exchangeRateService.GetCurrentRateAsync();
             if (rateInfo.Rate > 0) CurrentExchangeRate = rateInfo.Rate;
 
-            var list = await _salesService.GetPendingSalesAsync();
+            var (list, totalCount) = await _salesService.GetPendingSalesPagedAsync(PageSize, 0);
+            _totalCount = totalCount;
             PendingSales.Clear();
             foreach (var item in list.OrderByDescending(s => s.Date))
                 PendingSales.Add(item);
+            _loaded = true;
+            UpdateHasMore();
         }
         catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
-            // Ignore 401 Unauthorized when session is not logged in yet or token expired
         }
         catch (Exception ex)
         {
@@ -117,6 +129,41 @@ public partial class PendingOrdersViewModel : ObservableObject
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private void UpdateHasMore()
+    {
+        HasMore = _loaded && PendingSales.Count < _totalCount;
+    }
+
+    [RelayCommand]
+    private async Task LoadMoreAsync()
+    {
+        if (_userSession != null && !_userSession.IsLoggedIn) return;
+        if (IsLoadingMore || !HasMore) return;
+
+        IsLoadingMore = true;
+        try
+        {
+            var (list, totalCount) = await _salesService.GetPendingSalesPagedAsync(PageSize, PendingSales.Count);
+            _totalCount = totalCount;
+            foreach (var item in list.OrderByDescending(s => s.Date))
+            {
+                if (!PendingSales.Any(p => p.Id == item.Id))
+                {
+                    PendingSales.Add(item);
+                }
+            }
+            UpdateHasMore();
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Error", $"Error al cargar más cuentas: {ex.Message}");
+        }
+        finally
+        {
+            IsLoadingMore = false;
         }
     }
 

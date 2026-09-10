@@ -99,11 +99,12 @@
     </UserControl.Resources>
 
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+<Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
         <!-- ── Header ── -->
         <Border Grid.Row="0" Padding="24,20,24,12"
@@ -285,5 +286,16 @@
                 <TextBlock Text="Cargando..." Foreground="White" Margin="0,12,0,0" FontSize="14" HorizontalAlignment="Center"/>
             </StackPanel>
         </Grid>
+
+        <StackPanel Grid.Row="3" HorizontalAlignment="Center" Margin="0,0,0,12"
+                    Visibility="{Binding HasMore, Converter={StaticResource BoolToVis}}">
+            <Button Content="Cargar más"
+                    Command="{Binding LoadMoreCommand}"
+                    Style="{DynamicResource MaterialDesignOutlinedButton}"
+                    Height="36" Padding="20,0"
+                    materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsLoadingMore}"
+                    materialDesign:ButtonProgressAssist.IsIndeterminate="True"
+                    materialDesign:ButtonProgressAssist.Value="-1"/>
+        </StackPanel>
     </Grid>
 </UserControl>

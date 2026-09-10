@@ -212,9 +212,17 @@ public class SalesService : ISalesService
         return sale;
     }
 
-    public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync()
+    public async Task<(IEnumerable<SaleDto> Items, int TotalCount)> GetPendingSalesPagedAsync(int limit = 200, int offset = 0)
     {
-        return await _httpClient.GetFromJsonAsync<IEnumerable<SaleDto>>("api/sales/pending") ?? new List<SaleDto>();
+        var response = await _httpClient.GetAsync($"api/sales/pending?limit={limit}&offset={offset}");
+        response.EnsureSuccessStatusCode();
+        var items = await response.Content.ReadFromJsonAsync<IEnumerable<SaleDto>>() ?? new List<SaleDto>();
+        int totalCount = 0;
+        if (response.Headers.TryGetValues("X-Total-Count", out var totalValues))
+        {
+            int.TryParse(totalValues.FirstOrDefault(), out totalCount);
+        }
+        return (items, totalCount);
     }
 
     public async Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(
@@ -303,10 +311,17 @@ public class SalesService : ISalesService
         return sale;
     }
 
-    public async Task<IEnumerable<PendingPickupClientDto>> GetPendingPickupsAsync()
+    public async Task<(IEnumerable<PendingPickupClientDto> Items, int TotalCount)> GetPendingPickupsPagedAsync(int limit = 200, int offset = 0)
     {
-        return await _httpClient.GetFromJsonAsync<IEnumerable<PendingPickupClientDto>>("api/sales/pending-pickups")
-               ?? new List<PendingPickupClientDto>();
+        var response = await _httpClient.GetAsync($"api/sales/pending-pickups?limit={limit}&offset={offset}");
+        response.EnsureSuccessStatusCode();
+        var items = await response.Content.ReadFromJsonAsync<IEnumerable<PendingPickupClientDto>>() ?? new List<PendingPickupClientDto>();
+        int totalCount = 0;
+        if (response.Headers.TryGetValues("X-Total-Count", out var totalValues))
+        {
+            int.TryParse(totalValues.FirstOrDefault(), out totalCount);
+        }
+        return (items, totalCount);
     }
 
     public async Task ConfirmPickupAsync(int saleId)

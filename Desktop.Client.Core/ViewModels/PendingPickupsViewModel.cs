@@ -24,6 +24,16 @@ public partial class PendingPickupsViewModel : ObservableObject
     [ObservableProperty]
     private string? _successMessage;
 
+    [ObservableProperty]
+    private bool _hasMore;
+
+    [ObservableProperty]
+    private bool _isLoadingMore;
+
+    private const int PageSize = 200;
+    private int _totalCount;
+    private bool _loaded;
+
     public ObservableCollection<PendingPickupClientDto> Pickups { get; } = new();
 
     public IEnumerable<PendingPickupClientDto> FilteredPickups
@@ -54,10 +64,13 @@ public partial class PendingPickupsViewModel : ObservableObject
         SuccessMessage = null;
         try
         {
-            var list = await _salesService.GetPendingPickupsAsync();
+            var (list, totalCount) = await _salesService.GetPendingPickupsPagedAsync(PageSize, 0);
+            _totalCount = totalCount;
             Pickups.Clear();
             foreach (var item in list.OrderByDescending(p => p.Date))
                 Pickups.Add(item);
+            _loaded = true;
+            UpdateHasMore();
         }
         catch (Exception ex)
         {
@@ -66,6 +79,40 @@ public partial class PendingPickupsViewModel : ObservableObject
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private void UpdateHasMore()
+    {
+        HasMore = _loaded && Pickups.Count < _totalCount;
+    }
+
+    [RelayCommand]
+    private async Task LoadMoreAsync()
+    {
+        if (IsLoadingMore || !HasMore) return;
+
+        IsLoadingMore = true;
+        try
+        {
+            var (list, totalCount) = await _salesService.GetPendingPickupsPagedAsync(PageSize, Pickups.Count);
+            _totalCount = totalCount;
+            foreach (var item in list.OrderByDescending(p => p.Date))
+            {
+                if (!Pickups.Any(x => x.SaleId == item.SaleId))
+                {
+                    Pickups.Add(item);
+                }
+            }
+            UpdateHasMore();
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Error", $"Error al cargar más retiros: {ex.Message}");
+        }
+        finally
+        {
+            IsLoadingMore = false;
         }
     }
 
