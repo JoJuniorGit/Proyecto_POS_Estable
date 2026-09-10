@@ -77,7 +77,7 @@ public class SettingsController : ControllerBase
                 type: "https://tools.ietf.org/html/rfc7231#section-6.5.3");
         }
         if (request.Value <= 0 || request.Value > 1_000_000m)
-            return ValidationProblem("La tasa de cambio debe ser mayor a cero y menor o igual a 1.000.000.", title: "Valor fuera de rango");
+            return BadRequest(new { Message = "La tasa de cambio debe ser mayor a cero y menor o igual a 1.000.000." });
 
         var roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(request.Value);
 
@@ -194,7 +194,7 @@ public class SettingsController : ControllerBase
             (!request.Format.Equals("Venezuelan", StringComparison.OrdinalIgnoreCase) &&
              !request.Format.Equals("International", StringComparison.OrdinalIgnoreCase)))
         {
-            return ValidationProblem("El formato debe ser 'Venezuelan' o 'International'.", title: "Formato inválido");
+            return BadRequest(new { Message = "El formato debe ser 'Venezuelan' o 'International'." });
         }
 
         var normalizedFormat = request.Format.Equals("International", StringComparison.OrdinalIgnoreCase)
