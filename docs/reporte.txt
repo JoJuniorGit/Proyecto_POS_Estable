@@ -5678,3 +5678,44 @@ D. VERIFICACION REAL
      sin impacto en npm test/lint.
 
 FIN DEL ANEXO - REVISION 8.82
+
+ANEXO 8.83 - P6/R13 RESUELTO (UNIFORMGRID SIN VIRTUALIZAR -> LISTBOX VIRTUALIZADO)
+-------------------------------------------------------------------
+Fecha: 2026-09-10 | Rama/Bif: V0.15 | Objetivo: resolver P6/R13
+(8.16-R13 / 8.20-M04), que quedo solo "mitigado por cap 200" (8.2-M9) sin
+resolverse: la cuadricula de tarjetas de Retiros Pendientes usaba UniformGrid
+(no virtualizable en WPF). No afecta backend ni web.
+
+A. CAMBIO (Desktop.Client)
+   - PendingPickupsView.xaml: se reemplazo ScrollViewer + ItemsControl +
+     UniformGrid Columns="2" (no virtualizable) por ListBox con
+     VirtualizingStackPanel (IsVirtualizing=True, VirtualizationMode=Recycling,
+     ScrollUnit=Pixel, IsDeferredScrollingEnabled=False), ItemsPanel
+     VirtualizingStackPanel, ItemContainerStyle sin visual de seleccion
+     (template = ContentPresenter, HorizontalContentAlignment=Stretch) y el
+     binding del boton Confirmar cambio de AncestorType=ItemsControl a
+     AncestorType=ListBox. Layout: tarjetas a 1 columna ancho completo
+     (decision usuario, opcion recomendada; mas legibles que 2 columnas).
+   - PendingPickupsViewModel.cs: FilteredPickups paso de
+     IEnumerable<PendingPickupClientDto> (LINQ Where, NO indexable ->
+     deshabilita virtualizacion) a ICollectionView via
+     CollectionViewSource.GetDefaultView(Pickups) (ListCollectionView indexable
+     -> virtualizable) con Filter=FilterPredicate; OnSearchQueryChanged dispara
+     _pickupsView.Refresh(). Se elimino el suscriptor redundante a
+     CollectionChanged (ListCollectionView ya reaplica el filtro
+     automaticamente; evita doble pase en EnsureLoadedAsync/LoadMore). El filtro
+     conserva exactamente la logica previa (CustomerName/CustomerCedula/
+     InvoiceNumber o SaleId, ToLower contains).
+
+B. ESTADO PREVIO RELEVANTE (NO REGRESADO)
+   - El VM ya paginaba (PageSize 200, LoadMore, HasMore,
+     GetPendingPickupsPagedAsync), por lo que M05 (8.20) ya estaba resuelto.
+   - PendingOrdersView ya usa PerformantDataGrid virtualizado (no comparte R13).
+   - La tabla de productos interna de cada tarjeta ya estaba virtualizada.
+
+C. VERIFICACION REAL
+   - Build Release 0/0 (XAML + VM validados). Suite .NET completa 798/798.
+   - Reviewer aprobado: virtualizacion correcta (ItemsSource indexable),
+     filtro conservado, MVVM limpio, sin regresiones de tests.
+
+FIN DEL ANEXO - REVISION 8.83

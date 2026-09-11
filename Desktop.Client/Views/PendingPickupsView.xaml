@@ -89,16 +89,40 @@
             </StackPanel>
         </Border>
 
-        <!-- ── 3. Lista de Tarjetas en Cuadrícula 2 Columnas (Grid Layout) ── -->
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="16,8,16,16">
-            <ItemsControl ItemsSource="{Binding FilteredPickups}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <UniformGrid Columns="2" VerticalAlignment="Top"/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
+        <!-- ── 3. Lista de Tarjetas Virtualizada (ListBox, 1 columna) ── -->
+        <ListBox Grid.Row="2"
+                 ItemsSource="{Binding FilteredPickups}"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 VirtualizingStackPanel.IsVirtualizing="True"
+                 VirtualizingStackPanel.VirtualizationMode="Recycling"
+                 VirtualizingPanel.ScrollUnit="Pixel"
+                 ScrollViewer.IsDeferredScrollingEnabled="False"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 Padding="16,8,16,16">
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <VirtualizingStackPanel/>
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="VerticalContentAlignment" Value="Top"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <ContentPresenter/>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
                         <!-- Tarjeta con bordes redondeados y sombra sutil -->
                         <Border Margin="8" CornerRadius="10"
                                 Background="{DynamicResource MaterialDesignCardBackground}"
@@ -226,7 +250,7 @@
                                 </DataGrid>
 
                                 <!-- Botón de Acción Estilizado con Bordes Redondeados -->
-                                <Button Command="{Binding DataContext.ConfirmPickupCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                <Button Command="{Binding DataContext.ConfirmPickupCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                         CommandParameter="{Binding}"
                                         Style="{DynamicResource MaterialDesignRaisedButton}"
                                         materialDesign:ButtonAssist.CornerRadius="8"
@@ -241,9 +265,8 @@
                             </StackPanel>
                         </Border>
                     </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+                </ListBox.ItemTemplate>
+            </ListBox>
 
         <!-- Estado de Carga / Vacío -->
         <StackPanel Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center"

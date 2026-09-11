@@ -108,7 +108,21 @@ CAMBIOS DE ESTADO (hallazgos previos de este modulo):
   - Sin hallazgos 8.12 directos de codigo (los nuevos son backend/migraciones); el
     desktop hereda el impacto de 8.12-B2 (precision 18,2 vs 18,4 en BD frescas).
 =================================================================================
+=ADENDA REV. 8.83 (P6/R13 RESUELTO)
 ================================================================================
+- [8D-M1b]/[8.16-R13]/[8.20-M04] -> ✅ RESUELTO (8.83): PendingPickupsView.xaml
+  reemplaza ScrollViewer+ItemsControl+UniformGrid (2 columnas, no virtualizable)
+  por ListBox + VirtualizingStackPanel (IsVirtualizing, Recycling, ScrollUnit
+  Pixel, IsDeferredScrollingEnabled=False, ItemContainerStyle sin seleccion);
+  PendingPickupsViewModel.FilteredPickups pasa de IEnumerable (LINQ Where no
+  indexable, deshabilita virtualizacion) a ICollectionView (ListCollectionView
+  indexable) con Filter=FilterPredicate; se elimina el suscriptor redundante a
+  CollectionChanged (ListCollectionView reaplica el filtro solo). Decision
+  usuario: tarjetas a 1 columna ancho completo. VM ya paginaba (PageSize 200,
+  LoadMore, HasMore) -> 8.14-N1/8.20-M05 cubiertos. Build Release 0/0, suite
+  .NET 798/798. Reviewer aprobado.
+
+===============================================================================
 ADENDA REV. 8.13 (OLA DE REMEDIACION TOTAL)
 ================================================================================
 - [8D-M1b] PendingPickups sin virtualizar -> 🟡 PARCIAL: la cuadricula usa

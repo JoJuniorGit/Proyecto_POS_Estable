@@ -17,6 +17,18 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.49.0  | 2026-09-10  | (8.83)       | P6/R13 RESUELTO (deuda WPF: UniformGrid sin virtualizar, antes
+|          |             |              | mitigado por cap 200): PendingPickupsView.xaml reemplaza
+|          |             |              | ScrollViewer+ItemsControl+UniformGrid (2 columnas, no
+|          |             |              | virtualizable) por ListBox + VirtualizingStackPanel
+|          |             |              | (Recycling, ScrollUnit Pixel, ItemContainerStyle sin seleccion);
+|          |             |              | PendingPickupsViewModel.FilteredPickups pasa de IEnumerable
+|          |             |              | (LINQ Where no indexable, deshabilita virtualizacion) a
+|          |             |              | ICollectionView (ListCollectionView indexable) con Filter=
+|          |             |              | FilterPredicate, y se elimina el suscriptor redundante a
+|          |             |              | CollectionChanged. Decision usuario: tarjetas 1 columna ancho
+|          |             |              | completo. Sin cambios backend/web; build Release 0/0, suite
+|          |             |              | .NET 798/798. Roadmap v0.12.0. ANEXO 8.83.
 | v1.48.0  | 2026-09-10  | (8.82)       | F0 #7 CERRADA (unica confirmacion abierta de la seccion 4.5):
 |          |             |              | ventana de mantenimiento 03:00 confirmada (DQ-008) y reinicio
 |          |             |              | facil VERIFICADO (Req.9, 8.69) con evidencia en repo: endpoint
