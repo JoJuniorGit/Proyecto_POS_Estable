@@ -1,6 +1,7 @@
 using Core.DTOs;
 using Core.Entities;
 using Core.Events;
+using Core.Helpers;
 using Core.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -208,7 +209,7 @@ public partial class SalesService : ISalesService
             throw new ArgumentException("La tasa de cambio debe ser mayor a cero.", nameof(exchangeRate));
         }
 
-        sale.AppliedRate = exchangeRate;
+        sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
 
         var existingItem = sale.Items.FirstOrDefault(i => i.ProductId == productId);
         if (existingItem != null)
@@ -281,7 +282,7 @@ public partial class SalesService : ISalesService
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
-        sale.AppliedRate = exchangeRate;
+        sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
 
         var item = sale.Items.FirstOrDefault(i => i.Id == itemId);
         if (item != null)
@@ -312,7 +313,7 @@ public partial class SalesService : ISalesService
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
-        sale.AppliedRate = exchangeRate;
+        sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
 
         var item = sale.Items.FirstOrDefault(i => i.Id == itemId);
         if (item != null)

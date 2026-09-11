@@ -1,6 +1,7 @@
 using Core.DTOs;
 using Core.Entities;
 using Core.Events;
+using Core.Helpers;
 using Core.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -96,7 +97,7 @@ public partial class SalesService
                     contextLabel: "CompleteSale",
                     referenceId: saleId);
 
-                sale.AppliedRate = exchangeRate;
+                sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
                 await RecalculateTotalAsync(sale);
 
                 // 8.7-B2: Acotar el ajuste de redondeo a un límite operacional (refuerzo del [Range]).
@@ -281,7 +282,7 @@ public partial class SalesService
             sale.Status = SaleStatus.Completed;
             sale.DeliveryStatus = isPendingPickup ? SaleDeliveryStatus.PendingPickup : SaleDeliveryStatus.Delivered;
             sale.Date = DateTime.UtcNow;
-            sale.AppliedRate = exchangeRate;
+            sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
             await RecalculateTotalAsync(sale);
             sale.FinalPaidAmountBsS = sale.Payments.Sum(p => p.AmountBsS);
             sale.RoundingAdjustment = roundingAdjustment;

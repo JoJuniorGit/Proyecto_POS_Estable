@@ -6438,3 +6438,56 @@ C. VERIFICACIÓN Y DONE:
 
 FIN DEL ANEXO - REVISION 8.100
 
+===============================================================================
+ANEXO 8.101 - TASA BCV CANONICA 4D EN TODO EL LAYER (CLIENTE + SERVIDOR)
+===============================================================================
+Fecha: 2026-09-11
+Alcance: Desktop.Client.Core (ExchangeRateService, ExchangeRateViewModel),
+         Sales.Module (SalesService*.cs, CashDrawerService) y CommandCenter.Tests
+Autor: Antigravity / JoJuniorGit
+
+Causa raiz del incumplimiento de la decision 8.25-E1 (techo BCV a 4 decimales):
+el cliente de escritorio guardaba/difundia la TASA EXACTA recibida (todos los
+decimales) en SaveRateAsync (POST local y eco SignalR), mientras el backend
+persistia la redondeada a 4 decimales; el eco SignalR no corregia el estado local
+si no habia conexion. La diferencia de centesimos se propagaba a los calculos de
+precios en la siguiente operacion.
+
+A. NORMALIZACION EN EL CLIENTE (Desktop.Client.Core):
+   1. ExchangeRateService.SetCurrentRateSynchronously y UpdateRateLocallyAsync:
+      normalizan la nueva tasa con PricingCalculator.RoundExchangeRateCeiling
+      ANTES de comparar/asignar _currentRate (idempotente para tasas ya 4d).
+   2. ExchangeRateService.SaveRateAsync: parsea la respuesta del backend
+      (ExchangeRateResponse) y usa su Value (ya en techo 4d) como tasa canonica,
+      con fallback a la tasa entrada normalizada; _lastUpdated se toma de la
+      respuesta (UpdatedAt) en lugar de DateTime.UtcNow.
+   3. ExchangeRateViewModel.SaveRateAsync: CurrentRate = _exchangeRateService
+      .CurrentRate (tasa canonica del servicio), no la entrada cruda.
+
+B. NORMALIZACION EN EL SERVIDOR (Sales.Module):
+   - SalesService.cs (AddItem, RemoveItem, UpdateItemQuantity), SalesService
+     .Pricing.cs (UpdateExchangeRateAsync, RecalculateOnHoldSalesAsync),
+     SalesService.Checkout.cs (CompleteSale, 2 sitios) y SalesService.Mapping.cs
+     (ResolveAnchoredRateAsync al inicio) asignan AppliedRate = RoundExchangeRate
+     Ceiling. Con el anclaje de ResolveAnchoredRateAsync normalizado quedan
+     cubiertos HoldOrders, Payments y CashAdvance.
+   - HALLAZGO del reviewer: CashDrawerService.OpenSessionAsync/CloseSessionAsync
+     persistian OpeningExchangeRate/ClosingExchangeRate sin techo 4d ->
+     normalizados en el limite del servicio (tras validacion > 0). Verificacion
+     con grep: cero asignaciones crudas "AppliedRate = " restantes en Sales.Module.
+   - No se recalcula historico: todos los flujos operan sobre ventas Pending/
+     OnHold; History/Receipt solo copian snapshots (rules.md seccion 1 intacta).
+
+C. VERIFICACION Y DONE:
+   - Compilacion Release: dotnet build CommandCenter.slnx -c Release -> 0 Warnings,
+     0 Errores.
+   - Suite completa .NET (CommandCenter.Tests): 873 superadas (0 errores, 0 omitidas):
+     +6 tests de regresion: 3 servidor (AddItem/UpdateExchangeRate/CompleteSale
+     _WhenRateExact_RoundsAppliedRateToCeiling4Decimals) y 3 cliente
+     (ExchangeRateServiceRateNormalizationTests, patron HttpClient a puerto muerto
+     como ExchangeRateServiceDisposalTests).
+   - Auditoria automatizada por subagente reviewer: APROBADO tras corregir el
+     unico hallazgo bloqueante (CashDrawerService, seccion B).
+
+FIN DEL ANEXO - REVISION 8.101
+

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Core.Helpers;
 using Core.Logging;
 using Sales.Module.Data;
 using Sales.Module.Entities;
@@ -109,6 +110,8 @@ public class CashDrawerService : ICashDrawerService
             throw new ArgumentException("La tasa de cambio para apertura de caja debe ser mayor a cero.", nameof(currentExchangeRate));
         }
 
+        currentExchangeRate = PricingCalculator.RoundExchangeRateCeiling(currentExchangeRate);
+
         if (await GetActiveSessionAsync() != null)
         {
             throw new InvalidOperationException("Ya existe una sesión de caja activa.");
@@ -156,6 +159,8 @@ public class CashDrawerService : ICashDrawerService
         {
             throw new ArgumentException("La tasa de cambio para cierre de caja debe ser mayor a cero.", nameof(currentExchangeRate));
         }
+
+        currentExchangeRate = PricingCalculator.RoundExchangeRateCeiling(currentExchangeRate);
 
         bool isInMemory = _context.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true;
         var ambientTransaction = _context.Database.CurrentTransaction;

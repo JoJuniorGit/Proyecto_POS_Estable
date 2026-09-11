@@ -6,8 +6,8 @@ el avance real de cada fase. Es la capa ejecutiva/operativa del plan de
 certificacion; el detalle por revision vive en `docs/reporte.txt` (ANEXOS) y el
 estado tecnico en `Reporte de estado.txt`.
 
-- **Version documento:** 0.13.0 (8.84: Desktop.Client.Core desacoplado de WPF - 8.20-M01 resuelto)
-- **Fecha:** 2026-09-10
+- **Version documento:** 0.14.0 (8.101: tasa BCV canonica 4d en todo el layer cliente+servidor)
+- **Fecha:** 2026-09-11
 - **Estado general:** Fases F0-F6 en curso; F0 avanza a M0 con confirmaciones del cliente
 - **Rama base:** V0.15
 - **Responsables:** Release Manager (RM) / Arquitecto (ARQ) / Cliente (CLI)

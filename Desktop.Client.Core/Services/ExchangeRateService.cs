@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Core.Common;
+using Core.Helpers;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Net.Security;
@@ -125,6 +126,7 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
         _semaphore.Wait();
         try
         {
+            newRate = PricingCalculator.RoundExchangeRateCeiling(newRate);
             if (_currentRate != newRate)
             {
                 _currentRate = newRate;
@@ -142,6 +144,7 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
         await _semaphore.WaitAsync();
         try
         {
+            newRate = PricingCalculator.RoundExchangeRateCeiling(newRate);
             if (_currentRate != newRate)
             {
                 _currentRate = newRate;
@@ -217,8 +220,13 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
     {
         var response = await _httpClient.PostAsJsonAsync("api/exchange-rate", new { Value = rate });
         response.EnsureSuccessStatusCode();
-        _lastUpdated = DateTime.UtcNow;
-        await UpdateRateLocallyAsync(rate);
+
+        var json = await response.Content.ReadFromJsonAsync<ExchangeRateResponse>(_jsonOptions);
+        decimal effectiveRate = json?.Value ?? rate;
+        effectiveRate = PricingCalculator.RoundExchangeRateCeiling(effectiveRate);
+
+        _lastUpdated = json?.UpdatedAt ?? DateTime.UtcNow;
+        await UpdateRateLocallyAsync(effectiveRate);
     }
 
     public async Task<List<ExchangeRateHistoryDto>> GetHistoryAsync()

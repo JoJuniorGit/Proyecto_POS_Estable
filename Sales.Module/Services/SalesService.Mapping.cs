@@ -1,6 +1,7 @@
 using Core.DTOs;
 using Core.Entities;
 using Core.Events;
+using Core.Helpers;
 using Core.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -102,6 +103,8 @@ public partial class SalesService
         {
             throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio AppliedRate inválida o no inicializada (<= 0).");
         }
+
+        clientRate = PricingCalculator.RoundExchangeRateCeiling(clientRate);
 
         if (_inventoryService == null)
         {

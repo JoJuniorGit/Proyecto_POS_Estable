@@ -182,8 +182,8 @@ public partial class ExchangeRateViewModel : ObservableObject
             // Save to backend and trigger local update via messaging
             await _exchangeRateService.SaveRateAsync(newRate);
 
-            CurrentRate = newRate;
-            NewRateText = newRate.ToString("0.00", CultureInfo.InvariantCulture);
+            CurrentRate = _exchangeRateService.CurrentRate;
+            NewRateText = CurrentRate.ToString("0.00", CultureInfo.InvariantCulture);
             LastUpdated = DateTime.UtcNow;
             CanRetrySync = false;
             StatusMessage = "Tasa de cambio guardada correctamente.";

@@ -170,4 +170,79 @@ public class Sprint1PerformanceOptimizationTests
         // Verify batch method was called
         mockInventory.Verify(i => i.GetProductsByIdsAsync(It.Is<IEnumerable<int>>(ids => ids.Contains(202) && ids.Contains(203))), Times.AtLeastOnce());
     }
+
+    [Fact]
+    public async Task AddItemAsync_WhenRateExact_RoundsAppliedRateToCeiling4Decimals()
+    {
+        using var context = GetInMemoryDbContext();
+        var (service, _, mockInventory) = CreateSalesService(context);
+
+        context.Customers.Add(new Customer { Id = 1, Name = "Consumidor Final", CedulaOrRif = "V-00000000", IsDefault = true, IsActive = true });
+        await context.SaveChangesAsync();
+
+        var prod1 = new Product { Id = 301, Name = "Arroz 1kg", PriceUSD = 1.50m, PriceRetailUSD = 1.50m, IsActive = true };
+        mockInventory.Setup(i => i.GetProductByIdAsync(301)).ReturnsAsync(prod1);
+        mockInventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
+            .ReturnsAsync((IEnumerable<int> ids) => new List<Product> { prod1 }.Where(p => ids.Contains(p.Id)).ToList());
+
+        var saleDto = await service.StartSaleAsync();
+        var updatedSale = await service.AddItemAsync(saleDto.Id, 301, 1m, 36.502175m);
+
+        Assert.Equal(36.5022m, updatedSale.AppliedRate);
+        Assert.Equal(54.75m, updatedSale.Items.Single(i => i.ProductId == 301).UnitPriceBsS);
+    }
+
+    [Fact]
+    public async Task UpdateExchangeRateAsync_WhenRateExact_RoundsAppliedRateToCeiling4Decimals()
+    {
+        using var context = GetInMemoryDbContext();
+        var (service, _, mockInventory) = CreateSalesService(context);
+
+        context.Customers.Add(new Customer { Id = 1, Name = "Consumidor Final", CedulaOrRif = "V-00000000", IsDefault = true, IsActive = true });
+        await context.SaveChangesAsync();
+
+        var prod1 = new Product { Id = 302, Name = "Harina PAN", PriceUSD = 1.20m, PriceRetailUSD = 1.20m, IsActive = true };
+        mockInventory.Setup(i => i.GetProductByIdAsync(302)).ReturnsAsync(prod1);
+        mockInventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
+            .ReturnsAsync((IEnumerable<int> ids) => new List<Product> { prod1 }.Where(p => ids.Contains(p.Id)).ToList());
+
+        var saleDto = await service.StartSaleAsync();
+        await service.AddItemAsync(saleDto.Id, 302, 2m, 36.5022m);
+
+        var updatedSale = await service.UpdateExchangeRateAsync(saleDto.Id, 36.502175m);
+
+        Assert.Equal(36.5022m, updatedSale.AppliedRate);
+
+        var savedSale = await context.Sales.FirstAsync(s => s.Id == saleDto.Id);
+        Assert.Equal(36.5022m, savedSale.AppliedRate);
+    }
+
+    [Fact]
+    public async Task CompleteSaleAsync_WhenRateExact_RoundsAppliedRateToCeiling4Decimals()
+    {
+        using var context = GetInMemoryDbContext();
+        var (service, _, mockInventory) = CreateSalesService(context);
+
+        context.Customers.Add(new Customer { Id = 1, Name = "Consumidor Final", CedulaOrRif = "V-00000000", IsDefault = true, IsActive = true });
+        var paymentMethod = new PaymentMethod { Id = 3, Name = "Punto de Venta", IsCash = false };
+        context.PaymentMethods.Add(paymentMethod);
+        await context.SaveChangesAsync();
+
+        var prod1 = new Product { Id = 303, Name = "Aceite 1L", PriceUSD = 1.50m, PriceRetailUSD = 1.50m, IsActive = true };
+        mockInventory.Setup(i => i.GetProductByIdAsync(303)).ReturnsAsync(prod1);
+        mockInventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
+            .ReturnsAsync((IEnumerable<int> ids) => new List<Product> { prod1 }.Where(p => ids.Contains(p.Id)).ToList());
+
+        var saleDto = await service.StartSaleAsync();
+        await service.AddItemAsync(saleDto.Id, 303, 1m, 36.5022m);
+
+        var amountLocal = Math.Round(1.50m * 36.5022m, 2, MidpointRounding.AwayFromZero);
+        var payments = new List<PaymentInfo> { new PaymentInfo(3, 1.50m, amountLocal, null) };
+
+        int invoiceNumber = await service.CompleteSaleAsync(saleDto.Id, 36.502175m, payments, 0m);
+        Assert.True(invoiceNumber > 0);
+
+        var savedSale = await context.Sales.FirstAsync(s => s.Id == saleDto.Id);
+        Assert.Equal(36.5022m, savedSale.AppliedRate);
+    }
 }
