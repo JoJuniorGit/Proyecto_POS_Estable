@@ -140,6 +140,7 @@ flowchart TD
 * **Estrategia de Redondeo Fiscal:**
   * Transacciones comerciales y totales de venta: `MidpointRounding.AwayFromZero` a 2 decimales.
   * Tasa oficial de cambio BCV: Redondeo hacia arriba a 2 decimales (`Math.Ceiling(rate * 100m) / 100m`; decisión 8.25-E1 ajustada a 2d en 8.102).
+  * La tasa **redondeada es la referencia absoluta** para todo cálculo (decisión 8.103): se normaliza en la escritura única (`ExchangeRateWriteService.UpsertTodayRateAsync`) y en todas las lecturas que alimentan cálculos (`ExchangeRateController.GetToday`, `ExchangeRateResolver.ReadEffectiveTodayRateAsync`, `InventoryService.GetTodayExchangeRateAsync`), sin mutar el log de tasas (`GetHistory` muestra el valor crudo almacenado).
 * **Inmutabilidad del Historial de Ventas (`rules.md`):**
   Bajo ninguna circunstancia se debe recalcular el monto en moneda local de una venta histórica usando la tasa BCV actual. Las ventas cerradas son snapshots inmutables que deben leer estrictamente `AppliedRate`, `TotalUSD`, `TotalBsS` y `FinalPaidAmountBsS`.
 

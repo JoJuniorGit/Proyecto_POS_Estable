@@ -45,7 +45,7 @@ public class SettingsController : ControllerBase
 
         if (record != null && record.Rate > 0)
         {
-            return Ok(new { Value = record.Rate, LastUpdated = (DateTime?)record.UpdatedAt });
+            return Ok(new { Value = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(record.Rate), LastUpdated = (DateTime?)record.UpdatedAt });
         }
 
         var setting = await _context.SystemSettings

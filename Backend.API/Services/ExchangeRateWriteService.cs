@@ -35,6 +35,10 @@ public class ExchangeRateWriteService : IExchangeRateWriteService
 
     public async Task<bool> UpsertTodayRateAsync(decimal roundedRate, CancellationToken cancellationToken = default)
     {
+        // 8.103: la escritura es el punto único de persistencia; se normaliza de forma defensiva
+        // para garantizar que el valor almacenado sea SIEMPRE la referencia redondeada (techo 2d).
+        roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(roundedRate);
+
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
         var existing = await _context.ExchangeRateHistory
             .FirstOrDefaultAsync(r => r.Date == today, cancellationToken);
@@ -100,12 +104,13 @@ public static class ExchangeRateResolver
         }
 
         if (record != null && record.Rate > 0)
-            return record.Rate;
+            // 8.103: la tasa efectiva del día para cálculo es SIEMPRE la referencia redondeada (techo 2d).
+            return Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(record.Rate);
 
         // Fallback a la tasa de apertura de la sesión activa para evitar distorsiones con 1.0 (8.2-M2)
         var activeSession = await cashDrawerService.GetActiveSessionAsync();
         if (activeSession != null && activeSession.OpeningExchangeRate > 0)
-            return activeSession.OpeningExchangeRate;
+            return Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(activeSession.OpeningExchangeRate);
 
         // 8.2-M2: Tasa NA explícita (0) en lugar de un fallback silencioso 1.0.
         // Los cierres sin tasa BCV del día se bloquean con error claro.

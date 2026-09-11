@@ -17,6 +17,21 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.64.0  | 2026-09-11  | (8.103)      | TASA REDONDEADA COMO REFERENCIA ABSOLUTA EN TODAS LAS FRONTERAS:
+|          |             |              | 1. Escritura (punto unico): ExchangeRateWriteService.UpsertTodayRateAsync
+|          |             |              | normaliza la tasa recibida de forma defensiva; idempotente (evita
+|          |             |              | recalculos OnHold/broadcast espurios al comparar crudo vs redondeado).
+|          |             |              | 2. Lecturas que alimentan calculos SIEMPRE devuelven la referencia
+|          |             |              | redondeada: InventoryService.GetTodayExchangeRateAsync (BD y cache,
+|          |             |              | alimenta el anclaje de venta), ExchangeRateResolver.
+|          |             |              | ReadEffectiveTodayRateAsync (cierres y turnos) y
+|          |             |              | ExchangeRateController.GetToday (referencia web/Desktop). GetHistory
+|          |             |              | conserva el valor crudo almacenado (log de auditoria, sin calculos).
+|          |             |              | 3. El log de ExchangeRateHistory no se re-escribe; se normaliza solo
+|          |             |              | el valor que viaja a los calculos (rules.md seccion 1 intacta).
+|          |             |              | 4. Suite .NET 879/879 (+5 tests ExchangeRateReferenceBoundaryTests:
+|          |             |              | 804.63001->804.64 persistido, resolver, GetToday 36.502175->36.51,
+|          |             |              | lectura BD y cache heredada). ANEXO 8.103.
 | v1.63.0  | 2026-09-11  | (8.102)      | TECHO DE TASA BCV REDUCIDO A 2 DECIMALES (REVERSAL 8.25-E1):
 |          |             |              | 1. Helper unico Core/Helpers/PricingCalculator.RoundExchangeRateCeiling
 |          |             |              | pasa de Math.Ceiling(rate*10000)/10000 a Math.Ceiling(rate*100)/100.
@@ -732,6 +747,11 @@ Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
     el portal BCV (redondeo ceiling a 2 decimales via
     PricingCalculator.RoundExchangeRateCeiling - unico punto de redondeo,
     decision 8.25-E1 ajustada a 2d en 8.102).
+  * Referencia absoluta (8.103): toda lectura que alimenta calculos devuelve SIEMPRE
+    la tasa redondeada (ExchangeRateController.GetToday, ExchangeRateResolver,
+    InventoryService.GetTodayExchangeRateAsync); la escritura normaliza de forma
+    defensiva e idempotente (ExchangeRateWriteService). GetHistory muestra el valor
+    crudo del log (auditoria, no alimenta calculos).
   * Anclaje de venta: ante desvio > tolerancia, la venta ANCLA la tasa BCV del
     dia; desvio >= +-100% RECHAZA la venta. Unico fail-open restante (auditable
     y congelado por tests): tasa BCV INDISPONIBLE (0/error) -> se usa la tasa

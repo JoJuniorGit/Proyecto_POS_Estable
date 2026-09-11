@@ -210,6 +210,9 @@ public class CashDrawerController : ControllerBase
             throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio inválida o no inicializada (<= 0).");
         }
 
+        // 8.103: la tasa que entra a cualquier cálculo es la referencia redondeada (techo 2d).
+        clientRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(clientRate);
+
         decimal officialRate = 0m;
         try
         {
@@ -217,7 +220,7 @@ public class CashDrawerController : ControllerBase
                 .Where(r => r.Date <= Core.Helpers.TimeZoneHelper.GetVenezuelaDate())
                 .OrderByDescending(r => r.Date)
                 .FirstOrDefaultAsync();
-            officialRate = record != null ? record.Rate : 0m;
+            officialRate = record != null ? Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(record.Rate) : 0m;
         }
         catch (System.Exception ex)
         {

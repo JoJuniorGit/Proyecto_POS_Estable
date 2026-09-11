@@ -6546,3 +6546,51 @@ se muta el log de tasas). Desktop normaliza con el helper (ceiling -> 804.64)
 pero la web formatea toFixed(2) (round -> 804.63) hasta la siguiente escritura.
 Es una asimetria cosmetica de un solo dia; la proxima tasa del dia queda 2d.
 
+
+===============================================================================
+ANEXO 8.103 - TASA REDONDEADA COMO REFERENCIA ABSOLUTA EN TODAS LAS FRONTERAS
+===============================================================================
+Contexto: tras 8.101/8.102, todas las ESCRITURAS persisten la tasa con techo 2d
+decimales, pero las LECTURAS que alimentan calculos devolvian el valor crudo
+almacenado. Si el registro del dia conserva un valor 4d heredado (ej. 804.6301
+persistido antes de 8.103), ese valor crudo llegaba a calculos clientes y web
+(asimetria cosmetica descrita en la NOTA TRANSICIONAL de 8.102). Decision:
+la tasa redondeada (techo 2d via PricingCalculator.RoundExchangeRateCeiling) es
+la REFERENCIA ABSOLUTA para todos los calculos; se normaliza en cada frontera
+sin mutar el log historico de tasas (rules.md seccion 1 intacta).
+
+Cambios aplicados:
+A. Escritura (punto unico): ExchangeRateWriteService.UpsertTodayRateAsync
+   normaliza de forma defensiva la tasa recibida antes de persistir. Si el
+   valor ya coincide con el de BD redondeado, NO hay cambio (evita recalculos
+   OnHold y broadcast espurios por comparar crudo vs redondeado).
+B. Lectura para calculos (Inventory.Module): InventoryService.
+   GetTodayExchangeRateAsync ahora devuelve SIEMPRE la referencia redondeada
+   tanto en ruta BD como en ruta cache (una cache con valor 4d heredado se
+   normaliza al leer). Alimenta ResolveAnchoredRateAsync (anclaje de venta) y
+   los checks de desvio.
+C. Lectura para calculos (Backend.API): ExchangeRateResolver.
+   ReadEffectiveTodayRateAsync (usado por DailyClosureController y
+   ShiftsController para tasas efectivas del dia y cierres) devuelve la
+   referencia redondeada; tambien el fallback OpeningExchangeRate de sesion.
+D. API de referencia del dia: ExchangeRateController.GetToday expone la tasa
+   redondeada (referencia para la web, que calcula precios de catalogo en Bs.S
+   con precioUSD * exchangeRate, y para los clientes Desktop). GetHistory
+   conserva el valor crudo almacenado a proposito: es el log de auditoria y no
+   alimenta calculos.
+
+Impacto: la asimetria del dia de transicion queda resuelta (la web ya recibe
+la referencia redondeada). El log de ExchangeRateHistory nunca se re-escribe
+(vista historica fiel); solo se normaliza el valor que viaja a los calculos.
+
+Tests: +5 de regresion en ExchangeRateReferenceBoundaryTests (escritura
+idempotente 804.63001->804.64 persistido y no-cambio en segunda llamada;
+resolver con 804.63001->804.64; GetToday con 36.502175->36.51;
+GetTodayExchangeRateAsync BD y cache heredada -> 36.51 / 804.64). La suite
+completa pasa 881/881 tras el cambio (2 tests controller adicionales: AddTransaction con anclaje manual y SettingsController.GetExchangeRate).
+
+Decisiones relacionadas: 8.25-E1 (techo 2d, ajustada en 8.102), 8.7-M3
+(escritura centralizada), 8.2-M2 (tasas NA explicitas). Implicacion para
+Roadmap: revision v0.16.0 (ver Reporte de estado v1.64.0).
+
+FIN DEL ANEXO - REVISION 8.103

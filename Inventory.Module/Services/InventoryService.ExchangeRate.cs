@@ -12,7 +12,7 @@ public partial class InventoryService
     {
         if (_cache != null && _cache.TryGetValue(ExchangeRateCacheKey, out decimal cachedRate) && cachedRate > 0)
         {
-            return cachedRate;
+            return Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(cachedRate);
         }
 
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
@@ -26,6 +26,13 @@ public partial class InventoryService
         {
             var lastRecord = await _context.ExchangeRateHistory.AsNoTracking().Where(r => r.Date <= today).OrderByDescending(r => r.Date).FirstOrDefaultAsync();
             rate = lastRecord?.Rate ?? 0m;
+        }
+
+        // 8.103: la lectura para cálculo SIEMPRE devuelve la referencia redondeada (techo 2d),
+        // aunque el registro persistido conserve un valor histórico con más decimales.
+        if (rate > 0)
+        {
+            rate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(rate);
         }
 
         if (rate > 0)

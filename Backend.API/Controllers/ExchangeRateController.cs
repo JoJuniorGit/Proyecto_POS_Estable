@@ -68,7 +68,8 @@ public class ExchangeRateController : ControllerBase
                 : DateTime.SpecifyKind(record.UpdatedAt, DateTimeKind.Utc);
             var local = TimeZoneInfo.ConvertTimeFromUtc(utc, tz);
 
-            result = new { Value = record.Rate, Date = record.Date, UpdatedAt = record.UpdatedAt, UpdatedAtLocal = (DateTime?)local };
+            // 8.103: el endpoint de referencia del día SIEMPRE expone la tasa redondeada (techo 2d).
+            result = new { Value = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(record.Rate), Date = record.Date, UpdatedAt = record.UpdatedAt, UpdatedAtLocal = (DateTime?)local };
         }
 
         _cache?.Set(cacheKey, result, new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions
