@@ -5634,3 +5634,47 @@ D. VERIFICACION REAL
      `dotnet build -c Release` 0/0 sin variacion esperada.
 
 FIN DEL ANEXO - REVISION 8.81
+
+ANEXO 8.82 - F0 #7 CERRADA (VENTANA 03:00 + REINICIO FACIL)
+-------------------------------------------------------------------
+Fecha: 2026-09-10 | Rama/Bif: V0.15 | Objetivo: cerrar la unica confirmacion
+abierta de la seccion 4.5 del roadmap (F0 #7: ventana de mantenimiento y
+responsable operativo). No hay cambios de codigo de aplicacion: se verifica la
+implementacion existente (Req.9, 8.69) y se registra la evidencia.
+
+A. VENTANA DE MANTENIMIENTO (03:00)
+   - Confirmada por el cliente (DQ-008, 8.68): 03:00 cualquier dia. Backup diario
+     03:00 (tarea programada, 8.29-A6) y ventana de mantenimiento quedan ligados
+     a esta decision; sin conflicto con RPO <= 24 h (roadmap 4.3).
+
+B. REINICIO FACIL (Req.9) - VERIFICACION DE EVIDENCIA
+   - Backend: POST api/administration/restart (AdministrationController.cs:24-40)
+     con RBAC Admin/Manager (Cajero -> ApiForbidden 403) y reinicio diferido en
+     ServiceRestartCoordinator.cs (guard Interlocked.CompareExchange evita doble
+     programacion; nssm restart con fallback sc.exe stop/start).
+   - Instalador: installer/RestartPOS.bat (elevacion UAC via Start-Process -Verb
+     RunAs, nssm restart o sc stop/start, mensajes en espanol, timeout 6s);
+     accesos directos "Reiniciar Sistema POS" en escritorio y programas creados
+     por setup.iss (lineas 59-60) apuntando a {app}\RestartPOS.bat.
+   - WPF: boton en SettingsViewModel.Restart.cs con dialogo de confirmacion
+     ("Reiniciar Sistema") y SettingsService.cs:76 (POST al endpoint).
+   - Web: boton "Reiniciar Sistema" en SettingsPage.jsx (modal de confirmacion,
+     manejo de error via ProblemDetails del api.js).
+   - Tests: .NET AdministrationControllerTests.cs (RBAC Admin OK / Cajero no
+     llama; TryScheduleRestart=false -> 409/error; tester NoOpRestartCoordinator
+     verifica una sola programacion), SystemRestartTests.cs (VM: confirmar
+     invoca, cancelar no invoca, error muestra mensaje); Web api.test.js (7:
+     api.post /api/administration/restart).
+
+C. ESTADO POST-CIERRE
+   - Roadmap 4.5 / 4.5.1 / bloque de confirmaciones actualizados: #1-#9 100%
+     cerradas. Unica accion restante: nombrar al responsable operativo del sitio
+     (criterio de salida M0, seccion 4.6), accion del CLI, no ejecutable por el
+     agente. Version v0.11.0; Reporte de estado v1.48.0.
+
+D. VERIFICACION REAL
+   - Suite .NET filtrada para reinicio (SystemRestart|AdministrationController)
+     en verde; build Release 0/0 sin cambios de codigo. Sin migracion EF,
+     sin impacto en npm test/lint.
+
+FIN DEL ANEXO - REVISION 8.82

@@ -6,7 +6,7 @@ el avance real de cada fase. Es la capa ejecutiva/operativa del plan de
 certificacion; el detalle por revision vive en `docs/reporte.txt` (ANEXOS) y el
 estado tecnico en `Reporte de estado.txt`.
 
-- **Version documento:** 0.10.0 (metricas SLO 8.81: tooling de medicion + Go/No-Go; medicion real en piloto y firmas pendientes)
+- **Version documento:** 0.11.0 (F0 #7 cerrada 8.82: reinicio facil verificado; responsable operativo por nombrar)
 - **Fecha:** 2026-09-10
 - **Estado general:** Fases F0-F6 en curso; F0 avanza a M0 con confirmaciones del cliente
 - **Rama base:** V0.15
@@ -80,6 +80,7 @@ Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-10  | F0   | F0 #7 CERRADA (unica confirmacion pendiente de 4.5): ventana de mantenimiento 03:00 (DQ-008) + REINICIO FACIL verificado con evidencia (Req.9, 8.69): endpoint `POST api/administration/restart` con guard anti-doble-programacion (Interlocked en ServiceRestartCoordinator) y RBAC (Caja 403, Admin/Manager OK); RestartPOS.bat con elevacion UAC y fallback sc stop/start; accesos directos "Reiniciar Sistema POS" en escritorio/programas (setup.iss); botones WPF (SettingsViewModel.Restart) y Web (SettingsPage) con modal de confirmacion; tests .NET (AdministrationControllerTests: RBAC + una sola programacion + SystemRestartTests WPF) y Web (api.test.js). Pendiente solo nombrar al responsable operativo (M0 4.6, accion CLI) | (8.82) Sin cambios de codigo; suite filtrada reinicio verde. Roadmap v0.11.0 + ANEXO 8.82, Reporte v1.48.0 |
 | 2026-09-10  | F6/FIN | METRICAS SLO + GO/NO-GO: monitor-health.ps1 ampliado para medir los SLO del piloto (muestreo slo-availability.csv por corrida, collector p95 por endpoint via /api/health/requests con token, resumen de ventana de 14h en slo-summary.json con disponibilidad %, probe p95, endpoint p95 max y backupFresh RPO); INSTALLATION 13.11 runbook de medicion SLO (schedule cada 5 min, cierre de jornada, drill RTO cronometrado); formulario Go/No-Go (roadmap 11) exige evidencia SLO adjunta para las firmas RM/ARQ/CLI. Medicion real en piloto y firmas: PENDIENTES | (8.81) Sin cambios de codigo .NET/Web/WPF; monitor-health.ps1 probado (muestra negativa + CSV + resumen JSON). Suite .NET 798/798. Roadmap v0.10.0 + ANEXO 8.81, Reporte v1.47.0 |
 | 2026-09-10  | F3/F4/F5 | F3/F4 AVANZADOS (runbook + artefacto): build-release.ps1 ahora verifica el bundle web en wwwroot (index.html + assets, aborta si falta), verifica 0 appsettings.Development.json en publish, y ejecuta el smoke de migracion desde cero (IMP-1/MigratedSchema) como paso 7/7 opcional cuando TEST_POSTGRES_CONNECTION esta definida; INSTALLATION 13.8 monitoreo piloto (monitor-health.ps1), 13.9 paridad instalador/backend post-instalacion, 13.10 pre-despliegue/verificacion del artefacto | (8.80) ISCC firma X.509 + smoke en maquina virgen y ejecucion real PENDIENTES (requieren certificado/VM). Roadmap v0.9.0 + ANEXO 8.80, Reporte v1.46.0 |
 | 2026-09-10  | F2   | HALLAZGO 8.79-H: el smoke migracion desde cero destapo que la secuencia de facturacion `factura_number_seq` NO se materializaba con MigrateAsync (solo en runtime via DatabaseInitializer) -> nueva migracion idempotente `20260910180000_EnsureFacturaNumberSequence` (IF NOT EXISTS); smoke `MigratedSchema_MatchesModel` pasa en BD 100% nueva | (8.79) ambos smokes migratorios + suite completa verdes con sufijo fresco (798/798); build Release 0/0 |
@@ -145,10 +146,12 @@ contrato operativo del roadmap.
 | Entorno | LAN (HTTP 5000 + HTTPS 5001 autofirmado por sitio) | CONFIRMADO (5) |
 | Updater | NO instalado (sin firma X.509, 8.20-A03/8U-N2) | PENDIENTE |
 
-> Confirmaciones obtenidas el 2026-09-09 (§4.5): 1 (cajas=4), 2 (metodos seed),
+> Confirmaciones obtenidas el 2026-09-09/10 (§4.5): 1 (cajas=4), 2 (metodos seed),
 > 3 (impresion a medio plazo, no bloques piloto), 4 (operacion sin red aceptada),
 > 5 (topologia LAN; HTTPS ideal a futuro), 6 (sin fiscales), 8 (piloto 2 semanas,
-> turnos 14h, sin duplicados), 9 (sin datos previos). Pendiente: solo #7 (ver 4.5).
+> turnos 14h, sin duplicados), 9 (sin datos previos). #7 CERRADA (8.82): ventana
+> 03:00 (DQ-008) + reinicio facil verificado (Req.9, 8.69; evidencia 8.82). Pendiente
+> solo la designacion del responsable operativo en el sitio (M0 4.6, accion CLI).
 
 ### 4.2 Decisiones tomadas (registro DQ)
 
@@ -225,9 +228,12 @@ cerrarse antes de la certificacion.
 
 ### 4.5 Preguntas abiertas al cliente (bloquean M0)
 
-Estado al 2026-09-09: **#1-#6, #8, #9 cerradas** (ver 4.5.1). **#7 parcialmente
-cerrada**: ventana confirmada (03:00, DQ-008) y reinicio facil registrado
-(DQ-009); pendiente solo nombrar al responsable operativo.
+Estado al 2026-09-10: **#1-#9 cerradas** (ver 4.5.1). **#7 cerrada en 8.82**:
+ventana confirmada (03:00, DQ-008) + reinicio facil IMPLEMENTADO y VERIFICADO
+(Req.9, 8.69; evidencia: endpoint `POST api/administration/restart` sin doble
+programacion, RestartPOS.bat + accesos directos instalador, botones WPF/Web y
+tests .NET/Web). Queda como accion del cliente nombrar al responsable operativo
+del sitio (criterio M0, 4.6).
 
 1. Numero de cajas y usuarios concurrentes por jornada. → **RESUELTO: 4 cajas con ventas concurrentes.**
 2. Metodos de pago requeridos en el piloto. → **RESUELTO: ya definidos e incorporados como seed (4 metodos).**
@@ -235,7 +241,7 @@ cerrada**: ventana confirmada (03:00, DQ-008) y reinicio facil registrado
 4. Operacion sin internet: politica de tasa manual aceptada? → **RESUELTO: el sistema opera sin conexion; tasa BCV manual aceptada.**
 5. Topologia de red: LAN sola, o HTTPS real/remoto. → **RESUELTO: ideal HTTPS para supervision remota; ver DQ-007.**
 6. Requisitos regulatorios/fiscales de facturacion y conservacion. → **RESUELTO: sin requisitos fiscales.**
-7. Ventana de mantenimiento y responsable operativo en el sitio. → **RESUELTO: 03:00 cualquier dia es buen momento; pendiente nombrar responsable + plan de reinicio facil (DQ-009).**
+7. Ventana de mantenimiento y responsable operativo en el sitio. → **RESUELTO: 03:00 cualquier dia es buen momento (DQ-008); reinicio facil IMPLEMENTADO y VERIFICADO (8.82, Req.9 en 8.69). Pendiente solo nombrar al responsable operativo (accion CLI, M0 4.6).**
 8. Duracion y criterios de exito del piloto (1-2 semanas iniciales). → **RESUELTO: 2 semanas sin caidas, ventas descuentos de stock dobles en turnos de 14 horas.**
 9. Existen datos previos (catalogo/existencias) en otro sistema que deban importarse? (IMP-5) → **RESUELTO: sin datos para cargar.**
 
@@ -249,7 +255,7 @@ cerrada**: ventana confirmada (03:00, DQ-008) y reinicio facil registrado
 | 4 | Operacion sin red | Opera sin conexion; tasa manual | Politica offline aceptada (R-005 cierra); prueba F3 pendiente |
 | 5 | Topologia | Ideal HTTPS para supervision remota | DQ-007: LAN en piloto + **VPN WireGuard (B)** para remoto; A descartada |
 | 6 | Regulatorio/fiscal | Sin requisitos fiscales | Cierra alcance fiscal |
-| 7 | Ventana/responsable | 03:00 cualquier dia | DQ-008; responsable por nombrar + reinicio facil (DQ-009) |
+| 7 | Ventana/responsable | 03:00 cualquier dia | DQ-008 ventana 03:00; reinicio facil VERIFICADO (8.82, Req.9/8.69); responsable por nombrar (accion CLI) |
 | 8 | Piloto | 2 semanas, turnos 14h, sin caidas/duplicados/stock doble | Criterios 10.2 actualizados |
 | 9 | Datos previos | Sin datos para cargar | IMP-5 cierra |
 

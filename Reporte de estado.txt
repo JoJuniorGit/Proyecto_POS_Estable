@@ -17,6 +17,20 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.48.0  | 2026-09-10  | (8.82)       | F0 #7 CERRADA (unica confirmacion abierta de la seccion 4.5):
+|          |             |              | ventana de mantenimiento 03:00 confirmada (DQ-008) y reinicio
+|          |             |              | facil VERIFICADO (Req.9, 8.69) con evidencia en repo: endpoint
+|          |             |              | POST api/administration/restart (RBAC: Caja 403, Admin/Manager
+|          |             |              | OK; guard Interlocked anti-doble-programacion en
+|          |             |              | ServiceRestartCoordinator), RestartPOS.bat con elevacion UAC y
+|          |             |              | fallback sc stop/start, accesos directos "Reiniciar Sistema
+|          |             |              | POS" en escritorio/programas del instalador (setup.iss),
+|          |             |              | botones WPF (SettingsViewModel.Restart) y Web (SettingsPage)
+|          |             |              | con modal, tests .NET (AdministrationControllerTests +
+|          |             |              | SystemRestartTests) y Web (api.test.js). Pendiente solo
+|          |             |              | nombrar al responsable operativo del sitio (M0 4.6, accion
+|          |             |              | CLI). Roadmap v0.11.0. Sin cambios de codigo; suite filtrada
+|          |             |              | reinicio verde. ANEXO 8.82.
 | v1.47.0  | 2026-09-10  | (8.81)       | METRICAS SLO en piloto + Go/No-Go: monitor-health.ps1 ampliado
 |          |             |              | para medir los SLO del roadmap 4.3 (cada corrida agrega muestra
 |          |             |              | a slo-availability.csv, collector p95 por endpoint via
