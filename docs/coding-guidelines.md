@@ -139,7 +139,7 @@ flowchart TD
 * **Tipos de Datos Monetarios:** Queda estrictamente prohibido el uso de `float` o `double` para representar montos, subtotales, totales, comisiones o tasas de cambio. Se debe usar obligatoriamente `decimal`.
 * **Estrategia de Redondeo Fiscal:**
   * Transacciones comerciales y totales de venta: `MidpointRounding.AwayFromZero` a 2 decimales.
-  * Tasa oficial de cambio BCV: Redondeo hacia arriba a 4 decimales (`Math.Ceiling(rate * 10000m) / 10000m`).
+  * Tasa oficial de cambio BCV: Redondeo hacia arriba a 2 decimales (`Math.Ceiling(rate * 100m) / 100m`; decisión 8.25-E1 ajustada a 2d en 8.102).
 * **Inmutabilidad del Historial de Ventas (`rules.md`):**
   Bajo ninguna circunstancia se debe recalcular el monto en moneda local de una venta histórica usando la tasa BCV actual. Las ventas cerradas son snapshots inmutables que deben leer estrictamente `AppliedRate`, `TotalUSD`, `TotalBsS` y `FinalPaidAmountBsS`.
 

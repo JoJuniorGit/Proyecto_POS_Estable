@@ -6491,3 +6491,58 @@ C. VERIFICACION Y DONE:
 
 FIN DEL ANEXO - REVISION 8.101
 
+===============================================================================
+ANEXO 8.102 - TECHO DE TASA BCV REDUCIDO A 2 DECIMALES (REVERSAL DE 8.25-E1)
+===============================================================================
+Fecha: 2026-09-11
+Alcance: Core (PricingCalculator), Backend.API (BcvScraperService, BcvExchangeRateJob,
+         ExchangeRateController, SettingsController), Sales.Module (SalesService*,
+         CashDrawerService), Desktop.Client.Core (ExchangeRateService) y tests
+Autor: Antigravity / JoJuniorGit
+
+Decision del usuario (2026-09-11): reducir el techo de redondeo de la tasa de cambio
+BCV de 4 decimales (decision 8.25-E1) a 2 decimales. El cambio revierte la adopcion
+de 4d de la revision 8.25 y afecta al helper unico y a todo el layer.
+
+A. CAMBIO EN EL HELPER UNICO (Core/Helpers/PricingCalculator.cs):
+   - RoundExchangeRateCeiling pasa de `Math.Ceiling(rate * 10000m) / 10000m` a
+     `Math.Ceiling(rate * 100m) / 100m`. Idempotente al tope de precision 2d.
+   - Ejemplos: 804.63001 -> 804.64; 36.502175 -> 36.51; 804.64 -> 804.64.
+
+B. ALCANCE DEL CAMBIO (unico punto de verdad para tasas):
+   1. Backend.API: BcvScraperService, BcvExchangeRateJob, ExchangeRateController
+      (131/195) y SettingsController (82) persisten la tasa ya al techo 2d.
+   2. Sales.Module: AppliedRate en AddItem/RemoveItem/UpdateItemQuantity/
+      UpdateExchangeRateAsync/RecalculateOnHoldSalesAsync/CompleteSale y el anclaje
+      ResolveAnchoredRateAsync (cubre HoldOrders, Payments, CashAdvance); caja en
+      CashDrawerService apertura/cierre.
+   3. Desktop.Client.Core: ExchangeRateService normaliza en
+      SetCurrentRateSynchronously, UpdateRateLocallyAsync y SaveRateAsync (Value
+      canonico 2d).
+   4. Historico inmutable intacto (rules.md seccion 1): solo se tocan ventas
+      Pending/OnHold; las columnas decimal(18,4) de la migracion 8.25-B5 albergan
+      valores 2d sin necesidad de nueva migracion.
+
+C. VERIFICACION Y DONE:
+   - Compilacion Release: dotnet build CommandCenter.slnx -c Release -> 0 Warnings,
+     0 Errores.
+   - Suite completa .NET (CommandCenter.Tests): 873 superadas (0 errores, 0 omitidas).
+   - Tests actualizados: teoria RoundsUpTo2Decimals (804.63001->804.64, 804.64->
+     804.64, 805.123456->805.13, 800.00001->800.01, 36.456789->36.46), job BCV
+     (804.64), 3x servidor y 3x cliente (36.502175 -> 36.51).
+   - Documentacion actualizada: AGENTS.md regla 4, coding-guidelines.md seccion 2.4,
+     ARCHITECTURE.md (defensa del scraper), INSTALLATION.md (13.3/7), Reporte de
+     estado v1.63.0 y Roadmap v0.15.0.
+
+FIN DEL ANEXO - REVISION 8.102
+
+===============================================================================
+NOTA TRANSICIONAL 8.102 (pendiente de registro en ANEXO de la misma revision)
+===============================================================================
+Durante el dia de puesta en marcha de 8.102, el registro de ExchangeRateHistory
+del dia puede conservar un valor 4d persistido bajo 8.101 (ej. 804.6301) hasta
+que se sobrescriba el registro del dia; GetToday/GetHistory NO re-redondean (no
+se muta el log de tasas). Desktop normaliza con el helper (ceiling -> 804.64)
+pero la web formatea toFixed(2) (round -> 804.63) hasta la siguiente escritura.
+Es una asimetria cosmetica de un solo dia; la proxima tasa del dia queda 2d.
+

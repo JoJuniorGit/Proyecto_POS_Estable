@@ -148,4 +148,31 @@ public class Phase3PerformanceRemediationTests
         Assert.NotNull(suggestions);
         Assert.Equal(10, suggestions.Count);
     }
+
+    [Fact]
+    public async Task UpsertRate_WhenRateHasMoreThan2Decimals_RoundsToCeiling2DecimalsAndPersists()
+    {
+        using var context = CreateInMemoryInventoryDbContext();
+        var mockUser = new Mock<ICurrentUserService>();
+        mockUser.Setup(u => u.CanMutateExchangeRate).Returns(true);
+
+        var controller = new ExchangeRateController(context, mockUser.Object);
+
+        decimal? persistedRate = null;
+        var writeService = new Mock<Backend.API.Services.IExchangeRateWriteService>();
+        writeService.Setup(w => w.UpsertTodayRateAsync(It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
+            .Callback<decimal, CancellationToken>((r, _) => persistedRate = r)
+            .ReturnsAsync(true);
+
+        var request = new UpsertExchangeRateRequest { Value = 804.63001m };
+
+        // Act
+        var result = await controller.UpsertRate(request, writeService.Object) as OkObjectResult;
+
+        // Assert
+        Assert.NotNull(result);
+        dynamic payload = result!.Value!;
+        Assert.Equal(804.64m, (decimal)payload.Value);
+        Assert.Equal(804.64m, persistedRate);
+    }
 }

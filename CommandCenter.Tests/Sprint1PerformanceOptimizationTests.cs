@@ -172,7 +172,7 @@ public class Sprint1PerformanceOptimizationTests
     }
 
     [Fact]
-    public async Task AddItemAsync_WhenRateExact_RoundsAppliedRateToCeiling4Decimals()
+    public async Task AddItemAsync_WhenRateExact_RoundsAppliedRateToCeiling2Decimals()
     {
         using var context = GetInMemoryDbContext();
         var (service, _, mockInventory) = CreateSalesService(context);
@@ -188,12 +188,12 @@ public class Sprint1PerformanceOptimizationTests
         var saleDto = await service.StartSaleAsync();
         var updatedSale = await service.AddItemAsync(saleDto.Id, 301, 1m, 36.502175m);
 
-        Assert.Equal(36.5022m, updatedSale.AppliedRate);
-        Assert.Equal(54.75m, updatedSale.Items.Single(i => i.ProductId == 301).UnitPriceBsS);
+        Assert.Equal(36.51m, updatedSale.AppliedRate);
+        Assert.Equal(54.77m, updatedSale.Items.Single(i => i.ProductId == 301).UnitPriceBsS);
     }
 
     [Fact]
-    public async Task UpdateExchangeRateAsync_WhenRateExact_RoundsAppliedRateToCeiling4Decimals()
+    public async Task UpdateExchangeRateAsync_WhenRateExact_RoundsAppliedRateToCeiling2Decimals()
     {
         using var context = GetInMemoryDbContext();
         var (service, _, mockInventory) = CreateSalesService(context);
@@ -211,14 +211,14 @@ public class Sprint1PerformanceOptimizationTests
 
         var updatedSale = await service.UpdateExchangeRateAsync(saleDto.Id, 36.502175m);
 
-        Assert.Equal(36.5022m, updatedSale.AppliedRate);
+        Assert.Equal(36.51m, updatedSale.AppliedRate);
 
         var savedSale = await context.Sales.FirstAsync(s => s.Id == saleDto.Id);
-        Assert.Equal(36.5022m, savedSale.AppliedRate);
+        Assert.Equal(36.51m, savedSale.AppliedRate);
     }
 
     [Fact]
-    public async Task CompleteSaleAsync_WhenRateExact_RoundsAppliedRateToCeiling4Decimals()
+    public async Task CompleteSaleAsync_WhenRateExact_RoundsAppliedRateToCeiling2Decimals()
     {
         using var context = GetInMemoryDbContext();
         var (service, _, mockInventory) = CreateSalesService(context);
@@ -236,13 +236,13 @@ public class Sprint1PerformanceOptimizationTests
         var saleDto = await service.StartSaleAsync();
         await service.AddItemAsync(saleDto.Id, 303, 1m, 36.5022m);
 
-        var amountLocal = Math.Round(1.50m * 36.5022m, 2, MidpointRounding.AwayFromZero);
+        var amountLocal = Math.Round(1.50m * 36.51m, 2, MidpointRounding.AwayFromZero);
         var payments = new List<PaymentInfo> { new PaymentInfo(3, 1.50m, amountLocal, null) };
 
         int invoiceNumber = await service.CompleteSaleAsync(saleDto.Id, 36.502175m, payments, 0m);
         Assert.True(invoiceNumber > 0);
 
         var savedSale = await context.Sales.FirstAsync(s => s.Id == saleDto.Id);
-        Assert.Equal(36.5022m, savedSale.AppliedRate);
+        Assert.Equal(36.51m, savedSale.AppliedRate);
     }
 }

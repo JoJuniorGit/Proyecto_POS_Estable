@@ -17,6 +17,19 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.63.0  | 2026-09-11  | (8.102)      | TECHO DE TASA BCV REDUCIDO A 2 DECIMALES (REVERSAL 8.25-E1):
+|          |             |              | 1. Helper unico Core/Helpers/PricingCalculator.RoundExchangeRateCeiling
+|          |             |              | pasa de Math.Ceiling(rate*10000)/10000 a Math.Ceiling(rate*100)/100.
+|          |             |              | Ej.: 804.63001->804.64; 36.502175->36.51. Idempotente al tope 2d.
+|          |             |              | 2. Alcanza a todo el layer: AppliedRate de ventas, tasas BCV persistidas
+|          |             |              | (BcvScraperService, BcvExchangeRateJob, ExchangeRateController,
+|          |             |              | SettingsController), caja (CashDrawerService) y el cliente canonico
+|          |             |              | (ExchangeRateService SaveRateAsync/UpdateRateLocallyAsync).
+|          |             |              | 3. Historico inmutable intacto (rules.md seccion 1); sin migracion de
+|          |             |              | esquema (columnas decimal(18,4) albergan valores 2d).
+|          |             |              | 4. Tests actualizados: teoria RoundsUpTo2Decimals (804.64/805.13/800.01/
+|          |             |              | 36.46), job BCV 804.64, 3x servidor y 3x cliente a 36.51. Suite 873/873.
+|          |             |              | ANEXO 8.102.
 | v1.62.0  | 2026-09-11  | (8.101)      | TASA BCV CANONICA 4D EN TODO EL LAYER (CLIENTE + SERVIDOR):
 |          |             |              | 1. Cliente (Desktop.Client.Core): ExchangeRateService normaliza con
 |          |             |              | RoundExchangeRateCeiling en SetCurrentRateSynchronously,
@@ -716,9 +729,9 @@ Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
     formatos (Venezolano contable por defecto / Internacional) via formatters
     (web) y NumericCalculatorBehavior (WPF). La BD SIEMPRE guarda numeros.
   * Tasa: -> 1 registro/dia en ExchangeRateHistory. BcvScraperService scrapea
-    el portal BCV (redondeo ceiling a 4 decimales via
+    el portal BCV (redondeo ceiling a 2 decimales via
     PricingCalculator.RoundExchangeRateCeiling - unico punto de redondeo,
-    decision 8.25-E1).
+    decision 8.25-E1 ajustada a 2d en 8.102).
   * Anclaje de venta: ante desvio > tolerancia, la venta ANCLA la tasa BCV del
     dia; desvio >= +-100% RECHAZA la venta. Unico fail-open restante (auditable
     y congelado por tests): tasa BCV INDISPONIBLE (0/error) -> se usa la tasa
@@ -727,7 +740,7 @@ Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
     lastId, batch 200) al cambiar la tasa (revision 8.19-H14).
   * Operacion offline (8.29-B1, solo documentado): si no hay red, se puede
     desactivar el auto-sync (BcvSettings:AutoSyncIntervalMinutes <= 0),
-    fijar la tasa del dia via POST /api/exchange-rate (Admin; ceil 4 decimales)
+    fijar la tasa del dia via POST /api/exchange-rate (Admin; ceil 2 decimales)
     o POST /api/exchange-rate/sync-bcv para re-sincronizar. Sin tasa vigente
     del dia, la venta se RECHAZA explicitamente (sin montos inventados).
     AppliedRate queda anclada por peticion y persiste por venta (inmutable).

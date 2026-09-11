@@ -6,7 +6,7 @@ el avance real de cada fase. Es la capa ejecutiva/operativa del plan de
 certificacion; el detalle por revision vive en `docs/reporte.txt` (ANEXOS) y el
 estado tecnico en `Reporte de estado.txt`.
 
-- **Version documento:** 0.14.0 (8.101: tasa BCV canonica 4d en todo el layer cliente+servidor)
+- **Version documento:** 0.15.0 (8.102: techo de tasa BCV reducido a 2 decimales - reversal 8.25-E1)
 - **Fecha:** 2026-09-11
 - **Estado general:** Fases F0-F6 en curso; F0 avanza a M0 con confirmaciones del cliente
 - **Rama base:** V0.15

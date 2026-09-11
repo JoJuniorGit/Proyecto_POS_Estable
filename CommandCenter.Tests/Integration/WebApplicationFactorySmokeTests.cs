@@ -168,8 +168,8 @@ public class WebApplicationFactorySmokeTests
             .FirstOrDefaultAsync();
         Assert.Equal(1, saleIdIndex);
 
-        // 8.25-E1: tras adoptar el techo de tasa BCV a 4 decimales, las columnas de tasa
-        // snapshot deben tener scale >= 4 (migracion ExpandExchangeRateColumnsTo4Decimals).
+        // 8.25-B5: columnas de tasa snapshot con scale >= 4 (decimales ampliados); desde 8.102 el
+        // techo de tasa es 2d pero el esquema decimal(18,4) se conserva y alberga valores 2d.
         var appliedRateScale = await salesDb.Database.SqlQueryRaw<int>(
             "SELECT COALESCE(MAX(CASE WHEN column_name = 'AppliedRate' THEN numeric_scale END), 0)::int AS \"Value\" " +
             "FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Sales'")

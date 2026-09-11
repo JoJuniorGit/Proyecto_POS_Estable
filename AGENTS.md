@@ -30,8 +30,8 @@ descripción del skill coincida con el trabajo, **debes cargarlo antes de escrib
    (`AppliedRate`, `TotalUSD`, `FinalPaidAmountBsS`, `TotalBsS`, `RoundingAdjustment`).
 3. **Aislamiento DTO**: el pipeline de datos va Entidad → DTO explícito; no exponer
    entidades de EF al cliente ni hacer doble fetch (patrón `AsSplitQuery`/proyección).
-4. **Techo de tasa BCV**: redondeo hacia arriba a **4 decimales** (helper único
-   `Core/Helpers/PricingCalculator.cs`); precio por unidad a centavos. Decisión 8.25-E1.
+4. **Techo de tasa BCV**: redondeo hacia arriba a **2 decimales** (helper único
+   `Core/Helpers/PricingCalculator.cs`); precio por unidad a centavos. Decisión 8.25-E1 (ajustada a 2d en 8.102).
 5. **Nomenclatura de tests**: `Metodo_Escenario_ResultadoEsperado`. Sin emojis.
 6. **JSON en camelCase** y errores HTTP en RFC 7807 (sin filtrar `ex.Message`
    a clientes) — decisiones 8.23-C1/C2.

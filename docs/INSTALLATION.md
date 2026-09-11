@@ -192,7 +192,7 @@ Procedimiento cuando no hay red:
 
    { "value": 73.25 }
    ```
-   El backend redondea hacia arriba a 4 decimales (`Math.Ceiling`) y la guarda como la tasa oficial del día. Una vez registrada, la venta usa esa tasa (anclada por petición) aunque la red siga caída.
+   El backend redondea hacia arriba a 2 decimales (`Math.Ceiling`) y la guarda como la tasa oficial del día. Una vez registrada, la venta usa esa tasa (anclada por petición) aunque la red siga caída.
 3. Si la red se recupera, `POST /api/exchange-rate/sync-bcv` fuerza un rastreo manual del portal para corregir el valor si el banco lo ajustó; o se vuelve a activar el auto-sync (intervalo > 0).
 4. **Integridad:** la tasa del día queda como `AppliedRate` persistida en cada venta; el historial nunca se recalcula con la tasa actual (`rules.md` §1).
 
@@ -357,7 +357,7 @@ Checklist de release (por versión):
 
 ### 13.3 Tasa BCV no disponible / sin internet
 1. Si no hay red: fijar `BcvSettings:AutoSyncIntervalMinutes` ≤ 0 y reiniciar.
-2. Registrar la tasa del día como Admin: `POST /api/exchange-rate { "value": <tasa> }` (ceil 4 decimales). Sin tasa vigente, la venta se rechaza explícitamente (sin montos inventados). Detalle: §7.
+2. Registrar la tasa del día como Admin: `POST /api/exchange-rate { "value": <tasa> }` (ceil 2 decimales). Sin tasa vigente, la venta se rechaza explícitamente (sin montos inventados). Detalle: §7.
 
 ### 13.4 Stock inconsistente / sospecha de sobreventa
 1. Revisar `StockMovements` del producto y el historial de la venta (los snapshots no se recalculan, §10/rules.md).

@@ -14,13 +14,13 @@ public class ExchangeRateServiceRateNormalizationTests
     }
 
     [Fact]
-    public void CurrentRate_WhenRateExact_RoundsUpToCeiling4Decimals()
+    public void CurrentRate_WhenRateExact_RoundsUpToCeiling2Decimals()
     {
         var service = CreateService();
         try
         {
             service.CurrentRate = 36.502175m;
-            Assert.Equal(36.5022m, service.CurrentRate);
+            Assert.Equal(36.51m, service.CurrentRate);
         }
         finally
         {
@@ -29,13 +29,13 @@ public class ExchangeRateServiceRateNormalizationTests
     }
 
     [Fact]
-    public void SetCurrentRateSynchronously_WhenRateExact_RoundsUpToCeiling4Decimals()
+    public void SetCurrentRateSynchronously_WhenRateExact_RoundsUpToCeiling2Decimals()
     {
         var service = CreateService();
         try
         {
             service.SetCurrentRateSynchronously(36.502175m);
-            Assert.Equal(36.5022m, service.CurrentRate);
+            Assert.Equal(36.51m, service.CurrentRate);
         }
         finally
         {
@@ -49,10 +49,10 @@ public class ExchangeRateServiceRateNormalizationTests
         var service = CreateService();
         try
         {
-            service.SetCurrentRateSynchronously(36.5022m);
-            Assert.Equal(36.5022m, service.CurrentRate);
-            service.SetCurrentRateSynchronously(36.5022m);
-            Assert.Equal(36.5022m, service.CurrentRate);
+            service.SetCurrentRateSynchronously(36.51m);
+            Assert.Equal(36.51m, service.CurrentRate);
+            service.SetCurrentRateSynchronously(36.51m);
+            Assert.Equal(36.51m, service.CurrentRate);
         }
         finally
         {

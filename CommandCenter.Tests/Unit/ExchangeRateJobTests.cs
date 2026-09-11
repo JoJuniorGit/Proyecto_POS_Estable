@@ -166,7 +166,7 @@ public class ExchangeRateJobTests
 
         var scraperLogger = new Mock<ILogger<BcvScraperService>>();
         var scraperMock = new Mock<BcvScraperService>(new HttpClient(), scraperLogger.Object, null!);
-        // Raw rate with extra precision: 804.63001 -> should be rounded up to 4 decimals (804.6301)
+        // Raw rate with extra precision: 804.63001 -> should be rounded up to 2 decimals (804.64)
         scraperMock.Setup(s => s.GetOfficialUsdRateAsync(It.IsAny<CancellationToken>()))
                    .ReturnsAsync(804.63001m);
 
@@ -201,13 +201,13 @@ public class ExchangeRateJobTests
         var today = TimeZoneHelper.GetVenezuelaDate();
         var savedRecord = await dbContext.ExchangeRateHistory.FirstOrDefaultAsync(r => r.Date == today);
         Assert.NotNull(savedRecord);
-        Assert.Equal(804.6301m, savedRecord.Rate);
+        Assert.Equal(804.64m, savedRecord.Rate);
 
         inventoryMock.Verify(i => i.InvalidateTodayExchangeRateCache(), Times.Once);
-        salesMock.Verify(s => s.RecalculateOnHoldSalesAsync(804.6301m), Times.Once);
+        salesMock.Verify(s => s.RecalculateOnHoldSalesAsync(804.64m), Times.Once);
 
         clientProxyMock.Verify(
-            p => p.SendCoreAsync("ReceiveRateUpdate", It.Is<object[]>(o => (decimal)o[0] == 804.6301m), It.IsAny<CancellationToken>()),
+            p => p.SendCoreAsync("ReceiveRateUpdate", It.Is<object[]>(o => (decimal)o[0] == 804.64m), It.IsAny<CancellationToken>()),
             Times.Once);
         clientProxyMock.Verify(
             p => p.SendCoreAsync("OnHoldSalesUpdated", It.IsAny<object[]>(), It.IsAny<CancellationToken>()),
@@ -215,12 +215,12 @@ public class ExchangeRateJobTests
     }
 
     [Theory]
-    [InlineData(804.63001, 804.6301)]
-    [InlineData(804.6301, 804.6301)]
-    [InlineData(805.123456, 805.1235)]
-    [InlineData(800.00001, 800.0001)]
-    [InlineData(36.456789, 36.4568)]
-    public void PricingCalculator_RoundExchangeRateCeiling_RoundsUpTo4Decimals(decimal input, decimal expected)
+    [InlineData(804.63001, 804.64)]
+    [InlineData(804.64, 804.64)]
+    [InlineData(805.123456, 805.13)]
+    [InlineData(800.00001, 800.01)]
+    [InlineData(36.456789, 36.46)]
+    public void PricingCalculator_RoundExchangeRateCeiling_RoundsUpTo2Decimals(decimal input, decimal expected)
     {
         var result = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(input);
         Assert.Equal(expected, result);
