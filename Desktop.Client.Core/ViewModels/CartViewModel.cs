@@ -9,7 +9,6 @@ using Desktop.Client.Services;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
 
 namespace Desktop.Client.ViewModels;
 
@@ -22,12 +21,14 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
     private readonly ISalesService _salesService;
     private readonly IExchangeRateService _exchangeRateService;
     private readonly IDialogService? _dialogService;
+    private readonly IDispatcherInvoker _dispatcherInvoker;
 
-    public CartViewModel(ISalesService salesService, IExchangeRateService exchangeRateService, IDialogService? dialogService = null)
+    public CartViewModel(ISalesService salesService, IExchangeRateService exchangeRateService, IDialogService? dialogService = null, IDispatcherInvoker? dispatcherInvoker = null)
     {
         _salesService = salesService;
         _exchangeRateService = exchangeRateService;
         _dialogService = dialogService;
+        _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
 
         // Reactive sync: When the rate changes, update all items and totals at once.
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
@@ -169,7 +170,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             }
         }
 
-        UiThreadMarshaller.Invoke(DoUpdate);
+        _dispatcherInvoker.Invoke(DoUpdate);
     }
 
     private void RecalculateTotals()
@@ -230,7 +231,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         try
         {
             var updated = await _salesService.GetSaleAsync(CurrentSale!.Id);
-            UiThreadMarshaller.Invoke(() => CurrentSale = updated);
+            _dispatcherInvoker.Invoke(() => CurrentSale = updated);
         }
         catch
         {

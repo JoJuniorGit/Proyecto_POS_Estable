@@ -6,7 +6,6 @@ using Core.DTOs;
 using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
-using System.Windows;
 using System.Linq;
 using Core.Common;
 
@@ -64,19 +63,22 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     private readonly IDialogService? _dialogService;
+    private readonly IDispatcherInvoker _dispatcherInvoker;
 
     public SettingsViewModel(
         IPaymentService paymentService,
         ISettingsService settingsService,
         UserSession? userSession = null,
         IDialogService? dialogService = null,
-        IConnectionManager? connectionManager = null)
+        IConnectionManager? connectionManager = null,
+        IDispatcherInvoker? dispatcherInvoker = null)
     {
         _paymentService = paymentService;
         _settingsService = settingsService;
         UserSession = userSession;
         _dialogService = dialogService;
         _connectionManager = connectionManager;
+        _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
 
         if (_connectionManager != null)
         {
@@ -461,9 +463,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             UpdateConnectionStatusDisplay(e.Status);
         }
 
-        if (System.Windows.Application.Current != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+        if (!_dispatcherInvoker.CheckAccess())
         {
-            System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(Apply));
+            _dispatcherInvoker.BeginInvoke(Apply);
         }
         else
         {

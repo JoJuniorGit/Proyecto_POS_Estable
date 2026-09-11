@@ -6,7 +6,6 @@ using Desktop.Client.Services;
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
-using System.Windows;
 
 namespace Desktop.Client.ViewModels;
 

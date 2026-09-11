@@ -1,9 +1,11 @@
 using System;
+using System.Threading.Tasks;
 using System.Windows;
 using Core.Common;
 using Core.DTOs;
 using Core.Logging;
 using Desktop.Client.Views;
+using MaterialDesignThemes.Wpf;
 using Microsoft.Extensions.Logging;
 
 namespace Desktop.Client.Services;
@@ -60,6 +62,22 @@ public partial class WpfDialogService : IDialogService
         _exchangeRateService = exchangeRateService;
     }
 
+    public async Task<object?> ShowModalAsync(object content, string? dialogIdentifier = null)
+    {
+        if (Application.Current == null)
+        {
+            _logger?.LogWarning("[NO-OP DIALOG SUPPRESSED] Application.Current es nulo en ShowModalAsync.");
+            return null;
+        }
+
+        using var scope = TrackModal();
+        return await DialogHost.Show(content, dialogIdentifier ?? "RootDialog");
+    }
+
+    public void CloseCurrentModal(object? result = null)
+    {
+        DialogHost.CloseDialogCommand.Execute(result, null);
+    }
 
     public bool ShowConfirm(string title, string message)
     {

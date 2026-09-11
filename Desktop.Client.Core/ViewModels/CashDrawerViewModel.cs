@@ -7,8 +7,6 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
-using MaterialDesignThemes.Wpf;
 
 namespace Desktop.Client.ViewModels;
 
@@ -19,6 +17,7 @@ public partial class CashDrawerViewModel : ObservableObject
     private readonly IDialogService? _dialogService;
     private readonly IPaymentService? _paymentService;
     private readonly UserSession? _userSession;
+    private readonly IDispatcherInvoker _dispatcherInvoker;
 
     private CashDrawerSessionDto? _activeSession;
     public CashDrawerSessionDto? ActiveSession
@@ -124,19 +123,21 @@ public partial class CashDrawerViewModel : ObservableObject
         IExchangeRateService exchangeRateService, 
         IDialogService? dialogService = null,
         IPaymentService? paymentService = null,
-        UserSession? userSession = null)
+        UserSession? userSession = null,
+        IDispatcherInvoker? dispatcherInvoker = null)
     {
         _cashDrawerService = cashDrawerService;
         _exchangeRateService = exchangeRateService;
         _dialogService = dialogService;
         _paymentService = paymentService;
         _userSession = userSession;
+        _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
 
         RecentIncomes.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRecentIncomes));
 
         WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (r, m) =>
         {
-            Application.Current.Dispatcher.Invoke(() => RefreshAsync().SafeFireAndForget("CashDrawer.TimeZoneChanged"));
+            _dispatcherInvoker.Invoke(() => RefreshAsync().SafeFireAndForget("CashDrawer.TimeZoneChanged"));
         });
 
         WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.CurrencyRateChangedMessage>(this, (r, m) =>
@@ -150,7 +151,7 @@ public partial class CashDrawerViewModel : ObservableObject
 
         WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.ShiftClosedMessage>(this, (r, m) =>
         {
-            Application.Current.Dispatcher.Invoke(() => RefreshAsync().SafeFireAndForget("CashDrawer.ShiftClosed"));
+            _dispatcherInvoker.Invoke(() => RefreshAsync().SafeFireAndForget("CashDrawer.ShiftClosed"));
         });
 
         if (_userSession == null || _userSession.IsLoggedIn)

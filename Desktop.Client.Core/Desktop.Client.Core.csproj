@@ -2,9 +2,9 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>false</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UseWPF>true</UseWPF>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,12 +15,12 @@
   <ItemGroup>
     <PackageReference Include="ClosedXML" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
-    <PackageReference Include="MaterialDesignThemes" />
     <PackageReference Include="MediatR" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
   </ItemGroup>
 
 </Project>

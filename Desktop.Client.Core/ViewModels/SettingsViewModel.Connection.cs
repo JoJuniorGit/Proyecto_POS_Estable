@@ -1,5 +1,4 @@
 using System;
-using System.Windows;
 using Desktop.Client.Services;
 
 namespace Desktop.Client.ViewModels;

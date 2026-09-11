@@ -118,6 +118,9 @@ public partial class App : Application
         builder.Services.AddSingleton<ISubnetScannerService, SubnetScannerService>();
         builder.Services.AddSingleton<IConnectionManager, ConnectionManager>();
         builder.Services.AddSingleton<IDialogService, WpfDialogService>();
+        builder.Services.AddSingleton<IDispatcherInvoker, WpfDispatcherInvoker>();
+        builder.Services.AddSingleton<IFilePickerDialog, WpfFilePickerDialog>();
+        builder.Services.AddSingleton<IAppShutdown, WpfAppShutdown>();
         builder.Services.AddSingleton<IJitterProvider, ProductionJitterProvider>();
         builder.Services.AddSingleton<ISecureTokenStorageService, SecureTokenStorageService>();
         builder.Services.AddSingleton<UserSession>();
@@ -178,7 +181,7 @@ public partial class App : Application
         builder.Services.AddSingleton<IExchangeRateService>(sp => 
         {
             var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("ExchangeRateApi");
-            return new ExchangeRateService(httpClient);
+            return new ExchangeRateService(httpClient, sp.GetRequiredService<IDispatcherInvoker>());
         });
 
         builder.Services.AddHttpClient<IUserService, UserService>(client =>
@@ -285,7 +288,11 @@ public partial class App : Application
             {
                 var currentVersion = Core.Common.AppVersionHelper.CurrentVersion;
                 Core.Logging.AppLogger.LogStart($"Client version obsolete. Installed: {currentVersion}, Required: {checkResult.MinimumClientVersion}. Displaying lockout modal.");
-                var lockoutVm = new ViewModels.VersionLockoutViewModel(currentVersion, checkResult.MinimumClientVersion, checkResult.UpdateServerUrl);
+                var lockoutVm = new ViewModels.VersionLockoutViewModel(
+                    currentVersion,
+                    checkResult.MinimumClientVersion,
+                    checkResult.UpdateServerUrl,
+                    _host.Services.GetRequiredService<IAppShutdown>());
                 var lockoutDialog = new Views.VersionLockoutDialog(lockoutVm);
                 lockoutDialog.ShowDialog();
                 ShutdownReason = "Versión del cliente no compatible";

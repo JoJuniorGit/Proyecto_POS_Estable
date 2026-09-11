@@ -661,6 +661,8 @@ internal class StubDialogService : Desktop.Client.Services.IDialogService
     public Task<bool> ShowServerConnectionDialogAsync() => Task.FromResult(false);
     public Task<Core.DTOs.ProductDto?> ShowVariantSelectionDialogAsync(Core.DTOs.ProductQuickInfoDto parentProduct) => Task.FromResult<Core.DTOs.ProductDto?>(null);
     public Task ShowVariantManagementDialogAsync(Core.DTOs.ProductDto parentProduct) => Task.CompletedTask;
+    public Task<object?> ShowModalAsync(object content, string? dialogIdentifier = null) => Task.FromResult<object?>(null);
+    public void CloseCurrentModal(object? result = null) { }
 }
 
 

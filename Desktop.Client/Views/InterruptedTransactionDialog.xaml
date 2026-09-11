@@ -35,7 +35,6 @@
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,15,0,0">
                 <Button Content="Entendido / Volver al Mostrador" 
                         Command="{Binding DismissCommand}" 
-                        CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
                         Style="{DynamicResource MaterialDesignRaisedButton}" 
                         Background="#D97706" 
                         BorderBrush="#D97706" 

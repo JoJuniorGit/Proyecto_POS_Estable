@@ -9,8 +9,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
-using MaterialDesignThemes.Wpf;
 
 namespace Desktop.Client.ViewModels;
 
@@ -195,7 +193,7 @@ public partial class PendingOrdersViewModel : ObservableObject
                 overrideSale: sale,
                 dialogService: _dialogService);
 
-            var result = await DialogHost.Show(checkoutVm, "RootDialog");
+            var result = await _dialogService.ShowModalAsync(checkoutVm, "RootDialog");
 
             // Always refresh after checkout dialog closes
             await EnsureLoadedAsync();

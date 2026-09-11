@@ -5,10 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.ComponentModel;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Data;
 
 namespace Desktop.Client.ViewModels;
 
@@ -35,15 +32,11 @@ public partial class PendingPickupsViewModel : ObservableObject
     private const int PageSize = 200;
     private int _totalCount;
     private bool _loaded;
-    private readonly ICollectionView _pickupsView;
 
     public ObservableCollection<PendingPickupClientDto> Pickups { get; } = new();
 
-    public ICollectionView FilteredPickups => _pickupsView;
-
-    private bool FilterPredicate(object obj)
+    public bool MatchesSearch(PendingPickupClientDto p)
     {
-        if (obj is not PendingPickupClientDto p) return false;
         if (string.IsNullOrWhiteSpace(SearchQuery)) return true;
         var q = SearchQuery.Trim().ToLower();
         return (p.CustomerName ?? string.Empty).ToLower().Contains(q) ||
@@ -51,14 +44,13 @@ public partial class PendingPickupsViewModel : ObservableObject
                (p.InvoiceNumber?.ToString() ?? p.SaleId.ToString()).Contains(q);
     }
 
-    partial void OnSearchQueryChanged(string value) => _pickupsView.Refresh();
+    partial void OnSearchQueryChanged(string value) => OnPropertyChanged(nameof(Pickups));
 
     public PendingPickupsViewModel(ISalesService salesService, IDialogService dialogService)
     {
         _salesService = salesService;
         _dialogService = dialogService;
-        _pickupsView = CollectionViewSource.GetDefaultView(Pickups);
-        _pickupsView.Filter = FilterPredicate;
+        Pickups.CollectionChanged += (_, _) => OnPropertyChanged(nameof(Pickups));
     }
 
     public async Task EnsureLoadedAsync()

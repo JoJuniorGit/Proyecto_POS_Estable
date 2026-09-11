@@ -13,6 +13,7 @@ public partial class LoginViewModel : ObservableObject, IDisposable
     private readonly IDialogService _dialogService;
     private readonly UserSession _userSession;
     private readonly IConnectionManager? _connectionManager;
+    private readonly IDispatcherInvoker _dispatcherInvoker;
     private readonly EventHandler<ConnectionStatusEventArgs>? _connectionStatusHandler;
 
     [ObservableProperty]
@@ -84,12 +85,13 @@ public partial class LoginViewModel : ObservableObject, IDisposable
 
     public event Action? LoginSuccess;
 
-    public LoginViewModel(IUserService userService, IDialogService dialogService, UserSession userSession, IConnectionManager? connectionManager = null)
+    public LoginViewModel(IUserService userService, IDialogService dialogService, UserSession userSession, IConnectionManager? connectionManager = null, IDispatcherInvoker? dispatcherInvoker = null)
     {
         _userService = userService;
         _dialogService = dialogService;
         _userSession = userSession;
         _connectionManager = connectionManager;
+        _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
 
         if (_connectionManager != null)
         {
@@ -141,9 +143,9 @@ public partial class LoginViewModel : ObservableObject, IDisposable
             };
         }
 
-        if (System.Windows.Application.Current != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+        if (!_dispatcherInvoker.CheckAccess())
         {
-            System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(ApplyUpdate));
+            _dispatcherInvoker.BeginInvoke(ApplyUpdate);
         }
         else
         {

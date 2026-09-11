@@ -5719,3 +5719,86 @@ C. VERIFICACION REAL
      filtro conservado, MVVM limpio, sin regresiones de tests.
 
 FIN DEL ANEXO - REVISION 8.83
+
+ANEXO 8.84 - DESACOPLAR DESKTOP.CLIENT.CORE DE WPF (8.20-M01 RESUELTO)
+-------------------------------------------------------------------
+Fecha: 2026-09-10 | Rama/Bif: V0.15 | Objetivo: resolver la deuda estructural
+8.20-M01 (docs/reporte.txt A.3): Desktop.Client.Core estaba acoplado a WPF en
+~20 archivos (System.Windows/Application.Current/Dispatcher/DialogHost/
+DispatcherTimer/OpenFileDialog/SaveFileDialog/Window/ICollectionView).
+Decision usuario: desacople TOTAL + mover ICollectionView a la Vista.
+
+A. CSPJ PROJ - DESACOPLE TOTAL
+   - Desktop.Client.Core.csproj: TargetFramework se mantiene net10.0-windows pero
+     UseWPF pasa de true a false (excluye ensamblados WPF: PresentationFramework,
+     WindowsBase), y se elimina la referencia al paquete MaterialDesignThemes.
+     Se agrega System.Security.Cryptography.ProtectedData (DPAPI) en
+     Directory.Packages.props (8.0.0) porque UseWPF=false ya no lo trae implicito;
+     DPAPI es API de Windows, NO WPF, y es necesaria para SecureTokenStorageService.
+   - Resultado: Desktop.Client.Core ya NO referencia tipos WPF (0 using
+     System.Windows/Microsoft.Win32/MaterialDesignThemes/System.Windows.Threading/
+     System.Windows.Data).
+
+B. NUEVAS ABSTRACCIONES PURAS (Desktop.Client.Core/Services)
+   - IDispatcherInvoker (+ InlineDispatcherInvoker por defecto): marshalling al hilo
+     de UI (CheckAccess/Invoke/BeginInvoke/InvokeAsync). Sustituye UiThreadMarshaller.
+   - IFilePickerDialog (+ NoopFilePicker): PickFilePath / PickSaveFilePath.
+   - IAppShutdown: Shutdown() (nombre elegido para no colisionar con
+     Microsoft.Extensions.Hosting.IApplicationLifetime).
+   - IDialogService se extiende con ShowModalAsync(object, string?) y
+     CloseCurrentModal(object?) (sustituyen DialogHost.Show/CloseDialogCommand).
+
+C. REFACTOR DE CORE (~20 ARCHIVOS)
+   - Marshalling Dispatcher -> IDispatcherInvoker inyectado (default inline, seguro
+     en tests sin STA): CartViewModel, CashDrawerViewModel, InventoryViewModel,
+     LoginViewModel, ProductDialogViewModel.Variants, SettingsViewModel,
+     PosViewModel, ExchangeRateService, UserSessionHeaderHandler.
+     SalesHistoryViewModel conserva Action<Action>? pero el fallback WPF se
+     reemplaza por inline (action => action()); en produccion DI provee el real.
+   - DialogHost -> IDialogService: CheckoutViewModel usa CloseCurrentModal(realId/-1);
+     PendingOrdersViewModel y PosViewModel.Orders usan ShowModalAsync(checkoutVm,
+     "RootDialog").
+   - DispatcherTimer (debounce 500ms de SKU) -> CancellationTokenSource + Task.Delay
+     en ProductDialogViewModel (RestartSkuDebounce/DebounceSkuVerificationAsync con
+     marshal via invoker; Dispose cancela/dispone _skuDebounceCts y
+     _skuCancellationTokenSource; OnDebounceTimerTick eliminado).
+   - OpenFileDialog/SaveFileDialog -> IFilePickerDialog: ImportProductsViewModel
+     (seleccion de archivo, exportacion, plantilla) y DailyClosureViewModel
+     (comprobante de cierre).
+   - Application.Current.Shutdown() -> IAppShutdown en VersionLockoutViewModel.
+   - InterruptedTransactionViewModel: Dismiss(Window) -> Dismiss() + evento
+     RequestClose; la vista Desktop.Client/Views/InterruptedTransactionDialog cierra
+     la ventana (code-behind de vista, sin logica de negocio).
+   - PendingPickupsViewModel: se retira System.Windows.Data.ICollectionView (WPF);
+     el VM expone ObservableCollection Pickups + metodo MatchesSearch(item)
+     (predicado de busqueda); la Vista PendingPickupsView.xaml.cs crea un
+     ListCollectionView con Filter=vm.MatchesSearch y refresca en SearchQuery/Pickups,
+     preservando la virtualizacion de tarjetas del 8.83 (movida a la capa de vista).
+   - UiThreadMarshaller.cs ELIMINADO (sin usos restantes).
+
+D. IMPLEMENTACIONES WPF (Desktop.Client) + DI
+   - Nuevas: WpfDispatcherInvoker, WpfFilePickerDialog (OpenFileDialog/SaveFileDialog),
+     WpfAppShutdown. WpfDialogService ampliado: ShowModalAsync via DialogHost.Show bajo
+     TrackModal() (mantiene HasOpenModalDialog) y CloseCurrentModal via
+     DialogHost.CloseDialogCommand.
+   - DI en App.xaml.cs: se registran IDispatcherInvoker/IFilePickerDialog/IAppShutdown;
+     la fabrica de ExchangeRateService inyecta el invoker; VersionLockoutViewModel recibe
+     IAppShutdown. Los VMs con parametros opcionales se resuelven por el contenedor
+     (inyecta las implementaciones WPF reales).
+
+E. TESTS
+   - StubDialogService (ProductImportExportTests) implementa ShowModalAsync y
+     CloseCurrentModal (los 2 metodos nuevos de IDialogService).
+   - Los defaults inline/null en Core mantienen los tests sin STA funcionando (misma
+     semantica que UiThreadMarshaller con Application.Current null).
+
+F. VERIFICACION REAL
+   - Build Release 0/0 (Core, Desktop.Client, tests). Suite .NET 798/798.
+   - Reviewer aprobado: 0 tipos WPF en Core, marshalling sin regresion de deadlock
+     (8.9-L7 preservado en BroadcastRateChange), debounce CTS sin fugas, coherencia
+     DialogHost, virtualizacion de PendingPickups preservada, MVVM limpio. Hallazgo de
+     estilo corregido: RequestClose como event.
+   - Roadmap v0.13.0; Reporte de estado v1.50.0; modulo 06 (8.20-M01 RESUELTO;
+     8.20-M02 parcialmente mitigado al unificar el marshalling no bloqueante via invoker).
+
+FIN DEL ANEXO - REVISION 8.84

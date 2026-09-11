@@ -10,7 +10,6 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 
 namespace Desktop.Client.ViewModels;
 
@@ -19,6 +18,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     private readonly IProductService _productService;
     private readonly IExchangeRateService _exchangeRateService;
     private readonly IDialogService? _dialogService;
+    private readonly IDispatcherInvoker _dispatcherInvoker;
     private CancellationTokenSource? _cancellationTokenSource;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
 
@@ -145,12 +145,14 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         IProductService productService,
         IExchangeRateService exchangeRateService,
         UserSession? userSession = null,
-        IDialogService? dialogService = null)
+        IDialogService? dialogService = null,
+        IDispatcherInvoker? dispatcherInvoker = null)
     {
         _productService = productService;
         _exchangeRateService = exchangeRateService;
         UserSession = userSession;
         _dialogService = dialogService;
+        _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
 
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
         {
@@ -278,9 +280,9 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 UpdatePageNumbers();
             }
 
-            if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+            if (!_dispatcherInvoker.CheckAccess())
             {
-                Application.Current.Dispatcher.Invoke(UpdateState);
+                _dispatcherInvoker.Invoke(UpdateState);
             }
             else
             {
@@ -356,9 +358,9 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 HasMore = result.HasMore;
             }
 
-            if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+            if (!_dispatcherInvoker.CheckAccess())
             {
-                Application.Current.Dispatcher.Invoke(UpdateMerge);
+                _dispatcherInvoker.Invoke(UpdateMerge);
             }
             else
             {

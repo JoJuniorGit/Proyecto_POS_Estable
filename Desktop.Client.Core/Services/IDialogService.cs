@@ -30,6 +30,12 @@ public interface IDialogService
     Task<bool> ShowServerConnectionDialogAsync();
     Task<ProductDto?> ShowVariantSelectionDialogAsync(ProductQuickInfoDto parentProduct);
     Task ShowVariantManagementDialogAsync(ProductDto parentProduct);
+
+    /// <summary>Abre el dialogo modal alojado (p. ej. checkout) y devuelve el resultado al cerrarse.</summary>
+    Task<object?> ShowModalAsync(object content, string? dialogIdentifier = null);
+
+    /// <summary>Cierra el dialogo modal actual devolviendo un resultado (sustituye DialogHost.CloseDialogCommand).</summary>
+    void CloseCurrentModal(object? result = null);
 }
 
 

@@ -90,8 +90,7 @@
         </Border>
 
         <!-- ── 3. Lista de Tarjetas Virtualizada (ListBox, 1 columna) ── -->
-        <ListBox Grid.Row="2"
-                 ItemsSource="{Binding FilteredPickups}"
+        <ListBox x:Name="PickupsList" Grid.Row="2"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  VirtualizingStackPanel.IsVirtualizing="True"
                  VirtualizingStackPanel.VirtualizationMode="Recycling"

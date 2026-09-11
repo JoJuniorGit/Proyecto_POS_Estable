@@ -6,7 +6,6 @@ using Desktop.Client.Services;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
 
 namespace Desktop.Client.ViewModels;
 
@@ -169,7 +168,11 @@ public partial class PosViewModel
         }
 
         var checkoutVm = new CheckoutViewModel(Cart.CurrentSale, ActivePaymentMethods, _salesService, CurrentExchangeRate, _userSession, overrideSale: null, dialogService: _dialogService);
-        var result = await MaterialDesignThemes.Wpf.DialogHost.Show(checkoutVm, "RootDialog");
+        object? result = null;
+        if (_dialogService != null)
+        {
+            result = await _dialogService.ShowModalAsync(checkoutVm, "RootDialog");
+        }
         checkoutVm.Dispose();
 
         if (result is int realInvoice)

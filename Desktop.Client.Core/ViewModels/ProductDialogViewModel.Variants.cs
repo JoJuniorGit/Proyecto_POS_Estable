@@ -224,9 +224,9 @@ public partial class ProductDialogViewModel
             }
         }
 
-        if (System.Windows.Application.Current != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+        if (!_dispatcherInvoker.CheckAccess())
         {
-            System.Windows.Application.Current.Dispatcher.Invoke(Update);
+            _dispatcherInvoker.Invoke(Update);
         }
         else
         {

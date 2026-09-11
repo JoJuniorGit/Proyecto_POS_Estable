@@ -11,7 +11,6 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 
 namespace Desktop.Client.ViewModels;
 
@@ -26,6 +25,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
     private readonly IExchangeRateService _exchangeRateService;
     private readonly UserSession? _userSession;
     private readonly IDialogService? _dialogService;
+    private readonly IDispatcherInvoker _dispatcherInvoker;
 
     private CartViewModel _cart;
     public CartViewModel Cart
@@ -104,7 +104,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
         IExchangeRateService exchangeRateService,
         CartViewModel cartViewModel,
         UserSession? userSession = null,
-        IDialogService? dialogService = null)
+        IDialogService? dialogService = null,
+        IDispatcherInvoker? dispatcherInvoker = null)
     {
         _salesService = salesService ?? throw new ArgumentNullException(nameof(salesService));
         _productService = productService ?? throw new ArgumentNullException(nameof(productService));
@@ -113,6 +114,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
         _cart = cartViewModel ?? throw new ArgumentNullException(nameof(cartViewModel));
         _userSession = userSession;
         _dialogService = dialogService;
+        _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
 
         // Sync local property when exchange rate changes globally
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
@@ -141,7 +143,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
             Suggestions.Clear();
         };
 
-        UiThreadMarshaller.Invoke(clearAction);
+        _dispatcherInvoker.Invoke(clearAction);
     }
 
     public async Task InitializeForSessionAsync()
@@ -206,7 +208,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
                     }
                 };
 
-                UiThreadMarshaller.Invoke(updateAction);
+                _dispatcherInvoker.Invoke(updateAction);
                 return;
             }
             catch (Exception ex)
@@ -278,7 +280,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
         var token = newCts.Token;
         var term = SearchText ?? string.Empty;
 
-        void RunOnUI(Action action) => UiThreadMarshaller.Invoke(action);
+        void RunOnUI(Action action) => _dispatcherInvoker.Invoke(action);
 
         if (string.IsNullOrWhiteSpace(term))
         {

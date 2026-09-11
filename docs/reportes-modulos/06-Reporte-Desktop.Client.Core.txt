@@ -226,3 +226,30 @@ ADENDA REV. 8.15 (OLA DE CORRECCION TOTAL — estados actualizados)
 
 FIN DEL REPORTE Desktop.Client.Core — ADENDA REV. 8.15
 =================================================================================
+
+================================================================================
+ADENDA REV. 8.84 - DESACOPLE WPF (8.20-M01 RESUELTO)
+================================================================================
+- [8.20-M01] (acoplamiento Core->WPF en 20 archivos) -> ✅ RESUELTO: Desktop.Client.Core
+  pasa a UseWPF=false (sin ensamblados WPF) y se elimina MaterialDesignThemes; 0 tipos
+  WPF en Core. Abstracciones puras: IDispatcherInvoker (+InlineDispatcherInvoker),
+  IFilePickerDialog (+NoopFilePicker), IAppShutdown; IDialogService +ShowModalAsync/
+  CloseCurrentModal. Marshalling Dispatcher -> IDispatcherInvoker (Cart, CashDrawer,
+  Inventory, Login, ProductDialog(.Variants), Settings, PosViewModel, ExchangeRateService,
+  UserSessionHeaderHandler); SalesHistoryViewModel default inline. DialogHost ->
+  IDialogService (Checkout/PendingOrders/PosViewModel.Orders). DispatcherTimer -> CTS
+  debounce (ProductDialogViewModel). OpenFileDialog/SaveFileDialog -> IFilePickerDialog
+  (ImportProducts/DailyClosure). Application.Current.Shutdown -> IAppShutdown
+  (VersionLockout). Dismiss(Window) -> RequestClose (InterruptedTransaction).
+  ICollectionView -> ObservableCollection + MatchesSearch, CollectionView en la vista
+  (PendingPickups, virtualizacion 8.83 preservada). UiThreadMarshaller eliminado.
+  Implementaciones WPF en Desktop.Client (WpfDispatcherInvoker/WpfFilePickerDialog/
+  WpfAppShutdown/WpfDialogService) + DI. Build Release 0/0; suite .NET 798/798.
+- [8.20-M02] (Dispatcher.Invoke bloqueante en Core) -> ✅ MITIGADO: el marshalling se
+  unifica en IDispatcherInvoker; ExchangeRateService.BroadcastRateChange conserva
+  InvokeAsync no bloqueante (8.9-L7); en produccion WpfDispatcherInvoker mapea
+  Invoke/BeginInvoke/InvokeAsync a Dispatcher sin Wait() bloqueante.
+- [8W-M1] (MessageBox) -> ya en 0 en Core (reporte previo desactualizado).
+
+FIN DEL REPORTE Desktop.Client.Core — ADENDA REV. 8.84
+================================================================================

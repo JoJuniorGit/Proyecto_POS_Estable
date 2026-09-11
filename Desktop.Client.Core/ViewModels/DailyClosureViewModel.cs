@@ -58,14 +58,16 @@ public partial class DailyClosureViewModel : ObservableObject
 {
     private readonly IDailyClosureClientService _closureService;
     private readonly IDialogService _dialogService;
+    private readonly IFilePickerDialog _filePicker;
     public UserSession? UserSession { get; }
 
     public bool CanToggleBlindClosing => UserSession?.IsAdmin == true;
 
-    public DailyClosureViewModel(IDailyClosureClientService closureService, IDialogService dialogService, UserSession? userSession = null)
+    public DailyClosureViewModel(IDailyClosureClientService closureService, IDialogService dialogService, UserSession? userSession = null, IFilePickerDialog? filePicker = null)
     {
         _closureService = closureService;
         _dialogService = dialogService;
+        _filePicker = filePicker ?? new NoopFilePicker();
         UserSession = userSession;
 
         // Forced true for cashiers, default false for admins
@@ -380,16 +382,15 @@ public partial class DailyClosureViewModel : ObservableObject
 
         try
         {
-            var saveDialog = new Microsoft.Win32.SaveFileDialog
-            {
-                Filter = "Archivo de Texto (*.txt)|*.txt",
-                FileName = $"Comprobante_Cierre_{localNow:yyyyMMdd_HHmmss}.txt"
-            };
+            var savePath = _filePicker.PickSaveFilePath(
+                "Guardar Comprobante de Cierre",
+                "Archivo de Texto (*.txt)|*.txt",
+                $"Comprobante_Cierre_{localNow:yyyyMMdd_HHmmss}.txt");
 
-            if (saveDialog.ShowDialog() == true)
+            if (!string.IsNullOrEmpty(savePath))
             {
-                System.IO.File.WriteAllText(saveDialog.FileName, sb.ToString());
-                _dialogService.ShowInfo("Comprobante Guardado", $"El comprobante se guardó correctamente en:\n{saveDialog.FileName}");
+                System.IO.File.WriteAllText(savePath, sb.ToString());
+                _dialogService.ShowInfo("Comprobante Guardado", $"El comprobante se guardó correctamente en:\n{savePath}");
             }
         }
         catch (Exception ex)

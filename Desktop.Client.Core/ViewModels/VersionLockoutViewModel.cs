@@ -1,12 +1,13 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Desktop.Client.Services;
 using System.Diagnostics;
-using System.Windows;
 
 namespace Desktop.Client.ViewModels;
 
 public partial class VersionLockoutViewModel : ObservableObject
 {
+    private readonly IAppShutdown _lifetime;
     [ObservableProperty]
     private string _currentVersion = "1.0.0";
 
@@ -22,11 +23,12 @@ public partial class VersionLockoutViewModel : ObservableObject
     [ObservableProperty]
     private bool _isDownloading;
 
-    public VersionLockoutViewModel(string currentVersion, string minimumClientVersion, string updateServerUrl)
+    public VersionLockoutViewModel(string currentVersion, string minimumClientVersion, string updateServerUrl, IAppShutdown? lifetime = null)
     {
         CurrentVersion = currentVersion;
         MinimumClientVersion = minimumClientVersion;
         UpdateServerUrl = updateServerUrl;
+        _lifetime = lifetime ?? new NoopAppShutdown();
         StatusMessage = $"Su versión instalada ({currentVersion}) es inferior a la requerida ({minimumClientVersion}). Por favor actualice el sistema.";
     }
 
@@ -71,6 +73,11 @@ public partial class VersionLockoutViewModel : ObservableObject
     [RelayCommand]
     private void ExitApp()
     {
-        Application.Current.Shutdown();
+        _lifetime.Shutdown();
+    }
+
+    private sealed class NoopAppShutdown : IAppShutdown
+    {
+        public void Shutdown() { }
     }
 }

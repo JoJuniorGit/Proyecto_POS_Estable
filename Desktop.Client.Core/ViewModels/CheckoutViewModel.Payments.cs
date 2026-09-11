@@ -5,7 +5,6 @@ using Desktop.Client.Helpers;
 using Desktop.Client.Services;
 using System.Globalization;
 using System.Linq;
-using System.Windows;
 using SalePaymentDto = Desktop.Client.Services.SalePaymentDto;
 
 namespace Desktop.Client.ViewModels;

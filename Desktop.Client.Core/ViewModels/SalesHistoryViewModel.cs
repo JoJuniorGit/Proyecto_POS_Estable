@@ -5,8 +5,6 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -244,14 +242,7 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
     public SalesHistoryViewModel(ISalesService salesService, Action<Action>? dispatchAction = null)
     {
         _salesService = salesService;
-        _dispatchAction = dispatchAction ?? (action =>
-        {
-            var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            if (dispatcher == null || dispatcher.CheckAccess())
-                action();
-            else
-                dispatcher.Invoke(action);
-        });
+        _dispatchAction = dispatchAction ?? (action => action());
 
         // Filtro inicial: solo el día en curso. Se asignan los campos directamente
         // (no las propiedades) para no disparar LoadHistoryAsync antes de que el

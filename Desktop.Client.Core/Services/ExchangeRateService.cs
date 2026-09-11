@@ -7,7 +7,6 @@ using System.Net.Security;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 using CommunityToolkit.Mvvm.Messaging;
 using Desktop.Client.Messages;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -22,6 +21,7 @@ namespace Desktop.Client.Services;
 public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisposable
 {
     private readonly HttpClient _httpClient;
+    private readonly IDispatcherInvoker _dispatcherInvoker;
     private readonly HubConnection _hubConnection;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private decimal _currentRate;
@@ -36,9 +36,10 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
         PropertyNameCaseInsensitive = true
     };
 
-    public ExchangeRateService(HttpClient httpClient)
+    public ExchangeRateService(HttpClient httpClient, IDispatcherInvoker? dispatcherInvoker = null)
     {
         _httpClient = httpClient;
+        _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
 
         var baseAddress = httpClient.BaseAddress ?? new Uri("http://localhost:5000/");
         var hubUri = new Uri(baseAddress, "hubs/exchange-rate");
@@ -73,32 +74,18 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
 
         _hubConnection.On("OnHoldSalesUpdated", () =>
         {
-            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
-            {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    WeakReferenceMessenger.Default.Send(new OnHoldSalesRefreshMessage());
-                });
-            }
-            else
+            _dispatcherInvoker.Invoke(() =>
             {
                 WeakReferenceMessenger.Default.Send(new OnHoldSalesRefreshMessage());
-            }
+            });
         });
 
         _hubConnection.On("OnPaymentMethodsUpdated", () =>
         {
-            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
-            {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    WeakReferenceMessenger.Default.Send(new Desktop.Client.ViewModels.PaymentMethodsChangedMessage());
-                });
-            }
-            else
+            _dispatcherInvoker.Invoke(() =>
             {
                 WeakReferenceMessenger.Default.Send(new Desktop.Client.ViewModels.PaymentMethodsChangedMessage());
-            }
+            });
         });
 
         InitializeAsync().SafeFireAndForget("ExchangeRateService.Initialize");
@@ -169,20 +156,13 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
 
     private void BroadcastRateChange(decimal newRate)
     {
-        if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
-        {
-            // 8.9-L7: InvokeAsync (no bloqueante): el hilo de fondo suelta el semáforo sin
-            // esperar al dispatcher, por lo que un setter síncrono desde la UI (Wait) jamás
-            // puede quedar atrapado esperando un dispatcher bloqueado por sí mismo.
-            Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                WeakReferenceMessenger.Default.Send(new ExchangeRateChangedMessage(newRate));
-            });
-        }
-        else
+        // 8.9-L7: InvokeAsync (no bloqueante): el hilo de fondo suelta el semáforo sin
+        // esperar al dispatcher, por lo que un setter síncrono desde la UI (Wait) jamás
+        // puede quedar atrapado esperando un dispatcher bloqueado por sí mismo.
+        _dispatcherInvoker.InvokeAsync(() =>
         {
             WeakReferenceMessenger.Default.Send(new ExchangeRateChangedMessage(newRate));
-        }
+        });
     }
 
     private async Task StartSignalRAsync()

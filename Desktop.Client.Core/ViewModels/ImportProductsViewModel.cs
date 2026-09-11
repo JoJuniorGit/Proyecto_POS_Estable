@@ -4,7 +4,6 @@ using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Desktop.Client.Messages;
 using Desktop.Client.Services;
-using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -12,7 +11,6 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
 
 namespace Desktop.Client.ViewModels;
 
@@ -37,6 +35,7 @@ public partial class ImportProductsViewModel : ObservableObject
     private readonly IProductImportService _importService;
     private readonly IExchangeRateService _exchangeRateService;
     private readonly IDialogService? _dialogService;
+    private readonly IFilePickerDialog _filePicker;
 
     public UserSession UserSession { get; }
 
@@ -44,12 +43,14 @@ public partial class ImportProductsViewModel : ObservableObject
         IProductImportService importService, 
         IExchangeRateService exchangeRateService, 
         UserSession userSession,
-        IDialogService? dialogService = null)
+        IDialogService? dialogService = null,
+        IFilePickerDialog? filePicker = null)
     {
         _importService = importService;
         _exchangeRateService = exchangeRateService;
         UserSession = userSession;
         _dialogService = dialogService;
+        _filePicker = filePicker ?? new NoopFilePicker();
     }
 
     public decimal CurrentExchangeRate => _exchangeRateService.CurrentRate;
@@ -231,14 +232,12 @@ public partial class ImportProductsViewModel : ObservableObject
             return;
         }
 
-        var saveFileDialog = new SaveFileDialog
-        {
-            Filter = "Archivo Excel (*.xlsx)|*.xlsx|Archivo CSV (*.csv)|*.csv",
-            Title = "Exportar Catálogo de Productos",
-            FileName = $"Productos_Catalogo_{DateTime.Now:yyyyMMdd}.xlsx"
-        };
+        var saveFilePath = _filePicker.PickSaveFilePath(
+            "Exportar Catálogo de Productos",
+            "Archivo Excel (*.xlsx)|*.xlsx|Archivo CSV (*.csv)|*.csv",
+            $"Productos_Catalogo_{DateTime.Now:yyyyMMdd}.xlsx");
 
-        if (saveFileDialog.ShowDialog() == true)
+        if (!string.IsNullOrEmpty(saveFilePath))
         {
             IsBusy = true;
             IsProgressIndeterminate = true;
@@ -246,9 +245,9 @@ public partial class ImportProductsViewModel : ObservableObject
 
             try
             {
-                await _importService.ExportProductsToFileAsync(saveFileDialog.FileName, ExportActiveOnly);
+                await _importService.ExportProductsToFileAsync(saveFilePath, ExportActiveOnly);
                 StatusMessage = "Catálogo exportado exitosamente.";
-                ShowInfo("Exportación Exitosa", $"El catálogo de productos se ha exportado correctamente en:\n{saveFileDialog.FileName}");
+                ShowInfo("Exportación Exitosa", $"El catálogo de productos se ha exportado correctamente en:\n{saveFilePath}");
             }
             catch (Exception ex)
             {
@@ -272,21 +271,19 @@ public partial class ImportProductsViewModel : ObservableObject
             return;
         }
 
-        var saveFileDialog = new SaveFileDialog
-        {
-            Filter = "Archivo Excel (*.xlsx)|*.xlsx|Archivo CSV (*.csv)|*.csv",
-            Title = "Guardar Plantilla de Importación",
-            FileName = "Productos_Plantilla_Importacion.xlsx"
-        };
+        var templatePath = _filePicker.PickSaveFilePath(
+            "Guardar Plantilla de Importación",
+            "Archivo Excel (*.xlsx)|*.xlsx|Archivo CSV (*.csv)|*.csv",
+            "Productos_Plantilla_Importacion.xlsx");
 
-        if (saveFileDialog.ShowDialog() == true)
+        if (!string.IsNullOrEmpty(templatePath))
         {
             IsBusy = true;
             IsProgressIndeterminate = true;
             StatusMessage = "Creando plantilla de importación...";
             try
             {
-                await _importService.GenerateTemplateAsync(saveFileDialog.FileName);
+                await _importService.GenerateTemplateAsync(templatePath);
                 StatusMessage = "Plantilla guardada exitosamente.";
             }
             catch (Exception ex)
@@ -312,15 +309,13 @@ public partial class ImportProductsViewModel : ObservableObject
             return;
         }
 
-        var openFileDialog = new OpenFileDialog
-        {
-            Filter = "Archivos compatibles (*.xlsx;*.csv)|*.xlsx;*.csv|Excel Files (*.xlsx)|*.xlsx|CSV Files (*.csv)|*.csv",
-            Title = "Seleccionar Archivo de Productos"
-        };
+        var filePath = _filePicker.PickFilePath(
+            "Seleccionar Archivo de Productos",
+            "Archivos compatibles (*.xlsx;*.csv)|*.xlsx;*.csv|Excel Files (*.xlsx)|*.xlsx|CSV Files (*.csv)|*.csv");
 
-        if (openFileDialog.ShowDialog() == true)
+        if (!string.IsNullOrEmpty(filePath))
         {
-            await ProcessFileAsync(openFileDialog.FileName);
+            await ProcessFileAsync(filePath);
         }
     }
 

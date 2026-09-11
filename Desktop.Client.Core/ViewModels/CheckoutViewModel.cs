@@ -1,16 +1,14 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using Core.DTOs;
+using Desktop.Client.Helpers;
+using Desktop.Client.Messages;
 using Desktop.Client.Services;
-using MaterialDesignThemes.Wpf;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
-using CommunityToolkit.Mvvm.Messaging;
-using Desktop.Client.Messages;
-using Core.DTOs;
-using Desktop.Client.Helpers;
 using SalePaymentDto = Desktop.Client.Services.SalePaymentDto;
 
 namespace Desktop.Client.ViewModels;
@@ -344,7 +342,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
                     _currentIdempotencyKey = null;
                     WeakReferenceMessenger.Default.Unregister<CartUpdatedMessage>(this);
                     // Pass result: positive id = liquidated, negative = abono
-                    DialogHost.CloseDialogCommand.Execute(realId, null);
+                    _dialogService?.CloseCurrentModal(realId);
                 }
                 else
                 {
@@ -363,7 +361,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
                     WeakReferenceMessenger.Default.Unregister<CartUpdatedMessage>(this);
                     // Pass -1 to indicate abono (not a full sale completion)
-                    DialogHost.CloseDialogCommand.Execute(-1, null);
+                    _dialogService?.CloseCurrentModal(-1);
                 }
             }
             else
@@ -378,7 +376,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
                 _currentIdempotencyKey = null;
                 WeakReferenceMessenger.Default.Unregister<CartUpdatedMessage>(this);
-                DialogHost.CloseDialogCommand.Execute(realId, null);
+                _dialogService?.CloseCurrentModal(realId);
             }
         }
         catch (System.OperationCanceledException)

@@ -19,10 +19,11 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
 {
     private readonly IProductService _productService;
     private readonly IExchangeRateService _exchangeRateService;
-    private readonly System.Windows.Threading.DispatcherTimer _debounceTimer;
+    private CancellationTokenSource? _skuDebounceCts;
     private CancellationTokenSource? _skuCancellationTokenSource;
     private readonly Product? _initialProduct;
     private readonly IDialogService? _dialogService;
+    private readonly IDispatcherInvoker _dispatcherInvoker;
 
     public Action<bool>? RequestClose;
     public Product ResultProduct { get; private set; }
@@ -99,12 +100,13 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
     public ObservableCollection<Core.Entities.UnitOfMeasureType> UnitOfMeasureTypes { get; } = new(Enum.GetValues<Core.Entities.UnitOfMeasureType>());
     public ObservableCollection<string> UnitOfMeasures { get; } = new ObservableCollection<string>();
 
-    public ProductDialogViewModel(IProductService productService, IExchangeRateService exchangeRateService, Product? product = null, UserSession? userSession = null, IDialogService? dialogService = null)
+    public ProductDialogViewModel(IProductService productService, IExchangeRateService exchangeRateService, Product? product = null, UserSession? userSession = null, IDialogService? dialogService = null, IDispatcherInvoker? dispatcherInvoker = null)
     {
         _productService = productService;
         _exchangeRateService = exchangeRateService;
         _initialProduct = product;
         _dialogService = dialogService;
+        _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
         UserSession = userSession;
 
         IsEditMode = product != null;
@@ -149,12 +151,6 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
         CaptureManualPricingSnapshot();
 
         CalculatePricing("Cost");
-
-        _debounceTimer = new System.Windows.Threading.DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(500)
-        };
-        _debounceTimer.Tick += OnDebounceTimerTick;
 
         LoadMetadataAsync().SafeFireAndForget("ProductDialogViewModel.LoadMetadata");
     }
@@ -210,8 +206,7 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
         // Skip validation in edit mode if SKU hasn't changed
         if (IsEditMode && _initialProduct?.SKU == value) return;
 
-        _debounceTimer.Stop();
-        _debounceTimer.Start();
+        RestartSkuDebounce();
     }
 
     [RelayCommand]
@@ -261,16 +256,32 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
         }
     }
 
-    private void OnDebounceTimerTick(object? sender, EventArgs e)
+    private void RestartSkuDebounce()
     {
-        _debounceTimer.Stop();
-        VerifySkuAsync().SafeFireAndForget("ProductDialogViewModel.VerifySku");
+        var newCts = new CancellationTokenSource();
+        var oldCts = Interlocked.Exchange(ref _skuDebounceCts, newCts);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+        DebounceSkuVerificationAsync(newCts.Token).SafeFireAndForget("ProductDialogViewModel.SkuDebounce");
+    }
+
+    private async Task DebounceSkuVerificationAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(500, token);
+            token.ThrowIfCancellationRequested();
+            await _dispatcherInvoker.InvokeAsync(() => VerifySkuAsync().SafeFireAndForget("ProductDialogViewModel.VerifySku"));
+        }
+        catch (OperationCanceledException) { }
     }
 
     private async Task VerifySkuAsync()
     {
-        _debounceTimer.Stop();
-
         if (IsGroupHeader)
         {
             IsSkuValid = true;
@@ -341,8 +352,13 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
 
     public void Dispose()
     {
-        _debounceTimer.Stop();
-        _debounceTimer.Tick -= OnDebounceTimerTick;
+        try
+        {
+            _skuDebounceCts?.Cancel();
+            _skuDebounceCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+        _skuDebounceCts = null;
         try
         {
             _skuCancellationTokenSource?.Cancel();
