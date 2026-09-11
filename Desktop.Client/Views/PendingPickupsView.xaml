@@ -5,89 +5,110 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
              mc:Ignorable="d"
+             Background="#F1F5F9"
              d:DataContext="{d:DesignInstance Type=vm:PendingPickupsViewModel}">
 
     <UserControl.Resources>
+        <helpers:BindingProxy x:Key="Proxy" Data="{Binding}" />
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <DropShadowEffect x:Key="EnterpriseCardShadow"
+                          Color="#000000"
+                          BlurRadius="15"
+                          Opacity="0.04"
+                          Direction="270"
+                          ShadowDepth="2"/>
     </UserControl.Resources>
 
     <Grid>
-<Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
         <!-- ── 1. Encabezado ── -->
-        <Border Grid.Row="0" Padding="24,20,24,12"
-                Background="{DynamicResource MaterialDesignPaper}"
-                BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="0,0,0,1">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0">
-                    <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="PackageCheck" Width="28" Height="28"
-                                                 VerticalAlignment="Center" Foreground="#7C3AED"/>
-                        <TextBlock Text="Retiros Pendientes (Mercancía en Custodia)"
-                                   Style="{DynamicResource MaterialDesignHeadline5TextBlock}"
-                                   FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/>
+        <DockPanel Grid.Row="0" Margin="24,20,24,14" LastChildFill="True">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Command="{Binding RefreshCommand}"
+                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                        BorderBrush="#CBD5E1"
+                        Foreground="#475569"
+                        VerticalAlignment="Center"
+                        Height="36"
+                        Padding="14,0"
+                        Margin="0,0,8,0"
+                        materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsLoading}"
+                        materialDesign:ButtonProgressAssist.IsIndeterminate="True"
+                        materialDesign:ButtonProgressAssist.Value="-1">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="Refresh" Width="16" Height="16" VerticalAlignment="Center"/>
+                        <TextBlock Text="Refrescar" FontWeight="SemiBold" FontSize="12" Margin="6,0,0,0"/>
                     </StackPanel>
-                    <TextBlock Text="Mercancía pagada al 100% pendiente de entrega física al cliente"
-                               FontSize="12" Foreground="{DynamicResource MaterialDesignBodyLight}"
-                               Margin="38,2,0,0"/>
-                </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Command="{Binding RefreshCommand}"
-                            Style="{DynamicResource MaterialDesignOutlinedButton}" VerticalAlignment="Center"
-                            materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsLoading}"
-                            materialDesign:ButtonProgressAssist.IsIndeterminate="True"
-                            materialDesign:ButtonProgressAssist.Value="-1">
-                        <StackPanel Orientation="Horizontal">
-                            <materialDesign:PackIcon Kind="Refresh" Width="16" Height="16" VerticalAlignment="Center"/>
-                            <TextBlock Text="Refrescar" Margin="6,0,0,0"/>
-                        </StackPanel>
-                    </Button>
+                </Button>
 
-                    <Button Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
-                            CommandParameter="{x:Static Dock.Right}"
-                            Style="{DynamicResource MaterialDesignIconButton}"
-                            ToolTip="Abrir Menú Principal"
-                            Margin="8,0,0,0" VerticalAlignment="Center">
-                        <materialDesign:PackIcon Kind="Menu" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                    </Button>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- ── 2. Barra de Búsqueda Refinada + Mensaje de Éxito ── -->
-        <Border Grid.Row="1" Padding="24,14" Background="{DynamicResource MaterialDesignBackground}">
-            <StackPanel>
-                <Grid x:Name="SearchGrid">
-                    <materialDesign:PackIcon Kind="Magnify" Width="20" Height="20"
-                                             HorizontalAlignment="Left" VerticalAlignment="Center"
-                                             Margin="14,0,0,0" Foreground="{DynamicResource MaterialDesignBodyLight}" Panel.ZIndex="1"/>
-                    <TextBox Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             materialDesign:HintAssist.Hint="Buscar por N° Factura, Nombre o Cédula..."
-                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                             Padding="38,8,12,8" FontSize="13"/>
-                </Grid>
-
-                <!-- Mensaje de Éxito -->
-                <Border Visibility="{Binding SuccessMessage, Converter={StaticResource BoolToVis}}"
-                        Background="#EDE9FE" CornerRadius="6" Padding="14,8" Margin="0,10,0,0">
-                    <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="PackageCheck" Width="18" Height="18" VerticalAlignment="Center" Foreground="#7C3AED"/>
-                        <TextBlock Text="{Binding SuccessMessage}" Foreground="#5B21B6"
-                                   FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Border>
+                <Button Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
+                        CommandParameter="{x:Static Dock.Right}"
+                        Style="{DynamicResource MaterialDesignIconButton}"
+                        ToolTip="Abrir Menú Principal"
+                        Height="36" Width="36"
+                        VerticalAlignment="Center">
+                    <materialDesign:PackIcon Kind="Menu" Width="22" Height="22" Foreground="#475569"/>
+                </Button>
             </StackPanel>
-        </Border>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <materialDesign:PackIcon Kind="PackageVariantClosedCheck" Width="26" Height="26" Foreground="#5E35B1" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Retiros Pendientes (Mercancía en Custodia)" FontSize="20" FontWeight="Bold" Foreground="#1E293B"/>
+                    <TextBlock Text="Mercancía pagada al 100% pendiente de entrega física al cliente" FontSize="12" Foreground="#64748B" Margin="0,2,0,0"/>
+                </StackPanel>
+            </StackPanel>
+        </DockPanel>
+
+        <!-- ── 2. Barra de Búsqueda Flotante + Mensaje de Éxito ── -->
+        <StackPanel Grid.Row="1" Margin="24,0,24,16">
+            <Border Background="#FFFFFF"
+                    BorderBrush="#E2E8F0"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Height="42"
+                    MaxWidth="420"
+                    HorizontalAlignment="Left"
+                    Effect="{StaticResource EnterpriseCardShadow}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18" Foreground="#94A3B8" VerticalAlignment="Center" Margin="12,0,2,0"/>
+                    <TextBox Grid.Column="1"
+                             Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             materialDesign:HintAssist.Hint="Buscar por N° factura, cliente o cédula/RIF..."
+                             materialDesign:TextFieldAssist.HasClearButton="True"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             VerticalAlignment="Center"
+                             FontSize="13"
+                             Foreground="#1E293B"
+                             Padding="6,0,10,0"/>
+                </Grid>
+            </Border>
+
+            <!-- Mensaje de Éxito -->
+            <Border Visibility="{Binding SuccessMessage, Converter={StaticResource StringToVisibilityConverter}}"
+                    Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="8" Padding="14,8" Margin="0,10,0,0"
+                    HorizontalAlignment="Left" MaxWidth="600">
+                <StackPanel Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="CheckCircleOutline" Width="18" Height="18" VerticalAlignment="Center" Foreground="#166534"/>
+                    <TextBlock Text="{Binding SuccessMessage}" Foreground="#166534"
+                               FontWeight="SemiBold" FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
 
         <!-- ── 3. Lista de Tarjetas Virtualizada (ListBox, 1 columna) ── -->
         <ListBox x:Name="PickupsList" Grid.Row="2"
@@ -98,7 +119,7 @@
                  ScrollViewer.IsDeferredScrollingEnabled="False"
                  Background="Transparent"
                  BorderThickness="0"
-                 Padding="16,8,16,16">
+                 Padding="24,0,24,16">
             <ListBox.ItemsPanel>
                 <ItemsPanelTemplate>
                     <VirtualizingStackPanel/>
@@ -122,165 +143,170 @@
             </ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                        <!-- Tarjeta con bordes redondeados y sombra sutil -->
-                        <Border Margin="8" CornerRadius="10"
-                                Background="{DynamicResource MaterialDesignCardBackground}"
-                                materialDesign:ElevationAssist.Elevation="Dp2"
-                                Padding="20,16">
-                            <StackPanel>
+                    <!-- Tarjeta Principal Blanca con Borde Sutil y Sombra Suave -->
+                    <Border Margin="0,0,0,16" CornerRadius="8"
+                            Background="#FFFFFF"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="1"
+                            Effect="{StaticResource EnterpriseCardShadow}"
+                            Padding="22,18">
+                        <StackPanel>
 
-                                <!-- Encabezado de la Tarjeta -->
-                                <Grid Margin="0,0,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
+                            <!-- Encabezado de la Tarjeta -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
 
-                                    <!-- Insignia de Factura -->
-                                    <Border Grid.Column="0" Background="#7C3AED" CornerRadius="6" Padding="10,4"
-                                            VerticalAlignment="Center">
-                                        <TextBlock Foreground="White" FontWeight="Bold" FontSize="13">
-                                            <Run Text="Factura N° "/>
-                                            <Run Text="{Binding InvoiceNumber, StringFormat='{}{0:D5}', FallbackValue='—'}"/>
-                                        </TextBlock>
-                                    </Border>
-
-                                    <!-- Estado Pendiente -->
-                                    <Border Grid.Column="1" Background="#FFF3CD" CornerRadius="6" Padding="8,3"
-                                            Margin="10,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Left">
-                                        <StackPanel Orientation="Horizontal">
-                                            <materialDesign:PackIcon Kind="ClockAlertOutline" Width="14" Height="14"
-                                                                     VerticalAlignment="Center" Foreground="#B45309"/>
-                                            <TextBlock Text="Pendiente de Retiro" FontSize="11" FontWeight="SemiBold"
-                                                       Foreground="#B45309" Margin="4,0,0,0" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- Montos Totales en Bs.S y USD -->
-                                    <StackPanel Grid.Column="2" HorizontalAlignment="Right">
-                                        <TextBlock Text="{Binding TotalBsS, StringFormat='Bs.S {0:N2}'}"
-                                                   FontWeight="Bold" FontSize="17" HorizontalAlignment="Right"
-                                                   Foreground="{DynamicResource PrimaryHueDarkBrush}"/>
-                                        <TextBlock Text="{Binding TotalUSD, StringFormat='${0:N2} USD'}"
-                                                   FontSize="12" Foreground="Gray" HorizontalAlignment="Right"/>
-                                    </StackPanel>
-                                </Grid>
-
-                                <!-- Strip de Datos del Cliente (Legibilidad y Contraste Mejorados) -->
-                                <Border CornerRadius="8" Padding="14,10" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" Margin="0,0,0,14">
-                                    <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <StackPanel Orientation="Horizontal" Margin="0,2,16,2">
-                                            <materialDesign:PackIcon Kind="Account" Width="16" Height="16" VerticalAlignment="Center" Foreground="#475569"/>
-                                            <TextBlock Text="{Binding CustomerName}" FontWeight="Bold" FontSize="13" Foreground="#1E293B" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                                        </StackPanel>
-
-                                        <StackPanel Orientation="Horizontal" Margin="0,2,16,2">
-                                            <materialDesign:PackIcon Kind="CardAccountDetails" Width="16" Height="16" VerticalAlignment="Center" Foreground="#475569"/>
-                                            <TextBlock Text="{Binding CustomerCedula}" FontSize="12" Foreground="#475569" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                                        </StackPanel>
-
-                                        <StackPanel Orientation="Horizontal" Margin="0,2,16,2">
-                                            <materialDesign:PackIcon Kind="Phone" Width="16" Height="16" VerticalAlignment="Center" Foreground="#475569"/>
-                                            <TextBlock Text="{Binding CustomerPhone, FallbackValue='Sin teléfono'}" FontSize="12" Foreground="#475569" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                                        </StackPanel>
-
-                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
-                                            <materialDesign:PackIcon Kind="CalendarCheck" Width="16" Height="16" VerticalAlignment="Center" Foreground="#475569"/>
-                                            <TextBlock FontSize="12" Foreground="#475569" Margin="6,0,0,0" VerticalAlignment="Center">
-                                                <Run Text="Pagado: "/>
-                                                <Run Text="{Binding Date, StringFormat='{}{0:dd/MM/yy HH:mm}'}" FontWeight="SemiBold"/>
-                                            </TextBlock>
-                                        </StackPanel>
-                                    </WrapPanel>
+                                <!-- Soft Badge de Factura (#EDE9FE / #5E35B1) -->
+                                <Border Grid.Column="0" Background="#EDE9FE" BorderBrush="#DDD6FE" BorderThickness="1" CornerRadius="6" Padding="10,4"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Foreground="#5E35B1" FontWeight="Bold" FontSize="12">
+                                        <Run Text="Factura N° "/>
+                                        <Run Text="{Binding InvoiceNumber, StringFormat='{}{0:D5}', FallbackValue='—'}"/>
+                                    </TextBlock>
                                 </Border>
 
-                                <!-- Tabla de Productos (Alineada a la Derecha con 2 Decimales) -->
-                                <DataGrid ItemsSource="{Binding Items}"
-                                          AutoGenerateColumns="False" CanUserAddRows="False"
-                                          IsReadOnly="True" HeadersVisibility="Column"
-                                          VirtualizingStackPanel.IsVirtualizing="False"
-                                          GridLinesVisibility="Horizontal"
-                                          BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}"
-                                          Background="Transparent" MaxHeight="180"
-                                          VerticalScrollBarVisibility="Auto"
-                                          Margin="0,0,0,16"
-                                          materialDesign:DataGridAssist.CellPadding="10,6"
-                                          materialDesign:DataGridAssist.ColumnHeaderPadding="10,6">
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Producto" Binding="{Binding ProductName}"
-                                                            Width="*" IsReadOnly="True"/>
-                                        
-                                        <DataGridTemplateColumn Width="75">
-                                            <DataGridTemplateColumn.Header>
-                                                <TextBlock Text="Cant." HorizontalAlignment="Center" TextAlignment="Center"/>
-                                            </DataGridTemplateColumn.Header>
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding Quantity, StringFormat='{}{0:0.###}'}" HorizontalAlignment="Center" TextAlignment="Center" VerticalAlignment="Center"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                        </DataGridTemplateColumn>
-
-                                        <DataGridTemplateColumn Width="130">
-                                            <DataGridTemplateColumn.Header>
-                                                <TextBlock Text="P. Unit Bs.S" HorizontalAlignment="Right" TextAlignment="Right"/>
-                                            </DataGridTemplateColumn.Header>
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding UnitPriceBsS, StringFormat='Bs.S {0:N2}'}" FontWeight="Bold" HorizontalAlignment="Right" TextAlignment="Right" VerticalAlignment="Center"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                        </DataGridTemplateColumn>
-
-                                        <DataGridTemplateColumn Width="140">
-                                            <DataGridTemplateColumn.Header>
-                                                <TextBlock Text="Subtotal Bs.S" HorizontalAlignment="Right" TextAlignment="Right"/>
-                                            </DataGridTemplateColumn.Header>
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding SubtotalBsS, StringFormat='Bs.S {0:N2}'}" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" HorizontalAlignment="Right" TextAlignment="Right" VerticalAlignment="Center"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                        </DataGridTemplateColumn>
-                                    </DataGrid.Columns>
-                                </DataGrid>
-
-                                <!-- Botón de Acción Estilizado con Bordes Redondeados -->
-                                <Button Command="{Binding DataContext.ConfirmPickupCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                        CommandParameter="{Binding}"
-                                        Style="{DynamicResource MaterialDesignRaisedButton}"
-                                        materialDesign:ButtonAssist.CornerRadius="8"
-                                        Background="#7C3AED" Foreground="White"
-                                        Height="42" HorizontalAlignment="Right" Padding="20,0">
-                                    <StackPanel Orientation="Horizontal">
-                                        <materialDesign:PackIcon Kind="PackageCheck" Width="18" Height="18" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Confirmar Retiro / Entregar" Margin="8,0,0,0" FontWeight="Bold" FontSize="13"/>
+                                <!-- Píldora de Pendiente de Retiro (#FEF3C7 / #92400E, CornerRadius="100") -->
+                                <Border Grid.Column="1" Background="#FEF3C7" BorderBrush="#FDE68A" BorderThickness="1" CornerRadius="100" Padding="10,4"
+                                        Margin="10,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Left">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <materialDesign:PackIcon Kind="ClockAlertOutline" Width="14" Height="14"
+                                                                 VerticalAlignment="Center" Foreground="#92400E"/>
+                                        <TextBlock Text="Pendiente de Retiro" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="#92400E" Margin="5,0,0,0" VerticalAlignment="Center"/>
                                     </StackPanel>
-                                </Button>
+                                </Border>
 
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+                                <!-- Montos Totales en Bs.S y USD alineados a la derecha -->
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding TotalBsS, StringFormat='{}{0:N2} Bs.S'}"
+                                               FontWeight="Bold" FontSize="16" HorizontalAlignment="Right"
+                                               TextAlignment="Right"
+                                               Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
+                                    <TextBlock Text="{Binding TotalUSD, StringFormat='${0:N2} USD'}"
+                                               FontSize="12" Foreground="#64748B" HorizontalAlignment="Right"
+                                               TextAlignment="Right"
+                                               Typography.NumeralAlignment="Tabular" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Fila de Datos del Cliente (con respiración vertical adecuada) -->
+                            <WrapPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,6,0,16">
+                                <StackPanel Orientation="Horizontal" Margin="0,2,18,2" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon Kind="Account" Width="15" Height="15" VerticalAlignment="Center" Foreground="#94A3B8"/>
+                                    <TextBlock Text="{Binding CustomerName, Converter={StaticResource TitleCaseConverter}}"
+                                               FontWeight="SemiBold" FontSize="13" Foreground="#1E293B" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,2,18,2" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon Kind="CardAccountDetailsOutline" Width="15" Height="15" VerticalAlignment="Center" Foreground="#94A3B8"/>
+                                    <TextBlock Text="{Binding CustomerCedula}" FontSize="12" Foreground="#475569" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,2,18,2" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon Kind="PhoneOutline" Width="15" Height="15" VerticalAlignment="Center" Foreground="#94A3B8"/>
+                                    <TextBlock Text="{Binding CustomerPhone, FallbackValue='Sin teléfono'}" FontSize="12" Foreground="#475569" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,2,0,2" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon Kind="CalendarCheckOutline" Width="15" Height="15" VerticalAlignment="Center" Foreground="#94A3B8"/>
+                                    <TextBlock FontSize="12" Foreground="#475569" Margin="6,0,0,0" VerticalAlignment="Center">
+                                        <Run Text="Pagado: "/>
+                                        <Run Text="{Binding Date, StringFormat='{}{0:dd/MM/yy HH:mm}'}" FontWeight="SemiBold" Foreground="#1E293B"/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </WrapPanel>
+
+                            <!-- Contenedor Gris Ultra Pálido (#F8FAFC) con Productos y Botón de Acción -->
+                            <Border Background="#F8FAFC" CornerRadius="6" Padding="16,12,16,16" Margin="0,0,0,0">
+                                <StackPanel>
+                                    <!-- Cabecera flotante en mayúsculas pequeñas -->
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="80"/>
+                                            <ColumnDefinition Width="130"/>
+                                            <ColumnDefinition Width="140"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="PRODUCTO" FontSize="11" FontWeight="SemiBold" Foreground="#64748B"/>
+                                        <TextBlock Grid.Column="1" Text="CANT." FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="P. UNIT. BS.S" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Right"/>
+                                        <TextBlock Grid.Column="3" Text="SUBTOTAL BS.S" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Right"/>
+                                    </Grid>
+
+                                    <!-- Lista de Productos -->
+                                    <ItemsControl ItemsSource="{Binding Items}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,3">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="80"/>
+                                                        <ColumnDefinition Width="130"/>
+                                                        <ColumnDefinition Width="140"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding ProductName}"
+                                                               FontSize="12" Foreground="#1E293B" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Quantity, StringFormat='x{0:0.###}'}"
+                                                               FontSize="12" Foreground="#64748B" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding UnitPriceBsS, StringFormat='Bs.S {0:N2}'}"
+                                                               FontSize="12" Foreground="#475569" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                               Typography.NumeralAlignment="Tabular"/>
+                                                    <TextBlock Grid.Column="3" Text="{Binding SubtotalBsS, StringFormat='Bs.S {0:N2}'}"
+                                                               FontSize="12" FontWeight="SemiBold" Foreground="#0F172A" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                               Typography.NumeralAlignment="Tabular"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- Botón de Acción Plano (Flat Design, #5E35B1) con espacio superior para respirar -->
+                                    <Button Command="{Binding Data.ConfirmPickupCommand, Source={StaticResource Proxy}}"
+                                            CommandParameter="{Binding}"
+                                            Style="{DynamicResource MaterialDesignFlatMidBgButton}"
+                                            materialDesign:ButtonAssist.CornerRadius="6"
+                                            Background="#5E35B1" Foreground="White"
+                                            Height="36" HorizontalAlignment="Right" Padding="18,0"
+                                            Margin="0,14,0,0">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="PackageCheck" Width="16" Height="16" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Confirmar Retiro / Entregar" Margin="8,0,0,0" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
 
         <!-- Estado de Carga / Vacío -->
-        <StackPanel Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center"
-                    Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}">
-            <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}" IsIndeterminate="True"
-                         Width="48" Height="48"/>
-            <TextBlock Text="Cargando retiros pendientes..." Margin="0,12,0,0"
-                       FontSize="14" HorizontalAlignment="Center"
-                       Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-        </StackPanel>
+        <Grid Grid.Row="2" Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
+              Background="#60FFFFFF" IsHitTestVisible="False">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}"
+                             Foreground="#5E35B1" IsIndeterminate="True"
+                             Width="44" Height="44"/>
+                <TextBlock Text="Cargando retiros pendientes..." Margin="0,12,0,0"
+                           FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center"
+                           Foreground="#475569"/>
+            </StackPanel>
+        </Grid>
 
-        <StackPanel Grid.Row="3" HorizontalAlignment="Center" Margin="0,0,0,12"
+        <!-- Botón Cargar Más -->
+        <StackPanel Grid.Row="3" HorizontalAlignment="Center" Margin="0,0,0,16"
                     Visibility="{Binding HasMore, Converter={StaticResource BoolToVis}}">
-            <Button Content="Cargar más"
+            <Button Content="Cargar más retiros"
                     Command="{Binding LoadMoreCommand}"
                     Style="{DynamicResource MaterialDesignOutlinedButton}"
-                    Height="36" Padding="20,0"
+                    BorderBrush="#CBD5E1" Foreground="#475569"
+                    Height="36" Padding="20,0" FontSize="12" FontWeight="SemiBold"
+                    materialDesign:ButtonAssist.CornerRadius="6"
                     materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsLoadingMore}"
                     materialDesign:ButtonProgressAssist.IsIndeterminate="True"
                     materialDesign:ButtonProgressAssist.Value="-1"/>

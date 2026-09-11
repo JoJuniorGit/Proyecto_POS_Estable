@@ -13,6 +13,14 @@
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- Enterprise Sutil Drop Shadow (0 4px 6px -1px rgba(0,0,0,0.05)) -->
+        <DropShadowEffect x:Key="EnterpriseCardShadow"
+                          Color="#000000"
+                          BlurRadius="10"
+                          Opacity="0.05"
+                          Direction="270"
+                          ShadowDepth="2"/>
     </UserControl.Resources>
 
     <Grid Margin="24">
@@ -21,18 +29,20 @@
             <RowDefinition Height="*"/>      <!-- DataGrid -->
             <RowDefinition Height="Auto"/>   <!-- Summary -->
             <RowDefinition Height="Auto"/>   <!-- Observation -->
-            <RowDefinition Height="Auto"/>   <!-- Button -->
+            <RowDefinition Height="Auto"/>   <!-- Buttons -->
         </Grid.RowDefinitions>
 
         <!-- ═══════════════════════════════════════════
-             HEADER
+             1. HEADER CARD
              ═══════════════════════════════════════════ -->
         <Border Grid.Row="0"
                 Background="{DynamicResource MaterialDesignCardBackground}"
-                CornerRadius="10"
-                Padding="16,14"
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="18,14"
                 Margin="0,0,0,16"
-                Effect="{DynamicResource MaterialDesignShadowDepth1}">
+                Effect="{StaticResource EnterpriseCardShadow}">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -42,52 +52,64 @@
                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
                         <materialDesign:PackIcon Kind="CashRegister"
-                                                 Width="26" Height="26"
-                                                 Foreground="{DynamicResource PrimaryHueMidBrush}"
+                                                 Width="24" Height="24"
+                                                 Foreground="#5E35B1"
                                                  VerticalAlignment="Center"
                                                  Margin="0,0,8,0"/>
                         <TextBlock Text="Cierre Diario y Arqueo de Caja"
-                                   FontSize="20"
-                                   Foreground="{DynamicResource MaterialDesignBody}"
+                                   FontSize="18"
+                                   Foreground="#1E293B"
                                    FontWeight="Bold"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
                     <TextBlock Text="Conteo físico de dinero en efectivo y arqueo de comprobantes por método de pago."
                                FontSize="12"
                                Foreground="{DynamicResource MaterialDesignBodyLight}"
-                               Margin="34,2,0,0"/>
+                               Margin="32,2,0,0"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <!-- Blind Closing Toggle -->
-                    <Border Background="{DynamicResource MaterialDesignDivider}"
-                            CornerRadius="6"
+                    <!-- Blind Closing Toggle con Tooltip de Información -->
+                    <Border Background="#F1F5F9"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="1"
+                            CornerRadius="8"
                             Padding="10,6"
                             Margin="0,0,12,0">
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <materialDesign:PackIcon Kind="ShieldLock"
                                                      Width="18" Height="18"
                                                      VerticalAlignment="Center"
-                                                     Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                                     Foreground="#5E35B1"/>
                             <TextBlock Text="Cierre a Ciegas"
-                                       Margin="6,0,8,0"
+                                       Margin="6,0,4,0"
                                        VerticalAlignment="Center"
                                        FontWeight="SemiBold"
-                                       FontSize="12"/>
+                                       FontSize="12"
+                                       Foreground="#334155"/>
+                            <materialDesign:PackIcon Kind="InformationOutline"
+                                                     Width="15" Height="15"
+                                                     VerticalAlignment="Center"
+                                                     Foreground="#64748B"
+                                                     Margin="0,0,8,0"
+                                                     ToolTip="Oculta los montos esperados del sistema para obligar al conteo físico a ciegas"/>
                             <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
                                           IsChecked="{Binding IsBlindClosing, Mode=TwoWay}"
                                           IsEnabled="{Binding CanToggleBlindClosing}"
-                                          ToolTip="Cuando está activo, los montos esperados se ocultan para la recolección a ciegas del cajero"/>
+                                          ToolTip="Activar o desactivar modo de arqueo a ciegas"/>
                         </StackPanel>
                     </Border>
 
                     <!-- Reload Button -->
                     <Button Style="{StaticResource MaterialDesignOutlinedButton}"
                             Command="{Binding LoadExpectedTotalsCommand}"
+                            Height="36"
+                            Padding="12,0"
+                            BorderBrush="#CBD5E1"
                             ToolTip="Recargar totales esperados desde la base de datos">
                         <StackPanel Orientation="Horizontal">
-                            <materialDesign:PackIcon Kind="Refresh" Width="18" Height="18" VerticalAlignment="Center"/>
-                            <TextBlock Text="Recargar" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                            <materialDesign:PackIcon Kind="Refresh" Width="16" Height="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Recargar" Margin="6,0,0,0" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"/>
                         </StackPanel>
                     </Button>
 
@@ -96,8 +118,9 @@
                             Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
                             CommandParameter="{x:Static Dock.Right}"
                             Margin="8,0,0,0"
+                            Width="36" Height="36"
                             ToolTip="Abrir Menú Principal">
-                        <materialDesign:PackIcon Kind="Cog" Width="26" Height="26" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                        <materialDesign:PackIcon Kind="Menu" Width="22" Height="22" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -113,13 +136,15 @@
                      Margin="0,0,0,8"/>
 
         <!-- ═══════════════════════════════════════════
-             DATA GRID
+             2. DATAGRID MODERNO (Sin líneas verticales, headers gris tenue)
              ═══════════════════════════════════════════ -->
         <Border Grid.Row="1"
                 Background="{DynamicResource MaterialDesignCardBackground}"
-                CornerRadius="10"
-                Padding="8"
-                Effect="{DynamicResource MaterialDesignShadowDepth1}">
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="0"
+                Effect="{StaticResource EnterpriseCardShadow}">
             <controls:PerformantDataGrid ItemsSource="{Binding DetailRows}"
                       AutoGenerateColumns="False"
                       CanUserAddRows="False"
@@ -128,65 +153,149 @@
                       SelectionMode="Single"
                       IsReadOnly="False"
                       HeadersVisibility="Column"
-                      materialDesign:DataGridAssist.CellPadding="14 10"
-                      materialDesign:DataGridAssist.ColumnHeaderPadding="14 10"
+                      GridLinesVisibility="Horizontal"
+                      HorizontalGridLinesBrush="#E2E8F0"
+                      VerticalGridLinesBrush="Transparent"
+                      materialDesign:DataGridAssist.CellPadding="16 10"
+                      materialDesign:DataGridAssist.ColumnHeaderPadding="16 10"
                       VerticalScrollBarVisibility="Auto"
+                      Background="#FFFFFF"
+                      RowBackground="#FFFFFF"
                       BorderThickness="0">
 
+                <controls:PerformantDataGrid.ColumnHeaderStyle>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#F8FAFC"/>
+                        <Setter Property="Foreground" Value="#475569"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="FontSize" Value="11"/>
+                        <Setter Property="Padding" Value="16,12"/>
+                        <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                    </Style>
+                </controls:PerformantDataGrid.ColumnHeaderStyle>
+
                 <controls:PerformantDataGrid.Columns>
-                    <!-- Col 1: Payment Method (Read-only) -->
-                    <DataGridTextColumn Header="Método de Pago"
+                    <!-- Col 1: Método de Pago (Read-only) -->
+                    <DataGridTextColumn Header="MÉTODO DE PAGO"
                                         Binding="{Binding PaymentMethodName}"
                                         IsReadOnly="True"
-                                        Width="*"
-                                        FontWeight="Bold"/>
+                                        Width="1.2*">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="FontSize" Value="13"/>
+                                <Setter Property="Foreground" Value="#1E293B"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
 
-                    <!-- Col 2: Expected Amount (Read-only, hidden if blind) -->
-                    <DataGridTextColumn Header="Monto Esperado (Bs.S)"
-                                        Binding="{Binding ExpectedAmountBsS, StringFormat=N2}"
+                    <!-- Col 2: Monto Esperado (Read-only, hidden if blind) -->
+                    <DataGridTextColumn Header="MONTO ESPERADO (BS.S)"
+                                        Binding="{Binding ExpectedAmountBsS, StringFormat={}{0:N2}}"
                                         IsReadOnly="True"
                                         Width="*"
-                                        x:Name="ExpectedColumn"/>
+                                        x:Name="ExpectedColumn">
+                        <DataGridTextColumn.HeaderStyle>
+                            <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                <Setter Property="HorizontalContentAlignment" Value="Right"/>
+                            </Style>
+                        </DataGridTextColumn.HeaderStyle>
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="FontWeight" Value="Medium"/>
+                                <Setter Property="FontSize" Value="13"/>
+                                <Setter Property="Foreground" Value="#475569"/>
+                                <Setter Property="TextAlignment" Value="Right"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                <Setter Property="Typography.NumeralAlignment" Value="Tabular"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
 
-                    <!-- Col 3: Actual Amount (Editable) -->
-                    <DataGridTemplateColumn Header="Monto Declarado (Bs.S)" Width="*">
+                    <!-- Col 3: Monto Declarado (Input Recuadro con Focus Morado) -->
+                    <DataGridTemplateColumn Header="MONTO DECLARADO (BS.S)" Width="*">
+                        <DataGridTemplateColumn.HeaderStyle>
+                            <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                <Setter Property="HorizontalContentAlignment" Value="Right"/>
+                            </Style>
+                        </DataGridTemplateColumn.HeaderStyle>
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <TextBox TextAlignment="Right"
-                                         materialDesign:HintAssist.Hint="0.00"
-                                         MinWidth="130"
-                                         HorizontalAlignment="Stretch"
-                                         VerticalAlignment="Center"
-                                         Padding="6,4"
-                                         FontWeight="Bold"
-                                         FontSize="14">
-                                    <i:Interaction.Behaviors>
-                                        <behaviors:NumericCalculatorBehavior Value="{Binding ActualAmountBsS, Mode=TwoWay}" />
-                                    </i:Interaction.Behaviors>
-                                </TextBox>
+                                <Border x:Name="InputContainer"
+                                        Background="#F1F5F9"
+                                        BorderBrush="#E2E8F0"
+                                        BorderThickness="1.5"
+                                        CornerRadius="4"
+                                        Padding="4,2"
+                                        Margin="0,2"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Center">
+                                    <TextBox TextAlignment="Right"
+                                             materialDesign:HintAssist.Hint="0.00"
+                                             MinWidth="120"
+                                             HorizontalAlignment="Stretch"
+                                             VerticalAlignment="Center"
+                                             BorderThickness="0"
+                                             Background="Transparent"
+                                             Padding="6,4"
+                                             FontWeight="Bold"
+                                             FontSize="13"
+                                             Foreground="#1E293B"
+                                             Typography.NumeralAlignment="Tabular">
+                                        <i:Interaction.Behaviors>
+                                            <behaviors:NumericCalculatorBehavior Value="{Binding ActualAmountBsS, Mode=TwoWay}" />
+                                        </i:Interaction.Behaviors>
+                                    </TextBox>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <Trigger SourceName="InputContainer" Property="IsKeyboardFocusWithin" Value="True">
+                                        <Setter TargetName="InputContainer" Property="BorderBrush" Value="#5E35B1"/>
+                                        <Setter TargetName="InputContainer" Property="Background" Value="#FFFFFF"/>
+                                    </Trigger>
+                                </DataTemplate.Triggers>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
 
-                    <!-- Col 4: Difference (Read-only, reactive) -->
-                    <DataGridTextColumn Header="Diferencia (Bs.S)"
-                                        Binding="{Binding DifferenceBsS, StringFormat=N2}"
-                                        IsReadOnly="True"
-                                        Width="*"
-                                        x:Name="DifferenceColumn"/>
+                    <!-- Col 4: Diferencia (Color Semántico: Rojo, Verde o Gris) -->
+                    <DataGridTemplateColumn Header="DIFERENCIA (BS.S)"
+                                            Width="*"
+                                            x:Name="DifferenceColumn">
+                        <DataGridTemplateColumn.HeaderStyle>
+                            <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                <Setter Property="HorizontalContentAlignment" Value="Right"/>
+                            </Style>
+                        </DataGridTemplateColumn.HeaderStyle>
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding DifferenceDisplay}"
+                                           Foreground="{Binding DifferenceColor}"
+                                           FontWeight="Bold"
+                                           FontSize="13"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Right"
+                                           Typography.NumeralAlignment="Tabular"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                 </controls:PerformantDataGrid.Columns>
             </controls:PerformantDataGrid>
         </Border>
 
         <!-- ═══════════════════════════════════════════
-             SUMMARY TOTALS
+             3. SUMMARY TOTALS (Tarjetas Unificadas)
              ═══════════════════════════════════════════ -->
         <Border Grid.Row="2"
                 Background="{DynamicResource MaterialDesignCardBackground}"
-                CornerRadius="10"
-                Padding="16"
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16,14"
                 Margin="0,16,0,0"
-                Effect="{DynamicResource MaterialDesignShadowDepth1}">
+                Effect="{StaticResource EnterpriseCardShadow}">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -194,73 +303,132 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Expected Total -->
-                <StackPanel Grid.Column="0" HorizontalAlignment="Center"
-                            x:Name="ExpectedTotalPanel">
-                    <TextBlock Text="TOTAL ESPERADO"
-                               FontSize="11" FontWeight="Bold"
-                               Foreground="{DynamicResource MaterialDesignBodyLight}"
-                               HorizontalAlignment="Center"/>
-                    <TextBlock Text="{Binding TotalExpectedBsS, StringFormat=Bs.S {0:N2}}"
-                               FontSize="20" FontWeight="Bold"
-                               HorizontalAlignment="Center"
-                               Foreground="{DynamicResource PrimaryHueMidBrush}"
-                               Margin="0,4,0,0"/>
-                </StackPanel>
+                <!-- Total Esperado -->
+                <Border Grid.Column="0"
+                        Background="#F8FAFC"
+                        BorderBrush="#E2E8F0"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16,12"
+                        Margin="0,0,6,0"
+                        x:Name="ExpectedTotalPanel">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="TOTAL ESPERADO"
+                                   FontSize="11" FontWeight="Bold"
+                                   Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding TotalExpectedBsS, StringFormat=Bs.S {0:N2}}"
+                                   FontSize="20" FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   Foreground="#5E35B1"
+                                   Margin="0,4,0,0"
+                                   Typography.NumeralAlignment="Tabular"/>
+                    </StackPanel>
+                </Border>
 
-                <!-- Actual Total -->
-                <StackPanel Grid.Column="1" HorizontalAlignment="Center">
-                    <TextBlock Text="TOTAL DECLARADO"
-                               FontSize="11" FontWeight="Bold"
-                               Foreground="{DynamicResource MaterialDesignBodyLight}"
-                               HorizontalAlignment="Center"/>
-                    <TextBlock Text="{Binding TotalActualBsS, StringFormat=Bs.S {0:N2}}"
-                               FontSize="20" FontWeight="Bold"
-                               HorizontalAlignment="Center"
-                               Margin="0,4,0,0"/>
-                </StackPanel>
+                <!-- Total Declarado -->
+                <Border Grid.Column="1"
+                        Background="#F8FAFC"
+                        BorderBrush="#E2E8F0"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16,12"
+                        Margin="4,0,4,0">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="TOTAL DECLARADO"
+                                   FontSize="11" FontWeight="Bold"
+                                   Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding TotalActualBsS, StringFormat=Bs.S {0:N2}}"
+                                   FontSize="20" FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   Foreground="#1E293B"
+                                   Margin="0,4,0,0"
+                                   Typography.NumeralAlignment="Tabular"/>
+                    </StackPanel>
+                </Border>
 
-                <!-- Difference Total -->
-                <StackPanel Grid.Column="2" HorizontalAlignment="Center"
-                            x:Name="DifferenceTotalPanel">
-                    <TextBlock Text="DIFERENCIA TOTAL"
-                               FontSize="11" FontWeight="Bold"
-                               Foreground="{DynamicResource MaterialDesignBodyLight}"
-                               HorizontalAlignment="Center"/>
-                    <TextBlock Text="{Binding TotalDifferenceBsS, StringFormat=Bs.S {0:N2}}"
-                               FontSize="20" FontWeight="Bold"
-                               HorizontalAlignment="Center"
-                               Foreground="{DynamicResource MaterialDesignBody}"
-                               Margin="0,4,0,0"/>
-                    <Border CornerRadius="4"
-                            Padding="8,3"
-                            Margin="0,4,0,0"
-                            HorizontalAlignment="Center">
-                        <TextBlock Text="{Binding DifferenceStatusLabel}"
-                                   FontSize="11"
-                                   FontWeight="Bold"
-                                   Foreground="{Binding DifferenceStatusColor}"/>
-                    </Border>
-                </StackPanel>
+                <!-- Diferencia Total (Tarjeta con Fondo y Borde Semántico Reactivo) -->
+                <Border Grid.Column="2"
+                        Background="{Binding DifferenceCardBackground}"
+                        BorderBrush="{Binding DifferenceCardBorder}"
+                        BorderThickness="1.5"
+                        CornerRadius="8"
+                        Padding="16,12"
+                        Margin="6,0,0,0"
+                        x:Name="DifferenceTotalPanel">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="DIFERENCIA TOTAL"
+                                   FontSize="11" FontWeight="Bold"
+                                   Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding TotalDifferenceBsS, StringFormat=Bs.S {0:N2}}"
+                                   FontSize="20" FontWeight="ExtraBold"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{Binding DifferenceStatusColor}"
+                                   Margin="0,4,0,0"
+                                   Typography.NumeralAlignment="Tabular"/>
+                        <Border CornerRadius="4"
+                                Padding="8,3"
+                                Margin="0,4,0,0"
+                                HorizontalAlignment="Center">
+                            <TextBlock Text="{Binding DifferenceStatusLabel}"
+                                       FontSize="11"
+                                       FontWeight="Bold"
+                                       Foreground="{Binding DifferenceStatusColor}"/>
+                        </Border>
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
 
         <!-- ═══════════════════════════════════════════
-             OBSERVATION
+             4. OBSERVATION TEXTAREA (Recuadro Real + Contador)
              ═══════════════════════════════════════════ -->
-        <TextBox Grid.Row="3"
-                 Margin="0,16,0,0"
-                 Text="{Binding Observation, UpdateSourceTrigger=PropertyChanged}"
-                 materialDesign:HintAssist.Hint="Observaciones / Notas del Arqueo (opcional)"
-                 materialDesign:HintAssist.IsFloating="True"
-                 AcceptsReturn="True"
-                 TextWrapping="Wrap"
-                 MinHeight="60"
-                 MaxLength="500"
-                 VerticalScrollBarVisibility="Auto"/>
+        <Border Grid.Row="3"
+                Background="#FFFFFF"
+                BorderBrush="#CBD5E1"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="14,10"
+                Margin="0,16,0,0"
+                Effect="{StaticResource EnterpriseCardShadow}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0"
+                           Text="Observaciones / Notas del Arqueo (opcional)"
+                           FontSize="11" FontWeight="SemiBold"
+                           Foreground="{DynamicResource MaterialDesignBodyLight}"
+                           Margin="0,0,0,6"/>
+
+                <TextBox Grid.Row="1"
+                         Text="{Binding Observation, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MinHeight="54"
+                         MaxLength="500"
+                         FontSize="13"
+                         Foreground="#1E293B"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         VerticalScrollBarVisibility="Auto"/>
+
+                <TextBlock Grid.Row="2"
+                           Text="{Binding ObservationCounterText}"
+                           FontSize="11"
+                           Foreground="{DynamicResource MaterialDesignBodyLight}"
+                           HorizontalAlignment="Right"
+                           Margin="0,4,0,0"/>
+            </Grid>
+        </Border>
 
         <!-- ═══════════════════════════════════════════
-             FOOTER BUTTONS
+             5. FOOTER BUTTONS
              ═══════════════════════════════════════════ -->
         <StackPanel Grid.Row="4"
                     Orientation="Horizontal"
@@ -270,20 +438,31 @@
             <Button Style="{StaticResource MaterialDesignOutlinedButton}"
                     Command="{Binding ExportClosureReceiptCommand}"
                     Margin="0,0,12,0"
-                    Padding="16,10"
+                    Height="46"
+                    Padding="16,0"
+                    BorderBrush="#CBD5E1"
                     ToolTip="Exportar o guardar el comprobante de cierre de caja">
                 <StackPanel Orientation="Horizontal">
-                    <materialDesign:PackIcon Kind="FileDownload" Width="20" Height="20" VerticalAlignment="Center"/>
-                    <TextBlock Text="Exportar Comprobante" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                    <materialDesign:PackIcon Kind="FileDownload" Width="18" Height="18" VerticalAlignment="Center"/>
+                    <TextBlock Text="Exportar Comprobante" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="13"/>
                 </StackPanel>
             </Button>
 
             <!-- Confirm Closure Button -->
             <Button Command="{Binding ConfirmClosureCommand}"
-                    MinWidth="220"
-                    Padding="18,10">
+                    MinWidth="230"
+                    Height="46"
+                    Padding="20,0"
+                    Background="#5E35B1"
+                    BorderBrush="#5E35B1"
+                    Foreground="White">
+                <Button.Resources>
+                    <Style TargetType="Border">
+                        <Setter Property="CornerRadius" Value="8"/>
+                    </Style>
+                </Button.Resources>
                 <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedDarkButton}">
+                    <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsSaved}" Value="True">
                                 <Setter Property="IsEnabled" Value="False"/>
@@ -293,7 +472,7 @@
                 </Button.Style>
                 <StackPanel Orientation="Horizontal">
                     <materialDesign:PackIcon Kind="CheckCircle" Width="20" Height="20" VerticalAlignment="Center"/>
-                    <TextBlock Text="Confirmar y Procesar Cierre" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="Bold"/>
+                    <TextBlock Text="Confirmar y Procesar Cierre" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="Bold" FontSize="13"/>
                 </StackPanel>
             </Button>
         </StackPanel>

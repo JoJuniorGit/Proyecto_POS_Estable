@@ -46,12 +46,28 @@ public partial class ClosureDetailRow : ObservableObject
             if (SetProperty(ref _actualAmountBsS, value))
             {
                 OnPropertyChanged(nameof(DifferenceBsS));
+                OnPropertyChanged(nameof(DifferenceColor));
+                OnPropertyChanged(nameof(DifferenceDisplay));
                 _onChanged?.Invoke();
             }
         }
     }
 
     public decimal DifferenceBsS => ActualAmountBsS - ExpectedAmountBsS;
+
+    public string DifferenceColor => DifferenceBsS switch
+    {
+        < 0 => "#EF4444",
+        > 0 => "#10B981",
+        _ => "#94A3B8"
+    };
+
+    public string DifferenceDisplay => DifferenceBsS switch
+    {
+        > 0 => $"+{DifferenceBsS:N2}",
+        < 0 => $"{DifferenceBsS:N2}",
+        _ => "0.00"
+    };
 }
 
 public partial class DailyClosureViewModel : ObservableObject
@@ -116,8 +132,16 @@ public partial class DailyClosureViewModel : ObservableObject
     public string? Observation
     {
         get => _observation;
-        set => SetProperty(ref _observation, value);
+        set
+        {
+            if (SetProperty(ref _observation, value))
+            {
+                OnPropertyChanged(nameof(ObservationCounterText));
+            }
+        }
     }
+
+    public string ObservationCounterText => $"{Observation?.Length ?? 0} / 500";
 
     private decimal _totalExpectedBsS;
     public decimal TotalExpectedBsS
@@ -148,6 +172,20 @@ public partial class DailyClosureViewModel : ObservableObject
         ? "#10B981"
         : (TotalDifferenceBsS < 0 ? "#EF4444" : "#3B82F6");
 
+    public string DifferenceCardBackground => TotalDifferenceBsS switch
+    {
+        < 0 => "#FEF2F2",
+        > 0 => "#F0FDF4",
+        _ => "#F8FAFC"
+    };
+
+    public string DifferenceCardBorder => TotalDifferenceBsS switch
+    {
+        < 0 => "#FECACA",
+        > 0 => "#BBF7D0",
+        _ => "#E2E8F0"
+    };
+
     private bool _isLoading;
     public bool IsLoading
     {
@@ -169,6 +207,8 @@ public partial class DailyClosureViewModel : ObservableObject
         TotalDifferenceBsS = TotalActualBsS - TotalExpectedBsS;
         OnPropertyChanged(nameof(DifferenceStatusLabel));
         OnPropertyChanged(nameof(DifferenceStatusColor));
+        OnPropertyChanged(nameof(DifferenceCardBackground));
+        OnPropertyChanged(nameof(DifferenceCardBorder));
     }
 
     [RelayCommand]
@@ -272,7 +312,7 @@ public partial class DailyClosureViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ConfirmAndSaveClosure()
+    private async Task ConfirmClosure()
     {
         if (!DetailRows.Any())
         {

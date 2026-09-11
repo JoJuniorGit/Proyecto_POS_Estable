@@ -17,6 +17,129 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.61.0  | 2026-09-11  | (8.100)      | RETIROS PENDIENTES WPF: REFINAMIENTO, EMPLATADO Y JERARQUÍA:
+|          |             |              | 1. Emplatado simétrico a 24px: cabecera, buscador y tarjetas
+|          |             |              | alineados a la misma línea vertical izquierda.
+|          |             |              | 2. Buscador flotante: eliminado el contenedor blanco gigante;
+|          |             |              | input flotante sobre #F1F5F9 con fondo blanco y MaxWidth=420.
+|          |             |              | 3. Respiración interna: margen vertical en datos de cliente y
+|          |             |              | padding inferior ampliado en productos para botón flotante.
+|          |             |              | 4. Sombra Michelin: BlurRadius 15, Opacity 0.04 y borde tenue #E2E8F0.
+|          |             |              | 5. Jerarquía de totales: alineación matemática estricta a la
+|          |             |              | derecha con números tabulares, Bs.S bold y USD secundario #64748B.
+|          |             |              | Build Release 0/0; suite .NET 867/867 superadas. ANEXO 8.100.
+| v1.60.0  | 2026-09-11  | (8.99)       | CUENTAS ABIERTAS WPF: REFINAMIENTO VISUAL Y UX:
+|          |             |              | 1. Fila activa elegante: estilo de fila ModernDataGridRowStyle
+|          |             |              | con fondo lila translúcido (#F5F3FF) y acento izquierdo sólido
+|          |             |              | de 4px en morado (#5E35B1) eliminando el gris pesado nativo.
+|          |             |              | 2. Panel desplegable de detalles: fondo blanco (#FFFFFF) con
+|          |             |              | espaciado generoso (24x18px) y divisor sutil (#F1F5F9).
+|          |             |              | 3. Botón "Editar" Ghost: botón Outlined estilizado (#CBD5E1/#475569)
+|          |             |              | con microinteracción hover a morado (#5E35B1/#F5F3FF).
+|          |             |              | 4. Respiración y jerarquía: padding de búsqueda ampliado (20x16px),
+|          |             |              | headers con padding 16x14px y altura de fila de 50px.
+|          |             |              | 5. Empty state con ícono ReceiptTextRemoveOutline centrado en abonos.
+|          |             |              | 6. Normalización de clientes con TitleCaseConverter.
+|          |             |              | Build Release 0/0; suite .NET 867/867 superadas. ANEXO 8.99.
+| v1.59.0  | 2026-09-11  | (8.98)       | RETIROS PENDIENTES WPF: MODERNIZACIÓN VISUAL Y JERARQUÍA:
+|          |             |              | 1. Destrucción de cajas anidadas: fondo #F1F5F9, tarjeta
+|          |             |              | blanca principal con sombra sutil, eliminación de bordes
+|          |             |              | de celda y fondo gris ultra pálido (#F8FAFC) en productos.
+|          |             |              | 2. Jerarquía de color: Factura N° en Soft Badge (#EDE9FE/#5E35B1),
+|          |             |              | estado en píldora perfecta (#FEF3C7/#92400E) y botón
+|          |             |              | "Confirmar Retiro" plano en morado sólido (#5E35B1).
+|          |             |              | 3. Limpieza de datos: TitleCaseConverter para formatear nombres
+|          |             |              | automáticamente (ej. "Joseito") e íconos atenuados a #94A3B8.
+|          |             |              | 4. Tabla interior: cabecera flotante en mayúsculas (#64748B) y
+|          |             |              | alineación matemática a la derecha con números tabulares.
+|          |             |              | 6 nuevos tests unitarios (UserValueConvertersTests).
+|          |             |              | Build Release 0/0; suite .NET 867/867 superadas. ANEXO 8.98.
+| v1.58.0  | 2026-09-11  | (8.97)       | VENTAS EN ESPERA WPF: MODERNIZACIÓN VISUAL Y ERGONOMÍA:
+|          |             |              | 1. Psicología del color financiero: Total Factura en gris
+|          |             |              | plomo (#0F172A) con tipografía tabular, removiendo el rojo
+|          |             |              | de alarma (#EF4444); monto secundario USD en #64748B.
+|          |             |              | 2. Unificación de botones: "Cobrar" en morado corporativo
+|          |             |              | sólido (#5E35B1) y "Editar" en estilo Outlined (#CBD5E1/#475569)
+|          |             |              | con esquinas redondeadas (6px) vinculados vía BindingProxy.
+|          |             |              | 3. Cabecera moderna: ícono plano morado (ClockOutline), subtítulo
+|          |             |              | en #64748B y botón Refrescar en outlined suave.
+|          |             |              | 4. Buscador y Tasa BCV: buscador en cápsula (#F8FAFC, 42px) y
+|          |             |              | tasa BCV en Pill Badge verde (#DCFCE7/#166534).
+|          |             |              | 5. Tabla y plantilla expandida: DataGrid en tarjeta blanca con
+|          |             |              | sombra EnterpriseCardShadow, headers en mayúsculas (#F8FAFC),
+|          |             |              | corrección de bindings CreatedAt/Amount en historial de abonos
+|          |             |              | y nuevo convertidor CollectionEmptyToVisibilityConverter.
+|          |             |              | Build Release 0/0; suite .NET 855/855 superadas. ANEXO 8.97.
+| v1.57.0  | 2026-09-11  | (8.96)       | CATÁLOGO DE PRODUCTOS WPF: MODERNIZACIÓN VISUAL INTEGRAL:
+|          |             |              | 1. Dieta de color: datos estándar en gris neutro (#1E293B /
+|          |             |              | #334155), eliminando saturación visual innecesaria.
+|          |             |              | 2. Pestañas de estado con morado corporativo (#5E35B1) e
+|          |             |              | indicador de línea inferior de 2.5px; inactivas en gris #64748B.
+|          |             |              | 3. Estados de stock: badge rojo pastel (#FEE2E2/#991B1B) para
+|          |             |              | stock en 0 / crítico; texto estándar sobrio para stock normal.
+|          |             |              | 4. Limpieza de acciones: menú vertical Kebab (⋮) con PopupBox
+|          |             |              | por fila agrupando las 5 acciones con íconos descriptivos.
+|          |             |              | 5. Buscador tipo cápsula (#F8FAFC, borde #E2E8F0, 40px) y
+|          |             |              | botones secundarios en estilo ghost/outlined suave.
+|          |             |              | 6. Alineación matemática obligatoria a la derecha para montos
+|          |             |              | y cantidades con tipografía tabular; headers en MAYÚSCULAS.
+|          |             |              | 7. Paginación con números limpios y píldora morada activa.
+|          |             |              | Build Release 0/0; suite .NET 855/855 superadas. ANEXO 8.96.
+| v1.56.0  | 2026-09-11  | (8.95)       | HISTORIAL DE VENTAS WPF: PAGINACIÓN AVANZADA ESTANDARIZADA:
+|          |             |              | 1. Replicación exacta del sistema de paginación del Catálogo/
+|          |             |              | Inventario en el Historial de Ventas (SalesHistoryView).
+|          |             |              | 2. Barra de paginación avanzada con tarjeta blanca (#FFFFFF),
+|          |             |              | borde #E2E8F0 y EnterpriseCardShadow: resumen de página
+|          |             |              | ("Pág. X de Y (Z ventas)"), botones de salto a extremos
+|          |             |              | (<<, >>) y paso simple (<, >).
+|          |             |              | 3. Botones numéricos relativos dinámicos (PageNumbers) con
+|          |             |              | resaltado morado corporativo (#5E35B1) para la página activa.
+|          |             |              | 4. Búsqueda exacta "Ir a: [Input] [->]" con validación Regex,
+|          |             |              | selección automática al foco, ejecución con Enter y botón.
+|          |             |              | 8 nuevos tests unitarios (SalesHistoryViewModelTests).
+|          |             |              | Build Release 0/0; suite .NET 855/855 superadas. ANEXO 8.95.
+| v1.55.0  | 2026-09-11  | (8.94)       | HISTORIAL DE VENTAS WPF: MODERNIZACIÓN VISUAL ENTERPRISE:
+|          |             |              | 1. Profundidad y tarjetas: fondo general #F1F5F9, sección de
+|          |             |              | filtros y tabla encapsuladas en tarjetas blancas con bordes
+|          |             |              | #E2E8F0 (8px) y sombra EnterpriseCardShadow.
+|          |             |              | 2. Ergonomía de inputs: buscador con ícono de lupa gris
+|          |             |              | integrado a la izquierda; alineación pixel-perfect a 42px.
+|          |             |              | 3. Tabla (PerformantDataGrid): headers #F8FAFC con texto
+|          |             |              | plomo #64748B, TOTAL BS.S alineado a la derecha, y doble
+|          |             |              | línea con contraste jerárquico (#1E293B vs #94A3B8).
+|          |             |              | 4. Badges de estado tipo píldora (CornerRadius="100") con
+|          |             |              | colores SaaS sin bordes sólidos (#DCFCE7/#166534, etc.).
+|          |             |              | 5. Footer con separador #E2E8F0, paginación sutil con
+|          |             |              | botones refinados y textos descriptivos ("Página X de Y").
+|          |             |              | 7 nuevos tests unitarios (SalesHistoryViewModelTests).
+|          |             |              | Build Release 0/0; suite .NET 847/847 superadas. ANEXO 8.94.
+| v1.54.0  | 2026-09-11  | (8.93)       | CIERRE DE CAJA WPF: REDISEÑO VISUAL Y EXPERIENCIA ENTERPRISE:
+|          |             |              | 1. Modernización de tabla (PerformantDataGrid): sin líneas
+|          |             |              | verticales, bordes horizontales sutiles (#E2E8F0), headers
+|          |             |              | en gris muy suave (#F8FAFC) con texto gris plomo (#475569)
+|          |             |              | en mayúsculas y peso SemiBold.
+|          |             |              | 2. Inputs de Monto Declarado en tarjeta (#F1F5F9, 4px) con
+|          |             |              | foco reactivo (#5E35B1 y fondo blanco).
+|          |             |              | 3. Semántica financiera dinámica: Diferencia por fila en verde
+|          |             |              | (#10B981), rojo (#EF4444) o gris neutro (#94A3B8); tarjeta de
+|          |             |              | Diferencia Total tintada reactivamente (fondo y borde).
+|          |             |              | 4. Sombras sutiles EnterpriseCardShadow (0 4px 6px -1px
+|          |             |              | rgba(0,0,0,0.05)) y esquinas estandarizadas a 8px.
+|          |             |              | 5. Área de observaciones tipo multiline container con contador
+|          |             |              | reactivo de caracteres (x / 500).
+|          |             |              | 6. ToolTip explicativo con icono info en "Cierre a Ciegas"
+|          |             |              | y botones de acción jerarquizados.
+|          |             |              | Build Release 0/0; suite .NET 840/840 superadas. ANEXO 8.93.
+| v1.53.0  | 2026-09-11  | (8.92)       | CIERRE DE CAJA WPF: CORRECCIÓN DE COMANDO DE CONFIRMACIÓN:
+|          |             |              | 1. Corrección de nombre en DailyClosureViewModel.cs: renombrado
+|          |             |              | de ConfirmAndSaveClosure a ConfirmClosure con [RelayCommand],
+|          |             |              | generando ConfirmClosureCommand para resolver el binding de
+|          |             |              | DailyClosureView.xaml:282 que quedaba inoperativo al hacer clic.
+|          |             |              | 2. Normalización de textos en MainWindow.xaml: menú lateral
+|          |             |              | actualizado a "Cierre de Caja" (tooltip "Cierre Diario y
+|          |             |              | Arqueo de Caja") en español formal.
+|          |             |              | 6 nuevos tests unitarios (DailyClosureViewModelTests).
+|          |             |              | Build Release 0/0; suite .NET 840/840 superadas. ANEXO 8.92.
 | v1.52.0  | 2026-09-11  | (8.91)       | RETIROS PENDIENTES WPF: CORRECCIÓN DE NAVEGACIÓN RECURRENTE:
 |          |             |              | 1. Corrección de ciclo de vida de ICollectionView en
 |          |             |              | PendingPickupsView.xaml.cs: uso de CollectionViewSource.
@@ -935,10 +1058,10 @@ Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-11 (REVISION 8.90 / modernizacion visual, contraste y
-  microinteraccion de emparejamiento QR en WPF; suite .NET 831/831; build R 0/0).
+  Ultima verificacion: 2026-09-11 (REVISION 8.94 / modernización visual y experiencia enterprise
+  de Historial de Ventas en WPF; suite .NET 847/847; build R 0/0).
   Proxima revision obligatoria: con cada PR que toque BD, API, perifericos o cierres deuda.
 
-================================================================================
-FIN DEL DOCUMENTO - REPORTE DE ESTADO v1.51.0
-================================================================================
+===============================================================================
+FIN DEL DOCUMENTO - REPORTE DE ESTADO v1.55.0
+===============================================================================

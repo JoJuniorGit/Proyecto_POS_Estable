@@ -172,8 +172,6 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
 
     private async Task DebounceSearchAsync(string term)
     {
-        // Búsqueda multicampo con debounce: al escribir, se espera 300 ms y se
-        // recarga desde la primera página con el término aplicado.
         var newCts = new CancellationTokenSource();
         var oldCts = Interlocked.Exchange(ref _searchDebounceCts, newCts);
         try
@@ -193,7 +191,6 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Debounce cancelado por un tipeo más reciente — se ignora.
         }
     }
 
@@ -201,21 +198,123 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
     public int CurrentPage
     {
         get => _currentPage;
-        set => SetProperty(ref _currentPage, value);
+        set
+        {
+            if (SetProperty(ref _currentPage, value))
+            {
+                NotifyPaginationCanExecute();
+            }
+        }
     }
 
     private int _pageSize = 25;
     public int PageSize
     {
         get => _pageSize;
-        set => SetProperty(ref _pageSize, value);
+        set
+        {
+            if (SetProperty(ref _pageSize, value))
+            {
+                NotifyPaginationCanExecute();
+            }
+        }
     }
 
     private int _totalItems = 0;
     public int TotalItems
     {
         get => _totalItems;
-        set => SetProperty(ref _totalItems, value);
+        set
+        {
+            if (SetProperty(ref _totalItems, value))
+            {
+                NotifyPaginationCanExecute();
+            }
+        }
+    }
+
+    public ObservableCollection<PageNumberItem> PageNumbers { get; } = new();
+
+    private string _pageSummary = string.Empty;
+    public string PageSummary
+    {
+        get => _pageSummary;
+        set => SetProperty(ref _pageSummary, value);
+    }
+
+    private string _targetPageInput = "1";
+    public string TargetPageInput
+    {
+        get => _targetPageInput;
+        set => SetProperty(ref _targetPageInput, value);
+    }
+
+    public int TotalPages => _totalItems > 0 ? (int)Math.Ceiling((double)_totalItems / _pageSize) : 1;
+
+    public bool CanGoFirst => _currentPage > 1 && TotalPages > 1;
+    public bool CanGoPrevious => _currentPage > 1 && TotalPages > 1;
+    public bool CanGoNext => _currentPage < TotalPages && TotalPages > 1;
+    public bool CanGoLast => _currentPage < TotalPages && TotalPages > 1;
+    public bool CanGoToPreviousPage => CanGoPrevious;
+    public bool CanGoToNextPage => CanGoNext;
+
+    public string PaginationPageText => $"Página {_currentPage} de {TotalPages}";
+
+    public string PaginationSummaryText
+    {
+        get
+        {
+            if (_totalItems <= 0) return "Mostrando 0 registros";
+            int start = (_currentPage - 1) * _pageSize + 1;
+            int end = Math.Min(_currentPage * _pageSize, _totalItems);
+            return $"Mostrando {start}-{end} de {_totalItems}";
+        }
+    }
+
+    public void UpdatePageNumbers()
+    {
+        PageNumbers.Clear();
+
+        if (TotalPages <= 0 || _totalItems == 0)
+        {
+            CurrentPage = 0;
+            PageSummary = "Página 0 de 0 (0 ventas)";
+            TargetPageInput = "0";
+            NotifyPaginationCanExecute();
+            return;
+        }
+
+        if (CurrentPage <= 0) CurrentPage = 1;
+        if (CurrentPage > TotalPages) CurrentPage = TotalPages;
+
+        int startPage = Math.Max(1, CurrentPage - 2);
+        int endPage = Math.Min(TotalPages, CurrentPage + 2);
+
+        for (int p = startPage; p <= endPage; p++)
+        {
+            PageNumbers.Add(new PageNumberItem
+            {
+                PageNumber = p,
+                IsActive = (p == CurrentPage)
+            });
+        }
+
+        PageSummary = $"Pág. {CurrentPage} de {TotalPages} ({_totalItems} ventas)";
+        TargetPageInput = CurrentPage.ToString();
+        NotifyPaginationCanExecute();
+    }
+
+    public void NotifyPaginationCanExecute()
+    {
+        OnPropertyChanged(nameof(TotalPages));
+        OnPropertyChanged(nameof(PaginationPageText));
+        OnPropertyChanged(nameof(PaginationSummaryText));
+        OnPropertyChanged(nameof(CanGoFirst));
+        OnPropertyChanged(nameof(CanGoPrevious));
+        OnPropertyChanged(nameof(CanGoNext));
+        OnPropertyChanged(nameof(CanGoLast));
+        OnPropertyChanged(nameof(CanGoToPreviousPage));
+        OnPropertyChanged(nameof(CanGoToNextPage));
     }
 
     private bool _isLoading = false;
@@ -244,9 +343,6 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
         _salesService = salesService;
         _dispatchAction = dispatchAction ?? (action => action());
 
-        // Filtro inicial: solo el día en curso. Se asignan los campos directamente
-        // (no las propiedades) para no disparar LoadHistoryAsync antes de que el
-        // servicio esté listo; la carga inicial la dispara EnsureLoadedAsync.
         _startDate = DateTime.Today;
         _endDate = DateTime.Today;
 
@@ -280,8 +376,6 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
         {
             IsPurchaseDetailsVisible = true;
             IsPurchaseDetailsExpanded = true;
-
-            // Precarga inmediata de valores básicos disponibles en la fila de la grilla
             DetailDateLocalFormatted = _value.DateLocal.ToString("dd/MM/yyyy hh:mm tt", CultureInfo.CurrentCulture);
             DetailAppliedRate = _value.AppliedRate;
             DetailTotalUSD = _value.TotalUSD;
@@ -337,6 +431,7 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
                 }
                 TotalItems = _total;
                 TotalBsSForThePeriod = _tempTotalBsS;
+                UpdatePageNumbers();
                 SelectedSale = null;
                 ClearSelectedDetailState();
             }
@@ -348,7 +443,7 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
         {
             if (!_token.IsCancellationRequested)
             {
-                ErrorMessage = $"Failed to load history: {_ex.Message}";
+                ErrorMessage = $"Error al cargar historial de ventas: {_ex.Message}";
             }
         }
         finally
@@ -361,11 +456,11 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task NextPageAsync()
+    private async Task FirstPageAsync()
     {
-        if (CurrentPage * PageSize < TotalItems)
+        if (CanGoFirst)
         {
-            CurrentPage++;
+            CurrentPage = 1;
             await LoadHistoryAsync();
         }
     }
@@ -373,10 +468,62 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task PreviousPageAsync()
     {
-        if (CurrentPage > 1)
+        if (CanGoPrevious)
         {
             CurrentPage--;
             await LoadHistoryAsync();
+        }
+    }
+
+    [RelayCommand]
+    private async Task NextPageAsync()
+    {
+        if (CanGoNext)
+        {
+            CurrentPage++;
+            await LoadHistoryAsync();
+        }
+    }
+
+    [RelayCommand]
+    private async Task LastPageAsync()
+    {
+        if (CanGoLast)
+        {
+            CurrentPage = TotalPages;
+            await LoadHistoryAsync();
+        }
+    }
+
+    [RelayCommand]
+    private async Task GoToPageAsync(int page)
+    {
+        if (page >= 1 && page <= TotalPages && page != CurrentPage)
+        {
+            CurrentPage = page;
+            await LoadHistoryAsync();
+        }
+    }
+
+    [RelayCommand]
+    private async Task SubmitGoToPageAsync()
+    {
+        if (int.TryParse(TargetPageInput, out int target) && TotalPages > 0)
+        {
+            int clamped = Math.Clamp(target, 1, TotalPages);
+            if (clamped != CurrentPage)
+            {
+                CurrentPage = clamped;
+                await LoadHistoryAsync();
+            }
+            else
+            {
+                TargetPageInput = CurrentPage.ToString();
+            }
+        }
+        else
+        {
+            TargetPageInput = CurrentPage > 0 ? CurrentPage.ToString() : "1";
         }
     }
 
@@ -400,7 +547,6 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
         var _token = newCts.Token;
         var _saleId = _selectedSaleItem.Id;
 
-        // Limpiar colecciones de detalle mientras se realiza la petición
         _dispatchAction(() =>
         {
             ReplaceCollection(SelectedSaleItems, Array.Empty<SaleItemHistoryDto>());
@@ -412,7 +558,6 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
 
         try
         {
-            // Debounce: 200ms para evitar sobrecargar la API al navegar rápidamente con el teclado
             await Task.Delay(200, _token);
 
             if (_token.IsCancellationRequested)
@@ -426,7 +571,6 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
             if (_token.IsCancellationRequested)
                 return;
 
-            // Despacho seguro en hilo UI y actualización completa del detalle
             _dispatchAction(() =>
             {
                 ReplaceCollection(SelectedSaleItems, _detail.Items);
@@ -441,7 +585,6 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Cancelado normalmente por una selección posterior — ignorar
         }
         catch (Exception _ex)
         {
@@ -487,8 +630,6 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
         }
     }
 
-    // 8.6-M11/M12: VM retenido de facto singleton por MainViewModel → debe liberar sus recursos
-    // (CTS de búsqueda/selección/debounce y suscripciones de mensajes) al terminar la app.
     public void Dispose()
     {
         foreach (var cts in new[] { _searchCts, _selectionCts, _searchDebounceCts })

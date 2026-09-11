@@ -20,33 +20,82 @@
         <helpers:BindingProxy x:Key="Proxy" Data="{Binding}" />
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <converters:CurrencyMultiplierConverter x:Key="CurrencyMultiplierConverter" />
-        <Style x:Key="PrimaryTabRadioButton" TargetType="RadioButton" BasedOn="{StaticResource MaterialDesignTabRadioButton}">
-            <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryHueMidBrush}" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-        </Style>
+        
+        <!-- Enterprise Subtle Drop Shadow -->
+        <DropShadowEffect x:Key="EnterpriseCardShadow"
+                          Color="#000000"
+                          BlurRadius="10"
+                          Opacity="0.05"
+                          Direction="270"
+                          ShadowDepth="2"/>
 
-        <!-- ── 2. Estilos para Encabezados Alineados ── -->
-        <Style x:Key="RightAlignedHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
-            <Setter Property="HorizontalContentAlignment" Value="Right"/>
-            <Setter Property="Padding" Value="0,0,12,0"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-        </Style>
-        <Style x:Key="CenterAlignedHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
-            <Setter Property="HorizontalContentAlignment" Value="Center"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-        </Style>
-        <Style x:Key="LeftAlignedHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-        </Style>
-
-        <!-- ── 3. Estilo Base para Iconos de Acción (Gris Neutro con Hover de Color) ── -->
-        <Style x:Key="ActionIconButton" TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+        <!-- Pestañas Corporativas (Activo: Morado #5E35B1 con línea inferior; Inactivo: Gris #64748B) -->
+        <Style x:Key="CorporateTabRadioButton" TargetType="RadioButton">
+            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#64748B"/>
-            <Setter Property="Width" Value="30"/>
-            <Setter Property="Height" Value="30"/>
-            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="14,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="TabBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="Transparent"
+                                BorderThickness="0,0,0,2.5"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabBorder" Property="Background" Value="#F1F5F9"/>
+                                <Setter Property="Foreground" Value="#1E293B"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Foreground" Value="#5E35B1"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#5E35B1"/>
+                                <Setter TargetName="TabBorder" Property="Background" Value="Transparent"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ── 2. Estilos para Encabezados Alineados (Fondo #F8FAFC, Texto #64748B, 12px SemiBold) ── -->
+        <Style x:Key="LeftAlignedHeader" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        </Style>
+
+        <Style x:Key="RightAlignedHeader" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Right"/>
+        </Style>
+
+        <Style x:Key="CenterAlignedHeader" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
         </Style>
     </UserControl.Resources>
 
@@ -69,141 +118,189 @@
         </Border>
 
         <!-- BARRA SUPERIOR RESPONSIVA: Buscador (Izq), Pestañas (Centro), Acciones y Moneda (Der) -->
-        <Grid Grid.Row="1" Margin="0,0,0,12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/> <!-- Buscador y Spinner -->
-                <ColumnDefinition Width="*"/>    <!-- Pestañas de estado con espacio elástico -->
-                <ColumnDefinition Width="Auto"/> <!-- Moneda, Separador y Botones -->
-            </Grid.ColumnDefinitions>
-            
-            <!-- 1. Buscador con Indicador de Búsqueda -->
-            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBox x:Name="SearchInput"
-                         materialDesign:HintAssist.Hint="Buscar producto o SKU (mín. 2 carac)..."
-                         materialDesign:TextFieldAssist.HasClearButton="True"
-                         Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
-                         Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         GotFocus="SearchInput_GotFocus"
-                         VerticalAlignment="Center"
-                         Width="250"/>
-                <ProgressBar Value="0"
-                             IsIndeterminate="True"
-                             VerticalAlignment="Center"
-                             Width="18" Height="18"
-                             Margin="8,0,0,0">
-                    <ProgressBar.Style>
-                        <Style TargetType="ProgressBar" BasedOn="{StaticResource MaterialDesignCircularProgressBar}">
-                            <Setter Property="Visibility" Value="Collapsed"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsSearching}" Value="True">
-                                    <Setter Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ProgressBar.Style>
-                </ProgressBar>
-            </StackPanel>
+        <Border Grid.Row="1" 
+                Background="#FFFFFF" 
+                BorderBrush="#E2E8F0" 
+                BorderThickness="1" 
+                CornerRadius="8" 
+                Padding="12,8" 
+                Margin="0,0,0,12"
+                Effect="{StaticResource EnterpriseCardShadow}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/> <!-- Buscador y Spinner -->
+                    <ColumnDefinition Width="*"/>    <!-- Pestañas de estado con espacio elástico -->
+                    <ColumnDefinition Width="Auto"/> <!-- Moneda, Separador y Botones -->
+                </Grid.ColumnDefinitions>
+                
+                <!-- 1. Buscador en Cápsula Cerrada -->
+                <Border Grid.Column="0"
+                        Background="#F8FAFC"
+                        BorderBrush="#E2E8F0"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Height="40"
+                        Width="280"
+                        VerticalAlignment="Center">
+                    <Grid Margin="10,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        
+                        <TextBox Grid.Column="1"
+                                 x:Name="SearchInput"
+                                 materialDesign:HintAssist.Hint="Buscar producto o SKU..."
+                                 materialDesign:TextFieldAssist.HasClearButton="True"
+                                 Style="{DynamicResource MaterialDesignTextBox}"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 Foreground="#1E293B"
+                                 FontSize="13"
+                                 Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 GotFocus="SearchInput_GotFocus"
+                                 VerticalAlignment="Center"
+                                 VerticalContentAlignment="Center"/>
 
-            <!-- 2. Pestañas de Filtro de Estado (Espacio Flexible) -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="20,0,15,0">
-                <RadioButton Content="Activos" 
-                             Style="{StaticResource PrimaryTabRadioButton}" 
-                             IsChecked="True" 
-                             Command="{Binding SetStatusFilterCommand}" 
-                             CommandParameter="active"
-                             Margin="0,0,6,0"/>
-                <RadioButton Content="Inactivos" 
-                             Style="{StaticResource PrimaryTabRadioButton}" 
-                             Command="{Binding SetStatusFilterCommand}" 
-                             CommandParameter="inactive"
-                             Margin="0,0,6,0"/>
-                <RadioButton Content="Eliminados (Archivo)" 
-                             Style="{StaticResource PrimaryTabRadioButton}" 
-                             Command="{Binding SetStatusFilterCommand}" 
-                             CommandParameter="deleted"
-                             Margin="0,0,6,0"/>
-                <RadioButton Content="Todos" 
-                             Style="{StaticResource PrimaryTabRadioButton}" 
-                             Command="{Binding SetStatusFilterCommand}" 
-                             CommandParameter="all"/>
-            </StackPanel>
-            
-            <!-- 3. Botones de Acción y Selectores a la Derecha -->
-            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
-                <!-- Selector de Moneda -->
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Moneda:" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,0,6,0" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                    <ComboBox SelectedValue="{Binding SelectedCurrency, Mode=TwoWay}"
-                              SelectedValuePath="Content"
-                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
-                              Height="38"
-                              Padding="10,4"
-                              FontWeight="Bold">
-                        <ComboBoxItem Content="Bs.S" IsSelected="True"/>
-                        <ComboBoxItem Content="USD"/>
-                    </ComboBox>
+                        <ProgressBar Grid.Column="2"
+                                     Value="0"
+                                     IsIndeterminate="True"
+                                     VerticalAlignment="Center"
+                                     Width="16" Height="16"
+                                     Margin="4,0,0,0">
+                            <ProgressBar.Style>
+                                <Style TargetType="ProgressBar" BasedOn="{StaticResource MaterialDesignCircularProgressBar}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsSearching}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ProgressBar.Style>
+                        </ProgressBar>
+                    </Grid>
+                </Border>
+
+                <!-- 2. Pestañas de Filtro de Estado (Morado corporativo y Gris) -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="20,0,15,0">
+                    <RadioButton Content="Activos" 
+                                 Style="{StaticResource CorporateTabRadioButton}" 
+                                 IsChecked="True" 
+                                 Command="{Binding SetStatusFilterCommand}" 
+                                 CommandParameter="active"
+                                 Margin="0,0,4,0"/>
+                    <RadioButton Content="Inactivos" 
+                                 Style="{StaticResource CorporateTabRadioButton}" 
+                                 Command="{Binding SetStatusFilterCommand}" 
+                                 CommandParameter="inactive"
+                                 Margin="0,0,4,0"/>
+                    <RadioButton Content="Eliminados (Archivo)" 
+                                 Style="{StaticResource CorporateTabRadioButton}" 
+                                 Command="{Binding SetStatusFilterCommand}" 
+                                 CommandParameter="deleted"
+                                 Margin="0,0,4,0"/>
+                    <RadioButton Content="Todos" 
+                                 Style="{StaticResource CorporateTabRadioButton}" 
+                                 Command="{Binding SetStatusFilterCommand}" 
+                                 CommandParameter="all"/>
                 </StackPanel>
-
-                <!-- Separador Visual Elegante -->
-                <Border Width="1" Background="#CBD5E1" Margin="12,4"/>
-
-                <!-- Botón Precios al Mayor (Desactivado por defecto) -->
-                <Button Command="{Binding ToggleWholesaleCommand}"
-                        Style="{DynamicResource MaterialDesignOutlinedButton}"
-                        ToolTip="Mostrar u Ocultar Precios al Mayor y Cantidad Mínima"
-                        Height="38"
-                        Padding="12,0"
-                        Margin="0,0,10,0">
-                    <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="TagOutline" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <TextBlock Text="{Binding WholesaleButtonText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                
+                <!-- 3. Botones de Acción y Selectores a la Derecha -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <!-- Selector de Moneda -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Moneda:" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,0,6,0" Foreground="#64748B"/>
+                        <ComboBox SelectedValue="{Binding SelectedCurrency, Mode=TwoWay}"
+                                  SelectedValuePath="Content"
+                                  Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                  Height="40"
+                                  Padding="10,4"
+                                  FontWeight="Bold">
+                            <ComboBoxItem Content="Bs.S" IsSelected="True"/>
+                            <ComboBoxItem Content="USD"/>
+                        </ComboBox>
                     </StackPanel>
-                </Button>
 
-                <!-- Botón Actualizar Catálogo (Bajo Demanda) -->
-                <Button Command="{Binding RefreshCommand}"
-                        Style="{DynamicResource MaterialDesignOutlinedButton}"
-                        ToolTip="Actualizar Catálogo [F5]"
-                        Height="38"
-                        Padding="12,0"
-                        Margin="0,0,10,0"
-                        materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsRefreshing}"
-                        materialDesign:ButtonProgressAssist.IsIndeterminate="True"
-                        materialDesign:ButtonProgressAssist.Value="-1">
-                    <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="Refresh" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <TextBlock Text="Actualizar" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
+                    <!-- Separador Visual Elegante -->
+                    <Border Width="1" Background="#E2E8F0" Margin="12,4"/>
 
-                <!-- Botón Nuevo Producto -->
-                <Button Command="{Binding OpenAddProductCommand}"
-                        Style="{DynamicResource MaterialDesignRaisedButton}"
-                        Visibility="{Binding UserSession.CanMutateCatalog, Converter={StaticResource BooleanToVisibilityConverter}}"
-                        ToolTip="Crear Nuevo Producto en Catálogo"
-                        Height="38"
-                        Padding="14,0"
-                        Margin="0,0,10,0">
-                    <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="Plus" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <TextBlock Text="Nuevo Producto" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
+                    <!-- Botón Precios al Mayor (Ghost/Outlined sutil) -->
+                    <Button Command="{Binding ToggleWholesaleCommand}"
+                            Background="#FFFFFF"
+                            BorderBrush="#CBD5E1"
+                            BorderThickness="1"
+                            Foreground="#475569"
+                            ToolTip="Mostrar u Ocultar Precios al Mayor y Cantidad Mínima"
+                            Height="40"
+                            Padding="12,0"
+                            Margin="0,0,8,0"
+                            materialDesign:ButtonAssist.CornerRadius="6">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="TagOutline" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding WholesaleButtonText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
 
-                <!-- Botón Menú Lateral / Ajustes -->
-                <Button Style="{DynamicResource MaterialDesignOutlinedButton}"
-                        Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
-                        CommandParameter="{x:Static Dock.Right}"
-                        ToolTip="Abrir Menú Principal y Configuración"
-                        Height="38"
-                        Padding="12,0">
-                    <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="CogOutline" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <TextBlock Text="Menú" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-            </StackPanel>
-        </Grid>
+                    <!-- Botón Actualizar Catálogo (Ghost/Outlined sutil) -->
+                    <Button Command="{Binding RefreshCommand}"
+                            Background="#FFFFFF"
+                            BorderBrush="#CBD5E1"
+                            BorderThickness="1"
+                            Foreground="#475569"
+                            ToolTip="Actualizar Catálogo [F5]"
+                            Height="40"
+                            Padding="12,0"
+                            Margin="0,0,8,0"
+                            materialDesign:ButtonAssist.CornerRadius="6"
+                            materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsRefreshing}"
+                            materialDesign:ButtonProgressAssist.IsIndeterminate="True"
+                            materialDesign:ButtonProgressAssist.Value="-1">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="Refresh" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Actualizar" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Botón Principal Nuevo Producto (Sólido Morado Corporativo) -->
+                    <Button Command="{Binding OpenAddProductCommand}"
+                            Background="#5E35B1"
+                            BorderBrush="#5E35B1"
+                            Foreground="#FFFFFF"
+                            Visibility="{Binding UserSession.CanMutateCatalog, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            ToolTip="Crear Nuevo Producto en Catálogo"
+                            Height="40"
+                            Padding="16,0"
+                            Margin="0,0,8,0"
+                            materialDesign:ButtonAssist.CornerRadius="6">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="Plus" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="#FFFFFF"/>
+                            <TextBlock Text="Nuevo Producto" FontWeight="Bold" VerticalAlignment="Center" Foreground="#FFFFFF"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Botón Menú Lateral / Ajustes (Ghost/Outlined) -->
+                    <Button Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
+                            CommandParameter="{x:Static Dock.Right}"
+                            Background="#FFFFFF"
+                            BorderBrush="#CBD5E1"
+                            BorderThickness="1"
+                            Foreground="#475569"
+                            ToolTip="Abrir Menú Principal y Configuración"
+                            Height="40"
+                            Padding="12,0"
+                            materialDesign:ButtonAssist.CornerRadius="6">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="CogOutline" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Menú" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
 
         <!-- CONTENEDOR PRINCIPAL: TABLA DE PRODUCTOS ESTILIZADA -->
         <Grid Grid.Row="2">
@@ -213,26 +310,32 @@
             </Grid.RowDefinitions>
             
             <Border Grid.Row="0"
-                    Background="{DynamicResource MaterialDesignPaper}"
-                    BorderBrush="{DynamicResource MaterialDesignDivider}"
+                    Background="#FFFFFF"
+                    BorderBrush="#E2E8F0"
                     BorderThickness="1"
                     CornerRadius="8"
-                    Padding="2">
+                    Padding="0"
+                    Effect="{StaticResource EnterpriseCardShadow}">
                 <DataGrid x:Name="ProductsDataGrid"
                           ItemsSource="{Binding Products}" 
                           AutoGenerateColumns="False" 
-                          CanUserAddRows="False"
+                          CanUserAddRows="False" 
+                          CanUserDeleteRows="False"
+                          IsReadOnly="True"
                           GridLinesVisibility="Horizontal"
+                          HorizontalGridLinesBrush="#E2E8F0"
+                          VerticalGridLinesBrush="Transparent"
                           HeadersVisibility="Column"
                           HorizontalScrollBarVisibility="Disabled"
                           ColumnHeaderHeight="42"
-                          RowHeight="42"
+                          RowHeight="46"
                           VirtualizingStackPanel.IsVirtualizing="True"
                           VirtualizingStackPanel.VirtualizationMode="Recycling"
                           VirtualizingPanel.ScrollUnit="Pixel"
                           ScrollViewer.IsDeferredScrollingEnabled="False"
                           BorderThickness="0"
-                          Background="Transparent"
+                          Background="#FFFFFF"
+                          RowBackground="#FFFFFF"
                           Margin="0">
                     <DataGrid.RowStyle>
                         <Style TargetType="DataGridRow" BasedOn="{StaticResource MaterialDesignDataGridRow}">
@@ -261,7 +364,7 @@
                                             <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.SortCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="name"/>
                                         </Grid.InputBindings>
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="Producto" FontWeight="Bold"/>
+                                            <TextBlock Text="PRODUCTO" FontWeight="SemiBold" FontSize="12" Foreground="#64748B"/>
                                             <materialDesign:PackIcon Kind="ArrowUp" Width="14" Height="14" Margin="4,0,0,0" VerticalAlignment="Center">
                                                 <materialDesign:PackIcon.Style>
                                                     <Style TargetType="materialDesign:PackIcon">
@@ -300,7 +403,12 @@
                             </DataGridTemplateColumn.HeaderTemplate>
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding Name}" 
+                                               VerticalAlignment="Center" 
+                                               FontSize="13" 
+                                               Foreground="#1E293B" 
+                                               Margin="14,0,0,0"
+                                               TextTrimming="CharacterEllipsis"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -309,12 +417,12 @@
                         <DataGridTemplateColumn HeaderStyle="{StaticResource LeftAlignedHeader}" Width="140">
                             <DataGridTemplateColumn.HeaderTemplate>
                                 <DataTemplate>
-                                    <Grid Background="Transparent" Cursor="Hand" ToolTip="Ordenar por longitud de código de barras">
+                                    <Grid Background="Transparent" Cursor="Hand" ToolTip="Ordenar por código de barras">
                                         <Grid.InputBindings>
                                             <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.SortCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="sku"/>
                                         </Grid.InputBindings>
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="SKU / Código" FontWeight="Bold"/>
+                                            <TextBlock Text="SKU / CÓDIGO" FontWeight="SemiBold" FontSize="12" Foreground="#64748B"/>
                                             <materialDesign:PackIcon Kind="ArrowUp" Width="14" Height="14" Margin="4,0,0,0" VerticalAlignment="Center">
                                                 <materialDesign:PackIcon.Style>
                                                     <Style TargetType="materialDesign:PackIcon">
@@ -354,15 +462,16 @@
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border Background="#F1F5F9" 
-                                            BorderBrush="#CBD5E1" 
+                                            BorderBrush="#E2E8F0" 
                                             BorderThickness="1" 
                                             CornerRadius="4" 
                                             Padding="6,3" 
                                             HorizontalAlignment="Left" 
-                                            VerticalAlignment="Center">
+                                            VerticalAlignment="Center"
+                                            Margin="14,0,0,0">
                                         <TextBlock Text="{Binding SKU}" 
                                                    FontFamily="Consolas, Courier New, monospace" 
-                                                   FontWeight="Bold" 
+                                                   FontWeight="SemiBold" 
                                                    FontSize="12" 
                                                    Foreground="#334155"/>
                                     </Border>
@@ -371,15 +480,15 @@
                         </DataGridTemplateColumn>
 
                         <!-- 3. Cantidad / Stock con Alerta Visual Roja si Stock <= 0 -->
-                        <DataGridTemplateColumn HeaderStyle="{StaticResource CenterAlignedHeader}" Width="110">
+                        <DataGridTemplateColumn HeaderStyle="{StaticResource RightAlignedHeader}" Width="120">
                             <DataGridTemplateColumn.HeaderTemplate>
                                 <DataTemplate>
                                     <Grid Background="Transparent" Cursor="Hand">
                                         <Grid.InputBindings>
                                             <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.SortCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="stock"/>
                                         </Grid.InputBindings>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <TextBlock Text="Stock" FontWeight="Bold"/>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <TextBlock Text="STOCK" FontWeight="SemiBold" FontSize="12" Foreground="#64748B"/>
                                             <materialDesign:PackIcon Kind="ArrowUp" Width="14" Height="14" Margin="4,0,0,0" VerticalAlignment="Center">
                                                 <materialDesign:PackIcon.Style>
                                                     <Style TargetType="materialDesign:PackIcon">
@@ -418,40 +527,48 @@
                             </DataGridTemplateColumn.HeaderTemplate>
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Border CornerRadius="12" Padding="8,3" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Setter Property="Background" Value="#F0F9FF"/>
-                                                <Setter Property="BorderBrush" Value="#BAE6FD"/>
-                                                <Setter Property="BorderThickness" Value="1"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsCashAdvance}" Value="True">
-                                                        <Setter Property="Background" Value="#EDE9FE"/>
-                                                        <Setter Property="BorderBrush" Value="#DDD6FE"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding IsStockCritical}" Value="True">
-                                                        <Setter Property="Background" Value="#FEE2E2"/>
-                                                        <Setter Property="BorderBrush" Value="#FCA5A5"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-                                        <TextBlock Text="{Binding FormattedStockQuantity}" FontWeight="Bold" FontSize="12">
-                                             <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Foreground" Value="#0369A1"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0">
+                                        <Border CornerRadius="6" Padding="8,3" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="Transparent"/>
+                                                    <Setter Property="BorderThickness" Value="0"/>
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsCashAdvance}" Value="True">
-                                                            <Setter Property="Foreground" Value="#6D28D9"/>
+                                                            <Setter Property="Background" Value="#EDE9FE"/>
+                                                            <Setter Property="BorderBrush" Value="#DDD6FE"/>
+                                                            <Setter Property="BorderThickness" Value="1"/>
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding IsStockCritical}" Value="True">
-                                                            <Setter Property="Foreground" Value="#DC2626"/>
+                                                            <Setter Property="Background" Value="#FEE2E2"/>
+                                                            <Setter Property="BorderBrush" Value="#FECACA"/>
+                                                            <Setter Property="BorderThickness" Value="1"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                    </Border>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding FormattedStockQuantity}" 
+                                                       Typography.NumeralAlignment="Tabular"
+                                                       FontWeight="SemiBold" 
+                                                       FontSize="13">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#1E293B"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsCashAdvance}" Value="True">
+                                                                <Setter Property="Foreground" Value="#6D28D9"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsStockCritical}" Value="True">
+                                                                <Setter Property="Foreground" Value="#991B1B"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
+                                    </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -465,7 +582,7 @@
                                             <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.SortCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="cost"/>
                                         </Grid.InputBindings>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                            <TextBlock Text="Costo ($ USD)" FontWeight="Bold"/>
+                                            <TextBlock Text="COSTO ($ USD)" FontWeight="SemiBold" FontSize="12" Foreground="#64748B"/>
                                             <materialDesign:PackIcon Kind="ArrowUp" Width="14" Height="14" Margin="4,0,0,0" VerticalAlignment="Center">
                                                 <materialDesign:PackIcon.Style>
                                                     <Style TargetType="materialDesign:PackIcon">
@@ -505,14 +622,17 @@
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding DisplayCost}" 
-                                                HorizontalAlignment="Right"
-                                                VerticalAlignment="Center" 
-                                                Margin="0,0,10,0"/>
+                                               Typography.NumeralAlignment="Tabular"
+                                               Foreground="#1E293B"
+                                               FontSize="13"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center" 
+                                               Margin="0,0,14,0"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- 5. Precio Detal Dinámico (Encabezado Explícito y Alineado a la Derecha) -->
+                        <!-- 5. Precio Detal Dinámico (Alineado a la Derecha y Data Neutra) -->
                         <DataGridTemplateColumn HeaderStyle="{StaticResource RightAlignedHeader}" Width="150">
                             <DataGridTemplateColumn.HeaderTemplate>
                                 <DataTemplate>
@@ -521,7 +641,7 @@
                                             <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.SortCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="price"/>
                                         </Grid.InputBindings>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding DataContext.RetailPriceHeader, RelativeSource={RelativeSource AncestorType=UserControl}, FallbackValue='Precio Detal (Bs.S)'}" FontWeight="Bold"/>
+                                            <TextBlock Text="{Binding DataContext.RetailPriceHeader, RelativeSource={RelativeSource AncestorType=UserControl}, FallbackValue='PRECIO DETAL (BS.S)'}" FontWeight="SemiBold" FontSize="12" Foreground="#64748B"/>
                                             <materialDesign:PackIcon Kind="ArrowUp" Width="14" Height="14" Margin="4,0,0,0" VerticalAlignment="Center">
                                                 <materialDesign:PackIcon.Style>
                                                     <Style TargetType="materialDesign:PackIcon">
@@ -561,42 +681,45 @@
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding DisplayRetailPrice}" 
-                                                Foreground="#059669" 
-                                                FontWeight="Bold" 
-                                                FontSize="13"
-                                                HorizontalAlignment="Right"
-                                                VerticalAlignment="Center" 
-                                                Margin="0,0,14,0"/>
+                                               Foreground="#1E293B" 
+                                               FontWeight="Bold" 
+                                               FontSize="13"
+                                               Typography.NumeralAlignment="Tabular"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center" 
+                                               Margin="0,0,14,0"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- 6. Precio Mayor Dinámico (Encabezado Explícito, Alineado a la Derecha, Naranja si hereda detal) -->
-                        <DataGridTemplateColumn Header="{Binding Data.WholesalePriceHeader, Source={StaticResource Proxy}, FallbackValue='Precio Mayor (Bs.S)'}" 
+                        <!-- 6. Precio Mayor Dinámico (Alineado a la Derecha y Data Neutra) -->
+                        <DataGridTemplateColumn Header="{Binding Data.WholesalePriceHeader, Source={StaticResource Proxy}, FallbackValue='PRECIO MAYOR (BS.S)'}" 
                                                 Visibility="{Binding Data.ShowWholesale, Source={StaticResource Proxy}, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                 HeaderStyle="{StaticResource RightAlignedHeader}" 
                                                 Width="150">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0">
-                                        <TextBlock Text="{Binding DisplayWholesalePrice}" 
-                                                    Foreground="{Binding WholesalePriceColor}" 
-                                                    FontWeight="Bold" 
-                                                    FontSize="13"/>
-                                    </StackPanel>
+                                    <TextBlock Text="{Binding DisplayWholesalePrice}" 
+                                               Foreground="#1E293B" 
+                                               FontWeight="SemiBold" 
+                                               FontSize="13"
+                                               Typography.NumeralAlignment="Tabular"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center" 
+                                               Margin="0,0,14,0"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- 7. Cantidad Mínima Mayor (Formateado de Unidades Enteras sin Decimales + Etiqueta Atenuada) -->
-                        <DataGridTemplateColumn Header="Cant. Mín. Mayor" 
+                        <!-- 7. Cantidad Mínima Mayor (Alineado a la Derecha) -->
+                        <DataGridTemplateColumn Header="CANT. MÍN. MAYOR" 
                                                 Visibility="{Binding Data.ShowWholesale, Source={StaticResource Proxy}, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                HeaderStyle="{StaticResource CenterAlignedHeader}" 
-                                                Width="125">
+                                                HeaderStyle="{StaticResource RightAlignedHeader}" 
+                                                Width="135">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
-                                        <TextBlock Text="{Binding FormattedMinWholesaleQuantityStr}" FontWeight="Bold" FontSize="12" Foreground="{Binding WholesalePriceColor}"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0">
+                                        <TextBlock Text="{Binding FormattedMinWholesaleQuantityStr}" FontWeight="SemiBold" FontSize="13" Foreground="#1E293B" Typography.NumeralAlignment="Tabular"/>
                                         <TextBlock Text=" "/>
                                         <TextBlock Text="{Binding UnitOfMeasureStr}" FontSize="12" Foreground="#94A3B8" FontWeight="Medium"/>
                                     </StackPanel>
@@ -604,104 +727,104 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- 8. Acciones (Unificadas en Gris Neutro + Efecto Hover por Acción) -->
-                        <DataGridTemplateColumn Header="Acciones" HeaderStyle="{StaticResource CenterAlignedHeader}" Width="Auto">
+                        <!-- 8. Acciones (Kebab Menu ⋮ Elegante y Limpio) -->
+                        <DataGridTemplateColumn Header="ACCIONES" HeaderStyle="{StaticResource CenterAlignedHeader}" Width="80">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
-                                        <!-- Ajustar Stock (Hover Teal #0D9488) -->
-                                        <Button Command="{Binding DataContext.AdjustStockCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
-                                                CommandParameter="{Binding}"
-                                                Visibility="{Binding DataContext.UserSession.CanMutateCatalog, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                IsEnabled="{Binding CanAdjustStock}"
-                                                ToolTip="{Binding AdjustStockToolTip}">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource ActionIconButton}">
-                                                    <Style.Triggers>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter Property="Foreground" Value="#0D9488"/>
-                                                        </Trigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                            <materialDesign:PackIcon Kind="PackageVariantClosed" Width="18" Height="18" />
-                                        </Button>
+                                    <materialDesign:PopupBox Style="{DynamicResource MaterialDesignPopupBox}"
+                                                             PlacementMode="BottomAndAlignRightEdges"
+                                                             Padding="0"
+                                                             Width="32" Height="32"
+                                                             Foreground="#64748B"
+                                                             ToolTip="Opciones del Producto">
+                                        <materialDesign:PopupBox.ToggleContent>
+                                            <materialDesign:PackIcon Kind="DotsVertical" Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </materialDesign:PopupBox.ToggleContent>
+                                        <StackPanel Width="200">
+                                            <!-- Ajustar Stock -->
+                                            <Button Command="{Binding DataContext.AdjustStockCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Visibility="{Binding DataContext.UserSession.CanMutateCatalog, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                    IsEnabled="{Binding CanAdjustStock}"
+                                                    Style="{DynamicResource MaterialDesignFlatButton}"
+                                                    HorizontalContentAlignment="Left"
+                                                    Padding="12,8">
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <materialDesign:PackIcon Kind="PackageVariantClosed" Width="18" Height="18" Margin="0,0,10,0" Foreground="#0D9488" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Ajustar Stock" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
 
-                                        <!-- Consultar / Editar (Hover Azul #2563EB) -->
-                                        <Button Command="{Binding DataContext.EditProductCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
-                                                CommandParameter="{Binding}"
-                                                ToolTip="Consultar / Editar Detalle">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource ActionIconButton}">
-                                                    <Style.Triggers>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter Property="Foreground" Value="#2563EB"/>
-                                                        </Trigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                            <materialDesign:PackIcon Kind="Eye" Width="18" Height="18" />
-                                        </Button>
+                                            <!-- Consultar / Editar -->
+                                            <Button Command="{Binding DataContext.EditProductCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Style="{DynamicResource MaterialDesignFlatButton}"
+                                                    HorizontalContentAlignment="Left"
+                                                    Padding="12,8">
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <materialDesign:PackIcon Kind="PencilOutline" Width="18" Height="18" Margin="0,0,10,0" Foreground="#5E35B1" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Consultar / Editar" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
 
-                                        <!-- Pausar / Deshabilitar (Hover Naranja #D97706) -->
-                                        <Button Command="{Binding DataContext.TogglePauseProductCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
-                                                CommandParameter="{Binding}"
-                                                Visibility="{Binding DataContext.UserSession.CanMutateCatalog, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                ToolTip="Pausar / Deshabilitar Producto">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource ActionIconButton}">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsDeleted}" Value="True">
-                                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                                        </DataTrigger>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter Property="Foreground" Value="#D97706"/>
-                                                        </Trigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                            <materialDesign:PackIcon Kind="PauseCircle" Width="18" Height="18" />
-                                        </Button>
+                                            <!-- Pausar / Deshabilitar -->
+                                            <Button Command="{Binding DataContext.TogglePauseProductCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Visibility="{Binding DataContext.UserSession.CanMutateCatalog, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                    HorizontalContentAlignment="Left"
+                                                    Padding="12,8">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsDeleted}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <materialDesign:PackIcon Kind="PauseCircleOutline" Width="18" Height="18" Margin="0,0,10,0" Foreground="#D97706" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Pausar Producto" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
 
-                                        <!-- Restaurar (Hover Verde #16A34A) -->
-                                        <Button Command="{Binding DataContext.RestoreProductCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
-                                                CommandParameter="{Binding}"
-                                                Visibility="{Binding DataContext.UserSession.CanMutateCatalog, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                ToolTip="Restaurar a Estado Activo">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource ActionIconButton}">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsActive}" Value="False">
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </DataTrigger>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter Property="Foreground" Value="#16A34A"/>
-                                                        </Trigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                            <materialDesign:PackIcon Kind="Restore" Width="18" Height="18" />
-                                        </Button>
+                                            <!-- Restaurar -->
+                                            <Button Command="{Binding DataContext.RestoreProductCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Visibility="{Binding DataContext.UserSession.CanMutateCatalog, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                    HorizontalContentAlignment="Left"
+                                                    Padding="12,8">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <materialDesign:PackIcon Kind="Restore" Width="18" Height="18" Margin="0,0,10,0" Foreground="#16A34A" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Restaurar a Activo" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
 
-                                        <!-- Eliminar (Hover Rojo #DC2626) -->
-                                        <Button Command="{Binding DataContext.DeleteProductCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
-                                                CommandParameter="{Binding}"
-                                                Visibility="{Binding DataContext.UserSession.CanMutateCatalog, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                ToolTip="Opciones de Eliminación">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource ActionIconButton}">
-                                                    <Style.Triggers>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter Property="Foreground" Value="#DC2626"/>
-                                                        </Trigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                            <materialDesign:PackIcon Kind="Delete" Width="18" Height="18" />
-                                        </Button>
-                                    </StackPanel>
+                                            <!-- Eliminar -->
+                                            <Button Command="{Binding DataContext.DeleteProductCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Visibility="{Binding DataContext.UserSession.CanMutateCatalog, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                    Style="{DynamicResource MaterialDesignFlatButton}"
+                                                    HorizontalContentAlignment="Left"
+                                                    Padding="12,8">
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <materialDesign:PackIcon Kind="DeleteOutline" Width="18" Height="18" Margin="0,0,10,0" Foreground="#DC2626" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Eliminar Producto" VerticalAlignment="Center" Foreground="#DC2626"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </StackPanel>
+                                    </materialDesign:PopupBox>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -709,11 +832,18 @@
                 </DataGrid>
             </Border>
 
-            <!-- Barra de Paginación Avanzada Centrada (Versión WPF) -->
-            <Border Grid.Row="1" Margin="0,10,0,0" Padding="8,4" Background="{DynamicResource MaterialDesignPaper}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="8">
+            <!-- Barra de Paginación Avanzada Centrada (Diseño Enterprise Refinado) -->
+            <Border Grid.Row="1" 
+                    Margin="0,10,0,0" 
+                    Padding="8,4" 
+                    Background="#FFFFFF" 
+                    BorderBrush="#E2E8F0" 
+                    BorderThickness="1" 
+                    CornerRadius="8"
+                    Effect="{StaticResource EnterpriseCardShadow}">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <!-- Resumen -->
-                    <TextBlock Text="{Binding PageSummary}" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,0,16,0" Foreground="{DynamicResource MaterialDesignBody}"/>
+                    <TextBlock Text="{Binding PageSummary}" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,0,14,0" Foreground="#475569"/>
 
                     <!-- Botón Primera Página (<<) -->
                     <Button Command="{Binding FirstPageCommand}" 
@@ -733,7 +863,7 @@
                         <materialDesign:PackIcon Kind="ChevronLeft" Width="18" Height="18"/>
                     </Button>
 
-                    <!-- Botones Numéricos de Páginas Relativas -->
+                    <!-- Botones Numéricos de Páginas Relativas (Píldoras sin bordes toscos) -->
                     <ItemsControl ItemsSource="{Binding PageNumbers}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -747,13 +877,16 @@
                                         Content="{Binding PageNumber}"
                                         Height="32" MinWidth="34" Padding="6,0" Margin="2,0">
                                     <Button.Style>
-                                        <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                        <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
                                             <Setter Property="FontWeight" Value="SemiBold"/>
+                                            <Setter Property="Foreground" Value="#475569"/>
+                                            <Setter Property="BorderThickness" Value="0"/>
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="materialDesign:ButtonAssist.CornerRadius" Value="6"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                    <Setter Property="Background" Value="{DynamicResource PrimaryHueMidBrush}"/>
-                                                    <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidForegroundBrush}"/>
-                                                    <Setter Property="BorderBrush" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                                                    <Setter Property="Background" Value="#5E35B1"/>
+                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
                                                     <Setter Property="FontWeight" Value="Bold"/>
                                                 </DataTrigger>
                                             </Style.Triggers>
@@ -777,17 +910,17 @@
                     <Button Command="{Binding LastPageCommand}" 
                             IsEnabled="{Binding CanGoLast}"
                             Style="{DynamicResource MaterialDesignOutlinedButton}" 
-                            Height="32" Width="36" Padding="0" Margin="0,0,16,0" 
+                            Height="32" Width="36" Padding="0" Margin="0,0,14,0" 
                             ToolTip="Última Página">
                         <materialDesign:PackIcon Kind="PageLast" Width="18" Height="18"/>
                     </Button>
 
                     <!-- Separador vertical -->
-                    <Rectangle Width="1" Height="22" Fill="{DynamicResource MaterialDesignDivider}" Margin="0,0,16,0"/>
+                    <Rectangle Width="1" Height="22" Fill="#E2E8F0" Margin="0,0,14,0"/>
 
                     <!-- Búsqueda Exacta: Ir a Página -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="Ir a:" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,0" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                        <TextBlock Text="Ir a:" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,0" Foreground="#64748B"/>
                         <TextBox x:Name="TargetPageTextBox"
                                  Text="{Binding TargetPageInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
                                  PreviewTextInput="NumberValidationTextBox"
@@ -805,6 +938,9 @@
                         </TextBox>
                         <Button Command="{Binding SubmitGoToPageCommand}"
                                 Style="{DynamicResource MaterialDesignRaisedButton}"
+                                Background="#5E35B1"
+                                BorderBrush="#5E35B1"
+                                Foreground="#FFFFFF"
                                 Height="30" Width="36" Padding="0"
                                 ToolTip="Ir a la página especificada">
                             <materialDesign:PackIcon Kind="ArrowRight" Width="16" Height="16"/>

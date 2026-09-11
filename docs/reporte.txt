@@ -5982,3 +5982,459 @@ C. VERIFICACIÓN Y DONE:
 FIN DEL ANEXO - REVISION 8.91
 
 
+================================================================================
+ANEXO - REVISION 8.92 (2026-09-11)
+================================================================================
+CONTEXTO:
+En el cliente de escritorio WPF, al acceder al módulo de Cierre Diario y Arqueo de Caja
+(DailyClosureView), al presionar el botón "Confirmar y Procesar Cierre" el sistema no realizaba
+ninguna acción (el botón no respondía al clic).
+
+A. CAUSA RAÍZ DIAGNOSTICADA:
+   1. Discrepancia de nomenclatura entre el XAML y el generador de comandos de CommunityToolkit:
+      - En DailyClosureView.xaml:282, el botón de confirmación enlazaba a:
+        Command="{Binding ConfirmClosureCommand}"
+      - En DailyClosureViewModel.cs:275, el método decorado con [RelayCommand] estaba nombrado:
+        private async Task ConfirmAndSaveClosure()
+      - CommunityToolkit generaba el comando ConfirmAndSaveClosureCommand. Al no existir ConfirmClosureCommand,
+        WPF evaluaba el enlace a null, resultando en un botón inoperativo que no ejecutaba ningún comando al hacer clic.
+
+B. SOLUCIÓN IMPLEMENTADA:
+   1. Desktop.Client.Core/ViewModels/DailyClosureViewModel.cs:
+      - Se renombró el método a private async Task ConfirmClosure() para que el generador [RelayCommand]
+        produzca exactamente ConfirmClosureCommand, enlazando directamente con la vista.
+   2. Desktop.Client/MainWindow.xaml:
+      - Se normalizó el texto del botón del menú lateral de "Daily Closing" a "Cierre de Caja" con ToolTip
+        "Cierre Diario y Arqueo de Caja", garantizando consistencia en español formal en toda la interfaz.
+   3. CommandCenter.Tests/Unit/DailyClosureViewModelTests.cs:
+      - Se creó una suite de pruebas unitarias cubriendo:
+        * ConfirmClosureCommand_WhenDetailRowsEmpty_ShowsWarningDialog
+        * ConfirmClosureCommand_WhenUserCancels_DoesNotProceedWithCreation
+        * ConfirmClosureCommand_WhenUserConfirms_CallsCreateClosureAndShowsSuccess
+        * LoadExpectedTotalsCommand_WhenInvoked_CalculatesExpectedAndDifferenceTotals
+        * BlindClosing_WhenUserIsCashier_DisallowsDisabling
+        * ExportClosureReceiptCommand_WhenDetailRowsPresent_InvokesFilePicker
+
+C. VERIFICACIÓN Y DONE:
+   - Compilación Release: dotnet build CommandCenter.slnx -c Release -> 0 Warnings, 0 Errores.
+   - Suite completa .NET (CommandCenter.Tests): 840 pruebas superadas (0 errores, 0 omitidas).
+   - Auditoría automatizada por subagente reviewer: APROBADO sin observaciones.
+
+FIN DEL ANEXO - REVISION 8.92
+
+
+================================================================================
+ANEXO - REVISION 8.93 (2026-09-11)
+================================================================================
+CONTEXTO:
+Rediseño visual y modernización ergonómica/UX de la sección de "Cierre de Caja y Arqueo"
+(DailyClosureView) en la versión de escritorio WPF, alineando la interfaz con el sistema de
+diseño corporativo y los principios de visualización financiera moderna.
+
+A. EJES DE DISEÑO E IMPLEMENTACIÓN:
+   1. Modernización de la Tabla (PerformantDataGrid):
+      - Eliminación de bordes verticales mediante VerticalGridLinesBrush="Transparent".
+      - Suavizado de bordes horizontales con gris tenue #E2E8F0.
+      - Encabezados de tabla estilizados con fondo gris claro #F8FAFC, tipografía en gris
+        plomo (#475569), SemiBold y en mayúsculas.
+   2. Inputs de "Monto Declarado":
+      - Reemplazo del subrayado simple por un contenedor tipo tarjeta con fondo #F1F5F9,
+        borde #E2E8F0 y esquinas redondeadas de 4px.
+      - Estado de foco interactivo que ilumina el fondo a blanco (#FFFFFF) y el borde al
+        morado corporativo (#5E35B1).
+   3. Semántica Financiera Dinámica en Diferencias:
+      - Columna "Diferencia" con coloreado semántico condicional en tiempo real:
+        * Faltante (< 0): Rojo (#EF4444)
+        * Sobrante (> 0): Verde esmeralda (#10B981)
+        * Cuadrado (= 0): Gris neutro (#94A3B8)
+      - Tarjeta de Resumen "Diferencia Total" con tinte reactivo a nivel de fondo y borde:
+        * Faltante: Fondo suave #FEF2F2 con borde #FECACA.
+        * Sobrante: Fondo suave #F0FDF4 con borde #BBF7D0.
+        * Exacto: Fondo neutro #F8FAFC con borde #E2E8F0.
+   4. Sombras y Tarjetas Enterprise:
+      - Reemplazo de sombras difusas por un recurso centralizado EnterpriseCardShadow
+        (0 4px 6px -1px rgba(0,0,0,0.05), BlurRadius 10, Opacity 0.05, ShadowDepth 2).
+      - Estandarización de CornerRadius="8" en todas las tarjetas y paneles de resumen.
+   5. Área de Observaciones:
+      - Contenedor multilínea con fondo blanco (#FFFFFF), borde #CBD5E1, MinHeight="54" y
+        CornerRadius="8".
+      - Contador de caracteres reactivo ("0 / 500") alineado al pie derecho del área.
+   6. Cierre a Ciegas e Iconografía Informativa:
+      - Incorporación de ícono informativo (i) con tooltip explicativo ("Oculta los montos
+        esperados del sistema para obligar al conteo físico a ciegas").
+      - Botones de acción principales rediseñados ("Cargar Esperados" en estilo outline y
+        "Confirmar y Procesar Cierre" en morado corporativo destacado #5E35B1 con altura 48).
+
+B. ARQUITECTURA MVVM Y CUMPLIMIENTO DE DIRECTRICES:
+   1. Desktop.Client.Core/ViewModels/DailyClosureViewModel.cs:
+      - ClosureDetailRow enriquecido con DifferenceColor y DifferenceDisplay observables.
+      - DailyClosureViewModel con DifferenceCardBackground, DifferenceCardBorder y
+        ObservationCounterText calculados de manera reactiva ante cambios.
+   2. Desktop.Client/Views/DailyClosureView.xaml / .xaml.cs:
+      - Separación estricta de responsabilidades (code-behind limitado a visibilidad de
+        columnas por requerimiento de WPF sin DataContext heredado en DataGridColumn).
+      - Gestión segura del ciclo de vida (Loaded, Unloaded, DataContextChanged) sin memory leaks.
+
+C. VERIFICACIÓN Y DONE:
+   - Compilación Release: dotnet build CommandCenter.slnx -c Release -> 0 Warnings, 0 Errores.
+   - Suite completa .NET (CommandCenter.Tests): 840 pruebas superadas (0 errores, 0 omitidas).
+   - Auditoría automatizada por subagente reviewer: APROBADO sin observaciones.
+
+FIN DEL ANEXO - REVISION 8.93
+
+
+================================================================================
+ANEXO - REVISION 8.94 (2026-09-11)
+================================================================================
+CONTEXTO:
+Modernización visual, profundidad y experiencia de usuario enterprise de la sección
+"Historial de Ventas" (SalesHistoryView) en el cliente de escritorio WPF, optimizando la
+jerarquía de contenedores, ergonomía de inputs, semántica de tabla y paginación sutil.
+
+A. EJES DE DISEÑO E IMPLEMENTACIÓN:
+   1. Profundidad y Contenedores (Efecto "Tarjetas"):
+      - Fondo base de toda la ventana configurado en gris extra claro (#F1F5F9).
+      - Tarjeta de Filtros: Contenedor con fondo blanco puro (#FFFFFF), esquinas redondeadas
+        (CornerRadius="8"), borde sutil (#E2E8F0) y sombra EnterpriseCardShadow (0 4px 6px -1px
+        rgba(0,0,0,0.05)).
+      - Tarjeta del DataGrid: Contenedor en tarjeta blanca con borde #E2E8F0 y eliminación
+        del borde exterior grueso del DataGrid.
+   2. Barra de Filtros y Búsqueda (Inputs):
+      - Cajas de texto y selectores con fondo blanco puro y borde extrafino #E2E8F0.
+      - Búsqueda con ícono de lupa gris (#94A3B8) integrado en la parte izquierda interior.
+      - Alineación pixel-perfect: Altura estandarizada exactamente a 42px para el buscador,
+        los selectores de Fecha Inicio/Fin y el botón principal "Buscar" (#5E35B1).
+   3. Tabla de Datos (PerformantDataGrid):
+      - Headers de tabla con fondo gris muy tenue (#F8FAFC), texto plomo (#64748B), 12px,
+        SemiBold y mayúsculas.
+      - Alineación a la derecha en el encabezado de "TOTAL BS.S" para coincidencia con las
+        cifras de datos inferiores.
+      - Contraste de doble línea:
+        * Fecha / Hora: Fecha principal en color oscuro (#1E293B) y hora secundaria en gris (#94A3B8).
+        * Total Bs.S / USD: Monto en Bs.S en texto oscuro (#1E293B, negrita) y contraparte USD
+          en gris (#94A3B8), ambos con tipografía tabular.
+   4. Badges de Estado (Pill SaaS):
+      - Borde píldora completamente redondeado (CornerRadius="100").
+      - Colores SaaS premium sin bordes sólidos:
+        * Completada: Fondo verde pastel (#DCFCE7) con texto e ícono verde esmeralda (#166534).
+        * Anulada: Fondo rojo pastel (#FEE2E2) con texto e ícono vino oscuro (#991B1B).
+        * Pendiente / En Espera: Fondo ámbar pastel (#FEF3C7) con texto ámbar oscuro (#92400E).
+   5. Paginación y Footer:
+      - Botones sutiles de < Anterior y Siguiente > con fondo blanco, borde #CBD5E1 y texto #475569.
+      - Textos descriptivos de paginación ("Mostrando 1-25 de 120" y "Página 1 de 5").
+      - Separador horizontal extrafino (#E2E8F0) delimitando la tabla del resumen de totales.
+
+B. ARQUITECTURA MVVM Y CUMPLIMIENTO:
+   1. Desktop.Client.Core/ViewModels/SalesHistoryViewModel.cs:
+      - Propiedades reactivas TotalPages, PaginationPageText, PaginationSummaryText,
+        CanGoToPreviousPage y CanGoToNextPage.
+      - Mensajes de error en español formal y código limpio sin comentarios explicativos superfluos.
+   2. Desktop.Client/Views/SalesHistoryView.xaml:
+      - XAML declarativo puro con recursos compartidos de diseño.
+   3. CommandCenter.Tests/Unit/SalesHistoryViewModelTests.cs:
+      - 7 pruebas unitarias completas bajo la convención Metodo_Escenario_ResultadoEsperado.
+
+C. VERIFICACIÓN Y DONE:
+   - Compilación Release: dotnet build CommandCenter.slnx -c Release -> 0 Warnings, 0 Errores.
+   - Suite completa .NET (CommandCenter.Tests): 847 pruebas superadas (0 errores, 0 omitidas).
+   - Auditoría automatizada por subagente reviewer: APROBADO sin observaciones bloqueantes.
+
+FIN DEL ANEXO - REVISION 8.94
+
+================================================================================
+ANEXO - REVISION 8.95 (2026-09-11)
+================================================================================
+CONTEXTO:
+Estandarización de la paginación de la sección "Historial de Ventas" (SalesHistoryView)
+en el cliente de escritorio WPF para replicar de forma exacta la experiencia y componentes
+de paginación avanzada utilizados en la sección de Catálogo de Productos / Inventario.
+
+A. EJES DE DISEÑO E IMPLEMENTACIÓN:
+   1. Barra de Paginación Avanzada Enterprise:
+      - Contenedor en tarjeta blanca (#FFFFFF) con borde sutil (#E2E8F0), esquinas redondeadas
+        (CornerRadius="8") y sombra EnterpriseCardShadow.
+      - Resumen descriptivo de página: "Pág. X de Y (Z ventas)" con tipografía SemiBold (#475569).
+      - Botones de navegación en extremos:
+        * Primera Página ("<<", ícono PageFirst)
+        * Página Anterior ("<", ícono ChevronLeft)
+        * Página Siguiente (">", ícono ChevronRight)
+        * Última Página (">>", ícono PageLast)
+      - Bloque de botones numéricos relativos:
+        * Ventana dinámica de páginas cercanas a la actual (PageNumbers con PageNumberItem).
+        * Resaltado de página activa con fondo morado corporativo (#5E35B1), texto en blanco y negrita.
+      - Salto directo a página ("Ir a:"):
+        * Separador vertical tenue (#E2E8F0).
+        * Input de texto numérico centrado (TargetPageTextBox) con validación Regex de dígitos.
+        * Selección total del texto al obtener foco con mouse o teclado.
+        * Ejecución de comando al pulsar tecla Enter (KeyBinding Return) o botón con flecha (ArrowRight).
+
+B. ARQUITECTURA MVVM Y CUMPLIMIENTO DE DIRECTRICES:
+   1. Desktop.Client.Core/ViewModels/SalesHistoryViewModel.cs:
+      - Colección observable `PageNumbers` (`ObservableCollection<PageNumberItem>`).
+      - Propiedades `PageSummary`, `TargetPageInput`, `CanGoFirst`, `CanGoPrevious`,
+        `CanGoNext`, `CanGoLast` y alias de retrocompatibilidad `CanGoToPreviousPage`, `CanGoToNextPage`.
+      - Métodos y comandos relay: `UpdatePageNumbers()`, `NotifyPaginationCanExecute()`,
+        `FirstPageCommand`, `PreviousPageCommand`, `NextPageCommand`, `LastPageCommand`,
+        `GoToPageCommand(int)` y `SubmitGoToPageCommand()`.
+      - Clampeo seguro de límites (1 a TotalPages) y reinicio elegante a estado por defecto en listas vacías.
+   2. Desktop.Client/Views/SalesHistoryView.xaml.cs:
+      - Code-behind limpio limitado a comportamiento de control de foco y validación de texto numérico
+        (`NumberValidationTextBox`, `TargetPageInput_GotFocus`, `TargetPageInput_PreviewMouseLeftButtonDown`).
+   3. CommandCenter.Tests/Unit/SalesHistoryViewModelTests.cs:
+      - 15 pruebas unitarias cubriendo navegación primera/última página, navegación relativa,
+        salto directo por comando y por input con clampeo, saneamiento de entradas no numéricas
+        y manejo de listas vacías.
+
+C. VERIFICACIÓN Y DONE:
+   - Compilación Release: dotnet build CommandCenter.slnx -c Release -> 0 Warnings, 0 Errores.
+   - Suite completa .NET (CommandCenter.Tests): 855 pruebas superadas (0 errores, 0 omitidas).
+   - Auditoría automatizada por subagente reviewer: APROBADO sin observaciones.
+
+FIN DEL ANEXO - REVISION 8.95
+
+================================================================================
+ANEXO - REVISION 8.96 (2026-09-11)
+================================================================================
+CONTEXTO:
+Modernización visual integral y optimización ergonómica de la sección de Catálogo de
+Productos / Inventario (InventoryView) en el cliente de escritorio WPF: dieta de color,
+pestañas corporativas, estados de stock en badges, menú contextual Kebab (⋮) por fila,
+buscador tipo cápsula, alineación matemática y paginación con números tipo píldora.
+
+A. EJES DE DISEÑO E IMPLEMENTACIÓN:
+   1. Dieta de Color y Reducción de Fatiga Visual:
+      - Datos estándar neutros: Stock regular, Costo, Precios detal y mayor en gris oscuro
+        sobrio (#1E293B / #334155), eliminando saturación de verdes, naranjas y azules estridentes.
+      - Pestañas de estado (Activos / Inactivos / Eliminados / Todos): Estilo CorporateTabRadioButton
+        con texto y línea indicadora inferior (2.5px) en morado corporativo (#5E35B1) para el estado
+        activo, y gris plomo (#64748B) para los estados inactivos.
+   2. Estados de Alerta Elegantes (Stock):
+      - Stock en 0 / Crítico: Badge con fondo rojo pastel (#FEE2E2), borde (#FECACA), esquinas
+        redondeadas (CornerRadius="6") y texto en vino oscuro (#991B1B) con números tabulares.
+      - Servicio de Caja: Badge en morado pastel (#EDE9FE / #6D28D9).
+      - Stock regular: Texto directo sobrio (#1E293B) sin recuadros distractores.
+   3. Limpieza de Acciones por Fila (Kebab Menu ⋮):
+      - Reemplazo de los 5 botones individuales por fila por un único botón de menú vertical
+        (materialDesign:PopupBox con ícono DotsVertical), reduciendo drásticamente la carga visual.
+      - Menú contextual desplegable con las 5 opciones jerarquizadas:
+        * Ajustar Stock (ícono teal #0D9488)
+        * Consultar / Editar (ícono morado #5E35B1)
+        * Pausar / Deshabilitar (ícono ámbar #D97706)
+        * Restaurar a Activo (ícono verde #16A34A)
+        * Eliminar Producto (ícono rojo #DC2626)
+   4. Cabecera y Controles:
+      - Buscador en cápsula cerrada (#F8FAFC, borde #E2E8F0, altura 40px) con lupa integrada (#94A3B8).
+      - Botón "+ Nuevo Producto": Sólido en morado corporativo (#5E35B1) con texto en blanco.
+      - Botones secundarios ("Ocultar/Mostrar Precios Mayor", "Actualizar", "Menú"): Estilo Ghost/Outlined
+        suave en blanco (#FFFFFF) con bordes #CBD5E1 y texto #475569.
+   5. Estructura de Tabla y Alineación Numérica Estricta:
+      - Encabezados de columna en MAYÚSCULAS PEQUEÑAS (12px SemiBold #64748B con fondo #F8FAFC).
+      - Alineación matemática obligatoria a la derecha para Costo ($ USD), Precios (Detal y Mayor),
+        Cant. Mín. Mayor y Stock con números tabulares.
+   6. Paginación Inferior Refinada:
+      - Números de página limpios sin bordes toscos; número activo destacado en píldora morada
+        (#5E35B1) con texto blanco y esquinas redondeadas.
+
+B. ARQUITECTURA MVVM Y CUMPLIMIENTO:
+   1. Desktop.Client/Views/InventoryView.xaml:
+      - XAML declarativo puro con recursos compartidos de diseño y virtualización por píxel.
+   2. Desktop.Client.Core/ViewModels/InventoryViewModel.cs:
+      - Modularizado en 3 clases parciales cohesivas (InventoryViewModel.cs, Filters.cs, Operations.cs).
+      - Consistencia completa con suites de pruebas unitarias existentes.
+
+FIN DEL ANEXO - REVISION 8.96
+
+================================================================================
+ANEXO - REVISION 8.97 (2026-09-11)
+================================================================================
+CONTEXTO:
+Modernización visual integral y optimización ergonómica de la sección de Cuentas Abiertas /
+Ventas en Espera (PendingOrdersView) en el cliente de escritorio WPF: psicología del color
+financiero, unificación de la paleta de botones CTA/secundarios, cabecera moderna, buscador
+tipo cápsula, badge de tasa BCV en píldora y reestructuración de la tabla con sombras Enterprise.
+
+A. EJES DE DISEÑO E IMPLEMENTACIÓN:
+   1. Psicología del Color en Finanzas (Total Factura):
+      - Reemplazo del rojo estridente (#EF4444) en el monto principal por un gris plomo de alta
+        jerarquía (#0F172A), eliminando la sensación de alerta crítica innecesaria en pedidos en curso.
+      - Tipografía con números tabulares (`Typography.NumeralAlignment="Tabular"`).
+      - Monto secundario en dólares en gris neutro (#64748B).
+   2. Unificación de la Paleta de Acciones (Botones):
+      - Botón "Cobrar" como CTA principal: Púrpura corporativo (#5E35B1) con esquinas redondeadas
+        (CornerRadius="6"), altura 32px, padding horizontal 16px y texto en blanco.
+      - Botón "Editar" como acción secundaria: Estilo Outlined / Ghost (#CBD5E1 / #475569) con
+        CornerRadius="6" y altura 32px.
+      - Invocación desacoplada vía el patrón `helpers:BindingProxy`.
+   3. Cabecera y Controles:
+      - Iconografía monocromática en morado corporativo (`ClockOutline` en #5E35B1).
+      - Subtítulo descriptivo en gris plomo (#64748B).
+      - Botón "Refrescar" en estilo Outlined (#CBD5E1 / #475569).
+   4. Tarjeta de Filtros y Tasa BCV:
+      - Envoltorio en tarjeta blanca (#FFFFFF) con borde tenue (#E2E8F0) y sombra `EnterpriseCardShadow`.
+      - Buscador en cápsula cerrada (#F8FAFC, borde #E2E8F0, altura 42px) con lupa integrada (#94A3B8).
+      - Tasa BCV en Pill Badge verde suave (#DCFCE7, borde #86EFAC, texto e ícono #166534).
+      - Banner de mensaje de éxito en verde (#DCFCE7 / #166534) vinculado con `StringToVisibilityConverter`.
+   5. Estructura de Tabla y Plantilla Expandida:
+      - DataGrid envuelto en tarjeta blanca (#FFFFFF, borde #E2E8F0, sombra `EnterpriseCardShadow`).
+      - Encabezados de columna en mayúsculas pequeñas (12px SemiBold #64748B con fondo #F8FAFC).
+      - Separador horizontal tenue (#E2E8F0) y sin líneas verticales distractoras.
+      - Plantilla de detalles (`ExpandedRowTemplate`) con fondo #F8FAFC, tipografía estructurada
+        para productos y abonos (`SalePaymentDto.CreatedAt` y `SalePaymentDto.Amount`), y
+        `CollectionEmptyToVisibilityConverter` para indicar listas de abonos vacías.
+
+B. ARQUITECTURA MVVM Y CUMPLIMIENTO:
+   1. Desktop.Client/Views/PendingOrdersView.xaml:
+      - XAML declarativo puro con recursos compartidos de diseño y virtualización por píxel.
+   2. Desktop.Client/Converters/UserValueConverters.cs:
+      - Incorporado `CollectionEmptyToVisibilityConverter` con soporte seguro para `ICollection` e `int count`.
+   3. Desktop.Client/App.xaml:
+      - Registrado recurso global `CollectionEmptyToVisibilityConverter` y `CollectionEmptyToVis`.
+
+C. VERIFICACIÓN Y DONE:
+FIN DEL ANEXO - REVISION 8.97
+
+================================================================================
+ANEXO - REVISION 8.98 (2026-09-11)
+================================================================================
+CONTEXTO:
+Modernización visual integral y optimización ergonómica de la sección de Retiros Pendientes
+/ Mercancía en Custodia (PendingPickupsView) en el cliente de escritorio WPF: destrucción
+de cajas anidadas ("Murallas de Babilonia"), jerarquía de colores en badges/botones,
+limpieza de datos con TitleCaseConverter, atenuación de íconos y cabecera flotante en productos.
+
+A. EJES DE DISEÑO E IMPLEMENTACIÓN:
+   1. Destrucción de Cajas Anidadas (Eliminación de Matrioshka):
+      - Fondo de vista en gris extra claro (#F1F5F9).
+      - Tarjeta principal blanca (#FFFFFF) con borde tenue (#E2E8F0) y sombra EnterpriseCardShadow.
+      - Eliminación de bordes internos: fila del cliente en blanco puro directo (#FFFFFF) y área
+        de la tabla de productos separada únicamente por fondo gris ultra pálido (#F8FAFC) sin
+        jaulas de líneas grises.
+   2. Jerarquía Visual y Paleta de Colores:
+      - Soft Badge para Factura N° en morado pastel (#EDE9FE, borde #DDD6FE, texto #5E35B1).
+      - Píldora de estado "Pendiente de Retiro" perfecta (CornerRadius="100") en amarillo pastel
+        (#FEF3C7), borde tenue (#FDE68A) y texto/ícono en naranja quemado oscuro (#92400E).
+      - Botón "Confirmar Retiro / Entregar" en Flat Design (#5E35B1 sólido con texto blanco,
+        CornerRadius="6") sin sombras distractores.
+   3. Limpieza de Datos y Tipografía:
+      - TitleCaseConverter aplicado al nombre del cliente para perdonar errores de tipeo de cajeros.
+      - Íconos de cliente (Usuario, Cédula, Teléfono, Calendario) atenuados a gris medio (#94A3B8)
+        para destacar la información en lugar de los gráficos.
+      - Montos monetarios con tipografía tabular (`Typography.NumeralAlignment="Tabular"`).
+   4. Tabla Interior de Productos:
+      - Cabecera flotante en mayúsculas pequeñas (11px SemiBold #64748B: "PRODUCTO", "CANT.",
+        "P. UNIT. BS.S", "SUBTOTAL BS.S").
+      - Precios y cantidades alineados a la derecha con formato numérico estricto.
+
+B. ARQUITECTURA MVVM Y CUMPLIMIENTO:
+   1. Desktop.Client/Views/PendingPickupsView.xaml:
+      - XAML declarativo limpio con BindingProxy y virtualización activa.
+   2. Desktop.Client/Converters/UserValueConverters.cs:
+      - Implementado `TitleCaseConverter` (`ToTitleCase` con saneamiento cultural).
+   3. Desktop.Client/App.xaml:
+      - Registrado recurso global `TitleCaseConverter`.
+   4. CommandCenter.Tests/Unit/UserValueConvertersTests.cs:
+      - 6 pruebas unitarias con convención `Metodo_Escenario_ResultadoEsperado`.
+
+C. VERIFICACIÓN Y DONE:
+   - Compilación Release: dotnet build CommandCenter.slnx -c Release -> 0 Warnings, 0 Errores.
+   - Suite completa .NET (CommandCenter.Tests): 867 pruebas superadas (0 errores, 0 omitidas).
+   - Auditoría automatizada por subagente reviewer: APROBADO sin observaciones.
+
+FIN DEL ANEXO - REVISION 8.98
+
+===============================================================================
+ANEXO 8.99 - MODERNIZACIÓN VISUAL Y UX DE CUENTAS ABIERTAS / PEDIDOS EN ESPERA (WPF)
+===============================================================================
+Fecha: 2026-09-11
+Alcance: Desktop.Client (PendingOrdersView.xaml)
+Autor: Antigravity / JoJuniorGit
+
+Modernización visual integral y refinamiento ergonómico de la sección de Cuentas Abiertas
+/ Ventas en Espera (PendingOrdersView) en el cliente de escritorio WPF: estilización de fila
+activa con acento lateral morado (#5E35B1) y fondo lila suave (#F5F3FF), panel desplegable
+de detalle en fondo blanco (#FFFFFF) con separación por padding, botón secundario "Editar"
+como verdadero Ghost Button con microinteracción hover, espaciado y respiración general,
+y estado vacío elegante con ícono en el historial de abonos.
+
+A. EJES DE DISEÑO E IMPLEMENTACIÓN:
+   1. Estado Activo de la Fila (Adiós al Gris Pesado):
+      - Implementado `ModernDataGridRowStyle`: fondo lila translúcido (#F5F3FF) al seleccionar
+        con borde izquierdo sólido de 4px en morado corporativo (#5E35B1).
+      - Hover sutil en gris claro (#F8FAFC) y estado multi-trigger seleccionado+hover (#EDE9FE).
+      - `CleanDataGridCellStyle` para eliminar artefactos y parches oscuros nativos de foco.
+   2. Refinamiento del Panel Desplegable (Inner Content):
+      - Fondo de la tarjeta desplegable en blanco puro (#FFFFFF) con bordes superior e inferior
+        delicados (#E2E8F0) y padding generoso de 24x18px.
+      - Reemplazo del divisor rígido por separación sutil en (#F1F5F9).
+   3. Botón "Editar" (Ghost Button Moderno):
+      - Estilo `GhostEditButtonStyle`: botón delineado con borde gris suave (#CBD5E1) y texto
+        plomo (#475569) en reposo; al pasar el cursor (hover), el borde y texto se transforman
+        a morado (#5E35B1) con fondo tintado suave (#F5F3FF).
+   4. Espaciado y Respiración Visual:
+      - Padding de tarjeta superior de búsqueda ampliado a 20x16px.
+      - Encabezados de columnas con padding 16x14px y altura de fila de 50px.
+   5. Empty State Elegante en Abonos:
+      - En lugar de texto plano suelto, se centra el ícono `ReceiptTextRemoveOutline` (#CBD5E1)
+        junto al texto descriptivo "Sin abonos registrados" (#94A3B8).
+   6. Limpieza Tipográfica de Clientes:
+      - Aplicación de `TitleCaseConverter` al nombre del cliente para visualización impecable.
+
+B. ARQUITECTURA MVVM Y CUMPLIMIENTO:
+   1. Desktop.Client/Views/PendingOrdersView.xaml:
+      - XAML declarativo limpio, uso del patrón BindingProxy para acciones de fila, virtualización
+        activa y preservación de snapshots financieros.
+   2. CommandCenter.Tests:
+      - 867 pruebas unitarias e integración aprobadas (0 errores, 0 omitidas).
+
+C. VERIFICACIÓN Y DONE:
+FIN DEL ANEXO - REVISION 8.99
+
+===============================================================================
+ANEXO 8.100 - REFINAMIENTO VISUAL, EMPLATADO Y JERARQUÍA EN RETIROS PENDIENTES (WPF)
+===============================================================================
+Fecha: 2026-09-11
+Alcance: Desktop.Client (PendingPickupsView.xaml)
+Autor: Antigravity / JoJuniorGit
+
+Refinamiento visual y de ergonomía de interfaz en la sección de Retiros Pendientes / Mercancía
+en Custodia (PendingPickupsView) en el cliente de escritorio WPF: alineación global estricta
+(emplatado simétrico a 24px), eliminación de tarjeta blanca exterior en buscador para dar
+protagonismo a los pedidos, respiración interna en datos del cliente y contenedor de productos,
+sombra Michelin ultra sutil (BlurRadius 15, Opacity 0.04), y jerarquía tipográfica con
+alineación matemática estricta a la derecha para montos Bs.S y USD.
+
+A. EJES DE DISEÑO E IMPLEMENTACIÓN:
+   1. Emplatado Global (Simetría y Alineación a 24px):
+      - Encabezado, barra de búsqueda flotante y lista de tarjetas comparten el mismo margen
+        izquierdo de 24px, creando una línea visual vertical perfecta.
+   2. Buscador Flotante Minimalista:
+      - Eliminación de la tarjeta envolvente exterior. El input de búsqueda flota directamente
+        sobre el fondo gris (#F1F5F9) con fondo blanco puro (#FFFFFF), esquinas redondeadas (8px),
+        ancho máximo ergonómico (420px) y sombra tenue.
+   3. Respiración Interna y Padding:
+      - Separación vertical generosa en datos del cliente (`Margin="0,6,0,16"`).
+      - Contenedor de productos `#F8FAFC` con padding inferior ampliado (`Padding="16,12,16,16"`)
+        y botón principal "Confirmar Retiro / Entregar" con margen superior (`Margin="0,14,0,0"`),
+        permitiendo que el botón flote con elegancia sin aplastarse contra el borde.
+   4. Sombra Michelin y Bordes:
+      - `EnterpriseCardShadow` configurada con `BlurRadius="15"`, `Opacity="0.04"`, `Direction="270"`,
+        `ShadowDepth="2"`, logrando un despegue levísimo del fondo. Bordes tenues en `#E2E8F0`.
+   5. Jerarquía Tipográfica y Alineación de Totales:
+      - Montos en esquina superior derecha con `HorizontalAlignment="Right"`, `TextAlignment="Right"`
+        y `Typography.NumeralAlignment="Tabular"`.
+      - Total Bs.S destacado en `#0F172A` bold 16px; contravalor USD secundario en gris plomo `#64748B`.
+
+B. ARQUITECTURA MVVM Y CUMPLIMIENTO:
+   1. Desktop.Client/Views/PendingPickupsView.xaml:
+      - XAML declarativo, sin lógica de negocio en code-behind, virtualización activa y ciclo de
+        vida de filtros limpio en `ICollectionView`.
+   2. CommandCenter.Tests:
+      - 867 pruebas unitarias e integración aprobadas (0 errores, 0 omitidas).
+
+C. VERIFICACIÓN Y DONE:
+   - Compilación Release: dotnet build CommandCenter.slnx -c Release -> 0 Warnings, 0 Errores.
+   - Suite completa .NET (CommandCenter.Tests): 867 superadas.
+   - Auditoría automatizada por subagente reviewer: APROBADO sin observaciones.
+
+FIN DEL ANEXO - REVISION 8.100
+

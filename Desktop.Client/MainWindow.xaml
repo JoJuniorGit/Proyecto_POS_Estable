@@ -223,16 +223,16 @@
                             </StackPanel>
                         </Button>
 
-                        <!-- Daily Closing -->
+                        <!-- Cierre de Caja -->
                         <Button x:Name="BtnDailyClosure"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToDailyClosureCommand}"
-                                ToolTip="Daily Closing / Cash Count">
+                                ToolTip="Cierre Diario y Arqueo de Caja">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="CalculatorVariant"
                                                          Width="18" Height="18"
                                                          VerticalAlignment="Center"/>
-                                <TextBlock Text="Daily Closing"
+                                <TextBlock Text="Cierre de Caja"
                                            Margin="10,0,0,0"
                                            VerticalAlignment="Center"/>
                             </StackPanel>
