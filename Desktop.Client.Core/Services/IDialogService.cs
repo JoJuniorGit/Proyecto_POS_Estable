@@ -18,7 +18,7 @@ public interface IDialogService
     Task<string?> ShowTextInputAsync(string prompt, string hint);
     Task<(bool success, string currentPassword, string newPassword)?> ShowChangePasswordDialogAsync();
     decimal? ShowCashAdvanceDialog();
-    void ShowSuccessDialog(string message);
+    bool ShowSuccessDialog(string message, string? secondaryActionLabel = null);
     Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title);
     bool? ShowProductDialog(ViewModels.ProductDialogViewModel dialogVm);
     (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(ProductDto product);

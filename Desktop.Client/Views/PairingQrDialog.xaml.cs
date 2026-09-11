@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Threading.Tasks;
 using System.Windows;
 using Desktop.Client.Helpers;
 using Desktop.Client.ViewModels;
@@ -17,22 +18,42 @@ public partial class PairingQrDialog : Window
         DataContext = _viewModel;
 
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
-        _viewModel.RequestClipboardCopy += textToCopy =>
+        _viewModel.RequestClipboardCopy += OnRequestClipboardCopy;
+
+        Loaded += (s, e) =>
         {
-            try
-            {
-                Clipboard.SetText(textToCopy);
-                CopyStatusText.Text = "Enlace copiado al portapapeles.";
-                CopyStatusText.Visibility = Visibility.Visible;
-            }
-            catch { }
+            _ = InitializeAndRenderAsync();
         };
 
-        Loaded += async (s, e) =>
+        Closed += (s, e) =>
+        {
+            _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
+            _viewModel.RequestClipboardCopy -= OnRequestClipboardCopy;
+            (DataContext as IDisposable)?.Dispose();
+        };
+    }
+
+    private void OnRequestClipboardCopy(string textToCopy)
+    {
+        try
+        {
+            Clipboard.SetText(textToCopy);
+        }
+        catch
+        {
+        }
+    }
+
+    private async Task InitializeAndRenderAsync()
+    {
+        try
         {
             await _viewModel.InitializeAsync();
             RenderQrCode();
-        };
+        }
+        catch
+        {
+        }
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)

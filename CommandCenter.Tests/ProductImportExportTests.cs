@@ -649,7 +649,7 @@ internal class StubDialogService : Desktop.Client.Services.IDialogService
     public Task<string?> ShowTextInputAsync(string prompt, string hint) => Task.FromResult<string?>(null);
     public Task<(bool success, string currentPassword, string newPassword)?> ShowChangePasswordDialogAsync() => Task.FromResult<(bool success, string currentPassword, string newPassword)?>(null);
     public decimal? ShowCashAdvanceDialog() => null;
-    public void ShowSuccessDialog(string message) { }
+    public bool ShowSuccessDialog(string message, string? secondaryActionLabel = null) => false;
     public Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title) => Task.FromResult<(bool success, decimal amount, string reason)?>(null);
     public bool? ShowProductDialog(Desktop.Client.ViewModels.ProductDialogViewModel dialogVm) => false;
     public (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(Core.DTOs.ProductDto product) => (false, 0m, string.Empty);

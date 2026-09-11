@@ -21,6 +21,7 @@
             <converters:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis"/>
             <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
             <converters:InverseBooleanConverter x:Key="InverseBoolConverter"/>
+            <converters:InverseNullToBooleanConverter x:Key="InverseNullToBooleanConverter"/>
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
             <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
             <BooleanToVisibilityConverter x:Key="BoolToVis"/>

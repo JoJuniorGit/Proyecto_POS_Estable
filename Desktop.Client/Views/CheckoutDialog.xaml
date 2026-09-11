@@ -199,30 +199,14 @@
                        Visibility="{Binding PendingPickupErrorMessage, Converter={StaticResource StringToVisibilityConverter}}"/>
 
             <Grid>
-                <Button Content="CANCEL" 
+                <Button Content="CANCELAR" 
                         Command="{x:Static materialDesign:DialogHost.CloseDialogCommand}"
                         CommandParameter="{x:Null}"
                         Style="{DynamicResource MaterialDesignOutlinedButton}" 
                         HorizontalAlignment="Left"
+                        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"
                         Height="40" Padding="20,0"/>
 
-                <Button Content="CANCELAR"
-                        Command="{Binding CancelCheckoutCommand}"
-                        HorizontalAlignment="Center"
-                        Height="40" Padding="15,0"
-                        Foreground="#DC2626">
-                    <Button.Style>
-                        <Style BasedOn="{StaticResource MaterialDesignFlatButton}" TargetType="Button">
-                            <Setter Property="Visibility" Value="Collapsed"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsProcessing}" Value="True">
-                                    <Setter Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
-                        
                 <Button Content="{Binding FinalizeSaleButtonLabel}" 
                         Command="{Binding FinalizeSaleCommand}"
                         Style="{DynamicResource MaterialDesignRaisedButton}" 

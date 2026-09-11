@@ -33,20 +33,20 @@ public partial class PosViewModel
 
     partial void OnSelectedSuggestionChanged(ProductQuickInfoDto? value)
     {
-        if (value != null)
-        {
-            AddSelectedSuggestionAsync(value).SafeFireAndForget("PosViewModel.Orders.AddSelectedSuggestion");
-        }
     }
 
+    [RelayCommand]
     private async Task AddSelectedSuggestionAsync(ProductQuickInfoDto? value)
     {
-        // 8.5-W1: El lock compartido con el scanner permite que una sugerencia seleccionada
-        // no se duplique si llega un escaneo rápido de código de barras del mismo producto.
+        if (IsProcessing) return;
+
+        var product = value ?? SelectedSuggestion;
+        if (product == null || product.Id <= 0) return;
+
         await _scannerLock.WaitAsync();
         try
         {
-            await AddSelectedSuggestionCoreAsync(value);
+            await AddSelectedSuggestionCoreAsync(product);
         }
         finally
         {
@@ -181,11 +181,10 @@ public partial class PosViewModel
                 ? $"Factura N° {realInvoice:D5}: Cuenta liquidada, stock descontado y enviada a Mercancía en Custodia."
                 : $"¡Factura N° {realInvoice:D5} completada con éxito!";
 
-            _dialogService?.ShowSuccessDialog(formattedMessage);
-
             var completedSaleId = Cart.CurrentSale?.Id;
-            if (completedSaleId.HasValue
-                && _dialogService?.ShowConfirm("Recibo de venta", "¿Desea abrir el recibo (PDF) de esta venta?") == true)
+            bool wantsReceipt = _dialogService?.ShowSuccessDialog(formattedMessage, "Guardar Recibo") == true;
+
+            if (wantsReceipt && completedSaleId.HasValue)
             {
                 await OpenSaleReceiptAsync(completedSaleId.Value);
             }

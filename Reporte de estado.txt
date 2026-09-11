@@ -17,6 +17,39 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.52.0  | 2026-09-11  | (8.91)       | RETIROS PENDIENTES WPF: CORRECCIÓN DE NAVEGACIÓN RECURRENTE:
+|          |             |              | 1. Corrección de ciclo de vida de ICollectionView en
+|          |             |              | PendingPickupsView.xaml.cs: uso de CollectionViewSource.
+|          |             |              | GetDefaultView con captura local inmutable (targetVm) en el
+|          |             |              | delegado de filtro, eliminando el lanzamiento de
+|          |             |              | NullReferenceException al reingresar a la vista tras
+|          |             |              | navegar a POS u otros módulos.
+|          |             |              | 2. Desenganche limpio en DetachViewModel(): _view.Filter = null,
+|          |             |              | desuscripción de PropertyChanged y anulación de ItemsSource
+|          |             |              | previniendo listeners zombis de CollectionChanged.
+|          |             |              | 3. Guardas defensivas en PendingPickupsViewModel: nulidad en
+|          |             |              | MatchesSearch, EnsureLoadedAsync, LoadMoreAsync y ConfirmPickup.
+|          |             |              | 4 nuevos tests unitarios (PendingPickupsViewModelTests).
+|          |             |              | Build Release 0/0; suite .NET 834/834 superadas. ANEXO 8.91.
+| v1.51.0  | 2026-09-11  | (8.90)       | MODERNIZACION VISUAL, CONTRASTE Y MICROINTERACCION (WPF):
+|          |             |              | 1. Dialogo Vincular Dispositivo QR (PairingQrDialog): franja
+|          |             |              | superior morado corporativo (#5E35B1) con texto blanco puro
+|          |             |              | de alto contraste (WCAG); QR en card limpia sin sombra
+|          |             |              | pesada con 4 esquinas de encuadre escaner (framing corners);
+|          |             |              | selector ComboBox de red delineado moderno (#CBD5E1, 6-8px);
+|          |             |              | botones de copiado de IP y URL con microinteraccion
+|          |             |              | reactiva temporal ("¡Copiado!" con icono Check y badge
+|          |             |              | verde #DCFCE7/#16A34A por 2s con CTS desacoplado y Dispose);
+|          |             |              | alerta Wi-Fi en azul pastel (#EFF6FF/#BFDBFE/#1E3A8A).
+|          |             |              | 2. Optimizacion post-venta (CheckoutDialog / SuccessDialog):
+|          |             |              | eliminacion de parpadeo y boton Cancelar fantasma; soporte
+|          |             |              | dinamico de texto (SizeToContent + TextWrapping); boton
+|          |             |              | secundario unificado "Guardar Recibo" sin popups separados.
+|          |             |              | 3. Buscador robusto en capsula y correccion de seleccion de
+|          |             |              | sugerencias por mouse/touch (SearchKeyboardBehavior).
+|          |             |              | 4. Deduplicacion y ordenamiento en retiros pendientes.
+|          |             |              | 7 nuevos tests unitarios (PairingQrViewModelTests).
+|          |             |              | Build Release 0/0; suite .NET 831/831 superadas. ANEXO 8.90.
 | v1.50.0  | 2026-09-10  | (8.84)       | DESACOPLAR DESKTOP.CLIENT.CORE DE WPF (8.20-M01 RESUELTO):
 |          |             |              | csproj pasa a UseWPF=false (se eliminan ensamblados WPF) y se
 |          |             |              | quita MaterialDesignThemes; se agrega
@@ -726,10 +759,10 @@ Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
     limitaciones pre-piloto documentadas. Detalle: ANEXO 8.31 / changelog
     v1.5.0.
 
-4.2 Balance de pruebas automatizadas (linea base verificada 2026-09-09)
+4.2 Balance de pruebas automatizadas (linea base verificada 2026-09-11)
 -------------------------------------------------------------------------------
   Suite .NET (CommandCenter.Tests, xUnit + Moq + WebApplicationFactory):
-      estado : 753/753 PASAN   (con TEST_POSTGRES_CONNECTION; 750 + 3 fallos/idempotencia)
+      estado : 831/831 PASAN   (con TEST_POSTGRES_CONNECTION; 824 + 7 pairing/copy tests)
       entorno: PostgreSQL real para tests de integracion (PostgresReal* +
                WebApplicationFactorySmoke con BD aislada pos_smoke_<sufijo>,
                EnsureCreated para la mayoria de unit tests).
@@ -902,10 +935,10 @@ Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-09 (REVISION 8.64 / instalador sin icacls inline, aviso
-  1332 resuelto; instalador ISCC 0). Proxima revision obligatoria:
-  con cada PR que toque BD, API, perifericos o cierres deuda.
+  Ultima verificacion: 2026-09-11 (REVISION 8.90 / modernizacion visual, contraste y
+  microinteraccion de emparejamiento QR en WPF; suite .NET 831/831; build R 0/0).
+  Proxima revision obligatoria: con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ================================================================================
-FIN DEL DOCUMENTO - REPORTE DE ESTADO v1.5.0
+FIN DEL DOCUMENTO - REPORTE DE ESTADO v1.51.0
 ================================================================================

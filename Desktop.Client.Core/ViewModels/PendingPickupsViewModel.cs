@@ -35,8 +35,9 @@ public partial class PendingPickupsViewModel : ObservableObject
 
     public ObservableCollection<PendingPickupClientDto> Pickups { get; } = new();
 
-    public bool MatchesSearch(PendingPickupClientDto p)
+    public bool MatchesSearch(PendingPickupClientDto? p)
     {
+        if (p == null) return false;
         if (string.IsNullOrWhiteSpace(SearchQuery)) return true;
         var q = SearchQuery.Trim().ToLower();
         return (p.CustomerName ?? string.Empty).ToLower().Contains(q) ||
@@ -44,17 +45,16 @@ public partial class PendingPickupsViewModel : ObservableObject
                (p.InvoiceNumber?.ToString() ?? p.SaleId.ToString()).Contains(q);
     }
 
-    partial void OnSearchQueryChanged(string value) => OnPropertyChanged(nameof(Pickups));
-
     public PendingPickupsViewModel(ISalesService salesService, IDialogService dialogService)
     {
         _salesService = salesService;
         _dialogService = dialogService;
-        Pickups.CollectionChanged += (_, _) => OnPropertyChanged(nameof(Pickups));
     }
 
     public async Task EnsureLoadedAsync()
     {
+        if (IsLoading) return;
+
         IsLoading = true;
         SuccessMessage = null;
         try
@@ -62,8 +62,16 @@ public partial class PendingPickupsViewModel : ObservableObject
             var (list, totalCount) = await _salesService.GetPendingPickupsPagedAsync(PageSize, 0);
             _totalCount = totalCount;
             Pickups.Clear();
-            foreach (var item in list.OrderByDescending(p => p.Date))
+            var uniqueItems = (list ?? Enumerable.Empty<PendingPickupClientDto>())
+                .Where(p => p != null)
+                .GroupBy(p => p.SaleId)
+                .Select(g => g.First())
+                .OrderByDescending(p => p.Date);
+
+            foreach (var item in uniqueItems)
+            {
                 Pickups.Add(item);
+            }
             _loaded = true;
             UpdateHasMore();
         }
@@ -85,16 +93,22 @@ public partial class PendingPickupsViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadMoreAsync()
     {
-        if (IsLoadingMore || !HasMore) return;
+        if (IsLoading || IsLoadingMore || !HasMore) return;
 
         IsLoadingMore = true;
         try
         {
             var (list, totalCount) = await _salesService.GetPendingPickupsPagedAsync(PageSize, Pickups.Count);
             _totalCount = totalCount;
-            foreach (var item in list.OrderByDescending(p => p.Date))
+            var uniqueItems = (list ?? Enumerable.Empty<PendingPickupClientDto>())
+                .Where(p => p != null)
+                .GroupBy(p => p.SaleId)
+                .Select(g => g.First())
+                .OrderByDescending(p => p.Date);
+
+            foreach (var item in uniqueItems)
             {
-                if (!Pickups.Any(x => x.SaleId == item.SaleId))
+                if (!Pickups.Any(x => x != null && x.SaleId == item.SaleId))
                 {
                     Pickups.Add(item);
                 }
@@ -134,7 +148,14 @@ public partial class PendingPickupsViewModel : ObservableObject
         {
             await _salesService.ConfirmPickupAsync(pickup.SaleId);
             SuccessMessage = $"¡Retiro confirmado! {invoiceLabel} entregado a {pickup.CustomerName}.";
-            await EnsureLoadedAsync();
+            
+            var existing = Pickups.FirstOrDefault(x => x != null && x.SaleId == pickup.SaleId);
+            if (existing != null)
+            {
+                Pickups.Remove(existing);
+                _totalCount = Math.Max(0, _totalCount - 1);
+                UpdateHasMore();
+            }
         }
         catch (Exception ex)
         {

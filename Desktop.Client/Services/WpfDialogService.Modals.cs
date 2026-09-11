@@ -78,17 +78,19 @@ public partial class WpfDialogService
         return resultAmount;
     }
 
-    public void ShowSuccessDialog(string message)
+    public bool ShowSuccessDialog(string message, string? secondaryActionLabel = null)
     {
-        if (Application.Current == null) return;
+        if (Application.Current == null) return false;
         using var _ = TrackModal();
+        bool secondaryClicked = false;
         Action openDialog = () =>
         {
-            var dialog = new SuccessDialogWindow(message)
+            var dialog = new SuccessDialogWindow(message, secondaryActionLabel)
             {
                 Owner = Application.Current.MainWindow
             };
             dialog.ShowDialog();
+            secondaryClicked = dialog.SecondaryActionClicked;
         };
 
         if (Application.Current.Dispatcher.CheckAccess())
@@ -97,8 +99,10 @@ public partial class WpfDialogService
         }
         else
         {
-            Application.Current.Dispatcher.InvokeAsync(openDialog).Task.SafeFireAndForget("WpfDialogService.ShowSuccessDialog");
+            Application.Current.Dispatcher.Invoke(openDialog);
         }
+
+        return secondaryClicked;
     }
 
     public async System.Threading.Tasks.Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title)

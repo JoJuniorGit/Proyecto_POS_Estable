@@ -33,12 +33,13 @@ public class ConcreteTestViewModel : BaseViewModel
     {
     }
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(TaskCompletionSource<bool>? startedSignal = null)
     {
         await SafeInitializeAsync(async (ct) =>
         {
             LastTokenPassed = ct;
-            await Task.Delay(50, ct);
+            startedSignal?.TrySetResult(true);
+            await Task.Delay(100, ct);
             Initialized = true;
         });
     }
@@ -89,7 +90,10 @@ public class UiCircuitBreakerTests
         var jitterProvider = new TestJitterProvider(0);
         using var vm = new ConcreteTestViewModel(clientState, jitterProvider);
 
-        var initTask = vm.InitializeAsync();
+        var startedSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var initTask = vm.InitializeAsync(startedSignal);
+
+        await startedSignal.Task;
 
         // Trigger Fatal Error mid-execution
         clientState.TryActivateFatalError();

@@ -6,16 +6,64 @@
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         mc:Ignorable="d"
         Title="Configuración de Servidor POS" 
-        Height="540" Width="680"
+        Height="610" Width="680"
         WindowStartupLocation="CenterOwner"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
         ResizeMode="NoResize">
 
+    <Window.Resources>
+        <Style x:Key="SelectableCardRadioButtonStyle" TargetType="RadioButton">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1.5"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="CardBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="IsChecked" Value="False"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="CardBorder" Property="BorderBrush" Value="#CBD5E1"/>
+                                <Setter TargetName="CardBorder" Property="Background" Value="#F8FAFC"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CardBorder" Property="BorderBrush" Value="#673AB7"/>
+                                <Setter TargetName="CardBorder" Property="BorderThickness" Value="2"/>
+                                <Setter TargetName="CardBorder" Property="Background" Value="#F6F2FD"/>
+                                <Setter TargetName="CardBorder" Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270" Color="#5E35B1" Opacity="0.16"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <Border CornerRadius="14" 
             Background="{DynamicResource MaterialDesignPaper}" 
-            BorderBrush="{DynamicResource PrimaryHueMidBrush}" 
+            BorderBrush="#5E35B1" 
             BorderThickness="1.5"
             Effect="{DynamicResource MaterialDesignShadowDepth4}">
         <Grid>
@@ -25,121 +73,333 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Header -->
-            <Border Grid.Row="0" Background="{DynamicResource PrimaryHueMidBrush}" CornerRadius="12,12,0,0" Padding="18,12">
+            <Border Grid.Row="0" Background="#5E35B1" CornerRadius="12,12,0,0" Padding="18,14">
                 <Grid>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <materialDesign:PackIcon Kind="ServerNetwork" Width="26" Height="26" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
                         <TextBlock Text="CONFIGURACIÓN DE SERVIDOR POS" FontSize="16" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
                     </StackPanel>
                     <Button HorizontalAlignment="Right" Style="{StaticResource MaterialDesignFlatButton}" 
+                            IsCancel="True"
                             Foreground="White" Width="36" Height="36" Padding="0" Click="Cancel_Click">
                         <materialDesign:PackIcon Kind="Close" Width="20" Height="20"/>
                     </Button>
                 </Grid>
             </Border>
 
-            <!-- Body -->
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,16">
                 <StackPanel>
-                    <TextBlock Text="¿Cómo opera esta máquina en su negocio?" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBody}" Margin="0,0,0,12"/>
+                    <TextBlock Text="¿Cómo opera esta máquina en su negocio?" FontSize="13" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,10"/>
 
-                    <!-- Mode Selectors -->
-                    <Border Background="{DynamicResource MaterialDesignCard}" CornerRadius="8" Padding="14,10" Margin="0,0,0,14">
-                        <StackPanel>
-                            <RadioButton IsChecked="{Binding IsLocalServerMode}" 
-                                         Content="Caja Principal / Esta Máquina (Ejecuta el servidor y la base de datos localmente)"
-                                         FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                            <TextBlock Text="Usa http://localhost:5000/. Recomendado para el equipo servidor principal." 
-                                       FontSize="11" Foreground="{DynamicResource NavTextMutedBrush}" Margin="28,0,0,0"/>
+                    <RadioButton Style="{StaticResource SelectableCardRadioButtonStyle}"
+                                 GroupName="ServerMode"
+                                 IsChecked="{Binding IsLocalServerMode, Mode=TwoWay}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
-                            <Separator Margin="0,10,0,10"/>
+                            <Border Grid.Column="0" Width="20" Height="20" CornerRadius="10" 
+                                    BorderThickness="2" VerticalAlignment="Center" Margin="0,0,12,0">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                                        <Setter Property="Background" Value="#FFFFFF"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsLocalServerMode}" Value="True">
+                                                <Setter Property="BorderBrush" Value="#673AB7"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Ellipse Width="10" Height="10" Fill="#673AB7" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsLocalServerMode}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                            </Border>
 
-                            <RadioButton IsChecked="{Binding IsRemoteServerMode}" 
-                                         Content="Terminal Secundaria / Satélite (Conecta a otra PC Caja Principal en la red local)"
-                                         FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                            <TextBlock Text="Recomendado para segundas cajas, oficinas administrativas o puntos de cobro auxiliares." 
-                                       FontSize="11" Foreground="{DynamicResource NavTextMutedBrush}" Margin="28,0,0,0"/>
-                        </StackPanel>
-                    </Border>
+                            <Border Grid.Column="1" Width="38" Height="38" CornerRadius="8" Background="#F3E8FF" VerticalAlignment="Center" Margin="0,0,12,0">
+                                <materialDesign:PackIcon Kind="Server" Width="22" Height="22" Foreground="#673AB7" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
 
-                    <!-- Server Address Input & Actions -->
-                    <Grid Margin="0,0,0,12">
+                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                <TextBlock Text="Caja Principal / Esta Máquina" FontSize="13" FontWeight="Bold" Foreground="#1E293B"/>
+                                <TextBlock Text="Ejecuta el servidor y la base de datos localmente (http://localhost:5000/). Recomendado para el equipo principal." 
+                                           FontSize="11" Foreground="#64748B" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Grid>
+                    </RadioButton>
+
+                    <RadioButton Style="{StaticResource SelectableCardRadioButtonStyle}"
+                                 GroupName="ServerMode"
+                                 IsChecked="{Binding IsRemoteServerMode, Mode=TwoWay}"
+                                 Margin="0,0,0,14">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0" Width="20" Height="20" CornerRadius="10" 
+                                    BorderThickness="2" VerticalAlignment="Center" Margin="0,0,12,0">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                                        <Setter Property="Background" Value="#FFFFFF"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsRemoteServerMode}" Value="True">
+                                                <Setter Property="BorderBrush" Value="#673AB7"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Ellipse Width="10" Height="10" Fill="#673AB7" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRemoteServerMode}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                            </Border>
+
+                            <Border Grid.Column="1" Width="38" Height="38" CornerRadius="8" Background="#EDE9FE" VerticalAlignment="Center" Margin="0,0,12,0">
+                                <materialDesign:PackIcon Kind="LanConnect" Width="22" Height="22" Foreground="#673AB7" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+
+                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                <TextBlock Text="Terminal Secundaria / Satélite" FontSize="13" FontWeight="Bold" Foreground="#1E293B"/>
+                                <TextBlock Text="Conecta a otra PC Caja Principal en la red local. Recomendado para segundas cajas o terminales auxiliares." 
+                                           FontSize="11" Foreground="#64748B" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Grid>
+                    </RadioButton>
+
+                    <Grid Margin="0,0,0,6">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBox Text="{Binding ServerAddress, UpdateSourceTrigger=PropertyChanged}"
-                                 materialDesign:HintAssist.Hint="Dirección IP o Nombre del Servidor (ej. 192.168.1.50 o CAJA-PRINCIPAL)"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                 FontSize="13" Margin="0,0,8,0"/>
+                        <Border Background="White" BorderBrush="#CBD5E1" BorderThickness="1.5" CornerRadius="8" Height="42" Padding="12,0" Margin="0,0,8,0">
+                            <TextBox Text="{Binding ServerAddress, UpdateSourceTrigger=PropertyChanged}"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     FontSize="13"
+                                     VerticalContentAlignment="Center"
+                                     materialDesign:HintAssist.Hint="Dirección IP o Nombre del Servidor (ej. 192.168.1.50 o CAJA-PRINCIPAL)"
+                                     materialDesign:TextFieldAssist.UnderlineBrush="Transparent"/>
+                        </Border>
 
                         <Button Grid.Column="1" Command="{Binding TestConnectionCommand}" 
                                 Style="{StaticResource MaterialDesignOutlinedButton}" 
-                                Height="40" Margin="0,0,8,0" Padding="12,0">
-                            <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="LanCheck" Width="16" Height="16" Margin="0,0,4,0"/>
-                                <TextBlock Text="Probar"/>
+                                materialDesign:ButtonAssist.CornerRadius="8"
+                                BorderBrush="#CBD5E1"
+                                Foreground="#334155"
+                                Height="42" Margin="0,0,8,0" Padding="14,0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <materialDesign:PackIcon Kind="LanCheck" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Probar" VerticalAlignment="Center" FontWeight="SemiBold"/>
                             </StackPanel>
                         </Button>
 
                         <Button Grid.Column="2" Command="{Binding ScanNetworkCommand}" 
                                 Style="{StaticResource MaterialDesignRaisedButton}" 
-                                Height="40" Padding="12,0">
-                            <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="Radar" Width="16" Height="16" Margin="0,0,4,0"/>
-                                <TextBlock Text="Buscar en Red"/>
+                                materialDesign:ButtonAssist.CornerRadius="8"
+                                Background="#5E35B1"
+                                BorderBrush="#5E35B1"
+                                Height="42" Padding="14,0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <materialDesign:PackIcon Kind="Radar" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Buscar en Red" VerticalAlignment="Center" FontWeight="SemiBold"/>
                             </StackPanel>
                         </Button>
                     </Grid>
 
-                    <!-- Progress Bar when Scanning -->
-                    <StackPanel Visibility="{Binding IsScanning, Converter={StaticResource BooleanToVisibilityConverter}}">
-                        <ProgressBar Value="{Binding ScanProgress}" Maximum="100" Height="6" Margin="0,0,0,6" IsIndeterminate="{Binding ScanProgress, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
-                        <TextBlock Text="Buscando cajas principales en la subred local..." FontSize="11" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,8"/>
-                    </StackPanel>
+                    <Border Margin="0,0,0,10" 
+                            CornerRadius="8" 
+                            Padding="12,7"
+                            Visibility="{Binding TestResultMessage, Converter={StaticResource StringToVisibilityConverter}}">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="#F1F5F9"/>
+                                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding TestSuccess}" Value="True">
+                                        <Setter Property="Background" Value="#DCFCE7"/>
+                                        <Setter Property="BorderBrush" Value="#86EFAC"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding TestSuccess}" Value="False">
+                                        <Setter Property="Background" Value="#FEE2E2"/>
+                                        <Setter Property="BorderBrush" Value="#FCA5A5"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
-                    <!-- Discovered Servers List -->
-                    <TextBlock Text="Servidores detectados en la red:" FontSize="12" FontWeight="Bold" Margin="0,4,0,6"/>
-                    <Border Background="{DynamicResource MaterialDesignCard}" CornerRadius="8" BorderBrush="#30808080" BorderThickness="1" MinHeight="100" MaxHeight="140" Margin="0,0,0,12">
-                        <ListBox ItemsSource="{Binding DiscoveredServers}" 
-                                 SelectedItem="{Binding SelectedServer}"
-                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="4,2">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <materialDesign:PackIcon Kind="Server" Width="20" Height="20" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding DisplayTitle}" FontWeight="Bold" FontSize="12"/>
-                                            <TextBlock Text="{Binding BaseUrl}" FontSize="10" Foreground="{DynamicResource NavTextMutedBrush}"/>
-                                        </StackPanel>
-                                        <Border Grid.Column="2" Background="#1500AA00" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding ResponseTimeMs, StringFormat='{}{0} ms'}" FontSize="10" Foreground="#008800" FontWeight="Bold"/>
-                                        </Border>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+                            <materialDesign:PackIcon Kind="CheckCircle" Width="16" Height="16" Foreground="#166534" 
+                                                     VerticalAlignment="Center" Margin="0,0,8,0">
+                                <materialDesign:PackIcon.Style>
+                                    <Style TargetType="materialDesign:PackIcon">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding TestSuccess}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </materialDesign:PackIcon.Style>
+                            </materialDesign:PackIcon>
+
+                            <materialDesign:PackIcon Kind="AlertCircle" Width="16" Height="16" Foreground="#991B1B" 
+                                                     VerticalAlignment="Center" Margin="0,0,8,0">
+                                <materialDesign:PackIcon.Style>
+                                    <Style TargetType="materialDesign:PackIcon">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding TestSuccess}" Value="False">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </materialDesign:PackIcon.Style>
+                            </materialDesign:PackIcon>
+
+                            <TextBlock Grid.Column="1" Text="{Binding TestResultMessage}" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#475569"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding TestSuccess}" Value="True">
+                                                <Setter Property="Foreground" Value="#166534"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding TestSuccess}" Value="False">
+                                                <Setter Property="Foreground" Value="#991B1B"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
                     </Border>
 
-                    <!-- Status Messages -->
-                    <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource PrimaryHueMidBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,4"/>
-                    <TextBlock Text="{Binding ErrorMessage}" Foreground="#EE5353" FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <StackPanel Visibility="{Binding IsScanning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ProgressBar Value="{Binding ScanProgress}" Maximum="100" Height="6" Margin="0,0,0,6"/>
+                        <TextBlock Text="Buscando cajas principales en la subred local..." FontSize="11" Foreground="#5E35B1" Margin="0,0,0,8"/>
+                    </StackPanel>
+
+                    <TextBlock Text="Servidores detectados en la red:" FontSize="13" FontWeight="SemiBold" Foreground="#334155" Margin="0,4,0,6"/>
+                    <Border Background="White" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" MinHeight="115" MaxHeight="150" Margin="0,0,0,4">
+                        <Grid>
+                            <ListBox ItemsSource="{Binding DiscoveredServers}" 
+                                     SelectedItem="{Binding SelectedServer}"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     Padding="4"
+                                     Visibility="{Binding HasDiscoveredServers, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border CornerRadius="6" Padding="8,6" Margin="2,1" Background="Transparent">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <Border Grid.Column="0" Width="36" Height="36" CornerRadius="8" Background="#F3E8FF" VerticalAlignment="Center" Margin="0,0,10,0">
+                                                    <materialDesign:PackIcon Kind="ServerNetwork" Width="20" Height="20" Foreground="#673AB7" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding DisplayTitle}" FontWeight="SemiBold" FontSize="12" Foreground="#1E293B"/>
+                                                    <TextBlock Text="{Binding BaseUrl}" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
+                                                </StackPanel>
+
+                                                <Border Grid.Column="2" 
+                                                        Background="#DCFCE7" 
+                                                        BorderBrush="#86EFAC" 
+                                                        BorderThickness="1" 
+                                                        CornerRadius="12" 
+                                                        Padding="10,3" 
+                                                        VerticalAlignment="Center">
+                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <materialDesign:PackIcon Kind="CheckCircle" Width="12" Height="12" Foreground="#166534" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                        <TextBlock Text="{Binding ResponseTimeMs, StringFormat='{}{0} ms'}" FontSize="11" Foreground="#166534" FontWeight="Bold" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="16"
+                                        Visibility="{Binding HasDiscoveredServers, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                <materialDesign:PackIcon Kind="Radar" Width="32" Height="32" Foreground="#CBD5E1" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                                <TextBlock Text="No se han detectado servidores en la red" FontSize="12" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Haga clic en 'Buscar en Red' para escanear cajas principales activas" FontSize="11" Foreground="#94A3B8" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Text="{Binding StatusMessage}" 
+                               Foreground="#64748B" 
+                               FontSize="11" 
+                               Margin="2,2,0,0" 
+                               TextWrapping="Wrap"
+                               Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisibilityConverter}}"/>
+
+                    <TextBlock Text="{Binding ErrorMessage}" 
+                               Foreground="#DC2626" 
+                               FontSize="11" 
+                               FontWeight="SemiBold" 
+                               Margin="2,4,0,0" 
+                               TextWrapping="Wrap"
+                               Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibilityConverter}}"/>
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- Footer -->
             <Border Grid.Row="2" Background="{DynamicResource MaterialDesignCard}" CornerRadius="0,0,12,12" Padding="18,12">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button Style="{StaticResource MaterialDesignOutlinedButton}" Content="Cancelar" Width="100" Margin="0,0,10,0" Click="Cancel_Click"/>
-                    <Button Style="{StaticResource MaterialDesignRaisedButton}" Command="{Binding SaveAndConnectCommand}" Content="Guardar y Conectar" Width="170"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Button Style="{StaticResource MaterialDesignOutlinedButton}" 
+                            IsCancel="True"
+                            materialDesign:ButtonAssist.CornerRadius="8"
+                            BorderBrush="#94A3B8"
+                            Foreground="#334155"
+                            FontWeight="SemiBold"
+                            Content="Cancelar" Width="110" Height="40" Margin="0,0,10,0" Click="Cancel_Click"/>
+                    <Button Style="{StaticResource MaterialDesignRaisedButton}" 
+                            materialDesign:ButtonAssist.CornerRadius="8"
+                            Background="#5E35B1"
+                            BorderBrush="#5E35B1"
+                            Foreground="White"
+                            FontWeight="SemiBold"
+                            Command="{Binding SaveAndConnectCommand}" 
+                            Content="Guardar y Conectar" Width="180" Height="40"/>
                 </StackPanel>
             </Border>
         </Grid>

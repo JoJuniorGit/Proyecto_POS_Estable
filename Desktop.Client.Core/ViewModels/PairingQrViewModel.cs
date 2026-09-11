@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -21,7 +22,7 @@ public class NetworkInterfaceItem
     public string DisplayName => $"{InterfaceType}: {IpAddress} ({Name})";
 }
 
-public partial class PairingQrViewModel : ObservableObject
+public partial class PairingQrViewModel : ObservableObject, IDisposable
 {
     private readonly HttpClient _httpClient;
 
@@ -65,6 +66,7 @@ public partial class PairingQrViewModel : ObservableObject
 
     public PairingQrViewModel(HttpClient httpClient)
     {
+        ArgumentNullException.ThrowIfNull(httpClient);
         _httpClient = httpClient;
     }
 
@@ -120,17 +122,16 @@ public partial class PairingQrViewModel : ObservableObject
             }
             else
             {
-                // Fallback si la API no está accesible vía endpoint o no tiene permisos
                 IpAddress = "127.0.0.1";
                 UpdateUrls();
                 StatusMessage = "No se pudo obtener la configuración de red remota.";
             }
         }
-        catch (Exception ex)
+        catch
         {
             IpAddress = "127.0.0.1";
             UpdateUrls();
-            StatusMessage = $"Aviso: {ex.Message}";
+            StatusMessage = "No se pudo obtener la configuración de red remota.";
         }
         finally
         {
@@ -164,16 +165,76 @@ public partial class PairingQrViewModel : ObservableObject
         QrPayload = $"{FullUrl}/?paired=true";
     }
 
+    [ObservableProperty]
+    private bool _isIpCopied;
+
+    [ObservableProperty]
+    private bool _isUrlCopied;
+
+    private CancellationTokenSource? _copyIpCts;
+    private CancellationTokenSource? _copyUrlCts;
+
     [RelayCommand]
-    private void CopyIp()
+    private async Task CopyIpAsync()
     {
         RequestClipboardCopy?.Invoke(IpAddress);
+        IsIpCopied = true;
+        _copyIpCts?.Cancel();
+        _copyIpCts?.Dispose();
+        _copyIpCts = new CancellationTokenSource();
+        var token = _copyIpCts.Token;
+        try
+        {
+            await Task.Delay(2000, token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested)
+            {
+                IsIpCopied = false;
+            }
+        }
     }
 
     [RelayCommand]
-    private void CopyUrl()
+    private async Task CopyUrlAsync()
     {
         RequestClipboardCopy?.Invoke(FullUrl);
+        IsUrlCopied = true;
+        _copyUrlCts?.Cancel();
+        _copyUrlCts?.Dispose();
+        _copyUrlCts = new CancellationTokenSource();
+        var token = _copyUrlCts.Token;
+        try
+        {
+            await Task.Delay(2000, token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested)
+            {
+                IsUrlCopied = false;
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        _copyIpCts?.Cancel();
+        _copyIpCts?.Dispose();
+        _copyIpCts = null;
+
+        _copyUrlCts?.Cancel();
+        _copyUrlCts?.Dispose();
+        _copyUrlCts = null;
+
+        GC.SuppressFinalize(this);
     }
 
     private class PairingApiResponse

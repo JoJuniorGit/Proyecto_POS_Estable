@@ -48,10 +48,10 @@ public partial class SalesService
 
         var sales = await _context.Sales
             .AsNoTracking()
-            .AsSplitQuery()
             .Where(s => s.Status == SaleStatus.Completed && s.DeliveryStatus == SaleDeliveryStatus.PendingPickup)
             .Where(s => !cashierId.HasValue || s.CashierId == cashierId.Value)
             .OrderByDescending(s => s.Date)
+            .ThenByDescending(s => s.Id)
             .Skip(offset)
             .Take(limit)
             .Select(s => new PendingPickupDto
@@ -60,8 +60,8 @@ public partial class SalesService
                 InvoiceNumber = s.InvoiceNumber,
                 Date = s.Date,
                 CustomerId = s.CustomerId,
-                CustomerName = s.CustomerName ?? s.Customer!.Name ?? "Cliente Desconocido",
-                CustomerCedula = s.CustomerCedula ?? s.Customer!.CedulaOrRif ?? "V-00000000",
+                CustomerName = s.CustomerName ?? (s.Customer != null ? s.Customer.Name : "Cliente Desconocido"),
+                CustomerCedula = s.CustomerCedula ?? (s.Customer != null ? s.Customer.CedulaOrRif : "V-00000000"),
                 CustomerPhone = s.Customer != null ? s.Customer.Phone : string.Empty,
                 TotalUSD = s.TotalUSD,
                 TotalBsS = s.TotalBsS,

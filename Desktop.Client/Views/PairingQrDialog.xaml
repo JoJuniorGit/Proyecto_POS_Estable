@@ -13,9 +13,18 @@
         Background="Transparent"
         ResizeMode="NoResize">
 
+    <Window.Resources>
+        <Style x:Key="ModernOutlinedComboBoxStyle" TargetType="ComboBox" BasedOn="{StaticResource MaterialDesignOutlinedComboBox}">
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="materialDesign:TextFieldAssist.UnderlineBrush" Value="#5E35B1"/>
+            <Setter Property="materialDesign:ColorZoneAssist.Mode" Value="Standard"/>
+        </Style>
+    </Window.Resources>
+
     <Border CornerRadius="14" 
             Background="{DynamicResource MaterialDesignPaper}" 
-            BorderBrush="{DynamicResource PrimaryHueMidBrush}" 
+            BorderBrush="#5E35B1" 
             BorderThickness="1.5"
             Effect="{DynamicResource MaterialDesignShadowDepth4}">
         <Grid>
@@ -24,14 +33,15 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
-            <!-- Header -->
-            <Border Grid.Row="0" Background="{DynamicResource PrimaryHueMidBrush}" CornerRadius="12,12,0,0" Padding="18,12">
+            <!-- Header: Purple corporate header with crisp contrast -->
+            <Border Grid.Row="0" Background="#5E35B1" CornerRadius="12,12,0,0" Padding="18,14">
                 <Grid>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <materialDesign:PackIcon Kind="QrcodeScan" Width="26" Height="26" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
                         <TextBlock Text="VINCULAR DISPOSITIVO MÓVIL / COMANDERA" FontSize="16" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
                     </StackPanel>
                     <Button HorizontalAlignment="Right" Style="{StaticResource MaterialDesignFlatButton}" 
+                            IsCancel="True"
                             Foreground="White" Width="36" Height="36" Padding="0" Click="Close_Click">
                         <materialDesign:PackIcon Kind="Close" Width="20" Height="20"/>
                     </Button>
@@ -47,8 +57,12 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Left Column: QR Code & Quick Scan -->
-                <Border Grid.Column="0" Background="{DynamicResource MaterialDesignCard}" 
-                        CornerRadius="10" Padding="16" Effect="{DynamicResource MaterialDesignShadowDepth1}">
+                <Border Grid.Column="0" Background="#FFFFFF" 
+                        CornerRadius="10" Padding="16"
+                        BorderBrush="#E2E8F0" BorderThickness="1">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="8" ShadowDepth="1" Direction="270" Opacity="0.06"/>
+                    </Border.Effect>
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -57,32 +71,48 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Text="ESCANEO RÁPIDO" FontWeight="Bold" FontSize="13" 
-                                   Foreground="{DynamicResource PrimaryHueMidBrush}" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                        <TextBlock Grid.Row="0" Text="ESCANEO RÁPIDO" FontWeight="Bold" FontSize="12" 
+                                   Foreground="#475569" HorizontalAlignment="Center" Margin="0,0,0,8"/>
 
-                        <!-- QR Code Container -->
-                        <Border Grid.Row="1" Background="White" CornerRadius="8" Padding="10" 
-                                HorizontalAlignment="Center" VerticalAlignment="Center"
-                                BorderBrush="#E2E8F0" BorderThickness="1" Width="220" Height="220">
-                            <Image x:Name="QrImageControl" Stretch="Uniform"/>
-                        </Border>
+                        <!-- Tech Scanner QR Frame with Corner Framing Marks -->
+                        <Grid Grid.Row="1" Width="224" Height="224" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <!-- Top-Left Framing Corner -->
+                            <Path Data="M 2,16 L 2,2 L 16,2" Stroke="#5E35B1" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                            <!-- Top-Right Framing Corner -->
+                            <Path Data="M 0,2 L 14,2 L 14,16" Stroke="#5E35B1" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" HorizontalAlignment="Right" VerticalAlignment="Top"/>
+                            <!-- Bottom-Left Framing Corner -->
+                            <Path Data="M 2,0 L 2,14 L 16,14" Stroke="#5E35B1" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" HorizontalAlignment="Left" VerticalAlignment="Bottom"/>
+                            <!-- Bottom-Right Framing Corner -->
+                            <Path Data="M 0,14 L 14,14 L 14,0" Stroke="#5E35B1" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+
+                            <!-- Inner QR Card -->
+                            <Border Background="White" CornerRadius="6" Padding="8" Margin="7"
+                                    BorderBrush="#E2E8F0" BorderThickness="1">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="6" ShadowDepth="1" Direction="270" Opacity="0.04"/>
+                                </Border.Effect>
+                                <Image x:Name="QrImageControl" Stretch="Uniform"/>
+                            </Border>
+                        </Grid>
 
                         <TextBlock Grid.Row="2" Text="Apunta con la cámara de tu celular o tablet para abrir el POS." 
-                                   FontSize="11" Foreground="{DynamicResource NavTextMutedBrush}" 
+                                   FontSize="11" Foreground="#64748B" 
                                    TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,8"/>
 
                         <!-- Interface Selector & HTTPS Toggle -->
                         <StackPanel Grid.Row="3">
-                            <TextBlock Text="Adaptador de Red:" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource NavTextMutedBrush}"/>
+                            <TextBlock Text="Adaptador de Red:" FontSize="10" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,3"/>
                             <ComboBox ItemsSource="{Binding AvailableInterfaces}" 
                                       SelectedItem="{Binding SelectedInterface}"
                                       DisplayMemberPath="DisplayName"
-                                      FontSize="11" Margin="0,2,0,6"
-                                      Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
+                                      FontSize="11" Margin="0,0,0,6"
+                                      Height="40"
+                                      Style="{StaticResource ModernOutlinedComboBoxStyle}"/>
                             
                             <CheckBox IsChecked="{Binding UseHttps}" 
                                       ToolTip="Habilita HTTPS (Puerto 5001) para permitir el uso del escáner por cámara en teléfonos y tablets."
-                                      FontSize="11" Margin="0,2,0,0">
+                                      FontSize="11" Margin="0,2,0,0"
+                                      Foreground="#334155">
                                 <TextBlock Text="Usar HTTPS (Puerto 5001)" FontWeight="Medium"/>
                             </CheckBox>
                         </StackPanel>
@@ -90,7 +120,7 @@
                 </Border>
 
                 <!-- Separator -->
-                <Rectangle Grid.Column="1" Width="1" Fill="#20808080" HorizontalAlignment="Center" Margin="0,10"/>
+                <Rectangle Grid.Column="1" Width="1" Fill="#E2E8F0" HorizontalAlignment="Center" Margin="0,10"/>
 
                 <!-- Right Column: Manual Connection Details -->
                 <Grid Grid.Column="2">
@@ -100,104 +130,190 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="DATOS PARA CONEXIÓN MANUAL" FontWeight="Bold" FontSize="13" 
-                               Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,12"/>
+                    <TextBlock Grid.Row="0" Text="DATOS PARA CONEXIÓN MANUAL" FontWeight="Bold" FontSize="12" 
+                               Foreground="#475569" Margin="0,0,0,12"/>
 
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                         <StackPanel>
                             <!-- Hostname -->
-                            <Border Background="{DynamicResource MaterialDesignCard}" CornerRadius="8" Padding="12,8" Margin="0,0,0,8">
+                            <Border Background="#FFFFFF" CornerRadius="8" Padding="12,8" Margin="0,0,0,8"
+                                    BorderBrush="#E2E8F0" BorderThickness="1">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <materialDesign:PackIcon Kind="ServerNetwork" Width="22" Height="22" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <materialDesign:PackIcon Kind="ServerNetwork" Width="20" Height="20" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                     <StackPanel Grid.Column="1">
-                                        <TextBlock Text="Nombre del Servidor / Hostname" FontSize="10" Foreground="{DynamicResource NavTextMutedBrush}"/>
-                                        <TextBlock Text="{Binding ServerName}" FontSize="13" FontWeight="Bold"/>
+                                        <TextBlock Text="Nombre del Servidor / Hostname" FontSize="10" Foreground="#64748B"/>
+                                        <TextBlock Text="{Binding ServerName}" FontSize="13" FontWeight="Bold" Foreground="#1E293B"/>
                                     </StackPanel>
                                 </Grid>
                             </Border>
 
-                            <!-- IP Address with Copy -->
-                            <Border Background="{DynamicResource MaterialDesignCard}" CornerRadius="8" Padding="12,8" Margin="0,0,0,8">
+                            <!-- IP Address with Copy Action -->
+                            <Border Background="#FFFFFF" CornerRadius="8" Padding="12,8" Margin="0,0,0,8"
+                                    BorderBrush="#E2E8F0" BorderThickness="1">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <materialDesign:PackIcon Kind="IpNetwork" Width="22" Height="22" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <materialDesign:PackIcon Kind="IpNetwork" Width="20" Height="20" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="Dirección IP Local" FontSize="10" Foreground="{DynamicResource NavTextMutedBrush}"/>
-                                        <TextBlock Text="{Binding IpAddress}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                        <TextBlock Text="Dirección IP Local" FontSize="10" Foreground="#64748B"/>
+                                        <TextBlock Text="{Binding IpAddress}" FontSize="14" FontWeight="Bold" Foreground="#5E35B1"/>
                                     </StackPanel>
                                     <Button Grid.Column="2" Command="{Binding CopyIpCommand}" 
-                                            Style="{StaticResource MaterialDesignOutlinedButton}" 
-                                            Height="28" Padding="8,0" FontSize="11">
+                                            Height="30" Padding="10,0" FontSize="11"
+                                            materialDesign:ButtonAssist.CornerRadius="6">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                                <Setter Property="BorderBrush" Value="#7C3AED"/>
+                                                <Setter Property="Foreground" Value="#6D28D9"/>
+                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsIpCopied}" Value="True">
+                                                        <Setter Property="Background" Value="#DCFCE7"/>
+                                                        <Setter Property="BorderBrush" Value="#16A34A"/>
+                                                        <Setter Property="Foreground" Value="#15803D"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
                                         <StackPanel Orientation="Horizontal">
-                                            <materialDesign:PackIcon Kind="ContentCopy" Width="14" Height="14" Margin="0,0,4,0"/>
-                                            <TextBlock Text="Copiar IP"/>
+                                            <materialDesign:PackIcon Width="14" Height="14" Margin="0,0,4,0" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon.Style>
+                                                    <Style TargetType="materialDesign:PackIcon">
+                                                        <Setter Property="Kind" Value="ContentCopy"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsIpCopied}" Value="True">
+                                                                <Setter Property="Kind" Value="Check"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </materialDesign:PackIcon.Style>
+                                            </materialDesign:PackIcon>
+                                            <TextBlock VerticalAlignment="Center" FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Copiar IP"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsIpCopied}" Value="True">
+                                                                <Setter Property="Text" Value="¡Copiado!"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                         </StackPanel>
                                     </Button>
                                 </Grid>
                             </Border>
 
                             <!-- Port -->
-                            <Border Background="{DynamicResource MaterialDesignCard}" CornerRadius="8" Padding="12,8" Margin="0,0,0,8">
+                            <Border Background="#FFFFFF" CornerRadius="8" Padding="12,8" Margin="0,0,0,8"
+                                    BorderBrush="#E2E8F0" BorderThickness="1">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <materialDesign:PackIcon Kind="LanConnect" Width="22" Height="22" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <materialDesign:PackIcon Kind="LanConnect" Width="20" Height="20" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                     <StackPanel Grid.Column="1">
-                                        <TextBlock Text="Puerto de Servicio Activo" FontSize="10" Foreground="{DynamicResource NavTextMutedBrush}"/>
-                                        <TextBlock Text="{Binding ActivePort}" FontSize="13" FontWeight="Bold"/>
+                                        <TextBlock Text="Puerto de Servicio Activo" FontSize="10" Foreground="#64748B"/>
+                                        <TextBlock Text="{Binding ActivePort}" FontSize="13" FontWeight="Bold" Foreground="#1E293B"/>
                                     </StackPanel>
                                 </Grid>
                             </Border>
 
-                            <!-- Full URL with Copy -->
-                            <Border Background="{DynamicResource MaterialDesignCard}" CornerRadius="8" Padding="12,8" Margin="0,0,0,10">
+                            <!-- Full URL with Copy Action -->
+                            <Border Background="#FFFFFF" CornerRadius="8" Padding="12,8" Margin="0,0,0,10"
+                                    BorderBrush="#E2E8F0" BorderThickness="1">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <materialDesign:PackIcon Kind="Web" Width="22" Height="22" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <materialDesign:PackIcon Kind="Web" Width="20" Height="20" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0">
-                                        <TextBlock Text="URL Completa para Navegador" FontSize="10" Foreground="{DynamicResource NavTextMutedBrush}"/>
-                                        <TextBlock Text="{Binding FullUrl}" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"/>
+                                        <TextBlock Text="URL Completa para Navegador" FontSize="10" Foreground="#64748B"/>
+                                        <TextBlock Text="{Binding FullUrl}" FontSize="13" FontWeight="Bold" TextWrapping="Wrap" Foreground="#1E293B"/>
                                     </StackPanel>
                                     <Button Grid.Column="2" Command="{Binding CopyUrlCommand}" 
-                                            Style="{StaticResource MaterialDesignRaisedButton}" 
-                                            Height="32" Padding="10,0" FontSize="11">
+                                            Height="32" Padding="12,0" FontSize="11"
+                                            materialDesign:ButtonAssist.CornerRadius="6">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                                <Setter Property="BorderBrush" Value="#7C3AED"/>
+                                                <Setter Property="Foreground" Value="#6D28D9"/>
+                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsUrlCopied}" Value="True">
+                                                        <Setter Property="Background" Value="#DCFCE7"/>
+                                                        <Setter Property="BorderBrush" Value="#16A34A"/>
+                                                        <Setter Property="Foreground" Value="#15803D"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
                                         <StackPanel Orientation="Horizontal">
-                                            <materialDesign:PackIcon Kind="ContentCopy" Width="14" Height="14" Margin="0,0,4,0"/>
-                                            <TextBlock Text="Copiar URL"/>
+                                            <materialDesign:PackIcon Width="14" Height="14" Margin="0,0,4,0" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon.Style>
+                                                    <Style TargetType="materialDesign:PackIcon">
+                                                        <Setter Property="Kind" Value="ContentCopy"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsUrlCopied}" Value="True">
+                                                                <Setter Property="Kind" Value="Check"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </materialDesign:PackIcon.Style>
+                                            </materialDesign:PackIcon>
+                                            <TextBlock VerticalAlignment="Center" FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Copiar URL"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsUrlCopied}" Value="True">
+                                                                <Setter Property="Text" Value="¡Copiado!"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                         </StackPanel>
                                     </Button>
                                 </Grid>
                             </Border>
 
-                            <!-- Wi-Fi Alert Box -->
-                            <Border Background="#150080FF" BorderBrush="#0080FF" BorderThickness="1" CornerRadius="8" Padding="10,8">
-                                <StackPanel Orientation="Horizontal">
-                                    <materialDesign:PackIcon Kind="InformationOutline" Width="18" Height="18" Foreground="#0080FF" VerticalAlignment="Top" Margin="0,1,8,0"/>
-                                    <TextBlock Text="Asegúrese de que el celular o terminal esté conectado a la misma red Wi-Fi que esta caja." 
-                                               FontSize="11" Foreground="{DynamicResource MaterialDesignBody}" TextWrapping="Wrap" MaxWidth="360"/>
-                                </StackPanel>
+                            <!-- Wi-Fi Alert Box: Clean High-Contrast Palette -->
+                            <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="8" Padding="12,10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <materialDesign:PackIcon Kind="InformationOutline" Width="18" Height="18" Foreground="#3B82F6" VerticalAlignment="Top" Margin="0,1,10,0"/>
+                                    <TextBlock Grid.Column="1" 
+                                               Text="Asegúrese de que el celular o terminal esté conectado a la misma red Wi-Fi que esta caja." 
+                                               FontSize="11.5" Foreground="#1E3A8A" LineHeight="17" TextWrapping="Wrap"/>
+                                </Grid>
                             </Border>
                         </StackPanel>
                     </ScrollViewer>
 
                     <!-- Footer Action -->
                     <StackPanel Grid.Row="2" Margin="0,12,0,0">
-                        <TextBlock x:Name="CopyStatusText" Foreground="#059669" FontWeight="SemiBold" FontSize="11" Visibility="Collapsed" Margin="0,0,0,6" HorizontalAlignment="Right"/>
-                        <Button Style="{StaticResource MaterialDesignOutlinedButton}" Content="Cerrar" Width="100" Click="Close_Click" HorizontalAlignment="Right"/>
+                        <Button Style="{StaticResource MaterialDesignOutlinedButton}" 
+                                Content="Cerrar" Width="100" 
+                                BorderBrush="#94A3B8"
+                                Foreground="#475569"
+                                Click="Close_Click" 
+                                IsCancel="True"
+                                HorizontalAlignment="Right"/>
                     </StackPanel>
                 </Grid>
             </Grid>

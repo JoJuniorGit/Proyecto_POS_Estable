@@ -199,10 +199,11 @@ public class SecurityTests
         var unauthorizedResult = result.Result as UnauthorizedObjectResult;
         Assert.NotNull(unauthorizedResult);
 
-        // Verificamos que el log de inicio no contenga la contraseña
         if (File.Exists(AppLogger.StartLogPath))
         {
-            var logContent = await File.ReadAllTextAsync(AppLogger.StartLogPath);
+            using var stream = new FileStream(AppLogger.StartLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new StreamReader(stream);
+            var logContent = await reader.ReadToEndAsync();
             Assert.DoesNotContain(testPassword, logContent);
         }
     }

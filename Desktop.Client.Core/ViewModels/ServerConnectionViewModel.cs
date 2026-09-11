@@ -9,11 +9,12 @@ using Desktop.Client.Services;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class ServerConnectionViewModel : ObservableObject
+public partial class ServerConnectionViewModel : ObservableObject, IDisposable
 {
     private readonly IConnectionManager _connectionManager;
     private readonly ISubnetScannerService _scannerService;
     private CancellationTokenSource? _scanCts;
+    private bool _disposed;
 
     [ObservableProperty]
     private bool _isLocalServerMode;
@@ -46,19 +47,34 @@ public partial class ServerConnectionViewModel : ObservableObject
     private ObservableCollection<DiscoveredServer> _discoveredServers = new();
 
     [ObservableProperty]
+    private bool _hasDiscoveredServers;
+
+    [ObservableProperty]
+    private string _testResultMessage = string.Empty;
+
+    [ObservableProperty]
     private DiscoveredServer? _selectedServer;
 
     public event Action<bool>? RequestClose;
 
     public ServerConnectionViewModel(IConnectionManager connectionManager, ISubnetScannerService scannerService)
     {
+        ArgumentNullException.ThrowIfNull(connectionManager);
+        ArgumentNullException.ThrowIfNull(scannerService);
+
         _connectionManager = connectionManager;
         _scannerService = scannerService;
 
-        var current = _connectionManager.CurrentServerAddress;
+        var current = _connectionManager.CurrentServerAddress ?? string.Empty;
         ServerAddress = current;
-        IsLocalServerMode = current.Contains("localhost") || current.Contains("127.0.0.1");
+        IsLocalServerMode = current.Contains("localhost", StringComparison.OrdinalIgnoreCase) || current.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase);
         IsRemoteServerMode = !IsLocalServerMode;
+    }
+
+    partial void OnServerAddressChanged(string value)
+    {
+        TestResultMessage = string.Empty;
+        TestSuccess = null;
     }
 
     partial void OnIsLocalServerModeChanged(bool value)
@@ -99,6 +115,7 @@ public partial class ServerConnectionViewModel : ObservableObject
         StatusMessage = "Escaneando la subred local en busca de servidores POS...";
         ErrorMessage = string.Empty;
         DiscoveredServers.Clear();
+        HasDiscoveredServers = false;
 
         var progress = new Progress<int>(pct => ScanProgress = pct);
 
@@ -110,9 +127,13 @@ public partial class ServerConnectionViewModel : ObservableObject
                 DiscoveredServers.Add(s);
             }
 
+            HasDiscoveredServers = DiscoveredServers.Any();
+
             if (servers.Any())
             {
-                StatusMessage = $"Se encontraron {servers.Count} servidor(es) POS en la red.";
+                StatusMessage = servers.Count == 1
+                    ? "Se encontró 1 servidor POS en la red."
+                    : $"Se encontraron {servers.Count} servidores POS en la red.";
                 SelectedServer = servers.First();
             }
             else
@@ -124,9 +145,9 @@ public partial class ServerConnectionViewModel : ObservableObject
         {
             StatusMessage = "Búsqueda cancelada.";
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            ErrorMessage = $"Error al escanear: {ex.Message}";
+            ErrorMessage = "Error al escanear la subred local. Verifique la conexión de red.";
         }
         finally
         {
@@ -139,14 +160,16 @@ public partial class ServerConnectionViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(ServerAddress))
         {
-            ErrorMessage = "Ingrese una dirección de servidor.";
+            TestSuccess = false;
+            TestResultMessage = "Ingrese una dirección de servidor.";
+            ErrorMessage = TestResultMessage;
             return;
         }
 
         IsTesting = true;
         TestSuccess = null;
         ErrorMessage = string.Empty;
-        StatusMessage = "Probando conexión con el servidor...";
+        TestResultMessage = "Probando conexión con el servidor...";
 
         try
         {
@@ -154,18 +177,21 @@ public partial class ServerConnectionViewModel : ObservableObject
             if (probe != null && probe.IsHealthy)
             {
                 TestSuccess = true;
-                StatusMessage = $"Conexión exitosa con {probe.MachineName} ({probe.IpAddress}) en {probe.ResponseTimeMs} ms.";
+                TestResultMessage = $"Conexión exitosa con {probe.MachineName} ({probe.IpAddress}) en {probe.ResponseTimeMs} ms.";
+                StatusMessage = TestResultMessage;
             }
             else
             {
                 TestSuccess = false;
-                ErrorMessage = "El servidor no respondió. Verifique la IP y que el servicio POS esté en ejecución.";
+                TestResultMessage = "El servidor no respondió. Verifique la IP y que el servicio POS esté en ejecución.";
+                ErrorMessage = TestResultMessage;
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             TestSuccess = false;
-            ErrorMessage = $"Error de conexión: {ex.Message}";
+            TestResultMessage = "Error de conexión con el servidor especificado.";
+            ErrorMessage = TestResultMessage;
         }
         finally
         {
@@ -197,13 +223,32 @@ public partial class ServerConnectionViewModel : ObservableObject
                 ErrorMessage = "No se pudo establecer la conexión con la dirección especificada.";
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            ErrorMessage = $"Error: {ex.Message}";
+            ErrorMessage = "Error al guardar y validar la dirección del servidor.";
         }
         finally
         {
             IsTesting = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        var oldCts = Interlocked.Exchange(ref _scanCts, null);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
         }
     }
 }

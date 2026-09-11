@@ -5802,3 +5802,183 @@ F. VERIFICACION REAL
      8.20-M02 parcialmente mitigado al unificar el marshalling no bloqueante via invoker).
 
 FIN DEL ANEXO - REVISION 8.84
+
+
+================================================================================
+ANEXO - REVISION 8.89: OPTIMIZACION UX POST-VENTA, ELIMINACION DE FLICKER Y UNIFICACION MODAL (WPF)
+================================================================================
+Fecha: 11 de Septiembre de 2026
+Alcance: Desktop.Client (WPF), Desktop.Client.Core, CommandCenter.Tests
+
+A. DIAGNOSTICO Y MOTIVACION
+   1. Correccion de Estado y Flicker (Boton Cancelar Fantasma en CheckoutDialog.xaml):
+      - Al confirmar el cobro (FinalizeSaleCommand), CheckoutViewModel establecia IsProcessing = true.
+      - En CheckoutDialog.xaml existian dos botones en el Grid de acciones: un boton "CANCEL" a la
+        izquierda enlazado a DialogHost.CloseDialogCommand, y un segundo boton "CANCELAR" en el centro
+        con DataTrigger que pasaba de Collapsed a Visible cuando IsProcessing era true.
+      - Esta aparicion abrupta del segundo boton en el centro causaba un parpadeo visual molesto
+        ("boton fantasma").
+      - Solucion: Se unifico a un unico boton "CANCELAR" a la izquierda enlazado a CloseDialogCommand,
+        deshabilitado limpiamente durante el procesamiento mediante IsEnabled vinculado a IsProcessing
+        con InverseBooleanConverter.
+
+   2. Ajuste de XAML y Dimensiones Dinamicas (Texto Truncado en SuccessDialogWindow.xaml):
+      - SuccessDialogWindow tenia dimensiones fijas (Height="180", Width="380", ResizeMode="NoResize")
+        sin SizeToContent. Ademas, el contenedor era un StackPanel Orientation="Horizontal" donde
+        el TextBlock no recibia una restriccion de ancho finita, lo que impedia el salto de linea
+        (TextWrapping) adecuado y provocaba el corte y truncamiento de mensajes extensos
+        (ej. facturas con custodia o detalles de liquidacion).
+      - Solucion:
+        * Width expandido a 460px, MinHeight="180", y SizeToContent="Height".
+        * Reemplazado StackPanel horizontal por un Grid de 2 columnas (Col 0 Auto para el icono
+          CheckCircle de 44x44 y Col 1 * para el TextBlock con TextWrapping="Wrap", LineHeight="22"
+          y Foreground MaterialDesignBody).
+
+   3. Unificacion de Modales UX (Eliminacion de Popup Independiente para Guardar Recibo):
+      - En PosViewModel.Orders.cs, al completar una venta se ejecutaba ShowSuccessDialog(formattedMessage)
+        y, acto seguido, un popup separado ShowConfirm("Recibo de venta", "¿Desea abrir el recibo (PDF) de esta venta?").
+        Esto obligaba al usuario a interactuar con dos modales consecutivos.
+      - Solucion:
+        * SuccessDialogWindow fue enriquecida para aceptar un boton secundario opcional
+          (SecondaryActionLabel, ej. "Guardar Recibo"), manteniendo el temporizador de cierre automatico
+          de 7 segundos y cerrando el dialogo inmediatamente al seleccionar una accion.
+        * IDialogService y WpfDialogService exponen:
+            bool ShowSuccessDialog(string message, string? secondaryActionLabel = null)
+          que retorna true si el usuario pulso la accion secundaria.
+        * PosViewModel.Orders.cs invoca directamente ShowSuccessDialog(formattedMessage, "Guardar Recibo")
+          y si el cajero lo selecciona, se abre y guarda el PDF directamente via OpenSaleReceiptAsync,
+          sin mostrar un modal emergente de confirmacion redundante.
+
+B. PRUEBAS AUTOMATIZADAS Y ESTABILIZACION
+   1. CheckoutCompletionUxTests.cs:
+      - CheckoutCommand_WhenCheckoutCompletesAndUserChoosesReceipt_OpensReceiptDirectlyWithoutSecondaryPopup
+      - CheckoutCommand_WhenCheckoutCompletesAndUserDeclinesReceipt_DoesNotFetchReceipt
+   2. UiCircuitBreakerTests.cs:
+      - Estabilizado el test asincrono BaseViewModel_AbortsInFlightRequest_OnFatalErrorActivated
+        utilizando TaskCompletionSource para senalizar el inicio efectivo del delegado antes
+        de activar el circuit breaker, eliminando carreras de hilos en ejecucion paralela.
+
+C. VERIFICACION Y DONE
+   - Compilacion de solucion: dotnet build CommandCenter.slnx -c Release -> 0 Errores, 0 Warnings.
+   - Suite de pruebas .NET: dotnet test CommandCenter.Tests -c Release -> 824/824 superadas (0 fallos).
+
+FIN DEL ANEXO - REVISION 8.89
+
+
+================================================================================
+ANEXO - REVISION 8.90: MODERNIZACION VISUAL, CONTRASTE Y MICROINTERACCION DE EMPAREJAMIENTO QR (WPF)
+================================================================================
+Fecha: 11 de Septiembre de 2026
+Alcance: Desktop.Client (WPF), Desktop.Client.Core, CommandCenter.Tests
+
+A. DIAGNOSTICO Y MOTIVACION
+   1. Encabezado de Alto Contraste:
+      - Anteriormente, el encabezado modal de PairingQrDialog utilizaba un fondo gris claro con tipografía
+        blanca, generando un ratio de contraste deficiente que infringía los estándares de accesibilidad visual.
+      - Solución: Se aplicó la barra superior corporativa morada (#5E35B1) con texto blanco puro (FontSize="16",
+        FontWeight="Bold") e ícono QrcodeScan de 26x26, estandarizando la experiencia con ServerConnectionDialog.
+
+   2. Modernización del Panel Izquierdo (QR & Escaneo Rápido):
+      - Eliminada la sombra paralela densa y oscura previa. El código QR ahora se ubica en una tarjeta
+        con fondo blanco (#FFFFFF), borde ultrafino (#E2E8F0) y elevación suave (opacidad 0.04).
+      - Integradas 4 esquinas de encuadre escáner ("framing corners") con trazo #5E35B1 y esquinas redondeadas
+        para evocar una mira de lectura moderna.
+      - Selector de adaptador de red estilizado como ComboBox delineado moderno (ModernOutlinedComboBoxStyle),
+        fondo blanco y borde #CBD5E1 con CornerRadius de 6-8px.
+
+   3. Jerarquía Visual en Panel Derecho:
+      - Encabezados de sección ("ESCANEO RÁPIDO", "DATOS PARA CONEXIÓN MANUAL") unificados en gris antracita
+        (#475569, 12px, bold).
+      - Íconos lineales en gris pizarra suave (#64748B, 20x20) en lugar de íconos pesados o desalineados.
+      - Botones de copiado de IP y URL rediseñados a un estilo delineado plano (BorderBrush="#7C3AED",
+        Foreground="#6D28D9") sin sombras púrpuras pesadas.
+
+   4. Microinteracción de Copiado Reactivo:
+      - Se eliminó el texto estático flotante en el pie de página ("¡Copiado al portapapeles!").
+      - Al hacer clic en "Copiar IP" o "Copiar URL", el propio botón muta temporalmente por 2 segundos:
+        * Fondo verde claro (#DCFCE7), borde verde (#16A34A) y tipografía (#15803D).
+        * Ícono alternado de ContentCopy a Check.
+        * Texto alternado a "¡Copiado!".
+      - Implementado en PairingQrViewModel con CancellationTokenSource desacoplado por comando (_copyIpCts,
+        _copyUrlCts), reversión segura en bloque finally y limpieza completa en Dispose().
+
+   5. Caja Informativa de Red Wi-Fi:
+      - Contenedor en azul pastel (#EFF6FF, borde #BFDBFE), ícono InformationOutline en azul vibrante
+        (#3B82F6) y texto de alto contraste en azul marino oscuro (#1E3A8A).
+
+B. PRUEBAS AUTOMATIZADAS Y ESTABILIZACION
+   1. PairingQrViewModelTests.cs (7 pruebas unitarias nuevas):
+      - Constructor_WhenHttpClientNull_ThrowsArgumentNullException
+      - Constructor_WithValidHttpClient_InitializesDefaultValues
+      - UseHttps_WhenToggledFalse_UpdatesPortAndUrlsToHttp
+      - SelectedInterface_WhenChanged_UpdatesIpAndUrls
+      - CopyIpCommand_WhenExecuted_TriggersClipboardEventAndTransientState
+      - CopyUrlCommand_WhenExecuted_TriggersClipboardEventAndTransientState
+      - CopyCommands_WhenTriggeredSequentially_MaintainIndependentTokens
+   2. Suite completa de tests .NET: 831/831 superados sin errores ni regresiones.
+
+C. VERIFICACION Y DONE
+   - Compilación Release: dotnet build CommandCenter.slnx -c Release -> 0 Warnings, 0 Errores.
+   - Auditoría de calidad y directrices (subagente reviewer): APROBADO sin hallazgos bloqueantes.
+
+FIN DEL ANEXO - REVISION 8.90
+
+
+================================================================================
+ANEXO - REVISION 8.91 (2026-09-11)
+================================================================================
+CONTEXTO:
+En el cliente de escritorio (WPF), al ingresar por primera vez a la sección de "Retiros Pendientes
+(Mercancía en Custodia)", los pedidos se cargaban correctamente. Sin embargo, al salir de la sección
+(navegando a POS o a otro módulo) y reingresar, se disparaba de inmediato el cuadro de diálogo de error:
+"Error al cargar retiros pendientes: Object reference not set to an instance of an object."
+impidiendo mostrar los pedidos por retirar.
+
+A. CAUSA RAÍZ DIAGNOSTICADA:
+   1. Ciclo de vida y clausura lambda en PendingPickupsView.xaml.cs:
+      - Al salir de la vista, OnUnloaded invocaba DetachViewModel(), el cual asignaba _vm = null y _view = null.
+      - La instancia de ListCollectionView (_view) creada en AttachViewModel capturaba la referencia mutable
+        de campo _vm en su predicado:
+        Filter = o => o is PendingPickupClientDto p && _vm.MatchesSearch(p);
+      - Al reingresar a la sección, MainViewModel.NavigateToPendingPickups establecía CurrentViewModel e
+        invocaba asíncronamente _pendingPickupsViewModel.EnsureLoadedAsync().
+      - Al ejecutarse Pickups.Clear() o Pickups.Add(item) en EnsureLoadedAsync(), la colección ObservableCollection
+        disparaba su evento CollectionChanged. El ListCollectionView precedente (todavía activo en memoria o en
+        fase de recolección de eventos) invocaba el delegado Filter, evaluando _vm.MatchesSearch(p) cuando _vm
+        era null, lanzando un NullReferenceException sincrónico en el hilo de UI dentro del bloque try de
+        EnsureLoadedAsync().
+   2. Falta de guardas defensivas en PendingPickupsViewModel:
+      - MatchesSearch(PendingPickupClientDto p) no verificaba nulidad del parámetro DTO.
+      - EnsureLoadedAsync y LoadMoreAsync procesaban la lista de la API sin filtrar posibles elementos nulos.
+
+B. SOLUCIÓN IMPLEMENTADA:
+   1. Desktop.Client/Views/PendingPickupsView.xaml.cs:
+      - Se desacopló la referencia mutable de la vista utilizando CollectionViewSource.GetDefaultView(targetVm.Pickups).
+      - En AttachViewModel:
+        * Se captura una variable local inmutable targetVm = _vm garantizando que el delegado Filter jamás opere
+          sobre una referencia nula.
+        * Se ejecuta _view.Refresh() explícitamente para garantizar la sincronización del filtro.
+      - En DetachViewModel:
+        * Se desasigna explícitamente _view.Filter = null antes de anular _view, eliminando cualquier invocación
+          residual o zombi sobre elementos añadidos o removidos.
+        * Se desuscriben PropertyChanged de _vm y se anulan las referencias de UI (PickupsList.ItemsSource = null).
+   2. Desktop.Client.Core/ViewModels/PendingPickupsViewModel.cs:
+      - MatchesSearch(PendingPickupClientDto? p) incorpora guarda temprana if (p == null) return false;.
+      - EnsureLoadedAsync() y LoadMoreAsync() aplican filtrado defensivo:
+        (list ?? Enumerable.Empty<PendingPickupClientDto>()).Where(p => p != null).
+      - ConfirmPickupAsync y LoadMoreAsync usan chequeos de nulidad (x != null && x.SaleId == ...).
+   3. CommandCenter.Tests/Unit/PendingPickupsViewModelTests.cs:
+      - Nuevas pruebas unitarias:
+        * MatchesSearch_WhenDtoIsNull_ReturnsFalse
+        * EnsureLoadedAsync_WithNullItemsFromApi_FiltersNullsSafely
+        * EnsureLoadedAsync_WhenCalledMultipleTimes_ClearsAndReloadsWithoutExceptions
+        * MatchesSearch_WhenSearchingByCustomerOrInvoice_ReturnsExpectedMatch (nomenclatura estandarizada).
+
+C. VERIFICACIÓN Y DONE:
+   - dotnet build CommandCenter.slnx -c Release: 0 Warnings, 0 Errores.
+   - Suite completa .NET (CommandCenter.Tests): 834 pruebas superadas (0 errores, 0 omitidas).
+   - Revisión automatizada por subagente reviewer: APROBADO sin hallazgos bloqueantes.
+
+FIN DEL ANEXO - REVISION 8.91
+
+
