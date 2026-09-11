@@ -6,7 +6,7 @@ el avance real de cada fase. Es la capa ejecutiva/operativa del plan de
 certificacion; el detalle por revision vive en `docs/reporte.txt` (ANEXOS) y el
 estado tecnico en `Reporte de estado.txt`.
 
-- **Version documento:** 0.9.0 (F3/F4 avanzados 8.80; ISCC firma + ejecucion real pendientes)
+- **Version documento:** 0.10.0 (metricas SLO 8.81: tooling de medicion + Go/No-Go; medicion real en piloto y firmas pendientes)
 - **Fecha:** 2026-09-10
 - **Estado general:** Fases F0-F6 en curso; F0 avanza a M0 con confirmaciones del cliente
 - **Rama base:** V0.15
@@ -80,6 +80,7 @@ Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
+| 2026-09-10  | F6/FIN | METRICAS SLO + GO/NO-GO: monitor-health.ps1 ampliado para medir los SLO del piloto (muestreo slo-availability.csv por corrida, collector p95 por endpoint via /api/health/requests con token, resumen de ventana de 14h en slo-summary.json con disponibilidad %, probe p95, endpoint p95 max y backupFresh RPO); INSTALLATION 13.11 runbook de medicion SLO (schedule cada 5 min, cierre de jornada, drill RTO cronometrado); formulario Go/No-Go (roadmap 11) exige evidencia SLO adjunta para las firmas RM/ARQ/CLI. Medicion real en piloto y firmas: PENDIENTES | (8.81) Sin cambios de codigo .NET/Web/WPF; monitor-health.ps1 probado (muestra negativa + CSV + resumen JSON). Suite .NET 798/798. Roadmap v0.10.0 + ANEXO 8.81, Reporte v1.47.0 |
 | 2026-09-10  | F3/F4/F5 | F3/F4 AVANZADOS (runbook + artefacto): build-release.ps1 ahora verifica el bundle web en wwwroot (index.html + assets, aborta si falta), verifica 0 appsettings.Development.json en publish, y ejecuta el smoke de migracion desde cero (IMP-1/MigratedSchema) como paso 7/7 opcional cuando TEST_POSTGRES_CONNECTION esta definida; INSTALLATION 13.8 monitoreo piloto (monitor-health.ps1), 13.9 paridad instalador/backend post-instalacion, 13.10 pre-despliegue/verificacion del artefacto | (8.80) ISCC firma X.509 + smoke en maquina virgen y ejecucion real PENDIENTES (requieren certificado/VM). Roadmap v0.9.0 + ANEXO 8.80, Reporte v1.46.0 |
 | 2026-09-10  | F2   | HALLAZGO 8.79-H: el smoke migracion desde cero destapo que la secuencia de facturacion `factura_number_seq` NO se materializaba con MigrateAsync (solo en runtime via DatabaseInitializer) -> nueva migracion idempotente `20260910180000_EnsureFacturaNumberSequence` (IF NOT EXISTS); smoke `MigratedSchema_MatchesModel` pasa en BD 100% nueva | (8.79) ambos smokes migratorios + suite completa verdes con sufijo fresco (798/798); build Release 0/0 |
 | 2026-09-10  | F0/F3/F5 | IMP-1..IMP-5 (ANEXO 8.67) APROBADAS: IMP-1 smoke migracion desde cero automatizado (test `MigratedSchema_FromEmptyDatabase_AppliesAllMigrationsCleanly`, crea BD temporal vacia, MigrateAsync de ambos contextos, descarta; detectaria el 42703 de 8.65); IMP-2 checklist paridad instalador/backend (INSTALLATION §5.1); IMP-3 backup config sitio (INSTALLATION §8.2); IMP-4 exclusiones Defender (INSTALLATION §6A); IMP-5 CERRADA (8.68-A9 cliente sin datos) | (8.79) IMP-1..4 IMPLEMENTADOS; suite .NET con nuevo smoke; build Release 0/0. Roadmap v0.8.0 + ANEXO 8.79 |
@@ -193,12 +194,12 @@ contrato operativo del roadmap.
 
 | Metrica | Propuesta | Como se mide / evidencia | Estado |
 |---------|-----------|--------------------------|--------|
-| Disponibilidad mensual | >= 99.5 % | Uptime del servicio en jornada (turnos 14h, 2 semanas piloto) | PENDIENTE medicion |
-| RPO | <= 24 h | Backup diario 03:00 (tarea programada, 8.29-A6) | PENDIENTE validar real |
-| RTO | <= 4 h | Restore documentado (INSTALLATION 8.1) + ejecucion real F3 | PENDIENTE ejecutar |
+| Disponibilidad mensual | >= 99.5 % | Uptime del servicio en jornada (turnos 14h, 2 semanas piloto) | MEDIBLE (8.81): monitor-health.ps1 -> slo-availability.csv + resumen; medicion real en piloto PENDIENTE |
+| RPO | <= 24 h | Backup diario 03:00 (tarea programada, 8.29-A6) | MEDIBLE (8.81): DetailsUrl `lastBackupFresh` en resumen; validar real PENDIENTE |
+| RTO | <= 4 h | Restore documentado (INSTALLATION 8.1) + drill cronometrado (13.11) | MEDIBLE (8.81): procedimiento timed; ejecucion real PENDIENTE |
 | Checkout sin duplicados | 100 % ante reintentos | Idempotency-Key + tests de abonos/lote | PARCIAL (tests verdes) |
 | Concurrencia de terminales | 4 cajas simultaneas sin conflictos (Req. 1) | Auditoria en F3 (xmin + tx compartida) | CERTIFICADO (8.34) |
-| API p95 latencia | < 500 ms (nominal) | `/api/health/requests` bajo carga | PENDIENTE medir |
+| API p95 latencia | < 500 ms (nominal) | `/api/health/requests` (8.52) bajo carga; collector 8.81 (`RequestsUrl`+`Token` en monitor-health.ps1) | MEDIBLE (8.81); medicion en piloto PENDIENTE |
 | Checkout p95 | < 1 s (nominal) | Medicion E2E con 4 terminales | PENDIENTE medir |
 | Tasa de error tecnico | < 1 % | Separar errores de negocio vs tecnicos (RFC 7807) | PENDIENTE medir |
 | Perdida de datos | 0 ventas | Restore + conteos en F3 | PENDIENTE probar |
@@ -380,21 +381,20 @@ reproducible.
 
 | SLO | Objetivo | Como medir | Estado |
 |-----|----------|------------|--------|
-| API p95 latencia | < 500 ms | `/api/health/requests` (8.52) bajo carga | PENDIENTE |
+| API p95 latencia | < 500 ms | `/api/health/requests` (8.52) bajo carga; collector monitor-health.ps1 8.81 | MEDIBLE (8.81); medicion real en piloto |
 | Checkout p95 | < 1 s | Medicion E2E con 4 terminales | PENDIENTE |
 | Error tecnico | < 1 % | Separar 4xx negocio vs 5xx tecnico | PENDIENTE |
 | Prueba sostenida | >= 8 h continuas | Operacion simulada con scripts | PENDIENTE |
 | Pico de carga | 2x usuarios esperados | 8 terminales simultaneas (stress) | PENDIENTE |
-| Disponibilidad | >= 99.5 % mensual | Uptime en jornada | PENDIENTE medicion real |
+| Disponibilidad | >= 99.5 % mensual | Uptime en jornada; monitor-health.ps1 -> slo-availability.csv (8.81) | MEDIBLE (8.81); medicion real en piloto |
 
 ### 7.4 Recuperacion y datos
 
 | Prueba | Objetivo | Estado |
 |--------|----------|--------|
-| Backup PostgreSQL (`pg_dump -Fc`) | RPO <= 24 h | Tarea programada configurada; ejecucion real PENDIENTE |
-| Backup de configuracion del sitio: secrets.json, cert HTTPS por sitio, client_settings.json, credenciales postgres (IMP-3) | 0 perdida de config | PENDIENTE de incorporar |
+| Backups postgres y config (`pg_dump -Fc` + secrets.json por sitio, IMP-3) | RPO <= 24 h; 0 perdida de config | Tarea programada configurada; ejecucion real PENDIENTE; RPO medible via `lastBackupFresh` (8.81) |
 | Restore + conteos | 0 ventas perdidas | PENDIENTE |
-| Medicion RTO | <= 4 h | PENDIENTE |
+| Medicion RTO | <= 4 h | Drill cronometrado descrito (INSTALLATION 13.11, 8.81); ejecucion PENDIENTE |
 | Rollback de migracion | Esquema anterior funcional | Plan documentado (INSTALLATION 10); ejecucion PENDIENTE |
 | Smoke de migracion "desde cero" automatizado: BD vacia + MigrateAsync todos los contextos + comparar esquema vs snapshot (IMP-1) | Esquema reproducible en instalacion limpia | IMPLEMENTADO (8.79/8.80): test `MigratedSchema_FromEmptyDatabase_AppliesAllMigrationsCleanly` + paso 7/7 (opcional) en build-release.ps1 cuando TEST_POSTGRES_CONNECTION esta definida |
 
@@ -462,7 +462,8 @@ Hito M6: piloto sin incidentes criticos, sin perdida de datos y dentro de SLOs.
 2. **Turnos de 14 horas**; dias 1-3 de operacion supervisada; restante autonoma con monitoreo.
 3. Sin funcionalidades nuevas durante el piloto (excepcion: solo correcciones aprobadas).
 4. Ejecutar al menos UN restore de validacion en copia aislada y confirmar conteos.
-5. Verificar diariamente el backup y `/health`.
+5. Medir los SLO diariamente con `docs\monitor-health.ps1` (13.11): CSVs de disponibilidad
+   y p95 + `slo-summary.json` al cierre de cada jornada; verificar el backup `lastBackupFresh`.
 6. Confirmar operacion offline de la tasa BCV si el puesto queda sin red.
 7. Aceptacion formal del cliente (firma Go/No-Go de Fase 6).
 
@@ -474,7 +475,7 @@ Hito M6: piloto sin incidentes criticos, sin perdida de datos y dentro de SLOs.
 | Incidentes P0 | 0 | Registro diario de incidencias |
 | Duplicacion de ventas | 0 | Query `GROUP BY Idempotency-Key HAVING COUNT > 1` |
 | Venta con doble descuento de stock | 0 | Auditoria de StockMovement por venta (criterio de integridad del piloto, turnos 14h) |
-| Disponibilidad | >= 99.5 % en jornada (turnos 14h, 2 semanas) | Health check monitoring |
+| Disponibilidad | >= 99.5 % en jornada (turnos 14h, 2 semanas) | `slo-summary.json` diario (monitor-health.ps1, 13.11) |
 | Restore exitoso | 1 ejecucion durante el piloto | Restore en copia aislada + conteos |
 | Backups | 100 % de ejecuciones programadas (03:00) | Log de tarea Windows |
 | Aceptacion del operador | Positiva (operacion sin capacitacion) | Encuesta/entrevista |
@@ -509,6 +510,11 @@ El sistema se certifica listo para produccion cuando se cumplan SIMULTANEAMENTE:
 | 10 | Piloto aceptado por el cliente | F6 | PENDIENTE |
 | 11 | Responsable operativo y rollback definidos | F0/F5 | PARCIAL |
 | 12 | Go/No-Go firmado por RM, ARQ y CLI | FIN | PENDIENTE |
+
+Evidencia SLO para la certificacion (adjunta al formulario): `slo-summary.json` + CSVs de
+cada jornada (INSTALLATION 13.11), resultado del drill RTO (cronometrado), log de backups
+(RPO) y registro diario del piloto (10.3). La firma RM/ARQ/CLI queda PENDIENTE hasta que el
+piloto genere esa evidencia y todas las filas 1-12 esten completas o excepcionadas por escrito.
 
 ```
 Release Manager:  _________________________ Fecha: ___________

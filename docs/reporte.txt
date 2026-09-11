@@ -5575,3 +5575,62 @@ D. VERIFICACION REAL
      corrida de release/CI.
 
 FIN DEL ANEXO - REVISION 8.80
+
+ANEXO 8.81 - METRICAS SLO EN PILOTO + GATE GO/NO-GO
+-------------------------------------------------------------------
+Fecha: 2026-09-10 | Rama/Bif: V0.15 | Objetivo: avanzar la medicion de los
+SLO (disponibilidad, RPO/RTO, p95) y formalizar el gate Go/No-Go de la
+certificacion, dejando EXPLICITAMENTE pendiente la medicion real (piloto) y
+las firmas RM/ARQ/CLI (roadmap 11). No hay cambios de codigo de aplicacion.
+
+A. TOOLING DE MEDICION - docs/monitor-health.ps1 (ampliado en 8.81)
+   - Muestreo de disponibilidad: cada corrida agrega una muestra a
+     slo-availability.csv (timestamp, ok, statusCode, latencyMs) cuando se
+     define DataDir. La sonda mide su propia latencia con Stopwatch (incluye
+     reconocimiento de error como muestra negativa con statusCode=-1).
+   - Collector p95 por endpoint: con RequestsUrl + Token (Admin/Manager) hace
+     GET /api/health/requests (Backend.API/Metrics RequestMetricsRegistry ya
+     expone P95Milliseconds por endpoint, 8.52) y agrega filas a slo-p95.csv
+     (timestamp, endpoint, total, errors, avgMs, maxMs, p95Ms); soporta
+     EndpointFilter (ej. "/checkout").
+   - Resumen de ventana (14 h por defecto): con -Summarize lee los CSVs del
+     periodo, calcula disponibilidad (%) = ok/muestras, p95 de la sonda y p95
+     max de endpoints, y escribe slo-summary.json (generatedAt, windowHours,
+     availabilityPct, samplesTotal/Ok, probeLatencyP95Ms, endpointP95MaxMs,
+     backupFresh, backupAgeMinutes). Targets embebidos: 99.5 % Y 500 ms.
+   - RPO: DetailsUrl + Token reporta lastBackupFresh/lastBackupAgeMinutes
+     (implementado en /api/health/details, 8.59) y se incluyen en el resumen.
+   - Compatible hacia atras: sin DataDir/RequestsUrl el comportamiento
+     original (health + webhook + alertas) no cambia.
+
+B. RUNBOOK - docs/INSTALLATION.md 13.11 "Medicion de SLO en el piloto"
+   - Programar monitor-health.ps1 cada 5 min con DataDir; RequestsUrl+Token
+     para p95 por endpoint; cierre de jornada con -Summarize -WindowHours 14.
+   - RPO: verificar log de tarea de backup + lastBackupFresh.
+   - RTO: drill de restore cronometrado una vez durante el piloto (13.5),
+     desde inicio del restore en copia aislada hasta conteos; objetivo <= 4 h.
+   - Criterios: disponibilidad >= 99.5 %, API p95 < 500 ms, p95 <= 1 s
+     (E2E), RPO <= 24 h, RTO <= 4 h; evidencia = CSVs + slo-summary.json.
+
+C. GATE GO/NO-GO - docs/production-readiness-roadmap.md seccion 11
+   - El formulario de certificacion (12 criterios, filas 1-12) ahora incluye
+     el bloque de evidencia SLO que debe adjuntarse: slo-summary.json + CSVs
+     por jornada (13.11), resultado del drill RTO, log de backups (RPO) y
+     registro diario 10.3. Las firmas RM/ARQ/CLI quedan PENDIENTES hasta
+     cumplir las filas 1-12 o excepcionarlas por escrito.
+   - Roadmap actualizado: 4.3 y 7.3 marcan "MEDIBLE (8.81)" para
+     disponibilidad, RPO, RTO y API p95 (la medicion real queda en piloto);
+     10.1 punto 5 y 10.2 disponibilidad referencian 13.11/slo-summary.json.
+     Version v0.10.0; fila changelog F6/FIN; Reporte de estado v1.47.0.
+
+D. VERIFICACION REAL
+   - Sintaxis PowerShell validada (AST) y probe funcional contra un objetivo
+     inalcanzable: se registro muestra negativa ok=False/statusCode=-1, el CSV
+     y el slo-summary.json se escribieron correctamente (disponibilidad 0% con
+     1 muestra, coherencia del pipeline). El colector p95 real no se ejecuta
+     (requiere JWT + backend con carga); queda para el piloto.
+   - Medicion real en piloto y firmas Go/No-Go: PENDIENTES (requieren
+     entorno/piloto). No hay cambios de codigo -> suite .NET 798/798 y
+     `dotnet build -c Release` 0/0 sin variacion esperada.
+
+FIN DEL ANEXO - REVISION 8.81

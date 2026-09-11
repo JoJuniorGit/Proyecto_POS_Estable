@@ -17,6 +17,19 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.47.0  | 2026-09-10  | (8.81)       | METRICAS SLO en piloto + Go/No-Go: monitor-health.ps1 ampliado
+|          |             |              | para medir los SLO del roadmap 4.3 (cada corrida agrega muestra
+|          |             |              | a slo-availability.csv, collector p95 por endpoint via
+|          |             |              | /api/health/requests con token, resumen de ventana de 14h en
+|          |             |              | slo-summary.json con disponibilidad%, probe p95, endpoint p95
+|          |             |              | max y backupFresh RPO); INSTALLATION 13.11 runbook de medicion
+|          |             |              | SLO (muestreo cada 5 min con Programador de tareas, cierre de
+|          |             |              | jornada, drill RTO cronometrado); formulario Go/No-Go de la
+|          |             |              | certificacion exige la evidencia SLO adjunta para las firmas
+|          |             |              | RM/ARQ/CLI. Roadmap v0.10.0 (4.3/7.3 remarcan MEDIBLE 8.81,
+|          |             |              | 10.2 via slo-summary.json, 11 evidencia SLO). Medicion real en
+|          |             |              | piloto y firmas: PENDIENTES. Sin cambios de codigo; suite .NET
+|          |             |              | 798/798. ANEXO 8.81.
 | v1.46.0  | 2026-09-10  | (8.80)       | F3/F4 AVANZADOS (runbook + artefacto; ISCC firma y ejecucion
 |          |             |              | real pendientes): build-release.ps1 verifica bundle web en
 |          |             |              | wwwroot (index.html+assets, aborta si falta), 0

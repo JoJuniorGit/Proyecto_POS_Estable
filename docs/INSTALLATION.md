@@ -410,6 +410,31 @@ Antes de instalar una Release Candidate en el puesto (o en QA), validar el artef
 6. Firma X.509 e ISCC firmado y smoke en máquina virgen quedan PENDIENTES hasta disponer de
    certificado y entorno QA/VM (roadmap §8, items sin marcar).
 
+### 13.11 Medición de SLO en el piloto (F6/8.81)
+Los SLO del roadmap §4.3 (disponibilidad >= 99.5 %, API p95 < 500 ms, checkout p95 < 1 s,
+RPO <= 24 h, RTO <= 4 h) se miden con `docs\monitor-health.ps1` ampliado:
+
+1. **Muestreo (cada 5 min, Programador de tareas):** ejecutar con `DataDir`, y
+   `RequestsUrl` + `Token` (Admin/Manager) para capturar las latencias p95 por endpoint.
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File "C:\POS\docs\monitor-health.ps1" `
+     -DataDir "C:\POS\slo" -RequestsUrl "https://localhost:8443/api/health/requests" `
+     -Token "<jwt-admin>" -EndpointFilter "/checkout" -DetailsUrl "https://localhost:8443/api/health/details"
+   ```
+2. **Backups para RPO:** `DetailsUrl` + `Token` reporta `lastBackupFresh`/`lastBackupAgeMinutes`;
+   el resumen JSON los incluye. Criterio: backup fresco = 100 % de las ejecuciones 03:00 OK.
+3. **Disponibilidad y p95 (al cierre de cada jornada de 14 h):**
+   ```powershell
+   ... -DataDir "C:\POS\slo" -Summarize -WindowHours 14 `
+       -DetailsUrl "https://localhost:8443/api/health/details" -Token "<jwt-admin>"
+   ```
+   Escribe `slo-summary.json` (disponibilidad %, samples, p95 de la sonda y p95 max de endpoints,
+   además de `backupFresh`/`backupAgeMinutes` para el RPO) para adjuntar al registro diario (§14).
+   Criterio: disponibilidad >= 99.5 % en ventana de 14 h.
+4. **Drill de RTO (una vez durante el piloto, §13.5):** cronometrar desde el inicio del restore
+   en copia aislada hasta la verificación de conteos; registrar la duración junto al resumen.
+   Criterio: RTO medido <= 4 h. Los SLO quedan PENDIENTES hasta que el piloto genere evidencia.
+
 ## 14. Plan del piloto controlado (Fase 6, 8.45)
 
 Alcance y reglas:
