@@ -7080,3 +7080,93 @@ E1. Commit de la revision 8.108 (feat). Build de la suite .NET pendiente hasta
     no requiere migracion).
 
 FIN DEL ANEXO - REVISION 8.108
+
+ANEXO - REVISION 8.109 (2026-09-12)
+FIX ESCANER WEB: RECUPERACION DE PERMISOS DE CAMARA (BLOCKED/REVOCADOS)
+
+A. CONTEXTO Y DECISIONES
+A1. Incidencia reportada en el puesto (usuario): al revocar y reotorgar el
+    permiso de camara con el candado del navegador, el escaner Web quedaba
+    bloqueado permanentemente. El escaner WPF no esta afectado (usa
+    keyboard-wedge de hardware, KeyboardWedgeScannerListener.cs), por lo que el
+    fallo es exclusivo de Web.
+A2. Causas raiz identificadas en BarcodeScannerModal.jsx:
+    (i) currentDeviceId persiste entre aperturas (el modal queda siempre
+    montado, PosPage.jsx) y se aplicaba con deviceId:{exact}: Chrome regenera
+    los deviceId al revocar/reotorgar el permiso -> OverconstrainedError o
+    NotFoundError permanente sin salida.
+    (ii) No se consultaba navigator.permissions.query({name:'camera'}): la
+    denegacion cacheada por sesion del navegador (quirk de Chrome) se mostraba
+    como falso "Permiso denegado" sin ofrecer camino de recuperacion.
+    (iii) No habia track.onended: al revocar el permiso en caliente los loops
+    de decodificacion quedaban sobre un stream muerto sin feedback.
+    (iv) El unico escape era cerrar/reabrir el modal: no habia boton
+    Reintentar y enumerateDevices() se consultaba ANTES de getUserMedia (lista
+    e IDs obsoletos).
+A3. Decision de la mesa (usuario): doble salida de recuperacion - boton
+    Reintentar de primer nivel y hint "Recargar pagina" como ultimo recurso,
+    mostrado SOLO cuando permissions.query dice 'granted' pero getUserMedia
+    sigue fallando con NotAllowedError (quirk de cache por sesion).
+A4. Convencion de registro: Q1 (donde registrar) quedo sin respuesta en la
+    pregunta del plan; se asume la convencion del repo (ANEXO en docs/reporte.txt
+    + fila en Reporte de estado.txt). No se crea docs/BUGS.md salvo pedido del
+    usuario.
+
+B. IMPLEMENTACION
+B1. src/utils/scannerCameraErrors.js (nuevo, modulo puro y testable):
+    queryCameraPermission (perm. API o 'unsupported'),
+    cameraPermissionGuidance (denied -> candado; prompt -> aceptar dialogo;
+    granted+NotAllowedError -> Reintentar + reloadHint=true),
+    resolveCameraGuidance, shouldFallbackWithoutDeviceId (OverconstrainedError/
+    NotFoundError/DevicesNotFoundError con deviceId previo) y friendlyCameraError
+    (reubicado desde el modal). Motivo: el modal importa @zxing/library cuyos
+    named exports no resuelven en node:test (CSJ interop); el modulo puro sigue
+    la estrategia tactica de la guia 1.1.B1 sin agrandar el modal.
+B2. BarcodeScannerModal.jsx: startScanningSession reordenado - stopActiveStream()
+    al inicio, getUserMedia PRIMERO (con deviceId {exact} solo si existe) y
+    enumerateDevices() DESPUES del stream activo; si getUserMedia falla con
+    error de device obsoleto, reintento unico sin deviceId y setCurrentDeviceId('')
+    (limpieza del ID stale); catch central guiado por resolveCameraGuidance
+    segun el estado de permiso real; track.onended registrado en un ref
+    (revocationListenerRef, limpiado en stopActiveStream) que detiene el stream
+    y muestra "Permiso revocado: abra el candado... luego presione Reintentar";
+    estado errorGuidance que impulsa reloadHint hacia el Hud; handler
+    retryScanning reinicia la sesion con el device actual.
+B3. BarcodeScannerHud.jsx: el overlay de error ahora renderiza el boton
+    Reintentar (oculto para mensajes de contexto inseguro) y el boton Recargar
+    pagina cuando reloadHint=true (tambien oculto en contexto inseguro).
+B4. BarcodeScannerModal.css: clase .scanner-retry-btn (token primary).
+B5. Docs: ANEXO 8.109 (este registro) + fila v1.64.6 en Reporte de estado.txt.
+
+C. VERIFICACION
+C1. Tests web nuevos en src/components/pos/BarcodeScannerRetry.test.js (12 tests,
+    nomenclatura por escenario sin emojis): mapas puros de shouldFallbackWithoutDeviceId,
+    cameraPermissionGuidance por estado (denied/prompt/granted+NotAllowed/unsupported),
+    queryCameraPermission (sin permissions API y con ella, via defineProperty sobre
+    navigator que es getter-only en Node), resolveCameraGuidance integrado,
+    friendlyCameraError y mount test con renderToString del Hud (botones Reintentar
+    y Recargar pagina presentes; ocultos en contexto inseguro o sin onRetry).
+C2. npm test: 102/102 verde (linea base 8.108 = 90, +12) y npm run lint 0
+    warnings/0 errors. Vite build 0 errores (hash de bundle regenerado).
+C3. Sin cambios .NET (no requiere build Release ni migracion EF).
+C4. Pendiente en el puesto: verificacion manual en Chrome del ciclo candado ->
+    revocar -> reotorgar con el boton Reintentar y el hint de recarga.
+
+D. DECISIONES Y DEUDA REGISTRADA
+D1. El reintento de getUserMedia con permiso ya otorgado (granted +
+    NotAllowedError persistente) NO es automatico: primero se muestra el
+    Reintentar y el hint de recarga. Evita loops involuntarios y reserva el
+    reload como salida explicita del usuario.
+D2. El fallback sin deviceId se limita a OverconstrainedError/NotFoundError/
+    DevicesNotFoundError (device obsoleto). El NotAllowedError jamas dispara el
+    fallback: es un error de permiso, no de device.
+D3. Los helpers no se elevan de modulo puro a un servicio con estado: no hay
+    instancia que compartir; el modal consume las funciones directas.
+D4. El listener 'ended' se registra por sesion y se limpia en stopActiveStream:
+    sin fugas de listener entre aperturas del modal.
+
+E. ESTADO
+E1. Commit de la revision 8.109 (fix), sin push (rama V0.15). Pendiente de
+    reviewer local y verificacion manual en el puesto (C4).
+
+FIN DEL ANEXO - REVISION 8.109

@@ -17,6 +17,24 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.64.6  | 2026-09-12  | (8.109)      | FIX ESCANER WEB: RECUPERACION DE PERMISOS DE CAMARA (A)
+|          |             |              | BLOCKED/REVOCADOS. (A) Causas raiz en BarcodeScannerModal.jsx:
+|          |             |              | currentDeviceId persistia entre aperturas y se usaba con
+|          |             |              | deviceId:{exact}, pero Chrome regenera los IDs del device al
+|          |             |              | revocar/reotorgar con el candado -> OverconstrainedError/
+|          |             |              | NotFoundError permanente; sin navigator.permissions.query
+|          |             |              | (la denegacion cacheada por sesion quedaba sin salida);
+|          |             |              | sin track.onended y sin boton Reintentar. (B) Fix:
+|          |             |              | getUserMedia antes de enumerateDevices, fallback sin
+|          |             |              | deviceId (limpia currentDeviceId) ante errores de device
+|          |             |              | obsoleto, track.onended -> "permiso revocado" + Reintentar,
+|          |             |              | guia por estado (denied->candado, prompt->aceptar dialogo,
+|          |             |              | granted+NotAllowed->Reintentar + Recargar pagina), boton
+|          |             |              | Reintentar en BarcodeScannerHud + hint de recarga. (C)
+|          |             |              | Helpers puros en src/utils/scannerCameraErrors.js (patron
+|          |             |              | anti-god-object; @zxing/library no responde a named exports
+|          |             |              | en node:test). Web: npm test 102/102 (+12) y lint 0/0;
+|          |             |              | sin cambios .NET. Detalle en ANEXO 8.109 de docs/reporte.txt.
 | v1.64.5  | 2026-09-12  | (8.108)      | PRUEBA DE ESTRES NO DESTRUCTIVA + FILTRO DE CAJERO EN EL (A)
 |          |             |              | HISTORIAL (WPF/WEB). (A) scripts/stress-test.py (Python 3
 |          |             |              | stdlib): N cajas-hilo (def. 4) completan ventas de $0.00
@@ -1226,9 +1244,9 @@ Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-12 (REVISION 8.108 / prueba de estres no destructiva +
-  filtro de cajero con ocultar transacciones de prueba en Historial WPF y Web; suite .NET
-  913/913; build R 0/0; web 90/90 y lint 0/0).
+  Ultima verificacion: 2026-09-12 (REVISION 8.109 / fix de recuperacion de permisos
+  de camara del escaner Web con Reintentar + hint de recarga; suite web 102/102 y
+  lint 0/0; sin cambios .NET; ANEXO 8.109).
   Proxima revision obligatoria: con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ===============================================================================

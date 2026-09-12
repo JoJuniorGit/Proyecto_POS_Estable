@@ -131,6 +131,27 @@
   color: #fca5a5;
 }
 
+.scanner-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: var(--primary-color, #3b82f6);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.scanner-retry-btn:hover {
+  background: var(--primary-color, #2563eb);
+}
+
 /* Barra de Zoom Rápido */
 .scanner-zoom-bar {
   display: flex;

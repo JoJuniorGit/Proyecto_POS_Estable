@@ -9,6 +9,8 @@ function BarcodeScannerHud({
   status,
   insecureContextMessage,
   boundingBoxRef,
+  onRetry,
+  reloadHint,
 }) {
   const hudCanvasRef = useRef(null);
   const hudAnimRef = useRef(null);
@@ -124,6 +126,16 @@ function BarcodeScannerHud({
             <CameraOff size={28} />
           )}
           <span>{status.text}</span>
+          {onRetry && status.text !== insecureContextMessage && (
+            <button type="button" className="scanner-retry-btn" onClick={onRetry}>
+              Reintentar
+            </button>
+          )}
+          {reloadHint && status.text !== insecureContextMessage && (
+            <button type="button" className="scanner-retry-btn" onClick={() => window.location.reload()}>
+              Recargar página
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -16,6 +16,7 @@ import { playScanSuccess, playScanWarning, playScanError, closeAudioContext } fr
 import { checkBarcodeDetectorSupport, createNativeBarcodeDetector } from '../../utils/nativeBarcodeScanner';
 import { isLaptopOrDesktopEnvironment, processMultiPassLaptopFrame } from '../../utils/laptopVisionEnhancer';
 import { formatBsS, formatUSD } from '../../utils/formatters';
+import { resolveCameraGuidance, shouldFallbackWithoutDeviceId } from '../../utils/scannerCameraErrors';
 import './BarcodeScannerModal.css';
 
 const INSECURE_CONTEXT_MESSAGE =
@@ -50,6 +51,7 @@ export default function BarcodeScannerModal({
   const sessionCancelTokenRef = useRef(0);
   const boundingBoxRef = useRef(null);
   const boundingBoxTimerRef = useRef(null);
+  const revocationListenerRef = useRef(null);
 
   // Detección de entorno: Laptop/PC vs Mobile
   const isLaptop = useMemo(() => isLaptopOrDesktopEnvironment(), []);
@@ -70,6 +72,7 @@ export default function BarcodeScannerModal({
   const [currentDeviceId, setCurrentDeviceId] = useState('');
   const [engineType, setEngineType] = useState('zxing'); // 'native' | 'zxing'
   const [scanCount, setScanCount] = useState(0);
+  const [errorGuidance, setErrorGuidance] = useState(null);
 
   // Data Binding puro: los últimos 3 productos derivan su cantidad del carrito central
   const recentScannedItems = useMemo(() => {
@@ -91,6 +94,13 @@ export default function BarcodeScannerModal({
     sessionCancelTokenRef.current += 1;
     nativeActiveRef.current = false;
     laptopVisionActiveRef.current = false;
+
+    if (revocationListenerRef.current) {
+      try {
+        revocationListenerRef.current.track.removeEventListener('ended', revocationListenerRef.current.handler);
+      } catch {}
+      revocationListenerRef.current = null;
+    }
 
     if (zxingReaderRef.current) {
       try {
@@ -260,6 +270,7 @@ export default function BarcodeScannerModal({
     const currentToken = ++sessionCancelTokenRef.current;
     setStarting(true);
     setStatus({ type: 'info', text: 'Iniciando cámara…' });
+    setErrorGuidance(null);
 
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       setStarting(false);
@@ -267,168 +278,203 @@ export default function BarcodeScannerModal({
       return;
     }
 
+    stopActiveStream();
+    sessionCancelTokenRef.current = currentToken;
+
+    const buildConstraints = (withDeviceId) => ({
+      video: withDeviceId
+        ? { deviceId: { exact: withDeviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30 } }
+        : { facingMode: { ideal: 'environment' }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30 } }
+    });
+
+    let stream;
     try {
       try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        if (sessionCancelTokenRef.current !== currentToken) return;
-        const videoInputs = devices.filter((d) => d.kind === 'videoinput');
-        setVideoDevices(videoInputs);
-      } catch {}
+        stream = await navigator.mediaDevices.getUserMedia(buildConstraints(targetDeviceId));
+      } catch (firstErr) {
+        if (shouldFallbackWithoutDeviceId(firstErr.name, Boolean(targetDeviceId))) {
+          setCurrentDeviceId('');
+          stream = await navigator.mediaDevices.getUserMedia(buildConstraints(''));
+        } else {
+          throw firstErr;
+        }
+      }
+    } catch (err) {
+      const guidance = await resolveCameraGuidance(err);
+      if (sessionCancelTokenRef.current === currentToken) {
+        setStarting(false);
+        setErrorGuidance(guidance);
+        setStatus({ type: 'error', text: guidance.text });
+      }
+      return;
+    }
 
-      stopActiveStream();
-      sessionCancelTokenRef.current = currentToken;
-
-      const constraints = {
-        video: targetDeviceId 
-          ? { deviceId: { exact: targetDeviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30 } }
-          : { facingMode: { ideal: 'environment' }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30 } }
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-      if (sessionCancelTokenRef.current !== currentToken) {
+    if (sessionCancelTokenRef.current !== currentToken) {
+      try {
         stream.getTracks().forEach((t) => {
           try { t.stop(); } catch {}
         });
-        return;
-      }
+      } catch {}
+      return;
+    }
 
-      activeStreamRef.current = stream;
+    activeStreamRef.current = stream;
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
-      }
-
-      if (sessionCancelTokenRef.current !== currentToken) {
-        stopActiveStream();
-        return;
-      }
-
-      const track = stream.getVideoTracks()[0];
-      if (track) {
-        const settings = track.getSettings?.() || {};
-        if (settings.deviceId) setCurrentDeviceId(settings.deviceId);
-        applyHardwareCapabilities(track, true);
-      }
-
-      // Móvil: Detección acelerada por GPU si soporta BarcodeDetector nativo
-      const isNativeSupported = await checkBarcodeDetectorSupport();
-      if (sessionCancelTokenRef.current !== currentToken) {
-        stopActiveStream();
-        return;
-      }
-
-      if (isNativeSupported && !isLaptop) {
-        const nativeDetector = createNativeBarcodeDetector();
-        if (nativeDetector) {
-          setEngineType('native');
-          setStarting(false);
-          setStatus({ type: 'info', text: 'Apunte la cámara a un código de barras…' });
-
-          nativeActiveRef.current = true;
-          const runNativeLoop = async () => {
-            if (!nativeActiveRef.current || sessionCancelTokenRef.current !== currentToken || !videoRef.current || !activeStreamRef.current) return;
-
-            try {
-              if (videoRef.current.readyState >= 2) {
-                const barcodes = await nativeDetector.detect(videoRef.current);
-                if (barcodes && barcodes.length > 0) {
-                  const first = barcodes[0];
-                  if (first.rawValue) {
-                    handleDecodedCode(first.rawValue.trim(), first.cornerPoints);
-                  }
-                } else {
-                  codeVisibleRef.current = false;
-                }
-              }
-            } catch {}
-
-            if (nativeActiveRef.current && sessionCancelTokenRef.current === currentToken) {
-              setTimeout(runNativeLoop, ATTEMPT_PACING_MS);
-            }
-          };
-
-          runNativeLoop();
-          return;
-        }
-      }
-
-      // Fallback: ZXing Library Reader con TRY_HARDER y Pipeline Multi-Pass
-      setEngineType('zxing');
-      const hints = new Map([
-        [DecodeHintType.POSSIBLE_FORMATS, [
-          BarcodeFormat.EAN_13,
-          BarcodeFormat.EAN_8,
-          BarcodeFormat.UPC_A,
-          BarcodeFormat.UPC_E,
-          BarcodeFormat.CODE_128,
-          BarcodeFormat.CODE_39,
-          BarcodeFormat.ITF,
-          BarcodeFormat.CODABAR,
-        ]],
-        [DecodeHintType.TRY_HARDER, true]
-      ]);
-
-      const reader = new BrowserMultiFormatReader(hints, 0);
-      reader.timeBetweenDecodingAttempts = ATTEMPT_PACING_MS;
-      zxingReaderRef.current = reader;
-
-      if (videoRef.current && activeStreamRef.current) {
-        if (isLaptop && laptopEnhancement && filterCanvasRef.current) {
-          laptopVisionActiveRef.current = true;
-          let passCounter = 0;
-
-          const runLaptopVisionLoop = () => {
-            if (!laptopVisionActiveRef.current || sessionCancelTokenRef.current !== currentToken || !videoRef.current || !activeStreamRef.current) return;
-
-            try {
-              if (videoRef.current.readyState >= 2 && filterCanvasRef.current) {
-                const currentPass = passCounter % 4;
-                passCounter++;
-
-                processMultiPassLaptopFrame(videoRef.current, filterCanvasRef.current, currentPass);
-                
-                try {
-                  const zxingResult = reader.decode(filterCanvasRef.current);
-                  if (zxingResult?.getText && zxingResult.getText().trim()) {
-                    handleDecodedCode(zxingResult.getText().trim());
-                  }
-                } catch {
-                  codeVisibleRef.current = false;
-                }
-              }
-            } catch {}
-
-            if (laptopVisionActiveRef.current && sessionCancelTokenRef.current === currentToken) {
-              setTimeout(runLaptopVisionLoop, ATTEMPT_PACING_MS);
-            }
-          };
-
-          runLaptopVisionLoop();
-        } else {
-          reader.decodeFromStream(
-            activeStreamRef.current,
-            videoRef.current,
-            (zxingResult) => {
-              if (!zxingResult?.getText || !zxingResult.getText().trim()) {
-                codeVisibleRef.current = false;
-                return;
-              }
-              handleDecodedCode(zxingResult.getText().trim());
-            }
-          );
-        }
-      }
-
-      setStarting(false);
-      setStatus({ type: 'info', text: 'Apunte la cámara a un código de barras…' });
-    } catch (err) {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
       if (sessionCancelTokenRef.current === currentToken) {
+        const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+        setVideoDevices(videoInputs);
+      }
+    } catch {}
+
+    if (sessionCancelTokenRef.current !== currentToken) {
+      stopActiveStream();
+      return;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play().catch(() => {});
+    }
+
+    if (sessionCancelTokenRef.current !== currentToken) {
+      stopActiveStream();
+      return;
+    }
+
+    const track = stream.getVideoTracks()[0];
+    if (track) {
+      const settings = track.getSettings?.() || {};
+      if (settings.deviceId) setCurrentDeviceId(settings.deviceId);
+      applyHardwareCapabilities(track, true);
+
+      const onTrackEnded = () => {
+        if (sessionCancelTokenRef.current !== currentToken) return;
+        stopActiveStream();
         setStarting(false);
-        setStatus({ type: 'error', text: friendlyCameraError(err) });
+        const guidance = {
+          text: 'Permiso de cámara revocado: abra el candado del navegador y vuelva a autorizar la cámara, luego presione Reintentar.',
+          reloadHint: false,
+        };
+        setErrorGuidance(guidance);
+        setStatus({ type: 'error', text: guidance.text });
+      };
+      revocationListenerRef.current = { track, handler: onTrackEnded };
+      track.addEventListener('ended', onTrackEnded);
+    }
+
+    // Móvil: Detección acelerada por GPU si soporta BarcodeDetector nativo
+    const isNativeSupported = await checkBarcodeDetectorSupport();
+    if (sessionCancelTokenRef.current !== currentToken) {
+      stopActiveStream();
+      return;
+    }
+
+    if (isNativeSupported && !isLaptop) {
+      const nativeDetector = createNativeBarcodeDetector();
+      if (nativeDetector) {
+        setEngineType('native');
+        setStarting(false);
+        setStatus({ type: 'info', text: 'Apunte la cámara a un código de barras…' });
+
+        nativeActiveRef.current = true;
+        const runNativeLoop = async () => {
+          if (!nativeActiveRef.current || sessionCancelTokenRef.current !== currentToken || !videoRef.current || !activeStreamRef.current) return;
+
+          try {
+            if (videoRef.current.readyState >= 2) {
+              const barcodes = await nativeDetector.detect(videoRef.current);
+              if (barcodes && barcodes.length > 0) {
+                const first = barcodes[0];
+                if (first.rawValue) {
+                  handleDecodedCode(first.rawValue.trim(), first.cornerPoints);
+                }
+              } else {
+                codeVisibleRef.current = false;
+              }
+            }
+          } catch {}
+
+          if (nativeActiveRef.current && sessionCancelTokenRef.current === currentToken) {
+            setTimeout(runNativeLoop, ATTEMPT_PACING_MS);
+          }
+        };
+
+        runNativeLoop();
+        return;
       }
     }
+
+    // Fallback: ZXing Library Reader con TRY_HARDER y Pipeline Multi-Pass
+    setEngineType('zxing');
+    const hints = new Map([
+      [DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.EAN_8,
+        BarcodeFormat.UPC_A,
+        BarcodeFormat.UPC_E,
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.ITF,
+        BarcodeFormat.CODABAR,
+      ]],
+      [DecodeHintType.TRY_HARDER, true]
+    ]);
+
+    const reader = new BrowserMultiFormatReader(hints, 0);
+    reader.timeBetweenDecodingAttempts = ATTEMPT_PACING_MS;
+    zxingReaderRef.current = reader;
+
+    if (videoRef.current && activeStreamRef.current) {
+      if (isLaptop && laptopEnhancement && filterCanvasRef.current) {
+        laptopVisionActiveRef.current = true;
+        let passCounter = 0;
+
+        const runLaptopVisionLoop = () => {
+          if (!laptopVisionActiveRef.current || sessionCancelTokenRef.current !== currentToken || !videoRef.current || !activeStreamRef.current) return;
+
+          try {
+            if (videoRef.current.readyState >= 2 && filterCanvasRef.current) {
+              const currentPass = passCounter % 4;
+              passCounter++;
+
+              processMultiPassLaptopFrame(videoRef.current, filterCanvasRef.current, currentPass);
+
+              try {
+                const zxingResult = reader.decode(filterCanvasRef.current);
+                if (zxingResult?.getText && zxingResult.getText().trim()) {
+                  handleDecodedCode(zxingResult.getText().trim());
+                }
+              } catch {
+                codeVisibleRef.current = false;
+              }
+            }
+          } catch {}
+
+          if (laptopVisionActiveRef.current && sessionCancelTokenRef.current === currentToken) {
+            setTimeout(runLaptopVisionLoop, ATTEMPT_PACING_MS);
+          }
+        };
+
+        runLaptopVisionLoop();
+      } else {
+        reader.decodeFromStream(
+          activeStreamRef.current,
+          videoRef.current,
+          (zxingResult) => {
+            if (!zxingResult?.getText || !zxingResult.getText().trim()) {
+              codeVisibleRef.current = false;
+              return;
+            }
+            handleDecodedCode(zxingResult.getText().trim());
+          }
+        );
+      }
+    }
+
+    setStarting(false);
+    setStatus({ type: 'info', text: 'Apunte la cámara a un código de barras…' });
   };
 
   useEffect(() => {
@@ -485,6 +531,10 @@ export default function BarcodeScannerModal({
     startScanningSession(currentDeviceId);
   };
 
+  const retryScanning = () => {
+    startScanningSession(currentDeviceId);
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Escanear código de barras" maxWidth="540px">
       <div className="scanner-container">
@@ -500,6 +550,8 @@ export default function BarcodeScannerModal({
           status={status}
           insecureContextMessage={INSECURE_CONTEXT_MESSAGE}
           boundingBoxRef={boundingBoxRef}
+          onRetry={retryScanning}
+          reloadHint={errorGuidance?.reloadHint === true}
         />
 
         {/* Controles Flotantes Superiores y Barra de Zoom */}
@@ -599,19 +651,4 @@ export default function BarcodeScannerModal({
       </div>
     </Modal>
   );
-}
-
-
-function friendlyCameraError(err) {
-  if (!err) return 'No se pudo iniciar la cámara.';
-  if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-    return 'Permiso denegado: autorice el acceso a la cámara en los ajustes del navegador.';
-  }
-  if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-    return 'No se encontró ninguna cámara conectada en este dispositivo.';
-  }
-  if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-    return 'La cámara está ocupada por otra aplicación o pestaña del navegador.';
-  }
-  return `Error de cámara (${err.name || 'Desconocido'}): ${err.message || 'no disponible'}`;
 }
