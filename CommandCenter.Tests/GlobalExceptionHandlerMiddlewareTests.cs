@@ -287,6 +287,58 @@ public class GlobalExceptionHandlerMiddlewareTests
     }
 
     [Fact]
+    public async Task Middleware_CatchesIOException_ReturnsHttp503WithJson()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/sales/checkout";
+        context.Request.Method = "POST";
+        context.Response.Body = new MemoryStream();
+
+        var middleware = new GlobalExceptionHandlerMiddleware(innerContext =>
+        {
+            throw new IOException("Broken pipe: conexión interrumpida al transferir la respuesta.");
+        });
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal((int)HttpStatusCode.ServiceUnavailable, context.Response.StatusCode);
+
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var reader = new StreamReader(context.Response.Body);
+        var jsonText = await reader.ReadToEndAsync();
+        var doc = JsonDocument.Parse(jsonText);
+
+        Assert.Equal("DatabaseConnectionError", doc.RootElement.GetProperty("error").GetString());
+        Assert.Contains("comunicación", doc.RootElement.GetProperty("message").GetString());
+        Assert.True(File.Exists(AppLogger.DbErrorsLogPath));
+    }
+
+    [Fact]
+    public async Task Middleware_CatchesFileNotFoundException_ReturnsHttp500Not503()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/products/export";
+        context.Request.Method = "GET";
+        context.Response.Body = new MemoryStream();
+
+        var middleware = new GlobalExceptionHandlerMiddleware(innerContext =>
+        {
+            throw new FileNotFoundException("Plantilla de exportación no encontrada.", "template.xlsx");
+        });
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal((int)HttpStatusCode.InternalServerError, context.Response.StatusCode);
+
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var reader = new StreamReader(context.Response.Body);
+        var jsonText = await reader.ReadToEndAsync();
+        var doc = JsonDocument.Parse(jsonText);
+
+        Assert.Equal("InternalServerError", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
     public async Task Middleware_CatchesOperationCanceled_ReturnsHttp499WithoutAlarming()
     {
         var context = new DefaultHttpContext();

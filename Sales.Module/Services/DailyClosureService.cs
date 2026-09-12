@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
@@ -79,9 +80,24 @@ public class DailyClosureService : IDailyClosureService
 
     public async Task<DailyClosure> CreateClosureAsync(DailyClosure closure)
     {
+        // 8.106-C1: resiliencia del servicio ante fallos transitorios. Los callers HTTP
+        // (DailyClosureController/ShiftsController) ya envuelven TODO el bloque en strategy
+        // externa + transacción Serializable (8.9-B4): si hay transacción activa, ejecutar el
+        // cuerpo directo para que la strategy externa reintente el bloque completo; uso
+        // standalone se auto-envuelve. Guard análogo a OutboxProcessorJob 8.9-B4.
+        if (_context.Database.CurrentTransaction is not null)
+        {
+            return await ExecuteClosureCoreAsync(closure);
+        }
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(() => ExecuteClosureCoreAsync(closure));
+    }
+
+    private async Task<DailyClosure> ExecuteClosureCoreAsync(DailyClosure closure)
+    {
         // Ensure all relevant payment methods (active or with sales) are present in details
         var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(closure.ClosureDate);
-        var expectedMap = expectedTotals.ToDictionary(e => e.PaymentMethodId, e => e.ExpectedAmountBsS);
 
         var existingMethodIds = closure.Details.Select(d => d.PaymentMethodId).ToHashSet();
         if (existingMethodIds.Count < expectedTotals.Count)
@@ -127,12 +143,9 @@ public class DailyClosureService : IDailyClosureService
         _context.DailyClosures.Add(closure);
         await _context.SaveChangesAsync();
 
-        var savedClosure = (await GetClosureAsync(closure.Id))!;
-
+        return (await GetClosureAsync(closure.Id))!;
         // 8.7-B5: la escritura de comprobantes se mueve FUERA de CreateClosureAsync; el caller
         // la invoca tras el commit de su transacción (WriteClosedClosureReceipts).
-
-        return savedClosure;
     }
 
     public async Task<DailyClosure?> GetClosureAsync(int id)

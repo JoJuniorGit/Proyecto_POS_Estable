@@ -17,6 +17,29 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.64.3  | 2026-09-12  | (8.106)      | ETAPA 1 DE IMPLANTACION - RESILIENCIA TECNICA frente a
+|          |             |              | fallos transitorios de red. (C1) DailyClosureService bajo
+|          |             |              | execution strategy con guard CurrentTransaction: si el caller
+|          |             |              | abrio transaccion (flujo DailyClosure/ShiftsController con
+|          |             |              | strategy externa + Serializable), el cuerpo se ejecuta directo
+|          |             |              | para que la strategy externa reintente el bloque completo
+|          |             |              | (8.9-B4 sin enmascaramiento); uso standalone se auto-envuelve
+|          |             |              | con EnableRetryOnFailure(3). Cuerpo extraido a
+|          |             |              | ExecuteClosureCoreAsync (sin cambio de semantica; var muerta
+|          |             |              | expectedMap eliminada). (C2) GlobalExceptionHandlerMiddleware:
+|          |             |              | IOException de transporte (broken pipe/socket) -> 503
+|          |             |              | DatabaseConnectionError en vez de 500; subtipos de archivo
+|          |             |              | (FileNotFoundException/DirectoryNotFoundException/PathToo
+|          |             |              | LongException/DriveNotFoundException/EndOfStreamException)
+|          |             |              | excluidos via IsFileSystemIOException y siguen en 500; aborto
+|          |             |              | de cliente (ConnectionAbortedException) se mantiene 499 por
+|          |             |              | diseno (do not alarm). Tests: Middleware_CatchesIOException_
+|          |             |              | ReturnsHttp503WithJson, Middleware_CatchesFileNotFound
+|          |             |              | Exception_ReturnsHttp500Not503 y DailyClosureRetryIntegration
+|          |             |              | Tests (RequiresDocker, skip documentado local). C5-C7
+|          |             |              | (corte de red/reinicio Postgres/backend inyectados) siguen
+|          |             |              | pendientes por entorno sin admin (ANEXO 8.106-D). Suite .NET
+|          |             |              | 906/906; build R 0/0. Ver ANEXO 8.106 en docs/reporte.txt.
 | v1.64.1  | 2026-09-11  | (8.104)      | PRECIO UNITARIO Bs.S COMO LEY (REDONDEO POR TECHO 2D): el
 |          |             |              | precio Bs.S se calcula siempre con Math.Ceiling a 2 decimales
 |          |             |              | en modal (ProductDialogViewModel.Pricing.cs y persistencia del

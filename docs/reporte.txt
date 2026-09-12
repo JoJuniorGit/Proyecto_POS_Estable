@@ -6759,3 +6759,91 @@ Verificacion:
 Implicacion para Roadmap: revision v0.16.2 (ver Reporte de estado v1.64.2).
 
 FIN DEL ANEXO - REVISION 8.105
+===============================================================================
+===============================================================================
+ANEXO - REVISION 8.106 (2026-09-12)
+ETAPA 1 DE IMPLANTACION: PERSISTENCIA RESILIENTE DEL CIERRE DE CAJA (C1) Y
+MAPEO DE CORTES DE RED A 503 (C2)
+===============================================================================
+Alcance: cerrar losItems 7.2/6-F2 de produccion-readiness-roadmap.md en su parte
+de bajo riesgo: (C1) DailyClosureService resiliente ante fallos transitorios de
+red y (C2) enmascarar los cortes de red de nivel transporte (IOException) como
+503 y no como 500. Verificacion: build Release 0w/0e; dotnet 906/906;
+TEST_POSTGRES_CONNECTION local NO definida -> el integration test hace skip
+documentado (patron 8.9-L2) y se ejecuta en CI/Docker.
+
+A. C1 - DAILYCLOSURESERVICE BAJO EXECUTION STRATEGY
+A1. CreateClosureAsync decide por guard (analogo a OutboxProcessorJob 8.9-B4):
+    - Si _context.Database.CurrentTransaction is not null (flujo real de
+      DailyClosureController.cs / ShiftsController.cs que abren transaccion
+      Serializable DENTRO de una strategy externa): ejecuta el cuerpo directo.
+      Asi la strategy EXTERNA reintenta el bloque completo con transaccion
+      nueva ante un fallo transitorio (proposito original de 8.9-B4) y no lo
+      enmascara.
+    - Uso standalone (futuros jobs/invocadores sin transaccion): se auto-envuelve
+      en _context.Database.CreateExecutionStrategy().ExecuteAsync(...) para
+      retry de fallos transitorios con EnableRetryOnFailure(3).
+    - El cuerpo quedo extraido a ExecuteClosureCoreAsync (privado), sin cambios
+      de semantica (diff solo wrapper + guard + extraccion; se elimino ademas la
+      variable muerta expectedMap). Comentario 8.7-B5 conservado.
+A2. Nota de revision (hallazgo IMPORTANTE del reviewer): NO anidar strategy
+    interna dentro de transaccion ambiante: el reintento interno operaria sobre
+    transaccion abortada (25P02 'current transaction is aborted', no transitorio)
+    y enmascararia el fallo original ante la strategy externa. El guard C1-A1 lo
+    evita. Idempotencia del cuerpo en reintentos: closure.Details.Add protegido
+    por existingMethodIds.Count; recomputacion de diferencias determinista;
+    _context.DailyClosures.Add sobre entidad Add-tracked es idempotente. Riesgo
+    de PK duplicado por ack-perdido en retry de INSERT es inherente al patron
+    8.9-B4 (pre-existente en los controladores), no regresion.
+
+B. C2 - IOEXCEPTION (RED) -> 503, EXCLUSION DE SUBTIPOS DE ARCHIVO
+B1. GlobalExceptionHandlerMiddleware: nuevo bloque 3b que busca
+    FindException<IOException> y responde 503 Service Unavailable con
+    error="DatabaseConnectionError" (aprobado por el usuario) y mensaje de
+    comunicacion de red. Precedencia: PostgresException/NpgsqlException (503)
+    > OperationCanceledException (499, aborto de cliente por diseno) >
+    IOException (503) > dominio > catch-all 500.
+B2. IsFileSystemIOException excluye FileNotFoundException,
+    DirectoryNotFoundException, PathTooLongException, DriveNotFoundException y
+    EndOfStreamException para no reportar fallos de I/O de archivos (plantilla,
+    exportacion, comprobantes fail-open) como error de BD (hallazgo S1 del
+    reviewer); esos subtipos siguen cayendo al 500.
+B3. Matiz documentado (re-reviewer): ConnectionAbortedException deriva de
+    OperationCanceledException (no de IOException), por lo que un aborto de
+    cliente sigue cayendo a 499 (conducta preexistente deliberada 'do not
+    alarm', compatible con RFC sobre abandono de cliente); solo los broken-pipe
+    /socket/IOException de transporte reales sintonizan 503. Los clientes
+    (api.js/WPF) interpretan error DatabaseConnectionError como indisponibilidad
+    transitoria del sistema y reintentan por idempotencia/ResilienceHandler.
+
+C. TESTS
+C1. Middleware_CatchesIOException_ReturnsHttp503WithJson: IOException de
+    transporte -> 503 + error DatabaseConnectionError + log DbErrors.
+C2. Middleware_CatchesFileNotFoundException_ReturnsHttp500Not503: subtipo de
+    archivo NO se enmascara como fallo de BD (sigue 500 InternalServerError).
+C3. DailyClosureRetryIntegrationTests (RequiresDocker, TEST_POSTGRES_CONNECTION):
+    reproduce el flujo de produccion (strategy externa + transaccion Serializable
+    + CreateClosureAsync con guard) sobre PostgreSQL real y valida que no se
+    dispara el error 8.9-B4 'retrying strategy does not support user-initiated
+    transactions'; totales verificados 3500/3500/0 y reinicio del acumulador.
+    saleBase en ventana futura (UtcNow.Date.AddDays(1)) para evitar que un
+    lastClosure de corridas previas desplace effectiveStartTime (S6).
+
+D. RECORDS DE LA ETAPA 1
+D1. Quedan PENDIENTES (entorno sin privilegios admin en PostgreSQL, decision del
+    usuario 2026-09-12): C5 corte de red inyectado (pg_terminate_backend), C6
+    reinicio de PostgreSQL y C7 reinicio del backend durante transaccion. C7 es
+    viable sin admin (cancelacion HttpClient); se agenda junto al Item A
+    (cancelacion cooperativa WPF). Se integra el pull del plan en
+    production-readiness-roadmap.md.
+D2. Deuda registrada: firmas sin CancellationToken en IDailyClosureService
+    (CreateClosureAsync/GetClosureAsync/GetExpectedTotalsByPaymentMethodAsync)
+    se cubren en el Item A del plan (roadmap 6-F2).
+
+E. VERIFICACION
+E1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+E2. dotnet test CommandCenter.slnx -c Release: 906/906 superadas / 0 fallidas.
+E3. Sin cambio de modelo persistente -> sin migracion EF (smoke MigratedSchema
+    no requerido).
+
+FIN DEL ANEXO - REVISION 8.106

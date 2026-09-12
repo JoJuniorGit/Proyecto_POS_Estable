@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -169,6 +170,28 @@ public class GlobalExceptionHandlerMiddleware
             return;
         }
 
+        // 3b. IOException: socket roto / transporte interrumpido a nivel de flujo de red.
+        // Un corte de red durante la escritura de la respuesta NO debe caer como 500 interno;
+        // los subtipos de I/O de archivos (requisito, plantilla, etc.) se excluyen para no
+        // reportarlos como fallo de BD.
+        var ioEx = FindException<IOException>(exception);
+        if (ioEx != null && !IsFileSystemIOException(ioEx))
+        {
+            AppLogger.LogDbError(exception, $"Request: {requestPath}");
+            string message = "Error de comunicación de red durante la operación. Verifique la conectividad del sistema y vuelva a intentar la operación.";
+            await WriteProblemDetailsAsync(
+                context,
+                StatusCodes.Status503ServiceUnavailable,
+                "Service Unavailable",
+                "https://tools.ietf.org/html/rfc7231#section-6.6.4",
+                "DatabaseConnectionError",
+                message,
+                message,
+                requestPath,
+                null);
+            return;
+        }
+
         // 3. Known domain & business exceptions
         if (exception is KeyNotFoundException)
         {
@@ -308,5 +331,14 @@ public class GlobalExceptionHandlerMiddleware
             current = current.InnerException!;
         }
         return null;
+    }
+
+    private static bool IsFileSystemIOException(IOException ioException)
+    {
+        return ioException is FileNotFoundException
+            or DirectoryNotFoundException
+            or PathTooLongException
+            or DriveNotFoundException
+            or EndOfStreamException;
     }
 }
