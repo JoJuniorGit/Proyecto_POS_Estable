@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using CommunityToolkit.Mvvm.Input;
 using Desktop.Client.Services;
 
 namespace Desktop.Client.ViewModels;
@@ -46,6 +47,61 @@ public partial class SalesHistoryViewModel
         }
     }
 
+    private string _draftCashierFilterText = string.Empty;
+    public string DraftCashierFilterText
+    {
+        get => _draftCashierFilterText;
+        set => SetProperty(ref _draftCashierFilterText, value ?? string.Empty);
+    }
+
+    private bool _draftHideTestTransactions;
+    public bool DraftHideTestTransactions
+    {
+        get => _draftHideTestTransactions;
+        set => SetProperty(ref _draftHideTestTransactions, value);
+    }
+
+    private bool _isFilterFlyoutOpen;
+    public bool IsFilterFlyoutOpen
+    {
+        get => _isFilterFlyoutOpen;
+        set => SetProperty(ref _isFilterFlyoutOpen, value);
+    }
+
+    public bool HasActiveSecondaryFilters
+    {
+        get => _hideTestTransactions || !string.IsNullOrWhiteSpace(_cashierFilterText);
+    }
+
+    [RelayCommand]
+    private void OpenFilterFlyout()
+    {
+        DraftCashierFilterText = CashierFilterText;
+        DraftHideTestTransactions = HideTestTransactions;
+        IsFilterFlyoutOpen = true;
+    }
+
+    [RelayCommand]
+    private void CloseFilterFlyout()
+    {
+        IsFilterFlyoutOpen = false;
+    }
+
+    [RelayCommand]
+    private void ApplySecondaryFilters()
+    {
+        CashierFilterText = DraftCashierFilterText;
+        HideTestTransactions = DraftHideTestTransactions;
+        IsFilterFlyoutOpen = false;
+    }
+
+    [RelayCommand]
+    private void ClearSecondaryFilterDrafts()
+    {
+        DraftCashierFilterText = string.Empty;
+        DraftHideTestTransactions = false;
+    }
+
     private int _hiddenByFilterCount;
     public int HiddenByFilterCount
     {
@@ -87,6 +143,7 @@ public partial class SalesHistoryViewModel
 
     private void ApplyCurrentPageFilter()
     {
+        OnPropertyChanged(nameof(HasActiveSecondaryFilters));
         var visible = _pageBuffer.Where(IsSaleVisible).ToList();
         ReplaceCollection(Sales, visible);
         TotalBsSForThePeriod = visible.Sum(s => s.FinalPaidAmountBsS);

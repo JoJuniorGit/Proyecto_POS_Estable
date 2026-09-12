@@ -160,6 +160,7 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Buscador multicampo: N° de factura / Cliente / Cajero con Ícono Integrado -->
@@ -239,52 +240,96 @@
                                  Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
                                  Foreground="#5E35B1"
                                  HorizontalAlignment="Right" VerticalAlignment="Center" Width="30" Height="30" Margin="14,18,0,0" />
+
+                    <Button x:Name="FunnelButton"
+                            Grid.Column="5"
+                            Command="{Binding OpenFilterFlyoutCommand}"
+                            Style="{DynamicResource MaterialDesignOutlinedButton}"
+                            Background="#FFFFFF"
+                            BorderBrush="#CBD5E1"
+                            Foreground="#475569"
+                            Height="42"
+                            Padding="14,0"
+                            Margin="14,0,0,0"
+                            VerticalAlignment="Bottom"
+                            ToolTip="Filtros secundarios (cajero / ocultar pruebas)">
+                        <Button.ContentTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon Kind="FilterVariant" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="#5E35B1"/>
+                                    <TextBlock Text="Filtros" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12"/>
+                                    <Ellipse Width="8" Height="8" Fill="#EF4444" Margin="8,0,0,0"
+                                             VerticalAlignment="Center"
+                                             Visibility="{Binding HasActiveSecondaryFilters, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </Button.ContentTemplate>
+                    </Button>
                 </Grid>
 
-                <!-- Segunda fila de filtros (8.108): cajero con buscador por usuario + ocultar prueba -->
-                <Grid Grid.Row="1" Margin="0,14,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0" Margin="0,0,20,0" VerticalAlignment="Bottom">
-                        <TextBlock Text="Cajero (buscador por usuario)" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
-                        <ComboBox IsEditable="True"
-                                  IsTextSearchEnabled="True"
-                                  StaysOpenOnEdit="True"
-                                  ItemsSource="{Binding Cashiers}"
-                                  Text="{Binding CashierFilterText, UpdateSourceTrigger=PropertyChanged}"
-                                  materialDesign:HintAssist.Hint="Buscar por nombre de usuario..."
-                                  materialDesign:TextFieldAssist.HasClearButton="True"
-                                  Background="#FFFFFF"
-                                  BorderBrush="#E2E8F0"
-                                  Width="320" Height="42"
-                                  FontSize="13"
-                                  Padding="8,4"
-                                  VerticalAlignment="Center"/>
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="1" Margin="0,0,20,0" VerticalAlignment="Bottom">
-                        <TextBlock Text=" " FontSize="12" Margin="0,0,0,6"/>
-                        <CheckBox IsChecked="{Binding HideTestTransactions}"
-                                  Content="Ocultar transacciones de prueba (BOT_STRESS_TEST)"
-                                  FontSize="12"
-                                  Foreground="#475569"
-                                  VerticalAlignment="Center"
-                                  Padding="4,0,0,0"
-                                  Height="42"/>
-                    </StackPanel>
-
-                    <TextBlock Grid.Column="2"
-                               Text="{Binding HiddenByFilterSummary}"
+                <Grid Grid.Row="1" Margin="0,12,0,0">
+                    <TextBlock Text="{Binding HiddenByFilterSummary}"
                                FontSize="11"
                                Foreground="#64748B"
-                               VerticalAlignment="Bottom"
-                               HorizontalAlignment="Right"
-                               Margin="0,0,0,14"/>
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Left"/>
                 </Grid>
+
+                <Popup x:Name="SecondaryFiltersPopup"
+                       PlacementTarget="{Binding ElementName=FunnelButton}"
+                       Placement="Bottom"
+                       StaysOpen="True"
+                       AllowsTransparency="True"
+                       IsOpen="{Binding IsFilterFlyoutOpen, Mode=TwoWay}"
+                       Opened="SecondaryFiltersPopup_Opened">
+                    <Border Background="#FFFFFF"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="16"
+                            Effect="{StaticResource EnterpriseCardShadow}">
+                        <StackPanel Width="360">
+                            <StackPanel Margin="0,0,0,12">
+                                <TextBlock Text="Cajero (buscador por usuario)" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
+                                <ComboBox x:Name="DraftCashierCombo"
+                                          IsEditable="True"
+                                          IsTextSearchEnabled="True"
+                                          StaysOpenOnEdit="True"
+                                          ItemsSource="{Binding Cashiers}"
+                                          Text="{Binding DraftCashierFilterText, UpdateSourceTrigger=PropertyChanged}"
+                                          materialDesign:HintAssist.Hint="Buscar por nombre de usuario..."
+                                          materialDesign:TextFieldAssist.HasClearButton="True"
+                                          Background="#FFFFFF"
+                                          BorderBrush="#E2E8F0"
+                                          Width="328"
+                                          Height="42"
+                                          FontSize="13"
+                                          Padding="8,4"
+                                          VerticalAlignment="Center"
+                                          PreviewKeyDown="FilterDraft_PreviewKeyDown"/>
+                            </StackPanel>
+
+                            <CheckBox IsChecked="{Binding DraftHideTestTransactions}"
+                                      Content="Ocultar transacciones de prueba (BOT_STRESS_TEST)"
+                                      FontSize="12"
+                                      Foreground="#475569"
+                                      VerticalAlignment="Center"
+                                      Padding="4,0,0,0"
+                                      Margin="0,0,0,14"/>
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Content="Limpiar"
+                                        Command="{Binding ClearSecondaryFilterDraftsCommand}"
+                                        Style="{DynamicResource MaterialDesignFlatButton}"
+                                        Foreground="DimGray"
+                                        Margin="0,0,12,0"/>
+                                <Button Content="Aplicar"
+                                        Command="{Binding ApplySecondaryFiltersCommand}"
+                                        Style="{DynamicResource MaterialDesignRaisedButton}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Popup>
             </Grid>
         </Border>
 

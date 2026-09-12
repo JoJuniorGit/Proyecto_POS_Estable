@@ -511,4 +511,163 @@ public class SalesHistoryViewModelTests
         Assert.Equal(3, vm.Cashiers.Count);
         Assert.Contains("Carlos Díaz", vm.Cashiers);
     }
+
+    [Fact]
+    public async Task ApplySecondaryFilters_WhenDraftDiffersFromActive_AppliesAndClosesFlyout()
+    {
+        var sampleSales = new List<SaleHistoryDto>
+        {
+            new() { Id = 1, InvoiceNumber = 1, FinalPaidAmountBsS = 100m, CashierName = "BOT_STRESS_TEST" },
+            new() { Id = 2, InvoiceNumber = 2, FinalPaidAmountBsS = 250m, CashierName = "Ana Pérez" }
+        };
+
+        _salesServiceMock
+            .Setup(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((sampleSales, 2));
+
+        var vm = CreateViewModel();
+        await vm.LoadHistoryCommand.ExecuteAsync(null);
+
+        vm.OpenFilterFlyoutCommand.Execute(null);
+        Assert.True(vm.IsFilterFlyoutOpen);
+        Assert.Equal(2, vm.Sales.Count);
+
+        vm.DraftHideTestTransactions = true;
+
+        vm.ApplySecondaryFiltersCommand.Execute(null);
+
+        Assert.False(vm.IsFilterFlyoutOpen);
+        Assert.Single(vm.Sales);
+        Assert.Equal("Ana Pérez", vm.Sales.Single().CashierName);
+        Assert.True(vm.HasActiveSecondaryFilters);
+        _salesServiceMock.Verify(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ApplySecondaryFilters_WhenDraftEqualsActive_KeepsStateAndClosesFlyout()
+    {
+        var sampleSales = new List<SaleHistoryDto>
+        {
+            new() { Id = 1, InvoiceNumber = 1, FinalPaidAmountBsS = 100m, CashierName = "Ana Pérez" }
+        };
+
+        _salesServiceMock
+            .Setup(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((sampleSales, 1));
+
+        var vm = CreateViewModel();
+        await vm.LoadHistoryCommand.ExecuteAsync(null);
+        vm.CashierFilterText = "ana";
+
+        vm.OpenFilterFlyoutCommand.Execute(null);
+        Assert.Equal("ana", vm.DraftCashierFilterText);
+        Assert.True(vm.IsFilterFlyoutOpen);
+
+        vm.ApplySecondaryFiltersCommand.Execute(null);
+
+        Assert.False(vm.IsFilterFlyoutOpen);
+        Assert.Equal("ana", vm.CashierFilterText);
+        Assert.Single(vm.Sales);
+        _salesServiceMock.Verify(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DraftCashierFilterText_WhenChanged_DoesNotApplyFilterWithoutAccept()
+    {
+        var sampleSales = new List<SaleHistoryDto>
+        {
+            new() { Id = 1, InvoiceNumber = 1, FinalPaidAmountBsS = 100m, CashierName = "BOT_STRESS_TEST" },
+            new() { Id = 2, InvoiceNumber = 2, FinalPaidAmountBsS = 250m, CashierName = "Ana Pérez" }
+        };
+
+        _salesServiceMock
+            .Setup(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((sampleSales, 2));
+
+        var vm = CreateViewModel();
+        await vm.LoadHistoryCommand.ExecuteAsync(null);
+
+        vm.OpenFilterFlyoutCommand.Execute(null);
+        vm.DraftCashierFilterText = "ana";
+        vm.DraftHideTestTransactions = true;
+
+        Assert.False(vm.HasActiveSecondaryFilters);
+        Assert.Equal(2, vm.Sales.Count);
+        Assert.Equal("Todas las ventas de la página se muestran", vm.HiddenByFilterSummary);
+        _salesServiceMock.Verify(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        vm.CloseFilterFlyoutCommand.Execute(null);
+        Assert.False(vm.IsFilterFlyoutOpen);
+    }
+
+    [Fact]
+    public async Task OpenFilterFlyout_WhenActiveHasValues_SyncsDraftsFromActive()
+    {
+        var sampleSales = new List<SaleHistoryDto>
+        {
+            new() { Id = 1, InvoiceNumber = 1, FinalPaidAmountBsS = 100m, CashierName = "Ana Pérez" }
+        };
+
+        _salesServiceMock
+            .Setup(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((sampleSales, 1));
+
+        var vm = CreateViewModel();
+        await vm.LoadHistoryCommand.ExecuteAsync(null);
+        vm.CashierFilterText = "ana";
+        vm.HideTestTransactions = true;
+
+        vm.OpenFilterFlyoutCommand.Execute(null);
+
+        Assert.Equal("ana", vm.DraftCashierFilterText);
+        Assert.True(vm.DraftHideTestTransactions);
+        Assert.True(vm.IsFilterFlyoutOpen);
+    }
+
+    [Fact]
+    public async Task ClearSecondaryFilterDrafts_ResetsDraftsWithoutApplying()
+    {
+        var sampleSales = new List<SaleHistoryDto>
+        {
+            new() { Id = 1, InvoiceNumber = 1, FinalPaidAmountBsS = 100m, CashierName = "Ana Pérez" }
+        };
+
+        _salesServiceMock
+            .Setup(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((sampleSales, 1));
+
+        var vm = CreateViewModel();
+        await vm.LoadHistoryCommand.ExecuteAsync(null);
+        vm.CashierFilterText = "ana";
+
+        vm.OpenFilterFlyoutCommand.Execute(null);
+        vm.DraftCashierFilterText = "carlos";
+        vm.DraftHideTestTransactions = true;
+
+        vm.ClearSecondaryFilterDraftsCommand.Execute(null);
+
+        Assert.Equal(string.Empty, vm.DraftCashierFilterText);
+        Assert.False(vm.DraftHideTestTransactions);
+        Assert.True(vm.IsFilterFlyoutOpen);
+        Assert.Equal("ana", vm.CashierFilterText);
+        Assert.Single(vm.Sales);
+    }
+
+    [Fact]
+    public void HasActiveSecondaryFilters_ReflectsActiveFilterState()
+    {
+        var vm = CreateViewModel();
+
+        Assert.False(vm.HasActiveSecondaryFilters);
+
+        vm.HideTestTransactions = true;
+        Assert.True(vm.HasActiveSecondaryFilters);
+        vm.HideTestTransactions = false;
+        Assert.False(vm.HasActiveSecondaryFilters);
+
+        vm.CashierFilterText = "  ana  ";
+        Assert.True(vm.HasActiveSecondaryFilters);
+        vm.CashierFilterText = "   ";
+        Assert.False(vm.HasActiveSecondaryFilters);
+    }
 }

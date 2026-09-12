@@ -19,3 +19,14 @@ export function accumulateCashierNames(cashiers, sales) {
   }
   return [...map.values()].sort((a, b) => a.localeCompare(b));
 }
+
+export function areSecondaryFiltersActive({ cashierFilter = '', hideTestSales = false } = {}) {
+  return hideTestSales || Boolean((cashierFilter || '').trim());
+}
+
+export function applySecondaryFilterDrafts(active, draft) {
+  return {
+    cashierFilter: typeof draft.cashierFilter === 'string' ? draft.cashierFilter : active.cashierFilter,
+    hideTestSales: typeof draft.hideTestSales === 'boolean' ? draft.hideTestSales : active.hideTestSales,
+  };
+}

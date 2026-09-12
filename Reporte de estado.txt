@@ -17,6 +17,24 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.64.8  | 2026-09-12  | (8.111)      | PANEL DE FILTROS COLAPSABLES EN EL HISTORIAL
+|          |             |              | DE VENTAS (WPF Y WEB). (A) Tras el filtro de
+|          |             |              | cajero + ocultar pruebas (8.108), la fila
+|          |             |              | secundaria pasa a popup/flyout colapsable con
+|          |             |              | boton embudo, estado borrador (Draft*) y
+|          |             |              | aplicacion manual (Aceptar); Limpiar solo
+|          |             |              | resetea borradores. WPF: setters publicos
+|          |             |              | intactos (compatibilidad tests 8.108), Popup
+|          |             |              | StaysOpen=True + cierre por click fuera/Escape,
+|          |             |              | badge de activos (HasActiveSecondaryFilters).
+|          |             |              | Web: helpers puros areSecondaryFiltersActive/
+|          |             |              | applySecondaryFilterDrafts, panel siempre en
+|          |             |              | DOM (display:none/.open) para preservar SSR,
+|          |             |              | aria-expanded/aria-controls y cierre por
+|          |             |              | Escape/click fuera. Build Release 0/0; suite
+|          |             |              | .NET 919/919 (+6); npm test 107/107 (+5) y
+|          |             |              | lint 0/0. Sin migracion EF. Detalle en ANEXO
+|          |             |              | 8.111.
 | v1.64.7  | 2026-09-12  | (8.110)      | FIX ESCANER WEB: LIBERAR LA CAMERA EN LA PERMISSIONS-POLICY
 |          |             |              | DEL BACKEND. (A) Causa raiz: SecurityHeadersMiddleware.cs
 |          |             |              | emitia Permissions-Policy: camera=(), bloqueando la camara
@@ -1259,9 +1277,9 @@ Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-12 (REVISION 8.110 / liberacion de la camara en la
-  Permissions-Policy del backend para el escaner Web; build Release 0/0, suite .NET
-  913/913; sin migracion EF ni cambios web; ANEXO 8.110).
+  Ultima verificacion: 2026-09-12 (REVISION 8.111 / panel de filtros colapsables
+  en el Historial de Ventas WPF+Web; build Release 0/0, suite .NET 919/919, npm
+  test 107/107 y lint 0/0; sin migracion EF; ANEXO 8.111).
   Proxima revision obligatoria: con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ===============================================================================

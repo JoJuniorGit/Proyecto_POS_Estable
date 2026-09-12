@@ -7242,3 +7242,91 @@ E1. Commit de la revision 8.110 (fix), sin push (rama V0.15). Supervisor local
     (reviewer) pendiente. Verificacion manual en el puesto (C4) pendiente.
 
 FIN DEL ANEXO - REVISION 8.110
+
+
+ANEXO - REVISION 8.111
+TITULO: PANEL DE FILTROS COLAPSABLES EN HISTORIAL DE VENTAS (WPF + WEB)
+
+A. CONTEXTO
+A1. Tras el filtro de cajero y el toggle "ocultar transacciones de prueba"
+    (8.108), la fila secundaria de la tarjeta de filtros ocupaba espacio fijo
+    en WPF y Web. Decision de producto (aprobada por el usuario en modo plan):
+    mover ambos controles a un popup/flyout colapsable con boton embudo
+    (FilterVariant / Filter), estados borrador (Draft*) y aplicacion manual
+    explicita con boton Aceptar, mas badge de filtros activos.
+A2. Invariante de diseno: los setters publicos CashierFilterText /
+    HideTestTransactions MANTIENEN su aplicacion inmediata (compatibilidad
+    programatica y con los tests 8.108); el popup bindea a Draft* que NO
+    filtran hasta Aceptar. Web: el filtrado 100% client-side reutiliza
+    filterHistorySales intacta.
+A3. Decisiones especificas del usuario: (1) boton Limpiar solo reinicia
+    borradores (no aplica; exige Aceptar); (2) Web mantiene el panel siempre
+    en el DOM (css display:none / .open) para preservar el SSR y el test de
+    montaje de 8.108; (3) WPF usa Popup StaysOpen=True con cierre manual
+    (click fuera, Escape, Aceptar) por el gotcha de Popup StaysOpen=False +
+    ComboBox editable.
+
+B. IMPLEMENTACION
+B1. WPF - Desktop.Client.Core/ViewModels/SalesHistoryViewModel.Filters.cs:
+    props DraftCashierFilterText, DraftHideTestTransactions, IsFilterFlyoutOpen
+    y derivada HasActiveSecondaryFilters (notificada en ApplyCurrentPageFilter);
+    comandos [RelayCommand] OpenFilterFlyout (sincroniza borradores desde los
+    activos y abre), CloseFilterFlyout, ApplySecondaryFilters (copia borradores
+    -> activos via los setters inmediatos y cierra) y ClearSecondaryFilterDrafts
+    (solo borradores). Sin cambios de esquema.
+B2. WPF - Desktop.Client/Views/SalesHistoryView.xaml: eliminada la fila
+    secundaria de 8.108; boton embudo (PackIcon Kind=FilterVariant) con badge
+    activo (Ellipse roja via BooleanToVisibilityConverter); Popup StaysOpen=True
+    con PlacementTarget al boton, ComboBox editable (DraftCashierFilterText),
+    CheckBox (DraftHideTestTransactions) y botones Limpiar/Aplicar.
+B3. WPF - Desktop.Client/Views/SalesHistoryView.xaml.cs: cierre por click fuera
+    (PreviewMouseDown de la ventana, excluyendo el boton embudo para conservar el
+    toggle), Escape (en la ventana y dentro del flyout, con e.Handled en ambos),
+    foco automatico al abrir (DraftCashierCombo.Focus()); suscripcion
+    Loaded/Unloaded idempotente (desuscribe antes de suscribir) sin fugas.
+B4. Web - src/utils/historyFilters.js: helpers puros areSecondaryFiltersActive y
+    applySecondaryFilterDrafts (patron anti-god-object, testable sin jsdom);
+    filterHistorySales sin cambios.
+B5. Web - src/pages/HistoryPage.jsx: boton embudo (lucide Filter) con
+    aria-expanded/aria-controls y badge; panel history-filter-row-secondary
+    SIEMPRE renderizado con clase open (display:none cuando cerrado); estado
+    borrador draftCashierFilter/draftHideTestSales; Aceptar aplica via
+    applySecondaryFilterDrafts y cierra; Limpiar resetea borradores; cierre con
+    Escape y click fuera (useEffect + refs). Sin estilos inline.
+B6. Web - src/pages/HistoryPage.css: flyout oculto por defecto (display:none) y
+    .open para mostrarlo; estilos funnel-btn/.active, funnel-badge (token
+    --danger) y flyout-actions con tokens var(--*); media query movil ajustada.
+
+C. VERIFICACION
+C1. dotnet build CommandCenter.slnx -c Release: 0 advertencias / 0 errores.
+C2. dotnet test CommandCenter.slnx -c Release: 919/919 superadas (913 previas +
+    6 tests nuevos de draft/apply/clear/badge; sin regresiones).
+C3. Web: npm test 107/107 (102 previas + 5 helpers nuevos) y npm run lint 0/0.
+C4. Sin cambios de modelo persistente: no requiere migracion EF ni smoke
+    MigratedSchema.
+C5. Pendiente en el puesto: smoke manual del flyout WPF (verificar que el
+    ComboBox editable no presente problemas de hit-testing bajo el Popup con
+    AllowsTransparency - hallazgo de reviewer no bloqueante) y del flyout web en
+    movil (< = 860px).
+
+D. DECISIONES Y DEUDA REGISTRADA
+D1. Modelo draft/apply diferido con compatibilidad de setters publicos
+    inmediatos: los tests de 8.108 que escriben CashierFilterText /
+    HideTestTransactions y esperan filtrado no se modifican.
+D2. Panel web siempre en DOM con display:none en lugar de render condicional: se
+    elige siempre-en-DOM porque renderToString no puede abrir un estado cerrado
+    por defecto y el test de montaje de 8.108 aserta las cadenas del panel;
+    overhead de DOM minimo.
+D3. Popup WPF StaysOpen=True + cierre manual en lugar de StaysOpen=False nativo:
+    evita el cierre prematuro al abrir la lista desplegable de un ComboBox
+    editable dentro del popup.
+D4. El badge de filtros activos usa el token --danger (el token --color-danger de
+    la guia 3.3 no existe en index.css; se uso --danger, que tiene 15+ usos).
+D5. Deuda menor: monitorizar en el smoke manual el gotcha de Popup transparente +
+    ComboBox editable (C5).
+
+E. ESTADO
+E1. Commit de la revision 8.111 (feat) sin push (rama V0.15); verificacion manual
+    en el puesto pendiente.
+
+FIN DEL ANEXO - REVISION 8.111

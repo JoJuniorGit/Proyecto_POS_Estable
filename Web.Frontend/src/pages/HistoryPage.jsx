@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getSalesHistory, getSaleHistoryDetail } from '../services/historyApi';
-import { Search, Loader2, Calendar, ChevronRight, ChevronDown, RefreshCw, CheckCircle, Clock, XCircle, FileText } from 'lucide-react';
+import { Search, Filter, Loader2, Calendar, ChevronRight, ChevronDown, RefreshCw, CheckCircle, Clock, XCircle, FileText } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime, formatQuantity } from '../utils/formatters';
-import { filterHistorySales, accumulateCashierNames } from '../utils/historyFilters';
+import { filterHistorySales, accumulateCashierNames, areSecondaryFiltersActive, applySecondaryFilterDrafts } from '../utils/historyFilters';
 import Pagination from '../components/ui/Pagination';
 import './HistoryPage.css';
 
@@ -33,6 +33,11 @@ export default function HistoryPage() {
   const [cashierFilter, setCashierFilter] = useState('');
   const [hideTestSales, setHideTestSales] = useState(false);
   const [cashierOptions, setCashierOptions] = useState([]);
+  const [isSecondaryFilterOpen, setIsSecondaryFilterOpen] = useState(false);
+  const [draftCashierFilter, setDraftCashierFilter] = useState('');
+  const [draftHideTestSales, setDraftHideTestSales] = useState(false);
+  const flyoutRef = useRef(null);
+  const funnelButtonRef = useRef(null);
 
   // Búsqueda multicampo con debounce: al escribir, la vista se actualiza sola
   // (300 ms) y vuelve a la primera página.
@@ -72,8 +77,49 @@ export default function HistoryPage() {
     return () => controller.abort();
   }, [currentPage, startDate, endDate, debouncedSearch, reloadToken]);
 
+  useEffect(() => {
+    if (!isSecondaryFilterOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setIsSecondaryFilterOpen(false);
+    };
+    const handlePointerDown = (e) => {
+      const panel = flyoutRef.current;
+      const funnel = funnelButtonRef.current;
+      if (panel && funnel && !panel.contains(e.target) && !funnel.contains(e.target)) {
+        setIsSecondaryFilterOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [isSecondaryFilterOpen]);
+
   const handleSearchClick = () => {
     setCurrentPage(1);
+  };
+
+  const openSecondaryFilters = () => {
+    setDraftCashierFilter(cashierFilter);
+    setDraftHideTestSales(hideTestSales);
+    setIsSecondaryFilterOpen(true);
+  };
+
+  const applySecondaryFilters = () => {
+    const next = applySecondaryFilterDrafts(
+      { cashierFilter, hideTestSales },
+      { cashierFilter: draftCashierFilter, hideTestSales: draftHideTestSales }
+    );
+    setCashierFilter(next.cashierFilter);
+    setHideTestSales(next.hideTestSales);
+    setIsSecondaryFilterOpen(false);
+  };
+
+  const clearSecondaryFilterDrafts = () => {
+    setDraftCashierFilter('');
+    setDraftHideTestSales(false);
   };
 
 const handlePageChange = (newPage) => {
@@ -102,6 +148,7 @@ const handlePageChange = (newPage) => {
   };
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const hasActiveSecondaryFilters = areSecondaryFiltersActive({ cashierFilter, hideTestSales });
   const { visibleSales, hiddenCount } = filterHistorySales(sales, { cashierFilter, hideTestSales });
 
   return (
@@ -165,10 +212,27 @@ const handlePageChange = (newPage) => {
             <button type="button" className="btn btn-primary history-search-btn" onClick={handleSearchClick}>
               <Search size={16} /> Buscar
             </button>
+            <button
+              type="button"
+              ref={funnelButtonRef}
+              className={`btn history-funnel-btn${hasActiveSecondaryFilters ? ' active' : ''}`}
+              aria-expanded={isSecondaryFilterOpen}
+              aria-controls="history-secondary-filters"
+              aria-label="Filtros secundarios: cajero y ocultar transacciones de prueba"
+              onClick={openSecondaryFilters}
+            >
+              <Filter size={16} />
+              Filtros
+              {hasActiveSecondaryFilters && <span className="history-funnel-badge" aria-hidden="true" />}
+            </button>
           </div>
         </div>
 
-        <div className="history-filter-row-secondary">
+        <div
+          id="history-secondary-filters"
+          ref={flyoutRef}
+          className={`history-filter-row-secondary${isSecondaryFilterOpen ? ' open' : ''}`}
+        >
           <div className="history-filter-item history-cashier-col">
             <label className="history-filter-label">Cajero (buscador por usuario)</label>
             <input
@@ -176,8 +240,8 @@ const handlePageChange = (newPage) => {
               list="history-cashier-options"
               className="history-filter-input"
               placeholder="Buscar por nombre de usuario..."
-              value={cashierFilter}
-              onChange={(e) => setCashierFilter(e.target.value)}
+              value={draftCashierFilter}
+              onChange={(e) => setDraftCashierFilter(e.target.value)}
             />
             <datalist id="history-cashier-options">
               {cashierOptions.map((c) => (
@@ -190,17 +254,25 @@ const handlePageChange = (newPage) => {
             <label className="history-toggle-label">
               <input
                 type="checkbox"
-                checked={hideTestSales}
-                onChange={(e) => setHideTestSales(e.target.checked)}
+                checked={draftHideTestSales}
+                onChange={(e) => setDraftHideTestSales(e.target.checked)}
               />
               Ocultar transacciones de prueba (BOT_STRESS_TEST)
             </label>
           </div>
 
-          <div className="history-hidden-count">
-            {hiddenCount > 0
-              ? `Ocultas por el filtro: ${hiddenCount}`
-              : 'Todas las ventas de la página se muestran'}
+          <div className="history-flyout-actions">
+            <span className="history-hidden-count">
+              {hiddenCount > 0
+                ? `Ocultas por el filtro: ${hiddenCount}`
+                : 'Todas las ventas de la página se muestran'}
+            </span>
+            <button type="button" className="btn btn-outline btn-sm" onClick={clearSecondaryFilterDrafts}>
+              Limpiar
+            </button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={applySecondaryFilters}>
+              Aplicar
+            </button>
           </div>
         </div>
       </div>

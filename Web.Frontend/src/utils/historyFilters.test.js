@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
-import { TEST_CASHIER_NAME, filterHistorySales, accumulateCashierNames } from './historyFilters.js';
+import { TEST_CASHIER_NAME, filterHistorySales, accumulateCashierNames, areSecondaryFiltersActive, applySecondaryFilterDrafts } from './historyFilters.js';
 
 const sale = (id, cashierName) => ({ id, cashierName, totalBsS: 1 });
 
@@ -30,5 +30,42 @@ describe('historyFilters [8.108]', () => {
     assert.deepStrictEqual(first, ['Ana', 'BOT_STRESS_TEST']);
     const merged = accumulateCashierNames(first, [sale(3, 'bot_stress_test'), sale(4, 'Carlos')]);
     assert.deepStrictEqual(merged, ['Ana', 'BOT_STRESS_TEST', 'Carlos']);
+  });
+});
+
+describe('historyFilters flyout [8.111]', () => {
+  test('areSecondaryFiltersActive_ConFiltrosVacios_EsFalso', () => {
+    assert.strictEqual(areSecondaryFiltersActive({ cashierFilter: '', hideTestSales: false }), false);
+    assert.strictEqual(areSecondaryFiltersActive({ cashierFilter: '   ', hideTestSales: false }), false);
+    assert.strictEqual(areSecondaryFiltersActive({}), false);
+  });
+
+  test('areSecondaryFiltersActive_ConCajeroOToggleActivo_EsVerdadero', () => {
+    assert.strictEqual(areSecondaryFiltersActive({ cashierFilter: 'ana', hideTestSales: false }), true);
+    assert.strictEqual(areSecondaryFiltersActive({ cashierFilter: '', hideTestSales: true }), true);
+  });
+
+  test('applySecondaryFilterDrafts_ConBorradoresValidos_FusionaActivos', () => {
+    const next = applySecondaryFilterDrafts(
+      { cashierFilter: 'ana', hideTestSales: false },
+      { cashierFilter: 'carlos', hideTestSales: true }
+    );
+    assert.deepStrictEqual(next, { cashierFilter: 'carlos', hideTestSales: true });
+  });
+
+  test('applySecondaryFilterDrafts_ConBorradorVacio_LimpiaFiltroActivo', () => {
+    const next = applySecondaryFilterDrafts(
+      { cashierFilter: 'ana', hideTestSales: true },
+      { cashierFilter: '', hideTestSales: false }
+    );
+    assert.deepStrictEqual(next, { cashierFilter: '', hideTestSales: false });
+  });
+
+  test('applySecondaryFilterDrafts_ConTiposNoEsperados_ConservaActivos', () => {
+    const next = applySecondaryFilterDrafts(
+      { cashierFilter: 'ana', hideTestSales: true },
+      { cashierFilter: undefined, hideTestSales: undefined }
+    );
+    assert.deepStrictEqual(next, { cashierFilter: 'ana', hideTestSales: true });
   });
 });
