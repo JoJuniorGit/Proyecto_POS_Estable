@@ -95,13 +95,21 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         set => SetProperty(ref _isEmpty, value);
     }
 
-    public decimal SubtotalLocal => CurrentSale?.SubtotalBsS > 0
-        ? CurrentSale.SubtotalBsS
-        : PricingHelper.RoundToDigital(Subtotal * _exchangeRateService.CurrentRate);
+    public decimal SubtotalLocal => IsLivePendingSale
+        ? LiveTotalBsS
+        : CurrentSale?.SubtotalBsS > 0
+            ? CurrentSale.SubtotalBsS
+            : PricingHelper.RoundToDigital(Subtotal * _exchangeRateService.CurrentRate);
 
-    public decimal TotalAmountLocal => CurrentSale?.TotalBsS > 0
-        ? CurrentSale.TotalBsS
-        : PricingHelper.RoundToDigital(TotalUSD * _exchangeRateService.CurrentRate);
+    public decimal TotalAmountLocal => IsLivePendingSale
+        ? LiveTotalBsS
+        : CurrentSale?.TotalBsS > 0
+            ? CurrentSale.TotalBsS
+            : PricingHelper.RoundToDigital(TotalUSD * _exchangeRateService.CurrentRate);
+
+    private bool IsLivePendingSale => CurrentSale is { Status: "Pending" } && CartItems.Count > 0;
+
+    private decimal LiveTotalBsS => PricingHelper.RoundToDigital(CartItems.Sum(c => c.SubtotalBsS));
 
     private SaleDto? _currentSale;
     public SaleDto? CurrentSale
@@ -147,7 +155,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             if (CurrentSale != null)
             {
                 var idToRestore = SelectedSaleItem?.Id;
-                
+
                 CartItems.Clear();
                 decimal rateToUse = CurrentSale.AppliedRate > 0 ? CurrentSale.AppliedRate : _exchangeRateService.CurrentRate;
                 bool isHistorical = CurrentSale.Status != "Pending";

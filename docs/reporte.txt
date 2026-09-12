@@ -6677,3 +6677,85 @@ CatalogPage.jsx y formatters.js). Sin migracion EF, sin cambios de esquema.
 Implicacion para Roadmap: revision v0.16.1 (ver Reporte de estado v1.64.1).
 
 FIN DEL ANEXO - REVISION 8.104
+ANEXO - REVISION 8.105 (2026-09-11)
+CARRITO WPF - DESINCRONIZACION VISUAL EN LA RECALCULACION DE TOTALES
+
+Sintoma (reportado): dos fallos puramente visuales en el carrito de ventas WPF
+(los datos son correctos; se recalculan bien al forzar refresco de UI):
+
+  Bug 1: al eliminar un item, las filas restantes muestran su precio x100 y
+  pierden el formato de redondeo por techo; el Total General se altera
+  temporalmente. Desaparece al agregar un item o usar los atajos + / -.
+  Bug 2: al editar la cantidad tipeando, el Total General no se actualiza en
+  tiempo real. Aparece correcto al abrir el modal de cobro o usar + / -.
+
+Causa raiz:
+
+  Bug 1 (TASA x100 por cultura en el parse del endpoint): los valores son
+  correctos; el sintoma x100 lo producia el endpoint DELETE
+  /api/sales/{id}/items/{itemId} que recibia la tasa como [FromQuery] decimal
+  (SalesController.cs). ASP.NET Core hace model binding de un decimal de query
+  con CultureInfo.CurrentCulture del SO (sin RequestLocalization configurada);
+  en una cultura donde '.' es separador de miles (es-VE), "842.21" se parsea
+  como 84221. Asi, al borrar un item, sale.AppliedRate = RoundExchangeRateCeiling
+  (84221) = 84221 y el carrito recalcula con tasa x100: 0.81 * 84221 = 68219.01
+  (precio reportado por el usuario). Los flujos Add y UpdateItemQuantity pasan la
+  tasa por JSON body (invariant) y por eso mantienen 842.21; por eso el workaround
+  (agregar item o usar + / -) "arreglaba" la pantalla al re-sincronizar
+  AppliedRate. El endpoint PUT /api/sales/{id}/exchange-rate tenia el mismo bug.
+  Se descarto la hipotesis previa de artefacto de render por virtualizacion del
+  DataGrid (los datos de la VM y del backend eran correctos en todo momento).
+
+  Bug 2 (dato): la edicion de cantidad tipeada es un preview LOCAL sin round-trip
+  (QuantityText -> OnQuantityTextChanged muta el DTO y dispara RecalculateTotals;
+  el commit real ocurre en CellEditEnding -> CommitItemQuantityAsync).
+  SubtotalLocal/TotalAmountLocal leian exclusivamente el snapshot del backend
+  (CurrentSale.TotalBsS / SubtotalBsS), que queda stale hasta el proximo
+  round-trip; por eso + / - y el cobro arreglaban la pantalla (reemplazan
+  CurrentSale con totales frescos del servidor).
+
+Solucion 8.105:
+
+  1) Tasa robusta a cultura en ambos lados:
+     - Cliente (Desktop.Client.Core/Services/SalesService.cs): RemoveItemAsync y
+       UpdateExchangeRateAsync formatean la tasa con
+       CultureInfo.InvariantCulture ("842.21") en la query string.
+     - Servidor (Backend.API/Controllers/SalesController.cs): RemoveItem y
+       UpdateExchangeRate aceptan la tasa como [FromQuery] string y la parsean
+       con ParseRateInvariant (decimal.TryParse estrictamente con
+       CultureInfo.InvariantCulture; el contrato del endpoint es punto-decimal,
+       igual que el JSON), nunca el model binding cultural de la query.
+       AppliedRate queda 842.21.
+  2) CartViewModel: SubtotalLocal/TotalAmountLocal calculan un PREVIEW EN VIVO
+     solo cuando CurrentSale.Status == Pending y el carrito no esta vacio, con la
+     misma formula del motor (SalesService.RecalculateTotalAsync): por linea
+     SubtotalBsS = RoundToDigital(qty * Ceiling(usd * AppliedRate)) y total =
+     RoundToDigital(suma de lineas). Los snapshots TotalBsS/SubtotalBsS del DTO
+     NO se mutan (la guarda anti price-explosion de 8.104 permanece); al
+     commitear, el motor recalcula y re-sincroniza. Para historicos
+     (Completed/Cancelled) y OnHold se conserva la lectura del snapshot
+     persistido (inmutabilidad rules.md #1).
+
+Verificacion:
+
+  Nuevo CartTotalsDesyncTests (5 casos):
+    TotalAmountLocal_PendingSaleWithoutLocalEdits_MatchesBackendTotals
+    RecalculateTotals_QuantityEditedLocally_TotalGeneralShowsLivePreview
+      (cantidad tipeada 2 -> Total 1684.42 sin round-trip; unit 842.21 intacto)
+    RecalculateTotals_QuantityEditedLocally_BackendSnapshotStaysImmutable
+      (CurrentSale.TotalBsS / SubtotalBsS sin mutar tras edicion local)
+    TotalAmountLocal_HistoricalCompletedSale_UsesPersistedSnapshot
+      (500.00 persistido se conserva; no se recalcula con datos locales)
+    RemoveItemCommand_WhenItemRemoved_TotalsReflectRemainingItems
+      (tras borrar: CartItems.Single y Total 1684.42)
+  Nuevo SalesControllerRateParsingTests (6 casos): ParseRateInvariant fija que
+  "842.21" siempre parsea a 842.21 (y no 84221) incluso bajo cultura es-VE,
+  cerrando la regresion del x100 por cultura.
+
+  Suite .NET 904/904 en Release; build R 0/0. Sin migracion EF (sin cambios de
+  esquema). Backend (2 endpoints) y cliente (2 llamadas) con cambios; web sin
+  cambios.
+
+Implicacion para Roadmap: revision v0.16.2 (ver Reporte de estado v1.64.2).
+
+FIN DEL ANEXO - REVISION 8.105

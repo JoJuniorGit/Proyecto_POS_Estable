@@ -128,14 +128,14 @@ public partial class SalesController : ControllerBase
     }
 
     [HttpDelete("{id}/items/{itemId}")]
-    public async Task<ActionResult<SaleDto>> RemoveItem(int id, int itemId, [FromQuery] decimal exchangeRate)
+    public async Task<ActionResult<SaleDto>> RemoveItem(int id, int itemId, [FromQuery] string exchangeRate)
     {
         if (!await IsAuthorizedForSaleAsync(id))
         {
             return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
         }
 
-        var sale = await _salesService.RemoveItemAsync(id, itemId, exchangeRate);
+        var sale = await _salesService.RemoveItemAsync(id, itemId, ParseRateInvariant(exchangeRate));
         return Ok(sale);
     }
 
@@ -152,7 +152,7 @@ public partial class SalesController : ControllerBase
     }
 
     [HttpPut("{id}/exchange-rate")]
-    public async Task<ActionResult<SaleDto>> UpdateExchangeRate(int id, [FromQuery] decimal exchangeRate)
+    public async Task<ActionResult<SaleDto>> UpdateExchangeRate(int id, [FromQuery] string exchangeRate)
     {
         try
         {
@@ -161,7 +161,7 @@ public partial class SalesController : ControllerBase
                 return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
             }
 
-            var sale = await _salesService.UpdateExchangeRateAsync(id, exchangeRate);
+            var sale = await _salesService.UpdateExchangeRateAsync(id, ParseRateInvariant(exchangeRate));
             return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
@@ -234,6 +234,14 @@ public partial class SalesController : ControllerBase
             }
         }
         return StatusCode(StatusCodes.Status409Conflict, new { message = "Operación concurrente en progreso para esta clave de idempotencia." });
+    }
+
+    internal static decimal ParseRateInvariant(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return 0m;
+        return decimal.TryParse(raw, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var rate)
+            ? rate
+            : 0m;
     }
 }
 

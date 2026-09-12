@@ -38,6 +38,21 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 |          |             |              | Diferencia AwayFromZero vs techo: 0.81 * 842.21 = 682.1901 -> 682.20.
 |          |             |              | Suite .NET 893/893; build R 0/0; web 84/84; lint 0/0.
 |          |             |              | Ver ANEXO 8.104 en docs/reporte.txt.
+| v1.64.2  | 2026-09-11  | (8.105)      | CARRITO WPF - TOTALES: fix de 2 bugs de desincronizacion visual.
+|          |             |              | (1) Precio x100 al borrar un item (0.81*84221=68219.01): el endpoint
+|          |             |              | DELETE /api/sales/{id}/items/{itemId} recibia la tasa como [FromQuery]
+|          |             |              | decimal y ASP.NET la parseaba con la cultura del SO (es-VE: '.' = miles),
+|          |             |              | convirtiendo "842.21" en 84221 (AppliedRate x100). Fix: cliente envia
+|          |             |              | la tasa con InvariantCulture y servidor la parsea con ParseRateInvariant
+|          |             |              | (InvariantCulture primero). Mismo fix en PUT /exchange-rate.
+|          |             |              | (2) Total General no reactivo al tipear cantidad: SubtotalLocal/
+|          |             |              | TotalAmountLocal calculan preview en vivo solo para ventas Pending
+|          |             |              | (RoundToDigital de la suma de SubtotalBsS por linea; misma formula
+|          |             |              | del motor), sin mutar el snapshot TotalBsS/SubtotalBsS (guarda 8.104
+|          |             |              | intacta); historicos Completed/Cancelled/OnHold siguen leyendo el
+|          |             |              | snapshot persistido (rules.md #1). Tests nuevos CartTotalsDesyncTests
+|          |             |              | (5) y SalesControllerRateParsingTests (6). Suite .NET 904/904;
+|          |             |              | build R 0/0. Ver ANEXO 8.105 en docs/reporte.txt.
 | v1.64.0  | 2026-09-11  | (8.103)      | TASA REDONDEADA COMO REFERENCIA ABSOLUTA EN TODAS LAS FRONTERAS:
 |          |             |              | 1. Escritura (punto unico): ExchangeRateWriteService.UpsertTodayRateAsync
 |          |             |              | normaliza la tasa recibida de forma defensiva; idempotente (evita

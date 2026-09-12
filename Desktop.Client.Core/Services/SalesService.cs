@@ -86,7 +86,7 @@ public class SalesService : ISalesService
 
     public async Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate)
     {
-        var _response = await _httpClient.DeleteAsync($"api/sales/{saleId}/items/{itemId}?exchangeRate={exchangeRate}");
+        var _response = await _httpClient.DeleteAsync($"api/sales/{saleId}/items/{itemId}?exchangeRate={exchangeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         _response.EnsureSuccessStatusCode();
         var sale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to remove item.");
         SetCurrentSale(sale);
@@ -110,7 +110,7 @@ public class SalesService : ISalesService
 
     public async Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate)
     {
-        var _response = await _httpClient.PutAsync($"api/sales/{saleId}/exchange-rate?exchangeRate={exchangeRate}", null);
+        var _response = await _httpClient.PutAsync($"api/sales/{saleId}/exchange-rate?exchangeRate={exchangeRate.ToString(System.Globalization.CultureInfo.InvariantCulture)}", null);
         _response.EnsureSuccessStatusCode();
         var sale = await _response.Content.ReadFromJsonAsync<SaleDto>() ?? throw new System.Exception("Failed to update exchange rate.");
         SetCurrentSale(sale);
