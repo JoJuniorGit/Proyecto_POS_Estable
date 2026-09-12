@@ -48,16 +48,26 @@ Source: "..\scripts\create-https-cert.ps1"; DestDir: "{app}\tools"; Flags: ignor
 Source: "..\scripts\backup-postgres.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 ; 8.69-A1: reinicio fácil del servicio (Req.9, DQ-009 opción C); detecta nssm.exe relativo a la instalación
 Source: "RestartPOS.bat"; DestDir: "{app}"; Flags: ignoreversion
+; 8.107-A1: monitoreo de salud y SLO (headless + dashboard WinForms) y plantilla de config compartida
+Source: "..\docs\monitor-health.ps1"; DestDir: "{app}\tools\monitoring"; Flags: ignoreversion
+Source: "..\docs\monitor-health-ui.ps1"; DestDir: "{app}\tools\monitoring"; Flags: ignoreversion
+Source: "..\docs\monitor-config.json.example"; DestDir: "{app}\tools\monitoring"; Flags: ignoreversion
 
 
 [Dirs]
 Name: "{commonappdata}\Registro de cierres"; Permissions: users-modify
+; 8.107-A1: datos del monitoreo (CSVs, log, estado y resumen SLO) escribibles sin elevacion
+Name: "{commonappdata}\CommandCenterPOS\monitoring"; Permissions: users-modify
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\DesktopClient\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\DesktopClient\{#MyAppExeName}"; Tasks: desktopicon
 Name: "{autoprograms}\{#MyAppName}\Reiniciar Sistema POS"; Filename: "{app}\RestartPOS.bat"; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"
 Name: "{autodesktop}\Reiniciar Sistema POS"; Filename: "{app}\RestartPOS.bat"; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"; Tasks: desktopicon
+; 8.107-A1: acceso directo al <b>Monitor de Salud</b> (dashboard WinForms de monitor-health.ps1),
+; lanzado con el console PowerShell 5.1 oculto y la config compartida de ProgramData.
+Name: "{autoprograms}\{#MyAppName}\Monitor de Salud"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\tools\monitoring\monitor-health.ps1"" -Dashboard -Config ""{commonappdata}\CommandCenterPOS\monitoring\monitor-config.json"""; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"
+Name: "{autodesktop}\Monitor de Salud"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\tools\monitoring\monitor-health.ps1"" -Dashboard -Config ""{commonappdata}\CommandCenterPOS\monitoring\monitor-config.json"""; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 ; El registro/actualización del servicio y la regla de firewall se gestionan en [Code] (ssPostInstall):

@@ -377,13 +377,17 @@ Checklist de release (por versión):
 1. Designar un responsable operativo en el sitio (RQ de la Fase 0).
 2. Ventana de mantenimiento recomendada: nocturna (fuera de horario de caja); el backup corre a las 03:00.
 
-### 13.8 Monitoreo mínimo del piloto (F5/8.80)
-1. Programar `docs\monitor-health.ps1` con el Programador de tareas cada 5 min
-   (`HealthUrl=http://localhost:5000/health`, `DetailsUrl=http://localhost:5000/api/health/details`,
-   `NotifyUrl=<webhook opcional>`), como recomienda roadmap §9.
-2. El script incrementa un contador de fallos consecutivos y notifica al tercer fallo
-   (`FailsToAlert`); también alerta si el último backup no está fresco (RPO).
-3. Verificar `schtasks /Query` y el log `monitor.log`; un fallo aislado no es alerta.
+### 13.8 Monitoreo mínimo del piloto (F5/8.80, 8.107-A1)
+1. La instalación configura automáticamente (sin asistencia):
+   - Tarea `Sistema POS - Monitor de Salud` cada 5 min (`%ProgramData%\CommandCenterPOS\monitoring\monitor.log`).
+   - Config en `%ProgramData%\CommandCenterPOS\monitoring\monitor-config.json` con datos por defecto.
+   - Acceso directo **Monitor de Salud** en Escritorio/Inicio (tarea `desktopicon`).
+2. Abrir **Monitor de Salud** para ver la ventana en vivo: estado de `/health`, frescura
+   del backup (RPO), metas SLO vs mediciones, gráfica de tendencia y log centralizado.
+   Defina el token JWT con el botón "Token de monitoreo" para desbloquear mediciones de
+   latencia por endpoint y de frescura de backup.
+3. El runner headless también notifica al tercer fallo (`FailsToAlert`), también alerta si el
+   último backup no está fresco. Verificar `schtasks /Query`; un fallo aislado no es alerta.
 4. Para supervisión remota del piloto: VPN WireGuard (DQ-007 opción B), no exponer puertos a Internet.
 
 ### 13.9 Paridad instalador ↔ backend post-instalación (IMP-2/8.80)
@@ -410,23 +414,26 @@ Antes de instalar una Release Candidate en el puesto (o en QA), validar el artef
 6. Firma X.509 e ISCC firmado y smoke en máquina virgen quedan PENDIENTES hasta disponer de
    certificado y entorno QA/VM (roadmap §8, items sin marcar).
 
-### 13.11 Medición de SLO en el piloto (F6/8.81)
+### 13.11 Medición de SLO en el piloto (F6/8.81, 8.107-A1)
 Los SLO del roadmap §4.3 (disponibilidad >= 99.5 %, API p95 < 500 ms, checkout p95 < 1 s,
-RPO <= 24 h, RTO <= 4 h) se miden con `docs\monitor-health.ps1` ampliado:
+RPO <= 24 h, RTO <= 4 h) se miden con `tools\monitoring\monitor-health.ps1` del puesto
+instalado (o `docs\monitor-health.ps1` en desarrollo). Los valores por defecto están en
+`%ProgramData%\CommandCenterPOS\monitoring\monitor-config.json`; los parámetros de línea de
+comandos tienen precedencia sobre el archivo.
 
-1. **Muestreo (cada 5 min, Programador de tareas):** ejecutar con `DataDir`, y
-   `RequestsUrl` + `Token` (Admin/Manager) para capturar las latencias p95 por endpoint.
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File "C:\POS\docs\monitor-health.ps1" `
-     -DataDir "C:\POS\slo" -RequestsUrl "https://localhost:8443/api/health/requests" `
-     -Token "<jwt-admin>" -EndpointFilter "/checkout" -DetailsUrl "https://localhost:8443/api/health/details"
-   ```
+1. **Muestreo (cada 5 min, tarea programada):** la tarea `Sistema POS - Monitor de Salud` corre
+   headless con `-Config` y agrega muestras a `slo-availability.csv` y `slo-endpoint-p95.csv`
+   en el mismo `monitor-config.json` (`DataDir`).
+   
 2. **Backups para RPO:** `DetailsUrl` + `Token` reporta `lastBackupFresh`/`lastBackupAgeMinutes`;
    el resumen JSON los incluye. Criterio: backup fresco = 100 % de las ejecuciones 03:00 OK.
-3. **Disponibilidad y p95 (al cierre de cada jornada de 14 h):**
+
+3. **Disponibilidad y p95 (al cierre de cada jornada de 14 h):** botón "Generar resumen SLO"
+   del dashboard, o manualmente:
    ```powershell
-   ... -DataDir "C:\POS\slo" -Summarize -WindowHours 14 `
-       -DetailsUrl "https://localhost:8443/api/health/details" -Token "<jwt-admin>"
+   powershell -ExecutionPolicy Bypass -File "C:\Program Files (x86)\Sistema POS Administrador\tools\monitoring\monitor-health.ps1" `
+     -Config "C:\ProgramData\CommandCenterPOS\monitoring\monitor-config.json" `
+     -Summarize -WindowHours 14
    ```
    Escribe `slo-summary.json` (disponibilidad %, samples, p95 de la sonda y p95 max de endpoints,
    además de `backupFresh`/`backupAgeMinutes` para el RPO) para adjuntar al registro diario (§14).

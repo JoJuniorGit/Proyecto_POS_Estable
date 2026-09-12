@@ -79,21 +79,35 @@ Token: `POST /api/auth/login` -> `token` (Bearer).
 
 ## 6. Monitoreo externo
 
-### 6.a Minimo viable para el piloto — `docs/monitor-health.ps1`
+### 6.a Minimo viable para el piloto — `monitor-health.ps1`
 
 Script PowerShell que consulta `/health` (y opcionalmente `/api/health/details` para la
-frescura del backup) y notifica si falla N veces consecutivas. Programar cada 5 min
-con el Programador de tareas:
+frescura del backup) y notifica si falla N veces consecutivas. Tiene dos modos:
+
+- **Headless** (por defecto, para el Programador de tareas): una muestra por corrida, agrega
+  CSVs de disponibilidad y p95 (`DataDir`), y con `-Summarize` escribe `slo-summary.json`.
+- **Dashboard (`-Dashboard`)**: ventana WinForms con el estado en vivo, la frescura del
+  backup, el resumen SLO vs metas, la gráfica de tendencia y el log. Modo de solo lectura:
+  no agrega muestras ni alerta. Se abre desde el acceso directo "Monitor de Salud" del
+  puesto instalado (o `.\docs\monitor-health.ps1 -Dashboard` en desarrollo).
+
+Los valores por defecto pueden vivir en un archivo `monitor-config.json` (`-Config`);
+los parametros de linea de comandos tienen precedencia. Ver `docs\monitor-config.json.example`.
 
 ```powershell
-# Ejemplo: tarea cada 5 min
-powershell -ExecutionPolicy Bypass -File "C:\...\docs\monitor-health.ps1" `
-    -HealthUrl "http://localhost:5000/health" `
-    -DetailsUrl "http://localhost:5000/api/health/details" `
-    -Token "<bearer-token>" `
-    -NotifyUrl "https://hooks.example.com/notify" `
+# Ejemplo: tarea cada 5 min (o dashboard)
+powershell -ExecutionPolicy Bypass -File "C:\Program Files (x86)\Sistema POS Administrador\tools\monitoring\monitor-health.ps1" `
+    -Config "C:\ProgramData\CommandCenterPOS\monitoring\monitor-config.json" `
     -FailsToAlert 3
+# Vista interactiva
+powershell -ExecutionPolicy Bypass -File "...\tools\monitoring\monitor-health.ps1" -Dashboard
 ```
+
+> **Nota sobre RPO:** el monitor alerta de backup stale a las **26 h** (`1560` min en el
+> script), no a 24 h. El margen extra evita falsos positivos cuando el backup tarda
+> mas de lo esperado en completarse (carga alta, reinicio post-cierre). El SLO formal
+> sigue siendo RPO <= 24 h (roadmap §4.3); el valor de 26 h es el **umbral de alerta**
+> del monitor, no la meta.
 
 > **Nota:** el backend expone metricas en **JSON** (`/api/health/requests`), no en formato
 > Prometheus. Para Prometheus+Grafana usar **blackbox_exporter** para sondear `/health`

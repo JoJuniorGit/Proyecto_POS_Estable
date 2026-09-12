@@ -17,6 +17,29 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.64.4  | 2026-09-12  | (8.107)      | MONITOREO DE SALUD Y SLO INTEGRADO AL PUESTO. (A)
+|          |             |              | monitor-health.ps1 refactorizado: compatibilidad PS 5.1
+|          |             |              | (eliminado -StatusCodeVariable, mapeo manual del status HTTP),
+|          |             |              | config compartida monitor-config.json (-Config; la CLI tiene
+|          |             |              | precedencia) y refactor a Invoke-MonitorProbe + Get-SloSummary;
+|          |             |              | fix de lectura de la columna p95MaxMs (se leia $_.p95Ms -> 0).
+|          |             |              | (B) monitor-health-ui.ps1 (nuevo, dot-source): dashboard
+|          |             |              | WinForms (960x680) con estado /health en vivo, frescura de
+|          |             |              | backup (RPO), resumen SLO vs metas, grafica de tendencia
+|          |             |              | dibujada con OnPaint (sin DataVisualization, valida en pwsh 7)
+|          |             |              | y visor de log; botones Comprobar ahora / Generar resumen SLO
+|          |             |              | / Token de monitoreo (persistido en monitor-config.json).
+|          |             |              | Dashboard SOLO LECTURA: no agrega muestras ni alerta; el runner
+|          |             |              | headless de la tarea programada es quien mide. (C) Instalador:
+|          |             |              | setup.iss despliega tools\monitoring + acceso directo "Monitor
+|          |             |              | de Salud"; Configure-PosService.ps1 (4.4) crea
+|          |             |              | %ProgramData%\CommandCenterPOS\monitoring, genera la config
+|          |             |              | (preserva Token) y agenda "Sistema POS - Monitor de Salud"
+|          |             |              | (5 min, SYSTEM). (D) smoke: headless OK en pwsh 7 y PS 5.1
+|          |             |              | (ruta negativa y positiva con HTTP local: disponibilidad 100%,
+|          |             |              | endpoint p95 max 900ms, RPO 25 min); form UI construido.
+|          |             |              | Sin cambios .NET/Web/WPF. Ver ANEXO 8.107 en docs/reporte.txt,
+|          |             |              | INSTALLATION 13.8/13.11 y LAUNCH_GUIDE 6.a.
 | v1.64.3  | 2026-09-12  | (8.106)      | ETAPA 1 DE IMPLANTACION - RESILIENCIA TECNICA frente a
 |          |             |              | fallos transitorios de red. (C1) DailyClosureService bajo
 |          |             |              | execution strategy con guard CurrentTransaction: si el caller

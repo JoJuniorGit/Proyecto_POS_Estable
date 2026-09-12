@@ -6847,3 +6847,94 @@ E3. Sin cambio de modelo persistente -> sin migracion EF (smoke MigratedSchema
     no requerido).
 
 FIN DEL ANEXO - REVISION 8.106
+
+ANEXO - REVISION 8.107 (2026-09-12)
+MONITOREO DE SALUD Y SLO INTEGRADO AL PUESTO: DASHBOARD WINDOWS + RUNNER PROGRAMADO
+
+A. CONTEXTO Y DECISIONES
+A1. Antecedente: docs/monitor-health.ps1 era un script headless que solo consultaba
+    /health y notificaba; tenia ademas un bug latente de compatibilidad: usaba
+    Invoke-RestMethod -StatusCodeVariable, parametro inexistente en Windows
+    PowerShell 5.1, el motor que usa el instalador (powershell.exe) y las tareas
+    programadas; la tarea hubiese fallado en el puesto.
+A2. Decision de la mesa (usuario): se abre un dashboard visual WinForms en el mismo
+    script con -Dashboard, sin romper el runner headless del Programador de
+    Tareas. La ventana solo se ve en la sesion interactiva de la PC del POS;
+    para supervision remota sigue el camino RDP/VPN WireGuard del roadmap.
+A3. Configuracion compartida: un unico monitor-config.json lo usan headless y
+    dashboard; los parametros de linea de comandos tienen precedencia sobre el
+    archivo (unica fuente veraz).
+A4. El dashboard es SOLO LECTURA: no agrega muestras al CSV ni envia alertas; el
+    runner headless de la tarea programada es quien mide, el dashboard solo
+    presenta estado en vivo, resumen SLO vs metas, grafica de tendencia y log.
+    El boton "Generar resumen SLO" escribe slo-summary.json bajo demanda.
+A5. El token JWT se fija con el boton "Token de monitoreo" y se guarda en
+    monitor-config.json (config instalada con Token=""); NO hay wizard de token
+    en el instalador (fragil, acopla al login y el JWT caduca). Cuenta de
+    servicio con auto-login del token: diferida.
+
+B. IMPLEMENTACION
+B1. docs/monitor-health.ps1 reescrito:
+    - Compatible PS 5.1 y 7+: eliminado -StatusCodeVariable; mapeo manual del
+      status HTTP (Get-ErrorStatusCode); 200 en exito y -1 si el error no
+      expone Response.
+    - Parametro -Config + monitor-config.json con precedencia CLI.
+    - Refactor: Invoke-MonitorProbe (unica logica de sonda + frescura de backup
+      + p95 por endpoint), Get-SloSummary (ventana WindowHours; disponibilidad,
+      probe p95, endpoint p95 max, backupFresh/age), Write-SloSummary,
+      Add-CsvRow, Write-Log, Send-Notification.
+    - Modo -Dashboard: dot-source monitor-health-ui.ps1 y llama
+      Start-MonitorDashboard.
+    - Fix de lectura: la columna de latencia por endpoint es p95MaxMs y se leia
+      $_.p95Ms (devolvia 0.0); corregido a p95MaxMs.
+B2. docs/monitor-health-ui.ps1 (nuevo, dot-source): ventana WinForms (960x680)
+    con paneles de estado /health y DB en vivo, frescura de backup (RPO),
+    disponibilidad/p95 vs metas, grafica de tendencia dibujada con OnPaint (sin
+    System.Windows.Forms.DataVisualization, no disponible en pwsh 7), visor de
+    tail del log y botones Comprobar ahora / Generar resumen SLO / Token de
+    monitoreo, con timer de auto-refresco (RefreshSeconds).
+B3. docs/monitor-config.json.example (nuevo): plantilla con rutas de produccion
+    (%ProgramData%\CommandCenterPOS\monitoring).
+B4. installer/setup.iss: [Files] despliega tools\monitoring (script + UI +
+    example); [Dirs] crea {commonappdata}\CommandCenterPOS\monitoring
+    (users-modify); [Icons] agrega el acceso directo "Monitor de Salud"
+    (powershell.exe 5.1 con -WindowStyle Hidden, -Dashboard y -Config).
+B5. installer/Configure-PosService.ps1 (nueva seccion 4.4): crea
+    %ProgramData%\CommandCenterPOS\monitoring, genera monitor-config.json solo
+    si no existe (preserva el Token editado por el operador) y agenda la tarea
+    "Sistema POS - Monitor de Salud" (SCHTASKS /SC MINUTE /MO 5 /RU SYSTEM
+    /RL HIGHEST) con el mismo script y la config compartida.
+
+C. VERIFICACION
+C1. Parse sintactico en pwsh 7.5.2 y Windows PowerShell 5.1 (0 errores) de
+    monitor-health.ps1, monitor-health-ui.ps1 y Configure-PosService.ps1.
+C2. Smoke headless ruta negativa (puerto cerrado): CSV availability False,
+    slo-summary.json, state.txt y monitor.log, en ambos motores.
+C3. Smoke headless ruta positiva con servidor HTTP local falso: /health 200
+    (Healthy/Connected), /api/health/details (backup 25 min, fresco) y
+    /api/health/request-latencies (p95 max endpoint=900ms). Resultado:
+    disponibilidad 100%, probe p95 164ms, endpoint p95 max 900ms (fix C1/B1),
+    backupFresh true.
+C4. Smoke UI: New-MonitorDashboardForm construye el formulario (10 controles) y
+    Update-MonitorDashboard completa sin excepciones.
+C5. Sin cambios en codigo .NET/Web/WPF: no requiere build ni suite de pruebas.
+C6. Pendiente de verificacion en el puesto: compilacion del instalador
+    (ISCC_PATH) y prueba real del acceso directo en sesion interactiva.
+
+D. DECISIONES Y DEUDA REGISTRADA
+D1. La grafica de tendencia usa pintado manual (OnPaint) en vez de
+    DataVisualization: un solo camino de codigo valido en 5.1 y pwsh 7, sin
+    dependencias adicionales (evita fallbacks version-dependientes).
+D2. El dashboard corre sincronico (probe local <1s; timeout 10s acotado); si el
+    backend esta caido la UI puede pausarse brevemente. Alternativa con
+    Runspace/Job de fondo queda como mejora futura si el puesto lo pide.
+D3. Task runner y dashboard comparten archivos sin conflicto: la tarea escribe
+    CSVs y log; el dashboard solo lee y escribe slo-summary.json bajo demanda.
+D4. monitor-config.json con Token en texto plano dentro de ProgramData: aceptado
+    por ser monitoreo local de un puesto de caja; documentado como limitacion.
+
+E. ESTADO
+E1. Commit de la revision 8.107. Headless probado en pwsh 7 y PS 5.1; build de
+    la suite .NET no aplica (sin cambios .NET).
+
+FIN DEL ANEXO - REVISION 8.107

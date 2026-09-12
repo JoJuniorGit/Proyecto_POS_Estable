@@ -460,6 +460,58 @@ if ($SkipScheduledBackup) {
 }
 
 # ---------------------------------------------------------------------
+# 4.4 (8.107-A1) Monitoreo de salud y SLO: datos en %ProgramData%\CommandCenterPOS\monitoring,
+# config compartida generada solo si no existe (preserva el Token editado por el operador)
+# y tarea programada headless cada 5 min que reutiliza el mismo script del dashboard.
+# ---------------------------------------------------------------------
+$monitorDir = Join-Path $InstallDir "tools\monitoring"
+$monitorScript = Join-Path $monitorDir "monitor-health.ps1"
+$monitorDataDir = Join-Path $env:ProgramData "CommandCenterPOS\monitoring"
+$monitorConfig = Join-Path $monitorDataDir "monitor-config.json"
+$monitorTaskName = "Sistema POS - Monitor de Salud"
+
+if (Test-Path $monitorScript) {
+    if (-not (Test-Path $monitorDataDir)) {
+        New-Item -ItemType Directory -Force -Path $monitorDataDir | Out-Null
+        Log "Directorio de monitoreo creado: $monitorDataDir"
+    }
+    if (-not (Test-Path $monitorConfig)) {
+        try {
+            $monitorDefaults = [ordered]@{
+                HealthUrl      = "http://localhost:5000/health"
+                DetailsUrl     = "http://localhost:5000/api/health/details"
+                Token          = ""
+                NotifyUrl      = ""
+                DataDir        = $monitorDataDir
+                RequestsUrl    = "http://localhost:5000/api/health/request-latencies"
+                EndpointFilter = "/"
+                WindowHours    = 14
+                FailsToAlert   = 3
+                RefreshSeconds = 15
+                StateFile      = Join-Path $monitorDataDir "health_state.txt"
+                LogFile        = Join-Path $monitorDataDir "monitor.log"
+            }
+            $monitorJson = $monitorDefaults | ConvertTo-Json -Depth 5
+            [System.IO.File]::WriteAllText($monitorConfig, $monitorJson, [System.Text.Encoding]::UTF8)
+            Log "Configuracion de monitoreo creada: $monitorConfig"
+        } catch {
+            Log "Aviso al crear la configuracion de monitoreo: $($_.Exception.Message)" "WARN"
+        }
+    } else {
+        Log "Configuracion de monitoreo ya existe (se preserva): $monitorConfig"
+    }
+    try {
+        $monitorTr = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$monitorScript`" -Config `"$monitorConfig`""
+        & schtasks.exe /Create /TN $monitorTaskName /SC MINUTE /MO 5 /RU SYSTEM /RL HIGHEST /TR $monitorTr /F | Out-Null
+        Log "Tarea programada asegurada: $monitorTaskName (cada 5 min, headless)." "SUCCESS"
+    } catch {
+        Log "Aviso al crear la tarea de monitoreo: $($_.Exception.Message)" "WARN"
+    }
+} else {
+    Log "AVISO: monitor-health.ps1 no encontrado en tools\monitoring; no se agenda monitoreo." "WARN"
+}
+
+# ---------------------------------------------------------------------
 # 5. Arranque / Reinicio del Servicio con Reintentos Resilientes
 # ---------------------------------------------------------------------
 $serviceState = (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue).Status
