@@ -147,92 +147,144 @@
                 BorderBrush="#E2E8F0"
                 BorderThickness="1"
                 Effect="{StaticResource EnterpriseCardShadow}">
-            <Grid VerticalAlignment="Bottom">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-                <!-- Buscador multicampo: N° de factura / Cliente / Cajero con Ícono Integrado -->
-                <StackPanel Grid.Column="0" Margin="0,0,14,0" VerticalAlignment="Bottom">
-                    <TextBlock Text="Buscar (Factura / Cliente / Cajero)" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
-                    <Border Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Height="42">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18" Foreground="#94A3B8" VerticalAlignment="Center" Margin="10,0,2,0"/>
-                            <TextBox Grid.Column="1"
-                                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                     materialDesign:HintAssist.Hint="N° de factura, cliente o cajero..."
-                                     materialDesign:TextFieldAssist.HasClearButton="True"
-                                     BorderThickness="0"
-                                     Background="Transparent"
-                                     VerticalAlignment="Center"
-                                     FontSize="13"
-                                     Foreground="#1E293B"
-                                     Padding="6,0,10,0"/>
-                        </Grid>
-                    </Border>
-                </StackPanel>
+                <Grid Grid.Row="0" VerticalAlignment="Bottom">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-                <!-- Fecha Inicio -->
-                <StackPanel Grid.Column="1" Margin="0,0,14,0" VerticalAlignment="Bottom">
-                    <TextBlock Text="Fecha Inicio" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
-                    <DatePicker SelectedDate="{Binding StartDate, UpdateSourceTrigger=PropertyChanged}" 
-                                Style="{DynamicResource MaterialDesignOutlinedDatePicker}"
-                                Background="#FFFFFF"
-                                BorderBrush="#E2E8F0"
-                                Width="155" Height="42" 
-                                FontSize="13"
-                                Padding="10,6" 
-                                VerticalAlignment="Center"/>
-                </StackPanel>
+                    <!-- Buscador multicampo: N° de factura / Cliente / Cajero con Ícono Integrado -->
+                    <StackPanel Grid.Column="0" Margin="0,0,14,0" VerticalAlignment="Bottom">
+                        <TextBlock Text="Buscar (Factura / Cliente / Cajero)" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
+                        <Border Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Height="42">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18" Foreground="#94A3B8" VerticalAlignment="Center" Margin="10,0,2,0"/>
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="N° de factura, cliente o cajero..."
+                                         materialDesign:TextFieldAssist.HasClearButton="True"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         VerticalAlignment="Center"
+                                         FontSize="13"
+                                         Foreground="#1E293B"
+                                         Padding="6,0,10,0"/>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
 
-                <!-- Fecha Fin -->
-                <StackPanel Grid.Column="2" Margin="0,0,14,0" VerticalAlignment="Bottom">
-                    <TextBlock Text="Fecha Fin" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
-                    <DatePicker SelectedDate="{Binding EndDate, UpdateSourceTrigger=PropertyChanged}" 
-                                Style="{DynamicResource MaterialDesignOutlinedDatePicker}"
-                                Background="#FFFFFF"
-                                BorderBrush="#E2E8F0"
-                                Width="155" Height="42" 
-                                FontSize="13"
-                                Padding="10,6" 
-                                VerticalAlignment="Center"/>
-                </StackPanel>
+                    <!-- Fecha Inicio -->
+                    <StackPanel Grid.Column="1" Margin="0,0,14,0" VerticalAlignment="Bottom">
+                        <TextBlock Text="Fecha Inicio" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
+                        <DatePicker SelectedDate="{Binding StartDate, UpdateSourceTrigger=PropertyChanged}" 
+                                    Style="{DynamicResource MaterialDesignOutlinedDatePicker}"
+                                    Background="#FFFFFF"
+                                    BorderBrush="#E2E8F0"
+                                    Width="155" Height="42" 
+                                    FontSize="13"
+                                    Padding="10,6" 
+                                    VerticalAlignment="Center"/>
+                    </StackPanel>
 
-                <!-- Botón Principal Buscar (Alineación Pixel-Perfect a 42px de altura) -->
-                <StackPanel Grid.Column="3" VerticalAlignment="Bottom">
-                    <TextBlock Text=" " FontSize="12" Margin="0,0,0,6"/>
-                    <Button Command="{Binding LoadHistoryCommand}"
-                            Background="#5E35B1"
-                            BorderBrush="#5E35B1"
-                            Foreground="#FFFFFF"
-                            Height="42"
-                            Padding="20,0"
-                            materialDesign:ButtonAssist.CornerRadius="6">
-                        <Button.ContentTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <materialDesign:PackIcon Kind="Magnify" Width="18" Height="18" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="#FFFFFF"/>
-                                    <TextBlock Text="Buscar" VerticalAlignment="Center" FontWeight="Bold" FontSize="13" Foreground="#FFFFFF"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </Button.ContentTemplate>
-                    </Button>
-                </StackPanel>
+                    <!-- Fecha Fin -->
+                    <StackPanel Grid.Column="2" Margin="0,0,14,0" VerticalAlignment="Bottom">
+                        <TextBlock Text="Fecha Fin" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
+                        <DatePicker SelectedDate="{Binding EndDate, UpdateSourceTrigger=PropertyChanged}" 
+                                    Style="{DynamicResource MaterialDesignOutlinedDatePicker}"
+                                    Background="#FFFFFF"
+                                    BorderBrush="#E2E8F0"
+                                    Width="155" Height="42" 
+                                    FontSize="13"
+                                    Padding="10,6" 
+                                    VerticalAlignment="Center"/>
+                    </StackPanel>
 
-                <!-- Indicador de Carga -->
-                <ProgressBar Grid.Column="4" 
-                             IsIndeterminate="True" 
-                             Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
-                             Foreground="#5E35B1"
-                             HorizontalAlignment="Right" VerticalAlignment="Center" Width="30" Height="30" Margin="14,18,0,0" />
+                    <!-- Botón Principal Buscar (Alineación Pixel-Perfect a 42px de altura) -->
+                    <StackPanel Grid.Column="3" VerticalAlignment="Bottom">
+                        <TextBlock Text=" " FontSize="12" Margin="0,0,0,6"/>
+                        <Button Command="{Binding LoadHistoryCommand}"
+                                Background="#5E35B1"
+                                BorderBrush="#5E35B1"
+                                Foreground="#FFFFFF"
+                                Height="42"
+                                Padding="20,0"
+                                materialDesign:ButtonAssist.CornerRadius="6">
+                            <Button.ContentTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <materialDesign:PackIcon Kind="Magnify" Width="18" Height="18" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="#FFFFFF"/>
+                                        <TextBlock Text="Buscar" VerticalAlignment="Center" FontWeight="Bold" FontSize="13" Foreground="#FFFFFF"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </Button.ContentTemplate>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Indicador de Carga -->
+                    <ProgressBar Grid.Column="4" 
+                                 IsIndeterminate="True" 
+                                 Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                 Foreground="#5E35B1"
+                                 HorizontalAlignment="Right" VerticalAlignment="Center" Width="30" Height="30" Margin="14,18,0,0" />
+                </Grid>
+
+                <!-- Segunda fila de filtros (8.108): cajero con buscador por usuario + ocultar prueba -->
+                <Grid Grid.Row="1" Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Margin="0,0,20,0" VerticalAlignment="Bottom">
+                        <TextBlock Text="Cajero (buscador por usuario)" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
+                        <ComboBox IsEditable="True"
+                                  IsTextSearchEnabled="True"
+                                  StaysOpenOnEdit="True"
+                                  ItemsSource="{Binding Cashiers}"
+                                  Text="{Binding CashierFilterText, UpdateSourceTrigger=PropertyChanged}"
+                                  materialDesign:HintAssist.Hint="Buscar por nombre de usuario..."
+                                  materialDesign:TextFieldAssist.HasClearButton="True"
+                                  Background="#FFFFFF"
+                                  BorderBrush="#E2E8F0"
+                                  Width="320" Height="42"
+                                  FontSize="13"
+                                  Padding="8,4"
+                                  VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Margin="0,0,20,0" VerticalAlignment="Bottom">
+                        <TextBlock Text=" " FontSize="12" Margin="0,0,0,6"/>
+                        <CheckBox IsChecked="{Binding HideTestTransactions}"
+                                  Content="Ocultar transacciones de prueba (BOT_STRESS_TEST)"
+                                  FontSize="12"
+                                  Foreground="#475569"
+                                  VerticalAlignment="Center"
+                                  Padding="4,0,0,0"
+                                  Height="42"/>
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding HiddenByFilterSummary}"
+                               FontSize="11"
+                               Foreground="#64748B"
+                               VerticalAlignment="Bottom"
+                               HorizontalAlignment="Right"
+                               Margin="0,0,0,14"/>
+                </Grid>
             </Grid>
         </Border>
 

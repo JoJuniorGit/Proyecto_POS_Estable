@@ -3,6 +3,7 @@ import { getSalesHistory, getSaleHistoryDetail } from '../services/historyApi';
 import { Search, Loader2, Calendar, ChevronRight, ChevronDown, RefreshCw, CheckCircle, Clock, XCircle, FileText } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime, formatQuantity } from '../utils/formatters';
+import { filterHistorySales, accumulateCashierNames } from '../utils/historyFilters';
 import Pagination from '../components/ui/Pagination';
 import './HistoryPage.css';
 
@@ -29,6 +30,9 @@ export default function HistoryPage() {
   const [saleDetails, setSaleDetails] = useState({});
   const [error, setError] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [cashierFilter, setCashierFilter] = useState('');
+  const [hideTestSales, setHideTestSales] = useState(false);
+  const [cashierOptions, setCashierOptions] = useState([]);
 
   // Búsqueda multicampo con debounce: al escribir, la vista se actualiza sola
   // (300 ms) y vuelve a la primera página.
@@ -53,6 +57,7 @@ export default function HistoryPage() {
         const total = data?.totalCount ?? data?.TotalCount ?? items.length;
         setSales(items);
         setTotalCount(total);
+        setCashierOptions((prev) => accumulateCashierNames(prev, items));
       })
       .catch((err) => {
         if (err?.name !== 'AbortError') {
@@ -71,7 +76,7 @@ export default function HistoryPage() {
     setCurrentPage(1);
   };
 
-  const handlePageChange = (newPage) => {
+const handlePageChange = (newPage) => {
     const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
     if (newPage < 1 || newPage > totalPages || newPage === currentPage) return;
     setCurrentPage(newPage);
@@ -97,6 +102,7 @@ export default function HistoryPage() {
   };
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const { visibleSales, hiddenCount } = filterHistorySales(sales, { cashierFilter, hideTestSales });
 
   return (
     <div className="history-page">
@@ -161,6 +167,42 @@ export default function HistoryPage() {
             </button>
           </div>
         </div>
+
+        <div className="history-filter-row-secondary">
+          <div className="history-filter-item history-cashier-col">
+            <label className="history-filter-label">Cajero (buscador por usuario)</label>
+            <input
+              type="text"
+              list="history-cashier-options"
+              className="history-filter-input"
+              placeholder="Buscar por nombre de usuario..."
+              value={cashierFilter}
+              onChange={(e) => setCashierFilter(e.target.value)}
+            />
+            <datalist id="history-cashier-options">
+              {cashierOptions.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </div>
+
+          <div className="history-toggle-col">
+            <label className="history-toggle-label">
+              <input
+                type="checkbox"
+                checked={hideTestSales}
+                onChange={(e) => setHideTestSales(e.target.checked)}
+              />
+              Ocultar transacciones de prueba (BOT_STRESS_TEST)
+            </label>
+          </div>
+
+          <div className="history-hidden-count">
+            {hiddenCount > 0
+              ? `Ocultas por el filtro: ${hiddenCount}`
+              : 'Todas las ventas de la página se muestran'}
+          </div>
+        </div>
       </div>
 
       {error && <div className="alert alert-danger mb-4">{error}</div>}
@@ -177,11 +219,15 @@ export default function HistoryPage() {
             <Calendar size={48} className="mx-auto mb-2 opacity-50" />
             <p>No se encontraron registros de ventas.</p>
           </div>
+        ) : visibleSales.length === 0 ? (
+          <div className="text-center hist-state-pad text-muted">
+            <p>Ninguna venta coincide con el filtro aplicado.</p>
+          </div>
         ) : (
           <>
             {/* ── 3A. VISTA MÓVIL (TARJETAS FLUIDAS) ── */}
             <div className="history-mobile-cards-view p-3">
-              {sales.map((sale) => {
+              {visibleSales.map((sale) => {
                 const isExpanded = expandedSaleId === sale.id;
                 const dateOnlyStr = sale.date ? new Date(sale.date).toLocaleDateString('es-VE') : '-';
                 const totalBsS = sale.totalBsS > 0
@@ -360,7 +406,7 @@ export default function HistoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sales.map((sale) => {
+                  {visibleSales.map((sale) => {
                     const isExpanded = expandedSaleId === sale.id;
 
                     const totalBsS = sale.totalBsS > 0

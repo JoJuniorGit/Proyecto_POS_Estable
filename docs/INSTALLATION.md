@@ -442,6 +442,50 @@ comandos tienen precedencia sobre el archivo.
    en copia aislada hasta la verificación de conteos; registrar la duración junto al resumen.
    Criterio: RTO medido <= 4 h. Los SLO quedan PENDIENTES hasta que el piloto genere evidencia.
 
+### 13.12 Prueba de estrés no destructiva (8.108)
+`scripts\stress-test.py` simula cajas concurrentes sobre el backend de **staging** creando
+ventas de $0.00 con el usuario de aislamiento `BOT_STRESS_TEST` (rol Cajero) y productos
+sintéticos `SKU-TEST-*` con precio $0; mide latencia (avg/p95/p99), rendimiento (ventas/hora)
+y distribución de códigos HTTP por endpoint, e imprime al final la lista de productos resueltos
+(o `--products` con sus precios). Los datos quedan marcados e identificables para limpiarlos
+con §13.12.5. **No ejecutar contra producción**; el script aborta si el rate local es $0 y
+valida precio>0, `isActive`, stock antes de usar cada producto.
+
+1. **Preparar staging:** crear el usuario `BOT_STRESS_TEST` (Cédula igual al nombre, rol Cajero)
+   y al menos un producto `SKU-TEST-*` con precio $0 y stock suficiente. Confirmar que el
+   backend responde y que el usuario no puede operar fuera de sus permisos (RBAC).
+2. **Ejecutar la prueba** (consola = ventana de la prueba; no cerrarla hasta el resumen):
+   ```powershell
+   python scripts\stress-test.py `
+     --base-url http://<ip-staging>:5000 `
+     --confirm-staging http://<ip-staging>:5000 `
+     --password <contraseña> `
+     --cashiers 4 `
+     --duration 600 `
+     --out reporte-estres.json
+   ```
+   Alternativas: `--transactions N` (ventas totales fijas), `--rate <tasa>` (tasa Bs/USD fija,
+   por defecto se lee de `/api/exchange-rate/today`), `--insecure` (TLS con certificado propio),
+   `--products SKU-A SKU-B` (SKUs exactos) y `--think-min/--think-max` para simular espera humana
+   entre ventas (por defecto 4–20 s). El script re-autentica automáticamente ante 401/403
+   compartiendo el token entre hilos.
+3. **Limitación de tasa a esperar:** `GeneralApiRateLimit` = 200 req/min por IP. Con 4 cajas
+   compartiendo IP el rendimiento realista es ~28–40 ventas/min (pausas de 4–20 s). Si el
+   resumen muestra 429, subir el límite en staging (o usar IPs separadas) antes de medir p95.
+4. **Monitoreo concurrente:** durante la prueba mantener abierto el **Monitor de Salud** (§13.8)
+   o ejecutar la sonda headless (§13.11) para correlacionar latencia/p95 y frescura de backup
+   con la carga generada. El reporte JSON de `--out` sirve de evidencia para el registro (§14).
+5. **Limpieza de datos sintéticos** (al terminar, en staging): borra las ventas del cajero de
+   aislamiento y sus movimientos (items, pagos, cash transactions, outbox, idempotency, stock),
+   y opcionalmente productos `SKU-TEST-*` y el usuario:
+   ```powershell
+   .\scripts\cleanup-stress-data.ps1 -SecretsFile BackendAPI\secrets.json `
+     -Confirm YES -DeleteProducts -DeleteUser
+   ```
+   Requiere `-Confirm YES` solo cuando se borran productos/usuario; `-CashierCedula` (por defecto
+   `BOT_STRESS_TEST`) y `-SkuPrefix` (por defecto `SKU-TEST-`) acotan los borrados. La limpieza
+   de ventas **no resetea la secuencia** de numeración de facturas.
+
 ## 14. Plan del piloto controlado (Fase 6, 8.45)
 
 Alcance y reglas:

@@ -392,8 +392,8 @@ reproducible.
 | API p95 latencia | < 500 ms | `/api/health/requests` (8.52) bajo carga; collector monitor-health.ps1 8.81 | MEDIBLE (8.81); medicion real en piloto |
 | Checkout p95 | < 1 s | Medicion E2E con 4 terminales | PENDIENTE |
 | Error tecnico | < 1 % | Separar 4xx negocio vs 5xx tecnico | PENDIENTE |
-| Prueba sostenida | >= 8 h continuas | Operacion simulada con scripts | PENDIENTE |
-| Pico de carga | 2x usuarios esperados | 8 terminales simultaneas (stress) | PENDIENTE |
+| Prueba sostenida | >= 8 h continuas | `scripts\stress-test.py` (8.108, ventas $0 con BOT_STRESS_TEST) | HERRAMIENTA DISPONIBLE (8.108); sostenida aun en staging |
+| Pico de carga | 2x usuarios esperados | `scripts\stress-test.py` con 8 hilos (8.108) | HERRAMIENTA DISPONIBLE (8.108); medicion en staging |
 | Disponibilidad | >= 99.5 % mensual | Uptime en jornada; monitor-health.ps1 -> slo-availability.csv (8.81) | MEDIBLE (8.81); medicion real en piloto |
 
 ### 7.4 Recuperacion y datos

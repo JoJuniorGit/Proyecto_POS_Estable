@@ -6938,3 +6938,145 @@ E1. Commit de la revision 8.107. Headless probado en pwsh 7 y PS 5.1; build de
     la suite .NET no aplica (sin cambios .NET).
 
 FIN DEL ANEXO - REVISION 8.107
+
+ANEXO - REVISION 8.108 (2026-09-12)
+PRUEBA DE ESTRES NO DESTRUCTIVA + FILTRO DE CAJERO EN EL HISTORIAL (WPF Y WEB)
+
+A. CONTEXTO Y DECISIONES
+A1. Antecedente: la medicion de SLO (8.107-A) y el plan piloto (8.45) carecen de
+    un generador de carga controlado que valide el comportamiento bajo cientos
+    de ventas y cierres. Se aprueba una prueba de estres NO destructiva: el
+    script crea ventas de $0.00 con el usuario de aislamiento BOT_STRESS_TEST
+    (rol Cajero) y productos sinteticos SKU-TEST-* con precio $0, sin tocar
+    datos reales del negocio.
+A2. Decision de la mesa (usuario): la consola del script ES la ventana de la
+    prueba (imprime la lista de productos resueltos, sea por --products o por
+    el filtro --filter, con sus precios). El script re-autentica ante 401/403
+    compartiendo el token entre hilos; reporta latencia avg/p95/p99 y
+    distribucion de codigos HTTP por endpoint, con resumen en consola y JSON
+    opcional (--out).
+A3. Limitacion de tasa conocida: GeneralApiRateLimit = 200 req/min por IP
+    (ServiceCollectionExtensions). Con 4 cajas compartiendo IP el rendimiento
+    realista es de ~28-40 ventas/min por las pausas de 4-20 s (think). La
+    distribucion HTTP hace visible el 429 cuando el limite se alcanza; el
+    runbook (INSTALLATION.md 13.12) documenta subir el limite en staging o usar
+    IPs separadas antes de medir p95.
+A4. Limpieza deterministica: los datos de la prueba deben poder borrarse.
+    psql falla en \if tanto con comparacion de cadenas ('YES' = 'YES') como
+    numerica (1 = 1): "valor ... no reconocido para \if expression". Decision:
+    SPLIT de la limpieza en tres archivos SQL invocados por un runner ps1
+    (ventas siempre; productos y usuario solo con -DeleteProducts/-DeleteUser
+    + -Confirm YES). El identificador del cajero de prueba se resuelve por
+    join de Sales.CashierId -> Users (Cedula/Username/Name = BOT_STRESS_TEST).
+A5. El filtro de cajero en el historial es un REQUISITO PERMANENTE (no solo de
+    la prueba): el usuario pidio poder filtrar por cajero con buscador por
+    nombre de usuario en AMBAS versiones (WPF y Web). El toggle "Ocultar
+    transacciones de prueba (BOT_STRESS_TEST)" queda DEFAULT OFF para poder
+    validar el historial bajo cientos de registros sinteticos, y su logica es
+    100% cliente (no refetch al backend; Cashier NO puede listar usuarios, la
+    lista de cajeros se acumula de los datos ya paginados).
+
+B. IMPLEMENTACION
+B1. scripts/stress-test.py (nuevo, Python 3 stdlib): 4 hilos-caja, flujo
+    login -> /api/products?filter=&page= (validacion de precio>0, isActive,
+    isDeleted, stock) -> start -> items -> checkout-preview -> complete (con
+    header Idempotency-Key por venta y body {exchangeRate, roundingAdjustment,
+    isPendingPickup, payments}; la venta $0 se completa sin pagos via
+    IsZeroAmountOrder). Parametros: --base-url (obligatorio), --confirm-staging
+    (obligatorio: 'YES' o repetir el base-url), --user (def. BOT_STRESS_TEST),
+    --password (obligatorio), --cashiers (def. 4), --duration (s) o
+    --transactions (uno de los dos), --think-min/--think-max (def. 4-20),
+    --filter (def. SKU-TEST), --products, --qty-min/--qty-max,
+    --max-products-per-sale, --rate, --timeout (def. 60), --insecure, --out.
+    Fix encontrado en smoke: ApiClient.post exigia body siempre; ahora
+    body=None por defecto para peticiones sin cuerpo.
+B2. scripts/cleanup-stress-data.sql (nuevo): temp stress_sale_ids desde Sales
+    join Users (cajero); borra SaleItems, SalePayments, CashTransactions,
+    OutboxMessages (EventType='SaleCompleted' y Payload::text LIKE
+    %"SaleId":<id>[,}]%), IdempotentRequests (RequestPath regex
+    ^/api/sales/[0-9]+/complete y substring uuid por venta), StockMovements,
+    StockMovements_Archive y Sales; COMMIT + conteo final. No resetea la
+    secuencia de numeracion de facturas.
+B3. scripts/cleanup-stress-data-products.sql y -user.sql (nuevos, opcionales):
+    productos por "SKU" LIKE prefix (StockReservations + Products) y usuario
+    por Cedula/Username respectivamente.
+B4. scripts/cleanup-stress-data.ps1 (nuevo): lee la cadena de conexion de
+    BackendAPI\secrets.json (DefaultConnection, con fallback
+    ConnectionStrings__DefaultConnection, patron de backup-postgres.ps1);
+    detecta psql (PATH o Postgres 15-18); corre cada SQL con -v ON_ERROR_STOP=1
+    y PGPASSWORD en entorno; requiere pwsh 7 (ternario ? :, como
+    backup-postgres.ps1; PS 5.1 no lo parsea).
+B5. WPF: SalesHistoryViewModel.cs agrega TestCashierName (BOT_STRESS_TEST),
+    _knownCashiers (HashSet OrdinalIgnoreCase), collection Cashiers,
+    CashierFilterText (substring case-insensitive sin a falta de refetch),
+    HideTestTransactions (default false), HiddenByFilterCount y
+    HiddenByFilterSummary, _pageBuffer, IsSaleVisible y ApplyCurrentPageFilter
+    (replace de la coleccion + recalculado de TotalBsSForThePeriod).
+    LoadHistoryAsync ahora avanza de pagina en el servidor (guard 50) cuando la
+    pagina queda vacia por el filtro y acumula nombres de cajeros distintos.
+    El bloque de filtros se extrae a la clase parcial
+    SalesHistoryViewModel.Filters.cs (guia 1.1.B1) por intervencion de una
+    clase grande: no rompe contratos, el archivo principal vuelve a 663 lineas.
+B6. WPF XAML: SalesHistoryView.xaml en dos filas; fila 2 = ComboBox editable
+    "Cajero (buscador por usuario)" (IsEditable, IsTextSearchEnabled,
+    StaysOpenOnEdit) + CheckBox "Ocultar transacciones de prueba
+    (BOT_STRESS_TEST)" + TextBlock con el resumen de ocultas.
+B7. Web: HistoryPage.jsx agrega la segunda fila de filtros con input + datalist
+    de cajeros (acumulados), toggle "Ocultar transacciones de prueba" default
+    OFF, contador "Ocultas por el filtro" y estado vacio por filtro. Logica en
+    modulo puro src/utils/historyFilters.js (filterHistorySales +
+    accumulateCashierNames, dedup por lowercase preservando el casing original)
+    para testabilidad siendo post-filtro 100% cliente.
+B8. Docs: INSTALLATION.md 13.12 (runbook de estres + limpieza + rate limit).
+
+C. VERIFICACION
+C1. stress-test.py: py_compile OK y --help OK; smoke real contra servidor HTTP
+    local falso (fake_stress_server.py en temp): 4 ventas completadas,
+    metricas por endpoint, re-login 401 y salida JSON correcta.
+C2. SQL de limpieza: smoke real contra CommandCenterDb local (Postgres 18.1,
+    psql en C:\Program Files\PostgreSQL\18\bin\psql.exe) con cajero/prefix
+    inexistentes: los 3 archivos terminan OK (ON_ERROR_STOP) y el runner
+    cleanup-stress-data.ps1 parsea sin errores en pwsh 7.
+C3. WPF: build 0 warn/0 err de Desktop.Client.Core y Desktop.Client; 7 tests
+    nuevos en SalesHistoryViewModelTests.cs (default OFF, exclusion por toggle
+    sin refetch, substring case-insensitive, auto-avance de pagina, no-avance,
+    acumulacion de cajeros); suite filtrada 22/22 verde. Post-extraccion a
+    clase parcial: build Release 0/0 y suite .NET completa 913/913 sin
+    regresiones.
+C4. Web: helper + mount test (renderToString) nuevos; npm test 90/90 verde y
+    npm run lint 0 warnings/0 errors.
+C5. Pendiente en el puesto: ejecucion real de estres contra staging y limpieza
+    posterior de los datos generados (INSTALLATION.md 13.12).
+
+D. DECISIONES Y DEUDA REGISTRADA
+D1. Toggle default OFF (mostrar BOT_STRESS_TEST) a pesar de que en operacion
+    normal el cajero de prueba no existira: la prioridad de la revision es
+    validar el historial con volumen. El operador decide ocultarlas con un clic.
+D2. La lista de cajeros del filtro se acumula solo de las paginas ya cargadas
+    (Cashier no puede listar usuarios, RBAC 8.28). No hay endpoint nuevo: la
+    logica es 100% cliente y sin refetch, igual que el toggle.
+D3. La limpieza de ventas no restaura el contador de facturas: intencional, la
+    numeracion debe seguir monotona en staging.
+D4. el script no mide N+1 ni usa Prometheus: el alcance es validar latencia,
+    rendimiento y fallos HTTP del flujo de venta completo bajo 4 cajas; el
+    RouteError/outbox y el monitor 8.107 quedan como red de observabilidad.
+D5. Credenciales de BOT_STRESS_TEST via --password en CLI: documentado como
+    limitacion; en staging se acepta, en produccion queda prohibido (sesgo de
+    confirmacion --confirm-staging).
+D6. Limite de montos en scripts: stress-test.py no usa decimal para la tasa ni
+    los precios ($0.00; el script aborta si el precio no es 0). El riesgo de
+    drift es nulo hoy por la validacion estricta, pero si la herramienta se
+    adaptara a montos no-cero deberia migrarse a decimal.Decimal (disciplina
+    2.4 del skill pos-financial-integrity).
+D7. Divergencia de UX WPF/Web en pagina vacia: el auto-avance de pagina
+    (guard 50) existe solo en WPF; en Web, con el toggle ON y una pagina entera
+    de BOT_STRESS_TEST, se muestra "Ninguna venta coincide con el filtro" sin
+    avanzar. Aceptado a proposito por simplicidad de paginacion web; texto del
+    contador unificado en ambas versiones.
+
+E. ESTADO
+E1. Commit de la revision 8.108 (feat). Build de la suite .NET pendiente hasta
+    la verificacion final de staging del runbook 13.12 (sin cambios de schema:
+    no requiere migracion).
+
+FIN DEL ANEXO - REVISION 8.108

@@ -323,4 +323,192 @@ public class SalesHistoryViewModelTests
         Assert.False(vm.CanGoFirst);
         Assert.False(vm.CanGoLast);
     }
+
+    [Fact]
+    public void HideTestTransactions_WhenInitialized_DefaultsToFalse()
+    {
+        var vm = CreateViewModel();
+
+        Assert.False(vm.HideTestTransactions);
+        Assert.Equal(string.Empty, vm.CashierFilterText);
+        Assert.Empty(vm.Cashiers);
+    }
+
+    [Fact]
+    public async Task LoadHistoryCommand_WhenHideTestTransactions_MasksBotStressTransactions()
+    {
+        var sampleSales = new List<SaleHistoryDto>
+        {
+            new() { Id = 1, InvoiceNumber = 1, FinalPaidAmountBsS = 100m, CashierName = "BOT_STRESS_TEST" },
+            new() { Id = 2, InvoiceNumber = 2, FinalPaidAmountBsS = 250m, CashierName = "Ana Pérez" },
+            new() { Id = 3, InvoiceNumber = 3, FinalPaidAmountBsS = 150m, CashierName = "BOT_STRESS_TEST" }
+        };
+
+        _salesServiceMock
+            .Setup(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((sampleSales, 3));
+
+        var vm = CreateViewModel();
+
+        vm.HideTestTransactions = true;
+        await vm.LoadHistoryCommand.ExecuteAsync(null);
+
+        Assert.Single(vm.Sales);
+        Assert.Equal("Ana Pérez", vm.Sales.Single().CashierName);
+        Assert.Equal(2, vm.HiddenByFilterCount);
+        Assert.Equal(250m, vm.TotalBsSForThePeriod);
+        Assert.Contains("2", vm.HiddenByFilterSummary);
+    }
+
+    [Fact]
+    public void HideTestTransactions_WhenToggledAfterLoad_FiltersWithoutRefetching()
+    {
+        var sampleSales = new List<SaleHistoryDto>
+        {
+            new() { Id = 1, InvoiceNumber = 1, FinalPaidAmountBsS = 100m, CashierName = "BOT_STRESS_TEST" },
+            new() { Id = 2, InvoiceNumber = 2, FinalPaidAmountBsS = 250m, CashierName = "Ana Pérez" }
+        };
+
+        _salesServiceMock
+            .Setup(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((sampleSales, 2));
+
+        var vm = CreateViewModel();
+        vm.LoadHistoryCommand.Execute(null);
+
+        Assert.Equal(2, vm.Sales.Count);
+        Assert.Equal("Todas las ventas de la página se muestran", vm.HiddenByFilterSummary);
+
+        vm.HideTestTransactions = true;
+
+        Assert.Single(vm.Sales);
+        Assert.Equal(250m, vm.TotalBsSForThePeriod);
+        _salesServiceMock.Verify(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        vm.HideTestTransactions = false;
+
+        Assert.Equal(2, vm.Sales.Count);
+        Assert.Equal(350m, vm.TotalBsSForThePeriod);
+    }
+
+    [Fact]
+    public async Task CashierFilterText_WhenTypingSubstring_FiltersCaseInsensitiveWithoutRefetching()
+    {
+        var sampleSales = new List<SaleHistoryDto>
+        {
+            new() { Id = 1, InvoiceNumber = 1, FinalPaidAmountBsS = 100m, CashierName = "ANA PÉREZ" },
+            new() { Id = 2, InvoiceNumber = 2, FinalPaidAmountBsS = 250m, CashierName = "Carlos Díaz" },
+            new() { Id = 3, InvoiceNumber = 3, FinalPaidAmountBsS = 150m, CashierName = "ana" }
+        };
+
+        _salesServiceMock
+            .Setup(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((sampleSales, 3));
+
+        var vm = CreateViewModel();
+        await vm.LoadHistoryCommand.ExecuteAsync(null);
+
+        vm.CashierFilterText = "ana";
+
+        Assert.Equal(2, vm.Sales.Count);
+        Assert.All(vm.Sales, s => Assert.Contains("ana", s.CashierName, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(1, vm.HiddenByFilterCount);
+        _salesServiceMock.Verify(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        vm.CashierFilterText = "carl";
+
+        Assert.Single(vm.Sales);
+        Assert.Equal("Carlos Díaz", vm.Sales.Single().CashierName);
+
+        vm.CashierFilterText = "";
+
+        Assert.Equal(3, vm.Sales.Count);
+    }
+
+    [Fact]
+    public async Task LoadHistoryCommand_WhenPageFullyHiddenAndMorePages_AdvancesToNextVisiblePage()
+    {
+        var hiddenPage = Enumerable.Range(1, 25)
+            .Select(i => new SaleHistoryDto { Id = i, InvoiceNumber = i, FinalPaidAmountBsS = 10m, CashierName = "BOT_STRESS_TEST" })
+            .ToList();
+        var visiblePage = new List<SaleHistoryDto>
+        {
+            new() { Id = 100, InvoiceNumber = 100, FinalPaidAmountBsS = 500m, CashierName = "Ana Pérez" },
+            new() { Id = 101, InvoiceNumber = 101, FinalPaidAmountBsS = 300m, CashierName = "Carlos Díaz" }
+        };
+
+        _salesServiceMock
+            .Setup(s => s.GetSalesHistoryAsync(1, 25, It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((hiddenPage, 100));
+        _salesServiceMock
+            .Setup(s => s.GetSalesHistoryAsync(2, 25, It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((visiblePage, 100));
+
+        var vm = CreateViewModel();
+        vm.HideTestTransactions = true;
+
+        await vm.LoadHistoryCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, vm.CurrentPage);
+        Assert.Equal(2, vm.Sales.Count);
+        Assert.Equal(800m, vm.TotalBsSForThePeriod);
+        _salesServiceMock.Verify(s => s.GetSalesHistoryAsync(2, 25, It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task LoadHistoryCommand_WhenPageVisible_DoesNotAdvancePage()
+    {
+        var sampleSales = new List<SaleHistoryDto>
+        {
+            new() { Id = 1, InvoiceNumber = 1, FinalPaidAmountBsS = 100m, CashierName = "BOT_STRESS_TEST" },
+            new() { Id = 2, InvoiceNumber = 2, FinalPaidAmountBsS = 250m, CashierName = "Ana Pérez" }
+        };
+
+        _salesServiceMock
+            .Setup(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((sampleSales, 100));
+
+        var vm = CreateViewModel();
+        vm.HideTestTransactions = true;
+
+        await vm.LoadHistoryCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, vm.CurrentPage);
+        Assert.Single(vm.Sales);
+        _salesServiceMock.Verify(s => s.GetSalesHistoryAsync(1, 25, It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task LoadHistoryCommand_WhenLoadingPages_AccumulatesDistinctCashierNames()
+    {
+        var sampleSales = new List<SaleHistoryDto>
+        {
+            new() { Id = 1, InvoiceNumber = 1, CashierName = "Ana Pérez" },
+            new() { Id = 2, InvoiceNumber = 2, CashierName = "BOT_STRESS_TEST" }
+        };
+
+        _salesServiceMock
+            .Setup(s => s.GetSalesHistoryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((sampleSales, 2));
+
+        var vm = CreateViewModel();
+        await vm.LoadHistoryCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, vm.Cashiers.Count);
+        Assert.Contains("Ana Pérez", vm.Cashiers);
+        Assert.Contains("BOT_STRESS_TEST", vm.Cashiers);
+
+        _salesServiceMock
+            .Setup(s => s.GetSalesHistoryAsync(1, 25, It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<SaleHistoryDto>
+            {
+                new() { Id = 3, InvoiceNumber = 3, CashierName = "Carlos Díaz" },
+                new() { Id = 4, InvoiceNumber = 4, CashierName = "BOT_STRESS_TEST" }
+            }, 2));
+
+        await vm.LoadHistoryCommand.ExecuteAsync(null);
+
+        Assert.Equal(3, vm.Cashiers.Count);
+        Assert.Contains("Carlos Díaz", vm.Cashiers);
+    }
 }

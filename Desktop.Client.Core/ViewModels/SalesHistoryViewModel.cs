@@ -418,23 +418,39 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
 
         try
         {
-            var (_items, _total) = await _salesService.GetSalesHistoryAsync(CurrentPage, PageSize, StartDate, EndDate, SearchText, _token);
+            int serverPage = CurrentPage > 0 ? CurrentPage : 1;
+            var (_items, _total) = await _salesService.GetSalesHistoryAsync(serverPage, PageSize, StartDate, EndDate, SearchText, _token);
 
-            if (!_token.IsCancellationRequested)
+            if (_token.IsCancellationRequested) return;
+
+            var buffer = _items;
+            int total = _total;
+            int skipGuard = 0;
+            while (serverPage * PageSize < total && skipGuard < 50 && buffer.Any() && !buffer.Any(IsSaleVisible))
             {
-                Sales.Clear();
-                decimal _tempTotalBsS = 0;
-                foreach (var _item in _items)
-                {
-                    Sales.Add(_item);
-                    _tempTotalBsS += _item.FinalPaidAmountBsS;
-                }
-                TotalItems = _total;
-                TotalBsSForThePeriod = _tempTotalBsS;
-                UpdatePageNumbers();
-                SelectedSale = null;
-                ClearSelectedDetailState();
+                serverPage++;
+                skipGuard++;
+                buffer = (await _salesService.GetSalesHistoryAsync(serverPage, PageSize, StartDate, EndDate, SearchText, _token)).Item1;
+                if (_token.IsCancellationRequested) return;
             }
+
+            if (CurrentPage != serverPage)
+            {
+                CurrentPage = serverPage;
+            }
+
+            foreach (var _item in buffer)
+            {
+                _knownCashiers.Add(_item.CashierName);
+            }
+            ReplaceCollection(Cashiers, _knownCashiers.OrderBy(_c => _c, StringComparer.OrdinalIgnoreCase));
+
+            _pageBuffer = buffer.ToList();
+            TotalItems = total;
+            ApplyCurrentPageFilter();
+            UpdatePageNumbers();
+            SelectedSale = null;
+            ClearSelectedDetailState();
         }
         catch (OperationCanceledException)
         {

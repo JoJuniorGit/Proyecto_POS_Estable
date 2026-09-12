@@ -17,6 +17,44 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.64.5  | 2026-09-12  | (8.108)      | PRUEBA DE ESTRES NO DESTRUCTIVA + FILTRO DE CAJERO EN EL (A)
+|          |             |              | HISTORIAL (WPF/WEB). (A) scripts/stress-test.py (Python 3
+|          |             |              | stdlib): N cajas-hilo (def. 4) completan ventas de $0.00
+|          |             |              | con el usuario de aislamiento BOT_STRESS_TEST y productos
+|          |             |              | sinteticos SKU-TEST-* (precio $0); pre-flight /health,
+|          |             |              | tasa, login y resolucion+validacion de productos (precio>0,
+|          |             |              | isActive, isDeleted, stock); flujo start -> items ->
+|          |             |              | checkout-preview -> complete con Idempotency-Key por venta
+|          |             |              | (IsZeroAmountOrder, sin pagos); latencia avg/p95/p99 y
+|          |             |              | distribucion HTTP por endpoint, resumen en consola + --out
+|          |             |              | JSON; re-login automatico ante 401/403 con token
+|          |             |              | compartido; parametros --duration/--transactions,
+|          |             |              | --think-min/max (4-20s), --rate, --insecure, --products,
+|          |             |              | --confirm-staging obligatorio (antiproduccion). Fix:
+|          |             |              | ApiClient.post acepta body=None. (B) Limpieza:
+|          |             |              | cleanup-stress-data.sql (ventas del cajero de aislamiento
+|          |             |              | via join Sales->Users por Cedula/Username; borra items,
+|          |             |              | pagos, cash transactions, outbox SaleCompleted, idempotent
+|          |             |              | requests, stock y ventas; no resetea secuencia) +
+|          |             |              | -products.sql/-user.sql opcionales; runner
+|          |             |              | cleanup-stress-data.ps1 (lee cadena de secrets.json,
+|          |             |              | psql auto-detectado, PGPASSWORD, pwsh 7; split SQL porque
+|          |             |              | psql \if no acepta comparaciones de string ni numericas).
+|          |             |              | (C) WPF: SalesHistoryViewModel filtro de cajero con
+|          |             |              | buscador por usuario (CashierFilterText substring
+|          |             |              | case-insensitive) + toggle "Ocultar transacciones de
+|          |             |              | prueba" default OFF + resumen de ocultas (HiddenByFilter
+|          |             |              | Count/Summary); auto-avance de pagina vacia en el
+|          |             |              | servidor (guard 50) y acumulacion de cajeros; XAML fila 2
+|          |             |              | (ComboBox editable + CheckBox + TextBlock). (D) Web:
+|          |             |              | HistoryPage fila 2 con input+datalist de cajeros, toggle
+|          |             |              | default OFF y contador; logica 100% cliente en
+|          |             |              | src/utils/historyFilters.js (filterHistorySales +
+|          |             |              | accumulateCashierNames, dedup lowercase). (E) Docs:
+|          |             |              | INSTALLATION 13.12 (runbook + rate limit 200 req/min/IP
+|          |             |              | + limpieza). Verif: build R 0/0; suite .NET 913/913
+|          |             |              | (+7 WPF); web 90/90 y lint 0/0; smoke python y SQL.
+|          |             |              | Ver ANEXO 8.108 en docs/reporte.txt.
 | v1.64.4  | 2026-09-12  | (8.107)      | MONITOREO DE SALUD Y SLO INTEGRADO AL PUESTO. (A)
 |          |             |              | monitor-health.ps1 refactorizado: compatibilidad PS 5.1
 |          |             |              | (eliminado -StatusCodeVariable, mapeo manual del status HTTP),
@@ -1188,8 +1226,9 @@ Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-11 (REVISION 8.94 / modernización visual y experiencia enterprise
-  de Historial de Ventas en WPF; suite .NET 847/847; build R 0/0).
+  Ultima verificacion: 2026-09-12 (REVISION 8.108 / prueba de estres no destructiva +
+  filtro de cajero con ocultar transacciones de prueba en Historial WPF y Web; suite .NET
+  913/913; build R 0/0; web 90/90 y lint 0/0).
   Proxima revision obligatoria: con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ===============================================================================
