@@ -146,10 +146,50 @@
   padding-bottom: 4px;
 }
 
-.history-cashier-col {
+.history-cashier-field {
   flex: 1 1 320px;
   min-width: 240px;
   max-width: 380px;
+}
+
+.history-cashier-combo {
+  position: relative;
+}
+
+.history-cashier-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  list-style: none;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+
+.history-cashier-option {
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.history-cashier-option:hover,
+.history-cashier-option.selected {
+  background-color: var(--bg-hover);
+}
+
+.history-cashier-empty {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
 }
 
 .history-toggle-col {
@@ -188,7 +228,7 @@
     flex-wrap: wrap;
   }
 
-  .history-cashier-col {
+  .history-cashier-field {
     flex: 1 1 100%;
     max-width: none;
   }

@@ -3,7 +3,7 @@ import { getSalesHistory, getSaleHistoryDetail } from '../services/historyApi';
 import { Search, Filter, Loader2, Calendar, ChevronRight, ChevronDown, RefreshCw, CheckCircle, Clock, XCircle, FileText } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime, formatQuantity } from '../utils/formatters';
-import { filterHistorySales, accumulateCashierNames, areSecondaryFiltersActive, applySecondaryFilterDrafts } from '../utils/historyFilters';
+import { filterHistorySales, accumulateCashierNames, areSecondaryFiltersActive, applySecondaryFilterDrafts, filterCashierSuggestions } from '../utils/historyFilters';
 import Pagination from '../components/ui/Pagination';
 import './HistoryPage.css';
 
@@ -36,6 +36,8 @@ export default function HistoryPage() {
   const [isSecondaryFilterOpen, setIsSecondaryFilterOpen] = useState(false);
   const [draftCashierFilter, setDraftCashierFilter] = useState('');
   const [draftHideTestSales, setDraftHideTestSales] = useState(false);
+  const [cashierDropdownOpen, setCashierDropdownOpen] = useState(false);
+  const [cashierActiveIndex, setCashierActiveIndex] = useState(-1);
   const flyoutRef = useRef(null);
   const funnelButtonRef = useRef(null);
 
@@ -101,10 +103,52 @@ export default function HistoryPage() {
     setCurrentPage(1);
   };
 
-  const openSecondaryFilters = () => {
+  const toggleSecondaryFilters = () => {
+    if (isSecondaryFilterOpen) {
+      setIsSecondaryFilterOpen(false);
+      return;
+    }
     setDraftCashierFilter(cashierFilter);
     setDraftHideTestSales(hideTestSales);
     setIsSecondaryFilterOpen(true);
+  };
+
+  const filteredCashierSuggestions = filterCashierSuggestions(cashierOptions, draftCashierFilter);
+
+  const selectCashier = (name) => {
+    setDraftCashierFilter(name);
+    setCashierDropdownOpen(false);
+    setCashierActiveIndex(-1);
+  };
+
+  const handleCashierKeyDown = (e) => {
+    if (!cashierDropdownOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setCashierDropdownOpen(true);
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setCashierActiveIndex((prev) =>
+        filteredCashierSuggestions.length === 0 ? -1 : (prev + 1) % filteredCashierSuggestions.length
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setCashierActiveIndex((prev) =>
+        filteredCashierSuggestions.length === 0
+          ? -1
+          : (prev - 1 + filteredCashierSuggestions.length) % filteredCashierSuggestions.length
+      );
+    } else if (e.key === 'Enter' && cashierActiveIndex >= 0) {
+      e.preventDefault();
+      selectCashier(filteredCashierSuggestions[cashierActiveIndex]);
+    } else if (e.key === 'Escape') {
+      setCashierDropdownOpen(false);
+      setCashierActiveIndex(-1);
+      e.stopPropagation();
+    }
   };
 
   const applySecondaryFilters = () => {
@@ -219,7 +263,7 @@ const handlePageChange = (newPage) => {
               aria-expanded={isSecondaryFilterOpen}
               aria-controls="history-secondary-filters"
               aria-label="Filtros secundarios: cajero y ocultar transacciones de prueba"
-              onClick={openSecondaryFilters}
+              onClick={toggleSecondaryFilters}
             >
               <Filter size={16} />
               Filtros
@@ -233,21 +277,53 @@ const handlePageChange = (newPage) => {
           ref={flyoutRef}
           className={`history-filter-row-secondary${isSecondaryFilterOpen ? ' open' : ''}`}
         >
-          <div className="history-filter-item history-cashier-col">
+          <div className="history-filter-item history-cashier-field">
             <label className="history-filter-label">Cajero (buscador por usuario)</label>
-            <input
-              type="text"
-              list="history-cashier-options"
-              className="history-filter-input"
-              placeholder="Buscar por nombre de usuario..."
-              value={draftCashierFilter}
-              onChange={(e) => setDraftCashierFilter(e.target.value)}
-            />
-            <datalist id="history-cashier-options">
-              {cashierOptions.map((c) => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
+            <div className="history-cashier-combo">
+              <input
+                type="text"
+                className="history-filter-input history-cashier-input"
+                placeholder="Buscar por nombre de usuario..."
+                value={draftCashierFilter}
+                onChange={(e) => setDraftCashierFilter(e.target.value)}
+                onFocus={() => setCashierDropdownOpen(true)}
+                onBlur={() => {
+                  setCashierDropdownOpen(false);
+                  setCashierActiveIndex(-1);
+                }}
+                onKeyDown={handleCashierKeyDown}
+                role="combobox"
+                aria-expanded={cashierDropdownOpen}
+                aria-autocomplete="list"
+                aria-controls="history-cashier-list"
+                autoComplete="off"
+              />
+              {cashierDropdownOpen && (
+                <ul id="history-cashier-list" className="history-cashier-list" role="listbox">
+                  {filteredCashierSuggestions.length === 0 ? (
+                    <li className="history-cashier-empty" role="option" aria-disabled="true">
+                      Sin coincidencias
+                    </li>
+                  ) : (
+                    filteredCashierSuggestions.map((name, index) => (
+                      <li
+                        key={name}
+                        className={`history-cashier-option${index === cashierActiveIndex ? ' selected' : ''}`}
+                        role="option"
+                        aria-selected={index === cashierActiveIndex}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          selectCashier(name);
+                        }}
+                        onMouseEnter={() => setCashierActiveIndex(index)}
+                      >
+                        {name}
+                      </li>
+                    ))
+                  )}
+                </ul>
+              )}
+            </div>
           </div>
 
           <div className="history-toggle-col">

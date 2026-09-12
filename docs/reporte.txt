@@ -7330,3 +7330,93 @@ E1. Commit de la revision 8.111 (feat) sin push (rama V0.15); verificacion manua
     en el puesto pendiente.
 
 FIN DEL ANEXO - REVISION 8.111
+
+
+ANEXO - REVISION 8.112
+TITULO: FIX DE FILTROS SECUNDARIOS - GOTCHA DE POPUP WPF Y BUNDLE WEB DESACTUALIZADO
+
+A. CONTEXTO
+A1. Tras 8.111, el usuario reporto en el puesto dos fallos: (1) WPF local - "en
+    filtro no funciona, con pulsar en cualquier parte del filtro este colapsa":
+    el flyout se cerraba al interactuar con el ComboBox editable, el checkbox o
+    los botones; (2) Web - "no se ocultan los filtros" y pedido de "dar estilo a
+    la lista desplegable de vendedores" (el <datalist> nativo no admite estilos).
+A2. Causa raiz (1): gotcha ya anticipado en 8.111 C5/D5 - Popup StaysOpen=True +
+    AllowsTransparency=True que contiene un ComboBox editable de MaterialDesign:
+    al abrir la lista interna del ComboBox, el focus/hit-test cambia de ventana y
+    el Popup contenedor se cierra. No era culpa de Window_PreviewMouseDown (una
+    ventana Popup tiene su propio HwndSource), pero se elimino la totalidad del
+    mecanismo Popup para una solucion determinista.
+A3. Causa raiz (2): Backend.API/wwwroot (versionado como mecanismo de despliegue
+    del puesto, 35 archivos en git) NO se regenero en el commit de 8.111; el
+    puesto servia el bundle de 8.100 sin el flyout colapsable. Revision del
+    supuesto "excluir churn de wwwroot": el repo versiona el bundle final
+    (indice git ls-files Backend.API/wwwroot) y commits historicos (8.31, 8.100)
+    incluyen la regeneracion; el bundle debe committearse en cada revision web.
+
+B. IMPLEMENTACION
+B1. WPF - SalesHistoryView.xaml: eliminado el bloque <Popup ...>; la fila suma
+    pasa a un Grid de 2 filas con el panel FilterFlyoutPanel en-flow (Border con
+    CornerRadius 8 y fondo #F8FAFC) cuyo Visibility se ancla a IsFilterFlyoutOpen
+    via BooleanToVisibilityConverter; contenido en 3 columnas (ComboBox editable
+    * / CheckBox / Limpiar+Aplicar) igualando el comportamiento visual del web.
+    Sin Popup, sin AllowsTransparency, sin manejadores de mouse de ventana.
+B2. WPF - SalesHistoryView.xaml.cs: quitados Window_PreviewMouseDown, IsDescendantOf
+    (usings System.Windows.Media*/System), SecondaryFiltersPopup_Opened y
+    FilterDraft_PreviewKeyDown. Window_PreviewKeyDown ahora cierra via
+    vm.CloseFilterFlyoutCommand cuando Escape y IsFilterFlyoutOpen (evita
+    code-behind mutando estado directamente); FilterFlyoutPanel_IsVisibleChanged
+    enfoca DraftCashierCombo al abrir. Suscripcion Loaded/Unloaded solo al
+    PreviewKeyDown de la ventana (idempotente, sin fugas).
+B3. Web - src/utils/historyFilters.js: helper puro filterCashierSuggestions(options,
+    query) (substring case-insensitive y trim; con query vacia devuelve el arreglo
+    completo) para la lista de cajeros.
+B4. Web - src/pages/HistoryPage.jsx: openSecondaryFilters convertido en
+    toggleSecondaryFilters (si abierto cierra; si cerrado sincroniza borradores y
+    abre); el <datalist> se reemplaza por un combobox custom dentro del flyout:
+    input role=combobox/aria-autocomplete/aria-controls, lista ul role=listbox
+    con opciones filtradas, navegacion por teclado ArrowDown/ArrowUp (mover
+    indice activo), Enter (selecciona), Escape (cierra el dropdown con
+    stopPropagation para no cerrar el flyout completo), seleccion por mouse con
+    preventDefault para no perder el focus antes del click, onMouseEnter
+    sincroniza el indice activo. SSR preservado: el dropdown solo se renderiza con
+    cashierDropdownOpen=true y las etiquetas del mount test de 8.108 persisten.
+B5. Web - src/pages/HistoryPage.css: renombrado .history-cashier-col a
+    .history-cashier-field (media query incluida) y estilos del combobox:
+    .history-cashier-combo (relative), .history-cashier-list (absolute, tokens
+    var(--bg-card)/var(--border)/var(--shadow-md)), opciones con var(--text-primary)
+    y hover/selected con var(--bg-hover), vacias con var(--text-muted). Sin
+    estilos inline.
+B6. Backend.API/wwwroot: bundle regenerado con npm run build (assets hasheados
+    nuevos y retirados los antiguos) y COMMITEADO en esta revision para que el
+    puesto sirva el flyout colapsable y el dropdown estilizado.
+
+C. VERIFICACION
+C1. dotnet build CommandCenter.slnx -c Release: 0 advertencias / 0 errores.
+C2. dotnet test CommandCenter.slnx -c Release: 919/919 (sin regresiones; los 6
+    tests de borradores de 8.111 no tocan el Popup eliminado).
+C3. Web: npm test 110/110 (107 previas + 3 tests nuevos de filterCashierSuggestions)
+    y npm run lint 0/0.
+C4. Sin cambios de modelo persistente: no requiere migracion EF ni smoke.
+C5. Pendiente en el puesto: smoke manual del flyout WPF (abrir/cerrar, escribir en
+    el ComboBox, marcar el checkbox, Limpiar/Aplicar sin colapso) y del dropdown
+    de cajeros web en escritorio y movil.
+
+D. DECISIONES Y DEUDA REGISTRADA
+D1. Se descarta el mecanismo Popup para el flyout WPF: panel en-flow dentro de la
+    tarjeta (igual que el web). Coste: la tarjeta crece ~110px al abrir (mismo
+    comportamiento que el web, que expande la fila). Beneficio: sin gotchas de
+    hit-testing/focus multi-ventana.
+D2. Comprobante de despliegue: el bundle wwwroot es parte del commit de cada
+    revision web (evidencia: git ls-files Backend.API/wwwroot y commits 8.31/
+    8.100). Se corrige el supuesto previo de la sesion de 8.111 ("excluir churn")
+    que provoco el despliegue desactualizado en el puesto.
+D3. El dropdown de cajeros reemplaza al datalist porque los navegadores no
+    permiten estilizar la lista nativa del datalist; la logica es 100% client-side
+    y testeada como helper puro (patron de web-pos-patterns).
+
+E. ESTADO
+E1. Commit de la revision 8.112 (fix) sin push (rama V0.15); verificacion manual en
+    el puesto pendiente.
+
+FIN DEL ANEXO - REVISION 8.112

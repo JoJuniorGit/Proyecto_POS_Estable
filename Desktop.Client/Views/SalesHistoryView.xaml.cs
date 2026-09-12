@@ -1,10 +1,8 @@
-using System;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Media3D;
+using Desktop.Client.ViewModels;
 
 namespace Desktop.Client.Views;
 
@@ -45,9 +43,7 @@ public partial class SalesHistoryView : UserControl
     private void SalesHistoryView_Loaded(object sender, RoutedEventArgs e)
     {
         if (Window.GetWindow(this) is not Window window) return;
-        window.PreviewMouseDown -= Window_PreviewMouseDown;
         window.PreviewKeyDown -= Window_PreviewKeyDown;
-        window.PreviewMouseDown += Window_PreviewMouseDown;
         window.PreviewKeyDown += Window_PreviewKeyDown;
     }
 
@@ -55,53 +51,23 @@ public partial class SalesHistoryView : UserControl
     {
         if (Window.GetWindow(this) is Window window)
         {
-            window.PreviewMouseDown -= Window_PreviewMouseDown;
             window.PreviewKeyDown -= Window_PreviewKeyDown;
         }
     }
 
-    private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (!SecondaryFiltersPopup.IsOpen) return;
-        if (e.OriginalSource is not DependencyObject source) return;
-        if (IsDescendantOf(source, FunnelButton)) return;
-        SecondaryFiltersPopup.IsOpen = false;
-    }
-
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape && SecondaryFiltersPopup.IsOpen)
-        {
-            SecondaryFiltersPopup.IsOpen = false;
-            e.Handled = true;
-        }
+        if (e.Key != Key.Escape || DataContext is not SalesHistoryViewModel vm) return;
+        if (!vm.IsFilterFlyoutOpen) return;
+        vm.CloseFilterFlyoutCommand.Execute(null);
+        e.Handled = true;
     }
 
-    private void FilterDraft_PreviewKeyDown(object sender, KeyEventArgs e)
+    private void FilterFlyoutPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (e.Key == Key.Escape && SecondaryFiltersPopup.IsOpen)
+        if (e.NewValue is true)
         {
-            SecondaryFiltersPopup.IsOpen = false;
-            e.Handled = true;
+            Dispatcher.BeginInvoke(() => DraftCashierCombo.Focus());
         }
-    }
-
-    private void SecondaryFiltersPopup_Opened(object? sender, EventArgs e)
-    {
-        DraftCashierCombo.Focus();
-    }
-
-    private static bool IsDescendantOf(DependencyObject child, DependencyObject ancestor)
-    {
-        DependencyObject? current = child;
-        while (current is not null)
-        {
-            if (current == ancestor) return true;
-            current = current is Visual or Visual3D
-                ? VisualTreeHelper.GetParent(current)
-                : LogicalTreeHelper.GetParent(current);
-        }
-
-        return false;
     }
 }

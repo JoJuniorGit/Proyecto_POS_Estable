@@ -268,28 +268,35 @@
                 </Grid>
 
                 <Grid Grid.Row="1" Margin="0,12,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
                     <TextBlock Text="{Binding HiddenByFilterSummary}"
                                FontSize="11"
                                Foreground="#64748B"
                                VerticalAlignment="Center"
                                HorizontalAlignment="Left"/>
-                </Grid>
 
-                <Popup x:Name="SecondaryFiltersPopup"
-                       PlacementTarget="{Binding ElementName=FunnelButton}"
-                       Placement="Bottom"
-                       StaysOpen="True"
-                       AllowsTransparency="True"
-                       IsOpen="{Binding IsFilterFlyoutOpen, Mode=TwoWay}"
-                       Opened="SecondaryFiltersPopup_Opened">
-                    <Border Background="#FFFFFF"
+                    <Border Grid.Row="1"
+                            x:Name="FilterFlyoutPanel"
+                            Margin="0,12,0,0"
+                            Background="#F8FAFC"
                             BorderBrush="#E2E8F0"
                             BorderThickness="1"
                             CornerRadius="8"
-                            Padding="16"
-                            Effect="{StaticResource EnterpriseCardShadow}">
-                        <StackPanel Width="360">
-                            <StackPanel Margin="0,0,0,12">
+                            Padding="14,12"
+                            IsVisibleChanged="FilterFlyoutPanel_IsVisibleChanged"
+                            Visibility="{Binding IsFilterFlyoutOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Margin="0,0,18,0">
                                 <TextBlock Text="Cajero (buscador por usuario)" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
                                 <ComboBox x:Name="DraftCashierCombo"
                                           IsEditable="True"
@@ -301,23 +308,24 @@
                                           materialDesign:TextFieldAssist.HasClearButton="True"
                                           Background="#FFFFFF"
                                           BorderBrush="#E2E8F0"
-                                          Width="328"
                                           Height="42"
                                           FontSize="13"
                                           Padding="8,4"
                                           VerticalAlignment="Center"
-                                          PreviewKeyDown="FilterDraft_PreviewKeyDown"/>
+                                          HorizontalAlignment="Left"
+                                          MinWidth="280"/>
                             </StackPanel>
 
-                            <CheckBox IsChecked="{Binding DraftHideTestTransactions}"
+                            <CheckBox Grid.Column="1"
+                                      IsChecked="{Binding DraftHideTestTransactions}"
                                       Content="Ocultar transacciones de prueba (BOT_STRESS_TEST)"
                                       FontSize="12"
                                       Foreground="#475569"
                                       VerticalAlignment="Center"
                                       Padding="4,0,0,0"
-                                      Margin="0,0,0,14"/>
+                                      Margin="0,0,18,0"/>
 
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                                 <Button Content="Limpiar"
                                         Command="{Binding ClearSecondaryFilterDraftsCommand}"
                                         Style="{DynamicResource MaterialDesignFlatButton}"
@@ -327,9 +335,9 @@
                                         Command="{Binding ApplySecondaryFiltersCommand}"
                                         Style="{DynamicResource MaterialDesignRaisedButton}"/>
                             </StackPanel>
-                        </StackPanel>
+                        </Grid>
                     </Border>
-                </Popup>
+                </Grid>
             </Grid>
         </Border>
 

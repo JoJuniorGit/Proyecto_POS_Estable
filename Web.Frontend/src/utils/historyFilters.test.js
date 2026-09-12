@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
-import { TEST_CASHIER_NAME, filterHistorySales, accumulateCashierNames, areSecondaryFiltersActive, applySecondaryFilterDrafts } from './historyFilters.js';
+import { TEST_CASHIER_NAME, filterHistorySales, accumulateCashierNames, areSecondaryFiltersActive, applySecondaryFilterDrafts, filterCashierSuggestions } from './historyFilters.js';
 
 const sale = (id, cashierName) => ({ id, cashierName, totalBsS: 1 });
 
@@ -67,5 +67,24 @@ describe('historyFilters flyout [8.111]', () => {
       { cashierFilter: undefined, hideTestSales: undefined }
     );
     assert.deepStrictEqual(next, { cashierFilter: 'ana', hideTestSales: true });
+  });
+});
+
+describe('historyFilters dropdown de cajeros [8.112]', () => {
+  test('filterCashierSuggestions_ConConsultaVacia_DevuelveTodasLasOpciones', () => {
+    const options = ['Ana', 'BOT_STRESS_TEST', 'Carlos'];
+    assert.deepStrictEqual(filterCashierSuggestions(options, ''), options);
+    assert.deepStrictEqual(filterCashierSuggestions(options, '   '), options);
+    assert.deepStrictEqual(filterCashierSuggestions(options, null), options);
+  });
+
+  test('filterCashierSuggestions_ConSubstring_FiltraIgnorandoMayusculas', () => {
+    const options = ['Ana', 'BOT_STRESS_TEST', 'Carlos'];
+    assert.deepStrictEqual(filterCashierSuggestions(options, 'a'), ['Ana', 'Carlos']);
+    assert.deepStrictEqual(filterCashierSuggestions(options, 'AN'), ['Ana']);
+  });
+
+  test('filterCashierSuggestions_SinCoincidencias_DevuelveListaVacia', () => {
+    assert.deepStrictEqual(filterCashierSuggestions(['Ana', 'Carlos'], 'zzz'), []);
   });
 });

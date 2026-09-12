@@ -30,3 +30,9 @@ export function applySecondaryFilterDrafts(active, draft) {
     hideTestSales: typeof draft.hideTestSales === 'boolean' ? draft.hideTestSales : active.hideTestSales,
   };
 }
+
+export function filterCashierSuggestions(options, query) {
+  const term = (query || '').trim().toLowerCase();
+  if (!term) return options;
+  return options.filter((name) => name.toLowerCase().includes(term));
+}

@@ -17,6 +17,26 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.64.9  | 2026-09-12  | (8.112)      | FIX FILTROS SECUNDARIOS: GOTCHA DE POPUP WPF Y
+|          |             |              | BUNDLE WEB DESACTUALIZADO. (A) Bug WPF: el flyout
+|          |             |              | colapsaba con cualquier clic en su interior - Popup
+|          |             |              | StaysOpen=True + AllowsTransparency conteniendo un
+|          |             |              | ComboBox editable (gotcha anticipado en 8.111 C5/D5).
+|          |             |              | Fix: se elimina el Popup y el panel pasa a ser un
+|          |             |              | bloque en-flow dentro de la tarjeta (igual que el
+|          |             |              | web); sin handlers de mouse de ventana; Escape via
+|          |             |              | CloseFilterFlyoutCommand; foco al combo (IsVisibleChanged).
+|          |             |              | (B) Bug Web: Backend.API/wwwroot (versionado como
+|          |             |              | despliegue del puesto) no se regenero en 8.111 - el
+|          |             |              | puesto servia el bundle antiguo sin el flyout; el
+|          |             |              | rebuild se commitea en esta revision. (C) Web: el
+|          |             |              | funnel ahora toglea abrir/cerrar; el <datalist> (no
+|          |             |              | estilizable) se sustituye por dropdown custom de
+|          |             |              | cajeros (helper puro filterCashierSuggestions, teclado
+|          |             |              | Arrow/Enter/Escape, tokens var(--*), aria-listbox).
+|          |             |              | Build Release 0/0; suite .NET 919/919; npm test
+|          |             |              | 110/110 (+3) y lint 0/0. Sin migracion EF. Detalle en
+|          |             |              | ANEXO 8.112.
 | v1.64.8  | 2026-09-12  | (8.111)      | PANEL DE FILTROS COLAPSABLES EN EL HISTORIAL
 |          |             |              | DE VENTAS (WPF Y WEB). (A) Tras el filtro de
 |          |             |              | cajero + ocultar pruebas (8.108), la fila
