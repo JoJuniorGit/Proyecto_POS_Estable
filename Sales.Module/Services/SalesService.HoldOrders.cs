@@ -298,8 +298,8 @@ public partial class SalesService
 
                 decimal unitPriceUsd = reqItem.UnitPrice > 0 ? reqItem.UnitPrice : catalogPrice;
                 decimal subtotalUsd = Math.Round(unitPriceUsd * adjustedQty, 2, MidpointRounding.AwayFromZero);
-                decimal unitPriceBsS = Math.Round(unitPriceUsd * sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
-                decimal subtotalBsS = Math.Round(subtotalUsd * sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
+                decimal unitPriceBsS = PricingCalculator.ToBsSCeiling(unitPriceUsd, sale.AppliedRate);
+                decimal subtotalBsS = PricingCalculator.RoundToDigital(adjustedQty * unitPriceBsS);
                 bool isCustomPrice = reqItem.UnitPrice > 0 && (product == null || reqItem.UnitPrice != catalogPrice);
 
                 newTotalUsd += subtotalUsd;

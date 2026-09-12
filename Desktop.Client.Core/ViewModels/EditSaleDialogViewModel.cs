@@ -236,7 +236,7 @@ public partial class EditSaleDialogViewModel : ObservableObject, IDisposable
         if (_sale == null) return;
 
         decimal newTotalUsd = _items.Sum(i => i.Subtotal);
-        decimal newTotalBsS = Math.Round(newTotalUsd * _exchangeRate, 2, MidpointRounding.AwayFromZero);
+        decimal newTotalBsS = _items.Sum(i => i.SubtotalBsS);
         decimal remainingUsd = Math.Max(0m, newTotalUsd - _sale.TotalPaidUSD);
 
         NewTotalText = $"${newTotalUsd:N2} (Bs.S {newTotalBsS:N2})";

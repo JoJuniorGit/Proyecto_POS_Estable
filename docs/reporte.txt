@@ -6594,3 +6594,86 @@ Decisiones relacionadas: 8.25-E1 (techo 2d, ajustada en 8.102), 8.7-M3
 Roadmap: revision v0.16.0 (ver Reporte de estado v1.64.0).
 
 FIN DEL ANEXO - REVISION 8.103
+
+ANEXO - REVISION 8.104 - PRECIO UNITARIO Bs.S COMO LEY (REDONDEO POR TECHO 2D)
+
+Contexto: el modal de edicion de productos mostraba y persistia el precio en
+Bs.S con Math.Round(x, 2, AwayFromZero), pero el motor de ventas
+(RecalculateTotalAsync) y el cliente recalculaban con la misma regla a partir
+del producto USD * tasa, generando inconsistencias cuando la tercera cifra
+decimal del producto estaba por debajo de 5 (0.81 * 842.21 = 682.1901 ->
+AwayFromZero daba 682.19 y no se anunciaba un precio estable). Ademas, el
+backend nunca persistia el PriceBsS recibido del cliente (los DTOs de
+producto no lo incluian), por lo que el Product.PriceBsS quedaba en 0 o
+legacy.
+
+Decision (estandar 8.104): el precio unitario en Bs.S se calcula SIEMPRE con
+redondeo por techo a 2 decimales (Math.Ceiling(x * 100) / 100) y es la unica
+fuente de verdad en catalogo, carrito, caja/arqueos, facturacion y recibos:
+- UnitPriceBsS = Ceiling(USD unitario * tasa BCV redondeada a 2d)
+- SubtotalBsS  = RoundToDigital(cantidad * UnitPriceBsS)
+- Precio mayorista Bs.S = Ceiling(PriceWholesaleUSD * tasa), mismo estandar.
+Ejemplo canonico: 0.81 USD * 842.21 = 682.1901 -> 682.20.
+
+Cambios aplicados:
+1. Core: PricingCalculator.ToBsSCeiling(usd, rate) (rate <= 0 -> 0) y wrapper
+   cliente PricingHelper.ToBsSCeiling. Reutiliza RoundPriceUp (techo 2d).
+2. Modal WPF: ProductDialogViewModel.Pricing.cs (PriceRetailBsS,
+   PriceWholesaleBsS) y ProductDialogViewModel.cs (ResultProduct.PriceBsS)
+   pasan a ToBsSCeiling.
+3. Cliente WPF: ProductItemViewModel (todas las derivaciones de precio Bs.S y
+   quick-edit), PosViewModel (sugerencias ya NO pisan el PriceBsS persistido;
+   solo aplican fallback por techo si PriceBsS <= 0), EditableSaleItemVm
+   (UnitPriceBsS = techo; SubtotalBsS = RoundToDigital(cantidad * techo)) y
+   VariantSelectionViewModel (fallback por techo). Carrito activo/caja:
+   CartItemViewModel (UnitPriceBsS = techo y SubtotalBsS = RoundToDigital(qty *
+   unitBsS); OnQuantityTextChanged deja el DTO local con valores canonicos) y
+   CartViewModel (SubtotalLocal/TotalAmountLocal leen el snapshot del motor,
+   suma canonica de las lineas con techo, para venta Pending; solo el fallback
+   cuando no hay venta usa RoundToDigital).
+4. Backend (escritura canonica, zero-trust): CreateProductDto/UpdateProductDto
+   incorporan PriceBsS y ProductsController ya no confia en el valor recibido:
+   recalcula PriceBsS = ToBsSCeiling(precio retail USD, tasa del dia redondeada
+   via IInventoryService.GetTodayExchangeRateAsync) en Create y Update;
+   si la tasa no esta configurada (<= 0) conserva RoundPriceUp del valor
+   recibido. Product.LastConversionRate permanece inerte (sin cambios).
+5. Motor de ventas: SalesService.Pricing.cs (RecalculateTotalAsync) recalcula
+   UnitPriceBsS = ToBsSCeiling(UnitPrice, AppliedRate) y
+   SubtotalBsS = RoundToDigital(cantidad * UnitPriceBsS). El subtotal de la
+   venta y el TotalBsS siguen siendo la suma de los SubtotalBsS de las lineas
+   (RoundToDigital), sin tocar montos de pagos ni conversiones de caja.
+   SalesService.HoldOrders.cs alinea la conversion hold-activa al mismo
+   estandar.
+6. Catalogo web (React): CatalogPage.jsx prioriza p.priceBsS persistido (> 0)
+   y aplica fallback por techo (Math.ceil(usd * rate * 100) / 100) para detal
+   y mayorista; formatters.js getLineAmounts aplica techo en el unitBsS del
+   fallback y RoundToDigital en qty * unitBsS.
+7. Ajustes finos del estandar (misma regla): VariantManagementViewModel
+   (preview Bs.S de variantes), EditSaleDialogViewModel (preview total Bs.S =
+   suma de SubtotalBsS por linea), EditSaleModal.jsx (helper comun
+   toBsSCeiling en los 6 fallbacks unitBsS, incluye newTotalBsS),
+   VariantSelectorModal.jsx (prioriza v.priceBsS y fallback techo),
+   SuggestionList.jsx (prioriza priceBsS y fallback techo, simetrico con
+   PosViewModel) y formatProductDisplayPrice (catalogo, fallback techo).
+   ProductsController.Update conserva el PriceBsS previo si la variante/grupo
+   no tiene PriceRetailUSD (evita forzar 0).
+
+
+Consistencia: como modal, cliente, catalogo y motor aplican exactamente el
+mismo techo sobre (USD, tasa redondeada), el valor anunciado coincide con el
+persistido y con el facturado en todos los flujos (venta normal, edicion de
+venta, hold, checkout mixto, recibos).
+
+Tests: +12 sobre la base anterior. PricingCalculatorTests ampliado con
+ToBsSCeiling (0.81*842.21 -> 682.20; exacto 2d identidad; rate 0 -> 0).
+Nuevo BsPriceCeilingStandardTests: modal CalculaPricing techo, Save persiste
+ResultProduct.PriceBsS 682.20, AddItemAsync motor unit 682.20 y subtotal
+cantidad * unit (3 uds -> 2046.60), EditableSaleItemVm techo por unidad,
+ProductsController Create y Update recalculan el PriceBsS canonico cuando el
+cliente envia un valor AwayFromZero (0.81*842.21 -> 682.20; 0.80*842.21 ->
+673.77). Suite completa: 893/893 en Release; web 84/84 con lint 0/0 (se toco
+CatalogPage.jsx y formatters.js). Sin migracion EF, sin cambios de esquema.
+
+Implicacion para Roadmap: revision v0.16.1 (ver Reporte de estado v1.64.1).
+
+FIN DEL ANEXO - REVISION 8.104

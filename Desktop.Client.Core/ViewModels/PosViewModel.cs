@@ -312,7 +312,9 @@ public partial class PosViewModel : ObservableObject, IDisposable
                 {
                     foreach (var item in results)
                     {
-                        item.PriceBsS = Helpers.PricingHelper.ToBsS(item.PriceUSD, CurrentExchangeRate);
+                        item.PriceBsS = item.PriceBsS > 0
+                        ? item.PriceBsS
+                        : Helpers.PricingHelper.ToBsSCeiling(item.PriceUSD, CurrentExchangeRate);
                         Suggestions.Add(item);
                     }
                 }

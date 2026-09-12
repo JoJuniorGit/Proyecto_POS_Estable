@@ -25,6 +25,9 @@ public class CreateProductDto
     public decimal PriceRetailUSD { get; set; }
 
     [Range(0, 1000000)]
+    public decimal PriceBsS { get; set; }
+
+    [Range(0, 1000000)]
     public decimal PriceWholesaleUSD { get; set; }
 
     [Range(0, 1000000)]
@@ -74,6 +77,9 @@ public class UpdateProductDto
 
     [Range(0, 1000000)]
     public decimal PriceRetailUSD { get; set; }
+
+    [Range(0, 1000000)]
+    public decimal PriceBsS { get; set; }
 
     [Range(0, 1000000)]
     public decimal PriceWholesaleUSD { get; set; }

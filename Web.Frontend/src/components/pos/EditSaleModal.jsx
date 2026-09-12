@@ -7,6 +7,8 @@ import { formatBsS, formatUSD, formatNumberEs } from '../../utils/formatters';
 import { Trash2, AlertTriangle, Save, Loader2, Plus, Minus } from 'lucide-react';
 import './EditSaleModal.css';
 
+const toBsSCeiling = (usd, rate) => (usd > 0 && rate > 0 ? Math.ceil(usd * rate * 100) / 100 : 0);
+
 export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onSuccess }) {
   const [items, setItems] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -19,7 +21,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       setItems(sale.items.map(i => {
         const unitPriceUSD = Number(i.unitPrice ?? i.unitPriceUSD ?? 0);
         const qty = Number(i.quantity) || 1;
-        const unitPriceBsS = Number(i.unitPriceBsS) > 0 ? Number(i.unitPriceBsS) : Math.round(unitPriceUSD * rateToUse * 100) / 100;
+        const unitPriceBsS = Number(i.unitPriceBsS) > 0 ? Number(i.unitPriceBsS) : toBsSCeiling(unitPriceUSD, rateToUse);
         const isFractional = Boolean(
           i.isFractional ||
           i.isFractionable ||
@@ -54,7 +56,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       (prod.unitOfMeasure && prod.unitOfMeasure !== 'Und' && prod.unitOfMeasure !== 0)
     );
     const unitOfMeasure = prod.unitOfMeasure || 'Und';
-    const unitBsS = Math.round(price * rateToUse * 100) / 100;
+    const unitBsS = toBsSCeiling(price, rateToUse);
 
     setItems(prev => {
       const existingIdx = prev.findIndex(i => i.productId === prod.id);
@@ -63,7 +65,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
         const current = updated[existingIdx];
         const step = !current.isFractional ? 1 : (current.unitOfMeasure === 'Grs' || current.unitOfMeasure === 'Ml' ? 100 : current.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
         const newQty = Math.round(((Number(current.quantity) || 0) + step) * 1000) / 1000;
-        const currentUnitBsS = Number(current.unitPriceBsS) > 0 ? Number(current.unitPriceBsS) : Math.round((current.unitPrice || 0) * rateToUse * 100) / 100;
+        const currentUnitBsS = Number(current.unitPriceBsS) > 0 ? Number(current.unitPriceBsS) : toBsSCeiling(current.unitPrice, rateToUse);
 
         updated[existingIdx] = {
           ...current,
@@ -112,7 +114,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
     setItems(prev => {
       const updated = [...prev];
       const current = updated[idx];
-      const unitBsS = Number(current.unitPriceBsS) > 0 ? Number(current.unitPriceBsS) : Math.round((current.unitPrice || 0) * rateToUse * 100) / 100;
+      const unitBsS = Number(current.unitPriceBsS) > 0 ? Number(current.unitPriceBsS) : toBsSCeiling(current.unitPrice, rateToUse);
       const subUSD = Math.round(validatedQty * (current.unitPrice || 0) * 100) / 100;
       const subBsS = Math.round(validatedQty * unitBsS * 100) / 100;
 
@@ -134,10 +136,10 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
   // Cálculos financieros reactivos en tiempo real
   const totalPaidUSD = Number(sale?.totalPaidUSD || (sale?.payments?.reduce((acc, p) => acc + (p.amount || 0), 0)) || 0);
   const newTotalUSD = items.reduce((acc, i) => acc + ((Number(i.quantity) || 0) * (Number(i.unitPrice) || 0)), 0);
-  const newTotalBsS = items.reduce((acc, i) => {
-    const unitBsS = Number(i.unitPriceBsS) > 0 ? Number(i.unitPriceBsS) : ((Number(i.unitPrice) || 0) * rateToUse);
+  const newTotalBsS = Math.round(items.reduce((acc, i) => {
+    const unitBsS = Number(i.unitPriceBsS) > 0 ? Number(i.unitPriceBsS) : toBsSCeiling(Number(i.unitPrice) || 0, rateToUse);
     return acc + ((Number(i.quantity) || 0) * unitBsS);
-  }, 0);
+  }, 0) * 100) / 100;
   const newRemainingBalanceUSD = Math.max(0, newTotalUSD - totalPaidUSD);
 
   // Validaciones
@@ -199,7 +201,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
             <tbody>
               {items.map((item, idx) => {
                 const qty = Number(item.quantity) || 0;
-                const unitBsS = Number(item.unitPriceBsS) > 0 ? Number(item.unitPriceBsS) : Math.round(((Number(item.unitPrice) || 0) * rateToUse) * 100) / 100;
+                const unitBsS = Number(item.unitPriceBsS) > 0 ? Number(item.unitPriceBsS) : toBsSCeiling(Number(item.unitPrice) || 0, rateToUse);
                 const subtotalBsS = Math.round(qty * unitBsS * 100) / 100;
                 const isFrac = Boolean(
                   item.isFractional ||

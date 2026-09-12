@@ -23,7 +23,7 @@ export default function SuggestionList({ suggestions, isLoading, onSelectSuggest
   return (
     <div className="search-dropdown">
       {suggestions.map((item) => {
-        const priceBsS = item.priceUSD > 0 ? item.priceUSD * (exchangeRate || 1) : (item.priceBsS || 0);
+        const priceBsS = item.priceBsS > 0 ? item.priceBsS : (item.priceUSD > 0 && exchangeRate > 0 ? Math.ceil(item.priceUSD * exchangeRate * 100) / 100 : 0);
         return (
           <div
             key={item.id}

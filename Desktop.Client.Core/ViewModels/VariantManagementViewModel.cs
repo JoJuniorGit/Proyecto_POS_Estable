@@ -355,7 +355,7 @@ public partial class VariantItemViewModel : ObservableObject
         _exchangeRate = exchangeRate;
 
         _priceRetailBsS = (_exchangeRate > 0 && _priceRetailUSD > 0)
-            ? Math.Round(_priceRetailUSD * _exchangeRate, 2, MidpointRounding.AwayFromZero)
+            ? Helpers.PricingHelper.ToBsSCeiling(_priceRetailUSD, _exchangeRate)
             : dto.PriceBsS;
 
         IsModified = false;
@@ -381,7 +381,7 @@ public partial class VariantItemViewModel : ObservableObject
     {
         IsModified = true;
         PriceRetailBsS = (_exchangeRate > 0 && value > 0)
-            ? Math.Round(value * _exchangeRate, 2, MidpointRounding.AwayFromZero)
+            ? Helpers.PricingHelper.ToBsSCeiling(value, _exchangeRate)
             : 0m;
     }
 

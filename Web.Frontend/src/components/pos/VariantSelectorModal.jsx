@@ -152,7 +152,7 @@ export default function VariantSelectorModal({ isOpen, onClose, parentProduct, o
                       </div>
                       <div className="variant-card-price d-flex flex-column align-end vs-card-price">
                         <span className="font-bold vs-price-bs text-base">
-                          {exchangeRate > 0 ? formatBsS((v.priceRetailUSD || basePriceUSD) * exchangeRate) : ''}
+                          {(v.priceBsS > 0 ? formatBsS(v.priceBsS) : (exchangeRate > 0 ? formatBsS(Math.ceil((v.priceRetailUSD || basePriceUSD) * exchangeRate * 100) / 100) : ''))}
                         </span>
                         <span className="text-xs text-muted">
                           Ref: {formatUSD(v.priceRetailUSD || basePriceUSD)}

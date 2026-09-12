@@ -141,6 +141,7 @@ flowchart TD
   * Transacciones comerciales y totales de venta: `MidpointRounding.AwayFromZero` a 2 decimales.
   * Tasa oficial de cambio BCV: Redondeo hacia arriba a 2 decimales (`Math.Ceiling(rate * 100m) / 100m`; decisión 8.25-E1 ajustada a 2d en 8.102).
   * La tasa **redondeada es la referencia absoluta** para todo cálculo (decisión 8.103): se normaliza en la escritura única (`ExchangeRateWriteService.UpsertTodayRateAsync`) y en todas las lecturas que alimentan cálculos (`ExchangeRateController.GetToday`, `ExchangeRateResolver.ReadEffectiveTodayRateAsync`, `InventoryService.GetTodayExchangeRateAsync`), sin mutar el log de tasas (`GetHistory` muestra el valor crudo almacenado).
+  * **Precio unitario Bs.S como ley** (decisión 8.104): el precio por unidad en moneda local se redondea siempre **hacia arriba a 2 decimales** (`PricingCalculator.ToBsSCeiling(usd, rate)` = techo de `usd * rate`) y es la única fuente de verdad en catálogo, carrito, caja/arqueos, facturación y recibos (modal, cliente WPF, motor de ventas y backend comparten la misma regla). `SubtotalBsS = RoundToDigital(cantidad * UnitPriceBsS)`. Ejemplo: `0.81 * 842.21 = 682.1901 -> 682.20`.
 * **Inmutabilidad del Historial de Ventas (`rules.md`):**
   Bajo ninguna circunstancia se debe recalcular el monto en moneda local de una venta histórica usando la tasa BCV actual. Las ventas cerradas son snapshots inmutables que deben leer estrictamente `AppliedRate`, `TotalUSD`, `TotalBsS` y `FinalPaidAmountBsS`.
 

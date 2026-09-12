@@ -95,13 +95,13 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         set => SetProperty(ref _isEmpty, value);
     }
 
-    public decimal SubtotalLocal => CurrentSale != null && CurrentSale.Status != "Pending"
-        ? CurrentSale.SubtotalBsS 
-        : PricingHelper.ToBsS(Subtotal, _exchangeRateService.CurrentRate);
-        
-    public decimal TotalAmountLocal => CurrentSale != null && CurrentSale.Status != "Pending"
-        ? CurrentSale.TotalBsS 
-        : PricingHelper.ToBsS(TotalUSD, _exchangeRateService.CurrentRate);
+    public decimal SubtotalLocal => CurrentSale?.SubtotalBsS > 0
+        ? CurrentSale.SubtotalBsS
+        : PricingHelper.RoundToDigital(Subtotal * _exchangeRateService.CurrentRate);
+
+    public decimal TotalAmountLocal => CurrentSale?.TotalBsS > 0
+        ? CurrentSale.TotalBsS
+        : PricingHelper.RoundToDigital(TotalUSD * _exchangeRateService.CurrentRate);
 
     private SaleDto? _currentSale;
     public SaleDto? CurrentSale

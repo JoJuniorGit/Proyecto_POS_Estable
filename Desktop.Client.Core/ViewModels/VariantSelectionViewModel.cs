@@ -38,7 +38,7 @@ public partial class VariantSelectionViewModel : ObservableObject
     public decimal ExchangeRate => _exchangeRateService?.CurrentRate ?? 1m;
 
     public decimal BasePriceUSD => ParentProduct?.PriceRetailUSD > 0 ? ParentProduct.PriceRetailUSD : (ParentProduct?.PriceUSD ?? 0m);
-    public decimal BasePriceBsS => ParentProduct?.PriceBsS > 0 ? ParentProduct.PriceBsS : (BasePriceUSD * ExchangeRate);
+    public decimal BasePriceBsS => ParentProduct?.PriceBsS > 0 ? ParentProduct.PriceBsS : Helpers.PricingHelper.ToBsSCeiling(BasePriceUSD, ExchangeRate);
 
     public VariantSelectionViewModel(
         IProductService productService,

@@ -438,7 +438,7 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
             ResultProduct.MinWholesaleQuantity = MinWholesaleQuantity > 0m ? MinWholesaleQuantity : 6.000m;
             decimal rate = _exchangeRateService.CurrentRate;
             ResultProduct.PriceBsS = (rate > 0 && PriceRetailUSD > 0)
-                ? Math.Round(PriceRetailUSD * rate, 2, MidpointRounding.AwayFromZero)
+                ? Desktop.Client.Helpers.PricingHelper.ToBsSCeiling(PriceRetailUSD, rate)
                 : (PriceRetailBsS > 0 ? PriceRetailBsS : (_initialProduct?.PriceBsS ?? 0m));
         }
 

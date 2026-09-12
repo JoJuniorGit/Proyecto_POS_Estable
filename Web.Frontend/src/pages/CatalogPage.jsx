@@ -34,6 +34,8 @@ export default function CatalogPage() {
   // sort/paginación/búsqueda solo cambian estado; el efecto dispara un único fetch por cambio.
   const [reloadToken, setReloadToken] = useState(0);
 
+  const toBsSCeiling = (usd, rate) => (usd > 0 && rate > 0 ? Math.ceil(usd * rate * 100) / 100 : 0);
+
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -257,14 +259,14 @@ export default function CatalogPage() {
               <tbody>
                 {products.map((p) => {
                   const retailUSD = p.priceUSD || 0;
-                  const retailBsS = p.priceUSD > 0 ? p.priceUSD * exchangeRate : (p.priceBsS || 0);
+                  const retailBsS = p.priceBsS > 0 ? p.priceBsS : toBsSCeiling(p.priceUSD, exchangeRate);
 
                   // Regla 2: ¿Tiene descuento de precio al mayor real configurado?
                   const hasRealWholesale = (p.hasWholesale || p.priceWholesaleUSD > 0) && p.priceWholesaleUSD > 0 && p.priceWholesaleUSD < retailUSD;
 
                   // Regla 2: Si NO tiene precio al mayor, hereda el precio al detal
                   const wholesaleUSD = hasRealWholesale ? p.priceWholesaleUSD : retailUSD;
-                  const wholesaleBsS = hasRealWholesale ? p.priceWholesaleUSD * exchangeRate : retailBsS;
+                  const wholesaleBsS = hasRealWholesale ? toBsSCeiling(p.priceWholesaleUSD, exchangeRate) : retailBsS;
 
                   // Regla 3: Si hereda detal, unidades mínimas por defecto en "1" (en lugar de "0"), siempre entero sin decimales
                   const minQty = Math.round(hasRealWholesale ? (p.minWholesaleQuantity || 1) : 1);
@@ -365,11 +367,11 @@ export default function CatalogPage() {
           <div className="catalog-mobile-view">
             {products.map((p) => {
               const retailUSD = p.priceUSD || 0;
-              const retailBsS = p.priceUSD > 0 ? p.priceUSD * exchangeRate : (p.priceBsS || 0);
+              const retailBsS = p.priceBsS > 0 ? p.priceBsS : toBsSCeiling(p.priceUSD, exchangeRate);
 
               const hasRealWholesale = (p.hasWholesale || p.priceWholesaleUSD > 0) && p.priceWholesaleUSD > 0 && p.priceWholesaleUSD < retailUSD;
               const wholesaleUSD = hasRealWholesale ? p.priceWholesaleUSD : retailUSD;
-              const wholesaleBsS = hasRealWholesale ? p.priceWholesaleUSD * exchangeRate : retailBsS;
+              const wholesaleBsS = hasRealWholesale ? toBsSCeiling(p.priceWholesaleUSD, exchangeRate) : retailBsS;
               const minQty = Math.round(hasRealWholesale ? (p.minWholesaleQuantity || 1) : 1);
               const wholesaleColor = hasRealWholesale ? 'var(--primary-color, #6366f1)' : '#D97706';
 

@@ -83,6 +83,12 @@ public partial class ProductsController : ControllerBase
         }
         try
         {
+            decimal retailUsd = request.PriceRetailUSD > 0 ? request.PriceRetailUSD : request.PriceUSD;
+            decimal todayRate = await _inventoryService.GetTodayExchangeRateAsync();
+            decimal canonicalPriceBsS = todayRate > 0
+                ? Core.Helpers.PricingCalculator.ToBsSCeiling(retailUsd, todayRate)
+                : Core.Helpers.PricingCalculator.RoundPriceUp(request.PriceBsS);
+
             var product = new Product
             {
                 Name = request.Name,
@@ -90,6 +96,7 @@ public partial class ProductsController : ControllerBase
                 Description = request.Description ?? string.Empty,
                 PriceUSD = request.PriceUSD > 0 ? request.PriceUSD : request.PriceRetailUSD,
                 PriceRetailUSD = request.PriceRetailUSD > 0 ? request.PriceRetailUSD : request.PriceUSD,
+                PriceBsS = canonicalPriceBsS,
                 PriceWholesaleUSD = request.PriceWholesaleUSD,
                 CostPriceUSD = request.CostPriceUSD,
                 ProfitMarginRetail = request.ProfitMarginRetail,
@@ -160,6 +167,15 @@ public partial class ProductsController : ControllerBase
             existing.HasIndependentPricing = request.HasIndependentPricing;
             existing.ConversionFactor = request.ConversionFactor;
             existing.GroupKey = request.GroupKey;
+            decimal todayRate = await _inventoryService.GetTodayExchangeRateAsync();
+            if (existing.PriceRetailUSD > 0 && todayRate > 0)
+            {
+                existing.PriceBsS = Core.Helpers.PricingCalculator.ToBsSCeiling(existing.PriceRetailUSD, todayRate);
+            }
+            else if (request.PriceBsS > 0)
+            {
+                existing.PriceBsS = Core.Helpers.PricingCalculator.RoundPriceUp(request.PriceBsS);
+            }
 
             await _inventoryService.UpdateProductAsync(existing);
             return NoContent();

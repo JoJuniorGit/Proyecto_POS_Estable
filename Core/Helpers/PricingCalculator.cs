@@ -58,6 +58,17 @@ public static class PricingCalculator
     }
 
     /// <summary>
+    /// Converts a USD amount to Bs.S rounding UP to 2 decimal places (ceiling).
+    /// Estandar 8.104: el precio unitario en Bs.S se redondea siempre hacia arriba (0.81 * 842.21 = 682.1901 -> 682.20)
+    /// y es la unica fuente de verdad en catalogo, carrito, caja, facturacion y recibos.
+    /// </summary>
+    public static decimal ToBsSCeiling(decimal amountUsd, decimal rate)
+    {
+        if (rate <= 0) return 0m;
+        return RoundPriceUp(amountUsd * rate);
+    }
+
+    /// <summary>
     /// Converts a Bs.S amount to USD using the provided exchange rate.
     /// Defaults to 2 decimals for digital presentation, supports 4 decimals for high-precision currency conversions [8C-M1].
     /// </summary>

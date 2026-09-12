@@ -184,8 +184,8 @@ public partial class ProductDialogViewModel
             Cost = CostPriceUSD;
             ProfitPercentage = ProfitMarginRetail;
 
-            PriceRetailBsS = Math.Round(PriceRetailUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero);
-            PriceWholesaleBsS = Math.Round(PriceWholesaleUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero);
+            PriceRetailBsS = Desktop.Client.Helpers.PricingHelper.ToBsSCeiling(PriceRetailUSD, _exchangeRateService.CurrentRate);
+            PriceWholesaleBsS = Desktop.Client.Helpers.PricingHelper.ToBsSCeiling(PriceWholesaleUSD, _exchangeRateService.CurrentRate);
             PriceBsS = PriceRetailBsS;
 
             IsSellingAtLoss = PriceRetailUSD > 0 && PriceRetailUSD < CostPriceUSD;

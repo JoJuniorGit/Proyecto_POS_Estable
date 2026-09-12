@@ -64,7 +64,7 @@ public partial class CartItemViewModel : ObservableObject
     public decimal UnitPrice => _saleItem.UnitPrice;
     public decimal UnitPriceBsS => _isHistorical 
         ? _saleItem.UnitPriceBsS 
-        : PricingHelper.ToBsS(_saleItem.UnitPrice, _currentExchangeRate);
+        : PricingHelper.ToBsSCeiling(_saleItem.UnitPrice, _currentExchangeRate);
     public string SKU => "-";
 
     public string QuantityDisplay => _saleItem.Quantity % 1m == 0m
@@ -124,5 +124,5 @@ public partial class CartItemViewModel : ObservableObject
     public decimal Subtotal => _saleItem.Quantity * _saleItem.UnitPrice;
     public decimal SubtotalBsS => _isHistorical 
         ? _saleItem.SubtotalBsS 
-        : Subtotal * _currentExchangeRate;
+        : PricingHelper.RoundToDigital(_saleItem.Quantity * UnitPriceBsS);
 }

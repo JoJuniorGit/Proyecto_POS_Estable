@@ -48,9 +48,9 @@ public partial class EditableSaleItemVm : ObservableObject
         }
     }
 
-    public decimal UnitPriceBsS => Math.Round(UnitPrice * ExchangeRate, 2, MidpointRounding.AwayFromZero);
+    public decimal UnitPriceBsS => Helpers.PricingHelper.ToBsSCeiling(UnitPrice, ExchangeRate);
     public decimal Subtotal => Quantity * UnitPrice;
-    public decimal SubtotalBsS => Math.Round(Subtotal * ExchangeRate, 2, MidpointRounding.AwayFromZero);
+    public decimal SubtotalBsS => Helpers.PricingHelper.RoundToDigital(Quantity * UnitPriceBsS);
 
     public IRelayCommand IncreaseQuantityCommand { get; }
     public IRelayCommand DecreaseQuantityCommand { get; }

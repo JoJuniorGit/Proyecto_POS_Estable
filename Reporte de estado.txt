@@ -17,6 +17,27 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.64.1  | 2026-09-11  | (8.104)      | PRECIO UNITARIO Bs.S COMO LEY (REDONDEO POR TECHO 2D): el
+|          |             |              | precio Bs.S se calcula siempre con Math.Ceiling a 2 decimales
+|          |             |              | en modal (ProductDialogViewModel.Pricing.cs y persistencia del
+|          |             |              | ResultProduct.PriceBsS), cliente (ProductItemViewModel, PosViewModel
+|          |             |              | sugerencias ya no pisan el PriceBsS persistido, EditableSaleItemVm,
+|          |             |              | VariantSelectionViewModel), carrito/caja (CartItemViewModel: unit techo
+|          |             |              | y subtotal RoundToDigital(qty * unit); CartViewModel lee el snapshot
+|          |             |              | del motor para venta Pending) y motor de ventas (SalesService.Pricing.cs
+|          |             |              | RecalculateTotalAsync: UnitPriceBsS = Ceiling(USD * tasa);
+|          |             |              | SubtotalBsS = RoundToDigital(cantidad * UnitPriceBsS); alineado
+|          |             |              | SalesService.HoldOrders.cs). Backend (zero-trust): Create/UpdateProductDto
+|          |             |              | incorporan PriceBsS y ProductsController recalcula el precio canonico
+|          |             |              | ToBsSCeiling(USD, tasa del dia) sin confiar en el valor del cliente.
+|          |             |              | Catalogo web: CatalogPage.jsx prioriza priceBsS persistido con fallback
+|          |             |              | por techo; formatters.js getLineAmounts con techo/RoundToDigital.
+|          |             |              | Ajustes finos: VariantManagementViewModel, EditSaleDialogViewModel,
+|          |             |              | EditSaleModal.jsx, SuggestionList.jsx y formatProductDisplayPrice con la
+|          |             |              | misma regla; Update conserva PriceBsS si no hay PriceRetailUSD.
+|          |             |              | Diferencia AwayFromZero vs techo: 0.81 * 842.21 = 682.1901 -> 682.20.
+|          |             |              | Suite .NET 893/893; build R 0/0; web 84/84; lint 0/0.
+|          |             |              | Ver ANEXO 8.104 en docs/reporte.txt.
 | v1.64.0  | 2026-09-11  | (8.103)      | TASA REDONDEADA COMO REFERENCIA ABSOLUTA EN TODAS LAS FRONTERAS:
 |          |             |              | 1. Escritura (punto unico): ExchangeRateWriteService.UpsertTodayRateAsync
 |          |             |              | normaliza la tasa recibida de forma defensiva; idempotente (evita

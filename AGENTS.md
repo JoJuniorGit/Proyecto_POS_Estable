@@ -35,6 +35,9 @@ descripción del skill coincida con el trabajo, **debes cargarlo antes de escrib
    La tasa **redondeada es la referencia absoluta** para todo cálculo: normalizada en
    escrituras (`ExchangeRateWriteService`) y en las lecturas que alimentan cálculos
    (`GetToday`, `ExchangeRateResolver`, `GetTodayExchangeRateAsync`); `GetHistory` muestra el log crudo (8.103).
+   **Precio unitario Bs.S como ley** (8.104): Ceiling a 2 decimales
+   (`PricingCalculator.ToBsSCeiling`) en modal, cliente, catálogo, backend y motor de ventas;
+   `SubtotalBsS = RoundToDigital(cantidad * UnitPriceBsS)`.
 5. **Nomenclatura de tests**: `Metodo_Escenario_ResultadoEsperado`. Sin emojis.
 6. **JSON en camelCase** y errores HTTP en RFC 7807 (sin filtrar `ex.Message`
    a clientes) — decisiones 8.23-C1/C2.

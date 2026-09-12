@@ -174,9 +174,9 @@ public partial class SalesService
                     throw new KeyNotFoundException($"Producto #{item.ProductId} no encontrado en la base de datos.");
                 }
 
-                item.UnitPriceBsS = PricingCalculator.RoundToDigital(item.UnitPrice * sale.AppliedRate);
+                item.UnitPriceBsS = PricingCalculator.ToBsSCeiling(item.UnitPrice, sale.AppliedRate);
                 item.Subtotal = Math.Round(item.Quantity * item.UnitPrice, 4, MidpointRounding.AwayFromZero);
-                item.SubtotalBsS = PricingCalculator.RoundToDigital(item.Subtotal * sale.AppliedRate);
+                item.SubtotalBsS = PricingCalculator.RoundToDigital(item.Quantity * item.UnitPriceBsS);
             }
 
             sale.Subtotal = Math.Round(sale.Items.Sum(i => i.Subtotal), 4, MidpointRounding.AwayFromZero);
