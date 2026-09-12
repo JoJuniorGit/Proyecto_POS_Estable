@@ -60,6 +60,13 @@ public class SecurityHardeningSprint2Tests
         Assert.Equal("1; mode=block", context.Response.Headers["X-XSS-Protection"]);
         Assert.Equal("strict-origin-when-cross-origin", context.Response.Headers["Referrer-Policy"]);
         Assert.True(context.Response.Headers.ContainsKey("Content-Security-Policy"));
+
+        string permissionsPolicy = context.Response.Headers["Permissions-Policy"].ToString();
+        Assert.Contains("camera=(self)", permissionsPolicy);
+        Assert.Contains("geolocation=()", permissionsPolicy);
+        Assert.Contains("microphone=()", permissionsPolicy);
+        Assert.Contains("payment=()", permissionsPolicy);
+        Assert.Contains("usb=()", permissionsPolicy);
     }
 
     [Fact]

@@ -17,6 +17,21 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.64.7  | 2026-09-12  | (8.110)      | FIX ESCANER WEB: LIBERAR LA CAMERA EN LA PERMISSIONS-POLICY
+|          |             |              | DEL BACKEND. (A) Causa raiz: SecurityHeadersMiddleware.cs
+|          |             |              | emitia Permissions-Policy: camera=(), bloqueando la camara
+|          |             |              | a nivel de documento; permissions.query devolvia 'denied'
+|          |             |              | y getUserMedia fallaba con NotAllowedError pese al candado
+|          |             |              | "Permitir" (consola: "camera is not allowed in this
+|          |             |              | document"). El fix 8.109 (UX de recuperacion) no podia
+|          |             |              | triunfar porque la cabecera prohibia la feature. La
+|          |             |              | recomendacion 8.9-M5 pedia camera=(self) pero se habia
+|          |             |              | implementado camera=(). (B) Fix: camera=(self) (solo el
+|          |             |              | propio origen; geolocation/microphone/payment/usb/fullscreen
+|          |             |              | siguen bloqueadas) + comentario actualizado; test
+|          |             |              | SecurityHardeningSprint2 reforzado con asserts de la
+|          |             |              | Permissions-Policy. Build Release 0/0, suite .NET 913/913.
+|          |             |              | Sin migracion EF ni cambios web. Detalle en ANEXO 8.110.
 | v1.64.6  | 2026-09-12  | (8.109)      | FIX ESCANER WEB: RECUPERACION DE PERMISOS DE CAMARA (A)
 |          |             |              | BLOCKED/REVOCADOS. (A) Causas raiz en BarcodeScannerModal.jsx:
 |          |             |              | currentDeviceId persistia entre aperturas y se usaba con
@@ -1244,9 +1259,9 @@ Logistics     -> Modulo experimental NO productivo: DeliveryService con estado
 
 5.4 Estado de vigencia
 --------------------------------------------------------------------------------
-  Ultima verificacion: 2026-09-12 (REVISION 8.109 / fix de recuperacion de permisos
-  de camara del escaner Web con Reintentar + hint de recarga; suite web 102/102 y
-  lint 0/0; sin cambios .NET; ANEXO 8.109).
+  Ultima verificacion: 2026-09-12 (REVISION 8.110 / liberacion de la camara en la
+  Permissions-Policy del backend para el escaner Web; build Release 0/0, suite .NET
+  913/913; sin migracion EF ni cambios web; ANEXO 8.110).
   Proxima revision obligatoria: con cada PR que toque BD, API, perifericos o cierres deuda.
 
 ===============================================================================

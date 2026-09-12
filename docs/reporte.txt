@@ -7170,3 +7170,75 @@ E1. Commit de la revision 8.109 (fix), sin push (rama V0.15). Pendiente de
     reviewer local y verificacion manual en el puesto (C4).
 
 FIN DEL ANEXO - REVISION 8.109
+
+ANEXO - REVISION 8.110 (2026-09-12)
+FIX ESCANER WEB: LIBERAR LA CAMERA EN LA PERMISSIONS-POLICY DEL BACKEND
+
+A. CONTEXTO Y DECISIONES
+A1. Tras el fix 8.109 (UX de recuperacion de permisos), el usuario reporta que el
+    problema PERSISTE en Chrome (Android y PC) accediendo a
+    https://192.168.1.53:5001/#pos. Consola del navegador:
+    "[Violation] Permissions policy violation: camera is not allowed in this
+    document." El modal muestra la guia 'denied' ("La camara esta bloqueada...
+    abra el candado") aunque el candado del navegador indica 'Permitir'.
+A2. Causa raiz: SecurityHeadersMiddleware.cs emitia la cabecera
+    Permissions-Policy: camera=(), geolocation=(), microphone=(), payment=(),
+    usb=(), fullscreen=(). Al estar 'camera' fuera del allowlist, la feature
+    queda prohibida A NIVEL DE DOCUMENTO: permissions.query({name:'camera'})
+    resuelve 'denied' (la politica sobrescribe el estado del usuario) y
+    getUserMedia falla con NotAllowedError aun con el permiso concedido. La
+    guia 'candado' de 8.109 era correcta ante ese estado, pero ninguna accion
+    del candado puede resolverlo porque la cabecera HTTP la bloquea.
+A3. Divergencia historica: la recomendacion original 8.9-M5 (reporte:694-696)
+    especificaba camera=(self), pero la implementacion (8.9-M5) se emitio con
+    camera=(). En esa revision la SPA no usaba la camara; el escaner de codigos
+    de barras la incorporo posteriormente y la cabecera no se actualizo.
+A4. Decision de la mesa (usuario): permitir la camara SOLO para el propio
+    origen (camera=(self)); el resto de caracteristicas sensibles
+    (geolocation/microphone/payment/usb/fullscreen) permanece bloqueado. La
+    microfono no se habilita (los efectos de sonido usan Web Audio API de
+    sintesis, no captura). Se mantiene intacto el fix 8.109: sigue siendo
+    necesario para deviceId obsoleto, revocacion en caliente y el hint de
+    recarga (la nueva cabecera aplica al recargar el documento).
+A5. Fuera de alcance acordado: el warning de CSP que bloquea Google Fonts
+    (fonts.googleapis.com) NO se toca en esta revision (cosmetico, cae al
+    fallback). Queda como deuda menor.
+
+B. IMPLEMENTACION
+B1. Backend.API/Middleware/SecurityHeadersMiddleware.cs: la cabecera
+    Permissions-Policy pasa a
+    "camera=(self), geolocation=(), microphone=(), payment=(), usb=(), fullscreen=()".
+    Comentario actualizado a la linea (marca 8.9-M5 ajustado 8.110). Cambio
+    sin esquema de BD: no requiere migracion EF.
+B2. CommandCenter.Tests/SecurityHardeningSprint2Tests.cs: el test
+    SecurityHeadersMiddleware_SetsAllRequiredSecurityHeaders se refuerza
+    (guard de regresion) con asserts de que la cabecera contiene
+    "camera=(self)" y que geolocation/microphone/payment/usb permanecen en ().
+
+C. VERIFICACION
+C1. dotnet build CommandCenter.slnx -c Release: 0 advertencias / 0 errores.
+C2. dotnet test CommandCenter.slnx -c Release: 913/913 superadas (sin
+    regresiones); filtrado SecurityHardeningSprint2: 5/5.
+C3. Sin cambios en web (npm test/lint no afectados) ni en WPF.
+C4. Pendiente en el puesto: reiniciar el servicio con start.bat, abrir
+    https://192.168.1.53:5001/#pos y validar que el escaner inicia la camara;
+    si Chrome no reactiva el permiso automaticamente, usar Reintentar o
+    Recargar pagina (boton de 8.109). Verificar en DevTools > Network que la
+    respuesta del HTML lleva Permissions-Policy: camera=(self), ....
+
+D. DECISIONES Y DEUDA REGISTRADA
+D1. camera=(self) y no camera=*: el escaner se ejecuta en el documento
+    principal (sin iframes cross-origin); (self) conserva el minimo privilegio
+    y la SPA no pierde capacidad. El navegador sigue pidiendo el permiso
+    explicito del usuario (queda intacto el flujo de autorizacion).
+D2. Microfono permanece bloqueado: no hay captura de audio en la SPA.
+D3. El warning de Google Fonts (CSP) queda como deuda menor no bloqueante, a
+    corregir en una revision futura si se decide permitir el CDN.
+D4. La guia 'denied' del modal (8.109) no se modifica: con la cabecera nueva
+    permissions.query pasara a 'granted' y el flujo normal no mostrara esa guia.
+
+E. ESTADO
+E1. Commit de la revision 8.110 (fix), sin push (rama V0.15). Supervisor local
+    (reviewer) pendiente. Verificacion manual en el puesto (C4) pendiente.
+
+FIN DEL ANEXO - REVISION 8.110

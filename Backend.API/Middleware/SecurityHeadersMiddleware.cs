@@ -40,10 +40,10 @@ public class SecurityHeadersMiddleware
             headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
         }
 
-        // 8.9-M5: restringir APIs de características del navegador no usadas por la SPA.
+        // 8.9-M5 (ajustado 8.110): la camara queda permitida para el propio origen (escaner web de codigos).
         if (!headers.ContainsKey("Permissions-Policy"))
         {
-            headers["Permissions-Policy"] = "camera=(), geolocation=(), microphone=(), payment=(), usb=(), fullscreen=()";
+            headers["Permissions-Policy"] = "camera=(self), geolocation=(), microphone=(), payment=(), usb=(), fullscreen=()";
         }
 
         if (!headers.ContainsKey("Content-Security-Policy"))
