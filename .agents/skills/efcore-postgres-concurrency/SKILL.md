@@ -213,7 +213,15 @@ public async Task<PagedResultDto<ProductQuickInfoDto>> GetCatalogPageAsync(
 
 ---
 
-## 4. Self-Evaluation Concurrency Test Recipe
+## 4. Schema Migrations & Deferred Execution
+
+* **Migrations only**: Never alter the database schema with raw scripts or manual DDL. Use `dotnet ef migrations add <MigrationName>` and `dotnet ef database update` (e.g. `--project Sales.Module --startup-project Backend.API`).
+* **Deferred execution**: Build the `IQueryable` first (filters, ordering, pagination) and execute it asynchronously with `.ToListAsync(cancellationToken)` only at the end.
+* **Paged responses**: Every paginated query returns `Items`, `TotalCount` (`.CountAsync()`) and `HasMore` (see `PagedResultDto` in section 3).
+
+---
+
+## 5. Self-Evaluation Concurrency Test Recipe
 
 Run database and inventory concurrency tests:
 ```powershell

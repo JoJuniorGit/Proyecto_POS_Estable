@@ -7653,3 +7653,80 @@ E2. Esta revision no toca el codigo de la aplicacion (.NET/React/WPF): solo
     6.a, changelog v1.64.12).
 
 FIN DEL ANEXO - REVISION 8.115
+
+================================================================================
+ANEXO - REVISION 8.116 (2026-09-13)
+Titulo: Curaduria y migracion de skills de agente (.agents/skills)
+================================================================================
+
+A. CONTEXTO
+A1. `npx autoskills@latest` instalo 16 skills genericas en `.agents/skills/` y
+    genero `skills-lock.json`. En paralelo persistia una carpeta legada `skills/`
+    (4 `.mdc` con frontmatter `Description`/`globs`, `rules.md` y `test.txt`) fuera
+    de la ubicacion y formato que opencode detecta, por lo que no se activaba.
+A2. Auditoria de solapes contra el stack real (xUnit+Moq, MVC controllers,
+    net10.0, sin Docker, WPF/Windows, React 19) y contra `docs/coding-guidelines.md`:
+    3 conflictos directos (XML docs, MSTest/FluentAssertions, patrones
+    CommandHandler/ResourceManager), 7 skills inaplicables y 2 de riesgo/bajo valor
+    (frontend-design, seo).
+
+B. IMPLEMENTACION
+B1. Nuevas skills propias: `.agents/skills/clean-architecture/SKILL.md` (capas,
+    DI por constructor, asincronia total, CancellationToken) y
+    `.agents/skills/csharp-endpoints/SKILL.md` (naming, REST, verbos/status,
+    `[Authorize]`, errores RFC 7807 y template MVC real `api/[controller]`).
+B2. Fusiones: `ef-core-postgres.mdc` -> `efcore-postgres-concurrency` (seccion 4:
+    migraciones solo con `dotnet ef`, ejecucion diferida `IQueryable` ->
+    `.ToListAsync(ct)`, paginado Items/TotalCount/HasMore) y `wpf-ui.mdc` ->
+    `wpf-performance-and-ui` (seccion 7: cero code-behind con Behaviors,
+    CommunityToolkit `[ObservableProperty]`/`[RelayCommand]`, precio Bs.S con
+    `PricingCalculator.ToBsSCeiling` a 2 decimales, decision 8.104, en reemplazo
+    del obsoleto redondeo a enteros).
+B3. Purga de autoskills: se conservan 4 alineadas (`aspnet-core`, `csharp-async`,
+    `csharp-xunit`, `accessibility`); se eliminan 12 (`csharp-docs`,
+    `dotnet-best-practices`, `dotnet-design-pattern-review`, `dotnet-upgrade`,
+    `csharp-mstest`, `csharp-nunit`, `csharp-tunit`, `aspnet-minimal-api-openapi`,
+    `minimal-api-file-upload`, `containerize-aspnetcore`, `frontend-design`,
+    `seo`) y `skills-lock.json` queda con 4 entradas.
+B4. AGENTS.md: contadores de suite sin snapshot (conteo vigente en este reporte),
+    Regla 4 unificada (8.102-8.104), Regla 8 con umbrales (300-500 lineas,
+    complejidad <=10), reglas 10-13 nuevas (RBAC/Driver, decimal-only, prohibicion
+    de `async void`, multi-branch sin BranchId 8.25-E3), fila de skills nuevas,
+    nota de precedencia proyecto > genericas y mapa resumido no normativo de la
+    guia (§1-§6).
+B5. Eliminacion de la carpeta legada `skills/` (6 archivos). Alineacion del
+    subagente `reviewer` con las reglas vigentes (techo 2 decimales 8.102,
+    conteo de suite por reporte, skills nuevas).
+
+C. DECISIONES
+C1. Una skill generica se conserva solo si su practica aplica al stack real; se
+    poda por conflicto directo, stack inaplicable o riesgo de romper decisiones
+    vigentes (tokens de diseno 8.24). containerize-aspnetcore, dotnet-upgrade y
+    dotnet-best-practices se descartaron tras analisis detallado (Docker
+    descartado en roadmap P11 para certificacion; sin migracion de framework
+    pendiente; mandatos ajenos: MSTest, XML docs, ResourceManager, SemanticKernel).
+C2. Precedencia: skills del proyecto > skills genericas > preferencias del modelo;
+    ante divergencia con la guia, prevalece `docs/coding-guidelines.md`.
+C3. Caveat: un futuro `npx autoskills` puede reinstalar las podadas segun
+    deteccion de stack; repetir la curaduria si ocurre.
+
+D. VERIFICACION
+D1. `.agents/skills/` contiene 12 skills (8 propias + 4 genericas); `skills/`
+    eliminada; `skills-lock.json` JSON valido con 4 entradas coincidentes con
+    carpetas existentes; frontmatter YAML valido en las 4 skills tocadas
+    (name coincide con carpeta). Sin cambios .NET/React/WPF: no aplica build,
+    suites ni cobertura (solo documentacion y configuracion de agente).
+D2. Reviewer ejecutado (subagente): 0 hallazgos bloqueantes. Se resolvieron los
+    no bloqueantes de alcance: reviewer.md (2d y conteo), referencia §1.3 ->
+    "guia §1 Seguridad por Defecto", ruta MVC y `[Authorize]` en csharp-endpoints.
+
+E. ESTADO / PENDIENTES
+E1. Nota: `scripts/pos-test.ps1` figura modificado en el working tree (default
+    `-Action Menu`) desde antes de esta revision; NO forma parte de 8.116 y no se
+    toco. Decidir su destino (revertir default no interactivo o documentar
+    `-Action Menu`) en una revision aparte.
+E2. Esta revision no toca la aplicacion (.NET/React/WPF): solo skills de agente,
+    AGENTS.md, subagente reviewer y documentacion. Commit sugerido:
+    `feat(8.116): curaduria y migracion de skills de agente - ANEXO 8.116`.
+
+FIN DEL ANEXO - REVISION 8.116

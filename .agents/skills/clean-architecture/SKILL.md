@@ -1,9 +1,12 @@
 ---
-Description: Standards for creating new services, DTOs, and controllers.
-
-globs: ["**/*DTO.cs", "**/*Controller.cs"]
+name: clean-architecture
+description: >-
+  Standards for creating new services, DTOs, and controllers with strict layer boundaries.
+  Activate this skill when adding services, controllers, or DTOs, or when enforcing dependency
+  direction between the domain layer, the backend, and the client applications.
 ---
-# CLEAN ARCHITECTURE & API SKILL
+
+# Clean Architecture & API Skill
 
 - Dependencies: The Domain layer CANNOT have references to EF Core or WPF. Only pure C#.
 - Dependency Injection: All services must be injected through the constructor.

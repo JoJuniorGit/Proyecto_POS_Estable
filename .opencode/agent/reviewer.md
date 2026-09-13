@@ -18,13 +18,14 @@ POS: verificación de que NUESTRO CÓDIGO (no el tuyo) cumple las guías antes d
 - `ARCHITECTURE.md` para coherencia arquitectónica y `docs/reporte.txt` para decisiones
   vigentes (append-only).
 - Activa el skill de disciplina según el área (p. ej. `pos-financial-integrity`,
-  `efcore-postgres-concurrency`, `pos-security-hardening`, `pos-test-automation-and-qa`).
+  `efcore-postgres-concurrency`, `pos-security-hardening`, `pos-test-automation-and-qa`,
+  `clean-architecture`, `csharp-endpoints`).
 
 ## Qué revisar
 1. NO EDITES NI CORRIJAS CÓDIGO: tu salida es un reporte de hallazgos.
 2. Inspecciona el diff/cambios propuestos y verifica:
-   - Integridad financiera y de historial (reglas 8.25-E1 techo 4d, snapshots, vuelto,
-     arqueo) — BLOQUEANTE.
+   - Integridad financiera y de historial (reglas 8.25-E1/8.102 techo a 2 decimales,
+     precio unitario Bs.S con `ToBsSCeiling` 8.104, snapshots, vuelto, arqueo) — BLOQUEANTE.
    - Aislamiento Entidad → DTO (sin exponer entidades de EF, sin doble fetch) — BLOQUEANTE.
    - Seguridad/RBAC/API (sin filtrar ex.Message, camelCase JSON, RFC 7807) — BLOQUEANTE si aplica.
    - Convenciones de código: sin comentarios explicativos salvo que se pidan;
@@ -32,9 +33,9 @@ POS: verificación de que NUESTRO CÓDIGO (no el tuyo) cumple las guías antes d
      JSX nuevo (clases/tokens); WPF MVVM sin UI en code-behind; anti-god-objects.
    - Coherencia EF: migración obligatoria para cambios de modelo, verificación por el
      smoke `MigratedSchema`.
-3. Define de done: build Release 0/0 (TreatWarningsAsErrors), suites (dotnet 729 + web),
-   gate de cobertura de dominio (Core≥0.70, Sales≥0.80, Inventory≥0.72), ANEXO en
-   `docs/reporte.txt`.
+3. Define de done: build Release 0/0 (TreatWarningsAsErrors), suites .NET + web
+   100% verde (conteo vigente en `docs/reporte.txt`), gate de cobertura de dominio
+   (Core≥0.70, Sales≥0.80, Inventory≥0.72), ANEXO en `docs/reporte.txt`.
 
 ## Formato de salida
 - Lista de hallazgos: `archivo:línea` + regla incumplida + sección de la guía/skill.
