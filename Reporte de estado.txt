@@ -17,7 +17,7 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
-| v1.64.13 | 2026-09-13  | (8.117)      | MENU INTERACTIVO POS-TEST: scripts/
+| v1.64.13 | 2026-09-13  | (8.117)      | MENU INTERACTIVO POS-TEST + 3 FIXES: scripts/
 |          |             |              | pos-test.ps1 estrena accion Menu (default
 |          |             |              | sin -Action) con preflight, provision,
 |          |             |              | estres, campana completa, monitoreo, reporte,
@@ -34,7 +34,13 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 |          |             |              | GeneralApiRateLimit a 1000 en Development
 |          |             |              | (appsettings.Development.json, no
 |          |             |              | versionado) para campanas de estres sin
-|          |             |              | 429 del limitador general. Detalle en
+|          |             |              | 429 del limitador general. Fixes: (F1)
+|          |             |              | opcion 6 listado interactivo de corridas,
+|          |             |              | (F2) auto-creacion de monitor-config.json
+|          |             |              | desde .example, (F3) filtro bot del historial
+|          |             |              | WPF: usuario se creaba con name distinto
+|          |             |              | del valor que busca el ViewModel; fix en
+|          |             |              | pos-test.ps1 y UPDATE en BD. Detalle en
 |          |             |              | ANEXO 8.117.
 | v1.64.12 | 2026-09-12  | (8.115)      | CONTROL DE PRUEBAS POS UNIFICADO: nuevo
 |          |             |              | scripts/pos-test.ps1 orquesta el ciclo

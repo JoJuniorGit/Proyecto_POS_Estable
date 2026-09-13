@@ -252,7 +252,7 @@ function Invoke-Provision {
     Write-Step "Provisionamiento / mantenimiento del staging ($($Res.environmentName))"
     $adminToken = Login-Admin $Res
 
-    $user = Invoke-Api "POST" "/api/users" @{ cedula = $Res.stressUser; name = "Prueba Estres (BOT)"; password = $Res.stressPassword; role = 1 } $adminToken
+    $user = Invoke-Api "POST" "/api/users" @{ cedula = $Res.stressUser; name = $Res.stressUser; password = $Res.stressPassword; role = 1 } $adminToken
     if ($user.Status -eq 201) {
         Write-Host "Usuario de estres creado: $($Res.stressUser)" -ForegroundColor Green
     }
@@ -372,6 +372,15 @@ function Resolve-MonitorConfig {
     $candidates += (Join-Path $env:ProgramData "CommandCenterPOS\monitoring\monitor-config.json")
     foreach ($candidate in $candidates) {
         if ($candidate -and (Test-Path -LiteralPath $candidate)) { return $candidate }
+    }
+    $example = Join-Path $repoRoot "docs\monitor-config.json.example"
+    $target = Join-Path $repoRoot "docs\monitor-config.json"
+    if (Test-Path -LiteralPath $example) {
+        try {
+            Copy-Item -LiteralPath $example -Destination $target -Force
+            Write-Host "monitor-config.json creado desde .example (primera vez)." -ForegroundColor Green
+            return $target
+        } catch { }
     }
     return ""
 }
@@ -912,7 +921,33 @@ function Show-Menu {
                     }
                 }
                 "6" {
-                    $runDir = Resolve-RunDir $Res
+                    if (-not (Test-Path -LiteralPath $Res.resultsDir)) {
+                        Write-Host "Directorio no existe: $($Res.resultsDir)" -ForegroundColor Yellow
+                        break
+                    }
+                    $runs = Get-ChildItem -Directory -LiteralPath $Res.resultsDir -ErrorAction SilentlyContinue |
+                        Sort-Object Name -Descending | Select-Object -First 20
+                    if (-not $runs) {
+                        Write-Host "(sin corridas en $($Res.resultsDir))" -ForegroundColor Yellow
+                        break
+                    }
+                    Write-Host ""
+                    Write-Host "Corridas disponibles:" -ForegroundColor Cyan
+                    for ($i = 0; $i -lt $runs.Count; $i++) {
+                        $hasReport = Test-Path -LiteralPath (Join-Path $runs[$i].FullName "report.json")
+                        $mark = if ($hasReport) { "+" } else { " " }
+                        Write-Host ("  {0,2}. [{1}] {2}" -f ($i + 1), $mark, $runs[$i].Name) -ForegroundColor $(if ($hasReport) { "Green" } else { "Gray" })
+                    }
+                    Write-Host "  [+] = ya tiene report.json" -ForegroundColor DarkGray
+                    Write-Host ""
+                    $pick = Read-Host "Seleccione corrida (numero o Enter para cancelar)"
+                    if (-not $pick) { break }
+                    $idx = 0
+                    if (-not [int]::TryParse($pick, [ref]$idx) -or $idx -lt 1 -or $idx -gt $runs.Count) {
+                        Write-Host "Entrada no valida." -ForegroundColor Yellow
+                        break
+                    }
+                    $runDir = $runs[$idx - 1].FullName
                     $report = Build-Report $Res $runDir $null
                     Write-Host "Reporte regenerado: $(Join-Path $runDir 'report.md')" -ForegroundColor Green
                 }

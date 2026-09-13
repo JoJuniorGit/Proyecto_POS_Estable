@@ -7802,5 +7802,14 @@ E2. Pendiente operativo (no de codigo): reiniciar el backend para aplicar
     tras la limpieza de validacion (D2).
 E3. Commit sugerido:
     `feat(8.117): menu interactivo y configuracion en vivo de pos-test.ps1 - ANEXO 8.117`.
+E4. Fixes post-commit (fix 8.117):
+    - F1: Opcion 6 (Reporte) ahora lista corridas y permite seleccion interactiva.
+    - F2: `Resolve-MonitorConfig` auto-crea `docs/monitor-config.json` desde `.example`
+      en la primera ejecucion cuando no existe ninguno de los candidatos.
+    - F3: Filtro bot del historial WPF no ocultaba transacciones del bot porque el
+      usuario se creaba con `name = "Prueba Estres (BOT)"` mientras el ViewModel
+      busca `"BOT_STRESS_TEST"`. Fix: `pos-test.ps1:255` ahora usa `name = $Res.stressUser`.
+      Usuario existente corregido via SQL directo (`UPDATE Users SET Name/FullName =
+      'BOT_STRESS_TEST' WHERE Username = 'BOT_STRESS_TEST'`).
 
 FIN DEL ANEXO - REVISION 8.117
