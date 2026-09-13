@@ -469,9 +469,11 @@ valida precio>0, `isActive`, stock antes de usar cada producto.
    `--products SKU-A SKU-B` (SKUs exactos) y `--think-min/--think-max` para simular espera humana
    entre ventas (por defecto 4–20 s). El script re-autentica automáticamente ante 401/403
    compartiendo el token entre hilos.
-3. **Limitación de tasa a esperar:** `GeneralApiRateLimit` = 200 req/min por IP. Con 4 cajas
-   compartiendo IP el rendimiento realista es ~28–40 ventas/min (pausas de 4–20 s). Si el
-   resumen muestra 429, subir el límite en staging (o usar IPs separadas) antes de medir p95.
+3. **Limitación de tasa a esperar:** `GeneralApiRateLimit` = 200 req/min por IP por defecto,
+    configurable vía `RateLimiting:GeneralApiRateLimit` (editar el `appsettings.json` del puesto o
+    env var `RateLimiting__GeneralApiRateLimit`; 8.113). Con 4 cajas
+    compartiendo IP el rendimiento realista es ~28–40 ventas/min (pausas de 4–20 s). Si el
+    resumen muestra 429, subir ese valor en staging (o usar IPs separadas) antes de medir p95.
 4. **Monitoreo concurrente:** durante la prueba mantener abierto el **Monitor de Salud** (§13.8)
    o ejecutar la sonda headless (§13.11) para correlacionar latencia/p95 y frescura de backup
    con la carga generada. El reporte JSON de `--out` sirve de evidencia para el registro (§14).

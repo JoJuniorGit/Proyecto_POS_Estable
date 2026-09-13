@@ -190,12 +190,14 @@ public static class ServiceCollectionExtensions
                         QueueLimit = 0
                     }));
 
+            var generalApiPermit = Math.Max(1, builder.Configuration.GetValue<int>("RateLimiting:GeneralApiRateLimit", 200));
+
             options.AddPolicy("GeneralApiRateLimit", httpContext =>
                 System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
                     partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                     factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
                     {
-                        PermitLimit = 200,
+                        PermitLimit = generalApiPermit,
                         Window = TimeSpan.FromMinutes(1),
                         QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst,
                         QueueLimit = 0

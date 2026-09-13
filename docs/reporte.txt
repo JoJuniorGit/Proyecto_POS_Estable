@@ -7420,3 +7420,60 @@ E1. Commit de la revision 8.112 (fix) sin push (rama V0.15); verificacion manual
     el puesto pendiente.
 
 FIN DEL ANEXO - REVISION 8.112
+
+ANEXO - REVISION 8.113
+TITULO: LIMITE DE TASA GENERAL CONFIGURABLE (RATE LIMITING POR IP) PARA PRUEBA DE ESTRES
+
+A. CONTEXTO
+A1. La prueba de estres de 8.108 (scripts/stress-test.py) sobre staging con 4 cajas
+    compartiendo UNA IP topa el rate limit GeneralApiRateLimit = 200 req/min por IP
+    (FixedWindowRateLimiter, ventana 1 min) y devuelve 429, ensuciando el p95: se
+    mide la cola del limiter, no la capacidad real del backend.
+A2. El runbook (INSTALLATION.md 13.12.3) sugeria "subir el limite en staging (o usar
+    IPs separadas)": 4 IPs separadas es inviable desde una sola maquina (NAT/router);
+    subir el limite exigia recompilar porque el valor estaba hardcodeado en
+    Backend.API/Startup/ServiceCollectionExtensions.cs (PermitLimit = 200).
+A3. El usuario pidio hacerlo configurable sin recompilar en el puesto (opcion B de la
+    sesion: leer de config con default 200).
+
+B. IMPLEMENTACION
+B1. Backend.API/Startup/ServiceCollectionExtensions.cs: el policy GeneralApiRateLimit
+    pasa a
+      PermitLimit = Math.Max(1, builder.Configuration.GetValue<int>(
+          "RateLimiting:GeneralApiRateLimit", 200))
+    El clamp >= 1 evita arrancar el FixedWindowRateLimiter con permit 0 o negativo si
+    el JSON queda mal escrito. AuthRateLimit (10/min, anti fuerza bruta) queda fijo.
+B2. Backend.API/appsettings.json: nueva seccion RateLimiting:GeneralApiRateLimit = 200.
+    appsettings.json viaja al publish (publish/BackendAPI/appsettings.json) y al
+    puesto junto al exe: editar el JSON + reiniciar el servicio cambia el limite SIN
+    recompilar. Override adicional por env var RateLimiting__GeneralApiRateLimit
+    (ligadura de config .NET).
+B3. docs/INSTALLATION.md 13.12.3: nota del rate limit actualizada con la clave y los
+    mecanismos (appsettings del puesto o env var).
+
+C. VERIFICACION
+C1. dotnet build CommandCenter.slnx -c Release: 0 advertencias / 0 errores.
+C2. dotnet test CommandCenter.slnx -c Release: 919/919. Comportamiento por defecto
+    identico (200); el test SecurityTests de rate limit usa su propio limiter local.
+C3. Sin cambios de modelo persistente: sin migracion EF. Sin cambios en Frontend Web
+    (npm no afectado).
+C4. Smoke real previo (cierra C5 de 8.112): primera ejecucion de estres contra el
+    backend local el 2026-09-12 con la config por defecto: 78 ventas completadas,
+    0 fallos, 0 re-logins, 18.58 ventas/min, todos los endpoints 100% HTTP 200
+    (sin 429 al nivel de 4 cajas). El raise queda para corridas en el puesto con
+    mas cajas o IPs de menor rendimiento.
+
+D. DECISIONES Y DEUDA REGISTRADA
+D1. Default 200 preserva el comportamiento anti-abuso actual en produccion; el raise
+    es explicito y localizado (JSON del puesto o env var) solo donde se necesita.
+D2. No se externalizo AuthRateLimit: el endpoint de login permanece a 10 req/min por
+    IP (H-15). El cambio es exclusivo del policy general de la API.
+D3. La medicion de capacidad real con varias cajas sigue recomendando IPs separadas
+    o limite subido; el 429 ahora es configurable, no un limite de codigo.
+
+E. ESTADO
+E1. Commit de la revision 8.113 (feat) sin push (rama V0.15); pendiente republish
+    (scripts/build-release.ps1) para el puesto y re-ejecucion de estres con el
+    limite subido en staging si se requiere.
+
+FIN DEL ANEXO - REVISION 8.113
