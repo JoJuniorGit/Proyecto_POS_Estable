@@ -247,7 +247,7 @@ function Invoke-MonitorProbe {
                 try {
                     $headers = @{ Authorization = "Bearer $($Settings.Token)" }
                     $requests = Invoke-RestMethod -Uri $Settings.RequestsUrl -Headers $headers -TimeoutSec $Settings.TimeoutSec -ErrorAction Stop
-                    $rawItems = @($requests.endpoints ?? $requests)
+                    $rawItems = if ($null -ne $requests.endpoints) { @($requests.endpoints) } else { @($requests) }
                     $filter = @($rawItems | Where-Object {
                         (-not $Settings.EndpointFilter) -or ([string]$_.endpoint -match $Settings.EndpointFilter)
                     })

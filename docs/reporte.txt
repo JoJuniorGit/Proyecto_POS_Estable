@@ -7634,6 +7634,13 @@ D2. El muestreador dedicado (ventana de corrida) y el DataDir continuo del
 D3. La resolucion de credenciales es perezosa por accion para permitir Report/
     Monitor/Cleanup sin prompt (clave para CI/headless). Artefacto de corridas
     en results/ como evidencia.
+D4. Correccion posterior (mismo 8.115): se eliminaron los operadores `??`
+    (null-coalescing, PowerShell 7) de pos-test.ps1 y monitor-health.ps1 para
+    que el guard "Se requiere PowerShell 7" funcione tambien al ejecutarlos con
+    Windows PowerShell 5.1 (el parseo previo abortaba con un Token inesperado,
+    sin llegar al mensaje). Reemplazado por equivalencias `if ($null -ne ...)`.
+    PARSER_OK verificado con el parser real de 5.1 en los tres scripts;
+    Report bajo pwsh sigue OK.
 
 E. ESTADO / PENDIENTES
 E1. Smoke completo validado sobre staging interno. Queda PENDIENTE una corrida

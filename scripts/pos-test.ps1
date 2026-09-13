@@ -177,7 +177,10 @@ function Concat-Error {
     if (-not $ApiResult) { return "sin respuesta" }
     try {
         $parsed = $ApiResult.Body | ConvertFrom-Json
-        return ($parsed.message ?? $parsed.title ?? $parsed.detail ?? $ApiResult.Body)
+        foreach ($candidate in @($parsed.message, $parsed.title, $parsed.detail)) {
+            if ($null -ne $candidate) { return $candidate }
+        }
+        return $ApiResult.Body
     } catch { return $ApiResult.Body }
 }
 
@@ -241,7 +244,7 @@ function Invoke-Provision {
         $catalog = Invoke-Api "GET" "/api/products?filter=$filterEnc&page=$page&pageSize=100" $null $adminToken
         if ($catalog.Status -ne 200) { throw "Fallo catalogo de productos: HTTP $($catalog.Status) $(Concat-Error $catalog)" }
         $json = $catalog.Body | ConvertFrom-Json
-        $items = @($json.items ?? $json.Items)
+        $items = if ($null -ne $json.items) { @($json.items) } else { @($json.Items) }
         foreach ($item in $items) { if ($item.sku) { $found[([string]$item.sku).ToLower()] = $item } }
         if ($items.Count -lt 100) { break }
         $page++
@@ -276,7 +279,8 @@ function Invoke-Provision {
         do {
             $catalog = Invoke-Api "GET" "/api/products?filter=$filterEnc&page=$page&pageSize=100" $null $adminToken
             if ($catalog.Status -ne 200) { throw "Fallo re-lectura de catalogo: HTTP $($catalog.Status) $(Concat-Error $catalog)" }
-            $items = @(($catalog.Body | ConvertFrom-Json).items ?? @())
+            $catalogParsed = $catalog.Body | ConvertFrom-Json
+            $items = if ($null -ne $catalogParsed.items) { @($catalogParsed.items) } else { @() }
             foreach ($item in $items) { if ($item.sku) { $found[([string]$item.sku).ToLower()] = $item } }
             if ($items.Count -lt 100) { break }
             $page++
