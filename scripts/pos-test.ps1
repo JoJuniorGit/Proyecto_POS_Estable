@@ -729,6 +729,7 @@ if ($resolvedConfirm -ne "YES" -and $resolvedConfirm -ne $resolvedBaseUrl) {
 }
 
 $needCredentials = $Action -in @("Preflight", "Provision", "Stress", "Campaign")
+$needStressCredentials = $Action -in @("Stress", "Campaign")
 
 $res = @{
     environmentName   = PickString $null @("environment", "name")
@@ -739,7 +740,7 @@ $res = @{
     adminUser         = PickString $AdminUser @("credentials", "adminUser")
     adminPassword     = Resolve-Password $AdminPassword @("Stress", "AdminPassword") "POS_TEST_ADMIN_PASSWORD" -NoPrompt:(-not $needCredentials)
     stressUser        = PickString $StressUser @("credentials", "stressUser")
-    stressPassword    = Resolve-Password $StressPassword @("Stress", "StressPassword") "POS_TEST_STRESS_PASSWORD" -NoPrompt:(-not $needCredentials)
+    stressPassword    = Resolve-Password $StressPassword @("Stress", "StressPassword") "POS_TEST_STRESS_PASSWORD" -NoPrompt:(-not $needStressCredentials)
     transactions      = PickInt $Transactions @("profile", "transactions") 0
     duration          = PickInt $Duration @("profile", "duration") 0
     cashiers          = PickInt $Cashiers @("profile", "cashiers") 4

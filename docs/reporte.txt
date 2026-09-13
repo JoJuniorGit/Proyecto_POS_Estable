@@ -7578,7 +7578,8 @@ B1. scripts/pos-test.ps1 (nuevo, rev 8.115): acciones Preflight/Provision/
     POS_TEST_ADMIN_PASSWORD / POS_TEST_STRESS_PASSWORD > prompt seguro;
     pos-test-config.json guarda solo el perfil y adminUser/stressUser, no
     contraseñas. Las credenciales se resuelven solo cuando la accion las
-    necesita (Report/Monitor/Cleanup no preguntan: -NoPrompt en Resolve-Password).
+    necesita: Report/Monitor/Cleanup no preguntan y Preflight/Provision solo
+    piden la de administracion (-NoPrompt en Resolve-Password por accion).
     provision es idempotente (usuario BOT_STRESS_TEST, piscina SKU-TEST hasta
     ProductCount, restock por delta al RestockAmount). Guard confirmStaging
     identico a 8.108/8.114.
