@@ -1,0 +1,34 @@
+{
+  "environment": {
+    "name": "localhost-dev",
+    "baseUrl": "http://127.0.0.1:5000",
+    "confirmStaging": "http://127.0.0.1:5000"
+  },
+  "credentials": {
+    "adminUser": "Admin",
+    "stressUser": "BOT_STRESS_TEST"
+  },
+  "profile": {
+    "transactions": 60,
+    "duration": null,
+    "cashiers": 4,
+    "qtyMin": 1,
+    "qtyMax": 3,
+    "thinkMin": 4,
+    "thinkMax": 20,
+    "maxProductsPerSale": null,
+    "productCount": 30,
+    "restockAmount": 1000000,
+    "productFilter": "SKU-TEST",
+    "rate": null,
+    "timeout": 60
+  },
+  "monitoring": {
+    "monitorConfig": "",
+    "samplerSeconds": 5,
+    "windowHours": 14
+  },
+  "results": {
+    "dir": "results"
+  }
+}

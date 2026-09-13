@@ -449,7 +449,8 @@ sintéticos `SKU-TEST-*` con precio $0; mide latencia (avg/p95/p99), rendimiento
 y distribución de códigos HTTP por endpoint, e imprime al final la lista de productos resueltos
 (o `--products` con sus precios). Los datos quedan marcados e identificables para limpiarlos
 con §13.12.5. **No ejecutar contra producción**; el script aborta si el rate local es $0 y
-valida precio>0, `isActive`, stock antes de usar cada producto.
+valida precio>0, `isActive`, stock antes de usar cada producto. El ciclo completo orquestado
+(provisionamiento + carga + muestreador + reporte + limpieza) se describe en **§13.13**.
 
 1. **Preparar staging:** crear el usuario `BOT_STRESS_TEST` (Cédula igual al nombre, rol Cajero)
    y al menos un producto `SKU-TEST-*` con precio $0 y stock suficiente. Confirmar que el
@@ -487,6 +488,46 @@ valida precio>0, `isActive`, stock antes de usar cada producto.
    Requiere `-Confirm YES` solo cuando se borran productos/usuario; `-CashierCedula` (por defecto
    `BOT_STRESS_TEST`) y `-SkuPrefix` (por defecto `SKU-TEST-`) acotan los borrados. La limpieza
    de ventas **no resetea la secuencia** de numeración de facturas.
+
+### 13.13 Prueba de estrés unificada (8.115)
+`scripts\pos-test.ps1` es el controlador único que orquesta el ciclo completo sobre el backend
+de **staging**: preflight → provisionamiento (usuario `BOT_STRESS_TEST` + piscina `SKU-TEST-*`
++ restock por delta) → carga (`scripts\stress-test.py`) → muestreador dedicado
+(`docs\monitor-health.ps1 -SamplerSeconds`) → reporte consolidado (`report.json`/`report.md`)
+→ limpieza (`scripts\cleanup-stress-data.ps1`). Es la evolución de §13.12 y de
+`scripts\stress-external.ps1` (que ahora delega en él como wrapper fino); el motor de carga y
+sus métricas no cambian.
+
+**Configuración** (las opciones de línea de comandos tienen precedencia sobre el archivo):
+- `scripts\pos-test-config.json` (plantilla en `scripts\pos-test-config.json.example`) para
+  entorno, credenciales, perfil de carga, monitoreo y directorio de resultados.
+- Credenciales sin exponerlas en consola: `Backend.API\secrets.json` con las claves
+  `Stress.AdminPassword` y `Stress.StressPassword`, o las variables de entorno
+  `POS_TEST_ADMIN_PASSWORD`/`POS_TEST_STRESS_PASSWORD`; si no hay ninguna, pide la contraseña
+  de forma segura (`Read-Host -AsSecureString`).
+
+```powershell
+# Ciclo completo (staging local o remoto; mismo guard confirmStaging que §13.12)
+pwsh -NoProfile -File scripts\pos-test.ps1 -Action Campaign `
+  -BaseUrl http://<ip-staging>:5000 `
+  -ConfirmStaging http://<ip-staging>:5000 `
+  -AdminPassword <admin> -StressPassword <stress> `
+  -Transactions 100 -Cashiers 4 -ThinkMin 4 -ThinkMax 20 `
+  -SamplerSeconds 5 `
+  -MonitorConfig <path>\monitor-config.json
+```
+
+`-Action` admite: `Preflight` (health + login), `Provision` (usuario/productos/restock),
+`Stress` (solo carga, reutiliza `-RunId`), `Monitor` (sonda headless o `-Dashboard`), `Report`
+(regenera `report.json`/`report.md` desde una corrida con `-RunId`), `Campaign` (todo el flujo)
+y `Cleanup` (conservador salvo `-DeleteProducts`/`-DeleteUser` con `-Confirm YES`).
+
+El reporte consolida: métricas de carga por endpoint (avg/p95/p99, ahora también en
+`stress.json`), diagnóstico HTTP (429/409/hints), SLO de la ventana de la corrida (el muestreador
+dedicado escribe `slo-availability.csv` y `slo-endpoint-p95.csv` en `results\<runId>\monitoring`),
+SLO continuo del `monitor-config.json` (si define `DataDir`) y `endpoint-latencies.csv`. Las
+corridas quedan en `results\<runId>` (p. ej. `20260912-224128_laptop_pos-test`). **No ejecutar
+contra producción.**
 
 ## 14. Plan del piloto controlado (Fase 6, 8.45)
 

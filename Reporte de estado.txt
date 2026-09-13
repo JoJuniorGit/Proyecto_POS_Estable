@@ -17,6 +17,32 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.64.12 | 2026-09-12  | (8.115)      | CONTROL DE PRUEBAS POS UNIFICADO: nuevo
+|          |             |              | scripts/pos-test.ps1 orquesta el ciclo
+|          |             |              | completo de la prueba de estres sobre el
+|          |             |              | staging (preflight -> provisionamiento
+|          |             |              | idempotente BOT/SKU-TEST + restock por
+|          |             |              | delta -> carga stress-test.py -> muestreador
+|          |             |              | dedicado monitor-health.ps1 -SamplerSeconds
+|          |             |              | -> reporte consolidado report.json/report.md
+|          |             |              | con SLO de ventana + SLO continuo ->
+|          |             |              | limpieza conservadora). stress-external.ps1
+|          |             |              | pasa a wrapper fino (delega en -Action
+|          |             |              | Campaign). Correcciones: monitor-health.ps1
+|          |             |              | parsea el snapshot real /api/health/requests
+|          |             |              | (p95Milliseconds, antes esperaba durationsMs)
+|          |             |              | con InvariantCulture en CSVs; credenciales
+|          |             |              | perezosas (-NoPrompt para Report/Monitor/
+|          |             |              | Cleanup); splatting hashtable en Cleanup;
+|          |             |              | tabla Diagnostico HTTP con .Keys;
+|          |             |              | stress.json ahora con avg/p95/p99 por
+|          |             |              | endpoint. Smoke validado: Campaign 3 tx
+|          |             |              | (3 OK, 25.19 ventas/min, SLO ventana 100%,
+|          |             |              | p95 sonda 123 ms, p95 max endpoint 521 ms)
+|          |             |              | + Report sin prompt + Cleanup (90 ventas BOT
+|          |             |              | eliminadas). Solo herramientas/docs; sin
+|          |             |              | cambios .NET/React/WPF. Detalle en
+|          |             |              | ANEXO 8.115.
 | v1.64.11 | 2026-09-12  | (8.114)      | PRUEBA DE ESTRES CONTRA BACKEND EXTERNO
 |          |             |              | (192.168.1.5:5000): diagnostico de 409/429 y
 |          |             |              | validacion en caliente de 8.113. (A) El 409 en

@@ -15,6 +15,17 @@
   log. La logica headless no cambia: el dashboard reutiliza las mismas funciones
   y presenta una vista de solo lectura (no agrega muestras ni envia alertas).
 
+  Modo muestreador dedicado (-SamplerSeconds N, rev 8.115): sondea en un bucle
+  cada N segundos hacia el DataDir indicado, sin alertas ni notificaciones, y
+  termina cuando aparece el archivo -SamplerStopFile (o al llegar a
+  -SamplerMaxSamples). Lo usa scripts/pos-test.ps1 para correlacionar el
+  monitoreo con la ventana de una prueba de estres.
+
+  Modo importacion (-ImportOnly, rev 8.115): resuelve la configuracion y
+  expone las funciones (Get-SloSummary, Get-Percentile, Invoke-MonitorProbe,
+  entre otras) sin ejecutar la sonda. Lo usa scripts/pos-test.ps1 via
+  dot-source para generar el reporte unificado de pruebas.
+
   Configuracion compartida: un archivo JSON (por defecto monitor-config.json
   junto al script) define los valores; los parametros de linea de comandos
   tienen precedencia. Ver monitor-config.json.example.
@@ -36,9 +47,14 @@ param(
     [int]$RefreshSeconds = 15,
     [switch]$Summarize,
     [string]$Config = "",
-    [switch]$Dashboard
+    [switch]$Dashboard,
+    [int]$SamplerSeconds = 0,
+    [string]$SamplerStopFile = "",
+    [int]$SamplerMaxSamples = 0,
+    [switch]$ImportOnly
 )
 $ErrorActionPreference = "Stop"
+$invariantCulture = [System.Globalization.CultureInfo]::InvariantCulture
 
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO", [string]$LogFile = "")
@@ -231,20 +247,31 @@ function Invoke-MonitorProbe {
                 try {
                     $headers = @{ Authorization = "Bearer $($Settings.Token)" }
                     $requests = Invoke-RestMethod -Uri $Settings.RequestsUrl -Headers $headers -TimeoutSec $Settings.TimeoutSec -ErrorAction Stop
-                    $filter = @($requests | Where-Object {
+                    $rawItems = @($requests.endpoints ?? $requests)
+                    $filter = @($rawItems | Where-Object {
                         (-not $Settings.EndpointFilter) -or ([string]$_.endpoint -match $Settings.EndpointFilter)
                     })
                     $p95Rows = @($filter | ForEach-Object {
-                        $vals = @($_.durationsMs | ForEach-Object { [double]$_ })
-                        $p95 = Get-Percentile -Values $vals -Percentile 95
-                        if ($null -ne $p95) { [pscustomobject]@{ endpoint = $_.endpoint; p95Ms = $p95 } }
+                        if ($null -ne $_.p95Milliseconds) {
+                            $p95 = [double]$_.p95Milliseconds
+                        }
+                        elseif ($_.durationsMs) {
+                            $vals = @($_.durationsMs | ForEach-Object { [double]$_ })
+                            $p95 = Get-Percentile -Values $vals -Percentile 95
+                        }
+                        else {
+                            $p95 = $null
+                        }
+                        if ($null -ne $p95) { [pscustomobject]@{ endpoint = $_.endpoint; p95Ms = [Math]::Round([double]$p95, 1) } }
                     })
                     if ($p95Rows.Count -gt 0) {
                         $p95Csv = Join-Path $Settings.DataDir "slo-endpoint-p95.csv"
                         $maxP95 = ($p95Rows | ForEach-Object { $_.p95Ms } | Measure-Object -Maximum).Maximum
-                        $detail = ($p95Rows | ForEach-Object { "$($_.endpoint):$($_.p95Ms)" }) -join ";"
+                        $detail = ($p95Rows | ForEach-Object {
+                            $_.endpoint + ":" + ([double]$_.p95Ms).ToString($invariantCulture)
+                        }) -join ";"
                         Add-CsvRow -Path $p95Csv -Header "timestamp,p95MaxMs,detail" `
-                            -Line ("{0},{1},{2}" -f $timestamp.ToString("o"), [Math]::Round([double]$maxP95, 1), $detail) -LogFile $LogFile
+                            -Line ("{0},{1},{2}" -f $timestamp.ToString("o"), ([Math]::Round([double]$maxP95, 1).ToString($invariantCulture)), $detail) -LogFile $LogFile
                         Write-Log "p95 max por endpoint=${maxP95}ms." "INFO" $LogFile
                     }
                 } catch {
@@ -369,6 +396,33 @@ function Save-MonitorConfig {
     } catch {
         return $false
     }
+}
+
+if ($ImportOnly) {
+    return
+}
+
+if ($SamplerSeconds -gt 0) {
+    $samplerSettings = $settings.Clone()
+    $samplerSettings["NotifyUrl"] = ""
+    if ([string]::IsNullOrWhiteSpace($samplerSettings.DataDir)) {
+        $samplerSettings["DataDir"] = $configDir
+    }
+    if (-not (Test-Path -LiteralPath $samplerSettings.DataDir)) {
+        New-Item -ItemType Directory -Path $samplerSettings.DataDir -Force | Out-Null
+    }
+    $samplerSettings["StateFile"] = Join-Path $samplerSettings.DataDir "sampler_state.txt"
+    $sampleCount = 0
+    Write-Log "Muestreador dedicado iniciado: cada $SamplerSeconds s hacia $($samplerSettings.HealthUrl)" "INFO" $LogFile
+    do {
+        Invoke-MonitorProbe -Settings $samplerSettings -Record -WriteSummary | Out-Null
+        $sampleCount++
+        if ($SamplerMaxSamples -gt 0 -and $sampleCount -ge $SamplerMaxSamples) { break }
+        if ($SamplerStopFile -and (Test-Path -LiteralPath $SamplerStopFile)) { break }
+        Start-Sleep -Seconds $SamplerSeconds
+    } while ($true)
+    Write-Log "Muestreador dedicado detenido ($sampleCount muestras)." "INFO" $LogFile
+    exit 0
 }
 
 if ($Dashboard) {

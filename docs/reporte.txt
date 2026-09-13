@@ -7557,3 +7557,91 @@ E1. Republish 8.113 completado y backend local :5000 operativo con el binario
     la aplicacion (.NET/React/WPF): solo herramientas y docs.
 
 FIN DEL ANEXO - REVISION 8.114
+
+================================================================================
+ANEXO - REVISION 8.115 (2026-09-12)
+Titulo: Control de Pruebas POS unificado (pos-test.ps1)
+================================================================================
+
+A. CONTEXTO
+A1. Tras 8.114 (runner interno/externo sobre stress-test.py), se unifica el
+    manejo de la prueba de estres y el monitoreo en un solo punto de control:
+    scripts/pos-test.ps1 orquesta preflight -> provisionamiento -> carga ->
+    muestreador dedicado -> reporte consolidado -> limpieza. stress-external.ps1
+    pasa a ser un wrapper fino que delega en -Action Campaign (su CLI historica
+    se conserva); el motor scripts/stress-test.py y sus metricas no cambian.
+
+B. IMPLEMENTACION
+B1. scripts/pos-test.ps1 (nuevo, rev 8.115): acciones Preflight/Provision/
+    Stress/Monitor/Report/Campaign/Cleanup. Configuracion unica con precedencia
+    CLI > secrets.json (Stress.AdminPassword / Stress.StressPassword) > env
+    POS_TEST_ADMIN_PASSWORD / POS_TEST_STRESS_PASSWORD > prompt seguro;
+    pos-test-config.json guarda solo el perfil y adminUser/stressUser, no
+    contraseñas. Las credenciales se resuelven solo cuando la accion las
+    necesita (Report/Monitor/Cleanup no preguntan: -NoPrompt en Resolve-Password).
+    provision es idempotente (usuario BOT_STRESS_TEST, piscina SKU-TEST hasta
+    ProductCount, restock por delta al RestockAmount). Guard confirmStaging
+    identico a 8.108/8.114.
+B2. Muestreador dedicado: Start-Process de docs/monitor-health.ps1
+    -SamplerSeconds <N> con StateFile=sampler_state.txt y stop-file sampler.stop
+    en la carpeta de la corrida; escribe slo-availability.csv + slo-endpoint-p95.csv
+    en results/<runId>/monitoring durante toda la carga y -ImportOnly permite
+    dot-source limpio para reportes.
+B3. Reporte: stress.json (ahora con avgMs/p95Ms/p99Ms por endpoint via
+    Metrics.totals() en stress-test.py), endpoint-latencies.csv, report.json y
+    report.md. Include SLO de la ventana de la corrida (Get-SloSummary/Write-
+    SloSummary del monitor) y SLO continuo del monitor-config.json si DataDir.
+    Build-HttpDiagnosis asigna 429/409/hints. Las corridas quedan como evidencia
+    en results/<runId>.
+B4. Correccion en docs/monitor-health.ps1: el snapshot real de /api/health/
+    requests (RequestMetricsRegistry) expone p95Milliseconds por endpoint, no
+    durationsMs; el parseo ahora acepta ambas formas (compat hacia atras). Se
+    corrigio ademas el formato numerico a InvariantCulture en slo-endpoint-p95.csv
+    (el separador decimal local rompia el CSV; mismo hallazgo que 8.114).
+B5. Correccion de discovery: el endpoint de latencias del monitor se llamaba
+    /api/health/request-latencies (404); el real es /api/health/requests
+    (HealthController.cs, 8.81). El monitor-config del smoke usa la ruta real.
+
+C. VERIFICACION (smoke contra staging local http://127.0.0.1:5000)
+C1. Preflight: /health Healthy/Connected, tasa BCV 842.21, login Admin OK.
+C2. Campaign 3 tx / 1 caja / qty 1 / think 1-3 s / sampler 2 s: 3 ventas OK,
+    0 fallos, 0 re-logins, 25.19 ventas/min en 7.145 s; SLO ventana 100% (4/4
+    muestras), p95 sonda 123 ms, p95 max endpoint 521 ms (registrado en
+    slo-endpoint-p95.csv con detalle incl. POST /api/sales/2130/complete:521.9);
+    429=0 409=0. Artefactos verificados: stress.json (percentiles), report.json,
+    report.md, endpoint-latencies.csv, monitoring/*.csv.
+C3. Report regenerado con -Action Report -RunId <runId> sin prompt (fix
+    -NoPrompt) y con la tabla Diagnostico HTTP correcta (OrderedDictionary via
+    .Keys, no PSObject.Properties).
+C4. Cleanup conservador: 90 ventas BOT_STRESS_TEST y dependencias eliminadas
+    (SaleItems 243, StockMovements 89/238, SalePayments 0, CashTransactions 0);
+    secuencia de facturas intacta. FALTA smoke en un runner externo real
+    (backend 192.168.1.5 sigue caido desde 8.114) y limpieza de secuencia de
+    reportes de monitoreo continuo.
+
+D. DECISIONES
+D1. pos-test.ps1 es el punto de entrada unico para la prueba de estres del
+    staging (interno o externo); stress-external.ps1 queda como wrapper fino de
+    compatibilidad por su uso historico (8.114) y no se depreca. Su tamano
+    supera el umbral de las 500 lineas de la guia §1.1: se acepta como
+    controlador orquestador (SRP por funcion, 7 acciones) y se planifica la
+    extraccion de Build-Report/Invoke-Provision a sub-servicios en la proxima
+    iteracion.
+D2. El muestreador dedicado (ventana de corrida) y el DataDir continuo del
+    monitor co-existen: la ventana correlaciona disponibilidad/p95 con la carga
+    generada; el SLO continuo se mide con la tarea programada (13.11). El
+    reporte consolida ambos.
+D3. La resolucion de credenciales es perezosa por accion para permitir Report/
+    Monitor/Cleanup sin prompt (clave para CI/headless). Artefacto de corridas
+    en results/ como evidencia.
+
+E. ESTADO / PENDIENTES
+E1. Smoke completo validado sobre staging interno. Queda PENDIENTE una corrida
+    real contra un backend externo cuando exista, la verificacion visual del
+    reporte.md generado por una corrida real, y la definicion del runbook del
+    reporte diario automatizado (agregar cron/tarea si se confirma).
+E2. Esta revision no toca el codigo de la aplicacion (.NET/React/WPF): solo
+    herramientas de pruebas/monitoreo y docs (INSTALLATION 13.13, LAUNCH_GUIDE
+    6.a, changelog v1.64.12).
+
+FIN DEL ANEXO - REVISION 8.115

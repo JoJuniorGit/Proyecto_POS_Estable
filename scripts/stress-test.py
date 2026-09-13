@@ -87,15 +87,20 @@ class Metrics:
 
     def totals(self):
         with self._lock:
-            return {
-                label: {
-                    "n": len(self.latencies[label]),
+            result = {}
+            for label, values in self.latencies.items():
+                sorted_values = sorted(values)
+                avg = (sum(values) / len(values)) if values else 0.0
+                result[label] = {
+                    "n": len(values),
                     "ok": self.ok.get(label, 0),
                     "fail": self.fail.get(label, 0),
                     "status": dict(self.status[label]),
+                    "avgMs": round(avg * 1000.0, 1),
+                    "p95Ms": round(percentile(sorted_values, 95) * 1000.0, 1),
+                    "p99Ms": round(percentile(sorted_values, 99) * 1000.0, 1),
                 }
-                for label in self.latencies
-            }
+            return result
 
 
 class Budget:

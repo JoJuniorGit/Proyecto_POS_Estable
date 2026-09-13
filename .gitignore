@@ -428,3 +428,7 @@ Thumbs.db
 tools/local/
 build.local.env
 *.code-signing.pfx
+
+# Prueba de estres unificada (8.115): artefactos de corridas y config local del ejecutor
+results/
+scripts/pos-test-config.json

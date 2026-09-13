@@ -4,7 +4,7 @@
   "Token": "",
   "NotifyUrl": "",
   "DataDir": "C:\\ProgramData\\CommandCenterPOS\\monitoring",
-  "RequestsUrl": "http://localhost:5000/api/health/request-latencies",
+  "RequestsUrl": "http://localhost:5000/api/health/requests",
   "EndpointFilter": "/",
   "WindowHours": 14,
   "FailsToAlert": 3,

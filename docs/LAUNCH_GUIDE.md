@@ -94,6 +94,12 @@ frescura del backup) y notifica si falla N veces consecutivas. Tiene dos modos:
 Los valores por defecto pueden vivir en un archivo `monitor-config.json` (`-Config`);
 los parametros de linea de comandos tienen precedencia. Ver `docs\monitor-config.json.example`.
 
+El **modo muestreador** (`-SamplerSeconds N`, opcionalmente `-SamplerStopFile`/
+`-SamplerMaxSamples`, `-ImportOnly`) agrega muestras periodicas a un `DataDir` de una corrida
+concreta sin notificar; lo usa `scripts\pos-test.ps1` (runbook INSTALLATION.md §13.13) para
+correlacionar disponibilidad y p95 de la sonda con la carga generada. `-ImportOnly` carga la
+configuracion y settings compartidos sin ejecutar la sonda (dot-source limpio).
+
 ```powershell
 # Ejemplo: tarea cada 5 min (o dashboard)
 powershell -ExecutionPolicy Bypass -File "C:\Program Files (x86)\Sistema POS Administrador\tools\monitoring\monitor-health.ps1" `
