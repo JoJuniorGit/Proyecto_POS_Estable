@@ -1,5 +1,5 @@
 # =====================================================================
-# pos-test.ps1 - Control de Pruebas POS unificado (rev 8.115)
+# pos-test.ps1 - Control de Pruebas POS unificado (rev 8.117)
 #
 # Un unico punto de control para el ciclo completo de una prueba de
 # estres contra cualquier backend de staging (interno o externo):
@@ -12,6 +12,7 @@
 # latencias y diagnostico HTTP.
 #
 # Acciones (-Action):
+#   Menu       - muestra un menu interactivo (por defecto sin -Action).
 #   Preflight  - verifica /health, tasa BCV y login de administracion.
 #   Provision  - asegura usuario BOT, piscina SKU-TEST y restock.
 #   Stress     - ejecuta el motor de carga (delega a stress-test.py).
@@ -28,15 +29,16 @@
 #
 # Requisitos: PowerShell 7 (pwsh).
 # Uso:
-#   pwsh -File scripts/pos-test.ps1 -Action Campaign
+#   pwsh -File scripts/pos-test.ps1                       # menu interactivo
+#   pwsh -File scripts/pos-test.ps1 -Action Campaign       # campana directa
 #   pwsh -File scripts/pos-test.ps1 -Action Campaign -BaseUrl http://192.168.1.5:5000
 #   pwsh -File scripts/pos-test.ps1 -Action Report -RunId 20260913-023000_estacion-01_pos-test
 # =====================================================================
 
 [CmdletBinding()]
 param(
-    [ValidateSet("Preflight", "Provision", "Stress", "Monitor", "Report", "Campaign", "Cleanup")]
-    [string]$Action = "Campaign",
+    [ValidateSet("Menu", "Preflight", "Provision", "Stress", "Monitor", "Report", "Campaign", "Cleanup")]
+    [string]$Action = "Menu",
     [string]$Config = "",
     [string]$BaseUrl = "",
     [string]$ConfirmStaging = "",
@@ -159,6 +161,30 @@ function Resolve-Password {
     $secure = Read-Host "Ingrese la contrasena (${EnvName})" -AsSecureString
     if ($null -eq $secure -or $secure.Length -eq 0) { throw "No se pudo resolver la contrasena ${EnvName}." }
     return [System.Net.NetworkCredential]::new("", $secure).Password
+}
+
+function Resolve-ConnectionString {
+    param([string]$CliValue, [hashtable]$Res)
+    if ($CliValue) { return $CliValue }
+    if ($Res -and $Res.connectionString) { return $Res.connectionString }
+    $secretCs = Resolve-Secret @("ConnectionStrings", "DefaultConnection")
+    if ($secretCs) { return $secretCs }
+    $secretCs = Resolve-Secret @("ConnectionStrings__DefaultConnection")
+    if ($secretCs) { return $secretCs }
+    $candidates = @(
+        (Join-Path $repoRoot "Backend.API\appsettings.Development.json"),
+        (Join-Path $repoRoot "Backend.API\appsettings.json")
+    )
+    foreach ($appsettings in $candidates) {
+        if (Test-Path -LiteralPath $appsettings) {
+            try {
+                $json = Get-Content -Raw -LiteralPath $appsettings | ConvertFrom-Json
+                $cs = $json.ConnectionStrings.DefaultConnection
+                if ($cs) { return [string]$cs }
+            } catch { }
+        }
+    }
+    return ""
 }
 
 function Invoke-Api {
@@ -290,7 +316,7 @@ function Invoke-Provision {
 
     $restocked = 0
     $skipped = 0
-    $reason = "pos-test provision (rev 8.115)"
+    $reason = "pos-test provision (rev 8.117)"
     foreach ($item in $found.Values) {
         $current = [double]$item.stockQuantity
         if ($current -ge $Res.restockAmount) { $skipped++; continue }
@@ -701,6 +727,251 @@ function Invoke-Campaign {
 }
 
 # ---------------------------------------------------------------------
+# Menu interactivo
+# ---------------------------------------------------------------------
+function Ensure-AdminPassword {
+    param([hashtable]$Res)
+    $attempts = 0
+    while ($true) {
+        if (-not $Res.adminPassword) {
+            $Res.adminPassword = Resolve-Password "" @("Stress", "AdminPassword") "POS_TEST_ADMIN_PASSWORD"
+        }
+        try { Login-Admin $Res | Out-Null; return } catch {
+            $attempts++
+            Write-Host "Contrasena invalida ($($Res.adminUser)): $($_.Exception.Message)" -ForegroundColor Yellow
+            $Res.adminPassword = $null
+            if ($attempts -ge 3) {
+                throw "No se pudo autenticar como '$($Res.adminUser)' tras $attempts intentos. Corrija POS_TEST_ADMIN_PASSWORD, Stress.AdminPassword o la configuracion."
+            }
+            $secure = Read-Host "Reingrese la contrasena de $($Res.adminUser)" -AsSecureString
+            if ($null -ne $secure -and $secure.Length -gt 0) {
+                $Res.adminPassword = [System.Net.NetworkCredential]::new("", $secure).Password
+            }
+        }
+    }
+}
+
+function Ensure-StressPassword {
+    param([hashtable]$Res)
+    if (-not $Res.stressPassword) {
+        $Res.stressPassword = Resolve-Password "" @("Stress", "StressPassword") "POS_TEST_STRESS_PASSWORD"
+    }
+}
+
+function Show-CurrentConfig {
+    param([hashtable]$Res)
+    Write-Host ""
+    Write-Host "--- Configuracion actual ---" -ForegroundColor Cyan
+    Write-Host "  Entorno:      $($Res.environmentName)"
+    Write-Host "  Backend:      $($Res.baseUrl)"
+    Write-Host "  Admin:        $($Res.adminUser)"
+    Write-Host "  Stress user:  $($Res.stressUser)"
+    Write-Host "  Transacciones: $($Res.transactions)"
+    Write-Host "  Cajas:        $($Res.cashiers)"
+    Write-Host "  Qty:          $($Res.qtyMin)-$($Res.qtyMax)"
+    Write-Host "  Think:        $($Res.thinkMin)-$($Res.thinkMax) s"
+    Write-Host "  Productos:    $($Res.productCount) (filter: $($Res.productFilter))"
+    Write-Host "  Restock:      $($Res.restockAmount)"
+    Write-Host "  Resultados:   $($Res.resultsDir)"
+    Write-Host "  Sampler:      $($Res.samplerSeconds) s | Ventana: $($Res.windowHours) h"
+    Write-Host "--------------------------------" -ForegroundColor Cyan
+}
+
+function Show-EditConfig {
+    param([hashtable]$Res)
+
+    Write-Host ""
+    Write-Host "--- Configurar parametros de prueba ---" -ForegroundColor Cyan
+    Write-Host "  (Enter mantiene el valor actual)" -ForegroundColor DarkGray
+    Write-Host ""
+
+    $fields = @(
+        @{ Key = "cashiers";          Label = "Cajas (hilos concurrentes)"; Current = $Res.cashiers; Type = "int" },
+        @{ Key = "thinkMin";          Label = "Think min (segundos)";      Current = $Res.thinkMin; Type = "double" },
+        @{ Key = "thinkMax";          Label = "Think max (segundos)";      Current = $Res.thinkMax; Type = "double" },
+        @{ Key = "qtyMin";            Label = "Qty min por venta";         Current = $Res.qtyMin;   Type = "int" },
+        @{ Key = "qtyMax";            Label = "Qty max por venta";         Current = $Res.qtyMax;   Type = "int" },
+        @{ Key = "productCount";      Label = "Productos de prueba";       Current = $Res.productCount; Type = "int" },
+        @{ Key = "restockAmount";     Label = "Restock (unidades)";        Current = $Res.restockAmount; Type = "int" },
+        @{ Key = "transactions";      Label = "Transacciones (0=auto)";    Current = $Res.transactions; Type = "int" },
+        @{ Key = "productFilter";     Label = "Prefijo SKU";               Current = $Res.productFilter; Type = "string" }
+    )
+
+    foreach ($f in $fields) {
+        $currentStr = "$($f.Current)"
+        $raw = Read-Host "  $($f.Label) [$currentStr]"
+        if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+        switch ($f.Type) {
+            "int"    { $parsed = 0; if ([int]::TryParse($raw, [ref]$parsed)) { $Res[$f.Key] = $parsed } else { Write-Host "    (valor invalido, se mantiene: $($f.Current))" -ForegroundColor Yellow } }
+            "double" { $parsed = 0.0; if ([double]::TryParse($raw, [ref]$parsed)) { $Res[$f.Key] = $parsed } else { Write-Host "    (valor invalido, se mantiene: $($f.Current))" -ForegroundColor Yellow } }
+            "string" { $Res[$f.Key] = $raw }
+        }
+    }
+
+    if ($Res.thinkMax -lt $Res.thinkMin) {
+        Write-Host "  AVISO: thinkMax ($($Res.thinkMax)) < thinkMin ($($Res.thinkMin)). Se ajusta thinkMax." -ForegroundColor Yellow
+        $Res.thinkMax = $Res.thinkMin
+    }
+    if ($Res.qtyMax -lt $Res.qtyMin) {
+        Write-Host "  AVISO: qtyMax ($($Res.qtyMax)) < qtyMin ($($Res.qtyMin)). Se ajusta qtyMax." -ForegroundColor Yellow
+        $Res.qtyMax = $Res.qtyMin
+    }
+
+    $cfgPath = if ($Config) { $Config } else { Join-Path $PSScriptRoot "pos-test-config.json" }
+    $save = Read-Host "  Guardar en $(Split-Path $cfgPath -Leaf)? (s/N)"
+    if ($save -eq "s" -or $save -eq "S" -or $save -eq "si" -or $save -eq "SI") {
+        $existing = if (Test-Path -LiteralPath $cfgPath) {
+            Get-Content -Raw -LiteralPath $cfgPath | ConvertFrom-Json
+        } else { [pscustomobject]@{} }
+
+        if (-not $existing.PSObject.Properties["profile"]) {
+            $existing | Add-Member -NotePropertyName "profile" -NotePropertyValue ([pscustomobject]@{}) -Force
+        }
+        $p = $existing.profile
+        foreach ($f in $fields) {
+            $val = $Res[$f.Key]
+            if ($p.PSObject.Properties[$f.Key]) { $p.$($f.Key) = $val }
+            else { $p | Add-Member -NotePropertyName $f.Key -NotePropertyValue $val -Force }
+        }
+        $existing | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $cfgPath -Encoding UTF8
+        Write-Host "  Configuracion guardada en $cfgPath" -ForegroundColor Green
+    }
+
+    Write-Host ""
+    Show-CurrentConfig $Res
+}
+
+function Show-Menu {
+    param([hashtable]$Res)
+
+    while ($true) {
+        Write-Host ""
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host "  Control de Pruebas POS (rev 8.117)" -ForegroundColor Cyan
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host "  Entorno: $($Res.environmentName) | $($Res.baseUrl)" -ForegroundColor Gray
+        Write-Host "----------------------------------------" -ForegroundColor DarkGray
+        Write-Host "  1.  Pre-flight (verificar staging)" -ForegroundColor White
+        Write-Host "  2.  Provisionar staging" -ForegroundColor White
+        Write-Host "  3.  Ejecutar prueba de estres" -ForegroundColor White
+        Write-Host "  4.  Campaign completa (provision+stress+reporte)" -ForegroundColor Green
+        Write-Host "  5.  Monitorear salud (sonda headless)" -ForegroundColor White
+        Write-Host "  6.  Generar reporte desde corrida existente" -ForegroundColor White
+        Write-Host "  7.  Limpiar ventas de estres" -ForegroundColor Yellow
+        Write-Host "  8.  Limpiar productos de prueba" -ForegroundColor Yellow
+        Write-Host "  9.  Mostrar configuracion actual" -ForegroundColor White
+        Write-Host "  10. Configurar parametros de prueba" -ForegroundColor Green
+        Write-Host "  11. Ultimas corridas (results)" -ForegroundColor White
+        Write-Host "  0.  Salir" -ForegroundColor Red
+        Write-Host "========================================" -ForegroundColor Cyan
+        $choice = Read-Host "Opcion"
+
+        if ($choice -eq "0" -or $choice -eq "q" -or $choice -eq "Q") {
+            Write-Host "Adios." -ForegroundColor Green
+            return
+        }
+
+        try {
+            switch ($choice) {
+                "1" {
+                    Ensure-AdminPassword $Res
+                    Test-StagingPreflight $Res | Out-Null
+                    Write-Host "Preflight OK." -ForegroundColor Green
+                }
+                "2" {
+                    Ensure-AdminPassword $Res
+                    Test-StagingPreflight $Res | Out-Null
+                    Invoke-Provision $Res | Out-Null
+                }
+                "3" {
+                    Ensure-StressPassword $Res
+                    $runDir = New-RunFolder $Res
+                    $samplerInfo = $null
+                    if (-not $Res.noMonitor) { $samplerInfo = Start-TestSampler $Res $runDir }
+                    try {
+                        Invoke-StressRun $Res $runDir | Out-Null
+                    } finally {
+                        if ($samplerInfo) { Stop-TestSampler $samplerInfo }
+                    }
+                    $report = Build-Report $Res $runDir $samplerInfo
+                    Write-CampaignSummary $report $runDir
+                }
+                "4" {
+                    Ensure-AdminPassword $Res
+                    Ensure-StressPassword $Res
+                    Invoke-Campaign $Res | Out-Null
+                }
+                "5" {
+                    $monitorConfig = Resolve-MonitorConfig $Res
+                    if (-not $monitorConfig) {
+                        Write-Host "No se encontro monitor-config.json; se omite el muestreador." -ForegroundColor Yellow
+                    } else {
+                        $monitorScript = Join-Path $repoRoot "docs\monitor-health.ps1"
+                        if ($Dashboard) { & $monitorScript -Dashboard -Config $monitorConfig }
+                        else { & $monitorScript -Config $monitorConfig }
+                    }
+                }
+                "6" {
+                    $runDir = Resolve-RunDir $Res
+                    $report = Build-Report $Res $runDir $null
+                    Write-Host "Reporte regenerado: $(Join-Path $runDir 'report.md')" -ForegroundColor Green
+                }
+                "7" {
+                    $cleanupScript = Join-Path $PSScriptRoot "cleanup-stress-data.ps1"
+                    $cleanupSku = if ($SkuPrefix) { $SkuPrefix } else { $Res.productFilter }
+                    $cleanupArgs = @{ CashierCedula = $Res.stressUser; SkuPrefix = $cleanupSku }
+                    if ($Res.connectionString) { $cleanupArgs.ConnectionString = $Res.connectionString }
+                    if ($SecretsFile) { $cleanupArgs.SecretsFile = $SecretsFile }
+                    & $cleanupScript @cleanupArgs
+                }
+                "8" {
+                    $cleanupScript = Join-Path $PSScriptRoot "cleanup-stress-data.ps1"
+                    $cleanupSku = if ($SkuPrefix) { $SkuPrefix } else { $Res.productFilter }
+                    Write-Host ""
+                    Write-Host "  ATENCION: se borraran los productos de prueba (SKU '$cleanupSku')." -ForegroundColor Yellow
+                    $confirmDelete = Read-Host "  Escriba YES para confirmar"
+                    if ($confirmDelete -ne "YES") {
+                        Write-Host "  Cancelado." -ForegroundColor Gray
+                    } else {
+                        $cleanupArgs = @{ SkuPrefix = $cleanupSku; DeleteProducts = $true; Confirm = "YES" }
+                        if ($Res.connectionString) { $cleanupArgs.ConnectionString = $Res.connectionString }
+                        if ($SecretsFile) { $cleanupArgs.SecretsFile = $SecretsFile }
+                        & $cleanupScript @cleanupArgs
+                    }
+                }
+                "9" { Show-CurrentConfig $Res }
+                "10" { Show-EditConfig $Res }
+                "11" {
+                    if (Test-Path -LiteralPath $Res.resultsDir) {
+                        $runs = Get-ChildItem -Directory -LiteralPath $Res.resultsDir -ErrorAction SilentlyContinue |
+                            Sort-Object Name -Descending | Select-Object -First 10
+                        if ($runs) {
+                            Write-Host ""
+                            Write-Host "Ultimas 10 corridas:" -ForegroundColor Cyan
+                            foreach ($r in $runs) {
+                                $hasReport = Test-Path -LiteralPath (Join-Path $r.FullName "report.json")
+                                $mark = if ($hasReport) { "+" } else { " " }
+                                Write-Host "  [$mark] $($r.Name)" -ForegroundColor $(if ($hasReport) { "Green" } else { "Gray" })
+                            }
+                            Write-Host ""
+                            Write-Host "  [+] = tiene report.json" -ForegroundColor DarkGray
+                        } else { Write-Host "(sin corridas en $($Res.resultsDir))" -ForegroundColor Gray }
+                    } else { Write-Host "(directorio no existe: $($Res.resultsDir))" -ForegroundColor Gray }
+                }
+                default { Write-Host "Opcion no valida: $choice" -ForegroundColor Yellow }
+            }
+        } catch {
+            Write-Host ""
+            Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+        }
+
+        Write-Host ""
+        Write-Host "Presione Enter para continuar..." -ForegroundColor DarkGray
+        Read-Host
+    }
+}
+
+# ---------------------------------------------------------------------
 # Resolucion de configuracion (CLI tiene precedencia)
 # ---------------------------------------------------------------------
 $cfgPath = $Config
@@ -757,6 +1028,7 @@ $res = @{
     windowHours       = PickInt $WindowHours @("monitoring", "windowHours") 14
     monitorConfig     = PickString $MonitorConfig @("monitoring", "monitorConfig")
     resultsDir        = PickString $ResultsDir @("results", "dir")
+    connectionString  = PickString $ConnectionString @("database", "connectionString")
     out               = $Out
     pyExe             = $PythonExe
     noProvision       = $NoProvision
@@ -768,12 +1040,17 @@ if (-not $res.stressUser) { $res.stressUser = "BOT_STRESS_TEST" }
 if (-not $res.productFilter) { $res.productFilter = "SKU-TEST" }
 if (-not $res.resultsDir) { $res.resultsDir = Join-Path $repoRoot "results" }
 if (-not $res.environmentName) { $res.environmentName = "staging" }
+$res.connectionString = Resolve-ConnectionString $res.connectionString $res
 if ($res.thinkMax -lt $res.thinkMin) { throw "thinkMax ($($res.thinkMax)) debe ser >= thinkMin ($($res.thinkMin))." }
 
-Write-Host "Control de Pruebas POS (rev 8.115) - accion: $Action" -ForegroundColor Cyan
+Write-Host "Control de Pruebas POS (rev 8.117) - accion: $Action" -ForegroundColor Cyan
 Write-Host "Entorno: $($res.environmentName) | BaseUrl: $($res.baseUrl)" -ForegroundColor Cyan
 
 switch ($Action) {
+    "Menu" {
+        Show-Menu $res
+        exit 0
+    }
     "Preflight" {
         Test-StagingPreflight $res | Out-Null
         Login-Admin $res | Out-Null
@@ -820,7 +1097,7 @@ switch ($Action) {
             CashierCedula = $res.stressUser
             SkuPrefix     = $cleanupSku
         }
-        if ($ConnectionString) { $cleanupArgs.ConnectionString = $ConnectionString }
+        if ($Res.connectionString) { $cleanupArgs.ConnectionString = $Res.connectionString }
         if ($SecretsFile) { $cleanupArgs.SecretsFile = $SecretsFile }
         if ($DeleteProducts) { $cleanupArgs.DeleteProducts = $true }
         if ($DeleteUser) { $cleanupArgs.DeleteUser = $true }

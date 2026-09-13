@@ -7730,3 +7730,77 @@ E2. Esta revision no toca la aplicacion (.NET/React/WPF): solo skills de agente,
     `feat(8.116): curaduria y migracion de skills de agente - ANEXO 8.116`.
 
 FIN DEL ANEXO - REVISION 8.116
+
+================================================================================
+ANEXO - REVISION 8.117 (2026-09-13)
+Titulo: Menu interactivo y configuracion en vivo de pos-test.ps1
+================================================================================
+
+A. CONTEXTO
+A1. `scripts/pos-test.ps1` (8.115) operaba solo por flags (-Action), obligando a
+    recordar parametros en cada corrida. Los 429 masivos en `start` (200 req/min
+    por IP) y el fallo de la limpieza de productos ("requiere -Confirm YES")
+    evidenciaron la friccion operativa.
+A2. ANEXO 8.116 E1 dejo pendiente decidir el destino del default `-Action Menu`
+    presente en el working tree. Esta revision lo formaliza y completa.
+
+B. IMPLEMENTACION
+B1. Accion `Menu` (nueva, default al invocar sin `-Action`): menu interactivo con
+    preflight, provision, estres, campana completa, monitoreo, regenerar reporte,
+    limpiar ventas, limpiar productos (pide `YES`), mostrar configuracion,
+    configurar parametros y listar ultimas corridas. Cada accion devuelve al menu
+    hasta salir con `0`/`q`.
+B2. Credenciales perezosas por accion: `Ensure-AdminPassword` valida contra el
+    backend antes de operar y, ante 401, vuelve a solicitar la clave (hasta 3
+    intentos) y luego aborta con mensaje accionable; `Ensure-StressPassword` solo
+    resuelve la clave de estres. `Preflight`/`Provision` no piden la del usuario
+    de estres; `Stress` no pide la de administracion.
+B3. `Show-EditConfig`: edita cajas, think min/max, qty min/max, cantidad de
+    productos, restock, transacciones y prefijo SKU, con Enter para conservar,
+    validacion int/double, ajuste thinkMax>=thinkMin y persistencia opcional en
+    `scripts/pos-test-config.json`.
+B4. `Resolve-ConnectionString`: resuelve la cadena de limpieza por
+    `-ConnectionString` -> `database.connectionString` (config) -> `secrets.json`
+    -> `Backend.API\appsettings.Development.json`. Las opciones 7/8 del menu y
+    `-Action Cleanup` la pasan a `cleanup-stress-data.ps1`, que ya no exige
+    `secrets.json` en dev.
+B5. Fix opcion 8: envia `Confirm = "YES"` (con confirmacion interactiva previa)
+    para superar el guard destructivo de `cleanup-stress-data.ps1`.
+B6. `Backend.API\appsettings.Development.json` (local, gitignored): se recomienda
+    `RateLimiting:GeneralApiRateLimit` en 1000 req/min para permitir campanas de
+    estres sin 429 del limitador general de API. No se versiona: es un override
+    local del default de codigo (200).
+B7. Plantilla `pos-test-config.json.example` con seccion `database.connectionString`;
+    `docs/INSTALLATION.md` §13.13 documenta menu, edicion de parametros y
+    resolucion de conexion.
+
+C. DECISIONES
+C1. El default pasa a `Menu` (interactivo) porque el flujo por flags sigue
+    disponible con `-Action`; sin argumentos el comportamiento previo exigia
+    credenciales antes de mostrar opciones.
+C2. La config no almacena contrasenas ni credenciales de BD versionadas; la
+    conexion dev se resuelve leyendo `appsettings.Development.json` (mismo dato que
+    ya usa el backend). `database.connectionString` queda para overrides locales.
+C3. El limite de 1000 req/min es un override local de Development (archivo
+    gitignored); Produccion conserva el default de codigo (200).
+
+D. VERIFICACION
+D1. `pos-test.ps1` parsea sin errores (AST de PowerShell) y arranca el menu sin
+    argumentos (probado con entrada simulada: opciones 0 y 10, incluido el guardado
+    de `profile` con `Add-Member -NotePropertyValue` sobre un JSON sin `profile`).
+    El wrapper `scripts/stress-external.ps1` y `docs/monitor-health.ps1` no se
+    modificaron.
+D2. `-Action Cleanup` resolvio la conexion desde appsettings y completo la
+    limpieza (ventas_restantes=0); `-Action Cleanup -DeleteProducts -Confirm YES`
+    elimino 30 SKU-TEST (DELETE 30, COMMIT).
+D3. Cambio de rate limit requiere reiniciar el backend para tomar efecto.
+
+E. ESTADO / PENDIENTES
+E1. Cierra ANEXO 8.116 E1 (default `-Action Menu` formalizado).
+E2. Pendiente operativo (no de codigo): reiniciar el backend para aplicar
+    `RateLimiting:GeneralApiRateLimit=1000` y re-provisionar la piscina SKU-TEST
+    tras la limpieza de validacion (D2).
+E3. Commit sugerido:
+    `feat(8.117): menu interactivo y configuracion en vivo de pos-test.ps1 - ANEXO 8.117`.
+
+FIN DEL ANEXO - REVISION 8.117

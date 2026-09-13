@@ -489,7 +489,7 @@ valida precio>0, `isActive`, stock antes de usar cada producto. El ciclo complet
    `BOT_STRESS_TEST`) y `-SkuPrefix` (por defecto `SKU-TEST-`) acotan los borrados. La limpieza
    de ventas **no resetea la secuencia** de numeración de facturas.
 
-### 13.13 Prueba de estrés unificada (8.115)
+### 13.13 Prueba de estrés unificada (8.115, menú 8.117)
 `scripts\pos-test.ps1` es el controlador único que orquesta el ciclo completo sobre el backend
 de **staging**: preflight → provisionamiento (usuario `BOT_STRESS_TEST` + piscina `SKU-TEST-*`
 + restock por delta) → carga (`scripts\stress-test.py`) → muestreador dedicado
@@ -500,11 +500,28 @@ sus métricas no cambian.
 
 **Configuración** (las opciones de línea de comandos tienen precedencia sobre el archivo):
 - `scripts\pos-test-config.json` (plantilla en `scripts\pos-test-config.json.example`) para
-  entorno, credenciales, perfil de carga, monitoreo y directorio de resultados.
+  entorno, credenciales, perfil de carga, monitoreo, conexión de limpieza y directorio de
+  resultados.
 - Credenciales sin exponerlas en consola: `Backend.API\secrets.json` con las claves
   `Stress.AdminPassword` y `Stress.StressPassword`, o las variables de entorno
   `POS_TEST_ADMIN_PASSWORD`/`POS_TEST_STRESS_PASSWORD`; si no hay ninguna, pide la contraseña
   de forma segura (`Read-Host -AsSecureString`).
+- Cadena de conexión para `Cleanup`: `-ConnectionString`, `database.connectionString` en la
+  config o `ConnectionStrings.DefaultConnection` de `Backend.API\appsettings.Development.json`
+  (nunca se pasa en texto plano por la config versionada).
+
+**Menú interactivo** (`-Action Menu`, por defecto al invocar sin `-Action`):
+
+```powershell
+pwsh -NoProfile -File scripts\pos-test.ps1      # abre el menu
+```
+
+Opciones: preflight, provisionar, estrés, campaña completa, monitoreo, regenerar reporte,
+limpiar ventas, limpiar productos de prueba (pide `YES`), mostrar configuración,
+**configurar parámetros de prueba** (cajas, think min/max, qty min/max, cantidad de productos,
+restock, transacciones y prefijo SKU; con opción de persistirlos en `pos-test-config.json`)
+y listar las últimas corridas de `results\`. Cada acción resuelve sus credenciales de forma
+perezosa y devuelve al menú hasta salir con `0`.
 
 ```powershell
 # Ciclo completo (staging local o remoto; mismo guard confirmStaging que §13.12)
@@ -517,10 +534,11 @@ pwsh -NoProfile -File scripts\pos-test.ps1 -Action Campaign `
   -MonitorConfig <path>\monitor-config.json
 ```
 
-`-Action` admite: `Preflight` (health + login), `Provision` (usuario/productos/restock),
-`Stress` (solo carga, reutiliza `-RunId`), `Monitor` (sonda headless o `-Dashboard`), `Report`
-(regenera `report.json`/`report.md` desde una corrida con `-RunId`), `Campaign` (todo el flujo)
-y `Cleanup` (conservador salvo `-DeleteProducts`/`-DeleteUser` con `-Confirm YES`).
+`-Action` admite: `Menu` (interactivo, por defecto), `Preflight` (health + login), `Provision`
+(usuario/productos/restock), `Stress` (solo carga, reutiliza `-RunId`), `Monitor` (sonda
+headless o `-Dashboard`), `Report` (regenera `report.json`/`report.md` desde una corrida con
+`-RunId`), `Campaign` (todo el flujo) y `Cleanup` (conservador salvo
+`-DeleteProducts`/`-DeleteUser` con `-Confirm YES`).
 
 El reporte consolida: métricas de carga por endpoint (avg/p95/p99, ahora también en
 `stress.json`), diagnóstico HTTP (429/409/hints), SLO de la ventana de la corrida (el muestreador
@@ -528,6 +546,12 @@ dedicado escribe `slo-availability.csv` y `slo-endpoint-p95.csv` en `results\<ru
 SLO continuo del `monitor-config.json` (si define `DataDir`) y `endpoint-latencies.csv`. Las
 corridas quedan en `results\<runId>` (p. ej. `20260912-224128_laptop_pos-test`). **No ejecutar
 contra producción.**
+
+> **Rate limit en campañas de estrés:** el backend aplica `GeneralApiRateLimit` (default
+> `200` req/min por IP). Con varias cajas concurrentes el endpoint `start` puede recibir
+> `429`. Para staging/desarrollo, suba el límite en `Backend.API\appsettings.Development.json`
+> (archivo local, no versionado): `"RateLimiting": { "GeneralApiRateLimit": 1000 }`, y
+> reinicie el backend. Producción conserva el default.
 
 ## 14. Plan del piloto controlado (Fase 6, 8.45)
 

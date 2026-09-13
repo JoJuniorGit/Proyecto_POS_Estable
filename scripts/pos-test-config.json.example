@@ -28,6 +28,9 @@
     "samplerSeconds": 5,
     "windowHours": 14
   },
+  "database": {
+    "connectionString": ""
+  },
   "results": {
     "dir": "results"
   }
