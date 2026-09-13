@@ -7477,3 +7477,83 @@ E1. Commit de la revision 8.113 (feat) sin push (rama V0.15); pendiente republis
     limite subido en staging si se requiere.
 
 FIN DEL ANEXO - REVISION 8.113
+
+ANEXO - REVISION 8.114
+TITULO: PRUEBA DE ESTRES CONTRA BACKEND EXTERNO (192.168.1.5:5000): DIAGNOSTICO
+        DE 409/429 Y VALIDACION EN CALIENTE DE 8.113
+
+A. CONTEXTO
+A1. El usuario pidio configurar scripts/stress-test.py para apuntar a un backend
+    externo en la LAN (http://192.168.1.5:5000) con 60 transacciones fijas. Se
+    provisiono staging remoto via API admin: BOT_STRESS_TEST (id=8, rol Cashier),
+    productos "SKU-TEST-001..003" (nombres 'Prueba Estres A/B/C', ids
+    585-587, precio 0, stock 100), tasa BCV 842.21.
+A2. Primera corrida (4 hilos, 60 tx): start 60/60, items 120/120, checkout-preview
+    60/60, complete 18 OK / 42 x 409. Venta secuencial manual (start->items->
+    preview->complete) contra el mismo backend: complete 200 OK. El 409 solo
+    aparece bajo concurrencia.
+
+B. DIAGNOSTICO (CAUSA RAIZ)
+B1. Reproduccion paralela (8 hilos) capturo los cuerpos reales de los 409: el
+    ProblemDetails dice "Stock insuficiente para el producto 'Prueba Estres B'
+    (SKU: SKU-TEST-002). Stock actual: 0,000, deduccion requerida: 1,000".
+    El 409 es el VALIDADOR de stock del complete, no concurrencia optimista, no
+    idempotencia, no colision de numeracion: el backend rechaza correctamente
+    vender inventario inexistente. No es un bug.
+B2. La primera corrida consumio hasta 20 uds por venta sobre 3 SKUs (300 uds
+    totales): la piscina sintetica se agoto a mitad de corrida (~70% de rechazos).
+    La prueba asume inventario infinito; el staging debe reponerse.
+B3. El 429 (start 31 / items 3 en la corrida v3) es el GeneralApiRateLimit = 200
+    req/min por IP: 4 cajas simuladas desde UNA IP (~370 req/min) superan el techo
+    en rafaga. La prueba multi-caja es por disenio multi-IP (solo una maquina tras
+    NAT): si no se sube el limite, se mide la cola del limiter, no la capacidad.
+
+C. REMEDIACION Y VERIFICACION
+C1. Restock masivo externo: +1.000.000 ud x 30 SKU-TEST (ids 585-614) via
+    /api/products/{id}/adjust-stock. Nueva corrida 60 tx (qty-max 3):
+    complete 26/26 OK (0 fallos de stock), 8.22 ventas/min; unicos fallos:
+    start 429 x 31, items 429 x 3. Confirmado empiricamente el diagnostico.
+C2. Validacion en caliente de 8.113 (binding de la clave): republish Release
+    completo (scripts/build-release.ps1 -> publish/BackendAPI single-file win-x64
+    + bundle web de 32 assets; scrub de secretos, sin .pfx, sin
+    appsettings.Development.json). Instancia :5002 con env
+    RateLimiting__GeneralApiRateLimit=15 -> rafaga de 25 GET a /api/health:
+    15 x 200 + 10 x 429 -> la sobrescritura se respeta en runtime. Cierra el
+    pendiente de ESTADO de 8.113.
+C3. El ejecutable publicado se niega a arrancar en Production sin HTTPS
+    (Program.cs, gate 8.9-M7): el externo que sirve HTTP corre en Development
+    (igual que el dev local). El deploy del externo debe conservar su
+    ASPNETCORE_ENVIRONMENT actual. El puerto HTTP se controla con la env PORT
+    (Program.cs:58), no ASPNETCORE_URLS (se limpia en Program.cs:47).
+C4. Backend local :5000 restaurado con build fresco 8.113 (default 200).
+C5. Nuevo scripts/stress-external.ps1 (runner preparado para backend
+    externo): pre-flight /health + tasa > 0, login de administracion,
+    provisionamiento idempotente (usuario BOT_STRESS_TEST, piscina
+    SKU-TEST hasta --ProductCount, restock por delta al
+    --RestockAmount evitando agotamiento) y delegacion a
+    scripts/stress-test.py con parametros de corrida (60 tx, 4 cajas,
+    qty-max 3 por defecto). Smoke validado contra staging local:
+    4/4 ventas OK, 0 fallos, 0 re-logins, JSON + resumen al final.
+
+D. DECISIONES
+D1. El 409 por stock en pruebas de estres no es defecto: la prueba debe operar
+    sobre inventario reposicionable (restock previo, p. ej. +1.000.000) o consumir
+    bajo el techo. Queda documentado para futuras corridas.
+D2. Para medir capacidad con 4 cajas desde UNA IP se sube el limite en staging
+    solamente (configurable desde 8.113): env RateLimiting__GeneralApiRateLimit=600
+    o appsettings del puesto. Default 200 del repo intacto en produccion.
+D3. El backend externo (192.168.1.5) dejo de estar disponible tras esta sesion:
+    la limpieza del staging remoto (scripts/cleanup-stress-data.ps1) queda sin
+    efecto.
+
+E. ESTADO
+E1. Republish 8.113 completado y backend local :5000 operativo con el binario
+    publicado (version para pruebas internas) en Development (default 200).
+    Las validaciones de esta revision (diagnostico 409/429 y binding en
+    caliente de RateLimiting) se mantienen como evidencia contra el staging
+    interno. La corrida externa 60/60 final queda sin efecto por la baja del
+    backend externo; el runner scripts/stress-external.ps1 queda preparado
+    para cuando exista un backend remoto. Esta revision no toca el codigo de
+    la aplicacion (.NET/React/WPF): solo herramientas y docs.
+
+FIN DEL ANEXO - REVISION 8.114

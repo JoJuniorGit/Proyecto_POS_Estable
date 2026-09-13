@@ -17,6 +17,34 @@ HISTORIAL DE VERSIONES (CHANGELOG) - el registro mas reciente va arriba
 --------------------------------------------------------------------------------
 | Version  | Fecha       | Commit/Bif.  | Cambio
 |----------|-------------|--------------|----------------------------------------------------------
+| v1.64.11 | 2026-09-12  | (8.114)      | PRUEBA DE ESTRES CONTRA BACKEND EXTERNO
+|          |             |              | (192.168.1.5:5000): diagnostico de 409/429 y
+|          |             |              | validacion en caliente de 8.113. (A) El 409 en
+|          |             |              | complete NO era bug: era "Stock insuficiente"
+|          |             |              | (piscina sintetica agotada; el backend rechaza
+|          |             |              | correctamente vender inventario inexistente).
+|          |             |              | (B) El 429 es el GeneralApiRateLimit (200 req/min
+|          |             |              | por IP): 4 cajas simuladas desde UNA IP superan
+|          |             |              | el techo; la prueba multi-caja por disenio es
+|          |             |              | multi-IP. (C) Se valida en caliente (build
+|          |             |              | Release + instancia :5002 con
+|          |             |              | RateLimiting__GeneralApiRateLimit=15 -> 15x200+
+|          |             |              | 10x429) que la sobrescritura de 8.113 se
+|          |             |              | respeta en runtime. (D) Republish completo
+|          |             |              | (publish/BackendAPI) con el bundle web; backend
+|          |             |              | local :5000 restaurado con build fresco 8.113.
+|          |             |              | Con restock masivo externo el complete va 26/26
+|          |             |              | OK; solo el 429 (start 31, items 3) impide el
+|          |             |              | 60/60 desde una IP. El backend externo
+|          |             |              | (192.168.1.5) quedo fuera de servicio tras
+|          |             |              | la sesion; la corrida final externa queda
+|          |             |              | sin efecto (las validaciones son evidencia).
+|          |             |              | (E) Nuevo scripts/stress-external.ps1: runner
+|          |             |              | preparado para externo (salud + tasa +
+|          |             |              | provision/restock idempotente + corrida
+|          |             |              | parametrizada via Python); smoke validado
+|          |             |              | contra staging local 4/4. Detalle en
+|          |             |              | ANEXO 8.114.
 | v1.64.10 | 2026-09-12  | (8.113)      | LIMITE DE TASA GENERAL CONFIGURABLE:
 |          |             |              | GeneralApiRateLimit (200 req/min por IP,
 |          |             |              | FixedWindowRateLimiter) pasa de fijo a
