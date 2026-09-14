@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
+import { registerOpenModal } from '../../utils/modalRegistry';
 
 export default function Modal({ isOpen, onClose, title, children, maxWidth = '500px', overflowVisible = false }) {
   const modalRef = useRef(null);
@@ -57,6 +58,11 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = '50
       }
     };
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    return registerOpenModal();
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

@@ -1,0 +1,45 @@
+.srm-container {
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow: auto;
+  text-align: center;
+  background-color: var(--bg-surface);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+.srm-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.srm-detail {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.srm-alert {
+  margin: 0;
+  text-align: left;
+}
+
+.srm-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.srm-actions .btn {
+  min-width: 150px;
+}
+
+.srm-actions .btn-primary {
+  background-color: var(--color-primary, var(--accent-primary));
+  color: var(--text-on-accent);
+}

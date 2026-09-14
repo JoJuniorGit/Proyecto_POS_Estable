@@ -13,6 +13,7 @@ import BarcodeScannerControls from './BarcodeScannerControls';
 import { getProductBySku } from '../../services/productsApi';
 import { isValidBarcode } from '../../utils/barcodeValidator';
 import { playScanSuccess, playScanWarning, playScanError, closeAudioContext } from '../../utils/soundEffects';
+import { registerShutdownCleanup } from '../../utils/shutdownRegistry';
 import { checkBarcodeDetectorSupport, createNativeBarcodeDetector } from '../../utils/nativeBarcodeScanner';
 import { isLaptopOrDesktopEnvironment, processMultiPassLaptopFrame } from '../../utils/laptopVisionEnhancer';
 import { formatBsS, formatUSD } from '../../utils/formatters';
@@ -157,6 +158,14 @@ export default function BarcodeScannerModal({
       setScanCount(0);
       setRecentScannedProductIds([]);
     }
+  }, [isOpen, stopActiveStream]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    return registerShutdownCleanup(() => {
+      stopActiveStream();
+      void closeAudioContext();
+    });
   }, [isOpen, stopActiveStream]);
 
   const triggerBoundingBox = useCallback((cornerPoints) => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ExchangeRateProvider, useExchangeRate } from './context/ExchangeRateContext';
 import { CurrencyFormatProvider } from './context/CurrencyFormatContext';
@@ -9,6 +9,9 @@ import CheckoutModal from './components/checkout/CheckoutModal';
 import HoldSaleModal from './components/pos/HoldSaleModal';
 import SuccessScreen from './components/checkout/SuccessScreen';
 import FullScreenLoader from './components/ui/FullScreenLoader';
+import SaleRecoveryModal from './components/pos/SaleRecoveryModal';
+import { useShutdownGuard } from './hooks/useShutdownGuard';
+import { hasOpenModals } from './utils/modalRegistry';
 
 // 8.6-M5: code splitting — cada página se carga como chunk propio (React.lazy).
 const PosPage = lazy(() => import('./pages/PosPage'));
@@ -45,7 +48,7 @@ function MainApp() {
   const checkoutRef = useRef(null);
 
   const { exchangeRate, isRateOutdated } = useExchangeRate();
-  const { currentSale, totalUSD, totalBsS, resetCart } = useCart();
+  const { currentSale, totalUSD, totalBsS, resetCart, items, pendingRecovery, recoveryError, recoveryProcessing, recoverPendingSale, discardPendingRecovery, flushSaleState } = useCart();
 
   useEffect(() => {
     function handleHashChange() {
@@ -168,6 +171,19 @@ function MainApp() {
     }
   };
 
+  const getHasVolatileState = useCallback(() => (
+    items.length > 0 ||
+    isCheckoutOpen ||
+    isHoldModalOpen ||
+    Boolean(completedInvoice) ||
+    Boolean(completedHoldSuccess) ||
+    Boolean(pendingRecovery) ||
+    Boolean(checkoutRef.current?.hasPayments) ||
+    hasOpenModals()
+  ), [items.length, isCheckoutOpen, isHoldModalOpen, completedInvoice, completedHoldSuccess, pendingRecovery]);
+
+  useShutdownGuard({ getHasVolatileState, flushState: flushSaleState });
+
   if (!isAuthenticated) {
     return <LoginPage />;
   }
@@ -222,6 +238,15 @@ function MainApp() {
           onClose={handleCloseHoldSuccess}
         />
       )}
+
+      <SaleRecoveryModal
+        isOpen={Boolean(pendingRecovery)}
+        recovery={pendingRecovery}
+        isProcessing={recoveryProcessing}
+        error={recoveryError}
+        onRecover={recoverPendingSale}
+        onDiscard={discardPendingRecovery}
+      />
     </Layout>
   );
 }

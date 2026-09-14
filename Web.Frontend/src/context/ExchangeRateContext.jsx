@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '../services/api';
 import { connectRateHub, disconnectRateHub } from '../services/signalr';
+import { registerShutdownCleanup } from '../utils/shutdownRegistry';
 
 const ExchangeRateContext = createContext();
 
@@ -30,6 +31,10 @@ export function ExchangeRateProvider({ children }) {
 
     initRate();
 
+    const unregisterShutdownCleanup = registerShutdownCleanup(() => {
+      void disconnectRateHub();
+    });
+
     // Conectar SignalR
     connectRateHub(
       (newRate) => {
@@ -51,6 +56,7 @@ export function ExchangeRateProvider({ children }) {
     );
 
     return () => {
+      unregisterShutdownCleanup();
       isMounted = false;
       disconnectRateHub();
     };

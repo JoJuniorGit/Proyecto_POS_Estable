@@ -115,6 +115,7 @@ public partial class App : Application
         // Service Registration
         builder.Services.AddSingleton<IClientStateService, ClientStateService>();
         builder.Services.AddSingleton<IClientSettingsStore, ClientSettingsStore>();
+        builder.Services.AddSingleton<ISaleRecoveryStore, SaleRecoveryStore>();
         builder.Services.AddSingleton<ISubnetScannerService, SubnetScannerService>();
         builder.Services.AddSingleton<IConnectionManager, ConnectionManager>();
         builder.Services.AddSingleton<IDialogService, WpfDialogService>();
@@ -336,6 +337,15 @@ public partial class App : Application
 
         if (_host != null)
         {
+            try
+            {
+                _host.Services.GetService<ISaleRecoveryStore>()?.Clear();
+            }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogCrash(ex, "App.StopServicesAsync.ClearRecovery");
+            }
+
             try
             {
                 Core.Logging.AppLogger.LogStart("Deteniendo servicio de sondeo de salud...");

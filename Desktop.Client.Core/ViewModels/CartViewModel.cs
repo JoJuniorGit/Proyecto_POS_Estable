@@ -22,13 +22,16 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
     private readonly IExchangeRateService _exchangeRateService;
     private readonly IDialogService? _dialogService;
     private readonly IDispatcherInvoker _dispatcherInvoker;
+    private readonly ISaleRecoveryStore? _recoveryStore;
+    private bool _preserveRecoveryClearOnce;
 
-    public CartViewModel(ISalesService salesService, IExchangeRateService exchangeRateService, IDialogService? dialogService = null, IDispatcherInvoker? dispatcherInvoker = null)
+    public CartViewModel(ISalesService salesService, IExchangeRateService exchangeRateService, IDialogService? dialogService = null, IDispatcherInvoker? dispatcherInvoker = null, ISaleRecoveryStore? recoveryStore = null)
     {
         _salesService = salesService;
         _exchangeRateService = exchangeRateService;
         _dialogService = dialogService;
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
+        _recoveryStore = recoveryStore;
 
         // Reactive sync: When the rate changes, update all items and totals at once.
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
@@ -109,6 +112,8 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
 
     private bool IsLivePendingSale => CurrentSale is { Status: "Pending" } && CartItems.Count > 0;
 
+    public bool HasUncommittedItems => CurrentSale is { Status: "Pending" } && CartItems.Count > 0;
+
     private decimal LiveTotalBsS => PricingHelper.RoundToDigital(CartItems.Sum(c => c.SubtotalBsS));
 
     private SaleDto? _currentSale;
@@ -176,9 +181,46 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
                 RecalculateTotals();
                 IsEmpty = true;
             }
+
+            PersistRecoveryState();
         }
 
         _dispatcherInvoker.Invoke(DoUpdate);
+    }
+
+    private void PersistRecoveryState()
+    {
+        try
+        {
+            if (CurrentSale is { Status: "Pending" } sale && CartItems.Count > 0)
+            {
+                _recoveryStore?.Save(new SaleRecoverySnapshot
+                {
+                    SaleId = sale.Id,
+                    CustomerName = sale.CustomerName,
+                    ItemCount = CartItems.Count,
+                    TotalUSD = sale.TotalUSD,
+                    Status = sale.Status,
+                    SavedAtUtc = DateTime.UtcNow
+                });
+            }
+            else if (_preserveRecoveryClearOnce)
+            {
+                _preserveRecoveryClearOnce = false;
+            }
+            else
+            {
+                _recoveryStore?.Clear();
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    public void PreserveRecoverySnapshotOnNextClear()
+    {
+        _preserveRecoveryClearOnce = true;
     }
 
     private void RecalculateTotals()

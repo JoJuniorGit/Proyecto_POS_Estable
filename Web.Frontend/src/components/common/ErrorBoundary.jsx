@@ -26,6 +26,8 @@ export default class ErrorBoundary extends React.Component {
       localStorage.removeItem('active_pos_sale_id');
       localStorage.removeItem('active_pos_sale_cache');
       localStorage.removeItem('active_pos_has_items');
+      localStorage.removeItem('pos_orphan_sale_snapshot');
+      localStorage.removeItem('pos_clean_shutdown_at');
     } catch {}
     window.location.hash = 'pos';
     window.location.reload();

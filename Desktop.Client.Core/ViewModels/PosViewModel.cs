@@ -26,6 +26,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
     private readonly UserSession? _userSession;
     private readonly IDialogService? _dialogService;
     private readonly IDispatcherInvoker _dispatcherInvoker;
+    private readonly ISaleRecoveryStore? _recoveryStore;
+    private bool _recoveryCheckCompleted;
 
     private CartViewModel _cart;
     public CartViewModel Cart
@@ -105,7 +107,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
         CartViewModel cartViewModel,
         UserSession? userSession = null,
         IDialogService? dialogService = null,
-        IDispatcherInvoker? dispatcherInvoker = null)
+        IDispatcherInvoker? dispatcherInvoker = null,
+        ISaleRecoveryStore? recoveryStore = null)
     {
         _salesService = salesService ?? throw new ArgumentNullException(nameof(salesService));
         _productService = productService ?? throw new ArgumentNullException(nameof(productService));
@@ -115,6 +118,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
         _userSession = userSession;
         _dialogService = dialogService;
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
+        _recoveryStore = recoveryStore;
 
         // Sync local property when exchange rate changes globally
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
@@ -133,6 +137,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
 
     public void ResetSession()
     {
+        _recoveryCheckCompleted = false;
+
         Action clearAction = () =>
         {
             ActivePaymentMethods.Clear();
@@ -143,6 +149,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
             Suggestions.Clear();
         };
 
+        Cart.PreserveRecoverySnapshotOnNextClear();
         _dispatcherInvoker.Invoke(clearAction);
     }
 
@@ -169,13 +176,67 @@ public partial class PosViewModel : ObservableObject, IDisposable
 
             if (Cart.CurrentSale == null)
             {
-                await StartNewSaleAsync();
+                await RestoreOrStartSaleAsync();
             }
         }
         finally
         {
             _sessionInitializationGate.Release();
         }
+    }
+
+    private async Task RestoreOrStartSaleAsync()
+    {
+        if (_recoveryCheckCompleted)
+        {
+            await StartNewSaleAsync();
+            return;
+        }
+
+        _recoveryCheckCompleted = true;
+
+        var snapshot = _recoveryStore?.Load();
+
+        if (snapshot == null || snapshot.ItemCount <= 0 || snapshot.Status != "Pending")
+        {
+            if (snapshot != null)
+            {
+                _recoveryStore?.Clear();
+            }
+
+            await StartNewSaleAsync();
+            return;
+        }
+
+        string mensaje = $"Se detectó una venta sin finalizar del {snapshot.SavedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm} con {snapshot.ItemCount} artículo(s) por un total de ${snapshot.TotalUSD:0.00} USD. ¿Desea recuperarla?";
+        bool recover = _dialogService?.ShowConfirm("Recuperar venta sin finalizar", mensaje) ?? false;
+
+        if (recover)
+        {
+            try
+            {
+                var sale = await _salesService.GetSaleAsync(snapshot.SaleId);
+                if (sale is { Status: "Pending" } && sale.Items != null && sale.Items.Count > 0)
+                {
+                    Cart.CurrentSale = sale;
+                    return;
+                }
+
+                _recoveryStore?.Clear();
+            }
+            catch (Exception ex)
+            {
+                _recoveryCheckCompleted = false;
+                _dialogService?.ShowWarning("Recuperar venta sin finalizar", $"No se pudo recuperar la venta #{snapshot.SaleId}: {ex.Message}. La venta sigue pendiente; verifique la conexión y vuelva a entrar al Punto de Venta para reintentar.");
+                return;
+            }
+        }
+        else
+        {
+            _recoveryStore?.Clear();
+        }
+
+        await StartNewSaleAsync();
     }
 
     private async Task LoadPaymentMethodsAsync()

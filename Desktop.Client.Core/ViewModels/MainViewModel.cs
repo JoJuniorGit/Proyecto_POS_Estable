@@ -289,6 +289,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _isAnyModalOpen, value);
     }
 
+    public bool HasUncommittedCartItems => _posViewModel?.Cart?.HasUncommittedItems == true;
+
     [RelayCommand]
     private async Task OpenPairingQrAsync()
     {

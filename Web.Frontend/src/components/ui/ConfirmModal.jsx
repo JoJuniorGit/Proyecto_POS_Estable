@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { registerOpenModal } from '../../utils/modalRegistry';
 import './ConfirmModal.css';
 
 /**
@@ -67,6 +68,11 @@ export default function ConfirmModal({
       clearTimeout(timer);
     };
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    return registerOpenModal();
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
