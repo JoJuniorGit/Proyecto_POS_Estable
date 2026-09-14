@@ -8158,3 +8158,42 @@ D3. Esta revision no toca la aplicacion (.NET/React/WPF): no aplica build,
     suites ni cobertura.
 
 FIN DEL ANEXO - REVISION 8.122
+
+================================================================================
+ANEXO - REVISION 8.123 (2026-09-14)
+Titulo: SDD sobre OpenSpec (contexto versionado) y reparacion local del hook GGA
+================================================================================
+
+A. CONTEXTO
+A1. Se activo el flujo SDD de gentle-ai en modo OpenSpec (preflight de sesion:
+    Pace Automatic, Artifacts OpenSpec, PR Ask me). El contexto del proyecto,
+    las capacidades de testing y la resolucion de Strict TDD se persisten en
+    `openspec/`, que pasa a versionarse; no se persisten artefactos SDD en
+    Engram (el skill-registry local sigue en `.atl/`, no versionado).
+A2. `openspec/config.yaml`: strict_tdd=false (fail-closed: CI corre `dotnet test`
+    y `npm test` como comandos independientes; no existe runner workspace-wide;
+    `scripts/pos-test.ps1` es harness de estres, no runner de suites), contexto
+    del proyecto, bloque testing con comandos por proyecto y gate de cobertura
+    (Core >= 0.70, Sales.Module >= 0.80, Inventory.Module >= 0.72).
+
+B. HOOK GGA (LOCAL, NO VERSIONADO)
+B1. El pre-commit de Gentleman Guardian Angel bloqueaba commits de codigo porque
+    heredaba `default_agent=gentle-orchestrator` (coordinador SDD que no revisa
+    inline) y la respuesta carecia de `STATUS: PASSED|FAILED` (STRICT_MODE).
+B2. Reparacion local en `.gga`: `OPENCODE_AGENT="plan"` (agente primary
+    read-only). Validacion real: archivo temporal staged -> `gga run` ->
+    STATUS: PASSED (exit 0, ~40 s); temporal eliminado. Hook reinstalado.
+
+C. VERIFICACION
+C1. `gentle-ai sdd-status`: store=openspec, planning_home materializado,
+    next=sdd-new (sin cambios activos aun).
+C2. Esta revision no toca la aplicacion: solo `openspec/` (nuevo) y este ANEXO.
+
+D. ESTADO / PENDIENTES
+D1. Primer cambio SDD a ejecutar: `web-hold-lock-ui-tests` (pendiente E1 de
+    8.121: test de componente web del ciclo de reclamo/liberacion en
+    PendingOrdersPage).
+D2. Commit sugerido:
+    `chore(8.123): contexto SDD en openspec y reparacion local del hook GGA - ANEXO 8.123`.
+
+FIN DEL ANEXO - REVISION 8.123
