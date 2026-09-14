@@ -8197,3 +8197,56 @@ D2. Commit sugerido:
     `chore(8.123): contexto SDD en openspec y reparacion local del hook GGA - ANEXO 8.123`.
 
 FIN DEL ANEXO - REVISION 8.123
+
+================================================================================
+ANEXO - REVISION 8.124 (2026-09-14)
+Titulo: Primer ciclo SDD (OpenSpec): pruebas web del bloqueo de venta en espera
+================================================================================
+
+A. CONTEXTO
+A1. Primer cambio SDD ejecutado sobre el store OpenSpec (8.123): cambio
+    `web-hold-lock-ui-tests`, que cierra el pendiente E1 del ANEXO 8.121
+    (pruebas web del ciclo de reclamo/liberacion en PendingOrdersPage).
+A2. Flujo completo con artefactos en `openspec/changes/`: exploration ->
+    proposal -> spec (capacidad nueva `pending-order-hold-lock`, 6 requisitos /
+    11 escenarios) -> design -> tasks (10 tareas) -> apply -> verify -> archive.
+
+B. IMPLEMENTACION
+B1. El ciclo de reclamo/liberacion se extrajo a un controlador puro con
+    dependencias inyectadas `createHoldOrderLockController({ claimSale,
+    releaseSale, reload, onError })` en `Web.Frontend/src/utils/` y se cableo
+    `PendingOrdersPage.jsx` conservando el comportamiento observable (net -37
+    lineas en la pagina).
+B2. Pruebas nuevas sin jsdom (sin dependencias nuevas): 12 tests de espias del
+    controlador + 5+5 tests renderToString de PendingOrderDesktopRow y
+    PendingOrderMobileCard, con fixture compartido `test/pendingSaleFixture.js`.
+    Suite web: 178/178 (156 base + 22 nuevos) y oxlint 0 errores.
+
+C. LEDGER SDD Y REVIEW
+C1. El intento de apply quedo contabilizado con 865 lineas (el stage incluyo
+    artefactos SDD de planificacion); presupuesto 400. Con autorizacion explicita
+    del usuario se ejecuto el reset de mantenimiento documentando razon y actor
+    (la implementacion real es ~370 lineas), y el intento de verify se liquido
+    passed.
+C2. verify-report: 6/6 requisitos y 11/11 escenarios en pass; verdict
+    pass_with_warnings. W1 (comentario nuevo en el controlador) se corrigio
+    despues de la verificacion (re-run 178/178 + lint 0); W2 (447 lineas de diff
+    in-scope, informativo) y W3-W5 quedaron documentados en el reporte.
+C3. Gate GGA local (pre-commit): el primer intento de commit fue rechazado por
+    nomenclatura de tests (se renombraron 22 tests para dejar el metodo bajo
+    prueba como primer segmento: `Start_`, `ReleaseActive_`, `ForceRelease_`,
+    `Render_`), se retiraron 7 bloques de comentarios historicos en
+    PendingOrdersPage.jsx y se renombro PAGE_SIZE a pageSize; suite re-ejecutada
+    (178/178 + lint 0) y commit reintentado.
+C4. Archivo: spec promovida a `openspec/specs/pending-order-hold-lock/spec.md`;
+    cambio archivado en
+    `openspec/changes/archive/2026-09-14-web-hold-lock-ui-tests/`.
+
+D. VERIFICACION
+D1. `npm test` 178/178 y `npm run lint` 0 errores (Web.Frontend).
+D2. Sin dependencias nuevas; sin cambios de contrato backend/WPF; sin
+    migraciones ni datos.
+D3. Prompt de commit sugerido:
+    `feat(8.124): controlador de bloqueo web y pruebas del ciclo de reclamo/liberacion - ANEXO 8.124`.
+
+FIN DEL ANEXO - REVISION 8.124

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getPendingSalesPage, completeSale, addPaymentsBatchToHoldSale, cancelSale, claimSale, releaseSale } from '../services/salesApi';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { useAuth } from '../context/AuthContext';
@@ -9,13 +9,10 @@ import Modal from '../components/ui/Modal';
 import PendingOrderDesktopRow from '../components/pending/PendingOrderDesktopRow';
 import PendingOrderMobileCard from '../components/pending/PendingOrderMobileCard';
 import { formatNumberEs } from '../utils/formatters';
-import { isLockedByOther, getLockInfo } from '../utils/holdLock';
+import { getLockInfo } from '../utils/holdLock';
+import { createHoldOrderLockController } from '../utils/holdOrderLockController';
 import { Search, Loader2, Clock, ChevronDown, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 import './PendingOrdersPage.css';
-
-function ignoreLockReleaseFailure() {
-  return undefined;
-}
 
 export default function PendingOrdersPage() {
   const [sales, setSales] = useState([]);
@@ -32,19 +29,14 @@ export default function PendingOrdersPage() {
   const { user } = useAuth();
   const currentUserId = user?.id;
   const isElevated = user?.role === 'Admin' || user?.role === 'Manager';
-  const activeLockRef = useRef(null);
 
-  // 8.29-A05: clave de idempotencia estable POR LOTE de abonos (saleId -> batchId).
-  // Se reutiliza en reintentos para que un fallo de red no duplique pagos ya acreditados;
-  // el batch es atómico (todo-o-nada) y un replay no persiste NINGÚN abono repetido.
   const abonoBatchKeysRef = useRef(new Map());
 
   // Modals state
   const [selectedSaleForCheckout, setSelectedSaleForCheckout] = useState(null);
   const [selectedSaleForEdit, setSelectedSaleForEdit] = useState(null);
 
-  // 8.14-N1: paginación de UI — página actual (offset) y si hay más para el botón "Ver más".
-  const PAGE_SIZE = 200;
+  const pageSize = 200;
   const [hasMore, setHasMore] = useState(false);
   const [pageOffset, setPageOffset] = useState(0);
 
@@ -52,16 +44,10 @@ export default function PendingOrdersPage() {
     setLoading(true);
     setError(null);
     try {
-      const { items, totalCount } = await getPendingSalesPage({ limit: PAGE_SIZE, offset: 0 });
+      const { items, totalCount } = await getPendingSalesPage({ limit: pageSize, offset: 0 });
       setSales(items || []);
       setPageOffset(items?.length || 0);
       setHasMore(totalCount > (items?.length || 0));
-      const lockedSaleId = activeLockRef.current;
-      if (lockedSaleId !== null && lockedSaleId !== undefined) {
-        const lockedSale = (items || []).find((item) => item.id === lockedSaleId);
-        const stillLocked = Boolean(lockedSale && lockedSale.claimedByUserId !== null && lockedSale.claimedByUserId !== undefined);
-        if (!stillLocked) activeLockRef.current = null;
-      }
     } catch (err) {
       console.error(err);
       setError('No se pudieron cargar las cuentas abiertas.');
@@ -70,13 +56,17 @@ export default function PendingOrdersPage() {
     }
   }, []);
 
-  // 8.14-N1: carga la siguiente página y la agrega a la lista ("Ver más").
+  const controller = useMemo(
+    () => createHoldOrderLockController({ claimSale, releaseSale, reload: loadPendingData, onError: setError }),
+    [loadPendingData, setError]
+  );
+
   const loadMore = useCallback(async () => {
     if (loading) return;
     setLoading(true);
     setError(null);
     try {
-      const { items, totalCount } = await getPendingSalesPage({ limit: PAGE_SIZE, offset: pageOffset });
+      const { items, totalCount } = await getPendingSalesPage({ limit: pageSize, offset: pageOffset });
       if (items.length > 0) {
         setSales(prev => [...(prev || []), ...items]);
         setPageOffset(prev => prev + items.length);
@@ -99,58 +89,31 @@ export default function PendingOrdersPage() {
     return () => {
       window.removeEventListener('onHoldSalesUpdated', handleRefreshSignal);
     };
-    // 8.6-M3: exchangeRate NO depende del re-fetch — la lista se refresca con el evento
-    // onHoldSalesUpdated (que el servidor emite al recalcular). Evita recargar por cada tick de tasa.
   }, [loadPendingData]);
 
   useEffect(() => {
     return () => {
-      const lockedSaleId = activeLockRef.current;
-      if (lockedSaleId === null || lockedSaleId === undefined) return;
-      releaseSale(lockedSaleId).catch(ignoreLockReleaseFailure);
+      controller.releaseActive();
     };
-  }, []);
+  }, [controller]);
 
   const toggleExpand = (id) => {
     setSelectedSaleId(id);
     setExpandedSaleId(prev => prev === id ? null : id);
   };
 
-  const releaseActiveLock = useCallback(async () => {
-    const lockedSaleId = activeLockRef.current;
-    if (lockedSaleId === null || lockedSaleId === undefined) return;
-    try {
-      await releaseSale(lockedSaleId);
-      activeLockRef.current = null;
-    } catch {
-      ignoreLockReleaseFailure();
-    }
-  }, []);
+  const releaseActiveLock = useCallback(() => controller.releaseActive(), [controller]);
 
   const handleStartCheckout = async (sale) => {
-    if (isLockedByOther(sale, currentUserId)) return;
-    setError(null);
-    try {
-      await claimSale(sale.id, 'Checkout');
-      activeLockRef.current = sale.id;
-      setSelectedSaleForCheckout(sale);
-    } catch (err) {
-      await loadPendingData();
-      setError(err.message || 'No se pudo reclamar el pedido.');
-    }
+    const claimed = await controller.start(sale, 'Checkout', currentUserId);
+    if (claimed) setSelectedSaleForCheckout(sale);
   };
 
   const handleEditSale = async (sale) => {
-    if (isLockedByOther(sale, currentUserId)) return;
-    setError(null);
-    try {
-      await claimSale(sale.id, 'Editing');
-      activeLockRef.current = sale.id;
+    const claimed = await controller.start(sale, 'Editing', currentUserId);
+    if (claimed) {
       setSelectedSaleId(sale.id);
       setSelectedSaleForEdit(sale);
-    } catch (err) {
-      await loadPendingData();
-      setError(err.message || 'No se pudo reclamar el pedido.');
     }
   };
 
@@ -167,14 +130,7 @@ export default function PendingOrdersPage() {
   };
 
   const handleForceRelease = async (sale) => {
-    setError(null);
-    try {
-      await releaseSale(sale.id, true);
-      if (activeLockRef.current === sale.id) activeLockRef.current = null;
-      await loadPendingData();
-    } catch (err) {
-      setError(err.message || 'No se pudo liberar el pedido.');
-    }
+    await controller.forceRelease(sale);
   };
 
   const selectedSale = sales.find(s => s.id === selectedSaleId) || sales.find(s => s.id === expandedSaleId);
@@ -335,7 +291,6 @@ export default function PendingOrdersPage() {
             ))}
           </div>
 
-          {/* 8.14-N1: botón "Ver más" para paginar la cola sin perder las ya cargadas. */}
           {hasMore && (
             <div className="text-center mt-3 mb-1">
               <button
@@ -392,8 +347,6 @@ export default function PendingOrdersPage() {
                   });
                 }
               } else {
-                // 8.29-A05: el lote de abonos se envía en UNA sola petición atómica
-                // (POST /payments/batch, todo-o-nada) con ÚNICA clave estable por lote.
                 let batchId = abonoBatchKeysRef.current.get(targetSaleId);
                 if (!batchId) {
                   batchId = (typeof crypto !== 'undefined' && crypto.randomUUID
@@ -414,9 +367,6 @@ export default function PendingOrdersPage() {
                 setSelectedSaleForCheckout(null);
                 await releaseActiveLock();
                 await loadPendingData();
-                // 8.29-A05: la clave de idempotencia del lote se libera solo DESPUÉS de
-                // confirmar la recarga; si ésta falla, el reintento reutiliza la misma
-                // clave y el servidor lo descarta (evita doble abono en ventana perdida).
                 abonoBatchKeysRef.current.delete(targetSaleId);
 
                 setCompletedLiquidation({
