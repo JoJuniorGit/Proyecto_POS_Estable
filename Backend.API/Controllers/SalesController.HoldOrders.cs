@@ -24,7 +24,7 @@ public partial class SalesController
                 return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
             }
 
-            var sale = await _salesService.HoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash);
+            var sale = await _salesService.HoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash, GetActorUserId());
             if (Response?.Headers != null)
             {
                 Response.Headers["X-Cache-Lookup"] = "MISS";
@@ -48,7 +48,7 @@ public partial class SalesController
             }
 
             bool isAuthorized = User.IsInRole("Admin") || User.IsInRole("Manager");
-            var sale = await _salesService.UpdateSaleItemsAsync(id, request, isAuthorized);
+            var sale = await _salesService.UpdateSaleItemsAsync(id, request, isAuthorized, GetActorUserId());
             return Ok(sale);
         }
         catch (System.UnauthorizedAccessException ex)
@@ -73,7 +73,7 @@ public partial class SalesController
                 return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
             }
 
-            var sale = await _salesService.AddPaymentToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash);
+            var sale = await _salesService.AddPaymentToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash, GetActorUserId());
             if (Response?.Headers != null)
             {
                 Response.Headers["X-Cache-Lookup"] = "MISS";
@@ -104,7 +104,7 @@ public partial class SalesController
                 return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
             }
 
-            var sale = await _salesService.AddPaymentsBatchToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash);
+            var sale = await _salesService.AddPaymentsBatchToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash, GetActorUserId());
             if (Response?.Headers != null)
             {
                 Response.Headers["X-Cache-Lookup"] = "MISS";
@@ -118,15 +118,15 @@ public partial class SalesController
     }
 
     [HttpGet("pending")]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult<System.Collections.Generic.IEnumerable<SaleDto>>> GetPendingSales([FromQuery] int limit = 200, [FromQuery] int offset = 0)
     {
         // 8.2-M9: tope de cola acotado (max 1000) para no devolver el conjunto completo.
         limit = System.Math.Clamp(limit, 1, 1000);
-        var (scopeToCashier, cashierId) = GetCashierReadScope();
-        var pending = await _salesService.GetPendingSalesAsync(scopeToCashier ? cashierId : null, limit, offset);
+        var pending = await _salesService.GetPendingSalesAsync(null, limit, offset);
 
         // 8.14-N1: total de la cola en cabecera para paginacion de UI sin romper el shape.
-        var totalCount = await _salesService.CountPendingSalesAsync(scopeToCashier ? cashierId : null);
+        var totalCount = await _salesService.CountPendingSalesAsync(null);
         Response.Headers.Append("X-Total-Count", totalCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
         return Ok(pending);
     }
@@ -140,7 +140,7 @@ public partial class SalesController
             return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para anular esta venta." });
         }
 
-        await _salesService.CancelSaleAsync(id);
+        await _salesService.CancelSaleAsync(id, GetActorUserId());
         return Ok(new { message = $"Pedido #{id} anulado exitosamente." });
     }
 }

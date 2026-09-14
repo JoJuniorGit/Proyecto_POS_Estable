@@ -31,7 +31,8 @@ public partial class SalesService
         bool isPendingPickup = false, 
         string? idempotencyKey = null,
         byte[]? idempotencyPayloadHash = null,
-        System.Threading.CancellationToken cancellationToken = default)
+        System.Threading.CancellationToken cancellationToken = default,
+        int? actingUserId = null)
     {
         var correlationId = Guid.NewGuid().ToString("N");
         _logger?.LogInformation("[TX_START] CorrelationId={CorrelationId}, SaleId={SaleId}, IsolationLevel=ReadCommitted", correlationId, saleId);
@@ -48,6 +49,8 @@ public partial class SalesService
                 _logger?.LogInformation("[SalesService] Idempotency: Venta #{SaleId} ya se encontraba completada con Factura N° {InvoiceNumber}. Retornando consecutivo.", saleId, sale.InvoiceNumber.Value);
                 return sale.InvoiceNumber.Value;
             }
+
+            EnsureHoldClaimAccess(sale, actingUserId);
 
             await using var transaction = _context.Database.IsRelational()
                 ? await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
@@ -280,6 +283,7 @@ public partial class SalesService
 
             // Es liquidación total
             sale.Status = SaleStatus.Completed;
+            ClearHoldClaim(sale);
             sale.DeliveryStatus = isPendingPickup ? SaleDeliveryStatus.PendingPickup : SaleDeliveryStatus.Delivered;
             sale.Date = DateTime.UtcNow;
             sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
@@ -373,6 +377,8 @@ public partial class SalesService
                     await _inventoryService.DetachFromTransactionAsync(cancellationToken);
                 }
             }
+
+            await NotifyHoldOrdersChangedAsync();
 
             _receiptPrintQueue?.Enqueue(Sales.Module.Receipts.SaleReceiptContext.CreateFrom(sale));
 

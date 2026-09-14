@@ -56,7 +56,7 @@ public partial class SalesController
 
         try
         {
-            var sale = await _salesService.UpdatePriceListAsync(id, request.PriceListType);
+            var sale = await _salesService.UpdatePriceListAsync(id, request.PriceListType, GetActorUserId());
             return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)

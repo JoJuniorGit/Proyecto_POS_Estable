@@ -212,6 +212,29 @@ public class SalesService : ISalesService
         return sale;
     }
 
+    public async Task<SaleDto> ClaimSaleAsync(int saleId, string action, System.Threading.CancellationToken cancellationToken = default)
+    {
+        var _request = new { Action = action };
+        var _response = await _httpClient.PostAsJsonAsync($"api/sales/{saleId}/claim", _request, cancellationToken);
+        if (!_response.IsSuccessStatusCode)
+        {
+            var errorContent = await _response.Content.ReadAsStringAsync(cancellationToken);
+            throw new System.Exception(ApiErrorParser.FromBody(errorContent, $"Error del servidor ({(int)_response.StatusCode})"));
+        }
+        return await _response.Content.ReadFromJsonAsync<SaleDto>(cancellationToken: cancellationToken) ?? throw new System.Exception("Failed to claim sale.");
+    }
+
+    public async Task<SaleDto> ReleaseSaleAsync(int saleId, bool force = false, System.Threading.CancellationToken cancellationToken = default)
+    {
+        var _response = await _httpClient.PostAsync($"api/sales/{saleId}/release?force={force.ToString().ToLowerInvariant()}", null, cancellationToken);
+        if (!_response.IsSuccessStatusCode)
+        {
+            var errorContent = await _response.Content.ReadAsStringAsync(cancellationToken);
+            throw new System.Exception(ApiErrorParser.FromBody(errorContent, $"Error del servidor ({(int)_response.StatusCode})"));
+        }
+        return await _response.Content.ReadFromJsonAsync<SaleDto>(cancellationToken: cancellationToken) ?? throw new System.Exception("Failed to release sale.");
+    }
+
     public async Task<(IEnumerable<SaleDto> Items, int TotalCount)> GetPendingSalesPagedAsync(int limit = 200, int offset = 0)
     {
         var response = await _httpClient.GetAsync($"api/sales/pending?limit={limit}&offset={offset}");

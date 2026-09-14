@@ -360,9 +360,9 @@ public class Phase4SharedTransactionAndIdempotencyTests
 
         var mockSalesService = new Mock<ISalesService>();
         mockSalesService.Setup(s => s.CompleteSaleAsync(
-            1, 45.0m, It.IsAny<IEnumerable<PaymentInfo>>(), 0m, It.IsAny<int?>(), false, "IDEMP-001", It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
-            .Callback<int, decimal, IEnumerable<PaymentInfo>, decimal, int?, bool, string?, byte[]?, CancellationToken>(
-                (sId, rate, pay, round, cId, pick, k, h, ct) =>
+            1, 45.0m, It.IsAny<IEnumerable<PaymentInfo>>(), 0m, It.IsAny<int?>(), false, "IDEMP-001", It.IsAny<byte[]>(), It.IsAny<CancellationToken>(), It.IsAny<int?>()))
+            .Callback<int, decimal, IEnumerable<PaymentInfo>, decimal, int?, bool, string?, byte[]?, CancellationToken, int?>(
+                (sId, rate, pay, round, cId, pick, k, h, ct, actorId) =>
                 {
                     if (!string.IsNullOrEmpty(k) && h != null)
                     {
@@ -421,7 +421,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
 
         // El servicio de ventas solo fue llamado UNA vez
         mockSalesService.Verify(s => s.CompleteSaleAsync(
-            1, 45.0m, It.IsAny<IEnumerable<PaymentInfo>>(), 0m, It.IsAny<int?>(), false, "IDEMP-001", It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+            1, 45.0m, It.IsAny<IEnumerable<PaymentInfo>>(), 0m, It.IsAny<int?>(), false, "IDEMP-001", It.IsAny<byte[]>(), It.IsAny<CancellationToken>(), It.IsAny<int?>()),
             Times.Once);
     }
 
@@ -433,9 +433,9 @@ public class Phase4SharedTransactionAndIdempotencyTests
 
         var mockSalesService = new Mock<ISalesService>();
         mockSalesService.Setup(s => s.CompleteSaleAsync(
-            1, 45.0m, It.IsAny<IEnumerable<PaymentInfo>>(), 0m, It.IsAny<int?>(), false, "IDEMP-002", It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
-            .Callback<int, decimal, IEnumerable<PaymentInfo>, decimal, int?, bool, string?, byte[]?, CancellationToken>(
-                (sId, rate, pay, round, cId, pick, k, h, ct) =>
+            1, 45.0m, It.IsAny<IEnumerable<PaymentInfo>>(), 0m, It.IsAny<int?>(), false, "IDEMP-002", It.IsAny<byte[]>(), It.IsAny<CancellationToken>(), It.IsAny<int?>()))
+            .Callback<int, decimal, IEnumerable<PaymentInfo>, decimal, int?, bool, string?, byte[]?, CancellationToken, int?>(
+                (sId, rate, pay, round, cId, pick, k, h, ct, actorId) =>
                 {
                     if (!string.IsNullOrEmpty(k) && h != null)
                     {
@@ -692,8 +692,8 @@ public class Phase4SharedTransactionAndIdempotencyTests
 
         var mockSalesService = new Mock<ISalesService>();
         mockSalesService.Setup(s => s.AddPaymentToHoldSaleAsync(
-                5, It.IsAny<AddPaymentRequestDto>(), "ABONO-001", It.IsAny<byte[]>()))
-            .Callback<int, AddPaymentRequestDto, string?, byte[]?>((saleId, req, key, hash) =>
+                5, It.IsAny<AddPaymentRequestDto>(), "ABONO-001", It.IsAny<byte[]>(), It.IsAny<int?>()))
+            .Callback<int, AddPaymentRequestDto, string?, byte[]?, int?>((saleId, req, key, hash, actorId) =>
             {
                 if (!string.IsNullOrEmpty(key) && hash != null)
                 {
@@ -741,7 +741,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
         Assert.Equal("HIT", replayContext.Response.Headers["X-Cache-Lookup"].ToString());
 
         mockSalesService.Verify(s => s.AddPaymentToHoldSaleAsync(
-            5, It.IsAny<AddPaymentRequestDto>(), "ABONO-001", It.IsAny<byte[]>()),
+            5, It.IsAny<AddPaymentRequestDto>(), "ABONO-001", It.IsAny<byte[]>(), It.IsAny<int?>()),
             Times.Once);
 
         // Se persiste un único registro de idempotencia

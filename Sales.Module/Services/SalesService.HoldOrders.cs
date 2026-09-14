@@ -20,9 +20,10 @@ namespace Sales.Module.Services;
 public partial class SalesService
 {
 
-    public async Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null)
+    public async Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null)
     {
         var sale = await GetSaleEntityAsync(saleId);
+        EnsureHoldClaimAccess(sale, actingUserId);
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold)
             throw new InvalidOperationException("Solo se pueden poner en espera ventas pendientes o abiertas.");
 
@@ -129,6 +130,7 @@ public partial class SalesService
                 sale.Status = SaleStatus.Completed;
                 sale.Date = DateTime.UtcNow;
                 sale.FinalPaidAmountBsS = sale.Payments.Sum(p => p.AmountBsS);
+                ClearHoldClaim(sale);
 
                 // Synchronous stock deduction
                 if (_inventoryService != null && sale.Items != null)
@@ -238,19 +240,22 @@ public partial class SalesService
         }
         else
         {
+            ClearHoldClaim(sale);
             sale.Status = SaleStatus.OnHold;
             sale.DeliveryStatus = SaleDeliveryStatus.PendingPickup;
             RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)));
             await _context.SaveChangesAsync();
         }
 
+        await NotifyHoldOrdersChangedAsync();
         await PopulateItemsMetadataAsync(sale);
         return MapToDto(sale);
     }
 
-    public async Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false)
+    public async Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false, int? actingUserId = null)
     {
         var sale = await GetSaleEntityAsync(saleId);
+        EnsureHoldClaimAccess(sale, actingUserId);
         if (sale.Status != SaleStatus.OnHold)
             throw new InvalidOperationException("Solo se pueden modificar productos en ventas que estén en estado en espera (OnHold).");
 
@@ -343,6 +348,7 @@ public partial class SalesService
         await RecalculateTotalAsync(sale);
         await _context.SaveChangesAsync();
 
+        await NotifyHoldOrdersChangedAsync();
         return MapToDto(sale);
     }
 
@@ -350,7 +356,7 @@ public partial class SalesService
     {
         // 8.7-B6: los GET no escriben. El recálculo masivo de OnHold ocurre en el POST de tasa
         // (ExchangeRateController → RecalculateOnHoldSalesAsync) e invalida/redifunde por SignalR.
-        // 8.9-B2: scope por cajero — un cajero solo vio sus propias ventas OnHold; Admin/Manager todo.
+        // 8.9-B2: el filtro por cajero es opcional; el listado compartido multiterminal consulta con cashierId null.
         // 8.2-M9: tope de la cola (default 200, max 1000 en el controlador) — acota memoria/CPU.
         // 8.14-N1: paginación real por offset (los clientes pueden pedir más páginas).
         if (limit <= 0) limit = 200;

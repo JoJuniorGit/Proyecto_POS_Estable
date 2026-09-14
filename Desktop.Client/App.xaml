@@ -24,6 +24,7 @@
             <converters:CollectionEmptyToVisibilityConverter x:Key="CollectionEmptyToVisibilityConverter"/>
             <converters:CollectionEmptyToVisibilityConverter x:Key="CollectionEmptyToVis"/>
             <converters:TitleCaseConverter x:Key="TitleCaseConverter"/>
+            <converters:HoldLockDisplayConverter x:Key="HoldLockDisplayConverter"/>
             <converters:InverseNullToBooleanConverter x:Key="InverseNullToBooleanConverter"/>
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
             <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>

@@ -70,9 +70,10 @@ public partial class SalesService
         return dto;
     }
 
-    public async Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId)
+    public async Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId, int? actingUserId = null)
     {
         var sale = await GetSaleEntityAsync(saleId);
+        EnsureHoldClaimAccess(sale, actingUserId);
         
         if (sale.Status == SaleStatus.Completed || sale.Status == SaleStatus.Cancelled)
             throw new InvalidOperationException("No se puede modificar el cliente de una venta finalizada.");

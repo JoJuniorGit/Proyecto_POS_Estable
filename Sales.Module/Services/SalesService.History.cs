@@ -13,7 +13,7 @@ namespace Sales.Module.Services;
 
 public partial class SalesService
 {
-    public async Task<SaleHistoryDto> ConfirmPickupAsync(int saleId)
+    public async Task<SaleHistoryDto> ConfirmPickupAsync(int saleId, int? actingUserId = null)
     {
         // 8.9-M17: una sola consulta; se mapea el DTO desde la entidad ya cargada (sin doble fetch).
         var sale = await _context.Sales
@@ -26,7 +26,9 @@ public partial class SalesService
 
         if (sale == null) throw new KeyNotFoundException("Venta no encontrada.");
 
-        if (sale.DeliveryStatus != SaleDeliveryStatus.PendingPickup)
+        EnsureHoldClaimAccess(sale, actingUserId);
+
+        if (sale.Status != SaleStatus.Completed || sale.DeliveryStatus != SaleDeliveryStatus.PendingPickup)
             throw new InvalidOperationException($"El pedido #{sale.InvoiceNumber ?? sale.Id} no se encuentra en estado Pendiente por Retirar.");
 
         sale.DeliveryStatus = SaleDeliveryStatus.Delivered;

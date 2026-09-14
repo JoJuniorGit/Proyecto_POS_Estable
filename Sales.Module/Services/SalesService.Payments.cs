@@ -21,9 +21,10 @@ public partial class SalesService
 {
 
 
-    public async Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null)
+    public async Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null)
     {
         var sale = await GetSaleEntityAsync(saleId);
+        EnsureHoldClaimAccess(sale, actingUserId);
         if (sale.Status != SaleStatus.OnHold)
             throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
 
@@ -83,6 +84,7 @@ public partial class SalesService
                 await dbTransaction.CommitAsync();
             }
 
+            await NotifyHoldOrdersChangedAsync();
             return MapToDto(sale);
         }
         catch (Exception ex)
@@ -105,7 +107,7 @@ public partial class SalesService
     // transacción; si alguna falla, se lanza sin persistir NADA. La persistencia de todos los
     // abonos del lote comparte UNA sola transacción (rollback conjunto) y UNA sola
     // SaveChanges. Idempotency: un único Idempotency-Key por lote.
-    public async Task<SaleDto> AddPaymentsBatchToHoldSaleAsync(int saleId, List<AddPaymentRequestDto> payments, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null)
+    public async Task<SaleDto> AddPaymentsBatchToHoldSaleAsync(int saleId, List<AddPaymentRequestDto> payments, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null)
     {
         if (payments == null || payments.Count == 0)
             throw new ArgumentException("Debe enviar al menos un abono.");
@@ -114,6 +116,7 @@ public partial class SalesService
             throw new ArgumentException("El lote de abonos supera el máximo permitido (50).");
 
         var sale = await GetSaleEntityAsync(saleId);
+        EnsureHoldClaimAccess(sale, actingUserId);
         if (sale.Status != SaleStatus.OnHold)
             throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
 
@@ -182,6 +185,7 @@ public partial class SalesService
                     await dbTransaction.CommitAsync();
                 }
 
+                await NotifyHoldOrdersChangedAsync();
                 return MapToDto(sale);
             }
             catch (Exception ex)

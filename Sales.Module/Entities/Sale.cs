@@ -68,6 +68,15 @@ public class Sale
     public int? CashierId { get; set; }
     public User? Cashier { get; set; }
 
+    public int? ClaimedByUserId { get; set; }
+
+    [MaxLength(150)]
+    public string? ClaimedByUserName { get; set; }
+
+    public SaleClaimAction ClaimAction { get; set; } = SaleClaimAction.None;
+
+    public DateTime? ClaimedAtUtc { get; set; }
+
     public bool IsZeroAmountOrder => TotalUSD == 0;
 
     public List<SalePayment> Payments { get; set; } = new();

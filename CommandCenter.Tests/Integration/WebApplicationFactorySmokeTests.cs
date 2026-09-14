@@ -181,6 +181,13 @@ public class WebApplicationFactorySmokeTests
             "FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'SalePayments'")
             .FirstOrDefaultAsync();
         Assert.True(paymentRateScale >= 4, $"SalePayments.ExchangeRate debe tener scale >= 4 (E1), se obtuvo {paymentRateScale}");
+
+        var holdClaimColumns = await salesDb.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.columns " +
+            "WHERE table_schema = 'public' AND table_name = 'Sales' " +
+            "AND column_name IN ('ClaimedByUserId', 'ClaimedByUserName', 'ClaimAction', 'ClaimedAtUtc')")
+            .FirstOrDefaultAsync();
+        Assert.Equal(4, holdClaimColumns);
     }
 
     [Fact]

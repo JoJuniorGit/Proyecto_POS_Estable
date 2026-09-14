@@ -47,6 +47,10 @@ public partial class SalesService
             DeliveryStatus = sale.DeliveryStatus.ToString(),
             PickupDate = sale.PickupDate,
             PriceListType = string.IsNullOrWhiteSpace(sale.PriceListType) ? "Retail" : sale.PriceListType,
+            ClaimedByUserId = sale.ClaimedByUserId,
+            ClaimedByUserName = sale.ClaimedByUserName,
+            ClaimAction = sale.ClaimAction.ToString(),
+            ClaimedAtUtc = sale.ClaimedAtUtc,
             CustomerId = sale.CustomerId,
             Customer = sale.Customer != null ? new CustomerDto
             {

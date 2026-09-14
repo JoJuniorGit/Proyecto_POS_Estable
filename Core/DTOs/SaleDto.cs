@@ -28,6 +28,11 @@ public class SaleDto
     public DateTime? PickupDate { get; set; }
     public string PriceListType { get; set; } = "Retail";
 
+    public int? ClaimedByUserId { get; set; }
+    public string? ClaimedByUserName { get; set; }
+    public string ClaimAction { get; set; } = "None";
+    public DateTime? ClaimedAtUtc { get; set; }
+
     public decimal TotalPaidUSD { get; set; }
     public decimal RemainingBalanceUSD { get; set; }
 

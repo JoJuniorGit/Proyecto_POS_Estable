@@ -30,6 +30,7 @@ public partial class SalesService : ISalesService
     private readonly Microsoft.Extensions.Logging.ILogger<SalesService>? _logger;
     private readonly IMemoryCache? _cache;
     private readonly Sales.Module.Receipts.IReceiptPrintQueue? _receiptPrintQueue;
+    private readonly Sales.Module.Interfaces.IHoldOrderNotifier? _holdOrderNotifier;
     private const string DefaultCustomerCacheKey = "default_customer_cache";
 
     public SalesService(
@@ -38,6 +39,7 @@ public partial class SalesService : ISalesService
         IMediator mediator,
         ICashDrawerService cashDrawerService,
         ISystemSettingsService settingsService,
+        Sales.Module.Interfaces.IHoldOrderNotifier? holdOrderNotifier = null,
         Microsoft.Extensions.Logging.ILogger<SalesService>? logger = null,
         IMemoryCache? cache = null,
         Sales.Module.Receipts.IReceiptPrintQueue? receiptPrintQueue = null)
@@ -47,9 +49,24 @@ public partial class SalesService : ISalesService
         _mediator = mediator;
         _cashDrawerService = cashDrawerService;
         _settingsService = settingsService;
+        _holdOrderNotifier = holdOrderNotifier;
         _logger = logger;
         _cache = cache;
         _receiptPrintQueue = receiptPrintQueue;
+    }
+
+    private async Task NotifyHoldOrdersChangedAsync()
+    {
+        if (_holdOrderNotifier == null) return;
+
+        try
+        {
+            await _holdOrderNotifier.NotifyHoldOrdersChangedAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "[SalesService] Notificación de pedidos en espera falló.");
+        }
     }
 
     private async Task<bool> IsAllowNegativeStockEnabledAsync()
@@ -169,9 +186,10 @@ public partial class SalesService : ISalesService
         return ValidateAndAdjustQuantity(product, quantity);
     }
 
-    public async Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false)
+    public async Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false, int? actingUserId = null)
     {
         var sale = await GetSaleEntityAsync(saleId);
+        EnsureHoldClaimAccess(sale, actingUserId);
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
@@ -276,9 +294,10 @@ public partial class SalesService : ISalesService
         return MapToDto(sale);
     }
 
-    public async Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate)
+    public async Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate, int? actingUserId = null)
     {
         var sale = await GetSaleEntityAsync(saleId);
+        EnsureHoldClaimAccess(sale, actingUserId);
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
@@ -307,9 +326,10 @@ public partial class SalesService : ISalesService
         return MapToDto(sale);
     }
 
-    public async Task<SaleDto> UpdateItemQuantityAsync(int saleId, int itemId, decimal quantity, decimal exchangeRate)
+    public async Task<SaleDto> UpdateItemQuantityAsync(int saleId, int itemId, decimal quantity, decimal exchangeRate, int? actingUserId = null)
     {
         var sale = await GetSaleEntityAsync(saleId);
+        EnsureHoldClaimAccess(sale, actingUserId);
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
@@ -346,9 +366,10 @@ public partial class SalesService : ISalesService
         return MapToDto(sale);
     }
 
-    public async Task CancelSaleAsync(int saleId)
+    public async Task CancelSaleAsync(int saleId, int? actingUserId = null)
     {
         var sale = await GetSaleEntityAsync(saleId);
+        EnsureHoldClaimAccess(sale, actingUserId);
         if (sale.Status == SaleStatus.Completed) 
             throw new InvalidOperationException("No se puede anular una venta que ya ha sido completada.");
         if (sale.Status == SaleStatus.Cancelled) 
@@ -359,8 +380,10 @@ public partial class SalesService : ISalesService
             throw new InvalidOperationException("No se puede anular un pedido que ya ha sido entregado al cliente.");
 
         sale.Status = SaleStatus.Cancelled;
+        ClearHoldClaim(sale);
         await _context.SaveChangesAsync();
         _logger?.LogInformation("Pedido #{SaleId} fue anulado exitosamente.", saleId);
+        await NotifyHoldOrdersChangedAsync();
     }
 
 }

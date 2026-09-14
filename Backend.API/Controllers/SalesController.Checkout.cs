@@ -171,7 +171,8 @@ public partial class SalesController
                 request.IsPendingPickup, 
                 idempotencyKey,
                 payloadHash,
-                HttpContext?.RequestAborted ?? default);
+                HttpContext?.RequestAborted ?? default,
+                GetActorUserId());
 
             if (Response?.Headers != null)
             {
@@ -237,7 +238,7 @@ public partial class SalesController
                 return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para confirmar esta entrega." });
             }
 
-            var sale = await _salesService.ConfirmPickupAsync(id);
+            var sale = await _salesService.ConfirmPickupAsync(id, GetActorUserId());
             return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException)

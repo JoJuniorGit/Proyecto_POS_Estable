@@ -12,9 +12,10 @@ namespace Sales.Module.Services;
 
 public partial class SalesService
 {
-    public async Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate)
+    public async Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate, int? actingUserId = null)
     {
         var sale = await GetSaleEntityAsync(saleId);
+        EnsureHoldClaimAccess(sale, actingUserId);
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
@@ -68,7 +69,7 @@ public partial class SalesService
         return totalUpdated;
     }
 
-    public async Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType)
+    public async Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType, int? actingUserId = null)
     {
         if (string.IsNullOrWhiteSpace(priceListType) || (priceListType != "Retail" && priceListType != "Wholesale"))
         {
@@ -87,6 +88,8 @@ public partial class SalesService
         {
             throw new KeyNotFoundException($"Venta #{saleId} no encontrada.");
         }
+
+        EnsureHoldClaimAccess(sale, actingUserId);
 
         if (sale.Status == SaleStatus.Completed)
         {

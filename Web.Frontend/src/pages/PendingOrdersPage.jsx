@@ -1,13 +1,21 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { getPendingSalesPage, completeSale, addPaymentsBatchToHoldSale, cancelSale } from '../services/salesApi';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { getPendingSalesPage, completeSale, addPaymentsBatchToHoldSale, cancelSale, claimSale, releaseSale } from '../services/salesApi';
 import { useExchangeRate } from '../context/ExchangeRateContext';
+import { useAuth } from '../context/AuthContext';
 import CheckoutModal from '../components/checkout/CheckoutModal';
 import EditSaleModal from '../components/pos/EditSaleModal';
 import SuccessScreen from '../components/checkout/SuccessScreen';
 import Modal from '../components/ui/Modal';
-import { formatNumberEs, formatBsS, formatUSD, formatQuantity } from '../utils/formatters';
-import { Search, Loader2, Clock, ChevronRight, ChevronDown, RefreshCw, CheckCircle, ShieldCheck, Edit2, User, Trash2, AlertTriangle } from 'lucide-react';
+import PendingOrderDesktopRow from '../components/pending/PendingOrderDesktopRow';
+import PendingOrderMobileCard from '../components/pending/PendingOrderMobileCard';
+import { formatNumberEs } from '../utils/formatters';
+import { isLockedByOther, getLockInfo } from '../utils/holdLock';
+import { Search, Loader2, Clock, ChevronDown, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 import './PendingOrdersPage.css';
+
+function ignoreLockReleaseFailure() {
+  return undefined;
+}
 
 export default function PendingOrdersPage() {
   const [sales, setSales] = useState([]);
@@ -21,6 +29,10 @@ export default function PendingOrdersPage() {
   const [completedLiquidation, setCompletedLiquidation] = useState(null);
   
   const { exchangeRate } = useExchangeRate();
+  const { user } = useAuth();
+  const currentUserId = user?.id;
+  const isElevated = user?.role === 'Admin' || user?.role === 'Manager';
+  const activeLockRef = useRef(null);
 
   // 8.29-A05: clave de idempotencia estable POR LOTE de abonos (saleId -> batchId).
   // Se reutiliza en reintentos para que un fallo de red no duplique pagos ya acreditados;
@@ -44,6 +56,12 @@ export default function PendingOrdersPage() {
       setSales(items || []);
       setPageOffset(items?.length || 0);
       setHasMore(totalCount > (items?.length || 0));
+      const lockedSaleId = activeLockRef.current;
+      if (lockedSaleId !== null && lockedSaleId !== undefined) {
+        const lockedSale = (items || []).find((item) => item.id === lockedSaleId);
+        const stillLocked = Boolean(lockedSale && lockedSale.claimedByUserId !== null && lockedSale.claimedByUserId !== undefined);
+        if (!stillLocked) activeLockRef.current = null;
+      }
     } catch (err) {
       console.error(err);
       setError('No se pudieron cargar las cuentas abiertas.');
@@ -85,20 +103,86 @@ export default function PendingOrdersPage() {
     // onHoldSalesUpdated (que el servidor emite al recalcular). Evita recargar por cada tick de tasa.
   }, [loadPendingData]);
 
+  useEffect(() => {
+    return () => {
+      const lockedSaleId = activeLockRef.current;
+      if (lockedSaleId === null || lockedSaleId === undefined) return;
+      releaseSale(lockedSaleId).catch(ignoreLockReleaseFailure);
+    };
+  }, []);
+
   const toggleExpand = (id) => {
     setSelectedSaleId(id);
     setExpandedSaleId(prev => prev === id ? null : id);
   };
 
-  const handleEditSale = (sale) => {
-    setSelectedSaleId(sale.id);
-    setSelectedSaleForEdit(sale);
+  const releaseActiveLock = useCallback(async () => {
+    const lockedSaleId = activeLockRef.current;
+    if (lockedSaleId === null || lockedSaleId === undefined) return;
+    try {
+      await releaseSale(lockedSaleId);
+      activeLockRef.current = null;
+    } catch {
+      ignoreLockReleaseFailure();
+    }
+  }, []);
+
+  const handleStartCheckout = async (sale) => {
+    if (isLockedByOther(sale, currentUserId)) return;
+    setError(null);
+    try {
+      await claimSale(sale.id, 'Checkout');
+      activeLockRef.current = sale.id;
+      setSelectedSaleForCheckout(sale);
+    } catch (err) {
+      await loadPendingData();
+      setError(err.message || 'No se pudo reclamar el pedido.');
+    }
+  };
+
+  const handleEditSale = async (sale) => {
+    if (isLockedByOther(sale, currentUserId)) return;
+    setError(null);
+    try {
+      await claimSale(sale.id, 'Editing');
+      activeLockRef.current = sale.id;
+      setSelectedSaleId(sale.id);
+      setSelectedSaleForEdit(sale);
+    } catch (err) {
+      await loadPendingData();
+      setError(err.message || 'No se pudo reclamar el pedido.');
+    }
+  };
+
+  const handleCloseCheckout = async () => {
+    setSelectedSaleForCheckout(null);
+    await releaseActiveLock();
+    await loadPendingData();
+  };
+
+  const handleCloseEdit = async () => {
+    setSelectedSaleForEdit(null);
+    await releaseActiveLock();
+    await loadPendingData();
+  };
+
+  const handleForceRelease = async (sale) => {
+    setError(null);
+    try {
+      await releaseSale(sale.id, true);
+      if (activeLockRef.current === sale.id) activeLockRef.current = null;
+      await loadPendingData();
+    } catch (err) {
+      setError(err.message || 'No se pudo liberar el pedido.');
+    }
   };
 
   const selectedSale = sales.find(s => s.id === selectedSaleId) || sales.find(s => s.id === expandedSaleId);
   const selectedSaleTotalPaidUSD = selectedSale?.totalPaidUSD || (selectedSale?.payments?.reduce((acc, p) => acc + (p.amount || 0), 0)) || 0;
   const hasPayments = selectedSaleTotalPaidUSD > 0 || (selectedSale?.payments && selectedSale.payments.length > 0);
   const canCancelSelectedSale = Boolean(selectedSale && !hasPayments);
+  const selectedSaleLockInfo = selectedSale ? getLockInfo(selectedSale, currentUserId) : null;
+  const selectedSaleLockedByOther = Boolean(selectedSaleLockInfo?.isLockedByOther);
 
   const handleConfirmCancelSale = async () => {
     if (!selectedSale || !canCancelSelectedSale) return;
@@ -148,8 +232,8 @@ export default function PendingOrdersPage() {
             <button
               className="btn btn-danger flex-align-center gap-2 font-bold ppo-danger-btn ppo-danger-btn-active"
               onClick={() => setShowConfirmCancel(true)}
-              disabled={!canCancelSelectedSale || isDeleting}
-              title={hasPayments ? "No se puede anular un pedido con abonos acumulados" : `Anular pedido #${selectedSale.id}`}
+              disabled={!canCancelSelectedSale || isDeleting || selectedSaleLockedByOther}
+              title={selectedSaleLockedByOther ? selectedSaleLockInfo.label : (hasPayments ? "No se puede anular un pedido con abonos acumulados" : `Anular pedido #${selectedSale.id}`)}
             >
               <Trash2 size={16} /> Anular Pedido #{selectedSale.id}
             </button>
@@ -216,265 +300,39 @@ export default function PendingOrdersPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredSales.map((sale) => {
-                  const isExpanded = expandedSaleId === sale.id;
-
-                  return (
-                    <React.Fragment key={sale.id}>
-                      <tr
-                        className="cursor-pointer"
-                        style={{
-                          backgroundColor: isExpanded ? 'rgba(99, 102, 241, 0.06)' : 'transparent',
-                        }}
-                        onClick={() => toggleExpand(sale.id)}
-                      >
-                        <td>
-                          <div className="d-flex flex-align-center gap-2">
-                            {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                            <div>
-                              <strong>Pedido #{sale.id}</strong>
-                              <div className="ppo-subtext">
-                                {new Date(sale.date).toLocaleDateString()} {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="ppo-maxw220">
-                          <div
-                            className="font-medium text-truncate ppo-maxw220"
-                            title={sale.customerName || sale.customer?.name || 'Consumidor Final'}
-                          >
-                            <strong>{sale.customerName || sale.customer?.name || 'Consumidor Final'}</strong>
-                          </div>
-                          <div className="ppo-subtext">{sale.customerCedula || sale.customer?.cedulaOrRif || 'V-00000000'}</div>
-                        </td>
-
-                        <td className="text-right text-nowrap">
-                          <div className="amount-bss font-bold total-bss-highlight ppo-total-bss">
-                            {formatBsS(sale.totalBsS)}
-                          </div>
-                          <div className="amount-usd ppo-usd-sub">
-                            {formatUSD(sale.totalUSD)}
-                          </div>
-                        </td>
-
-                        <td className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="d-flex gap-2 justify-end">
-                            <button
-                              className="btn btn-sm btn-primary gap-1"
-                              onClick={() => setSelectedSaleForCheckout(sale)}
-                            >
-                              <CheckCircle size={14} /> Cobrar
-                            </button>
-
-                            <button
-                              className="btn btn-sm btn-outline flex-align-center gap-1"
-                              onClick={() => handleEditSale(sale)}
-                            >
-                              <Edit2 size={14} /> Editar
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-
-                      {/* Expanded Detail Desktop */}
-                      {isExpanded && (
-                        <tr className="history-detail-row">
-                          <td colSpan="4" className="history-detail-cell ppo-detail-border">
-                            <div className="grid grid-2 ppo-detail-grid">
-                              
-                              {/* Products Section */}
-                              <div>
-                                <h4 className="ppo-detail-h4">📦 Productos del Pedido</h4>
-                                <table className="w-full ppo-detail-table">
-                                  <thead>
-                                    <tr className="border-bottom ppo-detail-throw">
-                                      <th>Producto</th>
-                                      <th className="text-right">Cant.</th>
-                                      <th className="text-right">P. Unidad</th>
-                                      <th className="text-right">Subtotal</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {sale.items.map(item => (
-                                      <tr key={item.id} className="border-bottom-dashed">
-                                        <td className="ppo-cell-pad">{item.displayProductName || (item.unitOfMeasure && item.unitOfMeasure !== 'Und' ? `${item.productName} (${item.unitOfMeasure})` : item.productName)}</td>
-                                        <td className="text-right text-nowrap">{formatQuantity(item.quantity)}</td>
-                                        <td className="amount-bss text-right text-nowrap">{formatBsS(item.unitPriceBsS)}</td>
-                                        <td className="amount-bss text-right text-nowrap font-semibold">{formatBsS(item.subtotalBsS)}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-
-                              {/* Payments / Abonos Section */}
-                              <div>
-                                <h4 className="ppo-detail-h4 flex-align-center ppo-abonos-h4">
-                                  <ShieldCheck size={18} className="text-primary" /> Historial de Abonos
-                                </h4>
-                                {sale.payments.length === 0 ? (
-                                  <p className="ppo-no-abonos">No hay abonos registrados para esta cuenta aún.</p>
-                                ) : (
-                                  <table className="w-full ppo-detail-table">
-                                    <thead>
-                                      <tr className="border-bottom ppo-detail-throw">
-                                        <th>Fecha</th>
-                                        <th>Método</th>
-                                        <th className="text-right">Monto Bs.S</th>
-                                        <th className="text-right">Tasa Usada</th>
-                                        <th className="text-right">Abono USD</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {sale.payments.map(p => (
-                                        <tr key={p.id} className="border-bottom-dashed">
-                                          <td className="ppo-cell-pad">{new Date(p.createdAt || sale.date).toLocaleDateString()}</td>
-                                          <td>{p.paymentMethodName}</td>
-                                          <td className="amount-bss text-right text-nowrap">{formatBsS(p.amountBsS)}</td>
-                                          <td className="text-right text-nowrap">{formatNumberEs(p.exchangeRate)} Bs/$</td>
-                                          <td className="amount-usd text-right text-nowrap font-bold">+{formatUSD(p.amount)}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                )}
-                              </div>
-
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
+                {filteredSales.map((sale) => (
+                  <PendingOrderDesktopRow
+                    key={sale.id}
+                    sale={sale}
+                    isExpanded={expandedSaleId === sale.id}
+                    lockInfo={getLockInfo(sale, currentUserId)}
+                    isElevated={isElevated}
+                    onToggle={toggleExpand}
+                    onCheckout={handleStartCheckout}
+                    onEdit={handleEditSale}
+                    onForceRelease={handleForceRelease}
+                  />
+                ))}
               </tbody>
             </table>
           </div>
 
           {/* ── 3B. VISTA MÓVIL (DISEÑO DE TARJETAS / CARD LAYOUT - OPCIÓN B) ── */}
           <div className="pending-mobile-view">
-            {filteredSales.map((sale) => {
-              const isExpanded = expandedSaleId === sale.id;
-              const totalPaidUsd = sale.totalPaidUSD || 0;
-              const remainingUsd = sale.remainingBalanceUSD || 0;
-              const totalPaidBsS = (sale.payments || []).reduce((acc, p) => acc + (p.amountBsS > 0 ? p.amountBsS : (p.amount || 0) * (p.exchangeRate || exchangeRate)), 0);
-              const remainingBsS = Math.max(0, (sale.totalBsS !== undefined && sale.totalBsS > 0 ? sale.totalBsS : remainingUsd * exchangeRate) - totalPaidBsS);
-
-              return (
-                <div key={sale.id} className="pending-mobile-card">
-                  {/* Card Header */}
-                  <div className="pending-mobile-card-header">
-                    <div>
-                      <div className="font-bold text-base flex-align-center gap-1 cursor-pointer" onClick={() => toggleExpand(sale.id)}>
-                        {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                        Pedido #{sale.id}
-                      </div>
-                      <div className="text-xs text-muted mt-1">
-                        {new Date(sale.date).toLocaleDateString()} {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Customer Info Box */}
-                  <div className="pending-mobile-card-customer">
-                    <div className="d-flex flex-align-center gap-1 font-bold pending-mobile-card-customer-name overflow-hidden">
-                      <User size={15} className="text-muted flex-shrink-0" />
-                      <span
-                        title={sale.customerName || sale.customer?.name || 'Consumidor Final'}
-                        className="text-truncate ppo-maxw100"
-                      >
-                        {sale.customerName || sale.customer?.name || 'Consumidor Final'}
-                      </span>
-                    </div>
-                    <div className="text-xs text-muted mt-1 ml-4">
-                      RIF/Cédula: {sale.customerCedula || sale.customer?.cedulaOrRif || 'V-00000000'}
-                    </div>
-                  </div>
-
-                  {/* Financial Breakdown Grid */}
-                  <div className="pending-mobile-card-summary">
-                    <div>
-                      <div className="text-xs text-muted mb-1">Total Factura</div>
-                      <div className="font-bold amount-bss total-bss-highlight">{formatBsS(sale.totalBsS)}</div>
-                      <div className="text-xs amount-usd">{formatUSD(sale.totalUSD)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted mb-1">Abonado</div>
-                      <div className="font-bold amount-usd">+{formatUSD(totalPaidUsd)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted mb-1">Deuda Pendiente</div>
-                      <div className="font-bold text-danger">{formatUSD(remainingUsd)}</div>
-                      <div className="text-xs amount-bss">≈ {formatBsS(remainingBsS)}</div>
-                    </div>
-                  </div>
-
-                  {/* Full-width Touch-friendly Action Buttons */}
-                  <div className="pending-mobile-card-actions">
-                    <button
-                      className="btn btn-primary w-full flex-align-center justify-center gap-2 ppo-btn-tall"
-                      onClick={() => setSelectedSaleForCheckout(sale)}
-                    >
-                      <CheckCircle size={18} /> Cobrar
-                    </button>
-
-                    <div className="d-flex gap-2">
-                      <button
-                        className="btn btn-outline flex-1 flex-align-center justify-center gap-1 ppo-btn-sm38"
-                        onClick={() => handleEditSale(sale)}
-                      >
-                        <Edit2 size={16} /> Editar Pedido
-                      </button>
-                      <button
-                        className="btn btn-outline flex-1 flex-align-center justify-center gap-1 ppo-btn-sm38"
-                        onClick={() => toggleExpand(sale.id)}
-                      >
-                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />} Detalle ({sale.items.length})
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Mobile Collapsible Detail */}
-                  {isExpanded && (
-                    <div className="border-top-dashed pt-3 mt-1 ppo-detail-mobile">
-                      <h4 className="ppo-detail-h4-sm">📦 Productos del Pedido</h4>
-                      <div className="d-flex flex-column gap-1 ppo-items-list">
-                        {sale.items.map(item => (
-                          <div key={item.id} className="d-flex flex-between align-start border-bottom ppo-item-row">
-                            <div className="ppo-item-main">
-                              <div><strong>{item.displayProductName || item.productName}</strong></div>
-                              <div className="text-xs text-muted">{formatQuantity(item.quantity)} x {formatBsS(item.unitPriceBsS)}</div>
-                            </div>
-                            <div className="font-bold amount-bss text-right text-nowrap flex-shrink-0 ppo-item-total">{formatBsS(item.subtotalBsS)}</div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <h4 className="ppo-detail-h4-sm flex-align-center ppo-abonos-h4-mobile">
-                        <ShieldCheck size={16} className="color-primary" /> Historial de Abonos
-                      </h4>
-                      {sale.payments.length === 0 ? (
-                        <p className="text-xs text-muted">Sin abonos previos.</p>
-                      ) : (
-                        <div className="d-flex flex-column gap-1">
-                          {sale.payments.map(p => (
-                            <div key={p.id} className="d-flex flex-between align-start border-bottom ppo-item-row ppo-payment-row">
-                              <div className="ppo-item-main">
-                                <span>{p.paymentMethodName}</span>
-                                <span className="text-muted ml-2">({formatBsS(p.amountBsS)})</span>
-                              </div>
-                              <div className="font-bold amount-usd text-right text-nowrap flex-shrink-0 ppo-item-total">+{formatUSD(p.amount)}</div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {filteredSales.map((sale) => (
+              <PendingOrderMobileCard
+                key={sale.id}
+                sale={sale}
+                isExpanded={expandedSaleId === sale.id}
+                lockInfo={getLockInfo(sale, currentUserId)}
+                isElevated={isElevated}
+                exchangeRate={exchangeRate}
+                onToggle={toggleExpand}
+                onCheckout={handleStartCheckout}
+                onEdit={handleEditSale}
+                onForceRelease={handleForceRelease}
+              />
+            ))}
           </div>
 
           {/* 8.14-N1: botón "Ver más" para paginar la cola sin perder las ya cargadas. */}
@@ -498,7 +356,7 @@ export default function PendingOrdersPage() {
       {selectedSaleForCheckout && (
         <CheckoutModal
           isOpen={!!selectedSaleForCheckout}
-          onClose={() => setSelectedSaleForCheckout(null)}
+          onClose={handleCloseCheckout}
           overrideSale={selectedSaleForCheckout}
           onCompleteSale={async (paymentList, roundingAdjustment, isPendingPickup, idempotencyKey) => {
             try {
@@ -512,6 +370,7 @@ export default function PendingOrdersPage() {
               if (isFullyCompleted) {
                 const invoiceNumber = await completeSale(targetSaleId, exchangeRate, paymentList, roundingAdjustment, null, isPendingPickup, idempotencyKey);
                 setSelectedSaleForCheckout(null);
+                await releaseActiveLock();
                 await loadPendingData();
                 window.dispatchEvent(new CustomEvent('pendingPickupsUpdated'));
 
@@ -553,6 +412,7 @@ export default function PendingOrdersPage() {
                   batchId
                 );
                 setSelectedSaleForCheckout(null);
+                await releaseActiveLock();
                 await loadPendingData();
                 // 8.29-A05: la clave de idempotencia del lote se libera solo DESPUÉS de
                 // confirmar la recarga; si ésta falla, el reintento reutiliza la misma
@@ -592,7 +452,7 @@ export default function PendingOrdersPage() {
       {selectedSaleForEdit && (
         <EditSaleModal
           isOpen={!!selectedSaleForEdit}
-          onClose={() => setSelectedSaleForEdit(null)}
+          onClose={handleCloseEdit}
           sale={selectedSaleForEdit}
           exchangeRate={exchangeRate}
           onSuccess={loadPendingData}

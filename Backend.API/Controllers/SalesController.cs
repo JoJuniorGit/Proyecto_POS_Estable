@@ -65,6 +65,8 @@ public partial class SalesController : ControllerBase
 
         if (target == null) return true; // Tolerante a null (mocks/indefinido)
 
+        if (string.Equals(target.Status, "OnHold", StringComparison.Ordinal)) return true;
+
         // Si no es rol elevado (Cashier), exige que el cajero sea el dueño.
         if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid))
         {
@@ -74,8 +76,15 @@ public partial class SalesController : ControllerBase
         return true;
     }
 
+    private int? GetActorUserId()
+    {
+        return _currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid)
+            ? uid
+            : null;
+    }
+
     // 8.9-B2: scope de lectura para listados. Un cajero solo puede listar sus propias ventas;
-    // Admin/Manager conservan visión global. Se aplica a pending, pending-pickups e history.
+    // Admin/Manager conservan visión global. Se aplica a pending-pickups e history.
     private (bool ScopeToCashier, int CashierId) GetCashierReadScope()
     {
         bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
@@ -123,7 +132,7 @@ public partial class SalesController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { message = "Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor." });
         }
 
-        var sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized);
+        var sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized, GetActorUserId());
         return Ok(sale);
     }
 
@@ -135,7 +144,7 @@ public partial class SalesController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
         }
 
-        var sale = await _salesService.RemoveItemAsync(id, itemId, ParseRateInvariant(exchangeRate));
+        var sale = await _salesService.RemoveItemAsync(id, itemId, ParseRateInvariant(exchangeRate), GetActorUserId());
         return Ok(sale);
     }
 
@@ -147,7 +156,7 @@ public partial class SalesController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
         }
 
-        var sale = await _salesService.UpdateItemQuantityAsync(id, itemId, request.Quantity, request.ExchangeRate);
+        var sale = await _salesService.UpdateItemQuantityAsync(id, itemId, request.Quantity, request.ExchangeRate, GetActorUserId());
         return Ok(sale);
     }
 
@@ -161,7 +170,7 @@ public partial class SalesController : ControllerBase
                 return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
             }
 
-            var sale = await _salesService.UpdateExchangeRateAsync(id, ParseRateInvariant(exchangeRate));
+            var sale = await _salesService.UpdateExchangeRateAsync(id, ParseRateInvariant(exchangeRate), GetActorUserId());
             return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)

@@ -64,6 +64,10 @@ public partial class PendingOrdersViewModel : ObservableObject
 
     partial void OnSearchQueryChanged(string value) => OnPropertyChanged(nameof(FilteredPendingSales));
 
+    public bool CanForceRelease => _userSession?.IsAdmin == true || _userSession?.IsManager == true;
+
+    private bool CanActOnOrder(SaleDto? sale) => sale != null && (sale.ClaimedByUserId == null || sale.ClaimedByUserId == _userSession?.CurrentUser?.Id);
+
     public PendingOrdersViewModel(
         ISalesService salesService,
         IExchangeRateService exchangeRateService,
@@ -116,6 +120,8 @@ public partial class PendingOrdersViewModel : ObservableObject
                 PendingSales.Add(item);
             _loaded = true;
             UpdateHasMore();
+            LiquidarAbonarCommand.NotifyCanExecuteChanged();
+            EditarCommand.NotifyCanExecuteChanged();
         }
         catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
@@ -154,6 +160,8 @@ public partial class PendingOrdersViewModel : ObservableObject
                 }
             }
             UpdateHasMore();
+            LiquidarAbonarCommand.NotifyCanExecuteChanged();
+            EditarCommand.NotifyCanExecuteChanged();
         }
         catch (Exception ex)
         {
@@ -175,17 +183,31 @@ public partial class PendingOrdersViewModel : ObservableObject
         ExpandedSaleId = ExpandedSaleId == sale.Id ? (int?)null : sale.Id;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanActOnOrder))]
     private async Task LiquidarAbonarAsync(SaleDto? sale)
     {
-        if (sale == null) return;
+        if (!CanActOnOrder(sale)) return;
+
+        try
+        {
+            await _salesService.ClaimSaleAsync(sale!.Id, "Checkout");
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Pedido bloqueado", ex.Message);
+            await EnsureLoadedAsync();
+            return;
+        }
+
+        object? result = null;
+        CheckoutViewModel? checkoutVm = null;
         try
         {
             var paymentMethods = new ObservableCollection<PaymentMethodDto>(
                 (await _paymentService.GetActiveMethodsAsync()).ToList());
 
-            var checkoutVm = new CheckoutViewModel(
-                sale: sale,
+            checkoutVm = new CheckoutViewModel(
+                sale: sale!,
                 availableMethods: paymentMethods,
                 salesService: _salesService,
                 currentExchangeRate: CurrentExchangeRate,
@@ -193,39 +215,82 @@ public partial class PendingOrdersViewModel : ObservableObject
                 overrideSale: sale,
                 dialogService: _dialogService);
 
-            var result = await _dialogService.ShowModalAsync(checkoutVm, "RootDialog");
-
-            // Always refresh after checkout dialog closes
-            await EnsureLoadedAsync();
-
-            if (result is int invoiceId && invoiceId > 0)
-                SuccessMessage = $"¡Cuenta #{sale.Id} liquidada! Factura N° {invoiceId:D5} completada.";
-            else if (result is int abono && abono == -1)
-                SuccessMessage = $"Abono registrado exitosamente en la cuenta #{sale.Id}.";
+            result = await _dialogService.ShowModalAsync(checkoutVm, "RootDialog");
         }
         catch (Exception ex)
         {
             _dialogService.ShowError("Error", $"Error al abrir cobro: {ex.Message}");
         }
+        finally
+        {
+            try { await _salesService.ReleaseSaleAsync(sale!.Id); } catch { }
+            checkoutVm?.Dispose();
+            await EnsureLoadedAsync();
+            if (result is int invoiceId && invoiceId > 0)
+                SuccessMessage = $"¡Cuenta #{sale!.Id} liquidada! Factura N° {invoiceId:D5} completada.";
+            else if (result is int abono && abono == -1)
+                SuccessMessage = $"Abono registrado exitosamente en la cuenta #{sale!.Id}.";
+        }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanActOnOrder))]
     private async Task EditarAsync(SaleDto? sale)
     {
-        if (sale == null) return;
+        if (!CanActOnOrder(sale)) return;
+
         try
         {
-            var (confirmed, modifiedItems) = await _dialogService.ShowEditSaleDialogAsync(sale, CurrentExchangeRate);
+            await _salesService.ClaimSaleAsync(sale!.Id, "Editing");
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Pedido bloqueado", ex.Message);
+            await EnsureLoadedAsync();
+            return;
+        }
+
+        bool updated = false;
+        try
+        {
+            var (confirmed, modifiedItems) = await _dialogService.ShowEditSaleDialogAsync(sale!, CurrentExchangeRate);
             if (confirmed && modifiedItems != null && modifiedItems.Any())
             {
-                await _salesService.UpdateSaleItemsAsync(sale.Id, modifiedItems, CurrentExchangeRate);
-                await EnsureLoadedAsync();
-                SuccessMessage = $"Pedido #{sale.Id} actualizado correctamente.";
+                await _salesService.UpdateSaleItemsAsync(sale!.Id, modifiedItems, CurrentExchangeRate);
+                updated = true;
             }
         }
         catch (Exception ex)
         {
             _dialogService.ShowError("Error", $"Error al editar pedido: {ex.Message}");
+        }
+        finally
+        {
+            try { await _salesService.ReleaseSaleAsync(sale!.Id); } catch { }
+            await EnsureLoadedAsync();
+            if (updated)
+                SuccessMessage = $"Pedido #{sale!.Id} actualizado correctamente.";
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanForceRelease))]
+    private async Task LiberarBloqueoAsync(SaleDto? sale)
+    {
+        if (sale == null || !CanForceRelease) return;
+
+        string? releaseMessage = null;
+        try
+        {
+            await _salesService.ReleaseSaleAsync(sale.Id, force: true);
+            releaseMessage = $"Bloqueo del pedido #{sale.Id} liberado.";
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Error", $"Error al liberar bloqueo: {ex.Message}");
+        }
+        finally
+        {
+            await EnsureLoadedAsync();
+            if (releaseMessage != null) SuccessMessage = releaseMessage;
         }
     }
 }

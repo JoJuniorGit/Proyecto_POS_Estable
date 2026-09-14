@@ -203,3 +203,11 @@ export async function updateSaleItems(saleId, items) {
 export async function cancelSale(saleId) {
   return await api.post(`/api/sales/${saleId}/cancel`);
 }
+
+export async function claimSale(saleId, action) {
+  return await api.post(`/api/sales/${saleId}/claim`, { action });
+}
+
+export async function releaseSale(saleId, force = false) {
+  return await api.post(`/api/sales/${saleId}/release?force=${force ? 'true' : 'false'}`);
+}

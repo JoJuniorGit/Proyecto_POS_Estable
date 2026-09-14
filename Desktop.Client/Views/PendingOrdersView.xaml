@@ -54,12 +54,34 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="GhostReleaseLockButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="#B45309"/>
+            <Setter Property="Foreground" Value="#B45309"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="materialDesign:ButtonAssist.CornerRadius" Value="6"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="#B45309"/>
+                    <Setter Property="Foreground" Value="#B45309"/>
+                    <Setter Property="Background" Value="#FFF7ED"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="ModernDataGridRowStyle" TargetType="DataGridRow" BasedOn="{StaticResource MaterialDesignDataGridRow}">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="4,0,0,0"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
             <Style.Triggers>
+                <DataTrigger Binding="{Binding ClaimedByUserId, Converter={StaticResource InverseNullToBooleanConverter}}" Value="True">
+                    <Setter Property="Background" Value="#FFF7ED"/>
+                </DataTrigger>
                 <Trigger Property="IsSelected" Value="True">
                     <Setter Property="Background" Value="#F5F3FF"/>
                     <Setter Property="BorderBrush" Value="#5E35B1"/>
@@ -366,6 +388,25 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
+                        <DataGridTemplateColumn Header="ESTADO" Width="210" IsReadOnly="True"
+                                                HeaderStyle="{StaticResource StandardHeaderStyle}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border Visibility="{Binding ClaimedByUserName, Converter={StaticResource StringToVisibilityConverter}}"
+                                            Background="#FFF7ED" BorderBrush="#FDBA74" BorderThickness="1"
+                                            CornerRadius="100" Padding="10,4"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="LockOutline" Width="14" Height="14" Foreground="#B45309" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Converter={StaticResource HoldLockDisplayConverter}}"
+                                                       FontSize="11" FontWeight="SemiBold" Foreground="#B45309"
+                                                       Margin="6,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
                         <!-- Total Factura: Bs.S principal + USD secundario -->
                         <DataGridTemplateColumn Header="TOTAL FACTURA" Width="150" IsReadOnly="True"
                                                 HeaderStyle="{StaticResource RightAlignedHeaderStyle}">
@@ -404,6 +445,24 @@
                                                 Command="{Binding Data.EditarCommand, Source={StaticResource Proxy}}"
                                                 CommandParameter="{Binding}"
                                                 Style="{StaticResource GhostEditButtonStyle}"/>
+                                        <Button Content="Liberar"
+                                                Command="{Binding Data.LiberarBloqueoCommand, Source={StaticResource Proxy}}"
+                                                CommandParameter="{Binding}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource GhostReleaseLockButtonStyle}">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding Data.CanForceRelease, Source={StaticResource Proxy}}" Value="True"/>
+                                                                <Condition Binding="{Binding ClaimedByUserName, Converter={StaticResource StringToVisibilityConverter}}" Value="Visible"/>
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </MultiDataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>

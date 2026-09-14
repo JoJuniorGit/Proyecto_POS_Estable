@@ -53,6 +53,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<Sales.Module.Interfaces.ICashDrawerService, Sales.Module.Services.CashDrawerService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodService, Sales.Module.Services.PaymentMethodService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodNotifier, Backend.API.Services.SignalRPaymentMethodNotifier>();
+        builder.Services.AddScoped<Sales.Module.Interfaces.IHoldOrderNotifier, Backend.API.Services.SignalRHoldOrderNotifier>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IDailyClosureService, Sales.Module.Services.DailyClosureService>();
         // 8.14-W4: TTL de IdempotentRequests configurable (appsettings "Idempotency:TtlHours";
         // default 24 h). Permite retención forense de reintentos sin cambios de código.

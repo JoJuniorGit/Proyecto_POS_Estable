@@ -101,6 +101,8 @@ public interface ISalesService
     Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request);
     Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request);
+    Task<SaleDto> ClaimSaleAsync(int saleId, string action, System.Threading.CancellationToken cancellationToken = default);
+    Task<SaleDto> ReleaseSaleAsync(int saleId, bool force = false, System.Threading.CancellationToken cancellationToken = default);
     Task<(IEnumerable<SaleDto> Items, int TotalCount)> GetPendingSalesPagedAsync(int limit = 200, int offset = 0);
     Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId);
     Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(string? query = null, int page = 1, int pageSize = 20, bool recentOnly = false);
