@@ -12,7 +12,7 @@ context: |
   Backend: .NET 10 (C# 13), layered (Core, Sales.Module, Inventory.Module, Logistics.Module, Backend.API) plus UpdaterService.
   Clients: WPF desktop (CommunityToolkit.Mvvm) and React 19 + Vite 8 web (Web.Frontend).
   Data: PostgreSQL 16 via EF Core/Npgsql; money in decimal only; BCV rate snapshots immutable.
-  Conventions: AGENTS.md, docs/coding-guidelines.md, rules.md - no comments unless asked; no inline JSX styles.
+  Conventions: AGENTS.md, docs/coding-guidelines-core.md - no comments unless asked; no inline JSX styles.
   Tests: xUnit + Moq + WebApplicationFactory + coverlet (CommandCenter.Tests); node --test + oxlint (Web.Frontend).
 
 testing:
@@ -80,7 +80,7 @@ rules:
     - Reference the specific spec scenarios each test task covers.
   apply:
     guidelines:
-      - Follow AGENTS.md, docs/coding-guidelines.md and rules.md.
+      - Follow AGENTS.md and docs/coding-guidelines-core.md.
       - Do not add explanatory comments unless explicitly requested.
     tdd: false
     test_command: ""

@@ -156,7 +156,7 @@
       "description": "R1 Risk reviewer — security, privilege boundaries, data exposure, dependency risks, and merge-blocking vulnerabilities",
       "hidden": true,
       "mode": "subagent",
-      "model": "google/gemini-flash-latest",
+      "model": "opencode-go/deepseek-v4.1-flash",
       "permission": {
         "*": "deny"
       },
@@ -186,7 +186,7 @@
       "description": "Implement code changes from task definitions",
       "hidden": true,
       "mode": "subagent",
-      "model": "opencode-go/deepseek-v4.1-flash",
+      "model": "opencode/mimo-v2.5-free",
       "permission": {},
       "prompt": "{file:../../../.config/opencode/prompts/sdd/sdd-apply.md}",
       "variant": ""
@@ -206,10 +206,10 @@
       "description": "Create technical design from proposals",
       "hidden": true,
       "mode": "subagent",
-      "model": "opencode-go/gpt-5.6-luna",
+      "model": "opencode-go/deepseek-v4.1-flash",
       "permission": {},
       "prompt": "{file:../../../.config/opencode/prompts/sdd/sdd-design.md}",
-      "variant": "high"
+      "variant": ""
     },
     "sdd-explore": {
       "__managed_by": "gentle-ai/sdd",
@@ -246,10 +246,10 @@
       "description": "Create change proposals from explorations",
       "hidden": true,
       "mode": "subagent",
-      "model": "opencode-go/gpt-5.6-luna",
+      "model": "opencode-go/deepseek-v4.1-flash",
       "permission": {},
       "prompt": "{file:../../../.config/opencode/prompts/sdd/sdd-propose.md}",
-      "variant": "high"
+      "variant": ""
     },
     "sdd-research": {
       "__managed_by": "gentle-ai/sdd",
@@ -271,17 +271,17 @@
       "description": "Write detailed specifications from proposals",
       "hidden": true,
       "mode": "subagent",
-      "model": "opencode-go/gpt-5.6-luna",
+      "model": "opencode-go/deepseek-v4.1-flash",
       "permission": {},
       "prompt": "{file:../../../.config/opencode/prompts/sdd/sdd-spec.md}",
-      "variant": "medium"
+      "variant": ""
     },
     "sdd-tasks": {
       "__managed_by": "gentle-ai/sdd",
       "description": "Break down specs and designs into implementation tasks",
       "hidden": true,
       "mode": "subagent",
-      "model": "opencode-go/deepseek-v4.1-flash",
+      "model": "opencode/mimo-v2.5-free",
       "permission": {},
       "prompt": "{file:../../../.config/opencode/prompts/sdd/sdd-tasks.md}",
       "variant": ""
@@ -299,8 +299,8 @@
   },
   "default_agent": "gentle-orchestrator",
   "instructions": [
-    "docs/coding-guidelines.md",
-    "rules.md"
+    "AGENTS.md",
+    "docs/coding-guidelines-core.md"
   ],
   "share": "disabled"
 }

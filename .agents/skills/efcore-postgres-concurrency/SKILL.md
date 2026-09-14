@@ -10,6 +10,8 @@ description: >-
 
 # PostgreSQL EF Core & Concurrency Control Guide
 
+> **Referencia de código:** Este skill supplementa `docs/coding-guidelines-backend.md`. Léelo antes de escribir código de persistencia.
+
 This skill governs all database operations using `Npgsql.EntityFrameworkCore.PostgreSQL` (.NET 10), ensuring transactional consistency, high-speed non-blocking sales, and zero stock overselling.
 
 ---

@@ -9,6 +9,8 @@ description: >-
 
 # WPF Performance, MVVM & UI Polishing Guide
 
+> **Referencia de código:** Este skill supplementa `docs/coding-guidelines-wpf.md`. Léelo antes de escribir código WPF.
+
 This skill governs desktop client development in `.NET 10 WPF`, focusing on 60fps responsiveness, clean MVVM declarative bindings, memory leak prevention, and POS industry hotkey standards.
 
 ---

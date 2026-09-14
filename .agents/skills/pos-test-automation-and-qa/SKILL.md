@@ -9,6 +9,8 @@ description: >-
 
 # POS Test Automation & Quality Assurance Guide
 
+> **Referencia de código:** Este skill supplementa `docs/coding-guidelines-qa.md`. Léelo antes de escribir tests o modificar cobertura.
+
 This skill governs testing standards across the POS system to achieve **>70% test coverage** on critical services while ensuring fast, reliable, non-flaky test execution.
 
 ---

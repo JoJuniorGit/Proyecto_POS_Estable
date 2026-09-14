@@ -280,7 +280,7 @@ En el flujo de **venta completada** (WPF), tras el modal de éxito, el cajero pu
 
 Sin impresora física térmica integrada: el PDF se abre/conserva para imprimir. La integración de impresora térmica asíncrona es trabajo futuro sobre esta base.
 - **Actualizaciones automáticas del cliente:** el UpdaterService no se empaqueta en el instalador (8.20-M08); el rol se validará con firma X.509 (8U-N2).
-- **Multi-sucursal:** sin `BranchId` todavía (intención arquitectónica futura, no requisito del piloto; ver `coding-guidelines.md` §5).
+- **Multi-sucursal:** sin `BranchId` todavía (intención arquitectónica futura, no requisito del piloto; ver `coding-guidelines-core.md` §5).
 - **Certificado HTTPS autofirmado:** los clientes web/WPF verán una advertencia "no confiable" al primer acceso por host remoto; para evadirla, importar el `.cer` del puesto en el almacén raíz de confianza de cada caja (ver §6).
 
 ## 10. Plan de actualización y rollback de esquema (Fase 2, 8.39)

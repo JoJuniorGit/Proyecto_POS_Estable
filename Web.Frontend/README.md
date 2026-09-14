@@ -83,5 +83,5 @@ Archivos de test siguen el patrón `*.test.js` dentro de `src/`.
 ## Documentación Relacionada
 
 - [Arquitectura React detallada](../docs/react-architecture.md) — Split Context Pattern, modales, hardware de cámara.
-- [Directrices de código](../docs/coding-guidelines.md) — Convenciones React 19, design tokens, prohibiciones.
+- [Directrices de código](../docs/coding-guidelines-web.md) — Convenciones React 19, design tokens, prohibiciones.
 - [Arquitectura general del sistema](../ARCHITECTURE.md) — Visión completa del POS.

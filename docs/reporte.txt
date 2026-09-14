@@ -8250,3 +8250,107 @@ D3. Prompt de commit sugerido:
     `feat(8.124): controlador de bloqueo web y pruebas del ciclo de reclamo/liberacion - ANEXO 8.124`.
 
 FIN DEL ANEXO - REVISION 8.124
+
+================================================================================
+ANEXO - REVISION 8.125 (2026-09-14)
+Titulo: Optimizacion de contexto inyectado — eliminacion de redundancias y ruido
+================================================================================
+
+A. CONTEXTO
+A1. El contexto inyectado automaticamente en cada sesion era excesivo y redundante:
+    - `AGENTS.md` (109 lineas) repetia casi completas las reglas de `coding-guidelines.md`.
+    - `rules.md` (12 lineas) estaba duplicado en `coding-guidelines.md` S2.4.
+    - `production-readiness-roadmap.md` (581 lineas) inyectaba ruido de gestion de
+      proyecto (fases, hitos, DQs, preguntas al cliente) en sesiones de codigo.
+    - `opencode.json` inyectaba `rules.md` innecesariamente.
+A2. Objetivo: reducir la carga de contexto del agente manteniendo la informacion
+    critica accesible y eliminando duplicacion y ruido.
+
+B. CAMBIOS REALIZADOS
+B1. `rules.md`: eliminado. Todo su contenido esta en `coding-guidelines.md` S2.4
+    (inmutabilidad de historial, anclaje de tasas, aislamiento de snapshots).
+B2. `production-readiness-roadmap.md`: eliminado. Es un documento vivo de gestion
+    de proyecto; su valor vive en `docs/reporte.txt` (ANEXOs) y Engram. Nunca
+    debe ser inyectado en sesiones de codigo.
+B3. `AGENTS.md`: reescrito a 37 lineas (operativo puro). Secciones eliminadas:
+    - "Reglas no negociables" (13 items, redundantes con coding-guidelines).
+    - "Mapa de coding-guidelines" (tabla de 10 filas, redundante).
+    Secciones conservadas: Flujo de trabajo (5 pasos), Reglas criticas (resumen
+    de 4 lineas con apuntador a la guia completa), Done (checklist).
+B4. `opencode.json`: eliminado `rules.md` del array `instructions`. Solo quedan
+    `AGENTS.md` (operativo) y `docs/coding-guidelines.md` (fuente de verdad).
+B5. `docs/LAUNCH_GUIDE.md`: eliminada referencia a `production-readiness-roadmap.md`.
+
+C. VERIFICACION
+C1. `rules.md` y `production-readiness-roadmap.md` no existen en el working tree.
+C2. `AGENTS.md` tiene 37 lineas (< 50 objetivo).
+C3. `opencode.json` inyecta solo 2 archivos: `AGENTS.md` y `docs/coding-guidelines.md`.
+C4. Busqueda de referencias colgantes a `production-readiness-roadmap.md`:
+    - `docs/reporte.txt`: 11 menciones historicas (ANEXOs antiguos, intocables).
+    - Ninguna referencia activa en archivos de configuracion o instrucciones.
+C5. Esta revision no toca la aplicacion (.NET/React/WPF): no aplica build,
+    suites ni cobertura.
+
+D. IMPACTO
+D1. Reduccion de contexto inyectado: ~690 lineas eliminadas (109 AGENTS.md +
+    12 rules.md + 581 roadmap) vs ~37 lineas nuevas (AGENTS.md operativo).
+D2. La fuente de verdad para reglas de codigo sigue siendo `coding-guidelines.md`.
+D3. El archivo `production-readiness-roadmap.md` puede eliminarse del repo (ya
+    eliminado); su historial queda en git y en los ANEXOs de reporte.txt.
+
+FIN DEL ANEXO - REVISION 8.125
+
+================================================================================
+ANEXO - REVISION 8.126 (2026-09-14)
+Titulo: Modelo hibrido de contexto — division de coding-guidelines.md
+================================================================================
+
+A. CONTEXTO
+A1. El archivo `coding-guidelines.md` (262 lineas) se inyectaba completo en cada
+    sesion, incluyendo secciones que solo aplican a dominios especificos (Web, WPF,
+    QA/CI). Esto desperdiciaba contexto en sesiones de backend, por ejemplo.
+A2. Objetivo: implementar un modelo hibrido donde solo las reglas universales se
+    inyectan siempre, y las reglas de dominio se cargan on-demand o via skills.
+
+B. CAMBIOS REALIZADOS
+B1. `coding-guidelines.md` (262 lineas) eliminado y dividido en 5 archivos:
+    - `coding-guidelines-core.md` (~100 lineas): reglas universales (Filosofia,
+      Nomenclatura, Idiomatica, Integridad Financiera, Multi-Branch, Done).
+      Se inyecta SIEMPRE via opencode.json.
+    - `coding-guidelines-backend.md` (~35 lineas): Persistencia EF Core y
+      Modelo de Excepciones. Se carga on-demand o via skill.
+    - `coding-guidelines-web.md` (~35 lineas): Componentes React, DTOs, Estilos.
+      Se carga on-demand o via skill.
+    - `coding-guidelines-wpf.md` (~25 lineas): CommunityToolkit, IDisposable,
+      Virtualizacion. Se carga on-demand o via skill.
+    - `coding-guidelines-qa.md` (~20 lineas): Tests, Cobertura, CI/CD.
+      Se carga on-demand o via skill.
+B2. `opencode.json`: instructions actualizado a solo `AGENTS.md` + `coding-guidelines-core.md`.
+B3. `AGENTS.md`: reescrito con mapeo de archivos de dominio (lee Backend si el
+    cambio es .NET, Web si es React, etc.).
+B4. Skills actualizados con referencia al archivo de dominio correspondiente:
+    - `efcore-postgres-concurrency` -> `coding-guidelines-backend.md`
+    - `web-pos-patterns` -> `coding-guidelines-web.md`
+    - `wpf-performance-and-ui` -> `coding-guidelines-wpf.md`
+    - `pos-test-automation-and-qa` -> `coding-guidelines-qa.md`
+B5. Referencias activas actualizadas:
+    - `.opencode/agent/reviewer.md`: mapeo a archivos de dominio.
+    - `openspec/config.yaml`: referencia a core.
+    - `docs/INSTALLATION.md`: referencia a core S5.
+    - `Web.Frontend/README.md`: referencia a web.
+
+C. VERIFICACION
+C1. `coding-guidelines.md` original eliminado.
+C2. `opencode.json` inyecta solo 2 archivos (~137 lineas vs 299 antes).
+C3. Referencias a `coding-guidelines.md` actualizadas en archivos activos.
+C4. Menciones en `reporte.txt` y `openspec/changes/archive/` son historicas
+    (append-only, intocables).
+C5. Esta revision no toca la aplicacion (.NET/React/WPF): no aplica build,
+    suites ni cobertura.
+
+D. IMPACTO
+D1. Reduccion de contexto inyectado: 299 lineas -> 137 lineas (-54%).
+D2. Las reglas de dominio se cargan solo cuando el cambio las requiere.
+D3. Los skills ahora incluyen la referencia al archivo de guidelines correcto.
+
+FIN DEL ANEXO - REVISION 8.126

@@ -1,8 +1,7 @@
 # Guía de Lanzamiento con Monitoreo Externo — Sistema POS CommandCenter
 
 Guía operativa para poner el sistema en produccion junto con monitoreo externo
-(alertas). Complementa a `INSTALLATION.md` (despliegue) y al
-`production-readiness-roadmap.md` (fases).
+(alertas). Complementa a `INSTALLATION.md` (despliegue).
 
 ---
 
