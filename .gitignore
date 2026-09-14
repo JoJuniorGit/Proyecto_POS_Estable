@@ -432,3 +432,11 @@ build.local.env
 # Prueba de estres unificada (8.115): artefactos de corridas y config local del ejecutor
 results/
 scripts/pos-test-config.json
+# Local AI runtime state
+.atl/
+.gga
+.gentle-ai-default-agent.json
+.codegraph/
+
+# Config local de monitoreo (se genera desde docs/monitor-config.json.example)
+docs/monitor-config.json
