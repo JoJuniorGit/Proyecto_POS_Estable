@@ -1,5 +1,5 @@
 # =====================================================================
-# pos-test.ps1 - Control de Pruebas POS unificado (rev 8.117)
+# pos-test.ps1 - Control de Pruebas POS unificado (rev 8.120)
 #
 # Un unico punto de control para el ciclo completo de una prueba de
 # estres contra cualquier backend de staging (interno o externo):
@@ -121,6 +121,19 @@ function PickInt {
         try {
             $asInt = [int]$value
             if ($asInt -ne 0) { return $asInt }
+        } catch { }
+    }
+    return $Default
+}
+
+function PickLong {
+    param([long]$CliValue, [object[]]$CfgPath, [long]$Default = 0)
+    if ($CliValue -ne 0) { return $CliValue }
+    $value = Get-CfgNode $CfgPath
+    if ($null -ne $value) {
+        try {
+            $asLong = [long]$value
+            if ($asLong -ne 0) { return $asLong }
         } catch { }
     }
     return $Default
@@ -316,7 +329,7 @@ function Invoke-Provision {
 
     $restocked = 0
     $skipped = 0
-    $reason = "pos-test provision (rev 8.117)"
+    $reason = "pos-test provision (rev 8.120)"
     foreach ($item in $found.Values) {
         $current = [double]$item.stockQuantity
         if ($current -ge $Res.restockAmount) { $skipped++; continue }
@@ -338,6 +351,8 @@ function New-RunFolder {
     $runProfile = [ordered]@{
         environmentName    = $Res.environmentName
         baseUrl            = $Res.baseUrl
+        rate               = $Res.rate
+        timeout            = $Res.timeout
         transactions       = $Res.transactions
         duration           = $Res.duration
         cashiers           = $Res.cashiers
@@ -428,13 +443,10 @@ function Stop-TestSampler {
     Write-Host "Muestreador detenido." -ForegroundColor Green
 }
 
-function Invoke-StressRun {
-    param([hashtable]$Res, [string]$RunDir)
-    $outPath = $res.out
-    if (-not $outPath) { $outPath = Join-Path $RunDir "stress.json" }
-    $logPath = Join-Path $RunDir "stress.log"
+function Get-StressArgs {
+    param([hashtable]$Res, [string]$RunDir, [string]$OutPath, [string]$StopFile = "")
     $py = Join-Path $PSScriptRoot "stress-test.py"
-    $pythonArgs = @(
+    $argsList = @(
         $py,
         "--base-url", $Res.baseUrl,
         "--confirm-staging", $Res.confirmStaging,
@@ -447,13 +459,23 @@ function Invoke-StressRun {
         "--think-max", $Res.thinkMax.ToString($invariant),
         "--filter", $Res.productFilter,
         "--timeout", $Res.timeout.ToString($invariant),
-        "--out", $outPath
+        "--out", $OutPath
     )
-    if ($Res.transactions -gt 0) { $pythonArgs += @("--transactions", "$($Res.transactions)") }
-    if ($Res.duration -gt 0) { $pythonArgs += @("--duration", "$($Res.duration)") }
-    if ($Res.maxProductsPerSale -gt 0) { $pythonArgs += @("--max-products-per-sale", "$($Res.maxProductsPerSale)") }
-    if ($Res.rate -gt 0) { $pythonArgs += @("--rate", $Res.rate.ToString($invariant)) }
-    if ($Res.insecure) { $pythonArgs += "--insecure" }
+    if ($Res.transactions -gt 0) { $argsList += @("--transactions", "$($Res.transactions)") }
+    if ($Res.duration -gt 0) { $argsList += @("--duration", "$($Res.duration)") }
+    if ($Res.maxProductsPerSale -gt 0) { $argsList += @("--max-products-per-sale", "$($Res.maxProductsPerSale)") }
+    if ($Res.rate -gt 0) { $argsList += @("--rate", $Res.rate.ToString($invariant)) }
+    if ($Res.insecure) { $argsList += "--insecure" }
+    if ($StopFile) { $argsList += @("--stop-file", $StopFile) }
+    return $argsList
+}
+
+function Invoke-StressRun {
+    param([hashtable]$Res, [string]$RunDir)
+    $outPath = $Res.out
+    if (-not $outPath) { $outPath = Join-Path $RunDir "stress.json" }
+    $logPath = Join-Path $RunDir "stress.log"
+    $pythonArgs = Get-StressArgs $Res $RunDir $outPath
 
     if (-not $Res.transactions -and -not $Res.duration) {
         Write-Host "AVISO: sin --transactions ni --duration en el perfil; stress-test.py lo requerira." -ForegroundColor Yellow
@@ -463,6 +485,63 @@ function Invoke-StressRun {
     & $Res.pyExe @pythonArgs 2>&1 | Tee-Object -LiteralPath $logPath
     if ($LASTEXITCODE -ne 0) {
         throw "stress-test.py termino con codigo $LASTEXITCODE. Revise 409 (stock) y 429 (rate limit) en la salida."
+    }
+    $canonical = Join-Path $RunDir "stress.json"
+    if ($outPath -ne $canonical -and (Test-Path -LiteralPath $outPath) -and -not (Test-Path -LiteralPath $canonical)) {
+        Copy-Item -LiteralPath $outPath -Destination $canonical -Force
+    }
+    return $outPath
+}
+
+function Invoke-StressRunFinalizable {
+    param([hashtable]$Res, [string]$RunDir)
+    $outPath = Join-Path $RunDir "stress.json"
+    $logPath = Join-Path $RunDir "stress.log"
+    $stopFile = Join-Path $RunDir "stress.stop"
+    Remove-Item -LiteralPath $stopFile -Force -ErrorAction SilentlyContinue
+    $pythonArgs = Get-StressArgs $Res $RunDir $outPath $stopFile
+
+    if (-not $Res.transactions -and -not $Res.duration) {
+        Write-Host "AVISO: sin --transactions ni --duration en el perfil; stress-test.py lo requerira." -ForegroundColor Yellow
+    }
+
+    Write-Step "Ejecutando scripts/stress-test.py contra $($Res.baseUrl) (finalizable)"
+    $job = Start-Job -ScriptBlock {
+        param($exe, $pyArgs, $log)
+        & $exe @pyArgs *>&1 | Tee-Object -LiteralPath $log | Out-Null
+        return $LASTEXITCODE
+    } -ArgumentList $Res.pyExe, $pythonArgs, $logPath
+
+    Write-Host "Prueba en curso (job $($job.Id)). Avance: $logPath" -ForegroundColor Green
+    Write-Host "Pulse Enter o F para FINALIZAR y generar el reporte." -ForegroundColor Cyan
+
+    if (-not [Console]::IsInputRedirected) {
+        while ($job.State -eq "Running") {
+            if ([Console]::KeyAvailable) {
+                $key = [Console]::ReadKey($true)
+                if ($key.Key -eq [ConsoleKey]::Enter -or $key.Key -eq [ConsoleKey]::F) { break }
+            }
+            Start-Sleep -Milliseconds 300
+        }
+    } else {
+        Wait-Job $job -Timeout 3600 | Out-Null
+    }
+
+    if ($job.State -eq "Running") {
+        Write-Host "Finalizando prueba (stop-file)..." -ForegroundColor Yellow
+        New-Item -ItemType File -Path $stopFile -Force | Out-Null
+        if (-not (Wait-Job $job -Timeout 180)) {
+            Write-Host "El motor no respondio al stop-file; deteniendo el job." -ForegroundColor Yellow
+            Stop-Job $job -ErrorAction SilentlyContinue
+        }
+    }
+
+    $exitCode = Receive-Job $job -ErrorAction SilentlyContinue
+    Remove-Job $job -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $stopFile -Force -ErrorAction SilentlyContinue
+
+    if ($null -ne $exitCode -and "$exitCode" -ne "0") {
+        throw "stress-test.py termino con codigo $exitCode. Revise 409 (stock) y 429 (rate limit) en la salida."
     }
     return $outPath
 }
@@ -550,11 +629,19 @@ function Build-Report {
         }
     }
 
-    $envRate = if ($stressJson.rate) { [Math]::Round([double]$stressJson.rate, 2) } else { 0 }
     $diagnosis = Build-HttpDiagnosis $stressJson
 
     $profilePath = Join-Path $RunDir "run-profile.json"
     $profile = if (Test-Path -LiteralPath $profilePath) { Get-Content -Raw -LiteralPath $profilePath | ConvertFrom-Json } else { $null }
+    $envRate = if ($profile -and $profile.rate) { [Math]::Round([double]$profile.rate, 2) }
+        elseif ($stressJson.rate) { [Math]::Round([double]$stressJson.rate, 2) }
+        else { 0 }
+    $envName = if ($profile -and $profile.environmentName) { [string]$profile.environmentName }
+        elseif ($Res.environmentName) { [string]$Res.environmentName }
+        else { "staging" }
+    $envBaseUrl = if ($profile -and $profile.baseUrl) { [string]$profile.baseUrl }
+        elseif ($stressJson.baseUrl) { [string]$stressJson.baseUrl }
+        else { [string]$Res.baseUrl }
     $pTx = if ($profile) { [int]$profile.transactions } else { $Res.transactions }
     $pDur = if ($profile) { [int]$profile.duration } else { $Res.duration }
     $pCashiers = if ($profile) { [int]$profile.cashiers } else { $Res.cashiers }
@@ -569,8 +656,8 @@ function Build-Report {
         action      = "report"
         runId       = (Split-Path $RunDir -Leaf)
         environment = [ordered]@{
-            name    = $Res.environmentName
-            baseUrl = $Res.baseUrl
+            name    = $envName
+            baseUrl = $envBaseUrl
             rate    = $envRate
             user    = [string]$stressJson.user
             cashiers = $pCashiers
@@ -630,7 +717,7 @@ function Build-Report {
     $md = [System.Text.StringBuilder]::new()
     [void]$md.AppendLine("# Reporte de prueba POS - $($report.runId)")
     [void]$md.AppendLine("")
-    [void]$md.AppendLine("Generado: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | Entorno: **$($Res.environmentName)** ($($Res.baseUrl)) | Tasa BCV: **$envRate**")
+    [void]$md.AppendLine("Generado: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | Entorno: **$envName** ($envBaseUrl) | Tasa BCV: **$envRate**")
     [void]$md.AppendLine("")
     [void]$md.AppendLine("## Resumen de estres")
     [void]$md.AppendLine("")
@@ -732,7 +819,7 @@ function Invoke-Campaign {
     }
     $report = Build-Report $Res $runDir $samplerInfo
     Write-CampaignSummary $report $runDir
-    return [pscustomobject]@{ RunDir = $RunDir; ReportPath = (Join-Path $RunDir "report.json") }
+    return [pscustomobject]@{ RunDir = $runDir; ReportPath = (Join-Path $runDir "report.json") }
 }
 
 # ---------------------------------------------------------------------
@@ -801,7 +888,7 @@ function Show-EditConfig {
         @{ Key = "qtyMin";            Label = "Qty min por venta";         Current = $Res.qtyMin;   Type = "int" },
         @{ Key = "qtyMax";            Label = "Qty max por venta";         Current = $Res.qtyMax;   Type = "int" },
         @{ Key = "productCount";      Label = "Productos de prueba";       Current = $Res.productCount; Type = "int" },
-        @{ Key = "restockAmount";     Label = "Restock (unidades)";        Current = $Res.restockAmount; Type = "int" },
+        @{ Key = "restockAmount";     Label = "Restock (unidades)";        Current = $Res.restockAmount; Type = "long" },
         @{ Key = "transactions";      Label = "Transacciones (0=auto)";    Current = $Res.transactions; Type = "int" },
         @{ Key = "productFilter";     Label = "Prefijo SKU";               Current = $Res.productFilter; Type = "string" }
     )
@@ -812,6 +899,7 @@ function Show-EditConfig {
         if ([string]::IsNullOrWhiteSpace($raw)) { continue }
         switch ($f.Type) {
             "int"    { $parsed = 0; if ([int]::TryParse($raw, [ref]$parsed)) { $Res[$f.Key] = $parsed } else { Write-Host "    (valor invalido, se mantiene: $($f.Current))" -ForegroundColor Yellow } }
+            "long"   { $parsedLong = [long]0; if ([long]::TryParse($raw, [ref]$parsedLong)) { $Res[$f.Key] = $parsedLong } else { Write-Host "    (valor invalido, se mantiene: $($f.Current))" -ForegroundColor Yellow } }
             "double" { $parsed = 0.0; if ([double]::TryParse($raw, [ref]$parsed)) { $Res[$f.Key] = $parsed } else { Write-Host "    (valor invalido, se mantiene: $($f.Current))" -ForegroundColor Yellow } }
             "string" { $Res[$f.Key] = $raw }
         }
@@ -856,13 +944,13 @@ function Show-Menu {
     while ($true) {
         Write-Host ""
         Write-Host "========================================" -ForegroundColor Cyan
-        Write-Host "  Control de Pruebas POS (rev 8.117)" -ForegroundColor Cyan
+        Write-Host "  Control de Pruebas POS (rev 8.120)" -ForegroundColor Cyan
         Write-Host "========================================" -ForegroundColor Cyan
         Write-Host "  Entorno: $($Res.environmentName) | $($Res.baseUrl)" -ForegroundColor Gray
         Write-Host "----------------------------------------" -ForegroundColor DarkGray
         Write-Host "  1.  Pre-flight (verificar staging)" -ForegroundColor White
         Write-Host "  2.  Provisionar staging" -ForegroundColor White
-        Write-Host "  3.  Ejecutar prueba de estres" -ForegroundColor White
+        Write-Host "  3.  Ejecutar prueba de estres (finalizar + reporte)" -ForegroundColor White
         Write-Host "  4.  Campaign completa (provision+stress+reporte)" -ForegroundColor Green
         Write-Host "  5.  Monitorear salud (sonda headless)" -ForegroundColor White
         Write-Host "  6.  Generar reporte desde corrida existente" -ForegroundColor White
@@ -898,12 +986,20 @@ function Show-Menu {
                     $samplerInfo = $null
                     if (-not $Res.noMonitor) { $samplerInfo = Start-TestSampler $Res $runDir }
                     try {
-                        Invoke-StressRun $Res $runDir | Out-Null
+                        Invoke-StressRunFinalizable $Res $runDir | Out-Null
+                    } catch {
+                        Write-Host ""
+                        Write-Host "Prueba interrumpida o con error: $($_.Exception.Message)" -ForegroundColor Yellow
                     } finally {
                         if ($samplerInfo) { Stop-TestSampler $samplerInfo }
                     }
-                    $report = Build-Report $Res $runDir $samplerInfo
-                    Write-CampaignSummary $report $runDir
+                    if (Test-Path -LiteralPath (Join-Path $runDir "stress.json")) {
+                        $report = Build-Report $Res $runDir $samplerInfo
+                        Write-CampaignSummary $report $runDir
+                    } else {
+                        Write-Host "No se genero stress.json; no hay datos para reportar." -ForegroundColor Yellow
+                        Write-Host "Corrida: $runDir" -ForegroundColor DarkGray
+                    }
                 }
                 "4" {
                     Ensure-AdminPassword $Res
@@ -934,11 +1030,14 @@ function Show-Menu {
                     Write-Host ""
                     Write-Host "Corridas disponibles:" -ForegroundColor Cyan
                     for ($i = 0; $i -lt $runs.Count; $i++) {
+                        $hasStress = Test-Path -LiteralPath (Join-Path $runs[$i].FullName "stress.json")
                         $hasReport = Test-Path -LiteralPath (Join-Path $runs[$i].FullName "report.json")
-                        $mark = if ($hasReport) { "+" } else { " " }
-                        Write-Host ("  {0,2}. [{1}] {2}" -f ($i + 1), $mark, $runs[$i].Name) -ForegroundColor $(if ($hasReport) { "Green" } else { "Gray" })
+                        $markS = if ($hasStress) { "S" } else { " " }
+                        $markR = if ($hasReport) { "R" } else { " " }
+                        $color = if ($hasReport) { "Green" } elseif ($hasStress) { "Yellow" } else { "Gray" }
+                        Write-Host ("  {0,2}. [{1}{2}] {3}" -f ($i + 1), $markS, $markR, $runs[$i].Name) -ForegroundColor $color
                     }
-                    Write-Host "  [+] = ya tiene report.json" -ForegroundColor DarkGray
+                    Write-Host "  [SR] = stress + reporte | [S ] = solo stress | [  ] = incompleta" -ForegroundColor DarkGray
                     Write-Host ""
                     $pick = Read-Host "Seleccione corrida (numero o Enter para cancelar)"
                     if (-not $pick) { break }
@@ -948,6 +1047,10 @@ function Show-Menu {
                         break
                     }
                     $runDir = $runs[$idx - 1].FullName
+                    if (-not (Test-Path -LiteralPath (Join-Path $runDir "stress.json"))) {
+                        Write-Host "La corrida no tiene stress.json; ejecute la prueba de estres primero." -ForegroundColor Yellow
+                        break
+                    }
                     $report = Build-Report $Res $runDir $null
                     Write-Host "Reporte regenerado: $(Join-Path $runDir 'report.md')" -ForegroundColor Green
                 }
@@ -984,12 +1087,15 @@ function Show-Menu {
                             Write-Host ""
                             Write-Host "Ultimas 10 corridas:" -ForegroundColor Cyan
                             foreach ($r in $runs) {
+                                $hasStress = Test-Path -LiteralPath (Join-Path $r.FullName "stress.json")
                                 $hasReport = Test-Path -LiteralPath (Join-Path $r.FullName "report.json")
-                                $mark = if ($hasReport) { "+" } else { " " }
-                                Write-Host "  [$mark] $($r.Name)" -ForegroundColor $(if ($hasReport) { "Green" } else { "Gray" })
+                                $markS = if ($hasStress) { "S" } else { " " }
+                                $markR = if ($hasReport) { "R" } else { " " }
+                                $color = if ($hasReport) { "Green" } elseif ($hasStress) { "Yellow" } else { "Gray" }
+                                Write-Host "  [$markS$markR] $($r.Name)" -ForegroundColor $color
                             }
                             Write-Host ""
-                            Write-Host "  [+] = tiene report.json" -ForegroundColor DarkGray
+                            Write-Host "  [SR] = stress + reporte | [S ] = solo stress | [  ] = incompleta" -ForegroundColor DarkGray
                         } else { Write-Host "(sin corridas en $($Res.resultsDir))" -ForegroundColor Gray }
                     } else { Write-Host "(directorio no existe: $($Res.resultsDir))" -ForegroundColor Gray }
                 }
@@ -1056,7 +1162,7 @@ $res = @{
     thinkMax          = PickDouble $ThinkMax @("profile", "thinkMax") 20.0
     maxProductsPerSale = PickInt $MaxProductsPerSale @("profile", "maxProductsPerSale") 0
     productCount      = PickInt $ProductCount @("profile", "productCount") 30
-    restockAmount     = PickInt $RestockAmount @("profile", "restockAmount") 1000000
+    restockAmount     = PickLong $RestockAmount @("profile", "restockAmount") 1000000
     productFilter     = PickString $ProductFilter @("profile", "productFilter")
     rate              = PickDouble $Rate @("profile", "rate") 0.0
     samplerSeconds    = PickInt $SamplerSeconds @("monitoring", "samplerSeconds") 5
@@ -1074,11 +1180,12 @@ if (-not $res.adminUser) { $res.adminUser = "Admin" }
 if (-not $res.stressUser) { $res.stressUser = "BOT_STRESS_TEST" }
 if (-not $res.productFilter) { $res.productFilter = "SKU-TEST" }
 if (-not $res.resultsDir) { $res.resultsDir = Join-Path $repoRoot "results" }
+elseif (-not [System.IO.Path]::IsPathRooted($res.resultsDir)) { $res.resultsDir = Join-Path $repoRoot $res.resultsDir }
 if (-not $res.environmentName) { $res.environmentName = "staging" }
 $res.connectionString = Resolve-ConnectionString $res.connectionString $res
 if ($res.thinkMax -lt $res.thinkMin) { throw "thinkMax ($($res.thinkMax)) debe ser >= thinkMin ($($res.thinkMin))." }
 
-Write-Host "Control de Pruebas POS (rev 8.117) - accion: $Action" -ForegroundColor Cyan
+Write-Host "Control de Pruebas POS (rev 8.120) - accion: $Action" -ForegroundColor Cyan
 Write-Host "Entorno: $($res.environmentName) | BaseUrl: $($res.baseUrl)" -ForegroundColor Cyan
 
 switch ($Action) {

@@ -1,6 +1,7 @@
 import argparse
 import json
 import math
+import os
 import random
 import ssl
 import sys
@@ -189,6 +190,9 @@ def parse_args(argv):
                         help="Desactiva la verificación TLS (para staging con certificado propio).")
     parser.add_argument("--out", default=None,
                         help="Ruta opcional a un archivo JSON con el resumen de resultados.")
+    parser.add_argument("--stop-file", default=None,
+                        help="Ruta opcional a un archivo centinela; al aparecer, la prueba "
+                             "finaliza de forma ordenada y consolida los resultados parciales.")
     args = parser.parse_args(argv)
 
     if args.base_url.rstrip("/") != args.confirm_staging and args.confirm_staging != "YES":
@@ -207,6 +211,10 @@ def parse_args(argv):
         parser.error("Rango de think time inválido (--think-min >= 0 y --think-max >= --think-min).")
 
     return args
+
+
+def stop_requested(path):
+    return bool(path) and os.path.exists(path)
 
 
 def fetch_json(client, path):
@@ -555,15 +563,19 @@ def main(argv):
     started_at = time.monotonic()
     try:
         if args.duration:
-            stop_event.wait(args.duration)
-            stop_event.set()
-        else:
-            while budget.remaining > 0:
+            deadline = started_at + args.duration
+            while time.monotonic() < deadline and not stop_requested(args.stop_file):
                 time.sleep(0.5)
-            stop_event.set()
+        else:
+            while budget.remaining > 0 and not stop_requested(args.stop_file):
+                time.sleep(0.5)
+        stop_event.set()
     except KeyboardInterrupt:
         print("\nInterrupción recibida. Cerrando hilos...")
         stop_event.set()
+
+    if stop_requested(args.stop_file):
+        print("\nFinalización solicitada: cerrando hilos y consolidando resultados parciales...")
 
     for thread in threads:
         thread.join(timeout=30)
