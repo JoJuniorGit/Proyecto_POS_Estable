@@ -77,7 +77,7 @@ Dependencias: **Ninguna** (es la raíz del grafo de dependencias).
 - `User` — Cédula, Username, PasswordHash, Role (Admin/Cashier/Driver), MustChangePassword
 - `Product` — SKU (código de barras), precios USD/Bs.S, stock, unidad de medida, IsCashAdvance
 - `Customer` — Cédula/RIF, crédito, estado
-- `Sale` — InvoiceNumber, TotalUSD, TotalBsS, AppliedRate, CustomerId, CashierId
+- `Sale` — InvoiceNumber, TotalUSD, TotalBsS, AppliedRate, CustomerId, CashierId, ClaimedByUserId/ClaimedByUserName/ClaimAction/ClaimedAtUtc (reclamo exclusivo de venta en espera)
 - `SaleItem` — UnitPrice (USD), UnitPriceBsS, SubtotalBsS, Quantity
 - `SalePayment` — Amount (USD), AmountBsS, ExchangeRate, PaymentMethodId
 - `CashDrawerSession` — OpeningBalanceLocal, ClosingBalanceLocal, UserId
@@ -90,13 +90,15 @@ Dependencias: `Core`
 
 | Componente | Archivos | Descripción |
 |---|---|---|
-| `Entities/` | Sale, SaleItem, SalePayment, SaleDeliveryStatus, CashDrawerSession, CashTransaction, ClosureDetail, DailyClosure, PaymentMethod | Entidades de ventas/caja |
-| `Services/` | `SalesService` (orquestador transaccional particionado: `SalesService.cs`, `SalesService.HoldOrders.cs`, `SalesService.Pricing.cs`, `SalesService.CashAdvance.cs`, `SalesService.History.cs`), CashDrawerService, DailyClosureService, PaymentMethodService, ClosurePdfGenerator | Servicios de negocio modularizados en partial classes (<500 líneas/archivo) |
-| `Interfaces/` | ICashDrawerService, IDailyClosureService, IPaymentMethodService, ISalesService | Contratos |
+| `Entities/` | Sale, SaleItem, SalePayment, SaleClaimAction, SaleDeliveryStatus, CashDrawerSession, CashTransaction, ClosureDetail, DailyClosure, PaymentMethod | Entidades de ventas/caja |
+| `Services/` | `SalesService` (orquestador transaccional particionado: `SalesService.cs`, `SalesService.HoldOrders.cs`, `SalesService.HoldClaims.cs`, `SalesService.Pricing.cs`, `SalesService.CashAdvance.cs`, `SalesService.History.cs`), CashDrawerService, DailyClosureService, PaymentMethodService, ClosurePdfGenerator | Servicios de negocio modularizados en partial classes (<500 líneas/archivo) |
+| `Interfaces/` | ICashDrawerService, IDailyClosureService, IPaymentMethodService, IHoldOrderNotifier, ISalesService | Contratos |
 | `DTOs/` | PendingPickupDto, SaleHistoryDto, UpdateSaleItemsRequestDto | DTOs de ventas |
 | `Data/` | SalesDbContext | DbContext de ventas |
 | `Helpers/` | TimeZoneHelper | Helpers de zona horaria |
-| `Migrations/` | 29 archivos | Migraciones EF Core de ventas/caja |
+| `Migrations/` | 35 archivos | Migraciones EF Core de ventas/caja (incluye `AddHoldOrderClaimsToSales` 8.121) |
+
+**Bloqueo multiterminal de ventas en espera (8.121):** `Sale` incorpora `ClaimedByUserId`/`ClaimedByUserName`/`ClaimAction` (None/Editing/Checkout)/`ClaimedAtUtc`. El primer reclamo validado gana (arbitraje atómico con el token `xmin`) y rige bloqueo estricto hasta completar, anular o liberar; la liberación forzada es exclusiva de Admin/Manager. La cola `GET /api/sales/pending` es compartida para Admin/Manager/Cashier (Driver excluido) y cada cambio de ciclo de vida se propaga por `OnHoldSalesUpdated`.
 
 ### 2.3 `Inventory.Module` — Dominio de Inventario
 
@@ -148,7 +150,7 @@ Dependencias: Backend API (HTTP + SignalR)
 | Categoría | Archivos | Descripción |
 |---|---|---|
 | **Pages** (11) | LoginPage, PosPage, CatalogPage, HistoryPage, PendingOrdersPage, PendingPickupsPage, RegisterPage, RegisterClosePage, ClosingPage, SettingsPage, ExchangeRatePage | Páginas principales |
-| **Components** (34) | Layout, Cart, ProductGrid, ProductSearch, CustomerSelector, BarcodeScannerModal, CheckoutModal, HoldSaleModal, PartialPaymentModal, SuccessScreen, ATMInput, VariantSelectorModal, etc. | Componentes reutilizables |
+| **Components** (37) | Layout, Cart, ProductGrid, ProductSearch, CustomerSelector, BarcodeScannerModal, CheckoutModal, HoldSaleModal, PartialPaymentModal, SuccessScreen, ATMInput, VariantSelectorModal, etc. | Componentes reutilizables |
 | **Context** (3) | AuthContext, ExchangeRateContext, CartContext | Estado global React |
 | **Services** (api.js) | productService, salesService, cashDrawerService, etc. | Capa de comunicación HTTP |
 
@@ -166,7 +168,7 @@ Dependencias: Backend API (HTTP + SignalR), `Desktop.Client.Core`
 |---|---|---|
 | `Views/` | MainWindow, PosView, InventoryView, SalesHistoryView, PendingOrdersView, PendingPickupsView, SettingsView, ExchangeRateView, CashDrawerView, DailyClosureView, UsersManagementView, CustomerManagementView, BarcodeScannerWindow, ChangePasswordDialog, CashAdvanceDialog, etc. | Vistas WPF |
 | `Services/` | WpfDialogService, BarcodeScannerService, OcrService | Servicios de UI |
-| `Converters/` | BoolToStatusConverter, InverseBooleanToVisibilityConverter, etc. | Value converters |
+| `Converters/` | BoolToStatusConverter, InverseBooleanToVisibilityConverter, HoldLockDisplayConverter, etc. | Value converters |
 | `Controls/` | Custom controls | Controles personalizados |
 | `Themes/` | NavTheme.xaml | Tema MaterialDesign |
 
@@ -243,6 +245,7 @@ public record SaleItemSnapshot(
    - Si no existe cotización para el día actual (fines de semana, feriados bancarios o inicio de jornada), `GET /api/exchange-rate/today` aplica fallback al último registro histórico válido hasta hoy (`Where(r => r.Date <= today).OrderByDescending(r => r.Date)`), garantizando que el sistema jamás devuelva `0` ni caiga en contingencia de `1`.
 4. **Propagación en Tiempo Real:**
    - Ante cualquier cambio, se persiste en `ExchangeRateHistory`, se purga la clave en memoria `bcv_rate_today`, se recalculan las ventas en espera (`RecalculateOnHoldSalesAsync`) y se emite `ReceiveRateUpdate` y `OnHoldSalesUpdated` vía `ExchangeRateHub`.
+   - El ciclo de vida de la venta en espera (reclamo, liberación, puesta en espera, completado y anulación) también emite `OnHoldSalesUpdated` a través de `IHoldOrderNotifier`/`SignalRHoldOrderNotifier`, manteniendo sincronizada la cola compartida entre terminales.
 5. **Consideración Multi-instancia y Concurrencia:**
    - La arquitectura actual asume una **única instancia primaria** del backend (`PosBackendService`) por punto de venta/sucursal física.
    - Para futuros despliegues multi-nodo o clústeres balanceados, la ejecución concurrente de `BcvExchangeRateJob` debe coordinarse mediante un mecanismo de exclusión mutua distribuida (por ejemplo, PostgreSQL Session Advisory Locks `pg_try_advisory_lock` o un lease en base de datos) para evitar scraping redundante, y la invalidación de `IMemoryCache` debe transicionar a un bus distribuido (Redis / Npgsql Listen-Notify).
@@ -577,6 +580,8 @@ Todos los payloads de error retornan: `type`, `title`, `status`, `error`, `messa
 | `/api/auth/change-password` | POST | Cambio de contraseña obligatorio |
 | `/api/products` | GET/POST | Catálogo de productos |
 | `/api/sales` | GET/POST | Ventas y facturas |
+| `/api/sales/{id}/claim` | POST | Reclamo exclusivo de una venta en espera (Editing/Checkout) |
+| `/api/sales/{id}/release` | POST | Libera el bloqueo del carrito (force solo Admin/Manager) |
 | `/api/cashdrawer/*` | GET/POST | Sesiones de caja |
 | `/api/dailyclosure/*` | GET/POST | Cierres diarios |
 | `/api/exchangerate` | GET | Tasa de cambio actual |
@@ -930,4 +935,29 @@ Proyecto_POS_Estable/
 
 ---
 
-*Documento generado el 2026-08-21. Última actualización: Arquitectura completa del sistema POS.*
+## 19. Integración de Hardware y Periféricos
+
+> Estado verificado al 2026-09-13. Toda adición de un periférico requiere: (a) interfaz abstraída en `Desktop.Client.Core` (sin WPF) y (b) actualización de esta sección.
+
+### 19.1 Escáneres de código de barras
+
+- **WPF (cajas fijas):** pistolas USB/Bluetooth HID tipo "keyboard wedge" (emulan teclado), capturadas por `KeyboardWedgeScannerListener` (`Desktop.Client/Helpers/`): listener global no intrusivo que discrimina ráfagas de escáner (intervalo entre caracteres ≤ 60 ms, configurable 20-150) del tipeo humano, con guarda de foco para no interceptar campos de texto interactivos. `PosViewModel.Scanning.cs` valida el código con `BarcodeValidator` y serializa el escaneo con la búsqueda/sugerencia mediante un semáforo compartido (`_scannerLock`). `ScannerFeedbackService` emite tonos PCM en memoria (880/440/220 Hz) sin bloquear la UI.
+- **Web (tablets):** `BarcodeScannerModal` con `@zxing/library` (cámara del dispositivo). La cabecera `Permissions-Policy` debe mantener `camera=(self)` (fix 8.110) y el flujo de recuperación ante permisos revocados o device obsoleto vive en `src/utils/scannerCameraErrors.js` (8.109).
+
+### 19.2 Emparejamiento por QR (pairing)
+
+- `QrCodeHelper` (`Desktop.Client/Helpers/`) genera el QR con ZXing (`BarcodeWriterPixelData`) codificando `https://IP:5001/?paired=true`. El reclamo single-use por `?pair=TOKEN` (endpoint `/api/pairing/info`) es defense-in-depth pendiente de reforzar en web (deuda 8.20-F20-05).
+- `SubnetScannerService` descubre el backend en la LAN durante el primer emparejamiento; no es un periférico.
+
+### 19.3 Captura numérica ATM
+
+- `AtmBehavior` / `NumericCalculatorBehavior` (WPF) y `useAtmKeypad` / `ATMInput` (web) son software de captura para montos en doble divisa, no periféricos.
+
+### 19.4 Periféricos NO integrados (estado al 2026-09-13)
+
+- **Impresión térmica/fiscal:** no existe ESC/POS, `PrintDocument` ni driver de impresora. Los recibos (`SaleReceiptPdfGenerator`) y cierres (`ClosurePdfGenerator`) se generan como PDF; la impresión física es trabajo futuro.
+- **Otros:** sin balanzas/escalas, lectores de tarjeta, gaveta de efectivo física, puertos serie (`SerialPort`) ni integración con hardware fiscal SNTT.
+
+---
+
+*Documento generado el 2026-08-21. Última actualización: incorporación de la sección 19 (hardware y periféricos), 2026-09-14.*

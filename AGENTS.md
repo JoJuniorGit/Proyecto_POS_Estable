@@ -24,6 +24,11 @@ descripción del skill coincida con el trabajo, **debes cargarlo antes de escrib
 Las skills genéricas conservadas (`aspnet-core`, `csharp-async`, `csharp-xunit`,
 `accessibility`) quedan subordinadas a las skills del proyecto y a `docs/coding-guidelines.md`.
 
+**Reparto de información:** decisiones durables → ANEXO en `docs/reporte.txt`;
+estado vivo/WIP → Engram (memoria persistente; no crear documentos vivos en el repo);
+arquitectura → `ARCHITECTURE.md`; restricciones inyectadas en cada sesión → este archivo
+y las guías (`rules.md`, `docs/coding-guidelines.md`).
+
 ## Reglas no negociables
 
 1. **Sin comentarios salvo que se pidan.** No añadir comentarios explicativos al código.

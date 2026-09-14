@@ -3,15 +3,16 @@
 Documento vivo de seguimiento del plan de estabilizacion hacia produccion con
 un cliente real. Registra fases, tareas, hitos, decisiones, riesgos aceptados y
 el avance real de cada fase. Es la capa ejecutiva/operativa del plan de
-certificacion; el detalle por revision vive en `docs/reporte.txt` (ANEXOS) y el
-estado tecnico en `Reporte de estado.txt`.
+certificacion; el detalle por revision vive en `docs/reporte.txt` (ANEXOS), la
+arquitectura en `ARCHITECTURE.md` y el estado vivo en Engram (memoria persistente
+del proyecto; el documento vivo `Reporte de estado.txt` se retiro en 8.122).
 
 - **Version documento:** 0.16.0 (8.103: tasa redondeada como referencia absoluta en todas las fronteras)
 - **Fecha:** 2026-09-11
 - **Estado general:** Fases F0-F6 en curso; F0 avanza a M0 con confirmaciones del cliente
 - **Rama base:** V0.15
 - **Responsables:** Release Manager (RM) / Arquitecto (ARQ) / Cliente (CLI)
-- **Fuente de estado del sistema:** `Reporte de estado.txt` (v1.64.0) y `docs/reporte.txt` (ANEXOS)
+- **Fuente de estado del sistema:** Engram (estado vivo/WIP) y `docs/reporte.txt` (ANEXOS; arquitectura en `ARCHITECTURE.md`)
 
 ---
 
@@ -80,11 +81,11 @@ Estimacion total hasta M6: 3-4 semanas (incluyendo 2 semanas de piloto).
 
 | Fecha       | Fase | Hito/Actividad                              | Evidencia / Estado           |
 |-------------|------|---------------------------------------------|------------------------------|
-| 2026-09-10  | F2   | DESACOPLAR DESKTOP.CLIENT.CORE DE WPF (8.20-M01 RESUELTO): csproj UseWPF=false + sin MaterialDesignThemes + DPAPI package; abstracciones puras en Core (IDispatcherInvoker/IFilePickerDialog/IAppShutdown; IDialogService +ShowModalAsync/CloseCurrentModal); refactor de ~20 archivos (marshalling Dispatcher -> invoker, DialogHost -> IDialogService, DispatcherTimer -> CTS debounce, OpenFileDialog/SaveFileDialog -> IFilePickerDialog, Shutdown -> IAppShutdown, Dismiss(Window) -> RequestClose, ICollectionView movida a la vista); implementaciones WPF en Desktop.Client + DI; UiThreadMarshaller eliminado | (8.84) Build Release 0/0; suite .NET 798/798; reviewer aprobado. Roadmap v0.13.0 + ANEXO 8.84, Reporte v1.50.0 |
-| 2026-09-10  | F2   | P6/R13 RESUELTO (deuda: UniformGrid sin virtualizar, antes solo mitigado por cap 200): PendingPickupsView.xaml reemplaza ScrollViewer+ItemsControl+UniformGrid (2 columnas, no virtualizable) por ListBox + VirtualizingStackPanel (Recycling, ScrollUnit Pixel); PendingPickupsViewModel.FilteredPickups pasa de IEnumerable (LINQ Where no indexable) a ICollectionView (ListCollectionView) con Filter=FilterPredicate, eliminando el suscriptor redundante a CollectionChanged. Decision usuario: 1 columna ancho completo | (8.83) Build Release 0/0; suite .NET 798/798; reviewer aprobado. Roadmap v0.12.0 + ANEXO 8.83, Reporte v1.49.0 |
-| 2026-09-10  | F0   | F0 #7 CERRADA (unica confirmacion pendiente de 4.5): ventana de mantenimiento 03:00 (DQ-008) + REINICIO FACIL verificado con evidencia (Req.9, 8.69): endpoint `POST api/administration/restart` con guard anti-doble-programacion (Interlocked en ServiceRestartCoordinator) y RBAC (Caja 403, Admin/Manager OK); RestartPOS.bat con elevacion UAC y fallback sc stop/start; accesos directos "Reiniciar Sistema POS" en escritorio/programas (setup.iss); botones WPF (SettingsViewModel.Restart) y Web (SettingsPage) con modal de confirmacion; tests .NET (AdministrationControllerTests: RBAC + una sola programacion + SystemRestartTests WPF) y Web (api.test.js). Pendiente solo nombrar al responsable operativo (M0 4.6, accion CLI) | (8.82) Sin cambios de codigo; suite filtrada reinicio verde. Roadmap v0.11.0 + ANEXO 8.82, Reporte v1.48.0 |
-| 2026-09-10  | F6/FIN | METRICAS SLO + GO/NO-GO: monitor-health.ps1 ampliado para medir los SLO del piloto (muestreo slo-availability.csv por corrida, collector p95 por endpoint via /api/health/requests con token, resumen de ventana de 14h en slo-summary.json con disponibilidad %, probe p95, endpoint p95 max y backupFresh RPO); INSTALLATION 13.11 runbook de medicion SLO (schedule cada 5 min, cierre de jornada, drill RTO cronometrado); formulario Go/No-Go (roadmap 11) exige evidencia SLO adjunta para las firmas RM/ARQ/CLI. Medicion real en piloto y firmas: PENDIENTES | (8.81) Sin cambios de codigo .NET/Web/WPF; monitor-health.ps1 probado (muestra negativa + CSV + resumen JSON). Suite .NET 798/798. Roadmap v0.10.0 + ANEXO 8.81, Reporte v1.47.0 |
-| 2026-09-10  | F3/F4/F5 | F3/F4 AVANZADOS (runbook + artefacto): build-release.ps1 ahora verifica el bundle web en wwwroot (index.html + assets, aborta si falta), verifica 0 appsettings.Development.json en publish, y ejecuta el smoke de migracion desde cero (IMP-1/MigratedSchema) como paso 7/7 opcional cuando TEST_POSTGRES_CONNECTION esta definida; INSTALLATION 13.8 monitoreo piloto (monitor-health.ps1), 13.9 paridad instalador/backend post-instalacion, 13.10 pre-despliegue/verificacion del artefacto | (8.80) ISCC firma X.509 + smoke en maquina virgen y ejecucion real PENDIENTES (requieren certificado/VM). Roadmap v0.9.0 + ANEXO 8.80, Reporte v1.46.0 |
+| 2026-09-10  | F2   | DESACOPLAR DESKTOP.CLIENT.CORE DE WPF (8.20-M01 RESUELTO): csproj UseWPF=false + sin MaterialDesignThemes + DPAPI package; abstracciones puras en Core (IDispatcherInvoker/IFilePickerDialog/IAppShutdown; IDialogService +ShowModalAsync/CloseCurrentModal); refactor de ~20 archivos (marshalling Dispatcher -> invoker, DialogHost -> IDialogService, DispatcherTimer -> CTS debounce, OpenFileDialog/SaveFileDialog -> IFilePickerDialog, Shutdown -> IAppShutdown, Dismiss(Window) -> RequestClose, ICollectionView movida a la vista); implementaciones WPF en Desktop.Client + DI; UiThreadMarshaller eliminado | (8.84) Build Release 0/0; suite .NET 798/798; reviewer aprobado. Roadmap v0.13.0 + ANEXO 8.84 |
+| 2026-09-10  | F2   | P6/R13 RESUELTO (deuda: UniformGrid sin virtualizar, antes solo mitigado por cap 200): PendingPickupsView.xaml reemplaza ScrollViewer+ItemsControl+UniformGrid (2 columnas, no virtualizable) por ListBox + VirtualizingStackPanel (Recycling, ScrollUnit Pixel); PendingPickupsViewModel.FilteredPickups pasa de IEnumerable (LINQ Where no indexable) a ICollectionView (ListCollectionView) con Filter=FilterPredicate, eliminando el suscriptor redundante a CollectionChanged. Decision usuario: 1 columna ancho completo | (8.83) Build Release 0/0; suite .NET 798/798; reviewer aprobado. Roadmap v0.12.0 + ANEXO 8.83 |
+| 2026-09-10  | F0   | F0 #7 CERRADA (unica confirmacion pendiente de 4.5): ventana de mantenimiento 03:00 (DQ-008) + REINICIO FACIL verificado con evidencia (Req.9, 8.69): endpoint `POST api/administration/restart` con guard anti-doble-programacion (Interlocked en ServiceRestartCoordinator) y RBAC (Caja 403, Admin/Manager OK); RestartPOS.bat con elevacion UAC y fallback sc stop/start; accesos directos "Reiniciar Sistema POS" en escritorio/programas (setup.iss); botones WPF (SettingsViewModel.Restart) y Web (SettingsPage) con modal de confirmacion; tests .NET (AdministrationControllerTests: RBAC + una sola programacion + SystemRestartTests WPF) y Web (api.test.js). Pendiente solo nombrar al responsable operativo (M0 4.6, accion CLI) | (8.82) Sin cambios de codigo; suite filtrada reinicio verde. Roadmap v0.11.0 + ANEXO 8.82 |
+| 2026-09-10  | F6/FIN | METRICAS SLO + GO/NO-GO: monitor-health.ps1 ampliado para medir los SLO del piloto (muestreo slo-availability.csv por corrida, collector p95 por endpoint via /api/health/requests con token, resumen de ventana de 14h en slo-summary.json con disponibilidad %, probe p95, endpoint p95 max y backupFresh RPO); INSTALLATION 13.11 runbook de medicion SLO (schedule cada 5 min, cierre de jornada, drill RTO cronometrado); formulario Go/No-Go (roadmap 11) exige evidencia SLO adjunta para las firmas RM/ARQ/CLI. Medicion real en piloto y firmas: PENDIENTES | (8.81) Sin cambios de codigo .NET/Web/WPF; monitor-health.ps1 probado (muestra negativa + CSV + resumen JSON). Suite .NET 798/798. Roadmap v0.10.0 + ANEXO 8.81 |
+| 2026-09-10  | F3/F4/F5 | F3/F4 AVANZADOS (runbook + artefacto): build-release.ps1 ahora verifica el bundle web en wwwroot (index.html + assets, aborta si falta), verifica 0 appsettings.Development.json en publish, y ejecuta el smoke de migracion desde cero (IMP-1/MigratedSchema) como paso 7/7 opcional cuando TEST_POSTGRES_CONNECTION esta definida; INSTALLATION 13.8 monitoreo piloto (monitor-health.ps1), 13.9 paridad instalador/backend post-instalacion, 13.10 pre-despliegue/verificacion del artefacto | (8.80) ISCC firma X.509 + smoke en maquina virgen y ejecucion real PENDIENTES (requieren certificado/VM). Roadmap v0.9.0 + ANEXO 8.80 |
 | 2026-09-10  | F2   | HALLAZGO 8.79-H: el smoke migracion desde cero destapo que la secuencia de facturacion `factura_number_seq` NO se materializaba con MigrateAsync (solo en runtime via DatabaseInitializer) -> nueva migracion idempotente `20260910180000_EnsureFacturaNumberSequence` (IF NOT EXISTS); smoke `MigratedSchema_MatchesModel` pasa en BD 100% nueva | (8.79) ambos smokes migratorios + suite completa verdes con sufijo fresco (798/798); build Release 0/0 |
 | 2026-09-10  | F0/F3/F5 | IMP-1..IMP-5 (ANEXO 8.67) APROBADAS: IMP-1 smoke migracion desde cero automatizado (test `MigratedSchema_FromEmptyDatabase_AppliesAllMigrationsCleanly`, crea BD temporal vacia, MigrateAsync de ambos contextos, descarta; detectaria el 42703 de 8.65); IMP-2 checklist paridad instalador/backend (INSTALLATION §5.1); IMP-3 backup config sitio (INSTALLATION §8.2); IMP-4 exclusiones Defender (INSTALLATION §6A); IMP-5 CERRADA (8.68-A9 cliente sin datos) | (8.79) IMP-1..4 IMPLEMENTADOS; suite .NET con nuevo smoke; build Release 0/0. Roadmap v0.8.0 + ANEXO 8.79 |
 | 2026-09-10  | F2   | FOLLOW-UPS de deuda tecnica de ANEXO 8.77: eliminados los 3 catch-locales redundantes de `InvalidOperationException` en ReservationsController (409 via middleware sin filtrar ex.Message; KeyNotFound->404 conservados por diseno); padre inexistente en ProductCrud.cs:77 recalsificado a `KeyNotFoundException`->404 (mensaje unificado con VariantQueries.cs); reindentacion boy-scout en SalesService.Checkout.cs (diff -w vacio, semantica identica); test nuevo de padre inexistente | (8.78) Suite .NET 797/797, build Release 0/0. Roadmap v0.7.0 + ANEXO 8.78 |
@@ -161,8 +162,8 @@ contrato operativo del roadmap.
   la estabilizacion NO se incorporan funcionalidades nuevas; solo correcciones
   aprobadas por el RM.
 - **DQ-002 - Regla de congelacion de codigo.** Toda correccion requiere: commit +
-  suites verdes + actualizacion de `Reporte de estado.txt` + ANEXO en
-  `docs/reporte.txt`. (Politica vigente de AGENTS.md.)
+  suites verdes + ANEXO en `docs/reporte.txt` y actualizacion del estado vivo en
+  Engram (8.122). (Politica vigente de AGENTS.md.)
 - **DQ-003 - Impresion no bloquea el alcance base.** Se trata como decision de
   cliente en Fase 1; si el cliente exige impresion termica/fiscal, escala a P0.
 - **DQ-004 - SLOs son PROPUESTA inicial** (4.3) sujeta a validacion del cliente y
@@ -569,8 +570,9 @@ Cliente:          _________________________ Fecha: ___________
 
 - El changelog (seccion 2) es el registro de avance: nueva fila arriba con
   fecha, fase, actividad y evidencia.
-- Toda correccion de codigo durante la estabilizacion actualiza ademas
-  `Reporte de estado.txt` y registra ANEXO en `docs/reporte.txt` (DQ-002).
+- Toda correccion de codigo durante la estabilizacion registra ademas ANEXO en
+  `docs/reporte.txt` y actualiza el estado vivo en Engram (DQ-002; el documento
+  vivo `Reporte de estado.txt` se retiro en 8.122).
 - El estado del tablero (seccion 3) y el detalle de la fase en curso se
   mantienen sincronizados con la realidad del repo; no se marca una fase cerrada
   sin su hito y su evidencia.

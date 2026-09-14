@@ -7813,3 +7813,348 @@ E4. Fixes post-commit (fix 8.117):
       'BOT_STRESS_TEST' WHERE Username = 'BOT_STRESS_TEST'`).
 
 FIN DEL ANEXO - REVISION 8.117
+
+================================================================================
+ANEXO - REVISION 8.119 (2026-09-13)
+Titulo: Finalizacion de corridas, marcadores de estado y robustez de pos-test.ps1
+================================================================================
+
+A. CONTEXTO
+A1. La regeneracion de reportes (opcion 6 / -Action Report) reconstruia el bloque
+    `environment` con la configuracion vigente (`$Res`), no con la de la corrida. Al
+    reconstruir una corrida antigua se mostraba el backend actual (p.ej. `produccion`
+    sobre `192.168.1.5:5000`) aunque la corrida se hubiera ejecutado contra
+    `localhost-dev` (`127.0.0.1:5000`), violando el espiritu de `rules.md` §1
+    (inmutabilidad del historial) a nivel de evidencia de pruebas.
+A2. La opcion 3 no finalizaba ni guardaba el reporte cuando la prueba se interrumpia
+    (Ctrl+C): solo la campana generaba reporte. Ademas, las corridas sin `stress.json`
+    no se distinguian en el listado (solo se marcaba `report.json`), de modo que la
+    opcion 6 fallaba con un error crudo.
+
+B. IMPLEMENTACION
+B1. `Build-Report` resuelve el entorno de forma inmutable: `name`/`baseUrl`/`rate`
+    prefieren `run-profile.json` de la corrida, con respaldo en `stress.json` y, en
+    ultimo termino, la configuracion vigente. El reporte `.md` usa los mismos valores.
+B2. `New-RunFolder` persiste `rate` y `timeout` en `run-profile.json` para
+    reproducibilidad (esquema consumido solo por pos-test.ps1).
+B3. Opcion 3: envuelve la carga en `try/catch/finally`; al interrumpirse, detiene el
+    muestreador y, si existe `stress.json`, genera `report.json`/`report.md`
+    (datos parciales) y resume la corrida. Si no hay `stress.json`, informa la
+    carpeta de la corrida sin error.
+B4. Marcadores de estado en opciones 6 y 11: `[SR]` stress+reporte (verde),
+    `[S ]` solo stress (amarillo, listo para reportar) y `[  ]` incompleta (gris).
+    Opcion 6 valida `stress.json` antes de regenerar y explica la causa si falta.
+B5. `PickLong` para `restockAmount` (evita truncamiento/retorno silencioso al default
+    cuando supera Int32); `Show-EditConfig` parsea ese campo como `long`.
+B6. `resultsDir` relativo (config `results.dir`) se resuelve contra el repoRoot a
+    ruta absoluta, independiente del directorio de trabajo.
+B7. `Invoke-StressRun` copia el resultado a `RunDir\stress.json` cuando se uso `-Out`
+    a una ruta externa, para que el pipeline de reporte sea uniforme. Se normalizo
+    `$res`->`$Res` y `$RunDir`->`$runDir` por consistencia.
+
+C. DECISIONES
+C1. El entorno del reporte se toma de la corrida (no de la configuracion), para que
+    la evidencia sea inmutable y comparable entre corridas historicas.
+C2. La finalizacion de la opcion 3 es automatica al terminar o interrumpirse la
+    carga; la regeneracion manual sigue disponible en la opcion 6 para corridas
+    `[S ]`. No se reintroduce el patron de "stop file" del muestreador en el motor
+    Python (fuera del alcance de pos-test.ps1).
+
+D. VERIFICACION
+D1. AST de PowerShell: `pos-test.ps1` parsea sin errores.
+D2. Reporte regenerado sobre una copia temporal de `20260912-234022` (entorno
+    historico `localhost-dev`/`127.0.0.1:5000`): `report.json.environment` mostro
+    `localhost-dev`, `http://127.0.0.1:5000`, `rate=842.21` (antes: config actual).
+D3. `-Action Report -RunId corrida-inexistente` resolvio `resultsDir` a ruta
+    absoluta (`...\V0.1\results\corrida-inexistente`).
+D4. Menu con entrada simulada: opcion 11 mostro `[SR]`/`[  ]`; opcion 6 sobre una
+    corrida sin `stress.json` mostro el aviso dedicado en lugar del error crudo.
+
+E. ESTADO / PENDIENTES
+E1. Los reportes historicos existentes no se reescribieron; se regeneraran con el
+    entorno correcto solo cuando el operador ejecute Report sobre ellos.
+E2. Commit sugerido:
+    `feat(8.119): finalizacion de corridas y marcadores de estado en pos-test.ps1 - ANEXO 8.119`.
+
+FIN DEL ANEXO - REVISION 8.119
+
+================================================================================
+ANEXO - REVISION 8.120 (2026-09-14)
+Titulo: Cierre seguro (graceful shutdown) y recuperacion de estado en Web y WPF
+================================================================================
+
+A. CONTEXTO
+A1. El spec `docs/Ideas.txt` (Paso 1) exige interceptar el cierre estandar (X, Alt+F4,
+    apagado del sistema), pedir confirmacion si hay estado volatil (carrito con
+    productos, formularios/modales abiertos), autoguardar el estado critico para
+    recuperar la venta exacta tras un cierre inesperado y liberar recursos
+    (camara, AudioContext, SignalR) de forma explicita.
+A2. En Web existia cobertura parcial: `beforeunload` solo en PosPage y solo por items
+    del carrito, restore silencioso desde sessionStorage (que no sobrevive al cierre
+    del navegador) y cierre de camara/audio/SignalR solo por desmontaje de React.
+A3. En WPF ya existia cierre ordenado de modales y servicios (8.6-B5); faltaban la
+    advertencia al cerrar con carrito con productos y la persistencia/recuperacion
+    local de la venta activa.
+
+B. IMPLEMENTACION
+B1. Web - utilidades nuevas:
+    - `src/utils/saleRecovery.js`: snapshot de venta en localStorage
+      (`pos_orphan_sale_snapshot`, TTL 24 h) y marca de cierre limpio
+      (`pos_clean_shutdown_at`) con alcance por `saleId`; deteccion de huerfano por
+      `savedAt > marca del mismo saleId` y heuristica de sesion viva
+      (sessionStorage activo con el mismo saleId no genera aviso).
+    - `src/utils/shutdownRegistry.js`: registro de cleanups LIFO con aislamiento de
+      errores (idempotente).
+    - `src/utils/modalRegistry.js`: contador de modales abiertos.
+    - `src/utils/tabPresence.js`: BroadcastChannel `pos_tab_presence` para no ofrecer
+      recuperacion si otra pestana del POS esta viva.
+    - `src/hooks/useShutdownGuard.js`: beforeunload (aviso si hay estado volatil),
+      pagehide (flush -> marca de cierre limpio -> cleanups; respeta BFCache),
+      pageshow persistido (marca sesion sucia) y visibilitychange (autoguardado).
+B2. Web - integracion:
+    - `CartContext`: autoguardado debounce 400 ms + flush en visibilitychange;
+      recuperacion de venta huerfana con modal propio (`SaleRecoveryModal`) que
+      muestra el error de red y permite reintentar sin borrar el snapshot; creacion
+      de venta nueva bloqueada hasta resolver la recuperacion.
+    - `App.jsx`: guard global que considera items del carrito, modales registrados,
+      pagos en curso del checkout, overlays de exito y recuperacion pendiente.
+    - `Modal.jsx`/`ConfirmModal.jsx` registran su apertura; `BarcodeScannerModal`
+      registra `stopActiveStream` + `closeAudioContext`; `ExchangeRateContext`
+      registra `disconnectRateHub`; `ErrorBoundary` limpia las claves nuevas.
+B3. WPF - servicios y VMs:
+    - `SaleRecoveryStore` (JSON en `%LOCALAPPDATA%\ProyectoPOS\active_sale_recovery.json`,
+      I/O best-effort, ruta inyectable para tests).
+    - `CartViewModel` persiste el snapshot cuando la venta es Pending con items y lo
+      limpia en caso contrario, con bandera de preservacion para logout/401;
+      `HasUncommittedItems` alimenta la advertencia de cierre.
+    - `PosViewModel` pregunta al iniciar sesion si hay snapshot valido y recupera la
+      venta; si la red falla, conserva el snapshot y NO fuerza venta nueva.
+    - `MainWindow.OnClosing` advierte con dialogo si hay modal abierto y/o productos
+      sin cobrar; `App.StopServicesAsync` limpia el snapshot al INICIO del cierre
+      ordenado (un kill del proceso conserva el archivo).
+
+C. DECISIONES
+C1. Huerfano = snapshot sin marca de cierre limpio del mismo `saleId`, sin sesion
+    activa con ese id y no vencido (24 h); una pestana adicional no dispara la
+    recuperacion (BroadcastChannel).
+C2. El cierre confirmado por el usuario es limpio: no se ofrece recuperar despues;
+    solo crash/kill/apagon sin confirmacion dejan estado recuperable.
+C3. La recuperacion web mantiene el modal abierto ante fallo de red y conserva el
+    snapshot para reintentar; en WPF se conserva el archivo y se re-habilita el
+    chequeo al reingresar al POS.
+C4. No se valida `cashierId` al recuperar (estacion unica); queda como limitacion
+    documentada para el futuro control de sesiones.
+
+D. VERIFICACION
+D1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias / 0 errores.
+D2. Suite .NET completa con PostgreSQL real (`TEST_POSTGRES_CONNECTION`): 935/935 en
+    verde; tests nuevos: SaleRecoveryStoreTests (5), CartRecoveryStateTests (5),
+    PosViewModelRecoveryTests (6).
+D3. Gate de cobertura de dominio: Core 0.8310 >= 0.70, Sales.Module 0.8915 >= 0.80,
+    Inventory.Module 0.8214 >= 0.72 [OK].
+D4. Web: `npm test` 141/141 y `npm run lint` 0 errores.
+D5. Review adversarial independiente: 3 CRITICAL y 6 ADVISORY. Corregidos los 3
+    CRITICAL (limpieza del snapshot durante la ventana de recuperacion, marca de
+    cierre global multi-pestana, perdida del puntero ante fallo de red en Web y
+    WPF) y los ADVISORY A1 (BFCache), A2 (descarte accidental), A3 (logout/401 y
+    orden del clear WPF) y A5 (reset del ErrorBoundary).
+
+E. ESTADO / PENDIENTES
+E1. A4: definir politica de `cashierId` en la recuperacion cuando exista control de
+    sesiones concurrentes.
+E2. A6: agregar test de integracion de `CartContext` (requiere jsdom o harness de
+    componentes; el actual es renderToString sin efectos).
+E3. Commit sugerido:
+    `feat(8.120): cierre seguro y recuperacion de estado en Web y WPF - ANEXO 8.120`.
+
+FIN DEL ANEXO - REVISION 8.120
+
+================================================================================
+ANEXO - REVISION 8.121 (2026-09-14)
+Titulo: Venta en Espera Multiterminal - reclamo exclusivo de carritos compartidos
+================================================================================
+
+A. CONTEXTO
+A1. El requerimiento pide un ciclo de vida estructurado para pedidos en espera:
+    visibilidad y recuperacion unificadas en cualquier estacion (WPF/Web), estado
+    bloqueado visible con identidad del cajero y accion en curso ("En proceso de
+    pago" / "Editando pedido"), resolucion de colisiones con transaccion atomica
+    (gana la primera solicitud) y bloqueo estricto hasta finalizar la venta o
+    devolver explicitamente el carrito a la cola.
+A2. Decisiones de negocio confirmadas por el usuario ANTES de implementar:
+    (a) Cola compartida: todos los roles operativos ven TODAS las ventas OnHold y
+        pueden reclamar una libre; deroga el scope por cajero 8.9-B2/8.5-A3 SOLO
+        para OnHold (el resto de estados conserva la regla de dueno).
+    (b) Recuperacion de bloqueos huerfanos: liberacion forzada por Admin/Manager,
+        sin TTL de bloqueo.
+    (c) "Retomar" = reclamar el bloqueo y abrir la accion (Cobrar/Editar); la
+        liberacion es automatica al cerrar el modal, completar o anular.
+
+B. IMPLEMENTACION
+B1. Modelo y contrato: `Sale` agrega ClaimedByUserId, ClaimedByUserName,
+    ClaimAction (enum None/Editing/Checkout) y ClaimedAtUtc; `SaleDto` los expone
+    en camelCase. Migracion EF `20260914053810_AddHoldOrderClaimsToSales`
+    (solo 4 columnas en "Sales"; snapshot consistente; sin cambios pendientes).
+B2. Backend: `ClaimSaleAsync`/`ReleaseSaleAsync` con arbitraje por token `xmin`
+    ya existente (sin ExecuteUpdate): reclamo idempotente del mismo cajero y 409
+    con identidad del tenedor para el segundo competidor. Endpoints
+    `POST /api/sales/{id}/claim` (solo Editing/Checkout) y
+    `POST /api/sales/{id}/release?force=...` (force solo Admin/Manager). Bloqueo
+    estricto en TODOS los mutadores de OnHold: items, cantidad, tasa, cliente,
+    lista de precios, productos, abonos single/batch, hold, completar, anular y
+    confirm-pickup. Limpieza de claim al completar/anular/poner en espera.
+    `IHoldOrderNotifier` + `SignalRHoldOrderNotifier` emiten OnHoldSalesUpdated
+    tras cada cambio de ciclo de vida (fallo de SignalR no rompe la transaccion).
+    `GET /api/sales/pending` pasa a cola compartida restringida a
+    Admin/Manager/Cashier (Driver excluido); `RecalculateOnHoldSalesAsync`
+    conserva los claims (ruta de sistema).
+B3. Web: `salesApi.claimSale/releaseSale`; utilidad pura `holdLock` con etiquetas
+    en espanol; `PendingOrdersPage` reclama antes de abrir Cobrar/Editar, libera
+    al cerrar/completar/anular, muestra badge "Bloqueado por <cajero> - <accion>",
+    deshabilita acciones ajenas y ofrece "Liberar" a Admin/Manager. Componentes
+    extraidos (PendingOrderLockBadge, PendingOrderDesktopRow,
+    PendingOrderMobileCard): la pagina baja de 745 a 487 lineas.
+B4. WPF: `ClaimSaleAsync`/`ReleaseSaleAsync` en el cliente; PendingOrdersViewModel
+    reclama y libera en `finally` (CheckoutViewModel ahora se dispose), comandos
+    con CanExecute segun tenedor, columna ESTADO con badge, fila resaltada y boton
+    "Liberar" para Admin/Manager; converter `HoldLockDisplayConverter`.
+
+C. REVIEW ADVERSARIAL Y CORRECCIONES
+C1. Review independiente (protocolo .opencode/agent/reviewer.md) emitio BLOQUEAR
+    con 4 hallazgos: HoldSale/UpdatePriceList/ConfirmPickup mutaban OnHold sin
+    validar claim (ademas HoldSale podia completar la venta y dejar claim
+    residual) y `GET /api/sales/pending` quedaba visible para Driver. Corregidos:
+    EnsureHoldClaimAccess + actor en los 3 flujos, ClearHoldClaim en la rama de
+    completado de HoldSale, guarda Completed+PendingPickup en ConfirmPickup,
+    [Authorize(Roles=...)] en /pending y parseo estricto de accion (solo
+    Editing/Checkout, rechaza numericos).
+C2. Re-validacion del reviewer: 4 BLOQUEANTES confirmados corregidos. Residuales
+    no bloqueantes: estilo inline preexistente relocalizado (corregido a la clase
+    CSS `.ppo-row-expanded` en esta revision) y ausencia de test de componente UI
+    web del ciclo de bloqueo (requiere jsdom; pendiente documentado).
+
+D. VERIFICACION
+D1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias / 0 errores.
+D2. Suite .NET: 970/970 en verde (base 935 de 8.120 + 35 pruebas nuevas:
+    HoldOrderClaimTests 20, SalesControllerClaimTests 5, PendingOrdersClaimTests 9
+    y 1 de concurrencia real Postgres-gated que se auto-omite sin
+    TEST_POSTGRES_CONNECTION y se ejecuta en CI con postgres:16).
+D3. Gate de cobertura de dominio: Core 0.8333 >= 0.70, Sales.Module 0.8848
+    >= 0.80, Inventory.Module 0.8198 >= 0.72 [OK].
+D4. Web: `npm test` 156/156 y `npm run lint` 0 errores.
+D5. Migracion verificada por smoke MigratedSchema (valida ClaimedByUserId,
+    ClaimedByUserName, ClaimAction, ClaimedAtUtc) y has-pending-model-changes
+    limpio. Sin artefactos de build en Backend.API/wwwroot.
+D6. `ARCHITECTURE.md` sincronizado (entidad Sale, particion HoldClaims, notifier,
+    endpoints claim/release, propagacion SignalR, cola compartida y componentes).
+
+E. ESTADO / PENDIENTES
+E1. Agregar test de componente web del ciclo de reclamo/liberacion en
+    PendingOrdersPage (requiere jsdom o harness de componentes; hoy se cubren
+    salesApi y la utilidad pura holdLock).
+E2. El 409 de claim mantiene body propio (`message` + metadatos del lock) en
+    lugar de ProblemDetails; consistente con el patron previo del controlador y
+    con el shape que consumen ambos clientes.
+E3. Commit sugerido:
+    `feat(8.121): venta en espera multiterminal con reclamo exclusivo y bloqueo estricto - ANEXO 8.121`.
+
+FIN DEL ANEXO - REVISION 8.121
+
+================================================================================
+ANEXO - REVISION 8.122 (2026-09-14)
+Titulo: Retiro del documento vivo Reporte de estado y arquitectura de informacion para agentes
+================================================================================
+
+A. CONTEXTO Y DECISION
+A1. `Reporte de estado.txt` (raiz, 1393 lineas, v1.64.13 / revision 8.117,
+    2026-09-13) era un documento vivo que duplicaba `ARCHITECTURE.md`
+    (arquitectura, stack y topologia), `rules.md` + `docs/coding-guidelines.md`
+    (reglas de negocio e integridad) y `docs/reporte.txt` (trazabilidad por
+    ANEXOS); ademas quedo desactualizado respecto de las revisiones 8.119-8.121
+    (estado congelado en 8.117).
+A2. Decision del usuario (opcion A): retirar el documento vivo y fijar una
+    arquitectura de informacion sin duplicacion. Regla de reparto de informacion
+    para agentes: decisiones durables -> ANEXO en `docs/reporte.txt`; estado
+    vivo/WIP -> Engram (memoria persistente del proyecto; no crear documentos
+    vivos en el repo); arquitectura -> `ARCHITECTURE.md`; restricciones
+    inyectadas en cada sesion -> `AGENTS.md` y las guias (`rules.md`,
+    `docs/coding-guidelines.md`).
+A3. El estado vivo al cierre queda como observacion Engram (topic_key
+    `docs/living-state`, observacion #35): fases F0-F6 en curso (roadmap), linea
+    base con metricas del documento (.NET 919/919, web 110/110, lint 0/0 en
+    v1.64.9), avance posterior del repo hasta 8.121 (2026-09-14: .NET 970/970,
+    web 156/156, cobertura Core 0.8333 / Sales.Module 0.8848 / Inventory.Module
+    0.8198) y deuda activa (UpdaterService sin firma X.509, 8.20-A03; items
+    bloqueados por entorno P11/P12/P13/P17; retencion forense W04 opcional).
+
+B. MIGRACION DE CONTENIDO UNICO Y REFERENCIAS
+B1. Hardware/perifericos (seccion 3 del documento retirado) -> nueva seccion 19
+    de `ARCHITECTURE.md`: escaneres WPF (`KeyboardWedgeScannerListener`,
+    `PosViewModel.Scanning.cs`, `ScannerFeedbackService`), escaner web
+    (`BarcodeScannerModal` + `@zxing/library`, `Permissions-Policy`
+    `camera=(self)` de 8.110 y recuperacion de permisos de 8.109), pairing QR
+    (`QrCodeHelper`, `?pair=TOKEN`, endpoint `/api/pairing/info`, deuda
+    8.20-F20-05) y captura numerica ATM (software, no periferico). Incluye la
+    nota "Perifericos NO integrados (estado al 2026-09-13)": sin impresion
+    termica/fiscal (ESC/POS, `PrintDocument` o driver), sin balanzas, lectores
+    de tarjeta, gaveta fisica, `SerialPort` ni hardware fiscal SNTT; los
+    recibos/cierres se generan como PDF (`SaleReceiptPdfGenerator`,
+    `ClosurePdfGenerator`).
+B2. Estado de despliegue (seccion 4.3): verificado ya cubierto por
+    `docs/INSTALLATION.md` (secciones 1-4 y 8-9: PosBackendService/NSSM,
+    PostgreSQL 16/18, puertos 5000/5001, `secrets.json` anidado con ACL, pfx por
+    sitio, backup programado 03:00 y limitaciones pre-piloto); no se migro
+    contenido nuevo. La nota de desalineacion con `ARCHITECTURE.md` por el
+    UpdaterService (8.20-B05) quedo sin vigencia: ambos documentos ya lo
+    declaran fuera del instalador.
+B3. Deuda tecnica (seccion 4.4): la unica deuda ALTA/CRITICO activa al cierre
+    (UpdaterService sin firma X.509, 8.20-A03) ya esta trazada en
+    `docs/production-readiness-roadmap.md` (R-007, secciones 5.4 y 12.3); el
+    resto de items del bloque estaban CERRADOS o clasificados como MEDIA /
+    post-produccion y no se duplican. La retencion forense W04 (opcional)
+    permanece en los ANEXOS de `docs/reporte.txt`.
+B4. Referencias actualizadas: `docs/production-readiness-roadmap.md` (cabecera,
+    DQ-002 y protocolo de actualizacion) apunta ahora a Engram para estado vivo,
+    `docs/reporte.txt` para decisiones/ANEXOS y `ARCHITECTURE.md` para
+    arquitectura; se retiraron las menciones abreviadas redundantes al documento
+    retirado en las filas del changelog del roadmap. `AGENTS.md` incorpora la
+    regla de reparto de informacion.
+B5. `Reporte de estado.txt` eliminado del arbol de trabajo (sin stage). Las
+    menciones historicas dentro de ANEXOs antiguos de `docs/reporte.txt` (16
+    menciones en las lineas 2678, 3054, 4586, 4632, 5199, 5352, 5486, 5566,
+    5624, 5673, 5801, 6594, 6677, 6759, 7112 y 7139) son intocables
+    (append-only) y quedan como registro de la epoca.
+
+C. AUDITORIA DE CONTEXTO PARA AGENTES
+C1. Inyectados en cada sesion (unica categoria que compite por contexto; deben
+    mantenerse ajustados): `AGENTS.md` (108 lineas), `rules.md` (12 lineas) y
+    `docs/coding-guidelines.md` (262 lineas).
+C2. On-demand (no inyectados): `docs/reporte.txt` (8160 lineas / 503 KB; se lee
+    por ANEXO), `ARCHITECTURE.md` (963 lineas, incluye la seccion 19),
+    `docs/INSTALLATION.md` (584 lineas), `docs/LAUNCH_GUIDE.md` (148 lineas),
+    `docs/production-readiness-roadmap.md` (581 lineas), `docs/Ideas.txt` (785
+    lineas), `docs/OPtimizacion.txt` (2072 lineas),
+    `docs/plan-refactorizacion.md` (321 lineas) y `docs/reportes-modulos/`
+    (11 reportes por modulo, snapshot).
+C3. Artefactos locales que no deben versionarse: `.codegraph/`, `TestResults/`,
+    `.atl/` (incluye `.skill-registry.cache.json`) y `docs/monitor-config.json`
+    (config local de monitoreo).
+C4. La retirada elimina la TERCERA fuente de estado (documento vivo + roadmap +
+    ANEXOs): desde 8.122 el estado vivo es Engram y la trazabilidad durable sigue
+    siendo `docs/reporte.txt` (append-only); la arquitectura vive en
+    `ARCHITECTURE.md`.
+
+D. VERIFICACION
+D1. Busqueda de "Reporte de estado" en el repo (excluye node_modules, .git, bin
+    y obj): sin referencias colgantes; solo quedan menciones historicas en
+    ANEXOs antiguos de `docs/reporte.txt` (append-only, intocables) y las citas
+    de este mismo ANEXO 8.122.
+D2. `git status --short`: los cambios atribuibles a esta revision son
+    `AGENTS.md`, `ARCHITECTURE.md`, `docs/production-readiness-roadmap.md`,
+    `docs/reporte.txt` y la eliminacion sin stage de `Reporte de estado.txt`
+    (el working tree ya contenia los cambios de las revisiones 8.120/8.121,
+    ajenos a este retiro).
+D3. Esta revision no toca la aplicacion (.NET/React/WPF): no aplica build,
+    suites ni cobertura.
+
+FIN DEL ANEXO - REVISION 8.122
