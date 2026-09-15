@@ -8354,3 +8354,134 @@ D2. Las reglas de dominio se cargan solo cuando el cambio las requiere.
 D3. Los skills ahora incluyen la referencia al archivo de guidelines correcto.
 
 FIN DEL ANEXO - REVISION 8.126
+
+================================================================================
+ANEXO - REVISION 8.127 (2026-09-14)
+Titulo: Division de ARCHITECTURE.md e INSTALLATION.md — reduccion de contexto
+================================================================================
+
+A. CONTEXTO
+A1. `ARCHITECTURE.md` (963 lineas) y `docs/INSTALLATION.md` (584 lineas) eran los
+    archivos .md mas pesados del proyecto. Ambos excedian 400 lineas y contenian
+    secciones que solo aplican a dominios especificos.
+A2. Objetivo: dividir ambos archivos en componentes mas pequenos y on-demand para
+    reducir la carga cognitiva cuando se lee un solo area del sistema.
+
+B. CAMBIOS REALIZADOS
+B1. `ARCHITECTURE.md` (963 lineas) eliminado y dividido en 4 archivos:
+    - `architecture-core.md` (~200 lineas): Vision general, grafo de dependencias,
+      puertos, pruebas, stack tecnologico, estructura de directorios.
+    - `architecture-backend.md` (~200 lineas): Modulos backend, contextos de datos,
+      pipeline de middleware, seguridad.
+    - `architecture-web.md` (~120 lineas): React frontend, flujos de eventos
+      (MediatR, SignalR), motor multi-formato monetario.
+    - `architecture-wpf.md` (~200 lineas): Desktop client, autenticacion,
+      resiliencia, flujos de venta/caja, hardware.
+B2. `docs/INSTALLATION.md` (584 lineas) eliminado y dividido en 2 archivos:
+    - `docs/INSTALLATION.md` (~180 lineas): Estado actual, seguridad, configuracion,
+      pasos de instalacion, checklist de verificacion.
+    - `docs/INSTALLATION-advanced.md` (~250 lineas): Backup/restore, runbooks,
+      prueba de estrés, plan del piloto, limitaciones.
+B3. Referencias activas actualizadas:
+    - `AGENTS.md`: mapeo a los 4 archivos de arquitectura.
+    - `.opencode/agent/reviewer.md`: referencia a `architecture-*.md`.
+    - `Web.Frontend/README.md`: referencia a `architecture-core.md`.
+
+C. VERIFICACION
+C1. `ARCHITECTURE.md` y `docs/INSTALLATION.md` originales eliminados.
+C2. Ningun archivo nuevo excede 250 lineas.
+C3. Referencias en `reporte.txt` son historicas (ANEXOs, intocables).
+C4. Esta revision no toca la aplicacion (.NET/React/WPF): no aplica build,
+    suites ni cobertura.
+
+D. IMPACTO
+D1. Reduccion maxima de lectura: 963 lineas -> 4 archivos de ~200 lineas c/u.
+D2. `INSTALLATION.md` reducido de 584 a ~180 lineas (el avanzado es on-demand).
+D3. Cada archivo de arquitectura se carga solo cuando el cambio toca ese dominio.
+
+FIN DEL ANEXO - REVISION 8.127
+
+================================================================================
+ANEXO - REVISION 8.128 (2026-09-14)
+Titulo: Fix del bundle web servido por Kestrel (UI de reclamo 8.121/8.124)
+================================================================================
+
+A. SINTOMA
+A1. Con `scripts/start.bat`, los clientes web que entran por :5000/:5001 reciben
+    la SPA servida desde `Backend.API/wwwroot`, que era un bundle anterior a
+    8.121 (chunk PendingOrdersPage byte-identico al publish del 13/9, sin UI de
+    reclamo: nunca llamaba a /claim). El backend solo bloquea cuando existe un
+    claim, por lo que varias cuentas pudieron editar el mismo pedido.
+A2. Backend y WPF en ejecucion si contenian la feature; el defecto era el
+    artefacto web versionado que Kestrel sirve.
+
+B. FIX
+B1. `npm run build` en Web.Frontend regenera `Backend.API/wwwroot`: chunks
+    nuevos (PendingOrdersPage-CEbvrmzV.js con "Bloqueado por", "Editando
+    pedido", claimSale/releaseSale); el chunk viejo DzSsrcRw quedo eliminado.
+B2. `.gga` local excluye bundles generados (index-*, *Page-*, QuantityInput-*,
+    esm-*, formatters-*) para que el gate no revise codigo minificado.
+
+C. VERIFICACION
+C1. HTTP :5000 -> GET / 200; index.html referencia assets/index-5E5DUR8_.js.
+    GET /assets/PendingOrdersPage-CEbvrmzV.js 200 (27841 chars): contiene
+    "Bloqueado por", "Editando pedido", "claimSale" y "releaseSale".
+    GET /assets/PendingOrdersPage-DzSsrcRw.js (chunk pre-8.121) -> 404.
+    HTTPS :5001 (-SkipCertificateCheck): identicos resultados (index 200 con
+    el mismo bundle; chunk nuevo 200 con las cuatro cadenas; chunk viejo 404).
+C2. Suite web 178/178 y oxlint 0 (post-fix, sin cambios de fuentes).
+
+D. PENDIENTES
+D1. `scripts/actualizar_servicio_y_sistema.bat` copia `publish/` (pre-8.121):
+    regenerar publish con build-release antes de desplegar el servicio.
+
+FIN DEL ANEXO - REVISION 8.128
+
+================================================================================
+ANEXO - REVISION 8.129 (2026-09-14)
+Titulo: Precondicion obligatoria de claim en mutaciones de venta en espera
+================================================================================
+
+A. CONTEXTO
+A1. Incidente 8.128: un cliente web sin UI de reclamo (bundle viejo servido por
+    Kestrel) permitia editar ventas OnHold simultaneamente porque el guard
+    `EnsureHoldClaimAccess` retornaba temprano cuando no habia claim. Se endurece
+    el servidor: toda mutacion de OnHold exige claim activo del actor.
+A2. Ciclo SDD completo sobre OpenSpec (cambio `enforce-hold-claim-precondition`):
+    explore -> proposal -> spec delta -> design -> tasks -> apply (3 slices) ->
+    verify -> archive. Entrega en 3 slices encadenados aprobados por el usuario.
+
+B. IMPLEMENTACION
+B1. Backend: nueva `HoldNotClaimedException` (heredada de InvalidOperationException
+    -> 409 por middleware existente) y semantica nueva de `EnsureHoldClaimAccess`
+    (misma firma, 13 call sites): sin claim o actor nulo -> 409 "El pedido #N no
+    esta reclamado; reclame el pedido antes de modificarlo."; claim ajeno sigue
+    `SaleLockedException`. `RecalculateOnHoldSalesAsync` y force-release de
+    Admin/Manager sin cambios; ConfirmPickup inerte (exige Completed).
+B2. Web: Anular reclama `Editing` antes de cancelar, no anula si el claim falla y
+    libera best-effort en finally. El carrito rechaza cargar/restaurar ventas
+    OnHold en todos los puntos de entrada (mensaje hacia Cuentas Abiertas),
+    incluyendo el efecto de tasa.
+B3. Tests: 15 casos nuevos de precondicion + ~27 casos migrados (siembran
+    claim+actor). Sin migraciones ni cambios de contrato HTTP.
+
+C. VERIFICACION
+C1. `dotnet build CommandCenter.slnx -c Release`: 0/0. `dotnet test`: 985/985.
+    `npm test`: 178/178. `npm run lint`: 0 errores.
+C2. verify-report: verdict pass_with_warnings (6/10 escenarios con runtime; Req 3-4
+    sostenidos por inspeccion de fuente; W1 sin tests web nuevos, W2 conteo de
+    casos, W3 sin test de integracion 409; ninguno bloqueante).
+C3. Ledger SDD: 3 intentos de apply + 1 de verify, todos `complete` sin resets.
+
+D. ESTADO / PENDIENTES
+D1. `docs/reporte.txt` queda pendiente de commit con este ANEXO junto a los
+    ANEXOs 8.127/8.128 de otros lotes en curso.
+D2. W1: agregar tests web del flujo Anular/carrito (requiere jsdom) en un cambio
+    de harness dedicado.
+D3. Commits aplicados por slice:
+    - `feat(8.129): precondicion de claim obligatoria en mutaciones OnHold (backend + tests) - ANEXO 8.129`
+    - `feat(8.129): Anular web reclama el pedido antes de anular - ANEXO 8.129`
+    - `feat(8.129): carrito web rechaza ventas en espera - ANEXO 8.129`
+    - `docs(8.129): spec promovida y cambio archivado en openspec - ANEXO 8.129`
+
+FIN DEL ANEXO - REVISION 8.129

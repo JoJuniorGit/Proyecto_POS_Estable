@@ -10,7 +10,7 @@ Contrato operativo para agentes. Este archivo se inyecta automáticamente.
     *   **Web** (si el cambio es React): `docs/coding-guidelines-web.md` — componentes, DTOs, estilos.
     *   **WPF** (si el cambio es Desktop): `docs/coding-guidelines-wpf.md` — MVVM, CommunityToolkit, memoria.
     *   **QA** (si el cambio es tests): `docs/coding-guidelines-qa.md` — nomenclatura, cobertura, CI.
-    *   **Arquitectura** (si el cambio es estructural): `ARCHITECTURE.md` — arquitectura general del sistema.
+    *   **Arquitectura** (si el cambio es estructural): `architecture-core.md`, `architecture-backend.md`, `architecture-web.md`, `architecture-wpf.md` — arquitectura del sistema.
 2.  **Carga Skills:** Usa skills de disciplina según el área de cambio.
 3.  **Implementa (SDD):** Sigue el flujo `sdd-apply` → `sdd-verify`.
 4.  **Verifica:** Ejecuta `dotnet build -c Release` y `dotnet test` (0 errores/0 warnings).

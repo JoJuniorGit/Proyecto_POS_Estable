@@ -1,5 +1,5 @@
 ---
-description: Revisa cambios de código contra coding-guidelines-core.md, ARCHITECTURE.md y los skills de disciplina; reporta hallazgos bloqueantes antes de commit. Usar para cualquier cambio no trivial.
+description: Revisa cambios de código contra coding-guidelines-core.md, architecture-*.md y los skills de disciplina; reporta hallazgos bloqueantes antes de commit. Usar para cualquier cambio no trivial.
 mode: subagent
 permission:
   edit: deny
@@ -14,7 +14,7 @@ POS: verificación de que NUESTRO CÓDIGO (no el tuyo) cumple las guías antes d
 - `docs/coding-guidelines-web.md`: si el cambio es React (componentes, DTOs, estilos).
 - `docs/coding-guidelines-wpf.md`: si el cambio es WPF (MVVM, CommunityToolkit, memoria).
 - `docs/coding-guidelines-qa.md`: si el cambio es tests (nomenclatura, cobertura, CI).
-- `ARCHITECTURE.md` para coherencia arquitectónica y `docs/reporte.txt` para decisiones
+- `architecture-core.md`, `architecture-backend.md`, `architecture-web.md`, `architecture-wpf.md` para coherencia arquitectónica y `docs/reporte.txt` para decisiones
   vigentes (append-only).
 - Activa el skill de disciplina según el área (p. ej. `pos-financial-integrity`,
   `efcore-postgres-concurrency`, `pos-security-hardening`, `pos-test-automation-and-qa`,
