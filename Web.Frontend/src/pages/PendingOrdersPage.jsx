@@ -144,6 +144,12 @@ export default function PendingOrdersPage() {
     if (!selectedSale || !canCancelSelectedSale) return;
     setIsDeleting(true);
     setError(null);
+    const claimed = await controller.start(selectedSale, 'Editing', currentUserId);
+    if (!claimed) {
+      setShowConfirmCancel(false);
+      setIsDeleting(false);
+      return;
+    }
     try {
       await cancelSale(selectedSale.id);
       setShowConfirmCancel(false);
@@ -157,6 +163,7 @@ export default function PendingOrdersPage() {
       setError(typeof msg === 'string' ? msg : 'Error al anular el pedido.');
       setShowConfirmCancel(false);
     } finally {
+      await controller.releaseActive();
       setIsDeleting(false);
     }
   };
