@@ -27,7 +27,7 @@ export function CartProvider({ children }) {
         const cached = sessionStorage.getItem('active_pos_sale_cache');
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (parsed && (parsed.status === 'Pending' || parsed.status === 'OnHold')) {
+          if (parsed && parsed.status === 'Pending') {
             return parsed;
           }
         }
@@ -60,9 +60,16 @@ export function CartProvider({ children }) {
       return;
     }
 
+    if (sale?.status === 'OnHold') {
+      sessionStorage.removeItem('active_pos_sale_id');
+      sessionStorage.removeItem('active_pos_sale_cache');
+      sessionStorage.removeItem('active_pos_has_items');
+      return;
+    }
+
     const hasItems = (sale?.items?.length || 0) > 0;
     try {
-      if (sale?.id && (sale.status === 'Pending' || sale.status === 'OnHold')) {
+      if (sale?.id && sale.status === 'Pending') {
         sessionStorage.setItem('active_pos_sale_id', String(sale.id));
         sessionStorage.setItem('active_pos_sale_cache', JSON.stringify(sale));
         sessionStorage.setItem('active_pos_has_items', hasItems ? 'true' : 'false');
@@ -144,6 +151,7 @@ export function CartProvider({ children }) {
         const sale = await startSale(user?.id);
         setCurrentSale(sale);
         setSelectedItemId(null);
+        setError(null);
         if (sale?.id) {
           sessionStorage.setItem('active_pos_sale_id', String(sale.id));
           sessionStorage.setItem('active_pos_sale_cache', JSON.stringify(sale));
@@ -168,6 +176,14 @@ export function CartProvider({ children }) {
     setError(null);
     try {
       const sale = await getSale(saleId);
+      if (sale?.status === 'OnHold') {
+        setError('Los pedidos en espera se editan desde Cuentas Abiertas.');
+        sessionStorage.removeItem('active_pos_sale_id');
+        sessionStorage.removeItem('active_pos_sale_cache');
+        sessionStorage.removeItem('active_pos_has_items');
+        createNewSale();
+        return null;
+      }
       setCurrentSale(sale);
       setSelectedItemId(null);
       if (sale?.id) {
@@ -180,7 +196,7 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [createNewSale]);
 
 // Al montar, restaurar venta activa de la sesión o crear una nueva.
   // 8.7-M10: SOLO cuando hay usuario autenticado (user.id). En la pantalla de login no se crean
@@ -193,7 +209,15 @@ export function CartProvider({ children }) {
       if (savedSaleId) {
         try {
           const sale = await getSale(Number(savedSaleId));
-          if (sale && (sale.status === 'Pending' || sale.status === 'OnHold')) {
+          if (sale?.status === 'OnHold') {
+            setError('Los pedidos en espera se editan desde Cuentas Abiertas.');
+            sessionStorage.removeItem('active_pos_sale_id');
+            sessionStorage.removeItem('active_pos_sale_cache');
+            sessionStorage.removeItem('active_pos_has_items');
+            createNewSale();
+            return;
+          }
+          if (sale && sale.status === 'Pending') {
             setCurrentSale(sale);
             return;
           }
@@ -213,7 +237,7 @@ export function CartProvider({ children }) {
   // 8.5-WEB2: Debounce trailing de 1500ms — cada ráfaga de SignalR (o cambios rápidos de tasa) produce
   // UNA escritura al final, no un write por evento.
   useEffect(() => {
-    if (!currentSale?.id || !(exchangeRate > 0) || !(currentSale.status === 'Pending' || currentSale.status === 'OnHold')) {
+    if (!currentSale?.id || !(exchangeRate > 0) || currentSale.status !== 'Pending') {
       return;
     }
 
