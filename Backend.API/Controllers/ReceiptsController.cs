@@ -40,9 +40,9 @@ public class ReceiptsController : ControllerBase
         }
 
         bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
-        if (!isElevated && _currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid))
+        if (!isElevated)
         {
-            if (sale.CashierId != uid)
+            if (string.IsNullOrEmpty(_currentUserService.UserId) || !int.TryParse(_currentUserService.UserId, out int uid) || sale.CashierId != uid)
             {
                 return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para descargar el recibo de esta venta." });
             }

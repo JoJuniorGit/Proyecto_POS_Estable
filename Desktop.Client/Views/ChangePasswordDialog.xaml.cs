@@ -34,9 +34,9 @@ public partial class ChangePasswordDialog : Window
             return;
         }
 
-        if (NewPasswordBox.Password.Length < 4)
+        if (NewPasswordBox.Password.Length < 8)
         {
-            ShowError("La nueva contraseña debe tener al menos 4 caracteres.");
+            ShowError("La nueva contraseña debe tener al menos 8 caracteres.");
             return;
         }
 

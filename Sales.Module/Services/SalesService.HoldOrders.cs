@@ -61,12 +61,14 @@ public partial class SalesService
                     ? Math.Round(payment.AmountUSD, 2, MidpointRounding.AwayFromZero) 
                     : (rate > 0 ? Math.Round(payment.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
 
+                var (resolvedAmountUsd, resolvedAmountBsS) = ResolveConsistentPaymentAmounts(amountUsd, payment.AmountBsS, rate);
+
                 var initialPaymentEntity = new SalePayment
                 {
                     SaleId = sale.Id,
                     PaymentMethodId = payment.PaymentMethodId,
-                    Amount = Math.Round(amountUsd, 2, MidpointRounding.AwayFromZero),
-                    AmountBsS = PricingCalculator.RoundToDigital(payment.AmountBsS > 0 ? payment.AmountBsS : (amountUsd * rate)),
+                    Amount = Math.Round(resolvedAmountUsd, 2, MidpointRounding.AwayFromZero),
+                    AmountBsS = Math.Round(resolvedAmountBsS, 2, MidpointRounding.AwayFromZero),
                     ExchangeRate = rate,
                     ReferenceNumber = payment.ReferenceNumber,
                     CreatedAt = DateTime.UtcNow
@@ -75,7 +77,7 @@ public partial class SalesService
                 sale.Payments.Add(initialPaymentEntity);
 
                 // H-SAL-5: Asentar ingresos físicos en sesión activa de caja
-                if (amountUsd > 0 && pMethodsDict.TryGetValue(payment.PaymentMethodId, out var pMethod) && pMethod.IsCash && _cashDrawerService != null)
+                if (resolvedAmountUsd > 0 && pMethodsDict.TryGetValue(payment.PaymentMethodId, out var pMethod) && pMethod.IsCash && _cashDrawerService != null)
                 {
                     var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(rate);
                     if (activeSession != null)
@@ -85,9 +87,9 @@ public partial class SalesService
                             SessionId = activeSession.Id,
                             Type = CashTransactionType.Income,
                             Source = CashTransactionSource.SalePayment,
-                            AmountUsd = amountUsd,
+                            AmountUsd = resolvedAmountUsd,
                             ExchangeRate = rate,
-                            AmountLocal = Math.Round(payment.AmountBsS, 2, MidpointRounding.AwayFromZero),
+                            AmountLocal = Math.Round(resolvedAmountBsS, 2, MidpointRounding.AwayFromZero),
                             IsPhysicalCash = true,
                             Description = $"Abono Inicial Venta #{sale.Id}",
                             TransactionTime = DateTime.UtcNow,
@@ -194,7 +196,45 @@ public partial class SalesService
                     Status = "Pending"
                 });
 
-                RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)));
+                RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)), actingUserId);
+
+                if (_cashDrawerService != null && remainingBalanceUsd < -0.05m)
+                {
+                    decimal changeUsd = Math.Abs(remainingBalanceUsd);
+                    if (changeUsd > 100m && changeUsd > sale.TotalUSD)
+                    {
+                        throw new ArgumentException($"El sobrepago o vuelto requerido (${changeUsd:F2} USD) excede los límites operacionales de seguridad.");
+                    }
+
+                    decimal changeBsS = Math.Round(changeUsd * sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
+
+                    var paidMethodIds = sale.Payments.Select(p => p.PaymentMethodId).Distinct().ToList();
+                    var paidMethods = await _context.PaymentMethods
+                        .Where(pm => paidMethodIds.Contains(pm.Id))
+                        .ToDictionaryAsync(pm => pm.Id);
+                    int? cashMethodId = sale.Payments
+                        .FirstOrDefault(p => paidMethods.TryGetValue(p.PaymentMethodId, out var pm) && pm.IsCash)
+                        ?.PaymentMethodId;
+
+                    var changeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(sale.AppliedRate);
+
+                    decimal pendingCashIncomeBsS = _context.CashTransactions.Local
+                        .Where(t => t.SessionId == changeSession.Id
+                                 && t.Type == CashTransactionType.Income
+                                 && t.Source == CashTransactionSource.SalePayment
+                                 && t.IsPhysicalCash)
+                        .Sum(t => t.AmountLocal);
+
+                    await _cashDrawerService.RecordSaleChangeAsync(
+                        changeSession.Id,
+                        changeUsd,
+                        changeBsS,
+                        sale.AppliedRate,
+                        $"Vuelto Pedido #{sale.Id}",
+                        sale.Id,
+                        cashMethodId,
+                        pendingCashIncomeBsS);
+                }
 
                 await _context.SaveChangesAsync();
 
@@ -243,7 +283,7 @@ public partial class SalesService
             ClearHoldClaim(sale);
             sale.Status = SaleStatus.OnHold;
             sale.DeliveryStatus = SaleDeliveryStatus.PendingPickup;
-            RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)));
+            RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)), actingUserId);
             await _context.SaveChangesAsync();
         }
 
@@ -299,18 +339,26 @@ public partial class SalesService
                 decimal adjustedQty = ValidateAndAdjustQuantity(product, reqItem.Quantity);
 
                 string productName = product.Name;
-                decimal catalogPrice = product.PriceUSD;
+                decimal wholesalePrice = product.PriceWholesaleUSD > 0
+                    ? product.PriceWholesaleUSD
+                    : (product.PriceRetailUSD > 0 ? product.PriceRetailUSD : product.PriceUSD);
+                decimal retailPrice = product.PriceRetailUSD > 0 ? product.PriceRetailUSD : product.PriceUSD;
+                decimal minWholesaleQty = product.MinWholesaleQuantity > 0 ? product.MinWholesaleQuantity : 6m;
+                bool isWholesale = string.Equals(sale.PriceListType, "Wholesale", StringComparison.OrdinalIgnoreCase)
+                    && product.HasWholesale
+                    && adjustedQty >= minWholesaleQty;
+                decimal effectivePrice = isWholesale ? wholesalePrice : retailPrice;
 
-                if (!product.IsCashAdvance && reqItem.UnitPrice > 0 && reqItem.UnitPrice != catalogPrice && !isPriceOverrideAuthorized)
+                if (!product.IsCashAdvance && reqItem.UnitPrice > 0 && reqItem.UnitPrice != effectivePrice && !isPriceOverrideAuthorized)
                 {
                     throw new UnauthorizedAccessException($"Modificación de precio no autorizada para el producto '{productName}'. Se requiere autorización de Administrador o Supervisor.");
                 }
 
-                decimal unitPriceUsd = reqItem.UnitPrice > 0 ? reqItem.UnitPrice : catalogPrice;
+                decimal unitPriceUsd = reqItem.UnitPrice > 0 ? reqItem.UnitPrice : effectivePrice;
                 decimal subtotalUsd = Math.Round(unitPriceUsd * adjustedQty, 2, MidpointRounding.AwayFromZero);
                 decimal unitPriceBsS = PricingCalculator.ToBsSCeiling(unitPriceUsd, sale.AppliedRate);
                 decimal subtotalBsS = PricingCalculator.RoundToDigital(adjustedQty * unitPriceBsS);
-                bool isCustomPrice = reqItem.UnitPrice > 0 && reqItem.UnitPrice != catalogPrice;
+                bool isCustomPrice = reqItem.UnitPrice > 0 && reqItem.UnitPrice != effectivePrice;
 
                 newTotalUsd += subtotalUsd;
 
@@ -351,6 +399,7 @@ public partial class SalesService
         }
 
         await RecalculateTotalAsync(sale);
+        ValidateHoldSaleTotal(sale);
         await _context.SaveChangesAsync();
 
         await NotifyHoldOrdersChangedAsync();
@@ -396,7 +445,7 @@ public partial class SalesService
     }
 
 
-    private void RegisterIdempotencyRecord(string? key, byte[]? payloadHash, string requestPath, string responseBody)
+    private void RegisterIdempotencyRecord(string? key, byte[]? payloadHash, string requestPath, string responseBody, int? actingUserId)
     {
         if (string.IsNullOrWhiteSpace(key) || payloadHash == null) return;
 
@@ -407,6 +456,7 @@ public partial class SalesService
             PayloadHash = payloadHash,
             StatusCode = 200,
             ResponseBody = responseBody,
+            UserId = actingUserId,
             CreatedAtUtc = DateTime.UtcNow,
             ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
         });

@@ -87,10 +87,18 @@ public class AuthController : ControllerBase
 
         // Account lockout check (H-CORE-3). Responde 401 genérico (anti-enumeración 8B-M3):
         // no se revela si la cuenta existe, está bloqueada ni por cuánto tiempo.
-        if (user.LockoutEndUtc.HasValue && user.LockoutEndUtc.Value > DateTime.UtcNow)
+        if (user.LockoutEndUtc.HasValue)
         {
-            AppLogger.LogWarn($"[AUTH] Intento de acceso a cuenta bloqueada: Usuario '{obfCedula}'. Bloqueada hasta {user.LockoutEndUtc.Value:O}.");
-            return Unauthorized(new { Message = "Credenciales inválidas." });
+            if (user.LockoutEndUtc.Value > DateTime.UtcNow)
+            {
+                AppLogger.LogWarn($"[AUTH] Intento de acceso a cuenta bloqueada: Usuario '{obfCedula}'. Bloqueada hasta {user.LockoutEndUtc.Value:O}.");
+                return Unauthorized(new { Message = "Credenciales inválidas." });
+            }
+            else
+            {
+                user.AccessFailedCount = 0;
+                user.LockoutEndUtc = null;
+            }
         }
 
         if (!user.IsActive)
@@ -112,7 +120,7 @@ public class AuthController : ControllerBase
             user.AccessFailedCount++;
             // 8.9-M2: el bloqueo NO es re-extendible — una vez fijado LockoutEndUtc no se
             // reinicia el reloj en cada fallo posterior (evita DoS por intentos encadenados).
-            if (user.AccessFailedCount >= 5 && !user.LockoutEndUtc.HasValue)
+            if (user.AccessFailedCount >= 5 && (!user.LockoutEndUtc.HasValue || user.LockoutEndUtc.Value <= DateTime.UtcNow))
             {
                 user.LockoutEndUtc = DateTime.UtcNow.AddMinutes(15);
                 AppLogger.LogWarn($"[AUTH] Usuario '{obfCedula}' alcanzó 5 intentos fallidos. Cuenta bloqueada por 15 minutos.");
@@ -148,7 +156,7 @@ public class AuthController : ControllerBase
         }
 
         bool isWeb = string.Equals(platform, "Web", StringComparison.OrdinalIgnoreCase);
-        var scope = isWeb ? "pos:web" : "pos:desktop";
+        var scope = "pos:api";
         var token = _tokenService.GenerateToken(user, scope);
 
         if (isWeb && Response?.Cookies != null)
@@ -160,7 +168,7 @@ public class AuthController : ControllerBase
                 Secure = true,
                 SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict,
                 Path = "/",
-                Expires = DateTimeOffset.UtcNow.AddMinutes(120)
+                Expires = DateTimeOffset.UtcNow.AddMinutes(_tokenService.ExpiryMinutes)
             };
             Response.Cookies.Append("pos_jwt", token, cookieOptions);
         }
@@ -240,10 +248,18 @@ public class AuthController : ControllerBase
         }
 
         // 1. Validar si la cuenta está actualmente bloqueada (8B-M3: respuesta 401 genérica, no revelar lockout)
-        if (user.LockoutEndUtc.HasValue && user.LockoutEndUtc.Value > DateTime.UtcNow)
+        if (user.LockoutEndUtc.HasValue)
         {
-            AppLogger.LogWarn($"[AUTH] Intento de cambio de contraseña denegado: Usuario '{user.Username}' bloqueado temporalmente.");
-            return Unauthorized(new { Message = "Credenciales inválidas o contraseña actual incorrecta." });
+            if (user.LockoutEndUtc.Value > DateTime.UtcNow)
+            {
+                AppLogger.LogWarn($"[AUTH] Intento de cambio de contraseña denegado: Usuario '{ObfuscateCedula(user.Username)}' bloqueado temporalmente.");
+                return Unauthorized(new { Message = "Credenciales inválidas o contraseña actual incorrecta." });
+            }
+            else
+            {
+                user.AccessFailedCount = 0;
+                user.LockoutEndUtc = null;
+            }
         }
 
         // 2. Validar contraseña actual e incrementar contador de intentos fallidos
@@ -257,13 +273,13 @@ public class AuthController : ControllerBase
         {
             user.AccessFailedCount++;
             // 8.9-M2: lockout no re-extendible (mismo criterio que Login).
-            if (user.AccessFailedCount >= 5 && !user.LockoutEndUtc.HasValue)
+            if (user.AccessFailedCount >= 5 && (!user.LockoutEndUtc.HasValue || user.LockoutEndUtc.Value <= DateTime.UtcNow))
             {
                 user.LockoutEndUtc = DateTime.UtcNow.AddMinutes(15);
-                AppLogger.LogSecurityAudit($"[ACCOUNT_LOCKED] Usuario={user.Username} bloqueado por 15 min tras fallos en change-password.");
+                AppLogger.LogSecurityAudit($"[ACCOUNT_LOCKED] Usuario={ObfuscateCedula(user.Username)} bloqueado por 15 min tras fallos en change-password.");
             }
             await _db.SaveChangesAsync();
-            AppLogger.LogStart($"[AUTH] Intento fallido en change-password para Usuario '{user.Username}': Contraseña incorrecta (Intento {user.AccessFailedCount}/5).");
+            AppLogger.LogStart($"[AUTH] Intento fallido en change-password para Usuario '{ObfuscateCedula(user.Username)}': Contraseña incorrecta (Intento {user.AccessFailedCount}/5).");
             return Unauthorized(new { Message = "Credenciales inválidas o contraseña actual incorrecta." });
         }
 
@@ -293,7 +309,7 @@ public class AuthController : ControllerBase
         });
 
         _stampValidator?.InvalidateUserStamp(user.Id);
-        AppLogger.LogSecurityAudit($"[PASSWORD_CHANGED] UserId={user.Id}, Username={user.Username}, Timestamp={DateTime.UtcNow:O}");
+        AppLogger.LogSecurityAudit($"[PASSWORD_CHANGED] UserId={user.Id}, Username={ObfuscateCedula(user.Username)}, Timestamp={DateTime.UtcNow:O}");
 
         // 5. Revocación de sesión activa en Web (limpieza de cookie pos_jwt) — Secure siempre (8.7-B10)
         if (Response?.Cookies != null)

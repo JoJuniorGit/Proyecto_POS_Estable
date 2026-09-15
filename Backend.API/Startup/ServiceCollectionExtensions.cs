@@ -147,13 +147,6 @@ public static class ServiceCollectionExtensions
             };
         });
 
-        builder.Services.AddAuthorization(options =>
-        {
-            options.AddPolicy("DesktopOnly", policy => policy.RequireClaim("scope", "pos:desktop"));
-            options.AddPolicy("WebOnly", policy => policy.RequireClaim("scope", "pos:web"));
-            options.AddPolicy("WebOrDesktop", policy => policy.RequireClaim("scope", "pos:web", "pos:desktop"));
-        });
-
         builder.Services.AddControllers(options =>
         {
             options.Filters.Add<Backend.API.Filters.ModelStateValidationFilter>();
@@ -239,8 +232,8 @@ public static class ServiceCollectionExtensions
                         if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.Equals("127.0.0.1") || host.Equals("::1"))
                             return true;
 
-                        // 8.9-M6: en Producción la LAN no se abre por defecto; se exige Cors:AllowedOrigins.
-                        if (builder.Environment.IsProduction()) return false;
+                        // 8.9-M6: en entornos que no sean Development la LAN no se abre por defecto; se exige Cors:AllowedOrigins.
+                        if (!builder.Environment.IsDevelopment()) return false;
 
                         // Allow Private Intranet Subnets (RFC-1918) for POS LAN network (gated to POS application ports: 5000, 5001, 5173)
                         if (System.Net.IPAddress.TryParse(host, out var ip))

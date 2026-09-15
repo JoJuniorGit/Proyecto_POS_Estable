@@ -12,6 +12,8 @@ namespace Sales.Module.Services;
 
 public class DailyClosureService : IDailyClosureService
 {
+    private const int UnattributedChangeMethodId = 0;
+
     private readonly SalesDbContext _context;
 
     public DailyClosureService(SalesDbContext context)
@@ -50,6 +52,17 @@ public class DailyClosureService : IDailyClosureService
             .Select(g => new { PaymentMethodId = g.Key, TotalBsS = g.Sum(sp => sp.AmountBsS) })
             .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS);
 
+        var changeTotals = await _context.CashTransactions
+            .AsNoTracking()
+            .Where(ct => ct.Type == CashTransactionType.Expense
+                && ct.Source == CashTransactionSource.SalePayment
+                && ct.IsPhysicalCash
+                && ct.TransactionTime > effectiveStartTime
+                && ct.TransactionTime < endOfDayUtc)
+            .GroupBy(ct => ct.PaymentMethodId)
+            .Select(g => new { PaymentMethodId = g.Key ?? UnattributedChangeMethodId, TotalBsS = g.Sum(ct => ct.AmountLocal) })
+            .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS);
+
         // 2. Fetch all payment methods not deleted ordered by priority
         var allMethods = await _context.PaymentMethods
             .AsNoTracking()
@@ -63,10 +76,24 @@ public class DailyClosureService : IDailyClosureService
             .Where(p => p.IsActive || salesTotals.ContainsKey(p.Id))
             .ToList();
 
+        var firstCashMethodId = relevantMethods.FirstOrDefault(p => p.IsCash)?.Id;
+
         var result = new List<ExpectedTotalDto>();
         foreach (var method in relevantMethods)
         {
             salesTotals.TryGetValue(method.Id, out decimal expected);
+
+            if (method.IsCash)
+            {
+                changeTotals.TryGetValue(method.Id, out decimal change);
+                if (method.Id == firstCashMethodId)
+                {
+                    changeTotals.TryGetValue(UnattributedChangeMethodId, out decimal unattributedChange);
+                    change += unattributedChange;
+                }
+                expected -= change;
+            }
+
             result.Add(new ExpectedTotalDto
             {
                 PaymentMethodId = method.Id,
@@ -96,33 +123,58 @@ public class DailyClosureService : IDailyClosureService
 
     private async Task<DailyClosure> ExecuteClosureCoreAsync(DailyClosure closure)
     {
+        var duplicatedMethodIds = closure.Details
+            .GroupBy(d => d.PaymentMethodId)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        if (duplicatedMethodIds.Count > 0)
+        {
+            throw new ArgumentException($"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}.", nameof(closure));
+        }
+
         // Ensure all relevant payment methods (active or with sales) are present in details
         var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(closure.ClosureDate);
+        var expectedById = expectedTotals.ToDictionary(e => e.PaymentMethodId);
+
+        var unknownMethodIds = closure.Details
+            .Where(d => !expectedById.ContainsKey(d.PaymentMethodId))
+            .Select(d => d.PaymentMethodId)
+            .Distinct()
+            .ToList();
+
+        if (unknownMethodIds.Count > 0)
+        {
+            throw new ArgumentException($"El desglose contiene métodos de pago no reconocidos: {string.Join(", ", unknownMethodIds)}.", nameof(closure));
+        }
+
+        foreach (var detail in closure.Details)
+        {
+            detail.PaymentMethodName = expectedById[detail.PaymentMethodId].PaymentMethodName;
+        }
 
         var existingMethodIds = closure.Details.Select(d => d.PaymentMethodId).ToHashSet();
-        if (existingMethodIds.Count < expectedTotals.Count)
+        var methodEntities = await _context.PaymentMethods
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted)
+            .ToDictionaryAsync(p => p.Id);
+
+        foreach (var exp in expectedTotals)
         {
-            var methodEntities = await _context.PaymentMethods
-                .AsNoTracking()
-                .Where(p => !p.IsDeleted)
-                .ToDictionaryAsync(p => p.Id);
-
-            foreach (var exp in expectedTotals)
+            if (!existingMethodIds.Contains(exp.PaymentMethodId))
             {
-                if (!existingMethodIds.Contains(exp.PaymentMethodId))
-                {
-                    methodEntities.TryGetValue(exp.PaymentMethodId, out var methodEntity);
-                    decimal actualAmount = (methodEntity != null && methodEntity.IsCash) ? 0m : exp.ExpectedAmountBsS;
+                methodEntities.TryGetValue(exp.PaymentMethodId, out var methodEntity);
+                decimal actualAmount = (methodEntity != null && methodEntity.IsCash) ? 0m : exp.ExpectedAmountBsS;
 
-                    closure.Details.Add(new ClosureDetail
-                    {
-                        PaymentMethodId = exp.PaymentMethodId,
-                        PaymentMethodName = exp.PaymentMethodName,
-                        ExpectedAmountBsS = exp.ExpectedAmountBsS,
-                        ActualAmountBsS = actualAmount,
-                        DifferenceBsS = actualAmount - exp.ExpectedAmountBsS
-                    });
-                }
+                closure.Details.Add(new ClosureDetail
+                {
+                    PaymentMethodId = exp.PaymentMethodId,
+                    PaymentMethodName = exp.PaymentMethodName,
+                    ExpectedAmountBsS = exp.ExpectedAmountBsS,
+                    ActualAmountBsS = actualAmount,
+                    DifferenceBsS = actualAmount - exp.ExpectedAmountBsS
+                });
             }
         }
 
@@ -157,7 +209,7 @@ public class DailyClosureService : IDailyClosureService
 
     public static string GenerateReceiptContent(DailyClosure closure, bool isBlind = false)
     {
-        var dateStr = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        var dateStr = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
         var userName = string.IsNullOrWhiteSpace(closure.UserId) ? "Usuario" : closure.UserId;
         var sb = new System.Text.StringBuilder();
 
@@ -238,7 +290,7 @@ public class DailyClosureService : IDailyClosureService
             string txtContent = GenerateReceiptContent(closure, isBlind);
             byte[] pdfBytes = ClosurePdfGenerator.GeneratePdf(closure, isBlind);
 
-            string dateStamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            string dateStamp = DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss");
             string uniqueSuffix = Guid.NewGuid().ToString("N")[..8];
             string pdfFileName = $"Cierre_{dateStamp}_{closure.Id}_{uniqueSuffix}.pdf";
             string txtFileName = $"Cierre_{dateStamp}_{closure.Id}_{uniqueSuffix}.txt";

@@ -118,7 +118,7 @@ public class InventorySaleMadeEventHandler : INotificationHandler<SaleMadeEvent>
             {
                 try
                 {
-                    await Task.Delay(500, cancellationToken);
+                    await Task.Delay(500 * (int)Math.Pow(2, i), cancellationToken);
                     await _inventoryService.UpdateStockBatchAsync(pending, allowNegativeStock: true);
                     success = true;
                     break;

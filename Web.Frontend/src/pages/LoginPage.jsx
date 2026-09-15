@@ -59,8 +59,8 @@ export default function LoginPage() {
 
   const handleChangePasswordSubmit = async (e) => {
     e.preventDefault();
-    if (!newPassword || newPassword.length < 4) {
-      setError('La nueva contraseña debe tener al menos 4 caracteres.');
+    if (!newPassword || newPassword.length < 8) {
+      setError('La nueva contraseña debe tener al menos 8 caracteres');
       return;
     }
     if (!/[a-zA-Z]/.test(newPassword)) {

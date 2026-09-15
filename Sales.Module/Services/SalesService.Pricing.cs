@@ -6,6 +6,7 @@ using Core.DTOs;
 using Core.Entities;
 using Core.Helpers;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Sales.Module.Entities;
 
 namespace Sales.Module.Services;
@@ -43,28 +44,43 @@ public partial class SalesService
 
         while (true)
         {
-            var batch = await _context.Sales
-                .AsSplitQuery()
-                .Include(s => s.Items)
-                .Include(s => s.Payments)
-                .Where(s => s.Status == SaleStatus.OnHold && s.Id > lastId)
-                .OrderBy(s => s.Id)
-                .Take(batchSize)
-                .ToListAsync();
+            List<Sale> batch;
 
-            if (batch.Count == 0)
-                break;
-
-            foreach (var sale in batch)
+            try
             {
-                sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(newExchangeRate);
-                await RecalculateTotalAsync(sale);
+                batch = await _context.Sales
+                    .AsSplitQuery()
+                    .Include(s => s.Items)
+                    .Include(s => s.Payments)
+                    .Where(s => s.Status == SaleStatus.OnHold && s.Id > lastId)
+                    .OrderBy(s => s.Id)
+                    .Take(batchSize)
+                    .ToListAsync();
+
+                if (batch.Count == 0)
+                    break;
+
+                foreach (var sale in batch)
+                {
+                    sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(newExchangeRate);
+                    await RecalculateTotalAsync(sale);
+                }
+
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[RecalculateOnHold] Fallo al recalcular una página de ventas OnHold; {TotalUpdated} ventas ya fueron actualizadas y persistidas con la nueva tasa.", totalUpdated);
+                throw;
             }
 
-            await _context.SaveChangesAsync();
             totalUpdated += batch.Count;
             lastId = batch[batch.Count - 1].Id;
+
+            _logger?.LogInformation("[RecalculateOnHold] Página recalculada: {PageCount} ventas OnHold (acumulado: {TotalUpdated}).", batch.Count, totalUpdated);
         }
+
+        _logger?.LogInformation("[RecalculateOnHold] Recálculo completado: {TotalUpdated} ventas OnHold actualizadas con la nueva tasa.", totalUpdated);
 
         return totalUpdated;
     }

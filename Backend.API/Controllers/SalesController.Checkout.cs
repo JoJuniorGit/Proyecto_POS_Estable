@@ -129,7 +129,7 @@ public partial class SalesController
             var bodyBytes = System.Text.Encoding.UTF8.GetBytes(bodyJson);
             payloadHash = _idempotencyService.ComputePayloadHash(Request?.Method ?? "POST", requestPath, bodyBytes);
 
-            var checkResult = await _idempotencyService.CheckAsync(idempotencyKey, requestPath, payloadHash, HttpContext?.RequestAborted ?? default);
+            var checkResult = await _idempotencyService.CheckAsync(idempotencyKey, requestPath, payloadHash, GetActorUserId(), HttpContext?.RequestAborted ?? default);
             if (checkResult.IsReplay)
             {
                 if (Response?.Headers != null)
@@ -161,7 +161,10 @@ public partial class SalesController
                 ? uid
                 : request.CashierId;
 
-            var paymentInfos = request.Payments.Select(p => new PaymentInfo(p.PaymentMethodId, p.Amount, p.AmountBsS > 0 ? p.AmountBsS : p.AmountLocal, p.ReferenceNumber));
+            var paymentInfos = request.Payments
+                ?.Where(p => p != null)
+                .Select(p => new PaymentInfo(p.PaymentMethodId, p.Amount, p.AmountBsS > 0 ? p.AmountBsS : p.AmountLocal, p.ReferenceNumber))
+                ?? Enumerable.Empty<PaymentInfo>();
             int realId = await _salesService.CompleteSaleAsync(
                 id, 
                 request.ExchangeRate, 
@@ -186,7 +189,7 @@ public partial class SalesController
             // Manejo de colisión concurrente: reintentar lectura
             if (_idempotencyService is Sales.Module.Services.IdempotencyService idService && !string.IsNullOrWhiteSpace(idempotencyKey) && payloadHash != null)
             {
-                var collisionResult = await idService.HandleConcurrentCollisionAsync(idempotencyKey, requestPath, payloadHash, HttpContext?.RequestAborted ?? default);
+                var collisionResult = await idService.HandleConcurrentCollisionAsync(idempotencyKey, requestPath, payloadHash, GetActorUserId(), HttpContext?.RequestAborted ?? default);
                 if (collisionResult.IsReplay)
                 {
                     if (Response?.Headers != null)

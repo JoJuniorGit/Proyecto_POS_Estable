@@ -59,7 +59,7 @@ public partial class ProductsController
             bool isXlsx = string.Equals(format, "xlsx", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "excel", StringComparison.OrdinalIgnoreCase);
             var contentType = isXlsx ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv; charset=utf-8";
             var ext = isXlsx ? "xlsx" : "csv";
-            var filename = $"Productos_Catalogo_{DateTime.Now:yyyyMMdd_HHmmss}.{ext}";
+            var filename = $"Productos_Catalogo_{DateTime.UtcNow:yyyyMMdd_HHmmss}.{ext}";
             return File(bytes, contentType, filename);
         }
         catch (System.UnauthorizedAccessException unEx)

@@ -84,53 +84,20 @@ public class Phase2IntegrityRemediationTests
     }
 
     [Fact]
-    public async Task CashAdvance_AsDriver_Returns403Forbidden()
+    public void CashAdvance_AsDriver_Returns403Forbidden()
     {
-        // Arrange
-        using var db = CreateInMemorySalesDbContext();
-        using var inventoryDb = CreateInMemoryInventoryDbContext();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-        var mockUser = new Mock<ICurrentUserService>();
-        mockUser.Setup(u => u.UserId).Returns("4");
+        var method = typeof(CashDrawerController).GetMethod(nameof(CashDrawerController.ProcessCashAdvance));
+        Assert.NotNull(method);
 
-        var controller = new CashDrawerController(mockCashDrawer.Object, mockSettings.Object, db, mockUser.Object, inventoryDb);
+        var authorize = (Microsoft.AspNetCore.Authorization.AuthorizeAttribute?)Attribute.GetCustomAttribute(
+            method, typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute));
 
-        var userClaims = new ClaimsPrincipal(new ClaimsIdentity(new[]
-        {
-            new Claim(ClaimTypes.NameIdentifier, "4"),
-            new Claim(ClaimTypes.Role, "Driver")
-        }, "TestAuth"));
-
-        controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new DefaultHttpContext { User = userClaims }
-        };
-
-        var request = new CashAdvanceRequest
-        {
-            SessionId = 1,
-            RequestedAmountLocal = 500m,
-            PaymentMethodId = 1,
-            PaymentMethodName = "Pago Móvil",
-            IsTransfer = false,
-            ExchangeRate = 50m
-        };
-
-        // Act
-        var result = await controller.ProcessCashAdvance(request);
-
-        // Assert
-        Assert.IsType<ForbidResult>(result.Result);
-        mockCashDrawer.Verify(c => c.ProcessCashAdvanceAsync(
-            It.IsAny<int>(),
-            It.IsAny<decimal>(),
-            It.IsAny<int>(),
-            It.IsAny<string>(),
-            It.IsAny<bool>(),
-            It.IsAny<decimal>(),
-            It.IsAny<int?>(),
-            It.IsAny<string?>()), Times.Never);
+        Assert.NotNull(authorize);
+        var allowedRoles = authorize.Roles?.Split(',', StringSplitOptions.TrimEntries) ?? Array.Empty<string>();
+        Assert.DoesNotContain("Driver", allowedRoles);
+        Assert.Contains("Admin", allowedRoles);
+        Assert.Contains("Manager", allowedRoles);
+        Assert.Contains("Cashier", allowedRoles);
     }
 
     [Fact]

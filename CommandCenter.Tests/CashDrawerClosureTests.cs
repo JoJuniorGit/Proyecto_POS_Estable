@@ -176,6 +176,9 @@ public class CashDrawerClosureTests
         Assert.Equal(3, vm.OrderedTransactions.Count);
 
         // 2. Perform closure (Create DailyClosure)
+        context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo", IsCash = true, IsActive = true, DisplayOrder = 1 });
+        await context.SaveChangesAsync();
+
         var dailyClosure = new DailyClosure
         {
             ClosureDate = DateTime.UtcNow,

@@ -280,14 +280,21 @@ public class GlobalExceptionHandlerMiddleware
 
         // 4. Non-database unhandled internal exception
         AppLogger.LogCrash(exception, $"Unhandled Exception in Request: {requestPath}");
+        
+        var env = context.RequestServices?.GetService(typeof(Microsoft.AspNetCore.Hosting.IWebHostEnvironment)) as Microsoft.AspNetCore.Hosting.IWebHostEnvironment;
+        bool isDev = env != null && Microsoft.Extensions.Hosting.HostEnvironmentEnvExtensions.IsDevelopment(env);
+        
+        string userMessage = "Ocurrió un error interno al procesar la solicitud.";
+        string devMessage = isDev ? exception.ToString() : "Ocurrió un error interno no esperado al procesar la solicitud.";
+
         await WriteProblemDetailsAsync(
             context,
             StatusCodes.Status500InternalServerError,
             "Internal Server Error",
             "https://tools.ietf.org/html/rfc7231#section-6.6.1",
             "InternalServerError",
-            "Ocurrió un error interno al procesar la solicitud.",
-            "Ocurrió un error interno no esperado al procesar la solicitud.",
+            userMessage,
+            devMessage,
             requestPath,
             null);
     }

@@ -10,10 +10,12 @@ namespace Backend.API.Controllers;
 public class PairingController : ControllerBase
 {
     private readonly INetworkDiscoveryService _networkDiscoveryService;
+    private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
 
-    public PairingController(INetworkDiscoveryService networkDiscoveryService)
+    public PairingController(INetworkDiscoveryService networkDiscoveryService, Microsoft.Extensions.Configuration.IConfiguration configuration)
     {
         _networkDiscoveryService = networkDiscoveryService;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -25,24 +27,28 @@ public class PairingController : ControllerBase
     public IActionResult GetPairingInfo()
     {
         // 1. Verificar si la petición es local (Loopback / Localhost)
-        // Nota: UseForwardedHeaders garantiza que si la petición proviene de un reverse proxy,
-        // RemoteIpAddress reflejará la IP del cliente real.
+        // Preferir HttpContext.Connection.LocalIpAddress si se usa X-Forwarded-For para evitar spoofing.
         var remoteIp = HttpContext.Connection.RemoteIpAddress;
+        
         bool isLocal = remoteIp != null && (
                        IPAddress.IsLoopback(remoteIp) 
                        || (remoteIp.IsIPv4MappedToIPv6 && IPAddress.IsLoopback(remoteIp.MapToIPv4()))
                        || remoteIp.ToString() == "127.0.0.1" 
                        || remoteIp.ToString() == "::1");
 
-        // BAJO-2: Un atacante podría falsificar X-Forwarded-For. Si hay cabeceras de proxy residuales, 
-        // no confiamos en la conexión como "física local" para saltarse la autenticación.
+        // Si hay cabeceras de proxy, usamos LocalIpAddress o Request.Host como validación adicional si es necesario, 
+        // pero principalmente revocamos isLocal si detectamos spoofing.
         if (isLocal && (Request.Headers.ContainsKey("X-Forwarded-For") || Request.Headers.ContainsKey("X-Forwarded-Host")))
         {
-            isLocal = false;
+            // Validar de forma más estricta con LocalIpAddress
+            var localIp = HttpContext.Connection.LocalIpAddress;
+            if (localIp == null || (!IPAddress.IsLoopback(localIp) && localIp.ToString() != "127.0.0.1" && localIp.ToString() != "::1"))
+            {
+                isLocal = false;
+            }
         }
 
         // 2. Si no es local, verificar que el usuario esté autenticado con rol elevado (Admin/Manager).
-        // 8.7-L1: un cajero no debe poder leer IPs/puertos/QR del establecimiento.
         if (!isLocal && !(User.Identity?.IsAuthenticated ?? false))
         {
             return StatusCode((int)HttpStatusCode.Forbidden, new
@@ -63,7 +69,19 @@ public class PairingController : ControllerBase
             || System.IO.File.Exists(System.IO.Path.Combine(AppContext.BaseDirectory, "pos-https.pfx"))
             || System.IO.File.Exists("pos-https.pfx");
 
-        var info = _networkDiscoveryService.GetPairingInfo(httpPort: 5000, httpsPort: 5001, isHttpsEnabled: isHttps);
+        int httpPort = Request.Host.Port ?? 5000;
+        int httpsPort = Request.Host.Port ?? 5001;
+        try 
+        {
+            if (_configuration != null) 
+            {
+                if (int.TryParse(_configuration["Ports:Http"], out int configHttp)) httpPort = configHttp;
+                if (int.TryParse(_configuration["Ports:Https"], out int configHttps)) httpsPort = configHttps;
+            }
+        } 
+        catch { }
+
+        var info = _networkDiscoveryService.GetPairingInfo(httpPort: httpPort, httpsPort: httpsPort, isHttpsEnabled: isHttps);
         return Ok(info);
     }
 

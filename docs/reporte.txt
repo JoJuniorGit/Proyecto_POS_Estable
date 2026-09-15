@@ -8572,3 +8572,73 @@ pm test) pasaron exitosamente.
 14. **MED-14**: Archivos db y dumps ignorados en .gitignore.
 15. **BAJO-8 a BAJO-12**: Documentación unificada, validación de idempotencia ajustada, y exclusiones de Defender limitadas a procesos.
 
+ANEXO: Fix [ALTO] Crecimiento ilimitado de memoria en métricas (RequestMetricsMiddleware). Se normalizó la ruta usando RouteEndpoint/IRouteDiagnosticsMetadata para registrar el RoutePattern en lugar de la ruta cruda, previniendo OOM.
+ANEXO Lote 1.2:
+- Backend.API/Controllers/AuthController.cs: Se actualizó la lógica de bloqueo de cuenta para re-armar el bloqueo de 15 minutos (reiniciando el LockoutEndUtc) solo cuando el bloqueo anterior expiró y se alcanza nuevamente el umbral de 5 fallos, usando (!user.LockoutEndUtc.HasValue || user.LockoutEndUtc.Value <= DateTime.UtcNow).
+- Backend.API/Controllers/UsersController.cs: Se protegió al Administrador principal impidiendo que su Cedula, Username y Rol sean sobreescritos o degradados independientemente de los datos enviados en UpdateUserDto. Se conservan Username y Cedula, y se fuerza el Rol = Admin y IsActive = true explícitamente para el admin principal.
+
+ANEXO LOTE 1.5
+- [1.5-1] MEDIO: Cierre usa ExchangeRate persistido en BD (ShiftsController y DailyClosureController).
+- [1.5-2] BAJO: Fix identity spoofing en DailyClosureController y ShiftsController.
+- [1.5-3] BAJO: Cola de impresion ChannelReceiptPrintQueue cambiada a Bounded.
+
+ANEXO: Lote 1.6 - Correcciones
+- [MEDIO] Se proyectan nuevos DTOs (MaskProductDto/MaskQuickInfoDto) en ProductsController.cs para GetAll, GetById, y Search (GetQuickInfo/GetSuggestions) en lugar de mutar los objetos de caché.
+- [BAJO] Se reemplazó DateTime.Now por DateTime.UtcNow en DailyClosureService.cs y ProductsController.ImportExport.cs.
+- [BAJO] Se eliminó el archivo muerto KnownFoldersHelper.cs en Backend.API/Helpers.
+ANEXO Lote 1.8:
+- PairingController: Se agregó validación estricta de X-Forwarded-For usando LocalIpAddress y se extrajeron los puertos desde la configuración/Request.
+- ServiceCollectionExtensions (CORS): Se restringió la apertura de LAN dinámica exclusivamente a entornos de Development.
+- VersionCheckMiddleware: Se agregó el retorno de 400 Bad Request si falta el header X-Client-Version en rutas privadas del API.
+- GlobalExceptionHandlerMiddleware: Se enmascaran los detalles de errores internos (500) en producción, mostrando la traza de excepción únicamente en Development.
+ANEXO: Lote 1.4 resuelto. 1. Política de contraseñas mínima 8 caracteres en Frontend y ViewModel. 2. Log de AuthController ofusca cédula. 3. Cookie pos_jwt usa ExpiryMinutes de configuración de TokenService.
+
+ANEXO LOTE 1.7
+- [1.7-1] MEDIO: Scope pos:web/pos:desktop ya no es declarado por el cliente; el backend unificó a 'pos:api' desde AuthController. Politicas DesktopOnly/WebOnly eliminadas de ServiceCollectionExtensions (resuelto en Lote 1.2).
+- [1.7-2] INFO-2: Políticas de scope web/desktop eran no aplicables; resuelto al unificar scope en pos:api.
+- [1.7-3] MEDIO: Código muerto del rol Driver (if IsInRole Driver => Forbid) eliminado de CashDrawerController.ProcessCashAdvance. El atributo [Authorize(Roles = 'Admin,Manager,Cashier')] ya bloquea al Driver antes de llegar al método.
+
+ANEXO LOTE 2.1 (Domain Modules — BAJOS)
+- [2.1-1] BAJO: CashDrawerService.GetOrCreateActiveSessionAsync: eliminado Include(s => s.Transactions) innecesario. Solo se necesita ClosingBalanceLocal, que ya está persistido en la sesión. Impacto: evita materializar decenas de miles de filas en el camino caliente del cobro.
+- [2.1-2] BAJO: InventoryService.StockDeduction.ConfirmReservationAsync: NewStockLevel ahora se lee desde la DB después del ExecuteUpdate (SELECT StockQuantity WHERE Id=productId), garantizando el valor real bajo concurrencia.
+- [2.1-3] BAJO: InventorySaleMadeEventHandler: backoff exponencial aplicado (Task.Delay(500 * (int)Math.Pow(2, i))) en los 3 reintentos de UpdateStockBatchAsync.
+
+ANEXO LOTE 2.2 (Domain Modules — MEDIOs: Inventory/CashAdvance/AddItem)
+- [2.2-1] MEDIO: InventoryService.CatalogQueries.GetSuggestionsAsync y GetProductsPagedAsync: reemplazado ToLower().Contains con EF.Functions.ILike, habilitando el índice gin_trgm de PostgreSQL para búsquedas de catálogo.
+- [2.2-2] MEDIO: SalesService.CashAdvance: catch {} generalizado reemplazado por catch(KeyNotFoundException) para fallback a id=1, y catch(Exception) tipado que propaga errores de DB/concurrencia. Cierra el hallazgo de corrupción silenciosa de historial.
+- [2.2-3] MEDIO: SalesService.AddItemAsync: sale.AppliedRate ahora pasa por ResolveAnchoredRateAsync (igual que RemoveItem, UpdateItemQuantity, UpdateExchangeRate). Cierra la omisión 8.130 donde AddItem aceptaba tasa arbitraria sin validar desviación BCV.
+
+ANEXO LOTES 2.3-2.6 (Domain Modules — cierre de la Sección 2 de la auditoría 2026-09-15)
+- [2.3-1] MEDIO: SalesService.HoldOrders.UpdateSaleItemsAsync valida contra el precio efectivo (Retail/Wholesale: PriceWholesaleUSD/PriceRetailUSD, HasWholesale, MinWholesaleQuantity) y revalida el total con ValidateHoldSaleTotal tras RecalculateTotalAsync.
+- [2.3-2] MEDIO: SalesService.Payments (abono simple y lote): advisory lock por venta (pg_advisory_xact_lock(2, saleId), solo Npgsql) y re-lectura de Status/TotalUSD/AppliedRate y de la suma abonada desde la BD dentro de la transacción; cierra el TOCTOU del guard anti-sobrepago.
+- [2.4-1] MEDIO: DailyClosureService.GetExpectedTotalsByPaymentMethodAsync netea los vueltos físicos (Expense + Source=SalePayment + IsPhysicalCash) de la ventana contra los métodos de efectivo; vueltos sin método se imputan al primer método cash.
+- [2.4-2] MEDIO: cierre diario y arqueo ciego: PaymentMethodName resuelto server-side; ids desconocidos rechazados (400/ArgumentException); métodos faltantes agregados por diferencia de conjuntos; ids duplicados rechazados.
+- [2.5-1] ALTO: par USD/Bs.S único y consistente en checkout, abonos y pago inicial de HoldSale (|BsS/rate − USD| <= 0.01; derivación con PricingCalculator.ToBsS/ToUSD; el valor derivado se persiste también en CashTransaction). Corrige el abono solo-USD con AmountBsS=0.
+- [2.5-2] ALTO: HoldSale con sobrepago inicial registra el vuelto como egreso físico vía RecordSaleChangeAsync (espejo de CompleteSale).
+- [2.6-1] MEDIO: reserva de stock atómica (transacción única incremento+inserción; eliminada la compensación muerta por DbUpdateConcurrencyException).
+- [2.6-2] BAJO: recálculo masivo de OnHold con progreso explícito por página y log de fallo parcial.
+- [2.6-3] BAJO: POST /complete con Payments null ya no produce 500 (mapeo null-safe → 4xx de dominio).
+- [2.6-4] Endurecimiento: detalles de cierre con PaymentMethodId duplicado rechazados (400/ArgumentException).
+- Regresiones de suite corregidas: CatalogQueries.ILike provider-aware (Npgsql con gin_trgm vs fallback ToLower en otros providers) y test de Driver en adelanto de efectivo alineado a la capa de autorización.
+Verificación: dotnet build -c Release 0/0; dotnet test 1016/1016; Web npm test 178/178; npm run lint exit 0.
+
+================================================================================
+ANEXO - REVISION 8.131 (2026-09-15)
+Titulo: Remediacion auditoria de seguridad - Fases 1 y 2 (Backend/API, Core y Modulos) + regresiones de suite
+================================================================================
+
+A. CONTEXTO
+A1. Continuacion de la remediacion de los hallazgos de auditoria (docs/hallazgos-auditoria-seguridad.txt): Fases 1 (Backend.API/Core) y 2 (Modulos de dominio), incluyendo residuales de la Seccion 2 y regresiones de suite detectadas.
+A2. El detalle por lote vive en los ANEXOS LOTE 1.2 a 2.6 de este archivo; los fixes cierran hallazgos ALTO/MEDIO/BAJO de las Secciones 1 y 2 del Anexo de la auditoria.
+
+B. CAMBIOS REALIZADOS
+B1. FASE 1 (lotes 1.1-1.8): metricas por ruta normalizada; lockout re-armable + proteccion del admin raiz; IDOR de recibos + ownership fail-closed + idempotencia con UserId; politica de contrasenas >= 8 + PII ofuscada + cookie segun configuracion; tasa historica persistida en cierre + identidad por claims + cola de impresion acotada; ProfitPercentage enmascarado sin mutar cache + UtcNow + codigo muerto eliminado; scope pos:api; pairing/CORS/version-check/exception handler endurecidos.
+B2. FASE 2 (lotes 2.1-2.6): ver ANEXOS LOTE 2.1 a 2.6 en este archivo (precio efectivo en edicion OnHold, advisory lock anti-TOCTOU en abonos, cierre netea vueltos + metodo server-side, par USD/Bs.S consistente + vuelto en HoldSale, reserva de stock atomica, progreso de recalculo OnHold, null-safety y duplicados de cierre).
+B3. Regresiones de suite corregidas: CatalogQueries con ILike provider-aware (Npgsql con gin_trgm vs fallback en otros providers) y test de Driver en adelanto de efectivo alineado a la capa real de autorizacion (atributo).
+
+C. VERIFICACION
+C1. dotnet build CommandCenter.slnx -c Release: 0 advertencias / 0 errores.
+C2. dotnet test CommandCenter.Tests: 1016/1016 (0 fallos; 28 tests nuevos).
+C3. Web.Frontend: npm test 178/178; npm run lint sin hallazgos (exit 0).
+
+FIN DEL ANEXO - REVISION 8.131

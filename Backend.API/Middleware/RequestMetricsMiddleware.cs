@@ -26,9 +26,18 @@ public class RequestMetricsMiddleware
         finally
         {
             stopwatch.Stop();
-            var method = context.Request.Method ?? "UNKNOWN";
-            var path = context.Request.Path.Value ?? "/";
-            _registry.Record(method, path, stopwatch.Elapsed.TotalMilliseconds, context.Response.StatusCode);
+            var endpoint = context.GetEndpoint();
+            if (endpoint != null && context.Response.StatusCode != 404)
+            {
+                var routeEndpoint = endpoint as Microsoft.AspNetCore.Routing.RouteEndpoint;
+                var path = routeEndpoint?.RoutePattern?.RawText ?? endpoint.DisplayName;
+
+                if (!string.IsNullOrEmpty(path))
+                {
+                    var method = context.Request.Method ?? "UNKNOWN";
+                    _registry.Record(method, path, stopwatch.Elapsed.TotalMilliseconds, context.Response.StatusCode);
+                }
+            }
         }
     }
 }

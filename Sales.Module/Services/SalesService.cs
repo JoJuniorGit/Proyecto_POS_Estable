@@ -227,7 +227,7 @@ public partial class SalesService : ISalesService
             throw new ArgumentException("La tasa de cambio debe ser mayor a cero.", nameof(exchangeRate));
         }
 
-        sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
+        sale.AppliedRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "AddItem", referenceId: sale.Id);
 
         var existingItem = sale.Items.FirstOrDefault(i => i.ProductId == productId);
         if (existingItem != null)

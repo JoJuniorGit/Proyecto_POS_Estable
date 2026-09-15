@@ -16,6 +16,8 @@ public class TokenService : ITokenService
     private readonly string _audience;
     private readonly int _expiryMinutes;
 
+    public int ExpiryMinutes => _expiryMinutes;
+
     public TokenService(IConfiguration configuration)
     {
         var jwtKey = configuration["JWT_SETTINGS_KEY"]

@@ -59,7 +59,14 @@ public partial class InventoryService
             }
 
             // For text/partial search, return root products (parents or standalone)
-            query = query.Where(p => p.ParentProductId == null && (p.Name.ToLower().Contains(lower) || p.SKU.ToLower().Contains(lower)));
+            if (_context.Database.IsNpgsql())
+            {
+                query = query.Where(p => p.ParentProductId == null && (EF.Functions.ILike(p.Name, $"%{lower}%") || EF.Functions.ILike(p.SKU, $"%{lower}%")));
+            }
+            else
+            {
+                query = query.Where(p => p.ParentProductId == null && (p.Name.ToLower().Contains(lower) || p.SKU.ToLower().Contains(lower)));
+            }
         }
         else
         {
@@ -121,7 +128,14 @@ public partial class InventoryService
         if (!string.IsNullOrWhiteSpace(filter))
         {
             string lower = filter.Trim().ToLower();
-            query = query.Where(p => p.Name.ToLower().Contains(lower) || p.SKU.ToLower().Contains(lower));
+            if (_context.Database.IsNpgsql())
+            {
+                query = query.Where(p => EF.Functions.ILike(p.Name, $"%{lower}%") || EF.Functions.ILike(p.SKU, $"%{lower}%"));
+            }
+            else
+            {
+                query = query.Where(p => p.Name.ToLower().Contains(lower) || p.SKU.ToLower().Contains(lower));
+            }
         }
 
         var totalCount = await query.CountAsync(token);

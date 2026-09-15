@@ -61,12 +61,23 @@ public class ShiftsController : ControllerBase
             return Forbid();
         }
 
+        var duplicatedMethodIds = request.DeclaredAmounts
+            .GroupBy(d => d.PaymentMethodId)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        if (duplicatedMethodIds.Count > 0)
+        {
+            return BadRequest(new { message = $"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}." });
+        }
+
         try
         {
             // 8.9-B4: el cierre de turno combina SalesDbContext (cierre/totales) + caja (rollover) en
             // una transacción Serializable cross-DB; se ejecuta bajo execution strategy para
             // reintentar el bloque completo ante fallos transitorios y no quedar a medias.
-            return await _salesContext.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            return await _salesContext.Database.CreateExecutionStrategy().ExecuteAsync<ActionResult>(async () =>
             {
             decimal exchangeRate = await GetTodayExchangeRateAsync();
 
@@ -80,7 +91,19 @@ public class ShiftsController : ControllerBase
 
             // Obtenemos los totales teóricos por método de pago dentro de la transacción Serializable
             var expectedTotals = await _dailyClosureService.GetExpectedTotalsByPaymentMethodAsync(DateTime.UtcNow);
-            
+
+            var expectedMethodIds = expectedTotals.Select(e => e.PaymentMethodId).ToHashSet();
+            var unknownMethodIds = request.DeclaredAmounts
+                .Where(d => !expectedMethodIds.Contains(d.PaymentMethodId))
+                .Select(d => d.PaymentMethodId)
+                .Distinct()
+                .ToList();
+
+            if (unknownMethodIds.Count > 0)
+            {
+                return BadRequest(new { message = $"El desglose contiene métodos de pago no reconocidos: {string.Join(", ", unknownMethodIds)}." });
+            }
+
             var details = new List<ShiftReportDetailDto>();
             foreach (var declared in request.DeclaredAmounts)
             {
@@ -118,8 +141,10 @@ public class ShiftsController : ControllerBase
             string cashierName = "Cajero Activo";
             string cashierCedula = "V-00000000";
 
+            int? parsedAuthUserId = null;
             if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int authUserId))
             {
+                parsedAuthUserId = authUserId;
                 var authUser = await _salesContext.Users.FindAsync(authUserId);
                 if (authUser != null)
                 {
@@ -132,22 +157,25 @@ public class ShiftsController : ControllerBase
                 var authUser = await _salesContext.Users.FirstOrDefaultAsync(u => u.Username == User.Identity.Name);
                 if (authUser != null)
                 {
+                    parsedAuthUserId = authUser.Id;
                     cashierName = authUser.Name;
                     cashierCedula = authUser.Cedula ?? authUser.Username ?? "V-00000000";
                 }
             }
-            else if (!string.IsNullOrWhiteSpace(request.CashierName))
+            else
             {
-                cashierName = request.CashierName;
-                cashierCedula = request.CashierCedula ?? "V-00000000";
+                // Fallback safe defaults if no user is found
+                cashierName = "Cajero Desconocido";
+                cashierCedula = "V-00000000";
             }
 
             // Persistir cierre de caja de forma secuencial en la Base de Datos
             var dailyClosure = new DailyClosure
             {
                 ClosureDate = DateTime.UtcNow,
-                UserId = cashierName,
+                UserId = parsedAuthUserId?.ToString() ?? cashierName,
                 Observation = cashierCedula,
+                ExchangeRate = exchangeRate,
                 Details = details.Select(d => new ClosureDetail
                 {
                     PaymentMethodId = d.PaymentMethodId,
@@ -222,9 +250,11 @@ public class ShiftsController : ControllerBase
         bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
         if (!isElevated && closure != null)
         {
+            var identityId = _currentUserService.UserId ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             var identityName = User.Identity?.Name;
             var identityCedula = User.FindFirst(System.Security.Claims.ClaimTypes.SerialNumber)?.Value;
-            bool isOwner = (!string.IsNullOrEmpty(closure.UserId) && !string.IsNullOrEmpty(identityName)
+            bool isOwner = (!string.IsNullOrEmpty(closure.UserId) && !string.IsNullOrEmpty(identityId) && closure.UserId == identityId)
+                        || (!string.IsNullOrEmpty(closure.UserId) && !string.IsNullOrEmpty(identityName)
                                 && string.Equals(closure.UserId, identityName, System.StringComparison.OrdinalIgnoreCase))
                         || (!string.IsNullOrEmpty(closure.Observation) && !string.IsNullOrEmpty(identityCedula)
                                 && string.Equals(closure.Observation, identityCedula, System.StringComparison.OrdinalIgnoreCase));
@@ -235,7 +265,9 @@ public class ShiftsController : ControllerBase
             }
         }
 
-        decimal exchangeRate = await GetTodayExchangeRateAsync();
+        decimal exchangeRate = closure != null && closure.ExchangeRate > 0 
+            ? closure.ExchangeRate 
+            : await GetTodayExchangeRateAsync();
 
         if (closure == null)
         {
@@ -265,10 +297,17 @@ public class ShiftsController : ControllerBase
             };
         }).ToList();
 
+        string cashierName = closure.UserId ?? "Cajero Activo";
+        if (int.TryParse(closure.UserId, out int parsedId))
+        {
+            var u = await _salesContext.Users.FindAsync(parsedId);
+            if (u != null) cashierName = u.Name;
+        }
+
         return Ok(new ShiftReportDto
         {
             ShiftId = closure.Id,
-            CashierName = closure.UserId ?? "Cajero Activo",
+            CashierName = cashierName,
             CashierCedula = closure.Observation ?? "V-00000000",
             ClosedAt = closure.ClosureDate,
             ExchangeRate = exchangeRate,

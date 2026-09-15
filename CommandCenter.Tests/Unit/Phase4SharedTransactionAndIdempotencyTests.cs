@@ -373,6 +373,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
                             PayloadHash = h,
                             StatusCode = 200,
                             ResponseBody = "777",
+                            UserId = actorId,
                             CreatedAtUtc = DateTime.UtcNow,
                             ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
                         });
@@ -446,6 +447,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
                             PayloadHash = h,
                             StatusCode = 200,
                             ResponseBody = "888",
+                            UserId = actorId,
                             CreatedAtUtc = DateTime.UtcNow,
                             ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
                         });
@@ -704,6 +706,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
                         PayloadHash = hash,
                         StatusCode = 200,
                         ResponseBody = "{\"status\":\"OnHold\"}",
+                        UserId = actorId,
                         CreatedAtUtc = DateTime.UtcNow,
                         ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
                     });

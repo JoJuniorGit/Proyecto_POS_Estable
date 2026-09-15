@@ -139,6 +139,16 @@ BEGIN
     END IF;
 END $$;");
 
+                await salesDb.Database.ExecuteSqlRawAsync(@"
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'IdempotentRequests') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'IdempotentRequests' AND column_name = 'UserId') THEN
+            ALTER TABLE ""IdempotentRequests"" ADD COLUMN ""UserId"" integer NULL;
+        END IF;
+    END IF;
+END $$;");
+
                 // 1. Sales module: SaleItems.Quantity -> numeric(18,3)
                 await salesDb.Database.ExecuteSqlRawAsync(@"
 DO $$

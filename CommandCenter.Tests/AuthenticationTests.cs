@@ -356,7 +356,7 @@ public class AuthenticationTests
         var jwt = handler.ReadJwtToken(resultDto.Token);
         var scopeClaim = jwt.Claims.FirstOrDefault(c => c.Type == "scope");
         Assert.NotNull(scopeClaim);
-        Assert.Equal("pos:desktop", scopeClaim.Value);
+        Assert.Equal("pos:api", scopeClaim.Value);
     }
 
     [Fact]

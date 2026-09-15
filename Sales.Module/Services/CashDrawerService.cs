@@ -73,7 +73,6 @@ public class CashDrawerService : ICashDrawerService
         if (session != null) return session;
 
         var lastSession = await _context.CashDrawerSessions
-            .Include(s => s.Transactions)
             .OrderByDescending(s => s.ClosedAt ?? s.OpenedAt)
             .FirstOrDefaultAsync();
 

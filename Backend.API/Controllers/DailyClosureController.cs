@@ -71,6 +71,17 @@ public class DailyClosureController : ControllerBase
             return BadRequest(new { message = "El arqueo debe incluir el desglose por métodos de pago." });
         }
 
+        var duplicatedMethodIds = request.Details
+            .GroupBy(d => d.PaymentMethodId)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        if (duplicatedMethodIds.Count > 0)
+        {
+            return BadRequest(new { message = $"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}." });
+        }
+
         try
         {
             // 8.9-B4: el cierre diario combina SalesDbContext (totales/cierre) + caja (rollover) en una
@@ -85,7 +96,7 @@ public class DailyClosureController : ControllerBase
 
             var finalUserId = !string.IsNullOrWhiteSpace(authenticatedUserId)
                 ? authenticatedUserId
-                : (!string.IsNullOrWhiteSpace(request.UserId) ? request.UserId : "Admin");
+                : "Admin";
 
             DateTime closureDate = DateTime.UtcNow;
             if (request.ClosureDate != default)
@@ -129,23 +140,31 @@ public class DailyClosureController : ControllerBase
 
             // 2. Totales esperados autoritativos calculados server-side (H-API-3) dentro de la transacción Serializable
             var serverExpectedTotals = await _closureService.GetExpectedTotalsByPaymentMethodAsync(closureDate);
-            var expectedMap = serverExpectedTotals.ToDictionary(e => e.PaymentMethodId, e => e.ExpectedAmountBsS);
+            var expectedById = serverExpectedTotals.ToDictionary(e => e.PaymentMethodId);
+
+            var unknownMethodIds = request.Details
+                .Where(d => !expectedById.ContainsKey(d.PaymentMethodId))
+                .Select(d => d.PaymentMethodId)
+                .Distinct()
+                .ToList();
+
+            if (unknownMethodIds.Count > 0)
+            {
+                return BadRequest(new { message = $"El desglose contiene métodos de pago no reconocidos: {string.Join(", ", unknownMethodIds)}." });
+            }
 
             var closure = new DailyClosure
             {
                 ClosureDate = closureDate,
                 UserId = finalUserId,
                 Observation = request.Observation,
-                Details = request.Details.Select(d =>
+                ExchangeRate = exchangeRate,
+                Details = request.Details.Select(d => new ClosureDetail
                 {
-                    expectedMap.TryGetValue(d.PaymentMethodId, out var authoritativeExpected);
-                    return new ClosureDetail
-                    {
-                        PaymentMethodId = d.PaymentMethodId,
-                        PaymentMethodName = d.PaymentMethodName,
-                        ExpectedAmountBsS = authoritativeExpected,
-                        ActualAmountBsS = d.ActualAmountBsS
-                    };
+                    PaymentMethodId = d.PaymentMethodId,
+                    PaymentMethodName = expectedById[d.PaymentMethodId].PaymentMethodName,
+                    ExpectedAmountBsS = expectedById[d.PaymentMethodId].ExpectedAmountBsS,
+                    ActualAmountBsS = d.ActualAmountBsS
                 }).ToList()
             };
 

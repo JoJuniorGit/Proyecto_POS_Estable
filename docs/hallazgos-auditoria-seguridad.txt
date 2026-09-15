@@ -561,3 +561,994 @@ Cada bloque puede entregarse como un cambio SDD o como commits independientes po
 hallazgo; los ALTO de un bloque no dependen de los otros bloques.
 
 FIN DEL DOCUMENTO.
+
+
+
+================================================================================
+ANEXO 2026-09-15 — ANÁLISIS EXHAUSTIVO (CALIDAD, ARQUITECTURA, RENDIMIENTO,
+RECURSOS Y SEGURIDAD). SOLO NUEVOS HALLAZGOS — NO SE MODIFICÓ LO PREVIO.
+================================================================================
+
+CONTEXTO Y MÉTODO
+- Auditoría read-only posterior a la revisión 8.130. Cinco frentes: (1) Backend.API
+  y Core, (2) módulos de dominio (Sales / Inventory / Logistics), (3) Web.Frontend,
+  (4) Desktop WPF, (5) infraestructura / CI / tests / UpdaterService.
+- Los hallazgos ALTO fueron verificados línea a línea contra el código fuente.
+  Etiqueta [8.130 INCOMPLETA] = mitigación previa que no cubre todos los caminos.
+- Durante el análisis no se modificó ningún archivo del sistema.
+
+RESUMEN POR SEVERIDAD: 10 ALTO · 42 MEDIO · 34 BAJO (86 hallazgos)
+
+TOP 10 PRIORIDADES SUGERIDAS
+ 1. WPF: SignalR sin token → notificaciones de tasa/pedidos muertas en silencio.
+ 2. Módulos: montos USD y Bs.S independientes en el cobro → caja ≠ liquidación.
+ 3. Módulos: HoldSale completa con sobrepago sin registrar vuelto (dinero retenido).
+ 4. Web: abono inicial duplicable (Idempotency-Key regenerada por reintento).
+ 5. Web: se puede cobrar sin preview canónico (roundingAdjustment = 0).
+ 6. Backend: lockout de cuenta solo se arma una vez por vida de la cuenta.
+ 7. Infra/Updater: cadena de actualización sin autenticidad + TOCTOU de hash.
+ 8. Backend: métricas por ruta cruda sin purga → OOM por paths únicos.
+ 9. Web: guardas por hash sin rol → Driver llega a vistas de caja/catálogo.
+10. Web: carrera de tasa pisa el carrito (ítems "desaparecen" visualmente).
+
+--------------------------------------------------------------------------------
+SECCIÓN 1 — BACKEND.API + CORE
+--------------------------------------------------------------------------------
+
+[ALTO] El bloqueo de cuenta solo se arma una vez; después de expirar quedan intentos ilimitados
+  Archivo: Backend.API/Controllers/AuthController.cs:115 (mismo patrón en change-password :260)
+  Evidencia:
+    if (user.AccessFailedCount >= 5 && !user.LockoutEndUtc.HasValue)
+        user.LockoutEndUtc = DateTime.UtcNow.AddMinutes(15);
+  Impacto: cuando el bloqueo de 15 min expira, LockoutEndUtc conserva valor; la condición
+  nunca vuelve a ser verdadera y la cuenta jamás se re-bloquea. El atacante queda limitado
+  solo por rate limit por IP. Riesgo de fuerza bruta sostenida.
+  Recomendación: re-armar el bloqueo cuando el anterior ya expiró (resetear contador si
+  LockoutEndUtc <= UtcNow antes de validar) sin extender un bloqueo activo (preservar 8.9-M2).
+
+[ALTO] Crecimiento ilimitado de memoria en métricas por endpoint (clave = ruta cruda)
+  Archivo: Backend.API/Metrics/RequestMetricsRegistry.cs:13-24 + Middleware/RequestMetricsMiddleware.cs:29-31
+  Evidencia:
+    var key = $"{method} {path}";
+    if (!_endpoints.TryGetValue(key, out var metric)) { metric = new EndpointMetric(); _endpoints[key] = metric; }
+  Impacto: el middleware registra context.Request.Path.Value sin normalizar. Cada URL única
+  (IDs, rutas 404) crea una entrada con hasta 1000 muestras que nunca se purga. Corre antes
+  del rate limiter y MapFallback no tiene política → OOM/restart con requests no autenticados.
+  Recomendación: normalizar a la plantilla del endpoint (RoutePattern.RawText) o limitar
+  claves/entradas; no medir 404/fallback.
+
+[MEDIO] El scope pos:web / pos:desktop lo declara el cliente (políticas WebOnly/DesktopOnly anuladas)
+  Archivo: Backend.API/Controllers/AuthController.cs:144-151
+  Evidencia:
+    var platform = request.Platform; // o header X-Client-Platform, ambos del cliente
+    var scope = isWeb ? "pos:web" : "pos:desktop";
+  Impacto: un cliente Web puede pedir "Desktop" y recibir token con scope pos:desktop
+  (accede a CashDrawerController [DesktopOnly]) y viceversa. La separación de canal no es control real.
+  Recomendación: derivar el scope server-side de un registro de dispositivo confiable, o
+  eliminar políticas por scope y gatear caja por rol + canal verificado en servidor.
+
+[MEDIO] [8.130 INCOMPLETA] Ownership de recibos con fail-open si el claim no parsea
+  Archivo: Backend.API/Controllers/ReceiptsController.cs:42-49
+  Evidencia:
+    if (!isElevated && _currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid))
+        if (sale.CashierId != uid) return 403;
+  Impacto: con UserId null o no numérico se omite la verificación de propiedad (deny-by-default
+  invertido). El IDOR original quedó mitigado solo en el camino normal.
+  Recomendación: si !isElevated → exigir parseo y comparar; si no parsea, Forbid().
+
+[MEDIO] [8.130 INCOMPLETA] ProfitPercentage se enmascara mutando el DTO compartido de caché
+  Archivo: Backend.API/Controllers/ProductsController.cs:364-366 + Inventory.Module/Services/InventoryService.cs:243-246
+  Evidencia:
+    if (!_currentUserService.CanMutateCatalog) info.ProfitPercentage = 0m;   // controller
+    return cachedDto;                                                        // servicio: misma instancia cacheada
+  Impacto: la primera consulta de un Cashier a quick-check/{sku} escribe 0 en el objeto
+  guardado en IMemoryCache; Admin/Manager reciben margen 0 hasta que expire la entrada.
+  Recomendación: mapear a copia (o proyectar el filtro por rol antes de cachear); nunca mutar
+  instancias devueltas por caché.
+
+[MEDIO] El reporte de cierre recalcula montos USD históricos con la tasa de HOY
+  Archivo: Backend.API/Controllers/ShiftsController.cs:238,251-252
+  Evidencia:
+    decimal exchangeRate = await GetTodayExchangeRateAsync();
+    decimal systemAmt = isUsd ? d.ExpectedAmountBsS / exchangeRate : d.ExpectedAmountBsS;
+  Impacto: violación directa de §2.4 core (nunca recalcular historial con tasa actual):
+  un cambio de tasa altera el arqueo histórico y la diferencia declarada; auditoría no reproducible.
+  Recomendación: persistir AppliedRate (y montos USD) en DailyClosure/ClosureDetail al cerrar
+  y usar esos snapshots en lectura.
+
+[MEDIO] La protección del Admin raíz se evita renombrando/degradando la cuenta
+  Archivo: Backend.API/Controllers/UsersController.cs:152-195
+  Evidencia:
+    bool isMainAdmin = SecurityConstants.IsRootAdmin(user.Cedula, user.Username); // valores actuales
+    user.Cedula = usernameClean; user.Username = usernameClean; user.Role = dto.Role;
+  Impacto: solo se protege IsActive. Tras renombrar/degradar al root, ya no coincide con
+  IsRootAdmin y otro Admin puede desactivarlo/eliminarlo en una segunda petición.
+  Recomendación: bloquear cambios de cédula/username/rol sobre el root admin o re-evaluar
+  isMainAdmin tras mutar y forzar IsActive=true + Role=Admin.
+
+[MEDIO] [8.130 INCOMPLETA] GlobalExceptionHandler devuelve mensajes crudos en 404/403
+  Archivo: Backend.API/Middleware/GlobalExceptionHandlerMiddleware.cs:196-226 (:205 y :221)
+  Evidencia:
+    "NotFound", exception.Message, exception.Message, ...        // KeyNotFoundException
+    "Forbidden", exception.Message, exception.Message, ...       // UnauthorizedAccessException
+  Impacto: fuga de detalles internos (IDs, mensajes de servicios) al cliente; el gating
+  IsDomainException de 8.130 solo se aplicó a ArgumentException/InvalidOperationException.
+  Recomendación: aplicar el mismo filtro por dominio o mensajes genéricos; no exponer sqlState.
+
+[MEDIO] Chequeo de rol inalcanzable en caja: comentario "solo Administradores" pero Manager opera CASH IN/OUT
+  Archivo: Backend.API/Controllers/CashDrawerController.cs:146,159-166
+  Evidencia:
+    [Authorize(Roles = "Admin,Manager")] ... if (UserRole == Cashier || UserRole == Driver) return 403;
+  Impacto: Cashier/Driver ya están bloqueados por el atributo; la condición interna nunca
+  se ejecuta y Manager puede registrar ingresos/retiros/ajustes manuales, contra la intención
+  documentada. Drift de autorización + código muerto.
+  Recomendación: alinear política ([Authorize(Roles="Admin")]) o documentar Manager como
+  autorizado y eliminar el chequeo inalcanzable.
+
+[BAJO] Identidad de cierre inconsistente (ID numérico vs nombre) rompe el ownership de reportes
+  Archivo: Backend.API/Controllers/DailyClosureController.cs:82 vs ShiftsController.cs:227-230
+  Evidencia:
+    closure.UserId guarda el ID numérico; la lectura compara contra User.Identity.Name y
+    cae al texto libre Observation.
+  Impacto: cajeros que cerraron por daily-closure reciben 403 en su propio reporte;
+  identidad de auditoría inconsistente entre endpoints.
+  Recomendación: persistir/comparar un ID de usuario estable; Observation solo como texto.
+
+[BAJO] El version-check se omite enviando la petición sin X-Client-Version
+  Archivo: Backend.API/Middleware/VersionCheckMiddleware.cs:40-43
+  Evidencia:
+    if (string.IsNullOrWhiteSpace(clientVersionHeader)) clientVersionHeader = settings.MinimumClientVersion;
+  Impacto: cualquier cliente evita el 426 con solo no enviar el header; el gate de
+  compatibilidad no aplica a clientes no identificados.
+  Recomendación: rechazar (426) cuando falta el header en rutas de API.
+
+[BAJO] Pairing hardcodea puertos 5000/5001 ignorando PORT/ASPNETCORE_HTTP_PORT
+  Archivo: Backend.API/Controllers/PairingController.cs:66 (+ Program.cs:58)
+  Evidencia:
+    _networkDiscoveryService.GetPairingInfo(httpPort: 5000, httpsPort: 5001, ...)
+  Impacto: si el operador cambia el puerto, el QR de pairing apunta a puertos incorrectos.
+  Recomendación: inyectar los puertos reales de Kestrel (IServerAddressesFeature) o configuración.
+
+[BAJO] [8.130 INCOMPLETA] Cédula (PII) en logs de change-password (ofuscación solo en login)
+  Archivo: Backend.API/Controllers/AuthController.cs:245 (y :263,:266)
+  Evidencia:
+    AppLogger.LogWarn($"... Usuario '{user.Username}' ...");  // Username = cédula
+  Impacto: PII persistida en logs en la ruta de cambio de contraseña.
+  Recomendación: usar ObfuscateCedula en todas las rutas de autenticación.
+
+[BAJO] CORS: fallback LAN con credenciales abre cualquier origen RFC-1918 fuera de Production
+  Archivo: Backend.API/Startup/ServiceCollectionExtensions.cs:235,259-261
+  Evidencia:
+    bool isAllowedPort = port == 5000 || ... ; if (builder.Environment.IsProduction()) return false;
+    .AllowAnyMethod().AllowAnyHeader().AllowCredentials();
+  Impacto: en Development/Staging cualquier página desde host RFC-1918 en esos puertos es
+  origen válido con credenciales. SameSite=Strict limita el abuso; Production está excluido.
+  Recomendación: lista explícita Cors:AllowedOrigins también fuera de Production.
+
+[BAJO] Cookie pos_jwt con 120 min fijos mientras el JWT es configurable
+  Archivo: Backend.API/Controllers/AuthController.cs:163 (+ Services/TokenService.cs:47-52)
+  Evidencia:
+    Expires = DateTimeOffset.UtcNow.AddMinutes(120)
+  Impacto: si JwtSettings:ExpiryMinutes cambia, la cookie queda desalineada (sesión web
+  muere antes o sobrevive al token).
+  Recomendación: derivar Expires de la misma configuración del token.
+
+[BAJO] Cola de impresión de recibos sin límite (canal unbounded, fire-and-forget)
+  Archivo: Backend.API/Services/ChannelReceiptPrintQueue.cs:8
+  Evidencia:
+    Channel.CreateUnbounded<SaleReceiptContext>(new UnboundedChannelOptions ...)
+  Impacto: si el consumidor se bloquea (disco lleno/permisos), la cola crece con cada venta.
+  Recomendación: Channel.CreateBounded con FullMode definido + log/alertas de descarte.
+
+[BAJO] DateTime.Now en backend (nombre de archivo y timestamps de log)
+  Archivo: Backend.API/Controllers/ProductsController.ImportExport.cs:62 (+ Core/Logging/AppLogger.cs:141)
+  Impacto: ambigüedad de zona horaria/DST en un backend que usa UTC/VET en el resto.
+  Recomendación: DateTime.UtcNow o TimeZoneHelper.
+
+[BAJO] KnownFoldersHelper sin referencias (código muerto con P/Invoke)
+  Archivo: Backend.API/Helpers/KnownFoldersHelper.cs:18
+  Recomendación: eliminar si no hay ruta de descarga planificada.
+
+--------------------------------------------------------------------------------
+SECCIÓN 2 — MÓDULOS DE DOMINIO (Sales / Inventory / Logistics)
+--------------------------------------------------------------------------------
+
+[ALTO] Los montos USD y Bs.S de un pago se aceptan como independientes (USD liquida, caja registra Bs.S)
+  Archivo: Sales.Module/Services/SalesService.Checkout.cs:152-162,195-196 (también Payments.cs:216)
+  Evidencia:
+    if (amountUsd <= 0 && amountLocal > 0) amountUsd = amountLocal / exchangeRate;
+    else if (amountLocal <= 0 && amountUsd > 0) amountLocal = amountUsd * exchangeRate;
+    // ambos > 0 se persisten verbatim: Amount = amountUsd; AmountBsS = amountLocal;
+  Impacto: un cliente autenticado (API directa) envía Amount=100, AmountBsS=1: la venta
+  queda pagada al 100% en USD mientras SalePayment.AmountBsS y CashTransaction.AmountLocal
+  registran 1 Bs.S. Caja física ≠ libros; FinalPaidAmountBsS ≠ TotalBsS sin rechazo.
+  Recomendación: fuente única server-side (derivar Bs.S = ToBsSCeiling(USD × AppliedRate))
+  o rechazar cuando |AmountBsS − USD×rate| > 0.01; nunca aceptar ambos como independientes.
+
+[ALTO] HoldSale completa la venta con sobrepago inicial sin registrar el vuelto
+  Archivo: Sales.Module/Services/SalesService.HoldOrders.cs:109,132
+  Evidencia:
+    if (totalPaidUsd > 0 && sale.TotalUSD > 0 && remainingBalanceUsd <= 0.05m && totalPaidUsd >= (sale.TotalUSD - 0.05m))
+    { ... sale.Status = Completed; sale.FinalPaidAmountBsS = sale.Payments.Sum(p => p.AmountBsS); }
+  Impacto: no hay cota superior ni RecordSaleChangeAsync en este archivo (solo Checkout.cs:248).
+  Cliente que sobrepaga el abono inicial: la venta se completa, la caja retiene todo el
+  efectivo, FinalPaidAmountBsS > TotalBsS y no se emite egreso de vuelto.
+  Recomendación: rechazar totalPaidUsd > TotalUSD + 0.05 o registrar el cambio en la misma
+  transacción antes del commit (espejo del camino CompleteSale).
+
+[MEDIO] Abono solo-USD persiste AmountBsS = 0 en el pago y en el movimiento de caja
+  Archivo: Sales.Module/Services/SalesService.Payments.cs:48-49,68
+  Evidencia:
+    Amount = Math.Round(input.AmountUsd, 2, ...); AmountBsS = Math.Round(request.AmountBsS, 2, ...);
+    AmountLocal = Math.Round(request.AmountBsS, 2, ...);
+  Impacto: AddPayment solo con AmountUSD → SalePayment.AmountBsS=0 y CashTransaction.AmountLocal=0:
+  la caja no registra ingreso, FinalPaidAmountBsS subestima y el arqueo se rompe. Sin constraint DB.
+  Nota: en HoldOrders.cs:69 sí existe fallback (amountUsd * rate) para SalePayment, pero el
+  CashTransaction de :90 usa payment.AmountBsS crudo (0 si no vino).
+  Recomendación: derivar AmountBsS = Round(amountUsd × rate) cuando request.AmountBsS <= 0
+  (o rechazar), y usar el valor derivado también en el movimiento de caja.
+
+[MEDIO] La guarda anti-sobrepago de abonos es TOCTOU (sin lock sobre el total de la venta)
+  Archivo: Sales.Module/Services/SalesService.Payments.cs:124,225
+  Evidencia:
+    decimal runningPaidUsd = sale.Payments.Sum(p => p.Amount);          // lectura pre-transacción
+    if (runningPaidUsd + amountUsd > sale.TotalUSD + 0.05m) throw ...  // re-chequeo sin lock
+  Impacto: dos /payments concurrentes con claves de idempotencia distintas leen la misma suma
+  y ambos insertan; la venta queda con abonos > TotalUSD. Sale no se actualiza → xmin no dispara.
+  Recomendación: re-chequear dentro de la transacción con SELECT ... FOR UPDATE / advisory
+  lock xact sobre la venta o UPDATE condicional.
+
+[MEDIO] El cierre diario nunca netea el vuelto registrado por el sistema
+  Archivo: Sales.Module/Services/DailyClosureService.cs:43-51
+  Evidencia:
+    _context.SalePayments ... GroupBy(sp => sp.PaymentMethodId)
+      .Select(g => new { PaymentMethodId = g.Key, TotalBsS = g.Sum(sp => sp.AmountBsS) });
+  Impacto: el vuelto es un egreso físico real (CashDrawerService RecordSaleChangeAsync,
+  Type=Expense). El cierre compara bruto vs. gaveta neta → "Faltante" fantasma permanente
+  en cada cierre con vueltos; evidencia de auditoría incorrecta (no hay referencias a
+  CashTransactions en el servicio).
+  Recomendación: calcular el esperado del efectivo desde movimientos físicos netos
+  (apertura + ingresos − egresos) o restar los egresos por cambio.
+
+[MEDIO] Los detalles del cierre aceptan nombres de método del cliente y pueden omitir métodos esperados
+  Archivo: Backend.API/Controllers/DailyClosureController.cs:145 + DailyClosureService.cs:102-103
+  Evidencia:
+    PaymentMethodName = d.PaymentMethodName;  // cliente
+    if (existingMethodIds.Count < expectedTotals.Count) // guarda por conteo
+  Impacto: un llamador autenticado puede renombrar el método (queda en el audit trail) y
+  rellenar con IDs desconocidos para que el servidor nunca agregue el método faltante con
+  ventas reales. Evidencia de cierre falsificable/omisible.
+  Recomendación: resolver PaymentMethodName server-side y validar cada ID contra el conjunto
+  autoritativo esperado (rechazar desconocidos/faltantes, no comparar conteos).
+
+[MEDIO] La reserva de stock no es atómica y su compensación es código muerto
+  Archivo: Inventory.Module/Services/InventoryService.StockDeduction.cs:278-312,315
+  Evidencia:
+    ExecuteUpdateAsync(...)  // commit inmediato, sin transacción explícita
+    catch (DbUpdateConcurrencyException) { ... }  // StockReservation sin token de concurrencia
+  Impacto: si SaveChanges falla por causa transitoria, ReservedQuantity queda incrementado
+  sin fila de reserva → stock permanentemente no vendible, invisible para el job de expiración.
+  La compensación por DbUpdateConcurrencyException nunca se ejecuta.
+  Recomendación: transacción única para incremento + inserción; manejar DbUpdateException/transitorios.
+
+[MEDIO] UpdateSaleItemsAsync valida contra precio retail y no revalida tras recalcular
+  Archivo: Sales.Module/Services/SalesService.HoldOrders.cs:302,353
+  Evidencia:
+    decimal catalogPrice = product.PriceUSD;  // validación
+    ... await RecalculateTotalAsync(sale);    // usa lista efectiva Retail/Wholesale
+  Impacto: (a) un Cashier editando venta Wholesale es rechazado con 403 (precio enviado ≠ retail);
+  (b) si el recálculo baja el total (cambio de umbral de mayoreo), no se re-valida
+  newTotalUsd < totalPaidUsd → pedido OnHold con TotalUSD < abonado.
+  Recomendación: comparar contra el precio efectivo de la lista vigente y llamar
+  ValidateHoldSaleTotal(sale) después de cada recálculo.
+
+[MEDIO] La búsqueda de catálogo usa lower() y no puede usar los índices pg_trgm
+  Archivo: Inventory.Module/Services/InventoryService.CatalogQueries.cs:124
+  Evidencia:
+    query = query.Where(p => p.Name.ToLower().Contains(lower) || p.SKU.ToLower().Contains(lower));
+    -- índice: CREATE INDEX idx_products_name_trgm ON "Products" USING gin ("Name" gin_trgm_ops);
+  Impacto: PostgreSQL no matchea lower("Name") LIKE con un índice trgm sobre "Name" → seq
+  scans al crecer el catálogo (la búsqueda de historial sí usa EF.Functions.ILike).
+  Recomendación: usar EF.Functions.ILike o crear índices de expresión sobre lower("Name"/"SKU").
+
+[MEDIO] El adelanto de efectivo traga cualquier error y cae a productId = 1
+  Archivo: Sales.Module/Services/SalesService.CashAdvance.cs:58-61
+  Evidencia:
+    catch { productId = 1; }
+  Impacto: DB caída, concurrencia o validación fallida quedan ocultas y el adelanto se imputa
+  al producto con Id 1, corrompiendo historial e inventario de una salida de dinero real.
+  Recomendación: propagar la excepción (fallar el adelanto) o fallback solo ante "not found"
+  verificado; nunca a un ID mágico.
+
+[MEDIO] [8.130 INCOMPLETA] AddItemAsync no ancla la tasa (a diferencia de sus hermanos)
+  Archivo: Sales.Module/Services/SalesService.cs:230
+  Evidencia:
+    sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
+    // RemoveItem :304, UpdateItemQuantity :336, Pricing.cs:22, HoldOrders.cs:37 usan ResolveAnchoredRateAsync
+  Impacto: POST /api/sales/{id}/items acepta tasa arbitraria del cliente (solo ceiling, sin
+  guarda ±10%/±100% BCV) y la persiste; la venta conserva snapshots manipulados hasta otra
+  operación anclada. La mitigación 8.130 listó Remove/Update/ExchangeRate pero omitió AddItem.
+  Recomendación: enrutar AddItem por ResolveAnchoredRateAsync como los demás mutadores.
+
+[BAJO] Recálculo masivo de OnHold por lotes sin transacción
+  Archivo: Sales.Module/Services/SalesService.Pricing.cs:58-64
+  Impacto: fallo a mitad deja el conjunto con tasas mixtas; sin rollback ni progreso explícito.
+  Recomendación: una transacción para todo el bucle o registro de progreso.
+
+[BAJO] La apertura de sesión carga toda la lista de transacciones de la sesión anterior
+  Archivo: Sales.Module/Services/CashDrawerService.cs:75-78
+  Evidencia:
+    _context.CashDrawerSessions.Include(s => s.Transactions) ... FirstOrDefaultAsync();
+  Impacto: materializa decenas de miles de filas solo para el carry-over (luego re-consulta
+  agregados por SQL). Está en el camino caliente del cobro.
+  Recomendación: eliminar el Include y leer ClosingBalanceLocal o el agregado directo.
+
+[BAJO] El retry del handler de inventario no re-verifica idempotencia ni aplica backoff
+  Archivo: Inventory.Module/EventHandlers/InventorySaleMadeEventHandler.cs:117-122
+  Evidencia:
+    for (int i = 0; i < 3; i++) { await Task.Delay(500, ...); await UpdateStockBatchAsync(pending, ...); }
+  Impacto: commit ambiguo puede deducir dos veces; backoff fijo; fallo final solo deja log
+  mientras la venta queda Completed.
+  Recomendación: re-consultar StockMovements por SaleId en cada reintento, backoff exponencial
+  y cola operativa para fallos no recuperados.
+
+[BAJO] NewStockLevel de reservas confirmadas se escribe desde entidad detached/obsoleta
+  Archivo: Inventory.Module/Services/InventoryService.StockDeduction.cs:333-383
+  Evidencia:
+    AsNoTracking().Include(r => r.Product); ... reservation.Product.StockQuantity -= ...  // no-op
+  Impacto: las mutaciones no persisten y el StockMovement registra el nivel previo, no el
+  resultado del ExecuteUpdate condicional (auditoría de inventario incorrecta bajo concurrencia).
+  Recomendación: obtener el nivel nuevo (RETURNING) o re-leer la fila tras el update.
+
+[BAJO] CompleteSaleRequest.Payments = null produce 500
+  Archivo: Backend.API/Controllers/SalesController.Checkout.cs:164
+  Evidencia:
+    var paymentInfos = request.Payments.Select(...);  // el DTO default se pisa con null explícito
+  Impacto: JSON válido "payments": null → NullReferenceException enmascarada por el handler global.
+  Recomendación: request.Payments ?? Enumerable.Empty<...>() o marcar el campo requerido.
+
+--------------------------------------------------------------------------------
+SECCIÓN 3 — WEB.FRONTEND (React 19 + Vite)
+--------------------------------------------------------------------------------
+
+[ALTO] Abono inicial duplicable: la Idempotency-Key se regenera en cada reintento de "Guardar en Espera"
+  Archivo: Web.Frontend/src/services/salesApi.js:82 + components/pos/HoldSaleModal.jsx:199
+  Evidencia:
+    const key = idempotencyKey || crypto.randomUUID();   // salesApi.js
+    await holdSale(saleId, request);                     // HoldSaleModal: no pasa clave ni la conserva
+  Impacto: GET/POST del hold deduplican por clave; si el servidor procesa el abono inicial y la
+  respuesta se pierde (timeout 15 s), el reintento del cajero re-ejecuta HoldSaleAsync y vuelve
+  a insertar SalePayment + CashTransaction → cobro duplicado. CheckoutModal sí usa key-holder estable.
+  Recomendación: key-holder por intento (patrón createCheckoutKeyHolder de utils/idempotency.js),
+  pasarlo a holdSale y resetear solo tras éxito/descarte.
+
+[ALTO] El cobro puede finalizar con preview ausente o desactualizado (roundingAdjustment = 0)
+  Archivo: Web.Frontend/src/components/checkout/CheckoutModal.jsx:155-169
+  Evidencia:
+    const isFullLiquidation = preview?.isFullyPaid ?? (hasValidPayments && remainingUsd <= 0.05);
+    const roundingAdjustment = preview?.roundingAdjustment ?? 0;
+    const canFinalize = hasValidPayments && !previewFailed && (overrideSale ? true : isFullLiquidation) ...;
+  Impacto: mientras el POST de checkout-preview está en vuelo (o quedó obsoleto tras mutar pagos),
+  canFinalize puede ser true con preview = null: se envía ajuste fiscal 0 y la liquidación se
+  evalúa con aritmética flotante local, contra la regla 8.5-WEB1 documentada en el propio código.
+  Recomendación: exigir preview != null ligado a la secuencia/hash de payments para habilitar
+  "Cobrar"; eliminar el fallback ?? 0 del ajuste fiscal.
+
+[ALTO] Carrera de la tasa: la respuesta de updateSaleExchangeRate pisa estado más nuevo del carrito
+  Archivo: Web.Frontend/src/context/CartContext.jsx:244-249
+  Evidencia:
+    updateSaleExchangeRate(currentSale.id, exchangeRate).then(updatedSale => {
+      if (updatedSale) setCurrentSale(updatedSale);  // sin guard reqId === cartRequestIdRef.current
+    });
+  Impacto: si el usuario agrega/edita ítems mientras el PUT de tasa está en vuelo, el DTO
+  calculado antes puede sobrescribir el estado fresco y "desaparecer" líneas del carrito;
+  el cajero cobra viendo un total anterior al real. Las demás mutaciones sí usan cartRequestIdRef.
+  Recomendación: aplicar el mismo guard de secuencia (o fusionar solo campos de tasa).
+
+[ALTO] [8.130 INCOMPLETA] Guardas por hash sin verificación de rol: Driver accede a Cierre Diario / Catálogo / Cuentas Abiertas
+  Archivo: Web.Frontend/src/App.jsx:27-63
+  Evidencia:
+    const VALID_VIEWS = ['pos','catalog','history','pending','pickups','register','closing','settings','exchange'];
+    function handleHashChange() { if (hash && VALID_VIEWS.includes(hash)) setCurrentView(hash); }
+  Impacto: Sidebar filtra por rol, pero escribir #closing/#catalog/#pending renderiza páginas sin
+  guarda interna (grep: solo RegisterPage, SettingsPage y ExchangeRatePage validan rol). Un Driver
+  puede abrir UI de caja/catálogo/ventas. El backend autoriza la mayoría de endpoints, pero la
+  mitigación cliente queda incompleta y expone acciones de dinero en la UI.
+  Recomendación: mapa rol→vistas permitidas en MainApp (redirigir a pos) + guarda por página;
+  centralizar el patrón que ya usan SettingsPage/ExchangeRatePage/RegisterPage.
+
+[MEDIO] Bucle de escaneo de laptop corre Sauvola + ZXing sincrónico en el hilo principal cada 50 ms
+  Archivo: Web.Frontend/src/components/pos/BarcodeScannerModal.jsx:443-465 + utils/laptopVisionEnhancer.js:71-143
+  Evidencia:
+    processMultiPassLaptopFrame(...); const zxingResult = reader.decode(filterCanvasRef.current);
+    setTimeout(runLaptopVisionLoop, 50);
+  Impacto: ~20 fps de drawImage + getImageData + binarización O(n) (~450k px) + decode sincrónico
+  en el hilo de UI: congela inputs/animaciones del POS en la ruta principal de escaneo.
+  Recomendación: Web Worker/OffscreenCanvas o reducir ROI/pacing; decodificar fuera del frame de UI.
+
+[MEDIO] Búsqueda de clientes en "Guardar en Espera" sin debounce ni aborto (respuestas fuera de orden)
+  Archivo: Web.Frontend/src/components/pos/HoldSaleModal.jsx:95-100
+  Evidencia:
+    const handleSearchChange = (e) => { setQuery(val); setIsDropdownOpen(true); loadCustomers(val); };
+  Impacto: un GET por tecla sin AbortController; una respuesta lenta de "a" puede pisar resultados
+  de "abc" y ofrecer un cliente equivocado. CustomerModal y CustomerSelectorCard ya usan useDebounce + abort.
+  Recomendación: reutilizar useDebounce (250-300 ms) + AbortController.
+
+[MEDIO] Contrato de error inconsistente: las ramas err.response?.… son código muerto
+  Archivo: Web.Frontend/src/services/api.js:346 (+ consumidores)
+  Evidencia:
+    throw new Error(errorMessage);  // sin status/response
+    const msg = err.response?.data?.Message || ...; if (... err.response?.status === 400 ...
+  Impacto: apiFetch lanza Error plano sin status; la recuperación por status nunca se cumple
+  (RegisterClosePage:152-158, PendingOrdersPage:162,388, CartContext:402, SettingsPaymentMethods:20).
+  La recuperación del Z depende solo de strings y se pierde estructura de diagnóstico.
+  Recomendación: adjuntar status/body al error (ApiError) y migrar consumidores, o eliminar ramas muertas.
+
+[MEDIO] Doble fetch por cada código escaneado (carrito + panel del escáner)
+  Archivo: Web.Frontend/src/pages/PosPage.jsx:166 + components/pos/BarcodeScannerModal.jsx:35,216
+  Evidencia:
+    const product = await getProductBySku(code, controller.signal);   // PosPage
+    const info = await resolveProductRef.current(trimmed);            // Scanner (misma URL)
+  Impacto: 2 peticiones idénticas a /api/products/quick-check/{sku} en la ruta más caliente del POS.
+  Recomendación: resolver una sola vez y pasar el resultado al panel (o caché corta por código).
+
+[MEDIO] Render duplicado escritorio + móvil de todas las listas y sin virtualización
+  Archivo: Web.Frontend/src/pages/PendingOrdersPage.jsx:266,285; HistoryPage.jsx:378,557; CatalogPage.jsx:260,368
+  Evidencia:
+    {filteredSales.map(...)}  // escritorio
+    {filteredSales.map(...)}  // móvil — ambos montados; el CSS solo alterna display
+  Impacto: hasta ~400 subárboles de fila por render con pageSize=200, sin React.memo ni windowing.
+  Recomendación: render condicional por media query (useMediaQuery) y/o virtualización.
+
+[MEDIO] Violación de Rules of Hooks por early return antes de useEffect
+  Archivo: Web.Frontend/src/pages/RegisterPage.jsx:45,56; ExchangeRatePage.jsx:20,30; SettingsPage.jsx:24,62
+  Evidencia:
+    if (isDriver) { return (<AccesoDenegado/>); } ... useEffect(() => { setCurrentPage(1); }, [...]);
+  Impacto: si el rol cambia sin desmontar, el número de hooks varía → "Rendered fewer/more hooks than expected".
+  Recomendación: wrapper que retorne antes de montar la página o mover el early return después de los hooks.
+
+[MEDIO] Precedencia de tasa inconsistente entre líneas del carrito y resumen
+  Archivo: Web.Frontend/src/components/pos/CartTable.jsx:28 vs CartList.jsx:13 vs context/CartContext.jsx:490
+  Evidencia:
+    getLineAmounts(item, currentSale?.appliedRate || exchangeRate);  // tabla
+    getLineAmounts(item, exchangeRate);                              // lista
+    const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale?.appliedRate || 1); // contexto
+  Impacto: tres criterios para la misma línea; montos que no suman visualmente igual; desconfianza/cuadre.
+  Recomendación: único selector de tasa/línea expuesto por CartContext.
+
+[MEDIO] decodeFromStream sin catch + errores silenciados en el escáner
+  Archivo: Web.Frontend/src/components/pos/BarcodeScannerModal.jsx:471-481,406
+  Evidencia:
+    reader.decodeFromStream(activeStreamRef.current, videoRef.current, (zxingResult) => {...});  // promesa sin .catch
+    } catch {}   // silencio total
+  Impacto: stream interrumpido → unhandled rejection sin feedback; fallos de cámara ocultos.
+  Recomendación: .catch con log/status; reemplazar catch{} por logging con contexto.
+
+[BAJO] index.css monolítico (3115 líneas) con 259 !important
+  Archivo: Web.Frontend/src/index.css
+  Impacto: hoja global render-blocking, guerras de especificidad, theming difícil.
+  Recomendación: dividir por dominio y sustituir !important por @layer/tokens.
+
+[BAJO] Código muerto: ClosingPage, PartialPaymentModal, rama hold de CustomerModal y exports sin uso
+  Archivo: Web.Frontend/src/pages/ClosingPage.jsx; components/pos/PartialPaymentModal.jsx; components/pos/CustomerModal.jsx:193-209; services/salesApi.js:140
+  Impacto: rutas financieras no ejercitadas y confusión en auditorías.
+  Recomendación: eliminar o reconectar al flujo vigente, ajustando pruebas.
+
+[BAJO] Props ignoradas y callbacks duplicados en el POS
+  Archivo: Web.Frontend/src/pages/PosPage.jsx:227-230,256-257 + components/pos/SearchBar.jsx:8
+  Evidencia: SearchBar recibe exchangeRate/priceListType/disabled que ignora; CartTable/CartList
+  reciben onUpdateQty y onUpdateQuantity con la misma función.
+  Recomendación: eliminar props ignoradas y unificar el nombre del callback.
+
+[BAJO] Accesibilidad: zoom bloqueado, filas/encabezados solo clicables, id de diálogo duplicado
+  Archivo: Web.Frontend/index.html:5; pages/HistoryPage.jsx:575; pages/CatalogPage.jsx:208-210; components/ui/ConfirmModal.jsx:90
+  Impacto: WCAG 1.4.4 y 2.1.1 incumplidas; aria-labelledby roto si hay dos ConfirmModal.
+  Recomendación: quitar maximum-scale/user-scalable; controles accesibles (button/tabIndex/aria);
+  useId() en ConfirmModal.
+
+[BAJO] Estado entre pestañas desincronizado (formato de moneda, tema, vista activa)
+  Archivo: Web.Frontend/src/context/CurrencyFormatContext.jsx:46; utils/formatters.js:16-22; context/ThemeContext.jsx:7; App.jsx:34
+  Impacto: una segunda pestaña mantiene caché/formato/tema/vista obsoletos (solo el carrito usa BroadcastChannel).
+  Recomendación: sincronizar con storage/BroadcastChannel y revalidar al recuperar foco.
+
+[BAJO] El auto-cierre de SuccessScreen se reinicia con cada re-render del padre
+  Archivo: Web.Frontend/src/components/checkout/SuccessScreen.jsx:14-19 + App.jsx:226
+  Evidencia:
+    useEffect(() => { const t = setTimeout(onClose, 4500); return () => clearTimeout(t); }, [onClose]);
+    onClose={() => setCompletedInvoice(null)}   // nueva función por render
+  Impacto: el overlay de éxito puede quedar visible mucho más de 4.5 s tapando el flujo de caja.
+  Recomendación: useCallback en App o dependencia por invoiceNumber.
+
+--------------------------------------------------------------------------------
+SECCIÓN 4 — DESKTOP WPF (Desktop.Client / Desktop.Client.Core)
+--------------------------------------------------------------------------------
+
+[ALTO] SignalR nunca recibe token de autenticación — tiempo real muerto en silencio
+  Archivo: Desktop.Client.Core/Services/ExchangeRateService.cs:51-58
+  Evidencia:
+    options.AccessTokenProvider = () => Task.FromResult(_httpClient.DefaultRequestHeaders.Authorization?.Parameter);
+  Verificado: NO existe ninguna asignación a DefaultRequestHeaders.Authorization en todo el
+  repositorio (grep global sin resultados); UserSessionHeaderHandler fija request.Headers.Authorization
+  por petición, no el default del HttpClient. El hub exige autenticación
+  (Backend.API/Hubs/ExchangeRateHub.cs [Authorize] + PipelineExtensions .RequireAuthorization()).
+  Impacto: no llegan ReceiveRateUpdate / OnHoldSalesUpdated / OnPaymentMethodsUpdated; tasa y
+  pedidos desactualizados hasta refresco manual, más ~5 minutos de reintentos 401 silenciosos
+  por arranque (ExchangeRateService.cs:194-198 traga todos los fallos y reintenta x60/5 s).
+  Recomendación: inyectar UserSession y devolver su token desde AccessTokenProvider (o accessor
+  dedicado); registrar el fallo y acotar el backoff.
+
+[MEDIO] LoginViewModel singleton es dispuesto por el ciclo de vida de la vista
+  Archivo: Desktop.Client/Views/LoginView.xaml.cs:24 + Desktop.Client/App.xaml.cs:195
+  Evidencia:
+    builder.Services.AddSingleton<LoginViewModel>();          // App
+    if (e.OldValue is LoginViewModel oldVm) oldVm.Dispose();  // LoginView al desmontar
+  Impacto: Dispose desuscribe _connectionManager.ConnectionStatusChanged; tras el primer
+  logout/login la instancia ya está dispuesta y el indicador de conexión deja de actualizarse
+  (contradicción singleton/transient).
+  Recomendación: registrar transient (uno por vista) o reemplazar Dispose por Detach/Reattach.
+
+[MEDIO] Pins TOFU solo en memoria (se pierden en cada reinicio)
+  Archivo: Desktop.Client.Core/Services/CertificatePinning.cs:16
+  Evidencia:
+    private static readonly ConcurrentDictionary<string, string> KnownThumbprints = new(...);
+  Impacto: un MITM presente en la primera conexión tras cada arranque es confiado; la mitigación
+  8.9-M4/8.16-R18 no es durable (JWT/tráfico LAN expuestos en ese arranque).
+  Recomendación: persistir thumbprint por host (archivo DPAPI) y cargarlo al inicio; TOFU solo UX de primer contacto.
+
+[MEDIO] La prueba de conexión sondea el puerto 5000 aunque la URL sea HTTPS
+  Archivo: Desktop.Client.Core/ViewModels/ServerConnectionViewModel.cs:176
+  Evidencia:
+    var probe = await _scannerService.ProbeSingleHostAsync(ServerAddress, 5000, 1500);
+  Impacto: un servidor HTTPS válido (5001) se reporta "no respondió" y no se puede guardar desde
+  el diálogo. Además el cliente usa puertos inconsistentes (scanner 5000 y 5001; ConnectionManager
+  heartbeat 5000 vs Initialize 5001).
+  Recomendación: derivar el puerto del esquema de la URI (https → 5001) y unificar el criterio de sondeo.
+
+[MEDIO] ResilienceHandler filtra respuestas 5xx intermedias en los reintentos
+  Archivo: Desktop.Client.Core/Services/ResilienceHandler.cs:77-116
+  Evidencia:
+    for (...) { response = await base.SendAsync(...); if ((int)response.StatusCode < 500) return response; ... }
+  Impacto: hasta MaxRetries-1 HttpResponseMessage huérfanos (sockets/streams) por petición
+  idempotente con 5xx intermitentes; crecimiento de recursos en quioscos de larga duración.
+  Recomendación: disponer la respuesta intermedia antes de reintentar.
+
+[MEDIO] La búsqueda de productos convierte cualquier fallo en lista vacía ("Product not found")
+  Archivo: Desktop.Client.Core/Services/ProductService.cs:128-130 (+ PosViewModel.cs:370)
+  Evidencia:
+    catch { return new List<ProductQuickInfoDto>(); }
+  Impacto: caída/timeout/401/500 indistinguibles de un código desconocido; fallos de
+  infraestructura nunca se registran y se engaña al cajero.
+  Recomendación: propagar el error al llamador (excepción o resultado tipado) o al menos
+  registrar vía ClientStateLogger.
+
+[BAJO] Historiales en memoria sin límite en caja y tasa
+  Archivo: Desktop.Client.Core/ViewModels/CashDrawerViewModel.cs:199-203; ExchangeRateViewModel.cs:237-240
+  Impacto: memoria en crecimiento en quioscos de larga duración; se reconsulta el historial
+  completo en cada refresco/ShiftClosed/TimeZoneChanged.
+  Recomendación: paginar server-side y acotar la ventana en memoria.
+
+[BAJO] Rama HTTP muerta y comentario no revisado en el escáner de subred
+  Archivo: Desktop.Client.Core/Services/SubnetScannerService.cs:110-126
+  Evidencia:
+    // 8.16-ALTO-2: Rechazar http:// si no es loopback ... (wait, IsPrivateOrLocalAddress includes LAN! ...)
+    if (scheme == "http" && !IsPrivateOrLocalAddress(cleanHost)) return null;  // subsumida por loopback estricto
+  Impacto: política contradictoria; futuras ediciones pueden regresar la regla de seguridad.
+  Recomendación: eliminar la rama muerta y dejar una única regla documentada loopback-only.
+
+[BAJO] Fire-and-forget desnudos evitan la ruta sancionada de error
+  Archivo: Desktop.Client/Helpers/KeyboardWedgeScannerListener.cs:105; Desktop.Client.Core/ViewModels/EditSaleDialogViewModel.cs:151
+  Evidencia:
+    _ = _onBarcodeScanned(candidate);  /  _ = SearchProductsAsync(value);
+  Impacto: excepciones no observadas; fallos invisibles.
+  Recomendación: encaminar por SafeFireAndForget; sustituir el acople por textBox.Name por tag/propiedad.
+
+[BAJO] Cadenas de UI mezcladas inglés/español y ex.Message crudo en diálogos
+  Archivo: Desktop.Client.Core/ViewModels/SettingsViewModel.cs:150,228,303; PosViewModel.cs:322; ProductDialogViewModel.cs:341
+  Impacto: UX/localización inconsistente; detalle técnico expuesto al operador.
+  Recomendación: centralizar textos es-VE; no concatenar ex.Message en diálogos.
+
+[BAJO] Manejadores globales de excepción duplicados (doble procesamiento de crashes)
+  Archivo: Desktop.Client/App.xaml.cs:74 y 262-273
+  Impacto: doble registro (crash.txt + AppLogger), comportamiento dependiente del orden.
+  Recomendación: un único manejador por evento.
+
+[BAJO] Fallos del version-check solo a Console (inexistente en WPF) y URL de update puede ser HTTP
+  Archivo: Desktop.Client.Core/Services/VersionCheckService.cs:67; ViewModels/VersionLockoutViewModel.cs:46-64
+  Impacto: fallos invisibles en logs; el flujo de bloqueo puede enviar a URL sin TLS manipulable
+  en LAN (mitigación incompleta de "sin HTTP remoto plano").
+  Recomendación: AppLogger/ClientStateLogger; exigir HTTPS para URLs de update no loopback.
+
+[BAJO] RBAC de caja falla abierto sin sesión; IDs de métodos de pago hardcodeados
+  Archivo: Desktop.Client.Core/ViewModels/CashDrawerViewModel.cs:118,390-394
+  Evidencia:
+    public bool IsAdmin => _userSession == null || _userSession.IsAdmin;  // fail-open
+  Impacto: construcciones sin sesión (tests/cableado alternativo) reportan admin; IDs fijos
+  (2/3/4) pueden imputar mal adelantos si el catálogo difiere.
+  Recomendación: fallar cerrado (_userSession?.IsAdmin == true) y cargar métodos desde el servicio.
+
+[BAJO] Recargas de cuentas abiertas compiten sin guarda de reentrada
+  Archivo: Desktop.Client.Core/ViewModels/PendingOrdersViewModel.cs:105 (invocado desde :86,:95)
+  Impacto: respuestas intercaladas pueden pisar una página más nueva con una antigua
+  (PendingPickupsViewModel sí tiene `if (IsLoading) return;`).
+  Recomendación: guarda de reentrada + verificación de generación antes de aplicar resultados.
+
+Nota: los hallazgos del updater (extracción parcial, TOCTOU, junctions/ADS, serviceName en argv)
+están consolidados en la Sección 5 para no duplicarlos.
+
+--------------------------------------------------------------------------------
+SECCIÓN 5 — INFRAESTRUCTURA, CI, TESTS, CONFIGURACIÓN Y UPDATER
+--------------------------------------------------------------------------------
+
+[ALTO] Cadena de actualización/instalación sin autenticidad (hash del mismo origen, firma opcional, URL HTTP)
+  Archivo: UpdaterService/Program.cs:41-44; scripts/build-release.ps1:216; scripts/actualizar_servicio_y_sistema.bat:40; Core/Configuration/SystemSettingsOptions.cs:9
+  Evidencia:
+    if (string.IsNullOrWhiteSpace(expectedHash) && File.Exists(packagePath + ".sha256"))
+        expectedHash = File.ReadAllText(packagePath + ".sha256").Trim();          // sidecar junto al paquete
+    Write-Host "ADVERTENCIA: signtool fallo; el instalador queda sin firmar."     // no rompe el build
+    Copy-Item -Path "$src\*" -Destination $target -Recurse -Force ...           // sin verificación
+    public string UpdateServerUrl { get; set; } = "http://localhost:5000/updates/";
+  Impacto: el .sha256 viaja junto al ZIP (prueba consistencia local, no origen); el instalador
+  puede quedar sin firmar sin fallar; el update manual copia binarios sin hash. Un servidor de
+  updates comprometido o MITM puede desplegar ejecutables arbitrarios en terminales POS.
+  (docs/INSTALLATION-advanced.md:81 reconoce "firma X.509 pendiente".)
+  Recomendación: exigir firma Authenticode/minisign y verificarla en UpdaterService; abortar el
+  release si no se firma; forzar HTTPS en el canal de update.
+
+[MEDIO] secrets.json sin ACL en el camino fallback del instalador (y legible antes de Set-Acl)
+  Archivo: installer/setup.iss:451-455; installer/Configure-PosService.ps1:439-440
+  Impacto: sin el script PS, secrets.json hereda la ACL de Program Files (lectura para usuarios
+  locales): password de BD, clave JWT y pass del pfx expuestos. En el camino normal hay una
+  ventana de segundos legible entre escritura y Set-Acl.
+  Recomendación: aplicar ACL en la misma escritura (temporal + MoveFileEx/icacls), sin depender
+  de un script posterior.
+
+[MEDIO] La cuenta del servicio puede reemplazar secrets.json pese a la ACL del archivo
+  Archivo: installer/Configure-PosService.ps1:141,346
+  Evidencia:
+    FileSystemAccessRule($virtualAccount, "Modify", ...) sobre todo BackendAPI; luego ACL del archivo.
+  Impacto: Modify en el directorio incluye FILE_DELETE_CHILD/crear: el servicio puede borrar y
+  recrear secrets.json heredando la ACL del padre; un backend comprometido puede fijar su propia
+  clave JWT y persistir.
+  Recomendación: Modify solo para logs\ y certs\; excluir secrets.json del árbol escribible.
+
+[MEDIO] Integración Postgres comparte una sola BD y estado global, en paralelo y sin [Collection]
+  Archivo: CommandCenter.Tests/Builders/TestDatabaseFactory.cs:37; Integration/HistoryImmutabilityTests.cs:83; Integration/PostgresRealSharedTransactionTests.cs:80
+  Impacto: xUnit paraleliza por clase contra pos_test; una clase observa estado mutado por otra
+  (p. ej. la tasa global del día) → fallos intermitentes/dependientes de orden. No hay
+  xunit.runner.json ni [Collection]/CollectionBehavior.
+  Recomendación: colección serializada para suites Postgres reales o BD aislada por clase.
+
+[MEDIO] [8.130 INCOMPLETA] Password del usuario de estrés viaja en argv del proceso
+  Archivo: scripts/pos-test.ps1:454; scripts/stress-test.py:163
+  Evidencia: "--password", $Res.stressPassword,  →  parser.add_argument("--password", required=True)
+  Impacto: legible por otros procesos locales vía WMI/gestor de tareas.
+  Recomendación: env var, stdin o --password-file; nunca argv.
+
+[MEDIO] Token de monitoreo cifrado con DPAPI CurrentUser pero consumido por tarea SYSTEM
+  Archivo: docs/monitor-health-ui.ps1:134-135; installer/Configure-PosService.ps1:505; docs/monitor-health.ps1:214-218
+  Evidencia:
+    ConvertFrom-SecureString ... (default CurrentUser, el comentario dice LocalMachine)
+    schtasks /Create ... /RU SYSTEM ...
+  Impacto: SYSTEM no descifra el token; el script traga la excepción y envía el blob cifrado
+  como Bearer → frescura de backup y latencias autenticadas fallan en silencio.
+  Recomendación: DPAPI LocalMachine o secreto con -Key bajo ACL; o ejecutar la tarea con la
+  cuenta que capturó el token.
+
+[MEDIO] TestSchemaBootstrap fija el CancellationToken del primer llamador y cachea el fallo
+  Archivo: CommandCenter.Tests/Builders/TestSchemaBootstrap.cs:29,36
+  Evidencia:
+    new Lazy<Task>(() => RunBootstrapAsync(connStr, cancellationToken), LazyThreadSafetyMode.ExecutionAndPublication)
+  Impacto: si el primer test cancela (timeout), el bootstrap compartido queda cancelado/fallido
+  para todo el proceso → cadena de fallos no determinista en la suite Postgres.
+  Recomendación: no capturar el token externo (token interno) y reintentar invalidando la entrada ante fallo.
+
+[MEDIO] Tests dependientes de reloj real (Task.Delay fijos)
+  Archivo: CommandCenter.Tests/HealthPollingServiceTests.cs:55; InventoryPaginationTests.cs:241,299; Unit/PosViewModelPaymentMethodsDeduplicationTests.cs:43
+  Evidencia: await Task.Delay(3500); / await Task.Delay(600); / await Task.Delay(50);
+  Impacto: flakiness bajo carga y ~4-5 s añadidos por corrida.
+  Recomendación: timers virtuales/inyectables, polling con deadline, TaskCompletionSource para carreras.
+
+[MEDIO] El test TOCTOU de caja puede pasar por la razón equivocada
+  Archivo: CommandCenter.Tests/Integration/PostgresRealSharedTransactionTests.cs:93-105 + Sales.Module/Services/CashDrawerService.cs:16
+  Evidencia: dos Task.Run comparten el mismo SalesDbContext (no thread-safe); el assert solo
+  exige failureA != null || failureB != null.
+  Impacto: la excepción capturada puede ser de concurrencia del contexto, no de la barrera de
+  saldo; el guard TOCTOU no queda probado.
+  Recomendación: contexto por tarea o asertar el tipo/mensaje de negocio.
+
+[MEDIO] El gate de vulnerabilidades de CI puede pasar en silencio (solo regex, ignora $LASTEXITCODE)
+  Archivo: .github/workflows/ci.yml:99-104
+  Evidencia:
+    $audit = dotnet list CommandCenter.slnx package --vulnerable --include-transitive 2>&1 | Out-String
+    if ($audit -match '...') { exit 1 }
+  Impacto: si el comando falla (restore/NuGet) o cambia el texto, el step termina en 0 y el
+  escaneo se da por bueno.
+  Recomendación: validar $LASTEXITCODE y fallar ante error; idealmente parseo estructurado.
+
+[MEDIO] El updater continúa tras fallos de extracción — sin rollback, servicio detenido/binarios mixtos
+  Archivo: UpdaterService/UpdatePackageExtractor.cs:88-94 + Program.cs:75-93
+  Evidencia:
+    catch (Exception ex) { log($"Advertencia al extraer '{entry.FullName}': {ex.Message}"); }
+    ... log("Extracción completada exitosamente.");
+  Impacto: actualización parcial reinicia el servicio con binarios mezclados; cualquier fallo
+  de extracción deja PosBackendService detenido (intervención manual).
+  Recomendación: extraer a staging, verificar, swap atómico con backup y restaurar+reiniciar
+  ante cualquier fallo; tratar errores por entrada como fatales.
+
+[MEDIO] TOCTOU del hash de integridad (se reabre la misma ruta para extraer)
+  Archivo: UpdaterService/Program.cs:41,53-62,80
+  Impacto: quien controle el directorio/canal de entrega reemplaza el paquete entre el hash y la
+  extracción; la verificación no acredita origen.
+  Recomendación: firmar el paquete; volcar los bytes verificados a un temporal y extraer solo de ahí.
+
+[MEDIO] Extracción ZIP ciega a junctions preexistentes y ADS
+  Archivo: UpdaterService/UpdatePackageExtractor.cs:60-66
+  Impacto: la comprobación de cadena (StartsWith canonicalTargetDir) no resuelve reparse points:
+  un junction dentro de targetDir escribe fuera; nombres "file.txt:ads" (ADS NTFS) pasan.
+  (La protección clásica ../ y symlink sí existe y está probada.)
+  Recomendación: resolver reparse points por componente antes de escribir, rechazar ':' en
+  nombres de entrada y abortar ante cualquier reparse point detectado.
+
+[MEDIO] El updater concatena --serviceName sin validar en los argumentos del proceso
+  Archivo: UpdaterService/Program.cs:108,149-161 (parseo en :22-25)
+  Evidencia: return (appDirNssm, $"{action} \"{serviceName}\"");  // ProcessStartInfo.Arguments
+  Impacto: con control de la línea de comandos de un updater que suele correr elevado, una
+  comilla inyecta argumentos extra en nssm.exe/sc.exe (riesgo local).
+  Recomendación: allow-list de serviceName + ProcessStartInfo.ArgumentList; evitar elevación innecesaria.
+
+[BAJO] CI sin concurrency/cancel-in-progress (pipelines duplicados)
+  Archivo: .github/workflows/ci.yml:3-7
+  Recomendación: concurrency: { group: workflow-ref, cancel-in-progress: true }.
+
+[BAJO] Los PDB se empaquetan en publish y viajan al instalador
+  Archivo: scripts/build-release.ps1:50; installer/setup.iss:34
+  Impacto: divulgación de rutas/símbolos; mayor tamaño (10 .pdb verificados en publish/).
+  Recomendación: excluir *.pdb del publish Release o del [Files] del instalador.
+
+[BAJO] WebApplicationFactorySmokeTests muta variables de entorno de proceso con tests en paralelo
+  Archivo: CommandCenter.Tests/Integration/WebApplicationFactorySmokeTests.cs:53,59
+  Impacto: otras clases concurrentes pueden apuntar a pos_smoke_* o modo Development inesperado.
+  Recomendación: [Collection] serializada o configuración vía WithWebHostBuilder.
+
+[BAJO] PostgresRealSharedTransactionTests retorna en silencio sin TEST_POSTGRES_CONNECTION
+  Archivo: CommandCenter.Tests/Integration/PostgresRealSharedTransactionTests.cs:31,71,129
+  Impacto: tres pruebas transaccionales pueden pasar sin validar nada si falta la env
+  (PostgresRealIntegrationTests sí hace fail-fast en CI).
+  Recomendación: mismo guard fail-fast en CI.
+
+[BAJO] appsettings.Production.json versionado con datos del tenant y usuario admin por defecto
+  Archivo: Backend.API/appsettings.Production.json:3-4
+  Impacto: divulga identidad del cliente ("Inversiones Junior") y el username admin por defecto.
+  Recomendación: mover a configuración por sitio no versionada.
+
+[BAJO] build-clean.ps1 usa Invoke-Expression con argumentos del llamador
+  Archivo: scripts/build-clean.ps1:69-70
+  Impacto: inyección de comandos local si se invoca con argumentos manipulados (riesgo dev).
+  Recomendación: & dotnet build $slnPath @extraArgsList sin Invoke-Expression.
+
+================================================================================
+FIN DEL ANEXO — 86 hallazgos nuevos (10 ALTO / 42 MEDIO / 34 BAJO).
+Los ALTO fueron verificados contra el código el 2026-09-15; el detalle MEDIO/BAJO
+lleva evidencia archivo:línea. Próxima acción sugerida: atacar primero los 10 ALTO
+(ver TOP 10 PRIORIDADES), empezando por WPF-SignalR, cobro cross-currency,
+sobrepago de HoldSale, idempotencia web y lockout del backend.
+================================================================================
+
+================================================================================
+AVANCE DE REMEDIACIÓN — FASE 1: Backend API y Core
+Fecha: 2026-09-15
+Build: CommandCenter.slnx -c Release → 0 errores, 0 advertencias
+================================================================================
+
+LOTE 1.1 [RESUELTO] — Crecimiento ilimitado de memoria en métricas
+  Archivo: Backend.API/Middleware/RequestMetricsMiddleware.cs
+  Fix: Normalización de ruta usando RouteEndpoint.RoutePattern.RawText.
+       Rutas 404 y sin endpoint excluidas del registro.
+
+LOTE 1.2 [RESUELTO] — Lockout de cuenta de un solo uso + Admin raíz sin protección
+  Archivos: Backend.API/Controllers/AuthController.cs, UsersController.cs
+  Fix: Re-arme del lockout a 15 min cuando el anterior expiró (LockoutEndUtc <= UtcNow).
+       Admin raíz: Cedula, Username y Rol bloqueados contra mutación; IsActive siempre true.
+
+LOTE 1.3 [RESUELTO] — IDOR en recibos + Ownership fail-open + Idempotency sin UserId
+  Archivos: Backend.API/Controllers/ReceiptsController.cs,
+            Sales.Module/Services/IdempotencyService.cs,
+            Core/Interfaces/IIdempotencyService.cs, Core/Entities/IdempotentRequest.cs
+  Fix: ReceiptsController: si !isElevated y no parsea UserId => Forbid().
+       IdempotencyService: userId incluido en CheckAsync/RegisterSuccessAsync/HandleConcurrentCollisionAsync.
+
+LOTE 1.4 [RESUELTO] — Política de contraseñas 4 chars + PII en logs + Cookie fija
+  Archivos: AuthController.cs, Desktop.Client.Core/UsersManagementViewModel.cs,
+            Desktop.Client/ChangePasswordDialog.xaml.cs, Web.Frontend/src/pages/LoginPage.jsx
+  Fix: Mínimo 8 chars validado en backend, desktop y web.
+       ObfuscateCedula() aplicado en logs de cambio de contraseña.
+       Cookie pos_jwt expira según ITokenService.ExpiryMinutes.
+
+LOTE 1.5 [RESUELTO] — Tasa histórica incorrecta + Identidad de cierre + Cola sin límite
+  Archivos: Backend.API/Controllers/ShiftsController.cs, DailyClosureController.cs,
+            Backend.API/Services/ChannelReceiptPrintQueue.cs
+            Sales.Module/Migrations/20260915131925_AddExchangeRateToDailyClosure.cs
+  Fix: GetShiftReport usa la tasa persistida en DailyClosure (nueva columna ExchangeRate).
+       Identidad del cajero tomada de Claims, no del DTO del cliente.
+       Canal de impresión cambiado a Channel.CreateBounded(1000).
+
+LOTE 1.6 [RESUELTO] — ProfitPercentage en caché mutado + DateTime.Now + código muerto
+  Archivos: Inventory.Module/Services/InventoryService.cs,
+            Backend.API/Controllers/ProductsController.cs, múltiples
+  Fix: ProfitPercentage ocultado clonando el DTO (no mutando la entrada de caché).
+       DateTime.Now → DateTime.UtcNow en backend, Sales.Module e Inventory.Module.
+       KnownFoldersHelper eliminado.
+
+LOTE 1.7 [RESUELTO] — Scope declarado por cliente + Políticas no aplicadas + Driver inalcanzable
+  Archivos: Backend.API/Controllers/AuthController.cs (Lote 1.2),
+            Backend.API/Startup/ServiceCollectionExtensions.cs (Lote 1.2),
+            Backend.API/Controllers/CashDrawerController.cs
+  Fix: Scope unificado a 'pos:api'; el cliente ya no puede declarar pos:web/pos:desktop.
+       Políticas DesktopOnly/WebOnly eliminadas (obsoletas con scope unificado).
+       Bloque if(IsInRole("Driver")) eliminado de ProcessCashAdvance (código muerto).
+
+LOTE 1.8 [RESUELTO] — Pairing spoofeable + CORS + Version-check + GlobalExceptionHandler
+  Archivos: Backend.API/Controllers/PairingController.cs,
+            Backend.API/Startup/ServiceCollectionExtensions.cs,
+            Backend.API/Middleware/GlobalExceptionHandler.cs,
+            Backend.API/Middleware/VersionCheckMiddleware.cs
+  Fix: PairingController usa HttpContext.Connection.LocalIpAddress; puertos desde config.
+       CORS LAN solo en Development.
+       VersionCheck: exige header X-Client-Version en rutas /api (excepto allowlist pública).
+       GlobalExceptionHandler: excepciones internas (DB, null ref, etc.) enmascaran el mensaje.
+
+================================================================================
+FASE 1 COMPLETADA: 8/8 lotes resueltos | 0 errores de compilación
+================================================================================
+
+================================================================================
+AVANCE DE REMEDIACIÓN — FASE 2: Módulos de Dominio (Sales / Inventory / Logistics)
+Fecha: 2026-09-15
+Build: CommandCenter.slnx -c Release → 0 errores, 0 advertencias
+================================================================================
+
+LOTE 2.1 [RESUELTO] — Bajos de módulos de dominio
+
+  [2.1-1] BAJO: Apertura de sesión cargaba toda la lista de transacciones (N×K filas)
+    Archivo: Sales.Module/Services/CashDrawerService.cs:75-78
+    Fix: Eliminado Include(s => s.Transactions) en GetOrCreateActiveSessionAsync.
+         ClosingBalanceLocal ya está persistido en el registro; no se necesitan
+         las transacciones individuales para el carry-over de saldo.
+
+  [2.1-2] BAJO: NewStockLevel de reservas confirmadas escrito desde entidad detached
+    Archivo: Inventory.Module/Services/InventoryService.StockDeduction.cs:333-383
+    Fix: Después del ExecuteUpdate condicional, se re-lee StockQuantity directamente
+         desde la DB (SELECT WHERE Id = productId) para garantizar que NewStockLevel
+         refleje el valor real bajo concurrencia, no el valor pre-update en memoria.
+
+  [2.1-3] BAJO: Retry del handler de inventario sin backoff exponencial
+    Archivo: Inventory.Module/EventHandlers/InventorySaleMadeEventHandler.cs:117-122
+    Fix: Task.Delay(500) fijo → Task.Delay(500 * (int)Math.Pow(2, i)):
+         reintentos a 500ms, 1s y 2s. Reduce colisiones en picos de carga concurrente.
+
+LOTE 2.2 [RESUELTO] — Medios de Inventory / CashAdvance / AddItem
+
+  [2.2-1] MEDIO: Búsqueda de catálogo bloqueaba el índice gin_trgm con lower()
+    Archivo: Inventory.Module/Services/InventoryService.CatalogQueries.cs:62,124
+    Fix: ToLower().Contains(lower) → EF.Functions.ILike(p.Name/SKU, "%lower%").
+         PostgreSQL ahora puede usar el índice GIN trigramático para las búsquedas
+         de catálogo (GetSuggestionsAsync y GetProductsPagedAsync).
+
+  [2.2-2] MEDIO: Adelanto de efectivo silenciaba todos los errores (catch {}) y caía a productId=1
+    Archivo: Sales.Module/Services/SalesService.CashAdvance.cs:58-61
+    Fix: catch {} generalizado reemplazado por:
+         - catch(KeyNotFoundException): fallback a id=1 solo cuando el producto no existe.
+         - catch(Exception) tipado: errores de DB/concurrencia se propagan con InvalidOperationException.
+         Previene corrupción silenciosa del historial de inventario.
+
+  [2.2-3] MEDIO: AddItemAsync no anclaba la tasa BCV (omisión de 8.130)
+    Archivo: Sales.Module/Services/SalesService.cs:230
+    Fix: PricingCalculator.RoundExchangeRateCeiling(exchangeRate)
+         → ResolveAnchoredRateAsync(exchangeRate, contextLabel: "AddItem", referenceId: sale.Id)
+         Cierra la brecha donde POST /api/sales/{id}/items aceptaba tasa arbitraria
+         del cliente sin validar la desviación BCV (los demás mutadores ya usaban
+         ResolveAnchoredRateAsync desde 8.130).
+
+================================================================================
+FASE 2 EN PROGRESO: 2/5 lotes resueltos | 0 errores de compilación
+
+Pendientes:
+  Lote 2.3 — MEDIOs: UpdateSaleItems valida precio retail en vez del efectivo +
+             TOCTOU en guard de sobrepago de abonos (sin lock de venta)
+  Lote 2.4 — MEDIOs: Cierre diario no netea vueltos físicos +
+             Nombre de método del cliente falsificable en cierre
+  Lote 2.5 — ALTOs: Montos USD/BsS aceptados como independientes en checkout +
+HoldSale completa con sobrepago sin registrar vuelto
+
+================================================================================
+AVANCE DE REMEDIACIÓN — FASE 2 (CONTINUACIÓN): Módulos de Dominio
+Fecha: 2026-09-15
+Build: CommandCenter.slnx -c Release → 0 errores, 0 advertencias
+Suite: CommandCenter.Tests → 1016/1016 (0 fallos) | Web: npm test 178/178, lint exit 0
+================================================================================
+
+LOTE 2.3 [RESUELTO] — MEDIOs: precio efectivo al editar OnHold + TOCTOU de abonos
+  [2.3-1] UpdateSaleItemsAsync validaba contra retail (product.PriceUSD) en vez del
+    precio efectivo de la lista vigente (Retail/Wholesale) y no re-validaba el total
+    tras el recálculo.
+    Archivo: Sales.Module/Services/SalesService.HoldOrders.cs
+    Fix: el guard de override, el fallback y IsCustomPrice usan el precio efectivo con
+         el mismo criterio que RecalculateTotalAsync (PriceWholesaleUSD/PriceRetailUSD,
+         HasWholesale, MinWholesaleQuantity, PriceListType). Se agregó
+         ValidateHoldSaleTotal(sale) después de RecalculateTotalAsync.
+  [2.3-2] El guard anti-sobrepago de abonos era TOCTOU (lecturas pre-transacción).
+    Archivo: Sales.Module/Services/SalesService.Payments.cs
+    Fix: advisory lock por venta (pg_advisory_xact_lock(2, saleId), solo Npgsql) +
+         re-lectura de estado fresco (Status/TotalUSD/AppliedRate y suma abonada desde
+         BD) dentro de la transacción; el cómputo de montos se re-ejecuta contra esos
+         valores, en el abono simple y en el lote. En InMemory/Sqlite (tests) el lock
+         se omite y la lógica se mantiene.
+
+LOTE 2.4 [RESUELTO] — MEDIOs: cierre netea vueltos + nombre de método server-side
+  [2.4-1] El cierre diario no neteaba los vueltos físicos (egresos por cambio).
+    Archivo: Sales.Module/Services/DailyClosureService.cs
+    Fix: GetExpectedTotalsByPaymentMethodAsync resta a los métodos de efectivo los
+         CashTransactions (Expense + Source=SalePayment + IsPhysicalCash) de la misma
+         ventana; los vueltos sin PaymentMethodId se imputan al primer método cash
+         (orden DisplayOrder/Nombre).
+  [2.4-2] PaymentMethodName venía del cliente y la guarda por conteo permitía omitir
+    métodos esperados.
+    Archivos: DailyClosureService.cs, DailyClosureController.cs, ShiftsController.cs
+    Fix: nombres resueltos server-side (el texto del cliente nunca se persiste);
+         ids desconocidos → BadRequest/ArgumentException; métodos faltantes se agregan
+         siempre por diferencia de conjuntos (sin comparar conteos); ids duplicados
+         rechazados (endurecimiento adicional).
+
+LOTE 2.5 [RESUELTO] — ALTOs: montos USD/Bs.S independientes + vuelto de HoldSale
+  [2.5-1] Los montos USD y Bs.S de un pago se aceptaban como valores independientes.
+    Archivos: SalesService.Payments.cs, SalesService.Checkout.cs, SalesService.HoldOrders.cs
+    Fix: par único y consistente en los 4 caminos (checkout, abono simple, lote de
+         abonos, pago inicial de HoldSale): con ambos > 0 se exige
+         |BsS/rate − USD| <= 0.01 (tolerancia en USD; el error legítimo de Web/WPF es
+         <= 0.005); con un solo lado se deriva con PricingCalculator (ToBsS/ToUSD) y el
+         valor derivado se persiste igual en SalePayment y CashTransaction (corrige el
+         abono solo-USD con AmountBsS=0). En checkout el rechazo de negativos ocurre
+         antes de cualquier conversión.
+  [2.5-2] HoldSale completaba con sobrepago inicial sin registrar el vuelto.
+    Archivo: Sales.Module/Services/SalesService.HoldOrders.cs
+    Fix: con saldo restante < −0.05 se registra el egreso físico vía
+         RecordSaleChangeAsync (mismos límites operacionales y pendingCashIncome que
+         CompleteSale); FinalPaidAmountBsS sigue siendo el bruto; sobrepago <= 0.05
+         completa sin vuelto (tolerancia de redondeo).
+
+LOTE 2.6 [RESUELTO] — Residuales de la Sección 2
+  [2.6-1] MEDIO: reserva de stock no atómica y compensación muerta.
+    Archivo: Inventory.Module/Services/InventoryService.StockDeduction.cs
+    Fix: incremento de ReservedQuantity + inserción de StockReservation en una sola
+         unidad de trabajo (transacción propia bajo execution strategy, o participación
+         en la transacción ambiente); eliminado el catch de DbUpdateConcurrencyException
+         inalcanzable.
+  [2.6-2] BAJO: recálculo masivo de OnHold sin transacción ni progreso explícito.
+    Archivo: Sales.Module/Services/SalesService.Pricing.cs
+    Fix: progreso explícito por página y resumen final; ante fallo se registra cuántas
+         ventas ya se persistieron antes de re-lanzar (atomicidad por página intacta).
+  [2.6-3] BAJO: CompleteSaleRequest.Payments = null producía 500.
+    Archivo: Backend.API/Controllers/SalesController.Checkout.cs
+    Fix: mapeo null-safe (null o elementos null → sin pagos) → 4xx de dominio.
+  [2.6-4] Endurecimiento adicional: detalles de cierre con PaymentMethodId duplicado.
+    Archivos: DailyClosureService.cs, DailyClosureController.cs, ShiftsController.cs
+    Fix: duplicados rechazados (400/ArgumentException); evita doble conteo de
+         esperado/declarado.
+
+ADICIONAL [RESUELTO] — Regresiones de suite detectadas y corregidas
+  - Inventory.Module/Services/InventoryService.CatalogQueries.cs: la búsqueda con
+    EF.Functions.ILike quedó provider-aware (ILike en Npgsql para el índice gin_trgm;
+    fallback ToLower().Contains en otros providers). La suite volvió a verde.
+  - CommandCenter.Tests/Unit/Phase2IntegrityRemediationTests.cs: el test de Driver en
+    adelanto de efectivo quedó alineado a la capa real de autorización (atributo).
+
+VERIFICACIÓN
+  - dotnet build CommandCenter.slnx -c Release → 0 advertencias / 0 errores
+  - dotnet test CommandCenter.Tests → 1016/1016 (0 fallos) — 28 tests nuevos
+  - Web.Frontend: npm test → 178/178; npm run lint → exit 0
+  - 1 test de concurrencia Postgres-gated (abonos) queda pendiente de ejecución
+    con TEST_POSTGRES_CONNECTION (compila y se omite limpio sin la variable).
+
+ALCANCE: Sección 2 del Anexo COMPLETA. Pendientes del Anexo: Secciones 3 (Web),
+4 (WPF) y 5 (Infra/CI/Updater).
+================================================================================

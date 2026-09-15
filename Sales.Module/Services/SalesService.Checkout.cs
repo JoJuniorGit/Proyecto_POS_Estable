@@ -149,17 +149,16 @@ public partial class SalesService
 
                 foreach (var p in payments)
                 {
-                    decimal amountUsd = p.Amount;
-                    decimal amountLocal = p.AmountLocal;
+                    // 8.7-B2: Rechazo de montos NEGATIVOS por método, validado sobre los valores crudos
+                    // antes de resolver la conversión (un negativo no puede quedar enmascarado por el par).
+                    // Los ceros absolutos se purgan en la sanitización pre-persistencia y los montos mixtos
+                    // (una sola moneda) se resuelven en el par USD/Bs.S consistente.
+                    if (p.Amount < 0m || p.AmountLocal < 0m)
+                    {
+                        throw new ArgumentException($"La validación del método de pago (PaymentMethodId={p.PaymentMethodId}) rechaza montos negativos. Monto USD={p.Amount}, Monto Bs.S={p.AmountLocal}.");
+                    }
 
-                    if (amountUsd <= 0 && amountLocal > 0 && exchangeRate > 0)
-                    {
-                        amountUsd = Math.Round(amountLocal / exchangeRate, 2, MidpointRounding.AwayFromZero);
-                    }
-                    else if (amountLocal <= 0 && amountUsd > 0 && exchangeRate > 0)
-                    {
-                        amountLocal = Math.Round(amountUsd * exchangeRate, 2, MidpointRounding.AwayFromZero);
-                    }
+                    var (amountUsd, amountLocal) = ResolveConsistentPaymentAmounts(p.Amount, p.AmountLocal, exchangeRate);
 
                     paymentMethodsDict.TryGetValue(p.PaymentMethodId, out var paymentMethod);
 
@@ -170,18 +169,8 @@ public partial class SalesService
                         throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={p.PaymentMethodId}. Verifique la configuración de métodos de pago.");
                     }
 
-                    // 8.7-B2: Rechazo de montos NEGATIVOS por método. Sin esta validación, un pago con
-                    // Amount <= 0 Y AmountLocal <= 0 se persistiría tal cual y distorsionaría los totales
-                    // liquidados y el arqueo diario (suma de AmountBsS). Los ceros absolutos se purgan en la
-                    // sanitización pre-persistencia (:592-596) y los montos mixtos (una sola moneda) se
-                    // convierten arriba.
-                    if (amountUsd < 0m || amountLocal < 0m)
-                    {
-                        throw new ArgumentException($"La validación del método de pago (PaymentMethodId={p.PaymentMethodId}) rechaza montos negativos. Monto USD={p.Amount}, Monto Bs.S={p.AmountLocal}.");
-                    }
-
                     // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
-                    if (paymentMethod != null && paymentMethod.IsCash && amountLocal % 1 != 0)
+                    if (paymentMethod.IsCash && amountLocal % 1 != 0)
                     {
                         throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");
                     }
@@ -361,6 +350,7 @@ public partial class SalesService
                     PayloadHash = idempotencyPayloadHash,
                     StatusCode = 200,
                     ResponseBody = JsonSerializer.Serialize(sale.InvoiceNumber.Value),
+                    UserId = actingUserId,
                     CreatedAtUtc = DateTime.UtcNow,
                     ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
                 });

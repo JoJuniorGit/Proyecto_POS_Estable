@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -41,14 +42,12 @@ public partial class ProductsController : ControllerBase
         var result = await _inventoryService.GetProductsPagedAsync(filter, page, pageSize, statusFilter: status, sortBy: sortBy, isDescending: isDescending, token: token);
         if (!_currentUserService.CanMutateCatalog && result.Items != null)
         {
+            var maskedItems = new List<ProductDto>();
             foreach (var item in result.Items)
             {
-                item.CostPriceUSD = 0m;
-                item.Cost = 0m;
-                item.ProfitMarginRetail = 0m;
-                item.ProfitMarginWholesale = 0m;
-                item.ProfitPercentage = 0m;
+                maskedItems.Add(MaskProductDto(item));
             }
+            result.Items = maskedItems;
         }
         return result;
     }
@@ -61,11 +60,7 @@ public partial class ProductsController : ControllerBase
         var dto = MapToDto(product);
         if (!_currentUserService.CanMutateCatalog)
         {
-            dto.CostPriceUSD = 0m;
-            dto.Cost = 0m;
-            dto.ProfitMarginRetail = 0m;
-            dto.ProfitMarginWholesale = 0m;
-            dto.ProfitPercentage = 0m;
+            return MaskProductDto(dto);
         }
         return dto;
     }
@@ -351,6 +346,77 @@ public class StatusUpdateDto
         }
     }
 
+    private ProductDto MaskProductDto(ProductDto item)
+    {
+        return new ProductDto
+        {
+            Id = item.Id,
+            Name = item.Name,
+            SKU = item.SKU,
+            Description = item.Description,
+            PriceUSD = item.PriceUSD,
+            PriceRetailUSD = item.PriceRetailUSD,
+            PriceWholesaleUSD = item.PriceWholesaleUSD,
+            CostPriceUSD = 0m,
+            ProfitMarginRetail = 0m,
+            ProfitMarginWholesale = 0m,
+            MinWholesaleQuantity = item.MinWholesaleQuantity,
+            HasWholesale = item.HasWholesale,
+            IsFractional = item.IsFractional,
+            UnitOfMeasure = item.UnitOfMeasure,
+            PriceBsS = item.PriceBsS,
+            Cost = 0m,
+            StockQuantity = item.StockQuantity,
+            ProfitPercentage = 0m,
+            LowStockThreshold = item.LowStockThreshold,
+            IsCashAdvance = item.IsCashAdvance,
+            IsActive = item.IsActive,
+            IsDeleted = item.IsDeleted,
+            ReservedQuantity = item.ReservedQuantity,
+            ParentProductId = item.ParentProductId,
+            ParentIsStockShared = item.ParentIsStockShared,
+            IsGroupHeader = item.IsGroupHeader,
+            IsStockShared = item.IsStockShared,
+            HasIndependentPricing = item.HasIndependentPricing,
+            ConversionFactor = item.ConversionFactor,
+            GroupKey = item.GroupKey,
+            VariantCount = item.VariantCount,
+            ConsolidatedStock = item.ConsolidatedStock,
+            Variants = item.Variants?.Select(v => MaskProductDto(v)).ToList()
+        };
+    }
+
+    private Core.DTOs.ProductQuickInfoDto MaskQuickInfoDto(Core.DTOs.ProductQuickInfoDto item)
+    {
+        return new Core.DTOs.ProductQuickInfoDto
+        {
+            Id = item.Id,
+            SKU = item.SKU,
+            Name = item.Name,
+            PriceUSD = item.PriceUSD,
+            PriceRetailUSD = item.PriceRetailUSD,
+            PriceWholesaleUSD = item.PriceWholesaleUSD,
+            PriceBsS = item.PriceBsS,
+            HasWholesale = item.HasWholesale,
+            IsFractional = item.IsFractional,
+            UnitOfMeasure = item.UnitOfMeasure,
+            MinWholesaleQuantity = item.MinWholesaleQuantity,
+            StockQuantity = item.StockQuantity,
+            IsCashAdvance = item.IsCashAdvance,
+            IsActive = item.IsActive,
+            ProfitPercentage = 0m,
+            ReservedQuantity = item.ReservedQuantity,
+            ParentProductId = item.ParentProductId,
+            ParentIsStockShared = item.ParentIsStockShared,
+            IsGroupHeader = item.IsGroupHeader,
+            IsStockShared = item.IsStockShared,
+            HasIndependentPricing = item.HasIndependentPricing,
+            ConversionFactor = item.ConversionFactor,
+            VariantCount = item.VariantCount,
+            ConsolidatedStock = item.ConsolidatedStock
+        };
+    }
+
     [HttpGet("quick-check/{sku}")]
     public async Task<ActionResult<Core.DTOs.ProductQuickInfoDto>> GetQuickInfo(string sku)
     {
@@ -363,7 +429,7 @@ public class StatusUpdateDto
         
         if (!_currentUserService.CanMutateCatalog)
         {
-            info.ProfitPercentage = 0m;
+            return MaskQuickInfoDto(info);
         }
         
         return info;
@@ -376,10 +442,12 @@ public class StatusUpdateDto
         
         if (!_currentUserService.CanMutateCatalog && results != null)
         {
+            var masked = new List<Core.DTOs.ProductQuickInfoDto>(results.Count);
             foreach (var r in results)
             {
-                r.ProfitPercentage = 0m;
+                masked.Add(MaskQuickInfoDto(r));
             }
+            return Ok(masked);
         }
         
         return Ok(results);

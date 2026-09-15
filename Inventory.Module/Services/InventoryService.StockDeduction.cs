@@ -272,58 +272,91 @@ public partial class InventoryService
             }
         }
 
-        // Check availability and reserve atomically in relational database
-        if (_context.Database.IsRelational())
-        {
-            int updated = await _context.Products
-                .Where(p => p.Id == targetProduct.Id && (p.StockQuantity - p.ReservedQuantity) >= effectiveQuantity)
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity + effectiveQuantity)
-                    .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
-
-            if (updated == 0)
-            {
-                throw new InvalidOperationException("Stock insuficiente disponible.");
-            }
-        }
-        else
+        if (!_context.Database.IsRelational())
         {
             if ((targetProduct.StockQuantity - targetProduct.ReservedQuantity) < effectiveQuantity)
             {
                 throw new InvalidOperationException("Stock insuficiente disponible.");
             }
             targetProduct.ReservedQuantity += effectiveQuantity;
-        }
 
-        var reservation = new StockReservation
-        {
-            ProductId = targetProduct.Id,
-            SourceProductId = sourceProductId,
-            Quantity = effectiveQuantity,
-            ExpiryDate = DateTime.UtcNow.Add(duration),
-            IsConfirmed = false,
-            ReferenceId = referenceId
-        };
+            var inMemoryReservation = new StockReservation
+            {
+                ProductId = targetProduct.Id,
+                SourceProductId = sourceProductId,
+                Quantity = effectiveQuantity,
+                ExpiryDate = DateTime.UtcNow.Add(duration),
+                IsConfirmed = false,
+                ReferenceId = referenceId
+            };
 
-        _context.StockReservations.Add(reservation);
-
-        try
-        {
+            _context.StockReservations.Add(inMemoryReservation);
             await _context.SaveChangesAsync();
             InvalidateProductSkuCache(targetProduct.SKU);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (_context.Database.IsRelational())
-            {
-                await _context.Products
-                    .Where(p => p.Id == targetProduct.Id)
-                    .ExecuteUpdateAsync(s => s.SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity - effectiveQuantity));
-            }
-            throw new InvalidOperationException("El stock fue modificado concurrentemente. Por favor intente nuevamente.");
+            return inMemoryReservation.Id;
         }
 
-        return reservation.Id;
+        int reservationId = 0;
+        bool hasExistingTransaction = _context.Database.CurrentTransaction != null;
+
+        async Task ReserveWithinTransactionAsync()
+        {
+            await using var transaction = hasExistingTransaction ? null : await _context.Database.BeginTransactionAsync();
+
+            try
+            {
+                int updated = await _context.Products
+                    .Where(p => p.Id == targetProduct.Id && (p.StockQuantity - p.ReservedQuantity) >= effectiveQuantity)
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity + effectiveQuantity)
+                        .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
+
+                if (updated == 0)
+                {
+                    throw new InvalidOperationException("Stock insuficiente disponible.");
+                }
+
+                var reservation = new StockReservation
+                {
+                    ProductId = targetProduct.Id,
+                    SourceProductId = sourceProductId,
+                    Quantity = effectiveQuantity,
+                    ExpiryDate = DateTime.UtcNow.Add(duration),
+                    IsConfirmed = false,
+                    ReferenceId = referenceId
+                };
+
+                _context.StockReservations.Add(reservation);
+                await _context.SaveChangesAsync();
+
+                if (transaction != null)
+                {
+                    await transaction.CommitAsync();
+                }
+
+                reservationId = reservation.Id;
+            }
+            catch
+            {
+                if (transaction != null)
+                {
+                    await transaction.RollbackAsync();
+                }
+                throw;
+            }
+        }
+
+        if (hasExistingTransaction)
+        {
+            await ReserveWithinTransactionAsync();
+        }
+        else
+        {
+            await _context.Database.CreateExecutionStrategy().ExecuteAsync(ReserveWithinTransactionAsync);
+        }
+
+        InvalidateProductSkuCache(targetProduct.SKU);
+        return reservationId;
     }
 
     public async Task ConfirmReservationAsync(int reservationId, string reason)
@@ -372,15 +405,18 @@ public partial class InventoryService
                     throw new InvalidOperationException("El stock fue modificado concurrentemente. Por favor intente nuevamente.");
                 }
 
-                reservation.Product.StockQuantity -= reservation.Quantity;
-                reservation.Product.ReservedQuantity = Math.Max(0, reservation.Product.ReservedQuantity - reservation.Quantity);
+                // Re-read the actual stock level after ExecuteUpdate to get the authoritative value.
+                var actualStock = await _context.Products
+                    .Where(p => p.Id == reservation.ProductId)
+                    .Select(p => p.StockQuantity)
+                    .FirstOrDefaultAsync();
 
                 // 3) Movimiento de inventario y eliminación de la reserva.
                 var movement = new StockMovement
                 {
                     ProductId = reservation.ProductId,
                     QuantityChange = -reservation.Quantity,
-                    NewStockLevel = reservation.Product.StockQuantity,
+                    NewStockLevel = actualStock,
                     Reason = $"Confirmed Reservation {reservationId}: {reason}",
                     MovementDate = DateTime.UtcNow
                 };

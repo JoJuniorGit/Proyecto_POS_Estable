@@ -13,7 +13,7 @@ using Inventory.Module.Data;
 namespace Backend.API.Controllers;
 
 [Authorize]
-[Authorize(Policy = "DesktopOnly")]
+
 [ApiController]
 [Route("api/[controller]")]
 public class CashDrawerController : ControllerBase
@@ -292,11 +292,6 @@ public class CashDrawerController : ControllerBase
     [HttpPost("cash-advance")]
     public async Task<ActionResult<CashAdvanceResultDto>> ProcessCashAdvance([FromBody] CashAdvanceRequest request)
     {
-        if (User.IsInRole("Driver"))
-        {
-            return Forbid();
-        }
-
         int? cashierId = null;
         if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int parsedAuthId))
         {

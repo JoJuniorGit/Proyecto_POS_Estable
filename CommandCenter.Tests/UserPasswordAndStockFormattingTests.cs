@@ -137,7 +137,8 @@ public class UserPasswordAndStockFormattingTests
             Cedula = "V-12345678",
             Name = "Cajero Modificado",
             Password = "NewSecretPassword2026!",
-            IsActive = true
+            IsActive = true,
+            Role = Core.Entities.UserRole.Admin
         };
 
         var result = await controller.UpdateUser(10, updateDto);
@@ -419,7 +420,7 @@ public class UserPasswordAndStockFormattingTests
         await context.SaveChangesAsync();
 
         var mockTokenService = new Mock<ITokenService>();
-        mockTokenService.Setup(t => t.GenerateToken(It.IsAny<User>())).Returns("fake-jwt-token");
+        mockTokenService.Setup(t => t.GenerateToken(It.IsAny<User>(), It.IsAny<string>())).Returns("fake-jwt-token");
 
         var authController = new AuthController(context, mockTokenService.Object);
 

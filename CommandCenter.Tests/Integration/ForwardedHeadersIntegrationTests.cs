@@ -120,7 +120,7 @@ public class ForwardedHeadersIntegrationTests
     public void PairingController_WhenLocal_AllowsAnonymous()
     {
         // Arrange
-        var controller = new PairingController(_networkDiscoveryMock.Object);
+        var controller = new PairingController(_networkDiscoveryMock.Object, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
         var context = new DefaultHttpContext();
         context.Connection.RemoteIpAddress = IPAddress.Loopback;
         controller.ControllerContext = new ControllerContext { HttpContext = context };
@@ -137,7 +137,7 @@ public class ForwardedHeadersIntegrationTests
     public void PairingController_WhenRemoteAndUnauthenticated_Returns403Forbidden()
     {
         // Arrange
-        var controller = new PairingController(_networkDiscoveryMock.Object);
+        var controller = new PairingController(_networkDiscoveryMock.Object, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
         var context = new DefaultHttpContext();
         context.Connection.RemoteIpAddress = IPAddress.Parse("192.168.1.88");
         // No user authenticated
@@ -155,7 +155,7 @@ public class ForwardedHeadersIntegrationTests
     public void PairingController_WhenRemoteAndAuthenticated_Returns200OK()
     {
 // Arrange
-        var controller = new PairingController(_networkDiscoveryMock.Object);
+        var controller = new PairingController(_networkDiscoveryMock.Object, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
         var context = new DefaultHttpContext();
         context.Connection.RemoteIpAddress = IPAddress.Parse("192.168.1.88");
         // 8.7-L1: el acceso no-local exige rol Admin/Manager, no basta con estar autenticado.
@@ -197,7 +197,7 @@ public class ForwardedHeadersIntegrationTests
         await middleware.Invoke(context);
 
         // Act 2: Execute PairingController
-        var controller = new PairingController(_networkDiscoveryMock.Object);
+        var controller = new PairingController(_networkDiscoveryMock.Object, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
         controller.ControllerContext = new ControllerContext { HttpContext = context };
         var result = controller.GetPairingInfo();
 

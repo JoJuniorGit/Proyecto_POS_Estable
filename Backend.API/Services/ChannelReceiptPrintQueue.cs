@@ -6,10 +6,11 @@ namespace Backend.API.Services;
 public sealed class ChannelReceiptPrintQueue : IReceiptPrintQueue
 {
     private readonly Channel<SaleReceiptContext> _channel =
-        Channel.CreateUnbounded<SaleReceiptContext>(new UnboundedChannelOptions
+        Channel.CreateBounded<SaleReceiptContext>(new BoundedChannelOptions(1000)
         {
             SingleReader = true,
-            SingleWriter = false
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest
         });
 
     public ChannelReader<SaleReceiptContext> Reader => _channel.Reader;

@@ -88,7 +88,7 @@ public class IdempotencyService : IIdempotencyService
         return ComputePayloadHash(method, path, bodyBytes);
     }
 
-    public async Task<IdempotencyCheckResult> CheckAsync(string key, string requestPath, byte[] payloadHash, CancellationToken cancellationToken = default)
+    public async Task<IdempotencyCheckResult> CheckAsync(string key, string requestPath, byte[] payloadHash, int? userId = null, CancellationToken cancellationToken = default)
     {
         var existing = await _context.IdempotentRequests
             .AsNoTracking()
@@ -106,6 +106,12 @@ public class IdempotencyService : IIdempotencyService
             return IdempotencyCheckResult.New();
         }
 
+        if (existing.UserId != userId)
+        {
+            Interlocked.Increment(ref _conflicts);
+            return IdempotencyCheckResult.Mismatch();
+        }
+
         bool match = CryptographicOperations.FixedTimeEquals(existing.PayloadHash, payloadHash);
         if (match)
         {
@@ -117,7 +123,7 @@ public class IdempotencyService : IIdempotencyService
         return IdempotencyCheckResult.Mismatch();
     }
 
-    public async Task RegisterSuccessAsync(string key, string requestPath, byte[] payloadHash, int statusCode, string responseBody, CancellationToken cancellationToken = default)
+    public async Task RegisterSuccessAsync(string key, string requestPath, byte[] payloadHash, int statusCode, string responseBody, int? userId = null, CancellationToken cancellationToken = default)
     {
         var record = new IdempotentRequest
         {
@@ -126,6 +132,7 @@ public class IdempotencyService : IIdempotencyService
             PayloadHash = payloadHash,
             StatusCode = statusCode,
             ResponseBody = responseBody,
+            UserId = userId,
             CreatedAtUtc = DateTime.UtcNow,
             // 8.14-W4: TTL configurable en vez del 24 h fijo.
             ExpiresAtUtc = DateTime.UtcNow.Add(_ttl)
@@ -135,7 +142,7 @@ public class IdempotencyService : IIdempotencyService
         await _context.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<IdempotencyCheckResult> HandleConcurrentCollisionAsync(string key, string requestPath, byte[] payloadHash, CancellationToken cancellationToken = default)
+    public async Task<IdempotencyCheckResult> HandleConcurrentCollisionAsync(string key, string requestPath, byte[] payloadHash, int? userId = null, CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref _conflicts);
 
@@ -146,6 +153,11 @@ public class IdempotencyService : IIdempotencyService
 
         if (existing != null)
         {
+            if (existing.UserId != userId)
+            {
+                return IdempotencyCheckResult.Mismatch();
+            }
+
             if (CryptographicOperations.FixedTimeEquals(existing.PayloadHash, payloadHash))
             {
                 Interlocked.Increment(ref _hits);

@@ -15,7 +15,7 @@ using Core.Constants;
 
 namespace Backend.API.Controllers;
 
-[Authorize(Policy = "WebOnly")]
+
 [Authorize(Roles = "Admin")]
 [ApiController]
 [Route("api/[controller]")]
@@ -150,9 +150,20 @@ public class UsersController : ControllerBase
         if (user == null) return NotFound();
 
         bool isMainAdmin = SecurityConstants.IsRootAdmin(user.Cedula, user.Username);
-        if (isMainAdmin && !dto.IsActive)
+        if (isMainAdmin)
         {
-            return BadRequest(new { Message = "El Administrador principal del sistema no puede ser desactivado." });
+            if (!dto.IsActive)
+            {
+                return BadRequest(new { Message = "El Administrador principal del sistema no puede ser desactivado." });
+            }
+            if (dto.Role != Core.Entities.UserRole.Admin)
+            {
+                return BadRequest(new { Message = "El Administrador principal del sistema no puede cambiar de rol." });
+            }
+            if (!string.Equals(dto.Cedula.Trim(), user.Cedula, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { Message = "El Administrador principal del sistema no puede cambiar su cédula o nombre de usuario." });
+            }
         }
 
         var currentUserId = GetCurrentUserId();
@@ -187,11 +198,11 @@ public class UsersController : ControllerBase
             credentialsOrRoleChanged = true;
         }
 
-        user.Cedula = usernameClean;
-        user.Username = usernameClean;
+        user.Cedula = isMainAdmin ? user.Cedula : usernameClean;
+        user.Username = isMainAdmin ? user.Username : usernameClean;
         user.Name = dto.Name.Trim();
         user.FullName = dto.Name.Trim();
-        user.Role = dto.Role;
+        user.Role = isMainAdmin ? Core.Entities.UserRole.Admin : dto.Role;
         user.IsActive = isMainAdmin ? true : dto.IsActive;
 
         await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>

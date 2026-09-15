@@ -55,9 +55,15 @@ public partial class SalesService
                     productId = newP.Id;
                 }
             }
-            catch
+            catch (KeyNotFoundException)
             {
+                // Cash advance product not found by lookup — safe to fall through to id=1 as last resort.
                 productId = 1;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // DB or concurrency failure: propagate instead of silently imputting to product id=1.
+                throw new InvalidOperationException($"No se pudo obtener el producto de adelanto de efectivo. Detalle: {ex.Message}", ex);
             }
         }
 

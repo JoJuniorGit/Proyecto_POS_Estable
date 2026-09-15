@@ -147,9 +147,9 @@ public partial class UsersManagementViewModel : ObservableObject
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(Password) && Password.Trim().Length < 4)
+        if (!string.IsNullOrWhiteSpace(Password) && Password.Trim().Length < 8)
         {
-            StatusMessage = "La contraseña personalizada debe tener al menos 4 caracteres.";
+            StatusMessage = "La contraseña personalizada debe tener al menos 8 caracteres.";
             return;
         }
 
