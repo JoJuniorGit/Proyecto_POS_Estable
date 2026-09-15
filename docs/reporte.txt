@@ -8669,3 +8669,22 @@ C2. npm run lint: sin hallazgos (exit 0).
 C3. Sin dependencias nuevas; sin regeneracion de bundle en este lote (operativa aparte).
 
 FIN DEL ANEXO - REVISION 8.132
+
+================================================================================
+ANEXO - REVISION 8.133 (2026-09-15)
+Titulo: Bundle web regenerado (Backend.API/wwwroot) con la Seccion 3 (Kestrel SPA)
+================================================================================
+
+A. CONTEXTO
+A1. Regeneracion operativa del SPA que sirve Kestrel desde Backend.API/wwwroot (misma practica de 8.128/8.129), para alinear la UI servida con la fuente de la Seccion 3 (mapa rol->vistas, gate de cobro con preview, escaner, etc.).
+A2. Comando: npm run build (Web.Frontend -> Backend.API/wwwroot). Sin cambios de fuente adicionales en este lote.
+
+B. CAMBIOS REALIZADOS
+B1. wwwroot/index.html + assets/* regenerados (chunks con hash nuevo; chunks viejos eliminados).
+B2. Nota: el build emite un warning benigno de interop (@zxing/library 'default' siempre undefined; el fallback ?? zxing del scanner aplica) — pendiente de polish menor en una proxima revision.
+
+C. VERIFICACION
+C1. Build exitoso (vite). Fuente web sin cambios en este lote (suite 268/268 ya verificada en 8.132).
+C2. Gate GGA: bundles excluidos por patrones -> sin archivos revisables.
+
+FIN DEL ANEXO - REVISION 8.133
