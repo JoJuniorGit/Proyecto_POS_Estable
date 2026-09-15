@@ -19,6 +19,8 @@ namespace CommandCenter.Tests;
 
 public partial class PriceListTests
 {
+    private const int TestActorId = 42;
+
     private SalesDbContext GetInMemoryDbContext()
     {
         var options = new DbContextOptionsBuilder<SalesDbContext>()
@@ -61,12 +63,16 @@ public partial class PriceListTests
                 new SalePayment { Id = 1, Amount = 80.0m, AmountBsS = 3200m }
             }
         };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInv.Object, Mock.Of<IMediator>(), Mock.Of<ICashDrawerService>(), Mock.Of<ISystemSettingsService>());
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.UpdatePriceListAsync(1, "Wholesale"));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.UpdatePriceListAsync(1, "Wholesale", actingUserId: TestActorId));
         Assert.Contains("menor al monto ya abonado", ex.Message);
     }
 
@@ -119,14 +125,18 @@ public partial class PriceListTests
                 new SalePayment { Id = 1, Amount = 50.0m, AmountBsS = 2000m }
             }
         };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInv.Object, Mock.Of<IMediator>(), Mock.Of<ICashDrawerService>(), Mock.Of<ISystemSettingsService>());
 
-        var result = await service.UpdatePriceListAsync(1, "Wholesale");
+        var result = await service.UpdatePriceListAsync(1, "Wholesale", actingUserId: TestActorId);
 
-        Assert.Equal(50.0m, result.TotalUSD); // 10 * $5 = $50 == paid $50
+        Assert.Equal(50.0m, result.TotalUSD);
         Assert.Equal(50.0m, result.TotalPaidUSD);
         Assert.Equal(0m, result.RemainingBalanceUSD);
     }
@@ -149,12 +159,16 @@ public partial class PriceListTests
                 new SaleItem { Id = 10, ProductId = 1, ProductName = "Mantequilla", Quantity = 8, UnitPrice = 4.0m }
             }
         };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInv.Object, Mock.Of<IMediator>(), Mock.Of<ICashDrawerService>(), Mock.Of<ISystemSettingsService>());
 
-        var result = await service.UpdatePriceListAsync(1, "Wholesale");
+        var result = await service.UpdatePriceListAsync(1, "Wholesale", actingUserId: TestActorId);
 
         Assert.Equal(24.0m, result.TotalUSD); // 8 * 3 = 24
     }

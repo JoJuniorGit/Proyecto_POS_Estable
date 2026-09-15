@@ -102,6 +102,10 @@ public partial class PriceListTests
         var mockInv = CreateMockInventory(product);
 
         var sale = new Sale { Id = 1, Status = SaleStatus.OnHold, AppliedRate = 40m };
+        sale.ClaimedByUserId = 42;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
@@ -115,7 +119,7 @@ public partial class PriceListTests
             }
         };
 
-        var result = await service.UpdateSaleItemsAsync(1, req);
+        var result = await service.UpdateSaleItemsAsync(1, req, actingUserId: 42);
         Assert.Single(result.Items);
         Assert.Equal(2m, result.Items[0].Quantity);
     }

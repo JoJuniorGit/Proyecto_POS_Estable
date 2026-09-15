@@ -20,6 +20,8 @@ namespace CommandCenter.Tests;
 
 public class Sprint1PerformanceOptimizationTests
 {
+    private const int TestActorId = 42;
+
     private SalesDbContext GetInMemoryDbContext()
     {
         var options = new DbContextOptionsBuilder<SalesDbContext>()
@@ -146,10 +148,13 @@ public class Sprint1PerformanceOptimizationTests
                 new SaleItem { ProductId = 201, ProductName = "Aceite 1L", Quantity = 1m, UnitPrice = 3.00m, Subtotal = 3.00m }
             }
         };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
-        // Update items to prod2 and prod3 via batch
         var request = new UpdateSaleItemsRequestDto
         {
             Items = new List<UpdateSaleItemDto>
@@ -159,7 +164,7 @@ public class Sprint1PerformanceOptimizationTests
             }
         };
 
-        var result = await service.UpdateSaleItemsAsync(sale.Id, request);
+        var result = await service.UpdateSaleItemsAsync(sale.Id, request, actingUserId: TestActorId);
 
         Assert.Equal(2, result.Items.Count);
         Assert.Contains(result.Items, i => i.ProductId == 202 && i.Quantity == 2m);

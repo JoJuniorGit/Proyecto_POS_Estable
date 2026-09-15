@@ -32,6 +32,8 @@ namespace CommandCenter.Tests;
 
 public class FinancialRobustnessTests
 {
+    private const int TestActorId = 42;
+
     private SalesDbContext GetInMemorySalesDbContext()
     {
         var options = new DbContextOptionsBuilder<SalesDbContext>()
@@ -188,6 +190,10 @@ public class FinancialRobustnessTests
             Status = SaleStatus.OnHold,
             Payments = new List<SalePayment>()
         };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         context.PaymentMethods.Add(new PaymentMethod { Id = 2, Name = "Punto de Venta", IsCash = false });
         await context.SaveChangesAsync();
@@ -201,7 +207,7 @@ public class FinancialRobustnessTests
             ReferenceNumber = "REF-PARTIAL"
         };
 
-        var result = await service.AddPaymentToHoldSaleAsync(sale.Id, request);
+        var result = await service.AddPaymentToHoldSaleAsync(sale.Id, request, actingUserId: TestActorId);
 
         var savedSale = await context.Sales.Include(s => s.Payments).FirstAsync(s => s.Id == sale.Id);
         Assert.Equal("OnHold", result.Status);
@@ -230,11 +236,14 @@ public class FinancialRobustnessTests
                 new SalePayment { Amount = 40m, AmountBsS = 2000m, PaymentMethodId = 1 }
             }
         };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Punto de Venta", IsCash = false });
         await context.SaveChangesAsync();
 
-        // Intento de abonar 20 USD cuando solo faltan 10 USD
         var request = new AddPaymentRequestDto
         {
             PaymentMethodId = 1,
@@ -243,7 +252,7 @@ public class FinancialRobustnessTests
             ExchangeRate = 50m
         };
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.AddPaymentToHoldSaleAsync(sale.Id, request));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.AddPaymentToHoldSaleAsync(sale.Id, request, actingUserId: TestActorId));
         Assert.Contains("excede el total pendiente", ex.Message);
     }
 
@@ -261,6 +270,10 @@ public class FinancialRobustnessTests
             Status = SaleStatus.OnHold,
             Payments = new List<SalePayment>()
         };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true });
         await context.SaveChangesAsync();
@@ -274,7 +287,7 @@ public class FinancialRobustnessTests
             ReferenceNumber = null
         };
 
-        await service.AddPaymentToHoldSaleAsync(sale.Id, request);
+        await service.AddPaymentToHoldSaleAsync(sale.Id, request, actingUserId: TestActorId);
 
         // Verificar que se haya registrado la CashTransaction para efectivo físico
         var cashTx = await context.CashTransactions.FirstOrDefaultAsync(ct => ct.SaleId == sale.Id);

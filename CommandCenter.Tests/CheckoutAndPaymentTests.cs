@@ -20,6 +20,8 @@ namespace CommandCenter.Tests;
 
 public class CheckoutAndPaymentTests
 {
+    private const int TestActorId = 42;
+
     private SalesDbContext GetInMemoryDbContext()
     {
         var options = new DbContextOptionsBuilder<SalesDbContext>()
@@ -229,6 +231,10 @@ public class CheckoutAndPaymentTests
             SubtotalBsS = 5000m,
             Status = SaleStatus.OnHold
         };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo", IsCash = true });
         await context.SaveChangesAsync();
@@ -241,7 +247,7 @@ public class CheckoutAndPaymentTests
             ExchangeRate = 50m
         };
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.AddPaymentToHoldSaleAsync(sale.Id, request));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.AddPaymentToHoldSaleAsync(sale.Id, request, actingUserId: TestActorId));
         Assert.Contains("solo acepta montos enteros", ex.Message);
     }
 

@@ -19,6 +19,7 @@ namespace CommandCenter.Tests;
 // se persiste (todo o nada), porque todos los abonos comparten una única transacción.
 public class BatchPaymentTests
 {
+    private const int TestActorId = 42;
     private readonly string _salesDbName = Guid.NewGuid().ToString();
     private readonly string _inventoryDbName = Guid.NewGuid().ToString();
 
@@ -50,6 +51,14 @@ public class BatchPaymentTests
         var sale = await service.StartSaleAsync(1);
         await service.AddItemAsync(sale.Id, 20, 1m, 50m);
         await service.HoldSaleAsync(sale.Id, new HoldSaleRequestDto { CustomerId = 5, ExchangeRate = 50m });
+
+        var heldSale = await salesDb.Sales.FindAsync(sale.Id);
+        heldSale!.ClaimedByUserId = TestActorId;
+        heldSale.ClaimAction = SaleClaimAction.Editing;
+        heldSale.ClaimedByUserName = "Test Actor";
+        heldSale.ClaimedAtUtc = DateTime.UtcNow;
+        await salesDb.SaveChangesAsync();
+
         return service;
     }
 
@@ -64,7 +73,7 @@ public class BatchPaymentTests
         {
             new() { PaymentMethodId = 1, AmountUSD = 6m, AmountBsS = 300m, ExchangeRate = 50m },
             new() { PaymentMethodId = 1, AmountUSD = 4m, AmountBsS = 200m, ExchangeRate = 50m }
-        });
+        }, actingUserId: TestActorId);
 
         Assert.Equal(10m, result.TotalPaidUSD);
         Assert.Equal(0m, result.RemainingBalanceUSD);
@@ -88,7 +97,7 @@ public class BatchPaymentTests
             {
                 new() { PaymentMethodId = 1, AmountUSD = 6m, AmountBsS = 300m, ExchangeRate = 50m },
                 new() { PaymentMethodId = 1, AmountUSD = 15m, AmountBsS = 750m, ExchangeRate = 50m }
-            }));
+            }, actingUserId: TestActorId));
 
         using var fresh = NewSalesDb();
         var reloaded = fresh.Sales.Include(s => s.Payments).First(s => s.Id == held.Id);
@@ -102,14 +111,13 @@ public class BatchPaymentTests
         var service = await CreateServiceWithHeldSaleAsync(10m);
         var held = await salesDb.Sales.Include(s => s.Payments).OrderByDescending(s => s.Id).LastAsync();
 
-        // Cada abono por separado cabe (4 <= 10.05), pero el ACUMULADO del lote (4+4+4 > 10) no.
         await Assert.ThrowsAsync<ArgumentException>(() =>
             service.AddPaymentsBatchToHoldSaleAsync(held.Id, new List<AddPaymentRequestDto>
             {
                 new() { PaymentMethodId = 1, AmountUSD = 4m, AmountBsS = 200m, ExchangeRate = 50m },
                 new() { PaymentMethodId = 1, AmountUSD = 4m, AmountBsS = 200m, ExchangeRate = 50m },
                 new() { PaymentMethodId = 1, AmountUSD = 4m, AmountBsS = 200m, ExchangeRate = 50m }
-            }));
+            }, actingUserId: TestActorId));
 
         using var fresh = NewSalesDb();
         var reloaded = fresh.Sales.Include(s => s.Payments).First(s => s.Id == held.Id);
@@ -151,7 +159,7 @@ public class BatchPaymentTests
             service.AddPaymentsBatchToHoldSaleAsync(held.Id, new List<AddPaymentRequestDto>
             {
                 new() { PaymentMethodId = 1, AmountUSD = 0m, AmountBsS = 10.50m, ExchangeRate = 50m }
-            }));
+            }, actingUserId: TestActorId));
 
         using var fresh = NewSalesDb();
         var reloaded = fresh.Sales.Include(s => s.Payments).First(s => s.Id == held.Id);

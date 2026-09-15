@@ -16,6 +16,8 @@ namespace CommandCenter.Tests;
 
 public partial class OnHoldSalesTests
 {
+    private const int TestActorId = 42;
+
     private SalesDbContext GetInMemoryDbContext()
     {
         var options = new DbContextOptionsBuilder<SalesDbContext>()
@@ -153,12 +155,15 @@ public partial class OnHoldSalesTests
         context.Customers.Add(customer);
 
         var sale = new Sale { Id = 1, CustomerId = 1, TotalUSD = 100m, Status = SaleStatus.OnHold, AppliedRate = 40m };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        // Abono de 2000 Bs.S a tasa 50 (devaluación ocurrió de 40 -> 50) => $40 USD abonados
         var paymentReq = new AddPaymentRequestDto
         {
             PaymentMethodId = 1,
@@ -166,7 +171,7 @@ public partial class OnHoldSalesTests
             ExchangeRate = 50m
         };
 
-        var result = await service.AddPaymentToHoldSaleAsync(1, paymentReq);
+        var result = await service.AddPaymentToHoldSaleAsync(1, paymentReq, actingUserId: TestActorId);
 
         Assert.Equal(40m, result.TotalPaidUSD);
         Assert.Equal(60m, result.RemainingBalanceUSD);
@@ -188,15 +193,18 @@ public partial class OnHoldSalesTests
         context.Customers.Add(customer);
 
         var sale = new Sale { Id = 1, CustomerId = 1, TotalUSD = 100m, Status = SaleStatus.OnHold, AppliedRate = 50m };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true });
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        // Abono parcial de $40 USD vía CompleteSaleAsync debe lanzar excepción
         var payments = new[] { new Sales.Module.Interfaces.PaymentInfo(1, 40m, 2000m, null) };
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.CompleteSaleAsync(1, 50m, payments));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.CompleteSaleAsync(1, 50m, payments, actingUserId: TestActorId));
         Assert.Contains("El flujo de cobro requiere liquidación al 100%", ex.Message);
     }
 
@@ -243,8 +251,11 @@ public partial class OnHoldSalesTests
         var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 100m };
         context.Customers.Add(customer);
 
-        // Sale has $40 USD already paid, $60 USD remaining out of $100 USD
         var sale = new Sale { Id = 1, CustomerId = 1, TotalUSD = 100m, Status = SaleStatus.OnHold, AppliedRate = 50m };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         sale.Payments.Add(new SalePayment { Amount = 40m, AmountBsS = 2000m, ExchangeRate = 50m });
         context.Sales.Add(sale);
         context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true });
@@ -252,9 +263,8 @@ public partial class OnHoldSalesTests
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        // Paying remaining $60 USD
         var payments = new[] { new Sales.Module.Interfaces.PaymentInfo(1, 60m, 3000m, null) };
-        var invoiceNum = await service.CompleteSaleAsync(1, 50m, payments);
+        var invoiceNum = await service.CompleteSaleAsync(1, 50m, payments, actingUserId: TestActorId);
 
         Assert.True(invoiceNum > 0);
         var updatedSale = await service.GetSaleAsync(1);
@@ -340,7 +350,11 @@ public partial class OnHoldSalesTests
         var mockSettings = new Mock<ISystemSettingsService>();
 
         var sale = new Sale { Id = 1, TotalUSD = 100m, Status = SaleStatus.OnHold };
-        sale.Payments.Add(new SalePayment { Id = 1, Amount = 50m, AmountBsS = 2000m, ExchangeRate = 40m }); // Abonado = $50 USD
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
+        sale.Payments.Add(new SalePayment { Id = 1, Amount = 50m, AmountBsS = 2000m, ExchangeRate = 40m });
         sale.Items.Add(new SaleItem { Id = 1, ProductId = 2, ProductName = "Original Item", Quantity = 1, UnitPrice = 100m, Subtotal = 100m });
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
@@ -350,11 +364,11 @@ public partial class OnHoldSalesTests
         {
             Items = new System.Collections.Generic.List<Sales.Module.DTOs.UpdateSaleItemDto>
             {
-                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 1, Quantity = 1, UnitPrice = 30m } // Nuevo Total = $30 USD < $50 USD Abonados
+                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 1, Quantity = 1, UnitPrice = 30m }
             }
         };
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateSaleItemsAsync(1, request));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateSaleItemsAsync(1, request, actingUserId: TestActorId));
         Assert.Contains("no puede ser menor al monto total ya abonado", ex.Message);
 
         // Salvaguarda financiera: la venta NO fue modificada (total, abonos e ítems intactos)
@@ -377,7 +391,11 @@ public partial class OnHoldSalesTests
         context.Customers.Add(customer);
 
         var sale = new Sale { Id = 1, CustomerId = 1, TotalUSD = 60m, Status = SaleStatus.OnHold };
-        sale.Payments.Add(new SalePayment { Id = 1, Amount = 20m, AmountBsS = 800m, ExchangeRate = 40m }); // Abonado = $20 USD
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
+        sale.Payments.Add(new SalePayment { Id = 1, Amount = 20m, AmountBsS = 800m, ExchangeRate = 40m });
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
@@ -386,12 +404,11 @@ public partial class OnHoldSalesTests
         {
             Items = new System.Collections.Generic.List<Sales.Module.DTOs.UpdateSaleItemDto>
             {
-                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 1, Quantity = 1, UnitPrice = 100m } // Nuevo Total = $100 USD. Nuevo saldo = $80 USD > $50 USD Límite
+                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 1, Quantity = 1, UnitPrice = 100m }
             }
         };
 
-        // Se permite actualizar los ítems aun cuando el nuevo saldo pendiente supere el límite de crédito
-        var updatedSale = await service.UpdateSaleItemsAsync(1, request);
+        var updatedSale = await service.UpdateSaleItemsAsync(1, request, actingUserId: TestActorId);
 
         Assert.Equal("OnHold", updatedSale.Status);
         Assert.Equal(100m, updatedSale.TotalUSD);
@@ -412,7 +429,11 @@ public partial class OnHoldSalesTests
             .ReturnsAsync(new Product { Id = 10, Name = "Laptop Lenovo", PriceUSD = 500m });
 
         var sale = new Sale { Id = 1, TotalUSD = 300m, AppliedRate = 40m, Status = SaleStatus.OnHold };
-        sale.Payments.Add(new SalePayment { Id = 1, Amount = 100m, AmountBsS = 4000m, ExchangeRate = 40m }); // Paid = $100 USD
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
+        sale.Payments.Add(new SalePayment { Id = 1, Amount = 100m, AmountBsS = 4000m, ExchangeRate = 40m });
         sale.Items.Add(new SaleItem { Id = 1, ProductId = 2, ProductName = "Old Item", Quantity = 1, UnitPrice = 300m, Subtotal = 300m });
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
@@ -422,11 +443,11 @@ public partial class OnHoldSalesTests
         {
             Items = new System.Collections.Generic.List<Sales.Module.DTOs.UpdateSaleItemDto>
             {
-                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 10, Quantity = 1, UnitPrice = 500m } // New Total = $500 USD
+                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 10, Quantity = 1, UnitPrice = 500m }
             }
         };
 
-        var updatedSale = await service.UpdateSaleItemsAsync(1, request);
+        var updatedSale = await service.UpdateSaleItemsAsync(1, request, actingUserId: TestActorId);
 
         Assert.Equal("OnHold", updatedSale.Status);
         Assert.Equal(500m, updatedSale.TotalUSD);
@@ -452,7 +473,11 @@ public partial class OnHoldSalesTests
         context.Customers.Add(realCustomer);
 
         var sale = new Sale { Id = 1, TotalUSD = 100m, AppliedRate = 40m, Status = SaleStatus.OnHold, CustomerId = 5 };
-        sale.Payments.Add(new SalePayment { Id = 1, Amount = 40m, AmountBsS = 1600m, ExchangeRate = 40m }); // Abono previo = $40 USD
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
+        sale.Payments.Add(new SalePayment { Id = 1, Amount = 40m, AmountBsS = 1600m, ExchangeRate = 40m });
         sale.Items.Add(new SaleItem { Id = 1, ProductId = 10, ProductName = "Harina", Quantity = 2, UnitPrice = 50m, Subtotal = 100m });
         context.Sales.Add(sale);
         context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true });
@@ -460,13 +485,12 @@ public partial class OnHoldSalesTests
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        // Pago restante de $60 USD
         var payments = new System.Collections.Generic.List<PaymentInfo>
         {
             new PaymentInfo(1, 60m, 2400m, "REF-100")
         };
 
-        int invoiceNumber = await service.CompleteSaleAsync(1, 40m, payments, 0m, 1, isPendingPickup: true);
+        int invoiceNumber = await service.CompleteSaleAsync(1, 40m, payments, 0m, 1, isPendingPickup: true, actingUserId: TestActorId);
 
         Assert.True(invoiceNumber > 0);
         var completedSale = await context.Sales.FindAsync(1);

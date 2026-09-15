@@ -29,13 +29,17 @@ public partial class OnHoldSalesTests
         context.Customers.Add(defaultCustomer);
 
         var sale = new Sale { Id = 1, TotalUSD = 100m, AppliedRate = 40m, Status = SaleStatus.OnHold, CustomerId = 1 };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         sale.Payments.Add(new SalePayment { Id = 1, Amount = 100m, AmountBsS = 4000m, ExchangeRate = 40m });
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.CompleteSaleAsync(1, 40m, System.Linq.Enumerable.Empty<PaymentInfo>(), 0m, 1, isPendingPickup: true));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.CompleteSaleAsync(1, 40m, System.Linq.Enumerable.Empty<PaymentInfo>(), 0m, 1, isPendingPickup: true, actingUserId: TestActorId));
         Assert.Contains("se requiere seleccionar o crear un cliente real", ex.Message);
     }
 
@@ -364,12 +368,16 @@ public partial class OnHoldSalesTests
         var mockSettings = new Mock<ISystemSettingsService>();
 
         var sale = new Sale { Id = 1, TotalUSD = 50m, Status = SaleStatus.OnHold, DeliveryStatus = SaleDeliveryStatus.PendingPickup };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        await service.CancelSaleAsync(1);
+        await service.CancelSaleAsync(1, actingUserId: TestActorId);
 
         var updatedSale = await context.Sales.FindAsync(1);
         Assert.NotNull(updatedSale);
@@ -389,13 +397,17 @@ public partial class OnHoldSalesTests
         context.PaymentMethods.Add(paymentMethod);
 
         var sale = new Sale { Id = 1, TotalUSD = 50m, Status = SaleStatus.OnHold, DeliveryStatus = SaleDeliveryStatus.PendingPickup };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         sale.Payments.Add(new SalePayment { Id = 1, SaleId = 1, PaymentMethodId = 1, Amount = 10m, AmountBsS = 7800m });
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelSaleAsync(1));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelSaleAsync(1, actingUserId: TestActorId));
         Assert.Contains("abonos acumulados", ex.Message);
     }
 
@@ -409,12 +421,16 @@ public partial class OnHoldSalesTests
         var mockSettings = new Mock<ISystemSettingsService>();
 
         var sale = new Sale { Id = 1, TotalUSD = 50m, Status = SaleStatus.OnHold, DeliveryStatus = SaleDeliveryStatus.Delivered, PickupDate = DateTime.UtcNow };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelSaleAsync(1));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelSaleAsync(1, actingUserId: TestActorId));
         Assert.Contains("entregado al cliente", ex.Message);
     }
 

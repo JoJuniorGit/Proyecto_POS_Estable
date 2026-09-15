@@ -143,11 +143,16 @@ public class PerformanceTests
             ExchangeRate = 50m
         });
 
-        // Resetear contadores de llamadas antes de la operación en lote
+        var heldSale = await context.Sales.FindAsync(saleDto.Id);
+        heldSale!.ClaimedByUserId = 42;
+        heldSale.ClaimAction = SaleClaimAction.Editing;
+        heldSale.ClaimedByUserName = "Test Actor";
+        heldSale.ClaimedAtUtc = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
         Interlocked.Exchange(ref batchCallsCount, 0);
         Interlocked.Exchange(ref singleCallsCount, 0);
 
-        // Actualizar la venta con 15 ítems en una sola solicitud en lote
         var updateRequest = new UpdateSaleItemsRequestDto
         {
             Items = productIdsToFetch.Select(id => new UpdateSaleItemDto
@@ -158,7 +163,7 @@ public class PerformanceTests
             }).ToList()
         };
 
-        var updatedSale = await salesService.UpdateSaleItemsAsync(saleDto.Id, updateRequest);
+        var updatedSale = await salesService.UpdateSaleItemsAsync(saleDto.Id, updateRequest, actingUserId: 42);
 
         // Verificamos que se ejecutó en modo batch (<= 2 llamadas batch) y 0 consultas individuales N+1
         Assert.True(batchCallsCount >= 1 && batchCallsCount <= 2, $"Se ejecutaron {batchCallsCount} consultas batch.");

@@ -169,17 +169,22 @@ public class CoverageConvergenceTests
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
         context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo", DisplayOrder = 1 });
-        context.Sales.Add(new Sale
+        var sale = new Sale
         {
             Id = 1,
             Status = SaleStatus.OnHold,
             Date = DateTime.UtcNow,
             Payments = new List<SalePayment> { new SalePayment { Id = 1, PaymentMethodId = 1, AmountBsS = 100m } }
-        });
+        };
+        sale.ClaimedByUserId = 42;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
+        context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
         var service = CreateSalesService(context);
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateSaleCustomerAsync(1, 7));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateSaleCustomerAsync(1, 7, actingUserId: 42));
 
         Assert.Contains("cambio de titular", ex.Message);
     }

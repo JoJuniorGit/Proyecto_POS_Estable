@@ -106,10 +106,9 @@ public partial class SalesService
     private static void EnsureHoldClaimAccess(Sale sale, int? actingUserId)
     {
         if (sale.Status != SaleStatus.OnHold) return;
-        if (sale.ClaimedByUserId == null) return;
-        if (sale.ClaimedByUserId == actingUserId) return;
-
-        throw BuildSaleLockedException(sale);
+        if (sale.ClaimedByUserId != null && sale.ClaimedByUserId == actingUserId) return;
+        if (sale.ClaimedByUserId != null) throw BuildSaleLockedException(sale);
+        throw new HoldNotClaimedException(sale.Id);
     }
 
     private static void ClearHoldClaim(Sale sale)

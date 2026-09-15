@@ -167,7 +167,13 @@ public class DataIntegritySprint1Tests
             ExchangeRate = 50m
         });
 
-        // 1. Payment with $0 must throw ArgumentException
+        var heldSale = await salesDb.Sales.FindAsync(sale.Id);
+        heldSale!.ClaimedByUserId = 42;
+        heldSale.ClaimAction = SaleClaimAction.Editing;
+        heldSale.ClaimedByUserName = "Test Actor";
+        heldSale.ClaimedAtUtc = DateTime.UtcNow;
+        await salesDb.SaveChangesAsync();
+
         await Assert.ThrowsAsync<ArgumentException>(() =>
             salesService.AddPaymentToHoldSaleAsync(sale.Id, new AddPaymentRequestDto
             {
@@ -175,7 +181,7 @@ public class DataIntegritySprint1Tests
                 AmountBsS = 0m,
                 ExchangeRate = 50m,
                 PaymentMethodId = 1
-            }));
+            }, actingUserId: 42));
 
         // 2. Payment exceeding $10 (e.g. $15) must throw ArgumentException
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -185,7 +191,7 @@ public class DataIntegritySprint1Tests
                 AmountBsS = 750m,
                 ExchangeRate = 50m,
                 PaymentMethodId = 1
-            }));
+            }, actingUserId: 42));
     }
 
     [Fact]

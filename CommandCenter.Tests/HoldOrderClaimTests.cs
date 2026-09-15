@@ -346,9 +346,9 @@ public class HoldOrderClaimTests
 
         var service = CreateService(context, new Mock<IInventoryService>(), new Mock<IMediator>(), new Mock<ICashDrawerService>(), new Mock<ISystemSettingsService>(), new Mock<IHoldOrderNotifier>());
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.ConfirmPickupAsync(1, 7));
+        var ex = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => service.ConfirmPickupAsync(1, 7));
 
-        Assert.Contains("Pendiente por Retirar", ex.Message);
+        Assert.Contains("no está reclamado", ex.Message);
     }
 
     [Fact]

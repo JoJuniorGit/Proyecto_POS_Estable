@@ -30,6 +30,8 @@ namespace CommandCenter.Tests.Integration;
 
 public class PartialPaymentFlowIntegrationTests
 {
+    private const int TestActorId = 42;
+
     [Fact]
     public async Task PartialPaymentFlow_HoldsOrder_RecordsAbonos_UpdatesBalance_AndRegistersDrawerCash()
     {
@@ -81,7 +83,13 @@ public class PartialPaymentFlowIntegrationTests
         Assert.Equal("OnHold", holdResult.Status);
         Assert.Equal(100.00m, holdResult.TotalUSD);
 
-        // 5. Add second partial payment: $30.00 USD via Cash (1500 Bs.S)
+        var holdClaim = await salesContext.Sales.FindAsync(saleDto.Id);
+        holdClaim!.ClaimedByUserId = TestActorId;
+        holdClaim.ClaimAction = SaleClaimAction.Editing;
+        holdClaim.ClaimedByUserName = "Test Actor";
+        holdClaim.ClaimedAtUtc = DateTime.UtcNow;
+        await salesContext.SaveChangesAsync();
+
         var secondPaymentRequest = new AddPaymentRequestDto
         {
             PaymentMethodId = 1,
@@ -91,7 +99,7 @@ public class PartialPaymentFlowIntegrationTests
             ReferenceNumber = null
         };
 
-        var secondResult = await salesService.AddPaymentToHoldSaleAsync(saleDto.Id, secondPaymentRequest);
+        var secondResult = await salesService.AddPaymentToHoldSaleAsync(saleDto.Id, secondPaymentRequest, actingUserId: TestActorId);
 
         // 6. Assertions
         var savedSale = await salesContext.Sales.Include(s => s.Payments).FirstAsync(s => s.Id == saleDto.Id);
@@ -154,6 +162,13 @@ public class PartialPaymentFlowIntegrationTests
             }
         };
         await salesService.HoldSaleAsync(saleDto.Id, holdRequest);
+
+        var holdClaim = await salesContext.Sales.FindAsync(saleDto.Id);
+        holdClaim!.ClaimedByUserId = 1;
+        holdClaim.ClaimAction = SaleClaimAction.Editing;
+        holdClaim.ClaimedByUserName = "Test Actor";
+        holdClaim.ClaimedAtUtc = DateTime.UtcNow;
+        await salesContext.SaveChangesAsync();
 
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.UserId).Returns("1");
