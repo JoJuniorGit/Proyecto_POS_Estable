@@ -173,9 +173,10 @@ public partial class PosViewModel
         {
             return await _productService.GetQuickInfoAsync(trimmed);
         }
-        catch
+        catch (Exception ex)
         {
-            return null;
+            Core.Logging.ClientStateLogger.LogError($"Error al resolver el código escaneado '{trimmed}': {ex.Message}", "PosViewModel");
+            return new ProductQuickInfoDto { Id = -2, Name = "Error de conexión. Reintente el escaneo.", SKU = "-" };
         }
     }
 }

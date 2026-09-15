@@ -82,7 +82,7 @@ public class ConnectionManager : IConnectionManager, IDisposable
 
         try
         {
-            var probe = await _scannerService.ProbeSingleHostAsync(CurrentServerAddress, 5000, 800);
+            var probe = await _scannerService.ProbeSingleHostAsync(CurrentServerAddress, ServerPortResolver.Resolve(CurrentServerAddress), 800);
             if (probe != null && probe.IsHealthy)
             {
                 if (Status != ConnectionStatus.Connected || CurrentMachineName != probe.MachineName)
@@ -132,7 +132,7 @@ public class ConnectionManager : IConnectionManager, IDisposable
         CurrentMachineName = settings.LastKnownServerMachineName;
 
         // Probar si el servidor actual responde
-        var probe = await _scannerService.ProbeSingleHostAsync(CurrentServerAddress, 5001, 800);
+        var probe = await _scannerService.ProbeSingleHostAsync(CurrentServerAddress, ServerPortResolver.Resolve(CurrentServerAddress), 800);
         if (probe != null && probe.IsHealthy)
         {
             lock (_lock)
@@ -184,7 +184,7 @@ public class ConnectionManager : IConnectionManager, IDisposable
         Status = ConnectionStatus.Connecting;
         RaiseStatusChanged();
 
-        var probe = await _scannerService.ProbeSingleHostAsync(clean, clean.StartsWith("https") ? 5001 : 5000, 1000);
+        var probe = await _scannerService.ProbeSingleHostAsync(clean, ServerPortResolver.Resolve(clean), 1000);
         if (probe != null)
         {
             lock (_lock)

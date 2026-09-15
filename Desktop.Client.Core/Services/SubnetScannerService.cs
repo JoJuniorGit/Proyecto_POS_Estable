@@ -107,13 +107,7 @@ public class SubnetScannerService : ISubnetScannerService
             }
         }
 
-        // 8.16-ALTO-2: Rechazar http:// si no es loopback
-        if (scheme == "http" && !IsPrivateOrLocalAddress(cleanHost))
-        {
-            return null; // Reject HTTP if not loopback (wait, IsPrivateOrLocalAddress includes LAN! Let's be stricter)
-        }
-        
-        // Let's implement strict loopback check
+        // 8.16-ALTO-2: HTTP solo se admite hacia loopback (localhost/127.0.0.1/::1); todo host remoto exige HTTPS.
         bool isLoopback = cleanHost.Equals("localhost", StringComparison.OrdinalIgnoreCase) || cleanHost.Equals("127.0.0.1");
         if (!isLoopback && IPAddress.TryParse(cleanHost, out var ipAddress))
         {
@@ -122,7 +116,7 @@ public class SubnetScannerService : ISubnetScannerService
 
         if (scheme == "http" && !isLoopback)
         {
-            return null; // Reject non-loopback HTTP
+            return null;
         }
 
         var targetUrl = $"{scheme}://{cleanHost}:{targetPort}/api/health";
@@ -184,7 +178,7 @@ public class SubnetScannerService : ISubnetScannerService
         // Paso 0: Probar IP preferida / anterior si existe
         if (!string.IsNullOrWhiteSpace(preferredHostOrIp))
         {
-            var cachedProbe = await ProbeSingleHostAsync(preferredHostOrIp, port: 5000, timeoutMs: 400, ct).ConfigureAwait(false);
+            var cachedProbe = await ProbeSingleHostAsync(preferredHostOrIp, port: ServerPortResolver.Resolve(preferredHostOrIp), timeoutMs: 400, ct).ConfigureAwait(false);
             if (cachedProbe != null)
                 return cachedProbe;
         }
@@ -231,7 +225,7 @@ public class SubnetScannerService : ISubnetScannerService
         {
             await Parallel.ForEachAsync(candidateIps, parallelOptions, async (ip, token) =>
             {
-                var result = await ProbeSingleHostAsync(ip, port: 5001, timeoutMs: 500, token).ConfigureAwait(false);
+                var result = await ProbeSingleHostAsync(ip, port: ServerPortResolver.Resolve(ip), timeoutMs: 500, token).ConfigureAwait(false);
                 if (result != null)
                 {
                     foundServers.Add(result);

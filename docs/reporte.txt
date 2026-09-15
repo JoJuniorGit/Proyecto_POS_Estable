@@ -8661,7 +8661,7 @@ B5. [MEDIO] Escaner laptop: pacing adaptativo + ROI acotado (<=800px) + skip de 
 B6. [MEDIO] Busqueda de clientes en HoldSale con debounce+abort; resolucion unica del producto escaneado (memo 1.2s) compartida entre carrito y panel.
 B7. [MEDIO] ApiError (status/body) en api.js + consumidores migrados (recuperacion real por status); selector unico de tasa en carrito; render condicional desktop/movil en PendingOrders/History/Catalog/PendingPickups.
 B8. [BAJO] Codigo muerto eliminado (ClosingPage, PartialPaymentModal, rama hold de CustomerModal, export sin uso); props/callbacks unificados; accesibilidad (zoom, teclado+aria, useId en ConfirmModal); sincronia entre pestabas (tema/formato); SuccessScreen con cierre estable.
-B9. [BAJO-DIFERIDO] Split de index.css pospuesto (refactor cosmetico de alto churn; requiere QA visual dedicado).
+B9. [BAJO-DIFERIDO -> FASE 6] Split de index.css: se resolvera en una FASE 6 SEPARADA (refactor cosmetico de alto churn; requiere QA visual dedicado), fuera de las fases 1-5.
 
 C. VERIFICACION
 C1. Web.Frontend: npm test 268/268 (0 fallos; +90 tests nuevos).
@@ -8688,3 +8688,28 @@ C1. Build exitoso (vite). Fuente web sin cambios en este lote (suite 268/268 ya 
 C2. Gate GGA: bundles excluidos por patrones -> sin archivos revisables.
 
 FIN DEL ANEXO - REVISION 8.133
+
+================================================================================
+ANEXO - REVISION 8.134 (2026-09-15)
+Titulo: Remediacion auditoria de seguridad - Seccion 4 (Desktop WPF) completa
+================================================================================
+
+A. CONTEXTO
+A1. Se resolvieron los hallazgos ALTO/MEDIO/BAJO de la Seccion 4 del Anexo (Desktop.Client / Desktop.Client.Core), en 4 unidades (W9-W12).
+A2. Detalle por hallazgo en docs/hallazgos-auditoria-seguridad.txt (FASE 4).
+
+B. CAMBIOS REALIZADOS
+B1. [ALTO] SignalR autenticado: AccessTokenProvider devuelve el JWT vigente de UserSession (leido por llamada); reconexion por SessionChanged; reintentos iniciales acotados 5x5s con logging (antes 60x5s silenciosos).
+B2. [MEDIO] Pins TOFU durables: almacen DPAPI CurrentUser por host; TOFU solo primer contacto; fallos logueados [SECURITY] sin desactivar el pinning de sesion.
+B3. [MEDIO] Ciclo de vida LoginViewModel: la vista ya no dispone el singleton; dispose unico en shutdown.
+B4. [MEDIO] Sonda de conexion por esquema (https->5001, http->5000, puerto explicito gana) unificada en dialogo/scanner/heartbeat/Initialize (ServerPortResolver).
+B5. [MEDIO] ResilienceHandler dispone respuestas 5xx intermedias antes de reintentar; respuesta final intacta.
+B6. [MEDIO] Busqueda de productos: fallos de infraestructura logueados y propagados; "not found" solo real (PosViewModel y scanner incluidos).
+B7. [BAJO] Historiales acotados (caja 300, tasa 365) con guard de reentrancia; rama HTTP muerta del scanner eliminada; fire-and-forget por SafeFireAndForget y acople por Tag; strings es-VE y ex.Message fuera de dialogos (puntual); manejadores de crash unicos; version-check logueado (ClientStateLogger) y UpdateUrlPolicy (HTTPS obligatorio fuera de loopback); RBAC de caja fail-closed con catalogo desde servicio; reentrancia en PendingOrders con generacion.
+B8. Residuales menores documentados (patrones ex.Message en partials hermanos, literal Tag en XAML) - pulido futuro.
+
+C. VERIFICACION
+C1. dotnet build CommandCenter.slnx -c Release: 0 advertencias / 0 errores.
+C2. dotnet test CommandCenter.Tests: 1084/1084 (0 fallos; +68 tests nuevos).
+
+FIN DEL ANEXO - REVISION 8.134

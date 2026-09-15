@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Core.DTOs;
 using Desktop.Client.Services;
 
@@ -148,7 +149,7 @@ public partial class EditSaleDialogViewModel : ObservableObject, IDisposable
 
     partial void OnSearchTextChanged(string value)
     {
-        _ = SearchProductsAsync(value);
+        SearchProductsAsync(value).SafeFireAndForget("EditSaleDialogViewModel.SearchTextChanged");
     }
 
     private async Task SearchProductsAsync(string query)

@@ -125,9 +125,10 @@ public class ProductService : IProductService
             // Propagate cancellation
             throw;
         }
-        catch
+        catch (System.Exception ex)
         {
-            return new List<Core.DTOs.ProductQuickInfoDto>();
+            Core.Logging.ClientStateLogger.LogError($"Fallo al consultar sugerencias de productos (filtro: '{filter}'): {ex.Message}", "ProductService");
+            throw;
         }
     }
 

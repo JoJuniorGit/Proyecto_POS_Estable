@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Core.Common;
 using Core.Helpers;
+using Core.Logging;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Net.Security;
@@ -23,11 +24,16 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
 {
     private readonly HttpClient _httpClient;
     private readonly IDispatcherInvoker _dispatcherInvoker;
+    private readonly UserSession? _userSession;
     private readonly HubConnection _hubConnection;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private decimal _currentRate;
     private DateTime? _lastUpdated;
     private int _isDisposed;
+    private int _signalRStartInProgress;
+
+    private const int SignalRMaxAttempts = 5;
+    private const int SignalRRetryDelayMs = 5000;
 
     public DateTime? LastUpdated => _lastUpdated;
     public bool IsRateOutdated => _lastUpdated == null || (DateTime.UtcNow - _lastUpdated.Value.ToUniversalTime()) > TimeSpan.FromHours(24);
@@ -37,10 +43,11 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
         PropertyNameCaseInsensitive = true
     };
 
-    public ExchangeRateService(HttpClient httpClient, IDispatcherInvoker? dispatcherInvoker = null)
+    public ExchangeRateService(HttpClient httpClient, IDispatcherInvoker? dispatcherInvoker = null, UserSession? userSession = null)
     {
         _httpClient = httpClient;
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
+        _userSession = userSession;
 
         var baseAddress = httpClient.BaseAddress ?? new Uri("http://localhost:5000/");
         var hubUri = new Uri(baseAddress, "hubs/exchange-rate");
@@ -48,15 +55,7 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
         _hubConnection = new HubConnectionBuilder()
             .WithUrl(hubUri, options =>
             {
-                options.AccessTokenProvider = () => 
-                {
-                    if (hubUri.Scheme == "http" && !hubUri.IsLoopback)
-                    {
-                        Core.Logging.ClientStateLogger.LogWarning("[SECURITY] Intentando enviar token SignalR sobre HTTP no loopback. Bloqueado.", "ExchangeRateService");
-                        return Task.FromResult<string?>(null);
-                    }
-                    return Task.FromResult(_httpClient.DefaultRequestHeaders.Authorization?.Parameter);
-                };
+                options.AccessTokenProvider = CreateAccessTokenProvider(hubUri, userSession);
                 options.HttpMessageHandlerFactory = handler =>
                 {
                     if (handler is HttpClientHandler clientHandler)
@@ -75,6 +74,21 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             })
             .WithAutomaticReconnect()
             .Build();
+
+        _hubConnection.Closed += error =>
+        {
+            if (Volatile.Read(ref _isDisposed) == 0)
+            {
+                ClientStateLogger.LogWarning($"[SIGNALR] Conexión en tiempo real cerrada: {error?.Message ?? "sin detalle"}", nameof(ExchangeRateService));
+            }
+            return Task.CompletedTask;
+        };
+
+        _hubConnection.Reconnected += _ =>
+        {
+            ClientStateLogger.LogInfo("[SIGNALR] Conexión en tiempo real restablecida.", nameof(ExchangeRateService));
+            return Task.CompletedTask;
+        };
 
         _hubConnection.On<decimal>("ReceiveRateUpdate", async (newRate) =>
         {
@@ -97,7 +111,43 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             });
         });
 
+        if (_userSession != null)
+        {
+            _userSession.SessionChanged += OnSessionChanged;
+        }
+
         InitializeAsync().SafeFireAndForget("ExchangeRateService.Initialize");
+    }
+
+    public static Func<Task<string?>> CreateAccessTokenProvider(Uri hubUri, UserSession? userSession)
+    {
+        ArgumentNullException.ThrowIfNull(hubUri);
+
+        return () =>
+        {
+            if (hubUri.Scheme == "http" && !hubUri.IsLoopback)
+            {
+                ClientStateLogger.LogWarning("[SECURITY] Intentando enviar token SignalR sobre HTTP no loopback. Bloqueado.", nameof(ExchangeRateService));
+                return Task.FromResult<string?>(null);
+            }
+
+            return Task.FromResult(userSession?.Token);
+        };
+    }
+
+    private void OnSessionChanged()
+    {
+        if (Volatile.Read(ref _isDisposed) != 0)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_userSession?.Token))
+        {
+            return;
+        }
+
+        StartSignalRAsync().SafeFireAndForget("ExchangeRateService.SessionChangedReconnect");
     }
 
     private async Task InitializeAsync()
@@ -178,24 +228,48 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
 
     private async Task StartSignalRAsync()
     {
-        const int _maxRetries = 60; // ~5 minutes of retries
-        int _attempt = 0;
-
-        while (_attempt < _maxRetries)
+        if (Interlocked.CompareExchange(ref _signalRStartInProgress, 1, 0) != 0)
         {
-            try
+            return;
+        }
+
+        try
+        {
+            for (int attempt = 1; attempt <= SignalRMaxAttempts; attempt++)
             {
-                if (_hubConnection.State == HubConnectionState.Disconnected)
+                if (Volatile.Read(ref _isDisposed) != 0)
                 {
-                    await _hubConnection.StartAsync();
+                    return;
                 }
-                return; // Connected successfully
+
+                try
+                {
+                    if (_hubConnection.State != HubConnectionState.Disconnected)
+                    {
+                        return;
+                    }
+
+                    await _hubConnection.StartAsync();
+                    ClientStateLogger.LogInfo("[SIGNALR] Conexión en tiempo real establecida.", nameof(ExchangeRateService));
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    ClientStateLogger.LogWarning($"[SIGNALR] Fallo al conectar en tiempo real (intento {attempt}/{SignalRMaxAttempts}): {ex.Message}", nameof(ExchangeRateService));
+
+                    if (attempt == SignalRMaxAttempts)
+                    {
+                        ClientStateLogger.LogWarning($"[SIGNALR] Tiempo real no disponible tras {SignalRMaxAttempts} intentos. Degradado a actualización manual.", nameof(ExchangeRateService));
+                        return;
+                    }
+
+                    await Task.Delay(SignalRRetryDelayMs);
+                }
             }
-            catch
-            {
-                _attempt++;
-                await Task.Delay(5000);
-            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _signalRStartInProgress, 0);
         }
     }
 
@@ -281,6 +355,11 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _isDisposed, 1) != 0) return;
+
+        if (_userSession != null)
+        {
+            _userSession.SessionChanged -= OnSessionChanged;
+        }
 
         if (_hubConnection != null)
         {

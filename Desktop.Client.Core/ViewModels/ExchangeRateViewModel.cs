@@ -5,12 +5,15 @@ using CommunityToolkit.Mvvm.Messaging;
 using Core.Common;
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Desktop.Client.ViewModels;
 
 public partial class ExchangeRateViewModel : ObservableObject
 {
+    private const int HistoryWindowSize = 365;
+
     private readonly Services.IExchangeRateService _exchangeRateService;
 
     private decimal _currentRate;
@@ -144,6 +147,7 @@ public partial class ExchangeRateViewModel : ObservableObject
     private async Task LoadAllAsync()
     {
         if (UserSession != null && !UserSession.IsLoggedIn) return;
+        if (IsLoading) return;
 
         IsLoading = true;
         StatusMessage = null;
@@ -236,7 +240,7 @@ public partial class ExchangeRateViewModel : ObservableObject
     {
         var history = await _exchangeRateService.GetHistoryAsync();
         History.Clear();
-        foreach (var item in history)
+        foreach (var item in history.Take(HistoryWindowSize))
             History.Add(item);
     }
 }

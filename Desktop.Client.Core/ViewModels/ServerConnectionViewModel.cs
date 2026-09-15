@@ -173,7 +173,7 @@ public partial class ServerConnectionViewModel : ObservableObject, IDisposable
 
         try
         {
-            var probe = await _scannerService.ProbeSingleHostAsync(ServerAddress, 5000, 1500);
+            var probe = await _scannerService.ProbeSingleHostAsync(ServerAddress, ServerPortResolver.Resolve(ServerAddress), 1500);
             if (probe != null && probe.IsHealthy)
             {
                 TestSuccess = true;

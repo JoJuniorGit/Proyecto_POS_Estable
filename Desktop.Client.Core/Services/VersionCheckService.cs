@@ -67,7 +67,7 @@ public class VersionCheckService : IVersionCheckService
         catch (Exception ex)
         {
             // Network or server unreachable: allow startup or log
-            Console.WriteLine("[VersionCheck] Unable to reach version check endpoint: " + ex.Message);
+            Core.Logging.ClientStateLogger.LogWarning($"[VERSION_CHECK] No se pudo contactar el endpoint de versión: {ex.Message}", nameof(VersionCheckService));
         }
 
         return result;

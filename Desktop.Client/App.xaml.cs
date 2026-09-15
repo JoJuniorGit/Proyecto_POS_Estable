@@ -83,7 +83,7 @@ public partial class App : Application
 
     private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
     {
-        try { File.AppendAllText(_crashPath, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] UI Exception: " + e.Exception.Message + "\n" + e.Exception.StackTrace + "\n\n"); } catch { }
+        RecordUnhandledException("UI Exception", "WpfDesktop.DispatcherUnhandledException", e.Exception);
         e.Handled = true;
         IsShutdownRequested = true;
         ShutdownReason = "Error fatal (excepción de UI)";
@@ -94,15 +94,21 @@ public partial class App : Application
     {
         if (e.ExceptionObject is Exception ex)
         {
-            try { File.AppendAllText(_crashPath, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] AppDomain Exception: " + ex.Message + "\n" + ex.StackTrace + "\n\n"); } catch { }
+            RecordUnhandledException("AppDomain Exception", "WpfDesktop.UnhandledException", ex);
         }
         try { Environment.Exit(1); } catch { }
     }
 
     private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
-        try { File.AppendAllText(_crashPath, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] Task Exception: " + e.Exception.Message + "\n" + e.Exception.StackTrace + "\n\n"); } catch { }
+        RecordUnhandledException("Task Exception", "WpfDesktop.TaskUnobservedException", e.Exception);
         e.SetObserved();
+    }
+
+    private void RecordUnhandledException(string fileCategory, string logContext, Exception ex)
+    {
+        try { File.AppendAllText(_crashPath, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] " + fileCategory + ": " + ex.Message + "\n" + ex.StackTrace + "\n\n"); } catch { }
+        Core.Logging.AppLogger.LogCrash(ex, logContext);
     }
 
     public IHost CreateAndStartHost(string[] args)
@@ -182,7 +188,7 @@ public partial class App : Application
         builder.Services.AddSingleton<IExchangeRateService>(sp => 
         {
             var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("ExchangeRateApi");
-            return new ExchangeRateService(httpClient, sp.GetRequiredService<IDispatcherInvoker>());
+            return new ExchangeRateService(httpClient, sp.GetRequiredService<IDispatcherInvoker>(), sp.GetRequiredService<UserSession>());
         });
 
         builder.Services.AddHttpClient<IUserService, UserService>(client =>
@@ -258,19 +264,6 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-
-        AppDomain.CurrentDomain.UnhandledException += (s, ev) =>
-        {
-            if (ev.ExceptionObject is Exception ex)
-            {
-                Core.Logging.AppLogger.LogCrash(ex, "WpfDesktop.UnhandledException");
-            }
-        };
-
-        DispatcherUnhandledException += (s, ev) =>
-        {
-            Core.Logging.AppLogger.LogCrash(ev.Exception, "WpfDesktop.DispatcherUnhandledException");
-        };
 
         try
         {

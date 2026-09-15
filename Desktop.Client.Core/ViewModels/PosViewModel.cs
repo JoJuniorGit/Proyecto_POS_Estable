@@ -227,7 +227,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
             catch (Exception ex)
             {
                 _recoveryCheckCompleted = false;
-                _dialogService?.ShowWarning("Recuperar venta sin finalizar", $"No se pudo recuperar la venta #{snapshot.SaleId}: {ex.Message}. La venta sigue pendiente; verifique la conexión y vuelva a entrar al Punto de Venta para reintentar.");
+                Core.Logging.ClientStateLogger.LogError($"Error al recuperar la venta pendiente #{snapshot.SaleId}: {ex.Message}", nameof(PosViewModel));
+                _dialogService?.ShowWarning("Recuperar venta sin finalizar", $"No se pudo recuperar la venta #{snapshot.SaleId}. La venta sigue pendiente; verifique la conexión y vuelva a entrar al Punto de Venta para reintentar.");
                 return;
             }
         }
@@ -278,7 +279,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
 
                 if (attempt == maxRetries)
                 {
-                    _dialogService?.ShowError("Error de Conexión", $"Error al cargar métodos de pago tras {maxRetries} intentos: {ex.Message}");
+                    Core.Logging.ClientStateLogger.LogError($"Error al cargar métodos de pago tras {maxRetries} intentos: {ex.Message}", nameof(PosViewModel));
+                    _dialogService?.ShowError("Error de Conexión", $"No se pudieron cargar los métodos de pago tras {maxRetries} intentos. Verifique la conexión con el servidor e intente nuevamente.");
                 }
                 else
                 {
@@ -319,7 +321,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[POS] StartNewSaleAsync FAILED: {ex.GetType().Name}: {ex.Message}");
-            if (_dialogService != null) _dialogService.ShowError("Sale Error", $"Error starting sale: {ex.Message}");
+            Core.Logging.ClientStateLogger.LogError($"Error al iniciar la venta: {ex.Message}", nameof(PosViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error de Venta", "No se pudo iniciar la venta. Verifique la conexión con el servidor e intente nuevamente.");
         }
         finally
         {
@@ -385,12 +388,15 @@ public partial class PosViewModel : ObservableObject, IDisposable
             });
         }
         catch (OperationCanceledException) { }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogError($"Error al buscar productos '{term}': {ex.Message}", "PosViewModel");
             RunOnUI(() =>
             {
                 Suggestions.Clear();
-                HasSuggestions = false;
+                Suggestions.Add(new ProductQuickInfoDto { Id = -2, Name = "Error de conexión. Reintente la búsqueda.", SKU = "-" });
+                HasSuggestions = Suggestions.Any();
+                if (SelectedSuggestion != null) SelectedSuggestion = null;
             });
         }
         finally

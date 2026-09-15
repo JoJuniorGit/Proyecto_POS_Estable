@@ -44,6 +44,8 @@ public partial class PendingOrdersViewModel : ObservableObject
     private const int PageSize = 200;
     private int _totalCount;
     private bool _loaded;
+    private int _loadGeneration;
+    private bool _reloadRequested;
 
     public ObservableCollection<SaleDto> PendingSales { get; } = new();
 
@@ -105,8 +107,14 @@ public partial class PendingOrdersViewModel : ObservableObject
     public async Task EnsureLoadedAsync()
     {
         if (_userSession != null && !_userSession.IsLoggedIn) return;
+        if (IsLoading)
+        {
+            _reloadRequested = true;
+            return;
+        }
 
         IsLoading = true;
+        var generation = ++_loadGeneration;
         SuccessMessage = null;
         try
         {
@@ -114,6 +122,7 @@ public partial class PendingOrdersViewModel : ObservableObject
             if (rateInfo.Rate > 0) CurrentExchangeRate = rateInfo.Rate;
 
             var (list, totalCount) = await _salesService.GetPendingSalesPagedAsync(PageSize, 0);
+            if (generation != _loadGeneration) return;
             _totalCount = totalCount;
             PendingSales.Clear();
             foreach (var item in list.OrderByDescending(s => s.Date))
@@ -133,6 +142,11 @@ public partial class PendingOrdersViewModel : ObservableObject
         finally
         {
             IsLoading = false;
+            if (_reloadRequested)
+            {
+                _reloadRequested = false;
+                await EnsureLoadedAsync();
+            }
         }
     }
 
@@ -145,12 +159,14 @@ public partial class PendingOrdersViewModel : ObservableObject
     private async Task LoadMoreAsync()
     {
         if (_userSession != null && !_userSession.IsLoggedIn) return;
-        if (IsLoadingMore || !HasMore) return;
+        if (IsLoading || IsLoadingMore || !HasMore) return;
 
         IsLoadingMore = true;
+        var generation = ++_loadGeneration;
         try
         {
             var (list, totalCount) = await _salesService.GetPendingSalesPagedAsync(PageSize, PendingSales.Count);
+            if (generation != _loadGeneration) return;
             _totalCount = totalCount;
             foreach (var item in list.OrderByDescending(s => s.Date))
             {

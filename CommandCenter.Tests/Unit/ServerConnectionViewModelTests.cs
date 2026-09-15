@@ -180,6 +180,32 @@ public class ServerConnectionViewModelTests
     }
 
     [Fact]
+    public async Task TestConnectionAsync_WhenHttpsAddressWithoutExplicitPort_ProbesHttpsPort5001()
+    {
+        var probeResult = new DiscoveredServer
+        {
+            IpAddress = "192.168.1.100",
+            MachineName = "CAJA-SERVER",
+            BaseUrl = "https://192.168.1.100:5001/",
+            ResponseTimeMs = 7,
+            IsHealthy = true
+        };
+
+        _mockScannerService.Setup(s => s.ProbeSingleHostAsync(
+                "https://192.168.1.100/", 5001, 1500, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(probeResult);
+
+        using var vm = new ServerConnectionViewModel(_mockConnectionManager.Object, _mockScannerService.Object);
+        vm.ServerAddress = "https://192.168.1.100/";
+
+        await vm.TestConnectionCommand.ExecuteAsync(null);
+
+        Assert.True(vm.TestSuccess);
+        _mockScannerService.Verify(s => s.ProbeSingleHostAsync(
+            "https://192.168.1.100/", 5001, 1500, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public void OnServerAddressChanged_WhenAddressChanged_ResetsTestResult()
     {
         using var vm = new ServerConnectionViewModel(_mockConnectionManager.Object, _mockScannerService.Object);

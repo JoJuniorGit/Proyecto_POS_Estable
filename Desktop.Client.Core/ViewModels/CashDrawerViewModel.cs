@@ -90,6 +90,11 @@ public partial class CashDrawerViewModel : ObservableObject
     public ObservableCollection<CashTransactionDto> RecentIncomes { get; } = new();
     public ObservableCollection<CashTransactionDto> OrderedTransactions { get; } = new();
 
+    private const int HistoryWindowSize = 300;
+    private const int FallbackTransferPaymentMethodId = 2;
+    private const int FallbackPosPaymentMethodId = 3;
+    private const int FallbackMobilePaymentMethodId = 4;
+
     // ── Pagination for Physical Cash Transactions (25 per page) ──
     private int _currentPage = 1;
     public int CurrentPage
@@ -115,7 +120,7 @@ public partial class CashDrawerViewModel : ObservableObject
 
     public bool IsSessionActive => ActiveSession != null;
     public bool HasRecentIncomes => RecentIncomes.Count > 0;
-    public bool IsAdmin => _userSession == null || _userSession.IsAdmin;
+    public bool IsAdmin => _userSession?.IsAdmin == true;
 
 
     public CashDrawerViewModel(
@@ -196,11 +201,11 @@ public partial class CashDrawerViewModel : ObservableObject
 
             // Historial persistente: movimientos físicos de TODAS las sesiones (activa y cerradas),
             // para conservar la trazabilidad de las sesiones previas tras el cierre de caja.
-            var history = await _cashDrawerService.GetHistoryAsync();
+            var history = await _cashDrawerService.GetHistoryAsync(HistoryWindowSize);
             _allPhysicalTransactions.Clear();
             if (history != null && history.Count > 0)
             {
-                _allPhysicalTransactions.AddRange(history);
+                _allPhysicalTransactions.AddRange(history.Take(HistoryWindowSize));
             }
 
             if (ActiveSession != null)
@@ -287,7 +292,7 @@ public partial class CashDrawerViewModel : ObservableObject
     {
         if (ActiveSession == null || _dialogService == null) return;
 
-        if (_userSession != null && !_userSession.IsAdmin)
+        if (!IsAdmin)
         {
             _dialogService.ShowError("Acceso Denegado", "Solo los usuarios Administradores tienen permiso para realizar operaciones de CASH IN.");
             return;
@@ -335,7 +340,7 @@ public partial class CashDrawerViewModel : ObservableObject
     {
         if (ActiveSession == null || _dialogService == null) return;
 
-        if (_userSession != null && !_userSession.IsAdmin)
+        if (!IsAdmin)
         {
             _dialogService.ShowError("Acceso Denegado", "Solo los usuarios Administradores tienen permiso para realizar operaciones de CASH OUT.");
             return;
@@ -389,9 +394,9 @@ public partial class CashDrawerViewModel : ObservableObject
                 ? (await _paymentService.GetActiveMethodsAsync()).ToList()
                 : new System.Collections.Generic.List<Desktop.Client.Services.PaymentMethodDto>
                 {
-                    new Desktop.Client.Services.PaymentMethodDto { Id = 2, Name = "Transferencia", IsCash = false, DisplayOrder = 1 },
-                    new Desktop.Client.Services.PaymentMethodDto { Id = 3, Name = "Punto de Venta", IsCash = false, DisplayOrder = 2 },
-                    new Desktop.Client.Services.PaymentMethodDto { Id = 4, Name = "Pago Móvil", IsCash = false, DisplayOrder = 3 }
+                    new Desktop.Client.Services.PaymentMethodDto { Id = FallbackTransferPaymentMethodId, Name = "Transferencia", IsCash = false, DisplayOrder = 1 },
+                    new Desktop.Client.Services.PaymentMethodDto { Id = FallbackPosPaymentMethodId, Name = "Punto de Venta", IsCash = false, DisplayOrder = 2 },
+                    new Desktop.Client.Services.PaymentMethodDto { Id = FallbackMobilePaymentMethodId, Name = "Pago Móvil", IsCash = false, DisplayOrder = 3 }
                 };
 
             var currentBalance = await _cashDrawerService.GetCurrentBalanceLocalAsync(ActiveSession.Id);

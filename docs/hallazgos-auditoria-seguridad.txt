@@ -1629,9 +1629,10 @@ Suite web: npm test → 268/268 (0 fallos; +90 tests vs 178 inicial) | npm run l
   Fix: catch con estado visible y acción de reintento; catch{} silenciosos
        reemplazados por log con contexto.
 
-[BAJO] index.css monolítico (3115 líneas, 259 !important) — DIFERIDO
+[BAJO] index.css monolítico (3115 líneas, 259 !important) — DIFERIDO A FASE 6
   Motivo: refactor cosmético de alto churn sin impacto funcional ni de seguridad;
-       requiere QA visual dedicado. Recomendado como tarea aparte.
+       requiere QA visual dedicado. Debe resolverse como FASE 6 (fase separada),
+       fuera de las fases 1-5 de esta remediación.
 
 [BAJO] Código muerto — RESUELTO
   Eliminados: pages/ClosingPage.jsx (+css), components/pos/PartialPaymentModal.jsx
@@ -1659,5 +1660,96 @@ VERIFICACIÓN
   - Sin dependencias nuevas; sin regeneración de bundle en este lote.
 
 ALCANCE: Sección 3 del Anexo COMPLETA (17/18 hallazgos; index.css diferido).
-Pendientes del Anexo: Secciones 4 (WPF) y 5 (Infra/CI/Updater).
+DIFERIDO A FASE 6 (FASE SEPARADA, PENDIENTE): split de index.css (dividir por
+dominio y sustituir !important por @layer/tokens) — requiere QA visual dedicado.
+Pendientes del Anexo: Secciones 4 (WPF) y 5 (Infra/CI/Updater) — FASES 4 y 5.
+
+================================================================================
+AVANCE DE REMEDIACIÓN — FASE 4: Desktop WPF (Desktop.Client / Desktop.Client.Core)
+Fecha: 2026-09-15
+Suite .NET: dotnet test → 1084/1084 (0 fallos; +68 tests vs 1016) | build Release 0/0
+================================================================================
+
+[ALTO] SignalR nunca recibía token de autenticación — RESUELTO
+  Archivo: Desktop.Client.Core/Services/ExchangeRateService.cs (+ wiring en App.xaml.cs)
+  Fix: AccessTokenProvider devuelve el token vigente de UserSession leído en cada
+       llamada (no capturado una vez); reconexión al cambiar la sesión; reintentos
+       iniciales acotados a 5×5s con logging (antes 60×5s silenciosos); eventos de
+       conexión logueados. ReceiveRateUpdate / OnHoldSalesUpdated /
+       OnPaymentMethodsUpdated vuelven a llegar.
+
+[MEDIO] Pins TOFU solo en memoria — RESUELTO
+  Archivo: Desktop.Client.Core/Services/CertificatePinning.cs
+  Fix: persistencia durable por host en almacén DPAPI CurrentUser
+       (%LocalAppData%\SolucionesPOS\certificate-pins.dat), carga al inicio; TOFU
+       queda solo para el primer contacto; fallos del almacén se loguean [SECURITY]
+       sin desactivar el pinning de sesión.
+
+[MEDIO] LoginViewModel singleton dispuesto por la vista — RESUELTO
+  Archivo: Desktop.Client/Views/LoginView.xaml.cs
+  Fix: la vista ya no dispone el singleton; detach/reattach de sus handlers; el
+       dispose único ocurre en el shutdown (host de la app).
+
+[MEDIO] Sonda de conexión en puerto incorrecto (HTTPS→5000) — RESUELTO
+  Archivos: ServerPortResolver.cs (nuevo), ServerConnectionViewModel.cs,
+           IConnectionManager.cs, SubnetScannerService.cs
+  Fix: puerto derivado del esquema (https→5001, http→5000, puerto explícito gana);
+       criterio único compartido por diálogo, scanner, heartbeat e Initialize.
+
+[MEDIO] ResilienceHandler filtraba respuestas 5xx intermedias — RESUELTO
+  Archivo: Desktop.Client.Core/Services/ResilienceHandler.cs
+  Fix: las respuestas intermedias se disponen antes de reintentar; la respuesta
+       final nunca se dispone; semántica de reintentos intacta.
+
+[MEDIO] Búsqueda de productos convertía fallos en lista vacía — RESUELTO
+  Archivos: ProductService.cs, PosViewModel.cs (+ PosViewModel.Scanning.cs)
+  Fix: los fallos de infraestructura se loguean (ClientStateLogger) y se propagan;
+       "Product not found" solo para no-encontrado real; la UI distingue error de
+       conexión (Id=-2) de desconocido.
+
+[BAJO] Historiales en memoria sin límite — RESUELTO
+  Archivos: CashDrawerViewModel.cs (ventana 300), ExchangeRateViewModel.cs (365)
+  Fix: ventanas acotadas con recorte defensivo y guard de reentrancia en la carga.
+
+[BAJO] Rama HTTP muerta en el escáner de subred — RESUELTO
+  Archivo: SubnetScannerService.cs
+  Fix: eliminada la rama muerta; queda una única regla documentada loopback-only.
+
+[BAJO] Fire-and-forget desnudos — RESUELTO
+  Archivos: KeyboardWedgeScannerListener.cs, EditSaleDialogViewModel.cs
+  Fix: ruteo por SafeFireAndForget; acople por textBox.Name reemplazado por Tag.
+
+[BAJO] Cadenas de UI mezcladas y ex.Message crudo — RESUELTO (puntual)
+  Archivos: SettingsViewModel.cs, PosViewModel.cs, ProductDialogViewModel.cs
+  Fix: textos es-VE en los puntos marcados; el detalle técnico se loguea, no se
+       muestra. Residuales: patrones idénticos en partials hermanos (no listados
+       en el hallazgo) quedan para pulido futuro.
+
+[BAJO] Manejadores globales de excepción duplicados — RESUELTO
+  Archivo: App.xaml.cs
+  Fix: un único flujo determinista por evento (crash.txt + AppLogger).
+
+[BAJO] Version-check solo a Console + URLs HTTP — RESUELTO
+  Archivos: VersionCheckService.cs, VersionLockoutViewModel.cs, UpdateUrlPolicy.cs
+  Fix: logging por ClientStateLogger; política de URL (HTTPS obligatorio fuera de
+       loopback; http solo loopback) validada antes de descargar y logueada.
+
+[BAJO] RBAC de caja fail-open + IDs hardcodeados — RESUELTO
+  Archivo: CashDrawerViewModel.cs
+  Fix: IsAdmin fail-closed (_userSession?.IsAdmin == true); gates CASH IN/OUT
+       deniegan sin sesión; catálogo de pagos desde el servicio (fallback nombrado
+       solo cuando no hay servicio cableado).
+
+[BAJO] Recargas de cuentas abiertas sin guarda — RESUELTO
+  Archivo: PendingOrdersViewModel.cs
+  Fix: guarda de reentrancia + generación; resultados viejos descartados; reload
+       diferido una vez.
+
+VERIFICACIÓN
+  - dotnet build CommandCenter.slnx -c Release → 0 advertencias / 0 errores
+  - dotnet test CommandCenter.Tests → 1084/1084 (0 fallos; +68 tests nuevos)
+
+ALCANCE: Sección 4 del Anexo COMPLETA (14/14 hallazgos; residuales menores
+documentados: patrones ex.Message en partials hermanos, literal Tag en XAML).
+Pendientes del Anexo: Sección 5 (Infra/CI/Updater) — FASE 5.
 ================================================================================

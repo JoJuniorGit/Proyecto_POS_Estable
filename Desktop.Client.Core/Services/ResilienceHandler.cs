@@ -96,6 +96,7 @@ public class ResilienceHandler : DelegatingHandler
                     {
                         ClientStateLogger.LogFatalDbAuth();
                         _clientStateService?.TryActivateFatalError();
+                        response.Dispose();
                         throw new FatalDbAuthenticationException("Fallo crítico de credenciales en PostgreSQL. Se aborta la auto-recuperación.");
                     }
                 }
@@ -111,6 +112,8 @@ public class ResilienceHandler : DelegatingHandler
 
                 if (attempt < effectiveMaxRetries)
                 {
+                    response.Dispose();
+                    response = null;
                     int delayMs = (int)Math.Pow(2, attempt) * 1000 + Random.Shared.Next(100, 500); // 2s, 4s, 8s + jitter
                     await Task.Delay(delayMs, cancellationToken);
                 }
@@ -126,6 +129,12 @@ public class ResilienceHandler : DelegatingHandler
                 if (!isIdempotent)
                 {
                     throw;
+                }
+
+                if (response != null && attempt < effectiveMaxRetries)
+                {
+                    response.Dispose();
+                    response = null;
                 }
 
                 ClientStateLogger.LogRetry(attempt, effectiveMaxRetries, requestUri, method);

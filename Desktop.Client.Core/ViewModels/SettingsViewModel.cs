@@ -124,7 +124,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            _dialogService?.ShowError("Stock Negativo", $"No se pudo guardar la configuración: {ex.Message}");
+            Core.Logging.ClientStateLogger.LogError($"Error al guardar la configuración de stock negativo: {ex.Message}", nameof(SettingsViewModel));
+            _dialogService?.ShowError("Stock Negativo", "No se pudo guardar la configuración. Intente nuevamente.");
         }
     }
 
@@ -147,7 +148,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to load payment configurations: {ex.Message}";
+            Core.Logging.ClientStateLogger.LogError($"Error al cargar métodos de pago: {ex.Message}", nameof(SettingsViewModel));
+            ErrorMessage = "No se pudieron cargar los métodos de pago. Verifique la conexión con el servidor e intente nuevamente.";
         }
         finally
         {
@@ -165,7 +167,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            if (_dialogService != null) _dialogService.ShowError("Settings Error", $"Failed to update status: {ex.Message}");
+            Core.Logging.ClientStateLogger.LogError($"Error al actualizar el estado del método de pago: {ex.Message}", nameof(SettingsViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo actualizar el estado del método de pago. Intente nuevamente.");
             method.IsActive = !method.IsActive; // Revert
             OnPropertyChanged(nameof(PaymentMethods));
         }
@@ -181,7 +184,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            if (_dialogService != null) _dialogService.ShowError("Settings Error", $"Failed to update rule: {ex.Message}");
+            Core.Logging.ClientStateLogger.LogError($"Error al actualizar la regla del método de pago: {ex.Message}", nameof(SettingsViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo actualizar la regla del método de pago. Intente nuevamente.");
             method.RequiresReference = !method.RequiresReference; // Revert
             OnPropertyChanged(nameof(PaymentMethods));
         }
@@ -214,8 +218,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogError($"Error al cambiar el tipo de método de pago: {ex.Message}", nameof(SettingsViewModel));
             method.IsCash = original;
-            if (_dialogService != null) _dialogService.ShowError("Error", $"Error al cambiar el tipo de método de pago: {ex.Message}");
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo cambiar el tipo del método de pago. Intente nuevamente.");
             await LoadMethodsAsync();
         }
     }
@@ -225,14 +230,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     {
         if (_dialogService == null) return;
         var newName = await _dialogService.ShowTextInputAsync(
-            "Enter the name of the new Payment Method (e.g. Check, Transfer, Crypto):",
-            "Method Name");
+            "Ingrese el nombre del nuevo método de pago (ej. Cheque, Transferencia, Criptomoneda):",
+            "Nombre del Método");
 
         if (string.IsNullOrWhiteSpace(newName)) return;
 
         if (PaymentMethods.Any(p => p.Name.Equals(newName, StringComparison.OrdinalIgnoreCase)))
         {
-            _dialogService.ShowWarning("Validation", "A payment method with this name already exists!");
+            _dialogService.ShowWarning("Validación", "Ya existe un método de pago con ese nombre.");
             return;
         }
 
@@ -252,7 +257,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            _dialogService.ShowError("Settings Error", $"Failed to create method: {ex.Message}");
+            Core.Logging.ClientStateLogger.LogError($"Error al crear el método de pago: {ex.Message}", nameof(SettingsViewModel));
+            _dialogService.ShowError("Error", "No se pudo crear el método de pago. Intente nuevamente.");
             await LoadMethodsAsync();
         }
     }
@@ -299,7 +305,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            if (_dialogService != null) _dialogService.ShowError("Error", $"Error al renombrar el método de pago: {ex.Message}");
+            Core.Logging.ClientStateLogger.LogError($"Error al renombrar el método de pago: {ex.Message}", nameof(SettingsViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo renombrar el método de pago. Intente nuevamente.");
         }
     }
 
@@ -329,7 +336,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            if (_dialogService != null) _dialogService.ShowError("Error", $"Error al reordenar métodos de pago: {ex.Message}");
+            Core.Logging.ClientStateLogger.LogError($"Error al reordenar los métodos de pago: {ex.Message}", nameof(SettingsViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo reordenar los métodos de pago. Intente nuevamente.");
         }
     }
 
@@ -359,7 +367,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            if (_dialogService != null) _dialogService.ShowError("Error", $"Error al reordenar métodos de pago: {ex.Message}");
+            Core.Logging.ClientStateLogger.LogError($"Error al reordenar los métodos de pago: {ex.Message}", nameof(SettingsViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo reordenar los métodos de pago. Intente nuevamente.");
         }
     }
 
@@ -383,7 +392,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             }
             catch (Exception ex)
             {
-                if (_dialogService != null) _dialogService.ShowError("Settings Error", $"Error al eliminar el método de pago: {ex.Message}");
+                Core.Logging.ClientStateLogger.LogError($"Error al eliminar el método de pago: {ex.Message}", nameof(SettingsViewModel));
+                if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo eliminar el método de pago. Intente nuevamente.");
                 await LoadMethodsAsync();
             }
         }
@@ -414,7 +424,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            if (_dialogService != null) _dialogService.ShowError("Settings Error", $"Failed to save timezone: {ex.Message}");
+            Core.Logging.ClientStateLogger.LogError($"Error al guardar la zona horaria: {ex.Message}", nameof(SettingsViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo guardar la zona horaria. Intente nuevamente.");
         }
     }
 

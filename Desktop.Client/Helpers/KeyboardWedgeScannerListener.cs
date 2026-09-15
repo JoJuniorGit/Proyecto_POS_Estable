@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using Core.Common;
 using Core.Helpers;
 
 namespace Desktop.Client.Helpers;
@@ -102,7 +103,7 @@ public sealed class KeyboardWedgeScannerListener : IDisposable
                 {
                     e.Handled = true;
                     ResetBuffer();
-                    _ = _onBarcodeScanned(candidate);
+                    _onBarcodeScanned(candidate).SafeFireAndForget("KeyboardWedgeScannerListener.BarcodeScanned");
                     return;
                 }
             }
@@ -117,7 +118,7 @@ public sealed class KeyboardWedgeScannerListener : IDisposable
         if (focused is TextBox textBox)
         {
             // El buscador principal del POS está permitido para recibir la ráfaga
-            if (textBox.Name == "SearchInput" || textBox.Tag?.ToString() == "PosSearchBox")
+            if (textBox.Tag?.ToString() == "PosSearchBox")
             {
                 return false;
             }

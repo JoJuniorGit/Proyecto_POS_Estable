@@ -310,7 +310,7 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
         try
         {
             IsSkuVerifying = true;
-            SkuVerificationMessage = "Verifying SKU availability...";
+            SkuVerificationMessage = "Verificando disponibilidad del SKU...";
 
             var existingProduct = await _productService.GetQuickInfoAsync(Sku);
 
@@ -319,7 +319,7 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
                 if (existingProduct != null && existingProduct.Id != _initialProduct?.Id)
                 {
                     IsSkuValid = false;
-                    SkuVerificationMessage = "SKU already exists in the catalog.";
+                    SkuVerificationMessage = "El SKU ya existe en el catálogo.";
                 }
                 else
                 {
@@ -334,11 +334,11 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
         }
         catch (Exception ex)
         {
-            AppLogger.LogCrash(ex, "ProductDialogViewModel.VerifySkuAsync");
+            ClientStateLogger.LogError($"Error al verificar el SKU: {ex.Message}", nameof(ProductDialogViewModel));
             if (!token.IsCancellationRequested)
             {
                 IsSkuValid = true;
-                SkuVerificationMessage = $"Warning: Could not verify SKU: {ex.Message}";
+                SkuVerificationMessage = "No se pudo verificar el SKU. Intente nuevamente.";
             }
         }
         finally

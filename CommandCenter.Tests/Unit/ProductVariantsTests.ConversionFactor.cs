@@ -50,7 +50,7 @@ public partial class ProductVariantsTests
 
         Assert.False(closed);
         Assert.False(vm.IsSkuValid);
-        Assert.Contains("already exists", vm.SkuVerificationMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ya existe", vm.SkuVerificationMessage, StringComparison.OrdinalIgnoreCase);
     }
 
 
