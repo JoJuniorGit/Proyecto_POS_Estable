@@ -1,19 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Modal from '../ui/Modal';
+import useDebounce from '../../hooks/useDebounce';
 import { getCustomers, createCustomer } from '../../services/customerApi';
 import { getActivePaymentMethods } from '../../services/paymentApi';
 import { holdSale } from '../../services/salesApi';
+import { createCheckoutKeyHolder } from '../../utils/idempotency.js';
 import { formatNumberEs, formatBsS, formatUSD } from '../../utils/formatters';
 import { Search, UserPlus, Clock, Loader2, RefreshCw, X } from 'lucide-react';
 import './HoldSaleModal.css';
 
 export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer, saleTotalUSD, saleTotalBsS = 0, exchangeRate, onSuccess }) {
   const [query, setQuery] = useState('');
+  const debouncedQuery = useDebounce(query, 250);
   const [customers, setCustomers] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const searchInputRef = useRef(null);
   const searchWrapRef = useRef(null);
+  const customerAbortRef = useRef(null);
+  const lastLoadedQueryRef = useRef(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // New customer creation state
@@ -30,6 +35,12 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+
+  const holdKeyHolderRef = useRef(null);
+  if (!holdKeyHolderRef.current) {
+    holdKeyHolderRef.current = createCheckoutKeyHolder();
+  }
+  const wasOpenRef = useRef(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -63,9 +74,19 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
       setIsCreatingCustomer(false);
       setIsDropdownOpen(false);
       setQuery('');
+    } else {
+      setQuery('');
+      customerAbortRef.current?.abort();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, currentCustomer?.id, currentCustomer?.cedulaOrRif, currentCustomer?.isDefault]);
+
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
+      holdKeyHolderRef.current.reset();
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen]);
 
   // Close the floating dropdown when clicking outside the search area
   useEffect(() => {
@@ -79,24 +100,37 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
     return () => document.removeEventListener('mousedown', handleMousedown);
   }, [isOpen, selectedCustomer]);
 
-  const loadCustomers = async (q) => {
+  const loadCustomers = useCallback(async (q) => {
+    customerAbortRef.current?.abort();
+    const controller = new AbortController();
+    customerAbortRef.current = controller;
+    lastLoadedQueryRef.current = q;
     setLoadingCustomers(true);
     try {
-      const data = await getCustomers(q);
+      const data = await getCustomers(q, controller.signal);
+      if (controller.signal.aborted) return;
       // Ocultar al Consumidor Final (V-00000000 / IsDefault)
       setCustomers((data || []).filter(c => !c.isDefault && c.cedulaOrRif !== 'V-00000000'));
     } catch (err) {
-      console.error(err);
+      if (err?.name !== 'AbortError') {
+        console.error('[HoldSaleModal] Error al cargar clientes:', err);
+      }
     } finally {
-      setLoadingCustomers(false);
+      if (!controller.signal.aborted) setLoadingCustomers(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (lastLoadedQueryRef.current === debouncedQuery) return;
+    loadCustomers(debouncedQuery);
+  }, [isOpen, debouncedQuery, loadCustomers]);
+
+  useEffect(() => () => customerAbortRef.current?.abort(), []);
 
   const handleSearchChange = (e) => {
-    const val = e.target.value;
-    setQuery(val);
+    setQuery(e.target.value);
     setIsDropdownOpen(true);
-    loadCustomers(val);
   };
 
   const handleClearOrChangeCustomer = () => {
@@ -120,9 +154,10 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
       setSelectedCustomer(created);
       setIsCreatingCustomer(false);
       setIsDropdownOpen(false);
+      setQuery(created.cedulaOrRif);
       loadCustomers(created.cedulaOrRif);
     } catch (err) {
-      setError(err.response?.data || err.message || 'Error al crear cliente');
+      setError(err.message || 'Error al crear cliente');
     }
   };
 
@@ -162,6 +197,11 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
   const finalPaymentBsS = isCashSelected ? Math.trunc(initialBsS) : initialBsS;
   const finalPaymentUsd = exchangeRate > 0 ? finalPaymentBsS / exchangeRate : 0;
 
+  const handleCancel = () => {
+    holdKeyHolderRef.current.reset();
+    onClose?.();
+  };
+
   const handleConfirmHold = async () => {
     if (!selectedCustomer) {
       setError('Debes seleccionar o crear un cliente registrado para poner en espera.');
@@ -196,17 +236,18 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
         initialPayments: initialPaymentsList
       };
 
-      await holdSale(saleId, request);
+      await holdSale(saleId, request, 0, null, holdKeyHolderRef.current.getOrCreateKey());
+      holdKeyHolderRef.current.reset();
       onSuccess();
     } catch (err) {
-      setError(err.response?.data || err.message || 'Error al guardar pedido en espera.');
+      setError(err.message || 'Error al guardar pedido en espera.');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Guardar Pedido en Espera" maxWidth="580px">
+    <Modal isOpen={isOpen} onClose={handleCancel} title="Guardar Pedido en Espera" maxWidth="580px">
       <div className="hold-modal-pad">
         {error && <div className="alert alert-danger mb-3 text-center">{error}</div>}
 
@@ -447,7 +488,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
           <button
             type="button"
             className="btn btn-outline hold-footer-btn"
-            onClick={onClose}
+            onClick={handleCancel}
             disabled={submitting}
           >
             CANCELAR

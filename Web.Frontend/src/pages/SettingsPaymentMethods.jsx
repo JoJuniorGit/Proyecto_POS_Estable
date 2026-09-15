@@ -17,7 +17,7 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
       setMessage({ type: 'success', text: `Método "${method.name}" clasificado como ${updated.isCash ? 'Físico' : 'Digital'}.` });
     } catch (err) {
       console.error('[SettingsPage] Error actualizando tipo de método:', err);
-      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al cambiar tipo del método.' });
+      setMessage({ type: 'danger', text: err?.message || 'Error al cambiar tipo del método.' });
       loadMethods();
     }
   };
@@ -29,7 +29,7 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
       await updatePaymentMethod(method.id, updated);
     } catch (err) {
       console.error('[SettingsPage] Error actualizando método:', err);
-      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al cambiar estado del método.' });
+      setMessage({ type: 'danger', text: err?.message || 'Error al cambiar estado del método.' });
       loadMethods();
     }
   };
@@ -41,7 +41,7 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
       await updatePaymentMethod(method.id, updated);
     } catch (err) {
       console.error('[SettingsPage] Error actualizando método:', err);
-      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al actualizar configuración de referencia.' });
+      setMessage({ type: 'danger', text: err?.message || 'Error al actualizar configuración de referencia.' });
       loadMethods();
     }
   };
@@ -61,7 +61,7 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
       setMessage({ type: 'success', text: `Método "${method.name}" eliminado correctamente.` });
     } catch (err) {
       console.error('[SettingsPage] Error eliminando método:', err);
-      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al eliminar método de pago.' });
+      setMessage({ type: 'danger', text: err?.message || 'Error al eliminar método de pago.' });
       loadMethods();
     }
   };
@@ -85,7 +85,7 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
       loadMethods();
     } catch (err) {
       console.error('[SettingsPage] Error agregando método:', err);
-      setMessage({ type: 'danger', text: err?.response?.data?.message || 'Error al crear método de pago.' });
+      setMessage({ type: 'danger', text: err?.message || 'Error al crear método de pago.' });
       loadMethods();
     }
   };

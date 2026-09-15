@@ -9,12 +9,23 @@ import Modal from '../components/ui/Modal';
 import PendingOrderDesktopRow from '../components/pending/PendingOrderDesktopRow';
 import PendingOrderMobileCard from '../components/pending/PendingOrderMobileCard';
 import { formatNumberEs } from '../utils/formatters';
+import { useMediaQuery } from '../utils/useMediaQuery';
 import { getLockInfo } from '../utils/holdLock';
 import { createHoldOrderLockController } from '../utils/holdOrderLockController';
 import { Search, Loader2, Clock, ChevronDown, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
+import RoleGuard from '../navigation/RoleGuard';
+import { normalizeRole } from '../navigation/roleViews';
 import './PendingOrdersPage.css';
 
 export default function PendingOrdersPage() {
+  return (
+    <RoleGuard view="pending">
+      <PendingOrdersPageContent />
+    </RoleGuard>
+  );
+}
+
+function PendingOrdersPageContent() {
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -28,7 +39,8 @@ export default function PendingOrdersPage() {
   const { exchangeRate } = useExchangeRate();
   const { user } = useAuth();
   const currentUserId = user?.id;
-  const isElevated = user?.role === 'Admin' || user?.role === 'Manager';
+  const normalizedRole = normalizeRole(user?.role);
+  const isElevated = normalizedRole === 'Admin' || normalizedRole === 'Manager';
 
   const abonoBatchKeysRef = useRef(new Map());
 
@@ -37,6 +49,7 @@ export default function PendingOrdersPage() {
   const [selectedSaleForEdit, setSelectedSaleForEdit] = useState(null);
 
   const pageSize = 200;
+  const isMobile = useMediaQuery('(max-width: 768px)');
   const [hasMore, setHasMore] = useState(false);
   const [pageOffset, setPageOffset] = useState(0);
 
@@ -159,8 +172,7 @@ export default function PendingOrdersPage() {
       window.dispatchEvent(new CustomEvent('onHoldSalesUpdated'));
     } catch (err) {
       console.error('[PendingOrdersPage] Error al anular pedido:', err);
-      const msg = err.response?.data?.message || err.response?.data || err.message || 'Error al anular el pedido.';
-      setError(typeof msg === 'string' ? msg : 'Error al anular el pedido.');
+      setError(err.message || 'Error al anular el pedido.');
       setShowConfirmCancel(false);
     } finally {
       await controller.releaseActive();
@@ -252,6 +264,7 @@ export default function PendingOrdersPage() {
       ) : (
         <>
           {/* ── 3A. VISTA ESCRITORIO (TABLA TRADICIONAL) ── */}
+          {!isMobile && (
           <div className="pending-desktop-view">
             <table>
               <thead>
@@ -279,8 +292,10 @@ export default function PendingOrdersPage() {
               </tbody>
             </table>
           </div>
+          )}
 
           {/* ── 3B. VISTA MÓVIL (DISEÑO DE TARJETAS / CARD LAYOUT - OPCIÓN B) ── */}
+          {isMobile && (
           <div className="pending-mobile-view">
             {filteredSales.map((sale) => (
               <PendingOrderMobileCard
@@ -297,6 +312,7 @@ export default function PendingOrdersPage() {
               />
             ))}
           </div>
+          )}
 
           {hasMore && (
             <div className="text-center mt-3 mb-1">
@@ -385,8 +401,7 @@ export default function PendingOrdersPage() {
                 });
               }
             } catch (err) {
-              const msg = err.response?.data?.message || err.response?.data?.Message || (typeof err.response?.data === 'string' ? err.response?.data : null) || err.message || 'Error al procesar la operación.';
-              setError(msg);
+              setError(err.message || 'Error al procesar la operación.');
             }
           }}
         />

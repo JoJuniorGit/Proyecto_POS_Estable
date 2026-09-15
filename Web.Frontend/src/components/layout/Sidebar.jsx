@@ -13,43 +13,45 @@ import {
 } from 'lucide-react';
 import ThemeToggle from '../ui/ThemeToggle';
 import { useAuth } from '../../context/AuthContext';
+import { getAllowedViews, normalizeRole } from '../../navigation/roleViews';
 
 const NAV_SECTIONS = [
   {
     label: 'PRINCIPAL',
     items: [
-      { id: 'pos', label: 'Punto de Venta', icon: ShoppingCart, roles: ['Admin', 'Manager', 'Cashier', 0, 1, 2] },
-      { id: 'pending', label: 'Cuentas Abiertas', icon: Clock, roles: ['Admin', 'Manager', 'Cashier', 0, 1, 2] },
-      { id: 'pickups', label: 'Retiros Pendientes', icon: PackageCheck, roles: ['Admin', 'Manager', 'Cashier', 'Driver', 0, 1, 2, 3] },
+      { id: 'pos', label: 'Punto de Venta', icon: ShoppingCart },
+      { id: 'pending', label: 'Cuentas Abiertas', icon: Clock },
+      { id: 'pickups', label: 'Retiros Pendientes', icon: PackageCheck },
     ],
   },
   {
     label: 'INVENTARIO',
     items: [
-      { id: 'catalog', label: 'Catálogo', icon: Package, roles: ['Admin', 'Manager', 'Cashier', 0, 1, 2] },
-      { id: 'history', label: 'Historial Ventas', icon: History, roles: ['Admin', 'Manager', 'Cashier', 'Driver', 0, 1, 2, 3] },
-      { id: 'register', label: 'Caja', icon: Landmark, roles: ['Admin', 'Manager', 'Cashier', 0, 1, 2] },
-      { id: 'closing', label: 'Cierre Diario', icon: ClipboardCheck, roles: ['Admin', 'Manager', 'Cashier', 0, 1, 2] },
+      { id: 'catalog', label: 'Catálogo', icon: Package },
+      { id: 'history', label: 'Historial Ventas', icon: History },
+      { id: 'register', label: 'Caja', icon: Landmark },
+      { id: 'closing', label: 'Cierre Diario', icon: ClipboardCheck },
     ],
   },
   {
     label: 'SISTEMA',
     items: [
-      { id: 'settings', label: 'Configuración', icon: Settings, roles: ['Admin', 'Manager', 0, 1] },
-      { id: 'exchange', label: 'Tasa de Cambio', icon: DollarSign, roles: ['Admin', 'Manager', 0, 1] },
+      { id: 'settings', label: 'Configuración', icon: Settings },
+      { id: 'exchange', label: 'Tasa de Cambio', icon: DollarSign },
     ],
   },
 ];
 
 export default function Sidebar({ currentView, onNavigate, isOpen, onClose }) {
   const { user, logout } = useAuth();
+  const allowedViews = getAllowedViews(user?.role);
 
   const handleNav = (viewId) => {
     onNavigate(viewId);
     onClose();
   };
 
-  const roleLabel = user?.role === 0 || user?.role === 'Admin' ? 'Administrador' : 'Cajero';
+  const roleLabel = normalizeRole(user?.role) === 'Admin' ? 'Administrador' : 'Cajero';
 
   return (
     <>
@@ -74,7 +76,7 @@ export default function Sidebar({ currentView, onNavigate, isOpen, onClose }) {
         {/* Navegación */}
         <nav className="sidebar-nav">
           {NAV_SECTIONS.map((section) => {
-            const visibleItems = section.items.filter(item => !item.roles || item.roles.includes(user?.role));
+            const visibleItems = section.items.filter(item => allowedViews.includes(item.id));
             if (visibleItems.length === 0) return null;
             return (
               <div key={section.label}>

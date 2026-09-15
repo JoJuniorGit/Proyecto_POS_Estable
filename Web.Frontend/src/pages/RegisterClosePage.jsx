@@ -4,6 +4,7 @@ import { api } from '../services/api';
 import { closeShift, getCurrentShiftReport } from '../services/shiftApi';
 import { useAuth } from '../context/AuthContext';
 import { useCurrencyFormat } from '../context/CurrencyFormatContext';
+import { shouldRecoverClosedShift } from '../utils/shiftRecovery';
 import './RegisterClosePage.css';
 import AtmAmountInput from '../components/ui/AtmAmountInput';
 import Modal from '../components/ui/Modal';
@@ -20,8 +21,17 @@ import {
   ShieldAlert,
   FileText
 } from 'lucide-react';
+import RoleGuard from '../navigation/RoleGuard';
 
 export default function RegisterClosePage() {
+  return (
+    <RoleGuard view="closing">
+      <RegisterClosePageContent />
+    </RoleGuard>
+  );
+}
+
+function RegisterClosePageContent() {
   const { user, logout } = useAuth();
   const { currencyFormat, formatAmount, formatBsS, formatUSD } = useCurrencyFormat();
 
@@ -149,10 +159,10 @@ export default function RegisterClosePage() {
       setZReport(report);
     } catch (err) {
       console.error('[RegisterClosePage] Error enviando cierre:', err);
-      const msg = err.response?.data?.Message || err.message || '';
+      const msg = err.message || '';
       
       // Idempotency / Recovery: If shift is already closed, try to recover existing Z Report
-      if (msg.toLowerCase().includes('cerrado') || err.response?.status === 400 || err.response?.status === 409) {
+      if (shouldRecoverClosedShift(msg, err.status)) {
         try {
           const recovered = await getCurrentShiftReport();
           setZReport(recovered);

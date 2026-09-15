@@ -4,13 +4,24 @@ import { Search, Filter, Loader2, Calendar, ChevronRight, ChevronDown, RefreshCw
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime, formatQuantity } from '../utils/formatters';
 import { filterHistorySales, accumulateCashierNames, areSecondaryFiltersActive, applySecondaryFilterDrafts, filterCashierSuggestions } from '../utils/historyFilters';
+import { useMediaQuery } from '../utils/useMediaQuery';
 import Pagination from '../components/ui/Pagination';
+import RoleGuard from '../navigation/RoleGuard';
 import './HistoryPage.css';
 
 const PAGE_SIZE = 25;
 
 export default function HistoryPage() {
+  return (
+    <RoleGuard view="history">
+      <HistoryPageContent />
+    </RoleGuard>
+  );
+}
+
+function HistoryPageContent() {
   const { exchangeRate } = useExchangeRate();
+  const isMobile = useMediaQuery('(max-width: 640px)');
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(false);
   // Filtro inicial: solo el día en curso (la tabla oculta los días anteriores
@@ -188,6 +199,13 @@ const handlePageChange = (newPage) => {
       } catch {
         setSaleDetails(prev => ({ ...prev, [id]: { loading: false, data: null, error: 'No se pudieron cargar los detalles.' } }));
       }
+    }
+  };
+
+  const handleToggleKeyDown = (e, id) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggleExpand(id);
     }
   };
 
@@ -374,6 +392,7 @@ const handlePageChange = (newPage) => {
         ) : (
           <>
             {/* ── 3A. VISTA MÓVIL (TARJETAS FLUIDAS) ── */}
+            {isMobile && (
             <div className="history-mobile-cards-view p-3">
               {visibleSales.map((sale) => {
                 const isExpanded = expandedSaleId === sale.id;
@@ -400,7 +419,11 @@ const handlePageChange = (newPage) => {
 
                     {/* Piso Superior: Identificación y Estado */}
                     <div
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={isExpanded}
                       onClick={() => toggleExpand(sale.id)}
+                      onKeyDown={(e) => handleToggleKeyDown(e, sale.id)}
                       className="d-flex flex-between flex-align-center pb-2 border-bottom cursor-pointer"
                     >
                       <div className="d-flex flex-align-center font-bold hist-sale-id-row">
@@ -540,8 +563,10 @@ const handlePageChange = (newPage) => {
                 );
               })}
             </div>
+            )}
 
             {/* ── 3B. VISTA ESCRITORIO (TABLA TRADICIONAL) ── */}
+            {!isMobile && (
             <div className="history-desktop-table-view history-table-wrapper">
               <table className="cart-table history-main-table">
                 <thead>
@@ -572,7 +597,13 @@ const handlePageChange = (newPage) => {
 
                     return (
                       <React.Fragment key={sale.id}>
-                        <tr className="cursor-pointer" onClick={() => toggleExpand(sale.id)}>
+                        <tr
+                          className="cursor-pointer"
+                          tabIndex={0}
+                          aria-expanded={isExpanded}
+                          onClick={() => toggleExpand(sale.id)}
+                          onKeyDown={(e) => handleToggleKeyDown(e, sale.id)}
+                        >
                           {/* Ícono + N° de factura como una unidad */}
                           <td className="text-nowrap">
                             <div className="d-flex flex-align-center gap-2">
@@ -727,6 +758,7 @@ const handlePageChange = (newPage) => {
                 </tbody>
               </table>
             </div>
+            )}
           </>
         )}
       </div>

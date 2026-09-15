@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo, useImperativeHandle, forwardRef } from 'react';
 
 import { createCheckoutKeyHolder } from '../../utils/idempotency.js';
 import Modal from '../ui/Modal';
@@ -15,6 +15,52 @@ import CustomerSelectorCard from './CustomerSelectorCard';
 import { Check, Loader2, PackageCheck } from 'lucide-react';
 import './CheckoutModal.css';
 
+export function buildCheckoutPreviewRequest({ saleId, exchangeRate, payments, overrideSale }) {
+  const previousPayments = overrideSale
+    ? (overrideSale.payments || []).map((p) => ({
+        paymentMethodId: p.paymentMethodId,
+        amount: p.amount || 0,
+        amountBsS: p.amountBsS || 0,
+      }))
+    : [];
+
+  const currentPayments = (payments || []).map((p) => ({
+    paymentMethodId: p.methodId,
+    amount: p.amountUsd,
+    amountBsS: p.amountBsS,
+    amountLocal: p.amountBsS,
+    referenceNumber: p.reference,
+  }));
+
+  return {
+    saleId,
+    exchangeRate,
+    payments: [...previousPayments, ...currentPayments],
+  };
+}
+
+export function computeCheckoutGate({
+  preview,
+  previewSignature,
+  currentSignature,
+  previewFailed,
+  hasValidPayments,
+  isOverrideSale,
+  isDefaultCust,
+  isPendingPickup,
+}) {
+  const isPreviewFresh = preview != null && !previewFailed && previewSignature != null && previewSignature === currentSignature;
+  const isFullLiquidation = isPreviewFresh && preview.isFullyPaid === true;
+  const isCustodyAllowed = isFullLiquidation && !isDefaultCust;
+  const canFinalize = hasValidPayments
+    && isPreviewFresh
+    && (isOverrideSale ? true : isFullLiquidation)
+    && (!isPendingPickup || isCustodyAllowed);
+  const roundingAdjustment = isPreviewFresh ? preview.roundingAdjustment : null;
+
+  return { isPreviewFresh, isFullLiquidation, isCustodyAllowed, canFinalize, roundingAdjustment };
+}
+
 const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale = null, onCompleteSale = null }, ref) {
   const { currentSale, totalBsS: cartTotalBsS, totalUSD: cartTotalUSD, resetCart, updateCustomer } = useCart();
   const { exchangeRate } = useExchangeRate();
@@ -28,6 +74,7 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
   const [selectedSaleCustomer, setSelectedSaleCustomer] = useState(null);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [previewSignature, setPreviewSignature] = useState(null);
   const [previewFailed, setPreviewFailed] = useState(false);
   const checkoutKeyHolderRef = useRef(null);
   if (!checkoutKeyHolderRef.current) {
@@ -104,39 +151,32 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
   const remainingUsd = Math.max(0, targetTotalUSD - paidUsd);
 
   // Previsualización canónica del backend: redondeo fiscal, saldo, vuelto y estado de pago total
+  const previewRequest = useMemo(
+    () => buildCheckoutPreviewRequest({ saleId: activeSale?.id, exchangeRate: rateToUse, payments, overrideSale }),
+    [activeSale?.id, rateToUse, payments, overrideSale]
+  );
+  const previewRequestSignature = useMemo(() => JSON.stringify(previewRequest), [previewRequest]);
+
   useEffect(() => {
-    if (!isOpen || !activeSale?.id) {
+    if (!isOpen || !previewRequest.saleId) {
       setPreview(null);
+      setPreviewSignature(null);
       return;
     }
 
-    const prevPayments = overrideSale
-      ? (overrideSale.payments || []).map((p) => ({
-          paymentMethodId: p.paymentMethodId,
-          amount: p.amount || 0,
-          amountBsS: p.amountBsS || 0,
-        }))
-      : [];
-
-    const newPayments = payments.map((p) => ({
-      paymentMethodId: p.methodId,
-      amount: p.amountUsd,
-      amountBsS: p.amountBsS,
-      amountLocal: p.amountBsS,
-      referenceNumber: p.reference,
-    }));
-
     let cancelled = false;
     setPreviewFailed(false);
-    getCheckoutPreview(activeSale.id, rateToUse, [...prevPayments, ...newPayments])
+    getCheckoutPreview(previewRequest.saleId, previewRequest.exchangeRate, previewRequest.payments)
       .then((res) => {
         if (!cancelled) {
           if (!res) {
             setPreviewFailed(true);
             setPreview(null);
+            setPreviewSignature(null);
           } else {
             setPreviewFailed(false);
             setPreview(res);
+            setPreviewSignature(previewRequestSignature);
           }
         }
       })
@@ -145,28 +185,38 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
         if (!cancelled) {
           setPreviewFailed(true);
           setPreview(null);
+          setPreviewSignature(null);
         }
       });
 
     return () => { cancelled = true; };
-  }, [isOpen, activeSale?.id, overrideSale, payments, rateToUse]);
+  }, [isOpen, previewRequest, previewRequestSignature]);
 
   const hasValidPayments = payments.length > 0 && payments.every((p) => (p.amountBsS > 0 || p.amountUsd > 0));
-  const isFullLiquidation = preview?.isFullyPaid ?? (hasValidPayments && remainingUsd <= 0.05);
-
-  // 8.5-WEB1: Zero-trust en el redondeo fiscal. El ajuste canónico proviene EXCLUSIVAMENTE del
-  // preview del backend; sin fallback local aproximado que pueda cerrar con vuelto distinto.
-  const roundingAdjustment = preview?.roundingAdjustment ?? 0;
 
   const custName = (activeSale?.customerName || '').toLowerCase();
   const isDefaultCust = !activeSale?.customerId || activeSale?.customer?.isDefault || custName.includes('consumidor final') || custName.includes('general');
 
-  const isCustodyAllowed = isFullLiquidation && !isDefaultCust;
-  const effectiveIsPendingPickup = isPendingPickup && isCustodyAllowed;
-
+  // 8.5-WEB1: Zero-trust en el redondeo fiscal. El ajuste canónico proviene EXCLUSIVAMENTE del
+  // preview del backend; sin fallback local aproximado que pueda cerrar con vuelto distinto.
   // Venta normal POS: requiere al menos 1 pago y saldo cubierto. Cuentas Abiertas (overrideSale): permite abonos parciales con al menos 1 pago.
-  // 8.5-WEB1: Se requiere preview canónico del backend (redondeo fiscal/vuelto/saldo) para finalizar.
-  const canFinalize = hasValidPayments && !previewFailed && (overrideSale ? true : isFullLiquidation) && (!isPendingPickup || isCustodyAllowed);
+  const {
+    isFullLiquidation,
+    isCustodyAllowed,
+    canFinalize,
+    roundingAdjustment,
+  } = computeCheckoutGate({
+    preview,
+    previewSignature,
+    currentSignature: previewRequestSignature,
+    previewFailed,
+    hasValidPayments,
+    isOverrideSale: !!overrideSale,
+    isDefaultCust,
+    isPendingPickup,
+  });
+
+  const effectiveIsPendingPickup = isPendingPickup && isCustodyAllowed;
 
   const handleSelectCustomer = async (cust) => {
     if (!cust?.id) return;

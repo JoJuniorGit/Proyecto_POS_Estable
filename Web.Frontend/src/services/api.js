@@ -252,6 +252,15 @@ function shouldRetry(config, response) {
   return Boolean(config.headers && config.headers['Idempotency-Key']);
 }
 
+export class ApiError extends Error {
+  constructor(message, status, body) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
 /**
  * Realiza una petición HTTP al backend.
  * @param {string} endpoint - Ruta relativa (ej: "/api/products/suggestions")
@@ -310,14 +319,17 @@ export async function apiFetch(endpoint, options = {}) {
     let errorMessage = response.status === 401
       ? 'Cédula o contraseña incorrecta.'
       : `Error ${response.status}: ${response.statusText}`;
+    let errorBody = null;
 
     try {
-      const errorBody = await response.text();
-      if (errorBody) {
+      const rawBody = await response.text();
+      if (rawBody) {
+        errorBody = rawBody;
         try {
-          const jsonErr = JSON.parse(errorBody);
+          const jsonErr = JSON.parse(rawBody);
+          errorBody = jsonErr;
           if (jsonErr.requiresPasswordChange) {
-            const err = new Error(jsonErr.message || 'Debe cambiar su contraseña antes de continuar.');
+            const err = new ApiError(jsonErr.message || 'Debe cambiar su contraseña antes de continuar.', response.status, jsonErr);
             err.requiresPasswordChange = true;
             throw err;
           }
@@ -335,15 +347,15 @@ export async function apiFetch(endpoint, options = {}) {
           if (e.requiresPasswordChange) throw e;
           // 8.9-M15: descartar cuerpos que contengan marcas HTML/markup ('<' o '>') para
           // nunca volcar HTML crudo u otro contenido no estructurado a la UI.
-          if (!/</.test(errorBody) && !/>/.test(errorBody) && errorBody.length < 300) {
-            errorMessage = errorBody;
+          if (!/</.test(rawBody) && !/>/.test(rawBody) && rawBody.length < 300) {
+            errorMessage = rawBody;
           }
         }
       }
     } catch (e) {
       if (e.requiresPasswordChange) throw e;
     }
-    throw new Error(errorMessage);
+    throw new ApiError(errorMessage, response.status, errorBody);
   }
 
   // Intentar parsear como JSON, si falla retornar texto plano

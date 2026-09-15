@@ -170,8 +170,7 @@ export default function CustomerSelectorCard({
       setQuery('');
     } catch (err) {
       console.error('[CustomerSelectorCard] Error al seleccionar cliente:', err);
-      const msg = err.response?.data?.message || err.response?.data || err.message || 'Error al asignar el cliente a la venta';
-      setError(typeof msg === 'string' ? msg : 'Error al asignar el cliente.');
+      setError(err.message || 'Error al asignar el cliente a la venta');
     } finally {
       setSaving(false);
     }
@@ -199,8 +198,7 @@ export default function CustomerSelectorCard({
       setQuery('');
     } catch (err) {
       console.error('[CustomerSelectorCard] Error al crear cliente:', err);
-      const msg = err.response?.data?.message || err.response?.data || err.message || 'Error al registrar nuevo cliente.';
-      setError(typeof msg === 'string' ? msg : 'Error al registrar nuevo cliente. Verifique la Cédula/RIF.');
+      setError(err.message || 'Error al registrar nuevo cliente.');
     } finally {
       setSaving(false);
     }

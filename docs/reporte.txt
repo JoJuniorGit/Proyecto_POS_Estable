@@ -8642,3 +8642,30 @@ C2. dotnet test CommandCenter.Tests: 1016/1016 (0 fallos; 28 tests nuevos).
 C3. Web.Frontend: npm test 178/178; npm run lint sin hallazgos (exit 0).
 
 FIN DEL ANEXO - REVISION 8.131
+
+================================================================================
+ANEXO - REVISION 8.132 (2026-09-15)
+Titulo: Remediacion auditoria de seguridad - Seccion 3 (Web.Frontend) completa
+================================================================================
+
+A. CONTEXTO
+A1. Se resolvieron los hallazgos ALTO/MEDIO/BAJO de la Seccion 3 del Anexo de la auditoria (Web React + Vite), delegados en 5 unidades (W4-W8).
+A2. Detalle por hallazgo en docs/hallazgos-auditoria-seguridad.txt (FASE 3).
+
+B. CAMBIOS REALIZADOS
+B1. [ALTO] Idempotency-Key estable por intento en "Guardar en Espera" (key-holder reutilizado en reintentos; reset solo tras exito/descarte/apertura).
+B2. [ALTO] Gate de cobro exige preview del backend ligado a la firma de venta+tasa+pagos; sin fallback de roundingAdjustment (removido ?? 0).
+B3. [ALTO] Carrera de tasa corregida con guard de secuencia en CartContext (respuestas viejas descartadas).
+B4. [ALTO] Mapa unico rol->vistas aplicado en router, Sidebar y paginas; corregido el mapeo numerico del wire (Cashier=1, Manager=2, Admin=3, Driver=4) que dejaba guardas rotas; Driver no accede a caja/catalogo/ventas por hash.
+B5. [MEDIO] Escaner laptop: pacing adaptativo + ROI acotado (<=800px) + skip de frames; decodeFromStream con catch visible; catch{} silenciosos reemplazados por log con contexto.
+B6. [MEDIO] Busqueda de clientes en HoldSale con debounce+abort; resolucion unica del producto escaneado (memo 1.2s) compartida entre carrito y panel.
+B7. [MEDIO] ApiError (status/body) en api.js + consumidores migrados (recuperacion real por status); selector unico de tasa en carrito; render condicional desktop/movil en PendingOrders/History/Catalog/PendingPickups.
+B8. [BAJO] Codigo muerto eliminado (ClosingPage, PartialPaymentModal, rama hold de CustomerModal, export sin uso); props/callbacks unificados; accesibilidad (zoom, teclado+aria, useId en ConfirmModal); sincronia entre pestabas (tema/formato); SuccessScreen con cierre estable.
+B9. [BAJO-DIFERIDO] Split de index.css pospuesto (refactor cosmetico de alto churn; requiere QA visual dedicado).
+
+C. VERIFICACION
+C1. Web.Frontend: npm test 268/268 (0 fallos; +90 tests nuevos).
+C2. npm run lint: sin hallazgos (exit 0).
+C3. Sin dependencias nuevas; sin regeneracion de bundle en este lote (operativa aparte).
+
+FIN DEL ANEXO - REVISION 8.132

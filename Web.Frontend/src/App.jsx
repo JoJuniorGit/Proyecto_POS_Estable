@@ -12,6 +12,8 @@ import FullScreenLoader from './components/ui/FullScreenLoader';
 import SaleRecoveryModal from './components/pos/SaleRecoveryModal';
 import { useShutdownGuard } from './hooks/useShutdownGuard';
 import { hasOpenModals } from './utils/modalRegistry';
+import { isValidView, resolveAccessibleView } from './navigation/roleViews';
+import AccessDenied from './navigation/AccessDenied';
 
 // 8.6-M5: code splitting — cada página se carga como chunk propio (React.lazy).
 const PosPage = lazy(() => import('./pages/PosPage'));
@@ -24,22 +26,20 @@ const RegisterClosePage = lazy(() => import('./pages/RegisterClosePage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ExchangeRatePage = lazy(() => import('./pages/ExchangeRatePage'));
 
-const VALID_VIEWS = ['pos', 'catalog', 'history', 'pending', 'pickups', 'register', 'closing', 'settings', 'exchange'];
-
 function getInitialView() {
   const hash = window.location.hash.replace('#', '').trim();
-  if (hash && VALID_VIEWS.includes(hash)) {
+  if (hash && isValidView(hash)) {
     return hash;
   }
   const saved = localStorage.getItem('pos_active_view');
-  if (saved && VALID_VIEWS.includes(saved)) {
+  if (saved && isValidView(saved)) {
     return saved;
   }
   return 'pos';
 }
 
 function MainApp() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [currentView, setCurrentView] = useState(getInitialView);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isHoldModalOpen, setIsHoldModalOpen] = useState(false);
@@ -50,10 +50,22 @@ function MainApp() {
   const { exchangeRate, isRateOutdated } = useExchangeRate();
   const { currentSale, totalUSD, totalBsS, resetCart, items, pendingRecovery, recoveryError, recoveryProcessing, recoverPendingSale, discardPendingRecovery, flushSaleState } = useCart();
 
+  const viewAccess = resolveAccessibleView(user?.role, currentView);
+  const activeView = viewAccess.allowed ? currentView : viewAccess.view;
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const resolved = resolveAccessibleView(user?.role, currentView);
+    if (!resolved.allowed && resolved.view) {
+      setCurrentView(resolved.view);
+      localStorage.setItem('pos_active_view', resolved.view);
+    }
+  }, [isAuthenticated, user?.role, currentView]);
+
   useEffect(() => {
     function handleHashChange() {
       const hash = window.location.hash.replace('#', '').trim();
-      if (hash && VALID_VIEWS.includes(hash)) {
+      if (isValidView(hash)) {
         setCurrentView(hash);
         localStorage.setItem('pos_active_view', hash);
       }
@@ -62,11 +74,11 @@ function MainApp() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const handleNavigate = (view) => {
+  const handleNavigate = useCallback((view) => {
     setCurrentView(view);
     localStorage.setItem('pos_active_view', view);
     window.location.hash = view;
-  };
+  }, []);
 
   const handleCheckoutSuccess = async (invoiceNumber, cartResetOk = true) => {
     setIsCheckoutOpen(false);
@@ -101,10 +113,14 @@ function MainApp() {
     });
   };
 
-  const handleCloseHoldSuccess = () => {
+  const handleCloseHoldSuccess = useCallback(() => {
     setCompletedHoldSuccess(null);
     handleNavigate('pending');
-  };
+  }, [handleNavigate]);
+
+  const handleCloseCompletedInvoice = useCallback(() => {
+    setCompletedInvoice(null);
+  }, []);
 
   const isExternalModalOpen = isCheckoutOpen || isHoldModalOpen || Boolean(completedInvoice) || Boolean(completedHoldSuccess);
 
@@ -133,7 +149,10 @@ function MainApp() {
   };
 
   const renderView = () => {
-    switch (currentView) {
+    if (!activeView) {
+      return <AccessDenied />;
+    }
+    switch (activeView) {
       case 'pos':
         return (
           <PosPage
@@ -160,14 +179,7 @@ function MainApp() {
       case 'exchange':
         return <ExchangeRatePage />;
       default:
-        return (
-          <PosPage
-            onOpenCheckout={() => setIsCheckoutOpen(true)}
-            onOpenHold={() => setIsHoldModalOpen(true)}
-            isExternalModalOpen={isExternalModalOpen}
-            onCloseExternalModal={handleCloseExternalModal}
-          />
-        );
+        return <AccessDenied />;
     }
   };
 
@@ -190,7 +202,7 @@ function MainApp() {
 
   return (
     <Layout
-      currentView={currentView}
+      currentView={activeView}
       onNavigate={handleNavigate}
       exchangeRate={exchangeRate}
       isRateOutdated={isRateOutdated}
@@ -223,7 +235,7 @@ function MainApp() {
       {completedInvoice && (
         <SuccessScreen
           invoiceNumber={completedInvoice}
-          onClose={() => setCompletedInvoice(null)}
+          onClose={handleCloseCompletedInvoice}
         />
       )}
 

@@ -3,7 +3,6 @@ import Modal from '../ui/Modal';
 import { getCustomers, createCustomer } from '../../services/customerApi';
 import useDebounce from '../../hooks/useDebounce';
 import { Search, UserPlus, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
-import { formatBsS } from '../../utils/formatters';
 import './CustomerModal.css';
 
 const VALID_RIF_PREFIXES = ['V', 'E', 'J', 'G', 'P'];
@@ -14,12 +13,7 @@ const VALID_PHONE_PREFIXES = [
 export default function CustomerModal({
   isOpen,
   onClose,
-  onConfirmHold,
   onSelectCustomer,
-  mode = 'select',
-  saleTotalUSD = 0,
-  exchangeRate = 1,
-  paymentMethods = []
 }) {
   const [tab, setTab] = useState('search'); // 'search' | 'create'
   const [query, setQuery] = useState('');
@@ -32,21 +26,10 @@ export default function CustomerModal({
   const [cedulaOrRif, setCedulaOrRif] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  // Initial Payment fields
-  const [enableInitialPayment, setEnableInitialPayment] = useState(false);
-  const [initialPaymentBsS, setInitialPaymentBsS] = useState('');
-  const [paymentMethodId, setPaymentMethodId] = useState('');
-
-  useEffect(() => {
-    if (paymentMethods && paymentMethods.length > 0 && !paymentMethodId) {
-      setPaymentMethodId(paymentMethods[0].id);
-    }
-  }, [paymentMethods, paymentMethodId]);
 
   // 8.7-M9: búsqueda de clientes con debounce (250 ms) + AbortController. El input solo cambia
   // estado; el efecto dispara un único fetch por consulta. Se refresca cuando el modal abre.
   const debouncedQuery = useDebounce(query, 250);
-  const [searchTick, setSearchTick] = useState(0);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -54,11 +37,7 @@ export default function CustomerModal({
     setLoading(true);
     getCustomers(debouncedQuery, controller.signal)
       .then((data) => {
-        if (mode === 'hold') {
-          setCustomers((data || []).filter(c => !c.isDefault && c.cedulaOrRif !== 'V-00000000'));
-        } else {
-          setCustomers(data || []);
-        }
+        setCustomers(data || []);
       })
       .catch((err) => {
         if (err?.name !== 'AbortError') {
@@ -69,7 +48,7 @@ export default function CustomerModal({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [isOpen, debouncedQuery, mode, searchTick]);
+  }, [isOpen, debouncedQuery]);
 
   const handleSearchChange = (e) => {
     setQuery(e.target.value);
@@ -155,61 +134,22 @@ export default function CustomerModal({
         phone: phone.trim(),
       });
       setSelectedCustomer(created);
-      if (mode === 'select') {
-        if (onSelectCustomer) onSelectCustomer(created.id);
-        return;
-      }
-      setTab('search');
-      setQuery(created.cedulaOrRif);
-      setSearchTick((t) => t + 1);
+      if (onSelectCustomer) onSelectCustomer(created.id);
     } catch (err) {
-      setError(err.response?.data || err.message || 'Error al crear cliente');
+      setError(err.message || 'Error al crear cliente');
     }
   };
-
-  // Calculations for live preview (defensive against undefined/null values)
-  const safeSaleTotalUSD = typeof saleTotalUSD === 'number' && !isNaN(saleTotalUSD) ? saleTotalUSD : 0;
-  const safeExchangeRate = typeof exchangeRate === 'number' && exchangeRate > 0 ? exchangeRate : 1;
-  const initialBs = parseFloat(initialPaymentBsS) || 0;
-  const initialUsd = safeExchangeRate > 0 ? initialBs / safeExchangeRate : 0;
-  const remainingDebtUsd = Math.max(0, safeSaleTotalUSD - (enableInitialPayment ? initialUsd : 0));
-
-  // El efectivo solo acepta montos enteros (sin centavos)
-  const selectedMethod = paymentMethods.find((m) => String(m.id) === String(paymentMethodId));
-  const isCashSelected = !!selectedMethod?.isCash;
-  const finalInitialBs = isCashSelected ? Math.trunc(initialBs) : initialBs;
-  const finalInitialUsd = safeExchangeRate > 0 ? finalInitialBs / safeExchangeRate : 0;
 
   const handleConfirm = () => {
     if (!selectedCustomer) {
       setError('Debes seleccionar o registrar un cliente obligatoriamente.');
       return;
     }
-    
-    if (mode === 'hold' && selectedCustomer.cedulaOrRif === 'V-00000000') {
-      setError('Las ventas en espera requieren un cliente real identificable. Registre o seleccione un cliente distinto al Consumidor Final.');
-      return;
-    }
-    if (mode === 'select') {
-      if (onSelectCustomer) onSelectCustomer(selectedCustomer.id);
-      return;
-    }
 
-    let initialPaymentObj = null;
-    if (enableInitialPayment && finalInitialBs > 0) {
-      initialPaymentObj = {
-        paymentMethodId: parseInt(paymentMethodId),
-        amountBsS: finalInitialBs,
-        amountUSD: finalInitialUsd,
-        exchangeRate: exchangeRate,
-        referenceNumber: null,
-      };
-    }
-
-    onConfirmHold(selectedCustomer.id, initialPaymentObj);
+    if (onSelectCustomer) onSelectCustomer(selectedCustomer.id);
   };
 
-  const modalTitle = mode === 'hold' ? "🔒 Asignar Cliente - Pedido en Espera" : "👥 Cambiar Cliente";
+  const modalTitle = '👥 Cambiar Cliente';
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={modalTitle} maxWidth="650px">
@@ -268,9 +208,7 @@ export default function CustomerModal({
                       key={c.id}
                       onClick={() => {
                         setSelectedCustomer(c);
-                        if (mode === 'select') {
-                          if (onSelectCustomer) onSelectCustomer(c.id);
-                        }
+                        if (onSelectCustomer) onSelectCustomer(c.id);
                       }}
                       className="customer-modal-item"
                       style={{
@@ -287,19 +225,17 @@ export default function CustomerModal({
                           {c.phone && <span>• Tel: {c.phone}</span>}
                         </div>
                       </div>
-                      {mode === 'select' && (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-primary cm-select-btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedCustomer(c);
-                            if (onSelectCustomer) onSelectCustomer(c.id);
-                          }}
-                        >
-                          <Check size={14} /> Seleccionar
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary cm-select-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCustomer(c);
+                          if (onSelectCustomer) onSelectCustomer(c.id);
+                        }}
+                      >
+                        <Check size={14} /> Seleccionar
+                      </button>
                     </div>
                   );
                 })
@@ -406,107 +342,6 @@ export default function CustomerModal({
         )}
       </div>
 
-      {mode === 'hold' && tab === 'search' && (
-        <>
-          {/* Abono Inicial Sección */}
-          <div className="checkout-section">
-            <label className="d-flex flex-align-center gap-2 cursor-pointer font-bold" htmlFor="enable-initial-payment">
-              <input
-                id="enable-initial-payment"
-                name="enableInitialPayment"
-                type="checkbox"
-                checked={enableInitialPayment}
-                onChange={(e) => setEnableInitialPayment(e.target.checked)}
-              />
-              Registrar Abono Inicial en esta transacción
-            </label>
-
-            {enableInitialPayment && (
-              <div className="d-flex flex-wrap gap-2 mt-3 p-3 border">
-                <div className="flex-1 form-group mb-0 cm-payment-col">
-                  <label htmlFor="initial-payment-bss">Monto Abonado (Bs.S)</label>
-                  <input
-                    id="initial-payment-bss"
-                    name="initialPaymentBsS"
-                    type="number"
-                    step={isCashSelected ? 1 : 0.01}
-                    min="1"
-                    className="form-control"
-                    placeholder="Monto en Bolívares"
-                    value={initialPaymentBsS}
-                    onChange={(e) => setInitialPaymentBsS(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (isCashSelected && ['.', ',', 'e', 'E', '+', '-'].includes(e.key)) {
-                        e.preventDefault();
-                      }
-                    }}
-                  />
-                  {isCashSelected ? (
-                    <span className="form-text cm-cash-note">El pago en efectivo solo acepta montos enteros.</span>
-                  ) : (
-                    <span className="form-text text-muted">Equivale a: ${initialUsd.toFixed(2)} USD</span>
-                  )}
-                </div>
-
-                <div className="flex-1 form-group mb-0 cm-payment-col">
-                  <label htmlFor="payment-method-id">Método de Pago</label>
-                  <select
-                    id="payment-method-id"
-                    name="paymentMethodId"
-                    className="form-control"
-                    value={paymentMethodId}
-                    onChange={(e) => setPaymentMethodId(e.target.value)}
-                  >
-                    {paymentMethods.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Resumen Financiero */}
-          {selectedCustomer && (
-            <div className="checkout-summary-box cm-summary-box">
-              <div className="checkout-summary-row">
-                <span>Total Pedido:</span>
-                <div className="text-right">
-                  <div className="font-bold text-primary cm-summary-total">
-                    {formatBsS(safeSaleTotalUSD * safeExchangeRate)}
-                  </div>
-                  <div className="text-xs text-muted">
-                    Ref: ${safeSaleTotalUSD.toFixed(2)} USD
-                  </div>
-                </div>
-              </div>
-              <div className="checkout-summary-row text-success">
-                <span>Abono Inicial:</span>
-                <div className="text-right">
-                  <div className="font-bold">
-                    {formatBsS(finalInitialBs)}
-                  </div>
-                  <div className="text-xs text-muted">
-                    Ref: -${initialUsd.toFixed(2)} USD
-                  </div>
-                </div>
-              </div>
-              <div className="checkout-summary-row highlight">
-                <span>Deuda Restante:</span>
-                <div className="text-right">
-                  <div className="font-bold cm-summary-total">
-                    {formatBsS(remainingDebtUsd * safeExchangeRate)}
-                  </div>
-                  <div className="text-xs text-muted">
-                    Ref: ${remainingDebtUsd.toFixed(2)} USD
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
       {/* Footer Buttons - Exclusivo para la pestaña de Búsqueda */}
       {tab === 'search' && (
         <div className="customer-modal-footer">
@@ -517,9 +352,9 @@ export default function CustomerModal({
             type="button" 
             className="btn btn-primary flex-2" 
             onClick={handleConfirm} 
-            disabled={!selectedCustomer || (enableInitialPayment && isCashSelected && initialBs % 1 !== 0)}
+            disabled={!selectedCustomer}
           >
-            <Check size={18} /> {mode === 'hold' ? 'Guardar' : 'Confirmar Cliente'}
+            <Check size={18} /> Confirmar Cliente
           </button>
         </div>
       )}

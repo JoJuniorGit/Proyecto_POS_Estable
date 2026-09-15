@@ -3,12 +3,23 @@ import { api } from '../services/api';
 import { Package, Search, Loader2, RefreshCw, Tag, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD } from '../utils/formatters';
+import { useMediaQuery } from '../utils/useMediaQuery';
 import useDebounce from '../hooks/useDebounce';
 import Pagination from '../components/ui/Pagination';
+import RoleGuard from '../navigation/RoleGuard';
 import './CatalogPage.css';
 
 export default function CatalogPage() {
+  return (
+    <RoleGuard view="catalog">
+      <CatalogPageContent />
+    </RoleGuard>
+  );
+}
+
+function CatalogPageContent() {
   const { exchangeRate } = useExchangeRate();
+  const isMobile = useMediaQuery('(max-width: 640px)');
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -87,6 +98,17 @@ export default function CatalogPage() {
     return sortDescending
       ? <ArrowDown size={14} className="color-primary cat-sort-icon" />
       : <ArrowUp size={14} className="color-primary cat-sort-icon" />;
+  };
+
+  const getAriaSort = (column) => (
+    sortBy === column ? (sortDescending ? 'descending' : 'ascending') : 'none'
+  );
+
+  const handleHeaderKeyDown = (e, column) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleSort(column);
+    }
   };
 
   const handleSearchChange = (e) => {
@@ -201,13 +223,17 @@ export default function CatalogPage() {
       ) : (
         <>
           {/* ── 3A. VISTA ESCRITORIO (COLUMNAS DE PRECIO SEGÚN MONEDA SELECCIONADA) ── */}
+          {!isMobile && (
           <div className="catalog-desktop-view card padding-none overflow-hidden cat-desktop-card">
             <table className="cart-table text-left">
               <thead>
                 <tr className="cat-th-row">
                   <th
                     className="cat-th cat-th-sku"
+                    tabIndex={0}
+                    aria-sort={getAriaSort('sku')}
                     onClick={() => handleSort('sku')}
+                    onKeyDown={(e) => handleHeaderKeyDown(e, 'sku')}
                     title="Ordenar por cantidad de dígitos del código de barras"
                   >
                     <div className="d-inline-flex align-center gap-1">
@@ -216,7 +242,10 @@ export default function CatalogPage() {
                   </th>
                   <th
                     className="cat-th"
+                    tabIndex={0}
+                    aria-sort={getAriaSort('name')}
                     onClick={() => handleSort('name')}
+                    onKeyDown={(e) => handleHeaderKeyDown(e, 'name')}
                     title="Ordenar alfabéticamente por nombre"
                   >
                     <div className="d-inline-flex align-center gap-1">
@@ -225,7 +254,10 @@ export default function CatalogPage() {
                   </th>
                   <th
                     className="cat-th text-right text-nowrap"
+                    tabIndex={0}
+                    aria-sort={getAriaSort('price')}
                     onClick={() => handleSort('price')}
+                    onKeyDown={(e) => handleHeaderKeyDown(e, 'price')}
                     title="Ordenar por precio al detal"
                   >
                     <div className="d-inline-flex align-center justify-end gap-1">
@@ -247,7 +279,10 @@ export default function CatalogPage() {
 
                   <th
                     className="cat-th text-center cat-th-stock"
+                    tabIndex={0}
+                    aria-sort={getAriaSort('stock')}
                     onClick={() => handleSort('stock')}
+                    onKeyDown={(e) => handleHeaderKeyDown(e, 'stock')}
                     title="Ordenar por cantidad en stock"
                   >
                     <div className="d-inline-flex align-center justify-center gap-1">
@@ -362,8 +397,10 @@ export default function CatalogPage() {
               </tbody>
             </table>
           </div>
+          )}
 
           {/* ── 3B. VISTA MÓVIL (CARD LAYOUT CON FILTRO DE MONEDA Y ALERTAS VISUALES) ── */}
+          {isMobile && (
           <div className="catalog-mobile-view">
             {products.map((p) => {
               const retailUSD = p.priceUSD || 0;
@@ -466,6 +503,7 @@ export default function CatalogPage() {
               );
             })}
           </div>
+          )}
 
           {/* ── 5. BARRA DE PAGINACIÓN AVANZADA CENTRADA (Ambas Versiones) ── */}
           <Pagination

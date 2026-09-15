@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } from '@zxing/library';
+import * as zxing from '@zxing/library';
+const { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } = zxing.default ?? zxing;
 import { 
   AlertCircle, 
   XCircle, 
@@ -15,7 +16,14 @@ import { isValidBarcode } from '../../utils/barcodeValidator';
 import { playScanSuccess, playScanWarning, playScanError, closeAudioContext } from '../../utils/soundEffects';
 import { registerShutdownCleanup } from '../../utils/shutdownRegistry';
 import { checkBarcodeDetectorSupport, createNativeBarcodeDetector } from '../../utils/nativeBarcodeScanner';
-import { isLaptopOrDesktopEnvironment, processMultiPassLaptopFrame } from '../../utils/laptopVisionEnhancer';
+import {
+  isLaptopOrDesktopEnvironment,
+  processMultiPassLaptopFrame,
+  captureLaptopFrameSignature,
+  isFrameSignatureChanged,
+  planLaptopVisionTick,
+  LAPTOP_VISION_BASE_INTERVAL_MS,
+} from '../../utils/laptopVisionEnhancer';
 import { formatBsS, formatUSD } from '../../utils/formatters';
 import { resolveCameraGuidance, shouldFallbackWithoutDeviceId } from '../../utils/scannerCameraErrors';
 import './BarcodeScannerModal.css';
@@ -38,6 +46,7 @@ export default function BarcodeScannerModal({
 }) {
   const videoRef = useRef(null);
   const filterCanvasRef = useRef(null);
+  const signatureCanvasRef = useRef(null);
   const onCodeScannedRef = useRef(onCodeScanned);
   const resolveProductRef = useRef(resolveProduct);
   const resultSeqRef = useRef(0);
@@ -403,7 +412,9 @@ export default function BarcodeScannerModal({
                 codeVisibleRef.current = false;
               }
             }
-          } catch {}
+          } catch (err) {
+            console.warn('[Scanner] Error en la detección nativa de códigos:', err);
+          }
 
           if (nativeActiveRef.current && sessionCancelTokenRef.current === currentToken) {
             setTimeout(runNativeLoop, ATTEMPT_PACING_MS);
@@ -438,47 +449,81 @@ export default function BarcodeScannerModal({
     if (videoRef.current && activeStreamRef.current) {
       if (isLaptop && laptopEnhancement && filterCanvasRef.current) {
         laptopVisionActiveRef.current = true;
-        let passCounter = 0;
+        let heavyPassCursor = 0;
+        let lastHeavyPassAt = 0;
+        let lastSignature = null;
 
         const runLaptopVisionLoop = () => {
           if (!laptopVisionActiveRef.current || sessionCancelTokenRef.current !== currentToken || !videoRef.current || !activeStreamRef.current) return;
 
+          let nextIntervalMs = LAPTOP_VISION_BASE_INTERVAL_MS;
+
           try {
             if (videoRef.current.readyState >= 2 && filterCanvasRef.current) {
-              const currentPass = passCounter % 4;
-              passCounter++;
+              const signature = captureLaptopFrameSignature(videoRef.current, signatureCanvasRef.current);
+              const frameChanged = isFrameSignatureChanged(lastSignature, signature);
+              lastSignature = signature;
 
-              processMultiPassLaptopFrame(videoRef.current, filterCanvasRef.current, currentPass);
+              const now = Date.now();
+              const plan = planLaptopVisionTick({
+                now,
+                lastHeavyPassAt,
+                lastDetectedAt: lastHitAtRef.current,
+                frameChanged,
+                heavyPassCursor,
+              });
+              heavyPassCursor = plan.heavyPassCursor;
+              nextIntervalMs = plan.intervalMs;
 
-              try {
-                const zxingResult = reader.decode(filterCanvasRef.current);
-                if (zxingResult?.getText && zxingResult.getText().trim()) {
-                  handleDecodedCode(zxingResult.getText().trim());
+              if (plan.action !== 'skip') {
+                if (plan.action === 'heavy') lastHeavyPassAt = now;
+
+                processMultiPassLaptopFrame(videoRef.current, filterCanvasRef.current, plan.passIndex);
+
+                try {
+                  const zxingResult = reader.decode(filterCanvasRef.current);
+                  if (zxingResult?.getText && zxingResult.getText().trim()) {
+                    handleDecodedCode(zxingResult.getText().trim());
+                  }
+                } catch {
+                  codeVisibleRef.current = false;
                 }
-              } catch {
-                codeVisibleRef.current = false;
               }
             }
-          } catch {}
+          } catch (err) {
+            console.warn('[Scanner] Error en el pipeline de visión de laptop:', err);
+          }
 
           if (laptopVisionActiveRef.current && sessionCancelTokenRef.current === currentToken) {
-            setTimeout(runLaptopVisionLoop, ATTEMPT_PACING_MS);
+            setTimeout(runLaptopVisionLoop, nextIntervalMs);
           }
         };
 
         runLaptopVisionLoop();
       } else {
-        reader.decodeFromStream(
-          activeStreamRef.current,
-          videoRef.current,
-          (zxingResult) => {
-            if (!zxingResult?.getText || !zxingResult.getText().trim()) {
-              codeVisibleRef.current = false;
-              return;
+        reader
+          .decodeFromStream(
+            activeStreamRef.current,
+            videoRef.current,
+            (zxingResult) => {
+              if (!zxingResult?.getText || !zxingResult.getText.trim()) {
+                codeVisibleRef.current = false;
+                return;
+              }
+              handleDecodedCode(zxingResult.getText().trim());
             }
-            handleDecodedCode(zxingResult.getText().trim());
-          }
-        );
+          )
+          .catch((err) => {
+            if (sessionCancelTokenRef.current !== currentToken || !activeStreamRef.current) return;
+
+            console.warn('[Scanner] Se interrumpió la lectura de video continua:', err);
+            const guidance = {
+              text: 'Se interrumpió la lectura de la cámara. Presione Reintentar para continuar.',
+              reloadHint: false,
+            };
+            setErrorGuidance(guidance);
+            setStatus({ type: 'error', text: guidance.text });
+          });
       }
     }
 
@@ -549,6 +594,7 @@ export default function BarcodeScannerModal({
       <div className="scanner-container">
         {/* Canvas de procesamiento oculto para filtros de laptop */}
         <canvas ref={filterCanvasRef} className="scanner-filter-canvas" />
+        <canvas ref={signatureCanvasRef} className="scanner-filter-canvas" />
 
         {/* Visor de Video + HUD Canvas Superpuesto */}
         <BarcodeScannerHud

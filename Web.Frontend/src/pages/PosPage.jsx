@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import { useCartState, useCartActions } from '../context/CartContext';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { usePosHotkeys } from '../hooks/usePosHotkeys';
@@ -18,8 +18,38 @@ import ConfirmModal from '../components/ui/ConfirmModal';
 import { getProductBySku } from '../services/productsApi';
 import { isValidBarcode } from '../utils/barcodeValidator';
 import { Edit2, ScanLine } from 'lucide-react';
+import RoleGuard from '../navigation/RoleGuard';
 
-export default function PosPage({
+const PRODUCT_REF_CACHE_TTL_MS = 1200;
+const productRefCache = new Map();
+
+export function resolveProductRefDeduped(code, { resolve = getProductBySku, now = Date.now(), ttlMs = PRODUCT_REF_CACHE_TTL_MS } = {}) {
+  const cached = productRefCache.get(code);
+  if (cached && now - cached.createdAt < ttlMs) return cached.promise;
+
+  const promise = resolve(code);
+  productRefCache.set(code, { createdAt: now, promise });
+
+  for (const [key, entry] of productRefCache) {
+    if (key !== code && now - entry.createdAt >= ttlMs) productRefCache.delete(key);
+  }
+
+  return promise;
+}
+
+export function clearProductRefCache() {
+  productRefCache.clear();
+}
+
+export default function PosPage(props) {
+  return (
+    <RoleGuard view="pos">
+      <PosPageContent {...props} />
+    </RoleGuard>
+  );
+}
+
+function PosPageContent({
   onOpenCheckout,
   onOpenHold,
   isExternalModalOpen = false,
@@ -27,7 +57,8 @@ export default function PosPage({
 }) {
   const searchBarRef = useRef(null);
   const abortControllerRef = useRef(null);
-  const { exchangeRate, syncBcvRate } = useExchangeRate();
+  const resolveScannedProduct = useCallback((code) => resolveProductRefDeduped(code), []);
+  const { syncBcvRate } = useExchangeRate();
   const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
 
   const {
@@ -163,7 +194,7 @@ export default function PosPage({
     abortControllerRef.current = controller;
 
     try {
-      const product = await getProductBySku(code, controller.signal);
+      const product = await resolveScannedProduct(code);
       if (controller.signal.aborted) return;
 
       if (product?.id && !product.isCashAdvance) {
@@ -225,9 +256,6 @@ return (
           <SearchBar
             ref={searchBarRef}
             onSelectProduct={handleSelectProduct}
-            exchangeRate={exchangeRate}
-            disabled={!currentSale?.id}
-            priceListType={currentSale?.priceListType || 'Retail'}
           />
         </div>
         <button
@@ -254,9 +282,7 @@ return (
                   selectedItemId={selectedItemId}
                   onSelectItem={setSelectedItemId}
                   onUpdateQty={updateQuantity}
-                  onUpdateQuantity={updateQuantity}
                   onRemoveItem={removeItem}
-                  exchangeRate={exchangeRate}
                 />
               </div>
               {/* Lista en Tarjetas para Móvil */}
@@ -266,9 +292,7 @@ return (
                   selectedItemId={selectedItemId}
                   onSelectItem={setSelectedItemId}
                   onUpdateQty={updateQuantity}
-                  onUpdateQuantity={updateQuantity}
                   onRemoveItem={removeItem}
-                  exchangeRate={exchangeRate}
                 />
               </div>
             </>
@@ -288,16 +312,13 @@ return (
         isOpen={isCustomerModalOpen}
         onClose={() => setIsCustomerModalOpen(false)}
         onSelectCustomer={handleSelectCustomer}
-        currentCustomerId={currentSale?.customerId}
-        mode="select"
-        saleTotalUSD={currentSale?.totalUSD || 0}
-        exchangeRate={exchangeRate}
       />
 
       <BarcodeScannerModal
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onCodeScanned={handleScannedCode}
+        resolveProduct={resolveScannedProduct}
         currentSale={currentSale}
         onUpdateQuantity={updateQuantity}
       />

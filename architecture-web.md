@@ -10,8 +10,8 @@ Dependencias: Backend API (HTTP + SignalR)
 
 | Categoría | Contenido |
 |---|---|
-| **Pages** (11) | LoginPage, PosPage, CatalogPage, HistoryPage, PendingOrdersPage, PendingPickupsPage, RegisterPage, RegisterClosePage, ClosingPage, SettingsPage, ExchangeRatePage |
-| **Components** (37) | Layout, Cart, ProductGrid, ProductSearch, CustomerSelector, BarcodeScannerModal, CheckoutModal, HoldSaleModal, PartialPaymentModal, SuccessScreen, ATMInput, VariantSelectorModal, etc. |
+| **Pages** (10) | LoginPage, PosPage, CatalogPage, HistoryPage, PendingOrdersPage, PendingPickupsPage, RegisterPage, RegisterClosePage, SettingsPage, ExchangeRatePage |
+| **Components** (36) | Layout, Cart, ProductGrid, ProductSearch, CustomerSelector, BarcodeScannerModal, CheckoutModal, HoldSaleModal, SuccessScreen, ATMInput, VariantSelectorModal, etc. |
 | **Context** (3) | AuthContext, ExchangeRateContext, CartContext |
 | **Services** | api.js (productService, salesService, cashDrawerService, etc.) |
 

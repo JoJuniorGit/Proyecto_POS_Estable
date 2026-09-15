@@ -14,9 +14,19 @@ import {
   ChevronRight,
   ChevronDown
 } from 'lucide-react';
+import RoleGuard from '../navigation/RoleGuard';
+import { useMediaQuery } from '../utils/useMediaQuery';
 import './PendingPickupsPage.css';
 
 export default function PendingPickupsPage() {
+  return (
+    <RoleGuard view="pickups">
+      <PendingPickupsPageContent />
+    </RoleGuard>
+  );
+}
+
+function PendingPickupsPageContent() {
   const [pickups, setPickups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -25,6 +35,7 @@ export default function PendingPickupsPage() {
   const [selectedPickup, setSelectedPickup] = useState(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   // 8.14-N1: paginación de UI — página actual (offset) y si hay más para el botón "Ver más".
   const PAGE_SIZE = 200;
@@ -180,6 +191,7 @@ export default function PendingPickupsPage() {
       ) : (
         <>
           {/* ── 3A. VISTA ESCRITORIO (TABLA TRADICIONAL ESTRUCTURA CUENTAS ABIERTAS) ── */}
+          {!isMobile && (
           <div className="pending-desktop-view dark-card overflow-hidden">
             <table className="ppk-table">
               <thead>
@@ -301,8 +313,10 @@ export default function PendingPickupsPage() {
               </tbody>
             </table>
           </div>
+          )}
 
           {/* ── 3B. VISTA MÓVIL ── */}
+          {isMobile && (
           <div className="pending-mobile-view">
             {filteredPickups.map((pickup) => {
               const isExpanded = expandedSaleId === pickup.saleId;
@@ -397,6 +411,7 @@ export default function PendingPickupsPage() {
               );
             })}
           </div>
+          )}
 
           {/* 8.14-N1: botón "Ver más" para paginar la cola sin perder las ya cargadas. */}
           {hasMore && (

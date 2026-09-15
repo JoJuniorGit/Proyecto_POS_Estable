@@ -1551,4 +1551,113 @@ VERIFICACIÓN
 
 ALCANCE: Sección 2 del Anexo COMPLETA. Pendientes del Anexo: Secciones 3 (Web),
 4 (WPF) y 5 (Infra/CI/Updater).
+
+================================================================================
+AVANCE DE REMEDIACIÓN — FASE 3: Web.Frontend (React 19 + Vite)
+Fecha: 2026-09-15
+Suite web: npm test → 268/268 (0 fallos; +90 tests vs 178 inicial) | npm run lint → exit 0
+================================================================================
+
+[ALTO] Abono inicial duplicable (Idempotency-Key regenerada) — RESUELTO
+  Archivos: components/pos/HoldSaleModal.jsx, utils/idempotency.js, services/salesApi.js
+  Fix: Idempotency-Key estable por intento con el key-holder existente
+       (createCheckoutKeyHolder); se reutiliza en reintentos del mismo intento y
+       se resetea solo tras éxito, descarte o apertura de uno nuevo.
+
+[ALTO] Cobro con preview ausente o desactualizado — RESUELTO
+  Archivo: components/checkout/CheckoutModal.jsx
+  Fix: el gate de finalización exige un preview del backend ligado a la firma
+       actual (venta+tasa+pagos); cualquier cambio de pagos lo invalida de
+       inmediato. Eliminado el fallback ?? 0 del ajuste fiscal: roundingAdjustment
+       se toma exclusivamente del preview vigente.
+
+[ALTO] Carrera de tasa pisa el carrito — RESUELTO
+  Archivo: context/CartContext.jsx
+  Fix: la respuesta de updateSaleExchangeRate se aplica solo si su secuencia
+       (cartRequestIdRef) sigue vigente; respuestas viejas se descartan.
+
+[ALTO] [8.130 INCOMPLETA] Guardas por hash sin verificación de rol — RESUELTO
+  Archivos: App.jsx, components/layout/Sidebar.jsx, navigation/roleViews.js,
+            navigation/RoleGuard.jsx, navigation/AccessDenied.jsx, páginas enrutadas
+  Fix: mapa único rol→vistas (Admin/Manager: todas; Cashier: sin settings/exchange;
+       Driver: solo pickups/history; rol desconocido: denegado), aplicado en el
+       router (redirección), en el Sidebar y en cada página.
+       DESCUBRIMIENTO CRÍTICO: el API serializa el rol como número
+       (Cashier=1, Manager=2, Admin=3, Driver=4; sin JsonStringEnumConverter) y
+       las guardas previas usaban otro mapeo — corregidas con normalización
+       compartida (nombres y numérico).
+
+[MEDIO] Bucle de escaneo laptop en el hilo principal — RESUELTO (acotado)
+  Archivos: components/pos/BarcodeScannerModal.jsx, utils/laptopVisionEnhancer.js
+  Fix: pacing adaptativo (pasada pesada ~250 ms, liviana entremedio), ROI acotado
+       (≤800 px), skip de frames sin cambios e intervalo 50→120 ms tras detectar.
+       Trade-off declarado: sin Web Worker (fix acotado priorizado).
+
+[MEDIO] Búsqueda de clientes sin debounce ni aborto — RESUELTO
+  Archivo: components/pos/HoldSaleModal.jsx
+  Fix: useDebounce (250 ms) + AbortController; nunca se aplican respuestas fuera
+       de orden.
+
+[MEDIO] Contrato de error inconsistente — RESUELTO
+  Archivos: services/api.js (ApiError con status + body) + 8 consumidores migrados
+  Fix: las ramas de recuperación por status dejan de ser código muerto (p. ej. la
+       recuperación del Z en RegisterClosePage ahora se ejecuta de verdad).
+
+[MEDIO] Doble fetch por código escaneado — RESUELTO
+  Archivos: pages/PosPage.jsx, components/pos/BarcodeScannerModal.jsx
+  Fix: memo por código (1.2 s) que comparte la misma promesa entre carrito y panel:
+       un solo GET /quick-check por escaneo.
+
+[MEDIO] Render duplicado escritorio + móvil — RESUELTO
+  Archivos: PendingOrdersPage.jsx, HistoryPage.jsx, CatalogPage.jsx,
+            PendingPickupsPage.jsx, utils/useMediaQuery.js
+  Fix: render condicional por media query (un solo árbol montado por vez).
+
+[MEDIO] Rules of Hooks por early return antes de useEffect — RESUELTO (verificado)
+  Archivos: RegisterPage.jsx, ExchangeRatePage.jsx, SettingsPage.jsx
+  Fix: la migración a RoleGuard (unidad de roles) eliminó los early returns
+       previos a los hooks; verificado sin cambios adicionales.
+
+[MEDIO] Precedencia de tasa inconsistente — RESUELTO
+  Archivos: context/CartContext.jsx (selectEffectiveRate), CartTable.jsx,
+            CartList.jsx, EditSaleModal.jsx
+  Fix: selector único de tasa (tasa viva → appliedRate de la venta → 1) compartido
+       por tabla, lista y resumen del carrito.
+
+[MEDIO] decodeFromStream sin catch + errores silenciados — RESUELTO
+  Archivo: components/pos/BarcodeScannerModal.jsx
+  Fix: catch con estado visible y acción de reintento; catch{} silenciosos
+       reemplazados por log con contexto.
+
+[BAJO] index.css monolítico (3115 líneas, 259 !important) — DIFERIDO
+  Motivo: refactor cosmético de alto churn sin impacto funcional ni de seguridad;
+       requiere QA visual dedicado. Recomendado como tarea aparte.
+
+[BAJO] Código muerto — RESUELTO
+  Eliminados: pages/ClosingPage.jsx (+css), components/pos/PartialPaymentModal.jsx
+  (+css), rama hold de CustomerModal y export getPendingSales sin uso.
+
+[BAJO] Props ignoradas y callbacks duplicados — RESUELTO
+  Archivos: PosPage.jsx, SearchBar.jsx, CartTable.jsx, CartList.jsx
+  Fix: props ignoradas eliminadas en ambos extremos; callback único onUpdateQty.
+
+[BAJO] Accesibilidad — RESUELTO
+  Archivos: index.html (zoom), HistoryPage/CatalogPage (teclado + aria-expanded/
+  aria-sort), ConfirmModal (useId para ids únicos).
+
+[BAJO] Estado entre pestañas desincronizado — RESUELTO
+  Archivos: ThemeContext.jsx, CurrencyFormatContext.jsx, utils/crossTabStateSync.js
+  Fix: BroadcastChannel + revalidación en foco/visibilidad; la vista activa NO se
+       sincroniza (es local por pestaña, por diseño).
+
+[BAJO] Auto-cierre de SuccessScreen reiniciado por re-render — RESUELTO
+  Archivos: App.jsx (useCallback de onClose), SuccessScreen.jsx
+
+VERIFICACIÓN
+  - Web.Frontend: npm test → 268/268 (0 fallos; +90 tests nuevos)
+  - npm run lint → exit 0 (sin hallazgos)
+  - Sin dependencias nuevas; sin regeneración de bundle en este lote.
+
+ALCANCE: Sección 3 del Anexo COMPLETA (17/18 hallazgos; index.css diferido).
+Pendientes del Anexo: Secciones 4 (WPF) y 5 (Infra/CI/Updater).
 ================================================================================

@@ -18,6 +18,15 @@ import { detectOtherTab, startTabPresenceResponder } from '../utils/tabPresence'
 const CartStateContext = createContext(null);
 const CartActionsContext = createContext(null);
 
+export function resolveSaleResponse(updatedSale, requestId, latestRequestId) {
+  if (!updatedSale) return null;
+  return requestId === latestRequestId ? updatedSale : null;
+}
+
+export function selectEffectiveRate(exchangeRate, appliedRate) {
+  return exchangeRate > 0 ? exchangeRate : (appliedRate || 1);
+}
+
 export function CartProvider({ children }) {
   const { exchangeRate } = useExchangeRate();
   const { user } = useAuth();
@@ -242,9 +251,11 @@ export function CartProvider({ children }) {
     }
 
     const timer = setTimeout(() => {
+      const reqId = ++cartRequestIdRef.current;
       updateSaleExchangeRate(currentSale.id, exchangeRate)
         .then(updatedSale => {
-          if (updatedSale) setCurrentSale(updatedSale);
+          const resolved = resolveSaleResponse(updatedSale, reqId, cartRequestIdRef.current);
+          if (resolved) setCurrentSale(resolved);
         })
         .catch(err => console.warn('[CartContext] Error actualizando tasa en venta:', err.message));
     }, 1500);
@@ -279,7 +290,7 @@ export function CartProvider({ children }) {
     setLoading(true);
     setError(null);
     try {
-      const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale.appliedRate || 1);
+      const rateToUse = selectEffectiveRate(exchangeRate, currentSale.appliedRate);
       const updatedSale = await removeItemFromSale(currentSale.id, itemId, rateToUse);
       if (reqId === cartRequestIdRef.current) {
         setCurrentSale(updatedSale);
@@ -319,7 +330,7 @@ export function CartProvider({ children }) {
     setLoading(true);
     setError(null);
     try {
-      const rateToUse = exchangeRate > 0 ? exchangeRate : (sale.appliedRate || 1);
+      const rateToUse = selectEffectiveRate(exchangeRate, sale.appliedRate);
       const updatedSale = await addItemToSale(sale.id, product.id, quantity, rateToUse);
       if (reqId === cartRequestIdRef.current) {
         setCurrentSale(updatedSale);
@@ -368,7 +379,7 @@ export function CartProvider({ children }) {
     setLoading(true);
     setError(null);
     try {
-      const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale.appliedRate || 1);
+      const rateToUse = selectEffectiveRate(exchangeRate, currentSale.appliedRate);
       const updatedSale = await updateItemQuantity(currentSale.id, itemId, validatedQty, rateToUse);
       if (reqId === cartRequestIdRef.current) {
         setCurrentSale(updatedSale);
@@ -399,11 +410,11 @@ export function CartProvider({ children }) {
       return updatedSale;
     } catch (err) {
       console.error('[CartContext] Error cambiando lista de precios:', err);
-      const msg = err.response?.data?.message || err.response?.data?.Message || err.message || 'Error al cambiar lista de precios';
+      const msg = err.message || 'Error al cambiar lista de precios';
       if (reqId === cartRequestIdRef.current) {
         setError(msg);
       }
-      throw new Error(msg);
+      throw err;
     } finally {
       if (reqId === cartRequestIdRef.current) {
         setLoading(false);
@@ -487,7 +498,7 @@ const items = useMemo(() => currentSale?.items || [], [currentSale?.items]);
     [currentSale?.subtotal, items]
   );
   const totalUSD = currentSale?.totalUSD ?? subtotalUSD;
-  const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale?.appliedRate || 1);
+  const rateToUse = selectEffectiveRate(exchangeRate, currentSale?.appliedRate);
 
   const { subtotalBsS, totalBsS } = useMemo(() => {
     const calculated = items.reduce((acc, item) => acc + getLineAmounts(item, rateToUse).subtotalBsS, 0);

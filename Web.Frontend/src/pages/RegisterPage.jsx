@@ -22,12 +22,22 @@ import CashInModal from '../components/register/CashInModal';
 import CashOutModal from '../components/register/CashOutModal';
 import CashAdvanceModal from '../components/register/CashAdvanceModal';
 import Pagination from '../components/ui/Pagination';
+import RoleGuard from '../navigation/RoleGuard';
+import { normalizeRole } from '../navigation/roleViews';
 
 export default function RegisterPage() {
+  return (
+    <RoleGuard view="register" message="No tienes permisos para ver el registro de caja.">
+      <RegisterPageContent />
+    </RoleGuard>
+  );
+}
+
+function RegisterPageContent() {
   const { exchangeRate } = useExchangeRate();
   const { user } = useAuth();
   
-  const isAdmin = user?.role === 0 || user?.role === 'Admin' || user?.role === '0';
+  const isAdmin = normalizeRole(user?.role) === 'Admin';
 
   const [session, setSession] = useState(null);
   const [historyTransactions, setHistoryTransactions] = useState([]);
@@ -40,17 +50,6 @@ export default function RegisterPage() {
   // Pagination state for movements table
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 25;
-
-  const isDriver = user?.role === 3 || user?.role === 'Driver' || user?.role === '3';
-  if (isDriver) {
-    return (
-      <div className="p-4 text-center mt-5">
-        <ShieldAlert size={48} className="color-danger mx-auto mb-3" />
-        <h3 className="font-bold text-lg mb-2">Acceso Denegado</h3>
-        <p className="text-muted">No tienes permisos para ver el registro de caja.</p>
-      </div>
-    );
-  }
 
   // Reset pagination to page 1 whenever filters change
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { registerOpenModal } from '../../utils/modalRegistry';
 import './ConfirmModal.css';
@@ -22,6 +22,7 @@ export default function ConfirmModal({
   icon = null,
 }) {
   const modalRef = useRef(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -87,7 +88,7 @@ export default function ConfirmModal({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="confirm-dialog-title"
+        aria-labelledby={titleId}
       >
         <div className="cfm-icon-row">
           {icon || (
@@ -104,7 +105,7 @@ export default function ConfirmModal({
         </div>
 
         <h3
-          id="confirm-dialog-title"
+          id={titleId}
           className="cfm-title"
         >
           {title}

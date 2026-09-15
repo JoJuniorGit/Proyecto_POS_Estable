@@ -1,15 +1,15 @@
 import { Plus, Minus, Trash2 } from 'lucide-react';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import QuantityInput from './QuantityInput';
-import { useCart } from '../../context/CartContext';
+import { useCart, selectEffectiveRate } from '../../context/CartContext';
 import { formatBsS, getLineAmounts } from '../../utils/formatters';
 import './CartTable.css';
 
-export default function CartTable({ items, selectedItemId, onSelectItem, onUpdateQty, onUpdateQuantity, onRemoveItem }) {
+export default function CartTable({ items, selectedItemId, onSelectItem, onUpdateQty, onRemoveItem }) {
   const { exchangeRate } = useExchangeRate();
   const { currentSale } = useCart();
   const isWholesaleMode = (currentSale?.priceListType || '').toLowerCase() === 'wholesale';
-  const updateQty = onUpdateQty || onUpdateQuantity;
+  const updateQty = onUpdateQty;
 
   return (
     <div className="cart-table-wrapper">
@@ -25,7 +25,7 @@ export default function CartTable({ items, selectedItemId, onSelectItem, onUpdat
         </thead>
         <tbody>
           {items.map((item) => {
-            const { unitBsS, subtotalBsS } = getLineAmounts(item, currentSale?.appliedRate || exchangeRate);
+            const { unitBsS, subtotalBsS } = getLineAmounts(item, selectEffectiveRate(exchangeRate, currentSale?.appliedRate));
 
             const isSelected = selectedItemId === item.id;
             const isWholesaleApplied = isWholesaleMode && item.quantity >= 6;

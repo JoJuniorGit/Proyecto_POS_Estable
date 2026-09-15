@@ -4,6 +4,7 @@ import SearchBar from './SearchBar';
 import QuantityInput from './QuantityInput';
 import { updateSaleItems } from '../../services/salesApi';
 import { formatBsS, formatUSD, formatNumberEs } from '../../utils/formatters';
+import { selectEffectiveRate } from '../../context/CartContext';
 import { Trash2, AlertTriangle, Save, Loader2, Plus, Minus } from 'lucide-react';
 import './EditSaleModal.css';
 
@@ -14,7 +15,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  const rateToUse = Number(sale?.appliedRate || exchangeRate || 1);
+  const rateToUse = selectEffectiveRate(exchangeRate, sale?.appliedRate);
 
   useEffect(() => {
     if (sale?.items) {
@@ -161,7 +162,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       onClose();
     } catch (err) {
       console.error('[EditSaleModal] Error al guardar cambios:', err);
-      setError(err.response?.data || err.message || 'Error al guardar las modificaciones del pedido.');
+      setError(err.message || 'Error al guardar las modificaciones del pedido.');
     } finally {
       setIsSaving(false);
     }
