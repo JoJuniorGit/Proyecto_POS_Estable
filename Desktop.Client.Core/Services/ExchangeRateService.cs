@@ -48,7 +48,15 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
         _hubConnection = new HubConnectionBuilder()
             .WithUrl(hubUri, options =>
             {
-                options.AccessTokenProvider = () => Task.FromResult(_httpClient.DefaultRequestHeaders.Authorization?.Parameter);
+                options.AccessTokenProvider = () => 
+                {
+                    if (hubUri.Scheme == "http" && !hubUri.IsLoopback)
+                    {
+                        Core.Logging.ClientStateLogger.LogWarning("[SECURITY] Intentando enviar token SignalR sobre HTTP no loopback. Bloqueado.", "ExchangeRateService");
+                        return Task.FromResult<string?>(null);
+                    }
+                    return Task.FromResult(_httpClient.DefaultRequestHeaders.Authorization?.Parameter);
+                };
                 options.HttpMessageHandlerFactory = handler =>
                 {
                     if (handler is HttpClientHandler clientHandler)

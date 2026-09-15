@@ -7,7 +7,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Backend.API.Controllers;
 
-[Authorize]
+[Authorize(Policy = "WebOnly")]
+[Authorize(Roles = "Admin,Manager")]
 [ApiController]
 [Route("api/[controller]")]
 public class SettingsController : ControllerBase

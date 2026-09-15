@@ -73,12 +73,12 @@ public class SubnetScannerService : ISubnetScannerService
     private List<DiscoveredServer> _lastScanResults = new();
     private readonly object _lock = new object();
 
-    public async Task<DiscoveredServer?> ProbeSingleHostAsync(string hostOrIp, int port = 5000, int timeoutMs = 1500, CancellationToken ct = default)
+    public async Task<DiscoveredServer?> ProbeSingleHostAsync(string hostOrIp, int port = 5001, int timeoutMs = 1500, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(hostOrIp)) return null;
 
         var raw = hostOrIp.Trim();
-        var scheme = "http";
+        var scheme = "https";
         if (raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
             scheme = "https";
@@ -105,6 +105,24 @@ public class SubnetScannerService : ISubnetScannerService
             {
                 targetPort = parsedPort;
             }
+        }
+
+        // 8.16-ALTO-2: Rechazar http:// si no es loopback
+        if (scheme == "http" && !IsPrivateOrLocalAddress(cleanHost))
+        {
+            return null; // Reject HTTP if not loopback (wait, IsPrivateOrLocalAddress includes LAN! Let's be stricter)
+        }
+        
+        // Let's implement strict loopback check
+        bool isLoopback = cleanHost.Equals("localhost", StringComparison.OrdinalIgnoreCase) || cleanHost.Equals("127.0.0.1");
+        if (!isLoopback && IPAddress.TryParse(cleanHost, out var ipAddress))
+        {
+            isLoopback = IPAddress.IsLoopback(ipAddress);
+        }
+
+        if (scheme == "http" && !isLoopback)
+        {
+            return null; // Reject non-loopback HTTP
         }
 
         var targetUrl = $"{scheme}://{cleanHost}:{targetPort}/api/health";
@@ -213,7 +231,7 @@ public class SubnetScannerService : ISubnetScannerService
         {
             await Parallel.ForEachAsync(candidateIps, parallelOptions, async (ip, token) =>
             {
-                var result = await ProbeSingleHostAsync(ip, port: 5000, timeoutMs: 500, token).ConfigureAwait(false);
+                var result = await ProbeSingleHostAsync(ip, port: 5001, timeoutMs: 500, token).ConfigureAwait(false);
                 if (result != null)
                 {
                     foundServers.Add(result);

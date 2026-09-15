@@ -7,10 +7,25 @@
     .\docs\clear-products.ps1 -Force   # omite la confirmación
 #>
 param(
-    [string]$ConnectionString = "Host=localhost;Database=CommandCenterDb;Username=postgres;Password=123456",
+    [string]$ConnectionString = "",
     [switch]$Force
 )
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($ConnectionString)) {
+    $SecretsFile = Join-Path (Split-Path -Path $PSScriptRoot -Parent) "BackendAPI\secrets.json"
+    if (-not (Test-Path $SecretsFile)) {
+        $SecretsFile = Join-Path (Split-Path -Path $PSScriptRoot -Parent) "Backend.API\secrets.json"
+    }
+    if (Test-Path $SecretsFile) {
+        $secrets = Get-Content -Raw $SecretsFile | ConvertFrom-Json
+        $ConnectionString = $secrets.ConnectionStrings.DefaultConnection
+        if (-not $ConnectionString) { $ConnectionString = $secrets."ConnectionStrings__DefaultConnection" }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($ConnectionString)) {
+    throw "Proporcione -ConnectionString o asegurese de que secrets.json exista."
+}
 
 if (-not $Force) {
     Write-Host ""
@@ -20,7 +35,7 @@ if (-not $Force) {
     Write-Host "  Esta accion NO se puede deshacer.                      " -ForegroundColor Red
     Write-Host "=========================================================" -ForegroundColor Red
     Write-Host ""
-    Write-Host "Conexion: $ConnectionString" -ForegroundColor Yellow
+    Write-Host "Conexion: (cargada de secrets o parametros)" -ForegroundColor Yellow
     Write-Host ""
     $confirm = Read-Host "Escriba 'CONFIRMAR' para continuar"
     if ($confirm -ne "CONFIRMAR") {

@@ -40,12 +40,15 @@ public class DailyClosureRetryIntegrationTests
         Assert.NotNull(context);
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context!);
 
+        var puntoDeVenta = await context!.PaymentMethods.SingleAsync(p => p.Name == "Punto de Venta");
+        var puntoDeVentaId = puntoDeVenta.Id;
+
         var saleBase = DateTime.UtcNow.Date.AddDays(1).AddHours(9);
         int idSuffix = Environment.TickCount & 0x3FFFF;
-        context!.Sales.Add(new Sale { Id = idSuffix + 500, Status = SaleStatus.Completed, Date = saleBase.AddHours(1) });
+        context.Sales.Add(new Sale { Id = idSuffix + 500, Status = SaleStatus.Completed, Date = saleBase.AddHours(1) });
         context.SalePayments.Add(new SalePayment { SaleId = idSuffix + 500, PaymentMethodId = 1, AmountBsS = 1000m });
         context.Sales.Add(new Sale { Id = idSuffix + 501, Status = SaleStatus.Completed, Date = saleBase.AddHours(2) });
-        context.SalePayments.Add(new SalePayment { SaleId = idSuffix + 501, PaymentMethodId = 3, AmountBsS = 2500m });
+        context.SalePayments.Add(new SalePayment { SaleId = idSuffix + 501, PaymentMethodId = puntoDeVentaId, AmountBsS = 2500m });
         await context.SaveChangesAsync();
 
         var closure = new DailyClosure
@@ -56,7 +59,7 @@ public class DailyClosureRetryIntegrationTests
             Details = new List<ClosureDetail>
             {
                 new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 1000m, ActualAmountBsS = 1000m },
-                new ClosureDetail { PaymentMethodId = 3, PaymentMethodName = "Punto de Venta", ExpectedAmountBsS = 2500m, ActualAmountBsS = 2500m }
+                new ClosureDetail { PaymentMethodId = puntoDeVentaId, PaymentMethodName = "Punto de Venta", ExpectedAmountBsS = 2500m, ActualAmountBsS = 2500m }
             }
         };
 

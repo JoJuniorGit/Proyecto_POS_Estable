@@ -48,6 +48,12 @@ public class UserSessionHeaderHandler : DelegatingHandler
 
         if (!string.IsNullOrWhiteSpace(_userSession.Token))
         {
+            bool isLoopback = request.RequestUri != null && request.RequestUri.IsLoopback;
+            if (request.RequestUri?.Scheme == "http" && !isLoopback)
+            {
+                ClientStateLogger.LogWarning("[SECURITY] Intentando enviar Bearer sobre HTTP no loopback. Bloqueado.", "UserSessionHeaderHandler");
+                return new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized);
+            }
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _userSession.Token);
         }
 

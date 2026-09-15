@@ -226,8 +226,8 @@ function Concat-Error {
 function Test-StagingPreflight {
     param([hashtable]$Res)
     Write-Step "Pre-flight de staging: $($Res.baseUrl)"
-    if ($Res.confirmStaging -ne "YES" -and $Res.confirmStaging -ne $Res.baseUrl) {
-        throw "confirmStaging ('$($Res.confirmStaging)') no coincide con baseUrl ('$($Res.baseUrl)'). Confirme el entorno de staging."
+    if ($Res.confirmStaging -ne "YES") {
+        throw "Debe explicitar -ConfirmStaging YES para proteger contra ejecuciones accidentales en produccion."
     }
     $health = Invoke-Api "GET" "/health" $null $null
     if ($health.Status -ne 200) { throw "Fallo /health: HTTP $($health.Status) $(Concat-Error $health)" }

@@ -77,18 +77,23 @@ if ($rulesPass2.Count -ne 2) {
     throw "ERROR DE IDEMPOTENCIA: Las reglas de firewall se duplicaron tras la segunda pasada ($($rulesPass2.Count) encontradas)."
 }
 
-# Verificar preservacion de variable sensible
+# Verificar preservacion de secreto en secrets.json (8.29-A1) y ausencia en CLI
 $nssmExe = "C:\Program Files (x86)\Sistema POS Administrador\BackendAPI\nssm.exe"
 if (Test-Path $nssmExe) {
     $envRaw = & $nssmExe get PosBackendService AppEnvironmentExtra 2>$null
-    if ($envRaw -match 'SystemSettings__AdminSeedPassword=([^\r\n]+)') {
-        $actualPassword = $matches[1]
-        Write-Host "Contrasena registrada en NSSM: $actualPassword"
-        if ($actualPassword -ne "AdminInitialPass123!") {
-            throw "ERROR DE POLITICA DE FUSION: La contrasena preexistente fue sobrescrita. Valor actual: $actualPassword"
-        }
-        Write-Host "OK: La politica de fusion preservo correctamente la contrasena sensible preexistente." -ForegroundColor Green
+    if ($envRaw -match 'AdminSeedPassword') {
+        throw "ERROR DE SEGURIDAD: AdminSeedPassword fue inyectado en AppEnvironmentExtra (revocado en 8.29-A1)."
     }
+}
+$secretsFile = "C:\Program Files (x86)\Sistema POS Administrador\BackendAPI\secrets.json"
+if (Test-Path $secretsFile) {
+    $secrets = Get-Content -Raw $secretsFile | ConvertFrom-Json
+    if ($secrets.SystemSettings.AdminSeedPassword -ne "AdminInitialPass123!") {
+        throw "ERROR DE POLITICA DE FUSION: La contraseña preexistente fue sobrescrita en secrets.json o no se guardó."
+    }
+    Write-Host "OK: La politica de fusion preservo correctamente la contrasena sensible en secrets.json (sin imprimirla)." -ForegroundColor Green
+} else {
+    Write-Host "AVISO: No se encontro secrets.json (quizas fallo el script o la ruta es otra)." -ForegroundColor Yellow
 }
 
 Write-Host "`n=== TODAS LAS PRUEBAS DE IDEMPOTENCIA Y REGRESION PASARON EXITOSAMENTE ===" -ForegroundColor Green

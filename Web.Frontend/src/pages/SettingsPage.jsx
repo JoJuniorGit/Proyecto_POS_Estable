@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { getAllPaymentMethods } from '../services/paymentApi';
-import { Settings, Power, Loader2 } from 'lucide-react';
+import { Settings, Power, Loader2, ShieldAlert } from 'lucide-react';
 import { useCurrencyFormat } from '../context/CurrencyFormatContext';
+import { useAuth } from '../context/AuthContext';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import SettingsPairing from './SettingsPairing';
 import SettingsCurrencyFormat from './SettingsCurrencyFormat';
@@ -10,6 +11,7 @@ import SettingsPaymentMethods from './SettingsPaymentMethods';
 import './SettingsPage.css';
 
 export default function SettingsPage() {
+  const { user } = useAuth();
   const { currencyFormat, setCurrencyFormat, formatBsS, formatUSD } = useCurrencyFormat();
   const [methods, setMethods] = useState([]);
   const [loadingMethods, setLoadingMethods] = useState(false);
@@ -17,6 +19,17 @@ export default function SettingsPage() {
   const [restarting, setRestarting] = useState(false);
   const [restartModalOpen, setRestartModalOpen] = useState(false);
   const [pairingInfo, setPairingInfo] = useState(null);
+
+  const isAdminOrManager = user?.role === 0 || user?.role === 'Admin' || user?.role === '0' || user?.role === 1 || user?.role === 'Manager' || user?.role === '1';
+  if (!isAdminOrManager) {
+    return (
+      <div className="p-4 text-center mt-5">
+        <ShieldAlert size={48} className="color-danger mx-auto mb-3" />
+        <h3 className="font-bold text-lg mb-2">Acceso Denegado</h3>
+        <p className="text-muted">No tienes los permisos necesarios para acceder a la Configuración del Sistema.</p>
+      </div>
+    );
+  }
 
   const handleFormatChange = async (newFmt) => {
     try {

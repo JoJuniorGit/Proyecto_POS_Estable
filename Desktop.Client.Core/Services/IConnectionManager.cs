@@ -132,7 +132,7 @@ public class ConnectionManager : IConnectionManager, IDisposable
         CurrentMachineName = settings.LastKnownServerMachineName;
 
         // Probar si el servidor actual responde
-        var probe = await _scannerService.ProbeSingleHostAsync(CurrentServerAddress, 5000, 800);
+        var probe = await _scannerService.ProbeSingleHostAsync(CurrentServerAddress, 5001, 800);
         if (probe != null && probe.IsHealthy)
         {
             lock (_lock)
@@ -144,17 +144,20 @@ public class ConnectionManager : IConnectionManager, IDisposable
             return true;
         }
 
-        // Si falló y auto-discover está habilitado, intentar auto-recuperar
-        if (settings.AutoDiscoverOnFailure)
-        {
-            return await AutoRecoverAsync();
-        }
-
         lock (_lock)
         {
             Status = ConnectionStatus.Disconnected;
         }
-        RaiseStatusChanged("No se pudo conectar con el servidor configurado.");
+        RaiseStatusChanged("No se pudo conectar con el servidor configurado. Revise la red o reconfigure la conexión manualmente.");
+        return false;
+    }
+
+    private static bool IsLoopbackOnly(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return uri.IsLoopback;
+        }
         return false;
     }
 
@@ -166,7 +169,14 @@ public class ConnectionManager : IConnectionManager, IDisposable
         if (!clean.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && 
             !clean.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            clean = $"http://{clean}";
+            clean = $"https://{clean}";
+        }
+
+        if (clean.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !IsLoopbackOnly(clean))
+        {
+            Status = ConnectionStatus.Disconnected;
+            RaiseStatusChanged("Por seguridad, no se permiten conexiones HTTP a hosts remotos. Use HTTPS.");
+            return false;
         }
 
         if (!clean.EndsWith("/")) clean += "/";
@@ -174,7 +184,7 @@ public class ConnectionManager : IConnectionManager, IDisposable
         Status = ConnectionStatus.Connecting;
         RaiseStatusChanged();
 
-        var probe = await _scannerService.ProbeSingleHostAsync(clean, 5000, 1000);
+        var probe = await _scannerService.ProbeSingleHostAsync(clean, clean.StartsWith("https") ? 5001 : 5000, 1000);
         if (probe != null)
         {
             lock (_lock)
@@ -194,35 +204,16 @@ public class ConnectionManager : IConnectionManager, IDisposable
         }
 
         Status = ConnectionStatus.Disconnected;
-        RaiseStatusChanged("El servidor no respondió a la prueba de conexión.");
+        RaiseStatusChanged("El servidor no respondió a la prueba de conexión o el certificado TLS no coincide.");
         return false;
     }
 
     public async Task<bool> AutoRecoverAsync(CancellationToken ct = default)
     {
-        Status = ConnectionStatus.Scanning;
-        RaiseStatusChanged("Buscando servidor POS en la red local...");
-
-        var settings = _settingsStore.LoadSettings();
-        var discovered = await _scannerService.QuickDiscoverAsync(settings.LastKnownServerIp, ct);
-
-        if (discovered != null)
-        {
-            lock (_lock)
-            {
-                CurrentServerAddress = discovered.BaseUrl;
-                CurrentMachineName = discovered.MachineName;
-                Status = ConnectionStatus.Connected;
-                _settingsStore.UpdateServerAddress(discovered.BaseUrl, discovered.MachineName);
-            }
-
-            RaiseStatusChanged();
-            return true;
-        }
-
+        // 8.16-ALTO-3: No auto-seleccionar servidores sin confirmación explícita del operador
         Status = ConnectionStatus.Disconnected;
-        RaiseStatusChanged("No se encontró ningún servidor POS en la red local.");
-        return false;
+        RaiseStatusChanged("Conexión perdida. Requiere acción manual del operador para re-descubrir el servidor por seguridad.");
+        return await Task.FromResult(false);
     }
 
     public void NotifyConnectionFailed(string? error = null)

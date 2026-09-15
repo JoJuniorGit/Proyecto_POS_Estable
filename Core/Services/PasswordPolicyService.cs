@@ -47,9 +47,9 @@ public class PasswordPolicyService : IPasswordPolicyService
             return (false, "La contraseña no puede estar vacía.");
         }
 
-if (password.Length < 4)
+        if (password.Length < 8)
         {
-            return (false, "La contrase\u00f1a debe tener al menos 4 caracteres.");
+            return (false, "La contraseña debe tener al menos 8 caracteres.");
         }
 
         if (password.Length > 128)

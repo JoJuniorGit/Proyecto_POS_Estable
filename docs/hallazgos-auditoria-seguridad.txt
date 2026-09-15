@@ -1,0 +1,563 @@
+================================================================================
+AUDITORIA DE SEGURIDAD - HALLAZGOS PARA RESOLUCION
+Sistema POS "CommandCenter" - 2026-09-14
+================================================================================
+
+PROPOSITO
+Este documento es el insumo de trabajo para el agente resolutor: contiene los
+hallazgos de la auditoria de seguridad del sistema, organizados en 3 partes
+relacionadas (1-Servidor/Dominio, 2-Clientes, 3-Infraestructura/Operacion), con
+severidad, evidencia (archivo:linea), impacto y fix requerido.
+
+Alcance auditado: revision estatica completa (sin builds ni tests) del repo V0.1.
+
+RESUMEN
+  TOTAL: 7 ALTO / 14 MEDIO / 12 BAJO / 8 INFO
+  - Parte 1 (Servidor):  1 ALTO, 3 MEDIO, 3 BAJO, 2 INFO
+  - Parte 2 (Clientes):  3 ALTO, 0 MEDIO, 4 BAJO, 3 INFO
+  - Parte 3 (Infra):     3 ALTO, 11 MEDIO, 5 BAJO, 3 INFO
+  Relacion entre partes: los peores riesgos cruzan fronteras (pairing P2->P1->P3;
+  transporte/discovery P2->P1; secretos P3->P1; monitoring SYSTEM P3->P1).
+
+--------------------------------------------------------------------------------
+INSTRUCCIONES PARA EL AGENTE RESOLUTOR
+--------------------------------------------------------------------------------
+1. Lee primero: AGENTS.md, docs/coding-guidelines-core.md y la guia del area
+   (backend/web/wpf/qa), y carga la skill .agents/skills/pos-security-hardening/.
+2. Trabaja por severidad: ALTO -> MEDIO -> BAJO. Un hallazgo (o grupo cohesivo)
+   por unidad de trabajo, con su verificacion.
+3. NO modifiques lo listado en "DECISIONES ACEPTADAS (NO TOCAR)".
+4. Definition of Done del repo:
+   - dotnet build CommandCenter.slnx -c Release -> 0 advertencias / 0 errores
+   - dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release verde
+   - En Web.Frontend: npm test y npm run lint verdes
+   - Sin comentarios nuevos en codigo; sin dependencias nuevas sin aprobacion
+   - Registra el ANEXO correspondiente en docs/reporte.txt (append-only)
+5. El arbol de trabajo puede tener cambios en curso de otros lotes; no los
+   mezcles ni los reviertas. Revisa git status antes de cada commit.
+6. Hay un hook GGA (pre-commit) configurado localmente: revisara archivos
+   .cs/.js/.jsx/.xaml staged; corrige lo que marque antes de commitear.
+7. Si un fix requiere rediseno de contrato, crea/usa un cambio SDD en openspec/
+   (proposal -> spec -> design -> tasks -> apply -> verify -> archive).
+
+================================================================================
+PARTE 1 - SERVIDOR Y DOMINIO (.NET)
+Alcance: Core/, Sales.Module/, Inventory.Module/, Logistics.Module/, Backend.API/
+================================================================================
+
+--------------------------------------------------------------------
+[ALTO-1] IDOR: recibos de ventas ajenas sin control de ownership
+--------------------------------------------------------------------
+Evidencia : Backend.API/Controllers/ReceiptsController.cs:24-33
+            (GET /{saleId}/receipt con [Authorize(Roles="Admin,Manager,Cashier")],
+             sin comparar sale.CashierId contra el claim; el ownership 8.5-A3 SI
+             existe en SalesController.cs:44-77 y SalesController.History.cs:28-46)
+Impacto   : Un Cashier descarga recibos de ventas de otros cajeros enumerando IDs
+            secuenciales: nombre/cedula del cliente, items y referencias de pago.
+Fix req.  : Aplicar el helper de ownership existente (o filtrar por CashierId
+            para roles no elevados) antes de generar el PDF. Devolver 403.
+Verif.    : Test nuevo: cashier A no obtiene el recibo de una venta de B (403);
+            Admin/Manager siguen accediendo. Suite .NET verde.
+
+--------------------------------------------------------------------
+[MED-1] PUT /items acepta ProductId inexistente con precio arbitrario
+--------------------------------------------------------------------
+Evidencia : Sales.Module/Services/SalesService.HoldOrders.cs:293-308
+            (product==null evita el guard de precio y deja isCustomPrice=true;
+             RecalculateTotalAsync solo rechaza si UnitPrice==0, Pricing.cs:175-178)
+            AddItemAsync SI rechaza producto inexistente (SalesService.cs:266-267)
+Impacto   : Un Cashier persiste una linea con precio arbitrario en un OnHold; el
+            cobro posterior falla con KeyNotFoundException en StockDeduction
+            (InventoryService.StockDeduction.cs:62-65) y deja estado inconsistente.
+Fix req.  : Rechazar ProductId inexistente/inactivo/eliminado antes del guard de
+            precio; product==null nunca es via valida de precio custom.
+Verif.    : Test: UpdateSaleItems con ProductId inexistente -> rechazo; sin linea
+            persistida.
+
+--------------------------------------------------------------------
+[MED-2] Tasa <= 0 corrompe AppliedRate y montos Bs.S
+--------------------------------------------------------------------
+Evidencia : Backend.API/Controllers/SalesController.cs:139-173 (RemoveItem,
+            UpdateItemQuantity, UpdateExchangeRate aceptan rate por query;
+            ParseRateInvariant -> 0 si invalido, :248-254)
+            Sales.Module/Services/SalesService.cs:304,336 y SalesService.Pricing.cs:22
+            (asignan AppliedRate sin validar >0)
+            Core/Helpers/PricingCalculator.cs:65-69 (ToBsSCeiling => 0 si rate<=0)
+Impacto   : Un Cashier dueno puede fijar AppliedRate<=0 y dejar en 0 los montos
+            Bs.S de una venta Pending/OnHold (corrupcion de snapshot persistido).
+Fix req.  : Validar exchangeRate > 0 (o usar ResolveAnchoredRateAsync) en los tres
+            caminos de mutacion.
+Verif.    : Tests: rate 0/negativa/invalida -> rechazo; rate valida sin cambios.
+
+--------------------------------------------------------------------
+[MED-3] Politica de contrasenas de 4 caracteres
+--------------------------------------------------------------------
+Evidencia : Core/Services/PasswordPolicyService.cs:50-53
+            (aplicada en UsersController.cs:101-110 y AuthController.cs:257-262)
+Impacto   : Contrasenas tipo "ab12" aceptadas para cajeros/gerentes (NIST >= 8).
+Fix req.  : Elevar minimo a 8-12; mantener bloqueo/listas existentes.
+Verif.    : Tests de politica actualizados; crear usuario con "ab12" -> rechazado.
+
+--------------------------------------------------------------------
+[BAJO-1] Idempotency-Key sin UserId (replay de respuestas con PII)
+--------------------------------------------------------------------
+Evidencia : Backend.API/Controllers/SalesController.HoldOrders.cs:17-25,66-74,97-104
+            (check antes de IsAuthorizedForSaleAsync; IdempotencyService.cs:91-118
+             indexa por Key+RequestPath, no guarda usuario)
+Impacto   : Si una clave (GUID) se filtra, otro usuario autenticado replica la
+            respuesta almacenada (SaleDto con PII). Mitigado por entropia.
+Fix req.  : Incluir UserId en hash/registro y validarlo en replay; mover el check
+            tras el ownership.
+Verif.    : Test: replay con otro usuario -> no sirve la respuesta.
+
+--------------------------------------------------------------------
+[BAJO-2] /api/pairing/info spoofeable via X-Forwarded-For detras de proxy local
+--------------------------------------------------------------------
+Evidencia : Backend.API/Controllers/PairingController.cs:30-53,77-84
+            Backend.API/Startup/ServiceCollectionExtensions.cs:269-296
+            (isLocal con RemoteIpAddress post-UseForwardedHeaders; KnownProxies
+             por defecto = loopback)
+Impacto   : Con un proxy local (p.ej. Nginx en 127.0.0.1), atacante LAN con
+            X-Forwarded-For: 127.0.0.1 obtiene IPs/puertos y el token QR.
+Fix req.  : Exigir X-Pairing-Token tambien para loopback detras de proxy, o fijar
+            KnownProxies explicitos y sanitizar XFF en el proxy.
+Verif.    : Test de integracion: XFF falsificado no otorga acceso local.
+
+--------------------------------------------------------------------
+[BAJO-3] ProfitPercentage expuesto a roles sin catalogo
+--------------------------------------------------------------------
+Evidencia : Inventory.Module/Services/InventoryService.CatalogQueries.cs:85 +
+            InventoryService.cs:278 + Core/DTOs/ProductQuickInfoDto.cs:19
+            (ProductsController.cs:354-371 /suggestions y /quick-check/{sku} no
+             enmascaran ProfitPercentage como si hacen con costos en :42-52,193-247)
+Impacto   : Cashier/Driver pueden derivar el costo (costo = precio/(1+margen)).
+Fix req.  : Poner ProfitPercentage en 0 para roles sin CanMutateCatalog (mapper/
+            enmascarado unico).
+Verif.    : Tests: cashier no ve margen; Admin si.
+
+--------------------------------------------------------------------
+[INFO-1] Middleware filtra Message de excepciones de infraestructura
+--------------------------------------------------------------------
+Evidencia : Backend.API/Middleware/GlobalExceptionHandlerMiddleware.cs:228-242,261-275
+Impacto   : Un InvalidOperationException de EF/Npgsql se devuelve con detalle
+            interno (sin stack). Los mensajes de dominio en 409 son politica
+            aceptada y NO se tocan.
+Fix req.  : Distinguir excepcion de dominio vs infraestructura antes de mapear.
+
+--------------------------------------------------------------------
+[INFO-2] Politicas DesktopOnly/WebOnly definidas y no aplicadas
+--------------------------------------------------------------------
+Evidencia : Backend.API/Startup/ServiceCollectionExtensions.cs:150-155;
+            Backend.API/Controllers/AuthController.cs:131-152 (scope decidido por
+            X-Client-Platform declarado)
+Impacto   : Sin impacto actual (roles por claims); fragil si se agregan endpoints
+            por canal.
+Fix req.  : Aplicar la politica correspondiente o eliminar la expectativa.
+
+================================================================================
+PARTE 2 - CLIENTES (Web React + WPF Desktop + Updater)
+Alcance: Web.Frontend/, Desktop.Client/, Desktop.Client.Core/, UpdaterService/
+================================================================================
+
+--------------------------------------------------------------------
+[ALTO-2] WPF remoto en HTTP en claro por defecto (credenciales/JWT expuestos)
+--------------------------------------------------------------------
+Evidencia : Desktop.Client/appsettings.json:3 (default http://localhost:5000/)
+            Desktop.Client.Core/Services/IConnectionManager.cs:47,161-172,207-217
+            (TestAndSetServerAddressAsync antepone http:// y persiste)
+            Services/SubnetScannerService.cs:110,147 (descubrimiento por http)
+            Services/UserService.cs:20 (login POST cedula+password)
+            Services/UserSessionHeaderHandler.cs:49-52 (adjunta Bearer)
+            Services/ExchangeRateService.cs:45,51 (SignalR; token via query string)
+Impacto   : En terminales POS remotos (LAN/Wi-Fi), sniffing o MITM pasivo captura
+            credenciales y JWT -> fraude/toma de caja. El pinning TOFU solo aplica
+            si el operador eligio HTTPS.
+Fix req.  : Forzar HTTPS para todo host que no sea loopback: rechazar http:// en
+            ConnectionManager/UI y en la validacion del descubrimiento; no enviar
+            credenciales ni Bearer sobre esquema inseguro; prohibir ws:// (usar wss).
+Verif.    : Tests: fijar servidor http:// remoto -> rechazado; loopback permitido
+            en desarrollo.
+
+--------------------------------------------------------------------
+[ALTO-3] Descubrimiento automatico de servidor sin autenticacion mutua
+--------------------------------------------------------------------
+Evidencia : IConnectionManager.cs:201-226 (AutoRecoverAsync/QuickDiscoverAsync
+            fijan el primer host que responda status:Healthy en /api/health, JSON
+            sin firma, ordenado por menor latencia)
+            SubnetScannerService.cs:110-153,184-238; LoginViewModel.cs:176
+            UserSessionHeaderHandler.cs:49-52 (Bearer en cada request)
+Impacto   : Servidor impostor en la LAN (o ARP spoof) captura el token restaurado
+            y las credenciales del proximo login; gana el atacante mas rapido.
+Fix req.  : Exigir challenge de pairing/HMAC con secreto del servidor o fingerprint
+            TLS confirmado ANTES de aceptar el host y de adjuntar credenciales; no
+            auto-seleccionar servidores sin confirmacion explicita del operador.
+Verif.    : Tests de descubrimiento: host sin challenge/fingerprint -> no se fija
+            ni recibe Bearer.
+
+--------------------------------------------------------------------
+[ALTO-4] Token single-use de pairing inerte (bypass del control 8.9-M4)
+--------------------------------------------------------------------
+Evidencia : Backend.API/Services/NetworkDiscoveryService.cs:154 (genera
+            QrPayload ".../?paired=true&pair=<token>")
+            Web.Frontend/src/pages/SettingsPairing.jsx:67 (arma su propio QR sin pair)
+            Desktop.Client.Core/ViewModels/PairingQrViewModel.cs:51,159-166,240-248
+            (construye "?paired=true"; el DTO ni mapea QrPayload)
+            Web.Frontend/src/services/api.js:97-115 (rama else: persiste ?api=
+            directo sin claimPairingToken)
+Impacto   : Un enlace armado "https://server-ip:5001/?api=<ip-privada-atacante>"
+            queda fijado y el login/cobros van al host del atacante; el token
+            single-use nunca se consume.
+Fix req.  : Web y WPF deben renderizar el QR desde pairingInfo.qrPayload (mapear
+            QrPayload en WPF). api.js fail-closed: sin claim exitoso no se persiste
+            ni usa el override; rechazar URLs con ?api= sin ?pair.
+Verif.    : Tests web: URL con ?api= sin claim -> no persiste; con claim ok ->
+            persiste. Test backend de claim single-use (ampliar si existe).
+
+--------------------------------------------------------------------
+[BAJO-4] RBAC de UI web incompleto (backend si valida)
+--------------------------------------------------------------------
+Evidencia : Web.Frontend/src/components/layout/Sidebar.jsx:17-42;
+            pages/SettingsPage.jsx:61-79; pages/ExchangeRatePage.jsx:39-83;
+            pages/RegisterPage.jsx:30 (menu muestra Configuracion/Tasa/Reinicio a
+            cualquier rol; solo Cash In/Out gateado; Driver tampoco se bloquea)
+Impacto   : Un cajero inicia acciones admin y recibe 403; la seguridad depende de
+            que cada endpoint futuro recuerde validar.
+Fix req.  : Gatear navegacion/controles por rol en web (equivalente a WPF
+            CanMutateSettings/ExchangeRate) y politica de navegacion para Driver.
+            Mantener el backend como autoridad.
+Verif.    : Test de render por rol (o helper puro de navegacion) + suite verde.
+
+--------------------------------------------------------------------
+[BAJO-5] Perfil con cedula/rol persistido en localStorage 24 h
+--------------------------------------------------------------------
+Evidencia : Web.Frontend/src/context/AuthContext.jsx:9-19,30-38,101-104;
+            PendingOrdersPage.jsx:31; services/api.js:301-314
+Impacto   : En terminal compartida, nombre/cedula/rol legibles hasta 24 h; editar
+            role muestra UI elevada (sin permisos reales).
+Fix req.  : No persistir rol/cedula o acortar TTL; tratar rol local solo como
+            presentacion; considerar sessionStorage.
+Verif.    : Tests de storage: logout limpia; TTL reducido.
+
+--------------------------------------------------------------------
+[BAJO-6] Logs con PII y stack traces en disco
+--------------------------------------------------------------------
+Evidencia : Core/Logging/AppLogger.cs:9,44-52;
+            Core/Logging/ClientStateLogger.cs:25-33 (RequestUri con &search=cedula);
+            Desktop.Client.Core/Services/SalesService.cs:156-161
+Impacto   : PII/trazas internas en claro en disco; perdida silenciosa si el
+            directorio no es escribible.
+Fix req.  : Redactar/sanitizar query strings; usar %LOCALAPPDATA% con ACL de
+            usuario y retencion definida.
+Verif.    : Tests de redaccion; ruta de logs verificada.
+
+--------------------------------------------------------------------
+[BAJO-7] Vite dev server expuesto a la LAN
+--------------------------------------------------------------------
+Evidencia : Web.Frontend/package.json:10 ("dev": "vite --host")
+Impacto   : Superficie de desarrollo alcanzable en estaciones (no produccion).
+Fix req.  : Quitar --host o limitarlo a localhost por defecto.
+
+--------------------------------------------------------------------
+[INFO-3] EnableCertificatePinning config muerta
+--------------------------------------------------------------------
+Evidencia : Desktop.Client/appsettings.json:4 (false, no referenciado);
+            Services/CertificatePinning.cs:18-42 (TOFU real siempre activo)
+Impacto   : Puede inducir a error al operador.
+Fix req.  : Eliminar el flag o cablearlo de verdad.
+
+--------------------------------------------------------------------
+[INFO-4] Ventana de sesion aparente tras restaurar JWT (+DPAPI CurrentUser)
+--------------------------------------------------------------------
+Evidencia : Desktop.Client.Core/Services/UserSession.cs:81-170;
+            SecureTokenStorageService.cs:40-59,86-87
+Impacto   : UI con sesion aparente si el servidor no responde (sin privilegios
+            reales); DPAPI CurrentUser es descifrable por el mismo usuario Windows.
+Fix req.  : Evaluar expiracion por inactividad y validar nbf/iat; documentar el
+            riesgo de DPAPI CurrentUser.
+
+--------------------------------------------------------------------
+[INFO-5] Deuda vigente 8.20-A03: updater sin firma X.509
+--------------------------------------------------------------------
+Evidencia : UpdaterService/Program.cs:41-62; UpdatePackageExtractor.cs:43-65
+Impacto   : Quien controle paquete+sidecar controla el contenido (hash fail-closed
+            pero sin firma). DEUDA YA REGISTRADA, no hallazgo nuevo; mantener
+            referencia y planificar firma Authenticode/manifest firmado.
+
+================================================================================
+PARTE 3 - INFRAESTRUCTURA, CONFIGURACION Y OPERACION
+Alcance: installer/, scripts/, .github/workflows/, appsettings*, .gitignore,
+        docs de instalacion/operacion, tests de instalador
+================================================================================
+
+--------------------------------------------------------------------
+[ALTO-5] Carpeta de monitoreo editable por usuarios + tarea SYSTEM
+--------------------------------------------------------------------
+Evidencia : installer/setup.iss:60 ([Dirs] ProgramData\...\monitoring con
+            Permissions: users-modify)
+            installer/Configure-PosService.ps1:504-505 (tarea schtasks /RU SYSTEM
+            /RL HIGHEST con -Config en esa carpeta)
+            docs/monitor-health.ps1:63,236 (el script SYSTEM escribe LogFile,
+            StateFile, CSVs y hace GET/POST a URLs del config)
+Impacto   : Un usuario local estandar puede alterar el config y lograr escritura/
+            sobrescritura de archivos como SYSTEM (clobber de StateFile), SSRF
+            saliente y exfiltracion via webhook. Requiere acceso local.
+Fix req.  : ACL de solo lectura para Users en esa carpeta (SYSTEM/Administradores
+            escriben); separar config de la tarea SYSTEM; validar que StateFile/
+            LogFile/DataDir queden confinados a DataDir; nunca ejecutar tareas
+            SYSTEM con config editable por no-admin.
+Verif.    : ACL resultante verificada post-install; la tarea no puede tomar rutas
+            fuera de DataDir.
+
+--------------------------------------------------------------------
+[ALTO-6] JWT Admin/Manager en claro en monitor-config.json (escalada de rol)
+--------------------------------------------------------------------
+Evidencia : docs/monitor-health-ui.ps1:123-141 (el dialogo "Token de monitoreo"
+            guarda el JWT en monitor-config.json via WriteAllText)
+            docs/monitor-health.ps1:376-399 (lo lee/usa)
+            Backend.API/Controllers/HealthController.cs:95-108 (/api/health/details,
+            /requests, /metrics exigen Admin,Manager)
+Impacto   : Cualquier usuario local lee un JWT Admin/Manager (exp. 120 min) y lo
+            reutiliza desde la LAN: bypass del RBAC Cajero->Admin.
+Fix req.  : No persistir JWT en carpeta de usuarios; usar DPAPI o almacen
+            protegido, o un token de rol minimo dedicado a monitoreo; ACL
+            SYSTEM/Administradores.
+Verif.    : El config ya no contiene el JWT en claro; el flujo de monitoreo sigue
+            funcionando con el almacen protegido.
+
+--------------------------------------------------------------------
+[ALTO-7] secrets.json no excluido del publish/instalador (latente)
+--------------------------------------------------------------------
+Evidencia : installer/setup.iss:34 (Excludes solo appsettings.Production,
+            appsettings.Development y certs\pos-https.pfx; NO secrets.json)
+            scripts/build-release.ps1:62-75 (scan aborta solo por 2 literales)
+            scripts/create-https-cert.ps1:51 (fallback busca Backend.API\secrets.json)
+Impacto   : Si el puesto de build tiene Backend.API\secrets.json (flujo dev), el
+            SDK Web lo publica y el instalador lo empaqueta con la clave JWT y
+            credenciales reales hacia el cliente.
+Fix req.  : CopyToPublishDirectory=Never en el csproj + agregar secrets.json a los
+            Excludes del .iss + scrub del build; escanear por patrones de contenido
+            (Password=, "Key") no solo literales.
+Verif.    : Build-release/publish sin secrets.json; scan que aborte si aparece.
+
+--------------------------------------------------------------------
+[MED-4] Password del PFX expuesta en la linea de comandos
+--------------------------------------------------------------------
+Evidencia : scripts/build-release.ps1:139 (signtool /f ... /p $env:CODE_SIGNING_PASSWORD)
+Impacto   : Password visible en la lista de procesos durante la firma.
+Fix req.  : Importar cert al store y firmar por thumbprint (/sha1) o variable
+            segura del runner; evitar /p.
+Verif.    : Build-release sin /p en la invocacion.
+
+--------------------------------------------------------------------
+[MED-5] Credenciales admin por CLI en stress-external
+--------------------------------------------------------------------
+Evidencia : scripts/stress-external.ps1:16-18,42-49 (-AdminPassword/-StressPassword
+            mandatorios y reenviados)
+Impacto   : Credenciales en argv/historial aunque pos-test.ps1:166-177 ya resuelve
+            por secrets/env/prompt.
+Fix req.  : Deprecar params de password; resolver igual que pos-test.ps1.
+Verif.    : Script sin flags de password.
+
+--------------------------------------------------------------------
+[MED-6] Desinstalador deja firewall, tareas SYSTEM y secretos residuales
+--------------------------------------------------------------------
+Evidencia : installer/setup.iss:82-89 ([UninstallRun] solo servicio);
+            Configure-PosService.ps1:452,505 (tareas Backup PostgreSQL y Monitor de
+            Salud SYSTEM no se eliminan)
+Impacto   : Puertos abiertos a LAN, tareas SYSTEM huerfanas cada 5 min, secretos
+            residuales.
+Fix req.  : [UninstallRun] para reglas "Sistema POS - Backend API*" y las dos
+            tareas; limpiar secrets.json/logs o documentar retencion explicita.
+Verif.    : Desinstalacion limpia en VM de prueba.
+
+--------------------------------------------------------------------
+[MED-7] Backups sin ACL/cifrado en el mismo disco
+--------------------------------------------------------------------
+Evidencia : scripts/backup-postgres.ps1:24,112-116,148-154 (destino default
+            C:\Backups\CommandCenter, retencion 14 dias, sin ACL explicita ni
+            cifrado)
+Impacto   : Volcados con toda la BD legibles por usuarios locales; RPO limitado.
+Fix req.  : ACL SYSTEM/Administradores, evaluar cifrado/volumen separado,
+            verificar restauracion periodicamente.
+Verif.    : ACL efectiva post-deploy; restore de prueba documentado.
+
+--------------------------------------------------------------------
+[MED-8] Actualizacion de servicio sin verificacion de integridad
+--------------------------------------------------------------------
+Evidencia : scripts/actualizar_servicio_y_sistema.bat:29-39 (copia
+            publish\BackendAPI\* a Program Files con admin, sin hash/manifiesto/
+            version ni rollback)
+Impacto   : Instala binarios sin verificar; origen corrupto/manipulado entra con
+            privilegios. (Obsolescencia de publish ya aceptada 8.128/D1.)
+Fix req.  : Verificar firma/hash antes de copiar; staging + swap atomico con
+            rollback.
+Verif.    : Script aborta con hash incorrecto; rollback probado.
+
+--------------------------------------------------------------------
+[MED-9] GitHub Actions sin pin por SHA
+--------------------------------------------------------------------
+Evidencia : .github/workflows/ci.yml:25,28,33,107,122,125,154 (checkout@v4,
+            setup-dotnet@v4, cache@v4, setup-node@v4, upload-artifact@v4).
+            Positivo: permissions contents: read (:11-12) y auditorias de
+            dependencias (:95-104,144-146).
+Impacto   : Supply chain si un tag mayor se mueve/compromete.
+Fix req.  : Pinnear cada action a SHA + Dependabot/Renovate.
+Verif.    : YAML con SHAs; CI verde.
+
+--------------------------------------------------------------------
+[MED-10] Hash de nssm.exe no verificado en build
+--------------------------------------------------------------------
+Evidencia : installer/setup.iss:38-40; installer/download-nssm.ps1:10-22 (pin SHA
+            solo en la descarga; el exe versionado se empaqueta sin verificar)
+Impacto   : Binario de servicio (SYSTEM) sustituible sin deteccion.
+Fix req.  : Verificar hash en build-release.ps1/CI antes de compilar el .iss.
+Verif.    : Build falla con hash distinto.
+
+--------------------------------------------------------------------
+[MED-11] pos-test-config.json apunta a produccion por defecto
+--------------------------------------------------------------------
+Evidencia : scripts/pos-test-config.json:3-5 (local, ignorado: name "produccion",
+            baseUrl LAN, confirmStaging == baseUrl; pos-test.ps1:229 solo compara
+            strings)
+Impacto   : Operador que ejecute el menu por defecto provisiona BOT + 900 ventas
+            contra produccion (consume facturas, ensucia datos).
+Fix req.  : Perfilar entornos; exigir "-ConfirmStaging YES" tipeado (no aceptar el
+            baseUrl pre-rellenado); mantener prod fuera del default (.example ya
+            es correcto).
+Verif.    : Menu por defecto no permite correr contra el baseUrl de produccion.
+
+--------------------------------------------------------------------
+[MED-12] Dev bind 0.0.0.0:5000 + seeds debiles
+--------------------------------------------------------------------
+Evidencia : Backend.API/Properties/launchSettings.json:8 (perfil http escucha
+            0.0.0.0 con ASPNETCORE_ENVIRONMENT=Development);
+            Backend.API/appsettings.Development.json:10,13 (Password=123456,
+            AdminSeedPassword: Admin123!)
+Impacto   : Backend dev (seed debil) alcanzable desde LAN compartida.
+Fix req.  : Bind loopback en perfil dev (o https) y rotar seed dev.
+Verif.    : dotnet run no expone 0.0.0.0.
+
+--------------------------------------------------------------------
+[MED-13] Password literal en clear-products.ps1 (script destructivo)
+--------------------------------------------------------------------
+Evidencia : docs/clear-products.ps1:6,10 (default ConnectionString con
+            Password=123456; borra Products/StockMovements/StockReservations;
+            -Force omite confirmacion)
+Impacto   : Credencial en el repo + herramienta destructiva con default debil.
+Fix req.  : Quitar default con password; exigir -ConnectionString/secrets.json y
+            confirmacion fuerte.
+Verif.    : Script sin credenciales embebidas.
+
+--------------------------------------------------------------------
+[MED-14] .gitignore no cubre Backend.API/secrets.json
+--------------------------------------------------------------------
+Evidencia : .gitignore:405-409 (*.secrets.json NO matchea "secrets.json" sin punto).
+            VERIFICADO en este repo (git check-ignore): Backend.API/secrets.json
+            -> NOT-IGNORED. Estado actual: no existe en disco y no hay secretos
+            trackeados (solo .example, nssm.exe y su licencia).
+Impacto   : El archivo canonico de secretos puede quedar untracked y commitearse
+            por accidente.
+Fix req.  : Agregar "Backend.API/secrets.json" (o "**/secrets.json") al .gitignore.
+Verif.    : git check-ignore -q Backend.API/secrets.json -> ignorado.
+
+--------------------------------------------------------------------
+[BAJO-8] Test-InstallerIdempotency imprime credencial y ya no valida
+--------------------------------------------------------------------
+Evidencia : tests/Test-InstallerIdempotency.ps1:63,84-90
+Impacto   : Imprime secreto; la asercion quedo vacia tras 8.29-A1; correrlo en
+            produccion reinicia servicio y recrea tareas.
+Fix req.  : Usar env/-WhatIf, no imprimir secretos; asertar que el secreto NO este
+            en AppEnvironmentExtra y SI en secrets.json.
+Verif.    : Script en modo dry-run sin efectos.
+
+--------------------------------------------------------------------
+[BAJO-9] INSTALLATION.md invoca parametro inexistente
+--------------------------------------------------------------------
+Evidencia : docs/INSTALLATION.md:86 (-Subject) vs scripts/create-https-cert.ps1:24-28
+            (define SecretsFile, certPassword, CertOutputDir)
+Fix req.  : Corregir doc o agregar el parametro.
+
+--------------------------------------------------------------------
+[BAJO-10] Nombre de servicio desalineado en docs
+--------------------------------------------------------------------
+Evidencia : docs/INSTALLATION-advanced.md:92 y docs/LAUNCH_GUIDE.md:56-64
+            ("Sistema POS Backend" vs real PosBackendService en
+             installer/Configure-PosService.ps1:22,132)
+Fix req.  : Unificar PosBackendService en docs.
+
+--------------------------------------------------------------------
+[BAJO-11] UpdateServerUrl inconsistente
+--------------------------------------------------------------------
+Evidencia : installer/setup.iss:229 (default https://localhost:5001/updates/) vs
+            docs/INSTRUCCIONES_DE_INSTALACION.txt:53 y Backend.API/appsettings.json:12
+            (http://localhost:5000/updates/)
+Fix req.  : Alinear el default del wizard con el endpoint real.
+
+--------------------------------------------------------------------
+[BAJO-12] Exclusiones de Defender por carpeta completa
+--------------------------------------------------------------------
+Evidencia : docs/INSTALLATION-advanced.md:17-21
+Impacto   : Archivos en esas rutas dejan de escanearse.
+Fix req.  : Preferir exclusiones de proceso/archivo firmado antes que de carpeta.
+
+--------------------------------------------------------------------
+[INFO-6] Politica de password del instalador en paridad debil (>=4)
+--------------------------------------------------------------------
+Evidencia : installer/setup.iss:272-286; docs/INSTALLATION.md:107-113
+Fix req.  : Evaluar subir minimo (ya existe MustChangePassword).
+
+--------------------------------------------------------------------
+[INFO-7] Firewall/TLS/LAN por diseno - mantener
+--------------------------------------------------------------------
+Evidencia : Configure-PosService.ps1:105-115,156-160 (firewall TCP 5000/5001
+            remoteip=localsubnet); Program.cs:61-68; PairingController.cs:23-53;
+            ServiceCollectionExtensions.cs:179-206,208-242; create-https-cert.ps1:121-134
+            (.pfx autofirmado 10 anos, password CSPRNG, *.pfx ignorado)
+Fix req.  : Ninguno (documentar; alerta de expiracion ya prevista en LAUNCH_GUIDE).
+
+--------------------------------------------------------------------
+[INFO-8] Controles positivos de CI/tooling - mantener
+--------------------------------------------------------------------
+Evidencia : .github/workflows/ci.yml:11-12,95-104,144-146 (permissions read,
+            dotnet vulnerable, npm audit high); opencode.json:305 (share disabled).
+
+================================================================================
+DECISIONES ACEPTADAS (NO TOCAR)
+================================================================================
+No reportar ni "corregir" como hallazgo:
+- Cola compartida de OnHold con reclamo exclusivo y precondicion de claim (8.121/
+  8.124/8.129). La semantica actual (claim ajeno -> SaleLockedException; sin
+  claim -> HoldNotClaimedException) es la disenada.
+- Driver bloqueado de ventas, caja y cierres.
+- Mensajes de dominio intencionales en respuestas 409 (no es fuga).
+- Rate limit general por IP.
+- Pinning TLS TOFU del cliente.
+- Certificados autofirmados por sitio (decision de despliegue LAN).
+- Auto-update sin firma X.509 = deuda 8.20-A03 (no hallazgo nuevo; ya registrada).
+- publish/ local desactualizado respecto a HEAD = ya documentado (ANEXO 8.128/D1);
+  su regeneracion es operativa, no un fix de este listado.
+- Snapshots de recuperacion de venta (8.120) con datos en claro: riesgo aceptado.
+
+================================================================================
+NO VERIFICABLE EN LA AUDITORIA (confirmar durante la resolucion)
+================================================================================
+- ACLs efectivas en disco (BackendAPI\secrets.json, C:\Backups\CommandCenter,
+  ProgramData\CommandCenterPOS\monitoring) y herencia real por puesto.
+- Contenido de Backend.API\.env y .env (lectura bloqueada por permisos).
+- Hashes reales de installer/nssm.exe, dist_installer y binarios de publish/.
+- Settings de GitHub (branch protection, secretos de repo).
+- Pruebas dinamicas (fuzzing/forging) no ejecutadas (auditoria 100% estatica).
+
+================================================================================
+SUGERENCIA DE ORDEN DE RESOLUCION (3 bloques relacionados)
+================================================================================
+Bloque A (Servidor): ALTO-1, MED-1, MED-2, MED-3, BAJO-1, BAJO-2, BAJO-3,
+  INFO-1, INFO-2. (ALTO-1 primero.)
+Bloque B (Clientes): ALTO-2, ALTO-3, ALTO-4, BAJO-4, BAJO-5, BAJO-6, BAJO-7,
+  INFO-3, INFO-4.
+Bloque C (Infra/Operacion): ALTO-5, ALTO-6, ALTO-7, MED-4..MED-14, BAJO-8..12,
+  INFO-5..8.
+Cada bloque puede entregarse como un cambio SDD o como commits independientes por
+hallazgo; los ALTO de un bloque no dependen de los otros bloques.
+
+FIN DEL DOCUMENTO.

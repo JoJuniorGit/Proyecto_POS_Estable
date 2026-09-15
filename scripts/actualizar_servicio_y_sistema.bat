@@ -15,50 +15,45 @@ echo   ACTUALIZACION DE SERVICIO POS Y BINARIOS DEL BACKEND
 echo =======================================================
 echo.
 
-echo [1/4] Deteniendo servicio de Windows 'PosBackendService'...
-powershell -Command ^
-  "$svc = Get-Service -Name 'PosBackendService' -ErrorAction SilentlyContinue; " ^
-  "if ($svc -and $svc.Status -ne 'Stopped') { " ^
-  "    Stop-Service -Name 'PosBackendService' -Force -ErrorAction SilentlyContinue; " ^
-  "    $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(10)); " ^
-  "}"
-
-:: Si el proceso sigue vivo tras el timeout de parada suave, terminarlo
-taskkill /F /IM Backend.API.exe >nul 2>&1
-
-echo [2/4] Resolviendo ruta de instalacion y copiando binarios...
-powershell -Command ^
-  "$target = $null; " ^
-  "$nssmDir = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\PosBackendService\Parameters' -ErrorAction SilentlyContinue).AppDirectory; " ^
-  "if ($nssmDir -and (Test-Path $nssmDir)) { $target = $nssmDir } " ^
-  "elseif (Test-Path \"${env:ProgramFiles}\Sistema POS Administrador\BackendAPI\") { $target = \"${env:ProgramFiles}\Sistema POS Administrador\BackendAPI\" } " ^
-  "elseif (Test-Path \"${env:ProgramFiles(x86)}\Sistema POS Administrador\BackendAPI\") { $target = \"${env:ProgramFiles(x86)}\Sistema POS Administrador\BackendAPI\" } " ^
-  "if (-not $target) { Write-Error 'Directorio de instalacion del servicio no encontrado.'; exit 1 } " ^
-  "Write-Host \"Destino resuelto: $target\"; " ^
-  "Copy-Item -Path '.\publish\BackendAPI\*' -Destination $target -Recurse -Force -Exclude 'appsettings.Production.json','appsettings.Development.json','certs','logs'; " ^
-  "Write-Host 'Archivos actualizados correctamente sin desplegar secretos de desarrollo.'"
-
+powershell -ExecutionPolicy Bypass -Command "^
+    $ErrorActionPreference = 'Stop'; ^
+    Write-Host '[1/4] Deteniendo servicio...'; ^
+    $svc = Get-Service -Name 'PosBackendService' -ErrorAction SilentlyContinue; ^
+    if ($svc -and $svc.Status -ne 'Stopped') { ^
+        Stop-Service -Name 'PosBackendService' -Force; ^
+        $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(10)); ^
+    } ^
+    Stop-Process -Name 'Backend.API' -Force -ErrorAction SilentlyContinue; ^
+    Write-Host '[2/4] Verificando integridad y respaldando...'; ^
+    $src = '.\publish\BackendAPI'; ^
+    if (-not (Test-Path \"$src\Backend.API.exe\")) { throw 'Falta Backend.API.exe en el origen.' } ^
+    $nssmDir = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\PosBackendService\Parameters' -ErrorAction SilentlyContinue).AppDirectory; ^
+    if ($nssmDir -and (Test-Path $nssmDir)) { $target = $nssmDir } ^
+    elseif (Test-Path \"${env:ProgramFiles}\Sistema POS Administrador\BackendAPI\") { $target = \"${env:ProgramFiles}\Sistema POS Administrador\BackendAPI\" } ^
+    elseif (Test-Path \"${env:ProgramFiles(x86)}\Sistema POS Administrador\BackendAPI\") { $target = \"${env:ProgramFiles(x86)}\Sistema POS Administrador\BackendAPI\" } ^
+    else { throw 'Directorio de instalacion del servicio no encontrado.' } ^
+    $backup = \"$target\_backup_$(Get-Date -f yyyyMMdd_HHmmss)\"; ^
+    New-Item -ItemType Directory -Path $backup | Out-Null; ^
+    Copy-Item \"$target\*\" -Destination $backup -Recurse -Force -Exclude '_backup_*'; ^
+    Write-Host '[3/4] Copiando nuevos binarios...'; ^
+    try { ^
+        Copy-Item -Path \"$src\*\" -Destination $target -Recurse -Force -Exclude 'appsettings.Production.json','appsettings.Development.json','certs','logs','secrets.json'; ^
+    } catch { ^
+        Write-Host 'Error al copiar. Haciendo rollback...' -ForegroundColor Red; ^
+        Copy-Item \"$backup\*\" -Destination $target -Recurse -Force; ^
+        throw; ^
+    } ^
+    Write-Host '[4/4] Iniciando servicio...'; ^
+    if ($svc) { ^
+        Start-Service -Name 'PosBackendService'; ^
+        $svc.WaitForStatus('Running', [TimeSpan]::FromSeconds(10)); ^
+    } ^
+    Write-Host 'ACTUALIZACION COMPLETADA CON EXITO.' -ForegroundColor Green; ^
+"
 if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: Fallo la actualizacion de binarios.
+    echo ERROR: Fallo la actualizacion.
     pause
     exit /b 1
 )
 
-echo [3/4] Iniciando servicio 'PosBackendService'...
-powershell -Command ^
-  "$svc = Get-Service -Name 'PosBackendService' -ErrorAction SilentlyContinue; " ^
-  "if ($svc) { " ^
-  "    Start-Service -Name 'PosBackendService' -ErrorAction SilentlyContinue; " ^
-  "    $svc.WaitForStatus('Running', [TimeSpan]::FromSeconds(10)); " ^
-  "}"
-
-echo [4/4] Verificando estado del servicio...
-sc.exe query PosBackendService | findstr "STATE"
-
-echo.
-echo =======================================================
-echo   ACTUALIZACION COMPLETADA CON EXITO.
-echo =======================================================
-echo.
-echo Presione cualquier tecla para salir...
-pause >nul
+pause

@@ -440,3 +440,11 @@ scripts/pos-test-config.json
 
 # Config local de monitoreo (se genera desde docs/monitor-config.json.example)
 docs/monitor-config.json
+
+# DBs locales y dumps de backup (MED-14)
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+secrets.json
+Backend.API/secrets.json

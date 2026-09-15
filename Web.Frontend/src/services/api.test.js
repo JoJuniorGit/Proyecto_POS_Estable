@@ -94,7 +94,7 @@ describe('api.js resolveBaseUrl & setCustomBaseUrl', () => {
     assert.strictEqual(url, 'http://192.168.1.10:5000');
   });
 
-  it('6. With ?server=192.168.1.100:5000 on HTTPS page, normalizes and maps to https://192.168.1.100:5001', () => {
+  it('6. With ?server=192.168.1.100:5000 on HTTPS page without ?pair token, does not persist to localStorage immediately (Fail-closed)', () => {
     global.window = {
       location: {
         protocol: 'https:',
@@ -110,8 +110,8 @@ describe('api.js resolveBaseUrl & setCustomBaseUrl', () => {
     };
 
     const url = resolveBaseUrl();
-    assert.strictEqual(url, 'https://192.168.1.100:5001');
-    assert.strictEqual(mockStorage['pos_custom_api_url'], 'https://192.168.1.100:5001');
+    assert.strictEqual(url, 'https://192.168.1.100:5001'); // Falls back to hostname:5001
+    assert.strictEqual(mockStorage['pos_custom_api_url'], undefined);
   });
 
   it('7. setCustomBaseUrl sanitizes http to https on HTTPS page for a permitted LAN host', () => {

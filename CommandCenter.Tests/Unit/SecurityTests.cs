@@ -67,10 +67,11 @@ public class SecurityTests
     public void UsersController_Is_Decorated_With_Admin_Role()
     {
         var type = typeof(UsersController);
-        var authAttr = (Microsoft.AspNetCore.Authorization.AuthorizeAttribute?)Attribute.GetCustomAttribute(type, typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute));
+        var authAttrs = Attribute.GetCustomAttributes(type, typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute))
+            .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>();
 
-        Assert.NotNull(authAttr);
-        Assert.Equal("Admin", authAttr.Roles);
+        Assert.NotEmpty(authAttrs);
+        Assert.Contains(authAttrs, a => a.Roles == "Admin");
     }
 
     [Fact]

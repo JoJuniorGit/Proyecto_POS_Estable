@@ -95,38 +95,32 @@ export function resolveBaseUrl() {
       }
 
       if (isAllowed) {
-        // 8.9-M4: si el QR trae secreto efímero (pair), reclámarlo de un solo uso ANTES de
-        // persistir la URL. Un QR fotografiado/expirado/reutilizado no queda fijado.
+        // 8.16-ALTO-4: Fail-closed. Sin claim exitoso no se persiste ni usa el override.
+        // Rechazar URLs con ?api= sin ?pair.
         const pairToken = urlParams.get('pair');
         if (pairToken) {
           claimPairingToken(normalized, pairToken).then((claimed) => {
             try {
               if (claimed) {
                 localStorage.setItem('pos_custom_api_url', normalized);
-              } else {
-                localStorage.removeItem('pos_custom_api_url');
+                if (window.history?.replaceState && window.location?.pathname) {
+                  urlParams.delete('api');
+                  urlParams.delete('server');
+                  urlParams.delete('backend');
+                  urlParams.delete('paired');
+                  urlParams.delete('pair');
+                  const newQuery = urlParams.toString();
+                  const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '') + (window.location.hash || '');
+                  window.history.replaceState({}, (typeof document !== 'undefined' ? document.title : ''), newUrl);
+                }
+                // Si cambió, forzar recarga para usar la nueva URL validada
+                window.location.reload();
               }
             } catch {}
           });
-        } else {
-          try {
-            localStorage.setItem('pos_custom_api_url', normalized);
-          } catch {}
         }
-
-        // Limpiar los parámetros de la URL sin recargar la página
-        if (window.history?.replaceState && window.location?.pathname) {
-          urlParams.delete('api');
-          urlParams.delete('server');
-          urlParams.delete('backend');
-          urlParams.delete('paired');
-          urlParams.delete('pair');
-          const newQuery = urlParams.toString();
-          const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '') + (window.location.hash || '');
-          window.history.replaceState({}, (typeof document !== 'undefined' ? document.title : ''), newUrl);
-        }
-
-        return normalized;
+        // No retornamos `normalized` aquí. Se resolverá usando la URL anterior o por defecto
+        // hasta que el claim sea exitoso y recargue la página.
       }
     }
   } catch {}
@@ -301,7 +295,6 @@ export async function apiFetch(endpoint, options = {}) {
     if (response.status === 401 && !endpoint.includes('api/auth/login')) {
       try {
         // 8.5-WEB4: limpiar el perfil guardado (PII) al revocar la sesión por 401.
-        localStorage.removeItem('pos_user_profile');
         localStorage.removeItem('pos_user');
         localStorage.removeItem('pos_token');
         sessionStorage.clear();

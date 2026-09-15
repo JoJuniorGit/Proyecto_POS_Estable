@@ -11,19 +11,19 @@ public partial class SalesController
     [HttpPost("{id}/hold")]
     public async Task<ActionResult<SaleDto>> HoldSale(int id, [FromBody] HoldSaleRequestDto request)
     {
+        if (!await IsAuthorizedForSaleAsync(id))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+        }
+
         string requestPath = $"/api/sales/{id}/hold";
-        string bodyJson = System.Text.Json.JsonSerializer.Serialize(request);
+        string bodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
 
         var resolved = await ResolveIdempotencyAsync(requestPath, bodyJson);
         if (resolved.ShouldStop) return resolved.BlockingResult!;
 
         try
         {
-            if (!await IsAuthorizedForSaleAsync(id))
-            {
-                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
-            }
-
             var sale = await _salesService.HoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash, GetActorUserId());
             if (Response?.Headers != null)
             {
@@ -60,19 +60,19 @@ public partial class SalesController
     [HttpPost("{id}/payments")]
     public async Task<ActionResult<SaleDto>> AddPayment(int id, [FromBody] AddPaymentRequestDto request)
     {
+        if (!await IsAuthorizedForSaleAsync(id))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+        }
+
         string requestPath = $"/api/sales/{id}/payments";
-        string bodyJson = System.Text.Json.JsonSerializer.Serialize(request);
+        string bodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
 
         var resolved = await ResolveIdempotencyAsync(requestPath, bodyJson);
         if (resolved.ShouldStop) return resolved.BlockingResult!;
 
         try
         {
-            if (!await IsAuthorizedForSaleAsync(id))
-            {
-                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
-            }
-
             var sale = await _salesService.AddPaymentToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash, GetActorUserId());
             if (Response?.Headers != null)
             {
@@ -91,19 +91,19 @@ public partial class SalesController
     [HttpPost("{id}/payments/batch")]
     public async Task<ActionResult<SaleDto>> AddPaymentsBatch(int id, [FromBody] System.Collections.Generic.List<AddPaymentRequestDto> request)
     {
+        if (!await IsAuthorizedForSaleAsync(id))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+        }
+
         string requestPath = $"/api/sales/{id}/payments/batch";
-        string bodyJson = System.Text.Json.JsonSerializer.Serialize(request);
+        string bodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
 
         var resolved = await ResolveIdempotencyAsync(requestPath, bodyJson);
         if (resolved.ShouldStop) return resolved.BlockingResult!;
 
         try
         {
-            if (!await IsAuthorizedForSaleAsync(id))
-            {
-                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
-            }
-
             var sale = await _salesService.AddPaymentsBatchToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash, GetActorUserId());
             if (Response?.Headers != null)
             {

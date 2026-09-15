@@ -111,6 +111,20 @@ if (-not (Test-Path -LiteralPath $PgDumpPath)) {
 # ---------------------------------------------------------------------
 if (-not (Test-Path -LiteralPath $BackupDir)) {
     New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
+    try {
+        $acl = Get-Acl -Path $BackupDir
+        $acl.SetAccessRuleProtection($true, $false)
+        $systemSid = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::LocalSystemSid, $null)
+        $adminSid = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+        $ruleSystem = New-Object System.Security.AccessControl.FileSystemAccessRule($systemSid, "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+        $ruleAdmin = New-Object System.Security.AccessControl.FileSystemAccessRule($adminSid, "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+        $acl.ResetAccessRule($ruleSystem)
+        $acl.AddAccessRule($ruleAdmin)
+        Set-Acl -Path $BackupDir -AclObject $acl
+        Write-Log "ACL restrictiva aplicada a $BackupDir (SYSTEM/Administradores)."
+    } catch {
+        Write-Log "Aviso al aplicar ACL sobre $BackupDir: $($_.Exception.Message)" "WARN"
+    }
 }
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $dumpFile = Join-Path $BackupDir "$($csDb)_$stamp.dump"

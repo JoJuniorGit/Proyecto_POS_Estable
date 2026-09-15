@@ -17,6 +17,11 @@ public class UserService : IUserService
 
     public async Task<LoginResultDto?> LoginAsync(string cedula, string password)
     {
+        if (_httpClient.BaseAddress != null && _httpClient.BaseAddress.Scheme == "http" && !_httpClient.BaseAddress.IsLoopback)
+        {
+            throw new System.Exception("Por seguridad, no se puede iniciar sesión sobre una conexión HTTP insegura. Configure el servidor para usar HTTPS.");
+        }
+
         var response = await _httpClient.PostAsJsonAsync("api/auth/login", new LoginRequest { Cedula = cedula, Password = password });
         if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
         {
@@ -43,6 +48,19 @@ public class UserService : IUserService
         }
 
         return await response.Content.ReadFromJsonAsync<LoginResultDto>();
+    }
+
+    public async Task<bool> CheckSessionStatusAsync()
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync("api/auth/me");
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task<bool> ChangePasswordAsync(string cedula, string currentPassword, string newPassword)

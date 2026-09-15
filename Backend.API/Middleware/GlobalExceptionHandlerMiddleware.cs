@@ -228,14 +228,16 @@ public class GlobalExceptionHandlerMiddleware
         if (exception is ArgumentException)
         {
             AppLogger.LogCrash(exception, $"Handled ArgumentException in Request: {requestPath}");
+            bool isDomain = IsDomainException(exception);
+            string msg = isDomain ? exception.Message : "Parámetros de entrada inválidos.";
             await WriteProblemDetailsAsync(
                 context,
                 StatusCodes.Status400BadRequest,
                 "Bad Request",
                 "https://tools.ietf.org/html/rfc7231#section-6.5.1",
                 "BadRequest",
-                exception.Message,
-                exception.Message,
+                msg,
+                msg,
                 requestPath,
                 null);
             return;
@@ -261,14 +263,16 @@ public class GlobalExceptionHandlerMiddleware
         if (exception is InvalidOperationException)
         {
             AppLogger.LogCrash(exception, $"Handled InvalidOperationException in Request: {requestPath}");
+            bool isDomain = IsDomainException(exception);
+            string msg = isDomain ? exception.Message : "Operación inválida debido al estado actual del sistema.";
             await WriteProblemDetailsAsync(
                 context,
                 StatusCodes.Status409Conflict,
                 "Conflicto de Operación",
                 "https://tools.ietf.org/html/rfc7231#section-6.5.8",
                 "InvalidOperation",
-                exception.Message,
-                exception.Message,
+                msg,
+                msg,
                 requestPath,
                 null);
             return;
@@ -340,5 +344,11 @@ public class GlobalExceptionHandlerMiddleware
             or PathTooLongException
             or DriveNotFoundException
             or EndOfStreamException;
+    }
+
+    private static bool IsDomainException(Exception ex)
+    {
+        var source = ex.TargetSite?.DeclaringType?.Assembly.GetName().Name ?? "";
+        return source.StartsWith("Sales") || source.StartsWith("Inventory") || source.StartsWith("Core") || source.StartsWith("Backend") || source.StartsWith("Logistics") || source.StartsWith("CommandCenter");
     }
 }

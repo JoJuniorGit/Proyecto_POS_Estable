@@ -64,7 +64,17 @@ export default function SettingsPairing({ pairingInfo, setPairingInfo }) {
   const currentPort = useHttps ? (pairingInfo?.httpsPort || 5001) : (pairingInfo?.httpPort || 5000);
   const currentScheme = useHttps ? 'https' : 'http';
   const fullUrl = `${currentScheme}://${currentIp}:${currentPort}`;
-  const activePayload = `${fullUrl}/?paired=true`;
+  
+  let activePayload = `${fullUrl}/?paired=true`;
+  if (pairingInfo?.qrPayload) {
+    try {
+      const url = new URL(pairingInfo.qrPayload);
+      const pairToken = url.searchParams.get('pair');
+      if (pairToken) {
+        activePayload = `${fullUrl}/?paired=true&pair=${pairToken}`;
+      }
+    } catch {}
+  }
 
   useEffect(() => {
     if (!qrRef.current || !activePayload) return;

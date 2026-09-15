@@ -70,6 +70,8 @@ public partial class PairingQrViewModel : ObservableObject, IDisposable
         _httpClient = httpClient;
     }
 
+    private string _pairingToken = string.Empty;
+
     public async Task InitializeAsync()
     {
         IsLoading = true;
@@ -87,6 +89,18 @@ public partial class PairingQrViewModel : ObservableObject, IDisposable
                     MachineName = info.MachineName;
                     HttpPort = info.HttpPort;
                     HttpsPort = info.HttpsPort;
+
+                    if (!string.IsNullOrEmpty(info.QrPayload))
+                    {
+                        var parts = info.QrPayload.Split(new[] { "pair=" }, StringSplitOptions.None);
+                        if (parts.Length > 1)
+                        {
+                            var tokenPart = parts[1];
+                            var amp = tokenPart.IndexOf('&');
+                            if (amp > -1) tokenPart = tokenPart.Substring(0, amp);
+                            _pairingToken = tokenPart;
+                        }
+                    }
 
                     AvailableInterfaces.Clear();
                     if (info.NetworkInterfaces != null)
@@ -162,7 +176,13 @@ public partial class PairingQrViewModel : ObservableObject, IDisposable
         var port = UseHttps ? HttpsPort : HttpPort;
         ActivePort = port;
         FullUrl = $"{scheme}://{IpAddress}:{port}";
-        QrPayload = $"{FullUrl}/?paired=true";
+        
+        var payload = $"{FullUrl}/?paired=true";
+        if (!string.IsNullOrEmpty(_pairingToken))
+        {
+            payload += $"&pair={_pairingToken}";
+        }
+        QrPayload = payload;
     }
 
     [ObservableProperty]
@@ -244,6 +264,7 @@ public partial class PairingQrViewModel : ObservableObject, IDisposable
         public string PrimaryIpAddress { get; set; } = string.Empty;
         public int HttpPort { get; set; } = 5000;
         public int HttpsPort { get; set; } = 5001;
+        public string QrPayload { get; set; } = string.Empty;
         public NetworkInterfaceItem[]? NetworkInterfaces { get; set; }
     }
 }

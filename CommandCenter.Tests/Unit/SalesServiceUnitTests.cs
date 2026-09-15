@@ -539,21 +539,15 @@ public class SalesServiceUnitTests
         {
             Assert.NotNull(seedContext);
 
-            // Idempotencia: si una corrida anterior dejó facturas con estos números, se limpian.
+            await TestDatabaseFactory.SeedStandardSalesDataAsync(seedContext!);
+
             var previous = await seedContext!.Sales
                 .Where(s => s.InvoiceNumber != null && s.InvoiceNumber.Value >= 216 && s.InvoiceNumber.Value <= 220)
                 .ToListAsync();
             seedContext.Sales.RemoveRange(previous);
             await seedContext.SaveChangesAsync();
 
-            var pm = new Sales.Module.Entities.PaymentMethod
-            {
-                Name = "Punto de Venta",
-                IsActive = true,
-                DisplayOrder = 1
-            };
-            seedContext.PaymentMethods.Add(pm);
-            await seedContext.SaveChangesAsync();
+            var pm = await seedContext.PaymentMethods.SingleAsync(p => p.Name == "Punto de Venta");
 
             seedContext.Sales.AddRange(
                 new Sales.Module.Entities.Sale
@@ -645,10 +639,7 @@ public class SalesServiceUnitTests
             await seedContext.SaveChangesAsync();
         }
 
-        var options = new DbContextOptionsBuilder<SalesDbContext>()
-            .UseNpgsql(connStr)
-            .Options;
-        using var realContext = new SalesDbContext(options);
+        using var realContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext()!;
 
         var inventoryMock = new Mock<IInventoryService>();
         var mediatorMock = new Mock<IMediator>();

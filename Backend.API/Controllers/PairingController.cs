@@ -34,6 +34,13 @@ public class PairingController : ControllerBase
                        || remoteIp.ToString() == "127.0.0.1" 
                        || remoteIp.ToString() == "::1");
 
+        // BAJO-2: Un atacante podría falsificar X-Forwarded-For. Si hay cabeceras de proxy residuales, 
+        // no confiamos en la conexión como "física local" para saltarse la autenticación.
+        if (isLocal && (Request.Headers.ContainsKey("X-Forwarded-For") || Request.Headers.ContainsKey("X-Forwarded-Host")))
+        {
+            isLocal = false;
+        }
+
         // 2. Si no es local, verificar que el usuario esté autenticado con rol elevado (Admin/Manager).
         // 8.7-L1: un cajero no debe poder leer IPs/puertos/QR del establecimiento.
         if (!isLocal && !(User.Identity?.IsAuthenticated ?? false))

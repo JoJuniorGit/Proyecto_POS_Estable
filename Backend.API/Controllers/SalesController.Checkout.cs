@@ -125,7 +125,7 @@ public partial class SalesController
                 return BadRequest(new { message = formatError });
             }
 
-            var bodyJson = System.Text.Json.JsonSerializer.Serialize(request);
+            var bodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
             var bodyBytes = System.Text.Encoding.UTF8.GetBytes(bodyJson);
             payloadHash = _idempotencyService.ComputePayloadHash(Request?.Method ?? "POST", requestPath, bodyBytes);
 

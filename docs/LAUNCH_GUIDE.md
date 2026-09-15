@@ -54,14 +54,14 @@ Para desarrollo rapido, el backend corre con `launchSettings.json` (Development,
 ## 4. Instalacion como servicio (produccion)
 
 El instalador Inno Setup (o `Configure-PosService.ps1`) registra el servicio NSSM
-**`Sistema POS Backend`** con Virtual Account + ACL, firewall TCP 5000/5001,
+**`PosBackendService`** con Virtual Account + ACL, firewall TCP 5000/5001,
 `secrets.json`, certificado y tarea de backup. Al arrancar verifica `/health` automaticamente.
 
 Verificacion manual:
 
 ```powershell
 Invoke-RestMethod "http://localhost:5000/health"   # status=Healthy, database=Connected
-Get-Service "Sistema POS Backend"                   # Running
+Get-Service "PosBackendService"                   # Running
 schtasks /Query /TN "Sistema POS - Backup PostgreSQL"
 ```
 

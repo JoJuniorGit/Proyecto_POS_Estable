@@ -291,12 +291,17 @@ public partial class SalesService
                 if (reqItem.Quantity <= 0m) continue;
 
                 productsDict.TryGetValue(reqItem.ProductId, out var product);
+                if (product == null || !product.IsActive)
+                {
+                    throw new KeyNotFoundException($"El producto especificado (ID: {reqItem.ProductId}) no existe o está inactivo.");
+                }
+
                 decimal adjustedQty = ValidateAndAdjustQuantity(product, reqItem.Quantity);
 
-                string productName = product != null ? product.Name : $"Producto #{reqItem.ProductId}";
-                decimal catalogPrice = product != null ? product.PriceUSD : 0m;
+                string productName = product.Name;
+                decimal catalogPrice = product.PriceUSD;
 
-                if (product != null && !product.IsCashAdvance && reqItem.UnitPrice > 0 && reqItem.UnitPrice != catalogPrice && !isPriceOverrideAuthorized)
+                if (!product.IsCashAdvance && reqItem.UnitPrice > 0 && reqItem.UnitPrice != catalogPrice && !isPriceOverrideAuthorized)
                 {
                     throw new UnauthorizedAccessException($"Modificación de precio no autorizada para el producto '{productName}'. Se requiere autorización de Administrador o Supervisor.");
                 }
@@ -305,7 +310,7 @@ public partial class SalesService
                 decimal subtotalUsd = Math.Round(unitPriceUsd * adjustedQty, 2, MidpointRounding.AwayFromZero);
                 decimal unitPriceBsS = PricingCalculator.ToBsSCeiling(unitPriceUsd, sale.AppliedRate);
                 decimal subtotalBsS = PricingCalculator.RoundToDigital(adjustedQty * unitPriceBsS);
-                bool isCustomPrice = reqItem.UnitPrice > 0 && (product == null || reqItem.UnitPrice != catalogPrice);
+                bool isCustomPrice = reqItem.UnitPrice > 0 && reqItem.UnitPrice != catalogPrice;
 
                 newTotalUsd += subtotalUsd;
 

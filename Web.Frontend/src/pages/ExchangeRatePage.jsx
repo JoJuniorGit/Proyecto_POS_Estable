@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { useExchangeRate } from '../context/ExchangeRateContext';
-import { DollarSign, RefreshCw, Save, Loader2, History } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { DollarSign, RefreshCw, Save, Loader2, History, ShieldAlert } from 'lucide-react';
 import { formatBsS, formatNumberEs } from '../utils/formatters';
 import './ExchangeRatePage.css';
 
 export default function ExchangeRatePage() {
+  const { user } = useAuth();
   const { exchangeRate, setExchangeRate, lastUpdated, isRateOutdated } = useExchangeRate();
   const [newRateText, setNewRateText] = useState('');
   const [history, setHistory] = useState([]);
@@ -13,6 +15,17 @@ export default function ExchangeRatePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [message, setMessage] = useState(null);
+
+  const isAdminOrManager = user?.role === 0 || user?.role === 'Admin' || user?.role === '0' || user?.role === 1 || user?.role === 'Manager' || user?.role === '1';
+  if (!isAdminOrManager) {
+    return (
+      <div className="p-4 text-center mt-5">
+        <ShieldAlert size={48} className="color-danger mx-auto mb-3" />
+        <h3 className="font-bold text-lg mb-2">Acceso Denegado</h3>
+        <p className="text-muted">No tienes los permisos necesarios para modificar la Tasa de Cambio.</p>
+      </div>
+    );
+  }
 
   useEffect(() => {
     if (exchangeRate > 0) {

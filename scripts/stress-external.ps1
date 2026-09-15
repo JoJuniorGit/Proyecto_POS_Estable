@@ -13,9 +13,9 @@
 param(
     [Parameter(Mandatory = $true)][string]$BaseUrl,
     [string]$AdminUser = "Admin",
-    [Parameter(Mandatory = $true)][string]$AdminPassword,
+    [string]$AdminPassword,
     [string]$StressUser = "BOT_STRESS_TEST",
-    [Parameter(Mandatory = $true)][string]$StressPassword,
+    [string]$StressPassword,
     [int]$Transactions = 60,
     [int]$Cashiers = 4,
     [int]$QtyMin = 1,

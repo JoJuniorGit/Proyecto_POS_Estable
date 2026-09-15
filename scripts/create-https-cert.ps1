@@ -24,7 +24,8 @@
 param(
     [string]$SecretsFile = "",
     [string]$certPassword = "",
-    [string]$CertOutputDir = ""
+    [string]$CertOutputDir = "",
+    [string]$Subject = "CN=$env:COMPUTERNAME"
 )
 
 $ErrorActionPreference = "Stop"
@@ -119,7 +120,7 @@ if ($existing) {
 Write-Host "Generando certificado autofirmado con SANs: $($san -join ', ')" -ForegroundColor Cyan
 
 $cert = New-SelfSignedCertificate `
-    -Subject "CN=$env:COMPUTERNAME" `
+    -Subject $Subject `
     -DnsName $san `
     -CertStoreLocation "Cert:\CurrentUser\My" `
     -KeyAlgorithm RSA `

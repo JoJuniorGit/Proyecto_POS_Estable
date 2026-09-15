@@ -208,9 +208,19 @@ function Invoke-MonitorProbe {
         Write-Log "FALLO: /health no disponible (status=$statusCode): $($_.Exception.Message)" "WARN" $LogFile
     }
 
-    if ($Settings.DetailsUrl -and $Settings.Token) {
+    $actualToken = $Settings.Token
+    if (-not [string]::IsNullOrWhiteSpace($actualToken)) {
         try {
-            $headers = @{ Authorization = "Bearer $($Settings.Token)" }
+            $secure = ConvertTo-SecureString $actualToken
+            $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+            $actualToken = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+        } catch { }
+    }
+
+    if ($Settings.DetailsUrl -and $actualToken) {
+        try {
+            $headers = @{ Authorization = "Bearer $actualToken" }
             $details = Invoke-RestMethod -Uri $Settings.DetailsUrl -Headers $headers -TimeoutSec $Settings.TimeoutSec -ErrorAction Stop
             if ($null -ne $details.lastBackupAgeMinutes) {
                 $backupAgeMinutes = [int]$details.lastBackupAgeMinutes
@@ -243,9 +253,9 @@ function Invoke-MonitorProbe {
             Add-CsvRow -Path $availabilityCsv -Header "timestamp,ok,statusCode,latencyMs" `
                 -Line ("{0},{1},{2},{3}" -f $timestamp.ToString("o"), $okValue, $statusCode, $probeLatencyMs) -LogFile $LogFile
 
-            if ($healthy -and $Settings.RequestsUrl -and $Settings.Token) {
+            if ($healthy -and $Settings.RequestsUrl -and $actualToken) {
                 try {
-                    $headers = @{ Authorization = "Bearer $($Settings.Token)" }
+                    $headers = @{ Authorization = "Bearer $actualToken" }
                     $requests = Invoke-RestMethod -Uri $Settings.RequestsUrl -Headers $headers -TimeoutSec $Settings.TimeoutSec -ErrorAction Stop
                     $rawItems = if ($null -ne $requests.endpoints) { @($requests.endpoints) } else { @($requests) }
                     $filter = @($rawItems | Where-Object {
@@ -371,6 +381,23 @@ $settings = @{
     RefreshSeconds = $RefreshSeconds
     TimeoutSec     = 10
     ConfigPath     = $configPath
+}
+
+if (-not [string]::IsNullOrWhiteSpace($settings.DataDir)) {
+    $expectedDir = [System.IO.Path]::GetFullPath($settings.DataDir)
+    if (-not $expectedDir.EndsWith('\')) { $expectedDir += '\' }
+    if (-not [string]::IsNullOrWhiteSpace($settings.StateFile)) {
+        $statePath = [System.IO.Path]::GetFullPath($settings.StateFile)
+        if (-not $statePath.StartsWith($expectedDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "ALERTA DE SEGURIDAD: StateFile debe estar confinado a DataDir"
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($settings.LogFile)) {
+        $logPath = [System.IO.Path]::GetFullPath($settings.LogFile)
+        if (-not $logPath.StartsWith($expectedDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "ALERTA DE SEGURIDAD: LogFile debe estar confinado a DataDir"
+        }
+    }
 }
 
 function Save-MonitorConfig {

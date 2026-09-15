@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using CommandCenter.Tests.Builders;
 using Core.Entities;
 using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
@@ -41,7 +42,7 @@ public class HistoryImmutabilityTests
         {
             await using (var sales = CreateSales(connStr))
             {
-                await sales.Database.EnsureCreatedAsync();
+                await TestSchemaBootstrap.EnsureSharedSchemaAsync(connStr);
                 sales.Sales.Add(new Sale
                 {
                     Id = SaleId,
@@ -63,15 +64,6 @@ public class HistoryImmutabilityTests
 
             await using (var inventory = CreateInventory(connStr))
             {
-                await inventory.Database.EnsureCreatedAsync();
-                await inventory.Database.ExecuteSqlRawAsync("""
-                    CREATE TABLE IF NOT EXISTS "ExchangeRateHistory" (
-                        "Date" date NOT NULL,
-                        "Rate" numeric(18,4) NOT NULL,
-                        "UpdatedAt" timestamp with time zone NOT NULL,
-                        CONSTRAINT "PK_ExchangeRateHistory" PRIMARY KEY ("Date")
-                    );
-                    """);
                 var existing = await inventory.ExchangeRateHistory
                     .AsNoTracking()
                     .FirstOrDefaultAsync(e => e.Date == today);

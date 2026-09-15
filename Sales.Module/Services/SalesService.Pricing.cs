@@ -19,7 +19,7 @@ public partial class SalesService
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
-        sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
+        sale.AppliedRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "UpdateExchangeRate", referenceId: sale.Id);
         await RecalculateTotalAsync(sale);
         await _context.SaveChangesAsync();
         return MapToDto(sale);

@@ -360,6 +360,12 @@ public class StatusUpdateDto
         }
         var info = await _inventoryService.GetProductQuickInfoAsync(sku);
         if (info == null) return NotFound();
+        
+        if (!_currentUserService.CanMutateCatalog)
+        {
+            info.ProfitPercentage = 0m;
+        }
+        
         return info;
     }
 
@@ -367,6 +373,15 @@ public class StatusUpdateDto
     public async Task<ActionResult<List<Core.DTOs.ProductQuickInfoDto>>> GetSuggestions([FromQuery] string filter, [FromQuery] bool activeOnly = true, System.Threading.CancellationToken token = default)
     {
         var results = await _inventoryService.GetSuggestionsAsync(filter, activeOnly, token);
+        
+        if (!_currentUserService.CanMutateCatalog && results != null)
+        {
+            foreach (var r in results)
+            {
+                r.ProfitPercentage = 0m;
+            }
+        }
+        
         return Ok(results);
     }
 }

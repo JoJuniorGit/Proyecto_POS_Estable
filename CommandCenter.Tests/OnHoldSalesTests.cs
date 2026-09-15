@@ -348,6 +348,7 @@ public partial class OnHoldSalesTests
         var mockMediator = new Mock<IMediator>();
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
+        mockInventory.Setup(i => i.GetProductByIdAsync(1)).ReturnsAsync(new Product { Id = 1, Name = "Prod1", PriceUSD = 30m, IsActive = true });
 
         var sale = new Sale { Id = 1, TotalUSD = 100m, Status = SaleStatus.OnHold };
         sale.ClaimedByUserId = TestActorId;
@@ -387,6 +388,8 @@ public partial class OnHoldSalesTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
+        mockInventory.Setup(i => i.GetProductByIdAsync(1)).ReturnsAsync(new Product { Id = 1, Name = "Prod1", PriceUSD = 100m, IsActive = true });
+
         var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 50m };
         context.Customers.Add(customer);
 
@@ -425,36 +428,77 @@ public partial class OnHoldSalesTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(10))
-            .ReturnsAsync(new Product { Id = 10, Name = "Laptop Lenovo", PriceUSD = 500m });
+        mockInventory.Setup(i => i.GetProductByIdAsync(100)).ReturnsAsync(new Product { Id = 100, Name = "Prod100", PriceUSD = 2m, IsActive = true });
+        mockInventory.Setup(i => i.GetProductByIdAsync(101)).ReturnsAsync(new Product { Id = 101, Name = "Prod101", PriceUSD = 10m, IsActive = true });
 
-        var sale = new Sale { Id = 1, TotalUSD = 300m, AppliedRate = 40m, Status = SaleStatus.OnHold };
+        var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 100m };
+        context.Customers.Add(customer);
+
+        var sale = new Sale { Id = 1, CustomerId = 1, TotalUSD = 10m, TotalBsS = 400m, Subtotal = 10m, SubtotalBsS = 400m, Status = SaleStatus.OnHold, AppliedRate = 40m, CashierId = TestActorId };
+        sale.Items.Add(new SaleItem { ProductId = 100, ProductName = "Prod100", Quantity = 5m, UnitPrice = 2m, Subtotal = 10m, UnitPriceBsS = 80m, SubtotalBsS = 400m });
+        
         sale.ClaimedByUserId = TestActorId;
         sale.ClaimAction = SaleClaimAction.Editing;
         sale.ClaimedByUserName = "Test Actor";
         sale.ClaimedAtUtc = DateTime.UtcNow;
-        sale.Payments.Add(new SalePayment { Id = 1, Amount = 100m, AmountBsS = 4000m, ExchangeRate = 40m });
-        sale.Items.Add(new SaleItem { Id = 1, ProductId = 2, ProductName = "Old Item", Quantity = 1, UnitPrice = 300m, Subtotal = 300m });
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
         var request = new Sales.Module.DTOs.UpdateSaleItemsRequestDto
         {
             Items = new System.Collections.Generic.List<Sales.Module.DTOs.UpdateSaleItemDto>
             {
-                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 10, Quantity = 1, UnitPrice = 500m }
+                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 101, Quantity = 2m }
             }
         };
 
         var updatedSale = await service.UpdateSaleItemsAsync(1, request, actingUserId: TestActorId);
 
         Assert.Equal("OnHold", updatedSale.Status);
-        Assert.Equal(500m, updatedSale.TotalUSD);
-        Assert.Equal(100m, updatedSale.TotalPaidUSD);
-        Assert.Equal(400m, updatedSale.RemainingBalanceUSD);
         Assert.Single(updatedSale.Items);
-        Assert.Equal("Laptop Lenovo", updatedSale.Items[0].ProductName);
+        Assert.Equal(101, updatedSale.Items[0].ProductId);
+        Assert.Equal(20m, updatedSale.TotalUSD);
+        Assert.Equal(800m, updatedSale.TotalBsS);
+    }
+
+    [Fact]
+    public async Task UpdateSaleItemsAsync_WhenProductNotFound_Throws()
+    {
+        using var context = GetInMemoryDbContext();
+        var mockInventory = new Mock<IInventoryService>();
+        var mockMediator = new Mock<IMediator>();
+        var mockCashDrawer = new Mock<ICashDrawerService>();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        mockInventory.Setup(i => i.GetProductByIdAsync(100)).ReturnsAsync((Product?)null);
+
+        var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 100m };
+        context.Customers.Add(customer);
+
+        var sale = new Sale { Id = 1, CustomerId = 1, TotalUSD = 10m, TotalBsS = 400m, Subtotal = 10m, SubtotalBsS = 400m, Status = SaleStatus.OnHold, AppliedRate = 40m, CashierId = TestActorId };
+        sale.Items.Add(new SaleItem { ProductId = 99, ProductName = "Prod99", Quantity = 5m, UnitPrice = 2m, Subtotal = 10m, UnitPriceBsS = 80m, SubtotalBsS = 400m });
+        
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
+        var request = new Sales.Module.DTOs.UpdateSaleItemsRequestDto
+        {
+            Items = new System.Collections.Generic.List<Sales.Module.DTOs.UpdateSaleItemDto>
+            {
+                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 100, Quantity = 2m, UnitPrice = 999m }
+            }
+        };
+
+        var ex = await Assert.ThrowsAsync<System.Collections.Generic.KeyNotFoundException>(() => service.UpdateSaleItemsAsync(1, request, actingUserId: TestActorId));
+        Assert.Contains("no existe", ex.Message);
     }
 
     [Fact]

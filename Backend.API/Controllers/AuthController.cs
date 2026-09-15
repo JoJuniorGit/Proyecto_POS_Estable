@@ -52,6 +52,18 @@ public class AuthController : ControllerBase
         _stampValidator = stampValidator;
     }
 
+    private static string ObfuscateCedula(string? cedula)
+    {
+        if (string.IsNullOrWhiteSpace(cedula)) return "***";
+        var c = cedula.Trim();
+        if (c.Length <= 4) return new string('*', c.Length);
+        var isPrefixed = c.Length > 2 && c[1] == '-';
+        var prefix = isPrefixed ? c.Substring(0, 2) : "";
+        var numberPart = isPrefixed ? c.Substring(2) : c;
+        if (numberPart.Length <= 4) return prefix + new string('*', numberPart.Length);
+        return prefix + "***" + numberPart.Substring(numberPart.Length - 4);
+    }
+
     [AllowAnonymous]
     [HttpPost("login")]
     public async Task<ActionResult<LoginResultDto>> Login([FromBody] LoginRequest request)
@@ -61,14 +73,15 @@ public class AuthController : ControllerBase
             return BadRequest(new { Message = "El usuario es requerido." });
         }
 
-var searchInput = request.Cedula.Trim();
+        var searchInput = request.Cedula.Trim();
         var user = await FindUserByCedulaAsync(searchInput);
+        var obfCedula = ObfuscateCedula(request.Cedula);
 
         if (user == null)
         {
             // 8.9-M3: PBKDF2 dummy anti-oráculo de timing (mismo coste que una verificación real).
             PasswordHasher.VerifyPassword(request.Password, _dummyPasswordHash);
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Usuario '{request.Cedula}' no encontrado.");
+            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Usuario '{obfCedula}' no encontrado.");
             return Unauthorized(new { Message = "Credenciales inválidas." });
         }
 
@@ -76,19 +89,19 @@ var searchInput = request.Cedula.Trim();
         // no se revela si la cuenta existe, está bloqueada ni por cuánto tiempo.
         if (user.LockoutEndUtc.HasValue && user.LockoutEndUtc.Value > DateTime.UtcNow)
         {
-            AppLogger.LogWarn($"[AUTH] Intento de acceso a cuenta bloqueada: Usuario '{request.Cedula}'. Bloqueada hasta {user.LockoutEndUtc.Value:O}.");
+            AppLogger.LogWarn($"[AUTH] Intento de acceso a cuenta bloqueada: Usuario '{obfCedula}'. Bloqueada hasta {user.LockoutEndUtc.Value:O}.");
             return Unauthorized(new { Message = "Credenciales inválidas." });
         }
 
         if (!user.IsActive)
         {
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{request.Cedula}': Usuario inactivo.");
+            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{obfCedula}': Usuario inactivo.");
             return Unauthorized(new { Message = "Credenciales inválidas." });
         }
 
         if (string.IsNullOrWhiteSpace(user.PasswordHash))
         {
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Usuario '{request.Cedula}' no tiene contraseña configurada.");
+            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Usuario '{obfCedula}' no tiene contraseña configurada.");
             return Unauthorized(new { Message = "Credenciales inválidas." });
         }
 
@@ -102,10 +115,10 @@ var searchInput = request.Cedula.Trim();
             if (user.AccessFailedCount >= 5 && !user.LockoutEndUtc.HasValue)
             {
                 user.LockoutEndUtc = DateTime.UtcNow.AddMinutes(15);
-                AppLogger.LogWarn($"[AUTH] Usuario '{request.Cedula}' alcanzó 5 intentos fallidos. Cuenta bloqueada por 15 minutos.");
+                AppLogger.LogWarn($"[AUTH] Usuario '{obfCedula}' alcanzó 5 intentos fallidos. Cuenta bloqueada por 15 minutos.");
             }
             await _db.SaveChangesAsync();
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{request.Cedula}': Contraseña incorrecta (Intento {user.AccessFailedCount}/5).");
+            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{obfCedula}': Contraseña incorrecta (Intento {user.AccessFailedCount}/5).");
             return Unauthorized(new { Message = "Credenciales inválidas." });
         }
 

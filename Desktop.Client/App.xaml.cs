@@ -309,7 +309,18 @@ public partial class App : Application
                 var userSession = _host.Services.GetRequiredService<UserSession>();
                 if (userSession.TryRestoreTokenFromStorage())
                 {
-                    Core.Logging.AppLogger.LogStart($"Sesión previa restaurada exitosamente para '{userSession.UserName}' ({userSession.CurrentUser?.Role}).");
+                    Core.Logging.AppLogger.LogStart($"Sesión previa restaurada exitosamente para '{userSession.UserName}' ({userSession.CurrentUser?.Role}). Validando con el backend...");
+                    var userService = _host.Services.GetRequiredService<IUserService>();
+                    bool isValid = await userService.CheckSessionStatusAsync();
+                    if (!isValid)
+                    {
+                        userSession.Logout();
+                        Core.Logging.AppLogger.LogStart("El token restaurado fue rechazado por el servidor (401). Sesión local purgada.");
+                    }
+                    else
+                    {
+                        Core.Logging.AppLogger.LogStart("Token restaurado es válido en el servidor.");
+                    }
                 }
             }
             catch (Exception ex)

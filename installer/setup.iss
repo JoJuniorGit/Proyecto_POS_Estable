@@ -31,7 +31,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; 8.27-A01/A04: se excluyen appsettings de entorno y el pfx stale del puesto de build;
 ; el certificado HTTPS se genera en la MÁQUINA DESTINO (tools\create-https-cert.ps1) para
 ; que sus SANs correspondan al cliente y nunca viajen credenciales de desarrollo.
-Source: "..\publish\BackendAPI\*"; DestDir: "{app}\BackendAPI"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "appsettings.Production.json,appsettings.Development.json,certs\pos-https.pfx"
+Source: "..\publish\BackendAPI\*"; DestDir: "{app}\BackendAPI"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "appsettings.Production.json,appsettings.Development.json,certs\pos-https.pfx,secrets.json"
 ; Publicación Autónoma Cliente WPF Desktop (.NET Self-Contained)
 Source: "..\publish\DesktopClient\*"; DestDir: "{app}\DesktopClient"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NSSM ejecutable y Licencia (Opcional: Si está presente se empaqueta, si no se usa el fallback sc.exe)
@@ -57,14 +57,14 @@ Source: "..\docs\monitor-config.json.example"; DestDir: "{app}\tools\monitoring"
 [Dirs]
 Name: "{commonappdata}\Registro de cierres"; Permissions: users-modify
 ; 8.107-A1: datos del monitoreo (CSVs, log, estado y resumen SLO) escribibles sin elevacion
-Name: "{commonappdata}\CommandCenterPOS\monitoring"; Permissions: users-modify
+Name: "{commonappdata}\CommandCenterPOS\monitoring"; Permissions: users-read
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\DesktopClient\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\DesktopClient\{#MyAppExeName}"; Tasks: desktopicon
 Name: "{autoprograms}\{#MyAppName}\Reiniciar Sistema POS"; Filename: "{app}\RestartPOS.bat"; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"
 Name: "{autodesktop}\Reiniciar Sistema POS"; Filename: "{app}\RestartPOS.bat"; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"; Tasks: desktopicon
-; 8.107-A1: acceso directo al <b>Monitor de Salud</b> (dashboard WinForms de monitor-health.ps1),
+; 8.107-A1: acceso directo al Monitor de Salud (dashboard WinForms de monitor-health.ps1),
 ; lanzado con el console PowerShell 5.1 oculto y la config compartida de ProgramData.
 Name: "{autoprograms}\{#MyAppName}\Monitor de Salud"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\tools\monitoring\monitor-health.ps1"" -Dashboard -Config ""{commonappdata}\CommandCenterPOS\monitoring\monitor-config.json"""; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"
 Name: "{autodesktop}\Monitor de Salud"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\tools\monitoring\monitor-health.ps1"" -Dashboard -Config ""{commonappdata}\CommandCenterPOS\monitoring\monitor-config.json"""; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"; Tasks: desktopicon
@@ -80,6 +80,11 @@ Name: "{autodesktop}\Monitor de Salud"; Filename: "{sys}\WindowsPowerShell\v1.0\
 Filename: "{app}\DesktopClient\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
+; Limpieza de firewall y tareas programadas
+Filename: "schtasks.exe"; Parameters: "/delete /tn ""Sistema POS - Monitor de Salud"" /f"; Flags: runhidden
+Filename: "schtasks.exe"; Parameters: "/delete /tn ""Sistema POS - Backup PostgreSQL"" /f"; Flags: runhidden
+Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Sistema POS - Backend API (TCP 5000)"""; Flags: runhidden
+Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Sistema POS - Backend API (TCP 5000/5001)"""; Flags: runhidden
 ; Detención y eliminación silenciosa del servicio de Windows al desinstalar (NSSM)
 Filename: "{app}\BackendAPI\nssm.exe"; Parameters: "stop PosBackendService"; Flags: runhidden; Check: HasNssm; RunOnceId: "StopBackendServiceNssm"
 Filename: "{app}\BackendAPI\nssm.exe"; Parameters: "remove PosBackendService confirm"; Flags: runhidden; Check: HasNssm; RunOnceId: "RemoveBackendServiceNssm"
@@ -226,7 +231,7 @@ begin
     'Servidor de Actualizaciones Automáticas', 'Configuración de actualizaciones',
     'Ingrese la URL del servidor de parches y actualizaciones en la red.');
   UpdatePage.Add('URL Servidor de Actualizaciones:', False);
-  UpdatePage.Values[0] := 'https://localhost:5001/updates/';
+  UpdatePage.Values[0] := 'http://localhost:5000/updates/';
 end;
 
 // Validación de la página AdminPage antes de avanzar al siguiente paso.
@@ -269,9 +274,9 @@ begin
       Exit;
     end;
 
-    if Length(Password) < 4 then
+    if Length(Password) < 8 then
     begin
-      MsgBox('La contraseña debe tener al menos 4 caracteres.',
+      MsgBox('La contraseña debe tener al menos 8 caracteres.',
         mbError, MB_OK);
       Result := False;
       Exit;

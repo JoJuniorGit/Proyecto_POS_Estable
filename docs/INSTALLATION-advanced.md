@@ -14,10 +14,11 @@
 ### Windows Defender / SmartScreen
 
 1. Desbloquear con `Unblock-File` si los binarios llegan descargados.
-2. Excluir carpetas de instalación y backup de Microsoft Defender:
+2. Excluir procesos específicos en Microsoft Defender (recomendado sobre exclusión de carpetas):
    ```powershell
-   Add-MpPreference -ExclusionPath "C:\Program Files (x86)\Sistema POS Administrador"
-   Add-MpPreference -ExclusionPath "C:\Backups\CommandCenter"
+   Add-MpPreference -ExclusionProcess "Backend.API.exe"
+   Add-MpPreference -ExclusionProcess "UpdaterService.exe"
+   Add-MpPreference -ExclusionProcess "nssm.exe"
    ```
 
 ---
@@ -89,7 +90,7 @@ Invoke-RestMethod "http://localhost:5000/health"
 
 1. Respaldar (`backup-postgres.ps1`)
 2. Publicar nuevo Release y copiar al puesto
-3. Detener servicio (`Stop-Service "Sistema POS Backend"`)
+3. Detener servicio (`Stop-Service "PosBackendService"`)
 4. Reemplazar binarios preservando `secrets.json`
 5. Iniciar servicio (ejecuta `MigrateAsync()`)
 6. Verificar con `/health` y smoke `MigratedSchema`
@@ -129,7 +130,7 @@ Invoke-RestMethod "http://localhost:5000/health"
 ## 13. Runbooks Operativos
 
 ### 13.1 Servicio backend caído
-1. `Get-Service "Sistema POS Backend"` → si `Stopped`, `Start-Service`
+1. `Get-Service "PosBackendService"` → si `Stopped`, `Start-Service`
 2. Revisar `logs\crash.log` y `logs\start.log`
 3. Validar `secrets.json` y que PostgreSQL esté arriba
 

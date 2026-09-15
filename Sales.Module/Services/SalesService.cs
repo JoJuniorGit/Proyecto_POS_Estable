@@ -301,7 +301,7 @@ public partial class SalesService : ISalesService
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
-        sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
+        sale.AppliedRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "RemoveItem", referenceId: sale.Id);
 
         var item = sale.Items.FirstOrDefault(i => i.Id == itemId);
         if (item != null)
@@ -333,7 +333,7 @@ public partial class SalesService : ISalesService
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
-        sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
+        sale.AppliedRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "UpdateItemQuantity", referenceId: sale.Id);
 
         var item = sale.Items.FirstOrDefault(i => i.Id == itemId);
         if (item != null)

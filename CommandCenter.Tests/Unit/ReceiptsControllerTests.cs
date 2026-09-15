@@ -41,14 +41,26 @@ public class ReceiptsControllerTests
             SubtotalBsS = 730m,
             AppliedRate = 73m,
             RoundingAdjustment = 0m,
-            FinalPaidAmountBsS = 730m
+            FinalPaidAmountBsS = 730m,
+            CashierId = 1
         };
         sale.Items.Add(new SaleItem { ProductName = "Producto A", Quantity = 2m, UnitPrice = 5m, Subtotal = 10m, UnitPriceBsS = 365m, SubtotalBsS = 730m });
         sale.Payments.Add(new SalePayment { PaymentMethod = new PaymentMethod { Name = "Efectivo", IsCash = true }, Amount = 10m, AmountBsS = 730m, ExchangeRate = 73m });
         db.Sales.Add(sale);
         await db.SaveChangesAsync();
 
-        var controller = new ReceiptsController(db, new SaleReceiptRenderer());
+        var currentUserServiceMock = new Moq.Mock<Core.Interfaces.ICurrentUserService>();
+        currentUserServiceMock.Setup(c => c.UserId).Returns("1");
+
+        var controller = new ReceiptsController(db, new SaleReceiptRenderer(), currentUserServiceMock.Object);
+        var user = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(new System.Security.Claims.Claim[]
+        {
+            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, "1")
+        }, "mock"));
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = user }
+        };
 
         var result = await controller.GetReceipt(42, CancellationToken.None);
 
@@ -61,10 +73,77 @@ public class ReceiptsControllerTests
     }
 
     [Fact]
+    public async Task GetReceipt_ForCompletedSale_OtherCashier_ReturnsForbidden()
+    {
+        using var db = CreateInMemorySalesDbContext();
+        var sale = new Sale
+        {
+            Id = 43,
+            InvoiceNumber = 1002,
+            Status = SaleStatus.Completed,
+            CashierId = 1
+        };
+        db.Sales.Add(sale);
+        await db.SaveChangesAsync();
+
+        var currentUserServiceMock = new Moq.Mock<Core.Interfaces.ICurrentUserService>();
+        currentUserServiceMock.Setup(c => c.UserId).Returns("2");
+
+        var controller = new ReceiptsController(db, new SaleReceiptRenderer(), currentUserServiceMock.Object);
+        var user = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(new System.Security.Claims.Claim[]
+        {
+            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, "2"),
+            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, "Cashier")
+        }, "mock"));
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = user }
+        };
+
+        var result = await controller.GetReceipt(43, CancellationToken.None);
+
+        var statusCodeResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(403, statusCodeResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetReceipt_ForCompletedSale_Admin_ReturnsPdfFile()
+    {
+        using var db = CreateInMemorySalesDbContext();
+        var sale = new Sale
+        {
+            Id = 44,
+            InvoiceNumber = 1003,
+            Status = SaleStatus.Completed,
+            CashierId = 1
+        };
+        db.Sales.Add(sale);
+        await db.SaveChangesAsync();
+
+        var currentUserServiceMock = new Moq.Mock<Core.Interfaces.ICurrentUserService>();
+        currentUserServiceMock.Setup(c => c.UserId).Returns("99");
+
+        var controller = new ReceiptsController(db, new SaleReceiptRenderer(), currentUserServiceMock.Object);
+        var user = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(new System.Security.Claims.Claim[]
+        {
+            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, "99"),
+            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, "Admin")
+        }, "mock"));
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = user }
+        };
+
+        var result = await controller.GetReceipt(44, CancellationToken.None);
+
+        Assert.IsType<FileContentResult>(result);
+    }
+
+    [Fact]
     public async Task GetReceipt_ForMissingSale_ReturnsNotFound()
     {
         using var db = CreateInMemorySalesDbContext();
-        var controller = new ReceiptsController(db, new SaleReceiptRenderer());
+        var controller = new ReceiptsController(db, new SaleReceiptRenderer(), new Moq.Mock<Core.Interfaces.ICurrentUserService>().Object);
 
         var result = await controller.GetReceipt(999, CancellationToken.None);
 

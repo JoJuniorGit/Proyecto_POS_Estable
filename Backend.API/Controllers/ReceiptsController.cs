@@ -14,11 +14,13 @@ public class ReceiptsController : ControllerBase
 {
     private readonly SalesDbContext _salesDb;
     private readonly IReceiptDocumentRenderer _renderer;
+    private readonly Core.Interfaces.ICurrentUserService _currentUserService;
 
-    public ReceiptsController(SalesDbContext salesDb, IReceiptDocumentRenderer renderer)
+    public ReceiptsController(SalesDbContext salesDb, IReceiptDocumentRenderer renderer, Core.Interfaces.ICurrentUserService currentUserService)
     {
         _salesDb = salesDb;
         _renderer = renderer;
+        _currentUserService = currentUserService;
     }
 
     [HttpGet("{saleId:int}/receipt")]
@@ -35,6 +37,15 @@ public class ReceiptsController : ControllerBase
         if (sale == null)
         {
             return NotFound();
+        }
+
+        bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
+        if (!isElevated && _currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid))
+        {
+            if (sale.CashierId != uid)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para descargar el recibo de esta venta." });
+            }
         }
 
         if (!sale.InvoiceNumber.HasValue)

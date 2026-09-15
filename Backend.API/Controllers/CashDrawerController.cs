@@ -13,6 +13,7 @@ using Inventory.Module.Data;
 namespace Backend.API.Controllers;
 
 [Authorize]
+[Authorize(Policy = "DesktopOnly")]
 [ApiController]
 [Route("api/[controller]")]
 public class CashDrawerController : ControllerBase

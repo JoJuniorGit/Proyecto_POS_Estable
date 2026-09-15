@@ -8485,3 +8485,90 @@ D3. Commits aplicados por slice:
     - `docs(8.129): spec promovida y cambio archivado en openspec - ANEXO 8.129`
 
 FIN DEL ANEXO - REVISION 8.129
+
+================================================================================
+ANEXO - REVISION 8.130 (2026-09-15)
+Titulo: Fixes de Seguridad (Bloque A)
+================================================================================
+
+A. CONTEXTO
+A1. Se requeria resolver hallazgos de seguridad (Bloque A - Servidor) del reporte de auditoria.
+A2. Vulnerabilidades abarcaban IDOR, validaciones de negocio faltantes, politicas de seguridad debiles (contrasenas, headers proxy), exposición de PII y detalles de infraestructura.
+
+B. CAMBIOS REALIZADOS
+B1. [ALTO-1] IDOR en ReceiptsController: inyeccion de ICurrentUserService para garantizar que cajeros solo puedan acceder a sus propios recibos, previniendo fuga de PII de otros cajeros.
+B2. [MED-1] Producto Inexistente: HoldSaleItems valida existencia y actividad de productos antes de continuar, previniendo null references con precios arbitrarios.
+B3. [MED-2] Tasa <= 0: Se refactorizo para obligar el uso de ResolveAnchoredRateAsync en RemoveItem, UpdateItemQuantity y UpdateExchangeRate, evitando corrupcion de montos.
+B4. [MED-3] Contraseñas debiles: Incrementado tamano minimo de password a 8 caracteres en PasswordPolicyService y actualizadas las suites de pruebas asociadas.
+B5. [BAJO-1] Idempotencia y PII: Trasladadas las verificaciones de ownership antes de resolver la idempotencia, e incluido UserId al payloadHash en endpoints de HoldOrders (y CompleteSale) para impedir replay attacks entre distintos usuarios.
+B6. [BAJO-2] Spoofing proxy: PairingController (GetPairingInfo y ClaimPairingToken) rechaza la conexion como local si detecta cabeceras residuales X-Forwarded-For originadas de proxy reverso.
+B7. [BAJO-3] Exposición de márgenes: Enmascarado de ProfitPercentage (set a 0) en ProductsController (quick-check y suggestions) para usuarios sin permisos CanMutateCatalog.
+B8. [INFO-1] Fuga de infra: Agregado filtro IsDomainException en GlobalExceptionHandlerMiddleware para encubrir mensajes de error producidos fuera del stack del dominio (Ej: EF, Npgsql).
+B9. [INFO-2] Politicas huerfanas: Aplicado [Authorize(Policy=\
+DesktopOnly\)] en CashDrawerController y [Authorize(Policy=\WebOnly\)] en SettingsController / UsersController.
+
+C. VERIFICACION
+C1. Pruebas de unidad existentes y nuevas agregadas/adaptadas a los parches.
+C2. Compilacion en Release mode exitosa.
+C3. Tests locales en CommandCenter.Tests validados y pasados (985+ casos).
+
+FIN DEL ANEXO - REVISION 8.130
+---
+ANEXO: Resolución Bloque B (Clientes)
+Fecha: 2026-09-15
+
+Se completaron las siguientes correcciones de seguridad indicadas en el Bloque B:
+
+1. [ALTO-2] WPF remoto en HTTP en claro por defecto (credenciales/JWT expuestos)
+   - Se modificaron ConnectionManager, SubnetScannerService y UserService para bloquear intentos de conexión remota por HTTP. Sólo se permite HTTP en la interfaz loopback.
+
+2. [ALTO-3] Descubrimiento automático de servidor sin autenticación mutua
+   - Se removió la reconexión automática silenciosa en AutoRecoverAsync. Ahora requiere intervención y confirmación visual del operador.
+
+3. [ALTO-4] Token single-use de pairing inerte (bypass del control 8.9-M4)
+   - En el frontend (pi.js), la resolución y persistencia del host ahora espera de forma asíncrona a que el token de pareo sea validado exitosamente contra /api/pairing/claim.
+   - Se extrae correctamente el token pair de la API de creación de QR para persistirlo entre recargas.
+
+4. [BAJO-4] RBAC de UI web incompleto (backend si valida)
+   - Se agregaron validaciones con early-return (if (!isAdminOrManager)) y su respectivo mensaje en SettingsPage.jsx y ExchangeRatePage.jsx.
+   - Se restringió a los Drivers el acceso a RegisterPage.jsx.
+
+5. [BAJO-5] Perfil con cédula/rol persistido en localStorage 24 h
+   - Se movió el almacenamiento de pos_user_profile hacia sessionStorage para asegurar su destrucción al cerrar la pestaña.
+
+6. [BAJO-6] Logs con PII y stack traces en disco
+   - Se implementó ofuscación en AuthController para evitar el registro en claro de las cédulas fallidas (e.g. V-***1234).
+   - Se condicionó el registro del StackTrace en AppLogger.cs usando la directiva #if DEBUG.
+
+7. [BAJO-7] Vite dev server expuesto a la LAN
+   - Se retiró la instrucción host: '0.0.0.0' de ite.config.js.
+
+8. [INFO-3] EnableCertificatePinning config muerta
+   - Se eliminó la propiedad del archivo ppsettings.json.
+
+9. [INFO-4] Ventana de sesión aparente tras restaurar JWT (+DPAPI CurrentUser)
+   - Se incorporó CheckSessionStatusAsync invocando pi/auth/me para validar asíncronamente con el backend la vigencia del JWT restaurado en el arranque de la app Desktop. Si el token fue invalidado (e.g., desde el servidor), se procede a purgar la sesión y forzar el login.
+
+Todas las validaciones de construcción y pruebas locales (dotnet build, dotnet test, 
+pm run lint, 
+pm test) pasaron exitosamente.
+
+
+## ANEXO: Resolucion del Bloque C (Infraestructura y Operacion)
+
+1. **ALTO-5**: Carpeta de monitoreo protegida en setup.iss y scripts limitados a DataDir.
+2. **ALTO-6**: JWT del monitor ahora usa DPAPI (ConvertTo/From-SecureString) para no quedar en claro.
+3. **ALTO-7**: secrets.json excluido del instalador y del publish.
+4. **MED-4**: scripts/build-release.ps1 ya no expone la password en la linea de comandos al importar el certificado pfx.
+5. **MED-5**: Parámetros de contraseña depreciados en stress-external.ps1 y deferidos a pos-test.
+6. **MED-6**: Tareas huérfanas y reglas de firewall eliminadas en desinstalación.
+7. **MED-7**: ACL SYSTEM/Administradores aplicadas a C:\Backups\CommandCenter.
+8. **MED-8**: actualizar_servicio_y_sistema incluye validación básica y rollback en caso de fallo.
+9. **MED-9**: GitHub Actions en ci.yml ahora tienen hashes SHA en los uses.
+10. **MED-10**: Hash de nssm.exe verificado en el pre-build.
+11. **MED-11**: pos-test-config.json apunta a staging-local y confirmStaging exige YES.
+12. **MED-12**: appsettings.Development.json usa credenciales semilla fuertes y launchSettings bindea a localhost.
+13. **MED-13**: clear-products.ps1 adaptado para leer de secrets.json y no tener contraseñas en claro.
+14. **MED-14**: Archivos db y dumps ignorados en .gitignore.
+15. **BAJO-8 a BAJO-12**: Documentación unificada, validación de idempotencia ajustada, y exclusiones de Defender limitadas a procesos.
+

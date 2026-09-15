@@ -18,25 +18,25 @@ const NAV_SECTIONS = [
   {
     label: 'PRINCIPAL',
     items: [
-      { id: 'pos', label: 'Punto de Venta', icon: ShoppingCart },
-      { id: 'pending', label: 'Cuentas Abiertas', icon: Clock },
-      { id: 'pickups', label: 'Retiros Pendientes', icon: PackageCheck },
+      { id: 'pos', label: 'Punto de Venta', icon: ShoppingCart, roles: ['Admin', 'Manager', 'Cashier', 0, 1, 2] },
+      { id: 'pending', label: 'Cuentas Abiertas', icon: Clock, roles: ['Admin', 'Manager', 'Cashier', 0, 1, 2] },
+      { id: 'pickups', label: 'Retiros Pendientes', icon: PackageCheck, roles: ['Admin', 'Manager', 'Cashier', 'Driver', 0, 1, 2, 3] },
     ],
   },
   {
     label: 'INVENTARIO',
     items: [
-      { id: 'catalog', label: 'Catálogo', icon: Package },
-      { id: 'history', label: 'Historial Ventas', icon: History },
-      { id: 'register', label: 'Caja', icon: Landmark },
-      { id: 'closing', label: 'Cierre Diario', icon: ClipboardCheck },
+      { id: 'catalog', label: 'Catálogo', icon: Package, roles: ['Admin', 'Manager', 'Cashier', 0, 1, 2] },
+      { id: 'history', label: 'Historial Ventas', icon: History, roles: ['Admin', 'Manager', 'Cashier', 'Driver', 0, 1, 2, 3] },
+      { id: 'register', label: 'Caja', icon: Landmark, roles: ['Admin', 'Manager', 'Cashier', 0, 1, 2] },
+      { id: 'closing', label: 'Cierre Diario', icon: ClipboardCheck, roles: ['Admin', 'Manager', 'Cashier', 0, 1, 2] },
     ],
   },
   {
     label: 'SISTEMA',
     items: [
-      { id: 'settings', label: 'Configuración', icon: Settings },
-      { id: 'exchange', label: 'Tasa de Cambio', icon: DollarSign },
+      { id: 'settings', label: 'Configuración', icon: Settings, roles: ['Admin', 'Manager', 0, 1] },
+      { id: 'exchange', label: 'Tasa de Cambio', icon: DollarSign, roles: ['Admin', 'Manager', 0, 1] },
     ],
   },
 ];
@@ -73,21 +73,25 @@ export default function Sidebar({ currentView, onNavigate, isOpen, onClose }) {
 
         {/* Navegación */}
         <nav className="sidebar-nav">
-          {NAV_SECTIONS.map((section) => (
-            <div key={section.label}>
-              <div className="sidebar-section">{section.label}</div>
-              {section.items.map((item) => (
-                <button
-                  key={item.id}
-                  className={`sidebar-link ${currentView === item.id ? 'active' : ''}`}
-                  onClick={() => handleNav(item.id)}
-                >
-                  <item.icon size={18} />
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          ))}
+          {NAV_SECTIONS.map((section) => {
+            const visibleItems = section.items.filter(item => !item.roles || item.roles.includes(user?.role));
+            if (visibleItems.length === 0) return null;
+            return (
+              <div key={section.label}>
+                <div className="sidebar-section">{section.label}</div>
+                {visibleItems.map((item) => (
+                  <button
+                    key={item.id}
+                    className={`sidebar-link ${currentView === item.id ? 'active' : ''}`}
+                    onClick={() => handleNav(item.id)}
+                  >
+                    <item.icon size={18} />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
         {/* Footer */}

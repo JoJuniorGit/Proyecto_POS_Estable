@@ -15,6 +15,7 @@ using Core.Constants;
 
 namespace Backend.API.Controllers;
 
+[Authorize(Policy = "WebOnly")]
 [Authorize(Roles = "Admin")]
 [ApiController]
 [Route("api/[controller]")]
