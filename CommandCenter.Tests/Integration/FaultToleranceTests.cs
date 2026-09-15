@@ -15,6 +15,7 @@ using Xunit;
 namespace CommandCenter.Tests.Integration;
 
 [Trait("Category", "RequiresDocker")]
+[Collection(PostgresRealCollection.Name)]
 public class FaultToleranceTests
 {
     private static string ConnectionString() =>

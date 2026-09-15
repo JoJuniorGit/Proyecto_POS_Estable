@@ -106,6 +106,8 @@ dotnet publish "$rootDir\Desktop.Client\Desktop.Client.csproj" -c Release -r win
 Write-Host "[5/7] Publicando UpdaterService (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
 dotnet publish "$rootDir\UpdaterService\UpdaterService.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$rootDir\publish\UpdaterService"
 
+Get-ChildItem "$rootDir\publish" -Recurse -File -Filter "*.pdb" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+
 # # 8.27-A04: verificación de que los artefactos publicados NO contienen literales de
 # credenciales conocidos (p. ej. PosHttpsDev2026! o la clave JWT dev histórica). Si un
 # publish stale o un cambio deja escapar estos valores, el build se ABORTA antes de

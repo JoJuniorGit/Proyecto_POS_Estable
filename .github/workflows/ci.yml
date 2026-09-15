@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-build-and-test:
     name: Backend Build & Test (.NET 10 + PostgreSQL)
@@ -97,7 +101,12 @@ jobs:
         shell: pwsh
         run: |
           $audit = dotnet list CommandCenter.slnx package --vulnerable --include-transitive 2>&1 | Out-String
+          $auditExit = $LASTEXITCODE
           Write-Host $audit
+          if ($auditExit -ne 0) {
+            Write-Host "::error::La auditoria de paquetes fallo (dotnet list salio con codigo $auditExit): restore/NuGet no disponibles; el gate no puede validarse."
+            exit 1
+          }
           if ($audit -match 'has the following vulnerable packages|Vulnerable packages|vulnerabilities were found') {
             Write-Host '::error::Se detectaron dependencias con vulnerabilidades conocidas en el backend.'
             exit 1

@@ -174,6 +174,101 @@ function Add-CsvRow {
     }
 }
 
+function Get-MonitorTokenKeyFile {
+    param([hashtable]$Settings)
+    $keyDir = $Settings.DataDir
+    if ([string]::IsNullOrWhiteSpace($keyDir)) { $keyDir = Split-Path -Parent $Settings.ConfigPath }
+    if ([string]::IsNullOrWhiteSpace($keyDir)) { $keyDir = $PSScriptRoot }
+    return (Join-Path $keyDir "monitor-token.key")
+}
+
+function New-MonitorKeyFileSecurity {
+    $security = New-Object System.Security.AccessControl.FileSecurity
+    $security.SetAccessRuleProtection($true, $false)
+    $systemSid = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::LocalSystemSid, $null)
+    $adminSid = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+    $security.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($systemSid, "FullControl", "None", "None", "Allow")))
+    $security.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($adminSid, "FullControl", "None", "None", "Allow")))
+    return $security
+}
+
+function Get-MonitorTokenKeyBytes {
+    param([hashtable]$Settings, [switch]$Create)
+    $keyFile = Get-MonitorTokenKeyFile -Settings $Settings
+    if (Test-Path -LiteralPath $keyFile) {
+        try {
+            $hex = (Get-Content -LiteralPath $keyFile -Raw).Trim()
+            if ($hex -match '^[0-9a-fA-F]{64}$') {
+                $bytes = New-Object byte[] 32
+                for ($i = 0; $i -lt 32; $i++) { $bytes[$i] = [Convert]::ToByte($hex.Substring($i * 2, 2), 16) }
+                return ,$bytes
+            }
+        } catch { }
+        return $null
+    }
+    if (-not $Create) { return $null }
+    $keyBytes = New-Object byte[] 32
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
+    $keyHex = [System.BitConverter]::ToString($keyBytes).Replace("-", "")
+    $keyDirPath = Split-Path -Parent $keyFile
+    $tempKey = Join-Path $keyDirPath ("monitor-token.key.tmp-" + [System.Guid]::NewGuid().ToString("N"))
+    try {
+        if (-not (Test-Path -LiteralPath $keyDirPath)) {
+            New-Item -ItemType Directory -Force -Path $keyDirPath | Out-Null
+        }
+        $utf8 = New-Object System.Text.UTF8Encoding($false)
+        $keyStream = New-Object System.IO.FileStream($tempKey, [System.IO.FileMode]::Create, [System.Security.AccessControl.FileSystemRights]::Write, [System.IO.FileShare]::None, 4096, [System.IO.FileOptions]::None, (New-MonitorKeyFileSecurity))
+        try {
+            $keyBytesToWrite = $utf8.GetBytes($keyHex)
+            $keyStream.Write($keyBytesToWrite, 0, $keyBytesToWrite.Length)
+            $keyStream.Flush()
+        } finally {
+            $keyStream.Close()
+        }
+        Move-Item -LiteralPath $tempKey -Destination $keyFile -Force
+        return ,$keyBytes
+    } catch {
+        if (Test-Path -LiteralPath $tempKey) { Remove-Item -LiteralPath $tempKey -Force -ErrorAction SilentlyContinue }
+        return $null
+    }
+}
+
+function Protect-MonitorToken {
+    param([string]$PlainToken, [hashtable]$Settings)
+    $keyBytes = Get-MonitorTokenKeyBytes -Settings $Settings -Create
+    if ($null -eq $keyBytes) { return $null }
+    try {
+        $secure = ConvertTo-SecureString -String $PlainToken -AsPlainText -Force
+        return (ConvertFrom-SecureString -SecureString $secure -Key $keyBytes)
+    } catch {
+        return $null
+    }
+}
+
+function Unprotect-MonitorToken {
+    param([string]$StoredToken, [hashtable]$Settings)
+    if ([string]::IsNullOrWhiteSpace($StoredToken)) { return $null }
+    $keyBytes = Get-MonitorTokenKeyBytes -Settings $Settings
+    if ($null -ne $keyBytes) {
+        try {
+            $secure = ConvertTo-SecureString -String $StoredToken -Key $keyBytes
+            $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+            $plain = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+            return $plain
+        } catch { }
+    }
+    try {
+        $secure = ConvertTo-SecureString -String $StoredToken
+        $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+        $plain = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+        return $plain
+    } catch {
+        return $null
+    }
+}
+
 function Invoke-MonitorProbe {
     param([hashtable]$Settings, [switch]$Record, [switch]$WriteSummary)
     $LogFile = $Settings.LogFile
@@ -209,16 +304,19 @@ function Invoke-MonitorProbe {
     }
 
     $actualToken = $Settings.Token
-    if (-not [string]::IsNullOrWhiteSpace($actualToken)) {
-        try {
-            $secure = ConvertTo-SecureString $actualToken
-            $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-            $actualToken = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
-            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
-        } catch { }
+    $hasToken = -not [string]::IsNullOrWhiteSpace($actualToken)
+    if ($hasToken) {
+        $plainToken = Unprotect-MonitorToken -StoredToken $actualToken -Settings $Settings
+        if ([string]::IsNullOrWhiteSpace($plainToken)) {
+            $hasToken = $false
+            $actualToken = ""
+            Write-Log "ERROR: token de monitoreo no descifrable (falta $((Get-MonitorTokenKeyFile -Settings $Settings)) o la clave no coincide). Se omiten las llamadas autenticadas; vuelva a guardar el token desde el dashboard como Administrador." "ERROR" $LogFile
+        } else {
+            $actualToken = $plainToken
+        }
     }
 
-    if ($Settings.DetailsUrl -and $actualToken) {
+    if ($Settings.DetailsUrl -and $hasToken) {
         try {
             $headers = @{ Authorization = "Bearer $actualToken" }
             $details = Invoke-RestMethod -Uri $Settings.DetailsUrl -Headers $headers -TimeoutSec $Settings.TimeoutSec -ErrorAction Stop
@@ -240,7 +338,7 @@ function Invoke-MonitorProbe {
             Write-Log "Servicio no disponible $fails corridas consecutivas -> notificando." "ERROR" $LogFile
             Send-Notification "POS health DOWN ($fails fallos consecutivos)" $Settings.NotifyUrl $LogFile
         }
-        if ($healthy -and -not $backupFresh -and $Settings.DetailsUrl -and $Settings.Token) {
+        if ($healthy -and -not $backupFresh -and $Settings.DetailsUrl -and $hasToken) {
             Send-Notification "POS backup no fresco (hace $backupAgeMinutes min)" $Settings.NotifyUrl $LogFile
         }
         try { Set-Content -LiteralPath $Settings.StateFile -Value $fails -Encoding UTF8 } catch { }
@@ -253,7 +351,7 @@ function Invoke-MonitorProbe {
             Add-CsvRow -Path $availabilityCsv -Header "timestamp,ok,statusCode,latencyMs" `
                 -Line ("{0},{1},{2},{3}" -f $timestamp.ToString("o"), $okValue, $statusCode, $probeLatencyMs) -LogFile $LogFile
 
-            if ($healthy -and $Settings.RequestsUrl -and $actualToken) {
+            if ($healthy -and $Settings.RequestsUrl -and $hasToken) {
                 try {
                     $headers = @{ Authorization = "Bearer $actualToken" }
                     $requests = Invoke-RestMethod -Uri $Settings.RequestsUrl -Headers $headers -TimeoutSec $Settings.TimeoutSec -ErrorAction Stop

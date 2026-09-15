@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Security;
@@ -170,5 +171,129 @@ public class UpdaterSecurityIntegrationTests : IDisposable
         string targetFile = Path.Combine(_targetDir, "link_outside.txt");
         Assert.False(File.Exists(targetFile), "El enlace simbólico debe ser omitido.");
         Assert.Contains(loggedMessages, m => m.Contains("Enlace simbólico"));
+    }
+
+    [Fact]
+    public void Extract_WithAlternateDataStreamEntryName_ThrowsSecurityException()
+    {
+        string zipPath = Path.Combine(_tempRoot, "malicious_ads.zip");
+        using (var zipStream = new FileStream(zipPath, FileMode.Create))
+        using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
+        {
+            var adsEntry = archive.CreateEntry("Backend.API.dll:hidden");
+            using var writer = new StreamWriter(adsEntry.Open());
+            writer.Write("ADS CONTENT");
+        }
+
+        var loggedMessages = new System.Collections.Generic.List<string>();
+
+        var ex = Assert.Throws<SecurityException>(() =>
+            UpdatePackageExtractor.Extract(zipPath, _targetDir, msg => loggedMessages.Add(msg)));
+
+        Assert.Contains("[ZipSlip]", ex.Message);
+        Assert.Contains(loggedMessages, m => m.Contains("[ZipSlip_AUDIT]"));
+        Assert.False(File.Exists(Path.Combine(_targetDir, "Backend.API.dll")));
+    }
+
+    [Fact]
+    public void Extract_WithJunctionComponentInsideTarget_ThrowsSecurityException_AndDoesNotWriteOutside()
+    {
+        string junctionPath = Path.Combine(_targetDir, "linked");
+        if (!TryCreateJunction(junctionPath, _outsideDir))
+        {
+            return;
+        }
+
+        string zipPath = Path.Combine(_tempRoot, "malicious_junction.zip");
+        using (var zipStream = new FileStream(zipPath, FileMode.Create))
+        using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
+        {
+            var escapedEntry = archive.CreateEntry("linked/evil.dll");
+            using var writer = new StreamWriter(escapedEntry.Open());
+            writer.Write("MALICIOUS CONTENT");
+        }
+
+        var loggedMessages = new System.Collections.Generic.List<string>();
+
+        try
+        {
+            var ex = Assert.Throws<SecurityException>(() =>
+                UpdatePackageExtractor.Extract(zipPath, _targetDir, msg => loggedMessages.Add(msg)));
+
+            Assert.Contains("[ZipSlip]", ex.Message);
+            Assert.Contains(loggedMessages, m => m.Contains("[ZipSlip_AUDIT]"));
+            Assert.False(File.Exists(Path.Combine(_outsideDir, "evil.dll")), "No debe escribirse a través del junction.");
+        }
+        finally
+        {
+            TryDeleteJunction(junctionPath);
+        }
+    }
+
+    [Fact]
+    public void Extract_WhenCommitFails_RestoresReplacedBinaries_AndLogsRollback()
+    {
+        string replacementTarget = Path.Combine(_targetDir, "aaa_payload.dll");
+        File.WriteAllText(replacementTarget, "ORIGINAL-BINARY");
+
+        string collisionTarget = Path.Combine(_targetDir, "zzz_collision.dll");
+        Directory.CreateDirectory(collisionTarget);
+
+        string zipPath = Path.Combine(_tempRoot, "package_commit_failure.zip");
+        using (var zipStream = new FileStream(zipPath, FileMode.Create))
+        using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
+        {
+            var firstEntry = archive.CreateEntry("aaa_payload.dll");
+            using (var firstWriter = new StreamWriter(firstEntry.Open()))
+            {
+                firstWriter.Write("UPDATED-BINARY");
+            }
+
+            var collidingEntry = archive.CreateEntry("zzz_collision.dll");
+            using (var collidingWriter = new StreamWriter(collidingEntry.Open()))
+            {
+                collidingWriter.Write("SHOULD-NOT-REPLACE-DIRECTORY");
+            }
+        }
+
+        var loggedMessages = new System.Collections.Generic.List<string>();
+
+        var ex = Record.Exception(() =>
+            UpdatePackageExtractor.Extract(zipPath, _targetDir, msg => loggedMessages.Add(msg)));
+
+        Assert.NotNull(ex);
+        Assert.Equal("ORIGINAL-BINARY", File.ReadAllText(replacementTarget));
+        Assert.True(Directory.Exists(collisionTarget), "El directorio preexistente no debe ser reemplazado por un archivo.");
+        Assert.Contains(loggedMessages, m => m.Contains("Restaurando respaldo"));
+    }
+
+    private static bool TryCreateJunction(string junctionPath, string targetPath)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "cmd.exe",
+            Arguments = $"/c mklink /J \"{junctionPath}\" \"{targetPath}\"",
+            CreateNoWindow = true,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        using var process = Process.Start(psi);
+        if (process == null) return false;
+        if (!process.WaitForExit(10000)) return false;
+        return process.ExitCode == 0 && Directory.Exists(junctionPath);
+    }
+
+    private static void TryDeleteJunction(string junctionPath)
+    {
+        try
+        {
+            if (Directory.Exists(junctionPath)) Directory.Delete(junctionPath);
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[UPDATER_TEST_CLEANUP] No se pudo eliminar el junction {junctionPath}: {ex.Message}");
+        }
     }
 }

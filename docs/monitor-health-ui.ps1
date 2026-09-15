@@ -125,15 +125,21 @@ function Show-MonitorTokenDialog {
     $current = "" # Do not expose current encrypted token to UI directly
     try {
         $value = [Microsoft.VisualBasic.Interaction]::InputBox(
-            "Pegue el token JWT de monitoreo. Se guardara en monitor-config.json cifrado (DPAPI).",
+            "Pegue el token JWT de monitoreo. Se guardara cifrado (AES) con la clave protegida monitor-token.key.",
             "Token de monitoreo", $current)
     } catch { return }
     if ([string]::IsNullOrWhiteSpace($value)) { return }
-    
-    # Encrypt token using DPAPI LocalMachine
-    $secure = ConvertTo-SecureString -String $value.Trim() -AsPlainText -Force
-    $encrypted = ConvertFrom-SecureString -SecureString $secure
-    
+
+    # Cifrado AES con clave en monitor-token.key (SYSTEM + Administradores), legible por la tarea SYSTEM.
+    $encrypted = Protect-MonitorToken -PlainToken $value.Trim() -Settings $script:Settings
+    if (-not $encrypted) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "No se pudo cifrar el token. Verifique que $((Get-MonitorTokenKeyFile -Settings $script:Settings)) sea escribible (ejecute como Administrador).",
+            "Token de monitoreo", [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+        return
+    }
+
     if (Save-MonitorConfig -NewToken $encrypted) {
         $script:Settings.Token = $encrypted
         Update-MonitorDashboard

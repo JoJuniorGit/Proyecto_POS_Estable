@@ -415,13 +415,57 @@ begin
       AppDir + '\logs para más detalles.', mbError, MB_OK);
 end;
 
-// 8.29-A1 (ex 8U-M2/M07): escribe los secretos en secrets.json con ACL restrictiva
-// (SYSTEM/Administradores + NT SERVICE\<servicio> con lectura, para que el backend
-// pueda leerlos bajo la Virtual Account 8U-B1). SaveStringToFile + icacls: los
-// secretos nunca viajan por línea de comandos del servicio ni por argv del setup.
+// 8.29-A1 (ex 8U-M2/M07): escribe los secretos en secrets.json naciendo con la ACL
+// restrictiva (SYSTEM/Administradores y la cuenta del servicio cuando ya existe,
+// herencia bloqueada): el archivo nunca existe legible por usuarios locales, ni siquiera
+// en el camino fallback sin Configure-PosService.ps1. El JSON viaja por un temporal en
+// {tmp} (solo Administradores), nunca por argv del setup, y se reemplaza desde un
+// staging creado en el directorio destino con la ACL final (sin borrado previo).
+function WriteSecretsJsonWithAcl(const TempJson, SecretsPath, ServiceAccount: String): Integer;
+var
+  HelperPath, HelperScript: String;
+begin
+  HelperPath := GetTempDir + 'pos-secrets-acl.ps1';
+  HelperScript :=
+    '$ErrorActionPreference = "Stop"' + #13#10 +
+    '$source = $args[0]; $dest = $args[1]; $serviceAccount = $args[2]; $staging = $null' + #13#10 +
+    'try {' + #13#10 +
+    '  $sec = New-Object System.Security.AccessControl.FileSecurity' + #13#10 +
+    '  $sec.SetAccessRuleProtection($true, $false)' + #13#10 +
+    '  $sidSystem = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::LocalSystemSid, $null)' + #13#10 +
+    '  $sidAdmin = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)' + #13#10 +
+    '  $sec.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sidSystem, "FullControl", "None", "None", "Allow")))' + #13#10 +
+    '  $sec.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sidAdmin, "FullControl", "None", "None", "Allow")))' + #13#10 +
+    '  if ($serviceAccount) {' + #13#10 +
+    '    try {' + #13#10 +
+    '      $sidService = (New-Object System.Security.Principal.NTAccount($serviceAccount)).Translate([System.Security.Principal.SecurityIdentifier])' + #13#10 +
+    '      $sec.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sidService, "Read", "None", "None", "Allow")))' + #13#10 +
+    '    } catch { }' + #13#10 +
+    '  }' + #13#10 +
+    '  $staging = $dest + ".new-" + [System.Guid]::NewGuid().ToString("N")' + #13#10 +
+    '  $fs = New-Object System.IO.FileStream($staging, [System.IO.FileMode]::Create, [System.Security.AccessControl.FileSystemRights]::Write, [System.IO.FileShare]::None, 4096, [System.IO.FileOptions]::None, $sec)' + #13#10 +
+    '  $enc = New-Object System.Text.UTF8Encoding($false)' + #13#10 +
+    '  $writer = New-Object System.IO.StreamWriter($fs, $enc)' + #13#10 +
+    '  $writer.Write([System.IO.File]::ReadAllText($source))' + #13#10 +
+    '  $writer.Close()' + #13#10 +
+    '  Move-Item -LiteralPath $staging -Destination $dest -Force' + #13#10 +
+    '  Remove-Item -LiteralPath $source -Force' + #13#10 +
+    '  exit 0' + #13#10 +
+    '} catch {' + #13#10 +
+    '  if ($staging -and (Test-Path -LiteralPath $staging)) { Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue }' + #13#10 +
+    '  Remove-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue' + #13#10 +
+    '  exit 1' + #13#10 +
+    '}';
+  SaveStringToFile(HelperPath, HelperScript, False);
+  Result := RunCmd('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + HelperPath +
+    '" "' + TempJson + '" "' + SecretsPath + '" "' + ServiceAccount + '"');
+  DeleteFile(HelperPath);
+end;
+
 procedure WriteProtectedSecretsFile(AppDir: String; ConnString, JwtKey, CertPass, SeedPass: String);
 var
-  SecretsPath, JsonLines: String;
+  SecretsPath, JsonLines, TempJson: String;
+  JsonLinesArr: TArrayOfString;
 begin
   SecretsPath := AppDir + '\secrets.json';
   // Formato ANIDADO compatible con el sistema de configuración .NET:
@@ -435,11 +479,23 @@ begin
     '"Kestrel": { "Certificates": { "Default": { "Password": "' + JsonEsc(CertPass) + '" } } }' +
     '}';
 
-  SaveStringToFile(SecretsPath, JsonLines, False);
-  // El ACL restrictivo (SYSTEM/Administradores + cuenta del servicio) lo aplica
-  // Configure-PosService.ps1 (Set-Acl) tras registrar el servicio, cuando la Virtual
-  // Account ya existe. No se usa icacls inline: con paths que tienen espacios y Exec
-  // de Inno Setup falla con ERROR_MAPPING_NOT_FOUND (1332).
+  TempJson := GetTempDir + 'pos-secrets.json.tmp';
+  DeleteFile(TempJson);
+  SetArrayLength(JsonLinesArr, 1);
+  JsonLinesArr[0] := JsonLines;
+  SaveStringsToUTF8File(TempJson, JsonLinesArr, False);
+  if not FileExists(TempJson) then
+  begin
+    MsgBox('No se pudo preparar el archivo temporal de secretos en: ' + GetTempDir, mbError, MB_OK);
+    Exit;
+  end;
+
+  if (WriteSecretsJsonWithAcl(TempJson, SecretsPath, 'NT SERVICE\' + ServiceName) <> 0) or (not FileExists(SecretsPath)) then
+  begin
+    DeleteFile(TempJson);
+    MsgBox('No se pudo escribir secrets.json con ACL restrictiva: ' + SecretsPath + #13#10 +
+      'El servicio no podrá iniciar sin sus credenciales.', mbError, MB_OK);
+  end;
 end;
 
 procedure ConfigureServiceWithPowerShell;

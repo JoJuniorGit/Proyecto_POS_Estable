@@ -1752,4 +1752,108 @@ VERIFICACIÓN
 ALCANCE: Sección 4 del Anexo COMPLETA (14/14 hallazgos; residuales menores
 documentados: patrones ex.Message en partials hermanos, literal Tag en XAML).
 Pendientes del Anexo: Sección 5 (Infra/CI/Updater) — FASE 5.
+
+================================================================================
+AVANCE DE REMEDIACIÓN — FASE 5: Infraestructura, CI, Tests, Configuración y Updater
+Fecha: 2026-09-15
+Suite .NET: dotnet test → 1111/1111 (0 fallos; +27 tests vs 1084) | build Release 0/0
+================================================================================
+
+[ALTO] Cadena de actualización sin autenticidad — RESUELTO (parcial; firma = deuda aceptada)
+  Archivos: UpdaterService/Program.cs, UpdaterService/UpdateUrlPolicy.cs (nuevo)
+  Fix: el canal de update exige HTTPS fuera de loopback (http solo loopback;
+       URL inválida aborta con log antes de descargar). La firma Authenticode/
+       minisign permanece como deuda aceptada 8.20-A03 (no implementada).
+
+[MEDIO] secrets.json sin ACL en camino fallback + ventana legible — RESUELTO
+  Archivos: installer/setup.iss, installer/Configure-PosService.ps1
+  Fix: el archivo se crea con su DACL final desde el primer byte (SYSTEM/
+       Administradores Full; Users sin acceso; sin herencia) y recién entonces se
+       mueve a su lugar (temp + Move). Sin dependencia de Set-Acl posterior.
+
+[MEDIO] La cuenta del servicio podía reemplazar secrets.json — RESUELTO
+  Archivo: installer/Configure-PosService.ps1
+  Fix: NT SERVICE\PosBackendService con Read&Execute sobre BackendAPI y Modify
+       solo en logs\ y Receipts\ (escrituras reales verificadas); sin
+       FILE_DELETE_CHILD ni escritura sobre secrets.json.
+
+[MEDIO] Integración Postgres compartía BD/estado en paralelo — RESUELTO
+  Archivos: CommandCenter.Tests/Integration/PostgresRealCollection.cs (nuevo) +
+           10 clases con [Collection]
+  Fix: colección "PostgresRealSharedState" con DisableParallelization=true para
+       todas las suites Postgres reales; el resto conserva su paralelismo.
+
+[MEDIO] Password de estrés viajaba en argv — RESUELTO
+  Archivos: scripts/pos-test.ps1, scripts/stress-test.py
+  Fix: se pasa por variable de entorno POS_STRESS_PASSWORD (limpiada en finally);
+       argv ya no se usa (--password queda solo por compatibilidad manual).
+
+[MEDIO] Token de monitoreo DPAPI CurrentUser vs tarea SYSTEM — RESUELTO
+  Archivos: docs/monitor-health-ui.ps1, docs/monitor-health.ps1
+  Fix: cifrado AES con clave en monitor-token.key (ACL SYSTEM/Administradores)
+       aplicado simétricamente UI/SYSTEM; el fallo de descifrado ahora loguea
+       ERROR y no envía el blob como Bearer.
+
+[MEDIO] TestSchemaBootstrap fijaba el token del primer llamador — RESUELTO
+  Archivo: CommandCenter.Tests/Builders/TestSchemaBootstrap.cs
+  Fix: bootstrap con token interno y sin envenenar la caché ante fallo
+       (reintento del siguiente llamador; éxito cacheado una vez).
+
+[MEDIO] Tests dependientes de reloj real — RESUELTO
+  Archivos: HealthPollingServiceTests, InventoryPaginationTests,
+           PosViewModelPaymentMethodsDeduplicationTests (+ seam mínimo
+           pollInterval en HealthPollingService.cs, default intacto)
+  Fix: polling por deadline/condición y TaskCompletionSource; sin sleeps fijos.
+
+[MEDIO] Test TOCTOU de caja podía pasar por la razón equivocada — RESUELTO
+  Archivo: CommandCenter.Tests/Integration/PostgresRealSharedTransactionTests.cs
+  Fix: DbContext por tarea + aserción exacta del contrato de negocio
+       (InvalidOperationException "Saldo de efectivo en caja insuficiente...").
+
+[MEDIO] Gate de vulnerabilidades de CI podía pasar en silencio — RESUELTO
+  Archivo: .github/workflows/ci.yml
+  Fix: valida $LASTEXITCODE del comando (falla si restore/NuGet falló) además
+       del patrón de vulnerabilidades.
+
+[MEDIO] Updater continuaba tras fallos de extracción — RESUELTO
+  Archivos: UpdaterService/UpdatePackageExtractor.cs, UpdaterService/Program.cs
+  Fix: staging → verificación → commit con backup por archivo y rollback;
+       errores por entrada fatales; ante fallo se restauran binarios y se
+       reinicia el servicio con la versión previa.
+
+[MEDIO] TOCTOU del hash de integridad — RESUELTO
+  Archivos: UpdaterService/VerifiedPackageCopy.cs (nuevo), Program.cs
+  Fix: el paquete se copia/verifica una sola vez a un temporal privado y la
+       extracción usa solo esa copia (sin reabrir la ruta original).
+
+[MEDIO] Extracción ZIP ciega a junctions/ADS — RESUELTO
+  Archivo: UpdaterService/UpdatePackageExtractor.cs
+  Fix: rechazo de nombres con ':' (ADS) y de componentes con Reparse Point bajo
+       el destino ([ZipSlip_AUDIT]); protecciones previas intactas.
+
+[MEDIO] serviceName sin validar en argv — RESUELTO
+  Archivos: UpdaterService/ServiceNamePolicy.cs (nuevo), Program.cs
+  Fix: allow-list (PosBackendService) fail-closed + ProcessStartInfo.ArgumentList.
+
+[BAJO] CI sin concurrency — RESUELTO (group + cancel-in-progress en ci.yml).
+[BAJO] PDBs empaquetados — RESUELTO (purga *.pdb del publish en build-release.ps1).
+[BAJO] Smoke tests mutando env vars — RESUELTO (colección serializada).
+[BAJO] PostgresRealSharedTransactionTests skip silencioso — RESUELTO (fail-fast
+       en CI, skip limpio local).
+[BAJO] appsettings.Production.json con datos del tenant — RESUELTO (identidad y
+       usuario admin por defecto eliminados; config por sitio no versionada;
+       consumidores con fallback verificado).
+[BAJO] build-clean.ps1 Invoke-Expression — RESUELTO (& dotnet build @args).
+
+VERIFICACIÓN
+  - dotnet build CommandCenter.slnx -c Release → 0 advertencias / 0 errores
+  - dotnet test CommandCenter.Tests → 1111/1111 (0 fallos; +27 tests nuevos;
+    corrida doble sin flakes)
+  - Scripts: parse OK (PS 7 + Windows PowerShell 5.1); stress-test.py compila
+  - Residuales documentados: validación end-to-end en VM (ACL/instalador/tareas
+    SYSTEM); firma de paquetes = deuda 8.20-A03; rollback de commit del updater
+    no atómico ante hard-kill.
+
+ALCANCE: Sección 5 del Anexo COMPLETA (fase 5 de la remediación).
+Pendiente propio: FASE 6 (split de index.css — fase separada).
 ================================================================================

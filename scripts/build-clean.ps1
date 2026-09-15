@@ -66,8 +66,7 @@ Write-Host ""
 Write-Host "  dotnet build `"$slnPath`" $extraArgs" -ForegroundColor Cyan
 Write-Host ""
 
-$cmd = "dotnet build `"$slnPath`" $extraArgs"
-Invoke-Expression $cmd
+& dotnet build $slnPath @extraArgsList
 
 $exitCode = $LASTEXITCODE
 

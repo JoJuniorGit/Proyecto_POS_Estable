@@ -160,8 +160,9 @@ def parse_args(argv):
                              "confirmar que apunta a staging y no a producción.")
     parser.add_argument("--user", default="BOT_STRESS_TEST",
                         help="Cédula/usuario del cajero de aislamiento.")
-    parser.add_argument("--password", required=True,
-                        help="Contraseña del usuario de aislamiento.")
+    parser.add_argument("--password", default=None,
+                        help="Contraseña del usuario de aislamiento (obsoleto: preferir la variable de entorno "
+                             "POS_STRESS_PASSWORD para no exponerla en la lista de procesos).")
     parser.add_argument("--cashiers", type=int, default=4,
                         help="Número de cajas (hilos) concurrentes.")
     parser.add_argument("--duration", type=int, default=None,
@@ -209,6 +210,12 @@ def parse_args(argv):
 
     if args.think_min < 0 or args.think_max < args.think_min:
         parser.error("Rango de think time inválido (--think-min >= 0 y --think-max >= --think-min).")
+
+    if not args.password:
+        args.password = os.environ.get("POS_STRESS_PASSWORD", "")
+    if not args.password:
+        parser.error("Falta la contraseña del usuario de aislamiento: defina POS_STRESS_PASSWORD "
+                     "(o use --password).")
 
     return args
 

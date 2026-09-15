@@ -13,6 +13,7 @@ namespace CommandCenter.Tests.Integration;
 /// Sigue el patrón silent-pass de los PostgresReal*: sin PostgreSQL configurada se omite para
 /// no exigir una BD local en cualquier máquina.
 /// </summary>
+[Collection(PostgresRealCollection.Name)]
 public class WebApplicationFactorySmokeTests
 {
     // 8.14-N3: nombre de la BD smoke único por ejecución (sufijo desde env SMOKE_DB_SUFFIX,

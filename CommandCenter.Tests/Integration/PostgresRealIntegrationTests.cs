@@ -17,6 +17,7 @@ namespace CommandCenter.Tests.Integration;
 /// Para omitir en ejecuciones sin Docker/Postgres: dotnet test --filter "Category!=RequiresDocker".
 /// </summary>
 [Trait("Category", "RequiresDocker")]
+[Collection(PostgresRealCollection.Name)]
 public class PostgresRealIntegrationTests
 {
     [Fact]

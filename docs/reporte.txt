@@ -8713,3 +8713,26 @@ C1. dotnet build CommandCenter.slnx -c Release: 0 advertencias / 0 errores.
 C2. dotnet test CommandCenter.Tests: 1084/1084 (0 fallos; +68 tests nuevos).
 
 FIN DEL ANEXO - REVISION 8.134
+
+================================================================================
+ANEXO - REVISION 8.135 (2026-09-15)
+Titulo: Remediacion auditoria de seguridad - Seccion 5 (Infra/CI/Tests/Updater) completa
+================================================================================
+
+A. CONTEXTO
+A1. Se resolvieron los hallazgos ALTO/MEDIO/BAJO de la Seccion 5 del Anexo en 4 unidades (W13-W16). La firma Authenticode/minisign permanece como deuda aceptada 8.20-A03 (no se implemento).
+A2. Detalle por hallazgo en docs/hallazgos-auditoria-seguridad.txt (FASE 5).
+
+B. CAMBIOS REALIZADOS
+B1. Updater: HTTPS obligatorio fuera de loopback; copia verificada unica (sin TOCTOU); staging/verificacion/commit con backup y rollback + reinicio con version previa ante fallo; rechazo de ADS y Reparse Points; serviceName con allow-list y ArgumentList.
+B2. Instalador: secrets.json creado con DACL final desde el primer byte (sin ventana legible); cuenta de servicio con Modify solo en logs\ y Receipts\; token de monitoreo migrado a clave AES bajo ACL (SYSTEM descifra) y sin envio de blob ante fallo de descifrado.
+B3. Tests: coleccion Postgres serializada (10 clases); TestSchemaBootstrap con token interno y sin cachear fallos; tests sin reloj real (deadline/TCS + seam minimo pollInterval); test TOCTOU con DbContext por tarea y asercion de negocio; smoke tests serializados; fail-fast en CI para Postgres.
+B4. CI/scripts: $LASTEXITCODE validado en gate de vulnerabilidades; concurrency/cancel-in-progress; PDBs purgados del publish; password de estres por POS_STRESS_PASSWORD (sin argv); build-clean sin Invoke-Expression; appsettings.Production.json sin datos del tenant.
+
+C. VERIFICACION
+C1. dotnet build CommandCenter.slnx -c Release: 0 advertencias / 0 errores.
+C2. dotnet test CommandCenter.Tests: 1111/1111 (0 fallos; +27 tests nuevos; corrida doble sin flakes).
+C3. Scripts: parse OK en PS7 y PS5.1; stress-test.py compila (py_compile).
+C4. Residual: validacion end-to-end de instalador/ACL/tarea SYSTEM requiere VM; firma = deuda 8.20-A03.
+
+FIN DEL ANEXO - REVISION 8.135

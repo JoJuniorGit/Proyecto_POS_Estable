@@ -16,6 +16,7 @@ using Xunit;
 namespace CommandCenter.Tests.Integration;
 
 [Trait("Category", "RequiresDocker")]
+[Collection(PostgresRealCollection.Name)]
 public class HoldPaymentConcurrencyPostgresTests
 {
     private const int SaleId = 987656;

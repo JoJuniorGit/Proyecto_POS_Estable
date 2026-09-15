@@ -451,7 +451,6 @@ function Get-StressArgs {
         "--base-url", $Res.baseUrl,
         "--confirm-staging", $Res.confirmStaging,
         "--user", $Res.stressUser,
-        "--password", $Res.stressPassword,
         "--cashiers", "$($Res.cashiers)",
         "--qty-min", "$($Res.qtyMin)",
         "--qty-max", "$($Res.qtyMax)",
@@ -482,9 +481,15 @@ function Invoke-StressRun {
     }
 
     Write-Step "Ejecutando scripts/stress-test.py contra $($Res.baseUrl)"
-    & $Res.pyExe @pythonArgs 2>&1 | Tee-Object -LiteralPath $logPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "stress-test.py termino con codigo $LASTEXITCODE. Revise 409 (stock) y 429 (rate limit) en la salida."
+    $env:POS_STRESS_PASSWORD = $Res.stressPassword
+    try {
+        & $Res.pyExe @pythonArgs 2>&1 | Tee-Object -LiteralPath $logPath
+        $exitCode = $LASTEXITCODE
+    } finally {
+        Remove-Item Env:POS_STRESS_PASSWORD -ErrorAction SilentlyContinue
+    }
+    if ($exitCode -ne 0) {
+        throw "stress-test.py termino con codigo $exitCode. Revise 409 (stock) y 429 (rate limit) en la salida."
     }
     $canonical = Join-Path $RunDir "stress.json"
     if ($outPath -ne $canonical -and (Test-Path -LiteralPath $outPath) -and -not (Test-Path -LiteralPath $canonical)) {
@@ -506,11 +511,16 @@ function Invoke-StressRunFinalizable {
     }
 
     Write-Step "Ejecutando scripts/stress-test.py contra $($Res.baseUrl) (finalizable)"
-    $job = Start-Job -ScriptBlock {
-        param($exe, $pyArgs, $log)
-        & $exe @pyArgs *>&1 | Tee-Object -LiteralPath $log | Out-Null
-        return $LASTEXITCODE
-    } -ArgumentList $Res.pyExe, $pythonArgs, $logPath
+    $env:POS_STRESS_PASSWORD = $Res.stressPassword
+    try {
+        $job = Start-Job -ScriptBlock {
+            param($exe, $pyArgs, $log)
+            & $exe @pyArgs *>&1 | Tee-Object -LiteralPath $log | Out-Null
+            return $LASTEXITCODE
+        } -ArgumentList $Res.pyExe, $pythonArgs, $logPath
+    } finally {
+        Remove-Item Env:POS_STRESS_PASSWORD -ErrorAction SilentlyContinue
+    }
 
     Write-Host "Prueba en curso (job $($job.Id)). Avance: $logPath" -ForegroundColor Green
     Write-Host "Pulse Enter o F para FINALIZAR y generar el reporte." -ForegroundColor Cyan

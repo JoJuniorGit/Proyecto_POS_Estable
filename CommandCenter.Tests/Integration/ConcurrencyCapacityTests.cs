@@ -12,6 +12,7 @@ using Xunit;
 namespace CommandCenter.Tests.Integration;
 
 [Trait("Category", "RequiresDocker")]
+[Collection(PostgresRealCollection.Name)]
 public class ConcurrencyCapacityTests
 {
     private const int ProductId = 9000;

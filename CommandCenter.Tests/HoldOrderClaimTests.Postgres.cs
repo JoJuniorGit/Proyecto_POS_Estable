@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Builders;
+using CommandCenter.Tests.Integration;
 using Core.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,7 @@ using Xunit;
 namespace CommandCenter.Tests;
 
 [Trait("Category", "RequiresDocker")]
+[Collection(PostgresRealCollection.Name)]
 public class HoldOrderClaimTestsPostgres
 {
     private static SalesService CreateService(SalesDbContext context)

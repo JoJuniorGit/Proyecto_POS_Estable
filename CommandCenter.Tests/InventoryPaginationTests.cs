@@ -238,14 +238,14 @@ public class InventoryPaginationTests
 
         // 1. Simular búsqueda de producto
         vm.SearchText = "Arroz";
-        await Task.Delay(600); // Esperar debounce
+        await WaitUntilAsync(() => vm.Products.Count == 1, TimeSpan.FromSeconds(5));
 
         Assert.Single(vm.Products);
         Assert.Equal("Arroz 1Kg", vm.Products[0].Name);
 
         // 2. Simular borrado con la "x" (SearchText = "")
         vm.SearchText = string.Empty;
-        await Task.Delay(600); // Esperar recarga y reset
+        await WaitUntilAsync(() => vm.Products.Count == 3 && vm.CurrentPage == 1, TimeSpan.FromSeconds(5));
 
         Assert.Equal(3, vm.Products.Count);
         Assert.Equal(1, vm.CurrentPage);
@@ -296,18 +296,29 @@ public class InventoryPaginationTests
 
         // 1. Buscar algo que devuelve 0 productos
         vm.SearchText = "inexistente";
-        await Task.Delay(250);
+        await WaitUntilAsync(() => vm.TotalCount == 0 && vm.CurrentPage == 0, TimeSpan.FromSeconds(5));
 
         Assert.Empty(vm.Products);
         Assert.Equal(0, vm.TotalCount);
 
         // 2. Borrar con la "x"
         vm.SearchText = "";
-        await Task.Delay(250);
+        await WaitUntilAsync(() => vm.Products.Count == 2 && vm.TotalCount == 2 && vm.CurrentPage == 1, TimeSpan.FromSeconds(5));
 
         // 3. Debe mostrar la lista completa reiniciada
         Assert.Equal(2, vm.Products.Count);
         Assert.Equal(2, vm.TotalCount);
         Assert.Equal(1, vm.CurrentPage);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow.Add(timeout);
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(condition(), "La condición esperada no se cumplió dentro del plazo.");
     }
 }

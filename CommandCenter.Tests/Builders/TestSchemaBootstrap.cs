@@ -26,8 +26,17 @@ public static class TestSchemaBootstrap
     public static async Task EnsureSharedSchemaAsync(string connStr, CancellationToken cancellationToken = default)
     {
         var key = BuildKey(connStr);
-        var lazy = Bootstraps.GetOrAdd(key, _ => new Lazy<Task>(() => RunBootstrapAsync(connStr, cancellationToken), LazyThreadSafetyMode.ExecutionAndPublication));
-        await lazy.Value;
+        var lazy = Bootstraps.GetOrAdd(key, _ => new Lazy<Task>(() => RunBootstrapAsync(connStr, CancellationToken.None), LazyThreadSafetyMode.ExecutionAndPublication));
+
+        try
+        {
+            await lazy.Value.WaitAsync(cancellationToken);
+        }
+        catch (Exception) when (lazy.IsValueCreated && (lazy.Value.IsFaulted || lazy.Value.IsCanceled))
+        {
+            Bootstraps.TryRemove(new KeyValuePair<string, Lazy<Task>>(key, lazy));
+            throw;
+        }
     }
 
     private static async Task RunBootstrapAsync(string connStr, CancellationToken cancellationToken)

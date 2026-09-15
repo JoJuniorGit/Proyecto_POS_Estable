@@ -19,6 +19,7 @@ namespace CommandCenter.Tests.Integration;
 /// "retrying strategy does not support user-initiated transactions".
 /// </summary>
 [Trait("Category", "RequiresDocker")]
+[Collection(PostgresRealCollection.Name)]
 public class DailyClosureRetryIntegrationTests
 {
     [Fact]

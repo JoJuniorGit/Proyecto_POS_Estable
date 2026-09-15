@@ -11,6 +11,7 @@ using Xunit;
 namespace CommandCenter.Tests.Integration;
 
 [Trait("Category", "RequiresDocker")]
+[Collection(PostgresRealCollection.Name)]
 public class HistoryImmutabilityTests
 {
     private const int SaleId = 99001;

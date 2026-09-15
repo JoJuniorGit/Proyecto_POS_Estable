@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Threading;
 
 namespace UpdaterService;
@@ -16,6 +15,7 @@ class Program
         string serviceName = "PosBackendService";
         string packagePath = string.Empty;
         string expectedHash = string.Empty;
+        string updateUrl = string.Empty;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -23,11 +23,24 @@ class Program
             if (args[i] == "--serviceName" && i + 1 < args.Length) serviceName = args[i + 1];
             if (args[i] == "--package" && i + 1 < args.Length) packagePath = args[i + 1];
             if (args[i] == "--hash" && i + 1 < args.Length) expectedHash = args[i + 1];
+            if (args[i] == "--updateUrl" && i + 1 < args.Length) updateUrl = args[i + 1];
         }
 
         Console.WriteLine($"[Updater] Service Name: {serviceName}");
         Console.WriteLine($"[Updater] Target Directory: {targetDir}");
         Console.WriteLine($"[Updater] Package Path: {packagePath}");
+
+        if (!ServiceNamePolicy.IsAllowed(serviceName))
+        {
+            Console.WriteLine($"[Updater] ERROR CRÍTICO: Nombre de servicio no permitido: '{serviceName}'. Cancelando la actualización.");
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(updateUrl) && !UpdateUrlPolicy.IsAllowed(updateUrl))
+        {
+            Console.WriteLine($"[Updater] ERROR DE SEGURIDAD: URL de actualización rechazada (se requiere HTTPS fuera de loopback): '{updateUrl}'. Cancelando sin descargar ni aplicar paquetes.");
+            return;
+        }
 
         // Step 0: SHA-256 Integrity Verification (fail-closed — 8.20-A03/8U-N2)
         // Sin paquete o sin hash esperado la actualización se ABORTA: nunca se extrae ni
@@ -49,48 +62,45 @@ class Program
             return;
         }
 
-        Console.WriteLine("[Updater] Verificando integridad SHA-256 del paquete de actualización...");
-        using var fs = File.OpenRead(packagePath);
-        using var sha256 = System.Security.Cryptography.SHA256.Create();
-        var hashBytes = sha256.ComputeHash(fs);
-        var actualHash = Convert.ToHexString(hashBytes);
-
-        if (!actualHash.Equals(expectedHash.Trim(), StringComparison.OrdinalIgnoreCase))
+        string? verifiedPackagePath = VerifiedPackageCopy.CopyAndVerify(packagePath, expectedHash);
+        if (verifiedPackagePath == null)
         {
-            Console.WriteLine($"[Updater] ERROR CRÍTICO DE INTEGRIDAD: Hash calculado ({actualHash}) no coincide con esperado ({expectedHash}). Cancelando actualización.");
             return;
         }
 
-        Console.WriteLine($"[Updater] Verificación SHA-256 completada exitosamente ({actualHash}).");
-
-        // Step 1: Graceful Shutdown of Windows Service
-        Console.WriteLine("[Updater] Performing Graceful Shutdown of Backend Service...");
-        ControlService("stop", serviceName, targetDir);
-        if (!WaitForServiceStopped(serviceName))
+        try
         {
-            Console.WriteLine("[Updater] ERROR CRÍTICO: El servicio no se detuvo dentro del tiempo límite. Cancelando la actualización para no reemplazar binarios en ejecución.");
-            return;
-        }
+            // Step 1: Graceful Shutdown of Windows Service
+            Console.WriteLine("[Updater] Performing Graceful Shutdown of Backend Service...");
+            ControlService("stop", serviceName, targetDir);
+            if (!WaitForServiceStopped(serviceName))
+            {
+                Console.WriteLine("[Updater] ERROR CRÍTICO: El servicio no se detuvo dentro del tiempo límite. Cancelando la actualización para no reemplazar binarios en ejecución.");
+                return;
+            }
 
-        // Step 2: Replace Binaries preserving appsettings.Production.json safely
-        if (!string.IsNullOrWhiteSpace(packagePath) && File.Exists(packagePath))
-        {
+            // Step 2: Replace Binaries preserving appsettings.Production.json safely
             try
             {
-                UpdatePackageExtractor.Extract(packagePath, targetDir);
+                UpdatePackageExtractor.Extract(verifiedPackagePath, targetDir);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[Updater] ERROR CRÍTICO durante la extracción del paquete: {ex.Message}");
-                // No iniciar el servicio con binarios corruptos o comprometidos
+                Console.WriteLine("[Updater] Restaurando binarios previos y reiniciando el servicio para no dejarlo detenido...");
+                ControlService("start", serviceName, targetDir);
                 return;
             }
-        }
 
-        // Step 3: Restart Backend Service
-        Console.WriteLine("[Updater] Restarting Backend Windows Service...");
-        ControlService("start", serviceName, targetDir);
-        Console.WriteLine("[Updater] Update process completed successfully.");
+            // Step 3: Restart Backend Service
+            Console.WriteLine("[Updater] Restarting Backend Windows Service...");
+            ControlService("start", serviceName, targetDir);
+            Console.WriteLine("[Updater] Update process completed successfully.");
+        }
+        finally
+        {
+            VerifiedPackageCopy.TryDeleteFile(verifiedPackagePath);
+        }
     }
 
     static void ControlService(string action, string serviceName, string? targetDir)
@@ -99,34 +109,34 @@ class Program
         RunCommand(cmd, args);
     }
 
-    public static (string fileName, string arguments) ResolveServiceManagerCommand(string action, string serviceName, string? targetDir)
+    public static (string fileName, string[] arguments) ResolveServiceManagerCommand(string action, string serviceName, string? targetDir)
     {
         // Prioridad 1: AppContext.BaseDirectory/nssm.exe
         var appDirNssm = Path.Combine(AppContext.BaseDirectory, "nssm.exe");
         if (File.Exists(appDirNssm))
         {
-            return (appDirNssm, $"{action} \"{serviceName}\"");
+            return (appDirNssm, new[] { action, serviceName });
         }
 
         // Prioridad 2: targetDir/nssm.exe o targetDir/tools/nssm.exe
         if (!string.IsNullOrWhiteSpace(targetDir) && Directory.Exists(targetDir))
         {
             var targetNssm = Path.Combine(targetDir, "nssm.exe");
-            if (File.Exists(targetNssm)) return (targetNssm, $"{action} \"{serviceName}\"");
+            if (File.Exists(targetNssm)) return (targetNssm, new[] { action, serviceName });
 
             var toolsNssm = Path.Combine(targetDir, "tools", "nssm.exe");
-            if (File.Exists(toolsNssm)) return (toolsNssm, $"{action} \"{serviceName}\"");
+            if (File.Exists(toolsNssm)) return (toolsNssm, new[] { action, serviceName });
         }
 
         // Prioridad 3: nssm en PATH si existe
         if (IsBinaryOnPath("nssm.exe") || IsBinaryOnPath("nssm"))
         {
-            return ("nssm", $"{action} \"{serviceName}\"");
+            return ("nssm", new[] { action, serviceName });
         }
 
         // Fallback documentado: sc.exe nativo de Windows (solo stop/start)
         Console.WriteLine($"[Updater] [AVISO] Binario nssm.exe no encontrado en '{AppContext.BaseDirectory}' ni en PATH. Usando fallback nativo sc.exe (limitado a inicio y detención).");
-        return ("sc.exe", $"{action} \"{serviceName}\"");
+        return ("sc.exe", new[] { action, serviceName });
     }
 
     private static bool IsBinaryOnPath(string binaryName)
@@ -146,23 +156,28 @@ class Program
         return false;
     }
 
-    static string RunCommand(string fileName, string arguments)
+    static string RunCommand(string fileName, params string[] arguments)
     {
+        string argumentsDisplay = string.Join(" ", arguments);
         try
         {
             var psi = new ProcessStartInfo
             {
                 FileName = fileName,
-                Arguments = arguments,
                 CreateNoWindow = true,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
+            foreach (var argument in arguments)
+            {
+                psi.ArgumentList.Add(argument);
+            }
+
             using var p = Process.Start(psi);
             if (p == null)
             {
-                Console.WriteLine($"[Updater] No se pudo iniciar el proceso ({fileName} {arguments}).");
+                Console.WriteLine($"[Updater] No se pudo iniciar el proceso ({fileName} {argumentsDisplay}).");
                 return string.Empty;
             }
 
@@ -171,7 +186,7 @@ class Program
 
             if (!p.WaitForExit(20000))
             {
-                Console.WriteLine($"[Updater] El comando excedió 20s y fue terminado ({fileName} {arguments}).");
+                Console.WriteLine($"[Updater] El comando excedió 20s y fue terminado ({fileName} {argumentsDisplay}).");
                 try { p.Kill(entireProcessTree: true); }
                 catch { }
             }
@@ -181,17 +196,17 @@ class Program
 
             if (!string.IsNullOrWhiteSpace(stdout))
             {
-                Console.WriteLine($"[Updater] {fileName} {arguments} -> {stdout.Trim()}");
+                Console.WriteLine($"[Updater] {fileName} {argumentsDisplay} -> {stdout.Trim()}");
             }
             if (!string.IsNullOrWhiteSpace(stderr))
             {
-                Console.WriteLine($"[Updater] {fileName} {arguments} (stderr) -> {stderr.Trim()}");
+                Console.WriteLine($"[Updater] {fileName} {argumentsDisplay} (stderr) -> {stderr.Trim()}");
             }
             return stdout ?? string.Empty;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Updater] Command failed ({fileName} {arguments}): {ex.Message}");
+            Console.WriteLine($"[Updater] Command failed ({fileName} {argumentsDisplay}): {ex.Message}");
             return string.Empty;
         }
     }
@@ -203,7 +218,7 @@ class Program
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (sw.ElapsedMilliseconds < timeoutMs)
         {
-            var status = RunCommand("sc.exe", $"query \"{serviceName}\"");
+            var status = RunCommand("sc.exe", "query", serviceName);
             if (status.Contains("STOPPED", StringComparison.OrdinalIgnoreCase) ||
                 status.Contains("SERVICE_NOT_FOUND", StringComparison.OrdinalIgnoreCase) ||
                 status.Contains("1060", StringComparison.OrdinalIgnoreCase))
@@ -215,4 +230,3 @@ class Program
         return false;
     }
 }
-

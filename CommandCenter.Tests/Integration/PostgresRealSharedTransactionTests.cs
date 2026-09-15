@@ -16,12 +16,24 @@ namespace CommandCenter.Tests.Integration;
 /// Se aísla de las suites unitarias locales mediante el trait [Trait("Category", "RequiresDocker")].
 /// </summary>
 [Trait("Category", "RequiresDocker")]
+[Collection(PostgresRealCollection.Name)]
 public class PostgresRealSharedTransactionTests
 {
     private static string? GetConnectionString()
     {
         var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        return string.IsNullOrWhiteSpace(connStr) ? null : connStr;
+        if (string.IsNullOrWhiteSpace(connStr))
+        {
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")))
+            {
+                throw new InvalidOperationException(
+                    "TEST_POSTGRES_CONNECTION no está definida en CI. Configure PostgreSQL real para ejecutar PostgresRealSharedTransactionTests.");
+            }
+
+            return null;
+        }
+
+        return connStr;
     }
 
     [Fact]
@@ -87,23 +99,28 @@ public class PostgresRealSharedTransactionTests
                 await service.AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 400m, 8m, 50m, "Egreso B", isPhysicalCash: true);
 
                 // Quedan 300 Bs.S: dos egresos concurrentes de 200 cada uno = 400 > 300.
-                // Al menos UNO debe fallar (el advisory lock serializa check+insert).
+                // Cada tarea usa SU PROPIO DbContext/servicio: el fallo esperado es la barrera de
+                // saldo (el advisory lock serializa check+insert), no una carrera de contexto compartido.
                 Exception? failureA = null;
                 Exception? failureB = null;
                 var tA = Task.Run(async () =>
                 {
-                    try { await service.AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 200m, 4m, 50m, "Egreso conc A", isPhysicalCash: true); }
+                    using var ctxA = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
+                    try { await new CashDrawerService(ctxA!).AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 200m, 4m, 50m, "Egreso conc A", isPhysicalCash: true); }
                     catch (Exception ex) { failureA = ex; }
                 });
                 var tB = Task.Run(async () =>
                 {
-                    try { await service.AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 200m, 4m, 50m, "Egreso conc B", isPhysicalCash: true); }
+                    using var ctxB = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
+                    try { await new CashDrawerService(ctxB!).AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 200m, 4m, 50m, "Egreso conc B", isPhysicalCash: true); }
                     catch (Exception ex) { failureB = ex; }
                 });
                 await Task.WhenAll(tA, tB);
 
-                Assert.True(failureA != null || failureB != null,
-                    "Uno de los dos egresos concurrentes debía fallar por saldo insuficiente (TOCTOU).");
+                var failures = new[] { failureA, failureB }.Where(f => f != null).ToList();
+                var failure = Assert.Single(failures);
+                var balanceFailure = Assert.IsType<InvalidOperationException>(failure);
+                Assert.Contains("Saldo de efectivo en caja insuficiente para realizar el egreso", balanceFailure.Message);
 
                 var finalBalance = await service.GetCurrentBalanceLocalAsync(session.Id);
                 Assert.False(finalBalance < 0, $"El saldo no debe ser negativo tras la barrera atómica (obtuvo {finalBalance}).");

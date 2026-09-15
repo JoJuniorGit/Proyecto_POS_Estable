@@ -37,10 +37,11 @@ public class PosViewModelPaymentMethodsDeduplicationTests
         mockSales.Setup(s => s.StartSaleAsync(It.IsAny<int?>()))
             .ReturnsAsync(new SaleDto { Id = 101, Status = "Draft" });
 
+        var releasePaymentMethods = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         mockPayments.Setup(p => p.GetActiveMethodsAsync())
             .Returns(async () =>
             {
-                await Task.Delay(50); // Simula latencia de red para forzar carrera
+                await releasePaymentMethods.Task;
                 return CreateSamplePaymentMethods();
             });
 
@@ -63,6 +64,7 @@ public class PosViewModelPaymentMethodsDeduplicationTests
         // Act: Dos llamadas concurrentes simulando SessionChanged + LoginSuccess
         var task1 = posVm.InitializeForSessionAsync();
         var task2 = posVm.InitializeForSessionAsync();
+        releasePaymentMethods.SetResult();
         await Task.WhenAll(task1, task2);
 
         // Assert: Se debió invocar exactamente una vez y no haber métodos duplicados
