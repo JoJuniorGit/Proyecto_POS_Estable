@@ -10,6 +10,8 @@ using Sales.Module;
 using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
+using Sales.Module.Services;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
@@ -110,6 +112,99 @@ public class PaymentMethodCurrencyClassificationTests
         var divisas = report.Details.First(d => d.PaymentMethodName == "Divisas (USD)");
         Assert.Equal(PaymentMethodCurrencyResolver.Usd, divisas.Currency);
         Assert.Equal(3.00m, divisas.SystemAmount);
+    }
+
+    [Fact]
+    public async Task GetReportById_And_ClosureReceipt_ClasificanIgual_MismoCierre()
+    {
+        var salesCtx = CreateInMemorySalesContext();
+        var inventoryCtx = CreateInMemoryInventoryContext();
+
+        var closure = new DailyClosure
+        {
+            Id = 42,
+            UserId = "TestCashier",
+            ExchangeRate = 3600m,
+            ClosureDate = System.DateTime.UtcNow,
+            TotalExpectedBsS = 21600m,
+            TotalActualBsS = 21600m,
+            TotalDifferenceBsS = 0m,
+            Details = new List<ClosureDetail>
+            {
+                new()
+                {
+                    PaymentMethodId = 1,
+                    PaymentMethodName = "Dolares",
+                    ExpectedAmountBsS = 10800m,
+                    ActualAmountBsS = 10800m,
+                    DifferenceBsS = 0m
+                },
+                new()
+                {
+                    PaymentMethodId = 2,
+                    PaymentMethodName = "Divisas (USD)",
+                    ExpectedAmountBsS = 10800m,
+                    ActualAmountBsS = 10800m,
+                    DifferenceBsS = 0m
+                }
+            }
+        };
+        salesCtx.DailyClosures.Add(closure);
+        await salesCtx.SaveChangesAsync();
+
+        var closureService = new Mock<IDailyClosureService>();
+        closureService.Setup(s => s.GetClosureAsync(42)).ReturnsAsync(closure);
+
+        var controller = new ShiftsController(
+            new Mock<ICashDrawerService>().Object,
+            closureService.Object,
+            new Mock<IPaymentMethodService>().Object,
+            new Mock<ISystemSettingsService>().Object,
+            inventoryCtx,
+            salesCtx,
+            new Mock<ICurrentUserService>().Object);
+
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                {
+                    new Claim(ClaimTypes.Role, "Admin")
+                }, "test"))
+            }
+        };
+
+        var reportResult = await controller.GetReportById(42);
+        var reportOk = Assert.IsType<OkObjectResult>(reportResult);
+        var report = Assert.IsType<ShiftReportDto>(reportOk.Value);
+
+        string receipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: false);
+
+        var reportByMethod = report.Details.ToDictionary(d => d.PaymentMethodName);
+
+        foreach (var detail in closure.Details)
+        {
+            string expectedCurrency = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
+
+            Assert.True(reportByMethod.ContainsKey(detail.PaymentMethodName),
+                $"Report missing payment method: {detail.PaymentMethodName}");
+            Assert.Equal(expectedCurrency, reportByMethod[detail.PaymentMethodName].Currency);
+
+            Assert.Contains(detail.PaymentMethodName, receipt);
+            string[] receiptLines = receipt.Split('\n');
+            bool foundInReceipt = false;
+            foreach (string line in receiptLines)
+            {
+                if (line.Contains(detail.PaymentMethodName) && line.Contains(expectedCurrency))
+                {
+                    foundInReceipt = true;
+                    break;
+                }
+            }
+            Assert.True(foundInReceipt,
+                $"Receipt missing payment method {detail.PaymentMethodName} with currency {expectedCurrency}");
+        }
     }
 
     [Fact]
