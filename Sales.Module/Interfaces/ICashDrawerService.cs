@@ -72,13 +72,4 @@ public interface ICashDrawerService
     /// cerradas junto con los movimientos de la sesión siguiente.
     /// </summary>
     Task<System.Collections.Generic.List<CashTransaction>> GetHistoryAsync(int limit = 300);
-    Task<CashAdvanceResultDto> ProcessCashAdvanceAsync(
-        int sessionId,
-        decimal requestedAmountLocal,
-        int paymentMethodId,
-        string paymentMethodName,
-        bool isTransfer,
-        decimal exchangeRate,
-        int? cashierId = null,
-        string? userName = null);
 }

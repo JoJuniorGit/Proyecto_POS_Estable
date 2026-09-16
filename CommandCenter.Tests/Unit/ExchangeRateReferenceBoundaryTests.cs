@@ -14,8 +14,10 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Moq;
+using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
+using Sales.Module.Services;
 using Xunit;
 
 namespace CommandCenter.Tests.Unit;
@@ -132,7 +134,9 @@ public class ExchangeRateReferenceBoundaryTests
 
         var mockSettings = new Mock<ISystemSettingsService>();
         mockSettings.Setup(s => s.GetSettingAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
-        var controller = new CashDrawerController(mockCashDrawer.Object, mockSettings.Object, salesDb, new Mock<ICurrentUserService>().Object, inventoryDb);
+        var mockSalesService = new Mock<ISalesService>();
+        var coordinator = new CashAdvanceCoordinator(salesDb, mockSalesService.Object, mockCashDrawer.Object, mockSettings.Object);
+        var controller = new CashDrawerController(mockCashDrawer.Object, mockSettings.Object, salesDb, new Mock<ICurrentUserService>().Object, inventoryDb, coordinator);
 
         var result = await controller.AddTransaction(new AddTransactionRequest
         {

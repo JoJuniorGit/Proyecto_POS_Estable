@@ -34,11 +34,8 @@ public class CashAdvanceTests
         return new SalesDbContext(options);
     }
 
-    private ServerCashService.CashDrawerService CreateCashDrawerServiceWithSalesService(SalesDbContext context)
+    private ServerCashService.CashAdvanceCoordinator CreateCoordinatorWithSalesService(SalesDbContext context, ISystemSettingsService? settingsService = null)
     {
-        // 8.5-A6: Sin anti-patrón de SalesService(null!). El SalesService real se resuelve desde un
-        // ServiceProvider ad hoc, replicando el patrón de producción (resolución perezosa que evita
-        // el ciclo Scoped ISalesService <-> ICashDrawerService). El mock de ICashDrawerService evita el ciclo local.
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
             .ReturnsAsync(new Product { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
@@ -48,27 +45,47 @@ public class CashAdvanceTests
             .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
 
         var mediatorMock = new Mock<IMediator>();
-        var settingsMock = new Mock<ISystemSettingsService>();
+        var settings = settingsService ?? new Mock<ISystemSettingsService>().Object;
 
-        var services = new ServiceCollection();
-        services.AddScoped<ISalesService>(_ =>
-            new SalesService(context, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsMock.Object));
-        var provider = services.BuildServiceProvider();
+        var salesService = new SalesService(context, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settings);
+        var drawerService = new ServerCashService.CashDrawerService(context);
 
-        return new ServerCashService.CashDrawerService(context, provider);
+        return new ServerCashService.CashAdvanceCoordinator(context, salesService, drawerService, settings);
+    }
+
+    private ServerCashService.CashAdvanceCoordinator CreateCoordinatorWithSettings(SalesDbContext context, ISystemSettingsService settingsService)
+    {
+        var inventoryMock = new Mock<IInventoryService>();
+        inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
+            .ReturnsAsync(new Product { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
+
+        var cashDrawerMock = new Mock<ICashDrawerService>();
+        cashDrawerMock.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
+            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+
+        var mediatorMock = new Mock<IMediator>();
+
+        var salesService = new SalesService(context, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsService);
+        var drawerService = new ServerCashService.CashDrawerService(context);
+
+        return new ServerCashService.CashAdvanceCoordinator(context, salesService, drawerService, settingsService);
     }
 
     [Fact]
     public async Task ProcessCashAdvance_Transfer_Applies7PercentCommission_And_DeductsOnlyRequestedFromPhysicalDrawer()
     {
         using var context = GetInMemoryDbContext();
-        var service = new ServerCashService.CashDrawerService(context);
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("7.0");
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct))
+            .ReturnsAsync("10.0");
+        var coordinator = CreateCoordinatorWithSettings(context, settingsMock.Object);
+        var drawerService = new ServerCashService.CashDrawerService(context);
 
-        // Open session with 2,000 Bs.S opening balance
-        var session = await service.OpenSessionAsync(2000m, 50.0m);
+        var session = await drawerService.OpenSessionAsync(2000m, 50.0m);
 
-        // Process Cash Advance for 1,000 Bs.S via Transfer
-        var result = await service.ProcessCashAdvanceAsync(
+        var result = await coordinator.ProcessAsync(
             sessionId: session.Id,
             requestedAmountLocal: 1000m,
             paymentMethodId: 2,
@@ -78,11 +95,10 @@ public class CashAdvanceTests
         );
 
         Assert.Equal(1000m, result.RequestedAmountLocal);
-        Assert.Equal(70m, result.CommissionAmountLocal); // 7% of 1,000
+        Assert.Equal(70m, result.CommissionAmountLocal);
         Assert.Equal(1070m, result.TotalChargedLocal);
         Assert.Equal(7.0m, result.CommissionPercentage);
 
-        // Verify Expense (physical cash out) and Income (non-physical commission)
         Assert.True(result.ExpenseTransaction.IsPhysicalCash);
         Assert.Equal(CashTransactionType.Expense, result.ExpenseTransaction.Type);
         Assert.Equal(1000m, result.ExpenseTransaction.AmountLocal);
@@ -91,8 +107,7 @@ public class CashAdvanceTests
         Assert.Equal(CashTransactionType.Income, result.IncomeTransaction.Type);
         Assert.Equal(70m, result.IncomeTransaction.AmountLocal);
 
-        // Verify Physical Drawer Balance: Opening (2,000) - Expense (1,000) = 1,000 (Commission 70 is excluded from physical cash balance)
-        var physicalBalance = await service.GetCurrentBalanceLocalAsync(session.Id);
+        var physicalBalance = await drawerService.GetCurrentBalanceLocalAsync(session.Id);
         Assert.Equal(1000m, physicalBalance);
     }
 
@@ -100,11 +115,17 @@ public class CashAdvanceTests
     public async Task ProcessCashAdvance_GeneratesCompletedSale_WithConsecutiveInvoiceNumber()
     {
         using var context = GetInMemoryDbContext();
-        var service = CreateCashDrawerServiceWithSalesService(context);
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("7.0");
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct))
+            .ReturnsAsync("10.0");
+        var coordinator = CreateCoordinatorWithSalesService(context, settingsMock.Object);
+        var drawerService = new ServerCashService.CashDrawerService(context);
 
-        var session = await service.OpenSessionAsync(2000m, 50.0m);
+        var session = await drawerService.OpenSessionAsync(2000m, 50.0m);
 
-        var result = await service.ProcessCashAdvanceAsync(
+        var result = await coordinator.ProcessAsync(
             sessionId: session.Id,
             requestedAmountLocal: 1000m,
             paymentMethodId: 2,
@@ -126,7 +147,7 @@ public class CashAdvanceTests
         Assert.Equal(SaleStatus.Completed, sale.Status);
         Assert.Equal(SaleDeliveryStatus.Delivered, sale.DeliveryStatus);
         Assert.Equal(1070m, sale.TotalBsS);
-        Assert.Equal(21.4m, sale.TotalUSD); // 1070 / 50 = 21.4 USD
+        Assert.Equal(21.4m, sale.TotalUSD);
         Assert.Single(sale.Items);
         Assert.Single(sale.Payments);
     }
@@ -135,11 +156,17 @@ public class CashAdvanceTests
     public async Task ProcessCashAdvance_DoesNotCreateAdditionalCashTransactions()
     {
         using var context = GetInMemoryDbContext();
-        var service = new ServerCashService.CashDrawerService(context);
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("7.0");
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct))
+            .ReturnsAsync("10.0");
+        var coordinator = CreateCoordinatorWithSettings(context, settingsMock.Object);
+        var drawerService = new ServerCashService.CashDrawerService(context);
 
-        var session = await service.OpenSessionAsync(2000m, 50.0m);
+        var session = await drawerService.OpenSessionAsync(2000m, 50.0m);
 
-        await service.ProcessCashAdvanceAsync(
+        await coordinator.ProcessAsync(
             sessionId: session.Id,
             requestedAmountLocal: 1000m,
             paymentMethodId: 2,
@@ -148,11 +175,9 @@ public class CashAdvanceTests
             exchangeRate: 50.0m
         );
 
-        // Session transactions: 1 Opening + 1 Expense + 1 Commission Income = exactly 3 total transactions
         var sessionTxCount = await context.CashTransactions.CountAsync(t => t.SessionId == session.Id);
         Assert.Equal(3, sessionTxCount);
 
-        // CashAdvance specific transactions: exactly 2 (1 Expense, 1 Income)
         var cashAdvanceTxCount = await context.CashTransactions.CountAsync(t => t.Source == CashTransactionSource.CashAdvance);
         Assert.Equal(2, cashAdvanceTxCount);
     }
@@ -161,11 +186,17 @@ public class CashAdvanceTests
     public async Task ProcessCashAdvance_SaleIntegration_DoesNotAffectDrawerBalanceTwice()
     {
         using var context = GetInMemoryDbContext();
-        var service = new ServerCashService.CashDrawerService(context);
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("7.0");
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct))
+            .ReturnsAsync("10.0");
+        var coordinator = CreateCoordinatorWithSettings(context, settingsMock.Object);
+        var drawerService = new ServerCashService.CashDrawerService(context);
 
-        var session = await service.OpenSessionAsync(2000m, 50.0m);
+        var session = await drawerService.OpenSessionAsync(2000m, 50.0m);
 
-        await service.ProcessCashAdvanceAsync(
+        await coordinator.ProcessAsync(
             sessionId: session.Id,
             requestedAmountLocal: 1000m,
             paymentMethodId: 2,
@@ -174,8 +205,7 @@ public class CashAdvanceTests
             exchangeRate: 50.0m
         );
 
-        // Physical Balance: Opening (2,000) - Requested Expense (1,000) = 1,000 Bs.S
-        var physicalBalance = await service.GetCurrentBalanceLocalAsync(session.Id);
+        var physicalBalance = await drawerService.GetCurrentBalanceLocalAsync(session.Id);
         Assert.Equal(1000m, physicalBalance);
     }
 
@@ -183,11 +213,17 @@ public class CashAdvanceTests
     public async Task ProcessCashAdvance_SaleItem_HasExplicitPriceOverridingProductDefault()
     {
         using var context = GetInMemoryDbContext();
-        var service = CreateCashDrawerServiceWithSalesService(context);
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("7.0");
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct))
+            .ReturnsAsync("10.0");
+        var coordinator = CreateCoordinatorWithSalesService(context, settingsMock.Object);
+        var drawerService = new ServerCashService.CashDrawerService(context);
 
-        var session = await service.OpenSessionAsync(2000m, 50.0m);
+        var session = await drawerService.OpenSessionAsync(2000m, 50.0m);
 
-        var result = await service.ProcessCashAdvanceAsync(
+        var result = await coordinator.ProcessAsync(
             sessionId: session.Id,
             requestedAmountLocal: 1000m,
             paymentMethodId: 2,
@@ -208,12 +244,17 @@ public class CashAdvanceTests
     public async Task ProcessCashAdvance_POS_Applies10PercentCommission()
     {
         using var context = GetInMemoryDbContext();
-        var service = new ServerCashService.CashDrawerService(context);
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("7.0");
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct))
+            .ReturnsAsync("10.0");
+        var coordinator = CreateCoordinatorWithSettings(context, settingsMock.Object);
+        var drawerService = new ServerCashService.CashDrawerService(context);
 
-        var session = await service.OpenSessionAsync(2000m, 50.0m);
+        var session = await drawerService.OpenSessionAsync(2000m, 50.0m);
 
-        // Process Cash Advance for 1,000 Bs.S via Punto de Venta (non-transfer electronic)
-        var result = await service.ProcessCashAdvanceAsync(
+        var result = await coordinator.ProcessAsync(
             sessionId: session.Id,
             requestedAmountLocal: 1000m,
             paymentMethodId: 3,
@@ -223,7 +264,7 @@ public class CashAdvanceTests
         );
 
         Assert.Equal(1000m, result.RequestedAmountLocal);
-        Assert.Equal(100m, result.CommissionAmountLocal); // 10% of 1,000
+        Assert.Equal(100m, result.CommissionAmountLocal);
         Assert.Equal(1100m, result.TotalChargedLocal);
         Assert.Equal(10.0m, result.CommissionPercentage);
     }
@@ -236,15 +277,14 @@ public class CashAdvanceTests
         var settingsMock = new Mock<ISystemSettingsService>();
         settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
             .ReturnsAsync("5.5");
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct))
+            .ReturnsAsync("10.0");
 
-        var services = new ServiceCollection();
-        services.AddScoped<ISystemSettingsService>(_ => settingsMock.Object);
-        var provider = services.BuildServiceProvider();
+        var coordinator = CreateCoordinatorWithSettings(context, settingsMock.Object);
+        var drawerService = new ServerCashService.CashDrawerService(context);
+        var session = await drawerService.OpenSessionAsync(2000m, 50.0m);
 
-        var service = new ServerCashService.CashDrawerService(context, provider);
-        var session = await service.OpenSessionAsync(2000m, 50.0m);
-
-        var result = await service.ProcessCashAdvanceAsync(
+        var result = await coordinator.ProcessAsync(
             sessionId: session.Id,
             requestedAmountLocal: 1000m,
             paymentMethodId: 2,
@@ -253,50 +293,58 @@ public class CashAdvanceTests
             exchangeRate: 50.0m
         );
 
-        Assert.Equal(55m, result.CommissionAmountLocal); // 5.5% of 1,000
+        Assert.Equal(55m, result.CommissionAmountLocal);
         Assert.Equal(5.5m, result.CommissionPercentage);
     }
 
     [Fact]
-    public async Task ProcessCashAdvance_Cash_FallsBackTo10Percent_WhenSettingsMissing()
+    public async Task ProcessCashAdvance_Cash_MissingCommissionRejectsWithoutPayoutOrSale()
     {
         using var context = GetInMemoryDbContext();
 
         var settingsMock = new Mock<ISystemSettingsService>();
         settingsMock.Setup(s => s.GetSettingAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
 
-        var services = new ServiceCollection();
-        services.AddScoped<ISystemSettingsService>(_ => settingsMock.Object);
-        var provider = services.BuildServiceProvider();
+        var coordinator = CreateCoordinatorWithSettings(context, settingsMock.Object);
+        var drawerService = new ServerCashService.CashDrawerService(context);
+        var session = await drawerService.OpenSessionAsync(2000m, 50.0m);
 
-        var service = new ServerCashService.CashDrawerService(context, provider);
-        var session = await service.OpenSessionAsync(2000m, 50.0m);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            coordinator.ProcessAsync(
+                sessionId: session.Id,
+                requestedAmountLocal: 1000m,
+                paymentMethodId: 2,
+                paymentMethodName: "Punto de Venta",
+                isTransfer: false,
+                exchangeRate: 50.0m
+            ));
 
-        var result = await service.ProcessCashAdvanceAsync(
-            sessionId: session.Id,
-            requestedAmountLocal: 1000m,
-            paymentMethodId: 2,
-            paymentMethodName: "Punto de Venta",
-            isTransfer: false,
-            exchangeRate: 50.0m
-        );
+        Assert.Contains("no está configurada", ex.Message);
 
-        Assert.Equal(100m, result.CommissionAmountLocal); // fallback 10% of 1,000
-        Assert.Equal(10.0m, result.CommissionPercentage);
+        var balance = await drawerService.GetCurrentBalanceLocalAsync(session.Id);
+        Assert.Equal(2000m, balance);
+
+        var saleCount = await context.Sales.CountAsync();
+        Assert.Equal(0, saleCount);
     }
 
     [Fact]
     public async Task ProcessCashAdvance_InsufficientCash_ThrowsInvalidOperationException()
     {
         using var context = GetInMemoryDbContext();
-        var service = new ServerCashService.CashDrawerService(context);
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("7.0");
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct))
+            .ReturnsAsync("10.0");
+        var coordinator = CreateCoordinatorWithSettings(context, settingsMock.Object);
+        var drawerService = new ServerCashService.CashDrawerService(context);
 
-        var session = await service.OpenSessionAsync(500m, 50.0m);
+        var session = await drawerService.OpenSessionAsync(500m, 50.0m);
 
-        // Attempting to withdraw 1,000 Bs.S when physical balance is only 500 Bs.S
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
         {
-            await service.ProcessCashAdvanceAsync(
+            await coordinator.ProcessAsync(
                 sessionId: session.Id,
                 requestedAmountLocal: 1000m,
                 paymentMethodId: 2,
@@ -319,12 +367,10 @@ public class CashAdvanceTests
 
         var vm = new CashAdvanceRegisterViewModel(methods, availableCashLocal: 2000m, exchangeRate: 50.0m);
 
-        // Physical Cash must be filtered out
         Assert.DoesNotContain(vm.ElectronicPaymentMethods, pm => pm.IsCash || pm.Name.Equals("Efectivo", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(2, vm.ElectronicPaymentMethods.Count);
         Assert.Equal("Transferencia", vm.SelectedPaymentMethod?.Name);
 
-        // 1,000 Bs.S requested -> 7% transfer commission = 70 Bs.S, Total = 1,070 Bs.S
         vm.RequestedAmountBsS = 1000m;
         Assert.True(vm.IsTransfer);
         Assert.Equal(7.0m, vm.CommissionPercentage);

@@ -23,19 +23,22 @@ public class CashDrawerController : ControllerBase
     private readonly Sales.Module.Data.SalesDbContext _db;
     private readonly ICurrentUserService _currentUserService;
     private readonly InventoryDbContext _inventoryContext;
+    private readonly Sales.Module.Services.CashAdvanceCoordinator _cashAdvanceCoordinator;
 
     public CashDrawerController(
         ICashDrawerService cashDrawerService, 
         ISystemSettingsService settingsService, 
         Sales.Module.Data.SalesDbContext db,
         ICurrentUserService currentUserService,
-        InventoryDbContext inventoryContext)
+        InventoryDbContext inventoryContext,
+        Sales.Module.Services.CashAdvanceCoordinator cashAdvanceCoordinator)
     {
         _cashDrawerService = cashDrawerService;
         _settingsService = settingsService;
         _db = db;
         _currentUserService = currentUserService;
         _inventoryContext = inventoryContext;
+        _cashAdvanceCoordinator = cashAdvanceCoordinator;
     }
 
     [HttpGet("active-session")]
@@ -306,7 +309,7 @@ public class CashDrawerController : ControllerBase
             ? request.UserName
             : (cashierId.HasValue ? (await _db.Users.FindAsync(cashierId.Value))?.Name ?? "Usuario" : "Usuario");
 
-        var result = await _cashDrawerService.ProcessCashAdvanceAsync(
+        var result = await _cashAdvanceCoordinator.ProcessAsync(
             request.SessionId,
             request.RequestedAmountLocal,
             request.PaymentMethodId,

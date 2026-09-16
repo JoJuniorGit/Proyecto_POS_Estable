@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Core.Helpers;
-using Core.Logging;
 using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
@@ -14,42 +13,10 @@ namespace Sales.Module.Services;
 public class CashDrawerService : ICashDrawerService
 {
     private readonly SalesDbContext _context;
-    private readonly IServiceProvider? _serviceProvider;
 
-    // 8.5-A6: Sin anti-patrón de construir SalesService con null!. El ISalesService se resuelve
-    // perezosamente desde el ServiceProvider para no crear un ciclo Scoped con ISalesService,
-    // que a su vez depende de ICashDrawerService (CashDrawerService) por constructor.
-    public CashDrawerService(SalesDbContext context, IServiceProvider? serviceProvider = null)
+    public CashDrawerService(SalesDbContext context)
     {
         _context = context;
-        _serviceProvider = serviceProvider;
-    }
-
-    private ISalesService? GetSalesService()
-    {
-        return _serviceProvider?.GetService(typeof(ISalesService)) as ISalesService;
-    }
-
-    private Core.Interfaces.ISystemSettingsService? GetSettingsService()
-    {
-        return _serviceProvider?.GetService(typeof(Core.Interfaces.ISystemSettingsService)) as Core.Interfaces.ISystemSettingsService;
-    }
-
-    private async Task<decimal> GetCommissionPercentageAsync(bool isTransfer)
-    {
-        var key = isTransfer
-            ? Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct
-            : Core.Constants.SettingKeys.CashAdvanceCashCommissionPct;
-        var fallback = isTransfer ? 7.0m : 10.0m;
-
-        var settingsService = GetSettingsService();
-        var value = settingsService != null
-            ? await settingsService.GetSettingAsync(key)
-            : null;
-
-        return decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var percentage) && percentage > 0
-            ? percentage
-            : fallback;
     }
 
     public async Task<CashDrawerSession?> GetActiveSessionAsync()
@@ -479,138 +446,4 @@ public class CashDrawerService : ICashDrawerService
             .ToListAsync();
     }
 
-    public async Task<CashAdvanceResultDto> ProcessCashAdvanceAsync(
-        int sessionId,
-        decimal requestedAmountLocal,
-        int paymentMethodId,
-        string paymentMethodName,
-        bool isTransfer,
-        decimal exchangeRate,
-        int? cashierId = null,
-        string? userName = null)
-    {
-        if (requestedAmountLocal <= 0)
-        {
-            throw new ArgumentException("El monto del adelanto debe ser mayor a cero.", nameof(requestedAmountLocal));
-        }
-
-        // Validación de integridad: el efectivo entregado solo acepta montos enteros (sin centavos).
-        if (requestedAmountLocal % 1 != 0)
-        {
-            throw new ArgumentException("El monto de efectivo a entregar debe ser un número entero sin decimales.", nameof(requestedAmountLocal));
-        }
-
-        var availableCash = await GetCurrentBalanceLocalAsync(sessionId);
-        var roundedRequested = Math.Round(requestedAmountLocal, 2, MidpointRounding.AwayFromZero);
-
-        if (availableCash < roundedRequested)
-        {
-            throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente. Disponible: {availableCash:N2} Bs.S, Requerido: {roundedRequested:N2} Bs.S.");
-        }
-
-        // 8.9-B4: adelanto de efectivo = venta contable (SalesDbContext) + movimientos de caja en la MISMA
-        // transacción cross-DB. Se ejecuta bajo execution strategy para reintentar el bloque completo
-        // (ambas bases) ante fallos transitorios, evitando escrituras a medias.
-        return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
-        {
-        IDbContextTransaction? dbTransaction = null;
-        if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
-        {
-            dbTransaction = await _context.Database.BeginTransactionAsync();
-        }
-
-        try
-        {
-            string activeUserName = !string.IsNullOrWhiteSpace(userName) ? userName : "Usuario";
-            decimal commissionPercentage = await GetCommissionPercentageAsync(isTransfer);
-            decimal commissionAmountLocal = Math.Round(roundedRequested * (commissionPercentage / 100.0m), 2, MidpointRounding.AwayFromZero);
-            decimal totalChargedLocal = roundedRequested + commissionAmountLocal;
-
-            // 8.5-A5 (residual): se genera PRIMERO la venta contable, que ancla la tasa a la BCV del día
-            // (misma política CompleteSale/HoldSale). La tasa anclada rige también para las transacciones
-            // de caja asociadas, evitando tasas divergentes entre la venta y los movimientos de caja.
-            decimal anchoredRate = exchangeRate;
-            Sale? createdSale = null;
-            var salesService = GetSalesService();
-            if (salesService == null)
-            {
-                // 8.5-A6: Eliminado el anti-patrón de construir un SalesService con null!.
-                // Sin el servicio DI no se genera la venta contable; en producción ISalesService
-                // siempre está registrado en el contenedor.
-                AppLogger.LogWarn("[CASH] ProcessCashAdvanceAsync no pudo obtener ISalesService del contenedor DI; no se generó la venta contable.");
-            }
-            else
-            {
-                createdSale = await salesService.CreateCashAdvanceSaleAsync(
-                    requestedAmountLocal: roundedRequested,
-                    commissionAmountLocal: commissionAmountLocal,
-                    paymentMethodId: paymentMethodId,
-                    paymentMethodName: paymentMethodName,
-                    isTransfer: isTransfer,
-                    exchangeRate: exchangeRate,
-                    cashierId: cashierId,
-                    userName: activeUserName,
-                    existingTransaction: dbTransaction
-                );
-                if (createdSale != null && createdSale.AppliedRate > 0m)
-                {
-                    anchoredRate = createdSale.AppliedRate;
-                }
-            }
-
-            // 1. Egreso físico de caja con la descripción requerida: "Adelanto de Efectivo - {Metodo} {comision}% {usuario}"
-            var expenseTx = await AddTransactionAsync(
-                sessionId: sessionId,
-                type: CashTransactionType.Expense,
-                source: CashTransactionSource.CashAdvance,
-                amountLocal: roundedRequested,
-                amountUsd: anchoredRate > 0 ? roundedRequested / anchoredRate : 0,
-                exchangeRate: anchoredRate,
-                description: $"Adelanto de Efectivo - {paymentMethodName} {commissionPercentage:0}% {activeUserName}",
-                isPhysicalCash: true,
-                paymentMethodId: paymentMethodId
-            );
-
-            // 2. Ingreso contable por comisión (no físico, IsPhysicalCash = false)
-            var incomeTx = await AddTransactionAsync(
-                sessionId: sessionId,
-                type: CashTransactionType.Income,
-                source: CashTransactionSource.CashAdvance,
-                amountLocal: commissionAmountLocal,
-                amountUsd: anchoredRate > 0 ? commissionAmountLocal / anchoredRate : 0,
-                exchangeRate: anchoredRate,
-                description: $"Comisión Adelanto ({commissionPercentage:0}% {paymentMethodName}) - {activeUserName}",
-                isPhysicalCash: false,
-                paymentMethodId: paymentMethodId
-            );
-
-            if (dbTransaction != null)
-            {
-                await dbTransaction.CommitAsync();
-                await dbTransaction.DisposeAsync();
-            }
-
-            return new CashAdvanceResultDto
-            {
-                ExpenseTransaction = expenseTx,
-                IncomeTransaction = incomeTx,
-                RequestedAmountLocal = roundedRequested,
-                CommissionAmountLocal = commissionAmountLocal,
-                TotalChargedLocal = totalChargedLocal,
-                CommissionPercentage = commissionPercentage,
-                RelatedSaleId = createdSale?.Id,
-                InvoiceNumber = createdSale?.InvoiceNumber
-            };
-        }
-        catch
-        {
-            if (dbTransaction != null)
-            {
-                await dbTransaction.RollbackAsync();
-                await dbTransaction.DisposeAsync();
-            }
-            throw;
-        }
-        });
-    }
 }

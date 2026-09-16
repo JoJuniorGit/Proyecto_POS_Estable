@@ -51,6 +51,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.ISalesService, Sales.Module.Services.SalesService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.ICashDrawerService, Sales.Module.Services.CashDrawerService>();
+        builder.Services.AddScoped<Sales.Module.Services.CashAdvanceCoordinator>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodService, Sales.Module.Services.PaymentMethodService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodNotifier, Backend.API.Services.SignalRPaymentMethodNotifier>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IHoldOrderNotifier, Backend.API.Services.SignalRHoldOrderNotifier>();

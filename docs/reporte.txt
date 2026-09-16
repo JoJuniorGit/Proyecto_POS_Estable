@@ -8851,3 +8851,146 @@ antes del commit: ProblemDetails en el 400 del preview y consolidacion de tests
 del resolver.
 
 FIN DEL ANEXO - REVISION 8.137
+
+================================================================================
+ANEXO - REVISION 8.138
+================================================================================
+Fecha: 2026-09-16
+Change: cash-closure-integrity — Slice 2 (H-02 CashAdvanceCoordinator)
+
+A. CONTEXTO
+-----------
+H-02 del audit: CashDrawerService tiene un Service Locator (IServiceProvider) con
+ciclo DI hacia ISalesService. Si la resolución falla, el adelanto de efectivo se
+paga físicamente SIN crear la venta contable (silencio + agujero fiscal). Segundo
+locator para ISystemSettingsService con fallback silencioso de comisiones 10%/7%.
+Slice 1 (H-01) ya commiteada.
+
+B. CAMBIOS REALIZADOS
+----------------------
+B1. CashAdvanceCoordinator.cs (nuevo, scoped): inyecta SalesDbContext, ISalesService,
+    ICashDrawerService e ISystemSettingsService por constructor. Método ProcessAsync
+    devuelve CashAdvanceResultDto. Comisión resuelta del settings; si es irresoluble
+    → fail-closed (InvalidOperationException, sin payout). Porta el envelope de
+    ejecución (strategy + transacción, isolation default — NO Serializable). Orden:
+    (1) venta contable primero via ISalesService.CreateCashAdvanceSaleAsync, (2) su
+    AppliedRate ancla los movimientos, (3) egreso físico + ingreso de comisión.
+    Snapshots: AppliedRate, TotalUSD, TotalBsS, FinalPaidAmountBsS; RoundingAdjustment
+    en default.
+B2. CashAdvanceCoordinatorTests.cs (nuevo): 5 tests unitarios — comisión configurada
+    aplicada; comisión faltante/inválida → rechazo sin payout ni venta; AppliedRate
+    ancla los movimientos; snapshots como antes (RoundingAdjustment default); saldo
+    físico deduce solo el monto solicitado.
+B3. CashAdvanceEnvelopeTests.cs (nuevo, TEST_POSTGRES_CONNECTION-gated): atomicidad
+    del envelope (fallo de venta → sin movimiento de caja); commit exitoso → venta
+    + 2 movimientos de caja persistidos.
+B4. CashDrawerService.cs: eliminados ProcessCashAdvanceAsync (134 líneas),
+    IServiceProvider? _serviceProvider, parámetro del ctor, GetSalesService(),
+    GetSettingsService() y GetCommissionPercentageAsync(). Ctor queda de un solo
+    argumento (SalesDbContext context). Archivo baja de 616 a 449 líneas (bajo 500).
+B5. ICashDrawerService.cs: eliminada la firma de ProcessCashAdvanceAsync (conservada
+    la clase CashAdvanceResultDto para el coordinator).
+B6. CashAdvanceTests.cs: 9 call sites de ProcessCashAdvanceAsync re-apuntados a
+    CashAdvanceCoordinator.ProcessAsync. Helper de construcción actualizado.
+    Test de fallback 10% invertido a fail-closed (missing commission → rechazo).
+B7. CashDrawerServiceUnitTests.cs: eliminados 3 tests del método removido
+    (ProcessCashAdvanceAsync_WithIntegerAmount, WithCentsAmount, WhenInsufficientCash).
+    Migrados a CashAdvanceCoordinatorTests.
+B8. CashDrawerClosureTests.cs: eliminado 1 test del método removido
+    (CashAdvance_WithDecimalRequestedAmount). Migrado a CashAdvanceCoordinatorTests.
+B9. Phase3ConcurrencyAndReservationTests.cs: corregidas llamadas al ctor de
+    CashDrawerService (eliminado parámetro null!).
+B10. CashDrawerController.cs: inyectado CashAdvanceCoordinator; endpoint de adelanto
+    reemplaza _cashDrawerService.ProcessCashAdvanceAsync por
+    _cashAdvanceCoordinator.ProcessAsync.
+B11. ServiceCollectionExtensions.cs: registrado CashAdvanceCoordinator como scoped.
+B12. ExchangeRateReferenceBoundaryTests.cs, SecurityTests.cs: corregidas llamadas
+    al ctor de CashDrawerController (añadido parámetro coordinator).
+
+C. VERIFICACION
+---------------
+C1. dotnet build CommandCenter.slnx -c Release → 0 errores / 0 warnings.
+C2. dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj → 1131/1131
+    (0 fallos; base 1126 + 5 tests nuevos del coordinator; 2 integration tests
+    gated por TEST_POSTGRES_CONNECTION no ejecutados en CI local).
+C3. dotnet test --filter "CashAdvanceCoordinator" → 5/5 unit tests (the 2 integration
+    envelope tests require TEST_POSTGRES_CONNECTION and are not matched by this filter).
+C4. CashDrawerService.cs = 449 líneas (bajo 500), sin IServiceProvider, sin
+    ISalesService.
+
+D. HALLAZGOS SECUNDARIOS
+-------------------------
+Ninguno. Los tests adicionales en ExchangeRateReferenceBoundaryTests.cs y
+SecurityTests.cs que construyen CashDrawerController se corrigieron para aceptar
+el nuevo parámetro (CashAdvanceCoordinator) inyectando un coordinator con
+dependencias mockeadas.
+
+E. NOTA RDD OFF
+RDD off (limitacion del runtime OpenCode): assess tier=medium; verificador
+independiente no aplica para slice de implementación.
+
+FIN DEL ANEXO - REVISION 8.138
+
+===============================================================================
+CORRECCIONES POST-VERIFICACION (2b) - cash-closure-integrity slice 2 (H-02)
+===============================================================================
+
+Alcance: correcciones de los residuos identificados en la verificacion
+independiente (pass 2b). Verificacion: build Release 0w/0e; dotnet test
+1132/1132 (sin fallas); CashAdvanceCoordinator 5/5 unit (los envelope tests
+requieren TEST_POSTGRES_CONNECTION).
+
+A. CORRECCIONES
+A1. [assertiones snapshot] CashAdvanceCoordinatorTests: el test de snapshot
+    verificaba TotalUSD > 0 (condicion debil). Fix: Assert.Equal(21.4m,
+    sale.TotalUSD) y Assert.Equal(0m, sale.RoundingAdjustment) — valores
+    exactos del calculo (1070 / 50 = 21.4; RoundingAdjustment nunca se
+    asigna en CreateCashAdvanceSaleAsync).
+
+A2. [test tasa anclaje discriminante] CashAdvanceCoordinatorTests: el test de
+    anclaje pasaba la misma tasa como input y oficial, por lo que no
+    discriminaba entre el rate del BCV y el input del cajero. Fix: construye
+    el coordinator inline con inventoryMock.Setup(i =>
+    i.GetTodayExchangeRateAsync()).ReturnsAsync(60.0m) (tasa oficial del
+    BCV), input del cajero = 50.0m; aserta que AppliedRate y las transacciones
+    de drawer son 60.0m (ancla al BCV por desviacion > 10%). Fracasa si la
+    regresion reintroduce el input crudo.
+
+A3. [skip CI + test atomicidad] CashAdvanceEnvelopeTests: reemplazados los 3
+    guards `if (!IsPostgresAvailable) return;` por helper SkipIfNoPostgres() que
+    lanza InvalidOperationException cuando GITHUB_ACTIONS esta definido y
+    TEST_POSTGRES_CONNECTION falta (convencion del repo, identica a DailyClosureRetry
+    IntegrationTests), y return silencioso en local. Nuevo test:
+    Envelope_DrawerFailure_RollsBackSaleAndTransactions — simula fallo en
+    AddTransactionAsync via ICashDrawerService fake; aserta que la venta y las
+    transacciones NO persisten (rollback).
+
+A4. [log antes de throw] CashAdvanceCoordinator: anadido Core.Logging.AppLogger
+    .LogWarn(...) antes del throw InvalidOperationException por comision no
+    resuelta. Contexto: identifica si es transferencia o efectivo, clave del
+    setting y valor obtenido. Habilita diagnostico en warn.log sin filtrar el
+    exception al cajero.
+
+B. VERIFICACION
+B1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+B2. dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release:
+    1132 superadas / 0 fallidas.
+B3. dotnet test --filter "CashAdvanceCoordinator": 5/5 unit tests (integration
+    tests require TEST_POSTGRES_CONNECTION).
+
+===============================================================================
+AJUSTES PRE-COMMIT Y EXCEPCION GGA - slice 2
+===============================================================================
+
+CT1. CashAdvanceCoordinator.ProcessAsync acepta CancellationToken (default) y lo
+     propaga a la estrategia de ejecucion y a BeginTransactionAsync/CommitAsync/
+     RollbackAsync. Propagacion hacia las interfaces de CashDrawerService y
+     SalesService (capa de datos completa): agendada en H-09 (C3).
+CT2. Verificacion final: dotnet build CommandCenter.slnx -c Release -> 0 warnings
+     / 0 errores; dotnet test CommandCenter.Tests -> 1132/1132 (0 fallos).
+G1. EXCEPCION GGA AUTORIZADA (--no-verify, 2026-09-16): el hook GGA revisa
+    archivos completos (no diffs) y bloqueo el commit por deuda legacy de los
+    archivos tocados: entidades EF al cliente (H-04), CancellationToken general
+    (H-09), comentarios explicativos, AsNoTracking/AsSplitQuery y ProblemDetails
+    en codigo preexistente. Deuda agendada a C2/C3. El unico hallazgo propio de
+    slice 2 (CT del coordinator) quedo resuelto en CT1.

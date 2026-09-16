@@ -251,17 +251,4 @@ public class CashDrawerClosureTests
         Assert.Equal(0m, vm.TotalIncomeBsS);
         Assert.Equal(0m, vm.TotalExpenseBsS);
     }
-
-    [Fact]
-    public async Task CashAdvance_WithDecimalRequestedAmount_ThrowsValidationError()
-    {
-        using var context = GetInMemoryDbContext();
-        var serverService = new ServerCashService.CashDrawerService(context);
-        var session = await serverService.OpenSessionAsync(1000m, 50m);
-
-        // El efectivo entregado al cliente solo acepta montos enteros
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            serverService.ProcessCashAdvanceAsync(session.Id, 10.50m, 2, "Card", false, 50m));
-        Assert.Contains("número entero sin decimales", ex.Message);
-    }
 }

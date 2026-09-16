@@ -100,7 +100,7 @@ public class Phase3ConcurrencyAndReservationTests
     {
         // Arrange
         using var context = CreateInMemorySalesDbContext();
-        var service = new CashDrawerService(context, null!);
+        var service = new CashDrawerService(context);
 
         // Act 1: Abrir sesión inicial
         var session1 = await service.OpenSessionAsync(100m, 60m);
@@ -121,7 +121,7 @@ public class Phase3ConcurrencyAndReservationTests
     {
         // Arrange
         using var context = CreateInMemorySalesDbContext();
-        var service = new CashDrawerService(context, null!);
+        var service = new CashDrawerService(context);
 
         // Act
         var session1 = await service.GetOrCreateActiveSessionAsync(60m);

@@ -149,12 +149,15 @@ public class SecurityTests
 
         using var inventoryDb = TestDatabaseFactory.CreateInventoryDbContext();
 
+        var mockSalesService = new Mock<ISalesService>();
+        var coordinator = new CashAdvanceCoordinator(salesDb, mockSalesService.Object, mockCashDrawer.Object, mockSettings.Object);
         var controller = new CashDrawerController(
             mockCashDrawer.Object,
             mockSettings.Object,
             salesDb,
             mockCurrentUserService.Object,
-            inventoryDb);
+            inventoryDb,
+            coordinator);
 
         var request = new AddTransactionRequest
         {
