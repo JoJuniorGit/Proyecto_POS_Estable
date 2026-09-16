@@ -104,3 +104,7 @@ Slice 1 complete (committed). Slice 2 complete + post-verification fixes (2b) ap
 ### Slice 3 Post-verification fixes (3c)
 - [x] 3c.1 Consistencia del discriminante: seeds sin acento ("Dolares") — el heuristico viejo era sensible a acentos y el seed acentuado anulaba la discriminacion; rename del test del controller a `GetReportById_Dolares_ClasificaBsSPorResolver`; assert literal `3.00m` (sin helper-vs-helper); caso midpoint agregado `ToUSD(1m, 8m) == 0.13m` (AwayFromZero real). ANEXO B2 ajustado.
 - [x] 3c.2 Re-verificacion: build Release 0/0; suite 1136/1136; filtro 4/4.
+
+## P1 (CRITICAL-01) fix
+- [x] PaymentMethodCurrencyClassificationTests.cs: added `GetReportById_And_ClosureReceipt_ClasificanIgual_MismoCierre` — runtime test that executes both the report path (`GetReportById`) and the receipt path (`GenerateReceiptContent`) on the same closure with divergent payment methods ("Dolares" → Bs.S, "Divisas (USD)" → USD), and asserts currency label agreement per method between both paths.
+- Build: 0 errors / 0 warnings. Filtered: 5/5. Full suite: 1137/1137.

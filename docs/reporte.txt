@@ -9081,3 +9081,44 @@ G2. RIESGO REGISTRADO PARA C3 (hallazgo del review, preexistente, NO introducido
     consolidacion de cierre (H-10 / C3).
 G3. Verificacion final de la slice: dotnet build Release 0w/0e; dotnet test
     1136/1136 (0 fallos).
+
+================================================================================
+ANEXO - REVISION 8.139 - CIERRE DEL CHANGE C1 (P1 + re-verificacion + archive)
+================================================================================
+
+Alcance: cierre del change cash-closure-integrity — test P1 del bloqueante
+CRITICAL-01 del verify, re-verificacion con veredicto PASS y archivado del change.
+
+A. P1 - TEST DEL ACUERDO REPORTE<->COMPROBANTE (cierre de CRITICAL-01)
+A1. [PaymentMethodCurrencyClassificationTests.cs] Nuevo test
+    GetReportById_And_ClosureReceipt_ClasificanIgual_MismoCierre (+95 lineas):
+    ejecuta AMBOS caminos reales sobre el mismo cierre persistido — reporte via
+    ShiftsController.GetReportById (ShiftsController.cs:283) y comprobante via
+    DailyClosureService.GenerateReceiptContent (DailyClosureService.cs:249) — y
+    aserta igualdad de clasificacion por metodo. DISCRIMINANTE: falla contra el
+    codigo pre-fix (blob b016c5d:281, heuristico "Dolares"->USD) y pasa con el
+    actual (resolver -> Bs.S). Suite: 1137/1137 (0 fallos, 0 omitidos).
+A2. Ledger: attempt c1-p1-report-receipt-test settleado complete; re-verificacion
+    c1-verify-rerun settleada complete (outcome passed).
+
+B. RE-VERIFICACION (revision 2): PASS
+B1. Veredicto PASS; blockers 0; critical 0; 14/14 requisitos; 18/18 escenarios
+    de los 3 specs.
+B2. Evidencia: build Release 0w/0e (exit 0, confirmado con --no-incremental);
+    suite 1137/1137 (delta +1 = exactamente el test de CRITICAL-01); gate de
+    cobertura exit 0 (Core 0.8364 / Sales 0.8879 / Inventory 0.8251); admision
+    nativa: sdd-verify-validate --requirements 14 --scenarios 18 => valid:true.
+B3. Warnings residuales (NO bloqueantes): (a) el escenario de envelope con
+    Postgres requiere TEST_POSTGRES_CONNECTION para ejecucion real local (CI la
+    ejecuta; patron silent-pass repo-wide ya documentado); (b) WARNING-03: la
+    mitad comprobante del test es laxa para filas USD - la fila "Dolares" si
+    discrimina; (c) deuda legacy en docs/deuda-legacy-gga-2026-09-16.md.
+
+C. ARCHIVE
+C1. Change archivado en openspec/changes/archive/2026-09-16-cash-closure-integrity/
+    con archive-report.md.
+C2. Specs sincronizados a openspec/specs/: cash-closure-arqueo-window,
+    cash-advance-payout-integrity, payment-method-currency-classification
+    (3 capacidades NUEVAS; sin deltas REMOVED).
+C3. Ciclo SDD del change C1 COMPLETO (proposal -> specs -> design -> tasks ->
+    apply -> verify -> archive).
