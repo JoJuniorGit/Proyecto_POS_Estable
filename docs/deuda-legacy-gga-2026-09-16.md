@@ -70,6 +70,16 @@
 
 39. **Web `RegisterClosePage.jsx:61`**: conserva fallback de clasificación `usd/dolar/$/divisa` (case/accent-sensitive) — misma familia que el ítem 26; unificar con el resolver cuando se saneen los clientes.
 40. **OpenCode `question` tool**: no expone NI honra el control `custom` (bloqueo del review nativo RDD). Ver memoria Engram `compat/opencode-question-custom-control`.
+41. **`Desktop.Client.Core/ViewModels/CashAdvanceRegisterViewModel.cs:58`** (WARNING-02 del verify de C1): hardcodea comisiones `7.0m/10.0m` en el cliente mientras el server ya resuelve la comisión de `SystemSettings` (fail-closed; test verifica 5.5%); el cliente mostraría una comisión distinta a la efectiva. PREEXISTENTE (commit inicial `7b382ee`, no tocado por el change). Fix: el cliente debe leer la comisión efectiva del server.
+
+---
+
+## Pendientes del change C1 detectados por la verificación final (requieren código)
+
+- **P1 [CRITICAL-01]** `payment-method-currency-classification` REQ-3, escenario "Report matches the stored receipt": **sin test de runtime**. El acuerdo reporte↔recibo es verdadero *por construcción* (ambos usan el mismo `PaymentMethodCurrencyResolver`), pero falta un test que genere reporte + comprobante del mismo cierre y compare etiqueta y monto USD por método. Es lo ÚNICO que impide el archive.
+- **P2 [WARNING-01]** Los 3 tests de `CashAdvanceEnvelopeTests` hacen early-return sin `TEST_POSTGRES_CONNECTION` y xUnit los reporta como *passed* (evidencia vacua de atomicidad). Correr con Postgres real antes de archivar; evaluar skip honesto.
+- **P3 [SUGGESTION]** Escenario #7 cubierto solo por el camino de preview; duplicación de helpers de TZ en `ClosureWindowResolverTests`.
+- **Estado del verify (2026-09-16)**: veredicto `fail` (16/18 escenarios; 14/14 requisitos; build 0/0; suite 1136/1136; coverage Core 0.8364 / Sales 0.8879 / Inventory 0.8251). Reporte: `openspec/changes/cash-closure-integrity/verify-report.md`. Próximo paso: cerrar P1 (+P2 si hay Postgres), re-ejecutar `sdd-verify` y luego `sdd-archive`.
 
 ---
 
