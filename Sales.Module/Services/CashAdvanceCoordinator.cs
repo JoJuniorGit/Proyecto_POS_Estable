@@ -6,6 +6,7 @@ using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sales.Module.Services;
@@ -37,8 +38,11 @@ public class CashAdvanceCoordinator
         bool isTransfer,
         decimal exchangeRate,
         int? cashierId = null,
-        string? userName = null)
+        string? userName = null,
+        CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(paymentMethodName);
+
         if (requestedAmountLocal <= 0)
         {
             throw new ArgumentException("El monto del adelanto debe ser mayor a cero.", nameof(requestedAmountLocal));
@@ -57,96 +61,124 @@ public class CashAdvanceCoordinator
             throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente. Disponible: {availableCash:N2} Bs.S, Requerido: {roundedRequested:N2} Bs.S.");
         }
 
-        var commissionPercentage = await ResolveCommissionPercentageAsync(isTransfer);
+        var commissionPercentage = await ResolveCommissionPercentageAsync(isTransfer, cancellationToken);
+        var activeUserName = !string.IsNullOrWhiteSpace(userName) ? userName : "Usuario";
 
-        return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
-        {
-            IDbContextTransaction? dbTransaction = null;
-            if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
-            {
-                dbTransaction = await _context.Database.BeginTransactionAsync();
-            }
-
-            try
-            {
-                string activeUserName = !string.IsNullOrWhiteSpace(userName) ? userName : "Usuario";
-                decimal commissionAmountLocal = Math.Round(roundedRequested * (commissionPercentage / 100.0m), 2, MidpointRounding.AwayFromZero);
-                decimal totalChargedLocal = roundedRequested + commissionAmountLocal;
-
-                decimal anchoredRate = exchangeRate;
-                Sale? createdSale = await _salesService.CreateCashAdvanceSaleAsync(
-                    requestedAmountLocal: roundedRequested,
-                    commissionAmountLocal: commissionAmountLocal,
-                    paymentMethodId: paymentMethodId,
-                    paymentMethodName: paymentMethodName,
-                    isTransfer: isTransfer,
-                    exchangeRate: exchangeRate,
-                    cashierId: cashierId,
-                    userName: activeUserName,
-                    existingTransaction: dbTransaction
-                );
-
-                if (createdSale != null && createdSale.AppliedRate > 0m)
-                {
-                    anchoredRate = createdSale.AppliedRate;
-                }
-
-                var expenseTx = await _cashDrawerService.AddTransactionAsync(
-                    sessionId: sessionId,
-                    type: CashTransactionType.Expense,
-                    source: CashTransactionSource.CashAdvance,
-                    amountLocal: roundedRequested,
-                    amountUsd: anchoredRate > 0 ? roundedRequested / anchoredRate : 0,
-                    exchangeRate: anchoredRate,
-                    description: $"Adelanto de Efectivo - {paymentMethodName} {commissionPercentage:0}% {activeUserName}",
-                    isPhysicalCash: true,
-                    paymentMethodId: paymentMethodId
-                );
-
-                var incomeTx = await _cashDrawerService.AddTransactionAsync(
-                    sessionId: sessionId,
-                    type: CashTransactionType.Income,
-                    source: CashTransactionSource.CashAdvance,
-                    amountLocal: commissionAmountLocal,
-                    amountUsd: anchoredRate > 0 ? commissionAmountLocal / anchoredRate : 0,
-                    exchangeRate: anchoredRate,
-                    description: $"Comisión Adelanto ({commissionPercentage:0}% {paymentMethodName}) - {activeUserName}",
-                    isPhysicalCash: false,
-                    paymentMethodId: paymentMethodId
-                );
-
-                if (dbTransaction != null)
-                {
-                    await dbTransaction.CommitAsync();
-                    await dbTransaction.DisposeAsync();
-                }
-
-                return new CashAdvanceResultDto
-                {
-                    ExpenseTransaction = expenseTx,
-                    IncomeTransaction = incomeTx,
-                    RequestedAmountLocal = roundedRequested,
-                    CommissionAmountLocal = commissionAmountLocal,
-                    TotalChargedLocal = totalChargedLocal,
-                    CommissionPercentage = commissionPercentage,
-                    RelatedSaleId = createdSale?.Id,
-                    InvoiceNumber = createdSale?.InvoiceNumber
-                };
-            }
-            catch
-            {
-                if (dbTransaction != null)
-                {
-                    await dbTransaction.RollbackAsync();
-                    await dbTransaction.DisposeAsync();
-                }
-                throw;
-            }
-        });
+        return await _context.Database.CreateExecutionStrategy().ExecuteAsync<object?, CashAdvanceResultDto>(
+            state: null,
+            operation: (_, _, ct) => ProcessEnvelopeAsync(
+                sessionId: sessionId,
+                roundedRequested: roundedRequested,
+                commissionPercentage: commissionPercentage,
+                paymentMethodId: paymentMethodId,
+                paymentMethodName: paymentMethodName,
+                isTransfer: isTransfer,
+                exchangeRate: exchangeRate,
+                cashierId: cashierId,
+                activeUserName: activeUserName,
+                cancellationToken: ct),
+            verifySucceeded: null,
+            cancellationToken: cancellationToken);
     }
 
-    private async Task<decimal> ResolveCommissionPercentageAsync(bool isTransfer)
+    private async Task<CashAdvanceResultDto> ProcessEnvelopeAsync(
+        int sessionId,
+        decimal roundedRequested,
+        decimal commissionPercentage,
+        int paymentMethodId,
+        string paymentMethodName,
+        bool isTransfer,
+        decimal exchangeRate,
+        int? cashierId,
+        string activeUserName,
+        CancellationToken cancellationToken)
     {
+        IDbContextTransaction? dbTransaction = null;
+        if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
+        {
+            dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        }
+
+        try
+        {
+            decimal commissionAmountLocal = Math.Round(roundedRequested * (commissionPercentage / 100.0m), 2, MidpointRounding.AwayFromZero);
+            decimal totalChargedLocal = roundedRequested + commissionAmountLocal;
+
+            decimal anchoredRate = exchangeRate;
+            Sale? createdSale = await _salesService.CreateCashAdvanceSaleAsync(
+                requestedAmountLocal: roundedRequested,
+                commissionAmountLocal: commissionAmountLocal,
+                paymentMethodId: paymentMethodId,
+                paymentMethodName: paymentMethodName,
+                isTransfer: isTransfer,
+                exchangeRate: exchangeRate,
+                cashierId: cashierId,
+                userName: activeUserName,
+                existingTransaction: dbTransaction
+            );
+
+            if (createdSale != null && createdSale.AppliedRate > 0m)
+            {
+                anchoredRate = createdSale.AppliedRate;
+            }
+
+            var expenseTx = await _cashDrawerService.AddTransactionAsync(
+                sessionId: sessionId,
+                type: CashTransactionType.Expense,
+                source: CashTransactionSource.CashAdvance,
+                amountLocal: roundedRequested,
+                amountUsd: anchoredRate > 0 ? roundedRequested / anchoredRate : 0,
+                exchangeRate: anchoredRate,
+                description: $"Adelanto de Efectivo - {paymentMethodName} {commissionPercentage:0}% {activeUserName}",
+                isPhysicalCash: true,
+                paymentMethodId: paymentMethodId
+            );
+
+            var incomeTx = await _cashDrawerService.AddTransactionAsync(
+                sessionId: sessionId,
+                type: CashTransactionType.Income,
+                source: CashTransactionSource.CashAdvance,
+                amountLocal: commissionAmountLocal,
+                amountUsd: anchoredRate > 0 ? commissionAmountLocal / anchoredRate : 0,
+                exchangeRate: anchoredRate,
+                description: $"Comisión Adelanto ({commissionPercentage:0}% {paymentMethodName}) - {activeUserName}",
+                isPhysicalCash: false,
+                paymentMethodId: paymentMethodId
+            );
+
+            if (dbTransaction != null)
+            {
+                await dbTransaction.CommitAsync(cancellationToken);
+                await dbTransaction.DisposeAsync();
+            }
+
+            return new CashAdvanceResultDto
+            {
+                ExpenseTransaction = expenseTx,
+                IncomeTransaction = incomeTx,
+                RequestedAmountLocal = roundedRequested,
+                CommissionAmountLocal = commissionAmountLocal,
+                TotalChargedLocal = totalChargedLocal,
+                CommissionPercentage = commissionPercentage,
+                RelatedSaleId = createdSale?.Id,
+                InvoiceNumber = createdSale?.InvoiceNumber
+            };
+        }
+        catch
+        {
+            if (dbTransaction != null)
+            {
+                await dbTransaction.RollbackAsync(CancellationToken.None);
+                await dbTransaction.DisposeAsync();
+            }
+            throw;
+        }
+    }
+
+    private async Task<decimal> ResolveCommissionPercentageAsync(bool isTransfer, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var key = isTransfer
             ? Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct
             : Core.Constants.SettingKeys.CashAdvanceCashCommissionPct;

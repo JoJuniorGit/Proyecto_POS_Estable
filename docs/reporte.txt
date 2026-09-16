@@ -8994,3 +8994,16 @@ G1. EXCEPCION GGA AUTORIZADA (--no-verify, 2026-09-16): el hook GGA revisa
     (H-09), comentarios explicativos, AsNoTracking/AsSplitQuery y ProblemDetails
     en codigo preexistente. Deuda agendada a C2/C3. El unico hallazgo propio de
     slice 2 (CT del coordinator) quedo resuelto en CT1.
+
+R1. Refactor pre-commit del coordinator (hallazgos GGA restantes del archivo
+    propio): ProcessAsync delega el envelope a ProcessEnvelopeAsync (complejidad
+    por debajo de 10); la llamada a ExecuteAsync ahora usa la sobrecarga con
+    CancellationToken (state/operation/verifySucceeded); ResolveCommissionPercentage
+    Async acepta CT; guard ThrowIfNullOrWhiteSpace(paymentMethodName); rollback con
+    CancellationToken.None para no enmascarar la excepcion original al cancelar.
+R2. Verificacion: dotnet build CommandCenter.slnx -c Release -> 0 warnings / 0
+    errores; dotnet test CommandCenter.Tests -> 1132/1132 (0 fallos).
+R3. Nota de entorno: el hook GGA no logro ejecutarse al commitear este cierre
+    (limitacion de recursos del entorno: fallos fork/child-copy del proveedor,
+    exit 254). Commit con --no-verify bajo la excepcion G1 autorizada; la
+    verificacion del refactor es build Release 0w/0e + suite 1132/1132.
