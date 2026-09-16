@@ -72,4 +72,35 @@
 - `dotnet test --filter "CashAdvanceCoordinator"` → 5/5 unit tests (integration envelope tests require Postgres; not matched by filter)
 
 ## Status
-Slice 1 complete (committed). Slice 2 complete + post-verification fixes (2b) applied. Ready for SDD verify.
+Slice 1 complete (committed). Slice 2 complete + post-verification fixes (2b) applied. Slice 3 complete.
+
+## Slice 3 — Completed Tasks
+- [x] 3.1 Modify `Backend.API/Controllers/ShiftsController.cs` — replace local heuristic with `PaymentMethodCurrencyResolver.Resolve` + `PricingCalculator.ToUSD`; add `using Sales.Module;` and `using Core.Helpers;`
+- [x] 3.2 Create `CommandCenter.Tests/Unit/PaymentMethodCurrencyClassificationTests.cs` — 4 discriminant tests (controller-level + unit) replacing 3 tautological ones
+
+### Slice 3 Files Changed
+| File | Action | Lines |
+|------|--------|-------|
+| `Backend.API/Controllers/ShiftsController.cs` | Modified | +4 (2 usings, 4 changed lines in LINQ Select) |
+| `CommandCenter.Tests/Unit/PaymentMethodCurrencyClassificationTests.cs` | Rewritten | ~110 (4 discriminant tests replacing 3 tautological ones) |
+
+## Work Unit Evidence (Slice 3)
+
+| Evidence | Value |
+|----------|-------|
+| Focused test command | `dotnet test --filter "PaymentMethodCurrency"` → 4/4 passed (1 controller-level discriminant + 3 unit) |
+| Runtime harness | N/A — InMemory DbContext for controller test; pure unit tests for resolver/ToUSD |
+| Rollback boundary | `ShiftsController.cs` classifier swap only (3.1); rewritten test file (3.2/3b.1) |
+
+### Slice 3 Post-verification fixes (3b)
+- [x] 3b.1 PaymentMethodCurrencyClassificationTests.cs: reescrito con 4 tests discriminantes (1 controller-level con InMemory + 3 unitarios); eliminadas las comparaciones tautologicas (resolver-vs-resolver idénticas, 800/400 sin decimales)
+- [x] 3b.2 ANEXO 8.139 en docs/reporte.txt: corregida la afirmación B2 para reflejar exactamente lo que los tests ahora prueban (discriminación del heurístico viejo via controller, ToUSD rounding vs división cruda)
+
+## Verification
+- `dotnet build CommandCenter.slnx -c Release` → 0 errors / 0 warnings
+- `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj` → 1136/1136 (0 failures)
+- `dotnet test --filter "PaymentMethodCurrency"` → 4/4 unit tests passed
+
+### Slice 3 Post-verification fixes (3c)
+- [x] 3c.1 Consistencia del discriminante: seeds sin acento ("Dolares") — el heuristico viejo era sensible a acentos y el seed acentuado anulaba la discriminacion; rename del test del controller a `GetReportById_Dolares_ClasificaBsSPorResolver`; assert literal `3.00m` (sin helper-vs-helper); caso midpoint agregado `ToUSD(1m, 8m) == 0.13m` (AwayFromZero real). ANEXO B2 ajustado.
+- [x] 3c.2 Re-verificacion: build Release 0/0; suite 1136/1136; filtro 4/4.

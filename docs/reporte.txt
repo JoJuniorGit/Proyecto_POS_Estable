@@ -9007,3 +9007,77 @@ R3. Nota de entorno: el hook GGA no logro ejecutarse al commitear este cierre
     (limitacion de recursos del entorno: fallos fork/child-copy del proveedor,
     exit 254). Commit con --no-verify bajo la excepcion G1 autorizada; la
     verificacion del refactor es build Release 0w/0e + suite 1132/1132.
+
+================================================================================
+ANEXO - REVISION 8.139 (cash-closure-integrity slice 3: clasificador de moneda)
+================================================================================
+
+Alcance: swap del heuristo local de clasificacion de moneda en
+ShiftsController.GetReportById por PaymentMethodCurrencyResolver + PricingCalculator
+.ToUSD (AD-7). El DTO de salida del endpoint no cambia.
+
+A. CONTEXTO
+ShiftsController.GetReportById (~lineas 279-298) clasificaba la moneda de cada
+metodo de pago con un heuristico local: Contains("usd"), Contains("dolar"),
+Contains("$"). Esto contradecia a PaymentMethodCurrencyResolver (la fuente de
+verdad documentada, usada por DailyClosureService y el PDF) y a PricingCalculator
+.ToUSD. Un metodo llamado "Dolar" (sin acento) se clasificaba como USD por el
+heuristico local, pero el resolver lo clasifica como Bs.S (no contiene "USD").
+
+B. CAMBIOS
+B1. [ShiftsController.cs] Reemplazado el heuristico local por
+    PaymentMethodCurrencyResolver.Resolve(d.PaymentMethodName) y la division
+    cruda por PricingCalculator.ToUSD(amount, exchangeRate). Anadidos
+    `using Sales.Module;` y `using Core.Helpers;`. Cambio quirurgico: el resto
+    del controller no se toca. Las 4 lineas modificadas:
+      - string currency = PaymentMethodCurrencyResolver.Resolve(d.PaymentMethodName);
+      - bool isUsd = currency == PaymentMethodCurrencyResolver.Usd;
+      - decimal systemAmt = isUsd ? PricingCalculator.ToUSD(d.ExpectedAmountBsS, exchangeRate) : d.ExpectedAmountBsS;
+      - decimal declaredAmt = isUsd ? PricingCalculator.ToUSD(d.ActualAmountBsS, exchangeRate) : d.ActualAmountBsS;
+B2. [PaymentMethodCurrencyClassificationTests.cs] Reescrito con 4 tests
+    DISCRIMINANTES (reemplaza los 3 tautologicos previos que comparaban dos
+    llamadas identicas al resolver):
+    GetReportById_Dolares_ClasificaBsSPorResolver — test de CONTROLLER
+    con InMemory: sembra un DailyClosure con "Dolares" (sin acento: el viejo
+    heuristico era sensible a acentos — "Dólares" acentuado no matcheaba
+    "dolar" — por lo que el seed discriminatorio debe ir sin acento) + "Divisas
+    (USD)" con ExchangeRate=3600; aserta que "Dolares" produce Currency=Bs.S y
+    SystemAmount=10800 (sin conversion), mientras "Divisas (USD)" produce
+    Currency=USD y SystemAmount=3.00 literal. Si el codigo revierte al
+    heuristico viejo, "Dolares" se clasificaria como USD y el SystemAmount
+    seria 3.00 en vez de 10800 → FALLO.
+    Resolve_DolarSinAcento_RetornaLocalCurrency — fija semantica real:
+    Resolve("Dolares") == Bs.S (no resolver-vs-resolver).
+    Resolve_DivisasUSD_RetornaUSD — fija semantica real: Resolve("Divisas (USD)")
+    == USD.
+    ToUSD_RoundsAwayFromZero_DiffersFromRawDivision — ToUSD(100,6) == 16.67
+    (MidpointRounding.AwayFromZero), verificando que difiere de la division cruda
+    100/6 = 16.666... (diferente redondeo). Valores elegidos para que la
+    diferencia sea observable (no 800/400 = 2.00 exacto).
+B3. [reporte.txt] ANEXO - REVISION 8.139.
+
+C. VERIFICACION
+C1. dotnet build CommandCenter.slnx -c Release: 0 warnings / 0 errores.
+C2. dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release:
+    1136 superadas / 0 falladas (base 1132 + 4 nuevas).
+C3. dotnet test --filter "PaymentMethodCurrency": 4/4 unit tests pasadas.
+
+===============================================================================
+EXCEPCION GGA Y RIESGO REGISTRADO - slice 3
+===============================================================================
+
+G1. EXCEPCION GGA AUTORIZADA (--no-verify, 2026-09-16): el hook revisa archivos
+    completos y bloqueo el commit por deuda legacy de ShiftsController.cs
+    (errores sin helpers ApiProblemResults, CancellationToken, AsNoTracking/
+    AsSplitQuery, dependencias inyectadas sin uso, DbContext cross-domain,
+    comentarios) — agendada a C2/C3. Hallazgo propio de la slice (nombre del
+    test del controller que contradecia su asercion): corregido antes del
+    commit (GetReportById_Dolares_ClasificaBsSPorResolver).
+G2. RIESGO REGISTRADO PARA C3 (hallazgo del review, preexistente, NO introducido
+    por la slice): CloseShift confia en el campo Currency del request del cliente
+    (zero-trust) y duplica la clasificacion (literal "USD"), creando una segunda
+    fuente de verdad frente al resolver; un cliente podria alterar el arqueo.
+    Consolidar la resolucion server-side via PaymentMethodCurrencyResolver en la
+    consolidacion de cierre (H-10 / C3).
+G3. Verificacion final de la slice: dotnet build Release 0w/0e; dotnet test
+    1136/1136 (0 fallos).

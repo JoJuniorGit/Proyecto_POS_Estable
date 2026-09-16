@@ -12,6 +12,8 @@ using System;
 using System.Linq;
 using Backend.API.Attributes;
 using Backend.API.Services;
+using Core.Helpers;
+using Sales.Module;
 
 namespace Backend.API.Controllers;
 
@@ -278,10 +280,10 @@ public class ShiftsController : ControllerBase
 
         var details = closure.Details.Select(d =>
         {
-            bool isUsd = d.PaymentMethodName.ToLower().Contains("usd") || d.PaymentMethodName.ToLower().Contains("dolar") || d.PaymentMethodName.Contains("$");
-            string currency = isUsd ? "USD" : "Bs.S";
-            decimal systemAmt = isUsd ? (exchangeRate > 0 ? d.ExpectedAmountBsS / exchangeRate : 0m) : d.ExpectedAmountBsS;
-            decimal declaredAmt = isUsd ? (exchangeRate > 0 ? d.ActualAmountBsS / exchangeRate : 0m) : d.ActualAmountBsS;
+            string currency = PaymentMethodCurrencyResolver.Resolve(d.PaymentMethodName);
+            bool isUsd = currency == PaymentMethodCurrencyResolver.Usd;
+            decimal systemAmt = isUsd ? PricingCalculator.ToUSD(d.ExpectedAmountBsS, exchangeRate) : d.ExpectedAmountBsS;
+            decimal declaredAmt = isUsd ? PricingCalculator.ToUSD(d.ActualAmountBsS, exchangeRate) : d.ActualAmountBsS;
             decimal diff = declaredAmt - systemAmt;
             string status = Math.Abs(diff) < 0.05m ? "Balanced" : (diff > 0 ? "Surplus" : "Shortage");
 

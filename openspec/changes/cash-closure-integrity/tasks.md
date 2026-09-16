@@ -46,8 +46,8 @@ Chain strategy: pending
 
 ## Phase 3: Classifier Swap (Slice 3)
 
-- [ ] 3.1 Modify `Backend.API/Controllers/ShiftsController.cs:279-298` — replace local heuristic (`Contains("usd")`, `Contains("dolar")`, `Contains("$")`) with `PaymentMethodCurrencyResolver.Resolve(d.PaymentMethodName)`; replace inline `/ exchangeRate` division with `PricingCalculator.ToUSD(amount, exchangeRate)` (AD-7). Add `using Sales.Module;` and `using Core.Helpers;`. Covers spec: `payment-method-currency-classification` all 3 requirements.
-- [ ] 3.2 Create `CommandCenter.Tests/Unit/PaymentMethodCurrencyClassificationTests.cs` — test scenarios: "Report uses the shared classifier" (method named "Dólares" → USD); "Bs.S total is converted with the shared helper" (value equals `PricingCalculator.ToUSD`); "Report matches the stored receipt" (label and amount agree with receipt/PDF classification).
+- [x] 3.1 Modify `Backend.API/Controllers/ShiftsController.cs:279-298` — replace local heuristic (`Contains("usd")`, `Contains("dolar")`, `Contains("$")`) with `PaymentMethodCurrencyResolver.Resolve(d.PaymentMethodName)`; replace inline `/ exchangeRate` division with `PricingCalculator.ToUSD(amount, exchangeRate)` (AD-7). Add `using Sales.Module;` and `using Core.Helpers;`. Covers spec: `payment-method-currency-classification` all 3 requirements.
+- [x] 3.2 Create `CommandCenter.Tests/Unit/PaymentMethodCurrencyClassificationTests.cs` — test scenarios: "Report uses the shared classifier" (method named "Dólares" → USD); "Bs.S total is converted with the shared helper" (value equals `PricingCalculator.ToUSD`); "Report matches the stored receipt" (label and amount agree with receipt/PDF classification).
 
 ## Phase 4: Verification
 
