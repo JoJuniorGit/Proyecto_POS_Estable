@@ -8776,3 +8776,78 @@ C4. .NET: dotnet build CommandCenter.slnx -c Release -> 0 advertencias / 0 error
 C5. .NET: dotnet test CommandCenter.Tests -c Release -> 1111/1111 (0 fallos).
 
 FIN DEL ANEXO - REVISION 8.136
+
+================================================================================
+ANEXO - REVISION 8.137 (2026-09-16)
+Titulo: cash-closure-integrity Slice 1 - ClosureWindowResolver + Preview Validation
+================================================================================
+
+A. CONTEXTO
+A1. Cambio SDD cash-closure-integrity, Slice 1 (PR 1 de cadena stacked-to-main).
+A2. Resuelve H-01: la ventana de arqueo nocturno excluia ventas entre la ultima
+    sesion y medianoche (gap de medianoche) y el endpoint de preview aceptaba
+    fechas invalidas sin validacion.
+
+B. ARCHIVOS MODIFICADOS
+B1. Sales.Module/Services/ClosureWindowResolver.cs (NUEVO, ~30 lineas):
+    Resolucion pura de ventana (sin DbContext). Retorna (StartUtc, EndExclusiveUtc)
+    con precedencia: activeSession.OpenedAt ?? lastClosure.ClosureDate ?? startOfDayUtc.
+    Guarda para backdated: si anchor >= EndExclusiveUtc, cae a lastClosure/startOfDay
+    acotado inferiormente por EndExclusiveUtc (AD-1, AD-3).
+B2. Sales.Module/Services/DailyClosureService.cs (MODIFICADO, ~15 lineas):
+    Lee CashDrawerSession activa (Status == Open) del mismo SalesDbContext (AD-2,
+    12 call sites dependen del ctor unico). Llama ClosureWindowResolver.Resolve().
+    Cambia predicados: > effectiveStartTime -> >= startUtc, < endOfDayUtc -> < endUtc.
+B3. Backend.API/Controllers/DailyClosureController.cs (MODIFICADO, ~5 lineas):
+    Valida dateUtc en GetExpectedTotals: si == default, retorna HTTP 400 (AD-8).
+B4. CommandCenter.Tests/Unit/ClosureWindowResolverTests.cs (MODIFICADO, ~117 lineas):
+    7 tests unitarios puros (sin DbContext): sesion ancla ventana, fallback a
+    ultima sesion/start-of-day, >= StartUtc incluido, < EndExclusiveUtc excluido,
+    guarda backdated, resolucion sin base de datos, cruce de medianoche nocturno.
+    Nombres renombrados con convencion Metodo_Escenario_ResultadoEsperado.
+B5. CommandCenter.Tests/Unit/DailyClosureServiceWindowTests.cs (MODIFICADO, ~310 lineas):
+    6 tests de integracion EF InMemory: ventas antes de sesion excluidas, venta
+    exacta en session.OpenedAt incluida, venta en EndExclusiveUtc excluida,
+    ClosureDetail.ExpectedAmountBsS nunca reescrito, CashTransaction exacta en
+    Start incluida, CashTransaction exacta en EndExclusive excluida.
+B6. CommandCenter.Tests/Unit/DailyClosureControllerTests.cs (NUEVO, ~70 lineas):
+    2 tests del endpoint GetExpectedTotals: default dateUtc retorna BadRequest,
+    fecha valida retorna Ok.
+
+C. VERIFICACION
+C1. dotnet build CommandCenter.slnx -c Release -> 0 advertencias / 0 errores.
+C2. dotnet test CommandCenter.Tests -> 1126/1126 (0 fallos; neto +2 vs base
+    1124 del Slice 1 original: +2 CashTransactions edge, +2 controller,
+    -2 consolidacion de tests redundantes del resolver pre-commit).
+C3. Slice 1 puro: ClosureWindowResolver.cs (~30), DailyClosureService.cs (~15
+    changed), DailyClosureController.cs (~5 added), 3 archivos de test (2 nuevos
+    + 1 modificado).
+
+D. POST-VERIFICATION FIXES (1b)
+D1. DailyClosureService.cs: eliminado codigo muerto (venDate/tz/startOfDayUtc/
+    endOfDayUtc sin uso) y comentario obsoleto de la ventana comercial.
+D2. DailyClosureService.cs:33: CashDrawerStatus.Open short-form en lugar del
+    nombre totalmente calificado Sales.Module.Entities.CashDrawerStatus.Open.
+D3. ClosureWindowResolverTests.cs: renombrados tests con nombres enganosos
+    (RowExactlyAtWindowStartIsIncluded/RowExactlyAtRightBoundIsExcluded) para
+    describir lo que realmente afirman; convencion QA aplicada a los 7 tests;
+    consolidados 3 tests redundantes de null-anchors en 1 (pre-commit, post-GGA).
+D4. DailyClosureServiceWindowTests.cs: 2 tests nuevos de borde CashTransactions
+    (fila exactamente en Start -> incluida; exactamente en EndExclusive -> excluida).
+D5. DailyClosureControllerTests.cs: test del 400 del preview (GetExpectedTotals
+    default -> 400 ProblemDetails; fecha valida -> Ok).
+
+E. NOTA RDD OFF
+RDD off (limitacion del runtime OpenCode): assess tier=medium; verificador
+independiente PASS + residuales resueltos en pasada 1b.
+
+F. EXCEPCION GGA AUTORIZADA (COMMIT 8.137)
+Commit autorizado por el mantainer con --no-verify (2026-09-16): el hook GGA
+revisa archivos completos (no diffs) y bloqueo por deuda legacy preexistente de
+DailyClosureController/DailyClosureService (DbContext en controller = H-03,
+entidades sin DTO = H-04, CancellationToken = H-09, comentarios/SRP/complejidad).
+Esa deuda queda agendada a C2/C3 de la remediacion. Hallazgos propios resueltos
+antes del commit: ProblemDetails en el 400 del preview y consolidacion de tests
+del resolver.
+
+FIN DEL ANEXO - REVISION 8.137

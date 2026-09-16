@@ -23,31 +23,28 @@ public class DailyClosureService : IDailyClosureService
 
     public async Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc)
     {
-        // 1. Calcular ventana comercial de Venezuela en UTC (VET UTC-4, H-API-14)
-        var venDate = Core.Helpers.TimeZoneHelper.GetVenezuelaDate(dateUtc);
-        var tz = Core.Helpers.TimeZoneHelper.GetVenezuelaTimeZone();
-        var startOfDayLocal = venDate.ToDateTime(TimeOnly.MinValue);
-        var startOfDayUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(startOfDayLocal, DateTimeKind.Unspecified), tz);
-        var endOfDayUtc = startOfDayUtc.AddDays(1);
-
-        // Fetch latest daily closure if any exists
         var lastClosure = await _context.DailyClosures
             .AsNoTracking()
             .OrderByDescending(dc => dc.ClosureDate)
             .FirstOrDefaultAsync();
 
-        // Effective start time: if last closure occurred after startOfDayUtc, count sales after last closure
-        var effectiveStartTime = (lastClosure != null && lastClosure.ClosureDate > startOfDayUtc)
-            ? lastClosure.ClosureDate
-            : startOfDayUtc;
+        var activeSession = await _context.CashDrawerSessions
+            .AsNoTracking()
+            .Where(s => s.Status == CashDrawerStatus.Open)
+            .OrderByDescending(s => s.OpenedAt)
+            .FirstOrDefaultAsync();
 
-        // 1. Calculate expected sales totals per payment method for completed sales after effectiveStartTime
+        var (startUtc, endUtc) = ClosureWindowResolver.Resolve(
+            dateUtc,
+            activeSession?.OpenedAt,
+            lastClosure?.ClosureDate);
+
         var salesTotals = await _context.SalePayments
             .AsNoTracking()
             .Where(sp => sp.Sale != null
                 && sp.Sale.Status == SaleStatus.Completed
-                && sp.Sale.Date > effectiveStartTime
-                && sp.Sale.Date < endOfDayUtc)
+                && sp.Sale.Date >= startUtc
+                && sp.Sale.Date < endUtc)
             .GroupBy(sp => sp.PaymentMethodId)
             .Select(g => new { PaymentMethodId = g.Key, TotalBsS = g.Sum(sp => sp.AmountBsS) })
             .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS);
@@ -57,8 +54,8 @@ public class DailyClosureService : IDailyClosureService
             .Where(ct => ct.Type == CashTransactionType.Expense
                 && ct.Source == CashTransactionSource.SalePayment
                 && ct.IsPhysicalCash
-                && ct.TransactionTime > effectiveStartTime
-                && ct.TransactionTime < endOfDayUtc)
+                && ct.TransactionTime >= startUtc
+                && ct.TransactionTime < endUtc)
             .GroupBy(ct => ct.PaymentMethodId)
             .Select(g => new { PaymentMethodId = g.Key ?? UnattributedChangeMethodId, TotalBsS = g.Sum(ct => ct.AmountLocal) })
             .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS);

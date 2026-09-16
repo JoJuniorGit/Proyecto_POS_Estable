@@ -53,6 +53,15 @@ public class DailyClosureController : ControllerBase
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<List<ExpectedTotalDto>>> GetExpectedTotals([FromQuery] DateTime dateUtc)
     {
+        if (dateUtc == default)
+        {
+            return Problem(
+                detail: "El parámetro dateUtc es obligatorio.",
+                statusCode: 400,
+                title: "Parámetro inválido",
+                type: "https://tools.ietf.org/html/rfc7231#section-6.5.1");
+        }
+
         var totals = await _closureService.GetExpectedTotalsByPaymentMethodAsync(dateUtc);
         return Ok(totals);
     }
