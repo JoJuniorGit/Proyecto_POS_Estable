@@ -51,7 +51,7 @@ Chain strategy: pending
 
 ## Phase 4: Verification
 
-- [ ] 4.1 Run `dotnet build CommandCenter.slnx -c Release` — 0 errors, 0 warnings.
-- [ ] 4.2 Run `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj` — all tests pass.
-- [ ] 4.3 Run coverage gate: `dotnet test --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings` → Sales.Module ≥ 0.80.
-- [ ] 4.4 Verify `CashDrawerService.cs` is under 500 lines, has no `IServiceProvider`, no `ISalesService`.
+- [x] 4.1 Run `dotnet build CommandCenter.slnx -c Release` — 0 errors, 0 warnings.
+- [x] 4.2 Run `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj` — all tests pass.
+- [x] 4.3 Run coverage gate: `dotnet test --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings` → Sales.Module ≥ 0.80 (Core 0.8096 / Sales 0.8540 / Inventory 0.7937 — OK).
+- [x] 4.4 Verify `CashDrawerService.cs` is under 500 lines, has no `IServiceProvider`, no `ISalesService` (449 lineas).
