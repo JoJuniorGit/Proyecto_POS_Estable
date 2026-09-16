@@ -8736,3 +8736,43 @@ C3. Scripts: parse OK en PS7 y PS5.1; stress-test.py compila (py_compile).
 C4. Residual: validacion end-to-end de instalador/ACL/tarea SYSTEM requiere VM; firma = deuda 8.20-A03.
 
 FIN DEL ANEXO - REVISION 8.135
+
+================================================================================
+ANEXO - REVISION 8.136 (2026-09-15)
+Titulo: FASE 6 - Modularizacion de index.css con CSS Cascade Layers (@layer)
+================================================================================
+
+A. CONTEXTO
+A1. Cierre de la deuda tecnica de estilos diferida en ANEXO 8.132 (punto B9) y senalada en docs/hallazgos-auditoria-seguridad.txt (FASE 6).
+A2. La hoja monolitica Web.Frontend/src/index.css (3.629 lineas) acumulaba 259 declaraciones !important para forzar especificidad en overrides responsivos y componentes.
+A3. Revision pre-commit con Gentleman Guardian Angel (hook GGA): se detectaron y corrigieron defectos y desviaciones en las hojas extraidas (CSS invalido, reglas duplicadas, regla sin capa, comentarios explicativos y tokens sin declarar) antes del commit (ver B6).
+
+B. CAMBIOS REALIZADOS
+B1. [ARQUITECTURA CSS] Se introdujo la jerarquia formal de capas en Web.Frontend/src/styles/layers.css:
+    @layer reset, base, layout, components, pages, utilities;
+B2. [MODULARIZACION POR DOMINIO] Division en 7 hojas bajo Web.Frontend/src/styles/:
+    - layers.css: declaracion formal del orden de cascada.
+    - tokens.css: fuentes (@import Inter) y variables de color/dimensiones (:root y [data-theme="dark"]).
+    - base.css (@layer base): reset global, scrollbars webkit/custom, tipografia base y spinners numericos.
+    - layout.css (@layer layout): shell de la aplicacion, sidebar, topbar, status indicators y breakpoints de layout.
+    - components.css (@layer components): componentes UI reutilizables (carrito, panel de resumen, searchbar, modales, checkout, badges, alertas, paginacion compacta, hotkeys footer, selector de variantes, QR container con alto contraste y error boundary).
+    - pages.css (@layer pages): vistas de dominio y adaptaciones moviles (PendingOrders, CustomerModal, PendingPickups, Catalog, History, RegisterClose, Settings, Reporte Z).
+    - print.css: reglas de impresion de tickets termicos y recibos (@media print).
+B3. [UTILITIES] Web.Frontend/src/utilities.css encapsulado en @layer utilities, asegurando precedencia natural sobre las capas previas sin depender de hacks de especificidad.
+B4. [INDEX.CSS] Web.Frontend/src/index.css reducido a un punto de entrada limpio de 7 sentencias @import que carga ordenadamente las 7 hojas modulares.
+B5. [BUNDLE SPA] Backend.API/wwwroot regenerado via npm run build (index-qA6kPw5D.css).
+B6. [CORRECCIONES POR REVISION PRE-COMMIT (GGA)] Sobre las hojas extraidas:
+    - components.css: consolidacion de reglas duplicadas .search-dropdown, .search-dropdown.empty y .search-suggestion-item (ya duplicadas en el monolito original); un unico bloque por selector conservando los valores efectivos previos a la modularizacion.
+    - components.css: correccion de declaracion CSS invalida en .animate-bounce-short (el valor no valido 'iteration-count' suprimia la animacion del icono de exito de checkout) -> declaracion con iteracion unica.
+    - print.css: .history-payment-item reubicada a pages.css (@layer pages); era la unica regla sin capa y rompia el contrato de cascada de layers.css.
+    - Limpieza total de comentarios explicativos en las 9 hojas CSS (regla core 'sin comentarios explicativos') y normalizacion de finales de linea a LF.
+    - tokens.css: declaracion de 8 tokens referenciados sin definir (--bg-app, --bg-card, --bg-tertiary, --text-main, --text-secondary, --border-color, --primary-color, --font-mono); valores elegidos para preservar el render efectivo previo (--bg-app y --text-secondary como alias de --bg-primary y --text-muted).
+
+C. VERIFICACION
+C1. Web.Frontend: npm test -> 268/268 (0 fallos).
+C2. Web.Frontend: npm run lint -> 0 advertencias / 0 errores (oxlint).
+C3. Web.Frontend: npm run build -> compilacion exitosa (3.34s), bundle CSS index-qA6kPw5D.css 67.11 kB / 12.05 kB gzip con soporte nativo de @layer (post correcciones B6). Auditoria de tokens: 42 usos, 46 definidos, 0 sin definir.
+C4. .NET: dotnet build CommandCenter.slnx -c Release -> 0 advertencias / 0 errores.
+C5. .NET: dotnet test CommandCenter.Tests -c Release -> 1111/1111 (0 fallos).
+
+FIN DEL ANEXO - REVISION 8.136
