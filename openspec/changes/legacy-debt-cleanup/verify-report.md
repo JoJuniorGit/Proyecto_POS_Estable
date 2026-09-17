@@ -1,6 +1,6 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:928ae06bf45063c170ddaa72138a803d8a72cde6aa15e0481459b7fa70700a31
+evidence_revision: sha256:2e141e335b7a81c20d997625d1de3bee5c171c5bdfaa164f2cacc9e2abd1a4e9
 verdict: pass_with_warnings
 blockers: 0
 critical_findings: 0
@@ -8,10 +8,10 @@ requirements: 18/18
 scenarios: 38/38
 test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj
 test_exit_code: 0
-test_output_hash: sha256:c8340a28b8174cc33d16ea9a2ee4281f132ee0d8984b434b5dffb24b092ff1df
+test_output_hash: sha256:2dc53f257571d0573fb6cbad5ab82dc89dd8538d19aa091eb2a4789c2581a05c
 build_command: dotnet build CommandCenter.slnx -c Release
 build_exit_code: 0
-build_output_hash: sha256:712488c6859080b77d683709c21408cfab263d08f6b3fe59c9bfd7e2bc67da18
+build_output_hash: sha256:9af6eeb728980147499fb4e4e7a5297989c7746a9304cc51a8e958384ab7a392
 ```
 
 ## Verification Report
@@ -19,11 +19,11 @@ build_output_hash: sha256:712488c6859080b77d683709c21408cfab263d08f6b3fe59c9bfd7
 **Change**: legacy-debt-cleanup
 **Version**: N/A (delta specs, no version headers)
 **Mode**: Standard (Strict TDD inactive: `openspec/config.yaml` -> `strict_tdd: false`, `testing.strict_tdd_mode: disabled`)
-**Scope of this report**: a per-slice verification record for the change `legacy-debt-cleanup`. Slices S1 (zero-trust close, items 26/39), S2 (error contract + dead fields, items 2/18/25/12/35), S3 (closure orchestration consolidation, items 1/30/6/13/14), S4a (closure DTO boundary, commit `829778c`), S4b (drawer DTO boundary, commit `65e038a`), S5a (CancellationToken propagation + H-14 fold-in, commit `227ee5c`), S5b (EF read tuning + guards/naming/comments + S5a carries, commit `dab4d16`) and **S5c (J findings H-05/H-06/H-08 + item-11 carry, commit `bb9a277`)** are implemented and verified; all eight implementation slices are closed, and the **change-level verdict remains pending** for the separate final change-level verification. The machine-readable envelope at the top of this file describes the **most recently admitted slice — S5c at `bb9a277`**. The previous head envelopes are preserved verbatim under "S5b Admitted Envelope (preserved)", "S5a Admitted Envelope (preserved)", "S4b Admitted Envelope (preserved)", "S4a Admitted Envelope (preserved)", "S3 Admitted Envelope (preserved)" and "S1 Admitted Envelope (preserved)"; every verdict and its own fresh evidence live in its own section.
-**Envelope counts (S5c)**: S5c verifies registry cleanup (Phase 5c tasks 5c.1-5c.7 — `5c.2` delivered early in S5a — plus the `RESIDUAL-S5b-06` item-11 carry) and declares **no delta-spec requirement or scenario of its own**, so its evidence matrix is task/items-based. The head envelope therefore reports the change's full delta-spec surface at `bb9a277`, which is complete and unchanged by S5c: **18/18 requirements and 38/38 scenarios** across `payment-method-currency-classification` (3/8), `api-error-contract` (4/9), `closure-orchestration-consolidation` (4/8), `api-dto-boundary` (4/7) and `async-cancellation-propagation` (3/6). S5c closes the last registered registry items (H-05/H-06/H-08) and item 11; no implementation phase remains open.
-**Verified revision**: the current `HEAD` is `bb9a277` (`fix(8.140): J findings S5c (cookie LAN + IDisposable + paginacion) - ANEXO 8.140`). The working tree was clean before and after every re-executed command (`git status --short` and `git diff --stat HEAD` empty; the test/coverage output directories are git-ignored). Earlier sections record the revision each of them was verified at: S1 at `c6c767f`, S2 at `77b2d16`, S3 at `579347b`, S4a at `829778c`, S4b at `65e038a`, S5a at `227ee5c` and S5b at `dab4d16`.
-**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding — superseded for S1. Per slice: S2 was `fail` on `fe1b60b` and S3 was `fail` on `200cdaa`; both were superseded by their re-verifications. S4a, S4b, S5a and S5b were `pass_with_warnings`; S5c has no prior verdict.
-**evidence_revision** (head envelope, S5c) is the SHA-256 of the ASCII string produced by joining, with `:`, the lowercase SHA-256 hex digests of the **twenty-one S5c production/test files** that exist at `bb9a277`, listed in order under "S5c Changed Files", each hashed from its on-disk bytes (clean working tree; `core.autocrlf=true`). Reproducibility caveat: the preserved S4b head did not reproduce from its recorded description (recomputed by the S5a verifier; `RESIDUAL-S5a-05`), and the S1/S4b recipes are likewise not fully reproducible as written (`RESIDUAL-S2-07`); the S5c recipe is stated exactly here so it can be recomputed from this revision's working tree.
+**Scope of this report**: the per-slice verification record **plus the final change-level verification** for `legacy-debt-cleanup`. Slices S1 (zero-trust close, items 26/39), S2 (error contract + dead fields, items 2/18/25/12/35), S3 (closure orchestration consolidation, items 1/30/6/13/14), S4a (closure DTO boundary, commit `829778c`), S4b (drawer DTO boundary, commit `65e038a`), S5a (CancellationToken propagation + H-14 fold-in, commit `227ee5c`), S5b (EF read tuning + guards/naming/comments + S5a carries, commit `dab4d16`) and S5c (J findings H-05/H-06/H-08 + item-11 carry, commit `bb9a277`) are implemented and verified; all eight slices are closed and the **change-level verdict is `pass_with_warnings`**, declared in "Change-Level Verification (Final)" below. The machine-readable envelope at the top of this file is the **final cumulative change-level envelope** at HEAD `39a388d` (code tree identical to `bb9a277`). The slice head envelopes are preserved verbatim under "S5c Admitted Envelope (preserved)", "S5b Admitted Envelope (preserved)", "S5a Admitted Envelope (preserved)", "S4b Admitted Envelope (preserved)", "S4a Admitted Envelope (preserved)", "S3 Admitted Envelope (preserved)" and "S1 Admitted Envelope (preserved)"; every verdict and its own fresh evidence live in its own section.
+**Envelope counts (final cumulative)**: the head envelope reports the change's full delta-spec surface at HEAD, complete and verified: **18/18 requirements and 38/38 scenarios** across `payment-method-currency-classification` (3/8 — 1 MODIFIED + 2 ADDED), `api-error-contract` (4/9), `closure-orchestration-consolidation` (4/8), `api-dto-boundary` (4/7) and `async-cancellation-propagation` (3/6). S5b and S5c declare no delta-spec requirement of their own (task/item-based scopes: registry groups E/H/D and the J findings respectively). No implementation phase remains open.
+**Verified revision (final)**: the current `HEAD` is `39a388d` (`docs: S5c aceptado (verify pass_with_warnings) — todas las slices verificadas`), a documentation-only commit over `bb9a277`: `git diff --stat bb9a277..HEAD` lists only this report (+238/-10), so the verified code tree at `39a388d` is identical to `bb9a277`. The working tree was clean before and after every re-executed command (`git status --short` empty; `TestResults/` is git-ignored). Earlier sections record the revision each of them was verified at: S1 at `c6c767f`, S2 at `77b2d16`, S3 at `579347b`, S4a at `829778c`, S4b at `65e038a`, S5a at `227ee5c`, S5b at `dab4d16` and S5c at `bb9a277`.
+**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding — superseded for S1. Per slice: S2 was `fail` on `fe1b60b` and S3 was `fail` on `200cdaa`; both were superseded by their re-verifications. S4a, S4b, S5a and S5b were `pass_with_warnings`; S5c has no prior verdict. **Change-level verdict (final)**: `pass_with_warnings` — 0 blockers, 0 critical findings, 18/18 requirements and 38/38 scenarios (see the final section).
+**evidence_revision** (head envelope, final change-level) is the SHA-256 of the ASCII string produced by joining, with `:`, the lowercase SHA-256 hex digests of the **84 non-documentation files changed by the change** from its base `3e90ff36` (parent of `d7593c1`, the original S1 commit) to HEAD `39a388d`, sorted by path, each hashed from its on-disk bytes (clean working tree; `core.autocrlf=true`; `docs/`, `openspec/` and deleted files excluded). Reproducibility caveat: several earlier slice recipes did not reproduce from their recorded descriptions (S1/S4b — `RESIDUAL-S2-07`; S4b head — `RESIDUAL-S5a-05`); the final recipe above is stated exactly so it can be recomputed from this revision's working tree.
 **Hash definition**: `build_output_hash` / `test_output_hash` are the SHA-256 of the captured combined stdout+stderr for the command execution reported above, normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed; identical recipe per section below.
 
 ### S1 Admitted Envelope (preserved)
@@ -155,6 +155,26 @@ build_output_hash: sha256:4a64d60a53abe2326ac3d5a15d5f2031ffef05048f513dee5f5f93
 ```
 
 The S5b `evidence_revision` above is the SHA-256 of the colon-joined per-file SHA-256 hex digests of the twenty-three S5b production/test files listed under "S5b Changed Files" (recipe as documented in the S5b scope block); its build/test output hashes are those captured for the S5b command executions reported in the "Slice S5b" section.
+
+### S5c Admitted Envelope (preserved)
+
+The envelope below was this file's admitted machine-readable head from the S5c verification until the change-level verification re-pointed the head envelope to the final cumulative result. It is preserved byte-for-byte as the S5c evidence record (verified revision `bb9a277`; its `evidence_revision` is the SHA-256 of the colon-joined per-file digests of the twenty-one S5c production/test files listed under "S5c Changed Files", and its build/test output hashes are those captured for the S5c command executions reported in the "Slice S5c" section).
+
+```yaml
+schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:928ae06bf45063c170ddaa72138a803d8a72cde6aa15e0481459b7fa70700a31
+verdict: pass_with_warnings
+blockers: 0
+critical_findings: 0
+requirements: 18/18
+scenarios: 38/38
+test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj
+test_exit_code: 0
+test_output_hash: sha256:c8340a28b8174cc33d16ea9a2ee4281f132ee0d8984b434b5dffb24b092ff1df
+build_command: dotnet build CommandCenter.slnx -c Release
+build_exit_code: 0
+build_output_hash: sha256:712488c6859080b77d683709c21408cfab263d08f6b3fe59c9bfd7e2bc67da18
+```
 
 ### Completeness
 
@@ -1731,8 +1751,171 @@ Plus the documentation files `docs/reporte.txt` (ANEXO 8.140 S5c), `apply-progre
 
 ### Change-Level Verdict
 
-**Pending** — the final change-level verification remains to be run as a separate pass. All eight implementation slices are now verified (`pass_with_warnings`): S1, S2, S3, S4a, S4b, S5a, S5b and S5c at `bb9a277`. Delta-spec surface: **18 of 18 requirements and 38 of 38 scenarios complete** (`payment-method-currency-classification` 3/8, `api-error-contract` 4/9, `closure-orchestration-consolidation` 4/8, `api-dto-boundary` 4/7, `async-cancellation-propagation` 3/6 — the last one closed by S5a, including the H-14/AD-13 fold-in). S5c closed the J findings (H-05/H-06/H-08) and the item-11 `ThrowIfNull` carry (`RESIDUAL-S5b-06`); H-14 was closed in S5a. Residuals carried into the final pass (all non-blocking and outside the registered slices): `S5c-R1` (AuthController error contract), `S5b-R1` (H-03 in `CashDrawerController`), `S5a-R1`, `WARNING-04`, `WARNING-07`/`S3-06`/`S4a-R2`, `S3-07`/`S4a-R1`, the mutable DTOs in `Sales.Module.Interfaces`, `PaymentMethodDtos.cs:44`, `RESIDUAL-S5a-01`/`-03`..`-05`, `RESIDUAL-S5b-01`..`-05`/`-07`, `RESIDUAL-S4b-04` and the `SIZE-*` signals. No implementation work remains; the change-level verdict is the remaining step.
+**PASS_WITH_WARNINGS** — the final change-level verification has run at HEAD `39a388d` (code tree identical to `bb9a277`); see "Change-Level Verification (Final)" for the cumulative matrix, the final re-execution evidence and the archive-readiness statement. All eight implementation slices are verified (`pass_with_warnings`): S1, S2, S3, S4a, S4b, S5a, S5b and S5c at `bb9a277`. Delta-spec surface: **18 of 18 requirements and 38 of 38 scenarios complete** (`payment-method-currency-classification` 3/8, `api-error-contract` 4/9, `closure-orchestration-consolidation` 4/8, `api-dto-boundary` 4/7, `async-cancellation-propagation` 3/6 — the last one closed by S5a, including the H-14/AD-13 fold-in). S5c closed the J findings (H-05/H-06/H-08) and the item-11 `ThrowIfNull` carry (`RESIDUAL-S5b-06`); H-14 was closed in S5a. Residuals carried into the final pass (all non-blocking and outside the registered slices): `S5c-R1` (AuthController error contract), `S5b-R1` (H-03 in `CashDrawerController`), `S5a-R1`, `WARNING-04`, `WARNING-07`/`S3-06`/`S4a-R2`, `S3-07`/`S4a-R1`, the mutable DTOs in `Sales.Module.Interfaces`, `PaymentMethodDtos.cs:44`, `RESIDUAL-S5a-01`/`-03`..`-05`, `RESIDUAL-S5b-01`..`-05`/`-07`, `RESIDUAL-S4b-04` and the `SIZE-*` signals. No implementation work remains; the change-level verdict is declared in "Change-Level Verification (Final)".
 
 ### Verdict
 
 **PASS_WITH_WARNINGS (Slice S1)** - the remediation commit `c6c767f` closes all five findings registered against the prior verdict: CRITICAL-01 (the 400 path now emits an RFC 7807 `ProblemDetails` payload), WARNING-01 (five real-path tests execute the production `CreateClosureFromCommandAsync` against an InMemory `SalesDbContext`), WARNING-02 (the REQ-PMC-04 end-to-end scenario is covered and the diverging-name test is discriminating), WARNING-03 (the unauthorized rate source is fully reverted to the pre-S1 `ExchangeRateResolver` semantics, with `ITodayExchangeRateProvider` and AD-5/AD-6 left intact for S3) and WARNING-06 (the remediation adds no comment line and the apply-progress labels are corrected). All eight S1 scenarios and all three S1 requirements are compliant, so the verdict moves from `fail` to `pass_with_warnings`. The change carries no blockers and no critical findings; the residual warnings (RESIDUAL-01..09) are non-blocking, and WARNING-04/WARNING-07 remain deliberately deferred to S3 as recorded. S1 may be chained into S2.
+
+## Change-Level Verification (Final)
+
+**Verdict: PASS_WITH_WARNINGS** — 0 blockers, **0 critical findings**. All eight implementation slices are verified and this change-level pass confirms the cumulative result at HEAD `39a388d` (code tree identical to `bb9a277`): **18/18 requirements and 38/38 scenarios compliant** across the five capabilities (4 new + 1 modified delta), **72/72 task boxes checked**, build 0/0, backend suite 1227/1227, frontend 273/273 with clean lint, and all three coverage gates `[OK]`. No fail-class condition exists; the residuals are non-blocking follow-ups, inventoried below. **Archive readiness: admissible** (statement at the end of this section).
+
+**Verified revision**: HEAD `39a388d` (`docs: S5c aceptado (verify pass_with_warnings) — todas las slices verificadas`), a documentation-only commit over the last implementation revision `bb9a277` (`git diff --stat bb9a277..HEAD` = this report only, +238/-10). Working tree clean before and after every re-executed command (`git status --short` empty; `TestResults/` is git-ignored).
+**Head envelope**: the machine-readable envelope at the top of this file is the final cumulative one; its `evidence_revision` recipe (84 non-documentation files changed from base `3e90ff36` to HEAD) is documented in the scope block. The S5c slice envelope is preserved verbatim under "S5c Admitted Envelope (preserved)".
+
+### Cumulative Requirements Matrix (18/18 requirements, 38/38 scenarios)
+
+Counts read from the five delta spec heading sets (`### Requirement:` / `#### Scenario:`) at HEAD. `payment-method-currency-classification` is the MODIFIED capability (1 MODIFIED + 2 ADDED); the other four are new capabilities.
+
+| Capability | Requirement | Scenarios | Closing slice (commit) | Evidence at HEAD |
+|---|---|---|---|---|
+| payment-method-currency-classification | REQ-PMC-01 (MODIFIED) — Single Classifier Source of Truth | 3/3 | S1 (`d7593c1`, remediation `c6c767f`) | `ShiftReportMapper_ProducesConsistentLabels_WithResolverClassification`; real-service tests `CreateClosureFromCommandAsync_RealService_UsdMethodClassifiedAsUsd` / `_BsSMethodClassifiedAsBsS` / `_DivergingName_UsesResolverClassification`; no `request.Currency` read remains (field deleted, grep clean). |
+| payment-method-currency-classification | REQ-PMC-04 (ADDED) — Client Currency Is Not Authoritative | 3/3 | S1 | `..._ReqPmc04_ClientUsdForLocalMethod_UsesResolverClassification` (persisted `ActualAmountBsS == 5000`, `ExchangeRate == 50`); `CloseShift_EmptyDeclaredAmounts_CreatesCommandAndDelegatesToService`; unknown id → 400 `ProblemDetails` with nothing persisted (controller + `SecurityHardeningSprint2Tests` + real-service throw). Residual RESIDUAL-04. |
+| payment-method-currency-classification | REQ-PMC-05 (ADDED) — Close Page Uses Server Classification | 2/2 | S1 | `RegisterClosePage.currency-classification.test.js` 3/3: no `usd`/`dolar`/`$`/`divisa` heuristic, reads `method.currency` only, payload omits `currency`. |
+| api-error-contract | REQ-AEC-01 — RFC 7807 Payload Shape | 2/2 | S2 (`fe1b60b`, remediation `77b2d16`) | 21 `ErrorContractTests` payload-shape tests across the three touched controllers; preview 400 keeps `Problem(...)`; zero anonymous error objects remain (inspection + shape tests). Residuals RESIDUAL-S2-05/06. |
+| api-error-contract | REQ-AEC-02 — Helper and Status Fidelity | 2/2 | S2 | Driver 403 tests in `ShiftsController`/`DailyClosureController` + `CashDrawerController_AddTransaction_CashierRole_ReturnsProblemDetails403`; 400 tests (`DailyClosureController_EmptyDetails`/`_DuplicateMethods`/`_NullRequest`, drawer zero amount/exchange rate) — all helper-backed `ProblemDetails`. |
+| api-error-contract | REQ-AEC-03 — No Silent Failure in Closure Receipt Writers | 2/2 | S2 remediation | `await Task.Delay(200, ct)` on the receipt path (no `Thread.Sleep`; the repo's only one is out-of-scope `UpdaterService`); both catches log path+exception; `WriteClosedClosureReceipts_RetryLogsOnFailure` + `..._IsFailOpen_...` green. Residuals RESIDUAL-S2-01/02/03. |
+| api-error-contract | REQ-AEC-04 — Dead CloseShiftRequest Fields Removed | 3/3 | S2 | `CloseShiftRequest_HasNoCashierNameOrCedula` + `DeclaredAmountDto_HasNoPaymentMethodName` (reflection); `ShiftsController_LegacySenderExtraFields_StillSucceeds` (raw JSON + serializer binding); identity from `_currentUserService.UserId` (inspection — RESIDUAL-S2-08). |
+| closure-orchestration-consolidation | REQ-COC-01 — Single Server-Side Closure Path | 2/2 | S3 (`200cdaa`, remediation `579347b`) | `CreateClosure_DelegatesToService_AndPersistsNothingDirectly`; `OpenSerializableTransactionAsync` + `ExecuteClosureCommandAsync` wrap read→persist→rollover in `Serializable` with commit/rollback; `DailyClosureTransactionTests` 2/2 **discriminating** (verifier mutation reproduced both failure modes). |
+| closure-orchestration-consolidation | REQ-COC-02 — Controllers Authorize and Delegate Only | 2/2 | S3 | 4 reflection tests (no `DbContext` constructor parameter/field); Driver guard 403 `ApiForbidden`; `[RequireSecurityStampValidation]` + backdating guard retained; S2 Driver tests green. |
+| closure-orchestration-consolidation | REQ-COC-03 — Complexity Budget Under 10 | 2/2 | S3 remediation | Verifier recount (`McCabe = points + 1`): `CreateClosure` = 3; maximum extracted = 7; all 15 listed methods < 10 (residual RESIDUAL-S3-12, arithmetic note only). |
+| closure-orchestration-consolidation | REQ-COC-04 — Behavior Preservation | 2/2 | S3 | 5 real-path closure tests asserting persisted amounts/status; preview 400 preserved (`GetExpectedTotals_WhenDefaultDate_Returns400ProblemDetails`); snapshots never recomputed; Sales.Module coverage 0.9073. |
+| api-dto-boundary | REQ-ADB-01 — Closure Contracts Return DTOs | 2/2 | S4a (`829778c`) | `ClosureDto_GoldenJson_...` pins `DailyClosureResponseDto`/`ClosureDetailResponseDto` (navs absent, every client-bound member preserved); `ClosureServiceAndControllerSignatures_DoNotExposeSalesModuleEntities` pins the generic argument; grep 0 entity matches on the boundary. Residual RESIDUAL-S4a-01. |
+| api-dto-boundary | REQ-ADB-02 — Drawer Contracts Return DTOs | 2/2 | S4b (`65e038a`) | `DrawerSessionDto_GoldenJson_...` + `CashDrawerController_Actions_DeclareDrawerResponseDtos` + `CashAdvanceResultDto_ExposesTransactionResponseDtos` + no-entity reflection; 8/8 green. |
+| api-dto-boundary | REQ-ADB-03 — Projection Without Entity Instantiation | 1/1 | S4b | `GetHistoryAsync_ReturnsProjectedDtos_WithoutMaterializingEntityInstances` (real service; `InvoiceNumber == 4242`; non-physical excluded; empty `ChangeTracker`) + the LINQ projection replacing `new CashTransaction { Sale = ... }`. Residual RESIDUAL-S4b-03. |
+| api-dto-boundary | REQ-ADB-04 — DTO Immutability and Field Parity | 2/2 | S4a (closure) + S4b (drawer) | `ClosureDtos_ExposeNoPublicSetter` / `DrawerDtos_ExposeNoPublicSetter` (init-only `IsExternalInit`); golden-JSON per-member parity + consumer searches (WPF DTO/XAML bindings; Web `tx.invoiceNumber` re-point in the same commit). |
+| async-cancellation-propagation | REQ-ACP-01 — Controller Actions Accept and Propagate | 2/2 | S5a (`227ee5c`) | 7 controller token-identity tests + `TouchedActionsAndHelpers_DeclareCancellationTokenAsLastParameter` (13 actions + 2 helpers) + 3 SQLite real-path tests (pre-cancelled token → `OperationCanceledException`, 0 rows, no rollover). Residual RESIDUAL-S5a-04. |
+| async-cancellation-propagation | REQ-ACP-02 — Services Propagate to EF Core and the Rate Resolver | 2/2 | S5a + S5b carry (`dab4d16`) | Per-call source table (EF reads, advisory locks, begin/commit/rollback, execution strategy, `ExchangeRateResolver` chain); 3 SQLite cancellation tests; `MoveNext`-aware IL scanner with discriminating probe `BlockingScanner_DetectsBlockingCallInsideAsyncStateMachine`; repo-wide blocking-construct grep clean on the touched paths. |
+| async-cancellation-propagation | REQ-ACP-03 — No async void in Touch Events | 2/2 | S5a (H-14/AD-13, task `5c.2` delivered early) | `MainWindow_OnClosing_IsNotAsyncVoid` (void, no `AsyncStateMachineAttribute`); `RunShutdownAsync()` + `SafeFireAndForget` with `Close()` in `finally`; `MainWindow_RunShutdownAsync_ReturnsObservableTask`. Residual RESIDUAL-S5a-03 (no execution test). |
+
+**Compliance summary**: **18/18 requirements and 38/38 scenarios compliant**, 0 UNTESTED, 0 FAILING. Scenario-level rows with named covering tests are in the per-slice matrices above: S1 8/8 (`payment-method-currency-classification`), S2 9/9 (`api-error-contract`), S3 8/8 (`closure-orchestration-consolidation`), S4a 4/4 in-scope + S4b 5/5 in-scope (`api-dto-boundary` 7/7 combined), S5a 6/6 (`async-cancellation-propagation`). S5b and S5c declare no delta-spec requirement of their own; their item/task matrices are in their sections.
+
+### Tasks Completeness
+
+| Metric | Value |
+|--------|-------|
+| Task boxes checked (`tasks.md`, Phases 1-5c) | **72** |
+| Task boxes unchecked | **0** |
+| Phases complete | S1 1.1-1.10, S2 2.1-2.10, S3 3.1-3.11, S4a 4a.1-4a.8, S4b 4b.1-4b.10, S5a 5a.1-5a.7, S5b 5b.1-5b.9, S5c 5c.1-5c.7 |
+
+`tasks.md` reports `- [x]` on every box (72 checked / 0 unchecked). Three annotations qualify the record without leaving work open: (a) `5c.2` was delivered early in S5a under explicit orchestrator authorization (annotated in the box and the phase note); (b) boxes `4a.5`/`4a.6` are checked but changed no file (deviations D1/D2 — `CreateClosure` already returned the immutable `CloseShiftResult`; no client reads the closure GET), recorded as `RESIDUAL-S4a-03`; (c) box `4b.8` is checked but no WPF file changed (deviation D2), recorded as `RESIDUAL-S4b-02`. Requirement-level compliance holds in all three cases. No unchecked box blocks full verification.
+
+### Final Re-execution (verbatim, HEAD `39a388d`)
+
+Every command below was re-executed independently for this final pass after confirming the working tree clean; `stderr` was merged (`*>` redirection) and no result was taken from `apply-progress.md` or a prior section. Hash recipe: SHA-256 over the captured combined stdout+stderr, normalized to UTF-8 without BOM, `CRLF` → `LF`, trailing newlines trimmed.
+
+**1. Build** — `dotnet build CommandCenter.slnx -c Release` — exit `0` — 0 warnings, 0 errors
+
+```text
+Compilación correcta.
+    0 Advertencia(s)
+    0 Errores
+
+Tiempo transcurrido 00:00:24.91
+```
+
+`build_output_hash: sha256:9af6eeb728980147499fb4e4e7a5297989c7746a9304cc51a8e958384ab7a392` — matches the head envelope.
+
+**2. Backend tests** (the command declared by the change's Verification section) — `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj` — exit `0` — 1227/1227, 0 failed, 0 skipped
+
+```text
+Correctas! - Con error:     0, Superado:  1227, Omitido:     0, Total:  1227, Duración:  9 s - CommandCenter.Tests.dll (net10.0)
+```
+
+`test_output_hash: sha256:2dc53f257571d0573fb6cbad5ab82dc89dd8538d19aa091eb2a4789c2581a05c` — matches the head envelope.
+
+**3. Frontend tests** — `npm test` (Web.Frontend) — exit `0` on the first execution — 273/273
+
+```text
+ℹ tests 273
+ℹ suites 59
+ℹ pass 273
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5082.3781
+```
+
+captured-output hash: `sha256:8852e972fa29b76892bfcf4a7aaab62eb605d95a6ba9ab98d2e74776f0d5a238`
+
+**4. Frontend lint** — `npm run lint` (Web.Frontend, oxlint) — exit `0`, no findings
+
+```text
+> web-frontend@0.0.0 lint
+> oxlint
+```
+
+captured-output hash: `sha256:1472f392035e28478ac827e6e5301e8adde36ba5a0a27bc61cdf6e42453bc7d3` — byte-identical to every prior slice's lint capture.
+
+**5. Coverage run + gate** — `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings` — exit `0` (1227/1227), then `python scripts/check-coverage.py CommandCenter.Tests/TestResults/717f746f-db9e-48a2-80e4-2eaca7a0eb30/coverage.cobertura.xml` — exit `0`
+
+```text
+Cobertura de dominio por capa (line-rate, excluye *.Migrations.*):
+  Core               rate=0.8364 min=0.7000 gap_a_70%=0.0000 [OK]
+  Sales.Module       rate=0.9073 min=0.8000 gap_a_70%=0.0000 [OK]
+  Inventory.Module   rate=0.8251 min=0.7200 gap_a_70%=0.0000 [OK]
+```
+
+captured-output hash: `sha256:d4f78b29fe390a8f33eb60326aea8161b62f909dff7e9bb50f075a9c0278aea2`
+
+All three `tasks.md` thresholds pass (Core ≥ 0.70, Sales.Module ≥ 0.80, Inventory.Module ≥ 0.72) and the rates are identical to the S5c close-out — no drift at the final revision.
+
+**Environment note**: `TEST_POSTGRES_CONNECTION` is unset; the Postgres-gated integration classes early-return as vacuous passes. The change's transactional coverage is provided by the relational SQLite `DailyClosureTransactionTests` (2/2, discriminating), not by the gated Postgres classes.
+
+### Consolidated Residual / Follow-up Inventory (all non-blocking)
+
+| # | Item / family | Origin | Nature and current status |
+|---|---|---|---|
+| 1 | Registry item 40 | `proposal.md` (deferred ungrouped) | OpenCode `question` tooling — out of scope; deferred. |
+| 2 | Registry item 41 | `proposal.md` (deferred ungrouped) | WPF hardcoded advance commission — named the top follow-up candidate; unchanged. |
+| 3 | WARNING-04 | S1 (carried through S3/S4/S5) | Merged undeclared-method lines hardcode `"Balanced"` while `DifferenceBsS` can be non-zero and mix units (Bs.S declared vs USD-converted system amount); the `ClosureStatus` constant extraction (S5b) changed nothing semantic. Not a spec scenario; needs its own fix. |
+| 4 | WARNING-07 / S3-06 / S4a-R2 | S1 → S3 → S4a | `Sales.Module/Services/DailyClosureService.cs` over the 300-500 line ceiling: **650 lines** at the final revision (verifier-measured `(Get-Content).Count`; 636 at S3, 645 at S4a). Open. |
+| 5 | S3-07 / S4a-R1 | S3 → S4a | Legacy concrete-only `CreateClosureAsync(DailyClosure)` entry point: entity-returning, divergent rules, no production caller (off the interface and the API boundary). Open; candidate delete-with-test-references or reduce to a private adapter. |
+| 6 | S4b-R1 | S4b | Drawer read tuning deferred to S5b (AD-16) — **CLOSED by S5b**: `GetActiveSessionWithTransactionsAsync` is tuned and covered by a discriminating tracking test. |
+| 7 | S5a-R1 | S5a (+S5b partial) | CT-less surfaces left outside the registered items: `ISystemSettingsService.GetSettingAsync` and five settings reads inside touched paths; `SalesService.Payments.cs`/`HoldOrders.cs` call sites (no token in scope); `RecalculateOnHoldSalesAsync`; the simple execution-strategy overload in `DailyClosureService`. The two named `SalesService.Checkout.cs` sites were closed by S5b. Open remainder. |
+| 8 | S5b-R1 | S5b GGA triage | H-03 in `CashDrawerController`: `DbContext` injection, BCV anchoring and the user lookup belong in the service layer; needs its own work unit. Open. |
+| 9 | S5c-R1 | S5c GGA triage | `AuthController` error contract: anonymous `{ Message }` responses (login/logout/change-password) not RFC 7807; AuthController was never in the S2 sweep; also CT-less actions. Open. |
+| 10 | D2 (S5c design deviation) | S5c | The four UserControls hosting DI-owned singleton VMs deliberately carry no disposal hook (disposing on unload would break later navigation; the DI host owns those instances). Recorded WARNING, justified, no behavioral risk. |
+| 11 | RESIDUAL-01..09 (S1 family) | S1 | 01 pre-existing test-stability flake (unreproduced after S1); 02 coverage snapshot drift (gate passes); 03 `application/problem+json` content type unasserted; 04 REQ-PMC-04 payload cannot literally carry `currency`; 05 comment (closed by S2); 06 evidence-record defects; 07 duplicate-id `BadRequest` site (closed by S2); 08 stale test name; 09 defensive dead branch. Remaining items informational. |
+| 12 | RESIDUAL-S2-01..08 | S2 | 01 no discriminating await test; 02 environment-dependent logging test; 03 fail-open test does not force failure; 04 serializer-level legacy-sender binding; 05 payload parity vs `GlobalExceptionHandlerMiddleware` (`error` dropped, `type` URI changed); 06 content type unasserted; 07 bookkeeping; 08 identity derivation inspection-only. |
+| 13 | RESIDUAL-S3-01/08/12/13 | S3 | 01 stale Postgres test narrative; 08 post-commit comment on the ambient branch; 12 McCabe-table arithmetic; 13 drawer enlistment proven by inspection (`-02`..`-06`, `-10`, `-11` closed). |
+| 14 | RESIDUAL-S4a-01..03 | S4a | 01 serializer-level parity evidence; 02 commit-item misattribution (immutable subject); 03 checked-box vs changed-file mismatch (4a.5/4a.6). |
+| 15 | RESIDUAL-S4b-01..04 | S4b | 01 serializer-level parity; 02 task 4b.8 over-checked; 03 weak assertion components; 04 pre-existing Web `advance` filter bug (`RegisterPage.jsx:122` `tx.source !== 4` vs `CashAdvance = 2`) — out of scope, follow-up. |
+| 16 | RESIDUAL-S5a-01..05 | S5a | 01 defaulted service tokens / live caller gap (named Checkout sites closed by S5b; remainder under S5a-R1); 02 IL-scan blind spot — **CLOSED by S5b** (state-machine-aware scanner + discriminating probe); 03 no execution test for the H-14 shutdown path; 04 path-level (not per-call) cancellation discrimination; 05 evidence-revision reproducibility caveat. |
+| 17 | RESIDUAL-S5b-01..07 | S5b | 01 `AsSplitQuery` untested; 02 non-discriminating latest-closure test; 03 D5 guard-order test gap; 04 comment-policy nuance; 05 evidence arithmetic; **06 item-11 `ThrowIfNull` idiom — CLOSED by S5c**; 07 deferral gap (McCabe targets / suffix sweep previously deferred to "S5b" not registered). |
+| 18 | SIZE-S4a / S4b / S5a / S5b / S5c | all slices | All five slices exceeded the 400-line review budget: **705 / 1053 / 1014 / 753 / 625** changed lines (authored production surfaces ≈176 / ≈354 / ≈36 / ≈136 / ≈85; the rest is tests/docs). Every slice was authorized as a chained work unit under `delivery strategy: ask-on-risk`; no `size:exception` was invoked — the signals are recorded for the review trail. |
+| 19 | SUGGESTION (bookkeeping) | S5c | `design.md` Open Questions for H-05/H-06/H-08 remain unchecked boxes although AD-19 records the maintainer decisions and the implementation landed; close them in a docs pass. |
+
+No inventory item is a blocker, a critical finding, or a spec-scenario failure. Items 40/41 remain the only registry entries never assigned to a slice (out of scope); everything else is a recorded hygiene, evidence-quality or follow-up item.
+
+### Fail Conditions (each checked)
+
+The change-level verdict would be `fail` if any of the following held; none does:
+
+1. **Any unchecked `tasks.md` box** → 72/72 checked.
+2. **Any non-zero build/test/lint exit** → all five commands exit `0`.
+3. **Any spec scenario without a passing covering test** → 38/38 compliant, 0 UNTESTED, 0 FAILING. A small number of scenarios include inspection-backed clauses (recorded as RESIDUAL-S2-01/-08 and RESIDUAL-S5a-03/-04); none lacks an executable assertion where the requirement is behaviorally testable, and all are recorded residuals, not failures.
+4. **Any open CRITICAL finding or blocker** → 0/0 (all three historical CRITICALs — S1 CRITICAL-01, S2 CRITICAL-01, S3 CRITICAL-S3-01 — closed with fresh evidence in their re-verifications).
+5. **Coverage below thresholds** → 0.8364 / 0.9073 / 0.8251, all above 0.70 / 0.80 / 0.72.
+6. **A REMOVED delta or an incomplete sync surface** → 0 `## REMOVED` sections; all five delta specs complete and counted by the validator.
+7. **Validator denial of the final envelope** → admitted (see below).
+
+### Validator Admission
+
+`gentle-ai sdd-verify-validate --input <candidate-bytes> --requirements 18 --scenarios 38` (exit `0`) admitted the exact candidate bytes before persistence, and the same command over the persisted `openspec/changes/legacy-debt-cleanup/verify-report.md` (exit `0`) re-admitted the written file. No write occurred before admission; a pre-final byte-exact backup of the prior report was taken so a denial could have left it untouched.
+
+### Archive Readiness
+
+| Prerequisite | Status |
+|---|---|
+| Report locator resolves at the change locator (`openspec/changes/legacy-debt-cleanup/verify-report.md`) | ✅ admitted (final envelope, `requirements 18/18`, `scenarios 38/38`) |
+| Tasks complete | ✅ 72/72 checked |
+| Delta specs complete for sync | ✅ 5 files under `openspec/changes/legacy-debt-cleanup/specs/` |
+| New capabilities | ✅ 4 (`api-error-contract`, `api-dto-boundary`, `closure-orchestration-consolidation`, `async-cancellation-propagation`) — all requirements ADDED; the target `openspec/specs/<capability>/` directories are created by the archive sync |
+| Modified capability | ✅ 1 (`payment-method-currency-classification`): 1 MODIFIED (REQ-PMC-01) + 2 ADDED (REQ-PMC-04/05); target spec exists at `openspec/specs/payment-method-currency-classification/spec.md` |
+| REMOVED deltas | ✅ none (0 `## REMOVED` sections; the destructive-delta warning does not apply) |
+| Blocking residuals | ✅ none — every inventory item is non-blocking and recorded above |
+
+**Statement**: **`sdd-archive` is admissible for `legacy-debt-cleanup`.** The change has a complete, admitted verify-report at its canonical locator, all tasks are checked, all five spec deltas are complete and free of destructive (`REMOVED`) deltas, and no blocking residual remains. The archive phase may sync the four new capabilities and the modified `payment-method-currency-classification` delta; the non-blocking residual inventory (particularly items 40/41, WARNING-04, WARNING-07/S3-06/S4a-R2, S3-07/S4a-R1, S5a-R1, S5b-R1, S5c-R1) should be carried forward as follow-up work, not as archive blockers.
