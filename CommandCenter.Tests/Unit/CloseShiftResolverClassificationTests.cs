@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using CommandCenter.Tests.Builders;
+using CommandCenter.Tests.TestHelpers;
 using Core.Interfaces;
 using Inventory.Module.Data;
 using Microsoft.AspNetCore.Http;
@@ -82,19 +83,11 @@ public class CloseShiftResolverClassificationTests
         Mock<ICashDrawerService>? mockCashDrawer = null)
     {
         mockClosure ??= new Mock<IDailyClosureService>();
-        mockCashDrawer = CreateMockCashDrawer();
-        var mockPaymentMethod = new Mock<IPaymentMethodService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.UserId).Returns("1");
 
         var controller = new ShiftsController(
-            mockCashDrawer.Object,
             mockClosure.Object,
-            mockPaymentMethod.Object,
-            mockSettings.Object,
-            CreateInMemoryInventoryContext(),
-            CreateInMemorySalesContext(),
             mockUser.Object);
 
         AttachUser(controller, CreateUser("1", "Admin"));
@@ -341,13 +334,12 @@ public class CloseShiftResolverClassificationTests
         });
         await salesCtx.SaveChangesAsync();
 
-        var service = new DailyClosureService(salesCtx);
+        var service = DailyClosureTestHelper.CreateService(salesCtx);
 
         var command = new CreateClosureCommand(
             ClosureDateUtc: DateTime.UtcNow,
             UserId: "Admin",
             Observation: "V-00000000",
-            ExchangeRate: 50m,
             Declarations: new List<DeclaredPaymentAmount>
             {
                 new(1, 100m)
@@ -383,13 +375,12 @@ public class CloseShiftResolverClassificationTests
         });
         await salesCtx.SaveChangesAsync();
 
-        var service = new DailyClosureService(salesCtx);
+        var service = DailyClosureTestHelper.CreateService(salesCtx);
 
         var command = new CreateClosureCommand(
             ClosureDateUtc: DateTime.UtcNow,
             UserId: "Admin",
             Observation: "V-00000000",
-            ExchangeRate: 50m,
             Declarations: new List<DeclaredPaymentAmount>
             {
                 new(2, 5000m)
@@ -423,13 +414,12 @@ public class CloseShiftResolverClassificationTests
         });
         await salesCtx.SaveChangesAsync();
 
-        var service = new DailyClosureService(salesCtx);
+        var service = DailyClosureTestHelper.CreateService(salesCtx);
 
         var command = new CreateClosureCommand(
             ClosureDateUtc: DateTime.UtcNow,
             UserId: "Admin",
             Observation: "V-00000000",
-            ExchangeRate: 50m,
             Declarations: new List<DeclaredPaymentAmount>
             {
                 new(3, 100m)
@@ -462,13 +452,12 @@ public class CloseShiftResolverClassificationTests
         });
         await salesCtx.SaveChangesAsync();
 
-        var service = new DailyClosureService(salesCtx);
+        var service = DailyClosureTestHelper.CreateService(salesCtx);
 
         var command = new CreateClosureCommand(
             ClosureDateUtc: DateTime.UtcNow,
             UserId: "Admin",
             Observation: "V-00000000",
-            ExchangeRate: 50m,
             Declarations: new List<DeclaredPaymentAmount>
             {
                 new(999, 100m)
@@ -494,13 +483,12 @@ public class CloseShiftResolverClassificationTests
         });
         await salesCtx.SaveChangesAsync();
 
-        var service = new DailyClosureService(salesCtx);
+        var service = DailyClosureTestHelper.CreateService(salesCtx);
 
         var command = new CreateClosureCommand(
             ClosureDateUtc: DateTime.UtcNow,
             UserId: "Admin",
             Observation: "V-00000000",
-            ExchangeRate: 50m,
             Declarations: new List<DeclaredPaymentAmount>
             {
                 new(2, 5000m)

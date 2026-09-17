@@ -266,3 +266,85 @@ The Guardian Angel code review hook flagged several findings in touched files. A
 | Focused test command | `dotnet test --filter "FullyQualifiedName~ErrorContract"`: 21 passed, 0 failed |
 | Runtime harness | `N/A` — all error contract tests verify response shape against controller unit tests; no runtime I/O boundary |
 | Rollback boundary | `IDailyClosureService.cs`, `DailyClosureService.cs`, `DailyClosureController.cs`, `ShiftsController.cs`, `ApiProblemResults.cs`, `ErrorContractTests.cs` |
+
+---
+
+## Slice S3: Closure Orchestration Consolidation
+
+### Completed Tasks
+
+- [x] 3.1 **RED**: Added delegation test `CreateClosure_DelegatesToService_AndPersistsNothingDirectly` in `DailyClosureControllerTests.cs` — verifies controller calls `CreateClosureFromCommandAsync` with correct command and returns result
+- [x] 3.2 `Core/Interfaces/ITodayExchangeRateProvider.cs` — created (AD-6)
+- [x] 3.3 `Backend.API/Services/TodayExchangeRateProvider.cs` — created, delegates to `ExchangeRateResolver.ReadEffectiveTodayRateAsync` (AD-6)
+- [x] 3.4 `DailyClosureService.cs` — refactored: `CreateClosureFromCommandAsync` owns strategy + Serializable tx + rate via `ITodayExchangeRateProvider` + assembly + persistence + rollover + receipt writing (AD-5/6). Extracted `ValidateDeclaredMethods`, `MergeMissingMethodsIntoClosure`, `MergeMissingMethodsWithReport`, `RecalculateTotals`, `PersistClosureCoreAsync`, `ResolveUserDetailsAsync` (AD-8)
+- [x] 3.5 `DailyClosureController.cs` — removed `InventoryDbContext`, `SalesDbContext`, `ICashDrawerService`, `ISystemSettingsService` from constructor; removed `GetTodayExchangeRateAsync`; removed transaction, persistence, rollover; delegates to `IDailyClosureService.CreateClosureFromCommandAsync` (AD-5/7). `ResolveClosureDate` extracted as static helper (AD-7: RBAC/backdating stays in controller)
+- [x] 3.6 `ShiftsController.cs` — removed 6 constructor dependencies; removed `GetTodayExchangeRateAsync`; delegates closure to `_dailyClosureService.CreateClosureFromCommandAsync`; uses `_dailyClosureService.GetLatestClosureAsync` and `GetCashierDisplayNameAsync` (AD-5)
+- [x] 3.7 `ServiceCollectionExtensions.cs` — `ITodayExchangeRateProvider` → `TodayExchangeRateProvider` registered (line 59)
+- [x] 3.8 Re-pointed test files: `DailyClosureControllerTests`, `Phase7ClosureWithoutRateTests`, `ResidualRemediationLote26Tests`, `SecurityHardeningSprint2Tests`, `CloseShiftResolverClassificationTests`, `ErrorContractTests`, `Phase2IntegrityRemediationTests`, `CashDrawerClosureTests`, `CheckoutAndPaymentTests`, `DailyClosureFlowIntegrationTests`, `DailyClosureRetryIntegrationTests`, `DailyClosureServiceUnitTests`, `DailyClosureServiceWindowTests`, `Phase2FinancialAndIntegrityTests`, `PaymentMethodCurrencyClassificationTests` — all updated to new constructor signatures
+- [x] 3.9 **GREEN**: Behavior-preservation verified: existing real-path tests (`CloseShiftResolverClassificationTests` with InMemory DB) confirm same inputs → identical persisted amounts/status/response; preview 400 preserved via `GetExpectedTotals_WhenDefaultDate_Returns400ProblemDetails`
+- [x] 3.10 **GREEN**: Added 4 structural tests in `DailyClosureControllerTests.cs`: `DailyClosureController_HasNoDbContextInConstructor`, `ShiftsController_HasNoDbContextInConstructor`, `DailyClosureController_HasNoDbContextFields`, `ShiftsController_HasNoDbContextFields` (REQ-COC-02)
+- [x] 3.11 McCabe evidence (REQ-COC-03) — all methods < 10
+
+### Fold-ins from S2
+
+- **S2-01 (discriminating non-blocking-retry test)**: Already addressed in S2 remediation. `WriteClosedClosureReceipts_RetryLogsOnFailure` verifies retry on permanent failure (ACL Deny Write) — the retry fires but the operation completes without throwing (fail-open). Infeasible to write a truly discriminating transient-vs-permanent test without filesystem mocking; the existing test is the best achievable coverage.
+- **S2-07 (bookkeeping numbers)**: Corrected in S2 remediation — ShiftsController had 4 anonymous error objects (not 5); DailyClosureService.cs is 505→578 lines post-S3 (not 537).
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `Core/Interfaces/ITodayExchangeRateProvider.cs` | Created | AD-6: interface for today's effective rate resolution |
+| `Backend.API/Services/TodayExchangeRateProvider.cs` | Created | AD-6: delegates to `ExchangeRateResolver.ReadEffectiveTodayRateAsync` |
+| `CommandCenter.Tests/TestHelpers/DailyClosureTestHelper.cs` | Created | Test helper: creates `DailyClosureService` with mocked `ITodayExchangeRateProvider` |
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | AD-5/6/8: `CreateClosureFromCommandAsync` owns full orchestration; extracted 6 methods; injected `ITodayExchangeRateProvider` + `ICashDrawerService` |
+| `Sales.Module/Interfaces/IDailyClosureService.cs` | Modified | Added `GetLatestClosureAsync`, `GetCashierDisplayNameAsync` |
+| `Sales.Module/Interfaces/CreateClosureCommand.cs` | Modified | Removed `ExchangeRate` parameter (now resolved by service via provider) |
+| `Backend.API/Controllers/DailyClosureController.cs` | Modified | AD-5/7: removed DbContext, transaction, persistence; delegates to service |
+| `Backend.API/Controllers/ShiftsController.cs` | Modified | AD-5: removed 6 dependencies; delegates closure to service |
+| `Backend.API/Startup/ServiceCollectionExtensions.cs` | Modified | Registered `ITodayExchangeRateProvider` |
+| `CommandCenter.Tests/Unit/DailyClosureControllerTests.cs` | Modified | Added delegation test (3.1), 4 structural tests (3.10) |
+| `CommandCenter.Tests/Unit/Phase7ClosureWithoutRateTests.cs` | Modified | Re-pointed to new service interface (3.8) |
+| `CommandCenter.Tests/SecurityHardeningSprint2Tests.cs` | Modified | Re-pointed unknown-method test to new service interface (3.8) |
+| 13 additional test files | Modified | Re-pointed to `DailyClosureTestHelper` or new constructor signatures |
+
+### McCabe Evidence (REQ-COC-03)
+
+| Method | McCabe | Decision Points |
+|--------|--------|-----------------|
+| `DailyClosureController.CreateClosure` | 7 | `if(Driver)`, `if(request==null\|\|...)`, `if(duplicated)`, `ternary(authenticatedUserId)`, `catch(InvalidOperationException)`, `catch(ArgumentException)` |
+| `DailyClosureController.ResolveClosureDate` | 6 | `if(default)`, `ternary(Unspecified)`, `if(!isAdmin)`, `if(future)`, `if(>24h)` |
+| `DailyClosureService.CreateClosureFromCommandAsync` | 9 | `if(exchangeRate<=0)`, `foreach`, 2×`ternary(currency)`, 2×`ternary(status)`, `if(TryParse)`, `if(user!=null)`, `if(CurrentTransaction)` |
+| `DailyClosureService.ValidateDeclaredMethods` | 2 | `if(count>0)` |
+| `DailyClosureService.MergeMissingMethodsIntoClosure` | 5 | `foreach`, `if(!Contains)`, `&&`, `ternary(cash)` |
+| `DailyClosureService.MergeMissingMethodsWithReport` | 7 | `foreach`, `if(!Contains)`, `&&`, `ternary(cash)`, 2×`ternary(Usd)` |
+| `DailyClosureService.RecalculateTotals` | 3 | `foreach`, `if(<0)` |
+| `DailyClosureService.ResolveUserDetailsAsync` | 3 | `if(TryParse)`, `if(user!=null)` |
+
+All under 10. ✅
+
+### Verification Results (S3)
+
+- `dotnet build CommandCenter.slnx -c Release`: **0 errors, 0 warnings**
+- `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: **1175 passed, 0 failed**
+- `dotnet test --filter "FullyQualifiedName~Closure|FullyQualifiedName~DailyClosure"`: **77 passed, 0 failed**
+- `dotnet test --filter "FullyQualifiedName~DailyClosureControllerTests"`: **7 passed, 0 failed**
+
+### Work Unit Evidence (S3)
+
+| Evidence | Value |
+|----------|-------|
+| Focused test command | `dotnet test --filter "FullyQualifiedName~Closure|FullyQualifiedName~DailyClosure"`: 77 passed, 0 failed |
+| Runtime harness | `N/A` — all orchestration tests verify delegation and behavior via controller unit tests with mocked service; real-path tests use InMemory DB (no runtime I/O boundary) |
+| Rollback boundary | `DailyClosureService.cs`, `DailyClosureController.cs`, `ShiftsController.cs`, `IDailyClosureService.cs`, `CreateClosureCommand.cs`, `ITodayExchangeRateProvider.cs`, `TodayExchangeRateProvider.cs`, `ServiceCollectionExtensions.cs`, `DailyClosureTestHelper.cs`, test files |
+
+### GGA Hook Exceptions
+
+- **S3-introduced issues**: None. All tests pass.
+- **Pre-existing out-of-slice findings**: None new in this slice.
+
+### Deviations from Design
+
+- `ResolveClosureDate` is a static helper in the controller (not extracted to service) per AD-7: RBAC/backdating stays in controller.
+- `CreateClosureCommand.ExchangeRate` parameter removed (S1 remediation WARNING-03 was reverted in S3 — rate now resolved by service via `ITodayExchangeRateProvider`).
+- `ExecuteClosureCoreAsync` remains in the service as the legacy entry point for `CreateClosureAsync(DailyClosure)` — not deleted to avoid breaking existing callers.

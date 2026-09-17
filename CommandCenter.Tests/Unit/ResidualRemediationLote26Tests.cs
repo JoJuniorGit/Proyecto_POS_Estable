@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using CommandCenter.Tests.Builders;
+using CommandCenter.Tests.TestHelpers;
 using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
@@ -228,7 +229,7 @@ public class ResidualRemediationLote26Tests
     public async Task CreateClosureAsync_WithDuplicatedPaymentMethodIds_ThrowsArgumentException()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
-        var service = new DailyClosureService(context);
+        var service = DailyClosureTestHelper.CreateService(context);
 
         var closure = new DailyClosure
         {
@@ -261,10 +262,6 @@ public class ResidualRemediationLote26Tests
 
         var controller = new DailyClosureController(
             mockClosure.Object,
-            mockCashDrawer.Object,
-            inventoryDb,
-            mockSettings.Object,
-            salesDb,
             mockUser.Object)
         {
             ControllerContext = CreateAdminControllerContext()
@@ -279,7 +276,7 @@ public class ResidualRemediationLote26Tests
             }
         };
 
-        var result = await controller.CreateClosure(request);
+        var result = await controller.CreateClosure(request, CancellationToken.None);
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         Assert.NotNull(badRequest.Value);
@@ -300,12 +297,7 @@ public class ResidualRemediationLote26Tests
         mockUser.Setup(u => u.UserId).Returns("1");
 
         var controller = new ShiftsController(
-            mockCashDrawer.Object,
             mockDailyClosure.Object,
-            mockPaymentMethod.Object,
-            mockSettings.Object,
-            inventoryDb,
-            salesDb,
             mockUser.Object)
         {
             ControllerContext = CreateAdminControllerContext()

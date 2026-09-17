@@ -64,7 +64,7 @@ public class DailyClosureRetryIntegrationTests
             }
         };
 
-        var closureService = new DailyClosureService(context);
+        var closureService = CommandCenter.Tests.TestHelpers.DailyClosureTestHelper.CreateService(context);
 
         var saved = await context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {

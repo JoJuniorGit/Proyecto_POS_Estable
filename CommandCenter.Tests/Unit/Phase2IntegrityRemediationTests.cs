@@ -114,10 +114,6 @@ public class Phase2IntegrityRemediationTests
 
         var controller = new DailyClosureController(
             mockClosure.Object, 
-            mockCashDrawer.Object, 
-            inventoryDb, 
-            mockSettings.Object, 
-            salesDb, 
             mockUser.Object);
 
         var adminClaims = new ClaimsPrincipal(new ClaimsIdentity(new[]
@@ -139,7 +135,7 @@ public class Phase2IntegrityRemediationTests
         };
 
         // Act
-        var result = await controller.CreateClosure(request);
+        var result = await controller.CreateClosure(request, CancellationToken.None);
 
         // Assert
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);

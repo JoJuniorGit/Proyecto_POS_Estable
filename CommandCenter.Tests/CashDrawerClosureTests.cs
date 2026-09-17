@@ -158,7 +158,7 @@ public class CashDrawerClosureTests
     {
         using var context = GetInMemoryDbContext();
         var serverService = new ServerCashService.CashDrawerService(context);
-        var closureService = new ServerCashService.DailyClosureService(context);
+        var closureService = new ServerCashService.DailyClosureService(context, CommandCenter.Tests.TestHelpers.DailyClosureTestHelper.CreateMocks().rateProvider.Object, CommandCenter.Tests.TestHelpers.DailyClosureTestHelper.CreateMocks().cashDrawerService.Object);
         var clientService = new MockClientCashDrawerService(serverService);
         var rateService = new MockExchangeRateService();
 

@@ -19,6 +19,7 @@ using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using Sales.Module.Services;
+using CommandCenter.Tests.TestHelpers;
 using Xunit;
 
 namespace CommandCenter.Tests.Unit;
@@ -67,18 +68,8 @@ public class ErrorContractTests
         Mock<ICurrentUserService> mockUser,
         ClaimsPrincipal? user = null)
     {
-        var inventoryDb = GetInMemoryInventoryDbContext();
-        var salesDb = GetInMemorySalesDbContext();
-        var mockPaymentMethod = new Mock<IPaymentMethodService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
         var controller = new ShiftsController(
-            mockCashDrawer.Object,
             mockDailyClosure.Object,
-            mockPaymentMethod.Object,
-            mockSettings.Object,
-            inventoryDb,
-            salesDb,
             mockUser.Object);
 
         controller.ControllerContext = new ControllerContext
@@ -95,16 +86,8 @@ public class ErrorContractTests
         Mock<ICurrentUserService> mockUser,
         ClaimsPrincipal? user = null)
     {
-        var inventoryDb = GetInMemoryInventoryDbContext();
-        var salesDb = GetInMemorySalesDbContext();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
         var controller = new DailyClosureController(
             mockClosure.Object,
-            mockCashDrawer.Object,
-            inventoryDb,
-            mockSettings.Object,
-            salesDb,
             mockUser.Object);
 
         controller.ControllerContext = new ControllerContext
@@ -231,18 +214,8 @@ public class ErrorContractTests
         mockDailyClosure.Setup(c => c.GetClosureAsync(It.IsAny<int>()))
             .ReturnsAsync((DailyClosure?)null);
 
-        var inventoryDb = GetInMemoryInventoryDbContext();
-        var salesDb = GetInMemorySalesDbContext();
-        var mockPaymentMethod = new Mock<IPaymentMethodService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
         var controller = new ShiftsController(
-            mockCashDrawer.Object,
             mockDailyClosure.Object,
-            mockPaymentMethod.Object,
-            mockSettings.Object,
-            inventoryDb,
-            salesDb,
             mockUser.Object);
 
         controller.ControllerContext = new ControllerContext
@@ -285,18 +258,8 @@ public class ErrorContractTests
 
         mockDailyClosure.Setup(c => c.GetClosureAsync(1)).ReturnsAsync(closure);
 
-        var inventoryDb = GetInMemoryInventoryDbContext();
-        var salesDb = GetInMemorySalesDbContext();
-        var mockPaymentMethod = new Mock<IPaymentMethodService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
         var controller = new ShiftsController(
-            mockCashDrawer.Object,
             mockDailyClosure.Object,
-            mockPaymentMethod.Object,
-            mockSettings.Object,
-            inventoryDb,
-            salesDb,
             mockUser.Object);
 
         controller.ControllerContext = new ControllerContext
@@ -327,18 +290,8 @@ public class ErrorContractTests
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.UserId).Returns("1");
 
-        var inventoryDb = GetInMemoryInventoryDbContext();
-        var salesDb = GetInMemorySalesDbContext();
-        var mockPaymentMethod = new Mock<IPaymentMethodService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
         var controller = new ShiftsController(
-            mockCashDrawer.Object,
             mockDailyClosure.Object,
-            mockPaymentMethod.Object,
-            mockSettings.Object,
-            inventoryDb,
-            salesDb,
             mockUser.Object);
 
         controller.ControllerContext = new ControllerContext
@@ -484,7 +437,7 @@ public class ErrorContractTests
             }
         };
 
-        var result = await controller.CreateClosure(request);
+        var result = await controller.CreateClosure(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
@@ -508,7 +461,7 @@ public class ErrorContractTests
             Details = new List<CreateClosureDetailRequest>()
         };
 
-        var result = await controller.CreateClosure(request);
+        var result = await controller.CreateClosure(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -535,7 +488,7 @@ public class ErrorContractTests
             }
         };
 
-        var result = await controller.CreateClosure(request);
+        var result = await controller.CreateClosure(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -553,7 +506,7 @@ public class ErrorContractTests
 
         var controller = CreateDailyClosureController(mockClosure, mockCashDrawer, mockUser);
 
-        var result = await controller.CreateClosure(null!);
+        var result = await controller.CreateClosure(null!, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -575,26 +528,11 @@ public class ErrorContractTests
                 new() { PaymentMethodId = 1, PaymentMethodName = "Efectivo", ExpectedAmountBsS = 1000m }
             });
 
-        mockCashDrawer.Setup(c => c.GetActiveSessionAsync())
-            .ReturnsAsync(new CashDrawerSession { OpeningExchangeRate = 50m });
-
-        var inventoryDb = GetInMemoryInventoryDbContext();
-        inventoryDb.ExchangeRateHistory.Add(new Core.Entities.ExchangeRateHistory
-        {
-            Date = Core.Helpers.TimeZoneHelper.GetVenezuelaDate(),
-            Rate = 50m
-        });
-        await inventoryDb.SaveChangesAsync();
-
-        var salesDb = GetInMemorySalesDbContext();
-        var mockSettings = new Mock<ISystemSettingsService>();
+        mockClosure.Setup(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ArgumentException("El desglose contiene métodos de pago no reconocidos: 999."));
 
         var controller = new DailyClosureController(
             mockClosure.Object,
-            mockCashDrawer.Object,
-            inventoryDb,
-            mockSettings.Object,
-            salesDb,
             mockUser.Object);
 
         controller.ControllerContext = new ControllerContext
@@ -611,7 +549,7 @@ public class ErrorContractTests
             }
         };
 
-        var result = await controller.CreateClosure(request);
+        var result = await controller.CreateClosure(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -700,7 +638,7 @@ public class ErrorContractTests
     public async Task WriteClosedClosureReceipts_IsFailOpen_DoesNotThrowOnWriteFailure()
     {
         var salesDb = GetInMemorySalesDbContext();
-        var service = new DailyClosureService(salesDb);
+        var service = DailyClosureTestHelper.CreateService(salesDb);
 
         var closure = new DailyClosure
         {
@@ -723,7 +661,7 @@ public class ErrorContractTests
     public async Task WriteClosedClosureReceipts_RetryLogsOnFailure()
     {
         var salesDb = GetInMemorySalesDbContext();
-        var service = new DailyClosureService(salesDb);
+        var service = DailyClosureTestHelper.CreateService(salesDb);
 
         var closure = new DailyClosure
         {

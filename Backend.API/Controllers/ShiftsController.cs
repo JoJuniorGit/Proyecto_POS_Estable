@@ -1,20 +1,14 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Sales.Module.Interfaces;
-using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Services;
-using Inventory.Module.Data;
 using Core.Interfaces;
-using Microsoft.EntityFrameworkCore;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System;
 using System.Linq;
 using Backend.API.Attributes;
-using Backend.API.Services;
-using Core.Helpers;
-using Sales.Module;
 
 namespace Backend.API.Controllers;
 
@@ -23,36 +17,15 @@ namespace Backend.API.Controllers;
 [Route("api/shifts")]
 public class ShiftsController : ControllerBase
 {
-    private readonly ICashDrawerService _cashDrawerService;
     private readonly IDailyClosureService _dailyClosureService;
-    private readonly IPaymentMethodService _paymentMethodService;
-    private readonly ISystemSettingsService _settingsService;
-    private readonly InventoryDbContext _inventoryContext;
-    private readonly SalesDbContext _salesContext;
     private readonly ICurrentUserService _currentUserService;
 
     public ShiftsController(
-        ICashDrawerService cashDrawerService,
         IDailyClosureService dailyClosureService,
-        IPaymentMethodService paymentMethodService,
-        ISystemSettingsService settingsService,
-        InventoryDbContext inventoryContext,
-        SalesDbContext salesContext,
         ICurrentUserService currentUserService)
     {
-        _cashDrawerService = cashDrawerService;
         _dailyClosureService = dailyClosureService;
-        _paymentMethodService = paymentMethodService;
-        _settingsService = settingsService;
-        _inventoryContext = inventoryContext;
-        _salesContext = salesContext;
         _currentUserService = currentUserService;
-    }
-
-    // 8.7-M3: tasa efectiva del día centralizada en ExchangeRateResolver (BCV hoy -> histórico -> apertura de sesión).
-    private Task<decimal> GetTodayExchangeRateAsync()
-    {
-        return ExchangeRateResolver.ReadEffectiveTodayRateAsync(_inventoryContext, _cashDrawerService);
     }
 
     [RequireSecurityStampValidation]
@@ -75,51 +48,16 @@ public class ShiftsController : ControllerBase
             return this.ApiBadRequest($"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}.");
         }
 
-        string cashierName = "Cajero Activo";
-        string cashierCedula = "V-00000000";
-
-        int? parsedAuthUserId = null;
-        if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int authUserId))
-        {
-            parsedAuthUserId = authUserId;
-            var authUser = await _salesContext.Users.FindAsync(authUserId);
-            if (authUser != null)
-            {
-                cashierName = authUser.Name;
-                cashierCedula = authUser.Cedula ?? authUser.Username ?? "V-00000000";
-            }
-        }
-        else if (!string.IsNullOrWhiteSpace(User.Identity?.Name))
-        {
-            var authUser = await _salesContext.Users.FirstOrDefaultAsync(u => u.Username == User.Identity.Name);
-            if (authUser != null)
-            {
-                parsedAuthUserId = authUser.Id;
-                cashierName = authUser.Name;
-                cashierCedula = authUser.Cedula ?? authUser.Username ?? "V-00000000";
-            }
-        }
-        else
-        {
-            cashierName = "Cajero Desconocido";
-            cashierCedula = "V-00000000";
-        }
-
         try
         {
-            decimal exchangeRate = await GetTodayExchangeRateAsync();
-            if (exchangeRate <= 0)
-            {
-                return Problem(
-                    detail: "No se puede cerrar el turno: no existe una tasa BCV registrada para hoy. Registre la tasa del día antes de cerrar la caja.",
-                    statusCode: StatusCodes.Status400BadRequest);
-            }
+            string? userId = _currentUserService.UserId
+                ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? User.Identity?.Name;
 
             var command = new CreateClosureCommand(
                 ClosureDateUtc: DateTime.UtcNow,
-                UserId: parsedAuthUserId?.ToString() ?? cashierName,
-                Observation: cashierCedula,
-                ExchangeRate: exchangeRate,
+                UserId: userId ?? "Cajero",
+                Observation: "",
                 Declarations: request.DeclaredAmounts
                     .Select(d => new DeclaredPaymentAmount(d.PaymentMethodId, d.Amount))
                     .ToList());
@@ -145,21 +83,15 @@ public class ShiftsController : ControllerBase
                 }).ToList()
             };
 
-            // Unificar con DailyClosure: rotar sesión de caja en el cierre de turno (H-API-15)
-            await _cashDrawerService.RolloverSessionAfterClosureAsync(result.ExchangeRate);
-
-            // 8.7-B5: los comprobantes (PDF/TXT) se escriben DESPUÉS del commit
-            // (WriteClosedClosureReceipts is fail-open, post-commit per IDailyClosureService contract)
-
             return Ok(report);
         }
         catch (ArgumentException ex)
         {
             return Problem(detail: ex.Message, statusCode: StatusCodes.Status400BadRequest);
         }
-        catch (DbUpdateException)
+        catch (InvalidOperationException ex)
         {
-            return this.ApiConflict("Conflicto de concurrencia al cerrar el turno. Ya se encuentra un cierre en ejecución.");
+            return Problem(detail: ex.Message, statusCode: StatusCodes.Status400BadRequest);
         }
     }
 
@@ -167,20 +99,13 @@ public class ShiftsController : ControllerBase
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult> GetCurrentReport()
     {
-        var latestClosure = await _salesContext.DailyClosures
-            .Include(c => c.Details)
-            .OrderByDescending(c => c.Id)
-            .FirstOrDefaultAsync();
+        var latestClosure = await _dailyClosureService.GetLatestClosureAsync();
 
         if (latestClosure != null)
         {
             return await GetReportById(latestClosure.Id);
         }
 
-        // 8.2-B4/8B-B5: NO fabricar un cierre sintético (ShiftId=1, "Cajero Activo",
-        // Difference=-esperado) cuando aún no existe ningún cierre real — un reporte falso
-        // distorsionaría arqueos y la recuperación de reportes. Se responde 404 con mensaje
-        // explícito para que el cliente lo muestre como "aún no hay cierres".
         return this.ApiNotFound("No existe ningún cierre de caja registrado todavía.");
     }
 
@@ -208,22 +133,18 @@ public class ShiftsController : ControllerBase
             }
         }
 
-        decimal exchangeRate = closure != null && closure.ExchangeRate > 0 
-            ? closure.ExchangeRate 
-            : await GetTodayExchangeRateAsync();
-
         if (closure == null)
         {
             return this.ApiNotFound("El reporte de cierre solicitado no existe.");
         }
 
-        var details = ShiftReportMapper.MapDetails(closure.Details, exchangeRate);
+        var details = ShiftReportMapper.MapDetails(closure.Details, closure.ExchangeRate);
 
         string cashierName = closure.UserId ?? "Cajero Activo";
         if (int.TryParse(closure.UserId, out int parsedId))
         {
-            var u = await _salesContext.Users.FindAsync(parsedId);
-            if (u != null) cashierName = u.Name;
+            var displayName = await _dailyClosureService.GetCashierDisplayNameAsync(parsedId);
+            if (displayName != null) cashierName = displayName;
         }
 
         return Ok(new ShiftReportDto
@@ -232,7 +153,7 @@ public class ShiftsController : ControllerBase
             CashierName = cashierName,
             CashierCedula = closure.Observation ?? "V-00000000",
             ClosedAt = closure.ClosureDate,
-            ExchangeRate = exchangeRate,
+            ExchangeRate = closure.ExchangeRate,
             Details = details
         });
     }
@@ -256,5 +177,5 @@ public class ShiftReportDto
     public string CashierCedula { get; set; } = string.Empty;
     public DateTime ClosedAt { get; set; }
     public decimal ExchangeRate { get; set; }
-    public List<Sales.Module.Services.ShiftReportDetailDto> Details { get; set; } = new();
+    public List<ShiftReportDetailDto> Details { get; set; } = new();
 }

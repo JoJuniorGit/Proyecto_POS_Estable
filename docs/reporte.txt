@@ -9203,3 +9203,69 @@ D. IMPACTO
 - Deuda tecnica residual: pre-existing issues (comments, missing CT, entity
   returns, AsNoTracking, complexity) diferidos a S3-S5.
 
+================================================================================
+ANEXO - REVISION 8.140 — SLICE S3: Closure Orchestration Consolidation
+Fecha: 2026-09-17
+================================================================================
+
+A. CONTEXTO
+A1. S3 consolida la orquestacion de cierre diario en IDailyClosureService.
+    Antes, DailyClosureController y ShiftsController ejecutaban la misma logica
+    de transaccion Serializable, resolucion de tasa, ensamblaje y persistencia.
+    El service solo validaba y guardaba.
+A2. Objetivos: (1) service owns strategy + tx + rate + assembly + persistence +
+    rollover, (2) ITodayExchangeRateProvider para resolucion de tasa, (3)
+    controllers solo autorizan/delegan, (4) extracciones < McCabe 10.
+
+B. CAMBIOS REALIZADOS
+B1. Core/Interfaces/ITodayExchangeRateProvider.cs — creado (AD-6).
+B2. Backend.API/Services/TodayExchangeRateProvider.cs — creado, delega a
+    ExchangeRateResolver.ReadEffectiveTodayRateAsync (AD-6).
+B3. DailyClosureService.cs — CreateClosureFromCommandAsync owns full orchestration:
+    rate via ITodayExchangeRateProvider, Serializable tx, assembly, persistence,
+    rollover, receipt writing. Extracciones: ValidateDeclaredMethods,
+    MergeMissingMethodsIntoClosure, MergeMissingMethodsWithReport,
+    RecalculateTotals, PersistClosureCoreAsync, ResolveUserDetailsAsync (AD-5/6/8).
+B4. DailyClosureController.cs — eliminados InventoryDbContext, SalesDbContext,
+    ICashDrawerService, ISystemSettingsService del constructor. Eliminado
+    GetTodayExchangeRateAsync. Eliminada transaccion, persistencia, rollover.
+    Delega a IDailyClosureService.CreateClosureFromCommandAsync (AD-5/7).
+    ResolveClosureDate extraido como helper estatico (AD-7: RBAC/backdating
+    se mantiene en controller).
+B5. ShiftsController.cs — eliminadas 6 dependencias del constructor. Eliminado
+    GetTodayExchangeRateAsync. Delega closure a _dailyClosureService.
+    Usa _dailyClosureService.GetLatestClosureAsync y GetCashierDisplayNameAsync
+    (AD-5).
+B6. ServiceCollectionExtensions.cs — ITodayExchangeRateProvider registrado (AD-6).
+B7. CreateClosureCommand.cs — eliminado ExchangeRate parameter (ahora resuelto
+    por service via provider).
+B8. 16 test files re-pointed a nuevos constructores/signatures.
+B9. 5 tests nuevos: delegation test, 4 structural tests (no DbContext).
+B10. 4 test fixes: Phase7ClosureWithoutRateTests y SecurityHardeningSprint2Tests
+    re-pointed a interfaz de service mocking CreateClosureFromCommandAsync.
+
+C. VERIFICACION
+C1. Build Release: 0 errores, 0 advertencias.
+C2. Backend tests: 1175 passed, 0 failed.
+C3. Closure tests: 77/77 passed.
+C4. DailyClosureControllerTests: 7/7 passed.
+C5. McCabe evidence: Controller.CreateClosure=7, ResolveClosureDate=6,
+    CreateClosureFromCommandAsync=9, ValidateDeclaredMethods=2,
+    MergeMissingMethodsIntoClosure=5, MergeMissingMethodsWithReport=7,
+    RecalculateTotals=3, ResolveUserDetailsAsync=3. Todos < 10.
+
+D. FOLD-INS DESDE S2
+D1. S2-01 (discriminating non-blocking-retry test): Ya cubierto en S2
+    remediation. WriteClosedClosureReceipts_RetryLogsOnFailure verifica retry
+    en fallo permanente (ACL Deny Write). Infeasible test discriminante
+    transitorio-vs-permanente sin filesystem mocking.
+D2. S2-07 (bookkeeping numbers): Corregido en S2 remediation.
+
+E. IMPACTO
+- Archivos modificados: 23 (7 production, 16 tests/bookkeeping)
+- Archivos nuevos: 3 (ITodayExchangeRateProvider, TodayExchangeRateProvider,
+  DailyClosureTestHelper)
+- Lineas cambiadas: +502 / -509 (neto -7)
+- Deuda tecnica residual: DailyClosureService 578 lineas (>500 ceiling,
+  deferido a S4/S5); ExecuteClosureCoreAsync legacy endpoint preservado.
+

@@ -9,6 +9,7 @@ using Sales.Module.Data;
 using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
+using CommandCenter.Tests.TestHelpers;
 using Sales.Module.Services;
 using System;
 using System.Collections.Generic;
@@ -305,7 +306,7 @@ public class CheckoutAndPaymentTests
         );
         await context.SaveChangesAsync();
 
-        var service = new DailyClosureService(context);
+        var service = DailyClosureTestHelper.CreateService(context);
         var totals = await service.GetExpectedTotalsByPaymentMethodAsync(DateTime.UtcNow);
 
         Assert.Equal(2, totals.Count);
@@ -324,7 +325,7 @@ public class CheckoutAndPaymentTests
         );
         await context.SaveChangesAsync();
 
-        var service = new DailyClosureService(context);
+        var service = DailyClosureTestHelper.CreateService(context);
         var closure = new DailyClosure
         {
             ClosureDate = DateTime.UtcNow,
@@ -357,7 +358,7 @@ public class CheckoutAndPaymentTests
         context.SalePayments.Add(new SalePayment { SaleId = 10, PaymentMethodId = 1, AmountBsS = 500m });
         await context.SaveChangesAsync();
 
-        var service = new DailyClosureService(context);
+        var service = DailyClosureTestHelper.CreateService(context);
 
         // Before closure: expected amount should be 500.00 Bs.S
         var totalsBefore = await service.GetExpectedTotalsByPaymentMethodAsync(baseTime);
@@ -392,7 +393,7 @@ public class CheckoutAndPaymentTests
         context.SalePayments.Add(new SalePayment { SaleId = 11, PaymentMethodId = 1, AmountBsS = 300m });
         await context.SaveChangesAsync();
 
-        var service = new DailyClosureService(context);
+        var service = DailyClosureTestHelper.CreateService(context);
 
         // Perform closure at 12:00 PM
         var closure = new DailyClosure
@@ -426,7 +427,7 @@ public class CheckoutAndPaymentTests
         context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo", IsActive = true });
         await context.SaveChangesAsync();
 
-        var service = new DailyClosureService(context);
+        var service = DailyClosureTestHelper.CreateService(context);
         var closure = new DailyClosure
         {
             ClosureDate = DateTime.UtcNow,
@@ -448,7 +449,7 @@ public class CheckoutAndPaymentTests
     public async Task DailyClosure_DoesNotFailIfSavingReceiptFails()
     {
         using var context = GetInMemoryDbContext();
-        var service = new DailyClosureService(context);
+        var service = DailyClosureTestHelper.CreateService(context);
         var closure = new DailyClosure
         {
             ClosureDate = DateTime.UtcNow,

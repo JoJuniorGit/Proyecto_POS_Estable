@@ -1,4 +1,5 @@
 using Core.Helpers;
+using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Sales.Module.Data;
@@ -17,10 +18,14 @@ public class DailyClosureService : IDailyClosureService
     private const int UnattributedChangeMethodId = 0;
 
     private readonly SalesDbContext _context;
+    private readonly ITodayExchangeRateProvider _rateProvider;
+    private readonly ICashDrawerService _cashDrawerService;
 
-    public DailyClosureService(SalesDbContext context)
+    public DailyClosureService(SalesDbContext context, ITodayExchangeRateProvider rateProvider, ICashDrawerService cashDrawerService)
     {
         _context = context;
+        _rateProvider = rateProvider;
+        _cashDrawerService = cashDrawerService;
     }
 
     public async Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc, CancellationToken cancellationToken = default)
@@ -62,7 +67,6 @@ public class DailyClosureService : IDailyClosureService
             .Select(g => new { PaymentMethodId = g.Key ?? UnattributedChangeMethodId, TotalBsS = g.Sum(ct => ct.AmountLocal) })
             .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS);
 
-        // 2. Fetch all payment methods not deleted ordered by priority
         var allMethods = await _context.PaymentMethods
             .AsNoTracking()
             .Where(p => !p.IsDeleted)
@@ -70,7 +74,6 @@ public class DailyClosureService : IDailyClosureService
             .ThenBy(p => p.Name)
             .ToListAsync(cancellationToken);
 
-        // 3. Include active methods OR methods with historical sales in the period (even if deactivated)
         var relevantMethods = allMethods
             .Where(p => p.IsActive || salesTotals.ContainsKey(p.Id))
             .ToList();
@@ -106,11 +109,6 @@ public class DailyClosureService : IDailyClosureService
 
     public async Task<DailyClosure> CreateClosureAsync(DailyClosure closure)
     {
-        // 8.106-C1: resiliencia del servicio ante fallos transitorios. Los callers HTTP
-        // (DailyClosureController/ShiftsController) ya envuelven TODO el bloque en strategy
-        // externa + transacción Serializable (8.9-B4): si hay transacción activa, ejecutar el
-        // cuerpo directo para que la strategy externa reintente el bloque completo; uso
-        // standalone se auto-envuelve. Guard análogo a OutboxProcessorJob 8.9-B4.
         if (_context.Database.CurrentTransaction is not null)
         {
             return await ExecuteClosureCoreAsync(closure);
@@ -133,7 +131,6 @@ public class DailyClosureService : IDailyClosureService
             throw new ArgumentException($"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}.", nameof(closure));
         }
 
-        // Ensure all relevant payment methods (active or with sales) are present in details
         var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(closure.ClosureDate);
         var expectedById = expectedTotals.ToDictionary(e => e.PaymentMethodId);
 
@@ -159,44 +156,13 @@ public class DailyClosureService : IDailyClosureService
             .Where(p => !p.IsDeleted)
             .ToDictionaryAsync(p => p.Id);
 
-        foreach (var exp in expectedTotals)
-        {
-            if (!existingMethodIds.Contains(exp.PaymentMethodId))
-            {
-                methodEntities.TryGetValue(exp.PaymentMethodId, out var methodEntity);
-                decimal actualAmount = (methodEntity != null && methodEntity.IsCash) ? 0m : exp.ExpectedAmountBsS;
-
-                closure.Details.Add(new ClosureDetail
-                {
-                    PaymentMethodId = exp.PaymentMethodId,
-                    PaymentMethodName = exp.PaymentMethodName,
-                    ExpectedAmountBsS = exp.ExpectedAmountBsS,
-                    ActualAmountBsS = actualAmount,
-                    DifferenceBsS = actualAmount - exp.ExpectedAmountBsS
-                });
-            }
-        }
-
-        // Recalculate differences to enforce domain rule
-        foreach (var detail in closure.Details)
-        {
-            if (detail.ActualAmountBsS < 0)
-            {
-                throw new ArgumentException($"El monto declarado para '{detail.PaymentMethodName}' no puede ser negativo.", nameof(closure));
-            }
-            detail.DifferenceBsS = detail.ActualAmountBsS - detail.ExpectedAmountBsS;
-        }
-
-        closure.TotalExpectedBsS = closure.Details.Sum(d => d.ExpectedAmountBsS);
-        closure.TotalActualBsS = closure.Details.Sum(d => d.ActualAmountBsS);
-        closure.TotalDifferenceBsS = closure.TotalActualBsS - closure.TotalExpectedBsS;
+        MergeMissingMethodsIntoClosure(closure, expectedTotals, existingMethodIds, methodEntities);
+        RecalculateTotals(closure);
 
         _context.DailyClosures.Add(closure);
         await _context.SaveChangesAsync();
 
         return (await GetClosureAsync(closure.Id))!;
-        // 8.7-B5: la escritura de comprobantes se mueve FUERA de CreateClosureAsync; el caller
-        // la invoca tras el commit de su transacción (WriteClosedClosureReceipts).
     }
 
     public async Task<DailyClosure?> GetClosureAsync(int id)
@@ -206,11 +172,28 @@ public class DailyClosureService : IDailyClosureService
             .FirstOrDefaultAsync(dc => dc.Id == id);
     }
 
+    public async Task<DailyClosure?> GetLatestClosureAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.DailyClosures
+            .AsNoTracking()
+            .Include(dc => dc.Details)
+            .OrderByDescending(dc => dc.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<string?> GetCashierDisplayNameAsync(int userId, CancellationToken cancellationToken = default)
+    {
+        var user = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        return user?.Name;
+    }
+
     public async Task<CloseShiftResult> CreateClosureFromCommandAsync(
         CreateClosureCommand command,
         CancellationToken cancellationToken)
     {
-        decimal exchangeRate = command.ExchangeRate;
+        decimal exchangeRate = await _rateProvider.GetEffectiveTodayRateAsync(cancellationToken);
         if (exchangeRate <= 0)
         {
             throw new InvalidOperationException(
@@ -220,18 +203,7 @@ public class DailyClosureService : IDailyClosureService
         var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(command.ClosureDateUtc, cancellationToken);
         var expectedById = expectedTotals.ToDictionary(e => e.PaymentMethodId);
 
-        var unknownMethodIds = command.Declarations
-            .Where(d => !expectedById.ContainsKey(d.PaymentMethodId))
-            .Select(d => d.PaymentMethodId)
-            .Distinct()
-            .ToList();
-
-        if (unknownMethodIds.Count > 0)
-        {
-            throw new ArgumentException(
-                $"El desglose contiene métodos de pago no reconocidos: {string.Join(", ", unknownMethodIds)}.",
-                nameof(command));
-        }
+        ValidateDeclaredMethods(command.Declarations, expectedById);
 
         var details = new List<ClosureDetail>();
         var reportDetails = new List<ShiftReportDetailResult>();
@@ -245,7 +217,6 @@ public class DailyClosureService : IDailyClosureService
                 ? declared.Amount * exchangeRate
                 : declared.Amount;
             decimal expectedAmountBsS = expected.ExpectedAmountBsS;
-            decimal diffBsS = actualAmountBsS - expectedAmountBsS;
 
             details.Add(new ClosureDetail
             {
@@ -253,15 +224,13 @@ public class DailyClosureService : IDailyClosureService
                 PaymentMethodName = expected.PaymentMethodName,
                 ExpectedAmountBsS = expectedAmountBsS,
                 ActualAmountBsS = actualAmountBsS,
-                DifferenceBsS = diffBsS
+                DifferenceBsS = actualAmountBsS - expectedAmountBsS
             });
 
             decimal systemAmount = currency == PaymentMethodCurrencyResolver.Usd
                 ? PricingCalculator.ToUSD(expectedAmountBsS, exchangeRate)
                 : expectedAmountBsS;
-            decimal declaredAmount = currency == PaymentMethodCurrencyResolver.Usd
-                ? declared.Amount
-                : declared.Amount;
+            decimal declaredAmount = declared.Amount;
             decimal diff = declaredAmount - systemAmount;
             string status = Math.Abs(diff) < 0.05m ? "Balanced" : (diff > 0 ? "Surplus" : "Shortage");
 
@@ -281,6 +250,131 @@ public class DailyClosureService : IDailyClosureService
             .Where(p => !p.IsDeleted)
             .ToDictionaryAsync(p => p.Id, cancellationToken);
 
+        MergeMissingMethodsWithReport(details, reportDetails, expectedTotals, existingMethodIds, methodEntities, exchangeRate);
+
+        var resolvedUser = await ResolveUserDetailsAsync(command.UserId, cancellationToken);
+
+        var dailyClosure = new DailyClosure
+        {
+            ClosureDate = command.ClosureDateUtc,
+            UserId = resolvedUser.UserId,
+            Observation = resolvedUser.Observation,
+            ExchangeRate = exchangeRate,
+            Details = details
+        };
+
+        RecalculateTotals(dailyClosure);
+
+        DailyClosure savedClosure;
+        if (_context.Database.CurrentTransaction is not null)
+        {
+            savedClosure = await PersistClosureCoreAsync(dailyClosure);
+            await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate);
+        }
+        else
+        {
+            var strategy = _context.Database.CreateExecutionStrategy();
+            savedClosure = await strategy.ExecuteAsync(async () =>
+            {
+                var result = await PersistClosureCoreAsync(dailyClosure);
+                await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate);
+                return result;
+            });
+        }
+
+        // 8.7-B5: los comprobantes se escriben DESPUÉS del commit, fuera de la transacción Serializable.
+        await WriteClosedClosureReceiptsAsync(savedClosure, cancellationToken);
+
+        return new CloseShiftResult(
+            savedClosure.Id,
+            resolvedUser.CashierName,
+            resolvedUser.CashierCedula,
+            savedClosure.ClosureDate,
+            exchangeRate,
+            reportDetails);
+    }
+
+    private async Task<(string UserId, string CashierName, string CashierCedula, string Observation)> ResolveUserDetailsAsync(
+        string? inputUserId, CancellationToken cancellationToken)
+    {
+        string userId = inputUserId ?? "Cajero";
+        string cashierName = "Cajero Activo";
+        string cashierCedula = "V-00000000";
+        string observation = "";
+
+        if (int.TryParse(userId, out int userIdInt))
+        {
+            var user = await _context.Users.FindAsync(new object[] { userIdInt }, cancellationToken);
+            if (user != null)
+            {
+                cashierName = user.Name;
+                cashierCedula = user.Cedula ?? user.Username ?? "V-00000000";
+                userId = user.Id.ToString();
+                observation = cashierCedula;
+            }
+        }
+
+        return (userId, cashierName, cashierCedula, observation);
+    }
+
+    private async Task<DailyClosure> PersistClosureCoreAsync(DailyClosure closure)
+    {
+        _context.DailyClosures.Add(closure);
+        await _context.SaveChangesAsync();
+        return (await GetClosureAsync(closure.Id))!;
+    }
+
+    private static void ValidateDeclaredMethods(
+        IReadOnlyList<DeclaredPaymentAmount> declarations,
+        Dictionary<int, ExpectedTotalDto> expectedById)
+    {
+        var unknownMethodIds = declarations
+            .Where(d => !expectedById.ContainsKey(d.PaymentMethodId))
+            .Select(d => d.PaymentMethodId)
+            .Distinct()
+            .ToList();
+
+        if (unknownMethodIds.Count > 0)
+        {
+            throw new ArgumentException(
+                $"El desglose contiene métodos de pago no reconocidos: {string.Join(", ", unknownMethodIds)}.",
+                nameof(declarations));
+        }
+    }
+
+    private static void MergeMissingMethodsIntoClosure(
+        DailyClosure closure,
+        List<ExpectedTotalDto> expectedTotals,
+        HashSet<int> existingMethodIds,
+        Dictionary<int, PaymentMethod> methodEntities)
+    {
+        foreach (var exp in expectedTotals)
+        {
+            if (!existingMethodIds.Contains(exp.PaymentMethodId))
+            {
+                methodEntities.TryGetValue(exp.PaymentMethodId, out var methodEntity);
+                decimal actualAmount = (methodEntity != null && methodEntity.IsCash) ? 0m : exp.ExpectedAmountBsS;
+
+                closure.Details.Add(new ClosureDetail
+                {
+                    PaymentMethodId = exp.PaymentMethodId,
+                    PaymentMethodName = exp.PaymentMethodName,
+                    ExpectedAmountBsS = exp.ExpectedAmountBsS,
+                    ActualAmountBsS = actualAmount,
+                    DifferenceBsS = actualAmount - exp.ExpectedAmountBsS
+                });
+            }
+        }
+    }
+
+    private static void MergeMissingMethodsWithReport(
+        List<ClosureDetail> details,
+        List<ShiftReportDetailResult> reportDetails,
+        List<ExpectedTotalDto> expectedTotals,
+        HashSet<int> existingMethodIds,
+        Dictionary<int, PaymentMethod> methodEntities,
+        decimal exchangeRate)
+    {
         foreach (var exp in expectedTotals)
         {
             if (!existingMethodIds.Contains(exp.PaymentMethodId))
@@ -312,34 +406,24 @@ public class DailyClosureService : IDailyClosureService
                     "Balanced"));
             }
         }
+    }
 
-        var dailyClosure = new DailyClosure
+    private static void RecalculateTotals(DailyClosure closure)
+    {
+        foreach (var detail in closure.Details)
         {
-            ClosureDate = command.ClosureDateUtc,
-            UserId = command.UserId ?? "Cajero",
-            Observation = command.Observation,
-            ExchangeRate = exchangeRate,
-            Details = details
-        };
-
-        DailyClosure savedClosure;
-        if (_context.Database.CurrentTransaction is not null)
-        {
-            savedClosure = await ExecuteClosureCoreAsync(dailyClosure);
-        }
-        else
-        {
-            var strategy = _context.Database.CreateExecutionStrategy();
-            savedClosure = await strategy.ExecuteAsync(() => ExecuteClosureCoreAsync(dailyClosure));
+            if (detail.ActualAmountBsS < 0)
+            {
+                throw new ArgumentException(
+                    $"El monto declarado para '{detail.PaymentMethodName}' no puede ser negativo.",
+                    nameof(closure));
+            }
+            detail.DifferenceBsS = detail.ActualAmountBsS - detail.ExpectedAmountBsS;
         }
 
-        return new CloseShiftResult(
-            savedClosure.Id,
-            command.UserId ?? "Cajero",
-            command.Observation ?? "V-00000000",
-            savedClosure.ClosureDate,
-            exchangeRate,
-            reportDetails);
+        closure.TotalExpectedBsS = closure.Details.Sum(d => d.ExpectedAmountBsS);
+        closure.TotalActualBsS = closure.Details.Sum(d => d.ActualAmountBsS);
+        closure.TotalDifferenceBsS = closure.TotalActualBsS - closure.TotalExpectedBsS;
     }
 
     public static string GenerateReceiptContent(DailyClosure closure, bool isBlind = false)
@@ -385,19 +469,19 @@ public class DailyClosureService : IDailyClosureService
             foreach (var detail in closure.Details)
             {
                 string curr = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
-                sb.AppendLine(string.Format("{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}", 
-                    detail.PaymentMethodName, 
-                    curr, 
-                    detail.ActualAmountBsS, 
-                    detail.ExpectedAmountBsS, 
+                sb.AppendLine(string.Format("{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}",
+                    detail.PaymentMethodName,
+                    curr,
+                    detail.ActualAmountBsS,
+                    detail.ExpectedAmountBsS,
                     detail.DifferenceBsS));
             }
             sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine(string.Format("{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}", 
-                "TOTALES", 
-                "-", 
-                closure.TotalActualBsS, 
-                closure.TotalExpectedBsS, 
+            sb.AppendLine(string.Format("{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}",
+                "TOTALES",
+                "-",
+                closure.TotalActualBsS,
+                closure.TotalExpectedBsS,
                 closure.TotalDifferenceBsS));
             sb.AppendLine("------------------------------------------------------------------------------------------");
             sb.AppendLine($"TOTAL DECLARADO:  Bs.S {closure.TotalActualBsS,10:N2}");

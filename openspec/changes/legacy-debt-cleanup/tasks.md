@@ -57,17 +57,17 @@ Chain strategy: pending
 
 ## Phase 3: Closure Orchestration Consolidation (S3)
 
-- [ ] 3.1 **RED**: Add test asserting `DailyClosureController.CreateClosure` delegates to `IDailyClosureService` and persists nothing directly
-- [ ] 3.2 Create `Core/Interfaces/ITodayExchangeRateProvider.cs` (AD-6)
-- [ ] 3.3 Create `Backend.API/Services/TodayExchangeRateProvider.cs` — delegates to `ExchangeRateResolver.ReadEffectiveTodayRateAsync` (AD-6)
-- [ ] 3.4 Modify `Sales.Module/Services/DailyClosureService.cs`: extract `TryResolveBackdatedClosureDate`, `ValidateDeclaredMethods`, `MergeMissingMethods`/`RecalculateTotals` from `ExecuteClosureCoreAsync` (AD-8); inject `ITodayExchangeRateProvider` (AD-6); own `Serializable` transaction + persistence + rollover (AD-5)
-- [ ] 3.5 Modify `Backend.API/Controllers/DailyClosureController.cs`: remove rate resolution, transaction, persistence — delegate to service (AD-5/7)
-- [ ] 3.6 Modify `Backend.API/Controllers/ShiftsController.cs`: delegate closure to `IDailyClosureService` (AD-5)
-- [ ] 3.7 Modify `Backend.API/Startup/ServiceCollectionExtensions.cs`: register `ITodayExchangeRateProvider` → `TodayExchangeRateProvider` (AD-6)
-- [ ] 3.8 Re-point `DailyClosureControllerTests`, `Phase7ClosureWithoutRateTests`, `ResidualRemediationLote26Tests`, `SecurityHardeningSprint2Tests` to new service interface
-- [ ] 3.9 **GREEN**: Add behavior-preservation test: same inputs → identical persisted amounts/status/response; preview 400 preserved
-- [ ] 3.10 **GREEN**: Add structural test asserting no `DbContext` in `DailyClosureController` or `ShiftsController` constructors/fields (REQ-COC-02)
-- [ ] 3.11 Verify `CreateClosure` cyclomatic complexity < 10; verify each extracted method < 10 (REQ-COC-03)
+- [x] 3.1 **RED**: Add test asserting `DailyClosureController.CreateClosure` delegates to `IDailyClosureService` and persists nothing directly
+- [x] 3.2 Create `Core/Interfaces/ITodayExchangeRateProvider.cs` (AD-6)
+- [x] 3.3 Create `Backend.API/Services/TodayExchangeRateProvider.cs` — delegates to `ExchangeRateResolver.ReadEffectiveTodayRateAsync` (AD-6)
+- [x] 3.4 Modify `Sales.Module/Services/DailyClosureService.cs`: extract `TryResolveBackdatedClosureDate`, `ValidateDeclaredMethods`, `MergeMissingMethods`/`RecalculateTotals` from `ExecuteClosureCoreAsync` (AD-8); inject `ITodayExchangeRateProvider` (AD-6); own `Serializable` transaction + persistence + rollover (AD-5)
+- [x] 3.5 Modify `Backend.API/Controllers/DailyClosureController.cs`: remove rate resolution, transaction, persistence — delegate to service (AD-5/7)
+- [x] 3.6 Modify `Backend.API/Controllers/ShiftsController.cs`: delegate closure to `IDailyClosureService` (AD-5)
+- [x] 3.7 Modify `Backend.API/Startup/ServiceCollectionExtensions.cs`: register `ITodayExchangeRateProvider` → `TodayExchangeRateProvider` (AD-6)
+- [x] 3.8 Re-point `DailyClosureControllerTests`, `Phase7ClosureWithoutRateTests`, `ResidualRemediationLote26Tests`, `SecurityHardeningSprint2Tests` to new service interface
+- [x] 3.9 **GREEN**: Add behavior-preservation test: same inputs → identical persisted amounts/status/response; preview 400 preserved
+- [x] 3.10 **GREEN**: Add structural test asserting no `DbContext` in `DailyClosureController` or `ShiftsController` constructors/fields (REQ-COC-02)
+- [x] 3.11 Verify `CreateClosure` cyclomatic complexity < 10; verify each extracted method < 10 (REQ-COC-03)
 
 ## Phase 4a: Closure DTO Boundary (S4a)
 
