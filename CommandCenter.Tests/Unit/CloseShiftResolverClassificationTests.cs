@@ -507,4 +507,39 @@ public class CloseShiftResolverClassificationTests
         Assert.Equal(5000m, persistedDetail.ActualAmountBsS);
         Assert.Equal(50m, savedClosure.ExchangeRate);
     }
+
+    [Fact]
+    public async Task CreateClosureFromCommandAsync_RealService_WhenEffectiveRateIsNotPositive_ThrowsBeforePersisting()
+    {
+        var salesCtx = CreateInMemorySalesContext();
+        salesCtx.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 1,
+            Name = "Efectivo USD",
+            IsActive = true,
+            IsDeleted = false,
+            IsCash = true,
+            DisplayOrder = 1
+        });
+        await salesCtx.SaveChangesAsync();
+
+        var rateProvider = new Mock<ITodayExchangeRateProvider>();
+        rateProvider.Setup(r => r.GetEffectiveTodayRateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0m);
+        var cashDrawer = new Mock<ICashDrawerService>();
+        var service = DailyClosureTestHelper.CreateService(salesCtx, rateProvider, cashDrawer);
+
+        var command = new CreateClosureCommand(
+            ClosureDateUtc: DateTime.UtcNow,
+            UserId: "Admin",
+            Observation: "V-00000000",
+            Declarations: new List<DeclaredPaymentAmount> { new(1, 100m) });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.CreateClosureFromCommandAsync(command, CancellationToken.None));
+
+        Assert.Contains("tasa BCV", ex.Message);
+        Assert.Empty(await salesCtx.DailyClosures.AsNoTracking().ToListAsync());
+        cashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
+    }
 }

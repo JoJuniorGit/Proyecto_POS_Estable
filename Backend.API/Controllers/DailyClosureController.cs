@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using Core.Interfaces;
@@ -53,42 +54,30 @@ public class DailyClosureController : ControllerBase
             return this.ApiForbidden("El rol Driver no tiene permisos para registrar cierres diarios.");
         }
 
-        if (request == null || request.Details == null || !request.Details.Any())
+        string? validationError = ValidateClosureRequest(request);
+        if (validationError is not null)
         {
-            return this.ApiBadRequest("El arqueo debe incluir el desglose por métodos de pago.");
+            return this.ApiBadRequest(validationError);
         }
 
-        var duplicatedMethodIds = request.Details
-            .GroupBy(d => d.PaymentMethodId)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToList();
+        return await ExecuteCreateClosureAsync(request, cancellationToken);
+    }
 
-        if (duplicatedMethodIds.Count > 0)
-        {
-            return this.ApiBadRequest($"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}.");
-        }
+    private async Task<ActionResult> ExecuteCreateClosureAsync(CreateClosureRequest request, CancellationToken cancellationToken)
+    {
+        string finalUserId = ResolveUserId();
+        DateTime closureDate = ResolveClosureDate(request.ClosureDate, finalUserId, User.IsInRole("Admin"));
+
+        var command = new CreateClosureCommand(
+            ClosureDateUtc: closureDate,
+            UserId: finalUserId,
+            Observation: request.Observation,
+            Declarations: request.Details
+                .Select(d => new DeclaredPaymentAmount(d.PaymentMethodId, d.ActualAmountBsS))
+                .ToList());
 
         try
         {
-            string? authenticatedUserId = _currentUserService.UserId
-                ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                ?? User.Identity?.Name;
-
-            var finalUserId = !string.IsNullOrWhiteSpace(authenticatedUserId)
-                ? authenticatedUserId
-                : "Admin";
-
-            DateTime closureDate = ResolveClosureDate(request.ClosureDate, finalUserId, User.IsInRole("Admin"));
-
-            var command = new CreateClosureCommand(
-                ClosureDateUtc: closureDate,
-                UserId: finalUserId,
-                Observation: request.Observation,
-                Declarations: request.Details
-                    .Select(d => new DeclaredPaymentAmount(d.PaymentMethodId, d.ActualAmountBsS))
-                    .ToList());
-
             var result = await _closureService.CreateClosureFromCommandAsync(command, cancellationToken);
 
             return Ok(result);
@@ -101,6 +90,39 @@ public class DailyClosureController : ControllerBase
         {
             return this.ApiBadRequest(ex.Message);
         }
+        catch (DbUpdateException)
+        {
+            return this.ApiConflict("Conflicto de concurrencia al registrar el cierre diario. Es posible que ya se haya ejecutado otro cierre en paralelo.");
+        }
+    }
+
+    private string ResolveUserId()
+    {
+        string? authenticatedUserId = _currentUserService.UserId
+            ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? User.Identity?.Name;
+
+        return !string.IsNullOrWhiteSpace(authenticatedUserId)
+            ? authenticatedUserId
+            : "Admin";
+    }
+
+    private static string? ValidateClosureRequest(CreateClosureRequest? request)
+    {
+        if (request?.Details is null || request.Details.Count == 0)
+        {
+            return "El arqueo debe incluir el desglose por métodos de pago.";
+        }
+
+        var duplicatedMethodIds = request.Details
+            .GroupBy(d => d.PaymentMethodId)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        return duplicatedMethodIds.Count > 0
+            ? $"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}."
+            : null;
     }
 
     [HttpGet("{id}")]

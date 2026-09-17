@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Sales.Module.Interfaces;
 using Sales.Module.Entities;
 using Sales.Module.Services;
@@ -92,6 +93,10 @@ public class ShiftsController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return Problem(detail: ex.Message, statusCode: StatusCodes.Status400BadRequest);
+        }
+        catch (DbUpdateException)
+        {
+            return this.ApiConflict("Conflicto de concurrencia al registrar el cierre del turno. Es posible que ya se haya ejecutado otro cierre en paralelo.");
         }
     }
 

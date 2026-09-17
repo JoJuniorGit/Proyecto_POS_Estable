@@ -7,6 +7,7 @@ using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -200,15 +201,113 @@ public class DailyClosureService : IDailyClosureService
                 "No se puede cerrar el turno: no existe una tasa BCV registrada para hoy. Registre la tasa del día antes de cerrar la caja.");
         }
 
-        var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(command.ClosureDateUtc, cancellationToken);
-        var expectedById = expectedTotals.ToDictionary(e => e.PaymentMethodId);
+        if (_context.Database.CurrentTransaction is not null)
+        {
+            return await ExecuteClosureCommandAsync(command, exchangeRate, cancellationToken);
+        }
 
-        ValidateDeclaredMethods(command.Declarations, expectedById);
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(() => ExecuteClosureCommandAsync(command, exchangeRate, cancellationToken));
+    }
 
-        var details = new List<ClosureDetail>();
-        var reportDetails = new List<ShiftReportDetailResult>();
+    private async Task<IDbContextTransaction?> OpenSerializableTransactionAsync(CancellationToken cancellationToken)
+    {
+        if (_context.Database.CurrentTransaction is not null)
+        {
+            return null;
+        }
 
-        foreach (var declared in command.Declarations)
+        if (_context.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return null;
+        }
+
+        return await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+    }
+
+    private async Task<CloseShiftResult> ExecuteClosureCommandAsync(
+        CreateClosureCommand command,
+        decimal exchangeRate,
+        CancellationToken cancellationToken)
+    {
+        IDbContextTransaction? transaction = await OpenSerializableTransactionAsync(cancellationToken);
+
+        try
+        {
+            var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(command.ClosureDateUtc, cancellationToken);
+            var expectedById = expectedTotals.ToDictionary(e => e.PaymentMethodId);
+
+            ValidateDeclaredMethods(command.Declarations, expectedById);
+
+            var details = new List<ClosureDetail>();
+            var reportDetails = new List<ShiftReportDetailResult>();
+            BuildDeclaredDetails(command.Declarations, expectedById, exchangeRate, details, reportDetails);
+
+            var existingMethodIds = details.Select(d => d.PaymentMethodId).ToHashSet();
+            var methodEntities = await _context.PaymentMethods
+                .AsNoTracking()
+                .Where(p => !p.IsDeleted)
+                .ToDictionaryAsync(p => p.Id, cancellationToken);
+
+            MergeMissingMethodsWithReport(details, reportDetails, expectedTotals, existingMethodIds, methodEntities, exchangeRate);
+
+            var resolvedUser = await ResolveUserDetailsAsync(command.UserId, cancellationToken);
+
+            var dailyClosure = new DailyClosure
+            {
+                ClosureDate = command.ClosureDateUtc,
+                UserId = resolvedUser.UserId,
+                Observation = resolvedUser.Observation,
+                ExchangeRate = exchangeRate,
+                Details = details
+            };
+
+            RecalculateTotals(dailyClosure);
+
+            var savedClosure = await PersistClosureCoreAsync(dailyClosure);
+            await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate);
+
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+
+            // 8.7-B5: los comprobantes se escriben DESPUÉS del commit, fuera de la transacción Serializable.
+            await WriteClosedClosureReceiptsAsync(savedClosure, cancellationToken);
+
+            return new CloseShiftResult(
+                savedClosure.Id,
+                resolvedUser.CashierName,
+                resolvedUser.CashierCedula,
+                savedClosure.ClosureDate,
+                exchangeRate,
+                reportDetails);
+        }
+        catch
+        {
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+            {
+                await transaction.DisposeAsync();
+            }
+        }
+    }
+
+    private static void BuildDeclaredDetails(
+        IReadOnlyList<DeclaredPaymentAmount> declarations,
+        Dictionary<int, ExpectedTotalDto> expectedById,
+        decimal exchangeRate,
+        List<ClosureDetail> details,
+        List<ShiftReportDetailResult> reportDetails)
+    {
+        foreach (var declared in declarations)
         {
             var expected = expectedById[declared.PaymentMethodId];
             string currency = PaymentMethodCurrencyResolver.Resolve(expected.PaymentMethodName);
@@ -243,55 +342,6 @@ public class DailyClosureService : IDailyClosureService
                 diff,
                 status));
         }
-
-        var existingMethodIds = details.Select(d => d.PaymentMethodId).ToHashSet();
-        var methodEntities = await _context.PaymentMethods
-            .AsNoTracking()
-            .Where(p => !p.IsDeleted)
-            .ToDictionaryAsync(p => p.Id, cancellationToken);
-
-        MergeMissingMethodsWithReport(details, reportDetails, expectedTotals, existingMethodIds, methodEntities, exchangeRate);
-
-        var resolvedUser = await ResolveUserDetailsAsync(command.UserId, cancellationToken);
-
-        var dailyClosure = new DailyClosure
-        {
-            ClosureDate = command.ClosureDateUtc,
-            UserId = resolvedUser.UserId,
-            Observation = resolvedUser.Observation,
-            ExchangeRate = exchangeRate,
-            Details = details
-        };
-
-        RecalculateTotals(dailyClosure);
-
-        DailyClosure savedClosure;
-        if (_context.Database.CurrentTransaction is not null)
-        {
-            savedClosure = await PersistClosureCoreAsync(dailyClosure);
-            await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate);
-        }
-        else
-        {
-            var strategy = _context.Database.CreateExecutionStrategy();
-            savedClosure = await strategy.ExecuteAsync(async () =>
-            {
-                var result = await PersistClosureCoreAsync(dailyClosure);
-                await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate);
-                return result;
-            });
-        }
-
-        // 8.7-B5: los comprobantes se escriben DESPUÉS del commit, fuera de la transacción Serializable.
-        await WriteClosedClosureReceiptsAsync(savedClosure, cancellationToken);
-
-        return new CloseShiftResult(
-            savedClosure.Id,
-            resolvedUser.CashierName,
-            resolvedUser.CashierCedula,
-            savedClosure.ClosureDate,
-            exchangeRate,
-            reportDetails);
     }
 
     private async Task<(string UserId, string CashierName, string CashierCedula, string Observation)> ResolveUserDetailsAsync(

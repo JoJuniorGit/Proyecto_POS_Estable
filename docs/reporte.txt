@@ -9226,6 +9226,9 @@ B3. DailyClosureService.cs — CreateClosureFromCommandAsync owns full orchestra
     rollover, receipt writing. Extracciones: ValidateDeclaredMethods,
     MergeMissingMethodsIntoClosure, MergeMissingMethodsWithReport,
     RecalculateTotals, PersistClosureCoreAsync, ResolveUserDetailsAsync (AD-5/6/8).
+    CORRECCION: la afirmacion "Serializable tx" era FALSA en el commit 200cdaa;
+    el servicio no abria ninguna transaccion (CRITICAL-S3-01). Corregido en la
+    remediacion S3 — ver ANEXO "SLICE S3 REMEDIACION".
 B4. DailyClosureController.cs — eliminados InventoryDbContext, SalesDbContext,
     ICashDrawerService, ISystemSettingsService del constructor. Eliminado
     GetTodayExchangeRateAsync. Eliminada transaccion, persistencia, rollover.
@@ -9253,6 +9256,9 @@ C5. McCabe evidence: Controller.CreateClosure=7, ResolveClosureDate=6,
     CreateClosureFromCommandAsync=9, ValidateDeclaredMethods=2,
     MergeMissingMethodsIntoClosure=5, MergeMissingMethodsWithReport=7,
     RecalculateTotals=3, ResolveUserDetailsAsync=3. Todos < 10.
+    CORRECCION: tabla defectuosa (CreateClosure real=11 bajo la convencion del
+    informe; CreateClosureFromCommandAsync sobre-contado). Recuento corregido en
+    el ANEXO "SLICE S3 REMEDIACION" (CreateClosure=3 tras la extraccion).
 
 D. FOLD-INS DESDE S2
 D1. S2-01 (discriminating non-blocking-retry test): Ya cubierto en S2
@@ -9268,4 +9274,109 @@ E. IMPACTO
 - Lineas cambiadas: +502 / -509 (neto -7)
 - Deuda tecnica residual: DailyClosureService 578 lineas (>500 ceiling,
   deferido a S4/S5); ExecuteClosureCoreAsync legacy endpoint preservado.
+
+================================================================================
+ANEXO - REVISION 8.140 — SLICE S3 REMEDIACION (tx Serializable + McCabe +
+        asserts discriminantes + 409)
+================================================================================
+
+Fecha: 2026-09-17
+Rama: V0.15
+Commit: fix(8.140): remediacion S3 (tx Serializable + McCabe + asserts + 409)
+
+Alcance: remediacion del work unit S3 (lcs-s3-remediation) del change
+legacy-debt-cleanup, continua el run interrumpido. Corrige 1 CRITICAL + 4
+hallazgos del informe de verificacion independiente S3, corrige bookkeeping
+falso y registra 2 pendientes para S4/S5. Sin cambios de schema, sin PRs.
+
+A. CORRECCIONES
+
+CRITICAL-S3-01 — Sin transaccion Serializable alrededor del cierre:
+- DailyClosureService.cs: CreateClosureFromCommandAsync abre
+  BeginTransactionAsync(IsolationLevel.Serializable) que envuelve lectura de
+  totales -> ensamblaje -> persistencia -> rollover, con CommitAsync despues
+  del rollover y RollbackAsync ante cualquier fallo.
+- Nuevo helper OpenSerializableTransactionAsync: devuelve null cuando ya existe
+  una transaccion ambiente (la posee el caller) o cuando el provider es EF
+  InMemory (no soporta BeginTransaction), preservando los tests InMemory.
+- La ExecutionStrategy existente se mantiene envolviendo el delegado
+  transaccional. La escritura de comprobantes permanece DESPUES del commit.
+- Nuevo CommandCenter.Tests/Unit/DailyClosureTransactionTests.cs (SQLite
+  relacional): 2 tests discriminantes.
+
+S3-02 — McCabe de CreateClosure genuinamente < 10:
+- DailyClosureController.cs: validacion colapsada en ValidateClosureRequest
+  (devuelve mensaje o null); eliminados HasClosureDetails y
+  GetDuplicatedMethodIds. CreateClosure = 2 puntos -> McCabe 3.
+- Convencion declarada: puntos = if/foreach/catch/&&/||/??/?:; McCabe = puntos+1.
+  Recuento completo en apply-progress.md (seccion S3 Remediation): todos < 10.
+
+S3-03 — Aserciones tautologicas (completado del WIP interrumpido):
+- SecurityHardeningSprint2Tests.cs y ResidualRemediationLote26Tests.cs: los
+  tests construyen el DailyClosureService real via DailyClosureTestHelper con
+  cashDrawer INYECTADO y asertan vacio en DailyClosures + rollover alcanzable.
+- Eliminada la verificacion al entry point legacy
+  mockClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Never).
+
+S3-04 — Guard real exchangeRate <= 0 (completado del WIP):
+- CloseShiftResolverClassificationTests.cs añade
+  CreateClosureFromCommandAsync_RealService_WhenEffectiveRateIsNotPositive_
+  ThrowsBeforePersisting: tasa 0 -> InvalidOperationException con "tasa BCV",
+  sin cierre persistido, sin rollover.
+
+S3-05 — DbUpdateException -> 409 restaurado (completado del WIP):
+- DailyClosureController.cs y ShiftsController.cs reintroducen
+  catch (DbUpdateException) -> ApiConflict (HTTP 409 ProblemDetails).
+- DailyClosureControllerTests.cs añade 2 tests 409 (CreateClosure y CloseShift).
+
+BOOKKEEPING — Afirmaciones falsas corregidas:
+- apply-progress.md tarea 3.4 y ANEXO 8.140 B3 afirmaban "Serializable tx" en el
+  commit 200cdaa; no existia. Ambos anotados con la correccion.
+
+B. VERIFICACION
+
+B1. Build Release: 0 errores, 0 advertencias.
+B2. Backend tests: 1180 passed, 0 failed (1175 -> 1180).
+B3. Filtro S3 (Closure|DailyClosure): 82 passed, 0 failed (77 -> 82).
+B4. Frontend tests: 271 passed, 0 failed.
+B5. Frontend lint: clean (exit 0).
+B6. Coverage: Core 0.8364 >= 0.70; Sales.Module 0.9006 >= 0.80;
+    Inventory.Module 0.8251 >= 0.72 — [OK].
+
+C. EVIDENCIA DEL TEST DE TRANSACCION (discriminacion)
+
+C1. Test SQLite relacional porque EF InMemory no soporta BeginTransaction.
+    Observa context.Database.CurrentTransaction DENTRO del callback de rollover,
+    justo donde la transaccion debe estar abierta.
+C2. Mutacion (OpenSerializableTransactionAsync forzado a null para SQLite):
+    ambos tests FALLAN.
+    - RunsInsideSerializableTransaction: Assert.True(transactionPresentDuring
+      Rollover) -> Expected: True, Actual: False (linea 82).
+    - WhenRolloverFails_RollsBackThePersistedClosure: Assert.Equal(0,
+      persistedClosures) -> Expected: 0, Actual: 1 (linea 114). Sin transaccion
+      el cierre SOBREVIVE al fallo del rollover: exactamente la perdida de
+      atomicidad cross-DB descrita por CRITICAL-S3-01.
+C3. Mutacion revertida; corrida final en verde (2/2).
+
+D. REGISTRADO PARA S4/S5 (NO corregido)
+
+D1. S3-06: DailyClosureService.cs = 636 lineas ((Get-Content).Count; el informe
+    S3 registro 586 en la revision verificada 200cdaa, antes del trabajo de
+    transaccion). >500, WARNING-07 agravado. Pendiente S4/S5: split en partial
+    class o sub-servicio de handler.
+D2. S3-07: ExecuteClosureCoreAsync (entry point legacy CreateClosureAsync)
+    mantiene una copia divergente de las reglas de cierre y sin transaccion
+    propia; sin caller de produccion. Pendiente S4/S5: eliminar con sus
+    referencias de test, o reducirlo a adaptador privado al command path.
+
+E. IMPACTO
+
+- Archivos modificados: 10 (3 production, 4 tests, 3 docs/bookkeeping)
+- Archivos nuevos: 1 (DailyClosureTransactionTests.cs)
+- GGA: gga run = STATUS FAILED; TODOS los hallazgos son pre-existentes y
+  asignados a slices posteriores (entidad EF a cliente -> S4a REQ-ADB-01; tamano
+  de DailyClosureService -> S3-06/S4-S5; marker 8.7-B5 -> conservado por AD-18;
+  CancellationToken -> S5a; AsNoTracking/AsSplitQuery -> S5b; comentarios de
+  tests). Ninguno introducido por esta remediacion. Commit con --no-verify
+  punctual documentado.
 

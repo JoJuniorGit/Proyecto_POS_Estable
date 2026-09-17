@@ -253,15 +253,28 @@ public class ResidualRemediationLote26Tests
     public async Task DailyClosureController_WithDuplicatedPaymentMethodIds_ReturnsBadRequestWithoutCreatingClosure()
     {
         using var salesDb = TestDatabaseFactory.CreateSalesDbContext();
-        using var inventoryDb = TestDatabaseFactory.CreateInventoryDbContext();
-        var mockClosure = new Mock<IDailyClosureService>();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
+        if (!await salesDb.PaymentMethods.AnyAsync(p => p.Id == 1))
+        {
+            salesDb.PaymentMethods.Add(new PaymentMethod
+            {
+                Id = 1,
+                Name = "Efectivo USD",
+                IsCash = true,
+                IsActive = true,
+                IsDeleted = false,
+                DisplayOrder = 1
+            });
+            await salesDb.SaveChangesAsync();
+        }
+
+        var (rateProvider, cashDrawer) = DailyClosureTestHelper.CreateMocks();
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.UserId).Returns("1");
 
+        var closureService = DailyClosureTestHelper.CreateService(salesDb, rateProvider, cashDrawer);
+
         var controller = new DailyClosureController(
-            mockClosure.Object,
+            closureService,
             mockUser.Object)
         {
             ControllerContext = CreateAdminControllerContext()
@@ -280,24 +293,36 @@ public class ResidualRemediationLote26Tests
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         Assert.NotNull(badRequest.Value);
-        mockClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Times.Never);
-        mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
+        Assert.Empty(await salesDb.DailyClosures.AsNoTracking().ToListAsync());
+        cashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
     }
 
     [Fact]
     public async Task ShiftsController_WithDuplicatedDeclaredPaymentMethodIds_ReturnsBadRequestWithoutCreatingClosure()
     {
         using var salesDb = TestDatabaseFactory.CreateSalesDbContext();
-        using var inventoryDb = TestDatabaseFactory.CreateInventoryDbContext();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockDailyClosure = new Mock<IDailyClosureService>();
-        var mockPaymentMethod = new Mock<IPaymentMethodService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
+        if (!await salesDb.PaymentMethods.AnyAsync(p => p.Id == 2))
+        {
+            salesDb.PaymentMethods.Add(new PaymentMethod
+            {
+                Id = 2,
+                Name = "Efectivo Bs.S",
+                IsCash = true,
+                IsActive = true,
+                IsDeleted = false,
+                DisplayOrder = 2
+            });
+            await salesDb.SaveChangesAsync();
+        }
+
+        var (rateProvider, cashDrawer) = DailyClosureTestHelper.CreateMocks();
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.UserId).Returns("1");
 
+        var closureService = DailyClosureTestHelper.CreateService(salesDb, rateProvider, cashDrawer);
+
         var controller = new ShiftsController(
-            mockDailyClosure.Object,
+            closureService,
             mockUser.Object)
         {
             ControllerContext = CreateAdminControllerContext()
@@ -316,8 +341,8 @@ public class ResidualRemediationLote26Tests
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         Assert.NotNull(badRequest.Value);
-        mockDailyClosure.Verify(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()), Times.Never);
-        mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
+        Assert.Empty(await salesDb.DailyClosures.AsNoTracking().ToListAsync());
+        cashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
     }
 
     private static SalesController CreateSalesController(Mock<ISalesService> salesService)

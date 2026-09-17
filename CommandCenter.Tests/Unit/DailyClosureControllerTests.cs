@@ -127,6 +127,80 @@ public class DailyClosureControllerTests
     }
 
     [Fact]
+    public async Task CreateClosure_WhenServiceThrowsDbUpdateException_Returns409ProblemDetails()
+    {
+        var mockClosure = new Mock<IDailyClosureService>();
+        mockClosure.Setup(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DbUpdateException("conflict"));
+
+        var controller = CreateController(mockClosure);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                {
+                    new Claim(ClaimTypes.NameIdentifier, "1"),
+                    new Claim(ClaimTypes.Role, "Admin")
+                }, "TestAuth"))
+            }
+        };
+
+        var request = new CreateClosureRequest
+        {
+            Details = new System.Collections.Generic.List<CreateClosureDetailRequest>
+            {
+                new CreateClosureDetailRequest { PaymentMethodId = 1, ActualAmountBsS = 1000m }
+            }
+        };
+
+        var result = await controller.CreateClosure(request, CancellationToken.None);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result);
+        Assert.Equal(StatusCodes.Status409Conflict, conflict.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(conflict.Value);
+        Assert.Equal(409, problemDetails.Status);
+    }
+
+    [Fact]
+    public async Task CloseShift_WhenServiceThrowsDbUpdateException_Returns409ProblemDetails()
+    {
+        var mockClosure = new Mock<IDailyClosureService>();
+        mockClosure.Setup(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DbUpdateException("conflict"));
+
+        var mockUser = new Mock<ICurrentUserService>();
+        mockUser.Setup(u => u.UserId).Returns("1");
+        var controller = CreateShiftsController(mockClosure, mockUser);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                {
+                    new Claim(ClaimTypes.NameIdentifier, "1"),
+                    new Claim(ClaimTypes.Role, "Admin")
+                }, "TestAuth"))
+            }
+        };
+
+        var request = new CloseShiftRequest
+        {
+            DeclaredAmounts = new System.Collections.Generic.List<DeclaredAmountDto>
+            {
+                new DeclaredAmountDto { PaymentMethodId = 1, Amount = 100m }
+            }
+        };
+
+        var result = await controller.CloseShift(request, CancellationToken.None);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result);
+        Assert.Equal(StatusCodes.Status409Conflict, conflict.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(conflict.Value);
+        Assert.Equal(409, problemDetails.Status);
+    }
+
+    [Fact]
     public void DailyClosureController_HasNoDbContextInConstructor()
     {
         var constructor = typeof(DailyClosureController).GetConstructors().First();
