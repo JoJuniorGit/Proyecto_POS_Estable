@@ -154,28 +154,26 @@ public class CashDrawerController : ControllerBase
         // y NO deben aceptarse desde el endpoint manual (evita bypass del chequeo de saldo).
         if (request.Source == CashTransactionSource.Closing || request.Source == CashTransactionSource.Opening)
         {
-            return BadRequest(new { Message = "Acceso denegado: los orígenes Opening y Closing están reservados al proceso interno de apertura y cierre de caja y no pueden usarse en transacciones manuales." });
+            return this.ApiBadRequest("Acceso denegado: los orígenes Opening y Closing están reservados al proceso interno de apertura y cierre de caja y no pueden usarse en transacciones manuales.");
         }
 
-        // Permission check: solo Administradores pueden realizar operaciones manuales (CashIn/CashOut/ManualAdjustment)
-        // Roles Cashier y Driver quedan bloqueados (H-API-17)
         if (request.Source == CashTransactionSource.CashIn || request.Source == CashTransactionSource.CashOut || request.Source == CashTransactionSource.ManualAdjustment)
         {
             if (_currentUserService.UserRole.HasValue && 
                 (_currentUserService.UserRole.Value == Core.Entities.UserRole.Cashier || _currentUserService.UserRole.Value == Core.Entities.UserRole.Driver))
             {
-                return StatusCode(StatusCodes.Status403Forbidden, new { Message = "Acceso denegado: Únicamente los usuarios administradores pueden realizar operaciones manuales de ingreso (CASH IN) o retiro (CASH OUT) en la caja." });
+                return this.ApiForbidden("Acceso denegado: Únicamente los usuarios administradores pueden realizar operaciones manuales de ingreso (CASH IN) o retiro (CASH OUT) en la caja.");
             }
         }
 
         if (request.AmountLocal <= 0)
         {
-            return BadRequest(new { Message = "El monto de la transacción debe ser mayor a cero." });
+            return this.ApiBadRequest("El monto de la transacción debe ser mayor a cero.");
         }
 
         if (request.ExchangeRate <= 0)
         {
-            return BadRequest(new { Message = "La tasa de cambio (ExchangeRate) debe ser mayor a cero." });
+            return this.ApiBadRequest("La tasa de cambio (ExchangeRate) debe ser mayor a cero.");
         }
 
         // 8.5-A5 (residual): la transacción manual también ancla la tasa a la BCV del día con la

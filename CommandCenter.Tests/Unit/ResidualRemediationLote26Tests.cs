@@ -315,8 +315,8 @@ public class ResidualRemediationLote26Tests
         {
             DeclaredAmounts = new List<DeclaredAmountDto>
             {
-                new DeclaredAmountDto { PaymentMethodId = 2, PaymentMethodName = "Pago Movil", Amount = 100m },
-                new DeclaredAmountDto { PaymentMethodId = 2, PaymentMethodName = "Pago Movil", Amount = 250m }
+                new DeclaredAmountDto { PaymentMethodId = 2, Amount = 100m },
+                new DeclaredAmountDto { PaymentMethodId = 2, Amount = 250m }
             }
         };
 

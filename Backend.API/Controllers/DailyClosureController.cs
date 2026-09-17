@@ -77,7 +77,7 @@ public class DailyClosureController : ControllerBase
 
         if (request == null || request.Details == null || !request.Details.Any())
         {
-            return BadRequest(new { message = "El arqueo debe incluir el desglose por métodos de pago." });
+            return this.ApiBadRequest("El arqueo debe incluir el desglose por métodos de pago.");
         }
 
         var duplicatedMethodIds = request.Details
@@ -88,7 +88,7 @@ public class DailyClosureController : ControllerBase
 
         if (duplicatedMethodIds.Count > 0)
         {
-            return BadRequest(new { message = $"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}." });
+            return this.ApiBadRequest($"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}.");
         }
 
         try
@@ -120,11 +120,11 @@ public class DailyClosureController : ControllerBase
                 {
                     if (requestedDateUtc > now.AddMinutes(5))
                     {
-                        return BadRequest(new { message = "La fecha de cierre no puede ser en el futuro." });
+                        return this.ApiBadRequest("La fecha de cierre no puede ser en el futuro.");
                     }
                     if (now - requestedDateUtc > TimeSpan.FromHours(24))
                     {
-                        return BadRequest(new { message = "No se permite registrar cierres con más de 24 horas de retroactividad." });
+                        return this.ApiBadRequest("No se permite registrar cierres con más de 24 horas de retroactividad.");
                     }
 
                     closureDate = requestedDateUtc;
@@ -159,7 +159,7 @@ public class DailyClosureController : ControllerBase
 
             if (unknownMethodIds.Count > 0)
             {
-                return BadRequest(new { message = $"El desglose contiene métodos de pago no reconocidos: {string.Join(", ", unknownMethodIds)}." });
+                return this.ApiBadRequest($"El desglose contiene métodos de pago no reconocidos: {string.Join(", ", unknownMethodIds)}.");
             }
 
             var closure = new DailyClosure

@@ -3,14 +3,10 @@ import { api } from './api';
 /**
  * Envia el cierre ciego de turno enviando el arreglo de montos declarados
  * estrictamente en la moneda nativa de cada método de pago.
- * @param {Array<{paymentMethodId: number, paymentMethodName: string, amount: number}>} declaredAmounts
- * @param {string} cashierName
- * @param {string} cashierCedula
+ * @param {Array<{paymentMethodId: number, amount: number}>} declaredAmounts
  */
-export async function closeShift(declaredAmounts, cashierName = '', cashierCedula = '') {
+export async function closeShift(declaredAmounts) {
   return await api.post('/api/shifts/close', {
-    cashierName,
-    cashierCedula,
     declaredAmounts,
   });
 }

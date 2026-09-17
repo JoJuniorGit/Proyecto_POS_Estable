@@ -273,8 +273,8 @@ public class SecurityHardeningSprint2Tests
         {
             DeclaredAmounts = new List<DeclaredAmountDto>
             {
-                new DeclaredAmountDto { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", Amount = 1000m },
-                new DeclaredAmountDto { PaymentMethodId = 999, PaymentMethodName = "Método Inyectado", Amount = 0m }
+                new DeclaredAmountDto { PaymentMethodId = 1, Amount = 1000m },
+                new DeclaredAmountDto { PaymentMethodId = 999, Amount = 0m }
             }
         };
 

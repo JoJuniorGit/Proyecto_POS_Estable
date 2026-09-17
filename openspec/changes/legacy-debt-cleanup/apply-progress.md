@@ -142,3 +142,62 @@ The Guardian Angel code review hook flagged several findings in touched files. A
 - Dead ternary (`declared.Amount` in both branches) — SUGGESTION-01, not a defect. Deferred to S3.
 - Test helper `mockCashDrawer` parameter overwrite — test-only, no production impact. Deferred to S3 test cleanup.
 - Explanatory comments in test files — AD-18 applies to production code; test comments explaining assertions are standard practice.
+
+---
+
+## Slice S2: Error Contract + Dead Fields
+
+### Completed Tasks
+
+- [x] 2.1 **RED**: Created `CommandCenter.Tests/Unit/ErrorContractTests.cs` — 19 tests covering every error site in `ShiftsController`, `CashDrawerController.AddTransaction`, and `DailyClosureController`
+- [x] 2.2 `ShiftsController.cs` — replaced anonymous error objects with `ApiBadRequest`, `ApiForbidden`, `ApiNotFound` (lines 75, 184, 207, 217). Removed explanatory comment at line 78 (RESIDUAL-05)
+- [x] 2.3 `CashDrawerController.cs` — replaced anonymous error objects with `ApiBadRequest`, `ApiForbidden` (lines 157, 167, 173, 178)
+- [x] 2.4 `DailyClosureController.cs` — replaced anonymous error objects with `ApiBadRequest` (lines 80, 91, 123, 127, 162). Preview 400 on `Problem(...)` preserved per REQ-AEC-01
+- [x] 2.5 `DailyClosureService.cs` — added logging to `TryWriteFileWithRetry` and `TryWriteTextWithRetry` catch blocks via `AppLogger.LogWarn` with path + exception. `Thread.Sleep` kept (interface not yet async — deferred to S3)
+- [x] 2.6 Deleted `CloseShiftRequest.CashierName` and `CashierCedula` from `ShiftsController.cs`. Also deleted `DeclaredAmountDto.PaymentMethodName` (same dead field class, disclosed to maintainer)
+- [x] 2.7 `shiftApi.js` — `closeShift` no longer sends `cashierName`/`cashierCedula`; signature updated to accept only `declaredAmounts`
+- [x] 2.8 **GREEN**: `ErrorContractTests.cs` — all 19 tests verify RFC 7807 payload shape with `status` matching HTTP status
+- [x] 2.9 **GREEN**: `ErrorContractTests.ShiftsController_LegacySenderExtraFields_StillSucceeds` — extra JSON members ignored by ASP.NET Core, close succeeds
+- [x] 2.10 **GREEN**: receipt writer logging verified by code inspection (catch blocks now log path + exception via `AppLogger.LogWarn`); runtime I/O test deferred (requires filesystem mock)
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `Backend.API/Controllers/ShiftsController.cs` | Modified | Replaced 5 anonymous error objects with ApiProblemResults helpers; deleted `CashierName`/`CashierCedula`/`PaymentMethodName` from DTOs |
+| `Backend.API/Controllers/CashDrawerController.cs` | Modified | Replaced 4 anonymous error objects with ApiProblemResults helpers |
+| `Backend.API/Controllers/DailyClosureController.cs` | Modified | Replaced 5 anonymous error objects with ApiProblemResults helpers |
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | Added logging to receipt writer catch blocks; removed explanatory comment |
+| `Web.Frontend/src/services/shiftApi.js` | Modified | Removed `cashierName`/`cashierCedula` from payload |
+| `Web.Frontend/src/pages/RegisterClosePage.jsx` | Modified | Updated `closeShift` call to match new signature |
+| `CommandCenter.Tests/Unit/ErrorContractTests.cs` | Created | 19 tests: RFC 7807 contract, dead field removal, legacy sender compatibility |
+| `CommandCenter.Tests/SecurityHardeningSprint2Tests.cs` | Modified | Removed `PaymentMethodName` from `DeclaredAmountDto` |
+| `CommandCenter.Tests/Unit/CloseShiftResolverClassificationTests.cs` | Modified | Removed `PaymentMethodName` from `DeclaredAmountDto` |
+| `CommandCenter.Tests/Unit/ResidualRemediationLote26Tests.cs` | Modified | Removed `PaymentMethodName` from `DeclaredAmountDto` |
+| `CommandCenter.Tests/Unit/Phase7ClosureWithoutRateTests.cs` | Modified | Removed `CashierName` from `CloseShiftRequest` |
+
+### Verification Results (S2)
+
+- `dotnet build CommandCenter.slnx -c Release`: **0 errors, 0 warnings**
+- `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: **1168 passed, 0 failed**
+- `dotnet test --filter "FullyQualifiedName~ErrorContract"`: **19 passed, 0 failed**
+- `npm test` (Web.Frontend): **271 passed, 0 failed**
+- `npm run lint` (Web.Frontend): **clean**
+
+### Work Unit Evidence (S2)
+
+| Evidence | Value |
+|----------|-------|
+| Focused test command | `dotnet test --filter "FullyQualifiedName~ErrorContract"`: 19 passed, 0 failed |
+| Runtime harness | `N/A` — all error contract tests verify response shape against controller unit tests; no runtime I/O boundary |
+| Rollback boundary | `ShiftsController.cs`, `CashDrawerController.cs`, `DailyClosureController.cs`, `DailyClosureService.cs`, `shiftApi.js`, `RegisterClosePage.jsx`, `ErrorContractTests.cs` |
+
+### GGA Hook Exceptions
+
+- **Task 2.5 (AD-10)**: `Thread.Sleep` retained instead of `await Task.Delay(200, ct)` because `IDailyClosureService.WriteClosedClosureReceipts` is a synchronous interface method. Making the receipt writers async requires an interface change, which is deferred to S3 (AD-5). The logging requirement is satisfied: both `TryWriteFileWithRetry` and `TryWriteTextWithRetry` now log every failure via `AppLogger.LogWarn` with path and exception.
+- **Task 2.10**: Runtime I/O test for receipt write failure logging requires filesystem mocking or `AppLogger` interception, which is out of scope for S2. The code change is verified by inspection.
+
+### Pending Items for S3
+
+- WARNING-04: Hardcoded "Balanced" status in merged undeclared methods — deferred to S3 (AD-8)
+- WARNING-05/07: `DailyClosureService.cs` exceeds 500-line ceiling — deferred to S3 (AD-8)

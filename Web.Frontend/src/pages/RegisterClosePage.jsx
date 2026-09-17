@@ -139,11 +139,7 @@ function RegisterClosePageContent() {
     }));
 
     try {
-      const report = await closeShift(
-        payloadAmounts,
-        user?.name || 'Cajero Activo',
-        user?.cedula || 'V-00000000'
-      );
+      const report = await closeShift(payloadAmounts);
       setZReport(report);
     } catch (err) {
       console.error('[RegisterClosePage] Error enviando cierre:', err);

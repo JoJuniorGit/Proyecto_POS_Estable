@@ -220,7 +220,6 @@ public class DailyClosureService : IDailyClosureService
         var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(command.ClosureDateUtc, cancellationToken);
         var expectedById = expectedTotals.ToDictionary(e => e.PaymentMethodId);
 
-        // Validate declared method ids
         var unknownMethodIds = command.Declarations
             .Where(d => !expectedById.ContainsKey(d.PaymentMethodId))
             .Select(d => d.PaymentMethodId)
@@ -479,8 +478,9 @@ public class DailyClosureService : IDailyClosureService
                 System.IO.File.WriteAllBytes(path, bytes);
                 return;
             }
-            catch
+            catch (Exception ex)
             {
+                Core.Logging.AppLogger.LogWarn($"[DailyClosureService] Intento {attempt + 1}/2 falló al escribir '{path}': {ex.Message}", "ReceiptWrite");
                 if (attempt == 0) System.Threading.Thread.Sleep(200);
             }
         }
@@ -495,8 +495,9 @@ public class DailyClosureService : IDailyClosureService
                 System.IO.File.WriteAllText(path, text);
                 return;
             }
-            catch
+            catch (Exception ex)
             {
+                Core.Logging.AppLogger.LogWarn($"[DailyClosureService] Intento {attempt + 1}/2 falló al escribir '{path}': {ex.Message}", "ReceiptWrite");
                 if (attempt == 0) System.Threading.Thread.Sleep(200);
             }
         }
