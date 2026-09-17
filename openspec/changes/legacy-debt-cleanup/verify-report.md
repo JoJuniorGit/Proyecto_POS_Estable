@@ -1,17 +1,17 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:d6dda3afadbf8d3273651e5b4f74a42e65414bc843cae8dbcb352e3766b045be
+evidence_revision: sha256:b96d5e3bdd5aef28d55a1968c613b103bd177ce05f1a0c873a2113f9ef338d4b
 verdict: pass_with_warnings
 blockers: 0
 critical_findings: 0
-requirements: 4/4
-scenarios: 8/8
+requirements: 2/2
+scenarios: 4/4
 test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release
 test_exit_code: 0
-test_output_hash: sha256:fbe42f41f6f4ccb6055708f82c25805131db047bfafddbe9dea3409d43bfc389
+test_output_hash: sha256:e0ebbc71fe54232be778743f7dd9bb118c09bd586c44f07b44f206b31870a0d3
 build_command: dotnet build CommandCenter.slnx -c Release
 build_exit_code: 0
-build_output_hash: sha256:df799fe601a812014f586cec26862365b16d8d60fa8a2f761631f2f2cf6b7f87
+build_output_hash: sha256:12942f0e260fa5f766cca6dae5e9dae739767bada4e6ae11e3cd7af5b64fa31d
 ```
 
 ## Verification Report
@@ -19,10 +19,11 @@ build_output_hash: sha256:df799fe601a812014f586cec26862365b16d8d60fa8a2f761631f2
 **Change**: legacy-debt-cleanup
 **Version**: N/A (delta specs, no version headers)
 **Mode**: Standard (Strict TDD inactive: `openspec/config.yaml` -> `strict_tdd: false`, `testing.strict_tdd_mode: disabled`)
-**Scope of this report**: a per-slice verification record for the change `legacy-debt-cleanup`. Slices S1 (zero-trust close, items 26/39), S2 (error contract + dead fields, items 2/18/25/12/35) and S3 (closure orchestration consolidation, items 1/30/6/13/14) are implemented; S4a-S5c are not, so the **change-level verdict remains pending**. The machine-readable envelope at the top of this file describes the **most recently admitted slice — S3 at `579347b`** (`requirements: 4/4`, `scenarios: 8/8` against the S3 delta spec `closure-orchestration-consolidation`), and its `evidence_revision` covers the eight S3 production/test files listed under "S3 Changed Files". The original admitted **S1** envelope is preserved verbatim under "S1 Admitted Envelope (preserved)"; the S1 and S2 verdicts and their own fresh evidence live in their own sections.
-**Verified revision**: the current `HEAD` is `579347b` (S3 remediation, `fix(8.140): remediacion S3 (tx Serializable + McCabe + asserts + 409)`). The working tree is clean (`git status --short` empty): no production, test, or documentation file is modified against `579347b`. Earlier sections record the revision each of them was verified at: S1 at `c6c767f` (which carried one uncommitted documentation-only `apply-progress.md` append at that moment) and S2 at `77b2d16`.
-**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding — superseded for S1. For the S3 slice the prior verdict was `fail` on `200cdaa` (1 CRITICAL, `CRITICAL-S3-01`), superseded by this re-verification at `579347b`.
-**evidence_revision** (head envelope, S3) is the SHA-256 of the ASCII string produced by joining, with `:`, the lowercase SHA-256 hex digests of the eight S3 production/test files listed under "S3 Changed Files", in the order listed there.
+**Scope of this report**: a per-slice verification record for the change `legacy-debt-cleanup`. Slices S1 (zero-trust close, items 26/39), S2 (error contract + dead fields, items 2/18/25/12/35), S3 (closure orchestration consolidation, items 1/30/6/13/14) and **S4a (closure DTO boundary, commit `829778c`)** are implemented; S4b-S5c are not, so the **change-level verdict remains pending**. The machine-readable envelope at the top of this file describes the **most recently admitted slice — S4a at `829778c`**. The previous head envelopes are preserved verbatim under "S3 Admitted Envelope (preserved)" and "S1 Admitted Envelope (preserved)"; the S1, S2 and S3 verdicts and their own fresh evidence live in their own sections.
+**Envelope counts (S4a)**: `requirements: 2/2` and `scenarios: 4/4` are completed/total for **this slice's declared scope** — REQ-ADB-01 and REQ-ADB-04 — not for the whole `api-dto-boundary` delta spec, which carries 4 requirements / 7 scenarios. Spec-wide at revision `829778c`, this report records **1 of 4 requirements complete** (only REQ-ADB-01) and **4 of 7 scenarios compliant**: REQ-ADB-04 is satisfied for the closure DTOs but its drawer-DTO half awaits S4b, while REQ-ADB-02 and REQ-ADB-03 are drawer-only and belong to the explicitly-not-started S4b. No drawer surface is claimed by this slice.
+**Verified revision**: the current `HEAD` is `829778c` (`refactor(8.140): DTOs inmutables de cierre (slice S4a, items 3/15/19/20) - ANEXO 8.140`). The working tree is clean (`git status --short` and `git diff --stat HEAD` both empty): no production, test, or documentation file is modified against `829778c`. Earlier sections record the revision each of them was verified at: S1 at `c6c767f` (which carried one uncommitted documentation-only `apply-progress.md` append at that moment), S2 at `77b2d16` and S3 at `579347b`.
+**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding — superseded for S1. Per slice: S2 was `fail` on `fe1b60b` and S3 was `fail` on `200cdaa` (1 CRITICAL, `CRITICAL-S3-01`); both were superseded by their re-verifications. S4a has no prior verdict.
+**evidence_revision** (head envelope, S4a) is the SHA-256 of the ASCII string produced by joining, with `:`, the lowercase SHA-256 hex digests of the fifteen S4a production/test files listed under "S4a Changed Files", in the order listed there (the same recipe used for S3, which was reproducible).
 **Hash definition**: `build_output_hash` / `test_output_hash` are the SHA-256 of the captured combined stdout+stderr for the command execution reported above, normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed; identical recipe per section below.
 
 ### S1 Admitted Envelope (preserved)
@@ -46,6 +47,26 @@ build_output_hash: sha256:8436cc96bcd180532cf20de12832475d9fd80e7f1d667633829562
 ```
 
 The S1 `evidence_revision` above is the SHA-256 of the colon-joined per-file SHA-256 digests of the thirteen S1 production/test files listed under "S1 Changed Files" (that recipe did not reproduce from its recorded file list — see RESIDUAL-S2-07). The S1 `build_output_hash` / `test_output_hash` are the SHA-256 of the byte-exact combined stdout+stderr captured for the S1 command execution reported in the S1 section (UTF-8, LF-joined, `Set-Content -NoNewline`).
+
+### S3 Admitted Envelope (preserved)
+
+The envelope below was this file's admitted machine-readable head from the S3 re-verification until the S4a verification re-pointed the head envelope to the S4a slice. It is preserved byte-for-byte as the S3 evidence record.
+
+```yaml
+schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:d6dda3afadbf8d3273651e5b4f74a42e65414bc843cae8dbcb352e3766b045be
+verdict: pass_with_warnings
+blockers: 0
+critical_findings: 0
+requirements: 4/4
+scenarios: 8/8
+test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release
+test_exit_code: 0
+test_output_hash: sha256:fbe42f41f6f4ccb6055708f82c25805131db047bfafddbe9dea3409d43bfc389
+build_command: dotnet build CommandCenter.slnx -c Release
+build_exit_code: 0
+build_output_hash: sha256:df799fe601a812014f586cec26862365b16d8d60fa8a2f761631f2f2cf6b7f87
+```
 
 ### Completeness
 
@@ -240,7 +261,7 @@ Checked against `docs/coding-guidelines-core.md` (the system invariants) and `op
 | S1 - Zero-trust close (items 26/39) | Implemented + remediated | **PASS_WITH_WARNINGS** (this section) |
 | S2 - Error contract + dead fields | Implemented + remediated + re-verified | **PASS_WITH_WARNINGS** (Slice S2 section below) |
 | S3 - Closure orchestration consolidation | Implemented + remediated + re-verified (remediation commit `579347b`; prior verification `fail` on `200cdaa`) | **PASS_WITH_WARNINGS** - 0 blockers, 0 critical findings, 4/4 requirements and 8/8 scenarios compliant; `CRITICAL-S3-01` and `S3-02..S3-05` closed, `S3-06`/`S3-07` registered for S4/S5; see "Slice S3" |
-| S4a - Closure DTO boundary | Not implemented | Pending - all Phase 4a tasks unchecked |
+| S4a - Closure DTO boundary | Implemented + verified (`829778c`) | **PASS_WITH_WARNINGS** - 0 blockers, 0 critical findings; REQ-ADB-01 complete and the closure half of REQ-ADB-04 compliant (4/4 in-scope scenarios); REQ-ADB-02/03 and the drawer half of REQ-ADB-04 pending S4b; see "Slice S4a" |
 | S4b - Drawer DTO boundary | Not implemented | Pending - all Phase 4b tasks unchecked |
 | S5a - CancellationToken propagation | Not implemented | Pending - all Phase 5a tasks unchecked |
 | S5b - EF tuning + guards/naming/comments | Not implemented | Pending - all Phase 5b tasks unchecked |
@@ -412,7 +433,7 @@ Checked against `docs/coding-guidelines-core.md` and `openspec/config.yaml`.
 **Slice deltas**: original S3 `77b2d16` -> `200cdaa` (27 files, `+632 / -509`); **S3 remediation `200cdaa` -> `579347b`** — 11 files, `+850 / -123`: 8 production/test files (`DailyClosureService.cs`, `DailyClosureController.cs`, `ShiftsController.cs`, `DailyClosureTransactionTests.cs`, `DailyClosureControllerTests.cs`, `CloseShiftResolverClassificationTests.cs`, `SecurityHardeningSprint2Tests.cs`, `ResidualRemediationLote26Tests.cs`) plus `docs/reporte.txt`, `apply-progress.md` and this report.
 **Spec under verification**: `openspec/changes/legacy-debt-cleanup/specs/closure-orchestration-consolidation/spec.md` — **4 requirements / 8 scenarios** counted from the `### Requirement:` and `#### Scenario:` headings (REQ-COC-01..04, two scenarios each).
 **Prior slices**: S1 and S2 are `pass_with_warnings` (sections above, unchanged). The change-level verdict remains **pending** for S4a-S5c.
-**Envelope note**: the head YAML envelope now describes **this S3 slice** (`requirements: 4/4`, `scenarios: 8/8`) with evidence at `579347b`; `evidence_revision` covers the eight S3 production/test files listed under "S3 Changed Files". The former admitted S1 envelope is preserved verbatim under "S1 Admitted Envelope (preserved)". The change-level envelope stays deferred until S4a-S5c land.
+**Envelope note**: the head YAML envelope described **this S3 slice** (`requirements: 4/4`, `scenarios: 8/8`) with evidence at `579347b` until the S4a verification re-pointed the head to `829778c`; the S3 envelope is now preserved verbatim under "S3 Admitted Envelope (preserved)" and `evidence_revision` covers the eight S3 production/test files listed under "S3 Changed Files". The former admitted S1 envelope is preserved verbatim under "S1 Admitted Envelope (preserved)". The change-level envelope stays deferred until S4b-S5c land.
 
 ### S3 Re-executed Evidence (verbatim)
 
@@ -624,9 +645,180 @@ The eight production/test files above, in this order, are the input to the head 
 
 **PASS_WITH_WARNINGS** — the S3 remediation at `579347b` closes every finding that set the prior verdict to `fail`. `CRITICAL-S3-01` is genuinely fixed: the closure run is wrapped in an explicit `BeginTransactionAsync(IsolationLevel.Serializable)` that commits after the rollover and rolls back on failure, and the new SQLite tests are discriminating (independently reproduced by the verifier's own mutation). `CreateClosure` now measures McCabe 3 with the counting convention documented; the four tautological assertions were replaced with real-service assertions; the production `exchangeRate <= 0` guard has a covering test; and the `DbUpdateException` -> 409 `ProblemDetails` mapping is restored in both close controllers. 8/8 scenarios and 4/4 requirements of the S3 delta spec are compliant, the build is 0/0, the backend suite is 1180/1180, the closure filter 82/82, the frontend 271/271 with clean lint, and the coverage gate reproduces the claim exactly. The residual items are non-blocking: `S3-06`/`S3-07` and the carried `WARNING-04`/`WARNING-07` are registered for S4/S5, and the remaining residuals are evidence-quality or inspection-based notes (RESIDUAL-S3-08, -12, -13).
 
+## Slice S4a — Closure DTO Boundary
+
+**Verdict: PASS_WITH_WARNINGS** — 0 blockers, **0 critical findings**. The slice delta spec is `api-dto-boundary` (**4 requirements / 7 scenarios**, counted from its `### Requirement:` / `#### Scenario:` headings). S4a owns the closure half: **REQ-ADB-01 complete** (2/2 scenarios) and **REQ-ADB-04 compliant for the closure DTOs** (2/2 scenarios); REQ-ADB-02 (drawer session DTO / cash-advance result) and REQ-ADB-03 (history projected, not hand-built) are drawer-only and belong to the explicitly-not-started S4b, so they are **pending and not claimed**. In-scope: **4/4 scenarios compliant**, 0 UNTESTED, 0 FAILING. Residuals are non-blocking and recorded, not hidden: `S4a-R1` (public concrete entity-returning legacy entry point), `S4a-R2` (class size 645 lines), `RESIDUAL-S4a-01` (parity evidence is serializer-level, not MVC-pipeline), `RESIDUAL-S4a-02` (commit-message item misattribution), `RESIDUAL-S4a-03` (checked task vs. changed-file mismatch) and `SIZE-S4a` (commit exceeds the 400-line review budget).
+
+**Verified revision**: `829778c` (`refactor(8.140): DTOs inmutables de cierre (slice S4a, items 3/15/19/20) - ANEXO 8.140`; current `HEAD`). Working tree clean at verification time (`git status --short` and `git diff --stat HEAD` both empty).
+**Slice delta**: `0f5a8c3` -> `829778c` — 18 files, `+643 / -62`: 15 production/test files (2 new DTOs, 6 modified production files, 1 new test file, 6 re-pointed test files) plus `docs/reporte.txt`, `apply-progress.md` and `tasks.md`.
+
+### S4a Re-executed Evidence (verbatim)
+
+Every command below was re-executed independently on `829778c` after the working tree was confirmed clean. `stderr` was merged into the captured stream. No result was taken from `apply-progress.md`.
+
+**1. Build** - `dotnet build CommandCenter.slnx -c Release` - exit `0` - matches the claim (0/0)
+
+```text
+Compilación correcta.
+    0 Advertencia(s)
+    0 Errores
+```
+
+captured-output hash: `sha256:12942f0e260fa5f766cca6dae5e9dae739767bada4e6ae11e3cd7af5b64fa31d`
+
+**2. Backend tests (full)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release` - exit `0` - matches the claim (1185/1185)
+
+```text
+Correctas! - Con error:     0, Superado:  1185, Omitido:     0, Total:  1185, Duración: 12 s - CommandCenter.Tests.dll (net10.0)
+```
+
+captured-output hash: `sha256:e0ebbc71fe54232be778743f7dd9bb118c09bd586c44f07b44f206b31870a0d3`
+
+**3. S4a focused filter (as declared in `tasks.md`)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~Dto"` - exit `0` - matches the claim (71/71)
+
+```text
+Correctas! - Con error:     0, Superado:    71, Omitido:     0, Total:    71, Duración: 1 s - CommandCenter.Tests.dll (net10.0)
+```
+
+**4. New test class alone** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~ClosureDtoBoundaryTests"` - exit `0` - the five S4a tests execute; `0` skipped, so none is Postgres-gated
+
+```text
+Correctas! - Con error:     0, Superado:     5, Omitido:     0, Total:     5, Duración: 229 ms - CommandCenter.Tests.dll (net10.0)
+```
+
+**5. Frontend tests** - `npm test` (Web.Frontend) - exit `0` on the first execution - matches the claim (271/271)
+
+```text
+ℹ tests 271
+ℹ pass 271
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+```
+
+captured-output hash: `sha256:03b6525ddf4adc1ecbe25e57a4a91d147943fb4e570b6980ecb972f8bec43daa`
+
+**6. Frontend lint** - `npm run lint` (Web.Frontend, oxlint) - exit `0`, no findings - matches the claim
+
+```text
+> web-frontend@0.0.0 lint
+> oxlint
+```
+
+captured-output hash: `sha256:1472f392035e28478ac827e6e5301e8adde36ba5a0a27bc61cdf6e42453bc7d3`
+
+**7. Coverage gate** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings` (1185/1185, exit `0`), then `python scripts/check-coverage.py CommandCenter.Tests/TestResults/4c0b6220-4a4a-452b-8d82-a7d33a990510/coverage.cobertura.xml` - exit `0`
+
+```text
+Cobertura de dominio por capa (line-rate, excluye *.Migrations.*):
+  Core               rate=0.8364 min=0.7000 gap_a_70%=0.0000 [OK]
+  Sales.Module       rate=0.9011 min=0.8000 gap_a_70%=0.0000 [OK]
+  Inventory.Module   rate=0.8251 min=0.7200 gap_a_70%=0.0000 [OK]
+```
+
+The gate reproduces the S4a claim **exactly** (Core 0.8364 / Sales.Module 0.9011 / Inventory.Module 0.8251) and all three `tasks.md` thresholds pass (Core >= 0.70, Sales.Module >= 0.80, Inventory.Module >= 0.72). `Sales.Module`, the layer S4a changes, sits at 0.9011 vs 0.9006 at S3.
+
+**Environment note**: `TEST_POSTGRES_CONNECTION` is unset, so the Postgres-gated classes continue to early-return as vacuous passes. No S4a test is Postgres-gated: the five `ClosureDtoBoundaryTests` are pure reflection/serialization tests and all five executed (`Omitido: 0`).
+
+### S4a Boundary Evidence (structural + grep)
+
+| Check | Method | Result |
+|-------|--------|--------|
+| No EF entity import or type on the touched boundary | `grep` for `Sales.Module.Entities` and for bare `DailyClosure` / `ClosureDetail` across `DailyClosureController.cs`, `IDailyClosureService.cs`, `ShiftsController.cs` and both new DTOs | **0 matches** |
+| Service interface returns DTOs | `IDailyClosureService.cs:37-38` declare `Task<DailyClosureResponseDto?>`; `:43` takes `DailyClosureResponseDto`; the entity `Task<DailyClosure> CreateClosureAsync(DailyClosure)` member is gone from the interface and the file's only `Sales.Module` using is `Sales.Module.DTOs` | **CONFIRMED** |
+| Controller returns the DTO | `DailyClosureController.GetClosure` is `Task<ActionResult<DailyClosureResponseDto>>` (`:130-135`); the file's only `Sales.Module` using is `Sales.Module.DTOs` (`:4`) | **CONFIRMED** |
+| Entity access confined to the projection edge | `DailyClosureService.LoadClosureEntityAsync` (private) plus `ShiftReportMapper.MapClosure`/`MapDetail` are the only entity touch points; `ShiftsController.cs:145` consumes `closure.Details` as DTOs | **CONFIRMED** |
+| DTO immutability | `DailyClosureResponseDto.cs` (12 lines) and `ClosureDetailResponseDto.cs` (10 lines) are `public sealed record` with positional parameters only; **0** `set;` occurrences in either file | **CONFIRMED** |
+| Golden-JSON options mirror production | `ClosureDtoBoundaryTests.ApiJsonOptions` = CamelCase + `ReferenceHandler.IgnoreCycles`; production `ServiceCollectionExtensions.cs:157-158` sets exactly those two options | **CONFIRMED** |
+
+The structural test `ClosureServiceAndControllerSignatures_DoNotExposeSalesModuleEntities` reflects `IDailyClosureService` (every public method, return + parameters, generics and arrays flattened) and `DailyClosureController` public instance methods, and additionally pins the generic argument of `GetClosureAsync`/`GetLatestClosureAsync` to `DailyClosureResponseDto`. It does **not** reflect the concrete `DailyClosureService` class — see `S4a-R1`.
+
+### S4a Field-Parity Assessment
+
+**Golden payload (touched endpoint `GET /api/dailyclosure/{id}`)**
+
+- `Assert.Equal` against the full-body literal pins the DTO output byte-for-byte; the test also serializes the entity with the production options and compares every client-bound member of both bodies.
+- All eight closure scalars survive with the same JSON name and value: `id`, `closureDate`, `userId`, `exchangeRate`, `totalExpectedBsS`, `totalActualBsS`, `totalDifferenceBsS`, `observation`.
+- All six detail members survive: `id`, `dailyClosureId`, `paymentMethodId`, `paymentMethodName`, `expectedAmountBsS`, `actualAmountBsS`, `differenceBsS`.
+- The EF navigation members `dailyClosure` and `paymentMethod` (previously serialized as `null`) are absent from the DTO body and asserted absent (`ContainsKey` false, plus a recursive property-name scan).
+
+**Consumer search (bindings to the removed members)**
+
+- WPF `ClosureDetailDto` (`Desktop.Client.Core/Services/IDailyClosureClientService.cs:26-34`) declares only `Id`, `PaymentMethodId`, `PaymentMethodName`, `ExpectedAmountBsS`, `ActualAmountBsS`, `DifferenceBsS` — it binds **no** navigation member, so their removal cannot break a binding.
+- WPF `DailyClosureDto` (`:14-24`) declares `Id`, `ClosureDate`, `UserId`, `TotalExpectedBsS`, `TotalActualBsS`, `TotalDifferenceBsS`, `Observation`, `Details`.
+- The WPF closure client calls only `GET api/dailyclosure/expected-totals` and `POST api/dailyclosure` (`DailyClosureClientService.cs:20, 27`); it never calls `GET api/dailyclosure/{id}`. Its `CreateClosureAsync` result is discarded by the view model (`DailyClosureViewModel.cs:346`), so the POST shape is not bound at runtime either — this independently confirms deviation D2.
+- **Zero** references to the `dailyclosure` endpoint anywhere in `Web.Frontend/src` (`*.js` / `*.jsx` search: count `0`).
+- The DTO's `exchangeRate` member has no counterpart in the WPF `DailyClosureDto` on the GET path; it is additive, and `System.Text.Json` ignores unknown members by default, so nothing breaks.
+
+**Assessment**: field parity holds for every member any client binds, and the only removed members are EF navigation properties that no consumer reads. Caveat `RESIDUAL-S4a-01`: the "before" body is a re-serialization of the entity under the production options, not a captured pre-S4a HTTP response, and no test drives the MVC pipeline for this endpoint; parity is established at the serializer-contract level.
+
+### S4a Requirement Evidence Matrix
+
+| Requirement | Scenario | Covering test / evidence | Result |
+|-------------|----------|--------------------------|--------|
+| REQ-ADB-01 | Closure response carries no EF entity | `ClosureDto_GoldenJson_PreservesLegacyBoundFields_AndDropsEntityNavigationMembers` (golden literal + nav absence) + `GetClosure_ReturnsDeclaredDto_AndPreservesNotFoundSemantics` (200 DTO, 404 preserved) + the grep/reflection boundary evidence above | **COMPLIANT** |
+| REQ-ADB-01 | Service returns a DTO | `ClosureServiceAndControllerSignatures_DoNotExposeSalesModuleEntities` asserts the `GetClosureAsync`/`GetLatestClosureAsync` generic argument equals `DailyClosureResponseDto`; `IDailyClosureService.cs:37-38` | **COMPLIANT** |
+| REQ-ADB-04 | DTOs expose no public setter | `ClosureDtos_ExposeNoPublicSetter` — every reflected public setter must carry the `IsExternalInit` modreq; `ClosureResponseDtos_AreDeclaredInSalesModuleDtosNamespace` also pins `sealed` | **COMPLIANT** (closure DTOs) |
+| REQ-ADB-04 | Existing client fields survive the swap | `ClosureDto_GoldenJson_...` per-member comparison + consumer search (no binding to the removed navs) | **COMPLIANT** (closure DTOs) |
+| REQ-ADB-02 | Drawer session response is a DTO / cash advance exposes DTOs | — | **PENDING — S4b** (drawer-only; not started) |
+| REQ-ADB-03 | History is projected, not hand-built | — | **PENDING — S4b** (drawer-only; not started) |
+
+**Compliance summary**: **REQ-ADB-01 complete**; **REQ-ADB-04 satisfied for the closure DTOs** (both of its scenarios) and pending for the drawer DTOs. In-scope scenarios: **4/4 compliant, 0 UNTESTED, 0 FAILING**. Spec-wide at `829778c`: **1/4 requirements** and **4/7 scenarios** complete, with the remainder being S4b's drawer work, which this slice explicitly must not start.
+
+### S4a Discrimination Review
+
+The five S4a tests were inspected for the tautology failure mode found in earlier slices (an assertion that restates a mock's own setup, or a `Times.Never` guarding a path the code under test cannot reach).
+
+- **`ClosureDto_GoldenJson_...` is discriminating.** `Assert.Equal(GoldenClosureJson, dtoJson)` is a strict whole-body equality against a literal: any added, renamed, reordered or dropped DTO member turns it red. The member-by-member loop compares two independently produced serializations (entity vs. DTO), not a constant restated from the DTO, and the nav-absence assertions are pinned to the production record shape.
+- **`ClosureDtos_ExposeNoPublicSetter` is discriminating.** It reflects the real types and rejects any setter lacking `IsExternalInit`, so replacing a positional record with a mutable `{ get; set; }` class fails it.
+- **`ClosureServiceAndControllerSignatures_DoNotExposeSalesModuleEntities` is discriminating.** It reflects real method signatures; re-introducing a `Sales.Module.Entities` type in any return or parameter (including inside generics and arrays) fails it. Its scope gap (the concrete class is not reflected) is recorded as `S4a-R1`.
+- **`GetClosure_ReturnsDeclaredDto_AndPreservesNotFoundSemantics` is discriminating but light.** It drives the real controller with a mocked service and asserts the 200 body type, the serialized absence of the navs and the preserved 404. It cannot detect a service-side entity leak (the mock supplies the DTO) — that is what the reflection test covers.
+- **`ClosureResponseDtos_AreDeclaredInSalesModuleDtosNamespace`** is a low-value but discriminating structural pin (namespace + `sealed`).
+- **No tautology found** in this file: no assertion verifies a mock the code under test never reaches, and no `Times.Never` guards an unreachable path.
+- **Method caveat**: discrimination is established by inspection only. The verification brief forbids code writes, so no verifier-owned mutation was executed here (the S3 verification's mutate-and-revert precedent was not available). Execution evidence: 5/5 tests passed with `Omitido: 0`, confirming that none is skipped or gated.
+
+### S4a Scope Check
+
+- **No S4b creep**: the commit touches no `CashDrawerService.cs`, `CashDrawerController.cs` or `CashDrawerDtos.cs`, and creates no drawer DTO. The `tasks.md` diff flips exactly the eight Phase 4a checkboxes and nothing else — `checked = 39` (10 + 10 + 11 + 8), `unchecked = 33` (Phase 4b-5c).
+- **No S5 creep**: no `AuthController.cs`, no `MainWindow.xaml.cs`, no WPF view models, no `RegisterPage.jsx`, and no `AsNoTracking`/guard/`CancellationToken` production work.
+- **Size signal (`SIZE-S4a`)**: 18 files changed, **705 changed lines (643 inserted / 62 deleted)** — above the 400-line review budget declared in the session preflight. Excluding the 248 documentation-only lines (`docs/reporte.txt` 140, `apply-progress.md` 100, `tasks.md` 16) and the 295-line new test file, the production diff is ~176 lines (the two new DTO files = 22 lines, plus ~154 modified lines). The budget exceedance is therefore driven by the new test file and the docs, not by the production surface.
+- **Commit-message item mismatch (`RESIDUAL-S4a-02`)**: the subject says `(slice S4a, items 3/15/19/20)`. Independently confirmed against `docs/deuda-legacy-gga-2026-09-16.md`: item **3** (`GetClosure`/`CreateClosure` serialize `DailyClosure`/`ClosureDetail`) and item **8** (`GetClosureAsync`/`CreateClosureAsync` return the entity) are the closure findings; items **15** (`GetActiveSession`/`OpenSession`/`CloseSession`/`AddTransaction` return `CashDrawerSession`/`CashTransaction`), **19** (`ICashDrawerService.GetHistoryAsync` returns `List<CashTransaction>`; `CashAdvanceResultDto` exposes `CashTransaction`) and **20** (`GetHistoryAsync` materializes `new CashTransaction { Sale = ... }`) are the drawer findings S4b owns. The commit subject therefore under-claims item 8 and over-claims 15/19/20. `apply-progress.md` D5 records the correct mapping; the commit subject does not. A commit message is immutable without a git write (forbidden here), so this is registered rather than fixed.
+- **Checked task vs. changed-file mismatch (`RESIDUAL-S4a-03`)**: (a) 4a.5 says `CreateClosure` must return a DTO, but `POST /api/dailyclosure` still returns `CloseShiftResult` — a `sealed record` DTO with no entity member — documented as deviation D1, so REQ-ADB-01 holds while the literal task text is only partially met; (b) 4a.6 says `Desktop.Client.Core/Services/DailyClosureClientService.cs` must bind to DTO field names, but the file is **not in the commit** and is unchanged, documented as deviation D2 (nothing to re-bind, because no client reads the closure GET). Both boxes are `[x]`, so `tasks.md` slightly over-reports the changed-file set. Neither point affects a requirement.
+- **`S4a-R1` (confirmed)**: `Sales.Module/Services/DailyClosureService.cs:112` still declares `public async Task<DailyClosure> CreateClosureAsync(DailyClosure closure)` — a public, entity-returning create entry point on the concrete class. It is no longer on `IDailyClosureService`, has no production caller (`S3-07`), and the structural test reflects only the interface plus the controller, so REQ-ADB-01 is not violated; but the class still exposes an entity-returning create method. Registered by `apply-progress.md` (S4a-R1); candidate for deletion together with its test references.
+- **`S4a-R2` / `WARNING-07` / `S3-06` (confirmed, enlarged)**: `Sales.Module/Services/DailyClosureService.cs` measures **645** lines (verifier-measured `(Get-Content).Count`), above the 300-500 ceiling in `docs/coding-guidelines-core.md`; S4a added 9 lines (636 -> 645).
+- **Carried and untouched**: `WARNING-04` (hardcoded `"Balanced"` status and mixed units in the merged undeclared-method lines) and `S3-07` remain open for S4b/S5, exactly as registered by the S3 verdict. S4a neither fixes nor worsens them.
+
+### S4a Changed Files
+
+The fifteen production/test files below, in this order, are the input to the head envelope's `evidence_revision`.
+
+| File | Action | Role in S4a |
+|------|--------|-------------|
+| `Sales.Module/DTOs/DailyClosureResponseDto.cs` | Created | Immutable closure response contract (AD-14) |
+| `Sales.Module/DTOs/ClosureDetailResponseDto.cs` | Created | Immutable closure detail contract (AD-14) |
+| `Sales.Module/Services/ShiftReportMapper.cs` | Modified | `MapClosure(DailyClosure) -> DailyClosureResponseDto`; `MapDetails` now consumes `IReadOnlyList<ClosureDetailResponseDto>` |
+| `Sales.Module/Interfaces/IDailyClosureService.cs` | Modified | `GetClosureAsync`/`GetLatestClosureAsync` return DTOs; `WriteClosedClosureReceiptsAsync` takes a DTO; the entity create member is removed from the interface |
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | Read/create paths project through `ShiftReportMapper`; private `LoadClosureEntityAsync`; receipt generator and writer take the DTO |
+| `Sales.Module/Services/ClosurePdfGenerator.cs` | Modified | `GeneratePdf` takes `DailyClosureResponseDto` |
+| `Backend.API/Controllers/DailyClosureController.cs` | Modified | `GetClosure` returns the declared DTO; entity `using` removed |
+| `Backend.API/Controllers/ShiftsController.cs` | Modified | Report path consumes DTO details; unused entity `using` removed |
+| `CommandCenter.Tests/Unit/ClosureDtoBoundaryTests.cs` | Created | The five S4a tests: golden-JSON parity, init-only reflection, no-entity signature reflection, namespace/seal, controller GET + NotFound |
+| `CommandCenter.Tests/Unit/ErrorContractTests.cs` | Modified | Re-pointed 3 `GetClosureAsync` mocks and 2 receipt-writer calls to the DTO |
+| `CommandCenter.Tests/Unit/PaymentMethodCurrencyClassificationTests.cs` | Modified | Re-pointed 2 `GetClosureAsync` mocks and 1 receipt call to the DTO |
+| `CommandCenter.Tests/Unit/CloseShiftResolverClassificationTests.cs` | Modified | `MapDetails` callers re-pointed to DTO details |
+| `CommandCenter.Tests/Unit/DailyClosureServiceUnitTests.cs` | Modified | Receipt generator callers re-pointed to the DTO |
+| `CommandCenter.Tests/CheckoutAndPaymentTests.cs` | Modified | Receipt/PDF generator callers re-pointed to the DTO |
+| `CommandCenter.Tests/CheckoutUxTests.cs` | Modified | Receipt generator callers re-pointed to the DTO |
+
+Plus the documentation files `docs/reporte.txt` (ANEXO 8.140), `apply-progress.md` (S4a section) and `tasks.md` (Phase 4a checkboxes), which are **not** part of `evidence_revision`.
+
+### S4a Verdict
+
+**PASS_WITH_WARNINGS** — the closure DTO boundary is genuinely established at `829778c`. The two new DTOs are `sealed record`s with no mutable setter; `IDailyClosureService` and `DailyClosureController` expose no `Sales.Module.Entities` type (0 grep matches, plus a reflecting structural test); the service projects entities into DTOs through `ShiftReportMapper`; and the golden-JSON test pins the response body byte-for-byte while proving that every client-bound member survives and the two EF navigations disappear. Every claim was re-executed: build 0/0, backend suite 1185/1185, the `Dto` filter 71/71, the new class 5/5, frontend 271/271 with clean lint, and the coverage gate reproduces the claim exactly. No S4b/S5 creep and no tautological test were found. The residual items are non-blocking and explicitly recorded: `S4a-R1` (concrete entity-returning legacy entry point), `S4a-R2` (645-line class), `RESIDUAL-S4a-01` (serializer-level parity evidence), `RESIDUAL-S4a-02` (commit item misattribution), `RESIDUAL-S4a-03` (task-checkbox vs. changed-file mismatch) and `SIZE-S4a` (705 changed lines vs. the 400-line budget). S4a may be chained into S4b.
+
 ### Change-Level Verdict
 
-**Pending**. The change cannot receive a change-level verdict while S4a-S5c are unimplemented. S1, S2 and S3 are each verified `pass_with_warnings`; all three implemented delta specs (3 + 4 + 4 = 11 requirements, 8 + 9 + 8 = 25 scenarios) are compliant, while the two remaining delta specs (`api-dto-boundary`, `async-cancellation-propagation`) are untouched and their tasks unchecked (change totals across the five delta specs: 18 requirements / 38 scenarios). `WARNING-04` (hardcoded "Balanced" status and mixed units in the merged undeclared-method lines) and `WARNING-07`/`S3-06` (class size, now 636 lines) remain open and escalate to S4/S5, alongside the registered `S3-07`. S1 RESIDUAL-07 is **CLOSED** by S2/AD-9. S3 is now cleared to chain into S4a.
+**Pending**. The change cannot receive a change-level verdict while S4b-S5c are unimplemented. S1, S2, S3 and S4a are each verified `pass_with_warnings`. Implemented requirement/scenario surface: S1 (3 requirements / 8 scenarios), S2 (4/9), S3 (4/8) and S4a's closure half of `api-dto-boundary` (REQ-ADB-01 complete plus the closure half of REQ-ADB-04; 4/7 scenarios), i.e. **12 of the 18 requirements and 29 of the 38 scenarios** across the five delta specs. Pending: the drawer half of `api-dto-boundary` (REQ-ADB-02, REQ-ADB-03 and the drawer DTOs of REQ-ADB-04; 3 requirements / 3 scenarios) in S4b, and the whole of `async-cancellation-propagation` (3 requirements / 6 scenarios) in S5a/S5c. `WARNING-04` (hardcoded `"Balanced"` status and mixed units in the merged undeclared-method lines) and `WARNING-07`/`S3-06` (class size, now 645 lines) remain open and escalate to S4b/S5, alongside the registered `S3-07` and the new `S4a-R1`. S1 RESIDUAL-07 is **CLOSED** by S2/AD-9. S4a is now cleared to chain into S4b.
 
 ### Verdict
 
