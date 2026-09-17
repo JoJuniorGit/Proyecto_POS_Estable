@@ -1,5 +1,36 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:d6dda3afadbf8d3273651e5b4f74a42e65414bc843cae8dbcb352e3766b045be
+verdict: pass_with_warnings
+blockers: 0
+critical_findings: 0
+requirements: 4/4
+scenarios: 8/8
+test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release
+test_exit_code: 0
+test_output_hash: sha256:fbe42f41f6f4ccb6055708f82c25805131db047bfafddbe9dea3409d43bfc389
+build_command: dotnet build CommandCenter.slnx -c Release
+build_exit_code: 0
+build_output_hash: sha256:df799fe601a812014f586cec26862365b16d8d60fa8a2f761631f2f2cf6b7f87
+```
+
+## Verification Report
+
+**Change**: legacy-debt-cleanup
+**Version**: N/A (delta specs, no version headers)
+**Mode**: Standard (Strict TDD inactive: `openspec/config.yaml` -> `strict_tdd: false`, `testing.strict_tdd_mode: disabled`)
+**Scope of this report**: a per-slice verification record for the change `legacy-debt-cleanup`. Slices S1 (zero-trust close, items 26/39), S2 (error contract + dead fields, items 2/18/25/12/35) and S3 (closure orchestration consolidation, items 1/30/6/13/14) are implemented; S4a-S5c are not, so the **change-level verdict remains pending**. The machine-readable envelope at the top of this file describes the **most recently admitted slice — S3 at `579347b`** (`requirements: 4/4`, `scenarios: 8/8` against the S3 delta spec `closure-orchestration-consolidation`), and its `evidence_revision` covers the eight S3 production/test files listed under "S3 Changed Files". The original admitted **S1** envelope is preserved verbatim under "S1 Admitted Envelope (preserved)"; the S1 and S2 verdicts and their own fresh evidence live in their own sections.
+**Verified revision**: the current `HEAD` is `579347b` (S3 remediation, `fix(8.140): remediacion S3 (tx Serializable + McCabe + asserts + 409)`). The working tree is clean (`git status --short` empty): no production, test, or documentation file is modified against `579347b`. Earlier sections record the revision each of them was verified at: S1 at `c6c767f` (which carried one uncommitted documentation-only `apply-progress.md` append at that moment) and S2 at `77b2d16`.
+**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding — superseded for S1. For the S3 slice the prior verdict was `fail` on `200cdaa` (1 CRITICAL, `CRITICAL-S3-01`), superseded by this re-verification at `579347b`.
+**evidence_revision** (head envelope, S3) is the SHA-256 of the ASCII string produced by joining, with `:`, the lowercase SHA-256 hex digests of the eight S3 production/test files listed under "S3 Changed Files", in the order listed there.
+**Hash definition**: `build_output_hash` / `test_output_hash` are the SHA-256 of the captured combined stdout+stderr for the command execution reported above, normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed; identical recipe per section below.
+
+### S1 Admitted Envelope (preserved)
+
+The envelope below was the file's admitted machine-readable head from the S1 verification until this S3 re-verification re-pointed the head envelope to the S3 slice. It is preserved byte-for-byte as the S1 evidence record.
+
+```yaml
+schema: gentle-ai.verify-result/v1
 evidence_revision: sha256:7d6e5d256f77029562f28d006cdf96ac48c562555f0d6693db73fc3390b02668
 verdict: pass_with_warnings
 blockers: 0
@@ -14,16 +45,7 @@ build_exit_code: 0
 build_output_hash: sha256:8436cc96bcd180532cf20de12832475d9fd80e7f1d66763382956201efe865c0
 ```
 
-## Verification Report
-
-**Change**: legacy-debt-cleanup
-**Version**: N/A (delta specs, no version headers)
-**Mode**: Standard (Strict TDD inactive: `openspec/config.yaml` -> `strict_tdd: false`, `testing.strict_tdd_mode: disabled`)
-**Scope of this report**: **Slices S1 and S2** — S1 (zero-trust close, items 26/39) and S2 (error contract + dead fields, items 2/18/25/12/35). S3-S5c are not implemented; the change-level verdict remains pending. The machine-readable envelope above is deliberately left as the admitted **S1** envelope: its counts (`requirements: 3/3`, `scenarios: 8/8`) and `evidence_revision` are scoped to the S1 delta spec `payment-method-currency-classification` (3 requirements / 8 scenarios by document order), while the S2 verdict and its own fresh evidence live in the "Slice S2" section below.
-**Verified revision**: `c6c767f` (remediation commit; `HEAD`). Working tree carries one uncommitted documentation-only change: a 14-line `apply-progress.md` append (GGA hook exception note). No production or test file is modified against `c6c767f`.
-**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding. This revision supersedes it for S1.
-**evidence_revision** is the SHA-256 of the colon-joined per-file SHA-256 digests of the thirteen S1 production/test files listed under "S1 Changed Files".
-**Hash definition**: `build_output_hash` / `test_output_hash` are the SHA-256 of the byte-exact combined stdout+stderr captured for the command execution reported above (UTF-8, LF-joined, `Set-Content -NoNewline`), computed with `Get-FileHash -Algorithm SHA256`.
+The S1 `evidence_revision` above is the SHA-256 of the colon-joined per-file SHA-256 digests of the thirteen S1 production/test files listed under "S1 Changed Files" (that recipe did not reproduce from its recorded file list — see RESIDUAL-S2-07). The S1 `build_output_hash` / `test_output_hash` are the SHA-256 of the byte-exact combined stdout+stderr captured for the S1 command execution reported in the S1 section (UTF-8, LF-joined, `Set-Content -NoNewline`).
 
 ### Completeness
 
@@ -217,7 +239,7 @@ Checked against `docs/coding-guidelines-core.md` (the system invariants) and `op
 |-------|--------|--------------|
 | S1 - Zero-trust close (items 26/39) | Implemented + remediated | **PASS_WITH_WARNINGS** (this section) |
 | S2 - Error contract + dead fields | Implemented + remediated + re-verified | **PASS_WITH_WARNINGS** (Slice S2 section below) |
-| S3 - Closure orchestration consolidation | Implemented + verified (commit 200cdaa) | **FAIL** - 1 CRITICAL (CRITICAL-S3-01, Serializable transaction missing); see "Slice S3" |
+| S3 - Closure orchestration consolidation | Implemented + remediated + re-verified (remediation commit `579347b`; prior verification `fail` on `200cdaa`) | **PASS_WITH_WARNINGS** - 0 blockers, 0 critical findings, 4/4 requirements and 8/8 scenarios compliant; `CRITICAL-S3-01` and `S3-02..S3-05` closed, `S3-06`/`S3-07` registered for S4/S5; see "Slice S3" |
 | S4a - Closure DTO boundary | Not implemented | Pending - all Phase 4a tasks unchecked |
 | S4b - Drawer DTO boundary | Not implemented | Pending - all Phase 4b tasks unchecked |
 | S5a - CancellationToken propagation | Not implemented | Pending - all Phase 5a tasks unchecked |
@@ -228,11 +250,11 @@ Checked against `docs/coding-guidelines-core.md` (the system invariants) and `op
 
 **Verdict: PASS_WITH_WARNINGS** - 4/4 requirements and 9/9 scenarios compliant; 0 blockers, 0 critical findings; 8 non-blocking residual evidence/bookkeeping gaps (`RESIDUAL-S2-01`..`RESIDUAL-S2-08`).
 
-**Verified revision**: `77b2d16` (S2 remediation; `HEAD`). **Prior S2 verification**: failed on `fe1b60b`.
+**Verified revision**: `77b2d16` (S2 remediation; the `HEAD` at the S2 verification; `HEAD` has since advanced to `579347b`). **Prior S2 verification**: failed on `fe1b60b`.
 **Slice delta**: `c6c767f` -> `77b2d16` (S2 = `fe1b60b` original + `77b2d16` remediation): 14 code/test files plus 2 documentation files.
 
 **Artifact-trail note**: at the start of this re-verification, `verify-report.md` at `HEAD` contained **no** Slice S2 section. `git log --all -- <path>` returns only `00adc45` and `b36f8e6`, and the file at `HEAD` was the S1-only report. The S2 findings re-checked below are therefore the set supplied by the orchestrator's re-verification brief for `fe1b60b` (CRITICAL-01, WARNING-01..WARNING-05, bookkeeping). This is recorded because the repository artifact trail did not contain the prior S2 verdict text.
-**Envelope note**: the YAML envelope at the top of this file remains the admitted **S1** envelope (3 requirements / 8 scenarios, evidence at `c6c767f`) and is deliberately not rewritten; the S2 verdict and its own fresh evidence live in this section. The change-level envelope stays deferred until S3-S5c land.
+**Envelope note**: this section was written while the file's machine-readable envelope was still the admitted **S1** envelope (3 requirements / 8 scenarios, evidence at `c6c767f`); that envelope is now preserved verbatim under "S1 Admitted Envelope (preserved)" and the head envelope has been re-pointed to the S3 slice at `579347b` by the S3 re-verification. The S2 verdict and its own fresh evidence live in this section. The change-level envelope stays deferred until S4a-S5c land.
 
 ### S2 Re-executed Evidence (verbatim)
 
@@ -381,53 +403,60 @@ Checked against `docs/coding-guidelines-core.md` and `openspec/config.yaml`.
 - **RESIDUAL-S2-07 (bookkeeping)** - the named corrections landed, but the S2 Files-Changed table still claims "5 anonymous error objects" (`apply-progress.md:167`), the `DailyClosureService.cs` line count is 505 in three places while the file measures 502, and `tasks.md:48` (2.2) keeps five stale line numbers. The S1 envelope's `evidence_revision` recipe also does not reproduce from its recorded file list.
 - **RESIDUAL-S2-08 (scenario covered by inspection only)** - REQ-AEC-04 "Closure ownership is derived server-side" has no test; the derivation is read from `ShiftsController.cs:81-95`.
 
-## Slice S3 — Closure Orchestration Consolidation
+## Slice S3 — Closure Orchestration Consolidation (re-verified)
 
-**Verdict: FAIL** — 0 blockers, **1 CRITICAL finding** (`CRITICAL-S3-01`). 4 requirements / 8 scenarios in the delta spec `closure-orchestration-consolidation`; **7/8 scenarios compliant**, and the single unmet scenario is the REQ-COC-01 transaction scenario.
+**Verdict: PASS_WITH_WARNINGS** — 0 blockers, **0 critical findings**. The delta spec `closure-orchestration-consolidation` carries **4 requirements / 8 scenarios**; **8/8 scenarios compliant**, 0 UNTESTED, 0 FAILING. Two findings remain open by explicit design and are registered for S4/S5: `S3-06` (class size, `WARNING-07` enlarged) and `S3-07` (legacy divergent entry point). The residual warnings are non-blocking and none of them touches the scenarios: `RESIDUAL-S3-01` (stale test narrative), `RESIDUAL-S3-08` (post-commit comment on the ambient branch), `RESIDUAL-S3-12` (McCabe-table arithmetic), `RESIDUAL-S3-13` (drawer enlistment proven by inspection), plus the unchanged `RESIDUAL-S3-07` and the carried `WARNING-04`/`WARNING-07`; prior `RESIDUAL-S3-02`..`-06`, `-10` and `-11` are closed.
 
-**Verified revision**: `200cdaa` (`HEAD`). Working tree clean (`git status --short` empty): no production, test, or documentation file is modified against `200cdaa`.
-**Slice delta**: `77b2d16` -> `200cdaa` — 27 files (7 production, 18 test, 2 documentation), `+632 / -509` lines.
-**Spec under verification**: `openspec/changes/legacy-debt-cleanup/specs/closure-orchestration-consolidation/spec.md` — **4 requirements / 8 scenarios** (counted from the `### Requirement:` and `#### Scenario:` headings; REQ-COC-01..04, two scenarios each).
+**Verified revision**: `579347b` (S3 remediation, `fix(8.140): remediacion S3 (tx Serializable + McCabe + asserts + 409)`; current `HEAD`). Working tree clean at verification time (`git status --short` empty; `git diff --stat` empty): no production, test, or documentation file is modified against `579347b`.
+**Prior S3 verdict**: **FAIL** on `200cdaa` — 1 CRITICAL (`CRITICAL-S3-01`: no transaction at all surrounded the closure run), a defective McCabe evidence table, four tautological assertions, no covering test for the real `exchangeRate <= 0` guard, and the `DbUpdateException` -> 409 mapping dropped from both close controllers. This re-verification supersedes that verdict.
+**Slice deltas**: original S3 `77b2d16` -> `200cdaa` (27 files, `+632 / -509`); **S3 remediation `200cdaa` -> `579347b`** — 11 files, `+850 / -123`: 8 production/test files (`DailyClosureService.cs`, `DailyClosureController.cs`, `ShiftsController.cs`, `DailyClosureTransactionTests.cs`, `DailyClosureControllerTests.cs`, `CloseShiftResolverClassificationTests.cs`, `SecurityHardeningSprint2Tests.cs`, `ResidualRemediationLote26Tests.cs`) plus `docs/reporte.txt`, `apply-progress.md` and this report.
+**Spec under verification**: `openspec/changes/legacy-debt-cleanup/specs/closure-orchestration-consolidation/spec.md` — **4 requirements / 8 scenarios** counted from the `### Requirement:` and `#### Scenario:` headings (REQ-COC-01..04, two scenarios each).
 **Prior slices**: S1 and S2 are `pass_with_warnings` (sections above, unchanged). The change-level verdict remains **pending** for S4a-S5c.
-**Envelope note**: the YAML envelope at the top of this file is still the admitted **S1** envelope (3 requirements / 8 scenarios, evidence at `c6c767f`) and is deliberately not rewritten; the S3 verdict and its own fresh evidence live in this section, exactly as the Slice S2 section already documents. The change-level envelope stays deferred until S3-S5c settle.
+**Envelope note**: the head YAML envelope now describes **this S3 slice** (`requirements: 4/4`, `scenarios: 8/8`) with evidence at `579347b`; `evidence_revision` covers the eight S3 production/test files listed under "S3 Changed Files". The former admitted S1 envelope is preserved verbatim under "S1 Admitted Envelope (preserved)". The change-level envelope stays deferred until S4a-S5c land.
 
 ### S3 Re-executed Evidence (verbatim)
 
-Every command below was re-executed independently on `200cdaa`. `stderr` was merged into the captured stream (`*> file`). No command was taken from `apply-progress.md`.
+Every command below was re-executed independently on `579347b` after the working tree was confirmed clean. `stderr` was merged into the captured stream (`*>` redirection). No result was taken from `apply-progress.md`.
 
-**1. Build** - `dotnet build CommandCenter.slnx -c Release` - exit `0` - matches the S3 claim (0/0)
+**1. Build** - `dotnet build CommandCenter.slnx -c Release` - exit `0` - matches the claim (0/0)
 
 ```text
 Compilación correcta.
     0 Advertencia(s)
     0 Errores
 
-Tiempo transcurrido 00:00:29.59
+Tiempo transcurrido 00:00:04.54
 ```
 
-captured-output hash: `sha256:32e404d414b64ba9e95f418e06d03bb9fe7fa9a70146ac379edb4970526fd724`
+captured-output hash: `sha256:df799fe601a812014f586cec26862365b16d8d60fa8a2f761631f2f2cf6b7f87`
 
-**2. Backend tests (full)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release` - exit `0` - matches the S3 claim (1175/1175)
+**2. Backend tests (full)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release` - exit `0` - matches the claim (1180/1180)
 
 ```text
-Correctas! - Con error:     0, Superado:  1175, Omitido:     0, Total:  1175, Duración: 12 s - CommandCenter.Tests.dll (net10.0)
+Correctas! - Con error:     0, Superado:  1180, Omitido:     0, Total:  1180, Duración: 13 s - CommandCenter.Tests.dll (net10.0)
 ```
 
-captured-output hash: `sha256:f9166c1d186f48d47f4b1d593cca985aafd918d60c441bae59dd1e0679567e36`
+captured-output hash: `sha256:fbe42f41f6f4ccb6055708f82c25805131db047bfafddbe9dea3409d43bfc389`
 
-**3. S3 focused filter** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~Closure|FullyQualifiedName~DailyClosure"` - exit `0` - matches the S3 claim (77/77)
+The S3 remediation raised the suite 1175 -> 1180 (+2 `DailyClosureTransactionTests`, +2 409 tests, +1 real rate-guard test; one duplicate/superseded controller assertion consolidated). No `[Fact]` was deleted in the remediation (verified by diffing every touched test file).
+
+**3. Transaction-test filter (new class)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~DailyClosureTransactionTests"` - exit `0` - matches the claim (2/2)
 
 ```text
-Correctas! - Con error:     0, Superado:    77, Omitido:     0, Total:    77, Duración: 3 s - CommandCenter.Tests.dll (net10.0)
+Correctas! - Con error:     0, Superado:     2, Omitido:     0, Total:     2, Duración: 3 s - CommandCenter.Tests.dll (net10.0)
 ```
 
-**4. New-test class filter** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~DailyClosureControllerTests"` - exit `0` - matches the S3 claim (7/7)
+captured-output hash: `sha256:38eb0c82f32b89a664c95167109e3307caad22d07dbba341aaf35a4a5df899d6`
+
+**4. S3 focused filter** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~Closure|FullyQualifiedName~DailyClosure"` - exit `0` - matches the claim (82/82)
 
 ```text
-Correctas! - Con error:     0, Superado:     7, Omitido:     0, Total:     7, Duración: 467 ms - CommandCenter.Tests.dll (net10.0)
+Correctas! - Con error:     0, Superado:    82, Omitido:     0, Total:    82, Duración: 3 s - CommandCenter.Tests.dll (net10.0)
 ```
 
-**5. Frontend tests** - `npm test` (Web.Frontend) - exit `0` on retry - matches the S3 claim (271/271)
+captured-output hash: `sha256:a1b903f2d30997b1581bd3a0e44b4858a3f7358a5da84158f09662eb160a3acc`
+
+**5. Frontend tests** - `npm test` (Web.Frontend) - exit `0` on the **first** execution - matches the claim (271/271)
 
 ```text
 ℹ tests 271
@@ -439,120 +468,165 @@ Correctas! - Con error:     0, Superado:     7, Omitido:     0, Total:     7, Du
 ℹ todo 0
 ```
 
-Stability note (environmental): the **first** execution of this exact command failed with `EXIT=1` and `233` discovered tests / `8` failures, every failure being `FATAL ERROR: Zone Allocation failed - process out of memory` (V8 OOM in the Node test runner, not an assertion failure). The mandated single retry reproduced the claimed `271/271` green run. See `RESIDUAL-S3-10`.
+captured-output hash: `sha256:bbdb0586f5a484ff44f6b78dd59e7b910597fe4055aec23d7ceb1bca51362480`
 
-**6. Frontend lint** - `npm run lint` (Web.Frontend, oxlint) - exit `0`, no findings - matches the S3 claim
+Stability note: the prior `RESIDUAL-S3-10` V8 `Zone Allocation failed - process out of memory` failure did **not** reproduce; the first execution was green (271/271), so no retry was needed.
+
+**6. Frontend lint** - `npm run lint` (Web.Frontend, oxlint) - exit `0`, no findings - matches the claim
 
 ```text
 > web-frontend@0.0.0 lint
 > oxlint
 ```
 
-**7. Coverage gate** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings` (exit `0`), then `python scripts/check-coverage.py CommandCenter.Tests/TestResults/8e4161bc-5175-4f2b-b008-7e50102686aa/coverage.cobertura.xml` - exit `0`
+captured-output hash: `sha256:1472f392035e28478ac827e6e5301e8adde36ba5a0a27bc61cdf6e42453bc7d3`
+
+**7. Coverage gate** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings` (1180/1180, exit `0`), then `python scripts/check-coverage.py CommandCenter.Tests/TestResults/b7b93ec6-3995-417f-bb3a-e82d3b9e50be/coverage.cobertura.xml` - exit `0`
 
 ```text
 Cobertura de dominio por capa (line-rate, excluye *.Migrations.*):
   Core               rate=0.8364 min=0.7000 gap_a_70%=0.0000 [OK]
-  Sales.Module       rate=0.8934 min=0.8000 gap_a_70%=0.0000 [OK]
+  Sales.Module       rate=0.9006 min=0.8000 gap_a_70%=0.0000 [OK]
   Inventory.Module   rate=0.8251 min=0.7200 gap_a_70%=0.0000 [OK]
 ```
 
-All three thresholds in the `tasks.md` Verification section pass (Core >= 0.70, Sales.Module >= 0.80, Inventory.Module >= 0.72). `Sales.Module` — the layer S3 refactors — moved 0.8653 (S2 run) -> **0.8934**. S3 removed no test: the 82-line reduction in `ErrorContractTests.cs` and the 10-line reduction in `PaymentMethodCurrencyClassificationTests.cs` are constructor-argument/scaffolding collapses (verified by diff: only `-` mock/`DbContext` setup and `+` re-pointed constructor calls, zero deleted `[Fact]`).
+The gate reproduces the remediation claim **exactly** (Core 0.8364 / Sales.Module 0.9006 / Inventory.Module 0.8251) and all three `tasks.md` thresholds pass (Core >= 0.70, Sales.Module >= 0.80, Inventory.Module >= 0.72). `Sales.Module`, the layer S3 refactors, sits at 0.9006 vs 0.8934 on the prior S3 revision.
 
-**Hash definition (this section)**: `sha256` is the SHA-256 over the captured combined stdout+stderr (`*>` redirection), normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed. Same class of recipe as the Slice S2 section.
+**8. Independent discrimination mutation (verifier-owned; reverted)** - exit `1` under mutation - the only command below that does **not** run on the unmodified revision
 
-**Environment note**: `TEST_POSTGRES_CONNECTION` is unset, so the Postgres-gated classes (`DailyClosureRetryIntegrationTests`, `DailyClosureFlowIntegrationTests`) early-return as vacuous passes. The only test that exercises a real `Serializable` transaction around the closure run is skipped in this environment.
+The implementer's discrimination claim was re-derived independently rather than accepted. A **temporary, verifier-owned mutation** was applied to `Sales.Module/Services/DailyClosureService.cs:213-226`: `OpenSerializableTransactionAsync` was forced to return `null` on SQLite by extending the provider check to `|| ProviderName?.Contains("Sqlite", …) == true`. The two `DailyClosureTransactionTests` were then re-run against the mutated tree:
 
-### S3 Requirement Evidence Matrix
+```text
+Con error! - Con error:     2, Superado:     0, Omitido:     0, Total:     2, Duración: 3 s - CommandCenter.Tests.dll (net10.0)
+  Assert.True() Failure
+Expected: True
+Actual:   False
+  Assert.Equal() Failure: Values differ
+Expected: 0
+Actual:   1
+     at CommandCenter.Tests.Unit.DailyClosureTransactionTests.CreateClosureFromCommandAsync_WhenRolloverFails_RollsBackThePersistedClosure() in …\CommandCenter.Tests\Unit\DailyClosureTransactionTests.cs:line 114
+```
+
+This reproduces the implementer's recorded failure modes exactly (`Assert.True` at `DailyClosureTransactionTests.cs:82` -> `Expected: True / Actual: False`; `Assert.Equal(0, persistedClosures)` at `:114` -> `Expected: 0 / Actual: 1`), i.e. **without the transaction the persisted closure survives the rollover failure**. The mutation was then reverted from a byte-exact backup: the restored file hashes to `5C6EA3FC723614A0781F215E0E7D96D9413930B029CE25E0737513CEC3CB449A`, identical to the pre-mutation hash, and `git status --short` / `git diff --stat` are both empty. The mutation capture is recorded at `sha256:912838e204ddd68f7945f94dc469ec4cb5791729f06e6c6e2d40ddc9ce2e86c2`.
+
+**Hash definition (this section)**: `sha256` is the SHA-256 over the captured combined stdout+stderr (`*>` redirection), normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed.
+
+**Environment note**: `TEST_POSTGRES_CONNECTION` is unset, so the Postgres-gated classes (`DailyClosureRetryIntegrationTests`, `DailyClosureFlowIntegrationTests`) early-return as vacuous passes. The transaction is now covered locally by the SQLite `DailyClosureTransactionTests` instead of by a skipped Postgres test.
+
+### S3 Finding-to-Closure Matrix
+
+Each finding registered against the prior S3 verdict is re-checked below with runtime evidence from `579347b`.
+
+| Finding | Prior severity | Closure | Fresh evidence |
+|---------|----------------|---------|----------------|
+| **CRITICAL-S3-01** — no `Serializable` transaction around the closure run | Critical / blocker | **CLOSED** | `DailyClosureService.cs:204-211` (`CreateClosureFromCommandAsync`) keeps an ambient-transaction short-circuit and otherwise wraps the run in `_context.Database.CreateExecutionStrategy().ExecuteAsync(...)`; `ExecuteClosureCommandAsync` (`:228-301`) opens `OpenSerializableTransactionAsync` (`:213-226`) -> `BeginTransactionAsync(IsolationLevel.Serializable, ct)` at `:225` **before** the totals read (`:237`), wraps assembly, `PersistClosureCoreAsync` (`:267`) and `_cashDrawerService.RolloverSessionAfterClosureAsync` (`:268`), commits at `:270-273` (after the rollover) and rolls back in the `catch` (`:286-293`), disposing in `finally` (`:294-300`). Receipt writing stays after the commit (`:275-276`). The two new `DailyClosureTransactionTests` are **discriminating** (see the mutation evidence above): both fail when the transaction is forced absent. 2/2 green unmutated. |
+| **S3-02** — `DailyClosureController.CreateClosure` McCabe not genuinely < 10 | Warning | **CLOSED** | `CreateClosure` (`DailyClosureController.cs:50-64`) now has exactly two decision points — `if (User.IsInRole("Driver"))` (`:52`) and `if (validationError is not null)` (`:58`) — i.e. **McCabe 3** under the convention stated in `apply-progress.md` (points = `if`/`foreach`/`catch`/`&&`/`\|\|`/`??`/`?:`; `McCabe = points + 1`). The validation was extracted to `ValidateClosureRequest` (`:110-126`), which recounts to 4. Both are < 10. |
+| **S3-03** — former tautological assertions | Warning | **CLOSED** | The four vacuous `Verify(..., Times.Never)` sites are gone. `SecurityHardeningSprint2Tests.cs:219-276` now seeds the InMemory `PaymentMethods` table, builds the **real** `DailyClosureService` via `DailyClosureTestHelper.CreateService(salesDb, rateProvider, cashDrawer)` with the `cashDrawer` **injected**, drives the real unknown-method guard, and asserts `Assert.Contains("999", problemDetails.Detail)` + `Assert.Empty(await salesDb.DailyClosures.AsNoTracking().ToListAsync())` + a now-reachable `cashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(...), Times.Never)`. `ResidualRemediationLote26Tests.cs:253-346`: same shape for both duplicate-id tests, and the legacy-entry-point verification `mockClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Times.Never)` was **deleted**. Each test now fails on a real regression (persisted rows or a reached rollover), not only on an unreachable mock. |
+| **S3-04** — no test drives the real `exchangeRate <= 0` guard | Warning | **CLOSED** | `CloseShiftResolverClassificationTests.cs:511-545` (`CreateClosureFromCommandAsync_RealService_WhenEffectiveRateIsNotPositive_ThrowsBeforePersisting`) mocks only `ITodayExchangeRateProvider` (`GetEffectiveTodayRateAsync -> 0m`), runs the **production** service over an InMemory `SalesDbContext`, and asserts `InvalidOperationException` containing `"tasa BCV"`, `Assert.Empty(DailyClosures)` and rollover `Times.Never`. The exercised guard is the production one at `DailyClosureService.cs:197-202`; removing it makes the test red. |
+| **S3-05** — `DbUpdateException` -> 409 dropped | Warning | **CLOSED** | `DailyClosureController.cs:93-96` and `ShiftsController.cs:97-100` both `catch (DbUpdateException)` -> `this.ApiConflict(...)`, which returns a `ConflictObjectResult` wrapping a genuine `ProblemDetails` with `Status = 409` (`ApiProblemResults.cs:15-16`). Covered by `DailyClosureControllerTests.CreateClosure_WhenServiceThrowsDbUpdateException_Returns409ProblemDetails` and `CloseShift_WhenServiceThrowsDbUpdateException_Returns409ProblemDetails`, each asserting `ConflictObjectResult` + `StatusCodes.Status409Conflict` + `ProblemDetails` + `Status == 409`. Both pass in the 82/82 closure filter. |
+| **S3-06** — `DailyClosureService.cs` exceeds the 300-500 line ceiling | Warning (registered, not fixed) | **REGISTERED for S4/S5 — confirmed** | Verifier-measured 636 lines (`(Get-Content …).Count`), matching the claim. Registered at `apply-progress.md:445` and `docs/reporte.txt:9363` (ANEXO "SLICE S3 REMEDIACION", `D1`). Not silently fixed; `WARNING-07` remains enlarged (502 at S2 -> 586 at `200cdaa` -> 636). |
+| **S3-07** — legacy `ExecuteClosureCoreAsync` keeps a divergent, transaction-free copy of the closure rules | Warning (registered, not fixed) | **REGISTERED for S4/S5 — confirmed** | Registered at `apply-progress.md:446` and `docs/reporte.txt:9367` (`D2`) with a recommended disposition (delete with its test references, or reduce to a private adapter delegating to the command path). Unchanged by the remediation. |
+| **Bookkeeping** — false "Serializable tx" claims in `apply-progress.md` and ANEXO 8.140 `B3` | Warning / evidence trail | **CLOSED** | `apply-progress.md:279` (task 3.4) now carries an explicit `**CORRECTION (\`lcs-s3-remediation\`)**: this entry originally claimed "Serializable tx". Commit \`200cdaa\` opened **no transaction at all** …`. The ANEXO 8.140 `B3` block is annotated at `docs/reporte.txt:9229-9231` ("`CORRECCION: la afirmacion "Serializable tx" era FALSA en el commit 200cdaa`"). The McCabe table in `apply-progress.md` is marked `**SUPERSEDED**` with the reason recorded, and task 3.11 points to the corrected recount. |
+
+**Closure summary**: 6 of the 7 briefed items closed with fresh runtime evidence; `S3-06` and `S3-07` are **confirmed as registered pending items** for S4/S5 (not fixed, not silently). 0 blockers, 0 critical findings remain against S3.
+
+### S3 Requirement Evidence Matrix (revised)
 
 | Requirement | Scenario | Covering test / evidence | Result |
 |-------------|----------|--------------------------|--------|
-| REQ-COC-01 | Controller delegates the closure run (no persistence in the controller) | `DailyClosureControllerTests.CreateClosure_DelegatesToService_AndPersistsNothingDirectly` (line 83): asserts `OkObjectResult` and `CreateClosureFromCommandAsync` invoked `Times.Once` with the mapped command. Controller source (`DailyClosureController.cs:49-104`) calls the service at line 92 and has no `DbContext` member at all, so no persistence surface exists | **COMPLIANT** |
-| REQ-COC-01 | Service owns the transaction (rollback on a mid-way failure; no partial closure) | **No covering test; not implemented.** `DailyClosureService.cs:268-283` runs `_context.Database.CreateExecutionStrategy().ExecuteAsync(...)` but the file contains **no** `BeginTransactionAsync` — the only transaction references are ambient reads at `:112` and `:269`. `PersistClosureCoreAsync` (`:320-325`) does `Add` + `SaveChangesAsync` (self-committed); `RolloverSessionAfterClosureAsync` (`:272`, `:280`) then opens **its own** transactions (`CashDrawerService.cs:132-215`). The pre-S3 `DailyClosureController` opened `using var dbTransaction = await _salesContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable)` and committed after the rollover (`git show 200cdaa -- Backend.API/Controllers/DailyClosureController.cs`, removed lines) | **NOT COMPLIANT — `CRITICAL-S3-01`** |
-| REQ-COC-02 | No `DbContext` in touched controllers (constructors and fields) | `DailyClosureControllerTests`: `DailyClosureController_HasNoDbContextInConstructor` (130), `ShiftsController_HasNoDbContextInConstructor` (142), `DailyClosureController_HasNoDbContextFields` (154), `ShiftsController_HasNoDbContextFields` (162) — all pass. Constructors now take only `IDailyClosureService` + `ICurrentUserService` (`DailyClosureController.cs:22-28`, `ShiftsController.cs:23-29`); the `Microsoft.EntityFrameworkCore` / `Sales.Module.Data` / `Inventory.Module.Data` / `Backend.API.Services` usings are gone from both controller files | **COMPLIANT** |
-| REQ-COC-02 | Authorization still gates the closure (403, nothing persisted) | `[Authorize]` remains on both controllers; the Driver guard returns `ApiForbidden` 403 (`DailyClosureController.cs:51-54`, `ShiftsController.cs:35-38`); `[RequireSecurityStampValidation]` retained; backdating (future / >24 h) stays in the controller in `ResolveClosureDate` (`:115-146`) behind `isAdmin`; `GetReportById` ownership check (`ShiftsController.cs:118-134`) retained. Covered by S2's `ErrorContractTests` Driver tests (still green) | **COMPLIANT** |
-| REQ-COC-03 | `CreateClosure` is under the ceiling | Claimed `7`. Recount under the convention the apply-progress itself uses for `MergeMissingMethodsWithReport` (it counts `&&`) gives **11** — see the recount table. No compiler/analyzer metric exists in the repo, so the requirement is *unproven by tooling* and *failing under standard enumeration* | **NOT PROVEN / AT RISK — `WARNING-S3-02`** |
-| REQ-COC-03 | Extracted methods are under the ceiling | Recount: `ValidateDeclaredMethods` 2, `MergeMissingMethodsIntoClosure` 5, `MergeMissingMethodsWithReport` 7, `RecalculateTotals` 3, `ResolveUserDetailsAsync` 3, `PersistClosureCoreAsync` 1, `ExecuteClosureCoreAsync` 4 — all < 10. `CreateClosureFromCommandAsync` recount is 8 (claimed 9; the claim double-counts two decisions that live in `ResolveUserDetailsAsync`) | **COMPLIANT** |
-| REQ-COC-04 | Same inputs, same stored closure (amounts, status, response) | The five real-path tests in `CloseShiftResolverClassificationTests.cs:322-509` execute the production service against a real InMemory `SalesDbContext` (no service mock) and assert the persisted `ClosureDetail.ActualAmountBsS` / `DailyClosure.ExchangeRate` read back from the context. Plus the full suite is 1175/1175. `GetReportById` now reads the persisted snapshot `closure.ExchangeRate` (`ShiftsController.cs:141, 156`) instead of falling back to today's rate | **COMPLIANT** (happy path) |
-| REQ-COC-04 | Preview rejection is not regressed (`dateUtc` omitted/default -> 400, no totals) | `DailyClosureControllerTests.GetExpectedTotals_WhenDefaultDate_Returns400ProblemDetails` (56): asserts `ObjectResult`, `StatusCode == 400`, `ProblemDetails`. Source `DailyClosureController.cs:34-41` still returns `Problem(...)` (deliberately not routed through `ApiBadRequest`, per AD-9/REQ-AEC-01) | **COMPLIANT** |
+| REQ-COC-01 | Controller delegates the closure run (no persistence in the controller) | `DailyClosureControllerTests.CreateClosure_DelegatesToService_AndPersistsNothingDirectly` asserts `CreateClosureFromCommandAsync` invoked `Times.Once` with the mapped command; `DailyClosureController.cs:50-64` calls `ExecuteCreateClosureAsync` (`:66`) which delegates at `:81`, and the type has no `DbContext` member. The 4 reflection structural tests enforce the absence of `*DbContext` constructor parameters and fields | **COMPLIANT** |
+| REQ-COC-01 | Service owns the transaction (rollback on a mid-way failure; no partial closure) | `CreateClosureFromCommandAsync` (`:204-211`) + `ExecuteClosureCommandAsync` (`:228-301`) + `OpenSerializableTransactionAsync` (`:213-226`): `BeginTransactionAsync(IsolationLevel.Serializable)` at `:225` precedes the totals read at `:237` and covers persist + rollover; `CommitAsync` at `:272`; `RollbackAsync` at `:290`. Covering tests: `DailyClosureTransactionTests` 2/2 (SQLite relational, transaction observed live **inside** the rollover callback at `:73-74`, `Assert.Equal(IsolationLevel.Serializable, isolationLevelDuringRollover)` at `:83`; row count 0 after a rollover failure at `:114`). **Discriminating**: independently confirmed by the verifier-owned mutation (section above) | **COMPLIANT** |
+| REQ-COC-02 | No `DbContext` in touched controllers (constructors and fields) | `DailyClosureControllerTests`: `DailyClosureController_HasNoDbContextInConstructor`, `ShiftsController_HasNoDbContextInConstructor`, `DailyClosureController_HasNoDbContextFields`, `ShiftsController_HasNoDbContextFields` — all green in the 82/82 filter. Constructors take only `IDailyClosureService` + `ICurrentUserService` (`DailyClosureController.cs:23-29`, `ShiftsController.cs:24-30`), and no `Microsoft.EntityFrameworkCore` / `*.Data` using remains in either file | **COMPLIANT** |
+| REQ-COC-02 | Authorization still gates the closure (403, nothing persisted) | `[Authorize]` on both controllers; Driver guard returns `ApiForbidden` 403 (`DailyClosureController.cs:52-55`, `ShiftsController.cs:36-39`); `[RequireSecurityStampValidation]` retained; backdating (future / >24 h) stays in `ResolveClosureDate` (`DailyClosureController.cs:137-168`) behind `isAdmin`; the `GetReportById` ownership check is retained (`ShiftsController.cs:121-139`). Covered by S2's `ErrorContractTests` Driver tests (still green) | **COMPLIANT** |
+| REQ-COC-03 | `CreateClosure` is under the ceiling | Verifier recount: `DailyClosureController.CreateClosure` = 2 points -> **McCabe 3** (`DailyClosureController.cs:52`, `:58`). The convention is now documented in `apply-progress.md`, closing the prior "metric undocumented" objection. No analyzer metric exists in the repo, so this remains a documented manual count | **COMPLIANT** |
+| REQ-COC-03 | Extracted methods are under the ceiling | Verifier recount of all fifteen listed methods: maximum **7** (`MergeMissingMethodsWithReport`), everything < 10 (table below). One arithmetic slip remains in the apply-progress table (`BuildDeclaredDetails` 6, not 5) — still far below the ceiling (RESIDUAL-S3-12) | **COMPLIANT** |
+| REQ-COC-04 | Same inputs, same stored closure (amounts, status, response) | The five real-path tests in `CloseShiftResolverClassificationTests.cs` execute the production service against a real InMemory `SalesDbContext` and assert persisted `ClosureDetail.ActualAmountBsS` / `DailyClosure.ExchangeRate`; the full suite is 1180/1180 and `Sales.Module` coverage is 0.9006. `GetReportById` reads the persisted snapshot `closure.ExchangeRate` (`ShiftsController.cs:161`) | **COMPLIANT** (happy path) |
+| REQ-COC-04 | Preview rejection is not regressed (`dateUtc` omitted/default -> 400, no totals) | `DailyClosureControllerTests.GetExpectedTotals_WhenDefaultDate_Returns400ProblemDetails` asserts `ObjectResult` + `StatusCode == 400` + `ProblemDetails`; the source still returns `Problem(...)` (`DailyClosureController.cs:35-42`), deliberately not routed through `ApiBadRequest` (AD-9/REQ-AEC-01) | **COMPLIANT** |
 
-**Compliance summary**: 7/8 scenarios compliant; 1 UNTESTED-AND-FAILING (REQ-COC-01 transaction). Requirement level: REQ-COC-02, REQ-COC-04 satisfied; REQ-COC-01 **not satisfied**; REQ-COC-03 evidenced only by a recount that contradicts the claim.
+**Compliance summary**: **8/8 scenarios compliant**, 0 UNTESTED, 0 FAILING. Requirement level: REQ-COC-01, REQ-COC-02, REQ-COC-03 and REQ-COC-04 all satisfied. The only previously failing scenario (REQ-COC-01 "service owns the transaction") is now covered by a discriminating test.
 
-### REQ-COC-03 — McCabe Recount (method stated)
+### REQ-COC-03 — McCabe Recount (verifier-owned)
 
-**Counting method used**: count every branch-introducing construct (`if`, `foreach`, `while`, `for`, `case`, `catch`, `&&`, `||`, `??`, `?:`); complexity = decision points + 1. This is the convention `apply-progress.md` itself applies to `MergeMissingMethodsWithReport`, where it explicitly lists `&&` as a decision point.
+**Counting convention** (as stated in `apply-progress.md`, and the one applied here): count every branch-introducing construct (`if`, `foreach`, `while`, `for`, `case`, `catch`, `&&`, `||`, `??`, `?:`); `McCabe = points + 1`.
 
-| Method | apply-progress claim | My recount (points -> McCabe) | < 10? |
-|--------|----------------------|-------------------------------|-------|
-| `DailyClosureController.CreateClosure` (49-104) | 7 | `if(Driver)` 1 + `if(request==null \|\| Details==null \|\| !Any)` 1+2 + `if(duplicated)` 1 + `??` 2 + `?:` 1 + `catch` 2 = **10 -> 11** | **NO** |
-| `DailyClosureController.ResolveClosureDate` (115-146) | 6 | `if(default)` 1 + `?:` 1 + `if(!isAdmin)` 1 + `if(future)` 1 + `if(>24h)` 1 = 5 -> **6** | yes |
-| `DailyClosureService.CreateClosureFromCommandAsync` (192-295) | 9 | `if(rate<=0)` 1 + `foreach` 1 + `?:` 2 + `?:` 2 + `if(CurrentTransaction)` 1 = 7 -> **8** | yes |
-| `ValidateDeclaredMethods` (327-343) | 2 | `if(count>0)` 1 -> **2** | yes |
-| `MergeMissingMethodsIntoClosure` (345-368) | 5 | `foreach` 1 + `if(!Contains)` 1 + `&&` 1 + `?:` 1 = 4 -> **5** | yes |
-| `MergeMissingMethodsWithReport` (370-409) | 7 | `foreach` 1 + `if(!Contains)` 1 + `&&` 1 + `?:` 3 = 6 -> **7** | yes |
-| `RecalculateTotals` (411-427) | 3 | `foreach` 1 + `if(<0)` 1 -> **3** | yes |
-| `ResolveUserDetailsAsync` (297-318) | 3 | `if(TryParse)` 1 + `if(user!=null)` 1 -> **3** | yes |
-| `PersistClosureCoreAsync` (320-325) | not listed | 0 -> **1** | yes |
-| `ExecuteClosureCoreAsync` (121-166) | not listed | `if(dup)` 1 + `if(unknown)` 1 + `foreach` 1 -> **4** | yes |
+| Method | apply-progress claim | Verifier recount (points -> McCabe) | < 10? |
+|--------|----------------------|-------------------------------------|-------|
+| `DailyClosureController.CreateClosure` | 3 | `if(Driver)` 1 + `if(validationError)` 1 = 2 -> **3** | yes |
+| `DailyClosureController.ValidateClosureRequest` | 4 | `if` 1 + `\|\|` 1 + `?:` 1 = 3 -> **4** | yes |
+| `DailyClosureController.ExecuteCreateClosureAsync` | 4 | `catch` x3 = 3 -> **4** | yes |
+| `DailyClosureController.ResolveUserId` | 4 | `??` x2 + `?:` 1 = 3 -> **4** | yes |
+| `DailyClosureController.ResolveClosureDate` | 6 | 4x`if` + `?:` = 5 -> **6** | yes |
+| `DailyClosureService.CreateClosureFromCommandAsync` | 3 | `if(rate<=0)` 1 + `if(CurrentTransaction)` 1 = 2 -> **3** | yes |
+| `DailyClosureService.OpenSerializableTransactionAsync` | 3 | `if(CurrentTransaction)` 1 + `if(ProviderName)` 1 = 2 -> **3** | yes |
+| `DailyClosureService.ExecuteClosureCommandAsync` | 5 | `catch` 1 + `if(transaction is not null)` x3 = 4 -> **5** | yes |
+| `DailyClosureService.BuildDeclaredDetails` | 5 | `foreach` 1 + 4x`?:` (incl. the **nested** `?:` at `:334`) = 5 -> **6** | yes (claim off by one) |
+| `DailyClosureService.ResolveUserDetailsAsync` | 3 | `if(TryParse)` 1 + `if(user!=null)` 1 = 2 -> **3** | yes |
+| `DailyClosureService.PersistClosureCoreAsync` | 1 | — -> **1** | yes |
+| `DailyClosureService.ValidateDeclaredMethods` | 2 | `if(count>0)` 1 -> **2** | yes |
+| `DailyClosureService.MergeMissingMethodsIntoClosure` | 5 | `foreach` + `if(!Contains)` + `&&` + `?:` = 4 -> **5** | yes |
+| `DailyClosureService.MergeMissingMethodsWithReport` | 7 | `foreach` + `if(!Contains)` + `&&` + 3x`?:` = 6 -> **7** | yes |
+| `DailyClosureService.RecalculateTotals` | 3 | `foreach` + `if(<0)` = 2 -> **3** | yes |
 
-Two evidence defects are proven, not inferred:
+Every listed method is genuinely below 10; the maximum is 7. Prior `RESIDUAL-S3-02` (defective table: `CreateClosure` counted 11 while claimed 7, `CreateClosureFromCommandAsync` double-counted) is **closed** — the extraction reduced `CreateClosure` to 3 and the recount no longer double-counts. The single remaining arithmetic defect (`BuildDeclaredDetails`, nested ternary omitted) is recorded as RESIDUAL-S3-12; it does not affect any requirement.
 
-1. **`CreateClosure` over the ceiling under the applied convention.** The apply-progress row omits the two short-circuit operators inside the guard at line 56 and the two `??` operators at lines 74-76. Applying the same convention it applies to `MergeMissingMethodsWithReport` yields 11, which violates REQ-COC-03's "MUST measure below 10". If the maintainer's intended metric is statement-level-only (no `&&`/`||`/`??`), the value is 7 and compliant — **the metric convention is undocumented in the repo and must be fixed**. Either way the apply-progress table is internally inconsistent.
-2. **`CreateClosureFromCommandAsync` double-counts.** The claimed 9 lists `if(TryParse)` and `if(user!=null)`, which are statements of `ResolveUserDetailsAsync`, not of this method. The true value is 8. (Under 10 either way, so no requirement risk — evidence quality only.)
+### Discrimination Review
 
-### Discrimination Review (the S1 CRITICAL-01 lesson)
+**The two `DailyClosureTransactionTests` are discriminating — independently confirmed by mutation.** The SQLite relational context is required because EF InMemory cannot `BeginTransaction`; the drawer is mocked, so the callback observes `context.Database.CurrentTransaction` at the exact instant the transaction must be open. Forcing `OpenSerializableTransactionAsync` to return `null` on SQLite turned both tests red with `Expected: True / Actual: False` (`:82`) and `Expected: 0 / Actual: 1` (`:114`). The mutation was reverted byte-identically.
 
-**The 5 new `DailyClosureControllerTests` tests are discriminating.**
+**The repaired S3-03 sites are discriminating.** They now execute the production service over a real context and assert observable state (`Assert.Empty(DailyClosures)`, the `"999"` detail, a reachable rollover `Times.Never`) instead of only verifying a dependency the code under test could not reach. The deleted assertion targeted the legacy `CreateClosureAsync(DailyClosure)` entry point, which no controller calls.
 
-- `CreateClosure_DelegatesToService_AndPersistsNothingDirectly` (line 83) — fails if the controller stops delegating or passes a wrong command (`mockClosure.Verify(..., Times.Once)` + predicate on `UserId`/`Declarations`). The "persists nothing directly" clause is enforced structurally, not by assertion: the controller type has no `DbContext` member, so the regression cannot compile.
-- The 4 structural tests assert the *actual* `Type` through reflection, so re-introducing `SalesDbContext`, `InventoryDbContext`, or any `*DbContext` constructor parameter or field turns them red. Not tautological.
+**The S3-04 test is discriminating.** Removing the `exchangeRate <= 0` guard at `DailyClosureService.cs:197-202` makes the production service persist a closure; the test asserts `ThrowsAsync<InvalidOperationException>` and an empty closure set, so it cannot pass without the guard.
 
-**Tautological / non-discriminating assertions were found in four re-pointed tests (regression of the same class the S1 verdict already caught once):**
+**The S3-05 tests are discriminating.** They assert `ConflictObjectResult` + `ProblemDetails.Status == 409`; reverting either controller to a non-409 path fails them.
 
-| Site | Assertion | Why it is vacuous |
-|------|-----------|-------------------|
-| `SecurityHardeningSprint2Tests.cs:271` | `mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(...), Times.Never)` | `mockCashDrawer` is no longer injected into `ShiftsController` (line 239-241 passes only `mockDailyClosure` + `mockUser`); the controller cannot reach it, so `Times.Never` holds for every possible implementation |
-| `ResidualRemediationLote26Tests.cs:283` | `mockClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Times.Never)` | It targets the **legacy** `CreateClosureAsync(DailyClosure)` entry point; the controller now calls `CreateClosureFromCommandAsync`, so the verified method is unreachable and the assertion can never fail |
-| `ResidualRemediationLote26Tests.cs:284` | `mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(...), Times.Never)` | `mockCashDrawer` is not injected (line 263-268) |
-| `ResidualRemediationLote26Tests.cs:320` | `mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(...), Times.Never)` | `mockCashDrawer` is not injected (line 299-304) |
-
-Also present: `SecurityHardeningSprint2Tests.DailyClosureController_UnknownPaymentMethodId_ReturnsBadRequestWithoutCreatingClosure` (176) now mocks `CreateClosureFromCommandAsync` to throw and then asserts only the controller's `catch` mapping — the name's "WithoutCreatingClosure" clause is not exercised (nothing can be created through a mock). And the re-pointed files retain dead scaffolding (`mockPaymentMethod`, `mockSettings`, unused `salesDb`/`inventoryDb`).
-
-**What the re-pointing did preserve**: no `[Fact]` was deleted in S3 (verified by diffing `ErrorContractTests.cs` and `PaymentMethodCurrencyClassificationTests.cs`, the two files with the largest line reductions — only constructor arguments and unused mock setup were collapsed). Suite-level count rose 1149 (S1) -> 1170 (S2) -> **1175** (S3).
+**The 4 structural controller tests remain discriminating.** They assert the actual reflected `Type`, so re-introducing a `DbContext` constructor parameter or field turns them red.
 
 ### Scope Check
 
-No S4+ creep. The `200cdaa` file list contains only S3 targets: `ITodayExchangeRateProvider`, `TodayExchangeRateProvider`, `ServiceCollectionExtensions`, `DailyClosureService`, `IDailyClosureService`, `CreateClosureCommand`, both close controllers, and test files. `CashDrawerService.cs` (S4b/S5b), `AuthController.cs` (S5c), `MainWindow.xaml.cs` and the WPF view models (S5c), `RegisterPage.jsx` (S5c), and the DTO folders (S4a/S4b) are untouched. `tasks.md` Phase 4a-5c remain unchecked.
+The `200cdaa` -> `579347b` remediation diff contains only S3 targets plus bookkeeping: `DailyClosureService.cs`, `DailyClosureController.cs`, `ShiftsController.cs`, the four re-pointed test files, the new `DailyClosureTransactionTests.cs`, `docs/reporte.txt`, `apply-progress.md` and this report. No S4+ creep: `CashDrawerService.cs` (S4b/S5b), `AuthController.cs` (S5c), the WPF view models / `MainWindow.xaml.cs` (S5c), `RegisterPage.jsx` (S5c) and the DTO folders (S4a/S4b) are untouched; `tasks.md` Phase 4a-5c remain unchecked.
 
-Two in-slice behavior deltas beyond the listed scenarios are recorded as warnings, not as creep: the `DbUpdateException` 409 mapping was dropped from both close controllers (`RESIDUAL-S3-06`), and `GetReportById` now uses the persisted `ExchangeRate` snapshot with no today's-rate fallback (`RESIDUAL-S3-07`, aligned with the snapshot-immutability invariant).
+**Atomicity design note (inspection)**: the outer `Serializable` transaction and the rollover share the same scoped `SalesDbContext` in DI, and `CashDrawerService.CloseSessionAsync` explicitly detects an ambient transaction (`CashDrawerService.cs:131-133`: `ownsTransaction = !isInMemory && ambientTransaction == null`) so it enlists in the outer transaction instead of opening a nested one. The closure persist, the session close and the session reopen therefore commit or roll back together, which is the cross-DB atomicity the pre-S3 controller provided. Because the SQLite test mocks `ICashDrawerService`, this enlistment is proven by source inspection plus the `CurrentTransaction`-non-null assertion at rollover time, not by a test that writes drawer rows through the real drawer service (RESIDUAL-S3-13).
 
-**Risk evaluation requested by the orchestrator**
+**Retry semantics**: opening the transaction **inside** the `CreateExecutionStrategy()` delegate (rather than around it) is the correct Npgsql pattern; each retry re-enters `ExecuteClosureCommandAsync` and opens a fresh transaction, disposing it in `finally`. The prior `CRITICAL-S3-01` concern about "a retrying strategy over a non-transactional, non-idempotent delegate" is therefore resolved.
 
-- **`DailyClosureService.cs` size**: **586 lines** measured (`Get-Content | .Count`), against the 300-500 ceiling in `docs/coding-guidelines-core.md`. This is **worse than the S2 measurement (502) and than the 578 claimed in `apply-progress.md`/ANEXO 8.140**. The AD-8 extraction moved code but added `CreateClosureFromCommandAsync` (103 lines) and produced two near-duplicate merge helpers (`MergeMissingMethodsIntoClosure` vs `MergeMissingMethodsWithReport`, `:345-409`). **Register as a WARNING for S4/S5**; WARNING-07 is not closed — it is enlarged. The declared S3 fold-in ("505 -> 578") is also numerically wrong.
-- **`ExecuteClosureCoreAsync` legacy entry point**: retained as the body of the still-public `IDailyClosureService.CreateClosureAsync(DailyClosure)` (`:110-119`, `:121-166`). It has **no production caller** — the two controllers delegate to `CreateClosureFromCommandAsync`; its only callers are tests (`CashDrawerClosureTests`, `CheckoutAndPaymentTests`, `DailyClosureServiceUnitTests`, `Phase7ClosureWithoutRateTests`, `SecurityHardeningSprint2Tests`, `ResidualRemediationLote26Tests`, `DailyClosureFlowIntegrationTests`, `DailyClosureRetryIntegrationTests`) and the WPF-facing path is HTTP, not this service. It carries a second, divergent copy of the closure rules (its own duplicate/unknown guards and its own `MergeMissingMethodsIntoClosure`/`RecalculateTotals` calls) and no `Serializable` transaction of its own either. **Register as a WARNING for S4/S5** with a recommended disposition: delete it together with its test references, or make it a private adapter that delegates to the command path.
+### S3 Residual Warnings (non-blocking for S3)
 
-### S3 Residual Warnings (non-blocking, except where noted)
+- **RESIDUAL-S3-01 (stale test narrative)** — `CommandCenter.Tests/Integration/DailyClosureRetryIntegrationTests.cs:13-19` still attributes the `Serializable` transaction to "El flujo de produccion (DailyClosureController/ShiftsController)". After the remediation the transaction is opened by `DailyClosureService` (inside the execution strategy), not by the controllers; the substantive claim (a `Serializable` transaction inside an external strategy on the production close flow) now holds again, so this is a documentation-attribution nuance, not a defect. Postgres-gated, skipped locally.
+- **RESIDUAL-S3-08 (post-commit comment, ambient branch)** — `DailyClosureService.cs:275` states receipts are written "DESPUÉS del commit, fuera de la transacción Serializable". This is exact for the service-owned transaction; in the ambient-transaction branch (`:204-207`) the commit belongs to the caller and this service writes receipts without committing. No production caller opens an ambient transaction today, so the exposure is latent.
+- **RESIDUAL-S3-12 (evidence arithmetic)** — the apply-progress McCabe table lists `BuildDeclaredDetails` as 4 points -> 5; the verifier recount is 5 points -> 6, because the nested `?:` at `DailyClosureService.cs:334` was not counted. Still well below 10; evidence-quality only.
+- **RESIDUAL-S3-13 (enlistment proven by inspection)** — `DailyClosureTransactionTests` mocks `ICashDrawerService`, so the fact that the real drawer's `CloseSessionAsync`/`OpenSessionAsync` writes enlist in the outer transaction is established by reading `CashDrawerService.cs:131-133` rather than by a relational end-to-end test. Recommend a Postgres/SQLite test with the real `CashDrawerService` when S4b touches the drawer.
+- **WARNING-04 (carry-over, still open)** — the merged undeclared payment-method lines still hardcode `"Balanced"` while `DifferenceBsS` can be non-zero, and still mix units (Bs.S declared vs USD-converted system amount) — now duplicated across `MergeMissingMethodsIntoClosure` (`DailyClosureService.cs:395-418`, hardcoded status implicit) and `MergeMissingMethodsWithReport` (`:420-459`, `"Balanced"` at `:456`). S3/AD-8 extracted the methods but did not correct the semantics. Deferred to S4/S5.
+- **WARNING-07 / S3-06 (carry-over, enlarged)** — `DailyClosureService.cs` measures **636** lines (verifier-confirmed), over the 300-500 ceiling in `docs/coding-guidelines-core.md`.
+- **RESIDUAL-S3-07 (snapshot read change, unchanged)** — `ShiftsController.GetReportById` still returns the persisted `closure.ExchangeRate` with no today's-rate fallback (`ShiftsController.cs:161`). A persisted closure with `ExchangeRate == 0` reports `0` instead of today's rate. Aligned with the snapshot-immutability invariant; recorded as intended.
+- **RESIDUAL-S3-11 (dead scaffolding)** — **CLOSED** for the two named files: no `mockPaymentMethod` / `mockSettings` / `new Mock<IPaymentMethodService>` / `new Mock<ISystemSettingsService>` remains in `SecurityHardeningSprint2Tests.cs` or `ResidualRemediationLote26Tests.cs`.
+- **RESIDUAL-S3-10 (test-runner OOM, environmental)** — not reproduced in this re-verification; `npm test` was green on the first execution.
+- **RESIDUAL-S3-03 / -04 / -05 / -06 (prior residuals)** — **CLOSED**: the tautological assertions were repaired (S3-03), the real rate guard has a covering test (S3-04), a transaction assertion now exists outside the Postgres-gated skip (S3-05), and the `DbUpdateException` -> 409 mapping was restored (S3-06).
+- **RESIDUAL-S3-14 (out-of-slice `Problem` vs `ApiBadRequest`)** — `ShiftsController.CloseShift` still returns `Problem(detail, 400)` for `ArgumentException`/`InvalidOperationException` (`:89-96`) while `DailyClosureController` routes both through `ApiBadRequest` (`:85-92`). Both emit `ProblemDetails` with status 400, so the S3 error contract holds; the two close paths differ only in the `type`/`extensions` richness. Hygiene, not a defect.
 
-- **CRITICAL-S3-01 (transaction ownership — blocks the slice)** — `CreateClosureFromCommandAsync` does not begin a transaction. The `Serializable` isolation that the pre-S3 `DailyClosureController` applied to *totals read -> closure persist -> rollover* is gone, so a mid-way failure (e.g. `OpenSessionAsync` throwing after `CloseSessionAsync` succeeded) now leaves a persisted closure and a half-rolled drawer session; the registration of the retrying execution strategy over a non-transactional, non-idempotent delegate also changes retry semantics. `apply-progress.md:279` and ANEXO 8.140 `B3` both claim "Serializable tx", and REQ-COC-01's scenario text is an unconditional MUST. This is the failing check that sets the slice verdict to `fail`.
-- **RESIDUAL-S3-01 (stale test narrative)** — `DailyClosureRetryIntegrationTests.cs:13-19` still documents "El flujo de produccion (DailyClosureController/ShiftsController) abre una transaccion Serializable dentro de una strategy externa". That flow no longer exists; the test itself opens the transaction manually, so it passes against a production shape that was deleted. Postgres-gated, therefore skipped locally.
-- **RESIDUAL-S3-02 (McCabe evidence defective)** — see the recount table: `CreateClosure` 11 vs claimed 7; `CreateClosureFromCommandAsync` 8 vs claimed 9 (double-count). The measurement convention is undocumented, so REQ-COC-03 cannot be closed without a stated metric.
-- **RESIDUAL-S3-03 (tautological assertions)** — the four sites tabulated in the discrimination review; each should assert against an injected collaborator or be deleted.
-- **RESIDUAL-S3-04 (rate-ownership coverage)** — `GetEffectiveTodayRateAsync` appears in exactly one test file, `DailyClosureTestHelper.cs:13`, always fixed at `50m`. No test drives the real `CreateClosureFromCommandAsync` through `exchangeRate <= 0` (`DailyClosureService.cs:197-201`). S1's `Phase7ClosureWithoutRateTests` used to exercise the real guard on the controller; after S3 the same file mocks the service to throw (`:64-65`, `:139-141`), so REQ-COC-01's rate-ownership clause is verified by inspection only.
-- **RESIDUAL-S3-05 (no transaction assertion)** — no test asserts a transaction exists around the closure run outside the Postgres-gated skip; the scenario is verified by reading `git show 200cdaa` and a repo-wide `IsolationLevel` grep.
-- **RESIDUAL-S3-06 (409 mapping removed)** — both close controllers dropped `catch (DbUpdateException) -> ApiConflict(...)`. A concurrent closure that previously produced HTTP 409 "Conflicto de concurrencia..." now falls through to the global handler. REQ-COC-04's listed scenarios do not freeze this path, but it is an observable status change; confirm the intended contract.
-- **RESIDUAL-S3-07 (snapshot read change)** — `ShiftsController.GetReportById` replaced `closure != null && closure.ExchangeRate > 0 ? closure.ExchangeRate : GetTodayExchangeRateAsync()` with `closure.ExchangeRate`. A persisted closure with `ExchangeRate == 0` now reports `0` instead of today's rate. This aligns with "never recompute history with the current rate"; record it as intended.
-- **RESIDUAL-S3-08 (post-commit comment wrong on one branch)** — `DailyClosureService.cs:285` says receipts are written "DESPUÉS del commit, fuera de la transacción Serializable", but in the ambient-transaction branch (`:269-273`) the commit belongs to the caller, so receipts are written before that commit. No production caller opens an ambient transaction today, so the exposure is latent.
-- **RESIDUAL-S3-09 (class size)** — `DailyClosureService.cs` is 586 lines (>500 ceiling, `WARNING-07` enlarged); recommend a partial-class split or a handler sub-service in S4/S5.
-- **RESIDUAL-S3-10 (test-runner OOM, environmental)** — first `npm test` run died with `FATAL ERROR: Zone Allocation failed - process out of memory` and reported 233/8-fail; the single mandated retry was green at 271/271 with lint clean. Not attributable to S3's diff (no Web file is touched by `200cdaa`).
-- **RESIDUAL-S3-11 (dead test scaffolding)** — re-pointed tests retain `mockPaymentMethod`, `mockSettings`, and unused `salesDb`/`inventoryDb` locals; hygiene only.
+### S3 Changed Files (remediation delta `200cdaa` -> `579347b`)
+
+| File | Action | Role in S3 remediation |
+|------|--------|-----------------------|
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | `OpenSerializableTransactionAsync` + `ExecuteClosureCommandAsync` wrap totals read -> assembly -> persist -> rollover in `Serializable`, with `CommitAsync` after the rollover and `RollbackAsync` on failure (CRITICAL-S3-01) |
+| `Backend.API/Controllers/DailyClosureController.cs` | Modified | `ValidateClosureRequest` extraction -> `CreateClosure` McCabe 3 (S3-02); `DbUpdateException` -> `ApiConflict` 409 (S3-05) |
+| `Backend.API/Controllers/ShiftsController.cs` | Modified | `DbUpdateException` -> `ApiConflict` 409 (S3-05) |
+| `CommandCenter.Tests/Unit/DailyClosureTransactionTests.cs` | Created | 2 discriminating SQLite tests: `Serializable` transaction present during rollover; rollback of the persisted closure on a rollover failure |
+| `CommandCenter.Tests/Unit/DailyClosureControllerTests.cs` | Modified | 2x 409 tests (S3-05) |
+| `CommandCenter.Tests/Unit/CloseShiftResolverClassificationTests.cs` | Modified | Real-production `exchangeRate <= 0` guard test (S3-04) |
+| `CommandCenter.Tests/SecurityHardeningSprint2Tests.cs` | Modified | Real service + injected `cashDrawer`; non-tautological assertions (S3-03) |
+| `CommandCenter.Tests/Unit/ResidualRemediationLote26Tests.cs` | Modified | Real service + injected `cashDrawer`; legacy mock verify deleted (S3-03) |
+| `docs/reporte.txt` | Modified | ANEXO "SLICE S3 REMEDIACION" + `B3` correction |
+| `openspec/changes/legacy-debt-cleanup/apply-progress.md` | Modified | S3 remediation section; task 3.4 / 3.11 corrections; S3-06/S3-07 registered |
+
+The eight production/test files above, in this order, are the input to the head envelope's `evidence_revision`.
 
 ### S3 Verdict
 
-**FAIL** — S3 correctly consolidates orchestration ownership, the rate provider layering, and controller delegation (REQ-COC-02 and REQ-COC-04 are met, and 7 of 8 scenarios are compliant), but REQ-COC-01's "Service owns the transaction" scenario is not implemented: no `Serializable` transaction (indeed no transaction at all) surrounds the closure persist + session rollover, contradicting the spec scenario, `design.md` AD-5/Data Flow, `apply-progress.md:279` and ANEXO 8.140 `B3`. The change does not carry the cross-DB atomicity it had before S3. Add the transaction inside `CreateClosureFromCommandAsync` (execution strategy + `BeginTransactionAsync(IsolationLevel.Serializable)` + commit), add a regression-sensitive test for it, correct the McCabe evidence and the class-size number, and replace the four tautological assertions. S3 cannot be chained into S4 until then.
+**PASS_WITH_WARNINGS** — the S3 remediation at `579347b` closes every finding that set the prior verdict to `fail`. `CRITICAL-S3-01` is genuinely fixed: the closure run is wrapped in an explicit `BeginTransactionAsync(IsolationLevel.Serializable)` that commits after the rollover and rolls back on failure, and the new SQLite tests are discriminating (independently reproduced by the verifier's own mutation). `CreateClosure` now measures McCabe 3 with the counting convention documented; the four tautological assertions were replaced with real-service assertions; the production `exchangeRate <= 0` guard has a covering test; and the `DbUpdateException` -> 409 `ProblemDetails` mapping is restored in both close controllers. 8/8 scenarios and 4/4 requirements of the S3 delta spec are compliant, the build is 0/0, the backend suite is 1180/1180, the closure filter 82/82, the frontend 271/271 with clean lint, and the coverage gate reproduces the claim exactly. The residual items are non-blocking: `S3-06`/`S3-07` and the carried `WARNING-04`/`WARNING-07` are registered for S4/S5, and the remaining residuals are evidence-quality or inspection-based notes (RESIDUAL-S3-08, -12, -13).
 
 ### Change-Level Verdict
 
-**Pending**. The change cannot receive a change-level verdict while S4a-S5c are unimplemented. S1 and S2 are verified `pass_with_warnings`; **S3 is verified `fail`** (1 CRITICAL: `CRITICAL-S3-01`, the `Serializable` transaction was dropped from the closure run - see the "Slice S3" section). S3 did **not** close WARNING-04 (the merged-undeclared-method lines remain, now duplicated across `MergeMissingMethodsIntoClosure`/`MergeMissingMethodsWithReport`) and did **not** close WARNING-07 (class size grew 502 -> 586 lines); both escalate to S4/S5. S1 RESIDUAL-07 (duplicate-id error object) is **CLOSED** by S2/AD-9.
+**Pending**. The change cannot receive a change-level verdict while S4a-S5c are unimplemented. S1, S2 and S3 are each verified `pass_with_warnings`; all three implemented delta specs (3 + 4 + 4 = 11 requirements, 8 + 9 + 8 = 25 scenarios) are compliant, while the two remaining delta specs (`api-dto-boundary`, `async-cancellation-propagation`) are untouched and their tasks unchecked (change totals across the five delta specs: 18 requirements / 38 scenarios). `WARNING-04` (hardcoded "Balanced" status and mixed units in the merged undeclared-method lines) and `WARNING-07`/`S3-06` (class size, now 636 lines) remain open and escalate to S4/S5, alongside the registered `S3-07`. S1 RESIDUAL-07 is **CLOSED** by S2/AD-9. S3 is now cleared to chain into S4a.
 
 ### Verdict
 
