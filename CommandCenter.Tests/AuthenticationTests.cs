@@ -311,6 +311,46 @@ public class AuthenticationTests
         Assert.Contains("pos_jwt=", setCookieHeader);
         Assert.Contains("httponly", setCookieHeader, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("samesite=strict", setCookieHeader, StringComparison.OrdinalIgnoreCase);
+        Assert.False(HasSecureCookieAttribute(setCookieHeader), "Sobre HTTP la cookie pos_jwt no debe llevar Secure (H-05).");
+    }
+
+    [Fact]
+    public async Task Login_WithWebPlatform_OverHttps_MarksCookieSecure()
+    {
+        using var db = GetInMemorySalesDbContext();
+        var config = GetMockConfiguration();
+        var tokenService = new TokenService(config);
+
+        string rawPassword = "WebHttpsPassword123!";
+        var user = new User
+        {
+            Id = 17,
+            Cedula = "V-17171717",
+            Name = "Web Https Cashier",
+            PasswordHash = PasswordHasher.HashPassword(rawPassword),
+            Role = UserRole.Cashier,
+            IsActive = true
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var controller = new AuthController(db, tokenService);
+        var httpContext = new DefaultHttpContext();
+        SetRequestScheme(httpContext, isHttps: true);
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        var response = await controller.Login(new LoginRequest
+        {
+            Cedula = "V-17171717",
+            Password = rawPassword,
+            Platform = "Web"
+        });
+
+        Assert.IsType<OkObjectResult>(response.Result);
+
+        var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
+        Assert.Contains("pos_jwt=", setCookieHeader);
+        Assert.True(HasSecureCookieAttribute(setCookieHeader), "Sobre HTTPS la cookie pos_jwt debe llevar Secure (H-05).");
     }
 
     [Fact]
@@ -376,6 +416,69 @@ public class AuthenticationTests
         var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
         Assert.Contains("pos_jwt=", setCookieHeader);
         Assert.Contains("expires=", setCookieHeader, StringComparison.OrdinalIgnoreCase);
+        Assert.False(HasSecureCookieAttribute(setCookieHeader), "Sobre HTTP el borrado de pos_jwt no debe llevar Secure (H-05).");
+    }
+
+    [Fact]
+    public async Task Logout_OverHttps_DeletesCookieWithSecureFlag()
+    {
+        using var db = GetInMemorySalesDbContext();
+        var config = GetMockConfiguration();
+        var tokenService = new TokenService(config);
+
+        var controller = new AuthController(db, tokenService);
+        var httpContext = new DefaultHttpContext();
+        SetRequestScheme(httpContext, isHttps: true);
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        var result = await controller.Logout();
+        Assert.IsType<OkObjectResult>(result);
+
+        var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
+        Assert.Contains("pos_jwt=", setCookieHeader);
+        Assert.True(HasSecureCookieAttribute(setCookieHeader), "Sobre HTTPS el borrado de pos_jwt debe llevar Secure (H-05).");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ChangePassword_Success_DeletesCookieWithSchemeMatchingSecureFlag(bool isHttps)
+    {
+        using var db = GetInMemorySalesDbContext();
+        var config = GetMockConfiguration();
+        var tokenService = new TokenService(config);
+
+        string currentPassword = "CurrentPass123!";
+        var user = new User
+        {
+            Id = 18,
+            Username = "cajero_cookie",
+            Cedula = "V-18181818",
+            Name = "Cookie User",
+            PasswordHash = PasswordHasher.HashPassword(currentPassword),
+            Role = UserRole.Cashier,
+            IsActive = true
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var controller = new AuthController(db, tokenService);
+        var httpContext = new DefaultHttpContext();
+        SetRequestScheme(httpContext, isHttps);
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        var result = await controller.ChangePassword(new ChangePasswordRequest
+        {
+            Cedula = "V-18181818",
+            CurrentPassword = currentPassword,
+            NewPassword = "BrandNewPass123!"
+        });
+
+        Assert.IsType<OkObjectResult>(result);
+
+        var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
+        Assert.Contains("pos_jwt=", setCookieHeader);
+        Assert.Equal(isHttps, HasSecureCookieAttribute(setCookieHeader));
     }
 
     [Fact]
@@ -430,4 +533,14 @@ public class AuthenticationTests
         Assert.True(desktopPrincipal.HasClaim("scope", "pos:desktop"));
         Assert.False(desktopPrincipal.HasClaim("scope", "pos:web"));
     }
+
+    private static void SetRequestScheme(DefaultHttpContext httpContext, bool isHttps)
+    {
+        httpContext.Request.IsHttps = isHttps;
+        httpContext.Request.Scheme = isHttps ? "https" : "http";
+    }
+
+    private static bool HasSecureCookieAttribute(string setCookieHeader)
+        => System.Text.RegularExpressions.Regex.IsMatch(
+            setCookieHeader, @"(?i)(?:^|;\s*)secure(?:;|$)");
 }

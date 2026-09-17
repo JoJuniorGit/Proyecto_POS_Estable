@@ -564,7 +564,7 @@ public class DailyClosureService : IDailyClosureService
 
     public async Task WriteClosedClosureReceiptsAsync(DailyClosureResponseDto closure, CancellationToken cancellationToken = default)
     {
-        if (closure == null) throw new ArgumentNullException(nameof(closure));
+        ArgumentNullException.ThrowIfNull(closure);
 
         try
         {

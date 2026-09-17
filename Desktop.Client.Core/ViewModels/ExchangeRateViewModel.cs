@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class ExchangeRateViewModel : ObservableObject
+public partial class ExchangeRateViewModel : ObservableObject, IDisposable
 {
     private const int HistoryWindowSize = 365;
 
@@ -242,5 +242,10 @@ public partial class ExchangeRateViewModel : ObservableObject
         History.Clear();
         foreach (var item in history.Take(HistoryWindowSize))
             History.Add(item);
+    }
+
+    public void Dispose()
+    {
+        WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 }

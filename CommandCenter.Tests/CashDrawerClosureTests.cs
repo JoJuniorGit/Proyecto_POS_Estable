@@ -166,7 +166,7 @@ public class CashDrawerClosureTests
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Income, Sales.Module.Entities.CashTransactionSource.CashIn, 500m, 10m, 50m, "Ingreso previo");
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Expense, Sales.Module.Entities.CashTransactionSource.CashOut, 200m, 4m, 50m, "Retiro previo");
 
-        var vm = new CashDrawerViewModel(clientService, rateService);
+        using var vm = new CashDrawerViewModel(clientService, rateService);
         await vm.LoadSessionAsync();
 
         Assert.NotNull(vm.ActiveSession);
@@ -213,7 +213,7 @@ public class CashDrawerClosureTests
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Income, Sales.Module.Entities.CashTransactionSource.CashIn, 500m, 10m, 50m, "Ingreso sesión 1");
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Expense, Sales.Module.Entities.CashTransactionSource.CashOut, 200m, 4m, 50m, "Retiro sesión 1");
 
-        var vm = new CashDrawerViewModel(clientService, rateService);
+        using var vm = new CashDrawerViewModel(clientService, rateService);
         await vm.LoadSessionAsync();
 
         Assert.Equal(3, vm.OrderedTransactions.Count);

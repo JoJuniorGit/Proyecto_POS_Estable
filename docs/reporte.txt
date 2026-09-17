@@ -9969,3 +9969,120 @@ Registrado para S5c / follow-up:
   siguen abiertos.
 - Cerrado en este slice: S4b-R1 (tuning de GetActiveSessionWithTransactionsAsync)
   y RESIDUAL-S5a-01/02 (token en Checkout.cs; escaneo IL con state machines).
+
+
+================================================================================
+ANEXO - REVISION 8.140 (legacy-debt-cleanup S5c: hallazgos J)
+================================================================================
+
+Fecha: 2026-09-17
+Commit: fix(8.140): J findings S5c (cookie LAN + IDisposable + paginacion) -
+        ANEXO 8.140, en rama V0.15 (sin branches/PRs).
+
+Alcance: work unit S5c (ultima slice del change legacy-debt-cleanup, store
+openspec): hallazgos J sin item de registro (H-05 cookie pos_jwt en LAN, H-06
+IDisposable en ViewModels WPF, H-08 paginacion cliente) + carry RESIDUAL-S5b-06
+(item 11, idioma ThrowIfNull). H-14 ya se entrego en S5a. Sin cambios de schema,
+sin config, sin PRs, sin sub-agentes.
+
+A. CAMBIOS DE PRODUCCION
+
+A1. H-05 - cookie pos_jwt (Backend.API/Controllers/AuthController.cs):
+- Los 3 sitios (append de login, delete de logout, delete de change-password)
+  usan Secure = Request?.IsHttps ?? false. En HTTP LAN la cookie viaja sin
+  Secure (el browser descarta toda cookie Secure sin TLS salvo loopback) y en
+  HTTPS se mantiene Secure. Se elimina la divergencia append/delete que hacia
+  que el borrado no coincidiera con el flag del alta.
+- Comentarios 8.7-B10 corregidos (decian "Secure siempre"); PipelineExtensions
+  ajusta la clausula equivalente del bloque 8.7-B10 (solo comentario).
+
+A2. H-06 - IDisposable en ViewModels:
+- CashDrawerViewModel, PendingOrdersViewModel y ExchangeRateViewModel:
+  IDisposable + WeakReferenceMessenger.Default.UnregisterAll(this).
+- CustomerManagementViewModel y CustomerPickerViewModel: IDisposable que
+  cancela/dispone _searchCts via Interlocked.Exchange + UnregisterAll.
+- MainViewModel.Dispose idempotente (guard Interlocked): el host DI y el hook
+  de la ventana pueden invocarlo. MainWindow.OnClosed dispone el DataContext.
+- CustomerPickerDialog.Closed dispone su VM (unica instanciada a mano por
+  WpfDialogService); los 4 UserControls con VMs singleton del contenedor no
+  llevan hook de dispose (un dispose en Unloaded romperia la navegacion; el
+  host DI es el dueno) - desviacion D2.
+
+A3. H-08 - paginacion cliente (Web.Frontend/src/pages/RegisterPage.jsx):
+- La tabla conserva el slicing en memoria de 25 por pagina y el fetch reutiliza
+  el contrato existente limit (HISTORY_FETCH_LIMIT = 300, tope del server):
+  /api/cashdrawer/history?limit=${HISTORY_FETCH_LIMIT}. Sin page/pageSize ni
+  endpoint nuevo (AD-19).
+
+A4. Carry RESIDUAL-S5b-06 (item 11):
+- DailyClosureService.WriteClosedClosureReceiptsAsync usa
+  ArgumentNullException.ThrowIfNull(closure).
+
+B. TESTS
+
+B1. AuthenticationTests: 4 casos nuevos que fijan H-05 sobre HTTP y HTTPS en
+    los 3 sitios (login append, logout delete, change-password delete) leyendo
+    el atributo Secure del Set-Cookie real.
+B2. ViewModelDisposalTests (nuevo): 10 casos - contrato IDisposable de los 5 VMs
+    + MainViewModel, desregistro de mensajes tras Dispose (IsRegistered),
+    idempotencia, cancelacion del debounce de busqueda (700 ms) + _searchCts
+    null, y dispose de hijos desde MainViewModel.
+B3. RegisterPage.client-pagination.test.js (nuevo): 2 casos - slicing 25/pagina
+    en memoria y fetch con limit existente sin page/pageSize/endpoint nuevo.
+B4. Re-point de tests que creaban los VMs sin disponerlos: PendingOrdersClaim,
+    PendingOrdersReentrancy, HistoryWindowBounds, CashDrawerRbac,
+    CashDrawerClosure, UserPasswordAndStockFormatting (ahora usan Dispose).
+
+C. VERIFICACION (comandos de tasks.md ## Verification)
+
+C1. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+C2. dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj: 1227 passed,
+    0 failed, 0 skipped (1213 -> 1227; +4 H-05 +10 H-06).
+C3. Filtro S5c (AuthenticationTests|ViewModelDisposal) en Release:
+    28 passed, 0 failed.
+C4. npm test (Web.Frontend): 273 passed, 0 failed (271 -> 273; +2 H-08).
+C5. npm run lint (Web.Frontend): clean (exit 0).
+C6. Coverage (scripts/check-coverage.py): Core 0.8364 >= 0.70;
+    Sales.Module 0.9073 >= 0.80; Inventory.Module 0.8251 >= 0.72 - [OK].
+
+D. DECISIONES Y DESVIACIONES
+
+D1. Secure = Request?.IsHttps ?? false en lugar de Request.IsHttps pelado
+    (AD-19): dentro del guard Response?.Cookies != null no hay diferencia de
+    comportamiento; el operador satisface el analisis nullable (CS8602 +
+    TreatWarningsAsErrors lo convertia en error de build).
+D2. Los 4 UserControls con VMs singleton del contenedor (CashDrawer,
+    PendingOrders, ExchangeRate, UsersManagement) no disponen su DataContext al
+    descargarse: el VM sobrevive a la navegacion y su dispose pertenece al host
+    DI. Solo CustomerPickerDialog (VM manual por apertura) recibe hook Closed.
+D3. H-08 en cliente: se conserva el slicing 25/pagina y se reutiliza limit
+    (300) explicitamente; la recomendacion del analisis (page/pageSize) queda
+    rechazada por decision del mantenedor (AD-19).
+D4. MainViewModel.Dispose idempotente: requerido porque el host DI y
+    MainWindow.OnClosed pueden disponerlo; sin guard los hijos se dispondrian
+    dos veces.
+D5. PipelineExtensions.cs solo cambia un comentario que H-05 volvia falso.
+
+E. GGA (punctual --no-verify)
+
+gga run (v2.10.1, provider opencode, rules AGENTS.md) = STATUS FAILED. Todos los
+hallazgos son PRE-EXISTENTES y fuera del alcance de S5c; ninguno es introducido
+por este slice. Commit con --no-verify puntual documentado.
+
+- EF entity expuesto (CreateClosureAsync(DailyClosure)): S3-07/S4a-R1.
+- Objetos de error anonimos en AuthController: pre-existente; el barrido S2 no
+  incluyo AuthController -> S5c-R1.
+- Tamano > 500 lineas (DailyClosureService 650; RegisterPage.jsx ~591):
+  S3-06/WARNING-07/S4a-R2 y deuda legacy ya registrada.
+- Comentarios explicativos y mensajes en ingles/test naming en archivos
+  tocados: pre-existentes; AD-18/S5b.8 cubrio solo los archivos del grupo D.
+- CancellationToken ausente en actions de AuthController: pre-existente; el
+  barrido S5a registro los controllers/servicios financieros.
+- El mismo informe declara en "Compliant": "WPF: VMs with CTS/
+  WeakReferenceMessenger implement IDisposable, dispose is idempotent - OK",
+  evidencia de tercera parte para H-06.
+
+Cierre: con S5c se completan las 8 slices del change legacy-debt-cleanup y los
+hallazgos J (H-05/H-06/H-08; H-14 en S5a), mas el residual
+RESIDUAL-S5b-06. Quedan para follow-up: S5c-R1, S5b-R1, WARNING-04,
+WARNING-07/S3-06/S4a-R2, S3-07/S4a-R1 y DTOs mutables.

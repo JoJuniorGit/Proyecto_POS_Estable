@@ -34,8 +34,8 @@ public static class PipelineExtensions
         // 8.7-B10: Con certificado presente, en Producción se fuerza HTTPS para el cliente Web:
         //  - HSTS dirige al browser a HTTPS desde la primera respuesta segura.
         //  - Redirección 307 HTTP→HTTPS para request con X-Client-Platform: Web (preserva el body
-        //    del login). El escritorio (desktop) sigue sobre HTTP en LAN por compatibilidad, pero la
-        //    cookie pos_jwt es Secure siempre (solo viaja por HTTPS).
+        //    del login). El escritorio (desktop) sigue sobre HTTP en LAN por compatibilidad, y la
+        //    cookie pos_jwt solo se marca Secure cuando el request es HTTPS.
         if (httpsCert != null && !app.Environment.IsDevelopment())
         {
             app.UseHsts();

@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class PendingOrdersViewModel : ObservableObject
+public partial class PendingOrdersViewModel : ObservableObject, IDisposable
 {
     private readonly ISalesService _salesService;
     private readonly IExchangeRateService _exchangeRateService;
@@ -308,6 +308,11 @@ public partial class PendingOrdersViewModel : ObservableObject
             await EnsureLoadedAsync();
             if (releaseMessage != null) SuccessMessage = releaseMessage;
         }
+    }
+
+    public void Dispose()
+    {
+        WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 }
 

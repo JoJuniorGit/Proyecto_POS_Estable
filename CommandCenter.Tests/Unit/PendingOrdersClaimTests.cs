@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Core.Entities;
 using Desktop.Client.Converters;
@@ -26,7 +25,7 @@ public class PendingOrdersClaimTests : IDisposable
     {
         foreach (var vm in _viewModels)
         {
-            WeakReferenceMessenger.Default.UnregisterAll(vm);
+            vm.Dispose();
         }
     }
 
