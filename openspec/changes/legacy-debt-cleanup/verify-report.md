@@ -1,17 +1,17 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:db66c3307cad5454779a3a0d93906c77e3661890c7b2932e05fb65c25f88a792
+evidence_revision: sha256:928ae06bf45063c170ddaa72138a803d8a72cde6aa15e0481459b7fa70700a31
 verdict: pass_with_warnings
 blockers: 0
 critical_findings: 0
 requirements: 18/18
 scenarios: 38/38
-test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release
+test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj
 test_exit_code: 0
-test_output_hash: sha256:f3d148878d34b0d3116695277bf2f90d0c3c84a9903bddf3ae8891eae6b9a2f1
+test_output_hash: sha256:c8340a28b8174cc33d16ea9a2ee4281f132ee0d8984b434b5dffb24b092ff1df
 build_command: dotnet build CommandCenter.slnx -c Release
 build_exit_code: 0
-build_output_hash: sha256:4a64d60a53abe2326ac3d5a15d5f2031ffef05048f513dee5f5f93e95ca031c6
+build_output_hash: sha256:712488c6859080b77d683709c21408cfab263d08f6b3fe59c9bfd7e2bc67da18
 ```
 
 ## Verification Report
@@ -19,11 +19,11 @@ build_output_hash: sha256:4a64d60a53abe2326ac3d5a15d5f2031ffef05048f513dee5f5f93
 **Change**: legacy-debt-cleanup
 **Version**: N/A (delta specs, no version headers)
 **Mode**: Standard (Strict TDD inactive: `openspec/config.yaml` -> `strict_tdd: false`, `testing.strict_tdd_mode: disabled`)
-**Scope of this report**: a per-slice verification record for the change `legacy-debt-cleanup`. Slices S1 (zero-trust close, items 26/39), S2 (error contract + dead fields, items 2/18/25/12/35), S3 (closure orchestration consolidation, items 1/30/6/13/14), S4a (closure DTO boundary, commit `829778c`), S4b (drawer DTO boundary, commit `65e038a`), S5a (CancellationToken propagation + H-14 fold-in, commit `227ee5c`) and **S5b (EF read tuning + guards/naming/comments + S5a carries, commit `dab4d16`)** are implemented and verified; the remaining S5c tasks are not, so the **change-level verdict remains pending**. The machine-readable envelope at the top of this file describes the **most recently admitted slice — S5b at `dab4d16`**. The previous head envelopes are preserved verbatim under "S5a Admitted Envelope (preserved)", "S4b Admitted Envelope (preserved)", "S4a Admitted Envelope (preserved)", "S3 Admitted Envelope (preserved)" and "S1 Admitted Envelope (preserved)"; every verdict and its own fresh evidence live in its own section.
-**Envelope counts (S5b)**: S5b verifies registry cleanup (Phase 5b tasks 5b.1-5b.9, registry groups E/H/D and two S5a carry-overs) and declares **no delta-spec requirement or scenario of its own**, so its evidence matrix is task/items-based. The head envelope therefore reports the change's full delta-spec surface at `dab4d16`, which is complete and unchanged by S5b: **18/18 requirements and 38/38 scenarios** across `payment-method-currency-classification` (3/8), `api-error-contract` (4/9), `closure-orchestration-consolidation` (4/8), `api-dto-boundary` (4/7) and `async-cancellation-propagation` (3/6). What remains for S5c is registry cleanup (H-05/H-06/H-08), not a delta-spec surface.
-**Verified revision**: the current `HEAD` is `dab4d16` (`refactor(8.140): EF reads + guards y limpieza (slice S5b, items 7/22/31 + grupos H/D) - ANEXO 8.140`). The working tree was clean before and after every re-executed command (`git status --short` and `git diff --stat HEAD` empty; the test/coverage output directories are git-ignored). Earlier sections record the revision each of them was verified at: S1 at `c6c767f`, S2 at `77b2d16`, S3 at `579347b`, S4a at `829778c`, S4b at `65e038a` and S5a at `227ee5c`.
-**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding — superseded for S1. Per slice: S2 was `fail` on `fe1b60b` and S3 was `fail` on `200cdaa`; both were superseded by their re-verifications. S4a, S4b and S5a were `pass_with_warnings`; S5b has no prior verdict.
-**evidence_revision** (head envelope, S5b) is the SHA-256 of the ASCII string produced by joining, with `:`, the lowercase SHA-256 hex digests of the **twenty-three S5b production/test files** that exist at `dab4d16`, listed in order under "S5b Changed Files", each hashed from its on-disk bytes (clean working tree; `core.autocrlf=true`). Reproducibility caveat: the preserved S4b head did not reproduce from its recorded description (recomputed by the S5a verifier; `RESIDUAL-S5a-05`), and the S1/S4b recipes are likewise not fully reproducible as written (`RESIDUAL-S2-07`); the S5b recipe is stated exactly here so it can be recomputed from this revision's working tree.
+**Scope of this report**: a per-slice verification record for the change `legacy-debt-cleanup`. Slices S1 (zero-trust close, items 26/39), S2 (error contract + dead fields, items 2/18/25/12/35), S3 (closure orchestration consolidation, items 1/30/6/13/14), S4a (closure DTO boundary, commit `829778c`), S4b (drawer DTO boundary, commit `65e038a`), S5a (CancellationToken propagation + H-14 fold-in, commit `227ee5c`), S5b (EF read tuning + guards/naming/comments + S5a carries, commit `dab4d16`) and **S5c (J findings H-05/H-06/H-08 + item-11 carry, commit `bb9a277`)** are implemented and verified; all eight implementation slices are closed, and the **change-level verdict remains pending** for the separate final change-level verification. The machine-readable envelope at the top of this file describes the **most recently admitted slice — S5c at `bb9a277`**. The previous head envelopes are preserved verbatim under "S5b Admitted Envelope (preserved)", "S5a Admitted Envelope (preserved)", "S4b Admitted Envelope (preserved)", "S4a Admitted Envelope (preserved)", "S3 Admitted Envelope (preserved)" and "S1 Admitted Envelope (preserved)"; every verdict and its own fresh evidence live in its own section.
+**Envelope counts (S5c)**: S5c verifies registry cleanup (Phase 5c tasks 5c.1-5c.7 — `5c.2` delivered early in S5a — plus the `RESIDUAL-S5b-06` item-11 carry) and declares **no delta-spec requirement or scenario of its own**, so its evidence matrix is task/items-based. The head envelope therefore reports the change's full delta-spec surface at `bb9a277`, which is complete and unchanged by S5c: **18/18 requirements and 38/38 scenarios** across `payment-method-currency-classification` (3/8), `api-error-contract` (4/9), `closure-orchestration-consolidation` (4/8), `api-dto-boundary` (4/7) and `async-cancellation-propagation` (3/6). S5c closes the last registered registry items (H-05/H-06/H-08) and item 11; no implementation phase remains open.
+**Verified revision**: the current `HEAD` is `bb9a277` (`fix(8.140): J findings S5c (cookie LAN + IDisposable + paginacion) - ANEXO 8.140`). The working tree was clean before and after every re-executed command (`git status --short` and `git diff --stat HEAD` empty; the test/coverage output directories are git-ignored). Earlier sections record the revision each of them was verified at: S1 at `c6c767f`, S2 at `77b2d16`, S3 at `579347b`, S4a at `829778c`, S4b at `65e038a`, S5a at `227ee5c` and S5b at `dab4d16`.
+**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding — superseded for S1. Per slice: S2 was `fail` on `fe1b60b` and S3 was `fail` on `200cdaa`; both were superseded by their re-verifications. S4a, S4b, S5a and S5b were `pass_with_warnings`; S5c has no prior verdict.
+**evidence_revision** (head envelope, S5c) is the SHA-256 of the ASCII string produced by joining, with `:`, the lowercase SHA-256 hex digests of the **twenty-one S5c production/test files** that exist at `bb9a277`, listed in order under "S5c Changed Files", each hashed from its on-disk bytes (clean working tree; `core.autocrlf=true`). Reproducibility caveat: the preserved S4b head did not reproduce from its recorded description (recomputed by the S5a verifier; `RESIDUAL-S5a-05`), and the S1/S4b recipes are likewise not fully reproducible as written (`RESIDUAL-S2-07`); the S5c recipe is stated exactly here so it can be recomputed from this revision's working tree.
 **Hash definition**: `build_output_hash` / `test_output_hash` are the SHA-256 of the captured combined stdout+stderr for the command execution reported above, normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed; identical recipe per section below.
 
 ### S1 Admitted Envelope (preserved)
@@ -133,6 +133,28 @@ build_output_hash: sha256:08db055121fa30e46a20b5895d0f067ea2959f343ec9cd3c36f0b5
 ```
 
 The S5a `evidence_revision` above is the SHA-256 of the colon-joined per-file SHA-256 hex digests of the nineteen S5a production/test files listed under "S5a Changed Files" (recipe as documented in the S5a scope block; see `RESIDUAL-S5a-05` for the reproducibility caveat); its build/test output hashes are those captured for the S5a command executions reported in the "Slice S5a" section.
+
+### S5b Admitted Envelope (preserved)
+
+The envelope below was this file's admitted machine-readable head from the S5b verification until this S5c verification re-pointed the head envelope to the S5c slice. It is preserved byte-for-byte as the S5b evidence record.
+
+```yaml
+schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:db66c3307cad5454779a3a0d93906c77e3661890c7b2932e05fb65c25f88a792
+verdict: pass_with_warnings
+blockers: 0
+critical_findings: 0
+requirements: 18/18
+scenarios: 38/38
+test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release
+test_exit_code: 0
+test_output_hash: sha256:f3d148878d34b0d3116695277bf2f90d0c3c84a9903bddf3ae8891eae6b9a2f1
+build_command: dotnet build CommandCenter.slnx -c Release
+build_exit_code: 0
+build_output_hash: sha256:4a64d60a53abe2326ac3d5a15d5f2031ffef05048f513dee5f5f93e95ca031c6
+```
+
+The S5b `evidence_revision` above is the SHA-256 of the colon-joined per-file SHA-256 hex digests of the twenty-three S5b production/test files listed under "S5b Changed Files" (recipe as documented in the S5b scope block); its build/test output hashes are those captured for the S5b command executions reported in the "Slice S5b" section.
 
 ### Completeness
 
@@ -1501,9 +1523,215 @@ Plus the documentation files `docs/reporte.txt` (ANEXO 8.140), `apply-progress.m
 
 **PASS_WITH_WARNINGS** — the S5b work unit at `dab4d16` genuinely closes registry group E (items 7/22/31: the three read paths are tuned and every write path keeps tracking, with two discriminating SQLite tests), group D (comments: zero explanatory comments on the group-D files, all marker-led `8.x-*` blocks kept, zero added comment lines) and most of group H (guards without breaking the S2-pinned 400, three route-preserving `...Async` renames with all test references re-pointed, `ClosureStatus` wired, the D5 409 -> 400 guard-order fix applied), plus both S5a carries (state-machine-aware IL scan with a discriminating probe; checkout token forwarding at both named sites). The single WARNING is `RESIDUAL-S5b-06`: registry item 11 (`WriteClosedClosureReceiptsAsync`'s `ThrowIfNull` idiom, deferred to this slice by three prior GGA tables) remains open — style-only, no behavioral impact. Every claim was re-executed: build 0/0, backend suite 1213/1213, the `Tuning|Guard` filter 8/8 (names listed), the `Cancellation` filter 16/16 (names listed), frontend 271/271 with clean lint, and the coverage gate reproduces the claim exactly (Core 0.8364 / Sales.Module 0.9073 / Inventory.Module 0.8251). No S5c creep and no tautology were found. Residuals are non-blocking and recorded: `RESIDUAL-S5b-01`..`-07`, `S5b-R1` and `SIZE-S5b`. S5b is cleared to chain into S5c.
 
+## Slice S5c — J Findings: H-05 / H-06 / H-08 + item-11 carry
+
+**Verdict: PASS_WITH_WARNINGS** — 0 blockers, **0 critical findings**. H-05 is genuinely closed: the `pos_jwt` cookie `Secure` flag is scheme-driven at all three write sites (login append `:169`, logout delete `:222`, change-password delete `:321`; cookie writes at `:174`, `:219`, `:318`) with the identical expression `Secure = Request?.IsHttps ?? false`, so the append/delete divergence trap AD-19 names cannot occur, and four new `AuthenticationTests` cases pin both schemes at append and both deletes (the pre-S5c `Secure = true` fails the HTTP assertions). The deliberate policy reversal matches AD-19 (`Secure = Request.IsHttps` at all three sites) and the maintainer-approved `Request.IsHttps` decision; D1's null-safe spelling is behaviorally identical inside the `Response?.Cookies != null` guard. H-06 is genuinely closed: the five registered view models implement `IDisposable` with the right mechanism (`WeakReferenceMessenger.UnregisterAll` on the three messenger VMs; `Interlocked.Exchange` CTS cancel+dispose plus unregistration on `CustomerManagement`/`CustomerPicker`), `MainViewModel.Dispose` is idempotent and disposes its disposable children, `MainWindow.OnClosed` and `CustomerPickerDialog.Closed` dispose exactly what they own, and every dispose path is double-dispose-safe (window hook + DI host). The one design-table deviation is D2: the four UserControls hosting DI-owned singleton VMs deliberately get **no** disposal hook — disposing a singleton on unload would break every later navigation, and the DI host owns those instances. H-08 is genuinely closed client-side: `RegisterPage.jsx` keeps the in-memory 25-per-page slicing and explicitly reuses the existing `limit` fetch parameter (server clamp 300, `CashDrawerController.cs:59-62`), with no `page`/`pageSize`/`offset` or new endpoint; two new frontend tests pin it and the suite is green. The item-11 carry (`RESIDUAL-S5b-06`) is closed: `WriteClosedClosureReceiptsAsync` now uses `ArgumentNullException.ThrowIfNull`. Every claim was re-executed: build 0/0, backend suite 1227/1227 (Debug and Release), the S5c focused filter 28/28 with all names enumerated, frontend 273/273 with clean lint, and the coverage gate reproduces the prior rates exactly (Core 0.8364 / Sales.Module 0.9073 / Inventory.Module 0.8251). Residuals are non-blocking: `S5c-R1` (AuthController RFC 7807 contract, out of slice) plus all previously carried warnings.
+
+**Verified revision**: `bb9a277` (`fix(8.140): J findings S5c (cookie LAN + IDisposable + paginacion) - ANEXO 8.140`; current `HEAD`). Working tree clean at verification time and after every command (`git status --short` and `git diff --stat HEAD` empty).
+**Slice delta**: `dab4d16` -> `bb9a277` — 24 files, `+589 / -36` (625 changed lines): 21 production/test files (2 new — `CommandCenter.Tests/Unit/ViewModelDisposalTests.cs`, `Web.Frontend/src/pages/RegisterPage.client-pagination.test.js`; 19 modified) plus `docs/reporte.txt` (+117, ANEXO 8.140 S5c), `apply-progress.md` (+86) and `tasks.md` (+8 / -6: the six remaining Phase 5c checkboxes plus the fold-in note).
+**Scope basis**: Phase 5c tasks 5c.1-5c.7 (`5c.2` delivered early in S5a), findings H-05/H-06/H-08, the `RESIDUAL-S5b-06` item-11 carry, and the `S5c-R1` registration. No spec-level requirements are declared by this slice.
+
+### S5c Re-executed Evidence (verbatim)
+
+Every command below was re-executed independently on `bb9a277` after the working tree was confirmed clean. `stderr` was merged into the captured stream. No result was taken from `apply-progress.md` or the ANEXO.
+
+**1. Build** - `dotnet build CommandCenter.slnx -c Release` - exit `0` - matches the claim (0/0)
+
+```text
+Compilación correcta.
+    0 Advertencia(s)
+    0 Errores
+
+Tiempo transcurrido 00:01:30.15
+```
+
+captured-output hash: `sha256:712488c6859080b77d683709c21408cfab263d08f6b3fe59c9bfd7e2bc67da18`
+
+**2. Backend tests (full, the command declared by the change's Verification section)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj` - exit `0` - matches the claim (1227/1227, 0 skipped)
+
+```text
+Correctas! - Con error:     0, Superado:  1227, Omitido:     0, Total:  1227, Duración: 13 s - CommandCenter.Tests.dll (net10.0)
+```
+
+captured-output hash: `sha256:c8340a28b8174cc33d16ea9a2ee4281f132ee0d8984b434b5dffb24b092ff1df`
+
+The suite grew 1213 -> 1227 exactly as claimed (+4 H-05 `AuthenticationTests` cases +10 H-06 `ViewModelDisposalTests` cases).
+
+**3. S5c focused filter (Release)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --filter "FullyQualifiedName~AuthenticationTests|FullyQualifiedName~ViewModelDisposal"` - exit `0` - matches the claim (28/28)
+
+```text
+Correctas! - Con error:     0, Superado:    28, Omitido:     0, Total:    28, Duración: 2 s - CommandCenter.Tests.dll (net10.0)
+```
+
+captured-output hash: `sha256:5df1e37ffe1c689b89b220d9a7df967198cb39fb06eb28ca679dfaa429261ce8`
+
+`--list-tests` over the same filter resolves exactly the 28 names: 18 `AuthenticationTests` (including the 4 new H-05 cases — `Login_WithWebPlatform_OverHttps_MarksCookieSecure`, `Logout_OverHttps_DeletesCookieWithSecureFlag`, `ChangePassword_Success_DeletesCookieWithSchemeMatchingSecureFlag(isHttps: False/True)` — and the two HTTP tests extended with `Assert.False`) plus all 10 `ViewModelDisposalTests` (6-type `IDisposable` theory + unregistration/idempotency + `MainViewModel` child disposal + the two debounce-cancellation cases).
+
+**4. Backend tests (full Release, coverage run)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings` - exit `0` - 1227/1227 (Release cross-check)
+
+```text
+Correctas! - Con error:     0, Superado:  1227, Omitido:     0, Total:  1227, Duración: 10 s - CommandCenter.Tests.dll (net10.0)
+```
+
+captured-output hash: `sha256:87c1881286a1209f015891e951e50c0ac7fe1a5f21b707e75fe229e80b8092c4`
+
+**5. Frontend tests** - `npm test` (Web.Frontend) - exit `0` on the first execution - matches the claim (273/273)
+
+```text
+ℹ tests 273
+ℹ suites 59
+ℹ pass 273
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6160.0075
+```
+
+captured-output hash: `sha256:c30f0321d722aab94420ca9a2416a36f26f52f810195daa38e14fae52bd5e9e5`
+
+The run includes the new suite `RegisterPage — H-08 client-side pagination` (2/2) and the pre-existing `RegisterClosePage — REQ-PMC-05 no local heuristic` (3/3); 271 -> 273 exactly as claimed.
+
+**6. Frontend lint** - `npm run lint` (Web.Frontend, oxlint) - exit `0`, no findings - matches the claim
+
+```text
+> web-frontend@0.0.0 lint
+> oxlint
+```
+
+captured-output hash: `sha256:1472f392035e28478ac827e6e5301e8adde36ba5a0a27bc61cdf6e42453bc7d3`
+
+**7. Coverage gate** - `python scripts/check-coverage.py CommandCenter.Tests/TestResults/7749c086-846d-4558-afee-2af311ab96fa/coverage.cobertura.xml` (cobertura produced by command 4) - exit `0`
+
+```text
+Cobertura de dominio por capa (line-rate, excluye *.Migrations.*):
+  Core               rate=0.8364 min=0.7000 gap_a_70%=0.0000 [OK]
+  Sales.Module       rate=0.9073 min=0.8000 gap_a_70%=0.0000 [OK]
+  Inventory.Module   rate=0.8251 min=0.7200 gap_a_70%=0.0000 [OK]
+Umbrales: Core >= 0.70 (politica); Sales.Module >= 0.80 e Inventory.Module >= 0.72 (baselines 8.26-E4, deuda saldada). Detalle en docs/reporte.txt Rev 8.26.
+```
+
+captured-output hash: `sha256:d4f78b29fe390a8f33eb60326aea8161b62f909dff7e9bb50f075a9c0278aea2`
+
+The gate reproduces the S5b claim **exactly** (Core 0.8364 / Sales.Module 0.9073 / Inventory.Module 0.8251) and all three `tasks.md` thresholds pass. S5c's backend change is a cookie flag in `AuthController`; the domain-layer rates are unchanged, as expected.
+
+**Hash definition (this section)**: `sha256` is the SHA-256 over the captured combined stdout+stderr, normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed.
+
+**Environment note**: `TEST_POSTGRES_CONNECTION` is unset, so Postgres-gated classes continue to early-return as vacuous passes. No S5c test is Postgres-gated: `AuthenticationTests` runs against the in-memory store with a real `AuthController`, `ViewModelDisposalTests` runs on mocks only, and the H-08 test is a source-contract test.
+
+### S5c Finding-to-Closure Matrix (task/items-based; no spec-level requirements)
+
+| Finding / Task | Change (verifier-read source) | Runtime evidence | Result |
+|----------------|-------------------------------|------------------|--------|
+| H-05 / 5c.1 | `Secure = Request?.IsHttps ?? false` at all three `pos_jwt` writes (`AuthController.cs:169/174`, `:222/219`, `:321/318`) | 4 new + 2 extended `AuthenticationTests` cases over real `DefaultHttpContext` HTTP **and** HTTPS; focused filter 28/28 | **CLOSED** |
+| H-06 / 5c.3 | `IDisposable` on the five registered VMs; correct mechanism per VM | `ViewModelDisposalTests` 10/10 (unregistration, double dispose, debounce cancellation) | **CLOSED** |
+| H-06 / 5c.4 | `MainViewModel.Dispose` idempotent + child disposal; `MainWindow.OnClosed` hook; `CustomerPickerDialog.Closed` hook | `MainViewModel_Dispose_IsIdempotent_AndDisposesDisposableChildren`; source inspection of both hooks | **CLOSED** |
+| H-06 / 5c.6 | Six existing test files re-pointed to dispose their VMs (`using var` / alias) | Compile + full suite green; diff inspected | **CLOSED** |
+| H-08 / 5c.5 | Client-side pagination unchanged; history fetch reuses `limit` (`RegisterPage.jsx:53,70,131-133`) | `RegisterPage.client-pagination.test.js` 2/2; server contract untouched (`CashDrawerController.cs:59-62`) | **CLOSED** |
+| H-14 / 5c.2 | Delivered in S5a (`MainWindow.OnClosing` -> `void` + `RunShutdownAsync` + `SafeFireAndForget`); untouched by S5c | S5a evidence (reflection + IL scan); source re-read at `MainWindow.xaml.cs:23-106` | **CLOSED EARLIER (S5a)** |
+| carry (item 11 / `RESIDUAL-S5b-06`) | `DailyClosureService.cs:567` now `ArgumentNullException.ThrowIfNull(closure);` | Source read; full suite green; behavior-neutral (same exception type) | **CLOSED** |
+
+### H-05 Evidence (scheme-driven `Secure`, all three sites)
+
+| Site | Cookie call | `Secure` expression | Tests pinning both schemes |
+|------|-------------|---------------------|----------------------------|
+| Login append (web platform) | `Response.Cookies.Append("pos_jwt", ...)` `:174`, options `:166-173` | `Request?.IsHttps ?? false` `:169` | `Login_WithWebPlatform_SetsHttpOnlyCookieAndReturnsNullTokenInBody` (HTTP -> no `Secure`) + `Login_WithWebPlatform_OverHttps_MarksCookieSecure` (HTTPS -> `Secure`) |
+| Logout delete | `Response.Cookies.Delete("pos_jwt", ...)` `:219`, options `:219-225` | `Request?.IsHttps ?? false` `:222` | `Logout_RemovesPosJwtCookie` (HTTP -> no `Secure`) + `Logout_OverHttps_DeletesCookieWithSecureFlag` (HTTPS -> `Secure`) |
+| Change-password delete | `Response.Cookies.Delete("pos_jwt", ...)` `:318`, options `:318-324` | `Request?.IsHttps ?? false` `:321` | `ChangePassword_Success_DeletesCookieWithSchemeMatchingSecureFlag(isHttps: False/True)` (theory asserts flag == scheme) |
+
+- **No divergence trap**: a repo-wide `pos_jwt` search finds exactly these three writes plus one read (`ServiceCollectionExtensions.cs:134` reads the cookie for JWT extraction — no flag). All three writes use the identical expression, so append/delete cannot disagree.
+- **Discriminating**: pre-S5c every site hardcoded `Secure = true`, so the three HTTP assertions (`Assert.False(...)`) fail on the old code; a partial revert (only one site scheme-driven) fails the paired HTTP/HTTPS case for that site. The helper regex `(?i)(?:^|;\s*)secure(?:;|$)` matches the `Set-Cookie` attribute, not incidental substrings.
+- **AD-19 coherence**: AD-19 prescribes exactly `Secure = Request.IsHttps` at the append and both deletes and names the mismatch trap; the implementation matches. D1's `Request?.IsHttps ?? false` is the same behavior inside the `Response?.Cookies != null` guard (a controller action always has a request); the `??` exists only because the Release build (`TreatWarningsAsErrors`) rejects the bare nullable member access. The policy reversal (cookie no longer unconditionally `Secure`) is the deliberate decision recorded in AD-19 and the maintainer-approved `Request.IsHttps` choice; on plain-HTTP LAN the browser now accepts the cookie — accepted tradeoff, secret material still protected by `HttpOnly` + `SameSite=Strict`.
+
+### H-06 Evidence (view-model disposal)
+
+| VM | Interface | Dispose body | Lifetime / owner | Test |
+|----|-----------|--------------|------------------|------|
+| `CashDrawerViewModel` | `:13` `IDisposable` | `:435-438` `UnregisterAll` (3 messenger handlers `:143-160`) | DI singleton (`App.xaml.cs:255`) | contract + unregistration + double dispose |
+| `PendingOrdersViewModel` | `:15` | `:313-316` `UnregisterAll` (2 handlers `:88-104`) | DI singleton (`App.xaml.cs:213`) | contract + unregistration + double dispose |
+| `ExchangeRateViewModel` | `:13` | `:247-250` `UnregisterAll` (1 handler `:98-101`) | DI singleton (`App.xaml.cs:224`) | contract + unregistration + double dispose |
+| `CustomerManagementViewModel` | `:17` | `:319-330` `Interlocked.Exchange(ref _searchCts, null)` -> cancel + dispose (catches `ObjectDisposedException`) + `UnregisterAll` | DI transient (`App.xaml.cs:204`) captive in singleton `UsersManagementViewModel:19,74`; container disposes tracked transients at host shutdown | contract + debounce cancellation (700 ms, no service call, `_searchCts` null) + double dispose |
+| `CustomerPickerViewModel` | `:16` | `:339-350` same CTS pattern + `UnregisterAll` | Manually created per dialog (`WpfDialogService.Modals.cs`); disposed by the dialog hook | contract + debounce cancellation + double dispose |
+| `MainViewModel` | `:11` | `:109-153` `Interlocked.Exchange(ref _disposed, 1)` guard; unsubscribes health/login/session; disposes disposable children | DI singleton (`App.xaml.cs:209`) disposed by the host **and** `MainWindow.OnClosed:110` | contract + `Dispose()` twice -> `StopPolling` once + children unregistered |
+
+- **Window/dialog hooks dispose only what they own**: `MainWindow.OnClosed` disposes the `MainViewModel` DataContext (a DI singleton, idempotent guard); `CustomerPickerDialog.Closed` disposes its per-open VM (the only manually created one; `:18`). The four UserControls hosting DI-owned singleton VMs (`CashDrawerView`, `PendingOrdersView`, `ExchangeRateView`, `UsersManagementView`) carry no hook — D2 — verified by a repo-wide scan of `Desktop.Client/Views/*.xaml.cs` (the only `Dispose()`/DataContext-disposal hooks are the pre-existing per-dialog ones plus this new dialog hook).
+- **No DI-singleton double-dispose hazard**: children can be disposed twice at most (DI host + `MainViewModel.Dispose`), and each child Dispose is idempotent (`UnregisterAll` on an empty registration set is a no-op; the CTS path re-reads `null` after `Interlocked.Exchange`). `MainViewModel` itself is guarded; the test exercises the two-dispose path.
+- **No leak path found**: every VM that registers with `WeakReferenceMessenger` unregisters it; the two search VMs cancel and dispose their debounce CTS; per-open VMs have close hooks; long-lived singletons are owned by the DI container.
+
+### H-08 Evidence (client-side pagination)
+
+- `RegisterPage.jsx:52` `ITEMS_PER_PAGE = 25`; `:131-133` `totalPages`/`startIndex`/`filteredTransactions.slice(...)` — all in-memory; `:53` `HISTORY_FETCH_LIMIT = 300`; `:70` `api.get('/api/cashdrawer/history?limit=${HISTORY_FETCH_LIMIT}')`.
+- **No server contract change**: `CashDrawerController.cs:59-62` `GetHistory([FromQuery] int limit = 300, ...)` clamps `1..300` — the fetch reuses the pre-existing parameter. No `page`/`pageSize`/`offset`, no new endpoint. The commit's server-side diffs are `AuthController.cs` (H-05) and `PipelineExtensions.cs` (comment); the `RegisterPage.jsx` hunk is exactly `+2 / -1`.
+- **Test**: `RegisterPage.client-pagination.test.js` 2 cases — (a) in-memory slicing (`ITEMS_PER_PAGE=25`, `filteredTransactions.slice(`, `Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)`); (b) `HISTORY_FETCH_LIMIT <= 300`, the URL reuses `limit=${HISTORY_FETCH_LIMIT}`, and no `page=`/`pageSize`/`offset=`/new history endpoint. It is a source-contract test (same pattern as the REQ-PMC-05 Web tests); a server-paging rewrite would fail it. Green 2/2 in the full frontend run.
+- **AD-19 coherence**: AD-19 says "H-08: client-side only (reuse the existing `limit`; no server contract change)" and explicitly rejects a new pagination endpoint; the implementation matches, and the maintainer decision confirmed the analysis-doc `page/pageSize` suggestion is out.
+
+### Carry Evidence (item 11 / `RESIDUAL-S5b-06`)
+
+`DailyClosureService.WriteClosedClosureReceiptsAsync:565-567` now reads `ArgumentNullException.ThrowIfNull(closure);` — the repo idiom the S5b verification required. Same exception type and `paramName` semantics as the removed `if (closure == null) throw ...`; no behavioral change. No dedicated test exists for the null path, but the change is a compiler-idiom swap on a previously verified guard; the full suite is green and the source was re-read. `RESIDUAL-S5b-06` is closed.
+
+### S5c Deviation Assessment (D1-D5)
+
+| Deviation | Claim | Assessment | Classification |
+|-----------|-------|------------|----------------|
+| D1 — `Request?.IsHttps ?? false` | identical to AD-19's `Request.IsHttps`; needed because the bare access raises CS8602 under `TreatWarningsAsErrors` | Confirmed: all three sites sit inside the `Response?.Cookies != null` guard where a request always exists; behavior is pinned by the HTTP/HTTPS tests; build 0/0 proves the warning rationale is real | **Accept** (spelling-only deviation) |
+| D2 — no disposal hook on the four UserControls | design's File Changes table listed the views; hooks would dispose DI-owned singletons on unload and break later navigation | Confirmed technically correct: the three VMs are singletons, `CustomerManagementViewModel` is a container-tracked transient; the DI host owns disposal. The design table omitted the lifetime nuance | **WARNING** (design deviation, justified; non-blocking) |
+| D3 — H-08 client-side only | AD-19 prescribes client-side only and the maintainer rejected the server-paging recommendation | Confirmed against AD-19 and the unchanged server contract | **Accept** (matches AD-19) |
+| D4 — `PipelineExtensions.cs` comment truth-fix | its `8.7-B10` block claimed the cookie "es Secure siempre", false after H-05 | Comment-only edit inside a marker-led `8.7-B10` block; AD-18 keeps marker-led comments; no code change | **Accept** |
+| D5 — idempotent `MainViewModel.Dispose` | required because the DI host and `MainWindow.OnClosed` can both dispose it | Confirmed required and implemented with the `Interlocked` guard; double-dispose test passes | **Accept (required)** |
+
+### S5c Scope Check
+
+- **No creep beyond S5c + carry**: the 21 production/test files map to the registered work — `AuthController.cs` + `AuthenticationTests.cs` (5c.1/H-05), the six VM files + `MainWindow.xaml.cs` + `CustomerPickerDialog.xaml.cs` + `ViewModelDisposalTests.cs` + the six re-pointed test files (5c.3/5c.4/5c.6/H-06), `RegisterPage.jsx` + `RegisterPage.client-pagination.test.js` (5c.5/H-08), `DailyClosureService.cs` 1-line (item-11 carry), `PipelineExtensions.cs` 2-line comment (D4). `tasks.md` flips exactly the six remaining Phase 5c checkboxes and keeps `5c.2` checked with its delivered-early note.
+- **GGA classification audited — the findings are genuinely pre-existing/out-of-slice.** Spot-verified independently at `bb9a277`: (a) `AuthController` anonymous `{ Message }` error objects (14 sites, `:73-327`) are untouched by the diff and outside the S2 sweep — `S5c-R1` registers them; (b) `AuthController` async actions are CT-less (`Login:69`, `Logout:200`, `ChangePassword:232`, `GetMe:332`) — never registered in S5a's items 4/9/16/21/27; (c) the entity-returning legacy `CreateClosureAsync(DailyClosure closure, ...)` still exists (`DailyClosureService.cs:112`) — pre-existing `S3-07`/`S4a-R1`; (d) class sizes are pre-existing (`DailyClosureService.cs` 650 lines, `RegisterPage.jsx` 591 lines; S5c net delta 0 and +1 line on those files) — `S3-06`/`WARNING-07`/`S4a-R2` plus the S4b GGA note; (e) the diff's added comment-path lines are 6 marker-led `8.7-B10` `//` lines (4 in `AuthController`, 2 continuing the existing `PipelineExtensions` marker block), one JSDoc block in the new test file, and one regex false positive — no non-marker explanatory comment was added; (f) any other finding inside a touched file (e.g. the `RegisterPage.jsx` `amountUsd` display fallback) is pre-existing by construction, since the file's S5c hunk is 3 lines.
+- **`S5c-R1` registered**: `apply-progress.md` S5c section ("Registered for follow-up") and `docs/reporte.txt:10074`/`:10087` (ANEXO 8.140 S5c: "incluyo AuthController -> S5c-R1", "Quedan para follow-up: S5c-R1, S5b-R1, WARNING-04,"). Confirmed.
+- **Size signal (`SIZE-S5c`)**: 24 files, **625 changed lines (589 inserted / 36 deleted)**; authored non-doc bytes are **408 lines** (85 production + 323 test), the rest is documentation (`reporte.txt` 117, `apply-progress.md` 86, `tasks.md` 14). The 400-line review budget is exceeded at the authored level, driven by the two new test files (123 + 55) and the `AuthenticationTests` expansion (+113); the production surface is only 85 lines. The slice was authorized as a chained work unit; forecast was ~200 lines, actual authored ~2x — consistent with the prior slices' pattern.
+
+### S5c Residual Warnings (non-blocking)
+
+- **`S5c-R1` (registered, out of slice)** — `AuthController` error contract: the anonymous `{ Message }` responses (login/logout/change-password) do not follow RFC 7807; AuthController was never part of the S2 sweep.
+- **D2 design deviation** — the four UserControls listed in the design File Changes table were not modified (singleton-lifetime reason); recorded as WARNING, technically justified, no behavioral risk.
+- **Carried, untouched**: `WARNING-04`, `WARNING-07`/`S3-06`/`S4a-R2`, `S3-07`/`S4a-R1`, `S5b-R1` (H-03 in `CashDrawerController`), `S5a-R1` (remaining CT-less surfaces), mutable DTOs in `Sales.Module.Interfaces`, `PaymentMethodDtos.cs:44` `"Bs.S"` default, `RESIDUAL-S5a-01` remaining surfaces/`-03`..`-05`, `RESIDUAL-S5b-01`..`-05`/`-07`, `RESIDUAL-S4b-04`, `SIZE-S5a`/`SIZE-S5b`.
+- **SUGGESTION** — `HistoryWindowBoundsTests` and `PendingOrdersReentrancyTests` dispose through an alias (`using var vmDisposer = vm;`) where `using var vm = ...` would be equivalent and clearer; the alias pattern is harmless.
+- **SUGGESTION (bookkeeping)** — `design.md`'s Open Questions for H-05/H-06/H-08 remain unchecked boxes although AD-19 records the maintainer decisions and the implementation landed; close them in a docs pass.
+- **Closed by this slice (verified)**: H-05, H-06, H-08 and `RESIDUAL-S5b-06` (item 11); H-14 was closed in S5a. The J findings registered for S5c are all closed.
+
+### S5c Changed Files
+
+The twenty-one S5c production/test files below, in this order (the `git show --name-status` order minus the three documentation files), are the input to the head envelope's `evidence_revision`.
+
+| File | Action | Role in S5c |
+|------|--------|-------------|
+| `Backend.API/Controllers/AuthController.cs` | Modified | H-05: `Secure = Request?.IsHttps ?? false` at the 3 `pos_jwt` sites; `8.7-B10` comments corrected |
+| `Backend.API/Startup/PipelineExtensions.cs` | Modified | `8.7-B10` comment clause corrected (D4) |
+| `CommandCenter.Tests/AuthenticationTests.cs` | Modified | H-05: 4 new cases + 2 HTTP assertions extended + helpers |
+| `CommandCenter.Tests/CashDrawerClosureTests.cs` | Modified | Dispose the created VMs (5c.6) |
+| `CommandCenter.Tests/Unit/CashDrawerRbacAndPaymentMethodsTests.cs` | Modified | Dispose the created VMs (5c.6) |
+| `CommandCenter.Tests/Unit/HistoryWindowBoundsTests.cs` | Modified | Dispose the created VMs (5c.6) |
+| `CommandCenter.Tests/Unit/PendingOrdersClaimTests.cs` | Modified | Cleanup via `Dispose()` instead of manual `UnregisterAll` (5c.6) |
+| `CommandCenter.Tests/Unit/PendingOrdersReentrancyTests.cs` | Modified | Dispose the created VMs (5c.6) |
+| `CommandCenter.Tests/Unit/ViewModelDisposalTests.cs` | Created | H-06: 10 disposal cases |
+| `CommandCenter.Tests/UserPasswordAndStockFormattingTests.cs` | Modified | Dispose the created VMs (5c.6) |
+| `Desktop.Client.Core/ViewModels/CashDrawerViewModel.cs` | Modified | `IDisposable` + `UnregisterAll` |
+| `Desktop.Client.Core/ViewModels/CustomerManagementViewModel.cs` | Modified | `IDisposable`: CTS cancel/dispose + `UnregisterAll` |
+| `Desktop.Client.Core/ViewModels/CustomerPickerViewModel.cs` | Modified | `IDisposable`: CTS cancel/dispose + `UnregisterAll` |
+| `Desktop.Client.Core/ViewModels/ExchangeRateViewModel.cs` | Modified | `IDisposable` + `UnregisterAll` |
+| `Desktop.Client.Core/ViewModels/MainViewModel.cs` | Modified | Idempotent `Dispose` + child disposal |
+| `Desktop.Client.Core/ViewModels/PendingOrdersViewModel.cs` | Modified | `IDisposable` + `UnregisterAll` |
+| `Desktop.Client/MainWindow.xaml.cs` | Modified | `OnClosed` disposes the DataContext |
+| `Desktop.Client/Views/CustomerPickerDialog.xaml.cs` | Modified | `Closed` disposes the per-dialog VM |
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | `ThrowIfNull` idiom (item-11 carry) |
+| `Web.Frontend/src/pages/RegisterPage.client-pagination.test.js` | Created | H-08: 2 client-pagination contract cases |
+| `Web.Frontend/src/pages/RegisterPage.jsx` | Modified | H-08: explicit reuse of the existing `limit` |
+
+Plus the documentation files `docs/reporte.txt` (ANEXO 8.140 S5c), `apply-progress.md` (S5c section) and `tasks.md` (Phase 5c checkboxes + fold-in note), which are **not** part of `evidence_revision`.
+
+### S5c Verdict
+
+**PASS_WITH_WARNINGS** — the S5c work unit at `bb9a277` genuinely closes the three J findings and the item-11 carry. H-05: all three `pos_jwt` writes are scheme-driven with one identical expression (no append/delete divergence trap), pinned by four new tests across both schemes and matching AD-19's deliberate policy reversal. H-06: the five registered VMs implement `IDisposable` with the correct mechanism, `MainViewModel.Dispose` is idempotent, the window and dialog hooks dispose only what they own, every double-dispose path is safe, and no leak path was found. H-08: the pagination stays client-side over the existing `limit` contract, with no server change, pinned by two new frontend tests. The item-11 `ThrowIfNull` idiom is applied, closing `RESIDUAL-S5b-06`. Every claim was re-executed: build 0/0, backend 1227/1227 (Debug and Release), the S5c filter 28/28 with names enumerated, frontend 273/273 with clean lint, and the coverage gate reproduces exactly (Core 0.8364 / Sales.Module 0.9073 / Inventory.Module 0.8251). The D2 design-table deviation (four UserControls left unmodified) is recorded as a justified WARNING; `S5c-R1` is registered as out-of-slice follow-up. S5c is complete and cleared for the final change-level verification.
+
 ### Change-Level Verdict
 
-**Pending**. The change cannot receive a change-level verdict while the remaining S5c tasks (H-05 cookie `Secure`, H-06 view-model disposal, H-08 pagination) are unchecked. S1, S2, S3, S4a, S4b, S5a and S5b are each verified `pass_with_warnings`. Delta-spec surface: **18 of 18 requirements and 38 of 38 scenarios complete** (`payment-method-currency-classification` 3/8, `api-error-contract` 4/9, `closure-orchestration-consolidation` 4/8, `api-dto-boundary` 4/7, `async-cancellation-propagation` 3/6 — the last one closed by S5a, including the H-14/AD-13 fold-in). Pending is the registry cleanup of S5c (`5c.2`/H-14 already delivered in S5a) plus the registry items S5b did not close — item 11's `ThrowIfNull` idiom (`RESIDUAL-S5b-06`) — and the carried `WARNING-04`, `WARNING-07`/`S3-06`/`S4a-R2`, `S3-07`/`S4a-R1`, alongside the S5a residuals (`RESIDUAL-S5a-01` remaining surfaces, `-03`..`-05`, `S5a-R1`, `SIZE-S5a`) and the new S5b residuals (`RESIDUAL-S5b-01`..`-07`, `S5b-R1`, `SIZE-S5b`). `S4b-R1`, `RESIDUAL-S5a-02` and the two named `RESIDUAL-S5a-01` sites are closed by S5b. S5b is cleared to chain into S5c.
+**Pending** — the final change-level verification remains to be run as a separate pass. All eight implementation slices are now verified (`pass_with_warnings`): S1, S2, S3, S4a, S4b, S5a, S5b and S5c at `bb9a277`. Delta-spec surface: **18 of 18 requirements and 38 of 38 scenarios complete** (`payment-method-currency-classification` 3/8, `api-error-contract` 4/9, `closure-orchestration-consolidation` 4/8, `api-dto-boundary` 4/7, `async-cancellation-propagation` 3/6 — the last one closed by S5a, including the H-14/AD-13 fold-in). S5c closed the J findings (H-05/H-06/H-08) and the item-11 `ThrowIfNull` carry (`RESIDUAL-S5b-06`); H-14 was closed in S5a. Residuals carried into the final pass (all non-blocking and outside the registered slices): `S5c-R1` (AuthController error contract), `S5b-R1` (H-03 in `CashDrawerController`), `S5a-R1`, `WARNING-04`, `WARNING-07`/`S3-06`/`S4a-R2`, `S3-07`/`S4a-R1`, the mutable DTOs in `Sales.Module.Interfaces`, `PaymentMethodDtos.cs:44`, `RESIDUAL-S5a-01`/`-03`..`-05`, `RESIDUAL-S5b-01`..`-05`/`-07`, `RESIDUAL-S4b-04` and the `SIZE-*` signals. No implementation work remains; the change-level verdict is the remaining step.
 
 ### Verdict
 
