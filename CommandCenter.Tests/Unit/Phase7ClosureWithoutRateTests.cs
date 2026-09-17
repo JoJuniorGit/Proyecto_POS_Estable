@@ -152,6 +152,10 @@ public class Phase7ClosureWithoutRateTests
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.UserId).Returns("1");
 
+        mockDailyClosure
+            .Setup(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("No se puede cerrar el turno: no existe una tasa BCV registrada para hoy."));
+
         var controller = new ShiftsController(
             mockCashDrawer.Object,
             mockDailyClosure.Object,
@@ -168,10 +172,10 @@ public class Phase7ClosureWithoutRateTests
             DeclaredAmounts = new List<DeclaredAmountDto>()
         };
 
-        var ex3 = await Assert.ThrowsAsync<InvalidOperationException>(async () => await controller.CloseShift(request));
+        var ex3 = await Assert.ThrowsAsync<InvalidOperationException>(async () => await controller.CloseShift(request, CancellationToken.None));
         Assert.Contains("tasa BCV", ex3.Message, StringComparison.OrdinalIgnoreCase);
 
-        mockDailyClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Times.Never);
+        mockDailyClosure.Verify(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()), Times.Once);
         mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
     }
 }

@@ -315,16 +315,16 @@ public class ResidualRemediationLote26Tests
         {
             DeclaredAmounts = new List<DeclaredAmountDto>
             {
-                new DeclaredAmountDto { PaymentMethodId = 2, PaymentMethodName = "Pago Movil", Amount = 100m, Currency = "Bs.S" },
-                new DeclaredAmountDto { PaymentMethodId = 2, PaymentMethodName = "Pago Movil", Amount = 250m, Currency = "Bs.S" }
+                new DeclaredAmountDto { PaymentMethodId = 2, PaymentMethodName = "Pago Movil", Amount = 100m },
+                new DeclaredAmountDto { PaymentMethodId = 2, PaymentMethodName = "Pago Movil", Amount = 250m }
             }
         };
 
-        var result = await controller.CloseShift(request);
+        var result = await controller.CloseShift(request, CancellationToken.None);
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         Assert.NotNull(badRequest.Value);
-        mockDailyClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Times.Never);
+        mockDailyClosure.Verify(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()), Times.Never);
         mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
     }
 

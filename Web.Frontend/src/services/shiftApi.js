@@ -3,7 +3,7 @@ import { api } from './api';
 /**
  * Envia el cierre ciego de turno enviando el arreglo de montos declarados
  * estrictamente en la moneda nativa de cada método de pago.
- * @param {Array<{paymentMethodId: number, paymentMethodName: string, amount: number, currency: string}>} declaredAmounts
+ * @param {Array<{paymentMethodId: number, paymentMethodName: string, amount: number}>} declaredAmounts
  * @param {string} cashierName
  * @param {string} cashierCedula
  */
