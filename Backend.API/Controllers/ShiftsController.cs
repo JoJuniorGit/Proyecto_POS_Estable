@@ -108,19 +108,25 @@ public class ShiftsController : ControllerBase
 
         try
         {
-            // AD-1/5: build command from declarations; delegate to service.
-            // AD-1: no request.Currency reads — classification happens in the service via resolver.
+            decimal exchangeRate = await GetTodayExchangeRateAsync();
+            if (exchangeRate <= 0)
+            {
+                return Problem(
+                    detail: "No se puede cerrar el turno: no existe una tasa BCV registrada para hoy. Registre la tasa del día antes de cerrar la caja.",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
             var command = new CreateClosureCommand(
                 ClosureDateUtc: DateTime.UtcNow,
                 UserId: parsedAuthUserId?.ToString() ?? cashierName,
                 Observation: cashierCedula,
+                ExchangeRate: exchangeRate,
                 Declarations: request.DeclaredAmounts
                     .Select(d => new DeclaredPaymentAmount(d.PaymentMethodId, d.Amount))
                     .ToList());
 
             var result = await _dailyClosureService.CreateClosureFromCommandAsync(command, cancellationToken);
 
-            // Build report from service result (uses resolver classification)
             var report = new ShiftReportDto
             {
                 ShiftId = result.ClosureId,
@@ -150,7 +156,7 @@ public class ShiftsController : ControllerBase
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(Problem(ex.Message));
+            return Problem(detail: ex.Message, statusCode: StatusCodes.Status400BadRequest);
         }
         catch (DbUpdateException)
         {
@@ -212,7 +218,6 @@ public class ShiftsController : ControllerBase
             return NotFound(new { Message = "El reporte de cierre solicitado no existe." });
         }
 
-        // AD-4: single projection via ShiftReportMapper (report ↔ receipt agreement by construction)
         var details = ShiftReportMapper.MapDetails(closure.Details, exchangeRate);
 
         string cashierName = closure.UserId ?? "Cajero Activo";

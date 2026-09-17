@@ -13,10 +13,6 @@ public class ExpectedTotalDto
     public decimal ExpectedAmountBsS { get; set; }
 }
 
-/// <summary>
-/// Lightweight result of a closure creation, consumed by the controller
-/// to build the ShiftReportDto response.
-/// </summary>
 public sealed record CloseShiftResult(
     int ClosureId,
     string CashierName,

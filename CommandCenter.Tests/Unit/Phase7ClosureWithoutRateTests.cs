@@ -172,10 +172,14 @@ public class Phase7ClosureWithoutRateTests
             DeclaredAmounts = new List<DeclaredAmountDto>()
         };
 
-        var ex3 = await Assert.ThrowsAsync<InvalidOperationException>(async () => await controller.CloseShift(request, CancellationToken.None));
-        Assert.Contains("tasa BCV", ex3.Message, StringComparison.OrdinalIgnoreCase);
+        var result = await controller.CloseShift(request, CancellationToken.None);
 
-        mockDailyClosure.Verify(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()), Times.Once);
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Contains("tasa BCV", problemDetails.Detail, StringComparison.OrdinalIgnoreCase);
+
+        mockDailyClosure.Verify(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()), Times.Never);
         mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
     }
 }

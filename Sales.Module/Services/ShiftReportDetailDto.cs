@@ -1,8 +1,5 @@
 namespace Sales.Module.Services;
 
-/// <summary>
-/// DTO for shift report detail lines. Used by both the report endpoint and the close response.
-/// </summary>
 public class ShiftReportDetailDto
 {
     public int PaymentMethodId { get; set; }

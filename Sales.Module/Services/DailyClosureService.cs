@@ -210,10 +210,7 @@ public class DailyClosureService : IDailyClosureService
         CreateClosureCommand command,
         CancellationToken cancellationToken)
     {
-        // AD-1: classify every declared method via PaymentMethodCurrencyResolver
-        // AD-3: ExpectedAmountBsS verbatim; ActualAmountBsS = declaredNative × rate
-
-        decimal exchangeRate = await ResolveEffectiveRateAsync(cancellationToken);
+        decimal exchangeRate = command.ExchangeRate;
         if (exchangeRate <= 0)
         {
             throw new InvalidOperationException(
@@ -237,7 +234,6 @@ public class DailyClosureService : IDailyClosureService
                 nameof(command));
         }
 
-        // Build closure details with resolver classification (AD-1/3)
         var details = new List<ClosureDetail>();
         var reportDetails = new List<ShiftReportDetailResult>();
 
@@ -246,7 +242,6 @@ public class DailyClosureService : IDailyClosureService
             var expected = expectedById[declared.PaymentMethodId];
             string currency = PaymentMethodCurrencyResolver.Resolve(expected.PaymentMethodName);
 
-            // AD-3: ExpectedAmountBsS verbatim; ActualAmountBsS = declaredNative × rate
             decimal actualAmountBsS = currency == PaymentMethodCurrencyResolver.Usd
                 ? declared.Amount * exchangeRate
                 : declared.Amount;
@@ -262,7 +257,6 @@ public class DailyClosureService : IDailyClosureService
                 DifferenceBsS = diffBsS
             });
 
-            // Compute report amounts (native currency for display)
             decimal systemAmount = currency == PaymentMethodCurrencyResolver.Usd
                 ? PricingCalculator.ToUSD(expectedAmountBsS, exchangeRate)
                 : expectedAmountBsS;
@@ -282,7 +276,6 @@ public class DailyClosureService : IDailyClosureService
                 status));
         }
 
-        // Merge missing active methods with zero declared (AD-5 pattern)
         var existingMethodIds = details.Select(d => d.PaymentMethodId).ToHashSet();
         var methodEntities = await _context.PaymentMethods
             .AsNoTracking()
@@ -330,7 +323,6 @@ public class DailyClosureService : IDailyClosureService
             Details = details
         };
 
-        // Execute within existing transaction strategy (mirrors current CreateClosureAsync pattern)
         DailyClosure savedClosure;
         if (_context.Database.CurrentTransaction is not null)
         {
@@ -349,31 +341,6 @@ public class DailyClosureService : IDailyClosureService
             savedClosure.ClosureDate,
             exchangeRate,
             reportDetails);
-    }
-
-    private async Task<decimal> ResolveEffectiveRateAsync(CancellationToken cancellationToken)
-    {
-        // Delegate to ExchangeRateResolver (same pattern as ShiftsController.GetTodayExchangeRateAsync)
-        // Sales.Module references only Core; ExchangeRateResolver is in Backend.API,
-        // so we read from the SalesDbContext directly for the active session rate.
-        var activeSession = await _context.CashDrawerSessions
-            .AsNoTracking()
-            .Where(s => s.Status == CashDrawerStatus.Open)
-            .OrderByDescending(s => s.OpenedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (activeSession?.OpeningExchangeRate > 0)
-        {
-            return activeSession.OpeningExchangeRate;
-        }
-
-        // Fallback: use the rate from the last sale or closure
-        var lastClosure = await _context.DailyClosures
-            .AsNoTracking()
-            .OrderByDescending(dc => dc.ClosureDate)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return lastClosure?.ExchangeRate ?? 0m;
     }
 
     public static string GenerateReceiptContent(DailyClosure closure, bool isBlind = false)

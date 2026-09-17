@@ -280,7 +280,10 @@ public class SecurityHardeningSprint2Tests
 
         var result = await controller.CloseShift(request, CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(result);
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(400, problemDetails.Status);
         mockDailyClosure.Verify(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()), Times.Once);
         mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
     }

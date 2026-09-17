@@ -5,10 +5,6 @@ using System.Linq;
 
 namespace Sales.Module.Services;
 
-/// <summary>
-/// Single projection logic for closure details → ShiftReportDetailDto.
-/// Used by both the report endpoint and the close response (AD-4).
-/// </summary>
 public static class ShiftReportMapper
 {
     public static List<ShiftReportDetailDto> MapDetails(

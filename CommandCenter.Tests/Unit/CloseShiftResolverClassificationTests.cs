@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
@@ -21,12 +25,13 @@ using Xunit;
 
 namespace CommandCenter.Tests.Unit;
 
-/// <summary>
-/// S1 — REQ-PMC-01/04: CloseShift classifies every declared method via
-/// PaymentMethodCurrencyResolver; ignores request.Currency; unknown method → 400.
-/// </summary>
 public class CloseShiftResolverClassificationTests
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private static SalesDbContext CreateInMemorySalesContext()
     {
         var options = new DbContextOptionsBuilder<SalesDbContext>()
@@ -58,12 +63,26 @@ public class CloseShiftResolverClassificationTests
         };
     }
 
+    private static Mock<ICashDrawerService> CreateMockCashDrawer()
+    {
+        var mock = new Mock<ICashDrawerService>();
+        mock.Setup(c => c.GetActiveSessionAsync())
+            .ReturnsAsync(new CashDrawerSession
+            {
+                Id = 1,
+                Status = CashDrawerStatus.Open,
+                OpeningExchangeRate = 50m,
+                OpenedAt = DateTime.UtcNow
+            });
+        return mock;
+    }
+
     private static ShiftsController CreateController(
         Mock<IDailyClosureService>? mockClosure = null,
         Mock<ICashDrawerService>? mockCashDrawer = null)
     {
         mockClosure ??= new Mock<IDailyClosureService>();
-        mockCashDrawer ??= new Mock<ICashDrawerService>();
+        mockCashDrawer = CreateMockCashDrawer();
         var mockPaymentMethod = new Mock<IPaymentMethodService>();
         var mockSettings = new Mock<ISystemSettingsService>();
         var mockUser = new Mock<ICurrentUserService>();
@@ -82,34 +101,18 @@ public class CloseShiftResolverClassificationTests
         return controller;
     }
 
-    // ── Task 1.1 (RED → GREEN): CloseShift classifies via resolver ──
-
     [Fact]
     public async Task CloseShift_DeclaresBothCurrencies_ClassifiesViaResolverAndIgnoresRequestCurrency()
     {
-        // REQ-PMC-01: every declared method MUST be classified by PaymentMethodCurrencyResolver
-        // REQ-PMC-04: request.Currency MUST NOT influence the closure
-
         var mockClosure = new Mock<IDailyClosureService>();
-        var resolverUsdCurrency = PaymentMethodCurrencyResolver.Usd;
-        var resolverBsSCurrency = PaymentMethodCurrencyResolver.LocalCurrency;
-
         mockClosure
             .Setup(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((CreateClosureCommand cmd, CancellationToken ct) =>
             {
-                // Verify the command was built without currency — only PaymentMethodId + Amount
-                foreach (var decl in cmd.Declarations)
-                {
-                    Assert.True(decl.PaymentMethodId > 0);
-                    Assert.True(decl.Amount >= 0);
-                }
-
-                // Build a result that reflects what the resolver would produce
                 var details = new List<ShiftReportDetailResult>
                 {
-                    new(1, "Efectivo USD", resolverUsdCurrency, 100m, 100m, 0m, "Balanced"),
-                    new(2, "Efectivo Bs.S", resolverBsSCurrency, 500m, 500m, 0m, "Balanced")
+                    new(1, "Efectivo USD", PaymentMethodCurrencyResolver.Usd, 100m, 100m, 0m, "Balanced"),
+                    new(2, "Efectivo Bs.S", PaymentMethodCurrencyResolver.LocalCurrency, 500m, 500m, 0m, "Balanced")
                 };
                 return new CloseShiftResult(1, "Admin", "V-00000000", DateTime.UtcNow, 50m, details);
             });
@@ -129,15 +132,9 @@ public class CloseShiftResolverClassificationTests
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         var report = Assert.IsType<ShiftReportDto>(okResult.Value);
+        Assert.Equal(PaymentMethodCurrencyResolver.Usd, report.Details.First(d => d.PaymentMethodId == 1).Currency);
+        Assert.Equal(PaymentMethodCurrencyResolver.LocalCurrency, report.Details.First(d => d.PaymentMethodId == 2).Currency);
 
-        // Verify resolver classified each method correctly
-        var usdDetail = report.Details.First(d => d.PaymentMethodId == 1);
-        Assert.Equal(PaymentMethodCurrencyResolver.Usd, usdDetail.Currency);
-
-        var bsSDetail = report.Details.First(d => d.PaymentMethodId == 2);
-        Assert.Equal(PaymentMethodCurrencyResolver.LocalCurrency, bsSDetail.Currency);
-
-        // Verify the command sent to the service has no currency field
         mockClosure.Verify(
             c => c.CreateClosureFromCommandAsync(
                 It.Is<CreateClosureCommand>(cmd =>
@@ -149,16 +146,11 @@ public class CloseShiftResolverClassificationTests
     [Fact]
     public async Task CloseShift_DivergingMethodName_UsesResolverNotName()
     {
-        // REQ-PMC-01 Scenario: A diverging method name does not change the close classification
-        // Method named "Dólares" but resolver classifies as Bs.S (no "USD" in name)
-
         var mockClosure = new Mock<IDailyClosureService>();
-
         mockClosure
             .Setup(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((CreateClosureCommand cmd, CancellationToken ct) =>
             {
-                // "Dólares" does NOT contain "USD", so resolver returns Bs.S
                 string currency = PaymentMethodCurrencyResolver.Resolve("Dólares");
                 Assert.Equal(PaymentMethodCurrencyResolver.LocalCurrency, currency);
 
@@ -187,10 +179,8 @@ public class CloseShiftResolverClassificationTests
     }
 
     [Fact]
-    public async Task CloseShift_UnknownPaymentMethodId_ReturnsBadRequest()
+    public async Task CloseShift_UnknownPaymentMethodId_ReturnsProblemDetails()
     {
-        // REQ-PMC-04 Scenario: Unknown declared payment method → 400 ProblemDetails, nothing persisted
-
         var mockClosure = new Mock<IDailyClosureService>();
         mockClosure
             .Setup(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()))
@@ -208,13 +198,15 @@ public class CloseShiftResolverClassificationTests
 
         var result = await controller.CloseShift(request, CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(result);
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(400, problemDetails.Status);
+        Assert.Contains("999", problemDetails.Detail);
         mockClosure.Verify(
             c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
-
-    // ── Task 1.10: existing tests re-pointed to use CreateClosureCommand without Currency ──
 
     [Fact]
     public async Task CloseShift_EmptyDeclaredAmounts_CreatesCommandAndDelegatesToService()
@@ -263,15 +255,9 @@ public class CloseShiftResolverClassificationTests
             Times.Never);
     }
 
-    // ── Task 1.8 (GREEN): Report↔receipt agreement (C1 P1 pattern) ──
-
     [Fact]
     public void ShiftReportMapper_ProducesConsistentLabels_WithResolverClassification()
     {
-        // REQ-PMC-03 / C1 P1: report labels must agree with receipt classification.
-        // ShiftReportMapper uses the same PaymentMethodCurrencyResolver as the receipt generator.
-        // This test verifies the mapper classifies correctly for both currencies.
-
         var details = new List<ClosureDetail>
         {
             new()
@@ -300,16 +286,13 @@ public class CloseShiftResolverClassificationTests
 
         var usdDetail = reportDetails.First(d => d.PaymentMethodId == 1);
         Assert.Equal(PaymentMethodCurrencyResolver.Usd, usdDetail.Currency);
-        // For USD: systemAmount = ExpectedAmountBsS / rate = 5000/50 = 100 USD
         Assert.Equal(100m, usdDetail.SystemAmount);
-        // For USD: declaredAmount = ActualAmountBsS / rate = 5000/50 = 100 USD
         Assert.Equal(100m, usdDetail.DeclaredAmount);
         Assert.Equal(0m, usdDetail.Difference);
         Assert.Equal("Balanced", usdDetail.Status);
 
         var bsSDetail = reportDetails.First(d => d.PaymentMethodId == 2);
         Assert.Equal(PaymentMethodCurrencyResolver.LocalCurrency, bsSDetail.Currency);
-        // For Bs.S: amounts are passed through directly
         Assert.Equal(2000m, bsSDetail.SystemAmount);
         Assert.Equal(2000m, bsSDetail.DeclaredAmount);
         Assert.Equal(0m, bsSDetail.Difference);
@@ -319,9 +302,6 @@ public class CloseShiftResolverClassificationTests
     [Fact]
     public void ReceiptContent_UsesSameResolverClassification_AsShiftReportMapper()
     {
-        // C1 P1 agreement: receipt uses PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName)
-        // which is the same logic ShiftReportMapper uses. Verify both produce the same currency label.
-
         var closure = new DailyClosure
         {
             ClosureDate = DateTime.UtcNow,
@@ -338,13 +318,205 @@ public class CloseShiftResolverClassificationTests
 
         string receipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: false);
 
-        // Receipt must contain the resolver-classified currency labels
         Assert.Contains("USD", receipt);
         Assert.Contains("Bs.S", receipt);
 
-        // Verify the mapper produces the same classification
         var reportDetails = ShiftReportMapper.MapDetails(closure.Details, 50m);
         Assert.Equal(PaymentMethodCurrencyResolver.Usd, reportDetails.First(d => d.PaymentMethodId == 1).Currency);
         Assert.Equal(PaymentMethodCurrencyResolver.LocalCurrency, reportDetails.First(d => d.PaymentMethodId == 2).Currency);
+    }
+
+    [Fact]
+    public async Task CreateClosureFromCommandAsync_RealService_UsdMethodClassifiedAsUsd()
+    {
+        var salesCtx = CreateInMemorySalesContext();
+        salesCtx.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 1,
+            Name = "Efectivo USD",
+            IsActive = true,
+            IsDeleted = false,
+            IsCash = true,
+            DisplayOrder = 1
+        });
+        await salesCtx.SaveChangesAsync();
+
+        var service = new DailyClosureService(salesCtx);
+
+        var command = new CreateClosureCommand(
+            ClosureDateUtc: DateTime.UtcNow,
+            UserId: "Admin",
+            Observation: "V-00000000",
+            ExchangeRate: 50m,
+            Declarations: new List<DeclaredPaymentAmount>
+            {
+                new(1, 100m)
+            });
+
+        var result = await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
+
+        Assert.Equal(50m, result.ExchangeRate);
+        var usdDetail = result.Details.First(d => d.PaymentMethodId == 1);
+        Assert.Equal(PaymentMethodCurrencyResolver.Usd, usdDetail.Currency);
+        Assert.Equal(100m, usdDetail.DeclaredAmount);
+
+        var savedClosure = await salesCtx.DailyClosures
+            .Include(c => c.Details)
+            .FirstAsync(c => c.Id == result.ClosureId);
+        Assert.Equal(50m, savedClosure.ExchangeRate);
+        var persistedDetail = savedClosure.Details.First(d => d.PaymentMethodId == 1);
+        Assert.Equal(5000m, persistedDetail.ActualAmountBsS);
+    }
+
+    [Fact]
+    public async Task CreateClosureFromCommandAsync_RealService_BsSMethodClassifiedAsBsS()
+    {
+        var salesCtx = CreateInMemorySalesContext();
+        salesCtx.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 2,
+            Name = "Efectivo Bs.S",
+            IsActive = true,
+            IsDeleted = false,
+            IsCash = true,
+            DisplayOrder = 1
+        });
+        await salesCtx.SaveChangesAsync();
+
+        var service = new DailyClosureService(salesCtx);
+
+        var command = new CreateClosureCommand(
+            ClosureDateUtc: DateTime.UtcNow,
+            UserId: "Admin",
+            Observation: "V-00000000",
+            ExchangeRate: 50m,
+            Declarations: new List<DeclaredPaymentAmount>
+            {
+                new(2, 5000m)
+            });
+
+        var result = await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
+
+        var bsSDetail = result.Details.First(d => d.PaymentMethodId == 2);
+        Assert.Equal(PaymentMethodCurrencyResolver.LocalCurrency, bsSDetail.Currency);
+        Assert.Equal(5000m, bsSDetail.DeclaredAmount);
+
+        var savedClosure = await salesCtx.DailyClosures
+            .Include(c => c.Details)
+            .FirstAsync(c => c.Id == result.ClosureId);
+        var persistedDetail = savedClosure.Details.First(d => d.PaymentMethodId == 2);
+        Assert.Equal(5000m, persistedDetail.ActualAmountBsS);
+    }
+
+    [Fact]
+    public async Task CreateClosureFromCommandAsync_RealService_DivergingName_UsesResolverClassification()
+    {
+        var salesCtx = CreateInMemorySalesContext();
+        salesCtx.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 3,
+            Name = "Dólares",
+            IsActive = true,
+            IsDeleted = false,
+            IsCash = true,
+            DisplayOrder = 1
+        });
+        await salesCtx.SaveChangesAsync();
+
+        var service = new DailyClosureService(salesCtx);
+
+        var command = new CreateClosureCommand(
+            ClosureDateUtc: DateTime.UtcNow,
+            UserId: "Admin",
+            Observation: "V-00000000",
+            ExchangeRate: 50m,
+            Declarations: new List<DeclaredPaymentAmount>
+            {
+                new(3, 100m)
+            });
+
+        var result = await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
+
+        var detail = result.Details.First(d => d.PaymentMethodId == 3);
+        Assert.Equal(PaymentMethodCurrencyResolver.LocalCurrency, detail.Currency);
+        Assert.Equal("Dólares", detail.PaymentMethodName);
+
+        var savedClosure = await salesCtx.DailyClosures
+            .Include(c => c.Details)
+            .FirstAsync(c => c.Id == result.ClosureId);
+        var persistedDetail = savedClosure.Details.First(d => d.PaymentMethodId == 3);
+        Assert.Equal(100m, persistedDetail.ActualAmountBsS);
+    }
+
+    [Fact]
+    public async Task CreateClosureFromCommandAsync_RealService_UnknownMethodId_ThrowsArgumentException()
+    {
+        var salesCtx = CreateInMemorySalesContext();
+        salesCtx.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 1,
+            Name = "Efectivo USD",
+            IsActive = true,
+            IsDeleted = false,
+            DisplayOrder = 1
+        });
+        await salesCtx.SaveChangesAsync();
+
+        var service = new DailyClosureService(salesCtx);
+
+        var command = new CreateClosureCommand(
+            ClosureDateUtc: DateTime.UtcNow,
+            UserId: "Admin",
+            Observation: "V-00000000",
+            ExchangeRate: 50m,
+            Declarations: new List<DeclaredPaymentAmount>
+            {
+                new(999, 100m)
+            });
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => service.CreateClosureFromCommandAsync(command, CancellationToken.None));
+        Assert.Contains("999", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateClosureFromCommandAsync_RealService_ReqPmc04_ClientUsdForLocalMethod_UsesResolverClassification()
+    {
+        var salesCtx = CreateInMemorySalesContext();
+        salesCtx.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 2,
+            Name = "Efectivo Bs.S",
+            IsActive = true,
+            IsDeleted = false,
+            IsCash = true,
+            DisplayOrder = 1
+        });
+        await salesCtx.SaveChangesAsync();
+
+        var service = new DailyClosureService(salesCtx);
+
+        var command = new CreateClosureCommand(
+            ClosureDateUtc: DateTime.UtcNow,
+            UserId: "Admin",
+            Observation: "V-00000000",
+            ExchangeRate: 50m,
+            Declarations: new List<DeclaredPaymentAmount>
+            {
+                new(2, 5000m)
+            });
+
+        var result = await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
+
+        var detail = result.Details.First(d => d.PaymentMethodId == 2);
+        Assert.Equal(PaymentMethodCurrencyResolver.LocalCurrency, detail.Currency);
+        Assert.Equal(5000m, detail.DeclaredAmount);
+
+        var savedClosure = await salesCtx.DailyClosures
+            .Include(c => c.Details)
+            .FirstAsync(c => c.Id == result.ClosureId);
+        var persistedDetail = savedClosure.Details.First(d => d.PaymentMethodId == 2);
+        Assert.Equal(5000m, persistedDetail.ActualAmountBsS);
+        Assert.Equal(50m, savedClosure.ExchangeRate);
     }
 }
