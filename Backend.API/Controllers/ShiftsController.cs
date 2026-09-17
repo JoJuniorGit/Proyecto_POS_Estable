@@ -61,7 +61,7 @@ public class ShiftsController : ControllerBase
     {
         if (User.IsInRole("Driver"))
         {
-            return Forbid();
+            return this.ApiForbidden("El rol Driver no tiene permisos para cerrar turnos.");
         }
 
         var duplicatedMethodIds = request.DeclaredAmounts

@@ -39,5 +39,5 @@ public interface IDailyClosureService
 
     // 8.7-B5: los comprobantes se escriben DESPUÉS del commit de la transacción Serializable,
     // nunca dentro de ella (evita I/O de disco bloqueando aislamiento Serializable).
-    void WriteClosedClosureReceipts(DailyClosure closure);
+    Task WriteClosedClosureReceiptsAsync(DailyClosure closure, CancellationToken cancellationToken = default);
 }

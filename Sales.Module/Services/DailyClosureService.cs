@@ -414,11 +414,10 @@ public class DailyClosureService : IDailyClosureService
         return sb.ToString();
     }
 
-    public void WriteClosedClosureReceipts(DailyClosure closure)
+    public async Task WriteClosedClosureReceiptsAsync(DailyClosure closure, CancellationToken cancellationToken = default)
     {
         if (closure == null) throw new ArgumentNullException(nameof(closure));
 
-        // 8.7-B5: I/O de comprobantes CONFIRMADO, post-commit y fail-open (nunca rompe el cierre).
         try
         {
             bool isBlind = closure.UserId?.Contains("Cajero", StringComparison.OrdinalIgnoreCase) == true;
@@ -430,12 +429,10 @@ public class DailyClosureService : IDailyClosureService
             string pdfFileName = $"Cierre_{dateStamp}_{closure.Id}_{uniqueSuffix}.pdf";
             string txtFileName = $"Cierre_{dateStamp}_{closure.Id}_{uniqueSuffix}.txt";
 
-            // 1. Ruta segura y canónica del sistema para servicios: %ProgramData%\CommandCenterPOS\Closures
             string commonAppData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
             string primaryDir = System.IO.Path.Combine(commonAppData, "CommandCenterPOS", "Closures");
             string legacyCommonDir = System.IO.Path.Combine(commonAppData, "Registro de cierres");
 
-            // 2. Ruta de documentos personales si está disponible en sesión interactiva
             string docsDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
             string userDocsDir = !string.IsNullOrWhiteSpace(docsDir) ? System.IO.Path.Combine(docsDir, "Registro de cierres") : string.Empty;
 
@@ -454,8 +451,8 @@ public class DailyClosureService : IDailyClosureService
                         System.IO.Directory.CreateDirectory(dir);
                     }
 
-                    TryWriteFileWithRetry(System.IO.Path.Combine(dir, pdfFileName), pdfBytes);
-                    TryWriteTextWithRetry(System.IO.Path.Combine(dir, txtFileName), txtContent);
+                    await TryWriteFileWithRetryAsync(System.IO.Path.Combine(dir, pdfFileName), pdfBytes, cancellationToken);
+                    await TryWriteTextWithRetryAsync(System.IO.Path.Combine(dir, txtFileName), txtContent, cancellationToken);
                 }
                 catch (Exception ex)
                 {
@@ -469,36 +466,36 @@ public class DailyClosureService : IDailyClosureService
         }
     }
 
-    private static void TryWriteFileWithRetry(string path, byte[] bytes)
+    private static async Task TryWriteFileWithRetryAsync(string path, byte[] bytes, CancellationToken cancellationToken)
     {
         for (int attempt = 0; attempt < 2; attempt++)
         {
             try
             {
-                System.IO.File.WriteAllBytes(path, bytes);
+                await System.IO.File.WriteAllBytesAsync(path, bytes, cancellationToken);
                 return;
             }
             catch (Exception ex)
             {
                 Core.Logging.AppLogger.LogWarn($"[DailyClosureService] Intento {attempt + 1}/2 falló al escribir '{path}': {ex.Message}", "ReceiptWrite");
-                if (attempt == 0) System.Threading.Thread.Sleep(200);
+                if (attempt == 0) await Task.Delay(200, cancellationToken);
             }
         }
     }
 
-    private static void TryWriteTextWithRetry(string path, string text)
+    private static async Task TryWriteTextWithRetryAsync(string path, string text, CancellationToken cancellationToken)
     {
         for (int attempt = 0; attempt < 2; attempt++)
         {
             try
             {
-                System.IO.File.WriteAllText(path, text);
+                await System.IO.File.WriteAllTextAsync(path, text, cancellationToken);
                 return;
             }
             catch (Exception ex)
             {
                 Core.Logging.AppLogger.LogWarn($"[DailyClosureService] Intento {attempt + 1}/2 falló al escribir '{path}': {ex.Message}", "ReceiptWrite");
-                if (attempt == 0) System.Threading.Thread.Sleep(200);
+                if (attempt == 0) await Task.Delay(200, cancellationToken);
             }
         }
     }

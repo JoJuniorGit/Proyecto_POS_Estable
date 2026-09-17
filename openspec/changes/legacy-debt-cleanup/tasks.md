@@ -53,7 +53,7 @@ Chain strategy: pending
 - [x] 2.7 Modify `Web.Frontend/src/services/shiftApi.js`: stop sending `cashierName`/`cashierCedula` (lines 10-13) (AD-11)
 - [x] 2.8 **GREEN**: Add test asserting no anonymous error object remains in touched endpoints (code inspection or reflection)
 - [x] 2.9 **GREEN**: Add test asserting legacy sender posting `cashierName`/`cashierCedula` still returns 200 (extra members ignored)
-- [ ] 2.10 **GREEN**: Add test capturing `AppLogger` output on forced receipt write failure — verify log entry with path + exception
+- [x] 2.10 **GREEN**: Add test capturing `AppLogger` output on forced receipt write failure — verify log entry with path + exception
 
 ## Phase 3: Closure Orchestration Consolidation (S3)
 

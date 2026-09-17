@@ -72,7 +72,7 @@ public class DailyClosureController : ControllerBase
     {
         if (User.IsInRole("Driver"))
         {
-            return Forbid();
+            return this.ApiForbidden("El rol Driver no tiene permisos para registrar cierres diarios.");
         }
 
         if (request == null || request.Details == null || !request.Details.Any())
@@ -187,7 +187,7 @@ public class DailyClosureController : ControllerBase
 
             // 8.7-B5: los comprobantes (PDF/TXT) se escriben DESPUÉS del commit para no mantener
             // abierta la transacción Serializable durante I/O de disco.
-            _closureService.WriteClosedClosureReceipts(result);
+            await _closureService.WriteClosedClosureReceiptsAsync(result);
 
             return Ok(result);
             });

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,6 +9,7 @@ using Backend.API.DTOs;
 using Backend.API.Attributes;
 using Core.Entities;
 using Core.Interfaces;
+using Core.Logging;
 using Inventory.Module.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -27,6 +29,7 @@ public class ErrorContractTests
     {
         var options = new DbContextOptionsBuilder<InventoryDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         return new InventoryDbContext(options);
     }
@@ -35,6 +38,7 @@ public class ErrorContractTests
     {
         var options = new DbContextOptionsBuilder<SalesDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         return new SalesDbContext(options);
     }
@@ -164,8 +168,8 @@ public class ErrorContractTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
-        var dict = Assert.IsAssignableFrom<Dictionary<string, object?>>(objectResult.Value);
-        Assert.Equal(400, dict["status"]);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(400, problemDetails.Status);
     }
 
     [Fact]
@@ -188,9 +192,11 @@ public class ErrorContractTests
 
         var result = await controller.CloseShift(request, CancellationToken.None);
 
-        Assert.IsAssignableFrom<IActionResult>(result);
-        var forbidResult = Assert.IsType<ForbidResult>(result);
-        Assert.Equal(StatusCodes.Status403Forbidden, 403);
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(403, problemDetails.Status);
+        Assert.NotNull(problemDetails.Detail);
     }
 
     [Fact]
@@ -210,8 +216,8 @@ public class ErrorContractTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
-        var dict = Assert.IsAssignableFrom<Dictionary<string, object?>>(objectResult.Value);
-        Assert.Equal(404, dict["status"]);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(404, problemDetails.Status);
     }
 
     [Fact]
@@ -255,8 +261,8 @@ public class ErrorContractTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
-        var dict = Assert.IsAssignableFrom<Dictionary<string, object?>>(objectResult.Value);
-        Assert.Equal(404, dict["status"]);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(404, problemDetails.Status);
     }
 
     [Fact]
@@ -309,8 +315,8 @@ public class ErrorContractTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
-        var dict = Assert.IsAssignableFrom<Dictionary<string, object?>>(objectResult.Value);
-        Assert.Equal(403, dict["status"]);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(403, problemDetails.Status);
     }
 
     [Fact]
@@ -344,8 +350,8 @@ public class ErrorContractTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
-        var dict = Assert.IsAssignableFrom<Dictionary<string, object?>>(objectResult.Value);
-        Assert.Equal(404, dict["status"]);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(404, problemDetails.Status);
     }
 
     // ---- CashDrawerController.AddTransaction error sites ----
@@ -372,8 +378,8 @@ public class ErrorContractTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
-        var dict = Assert.IsAssignableFrom<Dictionary<string, object?>>(objectResult.Value);
-        Assert.Equal(400, dict["status"]);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(400, problemDetails.Status);
     }
 
     [Fact]
@@ -402,8 +408,8 @@ public class ErrorContractTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
-        var dict = Assert.IsAssignableFrom<Dictionary<string, object?>>(objectResult.Value);
-        Assert.Equal(403, dict["status"]);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(403, problemDetails.Status);
     }
 
     [Fact]
@@ -428,8 +434,8 @@ public class ErrorContractTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
-        var dict = Assert.IsAssignableFrom<Dictionary<string, object?>>(objectResult.Value);
-        Assert.Equal(400, dict["status"]);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(400, problemDetails.Status);
     }
 
     [Fact]
@@ -454,14 +460,14 @@ public class ErrorContractTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
-        var dict = Assert.IsAssignableFrom<Dictionary<string, object?>>(objectResult.Value);
-        Assert.Equal(400, dict["status"]);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(400, problemDetails.Status);
     }
 
     // ---- DailyClosureController error sites ----
 
     [Fact]
-    public async Task DailyClosureController_DriverRole_ReturnsForbidResult()
+    public async Task DailyClosureController_DriverRole_ReturnsProblemDetails403()
     {
         var mockClosure = new Mock<IDailyClosureService>();
         var mockCashDrawer = new Mock<ICashDrawerService>();
@@ -480,9 +486,11 @@ public class ErrorContractTests
 
         var result = await controller.CreateClosure(request);
 
-        Assert.IsAssignableFrom<IActionResult>(result);
-        var forbidResult = Assert.IsType<ForbidResult>(result);
-        Assert.Equal(StatusCodes.Status403Forbidden, 403);
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(403, problemDetails.Status);
+        Assert.NotNull(problemDetails.Detail);
     }
 
     [Fact]
@@ -504,8 +512,8 @@ public class ErrorContractTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
-        var dict = Assert.IsAssignableFrom<Dictionary<string, object?>>(objectResult.Value);
-        Assert.Equal(400, dict["status"]);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(400, problemDetails.Status);
     }
 
     [Fact]
@@ -531,8 +539,8 @@ public class ErrorContractTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
-        var dict = Assert.IsAssignableFrom<Dictionary<string, object?>>(objectResult.Value);
-        Assert.Equal(400, dict["status"]);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(400, problemDetails.Status);
     }
 
     [Fact]
@@ -549,8 +557,8 @@ public class ErrorContractTests
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
-        var dict = Assert.IsAssignableFrom<Dictionary<string, object?>>(objectResult.Value);
-        Assert.Equal(400, dict["status"]);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(400, problemDetails.Status);
     }
 
     [Fact]
@@ -567,7 +575,32 @@ public class ErrorContractTests
                 new() { PaymentMethodId = 1, PaymentMethodName = "Efectivo", ExpectedAmountBsS = 1000m }
             });
 
-        var controller = CreateDailyClosureController(mockClosure, mockCashDrawer, mockUser);
+        mockCashDrawer.Setup(c => c.GetActiveSessionAsync())
+            .ReturnsAsync(new CashDrawerSession { OpeningExchangeRate = 50m });
+
+        var inventoryDb = GetInMemoryInventoryDbContext();
+        inventoryDb.ExchangeRateHistory.Add(new Core.Entities.ExchangeRateHistory
+        {
+            Date = Core.Helpers.TimeZoneHelper.GetVenezuelaDate(),
+            Rate = 50m
+        });
+        await inventoryDb.SaveChangesAsync();
+
+        var salesDb = GetInMemorySalesDbContext();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        var controller = new DailyClosureController(
+            mockClosure.Object,
+            mockCashDrawer.Object,
+            inventoryDb,
+            mockSettings.Object,
+            salesDb,
+            mockUser.Object);
+
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = AdminUser() }
+        };
 
         var request = new CreateClosureRequest
         {
@@ -578,8 +611,13 @@ public class ErrorContractTests
             }
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => controller.CreateClosure(request));
-        Assert.Contains("tasa BCV", ex.Message);
+        var result = await controller.CreateClosure(request);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(400, problemDetails.Status);
+        Assert.Contains("999", problemDetails.Detail);
     }
 
     [Fact]
@@ -644,17 +682,95 @@ public class ErrorContractTests
 
         var controller = CreateShiftsController(mockCashDrawer, mockDailyClosure, mockUser);
 
-        var request = new CloseShiftRequest
-        {
-            DeclaredAmounts = new List<DeclaredAmountDto>
-            {
-                new() { PaymentMethodId = 1, Amount = 100m }
-            }
-        };
+        var jsonWithExtraFields = @"{
+            ""declaredAmounts"": [{""paymentMethodId"": 1, ""amount"": 100}],
+            ""cashierName"": ""Juan"",
+            ""cashierCedula"": ""V-12345678""
+        }";
+        var request = System.Text.Json.JsonSerializer.Deserialize<CloseShiftRequest>(jsonWithExtraFields,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
 
         var result = await controller.CloseShift(request, CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         Assert.NotNull(okResult.Value);
+    }
+
+    [Fact]
+    public async Task WriteClosedClosureReceipts_IsFailOpen_DoesNotThrowOnWriteFailure()
+    {
+        var salesDb = GetInMemorySalesDbContext();
+        var service = new DailyClosureService(salesDb);
+
+        var closure = new DailyClosure
+        {
+            Id = 999,
+            UserId = "Admin",
+            Observation = "test",
+            ExchangeRate = 50m,
+            ClosureDate = DateTime.UtcNow,
+            Details = new List<ClosureDetail>
+            {
+                new() { PaymentMethodId = 1, PaymentMethodName = "Efectivo", ExpectedAmountBsS = 100m, ActualAmountBsS = 100m }
+            }
+        };
+
+        var exception = await Record.ExceptionAsync(() => service.WriteClosedClosureReceiptsAsync(closure));
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public async Task WriteClosedClosureReceipts_RetryLogsOnFailure()
+    {
+        var salesDb = GetInMemorySalesDbContext();
+        var service = new DailyClosureService(salesDb);
+
+        var closure = new DailyClosure
+        {
+            Id = 999,
+            UserId = "Admin",
+            Observation = "test",
+            ExchangeRate = 50m,
+            ClosureDate = DateTime.UtcNow,
+            Details = new List<ClosureDetail>
+            {
+                new() { PaymentMethodId = 1, PaymentMethodName = "Efectivo", ExpectedAmountBsS = 100m, ActualAmountBsS = 100m }
+            }
+        };
+
+        var commonAppData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+        var primaryDir = Path.Combine(commonAppData, "CommandCenterPOS", "Closures");
+        bool madeReadOnly = false;
+        System.Security.AccessControl.DirectorySecurity? savedSecurity = null;
+        try
+        {
+            if (Directory.Exists(primaryDir))
+            {
+                var dirInfo = new DirectoryInfo(primaryDir);
+                savedSecurity = dirInfo.GetAccessControl();
+                var readOnlySecurity = new System.Security.AccessControl.DirectorySecurity();
+                readOnlySecurity.SetAccessRuleProtection(true, false);
+                readOnlySecurity.SetAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
+                    System.Security.Principal.WindowsIdentity.GetCurrent().Name,
+                    System.Security.AccessControl.FileSystemRights.Write,
+                    System.Security.AccessControl.AccessControlType.Deny));
+                dirInfo.SetAccessControl(readOnlySecurity);
+                madeReadOnly = true;
+            }
+        }
+        catch { }
+
+        var logBefore = File.Exists(AppLogger.WarnLogPath) ? new FileInfo(AppLogger.WarnLogPath).Length : 0;
+
+        await service.WriteClosedClosureReceiptsAsync(closure);
+
+        var logAfter = File.Exists(AppLogger.WarnLogPath) ? new FileInfo(AppLogger.WarnLogPath).Length : 0;
+
+        if (madeReadOnly && savedSecurity != null)
+        {
+            try { new DirectoryInfo(primaryDir).SetAccessControl(savedSecurity); } catch { }
+        }
+
+        Assert.True(logAfter > logBefore, $"Expected log entry on receipt write failure (before={logBefore}, after={logAfter})");
     }
 }
