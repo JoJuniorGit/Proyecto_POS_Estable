@@ -97,13 +97,16 @@ Chain strategy: pending
 
 ## Phase 5a: CancellationToken Propagation (S5a)
 
-- [ ] 5a.1 **RED**: Add test asserting cancelled token → `OperationCancelledException` and no persistence for `CloseShift`, `CreateClosure`, drawer actions
-- [ ] 5a.2 Modify `Backend.API/Controllers/ShiftsController.cs`: add `CancellationToken` to `CloseShift`, `GetCurrentReport`, `GetReportById`; forward to service (AD-12)
-- [ ] 5a.3 Modify `Backend.API/Controllers/CashDrawerController.cs`: add `CancellationToken` to all actions + `ResolveAnchoredRateAsync` + `MapLocalTimesAsync` (AD-12)
-- [ ] 5a.4 Modify `Backend.API/Controllers/DailyClosureController.cs`: add `CancellationToken` to `GetExpectedTotals`, `CreateClosure`, `GetClosure` (AD-12)
-- [ ] 5a.5 Modify `Sales.Module/Services/DailyClosureService.cs`: accept and forward `CancellationToken` to EF Core and `ExchangeRateResolver` (AD-12)
-- [ ] 5a.6 Modify `Sales.Module/Services/CashDrawerService.cs`: accept and forward `CancellationToken` to all async paths (AD-12)
-- [ ] 5a.7 **GREEN**: Add test verifying no `.Result`/`.Wait()`/`Thread.Sleep` on any async path in touched services (REQ-ACP-02)
+- [x] 5a.1 **RED**: Added `CommandCenter.Tests/Unit/CancellationPropagationTests.cs` — cancelled token → `OperationCanceledException` + no persistence on SQLite real paths (`CreateClosureFromCommandAsync`, `GetClosureAsync`, `CashDrawerService.AddTransactionAsync`); token-forwarding assertions for `CloseShift`/`CreateClosure`/drawer actions. Pre-implementation build failed with 28 signature errors (RED evidence)
+- [x] 5a.2 Modify `Backend.API/Controllers/ShiftsController.cs`: `GetCurrentReport`/`GetReportById` accept and forward `CancellationToken` to `GetLatestClosureAsync`/`GetClosureAsync`/`GetCashierDisplayNameAsync` (AD-12)
+- [x] 5a.3 Modify `Backend.API/Controllers/CashDrawerController.cs`: all actions accept `CancellationToken`; `ResolveAnchoredRateAsync`/`MapLocalTimesAsync` propagate it (AD-12)
+- [x] 5a.4 Modify `Backend.API/Controllers/DailyClosureController.cs`: `GetExpectedTotals`/`GetClosure` accept and forward `CancellationToken` (`CreateClosure` already did) (AD-12)
+- [x] 5a.5 Modify `Sales.Module/Services/DailyClosureService.cs`: `GetExpectedTotalsByPaymentMethodAsync` forwards the token to every EF call; legacy `CreateClosureAsync`/`ExecuteClosureCoreAsync`/`GetClosureAsync`/`PersistClosureCoreAsync` accept and forward it; `ExchangeRateResolver.ReadEffectiveTodayRateAsync` gains the parameter and `TodayExchangeRateProvider` forwards to it (AD-12)
+- [x] 5a.6 Modify `Sales.Module/Services/CashDrawerService.cs`: every async member accepts and forwards `CancellationToken` to EF Core, advisory locks, transactions and the execution strategy; `CashAdvanceCoordinator` forwards it to the drawer calls (AD-12)
+- [x] 5a.7 **GREEN**: `CancellationPropagationTests.TouchedAsyncTypes_DoNotBlockSynchronouslyOnAsyncPaths` — IL scan asserts no `.Result`/`.Wait()`/`Thread.Sleep`/`GetAwaiter().GetResult` on the declared async paths of the touched controllers/services (REQ-ACP-02)
+
+> **S5a fold-ins.** H-14/AD-13 (`MainWindow.OnClosing` → `void` + `Task RunShutdownAsync()` via `SafeFireAndForget`, `Close()` after the await) was pulled into this work unit by explicit orchestrator authorization and landed here; box 5c.2 is marked as delivered-early, the rest of S5c stays pending. Service/interface members with existing call sites take `CancellationToken cancellationToken = default` as their last parameter (matching the pre-existing `IDailyClosureService` style); controller actions take a required token (except `GetHistory`, which keeps the optional `limit` and appends a defaulted token). `ISystemSettingsService.GetSettingAsync` stays CT-less — not in the registered items 4/9/16/21/27; `MapLocalTimesAsync` honors the token with `ThrowIfCancellationRequested` before its settings read. Slice S5a is closed for the items 4/9/16/21/27; S5b+ not started.
+
 
 ## Phase 5b: EF Tuning + Guards/Naming/Comments (S5b)
 
@@ -120,7 +123,7 @@ Chain strategy: pending
 ## Phase 5c: J Findings (S5c)
 
 - [ ] 5c.1 Modify `Backend.API/Controllers/AuthController.cs`: set `Secure = Request.IsHttps` at all three `pos_jwt` cookie sites (H-05)
-- [ ] 5c.2 Modify `Desktop.Client/MainWindow.xaml.cs`: `OnClosing` returns `void`; shutdown via `Task.RunShutdownAsync()` with `SafeFireAndForget` (AD-13, H-14)
+- [x] 5c.2 Modify `Desktop.Client/MainWindow.xaml.cs`: `OnClosing` returns `void`; shutdown via `Task.RunShutdownAsync()` with `SafeFireAndForget` (AD-13, H-14) — **delivered in S5a (`lcs-s5a-ct-sweep`) by orchestrator authorization**; reflection + IL evidence in `CancellationPropagationTests`
 - [ ] 5c.3 Modify `Desktop.Client.Core/ViewModels/{CashDrawer,PendingOrders,ExchangeRate,CustomerManagement,CustomerPicker}ViewModel.cs`: add `IDisposable` (H-06)
 - [ ] 5c.4 Modify `Desktop.Client.Core/ViewModels/MainViewModel.cs`: add disposal + `OnClosed` hook (H-06)
 - [ ] 5c.5 Modify `Web.Frontend/src/pages/RegisterPage.jsx`: client-side pagination reuse existing `limit`; no server contract change (H-08)

@@ -1,5 +1,6 @@
 using Sales.Module.DTOs;
 using Sales.Module.Entities;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sales.Module.Interfaces;
@@ -18,24 +19,24 @@ public class CashAdvanceResultDto
 
 public interface ICashDrawerService
 {
-    Task<CashDrawerSessionResponseDto?> GetActiveSessionAsync();
+    Task<CashDrawerSessionResponseDto?> GetActiveSessionAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sesión activa con sus transacciones de caja precargadas (retorna null si no hay sesión abierta).
     /// Solo los endpoints que exponen el detalle de movimientos deben usarla (8.5-M1: el include completo
     /// no debe ejecutarse en cada acceso interno).
     /// </summary>
-    Task<CashDrawerSessionResponseDto?> GetActiveSessionWithTransactionsAsync();
-    Task<CashDrawerSessionResponseDto> GetOrCreateActiveSessionAsync(decimal currentExchangeRate);
-    Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate);
-    Task<CashDrawerSessionResponseDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate);
+    Task<CashDrawerSessionResponseDto?> GetActiveSessionWithTransactionsAsync(CancellationToken cancellationToken = default);
+    Task<CashDrawerSessionResponseDto> GetOrCreateActiveSessionAsync(decimal currentExchangeRate, CancellationToken cancellationToken = default);
+    Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default);
+    Task<CashDrawerSessionResponseDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Cierra la sesión activa y abre una nueva conservando el saldo esperado en caja (saldo teórico acumulado:
     /// apertura + ingresos - egresos de la sesión que se cierra, independiente de los montos declarados del arqueo)
     /// pero reiniciando a 0 los acumuladores de ingresos y egresos de la sesión.
     /// </summary>
-    Task RolloverSessionAfterClosureAsync(decimal currentExchangeRate);
+    Task RolloverSessionAfterClosureAsync(decimal currentExchangeRate, CancellationToken cancellationToken = default);
 
     Task<CashTransactionResponseDto> AddTransactionAsync(
         int sessionId,
@@ -47,7 +48,8 @@ public interface ICashDrawerService
         string description,
         int? referenceId = null,
         bool isPhysicalCash = true,
-        int? paymentMethodId = null);
+        int? paymentMethodId = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Registra el vuelto de una venta como egreso físico de caja (Source=SalePayment) VALIDANDO saldo
@@ -63,14 +65,15 @@ public interface ICashDrawerService
         string description,
         int saleId,
         int? cashPaymentMethodId,
-        decimal pendingCashIncomeBsS = 0m);
+        decimal pendingCashIncomeBsS = 0m,
+        CancellationToken cancellationToken = default);
 
-    Task<decimal> GetCurrentBalanceLocalAsync(int sessionId);
+    Task<decimal> GetCurrentBalanceLocalAsync(int sessionId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Historial persistente de movimientos de caja: devuelve los movimientos físicos más recientes
     /// de TODAS las sesiones (activa y anteriores), para conservar la trazabilidad de las sesiones
     /// cerradas junto con los movimientos de la sesión siguiente.
     /// </summary>
-    Task<System.Collections.Generic.List<CashTransactionResponseDto>> GetHistoryAsync(int limit = 300);
+    Task<System.Collections.Generic.List<CashTransactionResponseDto>> GetHistoryAsync(int limit = 300, CancellationToken cancellationToken = default);
 }

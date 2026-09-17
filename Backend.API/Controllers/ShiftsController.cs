@@ -101,13 +101,13 @@ public class ShiftsController : ControllerBase
 
     [HttpGet("current/report")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
-    public async Task<ActionResult> GetCurrentReport()
+    public async Task<ActionResult> GetCurrentReport(CancellationToken cancellationToken)
     {
-        var latestClosure = await _dailyClosureService.GetLatestClosureAsync();
+        var latestClosure = await _dailyClosureService.GetLatestClosureAsync(cancellationToken);
 
         if (latestClosure != null)
         {
-            return await GetReportById(latestClosure.Id);
+            return await GetReportById(latestClosure.Id, cancellationToken);
         }
 
         return this.ApiNotFound("No existe ningún cierre de caja registrado todavía.");
@@ -115,9 +115,9 @@ public class ShiftsController : ControllerBase
 
     [HttpGet("{id}/report")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
-    public async Task<ActionResult> GetReportById(int id)
+    public async Task<ActionResult> GetReportById(int id, CancellationToken cancellationToken)
     {
-        var closure = await _dailyClosureService.GetClosureAsync(id);
+        var closure = await _dailyClosureService.GetClosureAsync(id, cancellationToken);
 
         bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
         if (!isElevated && closure != null)
@@ -147,7 +147,7 @@ public class ShiftsController : ControllerBase
         string cashierName = closure.UserId ?? "Cajero Activo";
         if (int.TryParse(closure.UserId, out int parsedId))
         {
-            var displayName = await _dailyClosureService.GetCashierDisplayNameAsync(parsedId);
+            var displayName = await _dailyClosureService.GetCashierDisplayNameAsync(parsedId, cancellationToken);
             if (displayName != null) cashierName = displayName;
         }
 

@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using System.Threading.Tasks;
 using System.Windows;
+using Core.Common;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 
@@ -18,7 +20,7 @@ public partial class MainWindow : Window
 
     private bool _isShuttingDown;
 
-    protected override async void OnClosing(CancelEventArgs e)
+    protected override void OnClosing(CancelEventArgs e)
     {
         base.OnClosing(e);
 
@@ -84,11 +86,21 @@ public partial class MainWindow : Window
             _isShuttingDown = true;
             App.IsShutdownRequested = true;
 
+            RunShutdownAsync().SafeFireAndForget("MainWindow.OnClosingShutdown");
+        }
+    }
+
+    private async Task RunShutdownAsync()
+    {
+        try
+        {
             if (Application.Current is App app)
             {
                 await app.StopServicesAsync();
             }
-
+        }
+        finally
+        {
             Close();
         }
     }

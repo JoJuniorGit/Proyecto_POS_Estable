@@ -53,7 +53,7 @@ public class CashAdvanceCoordinator
             throw new ArgumentException("El monto de efectivo a entregar debe ser un número entero sin decimales.", nameof(requestedAmountLocal));
         }
 
-        var availableCash = await _cashDrawerService.GetCurrentBalanceLocalAsync(sessionId);
+        var availableCash = await _cashDrawerService.GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
         var roundedRequested = Math.Round(requestedAmountLocal, 2, MidpointRounding.AwayFromZero);
 
         if (availableCash < roundedRequested)
@@ -131,7 +131,8 @@ public class CashAdvanceCoordinator
                 exchangeRate: anchoredRate,
                 description: $"Adelanto de Efectivo - {paymentMethodName} {commissionPercentage:0}% {activeUserName}",
                 isPhysicalCash: true,
-                paymentMethodId: paymentMethodId
+                paymentMethodId: paymentMethodId,
+                cancellationToken: cancellationToken
             );
 
             var incomeTx = await _cashDrawerService.AddTransactionAsync(
@@ -143,7 +144,8 @@ public class CashAdvanceCoordinator
                 exchangeRate: anchoredRate,
                 description: $"Comisión Adelanto ({commissionPercentage:0}% {paymentMethodName}) - {activeUserName}",
                 isPhysicalCash: false,
-                paymentMethodId: paymentMethodId
+                paymentMethodId: paymentMethodId,
+                cancellationToken: cancellationToken
             );
 
             if (dbTransaction != null)

@@ -87,12 +87,13 @@ public static class ExchangeRateResolver
 {
     public static async Task<decimal> ReadEffectiveTodayRateAsync(
         InventoryDbContext inventoryContext,
-        ICashDrawerService cashDrawerService)
+        ICashDrawerService cashDrawerService,
+        CancellationToken cancellationToken)
     {
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
         var record = await inventoryContext.ExchangeRateHistory
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.Date == today);
+            .FirstOrDefaultAsync(r => r.Date == today, cancellationToken);
 
         if (record == null)
         {
@@ -100,7 +101,7 @@ public static class ExchangeRateResolver
                 .AsNoTracking()
                 .Where(r => r.Date <= today)
                 .OrderByDescending(r => r.Date)
-                .FirstOrDefaultAsync();
+                .FirstOrDefaultAsync(cancellationToken);
         }
 
         if (record != null && record.Rate > 0)
@@ -108,7 +109,7 @@ public static class ExchangeRateResolver
             return Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(record.Rate);
 
         // Fallback a la tasa de apertura de la sesión activa para evitar distorsiones con 1.0 (8.2-M2)
-        var activeSession = await cashDrawerService.GetActiveSessionAsync();
+        var activeSession = await cashDrawerService.GetActiveSessionAsync(cancellationToken);
         if (activeSession != null && activeSession.OpeningExchangeRate > 0)
             return Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(activeSession.OpeningExchangeRate);
 

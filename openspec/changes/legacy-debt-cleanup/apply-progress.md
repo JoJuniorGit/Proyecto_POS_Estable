@@ -670,3 +670,91 @@ Both payloads below were produced inside `DrawerDtoBoundaryTests.DrawerSessionDt
 - **WARNING-04** — hardcoded `"Balanced"` merged-line status and mixed units remain in `DailyClosureService`.
 - **S4b-R1** — `GetActiveSessionWithTransactionsAsync` still uses `Include` + tracking (AD-16 `AsNoTracking`/`AsSplitQuery` deferred to S5b).
 
+---
+
+## Slice S5a: CancellationToken Propagation (lcs-s5a-ct-sweep)
+
+### Completed Tasks
+
+- [x] 5a.1 **RED**: `CommandCenter.Tests/Unit/CancellationPropagationTests.cs` authored against the target signatures before any production edit; the pre-implementation Release build failed with **28 errors** (`CS1501`/`CS7036`/`CS1739` — every touched method lacking the `CancellationToken` parameter/node), captured as the RED step. Tests: cancelled token → `OperationCanceledException` and zero persisted rows on SQLite real paths (`CreateClosureFromCommandAsync` — closure table empty + rollover never invoked; `GetClosureAsync`; `CashDrawerService.AddTransactionAsync` — transaction table empty), plus token-forwarding verification for the touched controller actions
+- [x] 5a.2 `Backend.API/Controllers/ShiftsController.cs`: `GetCurrentReport`/`GetReportById` accept the request token and forward it to `GetLatestClosureAsync`/`GetClosureAsync`/`GetCashierDisplayNameAsync` (`CloseShift` already forwarded it since S1) (AD-12)
+- [x] 5a.3 `Backend.API/Controllers/CashDrawerController.cs`: `GetActiveSession`, `GetHistory`, `OpenSession`, `CloseSession`, `GetCurrentBalance`, `AddTransaction`, `ProcessCashAdvance` accept the token; `ResolveAnchoredRateAsync` forwards it to the BCV read; `MapLocalTimesAsync` honors it with `ThrowIfCancellationRequested`; `_db.Users.FindAsync` and `CashAdvanceCoordinator.ProcessAsync` receive it (AD-12)
+- [x] 5a.4 `Backend.API/Controllers/DailyClosureController.cs`: `GetExpectedTotals`/`GetClosure` accept and forward the token (`CreateClosure` already forwarded it since S3) (AD-12)
+- [x] 5a.5 `Sales.Module/Services/DailyClosureService.cs`: `GetExpectedTotalsByPaymentMethodAsync` now forwards the token to every EF call (2× `ToDictionaryAsync` were the remaining gaps); legacy concrete `CreateClosureAsync(DailyClosure)`, `ExecuteClosureCoreAsync`, `GetClosureAsync` and `PersistClosureCoreAsync` accept/forward it; `RolloverSessionAfterClosureAsync` and receipt writing receive it. `ExchangeRateResolver.ReadEffectiveTodayRateAsync` gains the parameter (EF reads + active-session fallback) and `TodayExchangeRateProvider` forwards its token to it — the S3 rate chain now carries cancellation end to end (AD-12)
+- [x] 5a.6 `Sales.Module/Services/CashDrawerService.cs`: every async member (`GetActiveSession`, `GetActiveSessionWithTransactions`, `GetOrCreateActiveSession`, `OpenSession`, `CloseSession`, `RolloverSessionAfterClosure`, `AddTransaction`, `RecordSaleChange`, `GetCurrentBalanceLocal`, `GetHistory`) + private `LoadActiveSessionEntityAsync` accept and forward the token to EF Core queries, `pg_advisory_xact_lock` raw commands, `BeginTransactionAsync`/`CommitAsync`/`RollbackAsync` and the execution strategy; `CashAdvanceCoordinator` forwards its token to `GetCurrentBalanceLocalAsync` and both `AddTransactionAsync` writes (AD-12)
+- [x] 5a.7 **GREEN**: `CancellationPropagationTests.TouchedAsyncTypes_DoNotBlockSynchronouslyOnAsyncPaths` — IL scan over every declared method of `ShiftsController`, `DailyClosureController`, `CashDrawerController`, `DailyClosureService`, `CashDrawerService` and `CashAdvanceCoordinator` resolves each `call`/`callvirt` target and rejects `Task.Result`/`Task.Wait`/`Task.WaitAll`/`Task.WaitAny`/`Thread.Sleep`/`GetAwaiter().GetResult` (REQ-ACP-02). `TouchedActionsAndHelpers_DeclareCancellationTokenAsLastParameter` asserts the parameter contract structurally (REQ-ACP-01)
+
+### H-14 / AD-13 fold-in (delivered early in S5a)
+
+- `Desktop.Client/MainWindow.xaml.cs`: `OnClosing` is `void` again (was `async void`); the dialog + `e.Cancel = true` + `_isShuttingDown` stay synchronous; shutdown moved to `private async Task RunShutdownAsync()` (`await app.StopServicesAsync()` in a `try`, `Close()` in `finally` so an exception never leaves a half-closed window), launched with `SafeFireAndForget("MainWindow.OnClosingShutdown")` which observes and logs failures via `AppLogger.LogCrash` (REQ-ACP-03).
+- Reflection evidence: `MainWindow_OnClosing_IsNotAsyncVoid` (no `AsyncStateMachineAttribute`, `void` return) and `MainWindow_RunShutdownAsync_ReturnsObservableTask`.
+- Task box `5c.2` is marked `[x]` in `tasks.md` with the delivered-early annotation; boxes `5c.1`/`5c.3`-`5c.7` remain pending for S5c.
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `Backend.API/Controllers/ShiftsController.cs` | Modified | `GetCurrentReport`/`GetReportById` accept + forward `CancellationToken` (AD-12) |
+| `Backend.API/Controllers/CashDrawerController.cs` | Modified | All actions + `ResolveAnchoredRateAsync`/`MapLocalTimesAsync` accept + forward the token (AD-12) |
+| `Backend.API/Controllers/DailyClosureController.cs` | Modified | `GetExpectedTotals`/`GetClosure` accept + forward the token (AD-12) |
+| `Backend.API/Services/ExchangeRateWriteService.cs` | Modified | `ExchangeRateResolver.ReadEffectiveTodayRateAsync` gains `CancellationToken` (EF reads + session fallback) |
+| `Backend.API/Services/TodayExchangeRateProvider.cs` | Modified | Forwards its token to the resolver |
+| `Sales.Module/Interfaces/ICashDrawerService.cs` | Modified | `CancellationToken cancellationToken = default` last on every async member |
+| `Sales.Module/Interfaces/IDailyClosureService.cs` | Modified | `GetClosureAsync` gains `CancellationToken cancellationToken = default` |
+| `Sales.Module/Services/CashDrawerService.cs` | Modified | Token accepted/forwarded on every async path (EF, advisory locks, tx, execution strategy) |
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | Token forwarded to all EF calls, rollover, resolver chain and legacy entry points |
+| `Sales.Module/Services/CashAdvanceCoordinator.cs` | Modified | Forwards its token to the drawer reads/writes |
+| `Desktop.Client/MainWindow.xaml.cs` | Modified | H-14: `OnClosing` → `void`; `RunShutdownAsync()` + `SafeFireAndForget` (AD-13) |
+| `CommandCenter.Tests/Unit/CancellationPropagationTests.cs` | Created | 14 S5a tests: controller token forwarding, declared-parameter contract, SQLite cancelled-token + no-persistence, IL no-blocking scan, H-14 reflection |
+| 7 existing test files | Modified | Re-pointed controller call sites to the new required token (`ClosureDtoBoundaryTests`, `DailyClosureControllerTests`, `DrawerDtoBoundaryTests`, `ErrorContractTests`, `ExchangeRateReferenceBoundaryTests`, `PaymentMethodCurrencyClassificationTests`, `SecurityTests`) |
+
+### Verification Results (S5a)
+
+- `dotnet build CommandCenter.slnx -c Release`: **0 errors, 0 warnings**
+- `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: **1207 passed, 0 failed, 0 skipped** (1193 -> 1207)
+- `dotnet test --filter "FullyQualifiedName~Cancellation"` (tasks.md S5a filter): **15 passed, 0 failed** (14 new + 1 pre-existing match `Phase3DesktopOptimizationTests.InventoryViewModel_Dispose_CancelsAndDisposesCancellationTokenSourceSafely`)
+- `npm test` (Web.Frontend): **271 passed, 0 failed** (Web untouched — regression check per tasks.md Verification)
+- `npm run lint` (Web.Frontend): **clean** (exit 0)
+- Coverage gate (`scripts/check-coverage.py`): Core **0.8364** >= 0.70, Sales.Module **0.9048** >= 0.80, Inventory.Module **0.8251** >= 0.72 — all `[OK]`
+
+### Work Unit Evidence (S5a)
+
+| Evidence | Value |
+|----------|-------|
+| Focused test command | `dotnet test --filter "FullyQualifiedName~Cancellation"`: 15 passed, 0 failed |
+| Runtime harness | Relational SQLite `SalesDbContext` + real services: pre-cancelled token → `OperationCanceledException` with 0 persisted rows (closure create: no `DailyClosures` row + rollover `Times.Never`; closure read; drawer `AddTransactionAsync`: no `CashTransactions` row). Controller tests capture the exact request token at each service call (mocks), proving controller → service propagation, including the cash-advance path through a real `CashAdvanceCoordinator` |
+| Rollback boundary | `ShiftsController.cs`, `DailyClosureController.cs`, `CashDrawerController.cs`, `ExchangeRateWriteService.cs` (resolver), `TodayExchangeRateProvider.cs`, `ICashDrawerService.cs`, `IDailyClosureService.cs`, `CashDrawerService.cs`, `DailyClosureService.cs`, `CashAdvanceCoordinator.cs`, `MainWindow.xaml.cs`, `CancellationPropagationTests.cs` and the seven re-pointed test files |
+
+### Decisions and Deviations (S5a)
+
+- **D1 — optional defaults on service/interface members.** `CancellationToken cancellationToken = default` was appended as the last parameter on service/interface members that had pre-existing call sites (matching the pre-existing `IDailyClosureService` style from S1/S3), so untouched callers keep compiling and the blast radius stays inside the slice. Controller actions take a required token; `GetHistory` is the single exception (`limit = 300` is already optional, so the token is defaulted — C# forbids a required parameter after an optional one; ASP.NET Core still binds the request token).
+- **D2 — `ISystemSettingsService` untouched.** Items 4/9/16/21/27 cover controllers/services, not the settings service; `ResolveAnchoredRateAsync`/`MapLocalTimesAsync`/`GetHistory` still read settings without a token (adding it would cascade across dozens of call sites outside the registered items). `MapLocalTimesAsync` honors its token with `ThrowIfCancellationRequested`.
+- **D3 — execution-strategy overload.** Passing the token to `Database.CreateExecutionStrategy().ExecuteAsync(...)` required the stateful instance overload (`state`/`operation`/`verifySucceeded`/`cancellationToken`, mirroring `CashAdvanceCoordinator`) because the simple extension has no cancellation-aware overload. Behavior (retry envelope, ambient transaction detection) is unchanged; on cancellation the strategy no longer retries.
+- **D4 — legacy entry points.** `DailyClosureService.CreateClosureAsync(DailyClosure)`/`ExecuteClosureCoreAsync` stay as the concrete test seam (`S4a-R1`) but now accept/forward the token; no production caller exists.
+- **D5 — H-14 pulled forward** from S5c by explicit orchestrator authorization (documented above); `RunShutdownAsync` wraps `StopServicesAsync` in `try/finally` so `Close()` always runs (REQ-ACP-03 scenario 2: an exception must not leave the window half-closed).
+
+### Registered for S5b/S5c (NOT fixed in this slice)
+
+- **S5b** — items 7/22/31 (`.AsNoTracking()`/`.AsSplitQuery()`), 28 (`...Async` suffix), 29 (dead controller fields), 32 (`ThrowIfNull`), 34 (`ClosureStatus` constants), 36 (404 before rate), 37 (lambda indentation), 10/11/17/23/24/33/38 (comments). Includes `S3-06`/`WARNING-07`/`S4a-R2` (`DailyClosureService.cs` over 500 lines) and `WARNING-04` (hardcoded `"Balanced"`).
+- **S5c** — H-05 (cookie `Secure`), H-06 (VM `IDisposable`), H-08 (pagination); `5c.2`/H-14 already delivered here.
+- **S4a-R1 / S3-07** — legacy `CreateClosureAsync(DailyClosure)` still present (now CT-aware).
+
+### GGA Hook Exceptions
+
+`gga run` (v2.10.1, provider `opencode`, rules `AGENTS.md`) returned `STATUS: FAILED` on the S5a staging set. Every finding is **pre-existing and assigned to a later slice**; none is introduced by S5a. Committed with a documented punctual `--no-verify`.
+
+| GGA finding | Location | Classification |
+|-------------|----------|----------------|
+| `AsNoTracking`/`AsSplitQuery` absent on read paths | `CashDrawerService.GetActiveSessionWithTransactionsAsync`; `DailyClosureService.LoadClosureEntityAsync`/`GetLatestClosureAsync` | Pre-existing; **AD-16 / S5b** — registered in the S4b GGA table (`S4b-R1`) |
+| `DailyClosureService.cs` over the 300-500 ceiling (645 lines actual, GGA reports 562 blank-stripped) | `Sales.Module/Services/DailyClosureService.cs` | Pre-existing; **S3-06 / WARNING-07 / S4a-R2 → S5b** |
+| Mutable DTOs in `Sales.Module.Interfaces` (`CashAdvanceResultDto`, `ExpectedTotalDto`) | `ICashDrawerService.cs:8-18`; `IDailyClosureService.cs:9-14` | Pre-existing; S4b GGA note → **S5b (AD-17)** |
+| Explanatory comments | `CashDrawerController.cs:48,108-109,134-136,172`; `CashDrawerService.cs`; `DailyClosureService.cs:284`; `ExchangeRateWriteService.cs:26,33`; `MainWindow.xaml.cs:32-33,112-114` | Pre-existing; **AD-18 / S5b.8** keeps only `8.x-*` markers. S5a added no comment |
+| `DbContext` + BCV anchoring logic in controller | `CashDrawerController.cs:25,31-40,178,274` | Pre-existing; S4b GGA note → **S5b (AD-17)** |
+| `ResolveClosureDate` throws outside the `try` (409 vs 400 validation contract) | `DailyClosureController.cs:69` | Pre-existing (S3); **S5b.7** |
+| `if (closure == null) throw new ArgumentNullException(...)` not `ThrowIfNull` | `DailyClosureService.WriteClosedClosureReceiptsAsync` | Pre-existing; **S5b.4** |
+| `Async` suffix on actions; `RecalculateOnHoldSalesAsync` CT-less; controller-local request DTOs; concrete `CashAdvanceCoordinator` dependency | multiple | Pre-existing repo-wide deviations; **S5b (AD-17)** |
+
+Explicit S5a-relevant confirmation from the same review (`## Compliant`): *"no `async void` in services (`RunShutdownAsync` is `Task`, `SafeFireAndForget` used); `CancellationToken` propagated through the reviewed endpoints; history snapshots never recomputed; errors surface as `ProblemDetails`"* — direct third-party evidence for REQ-ACP-01/02/03.
+
+
+

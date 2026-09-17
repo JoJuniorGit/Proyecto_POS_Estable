@@ -196,7 +196,7 @@ public class ErrorContractTests
 
         var controller = CreateShiftsController(mockCashDrawer, mockDailyClosure, mockUser);
 
-        var result = await controller.GetReportById(999);
+        var result = await controller.GetReportById(999, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
@@ -231,7 +231,7 @@ public class ErrorContractTests
             }
         };
 
-        var result = await controller.GetReportById(1);
+        var result = await controller.GetReportById(1, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
@@ -275,7 +275,7 @@ public class ErrorContractTests
             }
         };
 
-        var result = await controller.GetReportById(1);
+        var result = await controller.GetReportById(1, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
@@ -300,7 +300,7 @@ public class ErrorContractTests
             HttpContext = new DefaultHttpContext { User = AdminUser() }
         };
 
-        var result = await controller.GetCurrentReport();
+        var result = await controller.GetCurrentReport(CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
@@ -328,7 +328,7 @@ public class ErrorContractTests
             ExchangeRate = 50m
         };
 
-        var result = await controller.AddTransaction(request);
+        var result = await controller.AddTransaction(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -358,7 +358,7 @@ public class ErrorContractTests
             ExchangeRate = 50m
         };
 
-        var result = await controller.AddTransaction(request);
+        var result = await controller.AddTransaction(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
@@ -384,7 +384,7 @@ public class ErrorContractTests
             ExchangeRate = 50m
         };
 
-        var result = await controller.AddTransaction(request);
+        var result = await controller.AddTransaction(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -410,7 +410,7 @@ public class ErrorContractTests
             ExchangeRate = 0m
         };
 
-        var result = await controller.AddTransaction(request);
+        var result = await controller.AddTransaction(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -569,7 +569,7 @@ public class ErrorContractTests
 
         var controller = CreateDailyClosureController(mockClosure, mockCashDrawer, mockUser);
 
-        var result = await controller.GetExpectedTotals(default);
+        var result = await controller.GetExpectedTotals(default, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);

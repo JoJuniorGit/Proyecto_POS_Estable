@@ -195,7 +195,7 @@ public class ClosureDtoBoundaryTests
 
         var controller = new DailyClosureController(service.Object, new Mock<ICurrentUserService>().Object);
 
-        var found = await controller.GetClosure(7);
+        var found = await controller.GetClosure(7, CancellationToken.None);
         var ok = Assert.IsType<OkObjectResult>(found.Result);
         var body = Assert.IsType<DailyClosureResponseDto>(ok.Value);
         Assert.Equal(7, body.Id);
@@ -206,7 +206,7 @@ public class ClosureDtoBoundaryTests
         Assert.DoesNotContain("dailyClosure", PropertyNames(bodyNode));
         Assert.DoesNotContain("paymentMethod", PropertyNames(bodyNode));
 
-        var missing = await controller.GetClosure(404);
+        var missing = await controller.GetClosure(404, CancellationToken.None);
         Assert.IsType<NotFoundResult>(missing.Result);
     }
 

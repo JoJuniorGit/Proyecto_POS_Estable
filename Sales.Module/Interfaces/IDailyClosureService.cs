@@ -34,7 +34,7 @@ public interface IDailyClosureService
 {
     Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc, CancellationToken cancellationToken = default);
     Task<CloseShiftResult> CreateClosureFromCommandAsync(CreateClosureCommand command, CancellationToken cancellationToken);
-    Task<DailyClosureResponseDto?> GetClosureAsync(int id);
+    Task<DailyClosureResponseDto?> GetClosureAsync(int id, CancellationToken cancellationToken = default);
     Task<DailyClosureResponseDto?> GetLatestClosureAsync(CancellationToken cancellationToken = default);
     Task<string?> GetCashierDisplayNameAsync(int userId, CancellationToken cancellationToken = default);
 
