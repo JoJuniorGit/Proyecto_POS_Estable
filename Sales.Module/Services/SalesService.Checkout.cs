@@ -132,7 +132,7 @@ public partial class SalesService
                 }
             }
 
-            var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(exchangeRate);
+            var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(exchangeRate, cancellationToken);
 
             if (!sale.InvoiceNumber.HasValue)
             {
@@ -242,7 +242,8 @@ public partial class SalesService
                     description: $"Vuelto Factura N° {sale.InvoiceNumber}",
                     saleId: sale.Id,
                     cashPaymentMethodId: cashMethodId,
-                    pendingCashIncomeBsS: pendingCashIncomeBsS);
+                    pendingCashIncomeBsS: pendingCashIncomeBsS,
+                    cancellationToken: cancellationToken);
                 _logger?.LogInformation("[SalesService] Vuelto registrado en caja: ${ChangeUsd} USD / Bs. {ChangeBsS} para Factura N° {InvoiceNumber}",
                     changeUsd, changeBsS, sale.InvoiceNumber);
             }

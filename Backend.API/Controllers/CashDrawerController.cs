@@ -45,7 +45,6 @@ public class CashDrawerController : ControllerBase
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult<CashDrawerSessionResponseDto?>> GetActiveSession(CancellationToken cancellationToken)
     {
-        // H-API-19: Eliminación de efectos secundarios en GET (no crear sesión en base de datos al consultar)
         var session = await _cashDrawerService.GetActiveSessionWithTransactionsAsync(cancellationToken);
         if (session == null)
         {
@@ -55,11 +54,6 @@ public class CashDrawerController : ControllerBase
         return Ok(await MapLocalTimesAsync(session, cancellationToken));
     }
 
-    /// <summary>
-    /// Historial persistente de movimientos de caja: devuelve los movimientos físicos más recientes
-    /// de TODAS las sesiones (activa y anteriores), para que la vista de caja conserve la trazabilidad
-    /// de las sesiones cerradas junto con los movimientos de la sesión siguiente.
-    /// </summary>
     [HttpGet("history")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult<IEnumerable<CashTransactionResponseDto>>> GetHistory([FromQuery] int limit = 300, CancellationToken cancellationToken = default)
@@ -139,18 +133,17 @@ public class CashDrawerController : ControllerBase
         decimal amountUsd = Math.Round(request.AmountLocal / anchoredRate, 2, MidpointRounding.AwayFromZero);
         
         var transaction = await _cashDrawerService.AddTransactionAsync(
-                    request.SessionId,
-                    request.Type,
-                    request.Source,
-                    request.AmountLocal,
-                    amountUsd,
-                    anchoredRate,
-                    request.Description,
-                    null,
-                    true,
-                    null,
-                    cancellationToken
-        );
+            request.SessionId,
+            request.Type,
+            request.Source,
+            request.AmountLocal,
+            amountUsd,
+            anchoredRate,
+            request.Description,
+            null,
+            true,
+            null,
+            cancellationToken);
         var tzId = await _settingsService.GetSettingAsync("SelectedTimeZoneId");
         var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
         return Ok(MapLocalTime(transaction, tz));

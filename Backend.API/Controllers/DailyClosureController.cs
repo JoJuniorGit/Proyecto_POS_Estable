@@ -65,19 +65,21 @@ public class DailyClosureController : ControllerBase
 
     private async Task<ActionResult> ExecuteCreateClosureAsync(CreateClosureRequest request, CancellationToken cancellationToken)
     {
-        string finalUserId = ResolveUserId();
-        DateTime closureDate = ResolveClosureDate(request.ClosureDate, finalUserId, User.IsInRole("Admin"));
-
-        var command = new CreateClosureCommand(
-            ClosureDateUtc: closureDate,
-            UserId: finalUserId,
-            Observation: request.Observation,
-            Declarations: request.Details
-                .Select(d => new DeclaredPaymentAmount(d.PaymentMethodId, d.ActualAmountBsS))
-                .ToList());
+        ArgumentNullException.ThrowIfNull(request);
 
         try
         {
+            string finalUserId = ResolveUserId();
+            DateTime closureDate = ResolveClosureDate(request.ClosureDate, finalUserId, User.IsInRole("Admin"));
+
+            var command = new CreateClosureCommand(
+                ClosureDateUtc: closureDate,
+                UserId: finalUserId,
+                Observation: request.Observation,
+                Declarations: request.Details
+                    .Select(d => new DeclaredPaymentAmount(d.PaymentMethodId, d.ActualAmountBsS))
+                    .ToList());
+
             var result = await _closureService.CreateClosureFromCommandAsync(command, cancellationToken);
 
             return Ok(result);

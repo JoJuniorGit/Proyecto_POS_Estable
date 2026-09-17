@@ -36,6 +36,8 @@ public class CashDrawerService : ICashDrawerService
     public async Task<CashDrawerSessionResponseDto?> GetActiveSessionWithTransactionsAsync(CancellationToken cancellationToken = default)
     {
         var session = await _context.CashDrawerSessions
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(s => s.Transactions)
                 .ThenInclude(t => t.Sale)
             .FirstOrDefaultAsync(s => s.Status == CashDrawerStatus.Open, cancellationToken);
@@ -243,9 +245,6 @@ public class CashDrawerService : ICashDrawerService
         var activeSession = await LoadActiveSessionEntityAsync(cancellationToken);
         if (activeSession == null) return;
 
-        // Conservar el saldo esperado en caja: se arrastra el saldo teórico (apertura + ingresos - egresos)
-        // de la sesión que se cierra, sin depender de los montos declarados del arqueo (que solo quedan
-        // registrados en el cierre para su auditoría).
         decimal carryOverBalance = await GetCurrentBalanceLocalAsync(activeSession.Id, cancellationToken);
 
         await CloseSessionAsync(carryOverBalance, currentExchangeRate, cancellationToken);
@@ -288,9 +287,6 @@ public class CashDrawerService : ICashDrawerService
 
             try
             {
-                // H-API-4 & H-API-17: Validar que los egresos físicos no sobregiren el saldo real de la caja.
-                // El chequeo de saldo y el INSERT ocurren en la MISMA transacción y se serializan con un
-                // advisory lock por sesión para eliminar el TOCTOU (doble egreso concurrente, 8.5-A1).
                 if (type == CashTransactionType.Expense && isPhysicalCash && source != CashTransactionSource.Closing)
                 {
                     if (!isInMemory)
@@ -360,11 +356,6 @@ public class CashDrawerService : ICashDrawerService
         return MapTransaction(await ExecuteWithinTransactionAsync());
     }
 
-    /// <summary>
-    /// Registra el vuelto de una venta como egreso físico (8.6-C1). Usa el advisory lock de la sesión y
-    /// valida que el saldo disponible (saldo en BD + ingresos cash pendientes del tracker aún no persistidos)
-    /// soporte el vuelto ANTES de insertarlo. Debe ejecutarse dentro de la transacción compartida del cobro.
-    /// </summary>
     public async Task<CashTransactionResponseDto> RecordSaleChangeAsync(
         int sessionId,
         decimal changeUsd,
@@ -396,8 +387,6 @@ public class CashDrawerService : ICashDrawerService
             await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", new object[] { sessionId }, cancellationToken);
         }
 
-        // Saldo real en BD (persistido) + ingresos cash de la venta aún en el tracker (no persistidos).
-        // El vuelto es un egreso físico y NO puede llevar la caja a saldo negativo (8.6-C1).
         var currentBalanceDb = await GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
         decimal available = currentBalanceDb + pendingCashIncomeBsS;
         if (available < changeBsS)
@@ -421,7 +410,6 @@ public class CashDrawerService : ICashDrawerService
         };
 
         _context.CashTransactions.Add(changeTx);
-        // Sin SaveChangesAsync: el cobro persiste todo junto dentro de su transacción compartida.
         return MapTransaction(changeTx);
     }
 

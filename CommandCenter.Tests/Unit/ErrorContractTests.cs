@@ -148,7 +148,7 @@ public class ErrorContractTests
             }
         };
 
-        var result = await controller.CloseShift(request, CancellationToken.None);
+        var result = await controller.CloseShiftAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -174,7 +174,7 @@ public class ErrorContractTests
             }
         };
 
-        var result = await controller.CloseShift(request, CancellationToken.None);
+        var result = await controller.CloseShiftAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
@@ -196,7 +196,7 @@ public class ErrorContractTests
 
         var controller = CreateShiftsController(mockCashDrawer, mockDailyClosure, mockUser);
 
-        var result = await controller.GetReportById(999, CancellationToken.None);
+        var result = await controller.GetReportByIdAsync(999, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
@@ -231,7 +231,7 @@ public class ErrorContractTests
             }
         };
 
-        var result = await controller.GetReportById(1, CancellationToken.None);
+        var result = await controller.GetReportByIdAsync(1, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
@@ -275,7 +275,7 @@ public class ErrorContractTests
             }
         };
 
-        var result = await controller.GetReportById(1, CancellationToken.None);
+        var result = await controller.GetReportByIdAsync(1, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
@@ -300,7 +300,7 @@ public class ErrorContractTests
             HttpContext = new DefaultHttpContext { User = AdminUser() }
         };
 
-        var result = await controller.GetCurrentReport(CancellationToken.None);
+        var result = await controller.GetCurrentReportAsync(CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
@@ -629,7 +629,7 @@ public class ErrorContractTests
         var request = System.Text.Json.JsonSerializer.Deserialize<CloseShiftRequest>(jsonWithExtraFields,
             new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
 
-        var result = await controller.CloseShift(request, CancellationToken.None);
+        var result = await controller.CloseShiftAsync(request, CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         Assert.NotNull(okResult.Value);

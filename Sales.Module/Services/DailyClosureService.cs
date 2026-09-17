@@ -176,6 +176,8 @@ public class DailyClosureService : IDailyClosureService
     private async Task<DailyClosure?> LoadClosureEntityAsync(int id, CancellationToken cancellationToken = default)
     {
         return await _context.DailyClosures
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(dc => dc.Details)
             .FirstOrDefaultAsync(dc => dc.Id == id, cancellationToken);
     }
@@ -184,6 +186,7 @@ public class DailyClosureService : IDailyClosureService
     {
         var closure = await _context.DailyClosures
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(dc => dc.Details)
             .OrderByDescending(dc => dc.Id)
             .FirstOrDefaultAsync(cancellationToken);
@@ -340,7 +343,9 @@ public class DailyClosureService : IDailyClosureService
                 : expectedAmountBsS;
             decimal declaredAmount = declared.Amount;
             decimal diff = declaredAmount - systemAmount;
-            string status = Math.Abs(diff) < 0.05m ? "Balanced" : (diff > 0 ? "Surplus" : "Shortage");
+            string status = Math.Abs(diff) < 0.05m
+                ? ClosureStatus.Balanced
+                : (diff > 0 ? ClosureStatus.Surplus : ClosureStatus.Shortage);
 
             reportDetails.Add(new ShiftReportDetailResult(
                 declared.PaymentMethodId,
@@ -462,7 +467,7 @@ public class DailyClosureService : IDailyClosureService
                     actualAmount - (expCurrency == PaymentMethodCurrencyResolver.Usd
                         ? PricingCalculator.ToUSD(exp.ExpectedAmountBsS, exchangeRate)
                         : exp.ExpectedAmountBsS),
-                    "Balanced"));
+                    ClosureStatus.Balanced));
             }
         }
     }

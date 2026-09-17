@@ -9,16 +9,10 @@ using Backend.API.Services;
 
 namespace Backend.API.Startup;
 
-/// <summary>
-/// Registra los servicios del backend (DI, EF, JWT, autorización, CORS, rate limiting, etc.).
-/// Se extrajo del monolito Program.cs (hallazgo B11) para mantener el punto de entrada legible,
-/// facilitar la prueba unitaria del arranque y permitir reutilizar la configuración.
-/// </summary>
 public static class ServiceCollectionExtensions
 {
     public static WebApplicationBuilder AddBackendServices(this WebApplicationBuilder builder, string? connectionString)
     {
-        // Persistencia: DbContexts de inventario y ventas con Npgsql + retry y modelo estricto.
         builder.Services.AddDbContext<InventoryDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure(3))
                 // 8.12-L3: PendingModelChangesWarning en modo THROW: si el modelo diverge del
@@ -74,14 +68,12 @@ public static class ServiceCollectionExtensions
             cfg.RegisterServicesFromAssembly(typeof(Inventory.Module.Services.InventoryService).Assembly);
         });
 
-        // BCV Services (Sincronización exclusivamente manual a demanda)
         builder.Services.AddHttpClient<BcvScraperService>();
         builder.Services.AddHostedService<Backend.API.Services.CacheMetricsLoggerService>();
         builder.Services.AddSignalR();
 
         builder.Services.Configure<Core.Configuration.SystemSettingsOptions>(builder.Configuration.GetSection(Core.Configuration.SystemSettingsOptions.SectionName));
 
-        // JWT Authentication configuration
         var jwtKey = builder.Configuration["JWT_SETTINGS_KEY"]
                   ?? builder.Configuration["JwtSettings:Key"]
                   ?? Environment.GetEnvironmentVariable("JWT_SETTINGS_KEY");
@@ -170,7 +162,6 @@ public static class ServiceCollectionExtensions
         builder.Services.AddSingleton<Sales.Module.Receipts.IReceiptDocumentRenderer, Sales.Module.Receipts.SaleReceiptRenderer>();
         builder.Services.AddHostedService<Backend.API.Jobs.ReceiptPrintBackgroundService>();
 
-        // Rate Limiting (H-15)
         builder.Services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status429TooManyRequests;
@@ -200,7 +191,6 @@ public static class ServiceCollectionExtensions
                     }));
         });
 
-        // CORS Hardening (H-01): Allow configured origins and local LAN/loopback clients
         var allowedOriginsConfig = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
         var allowedOriginsSet = new HashSet<string>(allowedOriginsConfig, StringComparer.OrdinalIgnoreCase);
 
@@ -230,14 +220,12 @@ public static class ServiceCollectionExtensions
                         bool isAllowedPort = port == 5000 || port == 5001 || port == 5173 || port == 80 || port == 443 || port == 4173;
                         if (!isAllowedPort) return false;
 
-                        // Allow localhost / loopback (gated to allowed POS ports [8W-C1])
                         if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.Equals("127.0.0.1") || host.Equals("::1"))
                             return true;
 
                         // 8.9-M6: en entornos que no sean Development la LAN no se abre por defecto; se exige Cors:AllowedOrigins.
                         if (!builder.Environment.IsDevelopment()) return false;
 
-                        // Allow Private Intranet Subnets (RFC-1918) for POS LAN network (gated to POS application ports: 5000, 5001, 5173)
                         if (System.Net.IPAddress.TryParse(host, out var ip))
                         {
                             var bytes = ip.GetAddressBytes();
@@ -257,10 +245,6 @@ public static class ServiceCollectionExtensions
             });
         });
 
-        // Forwarded Headers Configuration (SEC-10)
-        // Permite normalizar X-Forwarded-For y X-Forwarded-Proto cuando el backend opera tras un reverse proxy (Nginx, IIS, Caddy).
-        // Por defecto en ASP.NET Core, confía en proxies en loopback (127.0.0.1/8 y ::1/128).
-        // Permite además extender KnownProxies y KnownNetworks mediante appsettings.json si se despliega tras proxies remotos.
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;

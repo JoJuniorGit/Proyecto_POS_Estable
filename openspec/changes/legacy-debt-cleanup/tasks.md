@@ -110,15 +110,17 @@ Chain strategy: pending
 
 ## Phase 5b: EF Tuning + Guards/Naming/Comments (S5b)
 
-- [ ] 5b.1 Modify `Sales.Module/Services/DailyClosureService.cs`: add `.AsNoTracking()` + `.AsSplitQuery()` to `GetClosureAsync`, `GetHistoryAsync`, latest-closure read (AD-16)
-- [ ] 5b.2 Modify `Sales.Module/Services/CashDrawerService.cs`: add `.AsNoTracking()` + `.AsSplitQuery()` to `GetActiveSessionWithTransactionsAsync` (AD-16)
-- [ ] 5b.3 Create `Sales.Module/ClosureStatus.cs`: constants for status labels; reuse `PaymentMethodCurrencyResolver.Usd/LocalCurrency` (AD-17)
-- [ ] 5b.4 Apply `ArgumentNullException.ThrowIfNull` to `request` and `DeclaredAmounts` in `ShiftsController`/`DailyClosureController` (AD-17)
-- [ ] 5b.5 Drop unused `_paymentMethodService`/`_settingsService` fields from touched controllers (AD-17)
-- [ ] 5b.6 Add `...Async` suffix to any async methods missing it in touched services (AD-17)
-- [ ] 5b.7 Resolve 404 before rate; fix lambda indentation in touched files (AD-17)
-- [ ] 5b.8 Delete explanatory comments; keep only `8.x-*` traceability markers; no mass Spanish→English translation (AD-18)
-- [ ] 5b.9 **GREEN**: Add test asserting null `request` throws `ArgumentNullException` from `ThrowIfNull`
+- [x] 5b.1 Modify `Sales.Module/Services/DailyClosureService.cs`: add `.AsNoTracking()` + `.AsSplitQuery()` to `GetClosureAsync`, `GetHistoryAsync`, latest-closure read (AD-16)
+- [x] 5b.2 Modify `Sales.Module/Services/CashDrawerService.cs`: add `.AsNoTracking()` + `.AsSplitQuery()` to `GetActiveSessionWithTransactionsAsync` (AD-16)
+- [x] 5b.3 Create `Sales.Module/ClosureStatus.cs`: constants for status labels; reuse `PaymentMethodCurrencyResolver.Usd/LocalCurrency` (AD-17)
+- [x] 5b.4 Apply `ArgumentNullException.ThrowIfNull` to `request` and `DeclaredAmounts` in `ShiftsController`/`DailyClosureController` (AD-17)
+- [x] 5b.5 Drop unused `_paymentMethodService`/`_settingsService` fields from touched controllers (AD-17)
+- [x] 5b.6 Add `...Async` suffix to any async methods missing it in touched services (AD-17)
+- [x] 5b.7 Resolve 404 before rate; fix lambda indentation in touched files (AD-17)
+- [x] 5b.8 Delete explanatory comments; keep only `8.x-*` traceability markers; no mass Spanish→English translation (AD-18)
+- [x] 5b.9 **GREEN**: Add test asserting null `request` throws `ArgumentNullException` from `ThrowIfNull`
+
+> **S5b fold-ins.** `GetHistoryAsync` (AD-16 wording) lives in `CashDrawerService` and already read with `AsNoTracking()` since S4b — the S5b.1 closure tuning landed on `GetClosureAsync` (via `LoadClosureEntityAsync`) and the latest-closure read. Item 29 (`_paymentMethodService`/`_settingsService`) was already resolved by S3: neither field exists in any touched controller (only `CashDrawerController._settingsService`, which has five live reads). Item 28's `...Async` renames landed on the three registered `ShiftsController` actions (`CloseShiftAsync`, `GetCurrentReportAsync`, `GetReportByIdAsync`); the touched services already carried the suffix. Item 37's registered lambda (`ShiftsController` `:84-212`) was structurally removed by S3; the remaining lambda-scope indentation in a touched file (`CashDrawerController.AddTransactionAsync` call) was fixed. Item 36's "rate before `closure == null`" site also died with S3 (the report path no longer resolves a rate); `GetReportByIdAsync` now resolves the 404 before the ownership evaluation. `DailyClosureController` keeps its S2-pinned null-request 400 (`ValidateClosureRequest`) and the `ThrowIfNull(request)` guard sits in `ExecuteCreateClosureAsync` (post-validation continuation) — see `apply-progress.md` S5b deviation D3. `ResolveClosureDate` moved inside the `try` so backdating/future dates map to 400 `ApiBadRequest` instead of the middleware's 409 (S5b.7, S5a GGA registration). Carry-overs: the no-sync-over-async IL scan now enumerates nested state machines (plus a discriminating probe test), and `SalesService.Checkout.cs` forwards its in-scope token to `GetOrCreateActiveSessionAsync`/`RecordSaleChangeAsync`.
 
 ## Phase 5c: J Findings (S5c)
 

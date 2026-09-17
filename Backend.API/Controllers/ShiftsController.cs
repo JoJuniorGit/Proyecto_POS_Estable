@@ -30,8 +30,11 @@ public class ShiftsController : ControllerBase
 
     [RequireSecurityStampValidation]
     [HttpPost("close")]
-    public async Task<ActionResult> CloseShift([FromBody] CloseShiftRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult> CloseShiftAsync([FromBody] CloseShiftRequest request, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.DeclaredAmounts);
+
         if (User.IsInRole("Driver"))
         {
             return this.ApiForbidden("El rol Driver no tiene permisos para cerrar turnos.");
@@ -101,13 +104,13 @@ public class ShiftsController : ControllerBase
 
     [HttpGet("current/report")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
-    public async Task<ActionResult> GetCurrentReport(CancellationToken cancellationToken)
+    public async Task<ActionResult> GetCurrentReportAsync(CancellationToken cancellationToken)
     {
         var latestClosure = await _dailyClosureService.GetLatestClosureAsync(cancellationToken);
 
         if (latestClosure != null)
         {
-            return await GetReportById(latestClosure.Id, cancellationToken);
+            return await GetReportByIdAsync(latestClosure.Id, cancellationToken);
         }
 
         return this.ApiNotFound("No existe ningún cierre de caja registrado todavía.");
@@ -115,12 +118,17 @@ public class ShiftsController : ControllerBase
 
     [HttpGet("{id}/report")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
-    public async Task<ActionResult> GetReportById(int id, CancellationToken cancellationToken)
+    public async Task<ActionResult> GetReportByIdAsync(int id, CancellationToken cancellationToken)
     {
         var closure = await _dailyClosureService.GetClosureAsync(id, cancellationToken);
 
+        if (closure == null)
+        {
+            return this.ApiNotFound("El reporte de cierre solicitado no existe.");
+        }
+
         bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
-        if (!isElevated && closure != null)
+        if (!isElevated)
         {
             var identityId = _currentUserService.UserId ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             var identityName = User.Identity?.Name;
@@ -135,11 +143,6 @@ public class ShiftsController : ControllerBase
             {
                 return this.ApiForbidden("Acceso denegado: no tiene permisos para consultar este reporte.");
             }
-        }
-
-        if (closure == null)
-        {
-            return this.ApiNotFound("El reporte de cierre solicitado no existe.");
         }
 
         var details = ShiftReportMapper.MapDetails(closure.Details, closure.ExchangeRate);

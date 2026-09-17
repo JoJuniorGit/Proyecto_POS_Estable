@@ -41,7 +41,6 @@ public class Phase3ConcurrencyAndReservationTests
     [Fact]
     public async Task ReservationExpiryJob_ReleasesExpiredUnconfirmedReservations()
     {
-        // Arrange
         var dbName = Guid.NewGuid().ToString();
         var services = new ServiceCollection();
         services.AddDbContext<InventoryDbContext>(opt => opt.UseInMemoryDatabase(dbName));
@@ -68,7 +67,7 @@ public class Phase3ConcurrencyAndReservationTests
                 Id = 1,
                 ProductId = 100,
                 Quantity = 3m,
-                ExpiryDate = DateTime.UtcNow.AddMinutes(-10), // Expirada hace 10 minutos
+                ExpiryDate = DateTime.UtcNow.AddMinutes(-10),
                 IsConfirmed = false
             };
             db.StockReservations.Add(expiredReservation);
@@ -77,10 +76,8 @@ public class Phase3ConcurrencyAndReservationTests
 
         var job = new ReservationExpiryJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), NullLogger<ReservationExpiryJob>.Instance);
 
-        // Act
         int releasedCount = await job.RunExpiryCycleAsync(CancellationToken.None);
 
-        // Assert
         Assert.Equal(1, releasedCount);
 
         using (var scope = serviceProvider.CreateScope())
@@ -88,7 +85,7 @@ public class Phase3ConcurrencyAndReservationTests
             var db = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
             var product = await db.Products.FindAsync(100);
             Assert.NotNull(product);
-            Assert.Equal(0m, product.ReservedQuantity); // Stock reservado liberado a 0
+            Assert.Equal(0m, product.ReservedQuantity);
 
             var remainingReservations = await db.StockReservations.CountAsync();
             Assert.Equal(0, remainingReservations);
@@ -98,16 +95,13 @@ public class Phase3ConcurrencyAndReservationTests
     [Fact]
     public async Task CashDrawerService_OpenSession_WhenAlreadyOpen_ThrowsInvalidOperationException()
     {
-        // Arrange
         using var context = CreateInMemorySalesDbContext();
         var service = new CashDrawerService(context);
 
-        // Act 1: Abrir sesión inicial
         var session1 = await service.OpenSessionAsync(100m, 60m);
         Assert.NotNull(session1);
         Assert.Equal(CashDrawerStatus.Open, session1.Status);
 
-        // Act 2 & Assert: Abrir segunda sesión concurrente sin cerrar la primera
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
         {
             await service.OpenSessionAsync(50m, 60m);
@@ -119,15 +113,12 @@ public class Phase3ConcurrencyAndReservationTests
     [Fact]
     public async Task CashDrawerService_GetOrCreateActiveSession_ReturnsExistingSessionWithoutDuplication()
     {
-        // Arrange
         using var context = CreateInMemorySalesDbContext();
         var service = new CashDrawerService(context);
 
-        // Act
         var session1 = await service.GetOrCreateActiveSessionAsync(60m);
         var session2 = await service.GetOrCreateActiveSessionAsync(60m);
 
-        // Assert
         Assert.Equal(session1.Id, session2.Id);
         var openSessions = await context.CashDrawerSessions.CountAsync(s => s.Status == CashDrawerStatus.Open);
         Assert.Equal(1, openSessions);
@@ -136,7 +127,6 @@ public class Phase3ConcurrencyAndReservationTests
     [Fact]
     public async Task Customer_CreateCustomer_WithDuplicateCedulaOrRif_ThrowsInvalidOperationException()
     {
-        // Arrange
         using var context = CreateInMemorySalesDbContext();
         var service = new SalesService(context, null!, null!, null!, null!);
 
@@ -152,12 +142,11 @@ public class Phase3ConcurrencyAndReservationTests
 
         var request2 = new CreateCustomerDto
         {
-            CedulaOrRif = "v-20111222 ", // Misma cédula en minúsculas y con espacio
+            CedulaOrRif = "v-20111222 ",
             Name = "Cliente Juan Duplicado",
             CreditLimitUSD = 50m
         };
 
-        // Act & Assert
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
         {
             await service.CreateCustomerAsync(request2);
