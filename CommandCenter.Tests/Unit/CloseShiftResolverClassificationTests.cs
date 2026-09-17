@@ -19,6 +19,7 @@ using Microsoft.EntityFrameworkCore;
 using Moq;
 using Sales.Module;
 using Sales.Module.Data;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using Sales.Module.Services;
@@ -251,24 +252,10 @@ public class CloseShiftResolverClassificationTests
     [Fact]
     public void ShiftReportMapper_ProducesConsistentLabels_WithResolverClassification()
     {
-        var details = new List<ClosureDetail>
+        var details = new List<ClosureDetailResponseDto>
         {
-            new()
-            {
-                PaymentMethodId = 1,
-                PaymentMethodName = "Efectivo USD",
-                ExpectedAmountBsS = 5000m,
-                ActualAmountBsS = 5000m,
-                DifferenceBsS = 0m
-            },
-            new()
-            {
-                PaymentMethodId = 2,
-                PaymentMethodName = "Efectivo Bs.S",
-                ExpectedAmountBsS = 2000m,
-                ActualAmountBsS = 2000m,
-                DifferenceBsS = 0m
-            }
+            new(0, 0, 1, "Efectivo USD", 5000m, 5000m, 0m),
+            new(0, 0, 2, "Efectivo Bs.S", 2000m, 2000m, 0m)
         };
 
         decimal exchangeRate = 50m;
@@ -309,12 +296,13 @@ public class CloseShiftResolverClassificationTests
             }
         };
 
-        string receipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: false);
+        var closureDto = ShiftReportMapper.MapClosure(closure);
+        string receipt = DailyClosureService.GenerateReceiptContent(closureDto, isBlind: false);
 
         Assert.Contains("USD", receipt);
         Assert.Contains("Bs.S", receipt);
 
-        var reportDetails = ShiftReportMapper.MapDetails(closure.Details, 50m);
+        var reportDetails = ShiftReportMapper.MapDetails(closureDto.Details, 50m);
         Assert.Equal(PaymentMethodCurrencyResolver.Usd, reportDetails.First(d => d.PaymentMethodId == 1).Currency);
         Assert.Equal(PaymentMethodCurrencyResolver.LocalCurrency, reportDetails.First(d => d.PaymentMethodId == 2).Currency);
     }

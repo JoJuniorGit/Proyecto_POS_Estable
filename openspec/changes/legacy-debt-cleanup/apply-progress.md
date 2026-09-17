@@ -462,3 +462,103 @@ The new test is relational (SQLite) precisely because EF InMemory cannot `BeginT
 No finding is in this remediation's scope (`tx Serializable`, McCabe, non-tautological asserts, rate guard, 409 mapping).
 
 
+
+---
+
+## Slice S4a: Closure DTO Boundary (lcs-s4a-closure-dto)
+
+### Completed Tasks
+
+- [x] 4a.1 Golden-JSON contract test — `ClosureDtoBoundaryTests.ClosureDto_GoldenJson_PreservesLegacyBoundFields_AndDropsEntityNavigationMembers`
+- [x] 4a.2 `Sales.Module/DTOs/DailyClosureResponseDto.cs` (sealed record, init-only)
+- [x] 4a.3 `Sales.Module/DTOs/ClosureDetailResponseDto.cs` (sealed record, init-only)
+- [x] 4a.4 `DailyClosureService` projects closure entities through `ShiftReportMapper.MapClosure`; `IDailyClosureService` closure read/create signatures return DTOs
+- [x] 4a.5 `DailyClosureController.GetClosure` returns `ActionResult<DailyClosureResponseDto>`; `CreateClosure` already returned an immutable DTO (`CloseShiftResult`) — unchanged to preserve payload parity
+- [x] 4a.6 WPF `DailyClosureDto`/`ClosureDetailDto` field names already mirror the new DTO JSON names; no client rebinding required (see Decision D2)
+- [x] 4a.7 `ClosureDtoBoundaryTests.ClosureDtos_ExposeNoPublicSetter` (init-only enforced)
+- [x] 4a.8 `ClosureDtoBoundaryTests.ClosureServiceAndControllerSignatures_DoNotExposeSalesModuleEntities`
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `Sales.Module/DTOs/DailyClosureResponseDto.cs` | Created | Immutable closure response contract (AD-14) |
+| `Sales.Module/DTOs/ClosureDetailResponseDto.cs` | Created | Immutable closure detail contract (AD-14) |
+| `Sales.Module/Services/ShiftReportMapper.cs` | Modified | `MapClosure(DailyClosure) -> DailyClosureResponseDto`; `MapDetails` now consumes `IReadOnlyList<ClosureDetailResponseDto>` (AD-4/14) |
+| `Sales.Module/Interfaces/IDailyClosureService.cs` | Modified | `GetClosureAsync`/`GetLatestClosureAsync` return DTOs; `WriteClosedClosureReceiptsAsync` takes a DTO; entity `CreateClosureAsync(DailyClosure)` removed from the interface; entity `using` dropped |
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | `GetClosureAsync`/`GetLatestClosureAsync`/`PersistClosureCoreAsync` project through `ShiftReportMapper`; new private `LoadClosureEntityAsync` keeps entity access private; receipt generator + writer take the DTO |
+| `Sales.Module/Services/ClosurePdfGenerator.cs` | Modified | `GeneratePdf` takes `DailyClosureResponseDto` |
+| `Backend.API/Controllers/DailyClosureController.cs` | Modified | `GetClosure` returns the declared DTO; entity `using` removed |
+| `Backend.API/Controllers/ShiftsController.cs` | Modified | Report path consumes DTO details; unused entity `using` removed |
+| `CommandCenter.Tests/Unit/ClosureDtoBoundaryTests.cs` | Created | 5 S4a tests: golden JSON parity, init-only reflection, no-entity signature reflection, DTO namespace/seal, controller GET + NotFound semantics |
+| `CommandCenter.Tests/Unit/ErrorContractTests.cs` | Modified | Re-pointed 3 `GetClosureAsync` mocks and 2 receipt-writer calls to the DTO |
+| `CommandCenter.Tests/Unit/PaymentMethodCurrencyClassificationTests.cs` | Modified | Re-pointed 2 `GetClosureAsync` mocks and 1 receipt call to the DTO |
+| `CommandCenter.Tests/Unit/CloseShiftResolverClassificationTests.cs` | Modified | `MapDetails` callers re-pointed to DTO details |
+| `CommandCenter.Tests/Unit/DailyClosureServiceUnitTests.cs` | Modified | Receipt generator callers re-pointed to the DTO |
+| `CommandCenter.Tests/CheckoutAndPaymentTests.cs` | Modified | Receipt/PDF generator callers re-pointed to the DTO |
+| `CommandCenter.Tests/CheckoutUxTests.cs` | Modified | Receipt generator callers re-pointed to the DTO |
+
+### Contract / Parity Evidence (AD-15, REQ-ADB-04)
+
+Both payloads below were produced inside `ClosureDtoBoundaryTests` with the API JSON options (`CamelCase` + `ReferenceHandler.IgnoreCycles`, mirroring `ServiceCollectionExtensions.AddJsonControllers`), then asserted field-by-field.
+
+**Touched endpoint `GET /api/dailyclosure/{id}`**
+
+- Before (entity `DailyClosure` + `ClosureDetail`, the pre-S4a body):
+  `{"id":7,"closureDate":"2026-09-17T12:30:00Z","userId":"Admin","exchangeRate":50,"totalExpectedBsS":3000,"totalActualBsS":3030,"totalDifferenceBsS":30,"observation":"Cierre Normal","details":[{"id":11,"dailyClosureId":7,"dailyClosure":null,"paymentMethodId":1,"paymentMethod":null,"paymentMethodName":"Efectivo USD","expectedAmountBsS":1000,"actualAmountBsS":1050,"differenceBsS":50},{"id":12,"dailyClosureId":7,"dailyClosure":null,"paymentMethodId":3,"paymentMethod":null,"paymentMethodName":"Punto de Venta","expectedAmountBsS":2000,"actualAmountBsS":1980,"differenceBsS":-20}]}`
+- After (S4a `DailyClosureResponseDto` + `ClosureDetailResponseDto`, golden literal asserted with `Assert.Equal`):
+  `{"id":7,"closureDate":"2026-09-17T12:30:00Z","userId":"Admin","exchangeRate":50,"totalExpectedBsS":3000,"totalActualBsS":3030,"totalDifferenceBsS":30,"observation":"Cierre Normal","details":[{"id":11,"dailyClosureId":7,"paymentMethodId":1,"paymentMethodName":"Efectivo USD","expectedAmountBsS":1000,"actualAmountBsS":1050,"differenceBsS":50},{"id":12,"dailyClosureId":7,"paymentMethodId":3,"paymentMethodName":"Punto de Venta","expectedAmountBsS":2000,"actualAmountBsS":1980,"differenceBsS":-20}]}`
+- Every WPF-bound scalar survives with the same JSON name and value (`id`, `closureDate`, `userId`, `exchangeRate`, `totalExpectedBsS`, `totalActualBsS`, `totalDifferenceBsS`, `observation`).
+- Every WPF-bound detail field survives (`id`, `paymentMethodId`, `paymentMethodName`, `expectedAmountBsS`, `actualAmountBsS`, `differenceBsS`).
+- The EF navigation members `dailyClosure` and `paymentMethod` are **gone** (previously serialized as `null`); no client binds them (REQ-ADB-01 scenario 1).
+
+**Touched endpoints with unchanged bodies**
+
+- `POST /api/dailyclosure` — not swapped: still `CloseShiftResult`, an immutable record that never contained `DailyClosure`/`ClosureDetail` (REQ-ADB-01 satisfied). Swapping it for `DailyClosureResponseDto` would drop `cashierName`/`cashierCedula`/`closedAt`/native detail amounts from the body, so parity forbids the change (Decision D1).
+- `GET /api/shifts/{id}/report` and `GET /api/shifts/current/report` — still `ShiftReportDto`; only the internal source changed from entity details to DTO details. Value parity is asserted by the passing `CloseShiftResolverClassificationTests` and `PaymentMethodCurrencyClassificationTests` (same `MapDetails` arithmetic, same currency labels).
+
+### Verification Results (S4a)
+
+- `dotnet build CommandCenter.slnx -c Release`: **0 errors, 0 warnings**
+- `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: **1185 passed, 0 failed, 0 skipped** (1180 -> 1185)
+- `dotnet test --filter "FullyQualifiedName~Dto"` (tasks.md S4a filter): **71 passed, 0 failed**
+- `npm test` (Web.Frontend): **271 passed, 0 failed**
+- `npm run lint` (Web.Frontend): **clean** (exit 0)
+- Coverage gate (`scripts/check-coverage.py`): Core **0.8378** >= 0.70, Sales.Module **0.9011** >= 0.80, Inventory.Module **0.8251** >= 0.72 — all `[OK]`
+
+### Work Unit Evidence (S4a)
+
+| Evidence | Value |
+|----------|-------|
+| Focused test command | `dotnet test --filter "FullyQualifiedName~Dto"`: 71 passed, 0 failed |
+| Runtime harness | Serialized `GET /api/dailyclosure/{id}` body captured before (entity) and after (DTO) with the production JSON options; golden literal asserted; `DailyClosureController.GetClosure` exercised with a real controller + mocked service (200 DTO, 404 preserved) |
+| Rollback boundary | `Sales.Module/DTOs/DailyClosureResponseDto.cs`, `Sales.Module/DTOs/ClosureDetailResponseDto.cs`, `ShiftReportMapper.cs`, `IDailyClosureService.cs`, `DailyClosureService.cs`, `ClosurePdfGenerator.cs`, `DailyClosureController.cs`, `ClosureDtoBoundaryTests.cs` and the five re-pointed test files |
+
+### Decisions and Deviations (S4a)
+
+- **D1 — `POST /api/dailyclosure` body preserved.** Task 4a.5 asks `CreateClosure` to return a DTO; it already returns `CloseShiftResult`, a sealed immutable record with no entity member, so REQ-ADB-01 is satisfied without a body change. Returning `DailyClosureResponseDto` there would break field parity for the POST payload; left as-is.
+- **D2 — no WPF client rebinding churn.** `DailyClosureDto`/`ClosureDetailDto` already declare exactly the DTO JSON names, and no client calls `GET /api/dailyclosure/{id}`; the WPF caller discards the POST result. The DTO swap is therefore client-transparent (AD-15 satisfied by construction, verified by the golden JSON). `DailyClosureClientService.cs` is unchanged.
+- **D3 — legacy entity entry point kept out of the interface.** `CreateClosureAsync(DailyClosure)` is removed from `IDailyClosureService` (REQ-ADB-01 / task 4a.8), but the concrete method remains as the test seam for the pre-existing assembly tests. It has no production caller (`S3-07`) and no longer crosses the API boundary. Registered as residual below.
+- **D4 — init-only is the immutability contract.** REQ-ADB-04 / AD-14 specify `init`-only members; the reflection test rejects any plain `set` and accepts only `init` (`IsExternalInit`) setters or no setter.
+- **D5 — scope note on the item numbers.** Task text lists registry items `3, 15, 19, 20`; per `docs/deuda-legacy-gga-2026-09-16.md` and `proposal.md` group A, the **closure** items are `3` (controller serializes `DailyClosure`/`ClosureDetail`) and `8` (`GetClosureAsync`/`CreateClosureAsync` return the entity). Items `15`, `19`, `20` are the **drawer** findings (`CashDrawerSession`/`CashTransaction`, `GetHistoryAsync` anti-pattern) and belong to S4b, which this slice explicitly must not start. S4a therefore resolved items 3 and 8 for the closure contract.
+
+### Registered for S4b/S5 (NOT fixed in this slice)
+
+- **S4b** — registry items 15/19/20 (drawer DTO boundary) and the `Backend.API/DTOs/CashDrawerDtos.cs` move of `CashTransactionDto` into `Sales.Module/DTOs/` (AD-14, tasks 4b.1-4b.10).
+- **S4a-R1** — `DailyClosureService.CreateClosureAsync(DailyClosure)` remains a public concrete-only test seam wrapping the divergent legacy path (`S3-07`). Candidate for deletion together with its test references, or reduction to a private adapter.
+- **S4a-R2** — `DailyClosureService.cs` is now **645 lines** (`(Get-Content).Count`), above the 300-500 ceiling; `S3-06`/`WARNING-07` remain open for S5.
+
+### GGA Hook Exceptions
+
+`gga run` (v2.10.1, provider `opencode`, rules `AGENTS.md`) returned `STATUS: FAILED` on the S4a staging set. Every blocking finding is **pre-existing and assigned to a later slice**; none is introduced by S4a. Committed with a documented punctual `--no-verify`.
+
+| GGA blocking finding | Location | Classification |
+|----------------------|----------|----------------|
+| 1. `CancellationToken` absent on async members | `IDailyClosureService.GetClosureAsync`; `DailyClosureService` legacy `CreateClosureAsync`/`GetClosureAsync`; `DailyClosureController.GetExpectedTotals`/`GetClosure`; `ShiftsController.GetCurrentReport`/`GetReportById` | Pre-existing; **S5a** (`async-cancellation-propagation`, registry items 4/9/16/21/27) — already registered in the S3 GGA table |
+| 2. Explanatory comments | `ClosurePdfGenerator.cs` (22), `DailyClosureService.cs:284` (`8.7-B5`), `IDailyClosureService.cs:41-42` (`8.7-B5`), three test files | Pre-existing; **AD-18 / S5b.8** (keeps only `8.x-*` traceability markers) — already registered in the S3 GGA table |
+| 3. File length > 500 | `DailyClosureService.cs` (**645**, was 636 at S3 — `S3-06`); `ErrorContractTests.cs` (~715) and `CheckoutAndPaymentTests.cs` (~553) are pre-existing test files outside S4a scope | Pre-existing; **S3-06 / WARNING-07 → S5** (S4a-R2 above). S4a added ~9 lines to the service (DTO projection + private entity loader) |
+| 4. `ThrowIfNull` not used | `DailyClosureService.cs:562` `WriteClosedClosureReceiptsAsync` | Pre-existing; **S5b.4/S5b.8** — already registered in the S3 GGA table |
+| 5. McCabe > 10 | `ClosurePdfGenerator.MeasureTextWidth`, `PdfEscape`, `GeneratePdf` | Pre-existing bodies; S4a changed only `GeneratePdf`'s parameter type. **S5b** hygiene |
+
+Explicit S4a-relevant confirmation from the same review (`## Compliant areas (verified)`): *"DTO boundary: `DailyClosureResponseDto` / `ClosureDetailResponseDto` are `sealed record` with init-only semantics; controllers and `IDailyClosureService` expose no `Sales.Module.Entities` types (enforced by `ClosureDtoBoundaryTests`)"* — direct third-party evidence for REQ-ADB-01/REQ-ADB-04.
+

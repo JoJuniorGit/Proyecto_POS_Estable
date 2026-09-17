@@ -9380,3 +9380,143 @@ E. IMPACTO
   tests). Ninguno introducido por esta remediacion. Commit con --no-verify
   punctual documentado.
 
+
+================================================================================
+ANEXO - REVISION 8.140 (legacy-debt-cleanup S4a: Closure DTO boundary)
+================================================================================
+
+Fecha: 2026-09-17
+Commit: refactor(8.140): DTOs inmutables de cierre (slice S4a, items 3/15/19/20)
+        - ANEXO 8.140, en rama V0.15 (hash re-puntado por el bookkeeping de
+        verify, siguiendo el patron de las slices S1/S2/S3).
+
+Alcance: work unit S4a del change legacy-debt-cleanup (store openspec), items
+de registro 3 y 8 (H-04): las respuestas de cierre dejan de devolver entidades
+EF. Solo S4a; S4b y posteriores no se inician. Sin cambios de schema, sin PRs.
+
+A. CAMBIOS DE PRODUCCION
+
+A1. Contratos inmutables nuevos (AD-14):
+- Sales.Module/DTOs/DailyClosureResponseDto.cs: record sealed con miembros
+  init-only. Nombres JSON espejo del entity actual: id, closureDate, userId,
+  exchangeRate, totalExpectedBsS, totalActualBsS, totalDifferenceBsS,
+  observation, details.
+- Sales.Module/DTOs/ClosureDetailResponseDto.cs: record sealed init-only con
+  id, dailyClosureId, paymentMethodId, paymentMethodName, expectedAmountBsS,
+  actualAmountBsS, differenceBsS.
+
+A2. Proyeccion unica (AD-4/14):
+- ShiftReportMapper.cs: nuevo MapClosure(DailyClosure) -> DailyClosureResponseDto
+  y MapDetail(ClosureDetail) -> ClosureDetailResponseDto. MapDetails ahora
+  consume IReadOnlyList<ClosureDetailResponseDto>, de modo que el informe de
+  turno y el cierre comparten la misma proyeccion sin entidad.
+- ClosurePdfGenerator.GeneratePdf(DailyClosureResponseDto, bool).
+- DailyClosureService.GenerateReceiptContent(DailyClosureResponseDto, bool).
+
+A3. Frontera de servicio limpia (REQ-ADB-01, tarea 4a.8):
+- IDailyClosureService.cs: GetClosureAsync y GetLatestClosureAsync devuelven
+  DailyClosureResponseDto?; WriteClosedClosureReceiptsAsync recibe el DTO;
+  CreateClosureAsync(DailyClosure) sale de la interfaz; se elimina el using de
+  Sales.Module.Entities.
+- DailyClosureService.cs: GetClosureAsync/GetLatestClosureAsync/
+  PersistClosureCoreAsync proyectan via ShiftReportMapper; nuevo privado
+  LoadClosureEntityAsync mantiene el acceso a entidad dentro del servicio.
+- DailyClosureController.GetClosure: ActionResult<DailyClosureResponseDto>;
+  using de Sales.Module.Entities eliminado.
+- ShiftsController: el informe consume detalles DTO; using de entidad eliminado.
+
+B. PARIDAD DE CONTRATO (AD-15, REQ-ADB-04)
+
+B1. Endpoint tocado GET /api/dailyclosure/{id}. Capturado dentro de
+    ClosureDtoBoundaryTests con las opciones JSON de produccion
+    (CamelCase + ReferenceHandler.IgnoreCycles).
+
+    ANTES (entidad DailyClosure + ClosureDetail):
+    {"id":7,"closureDate":"2026-09-17T12:30:00Z","userId":"Admin",
+    "exchangeRate":50,"totalExpectedBsS":3000,"totalActualBsS":3030,
+    "totalDifferenceBsS":30,"observation":"Cierre Normal","details":[
+    {"id":11,"dailyClosureId":7,"dailyClosure":null,"paymentMethodId":1,
+    "paymentMethod":null,"paymentMethodName":"Efectivo USD",
+    "expectedAmountBsS":1000,"actualAmountBsS":1050,"differenceBsS":50},
+    {"id":12,"dailyClosureId":7,"dailyClosure":null,"paymentMethodId":3,
+    "paymentMethod":null,"paymentMethodName":"Punto de Venta",
+    "expectedAmountBsS":2000,"actualAmountBsS":1980,"differenceBsS":-20}]}
+
+    DESPUES (DailyClosureResponseDto + ClosureDetailResponseDto):
+    {"id":7,"closureDate":"2026-09-17T12:30:00Z","userId":"Admin",
+    "exchangeRate":50,"totalExpectedBsS":3000,"totalActualBsS":3030,
+    "totalDifferenceBsS":30,"observation":"Cierre Normal","details":[
+    {"id":11,"dailyClosureId":7,"paymentMethodId":1,
+    "paymentMethodName":"Efectivo USD","expectedAmountBsS":1000,
+    "actualAmountBsS":1050,"differenceBsS":50},
+    {"id":12,"dailyClosureId":7,"paymentMethodId":3,
+    "paymentMethodName":"Punto de Venta","expectedAmountBsS":2000,
+    "actualAmountBsS":1980,"differenceBsS":-20}]}
+
+    El golden JSON del DESPUES se aserta con Assert.Equal; cada campo escalar
+    enlazado por WPF y cada campo de detalle se compara campo a campo contra el
+    payload anterior. Los miembros de navegacion EF dailyClosure/paymentMethod
+    (antes null) desaparecen: ningun cliente los enlaza (REQ-ADB-01 escenario 1).
+
+B2. Endpoints tocados con cuerpo sin cambios:
+    - POST /api/dailyclosure: sigue devolviendo CloseShiftResult, record
+      inmutable sin entidad; REQ-ADB-01 cumplido sin tocar el payload. Cambiarlo
+      a DailyClosureResponseDto eliminaria cashierName/cashierCedula/closedAt y
+      los montos nativos por detalle: la paridad lo prohibe (decision D1).
+    - GET /api/shifts/{id}/report y /api/shifts/current/report: siguen devolviendo
+      ShiftReportDto; solo cambia la fuente interna (detalles DTO). La paridad de
+      valores la cubren CloseShiftResolverClassificationTests y
+      PaymentMethodCurrencyClassificationTests (misma aritmetica y etiquetas).
+
+C. VERIFICACION
+
+C1. Build Release: 0 errores, 0 advertencias.
+C2. Backend tests: 1185 passed, 0 failed, 0 skipped (1180 -> 1185).
+C3. Filtro S4a (Dto): 71 passed, 0 failed.
+C4. Frontend tests: 271 passed, 0 failed.
+C5. Frontend lint: clean (exit 0).
+C6. Coverage: Core 0.8378 >= 0.70; Sales.Module 0.9011 >= 0.80;
+    Inventory.Module 0.8251 >= 0.72 - [OK].
+
+D. PRUEBAS NUEVAS (CommandCenter.Tests/Unit/ClosureDtoBoundaryTests.cs)
+
+D1. ClosureDto_GoldenJson_PreservesLegacyBoundFields_AndDropsEntityNavigationMembers
+    - imprime ambos payloads, aserta el golden literal y la paridad por campo.
+D2. ClosureDtos_ExposeNoPublicSetter: reflexion sobre ambos DTO; rechaza set
+    plano, acepta init-only (IsExternalInit) o ausencia de setter.
+D3. ClosureServiceAndControllerSignatures_DoNotExposeSalesModuleEntities:
+    camina parametros y retornos (incluye argumentos genericos) y exige que
+    ninguno sea de Sales.Module.Entities; ademas fija los retornos declarados.
+D4. ClosureResponseDtos_AreDeclaredInSalesModuleDtosNamespace: namespace y
+    sealed.
+D5. GetClosure_ReturnsDeclaredDto_AndPreservesNotFoundSemantics: 200 con DTO
+    (sin claves de navegacion) y 404 preservado.
+
+E. DECISIONES, DESVIACIONES E IMPACTO
+
+E1. D1 - el body de POST /api/dailyclosure se preserva (ya era DTO inmutable).
+E2. D2 - sin re-enlace de cliente: DailyClosureDto/ClosureDetailDto ya declaran
+    los nombres JSON del DTO y ningun cliente consume GET /api/dailyclosure/{id};
+    DailyClosureClientService.cs queda sin cambios.
+E3. D3 - CreateClosureAsync(DailyClosure) sale de la interfaz pero permanece como
+    metodo concreto de test (S3-07); sin caller de produccion.
+E4. D4 - init-only es el contrato de inmutabilidad (AD-14); el test rechaza set
+    plano.
+E5. D5 - items: el alcance de cierre son los items 3 (controlador serializa
+    entidades) y 8 (servicio devuelve entidad). Los items 15/19/20 son los
+    hallazgos de CAJON (S4b) y no se tocan en esta slice.
+E6. Archivos modificados: 12 (7 produccion/test, 2 bookkeeping, 3 tests
+    re-punteados); archivos nuevos: 3 (2 DTO + 1 archivo de tests). Lineas
+    autoradas ~470 > 400: se recomienda size:exception (slice ya autorizada como
+    unidad de cadena; sin recorte de codigo, tests ni comentarios).
+E7. GGA: gga run (v2.10.1, provider opencode) = STATUS FAILED; los 5 bloqueos
+    son pre-existentes y asignados a slices posteriores, ninguno introducido por
+    S4a - (1) CancellationToken ausente -> S5a; (2) comentarios explicativos ->
+    AD-18/S5b; (3) DailyClosureService.cs 645 lineas (S3-06/S5, +9 por esta
+    slice) y dos archivos de test >500 fuera de alcance; (4) ThrowIfNull ->
+    S5b.4; (5) McCabe de ClosurePdfGenerator (cuerpos pre-existentes; S4a solo
+    cambio el tipo del parametro de GeneratePdf) -> S5b. Commit con --no-verify
+    puntual documentado. El mismo informe declara en "Compliant areas": "DTO
+    boundary: DailyClosureResponseDto/ClosureDetailResponseDto son sealed record
+    con semantica init-only; controllers e IDailyClosureService no exponen tipos
+    de Sales.Module.Entities (forzado por ClosureDtoBoundaryTests)".

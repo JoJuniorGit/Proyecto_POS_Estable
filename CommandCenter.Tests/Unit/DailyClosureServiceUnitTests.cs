@@ -96,7 +96,7 @@ public class DailyClosureServiceUnitTests
             }
         };
 
-        string receipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: true);
+        string receipt = DailyClosureService.GenerateReceiptContent(ShiftReportMapper.MapClosure(closure), isBlind: true);
 
         Assert.Contains("COMPROBANTE DE ARQUEO A CIEGAS", receipt);
         Assert.Contains("Cajero Turno Manana", receipt);
@@ -123,7 +123,7 @@ public class DailyClosureServiceUnitTests
             }
         };
 
-        string receipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: false);
+        string receipt = DailyClosureService.GenerateReceiptContent(ShiftReportMapper.MapClosure(closure), isBlind: false);
 
         Assert.Contains("COMPROBANTE DE CIERRE Y AUDITORÍA DE CAJA", receipt);
         Assert.Contains("Administrador General", receipt);

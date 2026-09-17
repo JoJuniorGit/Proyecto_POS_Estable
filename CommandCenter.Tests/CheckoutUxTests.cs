@@ -316,14 +316,15 @@ public class CheckoutUxTests
         };
 
         // 1. Blind receipt (Cajero)
-        string blindReceipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: true);
+        var closureDto = ShiftReportMapper.MapClosure(closure);
+        string blindReceipt = DailyClosureService.GenerateReceiptContent(closureDto, isBlind: true);
         Assert.Contains("COMPROBANTE DE ARQUEO A CIEGAS", blindReceipt);
         Assert.DoesNotContain("DIFERENCIA", blindReceipt);
         Assert.DoesNotContain("MONTO SISTEMA", blindReceipt);
         Assert.Contains("MONTO DECLARADO (Bs.S)", blindReceipt);
 
         // 2. Audit receipt (Admin)
-        string auditReceipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: false);
+        string auditReceipt = DailyClosureService.GenerateReceiptContent(closureDto, isBlind: false);
         Assert.Contains("COMPROBANTE DE CIERRE Y AUDITORÍA DE CAJA", auditReceipt);
         Assert.Contains("MONTO SISTEMA (Bs.S)", auditReceipt);
         Assert.Contains("DIFERENCIA (Bs.S)", auditReceipt);

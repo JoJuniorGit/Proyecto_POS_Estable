@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Sales.Module.Entities;
+using Sales.Module.DTOs;
 using Sales.Module.Interfaces;
 using Core.Interfaces;
 using System;
@@ -127,7 +127,7 @@ public class DailyClosureController : ControllerBase
 
     [HttpGet("{id}")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult> GetClosure(int id)
+    public async Task<ActionResult<DailyClosureResponseDto>> GetClosure(int id)
     {
         var closure = await _closureService.GetClosureAsync(id);
         if (closure == null) return NotFound();

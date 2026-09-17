@@ -477,7 +477,7 @@ public class CheckoutAndPaymentTests
             }
         };
 
-        string receipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: true);
+        string receipt = DailyClosureService.GenerateReceiptContent(ShiftReportMapper.MapClosure(closure), isBlind: true);
 
         Assert.Contains("COMPROBANTE DE ARQUEO A CIEGAS", receipt);
         Assert.Contains("MÉTODO DE PAGO", receipt);
@@ -509,7 +509,7 @@ public class CheckoutAndPaymentTests
             }
         };
 
-        string receipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: false);
+        string receipt = DailyClosureService.GenerateReceiptContent(ShiftReportMapper.MapClosure(closure), isBlind: false);
 
         Assert.Contains("COMPROBANTE DE CIERRE Y AUDITORÍA DE CAJA", receipt);
         Assert.Contains("MÉTODO DE PAGO", receipt);
@@ -542,7 +542,7 @@ public class CheckoutAndPaymentTests
             }
         };
 
-        byte[] pdfBytes = ClosurePdfGenerator.GeneratePdf(closure, isBlind: false);
+        byte[] pdfBytes = ClosurePdfGenerator.GeneratePdf(ShiftReportMapper.MapClosure(closure), isBlind: false);
 
         Assert.NotNull(pdfBytes);
         Assert.True(pdfBytes.Length > 200);

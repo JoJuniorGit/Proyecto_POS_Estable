@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using Sales.Module.Data;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using Sales.Module.Services;
@@ -191,7 +192,7 @@ public class ErrorContractTests
         mockUser.Setup(u => u.UserId).Returns("1");
 
         mockDailyClosure.Setup(c => c.GetClosureAsync(It.IsAny<int>()))
-            .ReturnsAsync((DailyClosure?)null);
+            .ReturnsAsync((DailyClosureResponseDto?)null);
 
         var controller = CreateShiftsController(mockCashDrawer, mockDailyClosure, mockUser);
 
@@ -212,7 +213,7 @@ public class ErrorContractTests
         mockUser.Setup(u => u.UserId).Returns("999");
 
         mockDailyClosure.Setup(c => c.GetClosureAsync(It.IsAny<int>()))
-            .ReturnsAsync((DailyClosure?)null);
+            .ReturnsAsync((DailyClosureResponseDto?)null);
 
         var controller = new ShiftsController(
             mockDailyClosure.Object,
@@ -256,7 +257,7 @@ public class ErrorContractTests
             Details = new List<ClosureDetail>()
         };
 
-        mockDailyClosure.Setup(c => c.GetClosureAsync(1)).ReturnsAsync(closure);
+        mockDailyClosure.Setup(c => c.GetClosureAsync(1)).ReturnsAsync(ShiftReportMapper.MapClosure(closure));
 
         var controller = new ShiftsController(
             mockDailyClosure.Object,
@@ -653,7 +654,7 @@ public class ErrorContractTests
             }
         };
 
-        var exception = await Record.ExceptionAsync(() => service.WriteClosedClosureReceiptsAsync(closure));
+        var exception = await Record.ExceptionAsync(() => service.WriteClosedClosureReceiptsAsync(ShiftReportMapper.MapClosure(closure)));
         Assert.Null(exception);
     }
 
@@ -700,7 +701,7 @@ public class ErrorContractTests
 
         var logBefore = File.Exists(AppLogger.WarnLogPath) ? new FileInfo(AppLogger.WarnLogPath).Length : 0;
 
-        await service.WriteClosedClosureReceiptsAsync(closure);
+        await service.WriteClosedClosureReceiptsAsync(ShiftReportMapper.MapClosure(closure));
 
         var logAfter = File.Exists(AppLogger.WarnLogPath) ? new FileInfo(AppLogger.WarnLogPath).Length : 0;
 

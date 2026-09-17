@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Interfaces;
-using Sales.Module.Entities;
 using Sales.Module.Services;
 using Core.Interfaces;
 using System.Threading.Tasks;
