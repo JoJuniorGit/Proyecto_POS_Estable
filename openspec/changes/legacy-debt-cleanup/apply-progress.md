@@ -562,3 +562,111 @@ Both payloads below were produced inside `ClosureDtoBoundaryTests` with the API 
 
 Explicit S4a-relevant confirmation from the same review (`## Compliant areas (verified)`): *"DTO boundary: `DailyClosureResponseDto` / `ClosureDetailResponseDto` are `sealed record` with init-only semantics; controllers and `IDailyClosureService` expose no `Sales.Module.Entities` types (enforced by `ClosureDtoBoundaryTests`)"* — direct third-party evidence for REQ-ADB-01/REQ-ADB-04.
 
+### S4a Bookkeeping Corrections (fold-in `lcs-s4b-drawer-dto`)
+
+- **Commit item mapping (`RESIDUAL-S4a-02`).** Commit `829778c` is labelled `(slice S4a, items 3/15/19/20)`. That is wrong: per `docs/deuda-legacy-gga-2026-09-16.md`, the **closure** items are `3` (`GetClosure`/`CreateClosure` serialize `DailyClosure`/`ClosureDetail`) and `8` (`GetClosureAsync`/`CreateClosureAsync` return the entity). Items `15`/`19`/`20` are the **drawer** findings owned by S4b. S4a therefore resolved items **3 and 8**; the commit subject under-claims 8 and over-claims 15/19/20. A commit message is immutable without a git write; registered here.
+- **Box 4a.5 deviation (D1).** `CreateClosure` was already returning the immutable `CloseShiftResult` (no entity member), so no change was made to preserve POST payload parity. The box is checked but the literal task text ("return `DailyClosureResponseDto`") was only partially met.
+- **Box 4a.6 deviation (D2).** `Desktop.Client.Core/Services/DailyClosureClientService.cs` is **not** in the S4a commit and is unchanged: `DailyClosureDto`/`ClosureDetailDto` already declare the DTO JSON names and no client reads `GET /api/dailyclosure/{id}`. Nothing to rebind. The box is checked, so `tasks.md` slightly over-reports the changed-file set.
+- **`S4a-R1` (registered, still open).** `Sales.Module/Services/DailyClosureService.cs` keeps `public async Task<DailyClosure> CreateClosureAsync(DailyClosure closure)`, a concrete-only entity-returning legacy entry point with no production caller (`S3-07`). It is off the interface and off the API boundary; candidate for deletion with its test references.
+- **`S4a-R2`/`WARNING-07` (carried).** `DailyClosureService.cs` remains over the 300-500 line ceiling; deferred to S5.
+
+---
+
+## Slice S4b: Drawer DTO Boundary (lcs-s4b-drawer-dto)
+
+### Completed Tasks
+
+- [x] 4b.1 Golden-JSON contract test — `DrawerDtoBoundaryTests.DrawerSessionDto_GoldenJson_PreservesLegacyBoundFields_AndDropsEntityNavigationMembers` (real `CashDrawerService` against InMemory DB; whole-body golden literal asserted)
+- [x] 4b.2 `Sales.Module/DTOs/CashDrawerSessionResponseDto.cs` — sealed record, init-only members
+- [x] 4b.3 `Sales.Module/DTOs/CashTransactionResponseDto.cs` — sealed record, init-only members; moved from `Backend.API/DTOs/CashDrawerDtos.cs`
+- [x] 4b.4 `Backend.API/DTOs/CashDrawerDtos.cs` — deleted (file held only `CashTransactionDto`)
+- [x] 4b.5 `Sales.Module/Services/CashDrawerService.cs` — all public methods return DTOs; `GetHistoryAsync` projects `CashTransactionResponseDto` via LINQ (no `new CashTransaction`); entity access confined to private `LoadActiveSessionEntityAsync` + mapper helpers
+- [x] 4b.6 `Sales.Module/Interfaces/ICashDrawerService.cs` — every entity-returning signature now returns `CashDrawerSessionResponseDto`/`CashTransactionResponseDto`; `CashAdvanceResultDto.ExpenseTransaction`/`IncomeTransaction` are DTOs
+- [x] 4b.7 `Backend.API/Controllers/CashDrawerController.cs` — `GetActiveSession`/`OpenSession`/`CloseSession`/`AddTransaction`/`GetHistory` return DTOs; `MapLocalTimesAsync` builds DTOs with `with`
+- [x] 4b.8 WPF client field names already mirror the DTO JSON names (`CashDrawerSessionDto`/`CashTransactionDto`); no client rebinding required (Decision D2). Web `RegisterPage.jsx` updated to read `tx.invoiceNumber` only (AD-15)
+- [x] 4b.9 `DrawerDtoBoundaryTests` — no `CashDrawerSession`/`CashTransaction` in response bodies (golden nav-absence + controller serialization)
+- [x] 4b.10 `DrawerDtoBoundaryTests.GetHistoryAsync_ReturnsProjectedDtos_WithoutMaterializingEntityInstances` + `CashDrawerServiceUnitTests.GetHistoryAsync_ProjectsInvoiceNumberFromSale_WithoutLoadingFullSaleEntity` (re-pointed to `InvoiceNumber`)
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `Sales.Module/DTOs/CashDrawerSessionResponseDto.cs` | Created | Immutable drawer session contract (AD-14); mirrors entity scalar JSON names + `Transactions` |
+| `Sales.Module/DTOs/CashTransactionResponseDto.cs` | Created | Immutable transaction contract moved from `Backend.API/DTOs/CashDrawerDtos.cs`; adds `sessionId`/`transactionTime`/`referenceId`/`saleId` scalars and flattened `invoiceNumber` |
+| `Sales.Module/Interfaces/ICashDrawerService.cs` | Modified | DTO return types on all public methods; `CashAdvanceResultDto` exposes DTOs |
+| `Sales.Module/Services/CashDrawerService.cs` | Modified | Private `LoadActiveSessionEntityAsync`; `MapSession`/`MapTransaction`; DTO projection in `GetHistoryAsync` (AD-14, REQ-ADB-03) |
+| `Backend.API/Controllers/CashDrawerController.cs` | Modified | All drawer actions return DTOs; `MapLocalTimesAsync`/`MapLocalTime` build DTOs |
+| `Backend.API/DTOs/CashDrawerDtos.cs` | Deleted | `CashTransactionDto` moved to `Sales.Module/DTOs/` |
+| `Web.Frontend/src/pages/RegisterPage.jsx` | Modified | Reads `tx.invoiceNumber` (the `tx.sale` navigation no longer exists) (AD-15) |
+| `CommandCenter.Tests/Unit/DrawerDtoBoundaryTests.cs` | Created | 8 S4b tests: golden JSON, history projection, init-only reflection, namespace/seal, cash-advance DTOs, no-entity signatures, controller action DTOs, active-session controller semantics |
+| `CommandCenter.Tests/Unit/CashDrawerServiceUnitTests.cs` | Modified | `GetHistoryAsync` test asserts `item.InvoiceNumber` (no `item.Sale`) |
+| `CommandCenter.Tests/Unit/ErrorContractTests.cs` | Modified | `GetActiveSessionAsync` mock returns the DTO |
+| `CommandCenter.Tests/Unit/CloseShiftResolverClassificationTests.cs` | Modified | `GetActiveSessionAsync` mock returns the DTO |
+| `CommandCenter.Tests/Unit/ExchangeRateReferenceBoundaryTests.cs` | Modified | `AddTransactionAsync` mock returns the DTO |
+| `CommandCenter.Tests/Unit/Phase4SharedTransactionAndIdempotencyTests.cs` | Modified | `GetOrCreateActiveSessionAsync` mock returns the DTO |
+| 14 further test files | Modified | `GetOrCreateActiveSessionAsync` mock setups re-pointed to `CashDrawerSessionResponseDto` |
+
+### Contract / Parity Evidence (AD-15, REQ-ADB-02/03/04)
+
+Both payloads below were produced inside `DrawerDtoBoundaryTests.DrawerSessionDto_GoldenJson_...` with the API JSON options (`CamelCase` + `ReferenceHandler.IgnoreCycles`, mirroring `ServiceCollectionExtensions.AddJsonControllers`). The "before" body is the legacy `CashDrawerSession` entity graph (what the controller returned pre-S4b) and the "after" body is the DTO produced by the real `CashDrawerService.GetActiveSessionWithTransactionsAsync()`.
+
+**Touched endpoint `GET /api/cashdrawer/active-session`**
+
+- Before (entity `CashDrawerSession` + `CashTransaction` navigation graph):
+  `{"id":3,"openedAt":"2026-09-17T12:30:00Z","openedAtLocal":"0001-01-01T00:00:00","closedAt":null,"closedAtLocal":null,"status":0,"openingBalanceLocal":1000,"openingExchangeRate":50,"closingBalanceLocal":null,"closingExchangeRate":null,"transactions":[{"id":31,"sessionId":3,"session":null,"transactionTime":"2026-09-17T12:35:00Z","transactionTimeLocal":"0001-01-01T00:00:00","type":0,"source":1,"amountUsd":10,"exchangeRate":50,"amountLocal":500,"description":"Pago en efectivo","referenceId":null,"saleId":700,"sale":{...},"isPhysicalCash":true,"paymentMethodId":1,"paymentMethod":null},{"id":32,...,"isPhysicalCash":false,...}]}`
+- After (S4b `CashDrawerSessionResponseDto`; golden literal asserted with `Assert.Equal`):
+  `{"id":3,"openedAt":"2026-09-17T12:30:00Z","openedAtLocal":"0001-01-01T00:00:00","closedAt":null,"closedAtLocal":null,"status":0,"openingBalanceLocal":1000,"openingExchangeRate":50,"closingBalanceLocal":null,"closingExchangeRate":null,"transactions":[{"id":31,"sessionId":3,"transactionTime":"2026-09-17T12:35:00Z","transactionTimeLocal":"0001-01-01T00:00:00","type":0,"source":1,"amountUsd":10,"exchangeRate":50,"amountLocal":500,"description":"Pago en efectivo","referenceId":null,"saleId":700,"invoiceNumber":4242,"isPhysicalCash":true,"paymentMethodId":1}]}`
+- Every previously bound session scalar survives with the same JSON name and value (`id`, `openedAt`, `openedAtLocal`, `closedAt`, `closedAtLocal`, `status`, `openingBalanceLocal`, `openingExchangeRate`, `closingBalanceLocal`, `closingExchangeRate`).
+- Every previously bound transaction field survives (`id`, `sessionId`, `transactionTime`, `transactionTimeLocal`, `type`, `source`, `amountUsd`, `exchangeRate`, `amountLocal`, `description`, `referenceId`, `saleId`, `isPhysicalCash`, `paymentMethodId`); `invoiceNumber` is now top-level (flattened from `sale.invoiceNumber`); non-physical transactions remain excluded.
+- The EF navigation members `session`, `sale` and `paymentMethod` are **gone**; no WPF/Web consumer binds them (the clients' `CashTransactionDto` declares only the fields the DTO keeps).
+
+**Touched endpoints `POST /api/cashdrawer/open`, `POST /api/cashdrawer/close`, `POST /api/cashdrawer/transaction`**
+
+- `open`/`close` — session body keeps every previously serialized field (nav-free already; `transactions` stays an empty array on these paths). No field dropped.
+- `transaction` — the response keeps the client-consumed fields (`id`, `transactionTimeLocal`, `description`, `amountUsd`, `amountLocal`, `exchangeRate`, `type`, `source`, `isPhysicalCash`, `paymentMethodId`) and now also carries `invoiceNumber`; only the empty `sale`/`session` navigation members are dropped. The Web `CashInModal`/`CashOutModal` ignore the response body entirely.
+- `cash-advance` — `CashAdvanceResultDto.ExpenseTransaction`/`IncomeTransaction` are now `CashTransactionResponseDto`; the Web `CashAdvanceModal` reads only `invoiceNumber`, which is preserved.
+
+### Verification Results (S4b)
+
+- `dotnet build CommandCenter.slnx -c Release`: **0 errors, 0 warnings**
+- `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: **1193 passed, 0 failed, 0 skipped** (1185 -> 1193)
+- `dotnet test --filter "FullyQualifiedName~Dto"` (tasks.md S4b filter): **79 passed, 0 failed** (71 -> 79)
+- `dotnet test --filter "FullyQualifiedName~DrawerDtoBoundaryTests"`: **8 passed, 0 failed**
+- `npm test` (Web.Frontend): **271 passed, 0 failed**
+- `npm run lint` (Web.Frontend): **clean** (exit 0)
+- Coverage gate (`scripts/check-coverage.py`): Core **0.8364** >= 0.70, Sales.Module **0.9047** >= 0.80, Inventory.Module **0.8251** >= 0.72 — all `[OK]`
+
+### Work Unit Evidence (S4b)
+
+| Evidence | Value |
+|----------|-------|
+| Focused test command | `dotnet test --filter "FullyQualifiedName~Dto"`: 79 passed, 0 failed |
+| Runtime harness | Real `CashDrawerService` over an InMemory `SalesDbContext`: legacy entity body serialized before, `CashDrawerSessionResponseDto` serialized after with the production JSON options; golden literal asserted; `GetHistoryAsync` returns projected DTOs with an empty `ChangeTracker` |
+| Rollback boundary | `CashDrawerSessionResponseDto.cs`, `CashTransactionResponseDto.cs`, `ICashDrawerService.cs`, `CashDrawerService.cs`, `CashDrawerController.cs`, `CashDrawerDtos.cs` (restore), `RegisterPage.jsx`, `DrawerDtoBoundaryTests.cs` and the re-pointed test setups |
+
+### Decisions and Deviations (S4b)
+
+- **D1 — `GetOrCreateActiveSessionAsync` also returns a DTO.** Item 19 says "the public `CashDrawerService` methods return EF entities", so the whole public surface was swapped, not only the controller-facing methods. Internal callers (SalesService, DailyClosureService, CashAdvanceCoordinator, `ExchangeRateResolver`) consume only scalar members (`Id`, `OpeningExchangeRate`), so the swap is behavior-preserving.
+- **D2 — no WPF rebinding churn.** Client `CashDrawerSessionDto`/`CashTransactionDto` already declare the DTO JSON names; the server DTO adds `invoiceNumber` (additive). Only the Web `RegisterPage.jsx` dead `tx.sale?.invoiceNumber` fallback was removed, in the same work unit (AD-15).
+- **D3 — the `CashTransactionResponseDto` is the union of the moved API DTO fields plus the entity scalars.** It keeps the historical GET `/history` contract and the `POST /transaction` scalars (drops only the `sale`/`session`/`paymentMethod` navigations). Additive fields are documented; no bound field is dropped.
+- **D4 — `TransactionTimeLocal` is applied by the controller.** The timezone comes from `ISystemSettingsService`, which the service does not own; the service returns UTC `TransactionTime` and the controller projects local time with `with` expressions (same as pre-S4b behaviour).
+
+### GGA Hook Exceptions
+
+`gga run` was executed on the S4b staging set and returned `STATUS: FAILED`. Every finding is **pre-existing and assigned to a later slice**; none is introduced by S4b. Committed with a documented punctual `--no-verify` per the exception protocol.
+
+| GGA finding | Location | Classification |
+|-------------|----------|----------------|
+| 1. Explanatory comments | `CashDrawerController.cs` (`H-API-19` L48, `8.5-A4` L108-109, `8.5-A5` L134-136, `8.103` L169); `CashDrawerService.cs` L29/L152-153/L170-173/L240-242/L270-273/L284-286/L387-388/L412/L426-428; `RegisterPage.jsx` inline comments | Pre-existing; **AD-18 / S5b.8** keeps only `8.x-*` traceability markers. S4b added no explanatory comment |
+| 2. File length > 500 | `Phase4SharedTransactionAndIdempotencyTests.cs` (654), `FinancialRobustnessTests.cs` (647), `ErrorContractTests.cs` (589), `RegisterPage.jsx` (530) | Pre-existing test/Web files outside S4b scope; S4b re-pointed 1-2 lines in two of them |
+| 3. Missing `AsNoTracking`/`AsSplitQuery` on read-only paths | `CashDrawerController.cs:176-178` (`ResolveAnchoredRateAsync`); `CashDrawerService.GetActiveSessionWithTransactionsAsync` L37-41 | Pre-existing; **AD-16 / S5b.2** — registered as `S4b-R1` above |
+| 4. McCabe > 10 | `CashDrawerController.ResolveAnchoredRateAsync`; `CashDrawerService.AddTransactionAsync` (local `ExecuteWithinTransactionAsync`) | Pre-existing bodies; S4b changed only return types/mapping. **AD-17 / S5b** |
+| Note: `CashDrawerController` injects `SalesDbContext`/`InventoryDbContext`; `CashAdvanceResultDto` lives in `Sales.Module.Interfaces` with mutable setters | `CashDrawerController.cs:15-16`; `ICashDrawerService.cs:6-16` | Pre-existing design debt; S4b changed only the two transaction member types. **AD-17 / S5b** |
+
+### Registered for S5 (NOT fixed in this slice)
+
+- **S3-06 / WARNING-07 / S4a-R2** — `DailyClosureService.cs` remains over the 300-500 line ceiling.
+- **S3-07 / S4a-R1** — `DailyClosureService.CreateClosureAsync(DailyClosure)` legacy entity entry point remains.
+- **WARNING-04** — hardcoded `"Balanced"` merged-line status and mixed units remain in `DailyClosureService`.
+- **S4b-R1** — `GetActiveSessionWithTransactionsAsync` still uses `Include` + tracking (AD-16 `AsNoTracking`/`AsSplitQuery` deferred to S5b).
+

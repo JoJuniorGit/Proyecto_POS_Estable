@@ -72,7 +72,7 @@ public class BsPriceCeilingStandardTests
 
         cashDrawerMock
             .Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new Sales.Module.Entities.CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+            .ReturnsAsync(new Sales.Module.DTOs.CashDrawerSessionResponseDto { Id = 1, Status = CashDrawerStatus.Open });
 
         var service = new SalesService(context, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsMock.Object);
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);

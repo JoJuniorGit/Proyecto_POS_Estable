@@ -5,6 +5,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using Sales.Module.Data;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Exceptions;
 using Sales.Module.Interfaces;
@@ -279,7 +280,7 @@ public class HoldOrderClaimTests
         var notifier = new Mock<IHoldOrderNotifier>();
 
         cashDrawer.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1 });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1 });
 
         context.Sales.Add(CreateOnHoldSale(1, claimedByUserId: 7, action: SaleClaimAction.Checkout, claimedByUserName: "Cajero Siete"));
         context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true });

@@ -1,13 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using System.Threading.Tasks;
 
 using Core.Interfaces;
 using Backend.API.Attributes;
-using Backend.API.DTOs;
 using Inventory.Module.Data;
 
 namespace Backend.API.Controllers;
@@ -43,7 +43,7 @@ public class CashDrawerController : ControllerBase
 
     [HttpGet("active-session")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
-    public async Task<ActionResult<CashDrawerSession?>> GetActiveSession()
+    public async Task<ActionResult<CashDrawerSessionResponseDto?>> GetActiveSession()
     {
         // H-API-19: Eliminación de efectos secundarios en GET (no crear sesión en base de datos al consultar)
         var session = await _cashDrawerService.GetActiveSessionWithTransactionsAsync();
@@ -52,26 +52,7 @@ public class CashDrawerController : ControllerBase
             return Ok(null);
         }
 
-        await MapLocalTimesAsync(session);
-
-        var responseSession = new CashDrawerSession
-        {
-            Id = session.Id,
-            OpenedAt = session.OpenedAt,
-            OpenedAtLocal = session.OpenedAtLocal,
-            ClosedAt = session.ClosedAt,
-            ClosedAtLocal = session.ClosedAtLocal,
-            OpeningBalanceLocal = session.OpeningBalanceLocal,
-            ClosingBalanceLocal = session.ClosingBalanceLocal,
-            OpeningExchangeRate = session.OpeningExchangeRate,
-            ClosingExchangeRate = session.ClosingExchangeRate,
-            Status = session.Status,
-            Transactions = session.Transactions
-                .Where(t => t.IsPhysicalCash)
-                .OrderByDescending(t => t.TransactionTime)
-                .ToList()
-        };
-        return Ok(responseSession);
+        return Ok(await MapLocalTimesAsync(session));
     }
 
     /// <summary>
@@ -81,7 +62,7 @@ public class CashDrawerController : ControllerBase
     /// </summary>
     [HttpGet("history")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
-    public async Task<ActionResult<IEnumerable<CashTransactionDto>>> GetHistory([FromQuery] int limit = 300)
+    public async Task<ActionResult<IEnumerable<CashTransactionResponseDto>>> GetHistory([FromQuery] int limit = 300)
     {
         limit = Math.Clamp(limit, 1, 300);
         var transactions = await _cashDrawerService.GetHistoryAsync(limit);
@@ -89,52 +70,26 @@ public class CashDrawerController : ControllerBase
         var tzId = await _settingsService.GetSettingAsync("SelectedTimeZoneId");
         var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
 
-        return Ok(transactions.Select(tx => ToDto(tx, tz)));
-    }
-
-    private static CashTransactionDto ToDto(CashTransaction tx, TimeZoneInfo tz)
-    {
-        string description = tx.Description;
-        if (tx.Sale != null && tx.Sale.InvoiceNumber.HasValue)
-        {
-            description = $"Factura N° {tx.Sale.InvoiceNumber.Value}";
-        }
-
-        return new CashTransactionDto
-        {
-            Id = tx.Id,
-            TransactionTimeLocal = TimeZoneInfo.ConvertTimeFromUtc(tx.TransactionTime, tz),
-            Description = description,
-            InvoiceNumber = tx.Sale?.InvoiceNumber,
-            AmountUsd = tx.AmountUsd,
-            AmountLocal = tx.AmountLocal,
-            ExchangeRate = tx.ExchangeRate,
-            Type = tx.Type,
-            Source = tx.Source,
-            IsPhysicalCash = tx.IsPhysicalCash,
-            PaymentMethodId = tx.PaymentMethodId
-        };
+        return Ok(transactions.Select(tx => MapLocalTime(tx, tz)));
     }
 
     [RequireSecurityStampValidation]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpPost("open")]
     [HttpPost("open-session")]
-    public async Task<ActionResult<CashDrawerSession>> OpenSession([FromBody] OpenSessionRequest request)
+    public async Task<ActionResult<CashDrawerSessionResponseDto>> OpenSession([FromBody] OpenSessionRequest request)
     {
         var session = await _cashDrawerService.OpenSessionAsync(request.OpeningBalanceLocal, request.CurrentExchangeRate);
-        await MapLocalTimesAsync(session);
-        return Ok(session);
+        return Ok(await MapLocalTimesAsync(session));
     }
 
     [RequireSecurityStampValidation]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpPost("close")]
-    public async Task<ActionResult<CashDrawerSession>> CloseSession([FromBody] CloseSessionRequest request)
+    public async Task<ActionResult<CashDrawerSessionResponseDto>> CloseSession([FromBody] CloseSessionRequest request)
     {
         var session = await _cashDrawerService.CloseSessionAsync(request.ActualClosingBalanceLocal, request.CurrentExchangeRate);
-        await MapLocalTimesAsync(session);
-        return Ok(session);
+        return Ok(await MapLocalTimesAsync(session));
     }
 
     [HttpGet("current-balance")]
@@ -148,7 +103,7 @@ public class CashDrawerController : ControllerBase
     [RequireSecurityStampValidation]
     [Authorize(Roles = "Admin,Manager")]
     [HttpPost("transaction")]
-    public async Task<ActionResult<CashTransaction>> AddTransaction([FromBody] AddTransactionRequest request)
+    public async Task<ActionResult<CashTransactionResponseDto>> AddTransaction([FromBody] AddTransactionRequest request)
     {
         // 8.5-A4: Los orígenes Opening y Closing están reservados al ciclo interno de apertura/cierre
         // y NO deben aceptarse desde el endpoint manual (evita bypass del chequeo de saldo).
@@ -195,8 +150,7 @@ public class CashDrawerController : ControllerBase
         );
         var tzId = await _settingsService.GetSettingAsync("SelectedTimeZoneId");
         var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
-        transaction.TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(transaction.TransactionTime, tz);
-        return Ok(transaction);
+        return Ok(MapLocalTime(transaction, tz));
     }
 
     /// <summary>
@@ -267,25 +221,32 @@ public class CashDrawerController : ControllerBase
         return clientRate;
     }
 
-    private async Task MapLocalTimesAsync(CashDrawerSession session)
+    private async Task<CashDrawerSessionResponseDto> MapLocalTimesAsync(CashDrawerSessionResponseDto session)
     {
         var tzId = await _settingsService.GetSettingAsync("SelectedTimeZoneId");
         var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
 
-        session.OpenedAtLocal = System.TimeZoneInfo.ConvertTimeFromUtc(session.OpenedAt, tz);
-        if (session.ClosedAt.HasValue)
+        return session with
         {
-            session.ClosedAtLocal = System.TimeZoneInfo.ConvertTimeFromUtc(session.ClosedAt.Value, tz);
-        }
+            OpenedAtLocal = System.TimeZoneInfo.ConvertTimeFromUtc(session.OpenedAt, tz),
+            ClosedAtLocal = session.ClosedAt.HasValue
+                ? System.TimeZoneInfo.ConvertTimeFromUtc(session.ClosedAt.Value, tz)
+                : null,
+            Transactions = session.Transactions.Select(tx => MapLocalTime(tx, tz)).ToList()
+        };
+    }
 
-        foreach (var tx in session.Transactions)
+    private static CashTransactionResponseDto MapLocalTime(CashTransactionResponseDto transaction, TimeZoneInfo tz)
+    {
+        string description = transaction.InvoiceNumber.HasValue
+            ? $"Factura N° {transaction.InvoiceNumber.Value}"
+            : transaction.Description;
+
+        return transaction with
         {
-            tx.TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(tx.TransactionTime, tz);
-            if (tx.Sale != null && tx.Sale.InvoiceNumber.HasValue)
-            {
-                tx.Description = $"Factura N° {tx.Sale.InvoiceNumber.Value}";
-            }
-        }
+            TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(transaction.TransactionTime, tz),
+            Description = description
+        };
     }
 
     [RequireSecurityStampValidation]
@@ -319,8 +280,8 @@ public class CashDrawerController : ControllerBase
 
         var tzId = await _settingsService.GetSettingAsync("SelectedTimeZoneId");
         var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
-        result.ExpenseTransaction.TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.ExpenseTransaction.TransactionTime, tz);
-        result.IncomeTransaction.TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.IncomeTransaction.TransactionTime, tz);
+        result.ExpenseTransaction = result.ExpenseTransaction with { TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.ExpenseTransaction.TransactionTime, tz) };
+        result.IncomeTransaction = result.IncomeTransaction with { TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.IncomeTransaction.TransactionTime, tz) };
 
         return Ok(result);
     }

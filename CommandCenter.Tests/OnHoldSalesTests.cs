@@ -5,6 +5,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using Sales.Module.Data;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using Sales.Module.Services;
@@ -187,7 +188,7 @@ public partial class OnHoldSalesTests
         var mockSettings = new Mock<ISystemSettingsService>();
 
         mockCashDrawer.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1 });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1 });
 
         var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 100m };
         context.Customers.Add(customer);
@@ -246,7 +247,7 @@ public partial class OnHoldSalesTests
         var mockSettings = new Mock<ISystemSettingsService>();
 
         mockCashDrawer.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1 });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1 });
 
         var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 100m };
         context.Customers.Add(customer);
@@ -283,7 +284,7 @@ public partial class OnHoldSalesTests
         var mockSettings = new Mock<ISystemSettingsService>();
 
         mockCashDrawer.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1 });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1 });
 
         var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez" };
         context.Customers.Add(customer);
@@ -511,7 +512,7 @@ public partial class OnHoldSalesTests
         var mockSettings = new Mock<ISystemSettingsService>();
 
         mockCashDrawer.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1 });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1 });
 
         var realCustomer = new Customer { Id = 5, CedulaOrRif = "V-99999999", Name = "Maria Gomez", IsDefault = false };
         context.Customers.Add(realCustomer);

@@ -80,18 +80,20 @@ Chain strategy: pending
 - [x] 4a.7 **GREEN**: Add reflection test asserting no public setter on DTO members (REQ-ADB-04)
 - [x] 4a.8 **GREEN**: Add test asserting no `Sales.Module.Entities` type in `IDailyClosureService` or `DailyClosureController` signatures
 
+> **S4a bookkeeping corrections (fold-in during S4b).** Commit `829778c` labelled the slice `items 3/15/19/20`, but the debt registry maps the **closure** items to `3` and `8`; items `15` (`GetActiveSession`/`OpenSession`/`CloseSession`/`AddTransaction` return `CashDrawerSession`/`CashTransaction`), `19` (`GetHistoryAsync` returns `List<CashTransaction>`; `CashAdvanceResultDto` exposes `CashTransaction`; public `CashDrawerService` methods return entities) and `20` (`GetHistoryAsync` materializes `new CashTransaction { Sale = … }`) are the **drawer** findings owned by S4b. Boxes `4a.5`/`4a.6` are checked but were only partially met and changed no file: `CreateClosure` already returned the immutable `CloseShiftResult` (deviation D1) and `DailyClosureClientService.cs` needed no rebinding (deviation D2, no client reads the closure GET). `S4a-R1` remains open: `DailyClosureService.CreateClosureAsync(DailyClosure)` stays a concrete-only, entity-returning legacy entry point (candidate for deletion). Details in `apply-progress.md` (S4a section, Corrections) and `verify-report.md` (`RESIDUAL-S4a-02/03`, `S4a-R1`).
+
 ## Phase 4b: Drawer DTO Boundary (S4b)
 
-- [ ] 4b.1 **RED**: Add golden-JSON contract test: capture active drawer session response before/after; assert field parity
-- [ ] 4b.2 Create `Sales.Module/DTOs/CashDrawerSessionResponseDto.cs` — immutable record (AD-14)
-- [ ] 4b.3 Create `Sales.Module/DTOs/CashTransactionResponseDto.cs` — immutable record; move from `Backend.API/DTOs/CashDrawerDtos.cs` (AD-14)
-- [ ] 4b.4 Delete `Backend.API/DTOs/CashDrawerDtos.cs` (AD-14)
-- [ ] 4b.5 Modify `Sales.Module/Services/CashDrawerService.cs`: return DTOs from all public methods; project via LINQ (AD-14)
-- [ ] 4b.6 Modify `Sales.Module/Interfaces/ICashDrawerService.cs`: update signatures to return DTOs (AD-14)
-- [ ] 4b.7 Modify `Backend.API/Controllers/CashDrawerController.cs`: return DTOs from all actions (AD-14)
-- [ ] 4b.8 Modify WPF client services/views to bind to DTO field names (AD-15)
-- [ ] 4b.9 **GREEN**: Add test asserting no `CashDrawerSession` or `CashTransaction` entity in response bodies (REQ-ADB-02)
-- [ ] 4b.10 **GREEN**: Add test asserting `GetHistoryAsync` projects DTOs without materializing entity instances (REQ-ADB-03)
+- [x] 4b.1 **RED**: Add golden-JSON contract test: capture active drawer session response before/after; assert field parity
+- [x] 4b.2 Create `Sales.Module/DTOs/CashDrawerSessionResponseDto.cs` — immutable record (AD-14)
+- [x] 4b.3 Create `Sales.Module/DTOs/CashTransactionResponseDto.cs` — immutable record; move from `Backend.API/DTOs/CashDrawerDtos.cs` (AD-14)
+- [x] 4b.4 Delete `Backend.API/DTOs/CashDrawerDtos.cs` (AD-14)
+- [x] 4b.5 Modify `Sales.Module/Services/CashDrawerService.cs`: return DTOs from all public methods; project via LINQ (AD-14)
+- [x] 4b.6 Modify `Sales.Module/Interfaces/ICashDrawerService.cs`: update signatures to return DTOs (AD-14)
+- [x] 4b.7 Modify `Backend.API/Controllers/CashDrawerController.cs`: return DTOs from all actions (AD-14)
+- [x] 4b.8 Modify WPF client services/views to bind to DTO field names (AD-15)
+- [x] 4b.9 **GREEN**: Add test asserting no `CashDrawerSession` or `CashTransaction` entity in response bodies (REQ-ADB-02)
+- [x] 4b.10 **GREEN**: Add test asserting `GetHistoryAsync` projects DTOs without materializing entity instances (REQ-ADB-03)
 
 ## Phase 5a: CancellationToken Propagation (S5a)
 

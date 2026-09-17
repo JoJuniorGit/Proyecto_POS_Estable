@@ -178,8 +178,7 @@ public class CashDrawerServiceUnitTests
         var history = await service.GetHistoryAsync(10);
 
         var item = Assert.Single(history, t => t.SaleId == sale.Id);
-        Assert.NotNull(item.Sale);
-        Assert.Equal(4242, item.Sale!.InvoiceNumber);
+        Assert.Equal(4242, item.InvoiceNumber);
         Assert.Equal(700, item.SaleId);
     }
 }

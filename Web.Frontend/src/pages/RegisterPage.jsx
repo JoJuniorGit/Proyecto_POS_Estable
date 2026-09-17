@@ -353,8 +353,8 @@ function RegisterPageContent() {
                   className="recent-incomes-scroll-container flex gap-3.5 py-1 custom-scrollbar w-100 reg-income-scroll"
                 >
                   {recentIncomes.map((tx, idx) => {
-                    const invoiceTitle = (tx.sale?.invoiceNumber || tx.invoiceNumber)
-                      ? `Factura N° ${tx.sale?.invoiceNumber || tx.invoiceNumber}`
+                    const invoiceTitle = tx.invoiceNumber
+                      ? `Factura N° ${tx.invoiceNumber}`
                       : (tx.description || getSourceLabel(tx.source));
 
                     const amountUsd = tx.amountUsd || ((exchangeRate && exchangeRate > 0) ? tx.amountLocal / exchangeRate : 0);

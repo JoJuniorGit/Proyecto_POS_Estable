@@ -32,7 +32,7 @@ public class HoldSalePaymentRemediationTests
     {
         var mock = new Mock<ICashDrawerService>();
         mock.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1, Status = CashDrawerStatus.Open });
         return mock;
     }
 
