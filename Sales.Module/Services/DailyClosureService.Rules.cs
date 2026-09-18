@@ -36,6 +36,19 @@ public partial class DailyClosureService
         IReadOnlyList<DeclaredPaymentAmount> declarations,
         Dictionary<int, ExpectedTotalDto> expectedById)
     {
+        var duplicatedMethodIds = declarations
+            .GroupBy(d => d.PaymentMethodId)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        if (duplicatedMethodIds.Count > 0)
+        {
+            throw new ArgumentException(
+                $"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}.",
+                nameof(declarations));
+        }
+
         var unknownMethodIds = declarations
             .Where(d => !expectedById.ContainsKey(d.PaymentMethodId))
             .Select(d => d.PaymentMethodId)

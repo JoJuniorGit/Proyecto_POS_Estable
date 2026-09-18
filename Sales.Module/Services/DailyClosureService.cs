@@ -108,64 +108,6 @@ public partial class DailyClosureService : IDailyClosureService
         return result;
     }
 
-    public async Task<DailyClosure> CreateClosureAsync(DailyClosure closure, CancellationToken cancellationToken = default)
-    {
-        if (_context.Database.CurrentTransaction is not null)
-        {
-            return await ExecuteClosureCoreAsync(closure, cancellationToken);
-        }
-
-        var strategy = _context.Database.CreateExecutionStrategy();
-        return await strategy.ExecuteAsync(() => ExecuteClosureCoreAsync(closure, cancellationToken));
-    }
-
-    private async Task<DailyClosure> ExecuteClosureCoreAsync(DailyClosure closure, CancellationToken cancellationToken)
-    {
-        var duplicatedMethodIds = closure.Details
-            .GroupBy(d => d.PaymentMethodId)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToList();
-
-        if (duplicatedMethodIds.Count > 0)
-        {
-            throw new ArgumentException($"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}.", nameof(closure));
-        }
-
-        var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(closure.ClosureDate, cancellationToken);
-        var expectedById = expectedTotals.ToDictionary(e => e.PaymentMethodId);
-
-        var unknownMethodIds = closure.Details
-            .Where(d => !expectedById.ContainsKey(d.PaymentMethodId))
-            .Select(d => d.PaymentMethodId)
-            .Distinct()
-            .ToList();
-
-        if (unknownMethodIds.Count > 0)
-        {
-            throw new ArgumentException($"El desglose contiene métodos de pago no reconocidos: {string.Join(", ", unknownMethodIds)}.", nameof(closure));
-        }
-
-        foreach (var detail in closure.Details)
-        {
-            detail.PaymentMethodName = expectedById[detail.PaymentMethodId].PaymentMethodName;
-        }
-
-        var existingMethodIds = closure.Details.Select(d => d.PaymentMethodId).ToHashSet();
-        var methodEntities = await _context.PaymentMethods
-            .AsNoTracking()
-            .Where(p => !p.IsDeleted)
-            .ToDictionaryAsync(p => p.Id, cancellationToken);
-
-        MergeMissingMethodsIntoClosure(closure, expectedTotals, existingMethodIds, methodEntities);
-        RecalculateTotals(closure);
-
-        _context.DailyClosures.Add(closure);
-        await _context.SaveChangesAsync(cancellationToken);
-
-        return (await LoadClosureEntityAsync(closure.Id, cancellationToken))!;
-    }
-
     public async Task<DailyClosureResponseDto?> GetClosureAsync(int id, CancellationToken cancellationToken = default)
     {
         var closure = await LoadClosureEntityAsync(id, cancellationToken);
@@ -339,30 +281,5 @@ public partial class DailyClosureService : IDailyClosureService
         _context.DailyClosures.Add(closure);
         await _context.SaveChangesAsync(cancellationToken);
         return ShiftReportMapper.MapClosure((await LoadClosureEntityAsync(closure.Id, cancellationToken))!);
-    }
-
-    private static void MergeMissingMethodsIntoClosure(
-        DailyClosure closure,
-        List<ExpectedTotalDto> expectedTotals,
-        HashSet<int> existingMethodIds,
-        Dictionary<int, PaymentMethod> methodEntities)
-    {
-        foreach (var exp in expectedTotals)
-        {
-            if (!existingMethodIds.Contains(exp.PaymentMethodId))
-            {
-                methodEntities.TryGetValue(exp.PaymentMethodId, out var methodEntity);
-                decimal actualAmount = (methodEntity != null && methodEntity.IsCash) ? 0m : exp.ExpectedAmountBsS;
-
-                closure.Details.Add(new ClosureDetail
-                {
-                    PaymentMethodId = exp.PaymentMethodId,
-                    PaymentMethodName = exp.PaymentMethodName,
-                    ExpectedAmountBsS = exp.ExpectedAmountBsS,
-                    ActualAmountBsS = actualAmount,
-                    DifferenceBsS = actualAmount - exp.ExpectedAmountBsS
-                });
-            }
-        }
     }
 }

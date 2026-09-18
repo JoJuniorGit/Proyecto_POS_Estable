@@ -226,23 +226,23 @@ public class ResidualRemediationLote26Tests
     }
 
     [Fact]
-    public async Task CreateClosureAsync_WithDuplicatedPaymentMethodIds_ThrowsArgumentException()
+    public async Task CreateClosureFromCommand_WithDuplicatedPaymentMethodIds_ThrowsArgumentException()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
         var service = DailyClosureTestHelper.CreateService(context);
 
-        var closure = new DailyClosure
-        {
-            ClosureDate = DateTime.UtcNow,
-            UserId = "Admin",
-            Details = new List<ClosureDetail>
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Admin",
+            null,
+            new List<DeclaredPaymentAmount>
             {
-                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ActualAmountBsS = 100m },
-                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ActualAmountBsS = 50m }
-            }
-        };
+                new(1, 100m),
+                new(1, 50m)
+            });
 
-        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.CreateClosureAsync(closure));
+        var exception = await Assert.ThrowsAsync<ArgumentException>(
+            () => service.CreateClosureFromCommandAsync(command, CancellationToken.None));
 
         Assert.Contains("duplicados", exception.Message);
         Assert.Contains("1", exception.Message);

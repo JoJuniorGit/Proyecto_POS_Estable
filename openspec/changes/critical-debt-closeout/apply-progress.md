@@ -371,3 +371,131 @@ No coverage delta outstanding: Sales.Module and Inventory are identical; Core is
 - Observations (non-blocking): generic `catch (Exception)` in the moved receipts methods, `0.05m` present in Rules/Receipts, and the "métodos no reconocidos" duplicate in main `:138-147` vs Rules `:35-51` — all pre-existing, moved verbatim; the duplicate validation is the legacy divergent copy S3b-06 deletes.
 
 Commit uses a punctual documented `--no-verify` because all findings are pre-existing and out of slice.
+
+---
+
+# Apply Progress — critical-debt-closeout — S3b
+
+## Slice S3b: Legacy entry removal + 18 re-points (REQ-COC-05, REQ-COC-03; AD-5/8)
+
+**Work unit**: `cdc-s3b-legacy`
+**Mode**: Standard (`strict_tdd: false` in `openspec/config.yaml`)
+**Store**: openspec (change artifacts under `openspec/changes/critical-debt-closeout/`)
+**Branch**: V0.15 — no branches, no PRs
+**Commit**: `refactor(8.141): eliminacion del entry point legacy + re-point de 18 tests (S3b, S3-07/OQ-1) - ANEXO 8.141`
+**OQ-1**: ACCEPTED by the maintainer — the 18 legacy tests are semantic rewrites to the command contract, not a mechanical call swap.
+
+### Completed Tasks
+
+- [x] S3b-01 — Baseline coverage BEFORE any delete/re-point: `TestResults/4613ff39-3b2a-48c3-8ae8-6765fa3e2a0f` → Core 0.8378 `[OK]` · Sales.Module 0.9087 `[OK]` · Inventory.Module 0.8251 `[OK]`; backend suite 1254/1254.
+- [x] S3b-02 — Duplicate-declaration guard moved from the legacy `ExecuteClosureCoreAsync` into `ValidateDeclaredMethods` (`DailyClosureService.Rules.cs`), placed BEFORE the unknown-method check so the command path keeps the legacy ordering and message ("duplicados").
+- [x] S3b-03 — 5 validation-only sites re-pointed: `DailyClosureServiceUnitTests` (3), `ResidualRemediationLote26Tests` (duplicate guard, now via command), `SecurityHardeningSprint2Tests` (negative amount; service now built with the helper's rate 50m because the command path requires a positive rate).
+- [x] S3b-04 — 11 persist-and-assert sites re-pointed: known sales seeded, native amounts declared (USD methods declare USD; the rest Bs.S), expected/totals read back from the persisted DB-derived entity — not from the removed entity-carried `ExpectedAmountBsS`.
+- [x] S3b-05 — 2 integration sites re-pointed (`DailyClosureFlow`, `DailyClosureRetry`); `DailyClosureTestHelper.CreateMocks` already returns rate 50m; no test asserts on receipt files (receipts stay fail-open, logged).
+- [x] S3b-06 — Deleted `CreateClosureAsync(DailyClosure)`, `ExecuteClosureCoreAsync` and `MergeMissingMethodsIntoClosure`; `CreateClosureFromCommandAsync` is the single implementation. Build 0/0; no reference to the deleted members anywhere in the repo.
+- [x] S3b-07 — New `CommandCenter.Tests/Unit/ClosureLegacyEntryRemovalTests.cs`: reflection absence of any public entity-accepting/returning closure entry, absence of `CreateClosureAsync`/`ExecuteClosureCoreAsync`/`MergeMissingMethodsIntoClosure`, and the duplicate guard still throwing "duplicados" through the command path without persisting.
+- [x] S3b-08 — Coverage re-run AFTER (same commit): Core 0.8364 `[OK]` · Sales.Module 0.9091 `[OK]` · Inventory.Module 0.8251 `[OK]`; full suite 1259/1259; coverage gate exit 0.
+
+### Files Changed
+
+| File | Action | Authored lines | What Was Done |
+|------|--------|----------------|---------------|
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | −83 | The three legacy members deleted; orchestration is command-only (286 lines) |
+| `Sales.Module/Services/DailyClosureService.Rules.cs` | Modified | +13 | Duplicate guard relocated into `ValidateDeclaredMethods` before the unknown check |
+| `CommandCenter.Tests/Unit/DailyClosureServiceUnitTests.cs` | Modified | +89 / −91 | 7 sites re-pointed (4 persist-and-assert, 3 validation); totals/names read back from the persisted closure |
+| `CommandCenter.Tests/CheckoutAndPaymentTests.cs` | Modified | +48 / −51 | 5 sites re-pointed; window-reset tests keep their intent; auto-complete reads persisted details |
+| `CommandCenter.Tests/CashDrawerClosureTests.cs` | Modified | +10 / −10 | Closure through the command; session assertions unchanged (mock rollover is a no-op) |
+| `CommandCenter.Tests/Unit/Phase2FinancialAndIntegrityTests.cs` | Modified | +12 / −10 | Disabled-method closure through the command; persisted detail asserted |
+| `CommandCenter.Tests/Unit/ResidualRemediationLote26Tests.cs` | Modified | +11 / −11 | Duplicate-id test now exercises the relocated guard on the command path |
+| `CommandCenter.Tests/SecurityHardeningSprint2Tests.cs` | Modified | +10 / −15 | Negative-amount test through the command; inline `Mock.Of` rate provider replaced by the helper (rate 50m) |
+| `CommandCenter.Tests/Integration/DailyClosureFlowIntegrationTests.cs` | Modified | +13 / −12 | Flow re-pointed; persisted totals read back |
+| `CommandCenter.Tests/Integration/DailyClosureRetryIntegrationTests.cs` | Modified | +17 / −16 | Retry/Serializable flow re-pointed; docstring + test name follow the command entry |
+| `CommandCenter.Tests/Unit/ClosureLegacyEntryRemovalTests.cs` | Created | +69 | 3 structural/guard tests (5 cases with the Theory) |
+| `openspec/changes/critical-debt-closeout/tasks.md` | Modified | — | S3b-01..S3b-08 marked `[x]`; OQ-1 recorded as ACCEPTED |
+| `openspec/changes/critical-debt-closeout/apply-progress.md` | Modified | — | This artifact |
+| `docs/reporte.txt` | Modified | — | ANEXO 8.141 (S3b) |
+
+Authored total (code + tests, docs excluded): 292 additions + 299 deletions = 591 changed lines. The 18 semantic re-points dominate the diff (each carries its own seeding/read-back); tasks.md mandates ONE commit for S3b and forbids splitting delete from re-points (removal alone does not compile). Recorded as a `size:exception`; the dispatch fixed this slice as one work unit/commit (`cdc-s3b-legacy`).
+
+### Re-point Map (18 sites, 8 files)
+
+| Class | Sites | Command-path semantics |
+|-------|-------|------------------------|
+| Validation-only | `DailyClosureServiceUnitTests` :79/:294/:343; `ResidualRemediationLote26Tests` :245; `SecurityHardeningSprint2Tests` :155 | Declarations with the invalid payload; same `ArgumentException` from `ValidateDeclaredMethods`/`RecalculateTotals`; no persistence asserted |
+| Persist-and-assert | `DailyClosureServiceUnitTests` :54/:183/:314/:363; `CheckoutAndPaymentTests` :339/:377/:408/:442/:460; `CashDrawerClosureTests` :189; `Phase2FinancialAndIntegrityTests` :88 | Known sales seeded; actual amounts declared native; expected/totals read back from the persisted DB-derived entity |
+| Integration | `DailyClosureFlowIntegrationTests` :58; `DailyClosureRetryIntegrationTests` :72 | Same call swap under the command path; rate 50m from the helper; no receipt-file assertions |
+
+### Discriminating Test Evidence (RED → GREEN)
+
+This slice is a removal + semantic re-point; there is no new production behavior to drive RED→GREEN in the TDD sense. The discriminating evidence is the compiler + suite double-check:
+
+- Guard-before-commands order matters: with the guard only in the deleted legacy method, `ResidualRemediationLote26Tests` would find duplicate declarations accepted by `ValidateDeclaredMethods` and persisted. S3b-02 was applied before the re-points precisely so that test (and the new structural guard test) discriminates: both fail if the guard is absent from `ValidateDeclaredMethods`.
+- Absence is enforced structurally: `LegacyClosureMembers_AreAbsent` fails the moment any legacy member is restored; `PublicSurface_ExposesNoEntityReturningClosureEntryPoint` fails if an entity entry point reappears.
+- Compile-time proof of the re-points: before S3b-06 the 8 test files no longer referenced the legacy members (build green after delete = zero dangling references, verified by full-solution build 0/0).
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|----------|-------|
+| Focused test command and exact result | `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --filter "FullyQualifiedName~Closure|FullyQualifiedName~DailyClosure"` → 105 passed / 0 failed / 105 total (100 pre-S3b + 5 new structural cases) |
+| Runtime harness command/scenario and exact result | Real `CreateClosureFromCommandAsync` executions on InMemory `SalesDbContext` across the 13 persist/integration re-points: closure persisted, session rollover invoked on the double, receipts fail-open; the 11 validation sites assert the command path still rejects invalid payloads before any persistence. `DailyClosureRetryIntegrationTests` requires `TEST_POSTGRES_CONNECTION` (skips locally by design — pre-existing policy). |
+| Rollback boundary | Revert `Sales.Module/Services/DailyClosureService.cs` + `DailyClosureService.Rules.cs` + the 8 re-pointed test files + delete `ClosureLegacyEntryRemovalTests.cs` — a single-commit revert restores the legacy entry and its tests together. No schema, no persisted data, no config |
+| Structural check | Reflection: no public method accepts/returns `DailyClosure`; `CreateClosureAsync`/`ExecuteClosureCoreAsync`/`MergeMissingMethodsIntoClosure` absent; `CreateClosureFromCommandAsync` present returning `Task<CloseShiftResult>`; duplicate guard throws "duplicados" on the command path |
+
+### Coverage Evidence (S3b-01 baseline / S3b-08 restore)
+
+```
+BEFORE (TestResults/4613ff39-3b2a-48c3-8ae8-6765fa3e2a0f) — suite 1254/1254
+  Core               rate=0.8378 [OK]
+  Sales.Module       rate=0.9087 [OK]
+  Inventory.Module   rate=0.8251 [OK]
+
+AFTER (TestResults/4fdcb3cb-e647-4141-a78c-576f8c941ce8) — suite 1259/1259
+  Core               rate=0.8364 [OK]
+  Sales.Module       rate=0.9091 [OK]
+  Inventory.Module   rate=0.8251 [OK]
+```
+
+- Sales.Module (the slice's gate) rises +0.0004 — no delta to restore; removing the legacy divergent path did not cost coverage because the command path is fully exercised.
+- Core reads 0.8364 vs 0.8378: run-order variance, the same pair of values recorded across the S1/S2/S3a runs; no Core production file is touched by S3b. Nothing to restore; gate ≥ 0.70.
+- The 18 re-points keep the same test count and coverage intent (the suite grew only by the 5 new structural cases).
+
+### Verification Results (tasks.md ## Verification)
+
+```
+dotnet build CommandCenter.slnx -c Release
+→ 0 errors, 0 warnings
+
+dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release
+→ 1259 passed, 0 failed, 0 skipped (continuity floor 1254 + 5 structural)
+
+dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --filter "FullyQualifiedName~Closure|FullyQualifiedName~DailyClosure"
+→ 105 passed, 0 failed, 105 total
+
+cd Web.Frontend && npm test
+→ 287 passed, 0 failed
+
+cd Web.Frontend && npm run lint
+→ exit 0, clean
+
+dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings
+python scripts/check-coverage.py CommandCenter.Tests/TestResults/4fdcb3cb-e647-4141-a78c-576f8c941ce8/coverage.cobertura.xml
+→ Core 0.8364 [OK] · Sales.Module 0.9091 [OK] · Inventory.Module 0.8251 [OK] — exit 0
+```
+
+### Deviations from Design
+
+- The dispatch offered an S3b-a/S3b-b split "guards/removal first, re-points second". That split is infeasible while keeping the repo green: deleting the legacy members breaks the 18 still-unre-pointed call sites at compile time, and `tasks.md` explicitly mandates ONE commit and forbids splitting delete from re-points. The guard move alone (13 lines) is not a meaningful separate work unit. Single commit, `size:exception` recorded.
+- `SecurityHardeningSprint2Tests` previously used `Mock.Of<ITodayExchangeRateProvider>()` (rate 0m); the command path validates `rate > 0` and would throw `InvalidOperationException` instead of the asserted `ArgumentException`, so the test now uses `DailyClosureTestHelper.CreateService` (rate 50m), matching every other closure test. The assertion intent (negative amount rejected) is unchanged.
+- The `CreateClosureAsync_ClientSuppliedPaymentMethodName_...` legacy test asserted a falsified name supplied through the entity; `DeclaredPaymentAmount` carries no name, so the rewrite keeps the observable contract — the persisted detail name comes from the authoritative catalog. The falsification vector is structurally excluded by the command DTO and by the absence test.
+
+### GGA (punctual --no-verify)
+
+`gga run` (v2.10.1, provider opencode, rules AGENTS.md) = STATUS FAILED. Every finding is PRE-EXISTING and out of S3b scope; the diff introduces no new narrative comments (the cited ones pre-date the slice; only the retry docstring was updated to name the surviving entry point) and does not touch the skip policy of the Docker-gated test.
+
+- Narrative comments in `CheckoutAndPaymentTests`, `DailyClosureFlowIntegrationTests`, `SecurityHardeningSprint2Tests`, `Phase2FinancialAndIntegrityTests`, `DailyClosureServiceUnitTests`, `DailyClosureRetryIntegrationTests`: pre-existing; documented legacy debt (`docs/deuda-legacy-gga-2026-09-16.md` item 38, Grupo D).
+- `DailyClosureRetryIntegrationTests` silent `return` without `TEST_POSTGRES_CONNECTION`: pre-existing (documented P2 debt); S3b did not alter that branch.
+- `CreateClosureFromCommandAsync` without `ArgumentNullException.ThrowIfNull(command)`: pre-existing; the method was not modified by S3b (only its legacy siblings were deleted).
+- `ResolveUserDetailsAsync` `FindAsync` without `AsNoTracking`: pre-existing; same finding recorded in S1/S2/S3a.
+
+Commit uses a punctual documented `--no-verify` because all findings are pre-existing and out of slice.

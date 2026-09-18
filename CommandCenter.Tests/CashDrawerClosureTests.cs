@@ -7,6 +7,8 @@ using Desktop.Client.ViewModels;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
 using Sales.Module.Entities;
+using CreateClosureCommand = Sales.Module.Interfaces.CreateClosureCommand;
+using DeclaredPaymentAmount = Sales.Module.Interfaces.DeclaredPaymentAmount;
 using ServerCashService = Sales.Module.Services;
 using Xunit;
 
@@ -181,17 +183,15 @@ public class CashDrawerClosureTests
         context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo", IsCash = true, IsActive = true, DisplayOrder = 1 });
         await context.SaveChangesAsync();
 
-        var dailyClosure = new DailyClosure
-        {
-            ClosureDate = DateTime.UtcNow,
-            UserId = "Cajero",
-            Observation = "Cierre de turno",
-            Details = new List<ClosureDetail>
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Cajero",
+            "Cierre de turno",
+            new List<DeclaredPaymentAmount>
             {
-                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo", ExpectedAmountBsS = 1300m, ActualAmountBsS = 1300m, DifferenceBsS = 0m }
-            }
-        };
-        await closureService.CreateClosureAsync(dailyClosure);
+                new(1, 1300m)
+            });
+        await closureService.CreateClosureFromCommandAsync(command, System.Threading.CancellationToken.None);
 
         await vm.LoadSessionAsync();
 

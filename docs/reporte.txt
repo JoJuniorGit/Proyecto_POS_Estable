@@ -10476,3 +10476,138 @@ Cierre: S3-06/WARNING-07 (tamano por archivo) queda cerrado en la slice S3a;
 REQ-COC-03 extendido y medido < 10 en los tres parciales. Pendientes del
 change: S3b (REQ-COC-05/03 + 18 re-points) y, fuera de esta fase,
 RESIDUAL-S1-02.
+
+================================================================================
+ANEXO - REVISION 8.141 (critical-debt-closeout S3b: eliminacion del entry point
+                        legacy + re-point de 18 tests)
+================================================================================
+
+Fecha: 2026-09-18
+Commit: refactor(8.141): eliminacion del entry point legacy + re-point de 18
+        tests (S3b, S3-07/OQ-1) - ANEXO 8.141, en rama V0.15 (sin branches/PRs).
+
+Alcance: work unit cdc-s3b-legacy (cuarta y ultima slice del change
+critical-debt-closeout, store openspec): cierra S3-07/REQ-COC-05 y completa
+REQ-COC-03/AD-5. OQ-1 aceptada por el maintainer: los re-points son reescrituras
+semanticas de los 18 tests legacy, no un cambio mecanico de llamada. Sin schema,
+sin config, sin PRs, sin sub-agentes.
+
+A. CAMBIOS DE PRODUCCION
+
+A1. Sales.Module/Services/DailyClosureService.cs (286 lineas): se eliminan
+    CreateClosureAsync(DailyClosure), ExecuteClosureCoreAsync y
+    MergeMissingMethodsIntoClosure. CreateClosureFromCommandAsync queda como
+    unica implementacion; ninguna via publica recibe ni devuelve la entidad
+    DailyClosure para crear un cierre.
+A2. Sales.Module/Services/DailyClosureService.Rules.cs: el guard de duplicados
+    (legacy :125-134) se reubica en ValidateDeclaredMethods ANTES de la
+    validacion de desconocidos, de modo que la via comando conserva el
+    ArgumentException "duplicados" con el mismo orden semantico.
+
+B. RE-POINT DE LOS 18 SITIOS (8 archivos; reescrituras semanticas OQ-1)
+
+B1. Validacion sin persistencia (5): DailyClosureServiceUnitTests :79/:294/:343,
+    ResidualRemediationLote26Tests :245 (duplicados, ahora por comando),
+    SecurityHardeningSprint2Tests :155. Mismo ArgumentException desde
+    ValidateDeclaredMethods/RecalculateTotals; sin persistencia afirmada.
+B2. Persistencia con aritmetica declarada (11): DailyClosureServiceUnitTests
+    :54/:183/:314/:363, CheckoutAndPaymentTests :339/:377/:408/:442/:460,
+    CashDrawerClosureTests :189, Phase2FinancialAndIntegrityTests :88. Los tests
+    siembran ventas conocidas, declaran montos nativos (USD para metodos USD,
+    Bs.S en el resto) y leen esperados/totales desde la entidad persistida
+    derivada de la BD (ExpectedTotalDto), no desde el esperado declarado.
+B3. Integracion (2): DailyClosureFlowIntegrationTests :58 y
+    DailyClosureRetryIntegrationTests :72. Mismo cambio de llamada;
+    DailyClosureTestHelper.CreateMocks ya devuelve tasa 50m. Ningun test afirma
+    sobre archivos de comprobantes (fail-open, logueado).
+B4. La via comando ejecuta ademas rollover de sesion y comprobantes; los dobles
+    de ICashDrawerService de los tests son no-op y los comprobantes quedan
+    fail-open, por lo que las aserciones de sesion existentes no cambian.
+
+C. TESTS ESTRUCTURALES (S3b-07)
+
+C1. CommandCenter.Tests/Unit/ClosureLegacyEntryRemovalTests.cs (nuevo, 5 casos):
+    - PublicSurface_ExposesNoEntityReturningClosureEntryPoint: reflexion sobre
+      DailyClosureService; ningun metodo publico recibe ni devuelve DailyClosure;
+      CreateClosureFromCommandAsync presente y devuelve Task<CloseShiftResult>.
+    - LegacyClosureMembers_AreAbsent (Theory x3): CreateClosureAsync,
+      ExecuteClosureCoreAsync y MergeMissingMethodsIntoClosure ausentes por
+      reflexion (publicos y no publicos).
+    - CreateClosureFromCommand_WithDuplicatedDeclaredMethods_ThrowsDuplicados:
+      el guard sobrevive en la via comando y no persiste cierre.
+
+D. COBERTURA (S3b-01 baseline / S3b-08 restauracion, mismo commit)
+
+D1. ANTES (TestResults/4613ff39-3b2a-48c3-8ae8-6765fa3e2a0f): suite 1254/1254;
+    Core 0.8378 [OK] / Sales.Module 0.9087 [OK] / Inventory.Module 0.8251 [OK].
+D2. DESPUES (TestResults/4fdcb3cb-e647-4141-a78c-576f8c941ce8): suite 1259/1259
+    (+5 estructurales); Core 0.8364 [OK] / Sales.Module 0.9091 [OK] /
+    Inventory.Module 0.8251 [OK]. Sales.Module sube +0.0004; Core -0.0014 es
+    varianza de corrida (mismo par de valores ya observado en S1/S2/S3a; ningun
+    archivo de produccion de Core fue tocado). Nada que restaurar; gates
+    >= 0.70/0.80/0.72.
+
+E. VERIFICACION (comandos de tasks.md ## Verification)
+
+E1. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+E2. dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release:
+    1259 passed, 0 failed, 0 skipped (piso 1227; piso de continuidad 1254 + 5
+    tests estructurales nuevos; los 18 re-points conservan el conteo).
+E3. Filtro de cierre (verbatim, tasks.md): dotnet test
+    CommandCenter.Tests/CommandCenter.Tests.csproj --filter
+    "FullyQualifiedName~Closure|FullyQualifiedName~DailyClosure" -> 105 passed,
+    0 failed, 105 total (100 previos + 5 estructurales).
+E4. npm test (Web.Frontend): 287 passed, 0 failed; npm run lint: exit 0 (slice
+    backend, sin cambios web).
+E5. Coverage gate: exit 0 con los rates de D1/D2.
+
+F. DECISIONES Y DESVIACIONES
+
+F1. Un unico commit: tasks.md S3b exige "one commit containing ... delete and
+    re-points MUST NOT be split across commits"; la eliminacion sin re-points
+    rompe la compilacion (18 tests referencian los miembros borrados), por lo
+    que la division guard/removal-first del despacho es inviable manteniendo el
+    repo verde en cada commit.
+F2. Presupuesto de revision: 292 adiciones + 299 supresiones = 591 lineas
+    cambiadas (solo codigo+tests; docs excluidas). Los 18 re-points semanticos
+    dominan el diff; no puede reducirse sin debilitar la cobertura ni comprimir
+    codigo. Se registra como size:exception; el despacho fijo la slice como un
+    unico work unit/commit.
+F3. SecurityHardeningSprint2Tests usaba Mock.Of<ITodayExchangeRateProvider>()
+    (tasa 0m); la via comando exige tasa > 0 y habria lanzado
+    InvalidOperationException en vez del ArgumentException afirmado; el test usa
+    ahora el helper (tasa 50m). La intencion (monto negativo rechazado) no
+    cambia.
+F4. El test legacy de nombre falsificado no tiene vector en el contrato comando
+    (DeclaredPaymentAmount no lleva nombre): la reescritura conserva el
+    contrato observable (el nombre persistido viene del catalogo autoritativo),
+    excluido estructuralmente por el DTO y por el test de ausencia.
+F5. No se toca ShiftReportMapper.MapDetails (RESIDUAL-S1-02): fuera del alcance
+    de S3b.
+
+G. GGA (punctual --no-verify)
+
+gga run (v2.10.1, provider opencode, rules AGENTS.md) = STATUS FAILED. Todos los
+hallazgos son PRE-EXISTENTES y fuera del alcance de S3b; el diff no introduce
+comentarios nuevos (los citados ya existian; solo el docstring del test de retry
+se actualizo para nombrar la entrada superviviente) ni toca la politica de skip
+del test con Docker. Commit con --no-verify puntual documentado.
+
+- Comentarios narrativos en tests (CheckoutAndPaymentTests,
+  DailyClosureFlowIntegrationTests, SecurityHardeningSprint2Tests,
+  Phase2FinancialAndIntegrityTests, DailyClosureServiceUnitTests,
+  DailyClosureRetryIntegrationTests): pre-existentes; deuda documentada en
+  docs/deuda-legacy-gga-2026-09-16.md item 38/Grupo D.
+- DailyClosureRetryIntegrationTests con return silencioso sin
+  TEST_POSTGRES_CONNECTION: pre-existente (deuda P2 documentada); S3b no altero
+  esa rama.
+- CreateClosureFromCommandAsync sin ArgumentNullException.ThrowIfNull(command):
+  pre-existente; el metodo no fue modificado por S3b.
+- ResolveUserDetailsAsync FindAsync sin AsNoTracking: pre-existente; mismo
+  hallazgo registrado en S1/S2/S3a.
+
+Cierre: S3-07/REQ-COC-05 queda cerrado (sin entry point publico de entidad; una
+sola implementacion de reglas) y REQ-COC-03 se mantiene con el guard de
+duplicados dentro de ValidateDeclaredMethods. Con S1+S2+S3a+S3b implementadas,
+el change critical-debt-closeout queda listo para la verificacion de cambio
+completo (sdd-verify).

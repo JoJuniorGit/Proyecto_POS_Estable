@@ -7,6 +7,7 @@ using CommandCenter.Tests.TestHelpers;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
 using Sales.Module.Entities;
+using Sales.Module.Interfaces;
 using Sales.Module.Services;
 using Xunit;
 
@@ -77,17 +78,18 @@ public class Phase2FinancialAndIntegrityTests
         Assert.Equal("Cupón Descontinuado", legacyTotal.PaymentMethodName);
         Assert.Equal(500m, legacyTotal.ExpectedAmountBsS);
 
-        // 2. Verificar CreateClosureAsync con cálculo automático
-        var closure = new DailyClosure
-        {
-            ClosureDate = now,
-            UserId = "Admin1",
-            Observation = "Cierre con método desactivado pero con cobros"
-        };
+        // 2. Verificar CreateClosureFromCommandAsync con cálculo automático
+        var command = new CreateClosureCommand(
+            now,
+            "Admin1",
+            "Cierre con método desactivado pero con cobros",
+            new List<DeclaredPaymentAmount>());
 
-        var created = await service.CreateClosureAsync(closure);
-        Assert.NotNull(created);
-        var detail = created.Details.FirstOrDefault(d => d.PaymentMethodId == 99);
+        var result = await service.CreateClosureFromCommandAsync(command, System.Threading.CancellationToken.None);
+
+        var detail = await context.ClosureDetails
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.DailyClosureId == result.ClosureId && d.PaymentMethodId == 99);
         Assert.NotNull(detail);
         Assert.Equal(500m, detail.ExpectedAmountBsS);
     }

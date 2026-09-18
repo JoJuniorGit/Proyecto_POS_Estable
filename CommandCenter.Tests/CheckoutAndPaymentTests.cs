@@ -316,7 +316,7 @@ public class CheckoutAndPaymentTests
     }
 
     [Fact]
-    public async Task CreateClosure_AutoCompletesMissingActiveMethods_WithZeroAmount()
+    public async Task CreateClosureFromCommand_AutoCompletesMissingActiveMethods_WithZeroAmount()
     {
         using var context = GetInMemoryDbContext();
         context.PaymentMethods.AddRange(
@@ -326,21 +326,24 @@ public class CheckoutAndPaymentTests
         await context.SaveChangesAsync();
 
         var service = DailyClosureTestHelper.CreateService(context);
-        var closure = new DailyClosure
-        {
-            ClosureDate = DateTime.UtcNow,
-            UserId = "Cashier1",
-            Details = new List<ClosureDetail>
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Cashier1",
+            null,
+            new List<DeclaredPaymentAmount>
             {
-                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 100m, ActualAmountBsS = 100m }
-            }
-        };
+                new(1, 100m)
+            });
 
-        var saved = await service.CreateClosureAsync(closure);
+        var result = await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
 
-        Assert.NotNull(saved);
-        Assert.Equal(2, saved.Details.Count);
-        var missingMethod = saved.Details.FirstOrDefault(d => d.PaymentMethodId == 2);
+        var details = await context.ClosureDetails
+            .AsNoTracking()
+            .Where(d => d.DailyClosureId == result.ClosureId)
+            .ToListAsync();
+
+        Assert.Equal(2, details.Count);
+        var missingMethod = details.FirstOrDefault(d => d.PaymentMethodId == 2);
         Assert.NotNull(missingMethod);
         Assert.Equal(0m, missingMethod!.ActualAmountBsS);
         Assert.Equal(0m, missingMethod.ExpectedAmountBsS);
@@ -365,16 +368,15 @@ public class CheckoutAndPaymentTests
         Assert.Equal(500m, totalsBefore.First(t => t.PaymentMethodId == 1).ExpectedAmountBsS);
 
         // Perform closure at 12:00 PM today
-        var closure = new DailyClosure
-        {
-            ClosureDate = baseTime.AddHours(2), // 12:00 PM
-            UserId = "Admin",
-            Details = new List<ClosureDetail>
+        var command = new CreateClosureCommand(
+            baseTime.AddHours(2),
+            "Admin",
+            null,
+            new List<DeclaredPaymentAmount>
             {
-                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 500m, ActualAmountBsS = 500m }
-            }
-        };
-        await service.CreateClosureAsync(closure);
+                new(1, 10m)
+            });
+        await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
 
         // Immediately after closure (12:01 PM today): expected totals should reset to 0.00 Bs.S
         var totalsAfter = await service.GetExpectedTotalsByPaymentMethodAsync(baseTime.AddHours(2).AddMinutes(1));
@@ -396,16 +398,15 @@ public class CheckoutAndPaymentTests
         var service = DailyClosureTestHelper.CreateService(context);
 
         // Perform closure at 12:00 PM
-        var closure = new DailyClosure
-        {
-            ClosureDate = baseTime.AddHours(2), // 12:00 PM
-            UserId = "Admin",
-            Details = new List<ClosureDetail>
+        var command = new CreateClosureCommand(
+            baseTime.AddHours(2),
+            "Admin",
+            null,
+            new List<DeclaredPaymentAmount>
             {
-                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 300m, ActualAmountBsS = 300m }
-            }
-        };
-        await service.CreateClosureAsync(closure);
+                new(1, 6m)
+            });
+        await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
 
         // Register new sale at 14:00 PM (after closure)
         var saleNew = new Sale { Id = 12, Status = SaleStatus.Completed, Date = baseTime.AddHours(4) };
@@ -428,21 +429,18 @@ public class CheckoutAndPaymentTests
         await context.SaveChangesAsync();
 
         var service = DailyClosureTestHelper.CreateService(context);
-        var closure = new DailyClosure
-        {
-            ClosureDate = DateTime.UtcNow,
-            UserId = "Admin",
-            Observation = "Test closure",
-            Details = new List<ClosureDetail>
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Admin",
+            "Test closure",
+            new List<DeclaredPaymentAmount>
             {
-                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo", ExpectedAmountBsS = 100m, ActualAmountBsS = 100m }
-            }
-        };
+                new(1, 100m)
+            });
 
-        var saved = await service.CreateClosureAsync(closure);
+        var result = await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
 
-        Assert.NotNull(saved);
-        Assert.True(saved.Id > 0);
+        Assert.True(result.ClosureId > 0);
     }
 
     [Fact]
@@ -450,16 +448,15 @@ public class CheckoutAndPaymentTests
     {
         using var context = GetInMemoryDbContext();
         var service = DailyClosureTestHelper.CreateService(context);
-        var closure = new DailyClosure
-        {
-            ClosureDate = DateTime.UtcNow,
-            UserId = "Admin",
-            Details = new List<ClosureDetail>()
-        };
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Admin",
+            null,
+            new List<DeclaredPaymentAmount>());
 
-        var saved = await service.CreateClosureAsync(closure);
+        var result = await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
 
-        Assert.NotNull(saved);
+        Assert.NotNull(result);
     }
 
     [Fact]
