@@ -122,7 +122,7 @@ public class CloseShiftResolverClassificationTests
             }
         };
 
-        var result = await controller.CloseShift(request, CancellationToken.None);
+        var result = await controller.CloseShiftAsync(request, CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         var report = Assert.IsType<ShiftReportDto>(okResult.Value);
@@ -165,7 +165,7 @@ public class CloseShiftResolverClassificationTests
             }
         };
 
-        var result = await controller.CloseShift(request, CancellationToken.None);
+        var result = await controller.CloseShiftAsync(request, CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         var report = Assert.IsType<ShiftReportDto>(okResult.Value);
@@ -190,7 +190,7 @@ public class CloseShiftResolverClassificationTests
             }
         };
 
-        var result = await controller.CloseShift(request, CancellationToken.None);
+        var result = await controller.CloseShiftAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -217,7 +217,7 @@ public class CloseShiftResolverClassificationTests
             DeclaredAmounts = new List<DeclaredAmountDto>()
         };
 
-        var result = await controller.CloseShift(request, CancellationToken.None);
+        var result = await controller.CloseShiftAsync(request, CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result);
         mockClosure.Verify(
@@ -241,7 +241,7 @@ public class CloseShiftResolverClassificationTests
             }
         };
 
-        var result = await controller.CloseShift(request, CancellationToken.None);
+        var result = await controller.CloseShiftAsync(request, CancellationToken.None);
 
         Assert.IsType<BadRequestObjectResult>(result);
         mockClosure.Verify(

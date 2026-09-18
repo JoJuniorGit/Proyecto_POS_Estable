@@ -150,7 +150,7 @@ public class Phase7ClosureWithoutRateTests
             DeclaredAmounts = new List<DeclaredAmountDto>()
         };
 
-        var result = await controller.CloseShift(request, CancellationToken.None);
+        var result = await controller.CloseShiftAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);

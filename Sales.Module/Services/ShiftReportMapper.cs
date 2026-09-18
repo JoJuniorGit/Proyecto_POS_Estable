@@ -50,8 +50,8 @@ public static class ShiftReportMapper
                 : d.ActualAmountBsS;
             decimal diff = declaredAmt - systemAmt;
             string status = Math.Abs(diff) < 0.05m
-                ? "Balanced"
-                : (diff > 0 ? "Surplus" : "Shortage");
+                ? ClosureStatus.Balanced
+                : (diff > 0 ? ClosureStatus.Surplus : ClosureStatus.Shortage);
 
             return new ShiftReportDetailDto
             {

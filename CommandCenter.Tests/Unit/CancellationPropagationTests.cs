@@ -56,7 +56,7 @@ public class CancellationPropagationTests
         };
 
         using var cts = new CancellationTokenSource();
-        var result = await controller.GetReportById(7, cts.Token);
+        var result = await controller.GetReportByIdAsync(7, cts.Token);
 
         Assert.IsType<OkObjectResult>(result);
         closureService.Verify(s => s.GetClosureAsync(7, cts.Token), Times.Once);
@@ -77,7 +77,7 @@ public class CancellationPropagationTests
         };
 
         using var cts = new CancellationTokenSource();
-        var result = await controller.GetCurrentReport(cts.Token);
+        var result = await controller.GetCurrentReportAsync(cts.Token);
 
         Assert.IsType<OkObjectResult>(result);
         closureService.Verify(s => s.GetLatestClosureAsync(cts.Token), Times.Once);
@@ -243,9 +243,9 @@ public class CancellationPropagationTests
     {
         var actions = new (Type Type, string Method)[]
         {
-            (typeof(ShiftsController), nameof(ShiftsController.CloseShift)),
-            (typeof(ShiftsController), nameof(ShiftsController.GetCurrentReport)),
-            (typeof(ShiftsController), nameof(ShiftsController.GetReportById)),
+            (typeof(ShiftsController), nameof(ShiftsController.CloseShiftAsync)),
+            (typeof(ShiftsController), nameof(ShiftsController.GetCurrentReportAsync)),
+            (typeof(ShiftsController), nameof(ShiftsController.GetReportByIdAsync)),
             (typeof(DailyClosureController), nameof(DailyClosureController.GetExpectedTotals)),
             (typeof(DailyClosureController), nameof(DailyClosureController.CreateClosure)),
             (typeof(DailyClosureController), nameof(DailyClosureController.GetClosure)),
@@ -364,51 +364,94 @@ public class CancellationPropagationTests
             typeof(CashAdvanceCoordinator)
         ];
 
-        var offenders = new List<string>();
+        var offenders = CollectBlockingCallOffenders(touchedTypes);
+
+        Assert.Empty(offenders);
+    }
+
+    private sealed class AsyncBodyBlockingProbe
+    {
+        public static async Task RunAsync()
+        {
+            await Task.Yield();
+            Thread.Sleep(1);
+        }
+    }
+
+    [Fact]
+    public void BlockingScanner_DetectsBlockingCallInsideAsyncStateMachine()
+    {
+        var offenders = CollectBlockingCallOffenders(new[] { typeof(AsyncBodyBlockingProbe) });
+
+        Assert.Contains(offenders, offender => offender.Contains("Thread.Sleep"));
+    }
+
+    private static List<string> CollectBlockingCallOffenders(IEnumerable<Type> touchedTypes)
+    {
         const BindingFlags declared = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+
+        var offenders = new List<string>();
 
         foreach (var type in touchedTypes)
         {
-            foreach (var method in type.GetMethods(declared))
+            foreach (var scannedType in EnumerateTypeAndNestedStateMachines(type))
             {
-                var il = method.GetMethodBody()?.GetILAsByteArray();
-                if (il is null) continue;
-
-                for (int i = 0; i < il.Length - 4; i++)
+                foreach (var method in scannedType.GetMethods(declared))
                 {
-                    if (il[i] != 0x28 && il[i] != 0x6F) continue;
+                    var il = method.GetMethodBody()?.GetILAsByteArray();
+                    if (il is null) continue;
 
-                    MethodBase? called;
-                    try
-                    {
-                        called = method.Module.ResolveMethod(BitConverter.ToInt32(il, i + 1), null, null);
-                    }
-                    catch (ArgumentException)
-                    {
-                        continue;
-                    }
+                    MethodBase? previousCall = null;
 
-                    if (called is null) continue;
-
-                    string? blocking = called.Name switch
+                    for (int i = 0; i < il.Length - 4; i++)
                     {
-                        "get_Result" when called.DeclaringType?.Namespace == "System.Threading.Tasks" => "Task.Result",
-                        "Wait" when typeof(Task).IsAssignableFrom(called.DeclaringType) => "Task.Wait",
-                        "WaitAll" or "WaitAny" when called.DeclaringType == typeof(Task) => "Task." + called.Name,
-                        "Sleep" when called.DeclaringType == typeof(Thread) => "Thread.Sleep",
-                        "GetResult" when called.DeclaringType?.Name.Contains("Awaiter") == true => "GetAwaiter().GetResult",
-                        _ => null
-                    };
+                        if (il[i] != 0x28 && il[i] != 0x6F) continue;
 
-                    if (blocking is not null)
-                    {
-                        offenders.Add($"{type.Name}.{method.Name} -> {blocking}");
+                        MethodBase? called;
+                        try
+                        {
+                            called = method.Module.ResolveMethod(BitConverter.ToInt32(il, i + 1), null, null);
+                        }
+                        catch (ArgumentException)
+                        {
+                            continue;
+                        }
+
+                        if (called is null) continue;
+
+                        string? blocking = called.Name switch
+                        {
+                            "get_Result" when called.DeclaringType?.Namespace == "System.Threading.Tasks" => "Task.Result",
+                            "Wait" when typeof(Task).IsAssignableFrom(called.DeclaringType) => "Task.Wait",
+                            "WaitAll" or "WaitAny" when called.DeclaringType == typeof(Task) => "Task." + called.Name,
+                            "Sleep" when called.DeclaringType == typeof(Thread) => "Thread.Sleep",
+                            "GetResult" when called.DeclaringType?.Name.Contains("Awaiter") == true
+                                && previousCall?.Name == "GetAwaiter" => "GetAwaiter().GetResult",
+                            _ => null
+                        };
+
+                        if (blocking is not null)
+                        {
+                            offenders.Add($"{type.Name}.{scannedType.Name}.{method.Name} -> {blocking}");
+                        }
+
+                        previousCall = called;
                     }
                 }
             }
         }
 
-        Assert.Empty(offenders);
+        return offenders;
+    }
+
+    private static IEnumerable<Type> EnumerateTypeAndNestedStateMachines(Type type)
+    {
+        yield return type;
+
+        foreach (var nested in type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
+        {
+            yield return nested;
+        }
     }
 
     [Fact]

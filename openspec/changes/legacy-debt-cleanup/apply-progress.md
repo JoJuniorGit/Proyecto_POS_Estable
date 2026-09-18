@@ -756,5 +756,92 @@ Both payloads below were produced inside `DrawerDtoBoundaryTests.DrawerSessionDt
 
 Explicit S5a-relevant confirmation from the same review (`## Compliant`): *"no `async void` in services (`RunShutdownAsync` is `Task`, `SafeFireAndForget` used); `CancellationToken` propagated through the reviewed endpoints; history snapshots never recomputed; errors surface as `ProblemDetails`"* — direct third-party evidence for REQ-ACP-01/02/03.
 
+---
+
+## Slice S5b: EF Tuning + Guards/Naming/Comments (lcs-s5b-ef-guards)
+
+### Completed Tasks
+
+- [x] 5b.1 `DailyClosureService.cs` — `LoadClosureEntityAsync` (the `GetClosureAsync` read path) now uses `.AsNoTracking()` + `.AsSplitQuery()`; `GetLatestClosureAsync` adds `.AsSplitQuery()` (it already read with `AsNoTracking`). AD-16 wording also names `GetHistoryAsync`: it lives in `CashDrawerService` and already read with `AsNoTracking()` since S4b (no `Include`, so no split query applies). Writes keep tracking (`OpenSessionAsync`/`CloseSessionAsync`/`AddTransactionAsync`/`PersistClosureCoreAsync` mutations are unchanged; the post-commit re-read only feeds a DTO — deviation D1)
+- [x] 5b.2 `CashDrawerService.GetActiveSessionWithTransactionsAsync` — `.AsNoTracking()` + `.AsSplitQuery()` over `Include(Transactions).ThenInclude(Sale)` (closes `S4b-R1`)
+- [x] 5b.3 Created `Sales.Module/ClosureStatus.cs` (`Balanced`/`Surplus`/`Shortage`); `ShiftReportMapper.MapDetails`, `DailyClosureService.BuildDeclaredDetails` and `MergeMissingMethodsWithReport` consume it; `ShiftReportDetailDto` now defaults `Currency`/`Status` from `PaymentMethodCurrencyResolver.LocalCurrency`/`ClosureStatus.Balanced` (item 34)
+- [x] 5b.4 `ShiftsController.CloseShiftAsync`: `ArgumentNullException.ThrowIfNull(request)` + `ThrowIfNull(request.DeclaredAmounts)`. `DailyClosureController.ExecuteCreateClosureAsync`: `ThrowIfNull(request)` in the post-validation continuation — the public action keeps its S2-pinned 400 for a null request (deviation D2)
+- [x] 5b.5 Verified already satisfied: `_paymentMethodService`/`_settingsService` no longer exist in any touched controller (S3 removed them); `CashDrawerController._settingsService` has five live reads. No dead fields to drop
+- [x] 5b.6 `...Async` suffix: services were already compliant; the three registered ShiftsController actions renamed (`CloseShiftAsync`, `GetCurrentReportAsync`, `GetReportByIdAsync`). Attribute routes unchanged; 19 test call sites re-pointed (item 28)
+- [x] 5b.7 `GetReportByIdAsync` resolves the 404 before the ownership evaluation (rate resolution no longer exists on that path since S3); `DailyClosureController.ResolveClosureDate` moved inside the `try` so future/backdated dates map to 400 `ApiBadRequest` instead of the middleware's 409 (S5a GGA registration). Lambda-scope indentation fixed in `CashDrawerController.AddTransactionAsync`; item 37's registered lambda (`ShiftsController` `:84-212`) died with S3 (deviation D4)
+- [x] 5b.8 Explanatory comments removed from the group-D files (`CashDrawerController`, `CashDrawerService`, `ServiceCollectionExtensions`, `CashDrawerClosureTests`, `Phase3ConcurrencyAndReservationTests`, `SecurityTests`, `CashDrawerServiceUnitTests`); only marker-led comments remain (`8.5-A4`, `8.5-A5`, `8.103`, `8.5-M1`, `8.9-B4`, `8.5-A2`, `8.7-B5`, `8.12-L3`, `8.14-W4`, `8.30-B03`, `8.9-M6`), untranslated. `DailyClosureController`/`ShiftsController` now carry zero comments. No new comments added
+- [x] 5b.9 **GREEN**: `EfTuningAndGuardTests.CloseShift_WhenRequestIsNull_ThrowsArgumentNullException` + `CloseShift_WhenDeclaredAmountsIsNull_ThrowsArgumentNullException`
+
+### S5a carry-overs
+
+- **(a) IL scan hardening (`RESIDUAL-S5a-02`)**: `TouchedAsyncTypes_DoNotBlockSynchronouslyOnAsyncPaths` now scans each touched type **and its nested types** (async state machines and closure classes), so `MoveNext` bodies are inspected; the awaiter-`GetResult` rule requires a directly preceding `GetAwaiter` call so genuine `await`s are not flagged. New discriminating test `BlockingScanner_DetectsBlockingCallInsideAsyncStateMachine` runs the scanner against a probe `async` method containing `Thread.Sleep` and asserts it is found (the test fails on the pre-hardening scanner)
+- **(b) In-scope token (`RESIDUAL-S5a-01`)**: `SalesService.Checkout.cs` forwards `cancellationToken` to `GetOrCreateActiveSessionAsync` (line 135) and `RecordSaleChangeAsync` (`cancellationToken: cancellationToken`)
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `Sales.Module/ClosureStatus.cs` | Created | Status-label constants (AD-17, item 34) |
+| `Sales.Module/Services/ShiftReportMapper.cs` | Modified | Uses `ClosureStatus.*` |
+| `Sales.Module/Services/ShiftReportDetailDto.cs` | Modified | Defaults from `PaymentMethodCurrencyResolver.LocalCurrency` + `ClosureStatus.Balanced` |
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | Read tuning + `ClosureStatus.*` |
+| `Sales.Module/Services/CashDrawerService.cs` | Modified | Read tuning + non-marker comments removed |
+| `Sales.Module/Services/SalesService.Checkout.cs` | Modified | Token forwarded to drawer calls (carry-over b) |
+| `Backend.API/Controllers/ShiftsController.cs` | Modified | `ThrowIfNull` guards; three `...Async` renames; 404 before ownership |
+| `Backend.API/Controllers/DailyClosureController.cs` | Modified | `ThrowIfNull` in continuation; `ResolveClosureDate` inside `try` |
+| `Backend.API/Controllers/CashDrawerController.cs` | Modified | Comment cleanup; call indentation |
+| `Backend.API/Startup/ServiceCollectionExtensions.cs` | Modified | Non-marker comments/XML summaries removed |
+| `CommandCenter.Tests/Unit/EfTuningAndGuardTests.cs` | Created | 5 S5b tests (3 no-tracking, 2 guards) |
+| `CommandCenter.Tests/Unit/CancellationPropagationTests.cs` | Modified | Scanner hardened to nested state machines + probe test |
+| `CommandCenter.Tests/Unit/SecurityTests.cs` | Modified | Narrative comments removed |
+| `CommandCenter.Tests/Unit/Phase3ConcurrencyAndReservationTests.cs` | Modified | Narrative comments removed |
+| `CommandCenter.Tests/Unit/CashDrawerServiceUnitTests.cs` | Modified | Narrative comments removed (marker kept) |
+| `CommandCenter.Tests/CashDrawerClosureTests.cs` | Modified | Narrative comments removed |
+| 7 further test files | Modified | Mechanical re-point to the renamed actions (19 call sites) |
+
+### Verification Results (S5b)
+
+- `dotnet build CommandCenter.slnx -c Release`: **0 errors, 0 warnings**
+- `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: **1213 passed, 0 failed, 0 skipped** (1207 -> 1213; +5 S5b tests +1 scanner probe)
+- `dotnet test --filter "FullyQualifiedName~Tuning|FullyQualifiedName~Guard"` (tasks.md S5b filter): **8 passed, 0 failed** — 5 `EfTuningAndGuardTests` + 3 pre-existing `VersionLockoutUrlGuardTests`
+- `dotnet test --filter "FullyQualifiedName~Cancellation"` (S5a regression): **16 passed, 0 failed** (15 + 1 probe)
+- `npm test` (Web.Frontend): **271 passed, 0 failed** (Web untouched — regression check)
+- `npm run lint` (Web.Frontend): **clean** (exit 0)
+- Coverage gate (`scripts/check-coverage.py`): Core **0.8364** >= 0.70, Sales.Module **0.9073** >= 0.80, Inventory.Module **0.8251** >= 0.72 — all `[OK]`
+
+### Work Unit Evidence (S5b)
+
+| Evidence | Value |
+|----------|-------|
+| Focused test command | `dotnet test --filter "FullyQualifiedName~Tuning|FullyQualifiedName~Guard"`: 8 passed, 0 failed |
+| Runtime harness | Relational SQLite `SalesDbContext` + real services: after `ChangeTracker.Clear()`, `GetClosureAsync`/`GetLatestClosureAsync`/`GetActiveSessionWithTransactionsAsync` leave `ChangeTracker.Entries()` **empty** (tracking queries left 2 entries) while returning the full graph; `CloseShiftAsync` with null request/declarations throws `ArgumentNullException` |
+| Rollback boundary | `ClosureStatus.cs`, the two service files, `ShiftReportMapper.cs`, `ShiftReportDetailDto.cs`, `SalesService.Checkout.cs`, the three controllers, `ServiceCollectionExtensions.cs`, `EfTuningAndGuardTests.cs`, `CancellationPropagationTests.cs` and the re-pointed test files |
+
+### Decisions and Deviations (S5b)
+
+- **D1 — `LoadClosureEntityAsync` tuned, not split.** It is shared by `GetClosureAsync` and the post-commit re-reads in `PersistClosureCoreAsync`/`ExecuteClosureCoreAsync`; the result is only mapped to a DTO or returned by the legacy seam, never mutated, so `AsNoTracking` is behavior-preserving. Mutations still run under tracking.
+- **D2 — DailyClosureController keeps its 400 for a null request.** S2/REQ-AEC-02 pins `DailyClosureController_NullRequest_ReturnsProblemDetails400` and `ValidateClosureRequest` handles `request?` gracefully; applying `ThrowIfNull` at the top of `CreateClosure` would have broken that verified scenario. The guard is applied in the post-validation continuation instead (tasks 5b.4/5b.9 still satisfied via `ShiftsController`).
+- **D3 — `...Async` scope.** Only the three registered ShiftsController actions were renamed (registry item 28). The repo-wide action suffix sweep stays out of slice (S5a GGA registration).
+- **D4 — item 37's site no longer exists.** The registered lambda (`ShiftsController` `:84-212`) was removed by S3's orchestration consolidation; the remaining lambda-scope indentation in a touched file was fixed. The pre-existing under-indentation of the `SalesService.Checkout.cs` transactional lambda (~280 whitespace-only lines) is registered as a formatting follow-up instead of inflating this work unit.
+- **D5 — guard-order contract change.** `ResolveClosureDate` now runs inside the `try`: invalid dates return 400 `ApiBadRequest` instead of the middleware's 409. This is the S5a GGA finding assigned to S5b.7; the 404-before-ownership reorder in `GetReportByIdAsync` has no observable change (the existing 404/403 tests are green).
+- **D6 — comment policy.** Group-D files: full-line/inline comments without a leading `8.x-*` marker were deleted (including AAA labels and narrative in the four registered test files); marker-led comments were kept verbatim (AD-18: no mass translation). `SalesService.Checkout.cs` is not in group D and keeps its comments.
+
+### GGA Hook Exceptions (punctual `--no-verify`)
+
+The first `gga run` (v2.10.1, provider `opencode`, rules `AGENTS.md`) exhausted the 300s provider timeout on the 23-file staging set; the retry produced `STATUS: FAILED`. Every finding is **pre-existing and outside the registered S5b scope**; none is introduced by this slice. Committed with a documented punctual `--no-verify`.
+
+| GGA finding | Location | Classification |
+|-------------|----------|----------------|
+| DbContext injected in a controller (H-03): `SalesDbContext`/`InventoryDbContext` + direct EF reads (`ResolveAnchoredRateAsync`, `Users.FindAsync`) | `CashDrawerController.cs:23-40,171,267` | Pre-existing; **not in the registered items** (group I covered `DailyClosureController`/`ShiftsController`, both resolved in S3). Extracting it to services is a full refactor outside S5b. Registered as `S5b-R1` |
+| `DailyClosureService.cs` over the 300-500 line ceiling (GGA: 567 non-blank; file ~650) | `Sales.Module/Services/DailyClosureService.cs` | Pre-existing; `S3-06`/`WARNING-07`/`S4a-R2` — orchestrator instruction: "if the class-size split is not listed in Phase 5b, leave it registered" |
+| Explanatory comments flagged | `CashDrawerController.cs:102-103,128-130,152-157,165`; `DailyClosureService.cs:287`; `SalesService.Checkout.cs` | Kept `8.x-*` traceability markers per AD-18; `SalesService.Checkout.cs` is outside group D. No new comments added |
+| `ex.Message` surfaced via `Problem(...)`/`ApiBadRequest(ex.Message)` | `ShiftsController.cs`, `DailyClosureController.cs` | Pre-existing S1/S2 contract, pinned by `ErrorContractTests`; documented standard-vs-practice tension, out of slice |
+
+### Registered for S5c / follow-up (NOT fixed in this slice)
+
+- **`S5b-R1`** — H-03 in `CashDrawerController`: DbContext injection, BCV anchoring and the user lookup belong in the service layer (needs its own work unit).
+- **Closed by this slice**: `S4b-R1` (`GetActiveSessionWithTransactionsAsync` tuning) and `RESIDUAL-S5a-01`/`RESIDUAL-S5a-02` (Checkout token forwarding; state-machine-aware IL scan).
+- **Carried and untouched**: `WARNING-04` (hardcoded `"Balanced"` on merged undeclared-method lines — the `ClosureStatus` extraction covers the constant, the merged-line semantics stay), `WARNING-07`/`S3-06`/`S4a-R2` (class size), `S3-07`/`S4a-R1` (legacy closure entry point), mutable DTOs in `Sales.Module.Interfaces`, `PaymentMethodDtos.cs` `"Bs.S"` default (outside the touched set).
+
 
 

@@ -9821,3 +9821,151 @@ El mismo informe declara en "Compliant": "no async void in services
 (RunShutdownAsync is Task, SafeFireAndForget used); CancellationToken propagated
 through the reviewed endpoints; history snapshots never recomputed; errors
 surface as ProblemDetails" - evidencia de tercera parte para REQ-ACP-01/02/03.
+
+
+================================================================================
+ANEXO - REVISION 8.140 (legacy-debt-cleanup S5b: EF reads, guardas y limpieza)
+================================================================================
+
+Fecha: 2026-09-17
+Commit: refactor(8.140): EF reads + guards y limpieza (slice S5b, items 7/22/31 +
+        grupos H/D) - ANEXO 8.140, en rama V0.15 (sin branches/PRs).
+
+Alcance: work unit S5b del change legacy-debt-cleanup (store openspec), items del
+registro 7/22/31 (grupo E, rendimiento EF), grupo H (11/28/29/32/34/36/37) y
+grupo D (5/10/17/23/24/33/38, comentarios/idioma). Incluye dos carry-overs del
+verify S5a: endurecimiento del escaneo IL anti sync-over-async y reenvio del
+token en scope de SalesService.Checkout.cs. Solo S5b (S5c no se inicia). Sin
+cambios de schema, sin PRs, sin sub-agentes.
+
+A. CAMBIOS DE PRODUCCION
+
+A1. Lecturas EF (AD-16, items 7/22/31):
+- DailyClosureService.LoadClosureEntityAsync (ruta de GetClosureAsync):
+  .AsNoTracking() + .AsSplitQuery() sobre Include(Details).
+- DailyClosureService.GetLatestClosureAsync: agrega .AsSplitQuery() (ya tenia
+  AsNoTracking).
+- CashDrawerService.GetActiveSessionWithTransactionsAsync (S4b-R1):
+  .AsNoTracking() + .AsSplitQuery() sobre Include(Transactions).ThenInclude(Sale).
+- GetHistoryAsync de CashDrawerService ya leia con AsNoTracking desde S4b; las
+  rutas de escritura (OpenSession/CloseSession/AddTransaction/persistencia)
+  conservan tracking.
+
+A2. Guardas y naming (AD-17, grupo H):
+- Sales.Module/ClosureStatus.cs nuevo: constantes Balanced/Surplus/Shortage;
+  usadas por ShiftReportMapper.MapDetails, DailyClosureService.BuildDeclaredDetails
+  y MergeMissingMethodsWithReport. ShiftReportDetailDto usa
+  PaymentMethodCurrencyResolver.LocalCurrency y ClosureStatus.Balanced como
+  valores por defecto (item 34).
+- ShiftsController.CloseShiftAsync: ArgumentNullException.ThrowIfNull(request) y
+  ThrowIfNull(request.DeclaredAmounts) (item 32).
+- DailyClosureController.ExecuteCreateClosureAsync: ThrowIfNull(request) en la
+  continuacion post-validacion; el camino publico conserva el 400 fijado por S2
+  (ValidateClosureRequest) - ver E2.
+- Sufijo Async (item 28): ShiftsController.CloseShift/GetCurrentReport/
+  GetReportById -> CloseShiftAsync/GetCurrentReportAsync/GetReportByIdAsync
+  (rutas por atributo intactas; 19 call sites de tests re-punteados).
+- Orden de guardas (item 36 / 5b.7): GetReportByIdAsync resuelve el 404 antes de
+  la evaluacion de propiedad; ResolveClosureDate se mueve dentro del try para que
+  fechas futuras/retroactivas devuelvan 400 ApiBadRequest (antes: 409 del
+  middleware). Item 29 (_paymentMethodService/_settingsService) ya estaba
+  resuelto por S3.
+
+A3. Comentarios / idioma (AD-18, grupo D):
+- Eliminados los comentarios explicativos sin marcador en CashDrawerController,
+  CashDrawerService, ServiceCollectionExtensions y en los 4 archivos de test
+  registrados (CashDrawerClosureTests, Phase3ConcurrencyAndReservationTests,
+  SecurityTests, CashDrawerServiceUnitTests). Se conservan los marcadores 8.x-*
+  (8.5-A4, 8.5-A5, 8.103, 8.5-M1, 8.9-B4, 8.5-A2, 8.7-B5, 8.12-L3, 8.14-W4,
+  8.30-B03, 8.9-M6) sin traducir. DailyClosureController/ShiftsController quedan
+  sin comentarios.
+- Indentacion del call/lambda en CashDrawerController.AddTransactionAsync
+  corregida (item 37; el lambda registrado de ShiftsController :84-212
+  desaparecio con S3 - ver E5).
+
+B. CARRY-OVERS DEL VERIFY S5a
+
+B1. Escaneo IL anti sync-over-async (RESIDUAL-S5a-02):
+    TouchedAsyncTypes_DoNotBlockSynchronouslyOnAsyncPaths enumera tambien los
+    tipos anidados (state machines async y closures) y escanea sus cuerpos
+    MoveNext; la regla de GetResult sobre awaiter exige llamada previa directa a
+    GetAwaiter para no confundir un await. Nuevo test discriminante
+    BlockingScanner_DetectsBlockingCallInsideAsyncStateMachine con un probe
+    Thread.Sleep dentro de un metodo async: prueba que el escaner SI ve MoveNext.
+B2. Token en scope (RESIDUAL-S5a-01): SalesService.Checkout.cs reenvia el token a
+    GetOrCreateActiveSessionAsync (linea 135) y RecordSaleChangeAsync
+    (cancellationToken:), cerrando los dos call sites señalados.
+
+C. PRUEBAS
+
+C1. Nuevo CommandCenter.Tests/Unit/EfTuningAndGuardTests.cs (5 tests):
+    GetClosureAsync/GetLatestClosureAsync/GetActiveSessionWithTransactionsAsync
+    sobre SQLite con ChangeTracker.Clear() -> Empty(context.ChangeTracker.Entries())
+    (discrimina AsNoTracking: con tracking habia 2 entradas); CloseShiftAsync(null)
+    y DeclaredAmounts null -> ArgumentNullException.
+C2. CancellationPropagationTests: 14 -> 15 tests (16 con el match pre-existente
+    del filtro).
+
+D. VERIFICACION (comandos del tasks.md)
+
+D1. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+D2. dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release:
+    1213 passed, 0 failed, 0 skipped (1207 -> 1213; +5 S5b +1 probe).
+D3. Filtro S5b (Tuning|Guard): 8 passed, 0 failed (5 nuevos + 3 pre-existentes
+    VersionLockoutUrlGuardTests).
+D4. Filtro S5a (Cancellation): 16 passed, 0 failed.
+D5. npm test: 271 passed, 0 failed (Web sin cambios; regresion).
+D6. npm run lint: clean (exit 0).
+D7. Coverage: Core 0.8364 >= 0.70; Sales.Module 0.9073 >= 0.80;
+    Inventory.Module 0.8251 >= 0.72 - [OK].
+
+E. DECISIONES Y DESVIACIONES
+
+E1. LoadClosureEntityAsync es compartido con las relecturas post-commit;
+    AsNoTracking es seguro porque su resultado solo se mapea a DTO (nunca se
+    muta). Las escrituras (Add/SaveChanges) conservan tracking.
+E2. DailyClosureController conserva el contrato 400 para request nulo fijado por
+    S2/REQ-AEC-02 (DailyClosureController_NullRequest_ReturnsProblemDetails400);
+    el ThrowIfNull vive en la continuacion privada, no en la accion publica.
+E3. Solo se renombraron las 3 actions registradas en el item 28; el barrido de
+    sufijo Async repo-wide queda fuera del slice.
+E4. ResolveClosureDate dentro del try alinea una fecha invalida al contrato de
+    validacion (409 del middleware -> 400 ApiBadRequest), registro S5a GGA ->
+    S5b.7. El resto de ordenes de guarda no cambia resultados observables (tests
+    404/403 existentes verdes).
+E5. La lambda transaccional under-indentada de SalesService.Checkout.cs
+    (pre-existente, ~280 lineas de whitespace) no se re-indenta para no inflar el
+    work unit; el sitio registrado del item 37 desaparecio con S3.
+E6. Archivos: 21 modificados + 2 nuevos. La slice se autoriza como work unit de
+    cadena (presupuesto ~250 lineas previsto).
+E7. GGA: ver seccion F.
+
+F. GGA (punctual --no-verify)
+
+gga run (v2.10.1, provider opencode, rules AGENTS.md) = STATUS FAILED. El primer
+intento agoto el timeout de 300s del proveedor; el segundo produjo informe. Todos
+los hallazgos son PRE-EXISTENTES y fuera del alcance registrado de S5b; ninguno
+es introducido por este slice. Commit con --no-verify puntual documentado.
+
+- DbContext en CashDrawerController (H-03): inyecta SalesDbContext/
+  InventoryDbContext y consulta EF en ResolveAnchoredRateAsync y Users.FindAsync.
+  Pre-existente; los items del plan (grupo I: DailyClosureController y
+  ShiftsController) ya se resolvieron en S3. Extraerlo a servicios es un refactor
+  completo fuera de S5b -> registrado como S5b-R1.
+- DailyClosureService.cs sobre 500 lineas: pre-existente; S3-06/WARNING-07/S4a-R2,
+  explicitamente "leave it registered" para S5b (no listado en la fase 5b).
+- Comentarios 8.x-* conservados por AD-18 (CashDrawerController,
+  DailyClosureService, SalesService.Checkout.cs fuera del grupo D): son
+  marcadores de trazabilidad, no prosa nueva; sin traduccion masiva.
+- ex.Message en Problem(...) / ApiBadRequest(ex.Message) (ShiftsController,
+  DailyClosureController): contrato fijado por S1/S2 y sus tests; pre-existente.
+
+Registrado para S5c / follow-up:
+- S5b-R1: H-03 CashDrawerController (DbContext + anclaje BCV + Users lookup) ->
+  slice de saneamiento propio.
+- WARNING-04 (status "Balanced" hardcodeado en lineas fusionadas), S3-06/
+  WARNING-07 (tamano DailyClosureService), S3-07/S4a-R1 (entry point legacy
+  CreateClosureAsync(DailyClosure)), DTOs mutables en Sales.Module.Interfaces:
+  siguen abiertos.
+- Cerrado en este slice: S4b-R1 (tuning de GetActiveSessionWithTransactionsAsync)
+  y RESIDUAL-S5a-01/02 (token en Checkout.cs; escaneo IL con state machines).

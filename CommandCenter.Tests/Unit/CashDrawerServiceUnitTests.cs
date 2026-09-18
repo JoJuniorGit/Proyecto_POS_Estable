@@ -50,10 +50,8 @@ public class CashDrawerServiceUnitTests
 
         var session = await service.OpenSessionAsync(500m, 50m);
 
-        // Registrar una venta física de 200 BsS
         await service.AddTransactionAsync(session.Id, CashTransactionType.Income, CashTransactionSource.SalePayment, 200m, 4m, 50m, "Venta", null, isPhysicalCash: true);
 
-        // Cerrar sesión con 700 BsS declarados
         var closed = await service.CloseSessionAsync(700m, 50m);
 
         Assert.Equal(CashDrawerStatus.Closed, closed.Status);
@@ -69,18 +67,14 @@ public class CashDrawerServiceUnitTests
 
         var session = await service.OpenSessionAsync(1000m, 50m);
 
-        // Transacción 1: Efectivo físico (+300 BsS)
         await service.AddTransactionAsync(session.Id, CashTransactionType.Income, CashTransactionSource.SalePayment, 300m, 6m, 50m, "Efectivo", null, isPhysicalCash: true);
 
-        // Transacción 2: Pago Móvil electrónico (NO físico, +500 BsS)
         await service.AddTransactionAsync(session.Id, CashTransactionType.Income, CashTransactionSource.SalePayment, 500m, 10m, 50m, "Pago Movil", null, isPhysicalCash: false);
 
-        // Transacción 3: Retiro físico (-200 BsS)
         await service.AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 200m, 4m, 50m, "Gasto", null, isPhysicalCash: true);
 
         decimal physicalBalance = await service.GetCurrentBalanceLocalAsync(session.Id);
 
-        // Balance físico esperado = 1000 + 300 - 200 = 1100 BsS (excluyendo los 500 electrónicos)
         Assert.Equal(1100m, physicalBalance);
     }
 
@@ -90,7 +84,6 @@ public class CashDrawerServiceUnitTests
         var (service, context) = CreateService();
         var session = await service.OpenSessionAsync(200m, 50m);
 
-        // Intentar retirar 300 BsS cuando solo hay 200 BsS en la gaveta
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.AddTransactionAsync(
                 sessionId: session.Id,

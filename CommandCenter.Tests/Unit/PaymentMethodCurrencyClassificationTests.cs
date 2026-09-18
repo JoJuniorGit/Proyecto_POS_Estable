@@ -94,7 +94,7 @@ public class PaymentMethodCurrencyClassificationTests
             }
         };
 
-        var result = await controller.GetReportById(1, CancellationToken.None);
+        var result = await controller.GetReportByIdAsync(1, CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         var report = Assert.IsType<ShiftReportDto>(okResult.Value);
@@ -165,7 +165,7 @@ public class PaymentMethodCurrencyClassificationTests
             }
         };
 
-        var reportResult = await controller.GetReportById(42, CancellationToken.None);
+        var reportResult = await controller.GetReportByIdAsync(42, CancellationToken.None);
         var reportOk = Assert.IsType<OkObjectResult>(reportResult);
         var report = Assert.IsType<ShiftReportDto>(reportOk.Value);
 

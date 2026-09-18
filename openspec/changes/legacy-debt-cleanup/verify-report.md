@@ -1,17 +1,17 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:4341dfa690ddf45884e19e3ca9639ae497137ba8f184ca42d302eeeb51bc925b
+evidence_revision: sha256:db66c3307cad5454779a3a0d93906c77e3661890c7b2932e05fb65c25f88a792
 verdict: pass_with_warnings
 blockers: 0
 critical_findings: 0
-requirements: 3/3
-scenarios: 6/6
+requirements: 18/18
+scenarios: 38/38
 test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release
 test_exit_code: 0
-test_output_hash: sha256:be1151770f256fbf07a80abd907bb4a9c8f9acf6bafd675e6e3905b849e475b9
+test_output_hash: sha256:f3d148878d34b0d3116695277bf2f90d0c3c84a9903bddf3ae8891eae6b9a2f1
 build_command: dotnet build CommandCenter.slnx -c Release
 build_exit_code: 0
-build_output_hash: sha256:08db055121fa30e46a20b5895d0f067ea2959f343ec9cd3c36f0b55b0243f14d
+build_output_hash: sha256:4a64d60a53abe2326ac3d5a15d5f2031ffef05048f513dee5f5f93e95ca031c6
 ```
 
 ## Verification Report
@@ -19,11 +19,11 @@ build_output_hash: sha256:08db055121fa30e46a20b5895d0f067ea2959f343ec9cd3c36f0b5
 **Change**: legacy-debt-cleanup
 **Version**: N/A (delta specs, no version headers)
 **Mode**: Standard (Strict TDD inactive: `openspec/config.yaml` -> `strict_tdd: false`, `testing.strict_tdd_mode: disabled`)
-**Scope of this report**: a per-slice verification record for the change `legacy-debt-cleanup`. Slices S1 (zero-trust close, items 26/39), S2 (error contract + dead fields, items 2/18/25/12/35), S3 (closure orchestration consolidation, items 1/30/6/13/14), S4a (closure DTO boundary, commit `829778c`), S4b (drawer DTO boundary, commit `65e038a`) and **S5a (CancellationToken propagation + H-14 fold-in, commit `227ee5c`)** are implemented and verified; S5b and the remaining S5c tasks are not, so the **change-level verdict remains pending**. The machine-readable envelope at the top of this file describes the **most recently admitted slice — S5a at `227ee5c`**. The previous head envelopes are preserved verbatim under "S4b Admitted Envelope (preserved)", "S4a Admitted Envelope (preserved)", "S3 Admitted Envelope (preserved)" and "S1 Admitted Envelope (preserved)"; every verdict and its own fresh evidence live in its own section.
-**Envelope counts (S5a)**: `requirements: 3/3` and `scenarios: 6/6` are completed/total for this slice's declared scope — the whole `async-cancellation-propagation` delta spec (REQ-ACP-01, REQ-ACP-02, REQ-ACP-03), whose H-14/AD-13 half (task `5c.2`) was pulled into S5a by explicit orchestrator authorization. Spec-wide at revision `227ee5c`, all five delta specs are now complete: **18/18 requirements and 38/38 scenarios** across `payment-method-currency-classification` (3/8), `api-error-contract` (4/9), `closure-orchestration-consolidation` (4/8), `api-dto-boundary` (4/7) and `async-cancellation-propagation` (3/6). What remains for S5b/S5c is registry cleanup (EF read tuning, guards/naming/comments, H-05/H-06/H-08), not a delta-spec surface.
-**Verified revision**: the current `HEAD` is `227ee5c` (`fix(8.140): propagacion de CancellationToken (slice S5a, items 4/9/16/21/27) - ANEXO 8.140`). The working tree was clean before and after every re-executed command (`git status --short` empty; the test/coverage output directories are git-ignored). Earlier sections record the revision each of them was verified at: S1 at `c6c767f`, S2 at `77b2d16`, S3 at `579347b`, S4a at `829778c` and S4b at `65e038a`.
-**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding — superseded for S1. Per slice: S2 was `fail` on `fe1b60b` and S3 was `fail` on `200cdaa`; both were superseded by their re-verifications. S4a and S4b were `pass_with_warnings`; S5a has no prior verdict.
-**evidence_revision** (head envelope, S5a) is the SHA-256 of the ASCII string produced by joining, with `:`, the lowercase SHA-256 hex digests of the nineteen S5a production/test files that exist at `227ee5c`, listed in order under "S5a Changed Files", each hashed from its on-disk bytes (clean working tree; `core.autocrlf=true`). Reproducibility caveat: this verifier recomputed the preserved S4b head from its recorded description (26-file list; blob-LF bytes, CRLF-transformed bytes and four joined-string encodings) and did not reproduce `sha256:2db6c81f...`; the S4b/S1 evidence-revision descriptions are therefore not fully reproducible as written (recorded as `RESIDUAL-S5a-05`; same class as `RESIDUAL-S2-07`).
+**Scope of this report**: a per-slice verification record for the change `legacy-debt-cleanup`. Slices S1 (zero-trust close, items 26/39), S2 (error contract + dead fields, items 2/18/25/12/35), S3 (closure orchestration consolidation, items 1/30/6/13/14), S4a (closure DTO boundary, commit `829778c`), S4b (drawer DTO boundary, commit `65e038a`), S5a (CancellationToken propagation + H-14 fold-in, commit `227ee5c`) and **S5b (EF read tuning + guards/naming/comments + S5a carries, commit `dab4d16`)** are implemented and verified; the remaining S5c tasks are not, so the **change-level verdict remains pending**. The machine-readable envelope at the top of this file describes the **most recently admitted slice — S5b at `dab4d16`**. The previous head envelopes are preserved verbatim under "S5a Admitted Envelope (preserved)", "S4b Admitted Envelope (preserved)", "S4a Admitted Envelope (preserved)", "S3 Admitted Envelope (preserved)" and "S1 Admitted Envelope (preserved)"; every verdict and its own fresh evidence live in its own section.
+**Envelope counts (S5b)**: S5b verifies registry cleanup (Phase 5b tasks 5b.1-5b.9, registry groups E/H/D and two S5a carry-overs) and declares **no delta-spec requirement or scenario of its own**, so its evidence matrix is task/items-based. The head envelope therefore reports the change's full delta-spec surface at `dab4d16`, which is complete and unchanged by S5b: **18/18 requirements and 38/38 scenarios** across `payment-method-currency-classification` (3/8), `api-error-contract` (4/9), `closure-orchestration-consolidation` (4/8), `api-dto-boundary` (4/7) and `async-cancellation-propagation` (3/6). What remains for S5c is registry cleanup (H-05/H-06/H-08), not a delta-spec surface.
+**Verified revision**: the current `HEAD` is `dab4d16` (`refactor(8.140): EF reads + guards y limpieza (slice S5b, items 7/22/31 + grupos H/D) - ANEXO 8.140`). The working tree was clean before and after every re-executed command (`git status --short` and `git diff --stat HEAD` empty; the test/coverage output directories are git-ignored). Earlier sections record the revision each of them was verified at: S1 at `c6c767f`, S2 at `77b2d16`, S3 at `579347b`, S4a at `829778c`, S4b at `65e038a` and S5a at `227ee5c`.
+**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding — superseded for S1. Per slice: S2 was `fail` on `fe1b60b` and S3 was `fail` on `200cdaa`; both were superseded by their re-verifications. S4a, S4b and S5a were `pass_with_warnings`; S5b has no prior verdict.
+**evidence_revision** (head envelope, S5b) is the SHA-256 of the ASCII string produced by joining, with `:`, the lowercase SHA-256 hex digests of the **twenty-three S5b production/test files** that exist at `dab4d16`, listed in order under "S5b Changed Files", each hashed from its on-disk bytes (clean working tree; `core.autocrlf=true`). Reproducibility caveat: the preserved S4b head did not reproduce from its recorded description (recomputed by the S5a verifier; `RESIDUAL-S5a-05`), and the S1/S4b recipes are likewise not fully reproducible as written (`RESIDUAL-S2-07`); the S5b recipe is stated exactly here so it can be recomputed from this revision's working tree.
 **Hash definition**: `build_output_hash` / `test_output_hash` are the SHA-256 of the captured combined stdout+stderr for the command execution reported above, normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed; identical recipe per section below.
 
 ### S1 Admitted Envelope (preserved)
@@ -111,6 +111,28 @@ build_output_hash: sha256:3a1d2f6e6c116edfe4694a823e7cd5e800848acabdd3167a1378ce
 ```
 
 The S4b `evidence_revision` above is the SHA-256 of the colon-joined per-file SHA-256 hex digests of the twenty-six S4b production/test files listed under "S4b Changed Files"; its build/test output hashes are those captured for the S4b command executions reported in the "Slice S4b" section. The reproducibility caveat recorded in the scope block applies.
+
+### S5a Admitted Envelope (preserved)
+
+The envelope below was this file's admitted machine-readable head from the S5a verification until this S5b verification re-pointed the head envelope to the S5b slice. It is preserved byte-for-byte as the S5a evidence record.
+
+```yaml
+schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:4341dfa690ddf45884e19e3ca9639ae497137ba8f184ca42d302eeeb51bc925b
+verdict: pass_with_warnings
+blockers: 0
+critical_findings: 0
+requirements: 3/3
+scenarios: 6/6
+test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release
+test_exit_code: 0
+test_output_hash: sha256:be1151770f256fbf07a80abd907bb4a9c8f9acf6bafd675e6e3905b849e475b9
+build_command: dotnet build CommandCenter.slnx -c Release
+build_exit_code: 0
+build_output_hash: sha256:08db055121fa30e46a20b5895d0f067ea2959f343ec9cd3c36f0b55b0243f14d
+```
+
+The S5a `evidence_revision` above is the SHA-256 of the colon-joined per-file SHA-256 hex digests of the nineteen S5a production/test files listed under "S5a Changed Files" (recipe as documented in the S5a scope block; see `RESIDUAL-S5a-05` for the reproducibility caveat); its build/test output hashes are those captured for the S5a command executions reported in the "Slice S5a" section.
 
 ### Completeness
 
@@ -1255,9 +1277,233 @@ Plus the documentation files `docs/reporte.txt` (ANEXO 8.140), `apply-progress.m
 
 **PASS_WITH_WARNINGS** — the CT contract is genuinely established at `227ee5c` for items 4/9/16/21/27. Every touched async controller action declares and forwards the request token (7 runtime identity tests + structural contract test + inspection); every touched async service member accepts and forwards it to EF Core, the advisory-lock raw SQL, transactions, the execution strategy and the `ExchangeRateResolver` chain; three SQLite real-path tests prove a pre-cancelled token throws `OperationCanceledException` with zero persisted rows and no rollover; and H-14/AD-13 is correctly implemented (`OnClosing` void, `RunShutdownAsync` + `SafeFireAndForget`, `Close()` in `finally`). Every claim was re-executed: build 0/0, backend suite 1207/1207, the `Cancellation` filter 15/15 (14 new + 1 pre-existing, names listed), the new class 14/14, frontend 271/271 with clean lint, and the coverage gate reproduces the claim exactly. All 6 in-scope scenarios are compliant and the whole `async-cancellation-propagation` spec is complete, bringing the change to 18/18 requirements and 38/38 scenarios. The two verifier-found weaknesses (the IL scan's async-body blind spot and the path-level cancellation discrimination) are non-blocking because the requirement holds under independent source/grep verification; they are recorded with `RESIDUAL-S5a-01`..`-05`, `S5a-R1` and `SIZE-S5a`. S5a may be chained into S5b.
 
+## Slice S5b — EF Read Tuning + Guards/Naming/Comments (with S5a carries)
+
+**Verdict: PASS_WITH_WARNINGS** — 0 blockers, **0 critical findings**. Registry group E (items 7/22/31) is genuinely closed at `dab4d16`: `.AsNoTracking()` + `.AsSplitQuery()` are on exactly the three registered read paths (`LoadClosureEntityAsync`, the private read behind `GetClosureAsync`; `GetLatestClosureAsync`; `GetActiveSessionWithTransactionsAsync`), and every write path keeps default tracking (`OpenSessionAsync`, the `CloseSessionAsync` advisory-lock re-read, `AddTransactionAsync`, `RecordSaleChangeAsync`, `Add`/`SaveChangesAsync` persistence), proven by three SQLite `ChangeTracker` tests — two of which discriminate the tracking removal — plus a fully green suite that exercises those write paths. Group H is closed except **item 11** (`WriteClosedClosureReceiptsAsync`'s `throw new ArgumentNullException` idiom — `RESIDUAL-S5b-06`): the `ThrowIfNull` guards landed on `request`/`DeclaredAmounts` without breaking the S2-pinned 400 (`DailyClosureController_NullRequest_ReturnsProblemDetails400` is green; the guard sits in the post-validation continuation), `ResolveClosureDate` moved inside the `try` so future/backdated dates map to 400 `ApiBadRequest` instead of the middleware's 409 (inspection-backed — `RESIDUAL-S5b-03`), the three `...Async` renames kept their attribute routes and re-pointed 20 test invocation sites plus 3 `nameof` entries, `ClosureStatus` is wired at all four sites, item 29 was already resolved by S3, and item 37's registered lambda died with S3 (the surviving indentation site was fixed). Group D is closed on the touched files: zero explanatory comments remain in the group-D production files and the four registered test files, every marker-led `8.x-*` comment survives, and the commit adds **zero** comment lines to any `.cs` file. Both S5a carries landed: the IL scan now enumerates nested state-machine types (`MoveNext`) with a discriminating probe test (it fails on the pre-hardening scanner), and `SalesService.Checkout.cs` forwards its in-scope token at both named sites. Residuals are non-blocking and recorded: `RESIDUAL-S5b-01` (`.AsSplitQuery()` has no discriminating test), `-02` (the `GetLatestClosureAsync` tracking test is a regression guard, not a discriminator of the S5b delta), `-03` (D5's 409→400 is inspection-backed), `-04` (comment-policy nuance), `-05` (minor evidence-trail arithmetic), `-06` (item 11 open), `-07` (deferral gap), `S5b-R1` (H-03 registered follow-up) and `SIZE-S5b`.
+
+**Verified revision**: `dab4d16` (`refactor(8.140): EF reads + guards y limpieza (slice S5b, items 7/22/31 + grupos H/D) - ANEXO 8.140`; current `HEAD`). Working tree clean at verification time and after every command (`git status --short` empty).
+**Slice delta**: `227ee5c` -> `dab4d16` — 26 files, `+550 / -203` (753 changed lines): 23 production/test files (2 new — `Sales.Module/ClosureStatus.cs`, `CommandCenter.Tests/Unit/EfTuningAndGuardTests.cs`; 21 modified) plus `docs/reporte.txt` (+148, ANEXO 8.140), `apply-progress.md` (+87) and `tasks.md` (`+11 / -9`: exactly the nine Phase 5b checkboxes plus the fold-in note).
+**Scope basis**: registry groups E (items 7/22/31), H (11/28/29/32/34/35/36/37) and D (5/10/17/23/24/33/38), Phase 5b tasks 5b.1-5b.9, and the two S5a carries (`RESIDUAL-S5a-01` in-scope sites, `RESIDUAL-S5a-02`). No spec-level requirements are declared by this slice.
+
+### S5b Re-executed Evidence (verbatim)
+
+Every command below was re-executed independently on `dab4d16` after the working tree was confirmed clean. `stderr` was merged into the captured stream. No result was taken from `apply-progress.md` or the ANEXO.
+
+**1. Build** - `dotnet build CommandCenter.slnx -c Release` - exit `0` - matches the claim (0/0)
+
+```text
+Compilación correcta.
+    0 Advertencia(s)
+    0 Errores
+
+Tiempo transcurrido 00:00:35.47
+```
+
+captured-output hash: `sha256:4a64d60a53abe2326ac3d5a15d5f2031ffef05048f513dee5f5f93e95ca031c6`
+
+**2. Backend tests (full)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release` - exit `0` - matches the claim (1213/1213, 0 skipped)
+
+```text
+Correctas! - Con error:     0, Superado:  1213, Omitido:     0, Total:  1213, Duración: 11 s - CommandCenter.Tests.dll (net10.0)
+```
+
+captured-output hash: `sha256:f3d148878d34b0d3116695277bf2f90d0c3c84a9903bddf3ae8891eae6b9a2f1`
+
+The suite grew 1207 -> 1213 exactly as claimed (+5 `EfTuningAndGuardTests` + 1 scanner probe test).
+
+**3. S5b focused filter (as declared in `tasks.md`)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~Tuning|FullyQualifiedName~Guard"` - exit `0` - matches the claim (8/8)
+
+```text
+Correctas! - Con error:     0, Superado:     8, Omitido:     0, Total:     8, Duración: 2 s - CommandCenter.Tests.dll (net10.0)
+```
+
+captured-output hash: `sha256:5417bb970d47397e3dbae58c06891e1320896ae421f1fbc10abeb9c6ab33b19b`
+
+`--list-tests` over the same filter resolves the 8 names: the five `EfTuningAndGuardTests` methods plus the three pre-existing `VersionLockoutUrlGuardTests.StartUpdate_RefusesNonSecureUpdateUrl` cases — exactly as claimed.
+
+**4. S5a regression filter (as declared in `tasks.md`)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~Cancellation"` - exit `0` - matches the claim (16/16)
+
+```text
+Correctas! - Con error:     0, Superado:    16, Omitido:     0, Total:    16, Duración: 2 s - CommandCenter.Tests.dll (net10.0)
+```
+
+captured-output hash: `sha256:69e087982dfecfa3481aad8f019363e8696c0c88469e4d7b5614c8ed6e1ea81f`
+
+`--list-tests` resolves the 16 names: the 15 `CancellationPropagationTests` methods (14 S5a + the new `BlockingScanner_DetectsBlockingCallInsideAsyncStateMachine`) plus the pre-existing `Phase3DesktopOptimizationTests.InventoryViewModel_Dispose_CancelsAndDisposesCancellationTokenSourceSafely`.
+
+**5. Frontend tests** - `npm test` (Web.Frontend) - exit `0` on the first execution - matches the claim (271/271; Web untouched — regression check per `tasks.md`)
+
+```text
+ℹ tests 271
+ℹ pass 271
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+```
+
+captured-output hash: `sha256:fdf7090f578830e5a7070153ccb54982b044a46abf9061c0e4420aca4c4621e4`
+
+**6. Frontend lint** - `npm run lint` (Web.Frontend, oxlint) - exit `0`, no findings - matches the claim
+
+```text
+> web-frontend@0.0.0 lint
+> oxlint
+```
+
+captured-output hash: `sha256:1472f392035e28478ac827e6e5301e8adde36ba5a0a27bc61cdf6e42453bc7d3`
+
+**7. Coverage gate** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings` (1213/1213, exit `0`), then `python scripts/check-coverage.py CommandCenter.Tests/TestResults/37ee17ac-e43f-46f2-a2e2-f559380b1227/coverage.cobertura.xml` - exit `0`
+
+```text
+Cobertura de dominio por capa (line-rate, excluye *.Migrations.*):
+  Core               rate=0.8364 min=0.7000 gap_a_70%=0.0000 [OK]
+  Sales.Module       rate=0.9073 min=0.8000 gap_a_70%=0.0000 [OK]
+  Inventory.Module   rate=0.8251 min=0.7200 gap_a_70%=0.0000 [OK]
+```
+
+The gate reproduces the S5b claim **exactly** (Core 0.8364 / Sales.Module 0.9073 / Inventory.Module 0.8251) and all three `tasks.md` thresholds pass. `Sales.Module`, the layer S5b changes, moves 0.9048 -> 0.9073.
+
+**Hash definition (this section)**: `sha256` is the SHA-256 over the captured combined stdout+stderr, normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed.
+
+**Environment note**: `TEST_POSTGRES_CONNECTION` is unset, so Postgres-gated classes continue to early-return as vacuous passes. No S5b test is Postgres-gated: the five `EfTuningAndGuardTests` run against SQLite (`Omitido: 0`), and the probe/scanner tests are pure reflection/IL.
+
+### S5b EF Read Tuning Evidence (AD-16, registry items 7/22/31)
+
+| Item | Site | Tuning (verifier-read source) | Tracking safety | Runtime evidence |
+|------|------|-------------------------------|-----------------|------------------|
+| 7 | `DailyClosureService.LoadClosureEntityAsync` (`:176-183`, the private read behind `GetClosureAsync`) | `.AsNoTracking()` + `.AsSplitQuery()` before `Include(dc => dc.Details)` | Shared with the post-commit re-reads (`PersistClosureCoreAsync:388`, legacy `ExecuteClosureCoreAsync:167`); the result is only mapped to a DTO or returned by the legacy seam, never mutated (deviation D1 confirmed at both call sites) | `GetClosureAsync_ReadsWithoutTrackingTheClosureGraph` (SQLite, real service, `ChangeTracker.Clear()` -> `Assert.Empty(context.ChangeTracker.Entries())` after the read) — **discriminating**: pre-S5b the tracking include added 2 entries |
+| 22 | `CashDrawerService.GetActiveSessionWithTransactionsAsync` (`:36-54`) | `.AsNoTracking()` + `.AsSplitQuery()` before `Include(s => s.Transactions).ThenInclude(t => t.Sale)` | Write paths untouched: `LoadActiveSessionEntityAsync` (`:30-34`) stays tracked and `OpenSessionAsync`/`AddTransactionAsync` use it plus `Add`/`SaveChangesAsync`; the `CloseSessionAsync` advisory-lock re-read (`:180-181`) is deliberately tracking (marker `8.5-A2`) | `GetActiveSessionWithTransactionsAsync_ReadsWithoutTrackingTheDrawerGraph` (SQLite, real service, full graph asserted) — **discriminating** for the `AsNoTracking` addition |
+| 31 | `DailyClosureService.GetLatestClosureAsync` (`:185-195`) | adds `.AsSplitQuery()` to the pre-existing `.AsNoTracking()` | Read-only DTO projection (`ShiftReportMapper.MapClosure`) | `GetLatestClosureAsync_ReadsWithoutTrackingTheClosureGraph` passes; it is a regression guard, **not** a discriminator of the S5b delta (the path already read untracked) — `RESIDUAL-S5b-02` |
+
+Repo-wide `AsSplitQuery` inventory confirms exactly three S5b additions (`CashDrawerService.cs:40`, `DailyClosureService.cs:180`, `DailyClosureService.cs:189`); all other occurrences are pre-existing (SalesService/ReceiptsController) and outside the slice. Item 22 also closes `S4b-R1`; item 31's original controller sites (pre-S3 `ShiftsController`) no longer exist — the report path reads through the two tuned service methods, and `GetCashierDisplayNameAsync` (`:197-203`) reads `Users` with `AsNoTracking`. No `.AsSplitQuery()` change is covered by a discriminating test (`RESIDUAL-S5b-01`).
+
+### S5b Guards/Naming/Contracts Evidence (AD-17, group H)
+
+| Item | Change | Evidence | Result |
+|------|--------|----------|--------|
+| 28 (`...Async`) | `ShiftsController.CloseShift`/`GetCurrentReport`/`GetReportById` -> `CloseShiftAsync`/`GetCurrentReportAsync`/`GetReportByIdAsync` | Attribute routes unchanged on the renamed methods (`[HttpPost("close")]` `:32`, `[HttpGet("current/report")]` `:105`, `[HttpGet("{id}/report")]` `:119`); a repo-wide search finds no string/`nameof` references to the old action names outside tests (no link-generation use), so no route break; 20 test invocation sites + 3 `nameof` entries re-pointed across 8 test files; build 0/0 | **CLOSED** |
+| 29 (dead fields) | `_paymentMethodService`/`_settingsService` in touched controllers | Neither field exists in `ShiftsController`/`DailyClosureController` (S3 removed them); `CashDrawerController._settingsService` has five live reads (`:70,154,206,231,287`) — correctly kept | **CLOSED (already resolved by S3, now verified)** |
+| 32 (`ThrowIfNull`) | `ShiftsController.CloseShiftAsync:35-36` (`request`, `request.DeclaredAmounts`); `DailyClosureController.ExecuteCreateClosureAsync:68` (`request`) | `EfTuningAndGuardTests.CloseShift_WhenRequestIsNull_ThrowsArgumentNullException` + `..._WhenDeclaredAmountsIsNull_...` assert the exact `ArgumentNullException` from direct calls (a revert fails them); the S2-pinned 400 is intact (`DailyClosureController_NullRequest_ReturnsProblemDetails400` green — `ValidateClosureRequest` handles `request?` before the continuation; `ArgumentNullException` derives from `ArgumentException`, which the middleware maps to 400, so the HTTP path is 400 either way) | **CLOSED** (note: the DailyClosure continuation guard is unreachable through the public action — defensive only) |
+| 34 (`ClosureStatus`) | `Sales.Module/ClosureStatus.cs` (`Balanced`/`Surplus`/`Shortage`) | Wired at `DailyClosureService.cs:346-348` (`BuildDeclaredDetails`), `:470` (`MergeMissingMethodsWithReport`), `ShiftReportMapper.cs:53-54` and `ShiftReportDetailDto.cs:11` (default); `ShiftReportDetailDto.cs:7` default now `PaymentMethodCurrencyResolver.LocalCurrency`; the only remaining production literals are the constants themselves (`ClosureStatus.cs:5-7`); `WARNING-04`'s merged-line semantics are unchanged (constant extraction only) | **CLOSED** |
+| 35 (dead close fields) | `CloseShiftRequest.CashierName`/`CashierCedula` | Deleted in S2; reflection test green in this revision's suite | **CLOSED EARLIER (S2), unchanged** |
+| 36 (guard order) | `GetReportByIdAsync:125-128` resolves the 404 before the ownership evaluation; the original "rate before `closure == null`" site died with S3 (no rate on the report path) | `ErrorContractTests` 404 (`:196`) and 403 (`:275`) tests are green; repo grep confirms no rate resolution in the controller | **CLOSED (item 36's literal site gone by S3)** |
+| 37 (lambda indentation) | `CashDrawerController.AddTransactionAsync` service call re-indented (`:135-145`) | The registered `ShiftsController :84-212` lambda was structurally removed by S3; the commit touches no other indentation; `SalesService.Checkout.cs`'s pre-existing under-indented transactional lambda is left as a registered formatting follow-up (D4) | **CLOSED (S3-superseded site + remaining site fixed)** |
+| 11 (`ThrowIfNull` idiom) | `DailyClosureService.WriteClosedClosureReceiptsAsync:567` still uses `if (closure == null) throw new ArgumentNullException(nameof(closure));` | Unchanged by this commit; deferred to "S5b.4/S5b.8" by the S3/S4a/S5a GGA tables; task 5b.4's literal text covers the controllers only | **OPEN — `RESIDUAL-S5b-06`** |
+| 12 (receipt writers) | logging + async retry | Deleted in S2; suite green | **CLOSED EARLIER (S2)** |
+
+### S5b Guard-Order Contract Change (D5): invalid closure dates now 400
+
+- `DailyClosureController.ExecuteCreateClosureAsync` now runs `ResolveUserId`/`ResolveClosureDate`/command building **inside** the `try` (`:70-81`), so `ResolveClosureDate`'s `InvalidOperationException` ("fecha futura", ">24 h de retroactividad") is caught at `:87-90` and returned as `ApiBadRequest` HTTP 400 `ProblemDetails` (`ApiProblemResults.cs:9-10` returns `BadRequestObjectResult`).
+- Before this commit the call ran before the `try`, so the same exception fell through to `GlobalExceptionHandlerMiddleware`, which maps `InvalidOperationException` to **409** (`GlobalExceptionHandlerMiddleware.cs:263-278`). The move is a real contract change in the intended direction (S5a GGA registration), verified by source inspection.
+- **No discriminating test**: `Phase2IntegrityRemediationTests.DailyClosure_BackdatingByAdminBeyond24Hours_ReturnsBadRequest` sends an **empty** `Details` list (`:134`), which short-circuits in `ValidateClosureRequest` (`DailyClosureController.cs:112-117`) and never reaches `ResolveClosureDate`; the test passes identically pre- and post-S5b. Recorded as `RESIDUAL-S5b-03`.
+
+### S5b Comments / AD-18 Evidence (group D)
+
+| File | Comments before -> after | Evidence |
+|------|--------------------------|----------|
+| `CashDrawerController.cs` | explanatory blocks (`H-API-19`, XML summary) -> **marker-led blocks only** (`8.5-A4` `:102-103`, `8.5-A5` `:128-130` + XML `:152-157`, `8.103` `:165`) | `git show` removes only comment lines; current grep |
+| `CashDrawerService.cs` | narrative blocks + `H-API-4 & H-API-17` TOCTOU block + `8.6-C1` prose + XML summary -> **marker-led blocks only** (`8.5-M1` `:29`, `8.9-B4` `:155-156`/`:276-279`, `8.5-A2` `:173-176`, `8.5-M1` `:426-428`) | same; `RecordSaleChangeAsync` is now comment-free |
+| `ServiceCollectionExtensions.cs` | XML class summary + `Persistencia`, `BCV Services`, `JWT Authentication`, `Rate Limiting (H-15)`, `CORS Hardening (H-01)`, `Forwarded Headers (SEC-10)` blocks -> **marker-led blocks only** (`8.12-L3` `:18-20`/`:29`, `8.14-W4` `:54-55`, `8.30-B03` `:107-108`, `8.9-M6` `:201-202`/`:226`) | 16 deleted lines, 0 added; three marker-less inline CIDR annotations survive (`:234-236`) — `RESIDUAL-S5b-04` |
+| `SecurityTests.cs` / `Phase3ConcurrencyAndReservationTests.cs` / `CashDrawerClosureTests.cs` | numbered section headers, AAA labels, inline narratives -> **zero comments** | current grep finds no `//` in any of the three |
+| `CashDrawerServiceUnitTests.cs` | AAA/narrative labels -> **one marker block** (`8.5-A2` `:126-127`) | current grep |
+| `DailyClosureController.cs` / `ShiftsController.cs` | zero comments both before and after (cleared by earlier slices) | current grep |
+
+**No new comments**: across every `.cs` file in the commit, the diff contains **0 added comment lines** (`^\+.*(//|/*|\* )` -> no matches). Three removed lines carried incidental `8.5-A1`/`8.6-C1` references inside explanatory sentences (the policy kept marker-led blocks, not incidental citations) — `RESIDUAL-S5b-04`.
+
+### S5b Carry-Over Evidence (S5a residuals)
+
+**(a) IL scan hardening (`RESIDUAL-S5a-02`) — closed.** `CancellationPropagationTests.CollectBlockingCallOffenders` now walks each touched type **and its nested types** (`EnumerateTypeAndNestedStateMachines`, one level: compiler-generated async state machines and closures) and scans their declared methods' IL, so `MoveNext` bodies are inspected. The awaiter rule now requires the directly preceding resolved call to be `GetAwaiter` (`previousCall?.Name == "GetAwaiter"`), so genuine `await` sequences are no longer flagged. The new probe `AsyncBodyBlockingProbe.RunAsync` contains `await Task.Yield(); Thread.Sleep(1);` and `BlockingScanner_DetectsBlockingCallInsideAsyncStateMachine` asserts the scanner reports `Thread.Sleep`. **Discriminating**: on the pre-hardening scanner (declared methods only) the probe's `RunAsync` stub contains only `AsyncTaskMethodBuilder` calls, so the assertion fails; the probe is exactly the scanner-regression guard S5a lacked. The real scan test passes 16/16 on the touched types.
+
+**(b) In-scope token (`RESIDUAL-S5a-01`) — the two named sites closed.** `SalesService.Checkout.cs:135` now calls `GetOrCreateActiveSessionAsync(exchangeRate, cancellationToken)` and `:242-245` calls `RecordSaleChangeAsync(..., cancellationToken: cancellationToken)`; both were the sites the S5a verification named as having the token in scope and not forwarding it. `SalesService.Payments.cs`/`HoldOrders.cs` remain token-less (no token in scope) and stay registered under `S5a-R1`; the closure therefore holds for the in-scope sites only.
+
+### S5b Test Discrimination Review
+
+The 5 new `EfTuningAndGuardTests` and the scanner probe were inspected for the tautology failure mode found in earlier slices.
+
+- **`GetClosureAsync_ReadsWithoutTrackingTheClosureGraph` is discriminating.** Real `DailyClosureService` over SQLite; `ChangeTracker.Clear()` then the read then `Assert.Empty(ChangeTracker.Entries())`. Pre-S5b the tracking include left the closure + detail tracked, so the assertion fails. It does not discriminate `AsSplitQuery` (no test does — `RESIDUAL-S5b-01`).
+- **`GetActiveSessionWithTransactionsAsync_ReadsWithoutTrackingTheDrawerGraph` is discriminating** for the same reason (pre-S5b: session + transaction tracked); it also asserts the real graph (`Assert.Single(session.Transactions)`), so a broken projection fails too.
+- **`GetLatestClosureAsync_ReadsWithoutTrackingTheClosureGraph` is a regression guard, not a discriminator** (`RESIDUAL-S5b-02`): the path already had `AsNoTracking` pre-S5b.
+- **The two guard tests are discriminating.** They require the **exact** `ArgumentNullException`; pre-S5b a null `request`/`DeclaredAmounts` does not produce it, so a revert turns the tests red.
+- **The probe test is discriminating** (see carry (a) above).
+- **No tautology found**: no assertion restates a mock's setup, and no `Times.Never` guards an unreachable path in the new/changed tests. The re-pointed test files are compile-time-discriminating only for the renames (their behavioral assertions are unchanged).
+- **Method caveat**: no verifier-owned mutation was executed (the brief forbids code writes); discrimination is established by inspection plus SQLite/EF semantics. Execution evidence: 8/8 filter and 1213/1213 full suite, `Omitido: 0` everywhere.
+
+### S5b Item/Task Evidence Matrix (task/items-based; no spec-level requirements)
+
+| Task / Item | What | Evidence | Result |
+|-------------|------|----------|--------|
+| 5b.1 (item 7) | closure read tuning | `LoadClosureEntityAsync` tuned; `GetLatestClosureAsync` +`AsSplitQuery`; discriminating tracking test | **DONE** |
+| 5b.2 (item 22) | drawer read tuning | `GetActiveSessionWithTransactionsAsync` tuned; discriminating tracking test; closes `S4b-R1` | **DONE** |
+| 5b.3 (item 34) | `ClosureStatus` + resolver defaults | `ClosureStatus.cs` + 4 wiring sites; literals only in the constants | **DONE** |
+| 5b.4 (item 32) | `ThrowIfNull` request/declarations | guards + 2 discriminating tests; S2 400 contract green | **DONE** (item 11's receipt-writer idiom open — `RESIDUAL-S5b-06`) |
+| 5b.5 (item 29) | dead controller fields | already absent (S3); verified | **DONE (no-op)** |
+| 5b.6 (item 28) | `...Async` suffixes | 3 registered actions renamed; routes intact; 20+3 test references re-pointed | **DONE** |
+| 5b.7 (items 36/37 + D5) | 404-before-ownership; `ResolveClosureDate` -> 400; indentation | 404 reorder green; D5 inspection-backed (`RESIDUAL-S5b-03`); indentation fixed | **DONE (D5 test gap)** |
+| 5b.8 (group D) | comments/AD-18 | group-D files cleaned; markers kept; 0 added comments | **DONE** (nuance `RESIDUAL-S5b-04`) |
+| 5b.9 | guard tests | 2 tests pass | **DONE** |
+| carry (a) | IL scan hardening (S5a-02) | nested `MoveNext` scan + discriminating probe | **DONE** |
+| carry (b) | checkout token (S5a-01 named sites) | both sites forward the token | **DONE** |
+
+### S5b Scope Check
+
+- **No S5c creep**: the commit touches no `AuthController.cs` (H-05), no `MainWindow.xaml.cs`, no WPF view model (H-06), no `RegisterPage.jsx` (H-08) and no pagination surface. `tasks.md` flips exactly the nine Phase 5b checkboxes and adds the fold-in note; Phase 5c stays unchecked except `5c.2` (already delivered-early in S5a).
+- **GGA classification audited — the four blocked findings are genuinely pre-existing/out-of-slice.** Independently spot-verified against `227ee5c` (pre-S5b): `CashDrawerController` already injected `SalesDbContext`/`InventoryDbContext` (H-03 pre-existing; not in the registered group I, which S3 resolved for the two closure controllers); `ex.Message` via `Problem(...)`/`ApiBadRequest(ex.Message)` pre-existed at `227ee5c` in both controllers (S1/S2 contract, pinned by `ErrorContractTests`); the class-length finding is the carried `S3-06`/`WARNING-07`/`S4a-R2`; the flagged comments are the intentionally kept `8.x-*` marker blocks or files outside group D. No S5b-introduced finding remains.
+- **`S5b-R1` registered as follow-up**: `apply-progress.md:842` (H-03 in `CashDrawerController`: DbContext injection, BCV anchoring and the user lookup belong in the service layer) and `docs/reporte.txt:9954`/`:9964` (ANEXO 8.140, "Registrado para S5c / follow-up"). Confirmed.
+- **Deferral-gap note (`RESIDUAL-S5b-07`)**: the S4a/S4b/S5a GGA tables had listed McCabe targets (`ClosurePdfGenerator`, `CashDrawerController.ResolveAnchoredRateAsync`, `CashDrawerService.AddTransactionAsync`) and the repo-wide `...Async` sweep as "S5b (AD-17)" targets, but they are not among the registered group-H items and S5b neither fixed nor re-registered them; the apply-progress records only the suffix-sweep exclusion (D3) and the class-size carry. They remain pre-existing; suggest folding them into the S5c triage or a follow-up registry entry.
+- **Size signal (`SIZE-S5b`)**: 26 files, **753 changed lines (550 inserted / 203 deleted)**; authored non-doc bytes are **498 lines** (136 production + 362 test), the rest is documentation (`reporte.txt` 148, `apply-progress.md` 87, `tasks.md` 20). The 400-line review budget is exceeded at the authored level too, driven by the 137-line new test file, the 115-line scanner rework and comment deletions; the production surface is 136 lines. The slice was authorized as a chained work unit; forecast was ~250 lines, actual authored ~498 (~2x).
+
+### S5b Residual Warnings (non-blocking)
+
+- **RESIDUAL-S5b-01 (`AsSplitQuery` untested)** — no test discriminates `.AsSplitQuery()`; the three additions are verified by source inspection only. A split-query regression would not turn any test red.
+- **RESIDUAL-S5b-02 (non-discriminating test)** — `GetLatestClosureAsync_ReadsWithoutTrackingTheClosureGraph` also passes pre-S5b; it guards existing behaviour, not the delta.
+- **RESIDUAL-S5b-03 (D5 test gap)** — the `ResolveClosureDate` 409 -> 400 move has no discriminating test; the existing backdating test short-circuits at the empty `Details` list (`Phase2IntegrityRemediationTests.cs:134`), so its name over-promises. Behavior verified by source inspection (`DailyClosureController.cs:70-90` vs `GlobalExceptionHandlerMiddleware.cs:263-278`).
+- **RESIDUAL-S5b-04 (comment-policy nuance)** — three removed lines carried incidental `8.5-A1`/`8.6-C1` references inside explanatory sentences (markers not kept), and three marker-less CIDR annotations remain in `ServiceCollectionExtensions.cs:234-236`; the record's "only marker-led comments remain" is slightly absolute. No marker-led `8.x-*` block was removed.
+- **RESIDUAL-S5b-05 (evidence-trail arithmetic)** — "19 test call sites re-pointed": the verifier counts **20** re-pointed direct invocations (plus 3 `nameof` entries) across 8 test files, and 2 additional `CloseShiftAsync` calls are new guard-test code. Immaterial.
+- **RESIDUAL-S5b-06 (registry item 11 open — WARNING)** — `DailyClosureService.WriteClosedClosureReceiptsAsync:567` still uses the `if (closure == null) throw new ArgumentNullException` idiom instead of `ThrowIfNull`, although AD-17 lists item 11 and the S3/S4a/S5a GGA tables deferred it to S5b.4/S5b.8. Task 5b.4's literal controller text is met; the hygiene item is not. No behavioral impact (same exception type) — needs re-registration or a follow-up.
+- **RESIDUAL-S5b-07 (deferral gap)** — see the Scope Check note on the McCabe targets and the repo-wide suffix sweep previously deferred to "S5b (AD-17)".
+- **Carried and untouched**: `WARNING-04` (hardcoded `Balanced` merged-line semantics — the constant extraction changed nothing semantic), `WARNING-07`/`S3-06`/`S4a-R2` (`DailyClosureService.cs` class size), `S3-07`/`S4a-R1` (legacy entity-returning closure entry point), mutable DTOs in `Sales.Module.Interfaces`, `PaymentMethodDtos.cs:44` `"Bs.S"` default, `S5b-R1` (H-03), the `S5a-R1` remaining CT-less surfaces, `RESIDUAL-S5a-03`-`-05`, `RESIDUAL-S4b-04` (out-of-scope Web `advance` filter bug). S5b neither fixes nor worsens them.
+- **Closed by this slice (verified)**: `S4b-R1` (drawer read tuning); `RESIDUAL-S5a-02` (state-machine-aware IL scan); `RESIDUAL-S5a-01`'s two named Checkout sites.
+
+### S5b Changed Files
+
+The twenty-three S5b production/test files below, in this order, are the input to the head envelope's `evidence_revision`.
+
+| File | Action | Role in S5b |
+|------|--------|-------------|
+| `Backend.API/Controllers/CashDrawerController.cs` | Modified | Comment cleanup; `AddTransactionAsync` call indentation |
+| `Backend.API/Controllers/DailyClosureController.cs` | Modified | `ThrowIfNull` in the post-validation continuation; `ResolveClosureDate` inside the `try` (409 -> 400) |
+| `Backend.API/Controllers/ShiftsController.cs` | Modified | `ThrowIfNull` guards; three `...Async` renames; 404 before ownership |
+| `Backend.API/Startup/ServiceCollectionExtensions.cs` | Modified | Non-marker comments/XML summaries removed |
+| `CommandCenter.Tests/CashDrawerClosureTests.cs` | Modified | Narrative comments removed |
+| `CommandCenter.Tests/SecurityHardeningSprint2Tests.cs` | Modified | Re-point to `CloseShiftAsync` |
+| `CommandCenter.Tests/Unit/CancellationPropagationTests.cs` | Modified | Scanner hardened to nested state machines + `MoveNext`; `GetAwaiter` adjacency rule; discriminating probe; re-points |
+| `CommandCenter.Tests/Unit/CashDrawerServiceUnitTests.cs` | Modified | Narrative comments removed (marker kept) |
+| `CommandCenter.Tests/Unit/CloseShiftResolverClassificationTests.cs` | Modified | Re-points (5) |
+| `CommandCenter.Tests/Unit/DailyClosureControllerTests.cs` | Modified | Re-point |
+| `CommandCenter.Tests/Unit/EfTuningAndGuardTests.cs` | Created | Five S5b tests (3 tracking, 2 guards) |
+| `CommandCenter.Tests/Unit/ErrorContractTests.cs` | Modified | Re-points (7) |
+| `CommandCenter.Tests/Unit/PaymentMethodCurrencyClassificationTests.cs` | Modified | Re-points (2) |
+| `CommandCenter.Tests/Unit/Phase3ConcurrencyAndReservationTests.cs` | Modified | Narrative comments removed |
+| `CommandCenter.Tests/Unit/Phase7ClosureWithoutRateTests.cs` | Modified | Re-point |
+| `CommandCenter.Tests/Unit/ResidualRemediationLote26Tests.cs` | Modified | Re-point |
+| `CommandCenter.Tests/Unit/SecurityTests.cs` | Modified | Narrative comments removed |
+| `Sales.Module/ClosureStatus.cs` | Created | Status-label constants (AD-17, item 34) |
+| `Sales.Module/Services/CashDrawerService.cs` | Modified | Drawer read tuning + non-marker comments removed |
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | Closure read tuning + `ClosureStatus.*` |
+| `Sales.Module/Services/SalesService.Checkout.cs` | Modified | In-scope token forwarded to both drawer calls (carry b) |
+| `Sales.Module/Services/ShiftReportDetailDto.cs` | Modified | Defaults from resolver/`ClosureStatus` |
+| `Sales.Module/Services/ShiftReportMapper.cs` | Modified | Uses `ClosureStatus.*` |
+
+Plus the documentation files `docs/reporte.txt` (ANEXO 8.140), `apply-progress.md` (S5b section) and `tasks.md` (Phase 5b checkboxes + fold-in note), which are **not** part of `evidence_revision`.
+
+### S5b Verdict
+
+**PASS_WITH_WARNINGS** — the S5b work unit at `dab4d16` genuinely closes registry group E (items 7/22/31: the three read paths are tuned and every write path keeps tracking, with two discriminating SQLite tests), group D (comments: zero explanatory comments on the group-D files, all marker-led `8.x-*` blocks kept, zero added comment lines) and most of group H (guards without breaking the S2-pinned 400, three route-preserving `...Async` renames with all test references re-pointed, `ClosureStatus` wired, the D5 409 -> 400 guard-order fix applied), plus both S5a carries (state-machine-aware IL scan with a discriminating probe; checkout token forwarding at both named sites). The single WARNING is `RESIDUAL-S5b-06`: registry item 11 (`WriteClosedClosureReceiptsAsync`'s `ThrowIfNull` idiom, deferred to this slice by three prior GGA tables) remains open — style-only, no behavioral impact. Every claim was re-executed: build 0/0, backend suite 1213/1213, the `Tuning|Guard` filter 8/8 (names listed), the `Cancellation` filter 16/16 (names listed), frontend 271/271 with clean lint, and the coverage gate reproduces the claim exactly (Core 0.8364 / Sales.Module 0.9073 / Inventory.Module 0.8251). No S5c creep and no tautology were found. Residuals are non-blocking and recorded: `RESIDUAL-S5b-01`..`-07`, `S5b-R1` and `SIZE-S5b`. S5b is cleared to chain into S5c.
+
 ### Change-Level Verdict
 
-**Pending**. The change cannot receive a change-level verdict while S5b and the remaining S5c tasks are unchecked. S1, S2, S3, S4a, S4b and S5a are each verified `pass_with_warnings`. Delta-spec surface: **18 of 18 requirements and 38 of 38 scenarios complete** (`payment-method-currency-classification` 3/8, `api-error-contract` 4/9, `closure-orchestration-consolidation` 4/8, `api-dto-boundary` 4/7, `async-cancellation-propagation` 3/6 — the last one closed by S5a, including the H-14/AD-13 fold-in). Pending are the registry-cleanup phases: S5b (EF tuning, guards/naming/comments, `AD-16`..`AD-18`) and the rest of S5c (H-05 cookie `Secure`, H-06 view-model disposal, H-08 pagination; `5c.2`/H-14 already delivered in S5a). `WARNING-04`, `WARNING-07`/`S3-06`/`S4a-R2`, `S3-07`/`S4a-R1` and `S4b-R1` remain open, alongside the new S5a residuals (`RESIDUAL-S5a-01`..`-05`, `S5a-R1`, `SIZE-S5a`). S5a is cleared to chain into S5b.
+**Pending**. The change cannot receive a change-level verdict while the remaining S5c tasks (H-05 cookie `Secure`, H-06 view-model disposal, H-08 pagination) are unchecked. S1, S2, S3, S4a, S4b, S5a and S5b are each verified `pass_with_warnings`. Delta-spec surface: **18 of 18 requirements and 38 of 38 scenarios complete** (`payment-method-currency-classification` 3/8, `api-error-contract` 4/9, `closure-orchestration-consolidation` 4/8, `api-dto-boundary` 4/7, `async-cancellation-propagation` 3/6 — the last one closed by S5a, including the H-14/AD-13 fold-in). Pending is the registry cleanup of S5c (`5c.2`/H-14 already delivered in S5a) plus the registry items S5b did not close — item 11's `ThrowIfNull` idiom (`RESIDUAL-S5b-06`) — and the carried `WARNING-04`, `WARNING-07`/`S3-06`/`S4a-R2`, `S3-07`/`S4a-R1`, alongside the S5a residuals (`RESIDUAL-S5a-01` remaining surfaces, `-03`..`-05`, `S5a-R1`, `SIZE-S5a`) and the new S5b residuals (`RESIDUAL-S5b-01`..`-07`, `S5b-R1`, `SIZE-S5b`). `S4b-R1`, `RESIDUAL-S5a-02` and the two named `RESIDUAL-S5a-01` sites are closed by S5b. S5b is cleared to chain into S5c.
 
 ### Verdict
 

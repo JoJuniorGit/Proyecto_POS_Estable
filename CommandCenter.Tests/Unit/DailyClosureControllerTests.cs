@@ -192,7 +192,7 @@ public class DailyClosureControllerTests
             }
         };
 
-        var result = await controller.CloseShift(request, CancellationToken.None);
+        var result = await controller.CloseShiftAsync(request, CancellationToken.None);
 
         var conflict = Assert.IsType<ConflictObjectResult>(result);
         Assert.Equal(StatusCodes.Status409Conflict, conflict.StatusCode);

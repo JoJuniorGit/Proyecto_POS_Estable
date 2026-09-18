@@ -264,7 +264,7 @@ public class SecurityHardeningSprint2Tests
             }
         };
 
-        var result = await controller.CloseShift(request, CancellationToken.None);
+        var result = await controller.CloseShiftAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);

@@ -337,7 +337,7 @@ public class ResidualRemediationLote26Tests
             }
         };
 
-        var result = await controller.CloseShift(request, CancellationToken.None);
+        var result = await controller.CloseShiftAsync(request, CancellationToken.None);
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         Assert.NotNull(badRequest.Value);

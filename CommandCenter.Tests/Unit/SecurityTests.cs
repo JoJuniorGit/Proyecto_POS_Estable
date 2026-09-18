@@ -62,7 +62,6 @@ public class SecurityTests
         return new ClaimsPrincipal(identity);
     }
 
-    // 1. Unauthorized Access To Admin Endpoint Returns 403 / is restricted
     [Fact]
     public void UsersController_Is_Decorated_With_Admin_Role()
     {
@@ -91,7 +90,6 @@ public class SecurityTests
         }
     }
 
-    // 2. Cajero Puede Vender Y Cobrar
     [Fact]
     public async Task Cajero_Puede_Vender_Y_Cobrar()
     {
@@ -117,15 +115,12 @@ public class SecurityTests
 
         var salesService = new Sales.Module.Services.SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        // Cajero inicia venta
         var saleDto = await salesService.StartSaleAsync(10);
         Assert.NotNull(saleDto);
 
-        // Agrega producto
         saleDto = await salesService.AddItemAsync(saleDto.Id, 1, 2m, 50m);
         Assert.Equal(4m, saleDto.TotalUSD);
 
-        // Completa venta
         var payments = new[] { new Sales.Module.Interfaces.PaymentInfo(1, 4m, 200m, null) };
         var completedId = await salesService.CompleteSaleAsync(saleDto.Id, 50m, payments, 0m, 10);
 
@@ -134,7 +129,6 @@ public class SecurityTests
         Assert.Equal(SaleStatus.Completed, finalSale!.Status);
     }
 
-    // 3. Cashier Cannot Execute Manual CashIn Or CashOut (Returns 403 Forbidden)
     [Fact]
     public async Task Cashier_Cannot_Execute_Manual_CashIn_Or_CashOut()
     {
@@ -143,7 +137,6 @@ public class SecurityTests
         var mockSettings = new Mock<ISystemSettingsService>();
         var mockCurrentUserService = new Mock<ICurrentUserService>();
 
-        // Simula usuario autenticado con Rol Cajero
         mockCurrentUserService.Setup(u => u.UserRole).Returns(UserRole.Cashier);
         mockCurrentUserService.Setup(u => u.UserId).Returns("5");
 
@@ -163,7 +156,7 @@ public class SecurityTests
         {
             SessionId = 1,
             Type = CashTransactionType.Income,
-            Source = CashTransactionSource.CashIn, // Operación manual Cash In
+            Source = CashTransactionSource.CashIn,
             AmountLocal = 500m,
             ExchangeRate = 50m,
             Description = "Ingreso manual no autorizado"
@@ -176,7 +169,6 @@ public class SecurityTests
         Assert.Equal(StatusCodes.Status403Forbidden, objResult.StatusCode);
     }
 
-    // 4. Login Fail Does Not Log Password
     [Fact]
     public async Task Login_Fail_Does_Not_Log_Password()
     {
@@ -198,7 +190,6 @@ public class SecurityTests
         var mockTokenService = new Mock<ITokenService>();
         var controller = new AuthController(db, mockTokenService.Object);
 
-        // Login con contraseña equivocada
         var result = await controller.Login(new LoginRequest { Cedula = "V-12345678", Password = testPassword });
         var unauthorizedResult = result.Result as UnauthorizedObjectResult;
         Assert.NotNull(unauthorizedResult);
@@ -212,7 +203,6 @@ public class SecurityTests
         }
     }
 
-    // 5. DTO With Negative Price Or Cost Is Rejected
     [Fact]
     public void DTO_With_Negative_Price_Or_Cost_Is_Rejected()
     {
@@ -220,9 +210,9 @@ public class SecurityTests
         {
             Name = "Producto Prueba",
             SKU = "12345",
-            PriceUSD = -10m, // Negativo
-            CostPriceUSD = -5m, // Negativo
-            ProfitMarginRetail = -1m // Negativo
+            PriceUSD = -10m,
+            CostPriceUSD = -5m,
+            ProfitMarginRetail = -1m
         };
 
         var validationResults = new List<ValidationResult>();
@@ -233,11 +223,10 @@ public class SecurityTests
         Assert.Contains(validationResults, v => v.ErrorMessage!.Contains("negativo"));
     }
 
-    // 6. DTO With Invalid Cedula Or Phone Is Rejected
     [Theory]
-    [InlineData("XYZ-123")] // Prefijo no válido
-    [InlineData("123")] // Demasiado corta
-    [InlineData("V-ABCD")] // Letras en lugar de números
+    [InlineData("XYZ-123")]
+    [InlineData("123")]
+    [InlineData("V-ABCD")]
     public void DTO_With_Invalid_Cedula_Is_Rejected(string invalidCedula)
     {
         var customerDto = new CreateCustomerDto
@@ -279,7 +268,6 @@ public class SecurityTests
         Assert.True(isValid);
     }
 
-    // 7. Product Import Validates Every Field
     [Fact]
     public async Task Product_Import_Validates_Every_Field()
     {
@@ -291,11 +279,8 @@ public class SecurityTests
 
         var productsToImport = new List<ProductImportDto>
         {
-            // Fila 1: Válida
             new ProductImportDto { SKU = "2001", Name = "Harina PAN", CostPriceUSD = 1m, ProfitMarginRetail = 30m, PriceRetailUSD = 1.30m, IsValid = true },
-            // Fila 2: Inválida marcada
             new ProductImportDto { SKU = "INVALID_SKU", Name = "", CostPriceUSD = -5m, IsValid = false, ErrorMessage = "Error en SKU y Costo" },
-            // Fila 3: SKU vacío
             new ProductImportDto { SKU = "   ", Name = "Sin SKU", CostPriceUSD = 2m, IsValid = true }
         };
 
@@ -309,7 +294,6 @@ public class SecurityTests
         Assert.Equal("2001", savedProducts[0].SKU);
     }
 
-    // 8. UserSession In WPF Clears Token On 401
     [Fact]
     public async Task UserSession_In_WPF_Clears_Token_On_401()
     {
@@ -319,7 +303,6 @@ public class SecurityTests
         Assert.True(userSession.IsLoggedIn);
         Assert.Equal("initial_jwt_token_123", userSession.Token);
 
-        // Simulamos un handler HTTP que responde con 401 Unauthorized
         var mockInnerHandler = new Mock<HttpMessageHandler>();
         mockInnerHandler.Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -344,7 +327,6 @@ public class SecurityTests
         Assert.Null(userSession.Token);
     }
 
-    // 9. SecurityAuditMiddleware Logs 401 And 403 Attempts
     [Fact]
     public async Task SecurityAuditMiddleware_Logs_401_And_403_Attempts()
     {
@@ -356,7 +338,6 @@ public class SecurityTests
         context.Request.Path = "/api/sales/customers/99";
         context.Request.QueryString = new QueryString("?secretParam=sensitiveValue");
 
-        // Simula usuario autenticado con Rol Cajero intentando acción no permitida
         context.User = CreateClaimsPrincipal("cajero_test", "Cashier", "10");
 
         var middleware = new SecurityAuditMiddleware(next: (ctx) =>
@@ -376,12 +357,10 @@ public class SecurityTests
         Assert.Contains("USER=cajero_test", logContent);
         Assert.Contains("ROLE=Cashier", logContent);
         Assert.Contains("STATUS=403", logContent);
-        // Garantía Cero Fugas: NO debe contener el query string sensible
         Assert.DoesNotContain("secretParam", logContent);
         Assert.DoesNotContain("sensitiveValue", logContent);
     }
 
-    // 10. Rate Limiting Rejects Excessive Login Attempts
     [Fact]
     public void Rate_Limiting_Partition_Configuration_Is_10_Per_Minute()
     {
@@ -394,14 +373,12 @@ public class SecurityTests
 
         using var limiter = new System.Threading.RateLimiting.FixedWindowRateLimiter(limiterOptions);
 
-        // Primeras 10 peticiones deben tener éxito
         for (int i = 0; i < 10; i++)
         {
             var lease = limiter.AttemptAcquire(1);
             Assert.True(lease.IsAcquired, $"Intento {i + 1} debería ser admitido.");
         }
 
-        // La petición 11 debe ser rechazada inmediatamente (Simulación de 429 Too Many Requests)
         var rejectedLease = limiter.AttemptAcquire(1);
         Assert.False(rejectedLease.IsAcquired, "El intento 11 debe ser rechazado por la política de Rate Limiting (429).");
     }

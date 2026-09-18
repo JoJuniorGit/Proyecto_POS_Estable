@@ -162,7 +162,6 @@ public class CashDrawerClosureTests
         var clientService = new MockClientCashDrawerService(serverService);
         var rateService = new MockExchangeRateService();
 
-        // 1. Open session 1 with 1000 opening balance and add 500 income and 200 expense
         var session1 = await serverService.OpenSessionAsync(1000m, 50m);
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Income, Sales.Module.Entities.CashTransactionSource.CashIn, 500m, 10m, 50m, "Ingreso previo");
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Expense, Sales.Module.Entities.CashTransactionSource.CashOut, 200m, 4m, 50m, "Retiro previo");
@@ -170,12 +169,10 @@ public class CashDrawerClosureTests
         var vm = new CashDrawerViewModel(clientService, rateService);
         await vm.LoadSessionAsync();
 
-        // Assert session 1 before closure
         Assert.NotNull(vm.ActiveSession);
         Assert.Equal(1300m, vm.CurrentBalanceBsS);
         Assert.Equal(3, vm.OrderedTransactions.Count);
 
-        // 2. Perform closure (Create DailyClosure)
         context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo", IsCash = true, IsActive = true, DisplayOrder = 1 });
         await context.SaveChangesAsync();
 
@@ -191,17 +188,14 @@ public class CashDrawerClosureTests
         };
         await closureService.CreateClosureAsync(dailyClosure);
 
-        // 3. Reload ViewModel session
         await vm.LoadSessionAsync();
 
-        // 4. Assert Expected Cash and ALL Movements REMAIN INTACT in the active session
         Assert.NotNull(vm.ActiveSession);
         Assert.True(vm.IsSessionActive);
         Assert.Equal(1300m, vm.CurrentBalanceBsS);
         Assert.Equal("1.300", vm.FormattedBalanceBsS);
         Assert.Equal("26,00 $", vm.FormattedBalanceUsd);
 
-        // Transactions remain 100% visible and intact
         Assert.Equal(3, vm.OrderedTransactions.Count);
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Ingreso previo");
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Retiro previo");
@@ -215,7 +209,6 @@ public class CashDrawerClosureTests
         var clientService = new MockClientCashDrawerService(serverService);
         var rateService = new MockExchangeRateService();
 
-        // 1. Open session 1 and register movements
         var session1 = await serverService.OpenSessionAsync(1000m, 50m);
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Income, Sales.Module.Entities.CashTransactionSource.CashIn, 500m, 10m, 50m, "Ingreso sesión 1");
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Expense, Sales.Module.Entities.CashTransactionSource.CashOut, 200m, 4m, 50m, "Retiro sesión 1");
@@ -223,31 +216,25 @@ public class CashDrawerClosureTests
         var vm = new CashDrawerViewModel(clientService, rateService);
         await vm.LoadSessionAsync();
 
-        // Session 1 visible: apertura + ingreso + retiro
         Assert.Equal(3, vm.OrderedTransactions.Count);
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Ingreso sesión 1");
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Retiro sesión 1");
 
-        // 2. Rollover: cierra sesión 1 y abre sesión 2 conservando el saldo teórico
         await serverService.RolloverSessionAfterClosureAsync(50m);
 
-        // 3. Recargar la vista: los movimientos de la sesión cerrada deben SEGUIR visibles
         await vm.LoadSessionAsync();
 
         Assert.NotNull(vm.ActiveSession);
         Assert.True(vm.IsSessionActive);
-        // Sesión 1 (apertura + ingreso + retiro + cierre) + Sesión 2 (apertura)
         Assert.Equal(5, vm.OrderedTransactions.Count);
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Ingreso sesión 1");
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Retiro sesión 1");
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Cierre de caja");
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Monto de apertura de caja");
 
-        // El saldo esperado se conserva (1000 + 500 - 200 = 1300)
         Assert.Equal(1300m, vm.CurrentBalanceBsS);
         Assert.Equal("1.300", vm.FormattedBalanceBsS);
 
-        // Los acumuladores de la NUEVA sesión arrancan limpios
         Assert.Equal(0m, vm.TotalIncomeBsS);
         Assert.Equal(0m, vm.TotalExpenseBsS);
     }
