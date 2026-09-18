@@ -617,7 +617,7 @@ public class ErrorContractTests
                 }));
 
         mockCashDrawer.Setup(c => c.GetActiveSessionAsync())
-            .ReturnsAsync(new CashDrawerSession { OpeningExchangeRate = 50m });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { OpeningExchangeRate = 50m });
 
         var controller = CreateShiftsController(mockCashDrawer, mockDailyClosure, mockUser);
 

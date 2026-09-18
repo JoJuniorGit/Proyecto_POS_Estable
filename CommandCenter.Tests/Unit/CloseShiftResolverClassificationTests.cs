@@ -69,7 +69,7 @@ public class CloseShiftResolverClassificationTests
     {
         var mock = new Mock<ICashDrawerService>();
         mock.Setup(c => c.GetActiveSessionAsync())
-            .ReturnsAsync(new CashDrawerSession
+            .ReturnsAsync(new CashDrawerSessionResponseDto
             {
                 Id = 1,
                 Status = CashDrawerStatus.Open,

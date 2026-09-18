@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Moq;
 using Sales.Module.Data;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using Sales.Module.Services;
@@ -129,7 +130,7 @@ public class ExchangeRateReferenceBoundaryTests
             .ReturnsAsync((int sid, CashTransactionType t, CashTransactionSource s, decimal al, decimal au, decimal er, string d, int? rid, bool isPhys, int? pmId) =>
             {
                 capturedRate = er;
-                return new CashTransaction { Id = 1, SessionId = sid, Type = t, Source = s, AmountLocal = al, AmountUsd = au, ExchangeRate = er, Description = d, TransactionTime = DateTime.UtcNow };
+                return new CashTransactionResponseDto { Id = 1, SessionId = sid, Type = t, Source = s, AmountLocal = al, AmountUsd = au, ExchangeRate = er, Description = d, TransactionTime = DateTime.UtcNow };
             });
 
         var mockSettings = new Mock<ISystemSettingsService>();

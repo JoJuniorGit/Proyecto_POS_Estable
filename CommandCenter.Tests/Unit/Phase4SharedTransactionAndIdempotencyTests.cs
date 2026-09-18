@@ -548,7 +548,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
 
             var mockCashDrawer = new Mock<ICashDrawerService>();
             mockCashDrawer.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-                .ReturnsAsync(session);
+                .ReturnsAsync(new CashDrawerSessionResponseDto { Id = session.Id, Status = session.Status });
             var mockSettings = new Mock<ISystemSettingsService>();
 
             // Crear una venta inicial con un item

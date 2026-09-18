@@ -9520,3 +9520,149 @@ E7. GGA: gga run (v2.10.1, provider opencode) = STATUS FAILED; los 5 bloqueos
     boundary: DailyClosureResponseDto/ClosureDetailResponseDto son sealed record
     con semantica init-only; controllers e IDailyClosureService no exponen tipos
     de Sales.Module.Entities (forzado por ClosureDtoBoundaryTests)".
+
+
+================================================================================
+ANEXO - REVISION 8.140 (legacy-debt-cleanup S4b: Drawer DTO boundary)
+================================================================================
+
+Fecha: 2026-09-17
+Commit: refactor(8.140): DTOs inmutables de drawer (slice S4b, items 15/19/20)
+        - ANEXO 8.140, en rama V0.15 (sin branches/PRs).
+
+Alcance: work unit S4b del change legacy-debt-cleanup (store openspec), items
+de registro 15, 19 y 20 (H-04): las respuestas de cajon dejan de devolver
+entidades EF (CashDrawerSession/CashTransaction) y GetHistoryAsync deja de
+materializar entidades. Solo S4b (S5a+ no se inicia). Sin cambios de schema,
+sin PRs, sin sub-agentes.
+
+A. CAMBIOS DE PRODUCCION
+
+A1. Contratos inmutables nuevos (AD-14), namespace Sales.Module.DTOs:
+- CashDrawerSessionResponseDto.cs: record sealed con miembros init-only.
+  Nombres JSON espejo del entity: id, openedAt, openedAtLocal, closedAt,
+  closedAtLocal, status, openingBalanceLocal, openingExchangeRate,
+  closingBalanceLocal, closingExchangeRate, transactions.
+- CashTransactionResponseDto.cs: record sealed init-only movido desde
+  Backend.API/DTOs/CashDrawerDtos.cs (archivo eliminado). Conserva los campos
+  que el cliente consume y agrega los escalares del entity que la respuesta ya
+  exponia: id, sessionId, transactionTime, transactionTimeLocal, type, source,
+  amountUsd, exchangeRate, amountLocal, description, referenceId, saleId,
+  invoiceNumber (aplanado desde Sale.InvoiceNumber), isPhysicalCash,
+  paymentMethodId. Sin miembros de navegacion EF.
+
+A2. Frontera de servicio limpia (REQ-ADB-02, tareas 4b.5/4b.6/4b.8):
+- ICashDrawerService.cs: todos los metodos que devolvian entidad ahora devuelven
+  DTO (GetActiveSession, GetActiveSessionWithTransactions, GetOrCreateActiveSession,
+  OpenSession, CloseSession, AddTransaction, RecordSaleChange, GetHistory).
+  CashAdvanceResultDto.ExpenseTransaction/IncomeTransaction ahora son
+  CashTransactionResponseDto. GetCurrentBalanceLocalAsync sigue devolviendo
+  decimal.
+- CashDrawerService.cs: acceso a entidad confinado a LoadActiveSessionEntityAsync
+  (privado) y a los mappers privados MapSession/MapTransaction. GetHistoryAsync
+  proyecta CashTransactionResponseDto directamente en LINQ (REQ-ADB-03: ya no
+  se instancia new CashTransaction { Sale = ... }).
+- CashDrawerController.cs: GetActiveSession/OpenSession/CloseSession/
+  AddTransaction/GetHistory devuelven DTO; MapLocalTimesAsync/MapLocalTime
+  construyen el DTO con expresiones "with". Sin using de Backend.API.DTOs.
+- Backend.API/DTOs/CashDrawerDtos.cs eliminado.
+
+A3. Consumidores en el MISMO work unit (AD-15):
+- WPF: CashDrawerSessionDto/CashTransactionDto ya declaran los nombres JSON del
+  DTO; no requieren re-enlace (invoiceNumber es aditivo para cliente).
+- Web: RegisterPage.jsx deja de leer tx.sale?.invoiceNumber (la navegacion sale
+  ya no existe) y usa tx.invoiceNumber. CashInModal/CashOutModal ignoran el body.
+
+B. PARIDAD DE CONTRATO (AD-15, REQ-ADB-04)
+
+B1. Endpoint tocado GET /api/cashdrawer/active-session. Capturado dentro de
+    DrawerDtoBoundaryTests con las opciones JSON de produccion
+    (CamelCase + ReferenceHandler.IgnoreCycles) y el CashDrawerService real.
+
+    ANTES (entidad CashDrawerSession + CashTransaction con navegacion sale):
+    {"id":3,"openedAt":"2026-09-17T12:30:00Z","openedAtLocal":"0001-01-01T00:00:00",
+    "closedAt":null,"closedAtLocal":null,"status":0,"openingBalanceLocal":1000,
+    "openingExchangeRate":50,"closingBalanceLocal":null,"closingExchangeRate":null,
+    "transactions":[{"id":31,"sessionId":3,"session":null,
+    "transactionTime":"2026-09-17T12:35:00Z","transactionTimeLocal":"0001-01-01T00:00:00",
+    "type":0,"source":1,"amountUsd":10,"exchangeRate":50,"amountLocal":500,
+    "description":"Pago en efectivo","referenceId":null,"saleId":700,"sale":{...},
+    "isPhysicalCash":true,"paymentMethodId":1,"paymentMethod":null},
+    {"id":32,...,"isPhysicalCash":false,...}]}
+
+    DESPUES (CashDrawerSessionResponseDto; golden literal con Assert.Equal):
+    {"id":3,"openedAt":"2026-09-17T12:30:00Z","openedAtLocal":"0001-01-01T00:00:00",
+    "closedAt":null,"closedAtLocal":null,"status":0,"openingBalanceLocal":1000,
+    "openingExchangeRate":50,"closingBalanceLocal":null,"closingExchangeRate":null,
+    "transactions":[{"id":31,"sessionId":3,"transactionTime":"2026-09-17T12:35:00Z",
+    "transactionTimeLocal":"0001-01-01T00:00:00","type":0,"source":1,"amountUsd":10,
+    "exchangeRate":50,"amountLocal":500,"description":"Pago en efectivo",
+    "referenceId":null,"saleId":700,"invoiceNumber":4242,"isPhysicalCash":true,
+    "paymentMethodId":1}]}
+
+    Todos los escalares enlazados por WPF/Web sobreviven con el mismo nombre y
+    valor; invoiceNumber se aplana al nivel superior; las transacciones no
+    fisicas siguen excluidas. Los miembros de navegacion EF session/sale/
+    paymentMethod desaparecen: ningun cliente los enlaza (REQ-ADB-02 esc. 1).
+
+B2. Endpoints tocados con paridad de campos consumidos:
+    - POST /api/cashdrawer/open y /close: el cuerpo de sesion conserva todos los
+      campos ya serializados; transactions queda en [] en esos caminos.
+    - POST /api/cashdrawer/transaction: conserva id, transactionTimeLocal,
+      description, amountUsd, amountLocal, exchangeRate, type, source,
+      isPhysicalCash, paymentMethodId; agrega invoiceNumber; solo desaparecen
+      sale/session vacios. CashInModal/CashOutModal ignoran la respuesta.
+    - POST /api/cashdrawer/cash-advance: Expense/IncomeTransaction son DTO; el
+      unico campo que lee CashAdvanceModal (invoiceNumber) se preserva.
+
+C. VERIFICACION
+
+C1. Build Release: 0 errores, 0 advertencias.
+C2. Backend tests: 1193 passed, 0 failed, 0 skipped (1185 -> 1193).
+C3. Filtro S4b (Dto): 79 passed, 0 failed (71 -> 79).
+C4. Clase nueva DrawerDtoBoundaryTests: 8 passed, 0 failed.
+C5. Frontend tests: 271 passed, 0 failed.
+C6. Frontend lint: clean (exit 0).
+C7. Coverage: Core 0.8364 >= 0.70; Sales.Module 0.9047 >= 0.80;
+    Inventory.Module 0.8251 >= 0.72 - [OK].
+
+D. PRUEBAS NUEVAS (CommandCenter.Tests/Unit/DrawerDtoBoundaryTests.cs)
+
+D1. DrawerSessionDto_GoldenJson_PreservesLegacyBoundFields_AndDropsEntity
+    NavigationMembers: imprime ambos payloads, aserta el golden literal y la
+    paridad por campo; exige la ausencia de session/sale/paymentMethod.
+D2. GetHistoryAsync_ReturnsProjectedDtos_WithoutMaterializingEntityInstances:
+    el resultado es DTO, InvoiceNumber aplanado y el ChangeTracker queda vacio
+    (REQ-ADB-03).
+D3. DrawerDtos_ExposeNoPublicSetter: reflexion init-only (REQ-ADB-04).
+D4. DrawerResponseDtos_AreDeclaredInSalesModuleDtosNamespace: namespace y sealed.
+D5. CashAdvanceResultDto_ExposesTransactionResponseDtos (REQ-ADB-02 esc. 2).
+D6. CashDrawerServiceAndControllerSignatures_DoNotExposeSalesModuleEntities:
+    camina retornos/parametros y rechaza clases de Sales.Module.Entities.
+D7. CashDrawerController_Actions_DeclareDrawerResponseDtos: desenvuelve
+    Task<ActionResult<T>> de las acciones y fija el DTO declarado.
+D8. GetActiveSession_ReturnsDeclaredDto_AndPreservesEmptySessionSemantics:
+    200 con DTO sin claves de navegacion; 200 null cuando no hay sesion.
+
+E. DECISIONES, DESVIACIONES E IMPACTO
+
+E1. D1 - el swap cubre toda la superficie publica de ICashDrawerService (item 19),
+    no solo los metodos del controlador; los consumidores internos (SalesService,
+    DailyClosureService, CashAdvanceCoordinator, ExchangeRateResolver) solo leen
+    escalares, por lo que el comportamiento se preserva.
+E2. D2 - sin re-enlace WPF: los DTO cliente ya declaran los nombres JSON; solo se
+    elimino el fallback muerto tx.sale?.invoiceNumber en RegisterPage.jsx.
+E3. D3 - CashTransactionResponseDto es la union del DTO movido y los escalares
+    del entity; conserva el contrato de GET /history y los escalares del POST;
+    solo se descartan las navegaciones EF. Los campos aditivos se documentan.
+E4. D4 - TransactionTimeLocal lo aplica el controlador (el servicio no posee
+    ISystemSettingsService); el servicio entrega TransactionTime UTC.
+E5. Bookkeeping S4a corregido (fold-in): el commit 829778c se etiqueto con los
+    items 3/15/19/20 pero su alcance de cierre son los items 3 y 8; los items
+    15/19/20 son de cajon (S4b). Los boxes 4a.5/4a.6 quedaron marcados con
+    desviacion D1/D2. S4a-R1 (CreateClosureAsync(DailyClosure) concreto)
+    registrado y aun abierto. Detalle en apply-progress.md y tasks.md.
+E6. Archivos: 2 DTO nuevos, 3 produccion modificados, 1 archivo de produccion
+    eliminado, 1 archivo Web modificado, 1 archivo de tests nuevo y ~16 archivos
+    de test re-punteados. La slice se autoriza como work unit de cadena.
+E7. GGA: ver apply-progress.md (seccion S4b, GGA Hook Exceptions).

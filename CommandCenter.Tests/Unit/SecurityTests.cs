@@ -113,7 +113,7 @@ public class SecurityTests
             .ReturnsAsync(new Product { Id = 1, SKU = "1001", Name = "Arroz", PriceUSD = 2m, PriceRetailUSD = 2m, CostPriceUSD = 1m, IsActive = true });
 
         mockCashDrawer.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1 });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1 });
 
         var salesService = new Sales.Module.Services.SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 

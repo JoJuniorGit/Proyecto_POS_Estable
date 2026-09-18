@@ -6,6 +6,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using Sales.Module.Data;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using Sales.Module.Services;
@@ -39,7 +40,7 @@ public class PendingPickupTests
 
         mockCashDrawer
             .Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1, Status = CashDrawerStatus.Open });
 
         var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", IsDefault = false };
         var paymentMethod = new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true };

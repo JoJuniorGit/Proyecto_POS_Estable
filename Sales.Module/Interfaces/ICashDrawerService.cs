@@ -1,3 +1,4 @@
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using System.Threading.Tasks;
 
@@ -5,8 +6,8 @@ namespace Sales.Module.Interfaces;
 
 public class CashAdvanceResultDto
 {
-    public CashTransaction ExpenseTransaction { get; set; } = null!;
-    public CashTransaction IncomeTransaction { get; set; } = null!;
+    public CashTransactionResponseDto ExpenseTransaction { get; set; } = null!;
+    public CashTransactionResponseDto IncomeTransaction { get; set; } = null!;
     public decimal RequestedAmountLocal { get; set; }
     public decimal CommissionAmountLocal { get; set; }
     public decimal TotalChargedLocal { get; set; }
@@ -17,17 +18,17 @@ public class CashAdvanceResultDto
 
 public interface ICashDrawerService
 {
-    Task<CashDrawerSession?> GetActiveSessionAsync();
+    Task<CashDrawerSessionResponseDto?> GetActiveSessionAsync();
 
     /// <summary>
     /// Sesión activa con sus transacciones de caja precargadas (retorna null si no hay sesión abierta).
     /// Solo los endpoints que exponen el detalle de movimientos deben usarla (8.5-M1: el include completo
     /// no debe ejecutarse en cada acceso interno).
     /// </summary>
-    Task<CashDrawerSession?> GetActiveSessionWithTransactionsAsync();
-    Task<CashDrawerSession> GetOrCreateActiveSessionAsync(decimal currentExchangeRate);
-    Task<CashDrawerSession> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate);
-    Task<CashDrawerSession> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate);
+    Task<CashDrawerSessionResponseDto?> GetActiveSessionWithTransactionsAsync();
+    Task<CashDrawerSessionResponseDto> GetOrCreateActiveSessionAsync(decimal currentExchangeRate);
+    Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate);
+    Task<CashDrawerSessionResponseDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate);
 
     /// <summary>
     /// Cierra la sesión activa y abre una nueva conservando el saldo esperado en caja (saldo teórico acumulado:
@@ -36,7 +37,7 @@ public interface ICashDrawerService
     /// </summary>
     Task RolloverSessionAfterClosureAsync(decimal currentExchangeRate);
 
-    Task<CashTransaction> AddTransactionAsync(
+    Task<CashTransactionResponseDto> AddTransactionAsync(
         int sessionId,
         CashTransactionType type,
         CashTransactionSource source,
@@ -54,7 +55,7 @@ public interface ICashDrawerService
     /// cash pendientes de la venta aún no persistidos) soporte el vuelto ANTES de insertarlo, eliminando la
     /// vía a saldo de caja negativo. Debe ejecutarse dentro de la transacción compartida de completar venta.
     /// </summary>
-    Task<CashTransaction> RecordSaleChangeAsync(
+    Task<CashTransactionResponseDto> RecordSaleChangeAsync(
         int sessionId,
         decimal changeUsd,
         decimal changeBsS,
@@ -71,5 +72,5 @@ public interface ICashDrawerService
     /// de TODAS las sesiones (activa y anteriores), para conservar la trazabilidad de las sesiones
     /// cerradas junto con los movimientos de la sesión siguiente.
     /// </summary>
-    Task<System.Collections.Generic.List<CashTransaction>> GetHistoryAsync(int limit = 300);
+    Task<System.Collections.Generic.List<CashTransactionResponseDto>> GetHistoryAsync(int limit = 300);
 }

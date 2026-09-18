@@ -1,17 +1,17 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:b96d5e3bdd5aef28d55a1968c613b103bd177ce05f1a0c873a2113f9ef338d4b
+evidence_revision: sha256:2db6c81f19a620c4838c1912971828dae39a6b91fe0af9685e4e618229a87a14
 verdict: pass_with_warnings
 blockers: 0
 critical_findings: 0
-requirements: 2/2
-scenarios: 4/4
+requirements: 3/3
+scenarios: 5/5
 test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release
 test_exit_code: 0
-test_output_hash: sha256:e0ebbc71fe54232be778743f7dd9bb118c09bd586c44f07b44f206b31870a0d3
+test_output_hash: sha256:3f8f629158dbd35c075a2d00cf749f84c1a4846d6fe2e8de9a8bd1738e4dd82f
 build_command: dotnet build CommandCenter.slnx -c Release
 build_exit_code: 0
-build_output_hash: sha256:12942f0e260fa5f766cca6dae5e9dae739767bada4e6ae11e3cd7af5b64fa31d
+build_output_hash: sha256:3a1d2f6e6c116edfe4694a823e7cd5e800848acabdd3167a1378ce90687f5b70
 ```
 
 ## Verification Report
@@ -19,11 +19,11 @@ build_output_hash: sha256:12942f0e260fa5f766cca6dae5e9dae739767bada4e6ae11e3cd7a
 **Change**: legacy-debt-cleanup
 **Version**: N/A (delta specs, no version headers)
 **Mode**: Standard (Strict TDD inactive: `openspec/config.yaml` -> `strict_tdd: false`, `testing.strict_tdd_mode: disabled`)
-**Scope of this report**: a per-slice verification record for the change `legacy-debt-cleanup`. Slices S1 (zero-trust close, items 26/39), S2 (error contract + dead fields, items 2/18/25/12/35), S3 (closure orchestration consolidation, items 1/30/6/13/14) and **S4a (closure DTO boundary, commit `829778c`)** are implemented; S4b-S5c are not, so the **change-level verdict remains pending**. The machine-readable envelope at the top of this file describes the **most recently admitted slice — S4a at `829778c`**. The previous head envelopes are preserved verbatim under "S3 Admitted Envelope (preserved)" and "S1 Admitted Envelope (preserved)"; the S1, S2 and S3 verdicts and their own fresh evidence live in their own sections.
-**Envelope counts (S4a)**: `requirements: 2/2` and `scenarios: 4/4` are completed/total for **this slice's declared scope** — REQ-ADB-01 and REQ-ADB-04 — not for the whole `api-dto-boundary` delta spec, which carries 4 requirements / 7 scenarios. Spec-wide at revision `829778c`, this report records **1 of 4 requirements complete** (only REQ-ADB-01) and **4 of 7 scenarios compliant**: REQ-ADB-04 is satisfied for the closure DTOs but its drawer-DTO half awaits S4b, while REQ-ADB-02 and REQ-ADB-03 are drawer-only and belong to the explicitly-not-started S4b. No drawer surface is claimed by this slice.
-**Verified revision**: the current `HEAD` is `829778c` (`refactor(8.140): DTOs inmutables de cierre (slice S4a, items 3/15/19/20) - ANEXO 8.140`). The working tree is clean (`git status --short` and `git diff --stat HEAD` both empty): no production, test, or documentation file is modified against `829778c`. Earlier sections record the revision each of them was verified at: S1 at `c6c767f` (which carried one uncommitted documentation-only `apply-progress.md` append at that moment), S2 at `77b2d16` and S3 at `579347b`.
-**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding — superseded for S1. Per slice: S2 was `fail` on `fe1b60b` and S3 was `fail` on `200cdaa` (1 CRITICAL, `CRITICAL-S3-01`); both were superseded by their re-verifications. S4a has no prior verdict.
-**evidence_revision** (head envelope, S4a) is the SHA-256 of the ASCII string produced by joining, with `:`, the lowercase SHA-256 hex digests of the fifteen S4a production/test files listed under "S4a Changed Files", in the order listed there (the same recipe used for S3, which was reproducible).
+**Scope of this report**: a per-slice verification record for the change `legacy-debt-cleanup`. Slices S1 (zero-trust close, items 26/39), S2 (error contract + dead fields, items 2/18/25/12/35), S3 (closure orchestration consolidation, items 1/30/6/13/14), **S4a (closure DTO boundary, commit `829778c`)** and **S4b (drawer DTO boundary, commit `65e038a`)** are implemented; S5a-S5c are not, so the **change-level verdict remains pending**. The machine-readable envelope at the top of this file describes the **most recently admitted slice — S4b at `65e038a`**. The previous head envelopes are preserved verbatim under "S4a Admitted Envelope (preserved)", "S3 Admitted Envelope (preserved)" and "S1 Admitted Envelope (preserved)"; the S1, S2, S3, S4a and S4b verdicts and their own fresh evidence live in their own sections.
+**Envelope counts (S4b)**: `requirements: 3/3` and `scenarios: 5/5` are completed/total for **this slice's declared scope** — REQ-ADB-02, REQ-ADB-03 and the drawer half of REQ-ADB-04 — not for the whole `api-dto-boundary` delta spec, which carries 4 requirements / 7 scenarios. Spec-wide at revision `65e038a`, the entire `api-dto-boundary` spec is now complete: **4/4 requirements** and **7/7 scenarios** — REQ-ADB-01 and the closure half of REQ-ADB-04 were admitted under S4a at `829778c`; S4b completes REQ-ADB-02, REQ-ADB-03 and the drawer half. Change-wide, **15 of the 18 requirements** and **32 of the 38 scenarios** across the five delta specs are complete; only `async-cancellation-propagation` (3 requirements / 6 scenarios) remains, in S5a/S5c.
+**Verified revision**: the current `HEAD` is `65e038a` (`refactor(8.140): DTOs inmutables de drawer (slice S4b, items 15/19/20) - ANEXO 8.140`). The working tree is clean (`git status --short` and `git diff --stat HEAD` both empty): no production, test, or documentation file is modified against `65e038a`. Earlier sections record the revision each of them was verified at: S1 at `c6c767f` (which carried one uncommitted documentation-only `apply-progress.md` append at that moment), S2 at `77b2d16`, S3 at `579347b` and S4a at `829778c`.
+**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding — superseded for S1. Per slice: S2 was `fail` on `fe1b60b` and S3 was `fail` on `200cdaa` (1 CRITICAL, `CRITICAL-S3-01`); both were superseded by their re-verifications. S4a was `pass_with_warnings` at `829778c`; S4b has no prior verdict.
+**evidence_revision** (head envelope, S4b) is the SHA-256 of the ASCII string produced by joining, with `:`, the lowercase SHA-256 hex digests of the twenty-six S4b production/test files that exist at `65e038a`, listed in order under "S4b Changed Files" (the deleted `Backend.API/DTOs/CashDrawerDtos.cs` is excluded because it no longer exists to hash; the same recipe used for S4a and S3, which were reproducible).
 **Hash definition**: `build_output_hash` / `test_output_hash` are the SHA-256 of the captured combined stdout+stderr for the command execution reported above, normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed; identical recipe per section below.
 
 ### S1 Admitted Envelope (preserved)
@@ -67,6 +67,28 @@ build_command: dotnet build CommandCenter.slnx -c Release
 build_exit_code: 0
 build_output_hash: sha256:df799fe601a812014f586cec26862365b16d8d60fa8a2f761631f2f2cf6b7f87
 ```
+
+### S4a Admitted Envelope (preserved)
+
+The envelope below was this file's admitted machine-readable head from the S4a verification until the S4b verification re-pointed the head envelope to the S4b slice. It is preserved byte-for-byte as the S4a evidence record.
+
+```yaml
+schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:b96d5e3bdd5aef28d55a1968c613b103bd177ce05f1a0c873a2113f9ef338d4b
+verdict: pass_with_warnings
+blockers: 0
+critical_findings: 0
+requirements: 2/2
+scenarios: 4/4
+test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release
+test_exit_code: 0
+test_output_hash: sha256:e0ebbc71fe54232be778743f7dd9bb118c09bd586c44f07b44f206b31870a0d3
+build_command: dotnet build CommandCenter.slnx -c Release
+build_exit_code: 0
+build_output_hash: sha256:12942f0e260fa5f766cca6dae5e9dae739767bada4e6ae11e3cd7af5b64fa31d
+```
+
+The S4a `evidence_revision` above is the SHA-256 of the colon-joined per-file SHA-256 digests of the fifteen S4a production/test files listed under "S4a Changed Files"; its build/test output hashes are those captured for the S4a command executions reported in the "Slice S4a" section.
 
 ### Completeness
 
@@ -262,7 +284,7 @@ Checked against `docs/coding-guidelines-core.md` (the system invariants) and `op
 | S2 - Error contract + dead fields | Implemented + remediated + re-verified | **PASS_WITH_WARNINGS** (Slice S2 section below) |
 | S3 - Closure orchestration consolidation | Implemented + remediated + re-verified (remediation commit `579347b`; prior verification `fail` on `200cdaa`) | **PASS_WITH_WARNINGS** - 0 blockers, 0 critical findings, 4/4 requirements and 8/8 scenarios compliant; `CRITICAL-S3-01` and `S3-02..S3-05` closed, `S3-06`/`S3-07` registered for S4/S5; see "Slice S3" |
 | S4a - Closure DTO boundary | Implemented + verified (`829778c`) | **PASS_WITH_WARNINGS** - 0 blockers, 0 critical findings; REQ-ADB-01 complete and the closure half of REQ-ADB-04 compliant (4/4 in-scope scenarios); REQ-ADB-02/03 and the drawer half of REQ-ADB-04 pending S4b; see "Slice S4a" |
-| S4b - Drawer DTO boundary | Not implemented | Pending - all Phase 4b tasks unchecked |
+| S4b - Drawer DTO boundary | Implemented + verified (`65e038a`) | **PASS_WITH_WARNINGS** - 0 blockers, 0 critical findings; REQ-ADB-02, REQ-ADB-03 and the drawer half of REQ-ADB-04 compliant (5/5 in-scope scenarios); `api-dto-boundary` spec-wide now 4/4 and 7/7; see "Slice S4b" |
 | S5a - CancellationToken propagation | Not implemented | Pending - all Phase 5a tasks unchecked |
 | S5b - EF tuning + guards/naming/comments | Not implemented | Pending - all Phase 5b tasks unchecked |
 | S5c - J findings (H-05/H-06/H-08/H-14) | Not implemented | Pending - all Phase 5c tasks unchecked |
@@ -816,9 +838,209 @@ Plus the documentation files `docs/reporte.txt` (ANEXO 8.140), `apply-progress.m
 
 **PASS_WITH_WARNINGS** — the closure DTO boundary is genuinely established at `829778c`. The two new DTOs are `sealed record`s with no mutable setter; `IDailyClosureService` and `DailyClosureController` expose no `Sales.Module.Entities` type (0 grep matches, plus a reflecting structural test); the service projects entities into DTOs through `ShiftReportMapper`; and the golden-JSON test pins the response body byte-for-byte while proving that every client-bound member survives and the two EF navigations disappear. Every claim was re-executed: build 0/0, backend suite 1185/1185, the `Dto` filter 71/71, the new class 5/5, frontend 271/271 with clean lint, and the coverage gate reproduces the claim exactly. No S4b/S5 creep and no tautological test were found. The residual items are non-blocking and explicitly recorded: `S4a-R1` (concrete entity-returning legacy entry point), `S4a-R2` (645-line class), `RESIDUAL-S4a-01` (serializer-level parity evidence), `RESIDUAL-S4a-02` (commit item misattribution), `RESIDUAL-S4a-03` (task-checkbox vs. changed-file mismatch) and `SIZE-S4a` (705 changed lines vs. the 400-line budget). S4a may be chained into S4b.
 
+## Slice S4b — Drawer DTO Boundary
+
+**Verdict: PASS_WITH_WARNINGS** — 0 blockers, **0 critical findings**. The drawer half of `api-dto-boundary` is established at `65e038a`: both new DTOs are `sealed record`s with init-only members, `ICashDrawerService` and `CashDrawerController` expose no `Sales.Module.Entities` class type (only the three value-type enums), and every public drawer method returns DTOs. In-scope scenarios: **5/5 compliant**, 0 UNTESTED, 0 FAILING — REQ-ADB-02 (2/2), REQ-ADB-03 (1/1) and the drawer half of REQ-ADB-04 (2/2). Spec-wide at `65e038a`, the whole `api-dto-boundary` delta spec is complete (4/4 requirements, 7/7 scenarios; the closure half was admitted under S4a at `829778c`). Residuals are non-blocking and recorded, not hidden: `RESIDUAL-S4b-01` (parity evidence is serializer-level, not MVC-pipeline), `RESIDUAL-S4b-02` (task 4b.8 over-checked — no WPF file changed), `RESIDUAL-S4b-03` (weak assertion components in the history test), `RESIDUAL-S4b-04` (out-of-scope pre-existing Web `advance` filter bug found during the consumer search), `S4b-R1` (drawer read tuning deferred to S5b/AD-16) and `SIZE-S4b` (1053 changed lines vs the 400-line review budget).
+
+**Verified revision**: `65e038a` (`refactor(8.140): DTOs inmutables de drawer (slice S4b, items 15/19/20) - ANEXO 8.140`; current `HEAD`). Working tree clean at verification time (`git status --short` and `git diff --stat HEAD` both empty).
+**Slice delta**: `829778c` -> `65e038a` — 30 files, `+887 / -166` (1053 changed lines): 27 production/test files (2 new DTOs, 1 deleted API DTO, 3 modified production files, 1 modified Web page, 1 new test file, 19 re-pointed test files) plus `docs/reporte.txt` (+146), `apply-progress.md` (+108) and `tasks.md` (`+12 / -10`, exactly the ten Phase 4b checkboxes plus the S4a bookkeeping fold-in note).
+
+### S4b Re-executed Evidence (verbatim)
+
+Every command below was re-executed independently on `65e038a` after the working tree was confirmed clean. `stderr` was merged into the captured stream. No result was taken from `apply-progress.md`.
+
+**1. Build** - `dotnet build CommandCenter.slnx -c Release` - exit `0` - matches the claim (0/0)
+
+```text
+Compilación correcta.
+    0 Advertencia(s)
+    0 Errores
+
+Tiempo transcurrido 00:00:35.48
+```
+
+captured-output hash: `sha256:3a1d2f6e6c116edfe4694a823e7cd5e800848acabdd3167a1378ce90687f5b70`
+
+**2. Backend tests (full)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release` - exit `0` - matches the claim (1193/1193)
+
+```text
+Correctas! - Con error:     0, Superado:  1193, Omitido:     0, Total:  1193, Duración: 12 s - CommandCenter.Tests.dll (net10.0)
+```
+
+captured-output hash: `sha256:3f8f629158dbd35c075a2d00cf749f84c1a4846d6fe2e8de9a8bd1738e4dd82f`
+
+**3. S4b focused filter (as declared in `tasks.md`)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~Dto"` - exit `0` - matches the claim (79/79; S4a had 71)
+
+```text
+Correctas! - Con error:     0, Superado:    79, Omitido:     0, Total:    79, Duración: 1 s - CommandCenter.Tests.dll (net10.0)
+```
+
+captured-output hash: `sha256:d38b64e6868e48b6e49ce0c51798b89543838a284955ebb5abd0c30c9d2dc6fe`
+
+**4. New test class alone** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~DrawerDtoBoundaryTests"` - exit `0` - matches the claim (8/8); `Omitido: 0`, so none is Postgres-gated
+
+```text
+Correctas! - Con error:     0, Superado:     8, Omitido:     0, Total:     8, Duración: 2 s - CommandCenter.Tests.dll (net10.0)
+```
+
+captured-output hash: `sha256:5417bb970d47397e3dbae58c06891e1320896ae421f1fbc10abeb9c6ab33b19b`
+
+**5. Frontend tests** - `npm test` (Web.Frontend) - exit `0` on the first execution - matches the claim (271/271)
+
+```text
+ℹ tests 271
+ℹ suites 58
+ℹ pass 271
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+```
+
+captured-output hash: `sha256:c73d53d44a9ae4cd06befbe0227ad4139fc7738892cbbf6f33fd56268e46ec04`
+
+**6. Frontend lint** - `npm run lint` (Web.Frontend, oxlint) - exit `0`, no findings - matches the claim
+
+```text
+> web-frontend@0.0.0 lint
+> oxlint
+```
+
+captured-output hash: `sha256:1472f392035e28478ac827e6e5301e8adde36ba5a0a27bc61cdf6e42453bc7d3`
+
+**7. Coverage gate** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings` (1193/1193, exit `0`), then `python scripts/check-coverage.py CommandCenter.Tests/TestResults/62bbe479-7f29-40bd-badd-64c3be1b4cf2/coverage.cobertura.xml` - exit `0`
+
+```text
+Cobertura de dominio por capa (line-rate, excluye *.Migrations.*):
+  Core               rate=0.8364 min=0.7000 gap_a_70%=0.0000 [OK]
+  Sales.Module       rate=0.9047 min=0.8000 gap_a_70%=0.0000 [OK]
+  Inventory.Module   rate=0.8251 min=0.7200 gap_a_70%=0.0000 [OK]
+```
+
+The gate reproduces the S4b claim **exactly** (Core 0.8364 / Sales.Module 0.9047 / Inventory.Module 0.8251) and all three `tasks.md` thresholds pass (Core >= 0.70, Sales.Module >= 0.80, Inventory.Module >= 0.72). `Sales.Module`, the layer S4b changes, sits at 0.9047 vs 0.9011 at S4a.
+
+**Hash definition (this section)**: `sha256` is the SHA-256 over the captured combined stdout+stderr (`*>` redirection), normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed.
+
+**Environment note**: `TEST_POSTGRES_CONNECTION` is unset, so the Postgres-gated classes continue to early-return as vacuous passes. No S4b test is Postgres-gated: the eight `DrawerDtoBoundaryTests` are reflection/serialization/InMemory tests and all eight executed (`Omitido: 0`).
+
+### S4b Boundary Evidence (structural + grep)
+
+| Check | Method | Result |
+|-------|--------|--------|
+| No EF entity class on the drawer boundary | grep for bare `CashDrawerSession` / `CashTransaction` class usage across `ICashDrawerService.cs`, `CashDrawerController.cs` and both new DTOs | **0 matches**. The four files keep a `using Sales.Module.Entities;` (lines 2/5/1/1), which resolves only the three **value-type enums** (`CashDrawerStatus`, `CashTransactionType`, `CashTransactionSource` — declared `enum` at `CashDrawerSession.cs:8`, `CashTransaction.cs:7,13`) plus `CashTransactionType`/`CashTransactionSource` in parameters and request models. No entity class appears in any return or parameter type. |
+| Interface returns DTOs | `ICashDrawerService.cs:21-75`: `GetActiveSessionAsync`/`GetActiveSessionWithTransactionsAsync` -> `CashDrawerSessionResponseDto?`; `GetOrCreateActiveSessionAsync`/`OpenSessionAsync`/`CloseSessionAsync` -> `CashDrawerSessionResponseDto`; `AddTransactionAsync`/`RecordSaleChangeAsync` -> `CashTransactionResponseDto`; `GetHistoryAsync` -> `List<CashTransactionResponseDto>`; `CashAdvanceResultDto.ExpenseTransaction`/`IncomeTransaction` -> `CashTransactionResponseDto` | **CONFIRMED** |
+| Controller returns DTOs | `CashDrawerController.cs`: `GetActiveSession` -> `ActionResult<CashDrawerSessionResponseDto?>` (`:46`); `GetHistory` -> `ActionResult<IEnumerable<CashTransactionResponseDto>>` (`:65`); `OpenSession`/`CloseSession` -> `ActionResult<CashDrawerSessionResponseDto>` (`:80, :89`); `AddTransaction` -> `ActionResult<CashTransactionResponseDto>` (`:106`); `ProcessCashAdvance` -> `ActionResult<CashAdvanceResultDto>` (`:255`). The response mutators now build new DTOs with `with` instead of mutating entities (`MapLocalTimesAsync` `:224-237`, `MapLocalTime` `:239-250`, cash-advance `:283-284`) | **CONFIRMED** |
+| Old API-local DTO deleted | `Backend.API/DTOs/CashDrawerDtos.cs` removed (`Test-Path` false); no compiled reference to a `Backend.API.DTOs.CashTransactionDto` remains (the surviving `using Backend.API.DTOs` sites belong to payment/product/reservation contracts) | **CONFIRMED** |
+| History projects instead of materializing | `GetHistoryAsync` (`CashDrawerService.cs:441-466`) is a single LINQ `Select(t => new CashTransactionResponseDto { ... InvoiceNumber = t.Sale != null ? t.Sale.InvoiceNumber : null ... })`; no `new CashTransaction` / `new Sale` remains anywhere in the service — the old code projected `new CashTransaction { Sale = new Sale { ... } }` | **CONFIRMED** (REQ-ADB-03) |
+| DTO immutability | `CashDrawerSessionResponseDto.cs` (18 lines: 10 scalar `{ get; init; }` members + `Transactions`) and `CashTransactionResponseDto.cs` (22 lines: 15 `{ get; init; }` members) are `public sealed record`; **0** `set;` occurrences in either file | **CONFIRMED** |
+| Structural test reflects real types | `DrawerDtoBoundaryTests.CashDrawerServiceAndControllerSignatures_DoNotExposeSalesModuleEntities` walks every `ICashDrawerService` method and every public instance method of `CashDrawerController` (generics/arrays flattened) and fails on any `Sales.Module.Entities` **class**; `CashDrawerController_Actions_DeclareDrawerResponseDtos` pins all six action body types, including the `CashTransactionResponseDto` element of `GetHistory` | **CONFIRMED** (8/8 green) |
+| Scope clarification — `CashAdvanceResultDto` wrapper | The wrapper class itself is pre-existing and keeps mutable setters (`ICashDrawerService.cs:7-17`); REQ-ADB-02 only requires its two transaction members to be DTOs, which they now are. The wrapper's own mutability is pre-existing debt registered for S5b/AD-17, not a regression | **CONFIRMED (scoped)** |
+
+### S4b Field-Parity Assessment
+
+**Golden payload (touched endpoint `GET /api/cashdrawer/active-session`)**
+
+- `Assert.Equal(GoldenSessionJson, dtoJson)` pins the DTO output byte-for-byte against a literal; the test additionally serializes the legacy entity graph with the production JSON options and compares every client-bound member of both bodies.
+- Before (legacy body): the session scalars plus a `transactions` array whose entries carried `session` (cycle), `sale` (the included `Sale`) and `paymentMethod` navigation members — all three asserted present in the legacy JSON (`DrawerDtoBoundaryTests.cs:165-167`).
+- After (S4b DTO): all ten session scalars survive with the same JSON name and value (`id`, `openedAt`, `openedAtLocal`, `closedAt`, `closedAtLocal`, `status`, `openingBalanceLocal`, `openingExchangeRate`, `closingBalanceLocal`, `closingExchangeRate`); all fourteen previously bound transaction scalars survive (`id`, `sessionId`, `transactionTime`, `transactionTimeLocal`, `type`, `source`, `amountUsd`, `exchangeRate`, `amountLocal`, `description`, `referenceId`, `saleId`, `isPhysicalCash`, `paymentMethodId`); the `session`/`sale`/`paymentMethod` navigations are gone (asserted `ContainsKey` false on the transaction and absent from the recursive property-name scan).
+- The removed `sale` navigation is replaced by the **flattened `invoiceNumber`**: `Assert.Equal(legacyPhysical["sale"]["invoiceNumber"], dtoTransaction["invoiceNumber"])` (`:163`) proves value equality between the old nested path and the new top-level member; `MapTransaction` sets it from `transaction.Sale?.InvoiceNumber` (`CashDrawerService.cs:497`).
+- Non-physical transactions: the legacy GET already filtered `IsPhysicalCash` and ordered by `TransactionTime` descending in the controller; S4b moved that filter/order into the service (`CashDrawerService.cs:45-49`). The golden seed's non-physical transaction (id 32) is asserted absent from the DTO body (`:190`).
+
+**Removed-navigation consumer search (bindings)**
+
+- WPF `CashTransactionDto` (`Desktop.Client.Core/Services/ICashDrawerService.cs:55-88`) declares only `Id`, `TransactionTimeLocal`, `Description`, `InvoiceNumber`, `AmountUsd`, `AmountLocal`, `ExchangeRate`, `Type`, `Source`, `IsPhysicalCash`, `PaymentMethodId` — **no** `session`/`sale`/`paymentMethod` member exists to break. `CashDrawerView.xaml` binds `FormattedInvoiceNumber` (`:183, :303`), `TransactionTimeLocal` (`:193, :245, :249`) and `AmountBsS` (`:200, :313`); `FormattedInvoiceNumber` reads `InvoiceNumber` and falls back to `Description` (`:81-84`), both preserved.
+- WPF `CashDrawerSessionDto` (`:90-103`) declares the session scalars plus `Transactions` — every DTO member is a superset; `System.Text.Json` ignores the added members (`ReadFromJsonAsync` with default options, `Desktop.Client.Core/Services/CashDrawerService.cs:26, :34, :42, :56, :73`).
+- Web: the only `tx.sale?.invoiceNumber` read in the repository was `RegisterPage.jsx:356-357`, updated in the same commit to `tx.invoiceNumber`; a repo-wide search finds no other `tx.sale` / `.session` / `.paymentMethod` access in `Web.Frontend/src` (the surviving `sale?.` matches are cart-domain objects in `CartContext.jsx` / `EditSaleModal.jsx`).
+- Web modals ignore the `transaction` response body: `CashInModal.jsx:52-62` and `CashOutModal.jsx:58-68` `await api.post('/api/cashdrawer/transaction', ...)` and then only close/reload — the response value is never read. The claim holds.
+- `CashAdvanceModal.jsx:100` reads `res.invoiceNumber` — the **result-level** `CashAdvanceResultDto.InvoiceNumber` (`ICashDrawerService.cs:16`), preserved and still populated from `createdSale?.InvoiceNumber` (`CashAdvanceCoordinator.cs:164`). The WPF view model does the same (`CashDrawerViewModel.cs:421-423`).
+- `POST /api/cashdrawer/open`, `/close` and `/transaction` bodies are supersets of the old fields; only the null navigation members (`sale`/`session`/`paymentMethod`) are dropped, and no consumer binds them.
+
+**Assessment**: field parity holds for every member any client binds today, the flattened `invoiceNumber` is proven equal to the old `sale.invoiceNumber`, and the only removed members are EF navigation properties no consumer reads. Caveat `RESIDUAL-S4b-01`: the "before" body is a re-serialization of the entity graph under the production options, not a captured pre-S4b HTTP response, and no test drives the MVC pipeline for the drawer endpoints (the controller test mocks the service).
+
+### S4b Requirement Evidence Matrix
+
+| Requirement | Scenario | Covering test / evidence | Result |
+|-------------|----------|--------------------------|--------|
+| REQ-ADB-02 | Drawer session response is a DTO | `DrawerSessionDto_GoldenJson_PreservesLegacyBoundFields_AndDropsEntityNavigationMembers` (golden literal + nav absence on a real `CashDrawerService` over InMemory) + `GetActiveSession_ReturnsDeclaredDto_AndPreservesEmptySessionSemantics` (real controller: 200 DTO, serialized nav absence, `Ok(null)` empty-session semantics) + `CashDrawerController_Actions_DeclareDrawerResponseDtos` + the grep/reflection boundary evidence | **COMPLIANT** — runtime serialization is asserted for the GET; the open/close/transaction/clone bodies are pinned at the declared-type level (residual `RESIDUAL-S4b-01`) |
+| REQ-ADB-02 | Cash advance result exposes DTOs | `CashAdvanceResultDto_ExposesTransactionResponseDtos` (reflection pins both members to `CashTransactionResponseDto`); `ICashDrawerService.cs:9-10`; `CashAdvanceCoordinatorTests` and `CashAdvanceTests` green over the re-pointed contract; Web/WPF read the preserved result-level `invoiceNumber` | **COMPLIANT** |
+| REQ-ADB-03 | History is projected, not hand-built | `GetHistoryAsync_ReturnsProjectedDtos_WithoutMaterializingEntityInstances` (real service: DTO type, `InvoiceNumber == 4242`, non-physical excluded, empty `ChangeTracker`) + `CashDrawerServiceUnitTests.GetHistoryAsync_ProjectsInvoiceNumberFromSale_WithoutLoadingFullSaleEntity` (re-pointed to `item.InvoiceNumber`); source: the LINQ `Select` projection in `CashDrawerService.cs:448-464` replaces the deleted `new CashTransaction { Sale = new Sale { ... } }` | **COMPLIANT** (residual `RESIDUAL-S4b-03`) |
+| REQ-ADB-04 | DTOs expose no public setter (drawer) | `DrawerDtos_ExposeNoPublicSetter` reflects both types and rejects any setter lacking the `IsExternalInit` modreq; `DrawerResponseDtos_AreDeclaredInSalesModuleDtosNamespace` pins `sealed` + namespace | **COMPLIANT** |
+| REQ-ADB-04 | Existing client fields survive the swap (drawer) | `DrawerSessionDto_GoldenJson_...` per-member comparison + the `invoiceNumber` flatten proof; consumer search across WPF (DTO members + XAML bindings) and Web (only the same-commit `RegisterPage.jsx` rebinding) | **COMPLIANT** |
+
+**Compliance summary**: **5/5 in-scope scenarios compliant**, 0 UNTESTED, 0 FAILING. Requirement level: REQ-ADB-02 (2/2 scenarios), REQ-ADB-03 (1/1) and the drawer half of REQ-ADB-04 (2/2) are satisfied. Spec-wide at `65e038a`: the `api-dto-boundary` delta spec is **4/4 requirements and 7/7 scenarios** complete (REQ-ADB-01 and the closure half of REQ-ADB-04 were admitted under S4a at `829778c`).
+
+### S4b Discrimination Review
+
+The eight S4b tests were inspected for the tautology failure mode found in earlier slices.
+
+- **`DrawerSessionDto_GoldenJson_...` is discriminating.** `Assert.Equal(GoldenSessionJson, dtoJson)` is a strict whole-body equality against a literal; any added, renamed, reordered or dropped DTO member turns it red. The member loop compares two independently produced serializations (legacy entity graph vs DTO), and the nav-absence assertions are pinned against the legacy body's own content.
+- **`GetHistoryAsync_ReturnsProjectedDtos_...` is partially discriminating** (residual `RESIDUAL-S4b-03`). `item.InvoiceNumber` does not exist on `CashTransaction`, so a revert to the old materializing projection fails to compile; the single-item filter (`t.SaleId == sale.Id`) and the excluded non-physical id are real state assertions. Two components are weak: `Assert.Equal(typeof(CashTransactionResponseDto), item.GetType())` restates the compile-time element type of `List<CashTransactionResponseDto>`, and `Assert.Empty(ChangeTracker.Entries<CashTransaction>())` would also hold for the old `AsNoTracking` entity materialization. The "without materializing entity instances" clause therefore rests on the type contract plus source inspection of the projection.
+- **`DrawerDtos_ExposeNoPublicSetter` is discriminating.** Replacing a positional record with a mutable `{ get; set; }` class fails it.
+- **`CashDrawerServiceAndControllerSignatures_DoNotExposeSalesModuleEntities` is discriminating.** It reflects real signatures; re-introducing a `Sales.Module.Entities` class in any return or parameter (including inside generics and arrays) fails it. Scope note: it reflects only the interface and controller, not the concrete `CashDrawerService` class (whose public methods also return DTOs today).
+- **`CashDrawerController_Actions_DeclareDrawerResponseDtos` and `CashAdvanceResultDto_ExposesTransactionResponseDtos` are discriminating structural pins** (real reflected types).
+- **`GetActiveSession_ReturnsDeclaredDto_AndPreservesEmptySessionSemantics` is discriminating but light**: it drives the real controller with a mocked service and asserts the DTO body, the serialized nav absence and the preserved `Ok(null)` semantics; it cannot detect a service-side entity leak (the mock supplies the DTO) — that is what the golden/reflection tests cover.
+- **`DrawerResponseDtos_AreDeclaredInSalesModuleDtosNamespace`** is a low-value but discriminating structural pin (namespace + `sealed`).
+- **No tautology found**: no assertion verifies a mock the code under test never reaches, and no `Times.Never` guards an unreachable path. The 19 re-pointed test files are compile-time-discriminating only (they bind the new DTO types); their behavioral assertions are unchanged from the pre-S4b suite.
+- **Method caveat**: discrimination is established by inspection only; the verification brief forbids code writes, so no verifier-owned mutation was executed (the same limitation as S4a). Execution evidence: 8/8 passed with `Omitido: 0`.
+
+### S4b Scope Check
+
+- **No S5 creep**: the commit touches no `AuthController.cs`, no `MainWindow.xaml.cs`, no WPF view model, no `RegisterClosePage.jsx` and no `AsNoTracking`/guard/`CancellationToken` production work. `tasks.md` flips exactly the ten Phase 4b checkboxes and adds the S4a bookkeeping fold-in note; Phases 5a-5c remain unchecked.
+- **Deviation D1 (full `ICashDrawerService` surface change) — accepted.** The whole public interface was swapped, including the non-controller methods (`GetActiveSessionAsync`, `GetOrCreateActiveSessionAsync`, `RecordSaleChangeAsync`), not just the four controller-facing ones. This is what REQ-ADB-02 literally requires ("the public `ICashDrawerService` methods MUST return immutable DTOs") and registry item 19 names the full surface. Behavior-preserving: every internal production caller consumes only scalar members — `SalesService.Payments.cs:82,203`, `SalesService.HoldOrders.cs:82,219,228` and `SalesService.Checkout.cs:135,231,237` use `.Id`; `ExchangeRateWriteService.cs:111-113` uses `.OpeningExchangeRate` plus a null check. No entity-only member is read from the new DTOs.
+- **`S4b-R1` (registered, not fixed)**: `GetActiveSessionWithTransactionsAsync` still uses `Include(s => s.Transactions).ThenInclude(t => t.Sale)` with tracking and no `AsNoTracking`/`AsSplitQuery` (`CashDrawerService.cs:38-41`); AD-16 defers the read tuning to S5b, exactly as registered in `apply-progress.md`. S4b did not alter the query shape.
+- **Size signal (`SIZE-S4b`)**: 30 files changed, **1053 changed lines (887 inserted / 166 deleted)** — above the 400-line review budget declared in the session preflight. Excluding the documentation-only lines (`docs/reporte.txt` 146, `apply-progress.md` 108, `tasks.md` 22) and the 423-line new golden test file, the authored change is ~354 lines: production ~288 (`CashDrawerController.cs` 103, `CashDrawerService.cs` 101, `CashDrawerDtos.cs` 19 deleted, `ICashDrawerService.cs` 21, two new DTOs 40, `RegisterPage.jsx` 4) and ~66 lines of mechanical re-pointing across 19 test files. The budget exceedance is driven by the new test file and the docs, not by the production surface.
+- **S4a bookkeeping fold-in executed**: the commit adds the S4a corrections note to `tasks.md` (`S4a bookkeeping corrections (fold-in during S4b)`) covering `RESIDUAL-S4a-02`/`RESIDUAL-S4a-03`. The commit subject still carries the mislabeled `(slice S4a, items 3/15/19/20)` for `829778c` — commit subjects are immutable without a git write (forbidden here), so that record stands as `RESIDUAL-S4a-02`.
+
+### S4b Changed Files
+
+The twenty-six S4b production/test files below — every commit file except the three documentation files and the deleted `Backend.API/DTOs/CashDrawerDtos.cs` — in this order, are the input to the head envelope's `evidence_revision`.
+
+| File | Action | Role in S4b |
+|------|--------|-------------|
+| `Backend.API/Controllers/CashDrawerController.cs` | Modified | All drawer actions return DTOs; `MapLocalTimesAsync`/`MapLocalTime` build DTOs with `with` instead of mutating entities |
+| `CommandCenter.Tests/CashAdvanceTests.cs` | Modified | `GetOrCreateActiveSessionAsync` mock re-pointed |
+| `CommandCenter.Tests/CheckoutAndPaymentTests.cs` | Modified | Mock re-pointed |
+| `CommandCenter.Tests/FinancialRobustnessTests.cs` | Modified | 6 mock sites re-pointed |
+| `CommandCenter.Tests/HoldOrderClaimTests.cs` | Modified | Mock re-pointed |
+| `CommandCenter.Tests/HoldSalePaymentRemediationTests.cs` | Modified | Mock re-pointed |
+| `CommandCenter.Tests/Integration/CashAdvanceEnvelopeTests.cs` | Modified | Mock re-pointed |
+| `CommandCenter.Tests/OnHoldSalesTests.cs` | Modified | 4 mock sites re-pointed |
+| `CommandCenter.Tests/PendingPickupTests.cs` | Modified | Mock re-pointed |
+| `CommandCenter.Tests/Sprint1PerformanceOptimizationTests.cs` | Modified | Mock re-pointed |
+| `CommandCenter.Tests/Sprint2PerformanceOptimizationTests.cs` | Modified | Mock re-pointed |
+| `CommandCenter.Tests/Unit/BsPriceCeilingStandardTests.cs` | Modified | Mock re-pointed |
+| `CommandCenter.Tests/Unit/CashAdvanceCoordinatorTests.cs` | Modified | 2 mock sites re-pointed |
+| `CommandCenter.Tests/Unit/CashDrawerServiceUnitTests.cs` | Modified | `GetHistoryAsync` assertion re-pointed to `item.InvoiceNumber` (no `item.Sale`) |
+| `CommandCenter.Tests/Unit/CloseShiftResolverClassificationTests.cs` | Modified | `GetActiveSessionAsync` mock re-pointed |
+| `CommandCenter.Tests/Unit/DrawerDtoBoundaryTests.cs` | Created | The eight S4b tests: golden JSON, history projection, init-only reflection, namespace/seal, cash-advance DTOs, no-entity signatures, action body types, controller GET semantics |
+| `CommandCenter.Tests/Unit/ErrorContractTests.cs` | Modified | `GetActiveSessionAsync` mock re-pointed |
+| `CommandCenter.Tests/Unit/ExchangeRateReferenceBoundaryTests.cs` | Modified | `AddTransactionAsync` mock re-pointed |
+| `CommandCenter.Tests/Unit/Phase4SharedTransactionAndIdempotencyTests.cs` | Modified | Mock re-pointed |
+| `CommandCenter.Tests/Unit/SalesServiceUnitTests.cs` | Modified | Mock re-pointed |
+| `CommandCenter.Tests/Unit/SecurityTests.cs` | Modified | Mock re-pointed |
+| `Sales.Module/DTOs/CashDrawerSessionResponseDto.cs` | Created | 10 init-only session scalars + `Transactions`; `sealed record` (AD-14) |
+| `Sales.Module/DTOs/CashTransactionResponseDto.cs` | Created | 15 init-only members incl. the flattened `InvoiceNumber`; the union of the moved API DTO fields and the entity scalars (AD-14) |
+| `Sales.Module/Interfaces/ICashDrawerService.cs` | Modified | DTO return types on every public method; `CashAdvanceResultDto` transaction members are DTOs |
+| `Sales.Module/Services/CashDrawerService.cs` | Modified | `MapSession`/`MapTransaction`; private `LoadActiveSessionEntityAsync`; `GetHistoryAsync` projects DTOs without entity materialization |
+| `Web.Frontend/src/pages/RegisterPage.jsx` | Modified | `tx.sale?.invoiceNumber \|\| tx.invoiceNumber` -> `tx.invoiceNumber` (AD-15) |
+
+Plus the documentation files `docs/reporte.txt` (ANEXO 8.140), `apply-progress.md` (S4b section + S4a corrections) and `tasks.md` (Phase 4b checkboxes + fold-in note), which are **not** part of `evidence_revision`, and the deleted `Backend.API/DTOs/CashDrawerDtos.cs` (excluded: a deleted file has no current bytes to hash).
+
+### S4b Residual Warnings (non-blocking for S4b)
+
+- **RESIDUAL-S4b-01 (parity evidence level)** — the "before" body is a re-serialization of the legacy entity graph under the production JSON options (`DrawerDtoBoundaryTests.cs:118-124`), not a captured pre-S4b HTTP response, and no test drives the MVC pipeline for the drawer endpoints (the controller test mocks `ICashDrawerService`). The golden-literal `Assert.Equal` and the member-by-member comparison are still strict; the gap is at the pipeline level. Same class as `RESIDUAL-S4a-01`.
+- **RESIDUAL-S4b-02 (checkbox vs. changed file)** — task 4b.8 ("Modify WPF client services/views to bind to DTO field names") is checked but **no WPF file is in the commit**: the WPF `CashTransactionDto`/`CashDrawerSessionDto` already declare the DTO JSON names and ignore the additive members, so there was nothing to change (deviation D2). The box over-reports the changed-file set; the behavioral requirement (REQ-ADB-04 field parity) holds. Same class as `RESIDUAL-S4a-03`.
+- **RESIDUAL-S4b-03 (weak assertions)** — in `GetHistoryAsync_ReturnsProjectedDtos_WithoutMaterializingEntityInstances`, the `GetType()` assertion restates the compile-time element type and the `ChangeTracker` assertion would also pass for the old `AsNoTracking` entity materialization; discrimination rests on `item.InvoiceNumber` (a DTO-only member), the filtered single-item assertion and source inspection of the projection (see the Discrimination Review).
+- **RESIDUAL-S4b-04 (out-of-scope Web bug found during the consumer search)** — `RegisterPage.jsx:122` filters the "advance" source with `tx.source !== 4`, but `CashAdvance = 2` and `Closing = 4` (`CashTransaction.cs:13`), so the "Adelanto" filter matches closing transactions and excludes cash advances. Pre-existing (the line is untouched by `65e038a`, whose RegisterPage diff is lines 353-357) and outside S4b; recorded for the S5c triage or a follow-up.
+- **Carried and untouched**: `WARNING-04` (hardcoded `"Balanced"` status and mixed units in the merged undeclared-method lines), `WARNING-07`/`S3-06`/`S4a-R2` (645-line `DailyClosureService.cs`), `S3-07`/`S4a-R1` (legacy entity-returning closure entry point) and `S4b-R1` (drawer read tuning deferred to S5b/AD-16). S4b neither fixes nor worsens them.
+
+### S4b Verdict
+
+**PASS_WITH_WARNINGS** — the drawer DTO boundary is genuinely established at `65e038a`. Both new DTOs are `sealed record`s with no mutable setter; `ICashDrawerService` and `CashDrawerController` expose no `Sales.Module.Entities` class type (only the three value-type enums); the service projects history through a single LINQ `Select` instead of materializing entities; and the golden-JSON test pins the response body byte-for-byte while proving that every client-bound member survives, that `sale.invoiceNumber` moves to a top-level `invoiceNumber` with the same value, and that the `sale`/`session`/`paymentMethod` navigations disappear with no client binding them. Every claim was re-executed: build 0/0, backend suite 1193/1193, the `Dto` filter 79/79, the new class 8/8, frontend 271/271 with clean lint, and the coverage gate reproduces the claim exactly. No S5 creep and no tautological test were found. The residuals are non-blocking and explicitly recorded: `RESIDUAL-S4b-01` (serializer-level parity evidence), `RESIDUAL-S4b-02` (task 4b.8 over-checked), `RESIDUAL-S4b-03` (weak assertion components), `RESIDUAL-S4b-04` (out-of-scope pre-existing Web filter), `S4b-R1` and `SIZE-S4b`. S4b may be chained into S5a.
+
 ### Change-Level Verdict
 
-**Pending**. The change cannot receive a change-level verdict while S4b-S5c are unimplemented. S1, S2, S3 and S4a are each verified `pass_with_warnings`. Implemented requirement/scenario surface: S1 (3 requirements / 8 scenarios), S2 (4/9), S3 (4/8) and S4a's closure half of `api-dto-boundary` (REQ-ADB-01 complete plus the closure half of REQ-ADB-04; 4/7 scenarios), i.e. **12 of the 18 requirements and 29 of the 38 scenarios** across the five delta specs. Pending: the drawer half of `api-dto-boundary` (REQ-ADB-02, REQ-ADB-03 and the drawer DTOs of REQ-ADB-04; 3 requirements / 3 scenarios) in S4b, and the whole of `async-cancellation-propagation` (3 requirements / 6 scenarios) in S5a/S5c. `WARNING-04` (hardcoded `"Balanced"` status and mixed units in the merged undeclared-method lines) and `WARNING-07`/`S3-06` (class size, now 645 lines) remain open and escalate to S4b/S5, alongside the registered `S3-07` and the new `S4a-R1`. S1 RESIDUAL-07 is **CLOSED** by S2/AD-9. S4a is now cleared to chain into S4b.
+**Pending**. The change cannot receive a change-level verdict while S5a-S5c are unimplemented. S1, S2, S3, S4a and S4b are each verified `pass_with_warnings`. Implemented requirement/scenario surface: S1 (3 requirements / 8 scenarios), S2 (4/9), S3 (4/8) and the whole `api-dto-boundary` spec (4 requirements / 7 scenarios — closure half at S4a, drawer half at S4b), i.e. **15 of the 18 requirements and 32 of the 38 scenarios** across the five delta specs. Pending: the whole of `async-cancellation-propagation` (3 requirements / 6 scenarios) in S5a/S5c. `WARNING-04` (hardcoded `"Balanced"` status and mixed units in the merged undeclared-method lines) and `WARNING-07`/`S3-06` (class size, 645 lines at S4a) remain open and escalate to S5, alongside the registered `S3-07`, `S4a-R1` and the new `S4b-R1`. S1 RESIDUAL-07 is **CLOSED** by S2/AD-9. S4b is now cleared to chain into S5a.
 
 ### Verdict
 

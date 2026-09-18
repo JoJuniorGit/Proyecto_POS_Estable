@@ -60,7 +60,7 @@ public class FinancialRobustnessTests
 
         mockCashDrawer
             .Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1, Status = CashDrawerStatus.Open });
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
         return (service, mockMediator, mockCashDrawer);
@@ -513,7 +513,7 @@ public class FinancialRobustnessTests
         mockInventory.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(50m);
         mockCashDrawer
             .Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1, Status = CashDrawerStatus.Open });
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
@@ -558,7 +558,7 @@ public class FinancialRobustnessTests
         mockInventory.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(50m);
         mockCashDrawer
             .Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1, Status = CashDrawerStatus.Open });
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
@@ -599,7 +599,7 @@ public class FinancialRobustnessTests
         mockInventory.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(50m);
         mockCashDrawer
             .Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1, Status = CashDrawerStatus.Open });
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
@@ -644,7 +644,7 @@ public class FinancialRobustnessTests
         mockInventory.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(0m);
         mockCashDrawer
             .Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1, Status = CashDrawerStatus.Open });
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
@@ -689,7 +689,7 @@ public class FinancialRobustnessTests
         mockInventory.Setup(i => i.GetTodayExchangeRateAsync()).ThrowsAsync(new HttpRequestException("BCV no disponible"));
         mockCashDrawer
             .Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1, Status = CashDrawerStatus.Open });
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
