@@ -36,6 +36,8 @@ public interface IDailyClosureService
     Task<DailyClosure> CreateClosureAsync(DailyClosure closure);
     Task<CloseShiftResult> CreateClosureFromCommandAsync(CreateClosureCommand command, CancellationToken cancellationToken);
     Task<DailyClosure?> GetClosureAsync(int id);
+    Task<DailyClosure?> GetLatestClosureAsync(CancellationToken cancellationToken = default);
+    Task<string?> GetCashierDisplayNameAsync(int userId, CancellationToken cancellationToken = default);
 
     // 8.7-B5: los comprobantes se escriben DESPUÉS del commit de la transacción Serializable,
     // nunca dentro de ella (evita I/O de disco bloqueando aislamiento Serializable).

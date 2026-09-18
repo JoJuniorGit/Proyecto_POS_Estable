@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using CommandCenter.Tests.TestHelpers;
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
@@ -25,7 +26,7 @@ public class DailyClosureServiceWindowTests
 
     private DailyClosureService CreateService(SalesDbContext context)
     {
-        return new DailyClosureService(context);
+        return DailyClosureTestHelper.CreateService(context);
     }
 
     private static DateTime ToUtc(DateOnly date, TimeOnly time)

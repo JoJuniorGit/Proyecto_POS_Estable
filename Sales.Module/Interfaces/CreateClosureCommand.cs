@@ -9,5 +9,4 @@ public sealed record CreateClosureCommand(
     DateTime ClosureDateUtc,
     string? UserId,
     string? Observation,
-    decimal ExchangeRate,
     IReadOnlyList<DeclaredPaymentAmount> Declarations);

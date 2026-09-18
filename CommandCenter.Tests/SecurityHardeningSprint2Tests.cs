@@ -8,6 +8,7 @@ using Backend.API.Controllers;
 using Backend.API.DTOs;
 using Backend.API.Middleware;
 using CommandCenter.Tests.Builders;
+using CommandCenter.Tests.TestHelpers;
 using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
@@ -129,7 +130,7 @@ public class SecurityHardeningSprint2Tests
     public async Task DailyClosureService_ThrowsOnNegativeActualAmount()
     {
         using var db = GetInMemorySalesDbContext();
-        var service = new DailyClosureService(db);
+        var service = new DailyClosureService(db, Mock.Of<Core.Interfaces.ITodayExchangeRateProvider>(), Mock.Of<Sales.Module.Interfaces.ICashDrawerService>());
 
         var method = new PaymentMethod { Id = 1, Name = "Efectivo", IsActive = true };
         db.PaymentMethods.Add(method);
@@ -175,27 +176,15 @@ public class SecurityHardeningSprint2Tests
     [Fact]
     public async Task DailyClosureController_UnknownPaymentMethodId_ReturnsBadRequestWithoutCreatingClosure()
     {
-        using var salesDb = TestDatabaseFactory.CreateSalesDbContext();
-        using var inventoryDb = GetInMemoryInventoryDbContext();
         var mockClosure = new Mock<IDailyClosureService>();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.UserId).Returns("1");
-        mockCashDrawer.Setup(c => c.GetActiveSessionAsync())
-            .ReturnsAsync(new CashDrawerSession { OpeningExchangeRate = 50m });
-        mockClosure.Setup(c => c.GetExpectedTotalsByPaymentMethodAsync(It.IsAny<DateTime>()))
-            .ReturnsAsync(new List<ExpectedTotalDto>
-            {
-                new ExpectedTotalDto { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 1000m }
-            });
+
+        mockClosure.Setup(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ArgumentException("El desglose contiene métodos de pago no reconocidos: 999."));
 
         var controller = new DailyClosureController(
             mockClosure.Object,
-            mockCashDrawer.Object,
-            inventoryDb,
-            mockSettings.Object,
-            salesDb,
             mockUser.Object);
 
         controller.ControllerContext = new ControllerContext
@@ -219,42 +208,39 @@ public class SecurityHardeningSprint2Tests
             }
         };
 
-        var result = await controller.CreateClosure(request);
+        var result = await controller.CreateClosure(request, CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(result);
-        mockClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Times.Never);
-        mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+        mockClosure.Verify(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task ShiftsController_UnknownDeclaredPaymentMethodId_ReturnsBadRequestWithoutCreatingClosure()
     {
         using var salesDb = TestDatabaseFactory.CreateSalesDbContext();
-        using var inventoryDb = GetInMemoryInventoryDbContext();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockDailyClosure = new Mock<IDailyClosureService>();
-        var mockPaymentMethod = new Mock<IPaymentMethodService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
+        if (!await salesDb.PaymentMethods.AnyAsync(p => p.Id == 1))
+        {
+            salesDb.PaymentMethods.Add(new PaymentMethod
+            {
+                Id = 1,
+                Name = "Efectivo USD",
+                IsCash = true,
+                IsActive = true,
+                IsDeleted = false,
+                DisplayOrder = 1
+            });
+            await salesDb.SaveChangesAsync();
+        }
+
+        var (rateProvider, cashDrawer) = DailyClosureTestHelper.CreateMocks();
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.UserId).Returns("1");
-        mockCashDrawer.Setup(c => c.GetActiveSessionAsync())
-            .ReturnsAsync(new CashDrawerSession { OpeningExchangeRate = 50m });
-        mockDailyClosure.Setup(c => c.GetExpectedTotalsByPaymentMethodAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ExpectedTotalDto>
-            {
-                new ExpectedTotalDto { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 1000m }
-            });
-        mockDailyClosure
-            .Setup(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new ArgumentException("El desglose contiene métodos de pago no reconocidos: 999."));
+
+        var closureService = DailyClosureTestHelper.CreateService(salesDb, rateProvider, cashDrawer);
 
         var controller = new ShiftsController(
-            mockCashDrawer.Object,
-            mockDailyClosure.Object,
-            mockPaymentMethod.Object,
-            mockSettings.Object,
-            inventoryDb,
-            salesDb,
+            closureService,
             mockUser.Object);
 
         controller.ControllerContext = new ControllerContext
@@ -284,7 +270,8 @@ public class SecurityHardeningSprint2Tests
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
         var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
         Assert.Equal(400, problemDetails.Status);
-        mockDailyClosure.Verify(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()), Times.Once);
-        mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
+        Assert.Contains("999", problemDetails.Detail);
+        Assert.Empty(await salesDb.DailyClosures.AsNoTracking().ToListAsync());
+        cashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
     }
 }

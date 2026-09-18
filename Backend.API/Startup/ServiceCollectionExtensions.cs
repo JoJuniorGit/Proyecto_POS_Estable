@@ -56,6 +56,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodNotifier, Backend.API.Services.SignalRPaymentMethodNotifier>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IHoldOrderNotifier, Backend.API.Services.SignalRHoldOrderNotifier>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IDailyClosureService, Sales.Module.Services.DailyClosureService>();
+        builder.Services.AddScoped<Core.Interfaces.ITodayExchangeRateProvider, Backend.API.Services.TodayExchangeRateProvider>();
         // 8.14-W4: TTL de IdempotentRequests configurable (appsettings "Idempotency:TtlHours";
         // default 24 h). Permite retención forense de reintentos sin cambios de código.
         var idempotencyTtlHours = builder.Configuration.GetValue<double?>("Idempotency:TtlHours") ?? 24.0;

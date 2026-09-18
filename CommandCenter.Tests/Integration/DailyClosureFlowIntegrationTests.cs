@@ -19,7 +19,7 @@ public class DailyClosureFlowIntegrationTests
         // 1. Setup Context & Service
         var context = TestDatabaseFactory.CreateSalesDbContext();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
-        var closureService = new DailyClosureService(context);
+        var closureService = CommandCenter.Tests.TestHelpers.DailyClosureTestHelper.CreateService(context);
 
         var baseTime = DateTime.UtcNow.Date.AddHours(9); // 9:00 AM
 

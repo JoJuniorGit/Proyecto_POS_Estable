@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Builders;
+using CommandCenter.Tests.TestHelpers;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
 using Sales.Module.Entities;
@@ -16,7 +17,7 @@ public class DailyClosureServiceUnitTests
     private (DailyClosureService service, SalesDbContext context) CreateService()
     {
         var context = TestDatabaseFactory.CreateSalesDbContext();
-        var service = new DailyClosureService(context);
+        var service = DailyClosureTestHelper.CreateService(context);
         return (service, context);
     }
 

@@ -80,12 +80,7 @@ public class PaymentMethodCurrencyClassificationTests
         closureService.Setup(s => s.GetClosureAsync(1)).ReturnsAsync(closure);
 
         var controller = new ShiftsController(
-            new Mock<ICashDrawerService>().Object,
             closureService.Object,
-            new Mock<IPaymentMethodService>().Object,
-            new Mock<ISystemSettingsService>().Object,
-            inventoryCtx,
-            salesCtx,
             new Mock<ICurrentUserService>().Object);
 
         controller.ControllerContext = new ControllerContext
@@ -156,12 +151,7 @@ public class PaymentMethodCurrencyClassificationTests
         closureService.Setup(s => s.GetClosureAsync(42)).ReturnsAsync(closure);
 
         var controller = new ShiftsController(
-            new Mock<ICashDrawerService>().Object,
             closureService.Object,
-            new Mock<IPaymentMethodService>().Object,
-            new Mock<ISystemSettingsService>().Object,
-            inventoryCtx,
-            salesCtx,
             new Mock<ICurrentUserService>().Object);
 
         controller.ControllerContext = new ControllerContext

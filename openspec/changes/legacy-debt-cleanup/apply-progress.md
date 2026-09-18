@@ -266,3 +266,199 @@ The Guardian Angel code review hook flagged several findings in touched files. A
 | Focused test command | `dotnet test --filter "FullyQualifiedName~ErrorContract"`: 21 passed, 0 failed |
 | Runtime harness | `N/A` — all error contract tests verify response shape against controller unit tests; no runtime I/O boundary |
 | Rollback boundary | `IDailyClosureService.cs`, `DailyClosureService.cs`, `DailyClosureController.cs`, `ShiftsController.cs`, `ApiProblemResults.cs`, `ErrorContractTests.cs` |
+
+---
+
+## Slice S3: Closure Orchestration Consolidation
+
+### Completed Tasks
+
+- [x] 3.1 **RED**: Added delegation test `CreateClosure_DelegatesToService_AndPersistsNothingDirectly` in `DailyClosureControllerTests.cs` — verifies controller calls `CreateClosureFromCommandAsync` with correct command and returns result
+- [x] 3.2 `Core/Interfaces/ITodayExchangeRateProvider.cs` — created (AD-6)
+- [x] 3.3 `Backend.API/Services/TodayExchangeRateProvider.cs` — created, delegates to `ExchangeRateResolver.ReadEffectiveTodayRateAsync` (AD-6)
+- [x] 3.4 `DailyClosureService.cs` — refactored: `CreateClosureFromCommandAsync` owns strategy + rate via `ITodayExchangeRateProvider` + assembly + persistence + rollover + receipt writing (AD-5/6). Extracted `ValidateDeclaredMethods`, `MergeMissingMethodsIntoClosure`, `MergeMissingMethodsWithReport`, `RecalculateTotals`, `PersistClosureCoreAsync`, `ResolveUserDetailsAsync` (AD-8). **CORRECTION (`lcs-s3-remediation`)**: this entry originally claimed "Serializable tx". Commit `200cdaa` opened **no transaction at all** — the independent recount found the claim false (`CRITICAL-S3-01`). The `Serializable` transaction was implemented in the S3 remediation; see the "S3 Remediation" section.
+- [x] 3.5 `DailyClosureController.cs` — removed `InventoryDbContext`, `SalesDbContext`, `ICashDrawerService`, `ISystemSettingsService` from constructor; removed `GetTodayExchangeRateAsync`; removed transaction, persistence, rollover; delegates to `IDailyClosureService.CreateClosureFromCommandAsync` (AD-5/7). `ResolveClosureDate` extracted as static helper (AD-7: RBAC/backdating stays in controller)
+- [x] 3.6 `ShiftsController.cs` — removed 6 constructor dependencies; removed `GetTodayExchangeRateAsync`; delegates closure to `_dailyClosureService.CreateClosureFromCommandAsync`; uses `_dailyClosureService.GetLatestClosureAsync` and `GetCashierDisplayNameAsync` (AD-5)
+- [x] 3.7 `ServiceCollectionExtensions.cs` — `ITodayExchangeRateProvider` → `TodayExchangeRateProvider` registered (line 59)
+- [x] 3.8 Re-pointed test files: `DailyClosureControllerTests`, `Phase7ClosureWithoutRateTests`, `ResidualRemediationLote26Tests`, `SecurityHardeningSprint2Tests`, `CloseShiftResolverClassificationTests`, `ErrorContractTests`, `Phase2IntegrityRemediationTests`, `CashDrawerClosureTests`, `CheckoutAndPaymentTests`, `DailyClosureFlowIntegrationTests`, `DailyClosureRetryIntegrationTests`, `DailyClosureServiceUnitTests`, `DailyClosureServiceWindowTests`, `Phase2FinancialAndIntegrityTests`, `PaymentMethodCurrencyClassificationTests` — all updated to new constructor signatures
+- [x] 3.9 **GREEN**: Behavior-preservation verified: existing real-path tests (`CloseShiftResolverClassificationTests` with InMemory DB) confirm same inputs → identical persisted amounts/status/response; preview 400 preserved via `GetExpectedTotals_WhenDefaultDate_Returns400ProblemDetails`
+- [x] 3.10 **GREEN**: Added 4 structural tests in `DailyClosureControllerTests.cs`: `DailyClosureController_HasNoDbContextInConstructor`, `ShiftsController_HasNoDbContextInConstructor`, `DailyClosureController_HasNoDbContextFields`, `ShiftsController_HasNoDbContextFields` (REQ-COC-02)
+- [x] 3.11 McCabe evidence (REQ-COC-03) — **CORRECTED in `lcs-s3-remediation`**: the original table was internally inconsistent (omitted two decisions in `CreateClosure` and over-counted `CreateClosureFromCommandAsync`). See the corrected recount with its stated convention in the S3 Remediation section.
+
+### Fold-ins from S2
+
+- **S2-01 (discriminating non-blocking-retry test)**: Already addressed in S2 remediation. `WriteClosedClosureReceipts_RetryLogsOnFailure` verifies retry on permanent failure (ACL Deny Write) — the retry fires but the operation completes without throwing (fail-open). Infeasible to write a truly discriminating transient-vs-permanent test without filesystem mocking; the existing test is the best achievable coverage.
+- **S2-07 (bookkeeping numbers)**: Corrected in S2 remediation — ShiftsController had 4 anonymous error objects (not 5); DailyClosureService.cs is 505→578 lines post-S3 (not 537).
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `Core/Interfaces/ITodayExchangeRateProvider.cs` | Created | AD-6: interface for today's effective rate resolution |
+| `Backend.API/Services/TodayExchangeRateProvider.cs` | Created | AD-6: delegates to `ExchangeRateResolver.ReadEffectiveTodayRateAsync` |
+| `CommandCenter.Tests/TestHelpers/DailyClosureTestHelper.cs` | Created | Test helper: creates `DailyClosureService` with mocked `ITodayExchangeRateProvider` |
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | AD-5/6/8: `CreateClosureFromCommandAsync` owns full orchestration; extracted 6 methods; injected `ITodayExchangeRateProvider` + `ICashDrawerService` |
+| `Sales.Module/Interfaces/IDailyClosureService.cs` | Modified | Added `GetLatestClosureAsync`, `GetCashierDisplayNameAsync` |
+| `Sales.Module/Interfaces/CreateClosureCommand.cs` | Modified | Removed `ExchangeRate` parameter (now resolved by service via provider) |
+| `Backend.API/Controllers/DailyClosureController.cs` | Modified | AD-5/7: removed DbContext, transaction, persistence; delegates to service |
+| `Backend.API/Controllers/ShiftsController.cs` | Modified | AD-5: removed 6 dependencies; delegates closure to service |
+| `Backend.API/Startup/ServiceCollectionExtensions.cs` | Modified | Registered `ITodayExchangeRateProvider` |
+| `CommandCenter.Tests/Unit/DailyClosureControllerTests.cs` | Modified | Added delegation test (3.1), 4 structural tests (3.10) |
+| `CommandCenter.Tests/Unit/Phase7ClosureWithoutRateTests.cs` | Modified | Re-pointed to new service interface (3.8) |
+| `CommandCenter.Tests/SecurityHardeningSprint2Tests.cs` | Modified | Re-pointed unknown-method test to new service interface (3.8) |
+| 13 additional test files | Modified | Re-pointed to `DailyClosureTestHelper` or new constructor signatures |
+
+### McCabe Evidence (REQ-COC-03)
+
+> **SUPERSEDED** by the recount in the "S3 Remediation (`lcs-s3-remediation`)" section. The original table below was defective: it omitted the two short-circuit `||` operators of the details guard and the two `??` operators of `ResolveUserId` from `CreateClosure`, and it double-counted `if(TryParse)`/`if(user!=null)` (statements of `ResolveUserDetailsAsync`) inside `CreateClosureFromCommandAsync`. Retained only as an audit trail.
+
+| Method | McCabe | Decision Points |
+|--------|--------|-----------------|
+| `DailyClosureController.CreateClosure` | 7 | `if(Driver)`, `if(request==null\|\|...)`, `if(duplicated)`, `ternary(authenticatedUserId)`, `catch(InvalidOperationException)`, `catch(ArgumentException)` |
+| `DailyClosureController.ResolveClosureDate` | 6 | `if(default)`, `ternary(Unspecified)`, `if(!isAdmin)`, `if(future)`, `if(>24h)` |
+| `DailyClosureService.CreateClosureFromCommandAsync` | 9 | `if(exchangeRate<=0)`, `foreach`, 2×`ternary(currency)`, 2×`ternary(status)`, `if(TryParse)`, `if(user!=null)`, `if(CurrentTransaction)` |
+| `DailyClosureService.ValidateDeclaredMethods` | 2 | `if(count>0)` |
+| `DailyClosureService.MergeMissingMethodsIntoClosure` | 5 | `foreach`, `if(!Contains)`, `&&`, `ternary(cash)` |
+| `DailyClosureService.MergeMissingMethodsWithReport` | 7 | `foreach`, `if(!Contains)`, `&&`, `ternary(cash)`, 2×`ternary(Usd)` |
+| `DailyClosureService.RecalculateTotals` | 3 | `foreach`, `if(<0)` |
+| `DailyClosureService.ResolveUserDetailsAsync` | 3 | `if(TryParse)`, `if(user!=null)` |
+
+### Verification Results (S3)
+
+- `dotnet build CommandCenter.slnx -c Release`: **0 errors, 0 warnings**
+- `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: **1175 passed, 0 failed**
+- `dotnet test --filter "FullyQualifiedName~Closure|FullyQualifiedName~DailyClosure"`: **77 passed, 0 failed**
+- `dotnet test --filter "FullyQualifiedName~DailyClosureControllerTests"`: **7 passed, 0 failed**
+
+### Work Unit Evidence (S3)
+
+| Evidence | Value |
+|----------|-------|
+| Focused test command | `dotnet test --filter "FullyQualifiedName~Closure|FullyQualifiedName~DailyClosure"`: 77 passed, 0 failed |
+| Runtime harness | `N/A` — all orchestration tests verify delegation and behavior via controller unit tests with mocked service; real-path tests use InMemory DB (no runtime I/O boundary) |
+| Rollback boundary | `DailyClosureService.cs`, `DailyClosureController.cs`, `ShiftsController.cs`, `IDailyClosureService.cs`, `CreateClosureCommand.cs`, `ITodayExchangeRateProvider.cs`, `TodayExchangeRateProvider.cs`, `ServiceCollectionExtensions.cs`, `DailyClosureTestHelper.cs`, test files |
+
+### GGA Hook Exceptions
+
+- **S3-introduced issues**: None. All tests pass.
+- **Pre-existing out-of-slice findings**: None new in this slice.
+
+### Deviations from Design
+
+- `ResolveClosureDate` is a static helper in the controller (not extracted to service) per AD-7: RBAC/backdating stays in controller.
+- `CreateClosureCommand.ExchangeRate` parameter removed (S1 remediation WARNING-03 was reverted in S3 — rate now resolved by service via `ITodayExchangeRateProvider`).
+- `ExecuteClosureCoreAsync` remains in the service as the legacy entry point for `CreateClosureAsync(DailyClosure)` — not deleted to avoid breaking existing callers.
+
+---
+
+## S3 Remediation (lcs-s3-remediation)
+
+### Corrections Applied
+
+**CRITICAL-S3-01 (blocker) — no `Serializable` transaction around the closure run (fixed)**
+- `Sales.Module/Services/DailyClosureService.cs`: `CreateClosureFromCommandAsync` now opens an explicit `BeginTransactionAsync(IsolationLevel.Serializable)` that wraps **totals read → assembly → persist → rollover**, with `CommitAsync` after the rollover and `RollbackAsync` on any failure.
+  - New `OpenSerializableTransactionAsync` returns `null` (no transaction) when an ambient transaction already exists (caller owns it) or when the provider is EF InMemory (the store does not support `BeginTransaction`), so the InMemory-based real-path tests keep working.
+  - The existing `CreateExecutionStrategy()` wrapper is preserved around the transactional delegate.
+  - Receipt writing stays **after** the commit.
+- New `CommandCenter.Tests/Unit/DailyClosureTransactionTests.cs` — **discriminating** relational (SQLite) regression test, see evidence below.
+
+**S3-02 — `CreateClosure` McCabe genuinely < 10 (fixed)**
+- `Backend.API/Controllers/DailyClosureController.cs`: request validation collapsed into a single private helper `ValidateClosureRequest(CreateClosureRequest?)` returning the error message or `null`; `HasClosureDetails` and `GetDuplicatedMethodIds` removed. `CreateClosure` is now two decisions (Driver guard + validation result) → **McCabe 3**. Evidence table below uses the stated convention.
+
+**S3-03 — tautological assertions (fixed; WIP completed)**
+- `SecurityHardeningSprint2Tests.cs:275` and `ResidualRemediationLote26Tests.cs:296/:344`: the four vacuous `mockCashDrawer.Verify(..., Times.Never)` sites no longer apply — the tests now build a real `DailyClosureService` through `DailyClosureTestHelper` with an **injected** `cashDrawer`, and assert instead `Assert.Empty(await salesDb.DailyClosures.AsNoTracking().ToListAsync())` plus the (now reachable) rollover verification. The legacy-entry-point verification `mockClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Times.Never)` was deleted.
+
+**S3-04 — real `exchangeRate <= 0` guard (fixed; WIP completed)**
+- `CloseShiftResolverClassificationTests.cs:511` `CreateClosureFromCommandAsync_RealService_WhenEffectiveRateIsNotPositive_ThrowsBeforePersisting` drives the production service with `GetEffectiveTodayRateAsync → 0m`, asserts `InvalidOperationException` containing `"tasa BCV"`, no persisted closure, and no rollover.
+
+**S3-05 — `DbUpdateException` → 409 restored (fixed; WIP completed)**
+- `DailyClosureController.cs:98` and `ShiftsController.cs:97` reintroduce `catch (DbUpdateException) → this.ApiConflict(...)` (HTTP 409 `ProblemDetails`).
+- `DailyClosureControllerTests.cs`: `CreateClosure_WhenServiceThrowsDbUpdateException_Returns409ProblemDetails` and `CloseShift_WhenServiceThrowsDbUpdateException_Returns409ProblemDetails`.
+
+**Bookkeeping — false transaction claims corrected**
+- `apply-progress.md` task 3.4 and the ANEXO 8.140 `B3` claim originally stated that commit `200cdaa` opened a `Serializable` transaction; it did not. Both are annotated with the correction and point here.
+
+### McCabe Recount (REQ-COC-03) — convention stated
+
+**Convention**: count every branch-introducing construct (`if`, `foreach`, `catch`, `&&`, `||`, `??`, `?:`); `McCabe = points + 1`. This is the convention the verifier applied and the one used consistently below.
+
+| Method | Points → McCabe | Decision points | < 10? |
+|--------|-----------------|-----------------|-------|
+| `DailyClosureController.CreateClosure` | 2 → **3** | `if(Driver)`, `if(validationError is not null)` | yes |
+| `DailyClosureController.ValidateClosureRequest` | 3 → **4** | `if(null \|\| empty)` (1+1), `?:` (duplicate message) | yes |
+| `DailyClosureController.ExecuteCreateClosureAsync` | 3 → **4** | 3×`catch` | yes |
+| `DailyClosureController.ResolveUserId` | 3 → **4** | 2×`??`, `?:` | yes |
+| `DailyClosureController.ResolveClosureDate` | 5 → **6** | `if(default)`, `?:`, `if(!isAdmin)`, `if(future)`, `if(>24h)` | yes |
+| `DailyClosureService.CreateClosureFromCommandAsync` | 2 → **3** | `if(rate<=0)`, `if(CurrentTransaction)` | yes |
+| `DailyClosureService.OpenSerializableTransactionAsync` | 2 → **3** | `if(CurrentTransaction)`, `if(ProviderName)` | yes |
+| `DailyClosureService.ExecuteClosureCommandAsync` | 4 → **5** | `catch`, 3×`if(transaction is not null)` | yes |
+| `DailyClosureService.BuildDeclaredDetails` | 4 → **5** | `foreach`, 3×`?:` | yes |
+| `DailyClosureService.ResolveUserDetailsAsync` | 2 → **3** | `if(TryParse)`, `if(user!=null)` | yes |
+| `DailyClosureService.PersistClosureCoreAsync` | 0 → **1** | — | yes |
+| `DailyClosureService.ValidateDeclaredMethods` | 1 → **2** | `if(count>0)` | yes |
+| `DailyClosureService.MergeMissingMethodsIntoClosure` | 4 → **5** | `foreach`, `if(!Contains)`, `&&`, `?:` | yes |
+| `DailyClosureService.MergeMissingMethodsWithReport` | 6 → **7** | `foreach`, `if(!Contains)`, `&&`, 3×`?:` | yes |
+| `DailyClosureService.RecalculateTotals` | 2 → **3** | `foreach`, `if(<0)` | yes |
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | `OpenSerializableTransactionAsync` + `ExecuteClosureCommandAsync` wrap totals read → persist → rollover in `Serializable` with commit/rollback (CRITICAL-S3-01) |
+| `Backend.API/Controllers/DailyClosureController.cs` | Modified | `ValidateClosureRequest` extraction → `CreateClosure` McCabe 3 (S3-02); `DbUpdateException` → 409 (S3-05) |
+| `Backend.API/Controllers/ShiftsController.cs` | Modified | `DbUpdateException` → 409 (S3-05) |
+| `CommandCenter.Tests/Unit/DailyClosureTransactionTests.cs` | Created | 2 discriminating SQLite tests: transaction present + `Serializable` during rollover; rollback on rollover failure |
+| `CommandCenter.Tests/Unit/DailyClosureControllerTests.cs` | Modified | 2×409 tests (S3-05) |
+| `CommandCenter.Tests/Unit/CloseShiftResolverClassificationTests.cs` | Modified | real `exchangeRate <= 0` guard test (S3-04) |
+| `CommandCenter.Tests/SecurityHardeningSprint2Tests.cs` | Modified | real service + injected `cashDrawer`; non-tautological assertions (S3-03) |
+| `CommandCenter.Tests/Unit/ResidualRemediationLote26Tests.cs` | Modified | real service + injected `cashDrawer`; non-tautological assertions (S3-03) |
+
+### Verification Results (S3 remediation)
+
+- `dotnet build CommandCenter.slnx -c Release`: **0 errors, 0 warnings**
+- `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: **1180 passed, 0 failed**
+- `dotnet test --filter "FullyQualifiedName~Closure|FullyQualifiedName~DailyClosure"`: **82 passed, 0 failed**
+- `npm test` (Web.Frontend): **271 passed, 0 failed**
+- `npm run lint` (Web.Frontend): **clean** (exit 0)
+- Coverage gate (`scripts/check-coverage.py`): Core 0.8364 ≥ 0.70, Sales.Module **0.9006** ≥ 0.80, Inventory.Module 0.8251 ≥ 0.72 — all `[OK]`
+
+### Transaction-Test Evidence (discrimination proof)
+
+The new test is relational (SQLite) precisely because EF InMemory cannot `BeginTransaction`. It observes `context.Database.CurrentTransaction` **from inside** the rollover callback, i.e. at the exact point the transaction must be open:
+
+- Green (production as intended): **2/2 passed**.
+- Mutation (`OpenSerializableTransactionAsync` forced to `return null` for SQLite): both tests **fail** —
+  - `CreateClosureFromCommandAsync_RunsInsideSerializableTransaction`: `Assert.True(transactionPresentDuringRollover)` → `Expected: True, Actual: False` (line 82).
+  - `CreateClosureFromCommandAsync_WhenRolloverFails_RollsBackThePersistedClosure`: `Assert.Equal(0, persistedClosures)` → `Expected: 0, Actual: 1` (line 114). Without the transaction the closure row **survives** the rollover failure, which is exactly the cross-DB atomicity regression `CRITICAL-S3-01` described.
+- Mutation reverted; final run green.
+
+### Work Unit Evidence (S3 remediation)
+
+| Evidence | Value |
+|----------|-------|
+| Focused test command | `dotnet test --filter "FullyQualifiedName~Closure\|FullyQualifiedName~DailyClosure"`: 82 passed, 0 failed |
+| Runtime harness | SQLite relational `SalesDbContext` + real `DailyClosureService`: `BeginTransactionAsync(Serializable)` observed live during rollover; rollover failure rolls the persisted closure back (row count 1 → 0) |
+| Rollback boundary | `DailyClosureService.cs` (`OpenSerializableTransactionAsync`/`ExecuteClosureCommandAsync`), `DailyClosureController.cs`, `ShiftsController.cs`, `DailyClosureTransactionTests.cs`, the four re-pointed test files |
+
+### Registered for S4/S5 (NOT fixed in this remediation)
+
+- **S3-06** — `DailyClosureService.cs` measures **636 lines** (`(Get-Content).Count`; the S3 verify report's 586 was the count at the verified revision `200cdaa` — the transaction work added ~50). Over the 300-500 ceiling, `WARNING-07` enlarged. Pending S4/S5: partial-class split or extracted handler sub-service.
+- **S3-07** — `ExecuteClosureCoreAsync` (the legacy `CreateClosureAsync(DailyClosure)` entry point) carries a second, divergent copy of the closure rules and no transaction of its own; it has no production caller. Pending S4/S5: delete it with its test references, or reduce it to a private adapter delegating to the command path.
+
+### GGA Hook Exceptions (punctual `--no-verify`)
+
+`gga run` was executed on the staging set and returned `STATUS: FAILED`. Every finding is **pre-existing and assigned to a later slice**; none is introduced by this remediation. Committed with a documented punctual `--no-verify` per the exception protocol.
+
+| GGA finding | Location | Classification |
+|-------------|----------|----------------|
+| EF entity `DailyClosure` returned to the client (`Ok(closure)`) | `DailyClosureController.cs` `GetClosure` | Pre-existing; **REQ-ADB-01 → S4a** (`api-dto-boundary`) |
+| `DailyClosureService.cs` over the 300-500 line ceiling | `Sales.Module/Services/DailyClosureService.cs` | Pre-existing; **S3-06 / WARNING-07 → S4/S5** (registered above, explicitly not fixed here) |
+| Explanatory `// 8.7-B5:` marker | `DailyClosureService.cs` post-commit receipt write | Pre-existing (in `200cdaa`); AD-18/S5b.8 **keeps `8.x-*` traceability markers** |
+| Missing `CancellationToken` on async actions/service methods | `DailyClosureController` `GetExpectedTotals`/`GetClosure`; `ShiftsController` `GetCurrentReport`/`GetReportById`; `DailyClosureService` legacy methods | Pre-existing; **S5a** (`async-cancellation-propagation`) |
+| Missing `AsNoTracking()`/`AsSplitQuery()` on `Include(Details)` | `DailyClosureService.GetClosureAsync`/`GetLatestClosureAsync` | Pre-existing; **S5b** |
+| `if (closure == null) throw new ArgumentNullException(...)` not using `ThrowIfNull` | `DailyClosureService.WriteClosedClosureReceiptsAsync` | Pre-existing hygiene |
+| Explanatory comments in test code | `SecurityHardeningSprint2Tests.cs` | Pre-existing; test comments are standard practice (S1 GGA precedent) |
+
+No finding is in this remediation's scope (`tx Serializable`, McCabe, non-tautological asserts, rate guard, 409 mapping).
+
+
