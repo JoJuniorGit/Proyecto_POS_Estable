@@ -15,7 +15,7 @@ using System.Threading.Tasks;
 
 namespace Sales.Module.Services;
 
-public class DailyClosureService : IDailyClosureService
+public partial class DailyClosureService : IDailyClosureService
 {
     private const int UnattributedChangeMethodId = 0;
 
@@ -338,23 +338,12 @@ public class DailyClosureService : IDailyClosureService
                 DifferenceBsS = actualAmountBsS - expectedAmountBsS
             });
 
-            decimal systemAmount = currency == PaymentMethodCurrencyResolver.Usd
-                ? PricingCalculator.ToUSD(expectedAmountBsS, exchangeRate)
-                : expectedAmountBsS;
-            decimal declaredAmount = declared.Amount;
-            decimal diff = declaredAmount - systemAmount;
-            string status = Math.Abs(diff) < 0.05m
-                ? ClosureStatus.Balanced
-                : (diff > 0 ? ClosureStatus.Surplus : ClosureStatus.Shortage);
-
-            reportDetails.Add(new ShiftReportDetailResult(
+            reportDetails.Add(BuildReportDetail(
                 declared.PaymentMethodId,
                 expected.PaymentMethodName,
-                currency,
-                declaredAmount,
-                systemAmount,
-                diff,
-                status));
+                declared.Amount,
+                expectedAmountBsS,
+                exchangeRate));
         }
     }
 
@@ -455,19 +444,17 @@ public class DailyClosureService : IDailyClosureService
                     DifferenceBsS = actualAmount - exp.ExpectedAmountBsS
                 });
 
-                string expCurrency = PaymentMethodCurrencyResolver.Resolve(exp.PaymentMethodName);
-                reportDetails.Add(new ShiftReportDetailResult(
+                string currency = PaymentMethodCurrencyResolver.Resolve(exp.PaymentMethodName);
+                decimal declaredNative = currency == PaymentMethodCurrencyResolver.Usd
+                    ? PricingCalculator.ToUSD(actualAmount, exchangeRate)
+                    : actualAmount;
+
+                reportDetails.Add(BuildReportDetail(
                     exp.PaymentMethodId,
                     exp.PaymentMethodName,
-                    expCurrency,
-                    actualAmount,
-                    expCurrency == PaymentMethodCurrencyResolver.Usd
-                        ? PricingCalculator.ToUSD(exp.ExpectedAmountBsS, exchangeRate)
-                        : exp.ExpectedAmountBsS,
-                    actualAmount - (expCurrency == PaymentMethodCurrencyResolver.Usd
-                        ? PricingCalculator.ToUSD(exp.ExpectedAmountBsS, exchangeRate)
-                        : exp.ExpectedAmountBsS),
-                    ClosureStatus.Balanced));
+                    declaredNative,
+                    exp.ExpectedAmountBsS,
+                    exchangeRate));
             }
         }
     }

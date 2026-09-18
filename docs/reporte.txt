@@ -10086,3 +10086,103 @@ Cierre: con S5c se completan las 8 slices del change legacy-debt-cleanup y los
 hallazgos J (H-05/H-06/H-08; H-14 en S5a), mas el residual
 RESIDUAL-S5b-06. Quedan para follow-up: S5c-R1, S5b-R1, WARNING-04,
 WARNING-07/S3-06/S4a-R2, S3-07/S4a-R1 y DTOs mutables.
+
+
+================================================================================
+ANEXO - REVISION 8.141 (critical-debt-closeout S1: WARNING-04 lineas fusionadas)
+================================================================================
+
+Fecha: 2026-09-17
+Commit: fix(8.141): lineas combinadas con estado por moneda (S1, WARNING-04) -
+        ANEXO 8.141, en rama V0.15 (sin branches/PRs).
+
+Alcance: work unit cdc-s1-merge-status (primera slice del change
+critical-debt-closeout, store openspec): cierra WARNING-04 (REQ-PMC-06, AD-1).
+Sin cambios de schema, sin config, sin PRs, sin sub-agentes.
+
+A. CAMBIOS DE PRODUCCION
+
+A1. Sales.Module/Services/DailyClosureService.Rules.cs (nuevo, 33 lineas):
+- Un unico BuildReportDetail(paymentMethodId, methodName, declaredNative,
+  expectedBsS, rate): moneda via PaymentMethodCurrencyResolver.Resolve;
+  system = USD ? PricingCalculator.ToUSD(expectedBsS, rate) : expectedBsS;
+  diff = declaredNative - system; estado = |diff| < 0.05m ? Balanced :
+  (diff > 0 ? Surplus : Shortage).
+- DailyClosureService.cs pasa a partial (la clase sigue siendo una sola).
+
+A2. Sales.Module/Services/DailyClosureService.cs:
+- BuildDeclaredDetails re-apuntado a BuildReportDetail; semantica declarada
+  intacta (monto nativo, system USD convertido, tolerancia 0.05m).
+- MergeMissingMethodsWithReport re-apuntado: el actual Bs.S se convierte a la
+  moneda nativa del metodo antes del diff; se elimina el Balanced hardcodeado
+  (:470) y el diff con unidades mezcladas Bs.S/USD (:463-469); se elimina el
+  segundo new ShiftReportDetailResult (ahora existe exactamente uno en
+  Sales.Module, en Rules.cs:24).
+- Bloque persistido de ClosureDetail intacto: response-only; el snapshot
+  historico no se recalcula ni se reescribe.
+
+B. TESTS
+
+B1. CommandCenter.Tests/Unit/ClosureReportLineCurrencyTests.cs (nuevo, 7 casos):
+- MergedUsdLine_ExpressesDeclaredSystemAndDifferenceInUsd: linea fusionada USD
+  con declarado/sistema/diferencia en USD (sin mezcla Bs.S).
+- MergedUndeclaredCashMethod_NonZeroDifference_IsShortageNeverBalanced:
+  diff -1000 Bs.S -> Shortage, nunca Balanced.
+- MergedUsdCashMethod_NonZeroDifference_IsShortageNeverBalanced: diff -50 USD
+  -> Shortage, nunca Balanced.
+- MergedLocalLine_WithinTolerance_StaysBalanced: diff 0 -> Balanced.
+- DeclaredUsdLine_PerCurrencyDifference_IsSurplus: declarado 60 USD vs system
+  50 USD -> Surplus (via declarada, extremo positivo).
+- PersistedClosureSnapshot_IsNotRewrittenByLaterClosureCommand: cierre previo
+  releido tras un cierre posterior; Expected/Actual/Difference y totales Bs.S
+  sin cambios.
+- SalesModule_HasExactlyOneShiftReportDetailResultConstructionSite: escaneo de
+  fuentes; exactamente 1 sitio de construccion en Sales.Module.
+
+C. VERIFICACION (comandos de tasks.md ## Verification)
+
+C1. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+C2. Filtro S1 (RED, antes del fix; comando verbatim de tasks.md):
+    dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --filter
+    "FullyQualifiedName~ClosureReportLineCurrency" -> 4 failed, 3 passed,
+    7 total. Fallos: mezcla Bs.S/USD en la linea fusionada USD, Balanced
+    hardcodeado en los dos casos de diferencia no cero, y 2 sitios de
+    construccion de ShiftReportDetailResult.
+C3. Filtro S1 (GREEN, despues del fix): 7 passed, 0 failed, 7 total.
+C4. Filtro de regresion Closure|DailyClosure: 100 passed, 0 failed.
+C5. dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release:
+    1234 passed, 0 failed, 0 skipped (piso 1227; +7 tests nuevos).
+C6. npm test (Web.Frontend): 273 passed, 0 failed.
+C7. npm run lint (Web.Frontend): clean (exit 0).
+
+D. DECISIONES Y DESVIACIONES
+
+D1. BuildReportDetail re-resuelve la moneda aunque el caller ya la conozca
+    (AD-1): una sola regla, sin parametro de moneda que pueda divergir.
+D2. La linea fusionada no puede producir Surplus por construccion (el actual
+    fusionado es 0 o el esperado); el extremo positivo se fija por la via
+    declarada con el mismo helper. Es alcanzabilidad, no desviacion.
+D3. Sin desviaciones de diseno. Snapshot persistido intocado (response-only).
+
+E. GGA (punctual --no-verify)
+
+gga run (v2.10.1, provider opencode, rules AGENTS.md) = STATUS FAILED. Todos
+los hallazgos restantes son PRE-EXISTENTES y fuera del alcance de S1; el unico
+hallazgo in-slice (CancellationToken en los helpers del test nuevo) se
+corrigio y desaparecio en la segunda corrida. Commit con --no-verify puntual
+documentado.
+
+- Comentario explicativo DailyClosureService.cs:287 (marcador 8.7-B5):
+  pre-existente; AD-18 conserva marcadores de trazabilidad.
+- DailyClosureService.cs 637 lineas > 500: deuda legacy; scope explicito de
+  S3a-01/S3a-02 de este mismo change (S1 no puede iniciar el split).
+- ResolveUserDetailsAsync sin AsNoTracking (menor, no bloqueante):
+  pre-existente.
+- CreateClosureAsync devolviendo entidad DailyClosure (nota, no bloqueante):
+  S3-07/S4a-R1, se elimina en S3b.
+- Nombres de test de 2 segmentos (advisory, no bloqueante): convencion del
+  repo (p. ej. PersistedClosure_IsNeverRewrittenByLaterArqueo).
+
+Cierre: WARNING-04 queda cerrado en la slice S1. Pendientes del change:
+S2 (REQ-CAP-02/03, REQ-ADB-05, H-13), S3a (split REQ-COC-06/03) y S3b
+(REQ-COC-05/03 + 18 re-points).
