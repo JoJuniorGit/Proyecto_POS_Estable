@@ -10361,3 +10361,118 @@ por este slice. Commit con --no-verify puntual documentado.
 Cierre: item 41 + RESIDUAL-S4b-04 + H-13 quedan cerrados en la slice S2.
 Pendientes del change: S3a (split REQ-COC-06/03) y S3b (REQ-COC-05/03 + 18
 re-points).
+
+
+================================================================================
+ANEXO - REVISION 8.141 (critical-debt-closeout S3a: split de DailyClosureService
+                        en parciales cohesivos)
+================================================================================
+
+Fecha: 2026-09-18
+Commit: refactor(8.141): split de DailyClosureService en parciales cohesivos
+        (S3a, S3-06) - ANEXO 8.141, en rama V0.15 (sin branches/PRs).
+
+Alcance: work unit cdc-s3a-split (tercera slice del change
+critical-debt-closeout, store openspec): cierra S3-06/WARNING-07 de tamano por
+archivo (REQ-COC-06) y extiende el presupuesto McCabe a todo el servicio
+(REQ-COC-03, AD-4/AD-8). Sin schema, sin config, sin PRs, sin sub-agentes.
+
+A. CAMBIOS DE PRODUCCION
+
+A1. Sales.Module/Services/DailyClosureService.cs: 637 -> 368 lineas
+    (orquestacion + consultas). Se retiran verbatim cuatro estaticas de regla y
+    la cola de comprobantes; se elimina el using Core.Helpers ya sin uso. No se
+    toco el constructor ni las costuras de test.
+
+A2. Sales.Module/Services/DailyClosureService.Rules.cs: 33 -> 144 lineas.
+    Single-owner de reglas: BuildReportDetail (unico constructor de
+    ShiftReportDetailResult) + ValidateDeclaredMethods, BuildDeclaredDetails,
+    MergeMissingMethodsWithReport y RecalculateTotals.
+
+A3. Sales.Module/Services/DailyClosureService.Receipts.cs (nuevo, 165 lineas):
+    GenerateReceiptContent + WriteClosedClosureReceiptsAsync + los dos helpers
+    TryWrite*Async. Solo I/O de comprobantes; ninguna regla de cierre.
+
+A4. Movimiento verbatim verificado por SHA-256 (worktree vs HEAD): cinco bloques
+    identicos origen->destino + BuildReportDetail preservado. Cero cambios de
+    comportamiento (suite 1254/1254 igual a S2).
+
+B. TESTS
+
+B1. Sin tests nuevos: slice de movimiento puro; la suite existente es el
+    discriminador (filtro S3a 100/100 antes y despues).
+B2. Mutacion S3a-04: al reintroducir la regla duplicada Balanced en
+    BuildReportDetail, el filtro S3a falla 3/100
+    (MergedUndeclaredCashMethod_NonZeroDifference_IsShortageNeverBalanced,
+    MergedUsdCashMethod_NonZeroDifference_IsShortageNeverBalanced,
+    DeclaredUsdLine_PerCurrencyDifference_IsSurplus); revertida -> 100/100. La
+    mutacion rompe la via declarada y la fusionada porque comparten el unico
+    builder.
+
+C. VERIFICACION (comandos de tasks.md ## Verification)
+
+C1. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+C2. Filtro S3a (verbatim, tasks.md): dotnet test
+    CommandCenter.Tests/CommandCenter.Tests.csproj --filter
+    "FullyQualifiedName~Closure|FullyQualifiedName~DailyClosure" -> 100
+    passed, 0 failed, 100 total.
+C3. dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release:
+    1254 passed, 0 failed, 0 skipped (piso 1227; identico a S2, sin tests
+    nuevos).
+C4. npm test (Web.Frontend): 287 passed, 0 failed; npm run lint: exit 0
+    (slice backend, sin cambios web).
+C5. Coverage ANTES (TestResults/194b79ed-4668-43bf-9e7d-06537eb612e9):
+    Core 0.8364 [OK] / Sales.Module 0.9087 [OK] / Inventory.Module 0.8251 [OK].
+C6. Coverage DESPUES (TestResults/ed6c64e3-0dc7-464a-9d6d-e8422a75e62a):
+    Core 0.8378 [OK] / Sales.Module 0.9087 [OK] / Inventory.Module 0.8251 [OK].
+    Sin delta pendiente de restaurar (Sales/Inventory identicos; Core +0.0014
+    por varianza de corrida, no una caida).
+C7. Estructural: DailyClosureService.cs 368 / Rules.cs 144 / Receipts.cs 165
+    lineas, todos <= 500 (REQ-COC-06).
+C8. McCabe (convencion: if/foreach/while/for/case/catch/&&/||/??/?:;
+    puntos+1): los metodos de los tres parciales + DailyClosureController
+    .CreateClosure < 10; maximo GenerateReceiptContent = 9 (cuerpo verbatim
+    pre-existente); CreateClosure = 3.
+
+D. DECISIONES Y DESVIACIONES
+
+D1. La parcial Receipts incluye los dos helpers TryWrite*: S3a-01 nombra los
+    dos miembros publicos y AD-4 mapea la parcial a la cola completa :493-649;
+    dejarlos en el archivo principal habria dejado I/O de comprobantes en la
+    orquestacion.
+D2. MergeMissingMethodsIntoClosure permanece en el archivo principal: S3a-02
+    enumera exactamente cuatro estaticas y S3b-06 elimina esa costura legacy
+    por su propio mapa; moverla habria invadido S3b.
+D3. Presupuesto de revision: 111 adiciones + 165 del archivo nuevo + 269
+    supresiones = 545 lineas cambiadas (solo codigo; docs excluidas). Un
+    movimiento puro cuenta doble (baja en origen + alta en destino); no puede
+    reducirse sin abandonar el diseno de tres parciales (AD-4) ni comprimir
+    codigo. Se registra como recomendacion size:exception; el despacho fijo la
+    slice como un unico work unit/commit.
+D4. RESIDUAL-S1-02 (tercera copia alineada en ShiftReportMapper.MapDetails,
+    :41-66) NO figura en la fase S3a de tasks.md: se registra como pendiente,
+    sin ampliar el alcance de la slice.
+
+E. GGA (punctual --no-verify)
+
+gga run (v2.10.1, provider opencode, rules AGENTS.md) = STATUS FAILED. Todos
+los hallazgos son PRE-EXISTENTES y fuera del alcance de S3a; slice de
+movimiento verbatim, ninguno introducido (lineas de contenido sin cambios que
+solo cambiaron de ubicacion). Commit con --no-verify puntual documentado.
+
+- Comentario explicativo DailyClosureService.cs:286 (marcador 8.7-B5):
+  pre-existente; mismo hallazgo registrado en S1/S2.
+- CreateClosureAsync / ExecuteClosureCoreAsync devolviendo la entidad
+  DailyClosure (:111/:122): pre-existente; S3-07/S4a-R1, se elimina en S3b
+  (S3a no puede iniciar S3b).
+- ResolveUserDetailsAsync FindAsync sin AsNoTracking (:324): pre-existente; el
+  metodo no se movio (solo cambio su numero de linea).
+- Observaciones (no bloqueantes): catches genericos en los metodos movidos de
+  Receipts, 0.05m presente en Rules/Receipts y validacion "no reconocidos"
+  duplicada en main :138-147 vs Rules :35-51: todo pre-existente movido
+  verbatim; la copia duplicada es la costura legacy que S3b-06 elimina.
+
+Cierre: S3-06/WARNING-07 (tamano por archivo) queda cerrado en la slice S3a;
+REQ-COC-03 extendido y medido < 10 en los tres parciales. Pendientes del
+change: S3b (REQ-COC-05/03 + 18 re-points) y, fuera de esta fase,
+RESIDUAL-S1-02.
