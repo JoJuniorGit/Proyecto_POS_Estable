@@ -168,7 +168,6 @@ public class Phase7ClosureWithoutRateTests
 
         var request = new CloseShiftRequest
         {
-            CashierName = "Cajero",
             DeclaredAmounts = new List<DeclaredAmountDto>()
         };
 

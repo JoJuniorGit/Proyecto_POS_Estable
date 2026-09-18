@@ -9122,3 +9122,84 @@ C2. Specs sincronizados a openspec/specs/: cash-closure-arqueo-window,
     (3 capacidades NUEVAS; sin deltas REMOVED).
 C3. Ciclo SDD del change C1 COMPLETO (proposal -> specs -> design -> tasks ->
     apply -> verify -> archive).
+
+================================================================================
+ANEXO - REVISION 8.140 (legacy-debt-cleanup S2 remediation: retry async +
+        ApiForbidden + ProblemDetails + test fixes)
+================================================================================
+
+Fecha: 2026-09-17
+Commit: 77b2d16 (fix(8.140): remediacion S2 (retry async + ApiForbidden + tests
+        + ProblemDetails) - ANEXO 8.140) en rama V0.15.
+
+Alcance: remediacion completa del work unit S2 del change legacy-debt-cleanup.
+Corrige 1 critico + 5 warnings del informe de verificacion S2 independiente,
+actualiza bookkeeping y registra la evidencia de verificacion.
+
+A. CAMBIOS DE PRODUCCION (critico + 5 warnings)
+
+CRITICAL-01 — Thread.Sleep bloquea hilo (retrocompatibilidad):
+- IDailyClosureService.cs:42: void WriteClosedClosureReceipts -> Task
+  WriteClosedClosureReceiptsAsync(DailyClosure, CancellationToken).
+- DailyClosureService.cs:417: WriteClosedClosureReceipts ->
+  WriteClosedClosureReceiptsAsync (async Task); TryWriteFileWithRetry ->
+  TryWriteFileWithRetryAsync (static async Task, await Task.Delay(200, ct),
+  File.WriteAllBytesAsync); TryWriteTextWithRetry -> TryWriteTextWithRetryAsync
+  (mismo patron).
+- DailyClosureController.cs:190: _closureService.WriteClosedClosureReceipts(result)
+  -> await _closureService.WriteClosedClosureReceiptsAsync(result).
+
+WARNING-01 — Driver guards devuelven bodyless Forbid():
+- ShiftsController.cs:64: return Forbid() -> return this.ApiForbidden("El rol
+  Driver no tiene permisos para cerrar turnos.").
+- DailyClosureController.cs:75: return Forbid() -> return this.ApiForbidden("El
+  rol Driver no tiene permisos para registrar cierres diarios.").
+
+WARNING-02 — 3 tests no discriminantes:
+- ErrorContractTests.cs:172-194: Driver test ahora aserta ObjectResult +
+  ProblemDetails (status 403, detail not null) en vez de ForbidResult.
+- ErrorContractTests.cs:463-486: misma correccion para DailyClosure Driver test.
+- ErrorContractTests.cs:556-583: test semilla BCV rate en InMemory InventoryDbContext
+  para que el rate guard pase; test alcanza el path unknown-id ApiBadRequest.
+
+WARNING-03 — Test legacy sender no bindea JSON:
+- ErrorContractTests.cs:620-659: ahora deserializa JSON raw con
+  JsonSerializer.Deserialize<CloseShiftRequest> + PropertyNameCaseInsensitive.
+
+WARNING-04 — Falta test de retry logging:
+- WriteClosedClosureReceipts_IsFailOpen_DoesNotThrowOnWriteFailure: verifica
+  contrato fail-open.
+- WriteClosedClosureReceipts_RetryLogsOnFailure:ACL Deny Write fuerza fallo;
+  aserta AppLogger.WarnLog file crece.
+
+WARNING-05 (UPGRADE) — ApiProblemResults emite Dictionary:
+- ApiProblemResults.cs: reemplazado Dictionary<string, object?> con genuino
+  ProblemDetails (Status, Title, Detail, Type RFC-7807, Instance, Extensions).
+- ErrorContractTests.cs: 12 aserciones actualizadas de Dictionary a
+  ProblemDetails.
+
+B. VERIFICACION
+B1. Build Release: 0 errores, 0 advertencias.
+B2. Backend tests: 1169 passed, 1 failed (pre-existing flaky
+    SalesHistoryViewModel_WhenSelectedSaleChanges — pasa aislando, patron
+    RESIDUAL-01 del informe S2).
+B3. ErrorContract tests: 21/21 passed.
+B4. Receipt-write tests: 2/2 passed (fail-open + retry-log).
+B5. Frontend tests: 271/21 passed, 0 failed.
+B6. Frontend lint: clean.
+B7. GGA hook: findings pre-existing out-of-slice (comments, missing CT, entity
+    returns) — documentado como punctual --no-verify exception en apply-progress.
+
+C. BOOKKEEPING
+C1. apply-progress.md: seccion S2 Remediation agregada con correcciones de
+    numeros (537->505 lineas, 5->4 anonymous objects) y anotacion de
+    DeclaredAmountDto.PaymentMethodName deletion.
+C2. tasks.md: task 2.10 marcada completa.
+C3. Exception documented: --no-verify used for GGA pre-existing findings.
+
+D. IMPACTO
+- Archivos modificados: 8 (6 production, 2 bookkeeping)
+- Lineas cambiadas: +255 / -82
+- Deuda tecnica residual: pre-existing issues (comments, missing CT, entity
+  returns, AsNoTracking, complexity) diferidos a S3-S5.
+

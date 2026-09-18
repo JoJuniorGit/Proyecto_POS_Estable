@@ -44,16 +44,16 @@ Chain strategy: pending
 
 ## Phase 2: Error Contract + Dead Fields (S2)
 
-- [ ] 2.1 **RED**: Add test asserting every error site in `ShiftsController`, `CashDrawerController.AddTransaction`, `DailyClosureController` returns RFC 7807 ProblemDetails with `status` matching HTTP status
-- [ ] 2.2 Modify `Backend.API/Controllers/ShiftsController.cs`: replace anonymous error objects at lines 74,106,239,266,278 with `ApiBadRequest`/`ApiForbidden`/`ApiNotFound` (AD-9)
-- [ ] 2.3 Modify `Backend.API/Controllers/CashDrawerController.cs`: replace anonymous error objects at lines 157,167,173,178 with `ApiProblemResults` helpers (AD-9)
-- [ ] 2.4 Modify `Backend.API/Controllers/DailyClosureController.cs`: replace legacy error sites with `ApiProblemResults` helpers; leave preview 400 on `Problem(...)` per REQ-AEC-01 (AD-9)
-- [ ] 2.5 Modify `Sales.Module/Services/DailyClosureService.cs`: async receipt writers — log failures via `AppLogger.LogWarn` (path + exception), replace `Thread.Sleep` with `await Task.Delay(200, ct)` (AD-10)
-- [ ] 2.6 Delete `CloseShiftRequest.CashierName` and `CashierCedula` (AD-11)
-- [ ] 2.7 Modify `Web.Frontend/src/services/shiftApi.js`: stop sending `cashierName`/`cashierCedula` (lines 10-13) (AD-11)
-- [ ] 2.8 **GREEN**: Add test asserting no anonymous error object remains in touched endpoints (code inspection or reflection)
-- [ ] 2.9 **GREEN**: Add test asserting legacy sender posting `cashierName`/`cashierCedula` still returns 200 (extra members ignored)
-- [ ] 2.10 **GREEN**: Add test capturing `AppLogger` output on forced receipt write failure — verify log entry with path + exception
+- [x] 2.1 **RED**: Add test asserting every error site in `ShiftsController`, `CashDrawerController.AddTransaction`, `DailyClosureController` returns RFC 7807 ProblemDetails with `status` matching HTTP status
+- [x] 2.2 Modify `Backend.API/Controllers/ShiftsController.cs`: replace anonymous error objects at lines 74,106,239,266,278 with `ApiBadRequest`/`ApiForbidden`/`ApiNotFound` (AD-9)
+- [x] 2.3 Modify `Backend.API/Controllers/CashDrawerController.cs`: replace anonymous error objects at lines 157,167,173,178 with `ApiProblemResults` helpers (AD-9)
+- [x] 2.4 Modify `Backend.API/Controllers/DailyClosureController.cs`: replace legacy error sites with `ApiProblemResults` helpers; leave preview 400 on `Problem(...)` per REQ-AEC-01 (AD-9)
+- [x] 2.5 Modify `Sales.Module/Services/DailyClosureService.cs`: async receipt writers — log failures via `AppLogger.LogWarn` (path + exception), replace `Thread.Sleep` with `await Task.Delay(200, ct)` (AD-10)
+- [x] 2.6 Delete `CloseShiftRequest.CashierName` and `CashierCedula` (AD-11)
+- [x] 2.7 Modify `Web.Frontend/src/services/shiftApi.js`: stop sending `cashierName`/`cashierCedula` (lines 10-13) (AD-11)
+- [x] 2.8 **GREEN**: Add test asserting no anonymous error object remains in touched endpoints (code inspection or reflection)
+- [x] 2.9 **GREEN**: Add test asserting legacy sender posting `cashierName`/`cashierCedula` still returns 200 (extra members ignored)
+- [x] 2.10 **GREEN**: Add test capturing `AppLogger` output on forced receipt write failure — verify log entry with path + exception
 
 ## Phase 3: Closure Orchestration Consolidation (S3)
 

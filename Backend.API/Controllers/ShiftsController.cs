@@ -61,7 +61,7 @@ public class ShiftsController : ControllerBase
     {
         if (User.IsInRole("Driver"))
         {
-            return Forbid();
+            return this.ApiForbidden("El rol Driver no tiene permisos para cerrar turnos.");
         }
 
         var duplicatedMethodIds = request.DeclaredAmounts
@@ -72,10 +72,9 @@ public class ShiftsController : ControllerBase
 
         if (duplicatedMethodIds.Count > 0)
         {
-            return BadRequest(new { message = $"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}." });
+            return this.ApiBadRequest($"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}.");
         }
 
-        // Identity from JWT claims (H-API-2)
         string cashierName = "Cajero Activo";
         string cashierCedula = "V-00000000";
 
@@ -182,7 +181,7 @@ public class ShiftsController : ControllerBase
         // Difference=-esperado) cuando aún no existe ningún cierre real — un reporte falso
         // distorsionaría arqueos y la recuperación de reportes. Se responde 404 con mensaje
         // explícito para que el cliente lo muestre como "aún no hay cierres".
-        return NotFound(new { Message = "No existe ningún cierre de caja registrado todavía." });
+        return this.ApiNotFound("No existe ningún cierre de caja registrado todavía.");
     }
 
     [HttpGet("{id}/report")]
@@ -205,7 +204,7 @@ public class ShiftsController : ControllerBase
 
             if (!isOwner)
             {
-                return StatusCode(StatusCodes.Status403Forbidden, new { Message = "Acceso denegado: no tiene permisos para consultar este reporte." });
+                return this.ApiForbidden("Acceso denegado: no tiene permisos para consultar este reporte.");
             }
         }
 
@@ -215,7 +214,7 @@ public class ShiftsController : ControllerBase
 
         if (closure == null)
         {
-            return NotFound(new { Message = "El reporte de cierre solicitado no existe." });
+            return this.ApiNotFound("El reporte de cierre solicitado no existe.");
         }
 
         var details = ShiftReportMapper.MapDetails(closure.Details, exchangeRate);
@@ -241,15 +240,12 @@ public class ShiftsController : ControllerBase
 
 public class CloseShiftRequest
 {
-    public string? CashierName { get; set; }
-    public string? CashierCedula { get; set; }
     public List<DeclaredAmountDto> DeclaredAmounts { get; set; } = new();
 }
 
 public class DeclaredAmountDto
 {
     public int PaymentMethodId { get; set; }
-    public string PaymentMethodName { get; set; } = string.Empty;
     public decimal Amount { get; set; }
 }
 

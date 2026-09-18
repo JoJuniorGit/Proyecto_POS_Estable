@@ -123,8 +123,8 @@ public class CloseShiftResolverClassificationTests
         {
             DeclaredAmounts = new List<DeclaredAmountDto>
             {
-                new() { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", Amount = 100m },
-                new() { PaymentMethodId = 2, PaymentMethodName = "Efectivo Bs.S", Amount = 500m }
+                new() { PaymentMethodId = 1, Amount = 100m },
+                new() { PaymentMethodId = 2, Amount = 500m }
             }
         };
 
@@ -167,7 +167,7 @@ public class CloseShiftResolverClassificationTests
         {
             DeclaredAmounts = new List<DeclaredAmountDto>
             {
-                new() { PaymentMethodId = 1, PaymentMethodName = "Dólares", Amount = 100m }
+                new() { PaymentMethodId = 1, Amount = 100m }
             }
         };
 
@@ -192,7 +192,7 @@ public class CloseShiftResolverClassificationTests
         {
             DeclaredAmounts = new List<DeclaredAmountDto>
             {
-                new() { PaymentMethodId = 999, PaymentMethodName = "Método Inexistente", Amount = 50m }
+                new() { PaymentMethodId = 999, Amount = 50m }
             }
         };
 
@@ -242,8 +242,8 @@ public class CloseShiftResolverClassificationTests
         {
             DeclaredAmounts = new List<DeclaredAmountDto>
             {
-                new() { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", Amount = 100m },
-                new() { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", Amount = 200m }
+                new() { PaymentMethodId = 1, Amount = 100m },
+                new() { PaymentMethodId = 1, Amount = 200m }
             }
         };
 
