@@ -56,7 +56,7 @@ public class DailyClosureService : IDailyClosureService
                 && sp.Sale.Date < endUtc)
             .GroupBy(sp => sp.PaymentMethodId)
             .Select(g => new { PaymentMethodId = g.Key, TotalBsS = g.Sum(sp => sp.AmountBsS) })
-            .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS);
+            .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS, cancellationToken);
 
         var changeTotals = await _context.CashTransactions
             .AsNoTracking()
@@ -67,7 +67,7 @@ public class DailyClosureService : IDailyClosureService
                 && ct.TransactionTime < endUtc)
             .GroupBy(ct => ct.PaymentMethodId)
             .Select(g => new { PaymentMethodId = g.Key ?? UnattributedChangeMethodId, TotalBsS = g.Sum(ct => ct.AmountLocal) })
-            .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS);
+            .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS, cancellationToken);
 
         var allMethods = await _context.PaymentMethods
             .AsNoTracking()
@@ -109,18 +109,18 @@ public class DailyClosureService : IDailyClosureService
         return result;
     }
 
-    public async Task<DailyClosure> CreateClosureAsync(DailyClosure closure)
+    public async Task<DailyClosure> CreateClosureAsync(DailyClosure closure, CancellationToken cancellationToken = default)
     {
         if (_context.Database.CurrentTransaction is not null)
         {
-            return await ExecuteClosureCoreAsync(closure);
+            return await ExecuteClosureCoreAsync(closure, cancellationToken);
         }
 
         var strategy = _context.Database.CreateExecutionStrategy();
-        return await strategy.ExecuteAsync(() => ExecuteClosureCoreAsync(closure));
+        return await strategy.ExecuteAsync(() => ExecuteClosureCoreAsync(closure, cancellationToken));
     }
 
-    private async Task<DailyClosure> ExecuteClosureCoreAsync(DailyClosure closure)
+    private async Task<DailyClosure> ExecuteClosureCoreAsync(DailyClosure closure, CancellationToken cancellationToken)
     {
         var duplicatedMethodIds = closure.Details
             .GroupBy(d => d.PaymentMethodId)
@@ -133,7 +133,7 @@ public class DailyClosureService : IDailyClosureService
             throw new ArgumentException($"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}.", nameof(closure));
         }
 
-        var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(closure.ClosureDate);
+        var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(closure.ClosureDate, cancellationToken);
         var expectedById = expectedTotals.ToDictionary(e => e.PaymentMethodId);
 
         var unknownMethodIds = closure.Details
@@ -156,20 +156,20 @@ public class DailyClosureService : IDailyClosureService
         var methodEntities = await _context.PaymentMethods
             .AsNoTracking()
             .Where(p => !p.IsDeleted)
-            .ToDictionaryAsync(p => p.Id);
+            .ToDictionaryAsync(p => p.Id, cancellationToken);
 
         MergeMissingMethodsIntoClosure(closure, expectedTotals, existingMethodIds, methodEntities);
         RecalculateTotals(closure);
 
         _context.DailyClosures.Add(closure);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
-        return (await LoadClosureEntityAsync(closure.Id))!;
+        return (await LoadClosureEntityAsync(closure.Id, cancellationToken))!;
     }
 
-    public async Task<DailyClosureResponseDto?> GetClosureAsync(int id)
+    public async Task<DailyClosureResponseDto?> GetClosureAsync(int id, CancellationToken cancellationToken = default)
     {
-        var closure = await LoadClosureEntityAsync(id);
+        var closure = await LoadClosureEntityAsync(id, cancellationToken);
         return closure is null ? null : ShiftReportMapper.MapClosure(closure);
     }
 
@@ -273,8 +273,8 @@ public class DailyClosureService : IDailyClosureService
 
             RecalculateTotals(dailyClosure);
 
-            var savedClosure = await PersistClosureCoreAsync(dailyClosure);
-            await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate);
+            var savedClosure = await PersistClosureCoreAsync(dailyClosure, cancellationToken);
+            await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate, cancellationToken);
 
             if (transaction is not null)
             {
@@ -376,11 +376,11 @@ public class DailyClosureService : IDailyClosureService
         return (userId, cashierName, cashierCedula, observation);
     }
 
-    private async Task<DailyClosureResponseDto> PersistClosureCoreAsync(DailyClosure closure)
+    private async Task<DailyClosureResponseDto> PersistClosureCoreAsync(DailyClosure closure, CancellationToken cancellationToken)
     {
         _context.DailyClosures.Add(closure);
-        await _context.SaveChangesAsync();
-        return ShiftReportMapper.MapClosure((await LoadClosureEntityAsync(closure.Id))!);
+        await _context.SaveChangesAsync(cancellationToken);
+        return ShiftReportMapper.MapClosure((await LoadClosureEntityAsync(closure.Id, cancellationToken))!);
     }
 
     private static void ValidateDeclaredMethods(

@@ -1,17 +1,17 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:2db6c81f19a620c4838c1912971828dae39a6b91fe0af9685e4e618229a87a14
+evidence_revision: sha256:4341dfa690ddf45884e19e3ca9639ae497137ba8f184ca42d302eeeb51bc925b
 verdict: pass_with_warnings
 blockers: 0
 critical_findings: 0
 requirements: 3/3
-scenarios: 5/5
+scenarios: 6/6
 test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release
 test_exit_code: 0
-test_output_hash: sha256:3f8f629158dbd35c075a2d00cf749f84c1a4846d6fe2e8de9a8bd1738e4dd82f
+test_output_hash: sha256:be1151770f256fbf07a80abd907bb4a9c8f9acf6bafd675e6e3905b849e475b9
 build_command: dotnet build CommandCenter.slnx -c Release
 build_exit_code: 0
-build_output_hash: sha256:3a1d2f6e6c116edfe4694a823e7cd5e800848acabdd3167a1378ce90687f5b70
+build_output_hash: sha256:08db055121fa30e46a20b5895d0f067ea2959f343ec9cd3c36f0b55b0243f14d
 ```
 
 ## Verification Report
@@ -19,11 +19,11 @@ build_output_hash: sha256:3a1d2f6e6c116edfe4694a823e7cd5e800848acabdd3167a1378ce
 **Change**: legacy-debt-cleanup
 **Version**: N/A (delta specs, no version headers)
 **Mode**: Standard (Strict TDD inactive: `openspec/config.yaml` -> `strict_tdd: false`, `testing.strict_tdd_mode: disabled`)
-**Scope of this report**: a per-slice verification record for the change `legacy-debt-cleanup`. Slices S1 (zero-trust close, items 26/39), S2 (error contract + dead fields, items 2/18/25/12/35), S3 (closure orchestration consolidation, items 1/30/6/13/14), **S4a (closure DTO boundary, commit `829778c`)** and **S4b (drawer DTO boundary, commit `65e038a`)** are implemented; S5a-S5c are not, so the **change-level verdict remains pending**. The machine-readable envelope at the top of this file describes the **most recently admitted slice — S4b at `65e038a`**. The previous head envelopes are preserved verbatim under "S4a Admitted Envelope (preserved)", "S3 Admitted Envelope (preserved)" and "S1 Admitted Envelope (preserved)"; the S1, S2, S3, S4a and S4b verdicts and their own fresh evidence live in their own sections.
-**Envelope counts (S4b)**: `requirements: 3/3` and `scenarios: 5/5` are completed/total for **this slice's declared scope** — REQ-ADB-02, REQ-ADB-03 and the drawer half of REQ-ADB-04 — not for the whole `api-dto-boundary` delta spec, which carries 4 requirements / 7 scenarios. Spec-wide at revision `65e038a`, the entire `api-dto-boundary` spec is now complete: **4/4 requirements** and **7/7 scenarios** — REQ-ADB-01 and the closure half of REQ-ADB-04 were admitted under S4a at `829778c`; S4b completes REQ-ADB-02, REQ-ADB-03 and the drawer half. Change-wide, **15 of the 18 requirements** and **32 of the 38 scenarios** across the five delta specs are complete; only `async-cancellation-propagation` (3 requirements / 6 scenarios) remains, in S5a/S5c.
-**Verified revision**: the current `HEAD` is `65e038a` (`refactor(8.140): DTOs inmutables de drawer (slice S4b, items 15/19/20) - ANEXO 8.140`). The working tree is clean (`git status --short` and `git diff --stat HEAD` both empty): no production, test, or documentation file is modified against `65e038a`. Earlier sections record the revision each of them was verified at: S1 at `c6c767f` (which carried one uncommitted documentation-only `apply-progress.md` append at that moment), S2 at `77b2d16`, S3 at `579347b` and S4a at `829778c`.
-**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding — superseded for S1. Per slice: S2 was `fail` on `fe1b60b` and S3 was `fail` on `200cdaa` (1 CRITICAL, `CRITICAL-S3-01`); both were superseded by their re-verifications. S4a was `pass_with_warnings` at `829778c`; S4b has no prior verdict.
-**evidence_revision** (head envelope, S4b) is the SHA-256 of the ASCII string produced by joining, with `:`, the lowercase SHA-256 hex digests of the twenty-six S4b production/test files that exist at `65e038a`, listed in order under "S4b Changed Files" (the deleted `Backend.API/DTOs/CashDrawerDtos.cs` is excluded because it no longer exists to hash; the same recipe used for S4a and S3, which were reproducible).
+**Scope of this report**: a per-slice verification record for the change `legacy-debt-cleanup`. Slices S1 (zero-trust close, items 26/39), S2 (error contract + dead fields, items 2/18/25/12/35), S3 (closure orchestration consolidation, items 1/30/6/13/14), S4a (closure DTO boundary, commit `829778c`), S4b (drawer DTO boundary, commit `65e038a`) and **S5a (CancellationToken propagation + H-14 fold-in, commit `227ee5c`)** are implemented and verified; S5b and the remaining S5c tasks are not, so the **change-level verdict remains pending**. The machine-readable envelope at the top of this file describes the **most recently admitted slice — S5a at `227ee5c`**. The previous head envelopes are preserved verbatim under "S4b Admitted Envelope (preserved)", "S4a Admitted Envelope (preserved)", "S3 Admitted Envelope (preserved)" and "S1 Admitted Envelope (preserved)"; every verdict and its own fresh evidence live in its own section.
+**Envelope counts (S5a)**: `requirements: 3/3` and `scenarios: 6/6` are completed/total for this slice's declared scope — the whole `async-cancellation-propagation` delta spec (REQ-ACP-01, REQ-ACP-02, REQ-ACP-03), whose H-14/AD-13 half (task `5c.2`) was pulled into S5a by explicit orchestrator authorization. Spec-wide at revision `227ee5c`, all five delta specs are now complete: **18/18 requirements and 38/38 scenarios** across `payment-method-currency-classification` (3/8), `api-error-contract` (4/9), `closure-orchestration-consolidation` (4/8), `api-dto-boundary` (4/7) and `async-cancellation-propagation` (3/6). What remains for S5b/S5c is registry cleanup (EF read tuning, guards/naming/comments, H-05/H-06/H-08), not a delta-spec surface.
+**Verified revision**: the current `HEAD` is `227ee5c` (`fix(8.140): propagacion de CancellationToken (slice S5a, items 4/9/16/21/27) - ANEXO 8.140`). The working tree was clean before and after every re-executed command (`git status --short` empty; the test/coverage output directories are git-ignored). Earlier sections record the revision each of them was verified at: S1 at `c6c767f`, S2 at `77b2d16`, S3 at `579347b`, S4a at `829778c` and S4b at `65e038a`.
+**Prior verdict**: `fail` (commit `00adc45`), 1 blocker / 1 critical finding — superseded for S1. Per slice: S2 was `fail` on `fe1b60b` and S3 was `fail` on `200cdaa`; both were superseded by their re-verifications. S4a and S4b were `pass_with_warnings`; S5a has no prior verdict.
+**evidence_revision** (head envelope, S5a) is the SHA-256 of the ASCII string produced by joining, with `:`, the lowercase SHA-256 hex digests of the nineteen S5a production/test files that exist at `227ee5c`, listed in order under "S5a Changed Files", each hashed from its on-disk bytes (clean working tree; `core.autocrlf=true`). Reproducibility caveat: this verifier recomputed the preserved S4b head from its recorded description (26-file list; blob-LF bytes, CRLF-transformed bytes and four joined-string encodings) and did not reproduce `sha256:2db6c81f...`; the S4b/S1 evidence-revision descriptions are therefore not fully reproducible as written (recorded as `RESIDUAL-S5a-05`; same class as `RESIDUAL-S2-07`).
 **Hash definition**: `build_output_hash` / `test_output_hash` are the SHA-256 of the captured combined stdout+stderr for the command execution reported above, normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed; identical recipe per section below.
 
 ### S1 Admitted Envelope (preserved)
@@ -89,6 +89,28 @@ build_output_hash: sha256:12942f0e260fa5f766cca6dae5e9dae739767bada4e6ae11e3cd7a
 ```
 
 The S4a `evidence_revision` above is the SHA-256 of the colon-joined per-file SHA-256 digests of the fifteen S4a production/test files listed under "S4a Changed Files"; its build/test output hashes are those captured for the S4a command executions reported in the "Slice S4a" section.
+
+### S4b Admitted Envelope (preserved)
+
+The envelope below was this file's admitted machine-readable head from the S4b verification until this S5a verification re-pointed the head envelope to the S5a slice. It is preserved byte-for-byte as the S4b evidence record.
+
+```yaml
+schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:2db6c81f19a620c4838c1912971828dae39a6b91fe0af9685e4e618229a87a14
+verdict: pass_with_warnings
+blockers: 0
+critical_findings: 0
+requirements: 3/3
+scenarios: 5/5
+test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release
+test_exit_code: 0
+test_output_hash: sha256:3f8f629158dbd35c075a2d00cf749f84c1a4846d6fe2e8de9a8bd1738e4dd82f
+build_command: dotnet build CommandCenter.slnx -c Release
+build_exit_code: 0
+build_output_hash: sha256:3a1d2f6e6c116edfe4694a823e7cd5e800848acabdd3167a1378ce90687f5b70
+```
+
+The S4b `evidence_revision` above is the SHA-256 of the colon-joined per-file SHA-256 hex digests of the twenty-six S4b production/test files listed under "S4b Changed Files"; its build/test output hashes are those captured for the S4b command executions reported in the "Slice S4b" section. The reproducibility caveat recorded in the scope block applies.
 
 ### Completeness
 
@@ -1038,9 +1060,204 @@ Plus the documentation files `docs/reporte.txt` (ANEXO 8.140), `apply-progress.m
 
 **PASS_WITH_WARNINGS** — the drawer DTO boundary is genuinely established at `65e038a`. Both new DTOs are `sealed record`s with no mutable setter; `ICashDrawerService` and `CashDrawerController` expose no `Sales.Module.Entities` class type (only the three value-type enums); the service projects history through a single LINQ `Select` instead of materializing entities; and the golden-JSON test pins the response body byte-for-byte while proving that every client-bound member survives, that `sale.invoiceNumber` moves to a top-level `invoiceNumber` with the same value, and that the `sale`/`session`/`paymentMethod` navigations disappear with no client binding them. Every claim was re-executed: build 0/0, backend suite 1193/1193, the `Dto` filter 79/79, the new class 8/8, frontend 271/271 with clean lint, and the coverage gate reproduces the claim exactly. No S5 creep and no tautological test were found. The residuals are non-blocking and explicitly recorded: `RESIDUAL-S4b-01` (serializer-level parity evidence), `RESIDUAL-S4b-02` (task 4b.8 over-checked), `RESIDUAL-S4b-03` (weak assertion components), `RESIDUAL-S4b-04` (out-of-scope pre-existing Web filter), `S4b-R1` and `SIZE-S4b`. S4b may be chained into S5a.
 
+## Slice S5a — CancellationToken Propagation (with H-14 fold-in)
+
+**Verdict: PASS_WITH_WARNINGS** — 0 blockers, **0 critical findings**. CancellationToken propagation is genuinely established at `227ee5c` for the registered items 4, 9, 16, 21 and 27: every touched async controller action declares a token and passes the request token to its service call (7 runtime token-identity tests plus a structural contract test over all 13 actions and both drawer helpers, with the remaining actions verified by inspection); every touched async service member accepts and forwards the token to EF Core, the raw advisory-lock commands, begin/commit/rollback, the execution strategy and the `ExchangeRateResolver` chain; and three real-path SQLite tests prove a pre-cancelled token throws `OperationCanceledException` with zero persisted rows. H-14/AD-13 landed as an authorized fold-in: `MainWindow.OnClosing` is `void` again and shutdown runs through `Task RunShutdownAsync()` with `Close()` in a `finally` launched via `SafeFireAndForget`. In-scope scenarios: **6/6 compliant**, 0 UNTESTED, 0 FAILING. Two verifier-found weaknesses are recorded as non-blocking residuals: the IL scan advertised as REQ-ACP-02's sync-over-async guard cannot see async method bodies (empirically proven — Roslyn emits them into nested state machines), and the three cancellation tests discriminate at path level rather than per-EF-call. Residuals: `RESIDUAL-S5a-01`..`-05`, `S5a-R1`, `SIZE-S5a`.
+
+**Verified revision**: `227ee5c` (`fix(8.140): propagacion de CancellationToken (slice S5a, items 4/9/16/21/27) - ANEXO 8.140`; current `HEAD`). Working tree clean at verification time and after every command (`git status --short` empty).
+**Slice delta**: `65e038a` -> `227ee5c` — 22 files, `+867 / -147` (1014 changed lines). Authored production/test delta: 11 production files (10 backend + `MainWindow.xaml.cs`), 1 new test file (438 lines) and 7 mechanically re-pointed test files; documentation: `docs/reporte.txt` (+155, ANEXO 8.140), `apply-progress.md` (+88) and `tasks.md` (`+11 / -8`, the seven Phase 5a checkboxes plus the `5c.2` delivered-early annotation and the S5a fold-in note).
+
+### S5a Re-executed Evidence (verbatim)
+
+Every command below was re-executed independently on `227ee5c` after the working tree was confirmed clean. `stderr` was merged into the captured stream. No result was taken from `apply-progress.md`.
+
+**1. Build** - `dotnet build CommandCenter.slnx -c Release` - exit `0` - matches the claim (0/0)
+
+```text
+Compilación correcta.
+    0 Advertencia(s)
+    0 Errores
+
+Tiempo transcurrido 00:00:42.98
+```
+
+captured-output hash: `sha256:08db055121fa30e46a20b5895d0f067ea2959f343ec9cd3c36f0b55b0243f14d`
+
+**2. Backend tests (full)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release` - exit `0` - matches the claim (1207/1207, 0 skipped)
+
+```text
+Correctas! - Con error:     0, Superado:  1207, Omitido:     0, Total:  1207, Duración: 12 s - CommandCenter.Tests.dll (net10.0)
+```
+
+captured-output hash: `sha256:be1151770f256fbf07a80abd907bb4a9c8f9acf6bafd675e6e3905b849e475b9`
+
+**3. S5a focused filter (as declared in `tasks.md`)** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~Cancellation"` - exit `0` - matches the claim (15/15 = 14 new + 1 pre-existing)
+
+```text
+Correctas! - Con error:     0, Superado:    15, Omitido:     0, Total:    15, Duración: 3 s - CommandCenter.Tests.dll (net10.0)
+```
+
+captured-output hash: `sha256:3b8219e33cb0c58bce64aa4775bbe4c00b6c540364ee4f5b2e11bfec20a4e7fd`
+
+`--list-tests` over the same filter resolves the 15 names: the 14 `CancellationPropagationTests` methods plus `CommandCenter.Tests.Unit.Phase3DesktopOptimizationTests.InventoryViewModel_Dispose_CancelsAndDisposesCancellationTokenSourceSafely` — the pre-existing match, exactly as claimed.
+
+**4. New test class alone** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build -c Release --filter "FullyQualifiedName~CancellationPropagationTests"` - exit `0` - matches the claim (14/14)
+
+```text
+Correctas! - Con error:     0, Superado:    14, Omitido:     0, Total:    14, Duración: 3 s - CommandCenter.Tests.dll (net10.0)
+```
+
+captured-output hash: `sha256:e691e7be4404f851d0b7831105d9b1829791691f5b435acd3b1d4f6215a68d0d`
+
+**5. Frontend tests** - `npm test` (Web.Frontend) - exit `0` on the first execution - matches the claim (271/271; Web is untouched — regression check per `tasks.md`)
+
+```text
+ℹ tests 271
+ℹ suites 58
+ℹ pass 271
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+```
+
+captured-output hash: `sha256:f390c4567a0057baf8f99b2639172d640ff8fed6c71f5a322c23ceb2de4d0b89`
+
+**6. Frontend lint** - `npm run lint` (Web.Frontend, oxlint) - exit `0`, no findings - matches the claim
+
+```text
+> web-frontend@0.0.0 lint
+> oxlint
+```
+
+captured-output hash: `sha256:1472f392035e28478ac827e6e5301e8adde36ba5a0a27bc61cdf6e42453bc7d3`
+
+**7. Coverage gate** - `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings` (1207/1207, exit `0`), then `python scripts/check-coverage.py CommandCenter.Tests/TestResults/cc9ed30d-2a48-4aac-9364-ab026626ffeb/coverage.cobertura.xml` - exit `0`
+
+```text
+Cobertura de dominio por capa (line-rate, excluye *.Migrations.*):
+  Core               rate=0.8364 min=0.7000 gap_a_70%=0.0000 [OK]
+  Sales.Module       rate=0.9048 min=0.8000 gap_a_70%=0.0000 [OK]
+  Inventory.Module   rate=0.8251 min=0.7200 gap_a_70%=0.0000 [OK]
+```
+
+The gate reproduces the S5a claim **exactly** (Core 0.8364 / Sales.Module 0.9048 / Inventory.Module 0.8251) and all three `tasks.md` thresholds pass. `Sales.Module`, the layer S5a changes, moves 0.9047 -> 0.9048.
+
+**Hash definition (this section)**: `sha256` is the SHA-256 over the captured combined stdout+stderr, normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed.
+
+**Environment note**: `TEST_POSTGRES_CONNECTION` is unset, so Postgres-gated classes continue to early-return as vacuous passes. No S5a test is Postgres-gated: the three SQLite real-path tests, the seven controller mock tests, the structural/IL tests and the two `MainWindow` reflection tests all executed (`Omitido: 0` on every run above).
+
+### S5a CancellationToken Flow Evidence (source-level, every touched member)
+
+| Hop | Member (file:line) | Evidence | Result |
+|-----|--------------------|----------|--------|
+| Controller -> service (Shifts) | `CloseShift` `ShiftsController.cs:33` -> `CreateClosureFromCommandAsync` `:65`; `GetCurrentReport` `:104` -> `GetLatestClosureAsync` `:106` -> `GetReportById(..., token)` `:110`; `GetReportById` `:118` -> `GetClosureAsync` `:120` / `GetCashierDisplayNameAsync` `:150` | Runtime token-identity tests + source inspection | **CONFIRMED** |
+| Controller -> service (DailyClosure) | `GetExpectedTotals` `DailyClosureController.cs:33` -> `:44`; `CreateClosure` `:50` -> `:63` -> `:81`; `GetClosure` `:130` -> `:132` | Runtime token-identity tests + source inspection | **CONFIRMED** |
+| Controller -> service (CashDrawer) | All 7 actions declare the token and forward it: `GetActiveSession` `:46/:49`; `GetHistory` `:65/:68` (token defaulted — see D1); `OpenSession` `:80/:82`; `CloseSession` `:89/:91`; `GetCurrentBalance` `:97/:99`; `AddTransaction` `:106/:137/:141-153`; `ProcessCashAdvance` `:260/:274/:276-285` | Runtime token-identity tests (GetActiveSession, AddTransaction, ProcessCashAdvance incl. the real `CashAdvanceCoordinator`) + source inspection for the rest | **CONFIRMED** |
+| Drawer helpers | `ResolveAnchoredRateAsync` `CashDrawerController.cs:165` forwards to the EF BCV read `:181`; `MapLocalTimesAsync` `:227` honors it with `ThrowIfCancellationRequested` `:229` before the settings read | Source inspection + structural test | **CONFIRMED** |
+| Rate chain | `ExchangeRateResolver.ReadEffectiveTodayRateAsync` gains the parameter (`ExchangeRateWriteService.cs:88-91`) and passes it to both EF reads (`:95`, `:104`) and the active-session fallback (`:112`); `TodayExchangeRateProvider.cs:18-21` forwards | Runtime real-path tests exercise the provider (`DailyClosureService_CreateClosureFromCommandAsync_...`) + source inspection | **CONFIRMED** |
+| Service -> EF (closure) | `DailyClosureService.GetExpectedTotalsByPaymentMethodAsync` forwards to all 5 EF calls (`:38/:44/:59/:70/:77`); `CreateClosureAsync` `:112`/`ExecuteClosureCoreAsync` `:123` forward (`:136/:159/:165/:167`); `GetClosureAsync`/`LoadClosureEntityAsync` `:170-181`; `GetLatestClosureAsync` `:183-189`; `GetCashierDisplayNameAsync` `:194-198`; `CreateClosureFromCommandAsync` `:202-220`; `ExecuteClosureCommandAsync` `:237-310` (transaction begin/commit/rollback `:234/:281/:299`, rollover `:277`, receipts `:285`); `PersistClosureCoreAsync` `:379-383`; receipt writers `:560-644` (`File.WriteAll*Async` + `Task.Delay(200, ct)`) | 3 SQLite pre-cancelled-token tests + per-call source inspection | **CONFIRMED** |
+| Service -> EF (drawer) | Every async member takes and forwards the token: `GetActiveSessionAsync` `CashDrawerService.cs:23-27`, `LoadActiveSessionEntityAsync` `:30-34`, `GetActiveSessionWithTransactionsAsync` `:36-42`, `GetOrCreateActiveSessionAsync` `:54-80`, `OpenSessionAsync` `:84-133`, `CloseSessionAsync` `:135-239` (tx `:160/:206/:215`, advisory lock `:177`), `RolloverSessionAfterClosureAsync` `:241-253`, `AddTransactionAsync` `:255-361` (advisory lock `:298`, tx `:286/:328/:337`, strategy `:352-356`), `RecordSaleChangeAsync` `:368-426` (advisory lock `:396`, balance `:401`), `GetCurrentBalanceLocalAsync` `:428-451`, `GetHistoryAsync` `:453-478` | 1 SQLite pre-cancelled-token test (`AddTransactionAsync`) + per-call source inspection | **CONFIRMED** |
+| Coordinator | `CashAdvanceCoordinator` forwards to the drawer read and both writes (`:56`, `:135`, `:148`) and runs its strategy with the token (`:67-81`) | Runtime test through the real coordinator + source inspection | **CONFIRMED** |
+| No sync-over-async | Repo-wide grep for `.Result` / `.Wait()` / `GetAwaiter().GetResult` / `Thread.Sleep` across `Backend.API`, `Sales.Module`, `Core`, `Inventory.Module`, `Logistics.Module`, `Desktop.Client`, `Desktop.Client.Core`: the only hits are the false positive `ModelStateValidationFilter.cs:20` (`context.Result =`, a property assignment), `ProductService.cs:77` (`resObj?.Result`, a JSON DTO property), the pre-existing `ExchangeRateService.cs:184` (`SemaphoreSlim.Wait()` inside the intentionally synchronous `SetCurrentRateSynchronously`, out of scope) and the single allowed `UpdaterService/Program.cs:228` `Thread.Sleep(500)`. **Zero blocking constructs on the touched async paths.** | grep + IL probe (see Discrimination Review) + source inspection | **CONFIRMED** |
+
+The service/interface members with pre-existing call sites take `CancellationToken cancellationToken = default` as their last parameter (D1); controller actions take a required token except `GetHistory` (its `limit = 300` is already optional). `ISystemSettingsService.GetSettingAsync` stays CT-less (D2): five settings reads inside touched paths (`CashDrawerController.cs:70,154,206,231,287`) are not cancellable, mitigated for `MapLocalTimesAsync` by the explicit throw.
+
+### H-14 / AD-13 Evidence (delivered early in S5a)
+
+- `MainWindow.xaml.cs:23`: `protected override void OnClosing(CancelEventArgs e)` — `void`, not `async void`; the dialog, `e.Cancel = true` and `_isShuttingDown` stay synchronous (`:27-91`).
+- `MainWindow.xaml.cs:89`: `RunShutdownAsync().SafeFireAndForget("MainWindow.OnClosingShutdown")`.
+- `MainWindow.xaml.cs:93-106`: `private async Task RunShutdownAsync()` — `await app.StopServicesAsync()` inside `try`, `Close()` in `finally`, so the window is never left half-closed when the shutdown work throws.
+- `Core/Common/TaskExtensions.cs:15-40`: `SafeFireAndForget` awaits the task in a `try/catch` and logs every failure through `AppLogger.LogCrash` — the async-void fire-and-forget primitive observes exceptions.
+- The diff against `65e038a` shows the same `await app.StopServicesAsync()` work and the same `Close()` call, only re-routed through the task-returning method (behavior preservation).
+- Runtime evidence: `MainWindow_OnClosing_IsNotAsyncVoid` (void return, no `AsyncStateMachineAttribute`) and `MainWindow_RunShutdownAsync_ReturnsObservableTask` both pass. No test executes the handler itself (`RESIDUAL-S5a-03`).
+
+### S5a Test Discrimination Review
+
+The 14 `CancellationPropagationTests` were inspected for the tautology failure mode found in earlier slices.
+
+- **7 controller token-identity tests are discriminating.** Each builds a fresh `CancellationTokenSource`, invokes the real controller action with `cts.Token`, and `Verify`s the exact token on the service mock. Moq compares `CancellationToken` equality (same source), so passing `CancellationToken.None` or any other token turns the test red. The cash-advance test drives a real `CashAdvanceCoordinator` over SQLite and verifies the token at both drawer writes.
+- **The structural contract test is discriminating.** `TouchedActionsAndHelpers_DeclareCancellationTokenAsLastParameter` reflects the 13 touched actions and the two drawer helpers and fails if the token stops being the last parameter.
+- **The 3 real-path cancellation tests are discriminating at path level.** `DailyClosureService_CreateClosureFromCommandAsync_...` and `CashDrawerService_AddTransactionAsync_...` use a relational SQLite `SalesDbContext` + real services with a pre-cancelled token, assert `ThrowsAnyAsync<OperationCanceledException>`, clear the change tracker and assert **0 rows** in `DailyClosures`/`CashTransactions`; the closure test also asserts rollover `Times.Never`. `GetClosureAsync_...` asserts the throw on the real read. A revert that ignores the token entirely fails all three (no exception, rows persisted). Limitation: a partial regression that keeps the token on one EF call still throws before persistence, so per-call forwarding rests on the source inspection above — `RESIDUAL-S5a-04`.
+- **The IL scan test is NOT fit for its advertised purpose — verifier finding.** `TouchedAsyncTypes_DoNotBlockSynchronouslyOnAsyncPaths` walks `type.GetMethods(DeclaredOnly)` and resolves each `call`/`callvirt` token, rejecting `Task.Result`/`Task.Wait`/`WaitAll`/`WaitAny`/`Thread.Sleep`/`GetAwaiter().GetResult`. Roslyn compiles every `async` method body into a nested state-machine type, and `GetMethods` does not enumerate nested types. A verifier-owned .NET 10 reflection probe (`dotnet fsi`) confirmed it empirically against the built assembly: the `CreateClosureFromCommandAsync`, `GetExpectedTotalsByPaymentMethodAsync` and `GetClosureAsync` stubs are 71-byte bodies whose only calls are `AsyncTaskMethodBuilder.Create/Start/get_Task`; every EF/data call lives in nested `MoveNext` methods (e.g. `<GetExpectedTotalsByPaymentMethodAsync>d__5.MoveNext`, 3158 IL bytes, holds all five `FirstOrDefaultAsync`/`ToDictionaryAsync`/`ToListAsync` calls; `<ExecuteClosureCommandAsync>d__14.MoveNext`, 1944 bytes, holds the transaction/rollback/rollover calls). Across the six scanned types there are **47 `async Task`/`async ValueTask` declarations** whose bodies the scan never inspects — i.e. exactly the paths REQ-ACP-02 names. The scan still covers non-async members (helpers, static mappers, property accessors) and would catch blocking calls there, and the requirement itself holds (independently verified by grep + source inspection), but the test would not catch a `.Result`/`.Wait()` introduced inside an async body. Recorded as `RESIDUAL-S5a-02` with a recommendation to scan `MoveNext` bodies in S5b/S5c.
+- **The 2 H-14 reflection tests are discriminating for the signature contract** (void + no state-machine attribute; `Task` return). No execution test covers `RunShutdownAsync` behavior — `RESIDUAL-S5a-03`.
+- **No tautology found**: no test verifies a mock the production code never reaches, no `Times.Never` guards an unreachable path, and the 7 re-pointed test files are compile-time-discriminating only (they bind the new required parameter; their behavioral assertions are unchanged).
+- **Method caveat**: no verifier-owned mutation was executed (the brief forbids code writes); discrimination is established by inspection plus the reflection probe. Execution evidence: 14/14 passed with `Omitido: 0`.
+
+### Deviations D1-D5 Assessment
+
+- **D1 — optional defaults on service/interface members: WARNING (design deviation), accepted for scope, but the warned risk materialized.** AD-12's rejected-alternative column was exactly "Default to `CancellationToken.None`"; the implementation used `= default` on every service/interface member with pre-existing call sites (controllers keep required tokens except `GetHistory`). The blast-radius rationale is coherent, but untouched production callers still omit the token, and in `SalesService.Checkout.cs` the token is already in scope: `CompleteSaleAsync` declares and uses it (`:34`, `:43`) yet calls `GetOrCreateActiveSessionAsync(exchangeRate)` `:135` and `RecordSaleChangeAsync(...)` `:231-244` **without** it; `SalesService.Payments.cs:82,203` and `SalesService.HoldOrders.cs:82,219,228` have no token in scope at all. This is not a violation of the touched-surface spec scenarios (all verified), but it is the exact regression class AD-12 warned about — recorded as `S5a-R1`.
+- **D2 — `ISystemSettingsService.GetSettingAsync` stays CT-less: reasonable.** The settings service is not in items 4/9/16/21/27 and widening it would cascade through dozens of call sites; `MapLocalTimesAsync` honors its token with `ThrowIfCancellationRequested` before the settings read. The five remaining settings reads inside touched paths are registered under `S5a-R1`.
+- **D3 — stateful execution-strategy overload: reasonable and verified.** `CashDrawerService.cs:352-356` and `CashAdvanceCoordinator.cs:67-81` use the `state`/`operation`/`verifySucceeded`/`cancellationToken` instance overload because the simple extension has no cancellation-aware form; behavior is unchanged apart from no longer retrying a cancellation. Asymmetry noted as a SUGGESTION: `DailyClosureService.CreateClosureFromCommandAsync` `:219` and `CreateClosureAsync` `:120` keep the simple `strategy.ExecuteAsync(() => ...)` overload with the token captured in the lambda — the token still reaches every operation inside and cancellations are not retried, but the strategy itself is not token-aware.
+- **D4 — legacy entry points: reasonable.** `CreateClosureAsync(DailyClosure)`/`ExecuteClosureCoreAsync` remain the concrete test seam (`S4a-R1`/`S3-07`) and now accept/forward the token; no production caller exists.
+- **D5 — H-14 pulled forward from S5c: authorized and verified** (orchestrator authorization recorded in `tasks.md`); `5c.2` is marked delivered-early and the remaining 5c boxes stay pending. The implementation matches AD-13 including the try/finally close guarantee.
+
+### S5a Requirement Evidence Matrix
+
+| Requirement | Scenario | Covering test / evidence | Result |
+|-------------|----------|--------------------------|--------|
+| REQ-ACP-01 | Token reaches the service | `ShiftsController_GetReportById_...` / `_GetCurrentReport_...`, `DailyClosureController_GetExpectedTotals_...` / `_GetClosure_...`, `CashDrawerController_GetActiveSession_...` / `_AddTransaction_...` / `_ProcessCashAdvance_...` (exact-token Moq verifies; the cash-advance test through the real coordinator) + `TouchedActionsAndHelpers_DeclareCancellationTokenAsLastParameter` + source inspection of the remaining 6 actions | **COMPLIANT** (identity runtime-proven for 7 of 13 touched actions; the rest structural + inspection) |
+| REQ-ACP-01 | Aborted request stops work | `DailyClosureService_CreateClosureFromCommandAsync_WhenTokenCancelled_ThrowsAndPersistsNothing`, `DailyClosureService_GetClosureAsync_WhenTokenCancelled_ThrowsOperationCanceled`, `CashDrawerService_AddTransactionAsync_WhenTokenCancelled_ThrowsAndPersistsNothing` (SQLite real paths: `OperationCanceledException` + 0 rows + rollover never) | **COMPLIANT** |
+| REQ-ACP-02 | Token reaches the EF query | The same 3 SQLite cancellation tests (the query honors the token or throws) + the per-call source inspection table above + the resolver chain diff | **COMPLIANT** (`RESIDUAL-S5a-04` for per-call granularity) |
+| REQ-ACP-02 | No sync-over-async is introduced | `TouchedAsyncTypes_DoNotBlockSynchronouslyOnAsyncPaths` (passes; sync surface only — see Discrimination Review) + repo-wide grep + source inspection of every touched body | **COMPLIANT** (code verified; test guard is partial — `RESIDUAL-S5a-02`) |
+| REQ-ACP-03 | OnClosing is not async void | `MainWindow_OnClosing_IsNotAsyncVoid` (void, no `AsyncStateMachineAttribute`) + `MainWindow_RunShutdownAsync_ReturnsObservableTask` + `SafeFireAndForget` source (`TaskExtensions.cs:15-40`, logs via `AppLogger.LogCrash`) | **COMPLIANT** |
+| REQ-ACP-03 | Close behavior is preserved | `git show` diff (`StopServicesAsync` + `Close()` preserved) + the `try/finally` body; reflection tests pin the handler shape; **no execution test** | **COMPLIANT** (inspection-backed — `RESIDUAL-S5a-03`) |
+
+**Compliance summary**: **6/6 in-scope scenarios compliant**, 0 UNTESTED, 0 FAILING. Requirement level: REQ-ACP-01 (2/2), REQ-ACP-02 (2/2) and REQ-ACP-03 (2/2) are satisfied. Spec-wide at `227ee5c`: `async-cancellation-propagation` is complete (3/3 requirements, 6/6 scenarios), and all five delta specs are complete — **18/18 requirements, 38/38 scenarios** across the change.
+
+### S5a Scope Check
+
+- **No S5b creep**: the commit adds no `.AsNoTracking()`/`.AsSplitQuery()`, no `ThrowIfNull`, no `...Async` renames, no `ClosureStatus` constants, no dead-field/indentation work and no comment changes (verified from the `git show` diffs: every added line in the modified production files is a signature or argument change; zero added `//` lines in production or test diffs). `tasks.md` Phases 5b stay fully unchecked.
+- **No S5c creep beyond the authorized fold-in**: no `AuthController.cs` (H-05), no view-model disposal (H-06), no `RegisterPage.jsx` pagination (H-08). Only `MainWindow.xaml.cs` (task 5c.2 / H-14) is in the commit, annotated as delivered-early.
+- **GGA classification audited — every blocked finding is pre-existing or out-of-slice.** Spot-verified against `65e038a`: the drawer read still used `Include`/`ThenInclude` with no `AsNoTracking` at `65e038a` (`CashDrawerService.cs:39-40`); `LoadClosureEntityAsync` already had `Include` without tuning at `65e038a` (`DailyClosureService.cs:179`); `DailyClosureService.cs` measured 562 non-blank lines at both `65e038a` and `227ee5c` (S5a's diff is `+17/-17`, CT-only); the mutable `CashAdvanceResultDto`/`ExpectedTotalDto` interfaces predate S5a; the `DbContext`/BCV-anchoring fields in `CashDrawerController` and `ResolveClosureDate` (S3) are untouched; the `ArgumentNullException` guard at `DailyClosureService.cs:562` is untouched; the explanatory comments named by GGA are context lines, and the S5a diff adds zero comment lines; the `...Async`-suffix / CT-less `RecalculateOnHoldSalesAsync` / controller-local DTO findings are repo-wide pre-existing items untouched by this commit. No S5a-introduced finding remains.
+- **Size signal (`SIZE-S5a`)**: 22 files changed, **1014 changed lines (867 inserted / 147 deleted)** — above the 400-line review budget declared in the session preflight. Excluding documentation-only lines (`docs/reporte.txt` 155, `apply-progress.md` 88, `tasks.md` 19) and the 438-line new test file, the authored production change is **36 net lines** (153 insertions / 117 deletions across 11 production files) plus ~44 mechanical lines across 7 re-pointed test files. The budget exceedance is driven by the RED-first test file and the annex, not by the production surface; the slice was already authorized as a chained work unit.
+- **Verification harness**: relational (SQLite) real-service tests + reflection; no Postgres-gated test, no WPF execution harness.
+
+### S5a Changed Files
+
+The nineteen S5a production/test files below — every commit file except the three documentation files — in this order, are the input to the head envelope's `evidence_revision`.
+
+| File | Action | Role in S5a |
+|------|--------|-------------|
+| `Backend.API/Controllers/CashDrawerController.cs` | Modified | 7 actions + `ResolveAnchoredRateAsync`/`MapLocalTimesAsync` accept and forward the token (AD-12) |
+| `Backend.API/Controllers/DailyClosureController.cs` | Modified | `GetExpectedTotals`/`GetClosure` accept and forward the token |
+| `Backend.API/Controllers/ShiftsController.cs` | Modified | `GetCurrentReport`/`GetReportById` accept and forward the token |
+| `Backend.API/Services/ExchangeRateWriteService.cs` | Modified | `ExchangeRateResolver.ReadEffectiveTodayRateAsync` gains the parameter and forwards it to the EF reads + session fallback |
+| `Backend.API/Services/TodayExchangeRateProvider.cs` | Modified | Forwards its token to the resolver |
+| `CommandCenter.Tests/Unit/CancellationPropagationTests.cs` | Created | The 14 S5a tests: 7 controller token-identity, 1 structural contract, 3 SQLite cancelled-token + no-persistence, 1 IL blocking scan, 2 H-14 reflection |
+| `CommandCenter.Tests/Unit/ClosureDtoBoundaryTests.cs` | Modified | Mechanical re-point to the required token |
+| `CommandCenter.Tests/Unit/DailyClosureControllerTests.cs` | Modified | Mechanical re-point |
+| `CommandCenter.Tests/Unit/DrawerDtoBoundaryTests.cs` | Modified | Mechanical re-point |
+| `CommandCenter.Tests/Unit/ErrorContractTests.cs` | Modified | Mechanical re-points + drawer mock matcher with `CancellationToken` |
+| `CommandCenter.Tests/Unit/ExchangeRateReferenceBoundaryTests.cs` | Modified | Mechanical re-point of the resolver call |
+| `CommandCenter.Tests/Unit/PaymentMethodCurrencyClassificationTests.cs` | Modified | Mechanical re-point |
+| `CommandCenter.Tests/Unit/SecurityTests.cs` | Modified | Mechanical re-point |
+| `Desktop.Client/MainWindow.xaml.cs` | Modified | H-14/AD-13: `OnClosing` -> `void`; `RunShutdownAsync()` + `SafeFireAndForget` with `Close()` in `finally` |
+| `Sales.Module/Interfaces/ICashDrawerService.cs` | Modified | `CancellationToken cancellationToken = default` last on every async member |
+| `Sales.Module/Interfaces/IDailyClosureService.cs` | Modified | `GetClosureAsync` gains the defaulted token |
+| `Sales.Module/Services/CashAdvanceCoordinator.cs` | Modified | Forwards its token to the drawer read and both writes |
+| `Sales.Module/Services/CashDrawerService.cs` | Modified | Token accepted/forwarded on every async path (EF, advisory locks, tx, strategy) |
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | Token forwarded to every EF call, the resolver chain, rollover, receipts and the legacy entry points |
+
+Plus the documentation files `docs/reporte.txt` (ANEXO 8.140), `apply-progress.md` (S5a section) and `tasks.md` (Phase 5a checkboxes + `5c.2` annotation + fold-in note), which are **not** part of `evidence_revision`.
+
+### S5a Residual Warnings (non-blocking for S5a)
+
+- **RESIDUAL-S5a-01 (deviation D1 — defaulted service tokens; live caller gap)** — the `= default` choice deviates from AD-12's rejected alternative and leaves untouched callers silently non-cancellable; concretely, `SalesService.Checkout.cs` has the token in scope in `CompleteSaleAsync` (`:34`, used at `:43`) but does not pass it at `:135`/`:231-244`, and the `SalesService.Payments.cs`/`HoldOrders.cs` call sites have no token at all. The touched controller->service paths are unaffected. Candidate for S5b/S5c or a follow-up registry item.
+- **RESIDUAL-S5a-02 (IL-scan blind spot — test not fit for purpose)** — `TouchedAsyncTypes_DoNotBlockSynchronouslyOnAsyncPaths` cannot inspect async bodies (nested state machines; empirically proven with a .NET 10 reflection probe: 71-byte stubs, all EF calls in `MoveNext`; 47 async declarations invisible). The requirement holds by independent grep/source inspection, but the test guard should be strengthened (scan `MoveNext` bodies or use an analyzer).
+- **RESIDUAL-S5a-03 (no execution test for the H-14 shutdown path)** — the reflection tests pin the signature and the source shows `try/finally` + `Close()`; nothing runs `RunShutdownAsync` or asserts that an exception still closes the window.
+- **RESIDUAL-S5a-04 (path-level, not per-call, cancellation discrimination)** — the three real-path tests fail on a full revert but would pass if one EF call retained the token; per-call forwarding rests on the source inspection table.
+- **RESIDUAL-S5a-05 (evidence-revision reproducibility)** — the preserved S4b head (`sha256:2db6c81f...`) does not reproduce from its recorded description under the tested byte/join recipes; the S5a recipe is documented explicitly in the scope block. Same class as `RESIDUAL-S2-07`.
+- **`S5a-R1` (CT-less surfaces left outside the registered items)** — `ISystemSettingsService.GetSettingAsync` (D2) and the five settings reads inside touched paths; `SalesService.RecalculateOnHoldSalesAsync` and the `SalesService` drawer call sites above; the `DailyClosureService` simple execution-strategy overload (SUGGESTION). Registered for S5b/S5c triage.
+- **Carried and untouched**: `WARNING-04` (hardcoded `"Balanced"` status and mixed units in the merged undeclared-method lines), `WARNING-07`/`S3-06`/`S4a-R2` (645-line `DailyClosureService.cs`), `S3-07`/`S4a-R1` (legacy closure entry point), `S4b-R1` (drawer read tuning deferred to S5b/AD-16), `RESIDUAL-S4b-04` (out-of-scope pre-existing Web `advance` filter bug). S5a neither fixes nor worsens them.
+
+### S5a Verdict
+
+**PASS_WITH_WARNINGS** — the CT contract is genuinely established at `227ee5c` for items 4/9/16/21/27. Every touched async controller action declares and forwards the request token (7 runtime identity tests + structural contract test + inspection); every touched async service member accepts and forwards it to EF Core, the advisory-lock raw SQL, transactions, the execution strategy and the `ExchangeRateResolver` chain; three SQLite real-path tests prove a pre-cancelled token throws `OperationCanceledException` with zero persisted rows and no rollover; and H-14/AD-13 is correctly implemented (`OnClosing` void, `RunShutdownAsync` + `SafeFireAndForget`, `Close()` in `finally`). Every claim was re-executed: build 0/0, backend suite 1207/1207, the `Cancellation` filter 15/15 (14 new + 1 pre-existing, names listed), the new class 14/14, frontend 271/271 with clean lint, and the coverage gate reproduces the claim exactly. All 6 in-scope scenarios are compliant and the whole `async-cancellation-propagation` spec is complete, bringing the change to 18/18 requirements and 38/38 scenarios. The two verifier-found weaknesses (the IL scan's async-body blind spot and the path-level cancellation discrimination) are non-blocking because the requirement holds under independent source/grep verification; they are recorded with `RESIDUAL-S5a-01`..`-05`, `S5a-R1` and `SIZE-S5a`. S5a may be chained into S5b.
+
 ### Change-Level Verdict
 
-**Pending**. The change cannot receive a change-level verdict while S5a-S5c are unimplemented. S1, S2, S3, S4a and S4b are each verified `pass_with_warnings`. Implemented requirement/scenario surface: S1 (3 requirements / 8 scenarios), S2 (4/9), S3 (4/8) and the whole `api-dto-boundary` spec (4 requirements / 7 scenarios — closure half at S4a, drawer half at S4b), i.e. **15 of the 18 requirements and 32 of the 38 scenarios** across the five delta specs. Pending: the whole of `async-cancellation-propagation` (3 requirements / 6 scenarios) in S5a/S5c. `WARNING-04` (hardcoded `"Balanced"` status and mixed units in the merged undeclared-method lines) and `WARNING-07`/`S3-06` (class size, 645 lines at S4a) remain open and escalate to S5, alongside the registered `S3-07`, `S4a-R1` and the new `S4b-R1`. S1 RESIDUAL-07 is **CLOSED** by S2/AD-9. S4b is now cleared to chain into S5a.
+**Pending**. The change cannot receive a change-level verdict while S5b and the remaining S5c tasks are unchecked. S1, S2, S3, S4a, S4b and S5a are each verified `pass_with_warnings`. Delta-spec surface: **18 of 18 requirements and 38 of 38 scenarios complete** (`payment-method-currency-classification` 3/8, `api-error-contract` 4/9, `closure-orchestration-consolidation` 4/8, `api-dto-boundary` 4/7, `async-cancellation-propagation` 3/6 — the last one closed by S5a, including the H-14/AD-13 fold-in). Pending are the registry-cleanup phases: S5b (EF tuning, guards/naming/comments, `AD-16`..`AD-18`) and the rest of S5c (H-05 cookie `Secure`, H-06 view-model disposal, H-08 pagination; `5c.2`/H-14 already delivered in S5a). `WARNING-04`, `WARNING-07`/`S3-06`/`S4a-R2`, `S3-07`/`S4a-R1` and `S4b-R1` remain open, alongside the new S5a residuals (`RESIDUAL-S5a-01`..`-05`, `S5a-R1`, `SIZE-S5a`). S5a is cleared to chain into S5b.
 
 ### Verdict
 

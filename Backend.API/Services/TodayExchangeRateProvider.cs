@@ -17,6 +17,6 @@ public class TodayExchangeRateProvider : ITodayExchangeRateProvider
 
     public Task<decimal> GetEffectiveTodayRateAsync(CancellationToken cancellationToken)
     {
-        return ExchangeRateResolver.ReadEffectiveTodayRateAsync(_inventoryContext, _cashDrawerService);
+        return ExchangeRateResolver.ReadEffectiveTodayRateAsync(_inventoryContext, _cashDrawerService, cancellationToken);
     }
 }

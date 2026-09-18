@@ -20,25 +20,25 @@ public class CashDrawerService : ICashDrawerService
         _context = context;
     }
 
-    public async Task<CashDrawerSessionResponseDto?> GetActiveSessionAsync()
+    public async Task<CashDrawerSessionResponseDto?> GetActiveSessionAsync(CancellationToken cancellationToken = default)
     {
-        var session = await LoadActiveSessionEntityAsync();
+        var session = await LoadActiveSessionEntityAsync(cancellationToken);
         return session == null ? null : MapSession(session);
     }
 
     // 8.5-M1: Sin Include de Transactions — liviano para accesos internos (cierre, apertura, rollover).
-    private async Task<CashDrawerSession?> LoadActiveSessionEntityAsync()
+    private async Task<CashDrawerSession?> LoadActiveSessionEntityAsync(CancellationToken cancellationToken = default)
     {
         return await _context.CashDrawerSessions
-            .FirstOrDefaultAsync(s => s.Status == CashDrawerStatus.Open);
+            .FirstOrDefaultAsync(s => s.Status == CashDrawerStatus.Open, cancellationToken);
     }
 
-    public async Task<CashDrawerSessionResponseDto?> GetActiveSessionWithTransactionsAsync()
+    public async Task<CashDrawerSessionResponseDto?> GetActiveSessionWithTransactionsAsync(CancellationToken cancellationToken = default)
     {
         var session = await _context.CashDrawerSessions
             .Include(s => s.Transactions)
                 .ThenInclude(t => t.Sale)
-            .FirstOrDefaultAsync(s => s.Status == CashDrawerStatus.Open);
+            .FirstOrDefaultAsync(s => s.Status == CashDrawerStatus.Open, cancellationToken);
 
         if (session == null) return null;
 
@@ -51,28 +51,28 @@ public class CashDrawerService : ICashDrawerService
         return MapSession(session) with { Transactions = transactions };
     }
 
-    public async Task<CashDrawerSessionResponseDto> GetOrCreateActiveSessionAsync(decimal currentExchangeRate)
+    public async Task<CashDrawerSessionResponseDto> GetOrCreateActiveSessionAsync(decimal currentExchangeRate, CancellationToken cancellationToken = default)
     {
-        var session = await LoadActiveSessionEntityAsync();
+        var session = await LoadActiveSessionEntityAsync(cancellationToken);
         if (session != null) return MapSession(session);
 
         var lastSession = await _context.CashDrawerSessions
             .OrderByDescending(s => s.ClosedAt ?? s.OpenedAt)
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(cancellationToken);
 
         decimal carryOverBalance = 0;
         if (lastSession != null)
         {
-            carryOverBalance = lastSession.ClosingBalanceLocal ?? await GetCurrentBalanceLocalAsync(lastSession.Id);
+            carryOverBalance = lastSession.ClosingBalanceLocal ?? await GetCurrentBalanceLocalAsync(lastSession.Id, cancellationToken);
         }
 
         try
         {
-            return await OpenSessionAsync(carryOverBalance, currentExchangeRate);
+            return await OpenSessionAsync(carryOverBalance, currentExchangeRate, cancellationToken);
         }
         catch (Exception ex) when (ex is InvalidOperationException or DbUpdateException)
         {
-            var concurrentSession = await LoadActiveSessionEntityAsync();
+            var concurrentSession = await LoadActiveSessionEntityAsync(cancellationToken);
             if (concurrentSession != null)
             {
                 return MapSession(concurrentSession);
@@ -81,7 +81,7 @@ public class CashDrawerService : ICashDrawerService
         }
     }
 
-    public async Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate)
+    public async Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default)
     {
         if (openingBalanceLocal < 0)
         {
@@ -95,7 +95,7 @@ public class CashDrawerService : ICashDrawerService
 
         currentExchangeRate = PricingCalculator.RoundExchangeRateCeiling(currentExchangeRate);
 
-        if (await GetActiveSessionAsync() != null)
+        if (await GetActiveSessionAsync(cancellationToken) != null)
         {
             throw new InvalidOperationException("Ya existe una sesión de caja activa.");
         }
@@ -111,7 +111,7 @@ public class CashDrawerService : ICashDrawerService
         try
         {
             _context.CashDrawerSessions.Add(session);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException ex)
         {
@@ -125,13 +125,14 @@ public class CashDrawerService : ICashDrawerService
             openingBalanceLocal,
             currentExchangeRate > 0 ? openingBalanceLocal / currentExchangeRate : 0,
             currentExchangeRate,
-            "Monto de apertura de caja"
+            "Monto de apertura de caja",
+            cancellationToken: cancellationToken
         );
 
         return MapSession(session);
     }
 
-    public async Task<CashDrawerSessionResponseDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate)
+    public async Task<CashDrawerSessionResponseDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default)
     {
         if (actualClosingBalanceLocal < 0)
         {
@@ -156,12 +157,12 @@ public class CashDrawerService : ICashDrawerService
             IDbContextTransaction? ownTransaction = null;
             if (ownsTransaction)
             {
-                ownTransaction = await _context.Database.BeginTransactionAsync();
+                ownTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
             }
 
             try
             {
-                var session = await LoadActiveSessionEntityAsync();
+                var session = await LoadActiveSessionEntityAsync(cancellationToken);
                 if (session == null)
                 {
                     throw new InvalidOperationException("No hay una sesión de caja activa para cerrar.");
@@ -173,9 +174,9 @@ public class CashDrawerService : ICashDrawerService
                 // el flip a Status=Closed y los balances persistan en SaveChanges de la misma transacción.
                 if (!isInMemory)
                 {
-                    await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", session.Id);
+                    await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", new object[] { session.Id }, cancellationToken);
                     session = await _context.CashDrawerSessions
-                        .FirstOrDefaultAsync(s => s.Id == session.Id && s.Status == CashDrawerStatus.Open);
+                        .FirstOrDefaultAsync(s => s.Id == session.Id && s.Status == CashDrawerStatus.Open, cancellationToken);
                     if (session == null)
                     {
                         throw new InvalidOperationException("No hay una sesión de caja activa para cerrar.");
@@ -194,14 +195,15 @@ public class CashDrawerService : ICashDrawerService
                     actualClosingBalanceLocal,
                     currentExchangeRate > 0 ? actualClosingBalanceLocal / currentExchangeRate : 0,
                     currentExchangeRate,
-                    "Cierre de caja"
+                    "Cierre de caja",
+                    cancellationToken: cancellationToken
                 );
 
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 if (ownTransaction != null)
                 {
-                    await ownTransaction.CommitAsync();
+                    await ownTransaction.CommitAsync(cancellationToken);
                 }
 
                 return session;
@@ -210,7 +212,7 @@ public class CashDrawerService : ICashDrawerService
             {
                 if (ownTransaction != null)
                 {
-                    await ownTransaction.RollbackAsync();
+                    await ownTransaction.RollbackAsync(cancellationToken);
                 }
                 throw;
             }
@@ -225,25 +227,29 @@ public class CashDrawerService : ICashDrawerService
 
         if (ownsTransaction)
         {
-            var closedSession = await _context.Database.CreateExecutionStrategy().ExecuteAsync(ExecuteWithinTransactionAsync);
+            var closedSession = await _context.Database.CreateExecutionStrategy().ExecuteAsync<object?, CashDrawerSession>(
+                state: null,
+                operation: (_, _, _) => ExecuteWithinTransactionAsync(),
+                verifySucceeded: null,
+                cancellationToken: cancellationToken);
             return MapSession(closedSession);
         }
 
         return MapSession(await ExecuteWithinTransactionAsync());
     }
 
-    public async Task RolloverSessionAfterClosureAsync(decimal currentExchangeRate)
+    public async Task RolloverSessionAfterClosureAsync(decimal currentExchangeRate, CancellationToken cancellationToken = default)
     {
-        var activeSession = await LoadActiveSessionEntityAsync();
+        var activeSession = await LoadActiveSessionEntityAsync(cancellationToken);
         if (activeSession == null) return;
 
         // Conservar el saldo esperado en caja: se arrastra el saldo teórico (apertura + ingresos - egresos)
         // de la sesión que se cierra, sin depender de los montos declarados del arqueo (que solo quedan
         // registrados en el cierre para su auditoría).
-        decimal carryOverBalance = await GetCurrentBalanceLocalAsync(activeSession.Id);
+        decimal carryOverBalance = await GetCurrentBalanceLocalAsync(activeSession.Id, cancellationToken);
 
-        await CloseSessionAsync(carryOverBalance, currentExchangeRate);
-        await OpenSessionAsync(carryOverBalance, currentExchangeRate);
+        await CloseSessionAsync(carryOverBalance, currentExchangeRate, cancellationToken);
+        await OpenSessionAsync(carryOverBalance, currentExchangeRate, cancellationToken);
     }
 
     public async Task<CashTransactionResponseDto> AddTransactionAsync(
@@ -256,7 +262,8 @@ public class CashDrawerService : ICashDrawerService
         string description,
         int? referenceId = null,
         bool isPhysicalCash = true,
-        int? paymentMethodId = null)
+        int? paymentMethodId = null,
+        CancellationToken cancellationToken = default)
     {
         if (amountLocal <= 0 && source != CashTransactionSource.Closing && source != CashTransactionSource.Opening)
         {
@@ -276,7 +283,7 @@ public class CashDrawerService : ICashDrawerService
             IDbContextTransaction? ownTransaction = null;
             if (ownsTransaction)
             {
-                ownTransaction = await _context.Database.BeginTransactionAsync();
+                ownTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
             }
 
             try
@@ -288,10 +295,10 @@ public class CashDrawerService : ICashDrawerService
                 {
                     if (!isInMemory)
                     {
-                        await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", sessionId);
+                        await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", new object[] { sessionId }, cancellationToken);
                     }
 
-                    var currentBalance = await GetCurrentBalanceLocalAsync(sessionId);
+                    var currentBalance = await GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
                     if (currentBalance < amountLocal)
                     {
                         throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para realizar el egreso. Disponible: {currentBalance:N2} Bs.S, Requerido: {amountLocal:N2} Bs.S.");
@@ -314,11 +321,11 @@ public class CashDrawerService : ICashDrawerService
                 };
 
                 _context.CashTransactions.Add(transaction);
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 if (ownTransaction != null)
                 {
-                    await ownTransaction.CommitAsync();
+                    await ownTransaction.CommitAsync(cancellationToken);
                 }
 
                 return transaction;
@@ -327,7 +334,7 @@ public class CashDrawerService : ICashDrawerService
             {
                 if (ownTransaction != null)
                 {
-                    await ownTransaction.RollbackAsync();
+                    await ownTransaction.RollbackAsync(cancellationToken);
                 }
                 throw;
             }
@@ -342,7 +349,11 @@ public class CashDrawerService : ICashDrawerService
 
         if (ownsTransaction)
         {
-            var transaction = await _context.Database.CreateExecutionStrategy().ExecuteAsync(ExecuteWithinTransactionAsync);
+            var transaction = await _context.Database.CreateExecutionStrategy().ExecuteAsync<object?, CashTransaction>(
+                state: null,
+                operation: (_, _, _) => ExecuteWithinTransactionAsync(),
+                verifySucceeded: null,
+                cancellationToken: cancellationToken);
             return MapTransaction(transaction);
         }
 
@@ -362,7 +373,8 @@ public class CashDrawerService : ICashDrawerService
         string description,
         int saleId,
         int? cashPaymentMethodId,
-        decimal pendingCashIncomeBsS = 0m)
+        decimal pendingCashIncomeBsS = 0m,
+        CancellationToken cancellationToken = default)
     {
         if (changeBsS <= 0m)
         {
@@ -381,12 +393,12 @@ public class CashDrawerService : ICashDrawerService
             {
                 throw new InvalidOperationException("RecordSaleChangeAsync debe ejecutarse dentro de la transacción compartida del cobro para que el advisory lock sea efectivo.");
             }
-            await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", sessionId);
+            await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", new object[] { sessionId }, cancellationToken);
         }
 
         // Saldo real en BD (persistido) + ingresos cash de la venta aún en el tracker (no persistidos).
         // El vuelto es un egreso físico y NO puede llevar la caja a saldo negativo (8.6-C1).
-        var currentBalanceDb = await GetCurrentBalanceLocalAsync(sessionId);
+        var currentBalanceDb = await GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
         decimal available = currentBalanceDb + pendingCashIncomeBsS;
         if (available < changeBsS)
         {
@@ -413,13 +425,13 @@ public class CashDrawerService : ICashDrawerService
         return MapTransaction(changeTx);
     }
 
-    public async Task<decimal> GetCurrentBalanceLocalAsync(int sessionId)
+    public async Task<decimal> GetCurrentBalanceLocalAsync(int sessionId, CancellationToken cancellationToken = default)
     {
         var session = await _context.CashDrawerSessions
             .AsNoTracking()
             .Where(s => s.Id == sessionId)
             .Select(s => new { s.OpeningBalanceLocal })
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(cancellationToken);
 
         if (session == null) return 0;
 
@@ -433,12 +445,12 @@ public class CashDrawerService : ICashDrawerService
                      && t.Source != CashTransactionSource.Opening)
             .SumAsync(t => t.Type == CashTransactionType.Expense
                 ? -(decimal?)t.AmountLocal
-                : (decimal?)t.AmountLocal) ?? 0m;
+                : (decimal?)t.AmountLocal, cancellationToken) ?? 0m;
 
         return session.OpeningBalanceLocal + netCash;
     }
 
-    public async Task<System.Collections.Generic.List<CashTransactionResponseDto>> GetHistoryAsync(int limit = 300)
+    public async Task<System.Collections.Generic.List<CashTransactionResponseDto>> GetHistoryAsync(int limit = 300, CancellationToken cancellationToken = default)
     {
         return await _context.CashTransactions
             .AsNoTracking()
@@ -462,7 +474,7 @@ public class CashDrawerService : ICashDrawerService
                 IsPhysicalCash = t.IsPhysicalCash,
                 PaymentMethodId = t.PaymentMethodId
             })
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
     }
 
     private static CashDrawerSessionResponseDto MapSession(CashDrawerSession session) => new()

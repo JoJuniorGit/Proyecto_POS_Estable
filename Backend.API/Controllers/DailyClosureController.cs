@@ -30,7 +30,7 @@ public class DailyClosureController : ControllerBase
 
     [HttpGet("expected-totals")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult<List<ExpectedTotalDto>>> GetExpectedTotals([FromQuery] DateTime dateUtc)
+    public async Task<ActionResult<List<ExpectedTotalDto>>> GetExpectedTotals([FromQuery] DateTime dateUtc, CancellationToken cancellationToken)
     {
         if (dateUtc == default)
         {
@@ -41,7 +41,7 @@ public class DailyClosureController : ControllerBase
                 type: "https://tools.ietf.org/html/rfc7231#section-6.5.1");
         }
 
-        var totals = await _closureService.GetExpectedTotalsByPaymentMethodAsync(dateUtc);
+        var totals = await _closureService.GetExpectedTotalsByPaymentMethodAsync(dateUtc, cancellationToken);
         return Ok(totals);
     }
 
@@ -127,9 +127,9 @@ public class DailyClosureController : ControllerBase
 
     [HttpGet("{id}")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult<DailyClosureResponseDto>> GetClosure(int id)
+    public async Task<ActionResult<DailyClosureResponseDto>> GetClosure(int id, CancellationToken cancellationToken)
     {
-        var closure = await _closureService.GetClosureAsync(id);
+        var closure = await _closureService.GetClosureAsync(id, cancellationToken);
         if (closure == null) return NotFound();
         return Ok(closure);
     }

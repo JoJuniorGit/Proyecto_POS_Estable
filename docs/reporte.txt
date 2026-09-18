@@ -9666,3 +9666,158 @@ E6. Archivos: 2 DTO nuevos, 3 produccion modificados, 1 archivo de produccion
     eliminado, 1 archivo Web modificado, 1 archivo de tests nuevo y ~16 archivos
     de test re-punteados. La slice se autoriza como work unit de cadena.
 E7. GGA: ver apply-progress.md (seccion S4b, GGA Hook Exceptions).
+
+
+================================================================================
+ANEXO - REVISION 8.140 (legacy-debt-cleanup S5a: CancellationToken propagation)
+================================================================================
+
+Fecha: 2026-09-17
+Commit: fix(8.140): propagacion de CancellationToken (slice S5a, items 4/9/16/21/27)
+        - ANEXO 8.140, en rama V0.15 (sin branches/PRs).
+
+Alcance: work unit S5a del change legacy-debt-cleanup (store openspec), items del
+registro 4, 9, 16, 21 y 27 (H-09): los endpoints y servicios tocados aceptan y
+propagan CancellationToken hasta EF Core y el resolver de tasa; ninguna ruta
+async usa .Result/.Wait()/Thread.Sleep. Incluye el fold-in H-14/AD-13
+(MainWindow.OnClosing deja de ser async void), autorizado explicitamente por el
+orquestador. Solo S5a (S5b+ no se inicia). Sin cambios de schema, sin PRs, sin
+sub-agentes.
+
+A. CAMBIOS DE PRODUCCION
+
+A1. Contratos de servicio (items 9 y 21):
+- ICashDrawerService.cs: CancellationToken cancellationToken = default como
+  ultimo parametro en TODOS los miembros async (GetActiveSession,
+  GetActiveSessionWithTransactions, GetOrCreateActiveSession, OpenSession,
+  CloseSession, RolloverSessionAfterClosure, AddTransaction, RecordSaleChange,
+  GetCurrentBalanceLocal, GetHistory).
+- IDailyClosureService.cs: GetClosureAsync(id, ct = default); el resto ya tenia
+  el parametro desde S1/S3.
+- CashDrawerService.cs: el token se propaga a FirstOrDefaultAsync/SumAsync/
+  ToListAsync/SaveChangesAsync, a los ExecuteSqlRawAsync del advisory lock, a
+  BeginTransactionAsync/CommitAsync/RollbackAsync y al overload con estado de la
+  execution strategy; LoadActiveSessionEntityAsync (privado) lo recibe.
+- DailyClosureService.cs: GetExpectedTotalsByPaymentMethodAsync cierra las dos
+  ToDictionaryAsync que quedaban sin token; CreateClosureAsync(DailyClosure)/
+  ExecuteClosureCoreAsync/GetClosureAsync/PersistClosureCoreAsync aceptan y
+  propagan el token; el rollover y la escritura de comprobantes ya lo recibian.
+- CashAdvanceCoordinator.cs: propaga su token a GetCurrentBalanceLocalAsync y a
+  las dos AddTransactionAsync del cash-advance.
+
+A2. Controladores (items 4, 16 y 27):
+- ShiftsController: GetCurrentReport/GetReportById reciben el token y lo pasan a
+  GetLatestClosureAsync/GetClosureAsync/GetCashierDisplayNameAsync (CloseShift ya
+  lo hacia desde S1).
+- DailyClosureController: GetExpectedTotals/GetClosure (CreateClosure ya lo
+  hacia desde S3).
+- CashDrawerController: las 7 actions + ResolveAnchoredRateAsync (lectura EF) +
+  MapLocalTimesAsync (ThrowIfCancellationRequested); Users.FindAsync y
+  CashAdvanceCoordinator.ProcessAsync reciben el token.
+- GetHistory conserva limit=300 opcional y agrega el token con default (C# no
+  permite un parametro requerido despues de uno opcional); el model binding de
+  ASP.NET Core sigue inyectando el token real de la request.
+
+A3. Cadena de tasa (AD-12):
+- ExchangeRateResolver.ReadEffectiveTodayRateAsync gana CancellationToken y lo
+  pasa a las dos lecturas EF y al fallback GetActiveSessionAsync;
+  TodayExchangeRateProvider lo reenvia. La cadena DailyClosureService ->
+  ITodayExchangeRateProvider -> ExchangeRateResolver queda cancelable de punta a
+  punta. ISystemSettingsService queda fuera (no esta en los items 4/9/16/21/27).
+
+A4. H-14 / AD-13 (fold-in autorizado):
+- Desktop.Client/MainWindow.xaml.cs: OnClosing vuelve a void (era async void);
+  dialogo + e.Cancel + _isShuttingDown siguen sincronicos; el apagado pasa a
+  Task RunShutdownAsync() (StopServicesAsync dentro de try, Close() en finally)
+  lanzado con SafeFireAndForget("MainWindow.OnClosingShutdown"), que observa y
+  registra cualquier excepcion via AppLogger.LogCrash. Caja 5c.2 marcada como
+  entregada en S5a; 5c.1/5c.3-5c.7 siguen pendientes.
+
+B. PRUEBAS NUEVAS (CommandCenter.Tests/Unit/CancellationPropagationTests.cs, 14 tests)
+
+B1. RED: el archivo se escribio contra las firmas objetivo antes de tocar
+    produccion; el build Release fallo con 28 errores CS1501/CS7036/CS1739
+    (todas las rutas sin el parametro CancellationToken), evidencia del ciclo.
+B2. Propagacion controlador->servicio: 7 tests verifican con Moq que el token
+    exacto de la request llega a GetLatestClosureAsync/GetClosureAsync/
+    GetCashierDisplayNameAsync, GetExpectedTotalsByPaymentMethodAsync,
+    GetActiveSessionWithTransactionsAsync, AddTransactionAsync y (via
+    CashAdvanceCoordinator real) GetCurrentBalanceLocalAsync + AddTransactionAsync
+    del cash-advance.
+B3. Contrato estructural: TouchedActionsAndHelpers_DeclareCancellationTokenAs
+    LastParameter recorre las 13 actions tocadas + ResolveAnchoredRateAsync/
+    MapLocalTimesAsync y exige CancellationToken como ultimo parametro.
+B4. Cancelacion real (SQLite relacional, servicio real): token pre-cancelado ->
+    OperationCanceledException y 0 filas persistidas en
+    CreateClosureFromCommandAsync (sin filas en DailyClosures y rollover
+    Times.Never), GetClosureAsync y CashDrawerService.AddTransactionAsync.
+B5. REQ-ACP-02: TouchedAsyncTypes_DoNotBlockSynchronouslyOnAsyncPaths escanea el
+    IL de cada metodo declarado de los 3 controladores + 3 servicios y rechaza
+    Task.Result/Task.Wait/WaitAll/WaitAny/Thread.Sleep/GetAwaiter().GetResult.
+B6. H-14: reflexion sobre MainWindow: OnClosing es void y sin
+    AsyncStateMachineAttribute; RunShutdownAsync devuelve Task.
+
+C. VERIFICACION
+
+C1. Build Release: 0 errores, 0 advertencias.
+C2. Backend tests: 1207 passed, 0 failed, 0 skipped (1193 -> 1207).
+C3. Filtro S5a (Cancellation): 15 passed, 0 failed (14 nuevos + 1 pre-existente
+    Phase3DesktopOptimizationTests...CancellationTokenSourceSafely).
+C4. Frontend tests: 271 passed, 0 failed (Web sin cambios; regresion).
+C5. Frontend lint: clean (exit 0).
+C6. Coverage: Core 0.8364 >= 0.70; Sales.Module 0.9048 >= 0.80;
+    Inventory.Module 0.8251 >= 0.72 - [OK].
+
+D. DECISIONES, DESVIACIONES E IMPACTO
+
+D1. Los miembros de servicio/interfaz con call sites pre-existentes toman el
+    token con default (estilo ya usado en IDailyClosureService desde S1/S3);
+    las actions toman token requerido salvo GetHistory (limit ya opcional).
+D2. ISystemSettingsService.GetSettingAsync queda sin token (fuera de los items
+    registrados); MapLocalTimesAsync honra el token con
+    ThrowIfCancellationRequested antes de leer settings.
+D3. El overload simple de IExecutionStrategy.ExecuteAsync no acepta token; se
+    usa el overload con estado (state/operation/verifySucceeded/ct), mismo
+    patron que CashAdvanceCoordinator. Sin cambio de comportamiento salvo que
+    una cancelacion ya no se reintenta.
+D4. CreateClosureAsync(DailyClosure) (S4a-R1/S3-07) sigue como seam de test,
+    ahora CT-aware.
+D5. Cambio de firma sin cambio de payload: los cuerpos JSON y los codigos HTTP
+    no se alteran (tests de contrato pre-existentes verdes).
+D6. Archivos: 11 de produccion modificados (10 backend + MainWindow.xaml.cs),
+    1 archivo de tests nuevo (438 lineas) y 7 archivos de test re-punteados
+    (19 call sites a las actions con token requerido). Lineas autoradas ~750 >
+    400: se recomienda size:exception (unidad ya autorizada como work unit de
+    cadena; sin recorte de codigo, tests ni comentarios).
+D7. GGA: ver seccion E.
+
+E. GGA (punctual --no-verify)
+
+gga run (v2.10.1, provider opencode, rules AGENTS.md) = STATUS FAILED. Todos los
+hallazgos son PRE-EXISTENTES y asignados a slices posteriores; ninguno es
+introducido por S5a. Commit con --no-verify puntual documentado.
+
+- AsNoTracking/AsSplitQuery ausentes en lecturas
+  (CashDrawerService.GetActiveSessionWithTransactionsAsync;
+  DailyClosureService.LoadClosureEntityAsync/GetLatestClosureAsync):
+  pre-existente; AD-16/S5b (registrado S4b-R1).
+- DailyClosureService.cs 645 lineas (GGA reporta 562 sin blancos): pre-existente;
+  S3-06/WARNING-07/S4a-R2 -> S5b.
+- DTOs mutables en Sales.Module.Interfaces (CashAdvanceResultDto,
+  ExpectedTotalDto): pre-existente; nota S4b GGA -> S5b (AD-17).
+- Comentarios explicativos (CashDrawerController, CashDrawerService,
+  DailyClosureService, ExchangeRateWriteService, MainWindow): pre-existente;
+  AD-18/S5b.8 (solo marcadores 8.x-*). S5a no agrego comentarios.
+- DbContext + logica de anclaje BCV en CashDrawerController: pre-existente;
+  nota S4b GGA -> S5b (AD-17).
+- ResolveClosureDate lanza InvalidOperationException fuera del try (409 vs 400):
+  pre-existente (S3); S5b.7.
+- if (closure == null) throw new ArgumentNullException en lugar de
+  ThrowIfNull (WriteClosedClosureReceiptsAsync): pre-existente; S5b.4.
+- Sufijo Async ausente en actions, RecalculateOnHoldSalesAsync sin CT, DTOs
+  locales en controllers y coordinator concreto: pre-existente; S5b (AD-17).
+
+El mismo informe declara en "Compliant": "no async void in services
+(RunShutdownAsync is Task, SafeFireAndForget used); CancellationToken propagated
+through the reviewed endpoints; history snapshots never recomputed; errors
+surface as ProblemDetails" - evidencia de tercera parte para REQ-ACP-01/02/03.

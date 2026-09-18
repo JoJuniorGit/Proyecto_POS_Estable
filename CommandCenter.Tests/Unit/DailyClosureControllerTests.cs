@@ -57,7 +57,7 @@ public class DailyClosureControllerTests
     {
         var controller = CreateController();
 
-        var actionResult = await controller.GetExpectedTotals(default);
+        var actionResult = await controller.GetExpectedTotals(default, CancellationToken.None);
 
         var objectResult = Assert.IsType<ObjectResult>(actionResult.Result);
         Assert.Equal(400, objectResult.StatusCode);
@@ -74,7 +74,7 @@ public class DailyClosureControllerTests
 
         var controller = CreateController(closureService);
 
-        var actionResult = await controller.GetExpectedTotals(new DateTime(2026, 9, 15, 0, 0, 0, DateTimeKind.Utc));
+        var actionResult = await controller.GetExpectedTotals(new DateTime(2026, 9, 15, 0, 0, 0, DateTimeKind.Utc), CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(actionResult.Result);
     }

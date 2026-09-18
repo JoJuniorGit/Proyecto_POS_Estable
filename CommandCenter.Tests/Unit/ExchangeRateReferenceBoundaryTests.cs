@@ -64,7 +64,7 @@ public class ExchangeRateReferenceBoundaryTests
 
         var cashDrawerMock = new Mock<ICashDrawerService>();
 
-        decimal rate = await ExchangeRateResolver.ReadEffectiveTodayRateAsync(context, cashDrawerMock.Object);
+        decimal rate = await ExchangeRateResolver.ReadEffectiveTodayRateAsync(context, cashDrawerMock.Object, CancellationToken.None);
 
         Assert.Equal(804.64m, rate);
     }
@@ -126,8 +126,8 @@ public class ExchangeRateReferenceBoundaryTests
 
         var mockCashDrawer = new Mock<ICashDrawerService>();
         decimal? capturedRate = null;
-        mockCashDrawer.Setup(c => c.AddTransactionAsync(It.IsAny<int>(), It.IsAny<CashTransactionType>(), It.IsAny<CashTransactionSource>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>()))
-            .ReturnsAsync((int sid, CashTransactionType t, CashTransactionSource s, decimal al, decimal au, decimal er, string d, int? rid, bool isPhys, int? pmId) =>
+        mockCashDrawer.Setup(c => c.AddTransactionAsync(It.IsAny<int>(), It.IsAny<CashTransactionType>(), It.IsAny<CashTransactionSource>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int sid, CashTransactionType t, CashTransactionSource s, decimal al, decimal au, decimal er, string d, int? rid, bool isPhys, int? pmId, CancellationToken ct) =>
             {
                 capturedRate = er;
                 return new CashTransactionResponseDto { Id = 1, SessionId = sid, Type = t, Source = s, AmountLocal = al, AmountUsd = au, ExchangeRate = er, Description = d, TransactionTime = DateTime.UtcNow };
@@ -147,7 +147,7 @@ public class ExchangeRateReferenceBoundaryTests
             AmountLocal = 1609.28m,
             ExchangeRate = 804.6301m,
             Description = "Txn manual 8.103"
-        });
+        }, CancellationToken.None);
 
         Assert.NotNull(result.Result);
         Assert.IsType<OkObjectResult>(result.Result);

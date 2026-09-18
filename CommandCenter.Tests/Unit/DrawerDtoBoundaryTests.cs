@@ -299,7 +299,7 @@ public class DrawerDtoBoundaryTests
         var coordinator = new CashAdvanceCoordinator(salesDb, Mock.Of<ISalesService>(), service.Object, settings.Object);
         var controller = new CashDrawerController(service.Object, settings.Object, salesDb, new Mock<ICurrentUserService>().Object, inventoryDb, coordinator);
 
-        var found = await controller.GetActiveSession();
+        var found = await controller.GetActiveSession(CancellationToken.None);
         var ok = Assert.IsType<OkObjectResult>(found.Result);
         var body = Assert.IsType<CashDrawerSessionResponseDto>(ok.Value);
         Assert.Equal(3, body.Id);
@@ -312,7 +312,7 @@ public class DrawerDtoBoundaryTests
         Assert.DoesNotContain("paymentMethod", PropertyNames(bodyNode));
 
         service.Setup(s => s.GetActiveSessionWithTransactionsAsync()).ReturnsAsync((CashDrawerSessionResponseDto?)null);
-        var empty = await controller.GetActiveSession();
+        var empty = await controller.GetActiveSession(CancellationToken.None);
         var emptyOk = Assert.IsType<OkObjectResult>(empty.Result);
         Assert.Null(emptyOk.Value);
     }
