@@ -52,16 +52,9 @@ function RegisterClosePageContent() {
 
   // Utility to determine currency for a payment method
   const getMethodCurrency = useCallback((method) => {
-    // 8.9-M16: la fuente de verdad es la moneda derivada por el backend (method.currency);
-    // la heurística por nombre solo actúa como fallback temporal para respuestas cacheadas viejas.
-    if (method?.currency === 'USD' || method?.currency === 'Bs.S') {
-      return method.currency;
-    }
-    const name = (method?.name || '').toLowerCase();
-    if (name.includes('usd') || name.includes('dolar') || name.includes('$') || name.includes('divisa')) {
-      return 'USD';
-    }
-    return 'Bs.S';
+    // 8.9-M16 + AD-2: the source of truth is the server-provided method.currency
+    // from /api/paymentmethods/active. No name/substring heuristic.
+    return method?.currency === 'USD' ? 'USD' : 'Bs.S';
   }, []);
 
   // 1. Initial Fetch (Parallel API calls)
@@ -138,17 +131,12 @@ function RegisterClosePageContent() {
     setIsSubmitting(true);
     setError(null);
 
-    // Build payload strictly in native currency per method
-    const payloadAmounts = methods.map((m) => {
-      const curr = getMethodCurrency(m);
-      const amt = declaredAmounts[m.id] || 0;
-      return {
-        paymentMethodId: m.id,
-        paymentMethodName: m.name,
-        amount: amt,
-        currency: curr,
-      };
-    });
+    // Build payload in native currency per method (no currency field — server classifies via resolver)
+    const payloadAmounts = methods.map((m) => ({
+      paymentMethodId: m.id,
+      paymentMethodName: m.name,
+      amount: declaredAmounts[m.id] || 0,
+    }));
 
     try {
       const report = await closeShift(

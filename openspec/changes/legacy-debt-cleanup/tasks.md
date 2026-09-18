@@ -31,16 +31,16 @@ Chain strategy: pending
 
 ## Phase 1: Zero-Trust Close (S1) — Blocker
 
-- [ ] 1.1 **RED**: Add test asserting `CloseShift` classifies every declared method via `PaymentMethodCurrencyResolver`, ignores `request.Currency`; unknown method id → 400
-- [ ] 1.2 Create `Sales.Module/Services/ShiftReportMapper.cs` — extract per-detail projection from `GetReportById` into reusable mapper (AD-4)
-- [ ] 1.3 Modify `Sales.Module/Services/DailyClosureService.cs`: accept `CreateClosureCommand` (AD-5), classify each `DeclaredPaymentAmount` via resolver (AD-1/3), `ExpectedAmountBsS` verbatim, `ActualAmountBsS = declaredNative × rate` (AD-3)
-- [ ] 1.4 Create `Sales.Module/Interfaces/CreateClosureCommand.cs` and `DeclaredPaymentAmount.cs` (AD-5)
-- [ ] 1.5 Modify `Sales.Module/Interfaces/IDailyClosureService.cs`: add `CreateClosureAsync(CreateClosureCommand, ct)` signature (AD-5)
-- [ ] 1.6 Modify `Backend.API/Controllers/ShiftsController.cs`: delete `request.Currency` reads (lines 117,134,185-187), build `CreateClosureCommand` from declarations, delegate to service (AD-1/5)
-- [ ] 1.7 Modify `Web.Frontend/src/pages/RegisterClosePage.jsx`: replace name/substring heuristic with `m?.currency === 'USD' ? 'USD' : 'Bs.S'` from server; stop sending `currency` in payload (AD-2)
-- [ ] 1.8 **GREEN**: Add test asserting report↔receipt agreement (C1 P1 pattern): close once, verify `GET /api/shifts/{id}/report` labels and amounts equal generated receipt per method
-- [ ] 1.9 **GREEN**: Add Web test asserting no `usd|dolar|$|divisa` substring heuristic remains in `RegisterClosePage.jsx`; payload shape has no `currency` key
-- [ ] 1.10 Re-point existing `CloseShift` test classes to use `CreateClosureCommand` without `Currency`
+- [x] 1.1 **RED**: Add test asserting `CloseShift` classifies every declared method via `PaymentMethodCurrencyResolver`, ignores `request.Currency`; unknown method id → 400
+- [x] 1.2 Create `Sales.Module/Services/ShiftReportMapper.cs` — extract per-detail projection from `GetReportById` into reusable mapper (AD-4)
+- [x] 1.3 Modify `Sales.Module/Services/DailyClosureService.cs`: accept `CreateClosureCommand` (AD-5), classify each `DeclaredPaymentAmount` via resolver (AD-1/3), `ExpectedAmountBsS` verbatim, `ActualAmountBsS = declaredNative × rate` (AD-3)
+- [x] 1.4 Create `Sales.Module/Interfaces/CreateClosureCommand.cs` and `DeclaredPaymentAmount.cs` (AD-5)
+- [x] 1.5 Modify `Sales.Module/Interfaces/IDailyClosureService.cs`: add `CreateClosureAsync(CreateClosureCommand, ct)` signature (AD-5)
+- [x] 1.6 Modify `Backend.API/Controllers/ShiftsController.cs`: delete `request.Currency` reads (lines 117,134,185-187), build `CreateClosureCommand` from declarations, delegate to service (AD-1/5)
+- [x] 1.7 Modify `Web.Frontend/src/pages/RegisterClosePage.jsx`: replace name/substring heuristic with `m?.currency === 'USD' ? 'USD' : 'Bs.S'` from server; stop sending `currency` in payload (AD-2)
+- [x] 1.8 **GREEN**: Add test asserting report↔receipt agreement (C1 P1 pattern): close once, verify `GET /api/shifts/{id}/report` labels and amounts equal generated receipt per method
+- [x] 1.9 **GREEN**: Add Web test asserting no `usd|dolar|$|divisa` substring heuristic remains in `RegisterClosePage.jsx`; payload shape has no `currency` key
+- [x] 1.10 Re-point existing `CloseShift` test classes to use `CreateClosureCommand` without `Currency`
 
 ## Phase 2: Error Contract + Dead Fields (S2)
 

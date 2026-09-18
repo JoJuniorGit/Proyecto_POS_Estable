@@ -239,11 +239,14 @@ public class SecurityHardeningSprint2Tests
         mockUser.Setup(u => u.UserId).Returns("1");
         mockCashDrawer.Setup(c => c.GetActiveSessionAsync())
             .ReturnsAsync(new CashDrawerSession { OpeningExchangeRate = 50m });
-        mockDailyClosure.Setup(c => c.GetExpectedTotalsByPaymentMethodAsync(It.IsAny<DateTime>()))
+        mockDailyClosure.Setup(c => c.GetExpectedTotalsByPaymentMethodAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<ExpectedTotalDto>
             {
                 new ExpectedTotalDto { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 1000m }
             });
+        mockDailyClosure
+            .Setup(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ArgumentException("El desglose contiene métodos de pago no reconocidos: 999."));
 
         var controller = new ShiftsController(
             mockCashDrawer.Object,
@@ -270,15 +273,18 @@ public class SecurityHardeningSprint2Tests
         {
             DeclaredAmounts = new List<DeclaredAmountDto>
             {
-                new DeclaredAmountDto { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", Amount = 1000m, Currency = "Bs.S" },
-                new DeclaredAmountDto { PaymentMethodId = 999, PaymentMethodName = "Método Inyectado", Amount = 0m, Currency = "Bs.S" }
+                new DeclaredAmountDto { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", Amount = 1000m },
+                new DeclaredAmountDto { PaymentMethodId = 999, PaymentMethodName = "Método Inyectado", Amount = 0m }
             }
         };
 
-        var result = await controller.CloseShift(request);
+        var result = await controller.CloseShift(request, CancellationToken.None);
 
-        Assert.IsType<BadRequestObjectResult>(result);
-        mockDailyClosure.Verify(c => c.CreateClosureAsync(It.IsAny<DailyClosure>()), Times.Never);
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(400, problemDetails.Status);
+        mockDailyClosure.Verify(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()), Times.Once);
         mockCashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
     }
 }

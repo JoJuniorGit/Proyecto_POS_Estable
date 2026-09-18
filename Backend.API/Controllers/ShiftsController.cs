@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Sales.Module.Interfaces;
 using Sales.Module.Data;
 using Sales.Module.Entities;
+using Sales.Module.Services;
 using Inventory.Module.Data;
 using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -56,7 +57,7 @@ public class ShiftsController : ControllerBase
 
     [RequireSecurityStampValidation]
     [HttpPost("close")]
-    public async Task<ActionResult> CloseShift([FromBody] CloseShiftRequest request)
+    public async Task<ActionResult> CloseShift([FromBody] CloseShiftRequest request, CancellationToken cancellationToken)
     {
         if (User.IsInRole("Driver"))
         {
@@ -74,143 +75,88 @@ public class ShiftsController : ControllerBase
             return BadRequest(new { message = $"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}." });
         }
 
+        // Identity from JWT claims (H-API-2)
+        string cashierName = "Cajero Activo";
+        string cashierCedula = "V-00000000";
+
+        int? parsedAuthUserId = null;
+        if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int authUserId))
+        {
+            parsedAuthUserId = authUserId;
+            var authUser = await _salesContext.Users.FindAsync(authUserId);
+            if (authUser != null)
+            {
+                cashierName = authUser.Name;
+                cashierCedula = authUser.Cedula ?? authUser.Username ?? "V-00000000";
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(User.Identity?.Name))
+        {
+            var authUser = await _salesContext.Users.FirstOrDefaultAsync(u => u.Username == User.Identity.Name);
+            if (authUser != null)
+            {
+                parsedAuthUserId = authUser.Id;
+                cashierName = authUser.Name;
+                cashierCedula = authUser.Cedula ?? authUser.Username ?? "V-00000000";
+            }
+        }
+        else
+        {
+            cashierName = "Cajero Desconocido";
+            cashierCedula = "V-00000000";
+        }
+
         try
         {
-            // 8.9-B4: el cierre de turno combina SalesDbContext (cierre/totales) + caja (rollover) en
-            // una transacción Serializable cross-DB; se ejecuta bajo execution strategy para
-            // reintentar el bloque completo ante fallos transitorios y no quedar a medias.
-            return await _salesContext.Database.CreateExecutionStrategy().ExecuteAsync<ActionResult>(async () =>
-            {
             decimal exchangeRate = await GetTodayExchangeRateAsync();
-
-            // 8.2-M2: Bloquear cierre sin tasa BCV del día (o tasa 0/NA explícita) con error claro
             if (exchangeRate <= 0)
             {
-                throw new InvalidOperationException("No se puede cerrar el turno: no existe una tasa BCV registrada para hoy. Registre la tasa del día antes de cerrar la caja.");
+                return Problem(
+                    detail: "No se puede cerrar el turno: no existe una tasa BCV registrada para hoy. Registre la tasa del día antes de cerrar la caja.",
+                    statusCode: StatusCodes.Status400BadRequest);
             }
 
-            using var dbTransaction = await _salesContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+            var command = new CreateClosureCommand(
+                ClosureDateUtc: DateTime.UtcNow,
+                UserId: parsedAuthUserId?.ToString() ?? cashierName,
+                Observation: cashierCedula,
+                ExchangeRate: exchangeRate,
+                Declarations: request.DeclaredAmounts
+                    .Select(d => new DeclaredPaymentAmount(d.PaymentMethodId, d.Amount))
+                    .ToList());
 
-            // Obtenemos los totales teóricos por método de pago dentro de la transacción Serializable
-            var expectedTotals = await _dailyClosureService.GetExpectedTotalsByPaymentMethodAsync(DateTime.UtcNow);
-
-            var expectedMethodIds = expectedTotals.Select(e => e.PaymentMethodId).ToHashSet();
-            var unknownMethodIds = request.DeclaredAmounts
-                .Where(d => !expectedMethodIds.Contains(d.PaymentMethodId))
-                .Select(d => d.PaymentMethodId)
-                .Distinct()
-                .ToList();
-
-            if (unknownMethodIds.Count > 0)
-            {
-                return BadRequest(new { message = $"El desglose contiene métodos de pago no reconocidos: {string.Join(", ", unknownMethodIds)}." });
-            }
-
-            var details = new List<ShiftReportDetailDto>();
-            foreach (var declared in request.DeclaredAmounts)
-            {
-                var expected = expectedTotals.FirstOrDefault(e => e.PaymentMethodId == declared.PaymentMethodId);
-                decimal expectedSystemAmount = 0m;
-
-                if (expected != null)
-                {
-                    if (declared.Currency == "USD")
-                    {
-                        expectedSystemAmount = exchangeRate > 0 ? (expected.ExpectedAmountBsS / exchangeRate) : 0m;
-                    }
-                    else
-                    {
-                        expectedSystemAmount = expected.ExpectedAmountBsS;
-                    }
-                }
-
-                decimal diff = declared.Amount - expectedSystemAmount;
-                string status = Math.Abs(diff) < 0.05m ? "Balanced" : (diff > 0 ? "Surplus" : "Shortage");
-
-                details.Add(new ShiftReportDetailDto
-                {
-                    PaymentMethodId = declared.PaymentMethodId,
-                    PaymentMethodName = declared.PaymentMethodName,
-                    Currency = declared.Currency,
-                    DeclaredAmount = declared.Amount,
-                    SystemAmount = expectedSystemAmount,
-                    Difference = diff,
-                    Status = status
-                });
-            }
-
-            // Identidad autoritativa de cajero por claims (H-API-2)
-            string cashierName = "Cajero Activo";
-            string cashierCedula = "V-00000000";
-
-            int? parsedAuthUserId = null;
-            if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int authUserId))
-            {
-                parsedAuthUserId = authUserId;
-                var authUser = await _salesContext.Users.FindAsync(authUserId);
-                if (authUser != null)
-                {
-                    cashierName = authUser.Name;
-                    cashierCedula = authUser.Cedula ?? authUser.Username ?? "V-00000000";
-                }
-            }
-            else if (!string.IsNullOrWhiteSpace(User.Identity?.Name))
-            {
-                var authUser = await _salesContext.Users.FirstOrDefaultAsync(u => u.Username == User.Identity.Name);
-                if (authUser != null)
-                {
-                    parsedAuthUserId = authUser.Id;
-                    cashierName = authUser.Name;
-                    cashierCedula = authUser.Cedula ?? authUser.Username ?? "V-00000000";
-                }
-            }
-            else
-            {
-                // Fallback safe defaults if no user is found
-                cashierName = "Cajero Desconocido";
-                cashierCedula = "V-00000000";
-            }
-
-            // Persistir cierre de caja de forma secuencial en la Base de Datos
-            var dailyClosure = new DailyClosure
-            {
-                ClosureDate = DateTime.UtcNow,
-                UserId = parsedAuthUserId?.ToString() ?? cashierName,
-                Observation = cashierCedula,
-                ExchangeRate = exchangeRate,
-                Details = details.Select(d => new ClosureDetail
-                {
-                    PaymentMethodId = d.PaymentMethodId,
-                    PaymentMethodName = d.PaymentMethodName,
-                    ExpectedAmountBsS = d.Currency == "USD" ? d.SystemAmount * exchangeRate : d.SystemAmount,
-                    ActualAmountBsS = d.Currency == "USD" ? d.DeclaredAmount * exchangeRate : d.DeclaredAmount,
-                    DifferenceBsS = d.Currency == "USD" ? d.Difference * exchangeRate : d.Difference
-                }).ToList()
-            };
-
-            var savedClosure = await _dailyClosureService.CreateClosureAsync(dailyClosure);
-
-            // Unificar con DailyClosure: rotar sesión de caja en el cierre de turno (H-API-15)
-            await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate);
-
-            await dbTransaction.CommitAsync();
-
-            // 8.7-B5: los comprobantes (PDF/TXT) se escriben DESPUÉS del commit para no mantener
-            // abierta la transacción Serializable durante I/O de disco.
-            _dailyClosureService.WriteClosedClosureReceipts(savedClosure);
+            var result = await _dailyClosureService.CreateClosureFromCommandAsync(command, cancellationToken);
 
             var report = new ShiftReportDto
             {
-                ShiftId = savedClosure.Id,
-                CashierName = cashierName,
-                CashierCedula = cashierCedula,
-                ClosedAt = savedClosure.ClosureDate,
-                ExchangeRate = exchangeRate,
-                Details = details
+                ShiftId = result.ClosureId,
+                CashierName = result.CashierName,
+                CashierCedula = result.CashierCedula,
+                ClosedAt = result.ClosedAt,
+                ExchangeRate = result.ExchangeRate,
+                Details = result.Details.Select(d => new ShiftReportDetailDto
+                {
+                    PaymentMethodId = d.PaymentMethodId,
+                    PaymentMethodName = d.PaymentMethodName,
+                    Currency = d.Currency,
+                    DeclaredAmount = d.DeclaredAmount,
+                    SystemAmount = d.SystemAmount,
+                    Difference = d.Difference,
+                    Status = d.Status
+                }).ToList()
             };
 
+            // Unificar con DailyClosure: rotar sesión de caja en el cierre de turno (H-API-15)
+            await _cashDrawerService.RolloverSessionAfterClosureAsync(result.ExchangeRate);
+
+            // 8.7-B5: los comprobantes (PDF/TXT) se escriben DESPUÉS del commit
+            // (WriteClosedClosureReceipts is fail-open, post-commit per IDailyClosureService contract)
+
             return Ok(report);
-            });
+        }
+        catch (ArgumentException ex)
+        {
+            return Problem(detail: ex.Message, statusCode: StatusCodes.Status400BadRequest);
         }
         catch (DbUpdateException)
         {
@@ -243,10 +189,6 @@ public class ShiftsController : ControllerBase
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult> GetReportById(int id)
     {
-        // 8.6-B1/8.5-A3 + 8.7-B3: ownership a nivel de objeto — un cajero solo puede ver
-        // reportes de sus propios cierres. El cierre persiste UserId (nombre) y Observation
-        // (cédula): se compara contra los claims Name/SerialNumber del JWT (no contra el id
-        // numérico, que nunca coincide con un nombre almacenado).
         var closure = await _dailyClosureService.GetClosureAsync(id);
 
         bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
@@ -273,31 +215,10 @@ public class ShiftsController : ControllerBase
 
         if (closure == null)
         {
-            // 8.2-B4: sin recursión a GetCurrentReport — un id inexistente no debe fabricar
-            // ni devolver el cierre más reciente (semántica de recurso).
             return NotFound(new { Message = "El reporte de cierre solicitado no existe." });
         }
 
-        var details = closure.Details.Select(d =>
-        {
-            string currency = PaymentMethodCurrencyResolver.Resolve(d.PaymentMethodName);
-            bool isUsd = currency == PaymentMethodCurrencyResolver.Usd;
-            decimal systemAmt = isUsd ? PricingCalculator.ToUSD(d.ExpectedAmountBsS, exchangeRate) : d.ExpectedAmountBsS;
-            decimal declaredAmt = isUsd ? PricingCalculator.ToUSD(d.ActualAmountBsS, exchangeRate) : d.ActualAmountBsS;
-            decimal diff = declaredAmt - systemAmt;
-            string status = Math.Abs(diff) < 0.05m ? "Balanced" : (diff > 0 ? "Surplus" : "Shortage");
-
-            return new ShiftReportDetailDto
-            {
-                PaymentMethodId = d.PaymentMethodId,
-                PaymentMethodName = d.PaymentMethodName,
-                Currency = currency,
-                DeclaredAmount = declaredAmt,
-                SystemAmount = systemAmt,
-                Difference = diff,
-                Status = status
-            };
-        }).ToList();
+        var details = ShiftReportMapper.MapDetails(closure.Details, exchangeRate);
 
         string cashierName = closure.UserId ?? "Cajero Activo";
         if (int.TryParse(closure.UserId, out int parsedId))
@@ -330,7 +251,6 @@ public class DeclaredAmountDto
     public int PaymentMethodId { get; set; }
     public string PaymentMethodName { get; set; } = string.Empty;
     public decimal Amount { get; set; }
-    public string Currency { get; set; } = "Bs.S";
 }
 
 public class ShiftReportDto
@@ -340,16 +260,5 @@ public class ShiftReportDto
     public string CashierCedula { get; set; } = string.Empty;
     public DateTime ClosedAt { get; set; }
     public decimal ExchangeRate { get; set; }
-    public List<ShiftReportDetailDto> Details { get; set; } = new();
-}
-
-public class ShiftReportDetailDto
-{
-    public int PaymentMethodId { get; set; }
-    public string PaymentMethodName { get; set; } = string.Empty;
-    public string Currency { get; set; } = "Bs.S";
-    public decimal DeclaredAmount { get; set; }
-    public decimal SystemAmount { get; set; }
-    public decimal Difference { get; set; }
-    public string Status { get; set; } = "Balanced";
+    public List<Sales.Module.Services.ShiftReportDetailDto> Details { get; set; } = new();
 }

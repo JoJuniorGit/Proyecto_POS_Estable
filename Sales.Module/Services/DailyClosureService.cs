@@ -1,3 +1,4 @@
+using Core.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Sales.Module.Data;
@@ -6,6 +7,7 @@ using Sales.Module.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sales.Module.Services;
@@ -21,18 +23,18 @@ public class DailyClosureService : IDailyClosureService
         _context = context;
     }
 
-    public async Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc)
+    public async Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc, CancellationToken cancellationToken = default)
     {
         var lastClosure = await _context.DailyClosures
             .AsNoTracking()
             .OrderByDescending(dc => dc.ClosureDate)
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(cancellationToken);
 
         var activeSession = await _context.CashDrawerSessions
             .AsNoTracking()
             .Where(s => s.Status == CashDrawerStatus.Open)
             .OrderByDescending(s => s.OpenedAt)
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(cancellationToken);
 
         var (startUtc, endUtc) = ClosureWindowResolver.Resolve(
             dateUtc,
@@ -66,7 +68,7 @@ public class DailyClosureService : IDailyClosureService
             .Where(p => !p.IsDeleted)
             .OrderBy(p => p.DisplayOrder)
             .ThenBy(p => p.Name)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         // 3. Include active methods OR methods with historical sales in the period (even if deactivated)
         var relevantMethods = allMethods
@@ -202,6 +204,143 @@ public class DailyClosureService : IDailyClosureService
         return await _context.DailyClosures
             .Include(dc => dc.Details)
             .FirstOrDefaultAsync(dc => dc.Id == id);
+    }
+
+    public async Task<CloseShiftResult> CreateClosureFromCommandAsync(
+        CreateClosureCommand command,
+        CancellationToken cancellationToken)
+    {
+        decimal exchangeRate = command.ExchangeRate;
+        if (exchangeRate <= 0)
+        {
+            throw new InvalidOperationException(
+                "No se puede cerrar el turno: no existe una tasa BCV registrada para hoy. Registre la tasa del día antes de cerrar la caja.");
+        }
+
+        var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(command.ClosureDateUtc, cancellationToken);
+        var expectedById = expectedTotals.ToDictionary(e => e.PaymentMethodId);
+
+        // Validate declared method ids
+        var unknownMethodIds = command.Declarations
+            .Where(d => !expectedById.ContainsKey(d.PaymentMethodId))
+            .Select(d => d.PaymentMethodId)
+            .Distinct()
+            .ToList();
+
+        if (unknownMethodIds.Count > 0)
+        {
+            throw new ArgumentException(
+                $"El desglose contiene métodos de pago no reconocidos: {string.Join(", ", unknownMethodIds)}.",
+                nameof(command));
+        }
+
+        var details = new List<ClosureDetail>();
+        var reportDetails = new List<ShiftReportDetailResult>();
+
+        foreach (var declared in command.Declarations)
+        {
+            var expected = expectedById[declared.PaymentMethodId];
+            string currency = PaymentMethodCurrencyResolver.Resolve(expected.PaymentMethodName);
+
+            decimal actualAmountBsS = currency == PaymentMethodCurrencyResolver.Usd
+                ? declared.Amount * exchangeRate
+                : declared.Amount;
+            decimal expectedAmountBsS = expected.ExpectedAmountBsS;
+            decimal diffBsS = actualAmountBsS - expectedAmountBsS;
+
+            details.Add(new ClosureDetail
+            {
+                PaymentMethodId = declared.PaymentMethodId,
+                PaymentMethodName = expected.PaymentMethodName,
+                ExpectedAmountBsS = expectedAmountBsS,
+                ActualAmountBsS = actualAmountBsS,
+                DifferenceBsS = diffBsS
+            });
+
+            decimal systemAmount = currency == PaymentMethodCurrencyResolver.Usd
+                ? PricingCalculator.ToUSD(expectedAmountBsS, exchangeRate)
+                : expectedAmountBsS;
+            decimal declaredAmount = currency == PaymentMethodCurrencyResolver.Usd
+                ? declared.Amount
+                : declared.Amount;
+            decimal diff = declaredAmount - systemAmount;
+            string status = Math.Abs(diff) < 0.05m ? "Balanced" : (diff > 0 ? "Surplus" : "Shortage");
+
+            reportDetails.Add(new ShiftReportDetailResult(
+                declared.PaymentMethodId,
+                expected.PaymentMethodName,
+                currency,
+                declaredAmount,
+                systemAmount,
+                diff,
+                status));
+        }
+
+        var existingMethodIds = details.Select(d => d.PaymentMethodId).ToHashSet();
+        var methodEntities = await _context.PaymentMethods
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted)
+            .ToDictionaryAsync(p => p.Id, cancellationToken);
+
+        foreach (var exp in expectedTotals)
+        {
+            if (!existingMethodIds.Contains(exp.PaymentMethodId))
+            {
+                methodEntities.TryGetValue(exp.PaymentMethodId, out var methodEntity);
+                decimal actualAmount = (methodEntity != null && methodEntity.IsCash) ? 0m : exp.ExpectedAmountBsS;
+
+                details.Add(new ClosureDetail
+                {
+                    PaymentMethodId = exp.PaymentMethodId,
+                    PaymentMethodName = exp.PaymentMethodName,
+                    ExpectedAmountBsS = exp.ExpectedAmountBsS,
+                    ActualAmountBsS = actualAmount,
+                    DifferenceBsS = actualAmount - exp.ExpectedAmountBsS
+                });
+
+                string expCurrency = PaymentMethodCurrencyResolver.Resolve(exp.PaymentMethodName);
+                reportDetails.Add(new ShiftReportDetailResult(
+                    exp.PaymentMethodId,
+                    exp.PaymentMethodName,
+                    expCurrency,
+                    actualAmount,
+                    expCurrency == PaymentMethodCurrencyResolver.Usd
+                        ? PricingCalculator.ToUSD(exp.ExpectedAmountBsS, exchangeRate)
+                        : exp.ExpectedAmountBsS,
+                    actualAmount - (expCurrency == PaymentMethodCurrencyResolver.Usd
+                        ? PricingCalculator.ToUSD(exp.ExpectedAmountBsS, exchangeRate)
+                        : exp.ExpectedAmountBsS),
+                    "Balanced"));
+            }
+        }
+
+        var dailyClosure = new DailyClosure
+        {
+            ClosureDate = command.ClosureDateUtc,
+            UserId = command.UserId ?? "Cajero",
+            Observation = command.Observation,
+            ExchangeRate = exchangeRate,
+            Details = details
+        };
+
+        DailyClosure savedClosure;
+        if (_context.Database.CurrentTransaction is not null)
+        {
+            savedClosure = await ExecuteClosureCoreAsync(dailyClosure);
+        }
+        else
+        {
+            var strategy = _context.Database.CreateExecutionStrategy();
+            savedClosure = await strategy.ExecuteAsync(() => ExecuteClosureCoreAsync(dailyClosure));
+        }
+
+        return new CloseShiftResult(
+            savedClosure.Id,
+            command.UserId ?? "Cajero",
+            command.Observation ?? "V-00000000",
+            savedClosure.ClosureDate,
+            exchangeRate,
+            reportDetails);
     }
 
     public static string GenerateReceiptContent(DailyClosure closure, bool isBlind = false)

@@ -98,3 +98,27 @@
 | I | DbContext fuera de controllers | 1, 30 | H-03 / C2 |
 
 **Estado del change `cash-closure-integrity` al cierre de esta sesión:** slices 1–3 commiteadas (a94c536, a34584c, b016c5d, 711710b); coverage gate OK (Core 0.8096 / Sales 0.8540 / Inventory 0.7937); **pendiente**: fase `sdd-verify` + `sdd-archive` del change, y luego el resto del plan de remediación (C2/C3/C4).
+
+---
+
+## Hallazgos GGA — Slice S1 del change `legacy-debt-cleanup` (commit d7593c1)
+
+**Fecha:** 2026-09-16
+**Slice:** S1 — Zero-Trust Close
+**Excepción `--no-verify` autorizada:** sí (hallazgos todos preexistentes, fuera de alcance S1)
+
+| # | Archivo | Hallazgo | Alcance S1 | Deuda/Ref |
+|---|---------|----------|------------|-----------|
+| 1 | `DailyClosureService.cs` | 537 líneas (límite 300–500) | No introducido en S1 | F (SRP) |
+| 2 | `RegisterClosePage.jsx` | 551 líneas (límite 300–500) | No introducido en S1 | F (SRP) |
+| 3 | `DailyClosureService.cs:269–271` | Ternario redundante (ambas ramas `declared.Amount`) | Pre-existente | H (guardas) |
+| 4 | `DailyClosureService.cs:107,202` | `CreateClosureAsync` / `GetClosureAsync` sin `CancellationToken` | Pre-existente | B (CT sweep) |
+| 5 | `ShiftsController.cs:165–168` | `.Include(c => c.Details)` sin `AsNoTracking()`/`AsSplitQuery()` | Pre-existente | E (rendimiento EF) |
+| 6 | `DailyClosureService.cs:204–206` | `GetClosureAsync` sin `AsNoTracking()`/`AsSplitQuery()` | Pre-existente | E (rendimiento EF) |
+| 7 | `ShiftsController.cs:75,179,202,212` | Errores con anonymous objects en vez de `ProblemDetails` | Pre-existente | C (ProblemDetails) |
+| 8 | `ShiftsController.cs:28,45` | `_paymentMethodService`, `_settingsService` inyectados sin uso | Pre-existente | H (dead code) |
+| 9 | `ShiftsController.cs:239–240` | `CashierName`/`CashierCedula` aceptados del cliente pero ignorados (JWT) | Pre-existente | H (dead code) |
+| 10 | `DailyClosureService.cs:354–368` | `ResolveEffectiveRateAsync` duplica lógica de `ExchangeRateResolver` | Pre-existente | DRY / AD-6 |
+| 11 | Tests (`SecurityHardeningSprint2Tests`, etc.) | Nomenclatura sin escenario (`Metodo_Resultado`) | Pre-existente | QA §6.1 |
+
+**Nota:** El hook GGA revisa archivos completos, no diffs. Todos los hallazgos son preexistentes y están cubiertos por los slices S2–S5 del plan de remediación. S1 solo introdujo la lógica de clasificación server-side y los tests asociados.
