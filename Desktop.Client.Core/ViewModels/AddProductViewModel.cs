@@ -27,15 +27,15 @@ public partial class AddProductViewModel : ObservableValidator
     private string _sku = string.Empty;
 
     [ObservableProperty]
-    [Range(0, double.MaxValue, ErrorMessage = "Price cannot be negative")]
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Price cannot be negative")]
     private decimal _price;
 
     [ObservableProperty]
-    [Range(0, double.MaxValue, ErrorMessage = "Cost cannot be negative")]
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Cost cannot be negative")]
     private decimal _cost;
 
     [ObservableProperty]
-    [Range(0, double.MaxValue, ErrorMessage = "Stock cannot be negative")]
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Stock cannot be negative")]
     private decimal _stockQuantity;
 
     [ObservableProperty]
@@ -50,7 +50,7 @@ public partial class AddProductViewModel : ObservableValidator
     private decimal _profitPercentage;
 
     [ObservableProperty]
-    [Range(0, double.MaxValue, ErrorMessage = "Threshold cannot be negative")]
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Threshold cannot be negative")]
     private decimal _lowStockThreshold;
 
     [ObservableProperty]

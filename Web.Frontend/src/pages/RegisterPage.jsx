@@ -24,6 +24,7 @@ import CashAdvanceModal from '../components/register/CashAdvanceModal';
 import Pagination from '../components/ui/Pagination';
 import RoleGuard from '../navigation/RoleGuard';
 import { normalizeRole } from '../navigation/roleViews';
+import { CashTransactionSource, getSourceLabel, matchesSourceFilter } from '../constants/cashTransactionSource';
 
 export default function RegisterPage() {
   return (
@@ -89,7 +90,7 @@ function RegisterPageContent() {
   // Physical cash income & expense totals
   const { totalIncomeBsS, totalExpenseBsS } = useMemo(() => ({
     totalIncomeBsS: transactions
-      .filter(t => t.type === 0 && t.source !== 0 && t.isPhysicalCash)
+      .filter(t => t.type === 0 && t.source !== CashTransactionSource.Opening && t.isPhysicalCash)
       .reduce((sum, t) => sum + (t.amountLocal || 0), 0),
     totalExpenseBsS: transactions
       .filter(t => t.type === 1 && t.isPhysicalCash)
@@ -101,7 +102,7 @@ function RegisterPageContent() {
 
   // Last 7 received incomes (sorted most recent first)
   const recentIncomes = useMemo(() => [...transactions]
-    .filter(t => t.type === 0 && t.source !== 0 && t.isPhysicalCash)
+    .filter(t => t.type === 0 && t.source !== CashTransactionSource.Opening && t.isPhysicalCash)
     .sort((a, b) => new Date(b.transactionTimeLocal || b.transactionTime) - new Date(a.transactionTimeLocal || a.transactionTime))
     .slice(0, 7), [transactions]);
 
@@ -118,11 +119,7 @@ function RegisterPageContent() {
     if (typeFilter === 'income' && tx.type !== 0) return false;
     if (typeFilter === 'expense' && tx.type !== 1) return false;
 
-    if (sourceFilter === 'opening' && tx.source !== 0) return false;
-    if (sourceFilter === 'sale' && tx.source !== 1) return false;
-    if (sourceFilter === 'advance' && tx.source !== 4) return false;
-    if (sourceFilter === 'cashin' && tx.source !== 5) return false;
-    if (sourceFilter === 'cashout' && tx.source !== 6) return false;
+    if (!matchesSourceFilter(sourceFilter, tx.source)) return false;
 
     return true;
   }), [orderedTransactions, typeFilter, sourceFilter]);
@@ -131,35 +128,6 @@ function RegisterPageContent() {
   const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE) || 1;
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const paginatedTransactions = useMemo(() => filteredTransactions.slice(startIndex, startIndex + ITEMS_PER_PAGE), [filteredTransactions, startIndex]);
-
-  function getSourceLabel(source) {
-    switch (source) {
-      case 0:
-      case 'Opening':
-        return 'Apertura';
-      case 1:
-      case 'SalePayment':
-      case 'Sale':
-        return 'Venta POS';
-      case 2:
-      case 'ManualAdjustment':
-        return 'Ajuste Manual';
-      case 3:
-      case 'Closing':
-        return 'Cierre Caja';
-      case 4:
-      case 'CashAdvance':
-        return 'Adelanto Efectivo';
-      case 5:
-      case 'CashIn':
-        return 'Ingreso de Caja';
-      case 6:
-      case 'CashOut':
-        return 'Retiro de Caja';
-      default:
-        return typeof source === 'string' ? source : 'Movimiento';
-    }
-  }
 
   function formatTime(timeStr) {
     if (!timeStr) return '-';

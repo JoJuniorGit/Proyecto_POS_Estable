@@ -1,15 +1,21 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Desktop.Client.Services;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Desktop.Client.ViewModels;
 
 public partial class CashAdvanceRegisterViewModel : ObservableObject
 {
+    private readonly ICashDrawerService? _cashDrawerService;
+    private int _commissionRequestVersion;
+
     public Action? CloseAction { get; set; }
     public bool DialogResult { get; private set; }
 
@@ -28,10 +34,14 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
     [ObservableProperty]
     private string _errorMessage = string.Empty;
 
+    [ObservableProperty]
+    private decimal? _commissionPercentage;
+
     public ObservableCollection<PaymentMethodDto> ElectronicPaymentMethods { get; } = new();
 
-    public CashAdvanceRegisterViewModel(List<PaymentMethodDto> paymentMethods, decimal availableCashLocal, decimal exchangeRate = 1.0m)
+    public CashAdvanceRegisterViewModel(List<PaymentMethodDto> paymentMethods, decimal availableCashLocal, decimal exchangeRate = 1.0m, ICashDrawerService? cashDrawer = null)
     {
+        _cashDrawerService = cashDrawer;
         AvailableCashLocal = availableCashLocal;
         ExchangeRate = exchangeRate;
 
@@ -55,15 +65,49 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
          SelectedPaymentMethod.Name.Contains("Pago Móvil", StringComparison.OrdinalIgnoreCase) ||
          SelectedPaymentMethod.Name.Contains("Pago Movil", StringComparison.OrdinalIgnoreCase));
 
-    public decimal CommissionPercentage => IsTransfer ? 7.0m : 10.0m;
+    public decimal? CommissionAmountBsS => CommissionPercentage is decimal percentage
+        ? Math.Round(RequestedAmountBsS * (percentage / 100.0m), 2, MidpointRounding.AwayFromZero)
+        : null;
 
-    public decimal CommissionAmountBsS => Math.Round(RequestedAmountBsS * (CommissionPercentage / 100.0m), 2, MidpointRounding.AwayFromZero);
+    public decimal? TotalToChargeBsS => CommissionAmountBsS is decimal commission
+        ? RequestedAmountBsS + commission
+        : null;
 
-    public decimal TotalToChargeBsS => RequestedAmountBsS + CommissionAmountBsS;
+    public decimal? TotalToChargeUSD => TotalToChargeBsS is decimal total && ExchangeRate > 0
+        ? total / ExchangeRate
+        : null;
 
-    public decimal TotalToChargeUSD => ExchangeRate > 0 ? TotalToChargeBsS / ExchangeRate : 0;
+    public bool CanConfirm => RequestedAmountBsS > 0 && RequestedAmountBsS <= AvailableCashLocal && SelectedPaymentMethod != null && CommissionPercentage > 0 && string.IsNullOrEmpty(ErrorMessage);
 
-    public bool CanConfirm => RequestedAmountBsS > 0 && RequestedAmountBsS <= AvailableCashLocal && SelectedPaymentMethod != null && string.IsNullOrEmpty(ErrorMessage);
+    public async Task RefreshCommissionAsync(CancellationToken cancellationToken = default)
+    {
+        var requestVersion = Interlocked.Increment(ref _commissionRequestVersion);
+        var isTransfer = IsTransfer;
+
+        if (_cashDrawerService == null)
+        {
+            ApplyCommissionPercentage(null, requestVersion);
+            return;
+        }
+
+        try
+        {
+            var percentage = await _cashDrawerService.GetAdvanceCommissionAsync(isTransfer, cancellationToken);
+            ApplyCommissionPercentage(percentage, requestVersion);
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[CashAdvanceRegister] No se pudo leer la comisión del servidor para el canal {(isTransfer ? "transferencia" : "efectivo")}: {ex.Message}");
+            ApplyCommissionPercentage(null, requestVersion);
+        }
+    }
+
+    private void ApplyCommissionPercentage(decimal? percentage, int requestVersion)
+    {
+        if (requestVersion != _commissionRequestVersion) return;
+
+        CommissionPercentage = percentage > 0 ? percentage : null;
+    }
 
     partial void OnRequestedAmountBsSChanged(decimal value)
     {
@@ -75,6 +119,12 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
     {
         NotifyCalculationsChanged();
         ValidateInputs();
+        RefreshCommissionAsync().SafeFireAndForget("CashAdvanceRegisterViewModel.CommissionRefresh");
+    }
+
+    partial void OnCommissionPercentageChanged(decimal? value)
+    {
+        NotifyCalculationsChanged();
     }
 
     private void NotifyCalculationsChanged()

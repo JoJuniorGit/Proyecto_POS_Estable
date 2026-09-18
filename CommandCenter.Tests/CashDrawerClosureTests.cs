@@ -139,6 +139,11 @@ public class CashDrawerClosureTests
             };
         }
 
+        public Task<decimal?> GetAdvanceCommissionAsync(bool isTransfer, System.Threading.CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
+
         public Task<CashAdvanceResultClientDto?> ProcessCashAdvanceAsync(
             int sessionId,
             decimal requestedAmountLocal,

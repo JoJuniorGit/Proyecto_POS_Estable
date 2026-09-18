@@ -6,10 +6,33 @@ import { getActivePaymentMethods } from '../../services/paymentApi';
 import { formatBsS, formatUSD } from '../../utils/formatters';
 import './RegisterModals.css';
 
+const COMMISSION_UNAVAILABLE_MESSAGE = 'No se pudo obtener la comisión configurada del servidor. No se puede procesar el adelanto.';
+
+export function resolveCommissionPercentage(response) {
+  const percentage = response?.percentage;
+  return typeof percentage === 'number' && Number.isFinite(percentage) && percentage > 0 ? percentage : null;
+}
+
+export function computeAdvanceSummary({ amountBsS, percentage, exchangeRate }) {
+  const hasResolvedCommission = typeof percentage === 'number' && Number.isFinite(percentage) && percentage > 0;
+  const numRequested = Number.isFinite(amountBsS) ? amountBsS : 0;
+
+  if (!hasResolvedCommission) {
+    return { hasResolvedCommission: false, commissionBsS: null, totalChargedBsS: null, totalChargedUsd: null };
+  }
+
+  const commissionBsS = Math.round(numRequested * (percentage / 100));
+  const totalChargedBsS = numRequested + commissionBsS;
+  const totalChargedUsd = exchangeRate > 0 ? totalChargedBsS / exchangeRate : 0;
+
+  return { hasResolvedCommission: true, commissionBsS, totalChargedBsS, totalChargedUsd };
+}
+
 export default function CashAdvanceModal({ isOpen, onClose, sessionId, availableCashBsS, exchangeRate, user, onSuccess }) {
   const [amountBsS, setAmountBsS] = useState('');
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [selectedMethodId, setSelectedMethodId] = useState('');
+  const [commissionPercentage, setCommissionPercentage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successInfo, setSuccessInfo] = useState(null);
@@ -42,11 +65,31 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
                      methodName.toLowerCase().includes('pago móvil') || 
                      methodName.toLowerCase().includes('pago movil');
 
-  const commissionPercentage = isTransfer ? 7 : 10;
+  useEffect(() => {
+    if (!isOpen || !selectedMethodId) return undefined;
+
+    let cancelled = false;
+    setCommissionPercentage(null);
+
+    api.get(`/api/cashdrawer/advance-commission?isTransfer=${isTransfer}`)
+      .then((response) => {
+        if (cancelled) return;
+        setCommissionPercentage(resolveCommissionPercentage(response));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setCommissionPercentage(null);
+      });
+
+    return () => { cancelled = true; };
+  }, [isOpen, isTransfer, selectedMethodId]);
+
   const numRequested = parseFloat(amountBsS) || 0;
-  const commissionBsS = Math.round(numRequested * (commissionPercentage / 100));
-  const totalChargedBsS = numRequested + commissionBsS;
-  const totalChargedUsd = (exchangeRate && exchangeRate > 0) ? totalChargedBsS / exchangeRate : 0;
+  const { hasResolvedCommission, commissionBsS, totalChargedBsS, totalChargedUsd } = computeAdvanceSummary({
+    amountBsS: numRequested,
+    percentage: commissionPercentage,
+    exchangeRate,
+  });
 
   const handleKeyDown = (e) => {
     if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '-') {
@@ -81,6 +124,11 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
 
     if (!selectedMethod) {
       setError('Seleccione un método de pago electrónico.');
+      return;
+    }
+
+    if (!hasResolvedCommission) {
+      setError(COMMISSION_UNAVAILABLE_MESSAGE);
       return;
     }
 
@@ -134,6 +182,12 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
             </div>
           )}
 
+          {!hasResolvedCommission && (
+            <div className="alert alert-warning mb-3 text-sm">
+              {COMMISSION_UNAVAILABLE_MESSAGE}
+            </div>
+          )}
+
           <div className="form-group mb-3">
             <label className="form-label font-medium">1. Monto Entregado al Cliente (Efectivo en Bs.S - Solo Enteros) *</label>
             <input
@@ -163,7 +217,7 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
             >
               {paymentMethods.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name} ({m.name.toLowerCase().includes('transfer') || m.name.toLowerCase().includes('pago m') ? 'Comisión 7%' : 'Comisión 10%'})
+                  {m.name}
                 </option>
               ))}
             </select>
@@ -179,8 +233,8 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
             </div>
 
             <div className="flex-between text-sm mb-2">
-              <span className="text-muted">Comisión de Ganancia ({commissionPercentage}%):</span>
-              <span className="font-bold color-success">+{formatBsS(commissionBsS)}</span>
+              <span className="text-muted">Comisión de Ganancia {hasResolvedCommission ? `(${commissionPercentage}%)` : ''}:</span>
+              <span className="font-bold color-success">{hasResolvedCommission ? `+${formatBsS(commissionBsS)}` : '—'}</span>
             </div>
 
             <div className="divider my-2"></div>
@@ -188,8 +242,8 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
             <div className="flex-between flex-align-center">
               <span className="font-bold text-sm">TOTAL A COBRAR AL CLIENTE:</span>
               <div className="text-right">
-                <div className="font-bold text-lg color-primary">{formatBsS(totalChargedBsS)}</div>
-                <div className="text-xs text-muted">({formatUSD(totalChargedUsd)})</div>
+                <div className="font-bold text-lg color-primary">{hasResolvedCommission ? formatBsS(totalChargedBsS) : '—'}</div>
+                <div className="text-xs text-muted">{hasResolvedCommission ? `(${formatUSD(totalChargedUsd)})` : ''}</div>
               </div>
             </div>
           </div>
@@ -198,7 +252,7 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
             <button type="button" className="btn btn-outline flex-center regmod-btn-130" onClick={handleClose} disabled={loading}>
               Cancelar
             </button>
-            <button type="submit" className="btn btn-primary flex-center gap-2 font-bold regmod-btn-180" disabled={loading || numRequested <= 0}>
+            <button type="submit" className="btn btn-primary flex-center gap-2 font-bold regmod-btn-180" disabled={loading || numRequested <= 0 || !hasResolvedCommission}>
               {loading ? <Loader2 size={16} className="animate-spin" /> : <FastForward size={16} />}
               Procesar Adelanto
             </button>

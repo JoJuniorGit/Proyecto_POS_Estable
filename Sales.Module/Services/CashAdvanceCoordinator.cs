@@ -177,7 +177,10 @@ public class CashAdvanceCoordinator
         }
     }
 
-    private async Task<decimal> ResolveCommissionPercentageAsync(bool isTransfer, CancellationToken cancellationToken = default)
+    public async Task<decimal?> TryGetCommissionPercentageAsync(bool isTransfer, CancellationToken cancellationToken = default)
+        => await ResolveCommissionCoreAsync(isTransfer, cancellationToken);
+
+    private async Task<decimal?> ResolveCommissionCoreAsync(bool isTransfer, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -190,11 +193,27 @@ public class CashAdvanceCoordinator
         if (!decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var percentage) || percentage <= 0)
         {
             Core.Logging.AppLogger.LogWarn($"[CashAdvanceCoordinator] Comisión de adelanto {(isTransfer ? "transferencia" : "efectivo")} no configurada o inválida (clave '{key}', valor '{value}'). Rechazando procesamiento.");
+            return null;
+        }
+
+        return percentage;
+    }
+
+    private async Task<decimal> ResolveCommissionPercentageAsync(bool isTransfer, CancellationToken cancellationToken = default)
+    {
+        var percentage = await ResolveCommissionCoreAsync(isTransfer, cancellationToken);
+
+        if (!percentage.HasValue)
+        {
+            var key = isTransfer
+                ? Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct
+                : Core.Constants.SettingKeys.CashAdvanceCashCommissionPct;
+
             throw new InvalidOperationException(
                 $"La comisión de adelanto de efectivo ({(isTransfer ? "transferencia" : "efectivo")}) no está configurada o es inválida. " +
                 $"Configure la clave '{key}' en SystemSettings antes de procesar adelantos.");
         }
 
-        return percentage;
+        return percentage.Value;
     }
 }
