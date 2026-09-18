@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class CashDrawerViewModel : ObservableObject
+public partial class CashDrawerViewModel : ObservableObject, IDisposable
 {
     private readonly ICashDrawerService _cashDrawerService;
     private readonly IExchangeRateService _exchangeRateService;
@@ -430,5 +430,10 @@ public partial class CashDrawerViewModel : ObservableObject
         {
             _dialogService.ShowError("Error de Adelanto", $"No se pudo procesar el adelanto: {ex.Message}");
         }
+    }
+
+    public void Dispose()
+    {
+        WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 }

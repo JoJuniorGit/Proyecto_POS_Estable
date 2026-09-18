@@ -18,6 +18,7 @@ public class PendingOrdersReentrancyTests
     public async Task EnsureLoaded_WhenAlreadyLoading_DoesNotOverlap_AndDefersASingleReload()
     {
         var (sales, _, _, vm) = CreateViewModel();
+        using var vmDisposer = vm;
         var firstTcs = new TaskCompletionSource<(IEnumerable<SaleDto> Items, int TotalCount)>(TaskCreationOptions.RunContinuationsAsynchronously);
         sales.Setup(s => s.GetPendingSalesPagedAsync(200, 0)).Returns(firstTcs.Task);
 
@@ -39,6 +40,7 @@ public class PendingOrdersReentrancyTests
     public async Task LoadMore_WhenRefreshStartsLater_StalePageIsDiscarded()
     {
         var (sales, _, _, vm) = CreateViewModel();
+        using var vmDisposer = vm;
         sales.Setup(s => s.GetPendingSalesPagedAsync(200, 0))
             .ReturnsAsync((new[] { CreateSale(1) }, 3));
         await vm.EnsureLoadedAsync();

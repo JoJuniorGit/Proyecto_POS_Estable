@@ -161,11 +161,12 @@ public class AuthController : ControllerBase
 
         if (isWeb && Response?.Cookies != null)
         {
-            // 8.7-B10: cookie Secure siempre (localhost es trustworthy para el browser en dev).
+            // 8.7-B10: Secure según el esquema (la LAN opera por HTTP y el browser descarta
+            // toda cookie Secure recibida sin TLS salvo loopback).
             var cookieOptions = new Microsoft.AspNetCore.Http.CookieOptions
             {
                 HttpOnly = true,
-                Secure = true,
+                Secure = Request?.IsHttps ?? false,
                 SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict,
                 Path = "/",
                 Expires = DateTimeOffset.UtcNow.AddMinutes(_tokenService.ExpiryMinutes)
@@ -214,12 +215,11 @@ public class AuthController : ControllerBase
 
         if (Response?.Cookies != null)
         {
-            // 8.7-B10: Secure siempre; los browsers tratan localhost como trustworthy de modo
-            // que el desarrollo sobre http://localhost sigue funcionando.
+            // 8.7-B10: mismo flag Secure del append (Request.IsHttps).
             Response.Cookies.Delete("pos_jwt", new Microsoft.AspNetCore.Http.CookieOptions
             {
                 HttpOnly = true,
-                Secure = true,
+                Secure = Request?.IsHttps ?? false,
                 SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict,
                 Path = "/"
             });
@@ -311,13 +311,14 @@ public class AuthController : ControllerBase
         _stampValidator?.InvalidateUserStamp(user.Id);
         AppLogger.LogSecurityAudit($"[PASSWORD_CHANGED] UserId={user.Id}, Username={ObfuscateCedula(user.Username)}, Timestamp={DateTime.UtcNow:O}");
 
-        // 5. Revocación de sesión activa en Web (limpieza de cookie pos_jwt) — Secure siempre (8.7-B10)
+        // 8.7-B10: revocación de la sesión web (limpieza de cookie pos_jwt) con el mismo
+        // flag Secure del append (Request.IsHttps).
         if (Response?.Cookies != null)
         {
             Response.Cookies.Delete("pos_jwt", new Microsoft.AspNetCore.Http.CookieOptions
             {
                 HttpOnly = true,
-                Secure = true,
+                Secure = Request?.IsHttps ?? false,
                 SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict,
                 Path = "/"
             });

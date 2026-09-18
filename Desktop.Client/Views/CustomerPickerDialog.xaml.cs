@@ -1,5 +1,6 @@
 using Core.DTOs;
 using Desktop.Client.ViewModels;
+using System;
 using System.Windows;
 
 namespace Desktop.Client.Views;
@@ -14,6 +15,7 @@ public partial class CustomerPickerDialog : Window
         InitializeComponent();
         ViewModel = viewModel;
         DataContext = viewModel;
+        Closed += (s, e) => (DataContext as IDisposable)?.Dispose();
     }
 
     private void SearchTab_Click(object sender, RoutedEventArgs e)

@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Core.Entities;
 using Desktop.Client.Services;
@@ -13,7 +14,7 @@ using Core.Common;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class CustomerManagementViewModel : ObservableObject
+public partial class CustomerManagementViewModel : ObservableObject, IDisposable
 {
     private readonly ISalesService _salesService;
     private readonly UserSession _userSession;
@@ -313,5 +314,18 @@ public partial class CustomerManagementViewModel : ObservableObject
             CurrentPage++;
             await LoadCustomersAsync();
         }
+    }
+
+    public void Dispose()
+    {
+        var oldCts = Interlocked.Exchange(ref _searchCts, null);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+
+        WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 }

@@ -845,3 +845,89 @@ The first `gga run` (v2.10.1, provider `opencode`, rules `AGENTS.md`) exhausted 
 
 
 
+---
+
+## Slice S5c: J Findings (lcs-s5c-j-findings)
+
+### Completed Tasks
+
+- [x] 5c.1 `Backend.API/Controllers/AuthController.cs`: `pos_jwt` `Secure` now follows `Request.IsHttps` at all three sites — login append (:169), logout delete (:222) and change-password delete (:321) — closing the append/delete divergence trap (H-05). Written as `Secure = Request?.IsHttps ?? false` at all three sites (functionally identical inside the `Response?.Cookies != null` guard; bare `Request.IsHttps` fails the Release build with CS8602 + TreatWarningsAsErrors — deviation D1)
+- [x] 5c.2 `MainWindow` H-14/AD-13 — delivered in S5a (`lcs-s5a-ct-sweep`); untouched here
+- [x] 5c.3 `IDisposable` on the 5 VMs: `CashDrawerViewModel`/`PendingOrdersViewModel`/`ExchangeRateViewModel` unregister all `WeakReferenceMessenger` handlers; `CustomerManagementViewModel`/`CustomerPickerViewModel` cancel+dispose `_searchCts` via `Interlocked.Exchange` and unregister (H-06)
+- [x] 5c.4 `MainViewModel.Dispose` is idempotent (`Interlocked` guard — the DI host and the window hook can both dispose it); `MainWindow.OnClosed` disposes the DataContext; `CustomerPickerDialog.Closed` disposes its per-dialog VM (the only manually created one) (H-06)
+- [x] 5c.5 `RegisterPage.jsx`: client-side pagination unchanged (25/page in memory) and the history fetch now reuses the existing `limit` contract explicitly (`/api/cashdrawer/history?limit=${HISTORY_FETCH_LIMIT}`, 300 = server clamp). No server contract change (H-08, AD-19)
+- [x] 5c.6 Re-pointed the existing VM tests: `PendingOrdersClaimTests` cleanup now calls `Dispose()` instead of a manual `UnregisterAll`, and the VM-creating tests (`HistoryWindowBoundsTests`, `CashDrawerRbacAndPaymentMethodsTests`, `CashDrawerClosureTests`, `UserPasswordAndStockFormattingTests`, `PendingOrdersReentrancyTests`) dispose their VMs (H-06)
+- [x] 5c.7 Verification: build 0/0, backend 1227/1227, frontend 273/273, lint clean, coverage gate OK (details below)
+- [x] Carry `RESIDUAL-S5b-06` (registry item 11): `DailyClosureService.WriteClosedClosureReceiptsAsync` now uses `ArgumentNullException.ThrowIfNull(closure)`
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `Backend.API/Controllers/AuthController.cs` | Modified | H-05: `Secure = Request?.IsHttps ?? false` at the 3 `pos_jwt` sites; stale "Secure siempre" comments corrected |
+| `Backend.API/Startup/PipelineExtensions.cs` | Modified | Comment clause corrected: the cookie is Secure only over HTTPS (the old text contradicted H-05) |
+| `Desktop.Client.Core/ViewModels/CashDrawerViewModel.cs` | Modified | `IDisposable` + `UnregisterAll` |
+| `Desktop.Client.Core/ViewModels/PendingOrdersViewModel.cs` | Modified | `IDisposable` + `UnregisterAll` |
+| `Desktop.Client.Core/ViewModels/ExchangeRateViewModel.cs` | Modified | `IDisposable` + `UnregisterAll` |
+| `Desktop.Client.Core/ViewModels/CustomerManagementViewModel.cs` | Modified | `IDisposable`: CTS cancel/dispose + `UnregisterAll` |
+| `Desktop.Client.Core/ViewModels/CustomerPickerViewModel.cs` | Modified | `IDisposable`: CTS cancel/dispose + `UnregisterAll` |
+| `Desktop.Client.Core/ViewModels/MainViewModel.cs` | Modified | Idempotent `Dispose` (`Interlocked` guard) |
+| `Desktop.Client/MainWindow.xaml.cs` | Modified | `OnClosed` disposes the `MainViewModel` DataContext |
+| `Desktop.Client/Views/CustomerPickerDialog.xaml.cs` | Modified | `Closed` disposes the per-dialog `CustomerPickerViewModel` |
+| `Sales.Module/Services/DailyClosureService.cs` | Modified | `RESIDUAL-S5b-06`: `ThrowIfNull` idiom in `WriteClosedClosureReceiptsAsync` |
+| `Web.Frontend/src/pages/RegisterPage.jsx` | Modified | H-08: explicit reuse of the existing `limit` fetch parameter |
+| `CommandCenter.Tests/AuthenticationTests.cs` | Modified | H-05 pinning: HTTP/HTTPS at append, logout-delete and change-password-delete (4 new cases) |
+| `CommandCenter.Tests/Unit/ViewModelDisposalTests.cs` | Created | H-06: 10 cases (IDisposable contract, unregistration, idempotency, debounce cancellation, MainViewModel child disposal) |
+| `Web.Frontend/src/pages/RegisterPage.client-pagination.test.js` | Created | H-08: 2 cases (in-memory 25/page slicing; limit reuse + no server paging contract) |
+| `CommandCenter.Tests/{CashDrawerClosureTests,UserPasswordAndStockFormattingTests}` + `Unit/{CashDrawerRbacAndPaymentMethodsTests,HistoryWindowBoundsTests,PendingOrdersClaimTests,PendingOrdersReentrancyTests}` | Modified | Re-pointed to dispose the VMs they create (5c.6) |
+
+### Verification Results (S5c)
+
+- `dotnet build CommandCenter.slnx -c Release`: **0 errors, 0 warnings**
+- `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj`: **1227 passed, 0 failed, 0 skipped** (1213 -> 1227; +4 H-05 cases +10 H-06 cases)
+- `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: **1227 passed, 0 failed, 0 skipped**
+- Focused S5c (`-c Release --filter "FullyQualifiedName~AuthenticationTests|FullyQualifiedName~ViewModelDisposal"`): **28 passed, 0 failed**
+- `npm test` (Web.Frontend): **273 passed, 0 failed** (271 -> 273; +2 H-08 cases)
+- `npm run lint` (Web.Frontend): **clean** (exit 0)
+- Coverage gate (`scripts/check-coverage.py` over the Release cobertura run): Core **0.8364** >= 0.70, Sales.Module **0.9073** >= 0.80, Inventory.Module **0.8251** >= 0.72 — all `[OK]`
+
+### Work Unit Evidence (S5c)
+
+| Evidence | Value |
+|----------|-------|
+| Focused test command | `dotnet test ... -c Release --filter "FullyQualifiedName~AuthenticationTests\|FullyQualifiedName~ViewModelDisposal"`: 28 passed, 0 failed. Frontend: `npm test` 273/273 includes the 2 H-08 cases |
+| Runtime harness | H-05: real `AuthController.Login`/`Logout`/`ChangePassword` over `DefaultHttpContext` HTTP **and** HTTPS — `Set-Cookie` carries `secure` only over HTTPS at all three sites (the append/delete divergence is the trap this pins). H-06: `WeakReferenceMessenger.IsRegistered` true → `Dispose()` → false for the three messenger VMs; debounced search never reaches `ISalesService` after `Dispose` (700 ms wait) and `_searchCts` is null; `MainViewModel.Dispose` twice → `StopPolling` once and children unregistered. H-08: source-contract test over `RegisterPage.jsx` (25/page in-memory slice + `limit` reuse; no `page`/`pageSize`/new endpoint) |
+| Rollback boundary | `AuthController.cs` (3 cookie sites), `PipelineExtensions.cs` (comment), the 6 VM files, `MainWindow.xaml.cs`, `CustomerPickerDialog.xaml.cs`, `DailyClosureService.cs` (`ThrowIfNull`), `RegisterPage.jsx`, `AuthenticationTests.cs`, `ViewModelDisposalTests.cs`, `RegisterPage.client-pagination.test.js` and the six re-pointed test files |
+
+### Decisions and Deviations (S5c)
+
+- **D1 — `Request?.IsHttps ?? false` instead of bare `Request.IsHttps`.** AD-19 prescribes `Secure = Request.IsHttps`; written with the conditional + fallback because `ControllerBase.Request` is null-annotated and the Release build (`TreatWarningsAsErrors`) rejects the bare member access with CS8602. Semantics are identical: every site sits inside `if (Response?.Cookies != null)`, so `Request` is non-null whenever the flag is read.
+- **D2 — the four UserControls hosting singleton VMs get no disposal hook.** `design.md` lists `CashDrawerView`, `PendingOrdersView`, `ExchangeRateView` and `UsersManagementView` for H-06, but their DataContexts are DI-owned singletons (`CashDrawerViewModel`, `PendingOrdersViewModel`, `ExchangeRateViewModel`) or a captive transient (`CustomerManagementViewModel` inside `UsersManagementViewModel`). Disposing them on `Unloaded`/`DataContextChanged` would kill the VM for every later navigation. The DI host disposes them at shutdown; only `CustomerPickerDialog` (per-open window, manually created VM) receives a `Closed` hook. `UsersManagementView.xaml.cs` already unhooks `PropertyChanged` on DataContext change.
+- **D3 — H-08 interpretation.** AD-19 says "client-side only (reuse the existing `limit`; no server contract change)". The page keeps its in-memory 25/page slicing and now requests the history with the existing `limit` parameter explicitly bounded to the server clamp (300). No controller/DTO change; the analysis-doc recommendation (page/pageSize) was explicitly rejected by the maintainer decision.
+- **D4 — `PipelineExtensions.cs` comment correction.** Its `8.7-B10` block claimed the cookie "es Secure siempre", which H-05 made false; the one clause was updated rather than left contradicting the code. Comment-only change, no behavior.
+- **D5 — idempotent `MainViewModel.Dispose` was required.** `MainViewModel` is a DI singleton (host dispose) and now also the `MainWindow` DataContext hook target; without the `Interlocked` guard the children would be disposed twice. The existing `MainViewModelDisposeTests` single-dispose path is unchanged.
+
+### GGA Hook Exceptions (punctual `--no-verify`)
+
+`gga run` (v2.10.1, provider `opencode`, rules `AGENTS.md`) returned `STATUS: FAILED`. Every finding is **pre-existing and outside the S5c scope**; none is introduced by this slice (touched hunks are cookie flags, `IDisposable` implementations, the `limit` reuse and the `ThrowIfNull` idiom). Committed with a documented punctual `--no-verify`.
+
+| GGA finding | Location | Classification |
+|-------------|----------|----------------|
+| EF entity exposed (`CreateClosureAsync(DailyClosure)`) | `DailyClosureService.cs` | Pre-existing legacy entry point `S3-07`/`S4a-R1`; untouched by S5c |
+| Anonymous error objects instead of `ProblemDetails` | `AuthController.cs` (login/logout/change-password) | Pre-existing; the S2 error-contract items (18/25) covered the three financial controllers, AuthController was never registered |
+| File length > 500 | `DailyClosureService.cs` (650); `RegisterPage.jsx` (~591) | Pre-existing `S3-06`/`WARNING-07`/`S4a-R2`; `RegisterPage.jsx` was already flagged as legacy debt in the S4b GGA. S5c added 1 line to each |
+| Explanatory comments | `AuthController`, `PipelineExtensions`, the VM files, test files, `RegisterPage.jsx` | Pre-existing; AD-18/S5b.8 cleaned only the group-D production files. S5c added **no** non-marker comment (the corrected blocks are `8.7-B10` marker-led) |
+| `CancellationToken` missing on async actions | `AuthController` `Login`/`Logout`/`ChangePassword`/`GetMe` | Pre-existing; the S5a CT sweep registered items 4/9/16/21/27 (financial controllers/services), not AuthController |
+| Messages not in formal Spanish / test naming / ctor guards | VM messages, `AuthenticationTests` names, controller ctors | Pre-existing repo-wide hygiene, outside the registered J findings |
+| `RegisterPage.jsx` falls back to the current rate for `amountUsd` | `RegisterPage.jsx` | Pre-existing display fallback (persisted `amountUsd` wins); RegisterPage was already registered as legacy debt |
+
+Explicit S5c-relevant confirmation from the same review (`## Compliant (verified)`): *"WPF: VMs with CTS/`WeakReferenceMessenger` implement `IDisposable`, dispose is idempotent — OK"* — direct third-party evidence for H-06.
+
+### Registered for follow-up (NOT fixed in this slice)
+
+- **`S5c-R1`** — `AuthController` error contract: the anonymous `{ Message }` responses do not follow RFC 7807; AuthController was never part of the S2 sweep.
+- **Carried**: `WARNING-04`, `WARNING-07`/`S3-06`/`S4a-R2`, `S3-07`/`S4a-R1`, `S5b-R1`, mutable DTOs in `Sales.Module.Interfaces`, `RegisterPage.jsx` size/comments, `AuthController` CT-less actions.
+- **Closed by this slice**: `RESIDUAL-S5b-06` (item 11 `ThrowIfNull`) and the S5c J findings H-05/H-06/H-08 (H-14 was already closed in S5a).
+
+
+

@@ -107,6 +107,8 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        (DataContext as System.IDisposable)?.Dispose();
+
         base.OnClosed(e);
 
         // Red de seguridad: con ShutdownMode=OnMainWindowClose esto es redundante, pero

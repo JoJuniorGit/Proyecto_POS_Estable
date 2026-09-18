@@ -50,6 +50,7 @@ function RegisterPageContent() {
   // Pagination state for movements table
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 25;
+  const HISTORY_FETCH_LIMIT = 300;
 
   // Reset pagination to page 1 whenever filters change
   useEffect(() => {
@@ -66,7 +67,7 @@ function RegisterPageContent() {
     try {
       const [sessionData, historyData] = await Promise.all([
         api.get('/api/cashdrawer/active-session'),
-        api.get('/api/cashdrawer/history').catch(() => []),
+        api.get(`/api/cashdrawer/history?limit=${HISTORY_FETCH_LIMIT}`).catch(() => []),
       ]);
       setSession(sessionData);
       setHistoryTransactions(historyData || []);

@@ -43,7 +43,7 @@ public class CashDrawerRbacAndPaymentMethodsTests
     {
         var (cash, rate, dialog, payments) = CreateMocks();
 
-        var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, null);
+        using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, null);
 
         Assert.False(vm.IsAdmin);
     }
@@ -53,8 +53,8 @@ public class CashDrawerRbacAndPaymentMethodsTests
     {
         var (cash, rate, dialog, payments) = CreateMocks();
 
-        var adminVm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Admin));
-        var cashierVm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Cashier));
+        using var adminVm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Admin));
+        using var cashierVm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Cashier));
 
         Assert.True(adminVm.IsAdmin);
         Assert.False(cashierVm.IsAdmin);
@@ -64,7 +64,7 @@ public class CashDrawerRbacAndPaymentMethodsTests
     public async Task ProcessCashIn_WithoutSession_IsDeniedAndDoesNotOpenDialog()
     {
         var (cash, rate, dialog, payments) = CreateMocks();
-        var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, null);
+        using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, null);
 
         await vm.ProcessCashInCommand.ExecuteAsync(null);
 
@@ -76,7 +76,7 @@ public class CashDrawerRbacAndPaymentMethodsTests
     public async Task ProcessCashOut_WithCashierSession_IsDeniedAndDoesNotOpenDialog()
     {
         var (cash, rate, dialog, payments) = CreateMocks();
-        var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Cashier));
+        using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Cashier));
 
         await vm.ProcessCashOutCommand.ExecuteAsync(null);
 
@@ -88,7 +88,7 @@ public class CashDrawerRbacAndPaymentMethodsTests
     public async Task ProcessCashIn_WithAdminSession_OpensCashTransactionDialog()
     {
         var (cash, rate, dialog, payments) = CreateMocks();
-        var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Admin));
+        using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Admin));
 
         await vm.ProcessCashInCommand.ExecuteAsync(null);
 
@@ -110,7 +110,7 @@ public class CashDrawerRbacAndPaymentMethodsTests
             .Callback<List<PaymentMethodDto>, decimal>((methods, _) => capturedMethods = methods)
             .ReturnsAsync(((bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?)null);
 
-        var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Admin));
+        using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Admin));
 
         await vm.ProcessCashAdvanceCommand.ExecuteAsync(null);
 
@@ -130,7 +130,7 @@ public class CashDrawerRbacAndPaymentMethodsTests
             .Callback<List<PaymentMethodDto>, decimal>((methods, _) => capturedMethods = methods)
             .ReturnsAsync(((bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?)null);
 
-        var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, null, CreateSession(UserRole.Admin));
+        using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, null, CreateSession(UserRole.Admin));
 
         await vm.ProcessCashAdvanceCommand.ExecuteAsync(null);
 

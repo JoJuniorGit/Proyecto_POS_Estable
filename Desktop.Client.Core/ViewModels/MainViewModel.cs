@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Core.Common;
 using Desktop.Client.Services;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Desktop.Client.ViewModels;
@@ -41,6 +42,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IHealthPollingService? _healthPollingService;
     private readonly IExchangeRateService? _exchangeRateService;
     private readonly IDialogService? _dialogService;
+    private int _disposed;
 
     public MainViewModel(
         UserSession? userSession,
@@ -106,6 +108,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
         if (_healthPollingService != null)
         {
             _healthPollingService.OnHealthRecovered -= OnHealthRecovered;

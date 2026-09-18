@@ -124,13 +124,15 @@ Chain strategy: pending
 
 ## Phase 5c: J Findings (S5c)
 
-- [ ] 5c.1 Modify `Backend.API/Controllers/AuthController.cs`: set `Secure = Request.IsHttps` at all three `pos_jwt` cookie sites (H-05)
+- [x] 5c.1 Modify `Backend.API/Controllers/AuthController.cs`: set `Secure = Request.IsHttps` at all three `pos_jwt` cookie sites (H-05)
 - [x] 5c.2 Modify `Desktop.Client/MainWindow.xaml.cs`: `OnClosing` returns `void`; shutdown via `Task.RunShutdownAsync()` with `SafeFireAndForget` (AD-13, H-14) — **delivered in S5a (`lcs-s5a-ct-sweep`) by orchestrator authorization**; reflection + IL evidence in `CancellationPropagationTests`
-- [ ] 5c.3 Modify `Desktop.Client.Core/ViewModels/{CashDrawer,PendingOrders,ExchangeRate,CustomerManagement,CustomerPicker}ViewModel.cs`: add `IDisposable` (H-06)
-- [ ] 5c.4 Modify `Desktop.Client.Core/ViewModels/MainViewModel.cs`: add disposal + `OnClosed` hook (H-06)
-- [ ] 5c.5 Modify `Web.Frontend/src/pages/RegisterPage.jsx`: client-side pagination reuse existing `limit`; no server contract change (H-08)
-- [ ] 5c.6 Re-point existing WPF VM tests for disposal (H-06)
-- [ ] 5c.7 Run `dotnet test` and `npm test` to verify all J changes pass
+- [x] 5c.3 Modify `Desktop.Client.Core/ViewModels/{CashDrawer,PendingOrders,ExchangeRate,CustomerManagement,CustomerPicker}ViewModel.cs`: add `IDisposable` (H-06)
+- [x] 5c.4 Modify `Desktop.Client.Core/ViewModels/MainViewModel.cs`: add disposal + `OnClosed` hook (H-06)
+- [x] 5c.5 Modify `Web.Frontend/src/pages/RegisterPage.jsx`: client-side pagination reuse existing `limit`; no server contract change (H-08)
+- [x] 5c.6 Re-point existing WPF VM tests for disposal (H-06)
+- [x] 5c.7 Run `dotnet test` and `npm test` to verify all J changes pass
+
+> **S5c fold-ins.** H-05 landed as `Secure = Request?.IsHttps ?? false` at all three `pos_jwt` sites (login append, logout delete, change-password delete) — functionally identical to AD-19's `Request.IsHttps` (inside the `Response?.Cookies != null` guard `Request` is never null; the `??` only silences the compiler's nullable analysis, which raised CS8602 on the bare member access and `TreatWarningsAsErrors` turns into a build error). The now-false "Secure siempre" comment blocks were corrected and the matching clause in `PipelineExtensions.cs` updated. H-06: the 5 VMs implement `IDisposable` (the three messenger VMs `UnregisterAll`; `CustomerManagement`/`CustomerPicker` cancel/dispose `_searchCts` via `Interlocked.Exchange` plus `UnregisterAll`); `MainViewModel.Dispose` is now idempotent (`Interlocked` guard) and `MainWindow.OnClosed` disposes the DataContext; `CustomerPickerDialog.Closed` disposes its per-dialog VM (the only manually created one). The four UserControls hosting DI-owned singleton VMs (`CashDrawerView`, `PendingOrdersView`, `ExchangeRateView`, `UsersManagementView`) deliberately carry **no** disposal hook: disposing a singleton on `Unloaded` would kill it for every later navigation; the DI host owns their disposal (see `S5c-D2`). H-08 landed client-side only per AD-19: the 25-per-page in-memory slicing stays and the history fetch reuses the existing `limit` contract (`?limit=HISTORY_FETCH_LIMIT`, clamped server-side at 300) with no `page`/`pageSize`/new endpoint. `RESIDUAL-S5b-06` (registry item 11) closed: `WriteClosedClosureReceiptsAsync` now uses `ArgumentNullException.ThrowIfNull`. The silent-failure trap (append/delete `Secure` flag divergence) is pinned by four new `AuthenticationTests` cases covering both schemes at append, logout-delete and change-password-delete.
 
 ## Traceability Table
 

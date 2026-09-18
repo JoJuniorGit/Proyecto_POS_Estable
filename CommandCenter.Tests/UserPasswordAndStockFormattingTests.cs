@@ -273,7 +273,7 @@ public class UserPasswordAndStockFormattingTests
         var userSession = new UserSession();
         var mockSalesService = new Mock<ISalesService>();
         var mockDialogService = new Mock<IDialogService>();
-        var customerVm = new CustomerManagementViewModel(mockSalesService.Object, userSession, mockDialogService.Object);
+        using var customerVm = new CustomerManagementViewModel(mockSalesService.Object, userSession, mockDialogService.Object);
 
         var vm = new UsersManagementViewModel(mockUserService.Object, userSession, customerVm);
 
@@ -300,7 +300,7 @@ public class UserPasswordAndStockFormattingTests
         var userSession = new UserSession();
         var mockSalesService = new Mock<ISalesService>();
         var mockDialogService = new Mock<IDialogService>();
-        var customerVm = new CustomerManagementViewModel(mockSalesService.Object, userSession, mockDialogService.Object);
+        using var customerVm = new CustomerManagementViewModel(mockSalesService.Object, userSession, mockDialogService.Object);
 
         var vm = new UsersManagementViewModel(mockUserService.Object, userSession, customerVm);
 
