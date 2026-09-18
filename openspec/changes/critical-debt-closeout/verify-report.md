@@ -8,10 +8,10 @@ requirements: 7/7
 scenarios: 21/21
 test_command: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release
 test_exit_code: 0
-test_output_hash: sha256:f636a563bb03c653350471c7c92e410d5a2f60b7521dea68f091249130956515
+test_output_hash: sha256:434efb7b57add0d1f43e151e8efb01c4de22c0d64a63a5b0c383d5fb69ce8438
 build_command: dotnet build CommandCenter.slnx -c Release
 build_exit_code: 0
-build_output_hash: sha256:6ce6a06ba6fd5fd56ee5d23a47cbec8ae0b6d44387c55929026faae1cf53fc88
+build_output_hash: sha256:c95cfab6655f5990d3e83d11290b42dcf1795b96ee555d1481a8d6c51f740090
 ```
 
 ## Verification Report
@@ -19,8 +19,8 @@ build_output_hash: sha256:6ce6a06ba6fd5fd56ee5d23a47cbec8ae0b6d44387c55929026faa
 **Change**: critical-debt-closeout
 **Version**: N/A (delta specs, no version headers)
 **Mode**: Standard (Strict TDD inactive: `openspec/config.yaml` -> `strict_tdd: false`, `testing.strict_tdd_mode: disabled`)
-**Scope of this report**: all four slices — S1 WARNING-04 / REQ-PMC-06 (AD-1), verified independently at commit `605b3aa`; S2 advance-commission contract + source mapping + H-13 (REQ-CAP-02/03, REQ-ADB-05; AD-2/3/6), verified independently at commit `67409da`; S3a `DailyClosureService` split (REQ-COC-03/06; AD-4/8), verified independently at commit `b4f7d40`; S3b legacy entry removal + 18 re-points (REQ-COC-05, REQ-COC-03; AD-5/8), verified independently at commit `8baf54c`. Every slice is implemented and verified, so the head envelope is the cumulative verified-slice envelope over the **full change surface — 7/7 requirements and 21/21 scenarios**, counted from the four delta files' `### Requirement:` / `#### Scenario:` headings (`payment-method-currency-classification` 1/4 + `cash-advance-payout-integrity` 2/7 + `api-dto-boundary` 1/4 + `closure-orchestration-consolidation` 3/6). The change-level verdict remains **pending** until the dedicated change-level verification pass is run and recorded; this report verifies each slice and does not itself close the change. The head `evidence_revision` covers the 32 production/test files touched by the four slice commits (definition and full hash list in the Slice S3a section's cumulative block, extended by S3b); each slice also records its own slice-scoped revision and command hashes in its section.
-**Verified revision**: `HEAD` = `8baf54c99b0882d639e68b92b22e33dd31dadb8e` ("refactor(8.141): eliminacion del entry point legacy + re-point de 18 tests (S3b, S3-07/OQ-1) - ANEXO 8.141"); parent `a076d05` (docs-only). Working tree before and after every command: `git status --porcelain` reports only ` M opencode.json` (pre-existing modification present before this verification started; no slice file dirty; this verification made no commit and no lasting code change). The only workspace touches were the S3b temporary guard-removal mutation, reverted byte-identically (blob proof in the Slice S3b section), and the timestamp touch applied to the restored file to defeat an incremental-build staleness artifact (content byte-identical; blob proof unchanged).
+**Scope of this report**: all four slices — S1 WARNING-04 / REQ-PMC-06 (AD-1), verified independently at commit `605b3aa`; S2 advance-commission contract + source mapping + H-13 (REQ-CAP-02/03, REQ-ADB-05; AD-2/3/6), verified independently at commit `67409da`; S3a `DailyClosureService` split (REQ-COC-03/06; AD-4/8), verified independently at commit `b4f7d40`; S3b legacy entry removal + 18 re-points (REQ-COC-05, REQ-COC-03; AD-5/8), verified independently at commit `8baf54c`. Every slice is implemented and verified, so the head envelope is the cumulative verified-slice envelope over the **full change surface — 7/7 requirements and 21/21 scenarios**, counted from the four delta files' `### Requirement:` / `#### Scenario:` headings (`payment-method-currency-classification` 1/4 + `cash-advance-payout-integrity` 2/7 + `api-dto-boundary` 1/4 + `closure-orchestration-consolidation` 3/6). The change-level verification pass is recorded in the final section of this report, which declares the final verdict (`pass_with_warnings`) and archive readiness; each slice remains individually verified in its own section. The head `evidence_revision` covers the 32 production/test files touched by the four slice commits (definition and full hash list in the Slice S3a section's cumulative block, extended by S3b); each slice also records its own slice-scoped revision and command hashes in its section.
+**Verified revision**: `HEAD` = `642a1d3981c6bea0cecd1ac789395d70f20068dd` (docs-only commit that recorded the S3b acceptance — `git diff --name-only 8baf54c 642a1d3` lists only this report). The verified code surface is slice commit `8baf54c99b0882d639e68b92b22e33dd31dadb8e` ("refactor(8.141): eliminacion del entry point legacy + re-point de 18 tests (S3b, S3-07/OQ-1) - ANEXO 8.141") over parent `a076d05` (docs-only). Working tree before and after every command: `git status --porcelain` reports only ` M opencode.json` (pre-existing modification present before this verification started; no slice file dirty; this verification made no commit and no lasting code change). The only workspace touches were the S3b temporary guard-removal mutation, reverted byte-identically (blob proof in the Slice S3b section), and the timestamp touch applied to the restored file to defeat an incremental-build staleness artifact (content byte-identical; blob proof unchanged).
 **evidence_revision**: SHA-256 of the ASCII string produced by joining, with `:`, the per-file SHA-256 hex digests of the three S1 production/test files, sorted by path, each hashed from its on-disk bytes: `CommandCenter.Tests/Unit/ClosureReportLineCurrencyTests.cs` `a7eb0d5729005017515cd2efc3b94c2d943d7510219d175310df6d2363a86709`, `Sales.Module/Services/DailyClosureService.cs` `1c31542d7cb3df3edc6c93e8ce5c992fe31fe413045179d1b9522ec97a1cc06c`, `Sales.Module/Services/DailyClosureService.Rules.cs` `5c3f2ba8c11a1976381e253a04a3799305a741d076120c24c0e5aec32486a13f`.
 **Hash definition**: `build_output_hash` / `test_output_hash` are the SHA-256 of the combined stdout+stderr captured for the command execution reported below, normalized to UTF-8 without BOM, `CRLF` -> `LF`, trailing newlines trimmed. The same single recipe applies to every command hash recorded in this section.
 
@@ -34,7 +34,7 @@ build_output_hash: sha256:6ce6a06ba6fd5fd56ee5d23a47cbec8ae0b6d44387c55929026faa
 | Change tasks complete (all phases) | 28 / 28 |
 | Change phases implemented | 4 of 4 (S1, S2, S3a, S3b) |
 
-All five S1 tasks (`S1-01`..`S1-05`), all eleven S2 tasks (`S2-01`..`S2-11`), all four S3a tasks (`S3a-01`..`S3a-04`) and all eight S3b tasks (`S3b-01`..`S3b-08`) are checked in `tasks.md` (28/28). All four slices are verified in the sections below; the change-level verdict remains pending for the dedicated change-level pass, per the slice-verification instruction.
+All five S1 tasks (`S1-01`..`S1-05`), all eleven S2 tasks (`S2-01`..`S2-11`), all four S3a tasks (`S3a-01`..`S3a-04`) and all eight S3b tasks (`S3b-01`..`S3b-08`) are checked in `tasks.md` (28/28). All four slices are verified in the sections below; the dedicated change-level pass is recorded in the final section, which declares the final verdict and archive readiness.
 
 ### Re-executed Evidence (verbatim)
 
@@ -243,7 +243,7 @@ No S1-introduced GGA finding remains; the `--no-verify` justification is consist
 
 ### Validator Admission
 
-For S1, `gentle-ai sdd-verify-validate --input <candidate bytes> --requirements 1 --scenarios 4` (exit `0`) admitted the exact candidate bytes before persistence; the same command over the persisted `openspec/changes/critical-debt-closeout/verify-report.md` (exit `0`) re-admitted the written file. No write occurred before admission; the report file did not exist before the S1 verification, so no prior report was overwritten. For the S2 update, `gentle-ai sdd-verify-validate --input <S2 candidate bytes> --requirements 4 --scenarios 15` (exit `0`) admitted the exact cumulative candidate bytes before persistence, and the same command over the persisted report (exit `0`) re-admitted the written file. No write occurred before admission in either slice. For the S3a update, `gentle-ai sdd-verify-validate --input <S3a candidate bytes> --requirements 6 --scenarios 19` (exit `0`) admitted the exact cumulative candidate bytes before persistence, and the same command over the persisted report (exit `0`) re-admitted the written file. For the S3b update, `gentle-ai sdd-verify-validate --input <S3b candidate bytes> --requirements 7 --scenarios 21` (exit `0`) admitted the exact cumulative candidate bytes before persistence, and the same command over the persisted report (exit `0`) re-admitted the written file. No write occurred before admission in any slice.
+For S1, `gentle-ai sdd-verify-validate --input <candidate bytes> --requirements 1 --scenarios 4` (exit `0`) admitted the exact candidate bytes before persistence; the same command over the persisted `openspec/changes/critical-debt-closeout/verify-report.md` (exit `0`) re-admitted the written file. No write occurred before admission; the report file did not exist before the S1 verification, so no prior report was overwritten. For the S2 update, `gentle-ai sdd-verify-validate --input <S2 candidate bytes> --requirements 4 --scenarios 15` (exit `0`) admitted the exact cumulative candidate bytes before persistence, and the same command over the persisted report (exit `0`) re-admitted the written file. No write occurred before admission in either slice. For the S3a update, `gentle-ai sdd-verify-validate --input <S3a candidate bytes> --requirements 6 --scenarios 19` (exit `0`) admitted the exact cumulative candidate bytes before persistence, and the same command over the persisted report (exit `0`) re-admitted the written file. For the S3b update, `gentle-ai sdd-verify-validate --input <S3b candidate bytes> --requirements 7 --scenarios 21` (exit `0`) admitted the exact cumulative candidate bytes before persistence, and the same command over the persisted report (exit `0`) re-admitted the written file. No write occurred before admission in any slice. The S3b section was re-verified in a second independent pass with the same admission flow: the candidate bytes (temp file) were validated with `--requirements 7 --scenarios 21` before persistence, and the persisted file was re-validated from disk; both admitted (exit `0`), and the head/S3b command hashes were refreshed to this pass's runs.
 
 ### Slice S1 Verdict
 
@@ -732,7 +732,7 @@ No S3a-introduced GGA finding remains; the `--no-verify` justification is consis
 ## Slice S3b — Legacy entry removal + 18 re-points (REQ-COC-05, REQ-COC-03; AD-5/8)
 
 **Commit**: `8baf54c99b0882d639e68b92b22e33dd31dadb8e` ("refactor(8.141): eliminacion del entry point legacy + re-point de 18 tests (S3b, S3-07/OQ-1) - ANEXO 8.141"); parent `a076d05` (docs-only — S3a acceptance). All eight S3b tasks (`S3b-01`..`S3b-08`) are checked in `tasks.md`; OQ-1 is marked **ACCEPTED** there (semantic rewrites authorized; the non-public-adapter fallback rejected).
-**Verified revision**: `HEAD` = `8baf54c99b0882d639e68b92b22e33dd31dadb8e`; working tree before and after every command: `git status --porcelain` reports only ` M opencode.json` (pre-existing). This verification made no commit and no lasting code change. Two workspace touches, both resolved: the temporary guard-removal mutation was reverted byte-identically (blob proof below), and the restored file's timestamp was then touched to defeat an incremental-build staleness artifact (content byte-identical; blob proof unchanged).
+**Verified revision**: code bytes verified at slice commit `8baf54c99b0882d639e68b92b22e33dd31dadb8e` over parent `a076d05`; the current `HEAD` is `642a1d3981c6bea0cecd1ac789395d70f20068dd` (docs-only acceptance of this report — `git diff --name-only 8baf54c 642a1d3` lists only this file), so the verified code surface is unchanged. Working tree before and after every command: `git status --porcelain` reports only ` M opencode.json` (pre-existing). This verification made no commit and no lasting code change. Two workspace touches, both resolved: the temporary guard-removal mutation was reverted byte-identically (blob proof below), and the restored file's timestamp was then touched (content byte-identical; blob unchanged) to defeat an incremental-build staleness artifact after the restore.
 **evidence_revision (S3b)**: `sha256:4869ccd94b59cd88be4645278a16f310d086a8d7546e1b6e4b0d8a164af9cdd4` — SHA-256 of the ASCII join, with `:`, of the 11 slice files' SHA-256 digests, sorted by path:
 
 ```text
@@ -793,7 +793,7 @@ Accepted semantic deltas (recorded by apply, no hidden loss):
 
 ### Re-executed Evidence (verbatim)
 
-Every S3b claim was re-executed independently from the restored working tree at `8baf54c`. Exit codes are `0` unless stated; counts match the claims exactly except the coverage variance noted in W-S3B-01.
+Every S3b claim was re-executed independently in this pass from the restored working tree (code bytes = `8baf54c`; `HEAD` = `642a1d3`, docs-only). Exit codes are `0` unless stated; counts match the claims exactly. Environmental notes: (a) the first full-suite attempts hit `System.OutOfMemoryException` inside the host/xUnit under machine memory pressure; after `dotnet build-server shutdown` the canonical run succeeded (retry-once rule honored; no partial recorded); (b) one successful run showed a transient, unrelated failure — see W-S3B-02.
 
 **1. Build** — `dotnet build CommandCenter.slnx -c Release` — exit `0` — matches claim (`0` errors, `0` warnings)
 
@@ -802,46 +802,50 @@ Compilación correcta.
     0 Advertencia(s)
     0 Errores
 
-Tiempo transcurrido 00:00:04.27
+Tiempo transcurrido 00:00:35.96
 ```
 
-`build_output_hash: sha256:6ce6a06ba6fd5fd56ee5d23a47cbec8ae0b6d44387c55929026faae1cf53fc88`
+`build_output_hash: sha256:61cf5dd428cb9317a958ccd73a154f2829b4f08e978f9ed000265bd68d8f67c9`
 
 **2. Backend suite** — `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release` — exit `0` — matches claim (`1259/1259`, continuity floor 1254 + 5 structural cases)
 
 ```text
-Correctas! - Con error:     0, Superado:  1259, Omitido:     0, Total:  1259, Duración: 14 s - CommandCenter.Tests.dll (net10.0)
+Correctas! - Con error:     0, Superado:  1259, Omitido:     0, Total:  1259, Duración: 12 s - CommandCenter.Tests.dll (net10.0)
 ```
 
-`test_output_hash: sha256:f636a563bb03c653350471c7c92e410d5a2f60b7521dea68f091249130956515`
+`test_output_hash: sha256:b4025723de96a56361812fa4cd94ac1b30f6261008abcab845a1e4da3e1f341d`
 
-**3. Closure filter** — `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --filter "FullyQualifiedName~Closure|FullyQualifiedName~DailyClosure"` — exit `0` — matches claim (`105/105` = 100 pre-S3b + 5 structural cases)
+Flake note (W-S3B-02): an earlier run of the same suite (`--no-build`) was `1258/1259` — the single failure was `CheckoutUxTests.UpdateCustomer_PreservesExistingPaymentsAndRecalculatesCustody` (`Assert.Single` empty because the payment command had not completed when asserted), a file untouched by S3b since 8.140; the immediate re-run was `1259/1259` and the canonical run above is the envelope evidence.
+
+**3. Closure filter** — `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~Closure|FullyQualifiedName~DailyClosure"` — exit `0` — matches claim (`105/105` = 100 pre-S3b + 5 structural cases)
 
 ```text
-Correctas! - Con error:     0, Superado:   105, Omitido:     0, Total:   105, Duración: 6 s - CommandCenter.Tests.dll (net10.0)
+Correctas! - Con error:     0, Superado:   105, Omitido:     0, Total:   105, Duración: 4 s - CommandCenter.Tests.dll (net10.0)
 ```
 
-`closure_output_hash: sha256:ccb563d84c4ca026e115eab398815e29eb60fed4346906e319028b80709b40d3`
+`closure_output_hash: sha256:95a5dce14cd767c388794b04a54cd88c2220882bc3d20a3bde5fb05775f2d066`. The post-restore re-run of the same filter (after the mutation revert + restore rebuild) returned the same `105/105` and the identical normalized-output hash.
 
 **4. Guard mutation (throwaway)** — same project `--filter "FullyQualifiedName~Duplicated"` — exit `1` — mutation run (excerpt, verbatim):
 
 ```text
-[xUnit.net 00:00:03.32]     CommandCenter.Tests.Unit.ResidualRemediationLote26Tests.CreateClosureFromCommand_WithDuplicatedPaymentMethodIds_ThrowsArgumentException [FAIL]
-[xUnit.net 00:00:03.98]     CommandCenter.Tests.Unit.ClosureLegacyEntryRemovalTests.CreateClosureFromCommand_WithDuplicatedDeclaredMethods_ThrowsDuplicados [FAIL]
-  Con error CommandCenter.Tests.Unit.ResidualRemediationLote26Tests.CreateClosureFromCommand_WithDuplicatedPaymentMethodIds_ThrowsArgumentException [164 ms]
+[xUnit.net 00:00:03.04]     CommandCenter.Tests.Unit.ResidualRemediationLote26Tests.CreateClosureFromCommand_WithDuplicatedPaymentMethodIds_ThrowsArgumentException [FAIL]
+[xUnit.net 00:00:05.42]     CommandCenter.Tests.Unit.ClosureLegacyEntryRemovalTests.CreateClosureFromCommand_WithDuplicatedDeclaredMethods_ThrowsDuplicados [FAIL]
+  Con error CommandCenter.Tests.Unit.ResidualRemediationLote26Tests.CreateClosureFromCommand_WithDuplicatedPaymentMethodIds_ThrowsArgumentException [154 ms]
   Mensaje de error:
    Assert.Contains() Failure: Sub-string not found
 String:    "El desglose contiene métodos de pago no r"···
 Not found: "duplicados"
-  Con error CommandCenter.Tests.Unit.ClosureLegacyEntryRemovalTests.CreateClosureFromCommand_WithDuplicatedDeclaredMethods_ThrowsDuplicados [2 s]
+  Con error CommandCenter.Tests.Unit.ClosureLegacyEntryRemovalTests.CreateClosureFromCommand_WithDuplicatedDeclaredMethods_ThrowsDuplicados [4 s]
   Mensaje de error:
    Assert.Throws() Failure: No exception was thrown
 Expected: typeof(System.ArgumentException)
 
-Con error! - Con error:     2, Superado:     2, Omitido:     0, Total:     4, Duración: 2 s - CommandCenter.Tests.dll (net10.0)
+Con error! - Con error:     2, Superado:     2, Omitido:     0, Total:     4, Duración: 4 s - CommandCenter.Tests.dll (net10.0)
 ```
 
-Post-restore re-run after the timestamp touch + rebuild: 4/4 passed; `duplicate_filter_output_hash: sha256:3c94a3a252d316f7cf26caf00673278307a73fd1f3443c6ae36cf5fd901b575b`.
+`mutation_output_hash: sha256:724ae8cc1105f2a9cc9d972418ff5799a4006b852e9b687e2d53fc0302c042d0`. The two controller-level duplicate tests still pass because the controllers pre-validate the payload independently of the service guard.
+
+Restore: byte backup taken from the `HEAD` blob (`ec92cf8a9d87a17b30d905da39870304211b0a63`); after `Copy-Item` restore, `git hash-object` = `ec92cf8a9d87a17b30d905da39870304211b0a63` = `HEAD:Sales.Module/Services/DailyClosureService.Rules.cs`, `git diff` empty, `git status --porcelain` only ` M opencode.json`. The restored file kept its original mtime, so the first post-restore run still used the mutated assembly (`2 failed / 2 passed`); after touching the restored file's timestamp (content unchanged, blob identical) and rebuilding, the filter is `4/4` green — `duplicate_filter_output_hash: sha256:ecfebd88dbd74a2d07b90e289a1a7b9055c5a2b288e9a2edef592e1b283933d6`.
 
 **5. Frontend tests** — `npm test` (Web.Frontend) — exit `0` — matches claim (`287/287`, baseline floor 273)
 
@@ -855,18 +859,21 @@ Post-restore re-run after the timestamp touch + rebuild: 4/4 passed; `duplicate_
 ℹ todo 0
 ```
 
-`npm_test_output_hash: sha256:4fd8207eb755f91135bc7f291b9379b7022cc01d5fa2705bd5bda75590411225`
+`npm_test_output_hash: sha256:2e9fe83835381dbac6644dd495a303f04327ced398c702dafef72b3cfb23b8ac`
 
 **6. Frontend lint** — `npm run lint` (Web.Frontend, oxlint) — exit `0`, no findings — matches claim
 
 ```text
 > web-frontend@0.0.0 lint
 > oxlint
+
+Found 0 warnings and 0 errors.
+Finished in 87ms on 152 files with 76 rules using 12 threads.
 ```
 
-`npm_lint_output_hash: sha256:1472f392035e28478ac827e6e5301e8adde36ba5a0a27bc61cdf6e42453bc7d3` (identical to S1/S2/S3a by construction)
+`npm_lint_output_hash: sha256:968471004df0a6935db0247bbf25d9083221e9e0cc5dc91539e86e879fafdeba`
 
-**7. Coverage gate** — `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings` (exit `0`, `1259/1259`) then `python scripts/check-coverage.py CommandCenter.Tests/TestResults/f4ec9a53-b85a-4b64-bbef-b4534979e81a/coverage.cobertura.xml` (exit `0`)
+**7. Coverage gate** — `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings` (exit `0`, `1259/1259`) then `python scripts/check-coverage.py CommandCenter.Tests/TestResults/f9217ca8-6a6f-47c7-8e36-e4cec6709936/coverage.cobertura.xml` (exit `0`)
 
 ```text
 Cobertura de dominio por capa (line-rate, excluye *.Migrations.*):
@@ -875,9 +882,9 @@ Cobertura de dominio por capa (line-rate, excluye *.Migrations.*):
   Inventory.Module   rate=0.8251 min=0.7200 gap_a_70%=0.0000 [OK]
 ```
 
-`coverage_test_output_hash: sha256:639663f1e88648e57cffdb2cb642b98540f2f81a610109c78ec7c3b4782ff88b`; `coverage_gate_output_hash: sha256:4104be3c61e83d64253c056c9c5df9e51c6293a78bb11bc546dd7c98c3c8d2e8`.
+`coverage_test_output_hash: sha256:c256b819669628a8e3998d83b820939b969517cd6d3f3ac15ae2f196c2a5b808`; `coverage_gate_output_hash: sha256:4104be3c61e83d64253c056c9c5df9e51c6293a78bb11bc546dd7c98c3c8d2e8` (identical to the recorded AFTER artifact's gate output because the rates are identical).
 
-**8. Coverage before/after (recorded artifacts re-gated)** — the apply-recorded run directories exist and re-gate exactly as claimed: BEFORE `TestResults/4613ff39-3b2a-48c3-8ae8-6765fa3e2a0f` → Core `0.8378` / Sales.Module `0.9087` / Inventory.Module `0.8251`; AFTER `TestResults/4fdcb3cb-e647-4141-a78c-576f8c941ce8` → Core `0.8364` / Sales.Module `0.9091` / Inventory.Module `0.8251`. Independent fresh coverage-enabled runs returned Sales.Module `0.9065` (dir `de9c947d-...`) and `0.9091` (dirs `5009c606-...`, `f4ec9a53-...`): run-to-run variance of ±0.0026, the same order as the Core variance documented in S3a. Every sample is far above the 0.80 Sales.Module floor; no layer is below a gate.
+**8. Coverage before/after (recorded artifacts re-gated)** — the apply-recorded run directories exist and re-gate exactly as claimed: BEFORE `TestResults/4613ff39-3b2a-48c3-8ae8-6765fa3e2a0f` → Core `0.8378` / Sales.Module `0.9087` / Inventory.Module `0.8251`; AFTER `TestResults/4fdcb3cb-e647-4141-a78c-576f8c941ce8` → Core `0.8364` / Sales.Module `0.9091` / Inventory.Module `0.8251`. In this pass, the recorded BEFORE/AFTER directories were re-gated with the exact rates above and the fresh coverage-enabled run (`f9217ca8-6a6f-47c7-8e36-e4cec6709936`) returned the same `0.8364` / `0.9091` / `0.8251` as the AFTER artifact; across passes the observed run-to-run variance remains on the order of ±0.0026, the same order as the Core variance documented in S3a. Every sample is far above the 0.80 Sales.Module floor; no layer is below a gate.
 
 ### Scenario Evidence Matrix — REQ-COC-03 / REQ-COC-05 / REQ-COC-06
 
@@ -935,7 +942,8 @@ Counts from the delta spec headings: `closure-orchestration-consolidation` = 3 r
 
 **CRITICAL**: None.
 **WARNING**:
-- W-S3B-01 — coverage-enabled runs vary run-to-run (`Sales.Module` 0.9065 vs 0.9091 in this session; Core 0.8364 vs 0.8378, the same variance pair documented in S3a). The recorded before/after artifacts re-gate exactly (0.9087 → 0.9091) and every sample clears the 0.80 floor by more than 0.10; no spec or gate impact, but the coverage statistic is not deterministic.
+- W-S3B-01 — coverage-enabled runs vary run-to-run (historical samples: `Sales.Module` 0.9065 vs 0.9091; Core 0.8364 vs 0.8378, the same variance pair documented in S3a). This pass's fresh run returned `Sales.Module` 0.9091 / Core 0.8364, and the recorded before/after artifacts re-gate exactly (0.9087 → 0.9091); every sample clears the 0.80 floor by more than 0.10. No spec or gate impact, but the coverage statistic is not deterministic.
+- W-S3B-02 — transient suite flake: `CheckoutUxTests.UpdateCustomer_PreservesExistingPaymentsAndRecalculatesCustody` failed once in `1259` (`Assert.Single` on payments added immediately after the command; file untouched since 8.140) and passed on immediate re-run. Unrelated to S3b; this is the named instance behind W-S3A-02's unidentified transient failure.
 **SUGGESTION**:
 - Pin the relocated duplicate-guard message (and, ideally, `ParamName`) in a test — currently only the "duplicados" substring is asserted, so the `closure` → `declarations` rename is unobserved.
 
@@ -944,12 +952,134 @@ Counts from the delta spec headings: `closure-orchestration-consolidation` = 3 r
 - **RESIDUAL-S3B-01 (guard ParamName)** — the relocated guard uses `nameof(declarations)`; the legacy path used `nameof(closure)`. The message text is preserved, no test observes `ParamName`, and the command DTO has no `closure` entity, so this is the correct parameter name.
 - **RESIDUAL-S3B-02 (coverage variance)** — see W-S3B-01.
 - **RESIDUAL-S3B-03 (apply record nit)** — `apply-progress.md` records the main file as `286` lines; measured `285` (Read and `(Get-Content).Count` agree). Both are ≤ 500; documentation nit only.
+- **RESIDUAL-S3B-04 (transient flake)** — see W-S3B-02; the failing test is named and pre-existing, not introduced by S3b.
 - **RESIDUAL-S3A-02 / RESIDUAL-S1-02 (carried)** — the file-ceiling/McCabe regression guard (W-S3A-01) and the third per-currency arithmetic copy in `ShiftReportMapper.MapDetails` remain open; both are out of S3b scope.
 
 ### Slice S3b Verdict
 
-**PASS_WITH_WARNINGS** — REQ-COC-05 is implemented exactly as designed and the change is complete: the three legacy members are absent with zero reachable references, the command path is the single implementation, and the duplicate guard survives in `ValidateDeclaredMethods` with legacy ordering and message (mutation-proved: removing it fails 2 tests, including one where a duplicate closure is persisted). The 18 re-pointed tests assert real persisted values or exceptions — no tautologies — and fresh runtime evidence at `8baf54c` is green: build `0/0`, backend `1259/1259`, closure filter `105/105`, frontend `287/287`, lint clean, coverage gate green (Sales.Module 0.9091; recorded before/after re-gated 0.9087 → 0.9091). REQ-COC-03/06 remain satisfied (max McCabe `9`; files `285`/`157`/`165`). The single warning is coverage-run variance, not a spec failure; 0 blockers, 0 critical findings.
+**PASS_WITH_WARNINGS** — REQ-COC-05 is implemented exactly as designed and the change is complete: the three legacy members are absent with zero reachable references, the command path is the single implementation, and the duplicate guard survives in `ValidateDeclaredMethods` with legacy ordering and message (mutation-proved: removing it fails 2 tests, including one where a duplicate closure is persisted). The 18 re-pointed tests assert real persisted values or exceptions — no tautologies — and fresh runtime evidence at `8baf54c` is green: build `0/0`, backend `1259/1259`, closure filter `105/105`, frontend `287/287`, lint clean, coverage gate green (Sales.Module 0.9091; recorded before/after re-gated 0.9087 → 0.9091). REQ-COC-03/06 remain satisfied (max McCabe `9`; files `285`/`157`/`165`). The warnings are coverage-run variance and one named transient, unrelated suite flake (W-S3B-02), not spec failures; 0 blockers, 0 critical findings. This section was re-verified in a second independent pass (fresh build/suite/filter/lint/coverage runs plus the reproduced guard mutation), which confirmed every count and digest.
+
+## Change-Level Verification (Final)
+
+**Pass scope**: cumulative final verification of the completed change over the frozen code surface — the union of production/test files touched by the four slice commits (`605b3aa`, `67409da`, `b4f7d40`, `8baf54c`; docs/openspec excluded). All 32 per-file SHA-256 digests recorded in the cumulative `evidence_revision` block were recomputed from disk in this pass with **0 mismatches**, and their joined digest re-derives the head `evidence_revision` `sha256:a6bdf34ee6710d7f8eb98130240b71f150389e0f4e5eb421bdd8afb938c0c431`. `HEAD` = `642a1d3981c6bea0cecd1ac789395d70f20068dd` (docs-only over slice commit `8baf54c`); no code drift since the slice verifications.
+**Declared verdict**: **PASS_WITH_WARNINGS** — 0 blockers, 0 CRITICAL findings, 0 UNTESTED/FAILING scenarios, all 28 tasks complete.
+**Archive readiness**: **ADMISSIBLE — `sdd-archive` may proceed** (native status: `dependencies.archive: ready`, `nextRecommended: archive`; see the archive-readiness block below).
+
+### Cumulative Requirements Matrix (7/7 requirements, 21/21 scenarios)
+
+| # | Capability (delta file) | Requirement | Scenarios | Slice(s) | Evidence at HEAD (frozen surface) | Result |
+|---|------------------------|-------------|-----------|----------|------------------------------------|--------|
+| 1 | payment-method-currency-classification | REQ-PMC-06 Per-Currency Line Values and Derived Status (ADDED) | 4/4 | S1 `605b3aa` | `ClosureReportLineCurrencyTests` 7/7 green (incl. single-construction-site structural scan); closure filter 105/105; pre-fix RED re-derived 4F/3P; persisted-snapshot read-back test | COMPLIANT |
+| 2 | cash-advance-payout-integrity | REQ-CAP-02 Commission Resolved from System Settings (MODIFIED) | 4/4 | S2 `67409da` | Endpoint + coordinator + WPF VM + web tests green in the S2 focused 21/21; `CashAdvance` filter 55/55; zero 7/10 literals in the 8 client files | COMPLIANT |
+| 3 | cash-advance-payout-integrity | REQ-CAP-03 Fail-Closed on Unresolvable Commission (MODIFIED) | 3/3 | S2 `67409da` | Verbatim rejection-message test; 422 → null client contract; VM `CanConfirm == false`; web blocked submit; parity guard `previewed == charged` | COMPLIANT |
+| 4 | api-dto-boundary | REQ-ADB-05 Transaction Source Resolves Against the Contract Enum (ADDED) | 4/4 | S2 `67409da` | `cashTransactionSource.test.js` + `RegisterPage.sourceFilter.test.js` green (filter 2 in / 4 out; labels; no bare ordinal) | COMPLIANT |
+| 5 | closure-orchestration-consolidation | REQ-COC-03 Complexity Budget Under 10 (MODIFIED) | 2/2 | S3a `b4f7d40` + S3b `8baf54c` | Independent McCabe recount: max 9 (`GenerateReceiptContent`), `CreateClosure` 3; S3a/S3b mutations fail exactly the predicted tests; closure filter 105/105 | COMPLIANT |
+| 6 | closure-orchestration-consolidation | REQ-COC-05 Single Closure-Rule Implementation (ADDED) | 2/2 | S3b `8baf54c` | Reflection absence tests + repo-wide grep + full-solution `0/0`; guard mutation fails 2 tests (one persists a duplicate without the guard); the 105/105 filter executes the single command path | COMPLIANT |
+| 7 | closure-orchestration-consolidation | REQ-COC-06 Closure Service File Cohesion Budget (ADDED) | 2/2 | S3a `b4f7d40` + S3b `8baf54c` | Measured `285` / `157` / `165` lines (all ≤ 500); responsibility split inspected (main orchestration/queries only; Rules validation/line-building/totals; Receipts I/O); 23/23 member moves byte-identical | COMPLIANT |
+
+**Matrix summary**: 7/7 requirements complete, 21/21 scenarios compliant, 0 UNTESTED, 0 FAILING. Counts confirmed by an independent heading recount in this pass (`### Requirement:` / `#### Scenario:`): `1/4 + 2/7 + 1/4 + 3/6`.
+
+### Tasks Completeness
+
+`tasks.md` at the verified revision: **28/28 boxes checked, 0 unchecked** — S1 5/5, S2 11/11, S3a 4/4, S3b 8/8. Native status agrees: `taskProgress { total: 28, completed: 28, pending: 0, allComplete: true }`. OQ-1 is recorded **ACCEPTED** (semantic rewrites of the 18 legacy test sites authorized; the non-public-adapter fallback rejected). The `tasks.md` Verification commands were re-executed in this final pass (below).
+
+### Final Re-execution (verbatim, change-level pass)
+
+**1. Build** — `dotnet build CommandCenter.slnx -c Release` — exit `0` — `0 Advertencia(s)`, `0 Errores`
+
+```text
+Compilación correcta.
+    0 Advertencia(s)
+    0 Errores
+```
+
+`build_output_hash: sha256:c95cfab6655f5990d3e83d11290b42dcf1795b96ee555d1481a8d6c51f740090`
+
+**2. Backend suite** — `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release` — exit `0` — `1259/1259`
+
+```text
+Correctas! - Con error:     0, Superado:  1259, Omitido:     0, Total:  1259, Duración: 10 s - CommandCenter.Tests.dll (net10.0)
+```
+
+`test_output_hash: sha256:434efb7b57add0d1f43e151e8efb01c4de22c0d64a63a5b0c383d5fb69ce8438`
+
+**3. Frontend suite** — `npm test` (Web.Frontend) — exit `0` — `287` tests / `62` suites / `287` pass / `0` fail
+
+```text
+ℹ tests 287
+ℹ suites 62
+ℹ pass 287
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+```
+
+`npm_test_output_hash: sha256:7d970e5ffc16177a5b914b7d5ad789ee3de4b55bdcba32da1163add06ed16671`. Environmental note: the first attempt aborted before running the suite (`esbuild` / Node OOM under Windows paging-file pressure); after `dotnet build-server shutdown` freed commit, the single mandated retry completed green and is the canonical evidence. The command, exit code, and counts are the suite's, not a substituted run.
+
+**4. Frontend lint** — `npm run lint` (Web.Frontend, oxlint) — exit `0` — `0` warnings / `0` errors
+
+```text
+> web-frontend@0.0.0 lint
+> oxlint
+
+Found 0 warnings and 0 errors.
+Finished in 29ms on 152 files with 76 rules using 12 threads.
+```
+
+`npm_lint_output_hash: sha256:1b76d9fb4586aaee9d55ac526544fc72b4583b3fd88a72577318fc6257bc386f`
+
+**5. Coverage gate** — `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings` (exit `0`, `1259/1259`) then `python scripts/check-coverage.py CommandCenter.Tests/TestResults/1fb8750a-f596-4b37-b3b8-c946a8671b7c/coverage.cobertura.xml` (exit `0`)
+
+```text
+Cobertura de dominio por capa (line-rate, excluye *.Migrations.*):
+  Core               rate=0.8364 min=0.7000 gap_a_70%=0.0000 [OK]
+  Sales.Module       rate=0.9091 min=0.8000 gap_a_70%=0.0000 [OK]
+  Inventory.Module   rate=0.8251 min=0.7200 gap_a_70%=0.0000 [OK]
+```
+
+`coverage_test_output_hash: sha256:ba9966222fe5e7447c471ac523c52794866f211ecceb7d709323d3844fdeaf1e`; `coverage_gate_output_hash: sha256:4104be3c61e83d64253c056c9c5df9e51c6293a78bb11bc546dd7c98c3c8d2e8` (identical to the S3b recorded gate output). All layers clear their thresholds.
+
+### Consolidated Residual / Follow-Up Inventory
+
+| ID | Status | Origin / Slice | Detail | Blocking? |
+|----|--------|----------------|--------|-----------|
+| WARNING-04 | CLOSED | S1 `605b3aa` | Per-currency declared/system/difference + derived status in the single `BuildReportDetail`; persisted snapshot untouched (REQ-PMC-06, 4/4) | No — closed |
+| Item 41 + Web twin | CLOSED | S2 `67409da` | Server-resolved commission preview on both clients; no 7/10 literal; fail-closed (REQ-CAP-02/03, 7/7) | No — closed |
+| RESIDUAL-S4b-04 | CLOSED | S2 `67409da` | `advance` filter resolves to `CashAdvance` (2), not `Closing` (4); labels from one table (REQ-ADB-05, 4/4) | No — closed |
+| S3-06 | CLOSED | S3a `b4f7d40` | 650-line monolith split into `285`/`157`/`165`-line partials (REQ-COC-06) | No — closed |
+| S3-07 | CLOSED | S3b `8baf54c` | Three legacy members deleted; command path is the single implementation (REQ-COC-05) | No — closed |
+| H-13 | CLOSED | S2 `67409da` | 12 `decimal` properties use decimal-only `[Range]`; discriminating test verified by mutation (AD-6, no spec requirement) | No — closed |
+| RESIDUAL-S1-01 / S2-01 / S3A-01 | CLOSED | Change scope | "Slices unimplemented / verdict pending" placeholders — all slices implemented and verified by this pass | No — closed |
+| RESIDUAL-S1-03 | CLOSED | S1 → S3a | 637-line `DailyClosureService.cs` pre-existing ceiling breach resolved by the S3a split | No — closed |
+| RESIDUAL-S1-05 / S2-05 / S3B-03 / S1-06 | CLOSED | Records | Evidence-arithmetic and wording nits; corrected figures recorded in this report; no code action | No — closed |
+| W-S3A-01 / RESIDUAL-S3A-02 | OPEN (warning) | S3a | File ceiling (≤ 500) and McCabe (< 10) are measured, not pinned by an automated regression test; recommend extending the S3b-07 structural-test pattern | No — spec satisfied by measurement (design-approved method) |
+| RESIDUAL-S1-02 | OPEN (warning) | S1 | `ShiftReportMapper.MapDetails` still holds a third aligned copy of the per-currency arithmetic + `0.05m` tolerance | No — behaviorally aligned; consolidation candidate |
+| RESIDUAL-S2-04 / W-S2-01 | OPEN (warning) | S2 | The new route's 401/403 path is proven by attribute reflection + mock-level behavior; the real HTTP pipeline test is pg-gated and skipped without `TEST_POSTGRES_CONNECTION` | No — no spec scenario demands pipeline authz |
+| RESIDUAL-S2-02 / W-S2-02 (D2, D3) | OPEN (accepted) | S2 | No headless WPF dialog-window test; one consolidated S2 commit instead of four work units | No — process/evidence depth accepted by dispatch |
+| RESIDUAL-S2-06 | OPEN (warning) | S2 | Web modal coverage is SSR render + pure helpers + source scans; no mounted fetch→render→submit interaction test | No — read path covered by resolver + scan tests |
+| W-S3B-01 / RESIDUAL-S3B-02 | OPEN (warning) | S3b | Coverage statistic varies run-to-run (Core 0.8364–0.8378; Sales.Module 0.9087–0.9091); every sample clears its floor by more than 0.10 | No — no gate impact |
+| W-S3A-02 / W-S3B-02 / RESIDUAL-S3A-03 / RESIDUAL-S3B-04 | OPEN (warning) | S3a/S3b | Named transient flake `CheckoutUxTests.UpdateCustomer_PreservesExistingPaymentsAndRecalculatesCustody` (failed once in `1259`, passes on re-run; file untouched since 8.140) plus one unattributed transient in the S3a coverage run | No — final runs green |
+| RESIDUAL-S3B-01 | OPEN (nit) | S3b | Relocated guard uses `ParamName = declarations` (legacy: `closure`); message preserved, no test observes `ParamName` | No — correct for the command DTO |
+| S5a-R1 / S5b-R1 / S5c-R1 | OPEN (deferred) | Proposal non-goal | Sessions change deferred to a future change | No — out of scope |
+| H-07 | OPEN (deferred) | Proposal non-goal | Requires schema/migrations | No — out of scope |
+| H-12 | OPEN (deferred) | Proposal non-goal | 10 monoliths, HIGH effort; backend slice addressed by S3-06 | No — out of scope |
+| Item 40 | OPEN (deferred) | Proposal non-goal | Minor residual deferred | No — out of scope |
+| Size exception S2 | OPEN (accepted) | S2 | 979 authored changed lines above the 400-line budget; clients kept together as one contract pair; `size:exception` accepted | No — no chain available in this repo |
+| Size exception S3a | OPEN (accepted) | S3a | 545 changed lines, pure-move double-count of 260 relocated lines; fixed as one work unit | No — design-mandated split shape |
+| Size exception S3b | OPEN (accepted) | S3b | 591 changed lines; delete and re-points inseparable at compile time; one commit by `tasks.md` mandate | No — `size:exception` accepted |
+| Working-tree note | OPEN (environment) | Verification | `opencode.json` remains locally modified (` M`, pre-existing, not part of the change); this report file carries the change-level bytes | No — not part of the change |
 
 ### Change-Level Verdict
 
-**PENDING** — S1, S2, S3a and S3b are each verified (`pass_with_warnings`), and the full cumulative delta surface is now covered by slice evidence (**7/7 requirements, 21/21 scenarios**). This report deliberately does not close the change: the dedicated change-level verification pass follows separately, so no change-level verdict is declared here. Residuals carried into that pass: W-S3A-01/RESIDUAL-S3A-02 (ceiling/McCabe enforcement), W-S3B-01/RESIDUAL-S3B-02 (coverage variance), RESIDUAL-S1-02 (third per-currency arithmetic copy in `ShiftReportMapper.MapDetails`), RESIDUAL-S2-04 (auth-pipeline depth), RESIDUAL-S2-06 (web interaction depth).
+**PASS_WITH_WARNINGS** — all 28 tasks are complete; all 7 requirements (21/21 scenarios) have passing covering evidence on the frozen code surface, proven by recomputed digests; the fresh change-level re-execution is green end-to-end: build `0/0`, backend `1259/1259`, frontend `287/287`, oxlint clean, coverage gate exit `0` (Core `0.8364` / Sales.Module `0.9091` / Inventory.Module `0.8251`); 0 blockers, 0 CRITICAL findings, 0 UNTESTED/FAILING scenarios. The warnings are evidence-depth and carry-over items (measurement-only structural ceilings, auth-pipeline and web interaction depth, a named transient flake, coverage variance, record nits, accepted size exceptions) — none contradicts a spec scenario, a gate, or a money-visible contract.
+
+**What would make this FAIL**: any of the 21 scenarios losing a passing covering test at the frozen surface; any unchecked implementation task; a non-zero build/test/lint exit; a CRITICAL verification finding; or a contradiction in the money-visible semantics closed by this change (closure-line currency, commission sourcing, source mapping, closure single-implementation). None occurred; the only mismatches found were documentation-count discrepancies (recorded in the archive-readiness block), which do not affect any gate.
+
+### Archive Readiness
+
+- **Verify report resolves**: `verdict: pass_with_warnings`, `requirements: 7/7`, `scenarios: 21/21`, `blockers: 0`, `critical_findings: 0` — a valid canonical result. Admission: `gentle-ai sdd-verify-validate --input <candidate bytes> --requirements 7 --scenarios 21` (exit `0`) admitted the exact change-level candidate bytes before persistence; the same command over the persisted report (exit `0`) re-admitted the written file. No write occurred before admission.
+- **Delta sync inventory (authoritative, from the four delta files)**: **4 ADDED** — REQ-PMC-06, REQ-ADB-05, REQ-COC-05, REQ-COC-06; **3 MODIFIED** — REQ-CAP-02, REQ-CAP-03, REQ-COC-03; **0 REMOVED**. Count-mismatch note: the phase brief's "5 ADDED + 2 MODIFIED" does not match the delta files (4 + 3); the delta files are authoritative and `sdd-archive-compose` reads them directly, so sync is unaffected. (The earlier "8 requirements" brief figure remains a recorded discrepancy; the delta files count 7.)
+- **Main specs exist for all four capabilities** (`openspec/specs/{domain}/spec.md`), so archive composes ADDED/MODIFIED via `gentle-ai sdd-archive-compose`; 0 REMOVED means no destructive-merge warning is required (`rules.archive`).
+- **Task gate**: `tasks.md` has 0 unchecked boxes and native status reports `taskProgress 28/28`, `allComplete: true`; `dependencies.archive: ready`, `nextRecommended: archive`, `artifacts.verifyReport: done`.
+- **Archive admissibility**: **YES — `sdd-archive` is admissible.** There are no CRITICAL issues, no unchecked tasks, and the deltas are complete for sync. The open residuals above are non-blocking and should be carried into the archive report as final-state warnings.
