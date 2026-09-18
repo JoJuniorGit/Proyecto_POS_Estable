@@ -10186,3 +10186,178 @@ documentado.
 Cierre: WARNING-04 queda cerrado en la slice S1. Pendientes del change:
 S2 (REQ-CAP-02/03, REQ-ADB-05, H-13), S3a (split REQ-COC-06/03) y S3b
 (REQ-COC-05/03 + 18 re-points).
+
+
+================================================================================
+ANEXO - REVISION 8.141 (critical-debt-closeout S2: comision server-sourced +
+                        source mapping + H-13)
+================================================================================
+
+Fecha: 2026-09-17
+Commit: fix(8.141): comision server-sourced + source mapping (S2, item 41 +
+        S4b-04 + H-13) - ANEXO 8.141, en rama V0.15 (sin branches/PRs).
+
+Alcance: work unit cdc-s2-commission (segunda slice del change
+critical-debt-closeout, store openspec): cierra item 41 (REQ-CAP-02/03, AD-2),
+RESIDUAL-S4b-04 (REQ-ADB-05, AD-3) y H-13 (AD-6). Sin schema, sin config, sin
+PRs, sin sub-agentes.
+
+A. CAMBIOS DE PRODUCCION
+
+A1. Sales.Module/Services/CashAdvanceCoordinator.cs:
+- Un unico core privado ResolveCommissionCoreAsync (clave del canal, parseo
+  decimal, log warn y null cuando falta o es invalida).
+- Nuevo publico TryGetCommissionPercentageAsync(bool isTransfer, ct) -> decimal?.
+- ProcessAsync conserva su adaptador que lanza InvalidOperationException con el
+  mensaje verbatim (misma clave y texto "no esta configurada"; sin cambios).
+
+A2. Sales.Module/DTOs/CashAdvanceCommissionDto.cs (nuevo): record sellado
+    (bool IsTransfer, decimal Percentage).
+
+A3. Backend.API/Controllers/CashDrawerController.cs:
+- GET api/cashdrawer/advance-commission?isTransfer= (kebab-case) con
+  [Authorize(Roles="Admin,Manager,Cashier")] — el mismo rol que ya procesa
+  cash-advance; deliberadamente NO en SettingsController (Admin/Manager).
+- 200 {isTransfer, percentage}; irresoluble -> ApiUnprocessableEntity 422
+  ProblemDetails, sin porcentaje ni default en el cuerpo.
+
+A4. Desktop.Client.Core/Services/{ICashDrawerService,CashDrawerService}.cs:
+- AdvanceCommissionClientDto + GetAdvanceCommissionAsync(isTransfer, ct): GET a
+  la ruta nueva; 422 -> null; 200 -> porcentaje (>0) o null.
+
+A5. Desktop.Client.Core/ViewModels/CashAdvanceRegisterViewModel.cs:
+- Se elimina el literal 7.0m/10.0m (:58). CommissionPercentage pasa a decimal?
+  y solo se llena con el valor del servidor (RefreshCommissionAsync publico, con
+  versionado de request y fail-closed a null); CommissionAmountBsS /
+  TotalToChargeBsS / TotalToChargeUSD pasan a decimal? (vacio = sin comision).
+- CanConfirm exige CommissionPercentage > 0.
+- Ctor source-compatible: (metodos, availableCashLocal, exchangeRate = 1.0m,
+  ICashDrawerService? cashDrawer = null).
+
+A6. Desktop.Client/Services/WpfDialogService{,.Modals}.cs:
+- Ctor recibe ICashDrawerService? opcional (DI lo resuelve; los tests existentes
+  siguen compilando). El modal pasa drawer service + tasa actual al VM y espera
+  RefreshCommissionAsync antes de abrir el dialogo.
+
+A7. Web.Frontend/src/constants/cashTransactionSource.js (nuevo, constants/ nuevo):
+    CashTransactionSource congelado (0..6) + UNA tabla SOURCE_DEFINITIONS
+    [{id,key,label}] + getSourceLabel / getSourceIdByFilterKey /
+    matchesSourceFilter.
+
+A8. Web.Frontend/src/pages/RegisterPage.jsx:
+- El filtro advance pasa a CashAdvance (2) (antes 4); filtro y etiquetas leen la
+  tabla unica; se elimina el switch invertido de getSourceLabel y los ordinales
+  sueltos de source (t.source !== CashTransactionSource.Opening).
+
+A9. Web.Frontend/src/components/register/CashAdvanceModal.jsx:
+- Se eliminan el literal `isTransfer ? 7 : 10` y las etiquetas "Comision 7%/10%"
+  de las opciones.
+- Lee GET /api/cashdrawer/advance-commission?isTransfer= por canal seleccionado;
+  null/non-2xx -> sin porcentaje, aviso fijo y submit deshabilitado
+  (resolveCommissionPercentage / computeAdvanceSummary puros y exportados).
+
+A10. H-13 (AD-6): [Range(typeof(decimal), "0", "79228162514264337593543950335",
+     ErrorMessage=...)] en las 8 propiedades decimal de
+     ProductDialogViewModel.Pricing.cs y las 4 de AddProductViewModel.cs (antes
+     [Range(0, double.MaxValue)]: validacion double sobre dinero decimal).
+
+B. TESTS
+
+B1. CommandCenter.Tests/Unit/CashAdvanceCommissionEndpointTests.cs (nuevo, 15
+    casos: 10 facts + teoria de 5 valores): ruta GET kebab-case + [Authorize]
+    Admin/Manager/Cashier sin Driver ni AllowAnonymous; 200 con 5.5 y con el otro
+    canal; 422 sin "percentage" ni "isTransfer" en el cuerpo; TryGet -> null con
+    null/""/"abc"/"0"/"-5"; TryGet por canal; ProcessAsync sigue lanzando el
+    mensaje verbatim con la clave; previewed == charged; cliente WPF: pide la
+    ruta exacta y devuelve 5.5, 422 -> null (MockHttpMessageHandler).
+B2. CommandCenter.Tests/CashAdvanceTests.cs: el test VM del literal 7.0m pasa a
+    tres casos: preview server-sourced (5.5), sigue el canal (12.25) y
+    fail-closed (null -> CommissionPercentage/CommissionAmountBsS/Total null y
+    CanConfirm false). Se agrega el metodo nuevo al doble
+    CashDrawerClosureTests.MockClientCashDrawerService.
+B3. CommandCenter.Tests/Unit/ProductDecimalRangeValidationTests.cs (nuevo, 3
+    casos): las 12 propiedades usan OperandType decimal, aceptan decimal.MaxValue
+    y rechazan -1m, y validan via Validator.TryValidateValue.
+B4. Web.Frontend: cashTransactionSource.test.js (6),
+    RegisterPage.sourceFilter.test.js (3, escaneo de fuentes sin ordinal suelto)
+    y CashAdvanceModal.commission.test.js (5: resolver puro, resumen con 5.5 ->
+    55/1055/21.1, ruta + disabled, sin literales 7/10, montaje real con submit
+    deshabilitado y sin porcentaje fabricado).
+
+C. VERIFICACION (comandos de tasks.md ## Verification)
+
+C1. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+C2. Filtro S2 backend (verbatim): dotnet test
+    CommandCenter.Tests/CommandCenter.Tests.csproj --filter
+    "FullyQualifiedName~CashAdvance" -> 55 passed, 0 failed (incluye los 21 del
+    filtro puntual S2 de comision/rango/VM).
+C3. dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release:
+    1254 passed, 0 failed, 0 skipped (piso 1227; +20 tests nuevos vs. 1234 de S1).
+C4. npm test (Web.Frontend): 287 passed, 0 failed (piso 273; +14 tests nuevos).
+C5. npm run lint (Web.Frontend): exit 0, clean.
+C6. Coverage gate: Core 0.8364 [OK], Sales.Module 0.9087 [OK], Inventory.Module
+    0.8251 [OK]; check-coverage.py exit 0.
+C7. RED (antes del fix): los tests nuevos no compilaban por API ausente
+    (CS0117/CS1061: GetAdvanceCommission, CashAdvanceCommissionDto,
+    TryGetCommissionPercentageAsync, GetAdvanceCommissionAsync, ctor con
+    cashDrawer, RefreshCommissionAsync) y los web fallaban con
+    ERR_MODULE_NOT_FOUND (constants/cashTransactionSource.js) mas los escaneos de
+    RegisterPage. GREEN: 21/21 y 14/14 respectivamente.
+C8. Mutacion H-13: al reintroducir [Range(0, double.MaxValue)] en UNA propiedad,
+    DecimalMoneyProperties_UseDecimalOperandRange_NotDouble falla (1 con error, 2
+    superados); restaurado -> 3/3 verde.
+
+D. DECISIONES Y DESVIACIONES
+
+D1. H-13 es higiene decimal-only, no un overflow observable: se verifico
+    empiricamente en .NET 10 que [Range(0, double.MaxValue)] responde true a
+    decimal.MaxValue y Validator.TryValidateObject no desborda; la asercion
+    discriminante es OperandType == decimal (roja con el atributo double). El
+    test fija el contrato decimal-only y el limite.
+D2. El preview WPF espera la lectura del servidor antes de abrir el dialogo
+    (WpfDialogService) y refresca ante cambio de canal desde el VM; sin
+    porcentaje valido no se puede confirmar. No se agrego un test de construccion
+    de la ventana WPF: el repo no tiene infraestructura headless
+    (Application.Current nulo; converters en App.xaml) y ninguna prueba existente
+    construye ventanas; la evidencia es build 0/0 + los tests de contrato del VM.
+D3. tasks.md sugiere 4 commits por work unit para S2; el orquestador despacho la
+    slice como un work unit (`cdc-s2-commission`) con un unico mensaje de commit
+    y sin PRs. Se consolido en 1 commit: los dos clientes quedan juntos (regla
+    "nunca separar WPF de Web"), los tests viajan con el comportamiento y el
+    rollback del par de contrato (backend + clientes + mapping) es unico.
+D4. Presupuesto de revision: 907 adiciones + 94 supresiones = 1001 lineas
+    cambiadas (sin docs ~979), por encima del presupuesto de 400. La slice no se
+    puede partir sin romper la regla de clientes juntos ni el mensaje unico
+    despachado; se registra como size:exception aceptado por el despacho. No se
+    recorto codigo, tests ni documentacion para acercarse al numero.
+
+E. GGA (punctual --no-verify)
+
+gga run (v2.10.1, provider opencode, rules AGENTS.md) = STATUS FAILED. Todos los
+hallazgos son PRE-EXISTENTES y fuera del alcance de S2; ninguno es introducido
+por este slice. Commit con --no-verify puntual documentado.
+
+- Query de lectura sin AsNoTracking (CashDrawerController.cs:171-174,
+  ResolveAnchoredRateAsync): pre-existente; S2 no toco ese metodo (mismo
+  hallazgo registrado en S1).
+- Comentarios explicativos: todas las lineas citadas (CashDrawerController
+  :102-103/:128-130/:165/:152-157; AddProductViewModel:93;
+  CashAdvanceRegisterViewModel:48; ProductDialogViewModel.Pricing.cs:12/:16;
+  WpfDialogService.cs:20-21/:89-90/:99-102/:169-170; WpfDialogService.Modals.cs
+  :268-269/:305-306/:340/:377; ICashDrawerService.cs:9/:93/:108) son
+  pre-existentes (verificado linea a linea); el diff solo agrega dos cabeceras
+  /** de trazabilidad en tests web nuevos, convencion del repo.
+- Metodos async sin CancellationToken en Desktop.Client.Core/Services/
+  CashDrawerService.cs: pre-existente; el metodo NUEVO (GetAdvanceCommissionAsync)
+  SI acepta y propaga CancellationToken.
+- Controller con acceso directo a DbContext (_db.Users, _inventoryContext):
+  pre-existente (ctor y ResolveAnchoredRateAsync); el endpoint nuevo no accede a
+  datos.
+- Validaciones que lanzan excepcion en vez de ProblemDetails
+  (ResolveAnchoredRateAsync): pre-existente; el endpoint nuevo responde 422
+  ProblemDetails via ApiUnprocessableEntity.
+- Nota: ruta duplicada open/open-session: pre-existente.
+
+Cierre: item 41 + RESIDUAL-S4b-04 + H-13 quedan cerrados en la slice S2.
+Pendientes del change: S3a (split REQ-COC-06/03) y S3b (REQ-COC-05/03 + 18
+re-points).

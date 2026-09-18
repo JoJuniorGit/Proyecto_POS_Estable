@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using ClientCashService = Desktop.Client.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -356,17 +357,31 @@ public class CashAdvanceTests
         });
     }
 
-    [Fact]
-    public void CashAdvanceRegisterViewModel_FiltersOutCashPaymentMethods()
+    private static Mock<ClientCashService.ICashDrawerService> CreateAdvanceDrawerMock(decimal transferPercentage, decimal cashPercentage)
     {
-        var methods = new List<ClientCashService.PaymentMethodDto>
-        {
-            new ClientCashService.PaymentMethodDto { Id = 1, Name = "Efectivo", IsCash = true, DisplayOrder = 1 },
-            new ClientCashService.PaymentMethodDto { Id = 2, Name = "Transferencia", IsCash = false, DisplayOrder = 2 },
-            new ClientCashService.PaymentMethodDto { Id = 3, Name = "Punto de Venta", IsCash = false, DisplayOrder = 3 }
-        };
+        var drawer = new Mock<ClientCashService.ICashDrawerService>();
+        drawer.Setup(d => d.GetAdvanceCommissionAsync(true, It.IsAny<CancellationToken>())).ReturnsAsync(transferPercentage);
+        drawer.Setup(d => d.GetAdvanceCommissionAsync(false, It.IsAny<CancellationToken>())).ReturnsAsync(cashPercentage);
+        return drawer;
+    }
 
-        var vm = new CashAdvanceRegisterViewModel(methods, availableCashLocal: 2000m, exchangeRate: 50.0m);
+    private static List<ClientCashService.PaymentMethodDto> CreateElectronicMethods() => new()
+    {
+        new ClientCashService.PaymentMethodDto { Id = 1, Name = "Efectivo", IsCash = true, DisplayOrder = 1 },
+        new ClientCashService.PaymentMethodDto { Id = 2, Name = "Transferencia", IsCash = false, DisplayOrder = 2 },
+        new ClientCashService.PaymentMethodDto { Id = 3, Name = "Punto de Venta", IsCash = false, DisplayOrder = 3 }
+    };
+
+    [Fact]
+    public async Task CashAdvanceRegisterViewModel_PreviewShowsServerResolvedPercentage()
+    {
+        var vm = new CashAdvanceRegisterViewModel(
+            CreateElectronicMethods(),
+            availableCashLocal: 2000m,
+            exchangeRate: 50.0m,
+            cashDrawer: CreateAdvanceDrawerMock(5.5m, 10.0m).Object);
+
+        await vm.RefreshCommissionAsync();
 
         Assert.DoesNotContain(vm.ElectronicPaymentMethods, pm => pm.IsCash || pm.Name.Equals("Efectivo", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(2, vm.ElectronicPaymentMethods.Count);
@@ -374,9 +389,52 @@ public class CashAdvanceTests
 
         vm.RequestedAmountBsS = 1000m;
         Assert.True(vm.IsTransfer);
-        Assert.Equal(7.0m, vm.CommissionPercentage);
-        Assert.Equal(70m, vm.CommissionAmountBsS);
-        Assert.Equal(1070m, vm.TotalToChargeBsS);
+        Assert.Equal(5.5m, vm.CommissionPercentage);
+        Assert.Equal(55m, vm.CommissionAmountBsS);
+        Assert.Equal(1055m, vm.TotalToChargeBsS);
         Assert.True(vm.CanConfirm);
+    }
+
+    [Fact]
+    public async Task CashAdvanceRegisterViewModel_PreviewFollowsTheSelectedChannel()
+    {
+        var vm = new CashAdvanceRegisterViewModel(
+            CreateElectronicMethods(),
+            availableCashLocal: 2000m,
+            exchangeRate: 50.0m,
+            cashDrawer: CreateAdvanceDrawerMock(5.5m, 12.25m).Object);
+
+        await vm.RefreshCommissionAsync();
+        vm.RequestedAmountBsS = 1000m;
+        Assert.True(vm.IsTransfer);
+        Assert.Equal(5.5m, vm.CommissionPercentage);
+
+        vm.SelectedPaymentMethod = vm.ElectronicPaymentMethods.First(pm => pm.Name == "Punto de Venta");
+        await vm.RefreshCommissionAsync();
+
+        Assert.False(vm.IsTransfer);
+        Assert.Equal(12.25m, vm.CommissionPercentage);
+        Assert.Equal(122.50m, vm.CommissionAmountBsS);
+    }
+
+    [Fact]
+    public async Task CashAdvanceRegisterViewModel_WhenCommissionUnresolved_BlocksConfirmation()
+    {
+        var drawer = new Mock<ClientCashService.ICashDrawerService>();
+        drawer.Setup(d => d.GetAdvanceCommissionAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>())).ReturnsAsync((decimal?)null);
+
+        var vm = new CashAdvanceRegisterViewModel(
+            CreateElectronicMethods(),
+            availableCashLocal: 2000m,
+            exchangeRate: 50.0m,
+            cashDrawer: drawer.Object);
+
+        await vm.RefreshCommissionAsync();
+        vm.RequestedAmountBsS = 1000m;
+
+        Assert.Null(vm.CommissionPercentage);
+        Assert.Null(vm.CommissionAmountBsS);
+        Assert.Null(vm.TotalToChargeBsS);
+        Assert.False(vm.CanConfirm);
     }
 }

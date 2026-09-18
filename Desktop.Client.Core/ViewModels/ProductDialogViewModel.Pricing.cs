@@ -8,38 +8,38 @@ namespace Desktop.Client.ViewModels;
 public partial class ProductDialogViewModel
 {
     [ObservableProperty]
-    [Range(0, double.MaxValue, ErrorMessage = "Price must be non-negative")]
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Price must be non-negative")]
     private decimal _price; // Retail Price USD
 
     [ObservableProperty]
-    [Range(0, double.MaxValue, ErrorMessage = "Cost must be non-negative")]
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Cost must be non-negative")]
     private decimal _cost; // Gross cost USD
 
     [ObservableProperty]
-    [Range(0, double.MaxValue, ErrorMessage = "Profit % must be non-negative")]
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Profit % must be non-negative")]
     private decimal _profitPercentage;
 
     [ObservableProperty]
-    [Range(0, double.MaxValue, ErrorMessage = "Costo base debe ser positivo")]
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Costo base debe ser positivo")]
     private decimal _costPriceUSD;
 
     [ObservableProperty]
-    [Range(0, double.MaxValue, ErrorMessage = "Margen detal debe ser positivo")]
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Margen detal debe ser positivo")]
     private decimal _profitMarginRetail;
 
     [ObservableProperty]
-    [Range(0, double.MaxValue, ErrorMessage = "Precio detal debe ser positivo")]
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Precio detal debe ser positivo")]
     private decimal _priceRetailUSD;
 
     [ObservableProperty]
     private decimal _priceRetailBsS;
 
     [ObservableProperty]
-    [Range(0, double.MaxValue, ErrorMessage = "Margen mayor debe ser positivo")]
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Margen mayor debe ser positivo")]
     private decimal _profitMarginWholesale;
 
     [ObservableProperty]
-    [Range(0, double.MaxValue, ErrorMessage = "Precio mayor debe ser positivo")]
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "Precio mayor debe ser positivo")]
     private decimal _priceWholesaleUSD;
 
     [ObservableProperty]

@@ -201,31 +201,34 @@ public partial class WpfDialogService
         return result;
     }
 
-    public System.Threading.Tasks.Task<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?> ShowCashAdvanceRegisterDialogAsync(
+    public async System.Threading.Tasks.Task<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?> ShowCashAdvanceRegisterDialogAsync(
         System.Collections.Generic.List<PaymentMethodDto> paymentMethods, 
         decimal availableCashLocal)
     {
         if (Application.Current == null) 
-            return System.Threading.Tasks.Task.FromResult<(bool, decimal, decimal, int, string, bool)?>(null);
+            return null;
 
         (bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)? result = null;
 
         using var _ = TrackModal();
+
+        var vm = new ViewModels.CashAdvanceRegisterViewModel(paymentMethods, availableCashLocal, _exchangeRateService?.CurrentRate ?? 1.0m, _cashDrawerService);
+        await vm.RefreshCommissionAsync();
+
         Action openDialog = () =>
         {
-            var vm = new ViewModels.CashAdvanceRegisterViewModel(paymentMethods, availableCashLocal);
             var dialog = new CashAdvanceRegisterDialog(vm);
             dialog.ShowDialog();
             if (vm.DialogResult && vm.SelectedPaymentMethod != null)
             {
-                result = (true, vm.RequestedAmountBsS, vm.CommissionAmountBsS, vm.SelectedPaymentMethod.Id, vm.SelectedPaymentMethod.Name, vm.IsTransfer);
+                result = (true, vm.RequestedAmountBsS, vm.CommissionAmountBsS ?? 0m, vm.SelectedPaymentMethod.Id, vm.SelectedPaymentMethod.Name, vm.IsTransfer);
             }
         };
 
         if (Application.Current.Dispatcher.CheckAccess()) openDialog();
         else Application.Current.Dispatcher.Invoke(openDialog);
 
-        return System.Threading.Tasks.Task.FromResult(result);
+        return result;
     }
 
     public System.Threading.Tasks.Task<(bool confirmed, System.Collections.Generic.IEnumerable<UpdateSaleItemDto>? modifiedItems)> ShowEditSaleDialogAsync(

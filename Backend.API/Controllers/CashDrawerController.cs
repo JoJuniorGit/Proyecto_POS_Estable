@@ -247,6 +247,20 @@ public class CashDrawerController : ControllerBase
         };
     }
 
+    [HttpGet("advance-commission")]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
+    public async Task<ActionResult<CashAdvanceCommissionDto>> GetAdvanceCommission([FromQuery] bool isTransfer, CancellationToken cancellationToken)
+    {
+        var percentage = await _cashAdvanceCoordinator.TryGetCommissionPercentageAsync(isTransfer, cancellationToken);
+
+        if (!percentage.HasValue)
+        {
+            return this.ApiUnprocessableEntity("La comisión de adelanto de efectivo no está configurada o es inválida. Configure la comisión del canal en SystemSettings antes de procesar adelantos.");
+        }
+
+        return Ok(new CashAdvanceCommissionDto(isTransfer, percentage.Value));
+    }
+
     [RequireSecurityStampValidation]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpPost("cash-advance")]

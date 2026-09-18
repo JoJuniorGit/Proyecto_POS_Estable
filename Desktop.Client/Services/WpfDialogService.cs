@@ -41,6 +41,7 @@ public partial class WpfDialogService : IDialogService
     private readonly ISubnetScannerService? _scannerService;
     private readonly System.Net.Http.IHttpClientFactory? _httpClientFactory;
     private readonly IExchangeRateService? _exchangeRateService;
+    private readonly ICashDrawerService? _cashDrawerService;
 
     public WpfDialogService(
         IClientStateService clientState, 
@@ -50,7 +51,8 @@ public partial class WpfDialogService : IDialogService
         IConnectionManager? connectionManager = null,
         ISubnetScannerService? scannerService = null,
         System.Net.Http.IHttpClientFactory? httpClientFactory = null,
-        IExchangeRateService? exchangeRateService = null)
+        IExchangeRateService? exchangeRateService = null,
+        ICashDrawerService? cashDrawerService = null)
     {
         _clientState = clientState ?? throw new ArgumentNullException(nameof(clientState));
         _salesService = salesService!;
@@ -60,6 +62,7 @@ public partial class WpfDialogService : IDialogService
         _scannerService = scannerService;
         _httpClientFactory = httpClientFactory;
         _exchangeRateService = exchangeRateService;
+        _cashDrawerService = cashDrawerService;
     }
 
     public async Task<object?> ShowModalAsync(object content, string? dialogIdentifier = null)
