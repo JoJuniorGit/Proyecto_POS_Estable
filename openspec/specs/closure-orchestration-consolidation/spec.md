@@ -50,8 +50,10 @@ MUST remain at the controller boundary and MUST NOT move into the service.
 
 ### Requirement: REQ-COC-03 Complexity Budget Under 10
 
-`DailyClosureController.CreateClosure` MUST measure cyclomatic complexity below 10, and each method
-extracted by the change — including `ExecuteClosureCoreAsync` (currently ~12) — MUST also be below 10.
+`DailyClosureController.CreateClosure` MUST measure cyclomatic complexity below 10, and every method
+of `DailyClosureService` and of each partial or extracted sub-service it becomes - including
+`ExecuteClosureCoreAsync` - MUST also be below 10.
+(Previously: the ceiling was scoped to `CreateClosure` and the methods extracted by that slice.)
 
 #### Scenario: CreateClosure is under the ceiling
 
@@ -59,10 +61,10 @@ extracted by the change — including `ExecuteClosureCoreAsync` (currently ~12) 
 - WHEN its cyclomatic complexity is measured
 - THEN the value MUST be < 10
 
-#### Scenario: Extracted methods are under the ceiling
+#### Scenario: Closure service methods are under the ceiling
 
-- GIVEN the methods produced by the decomposition
-- WHEN each is measured
+- GIVEN the post-change `DailyClosureService` and its partials
+- WHEN each method is measured
 - THEN every value MUST be < 10
 
 ### Requirement: REQ-COC-04 Behavior Preservation
@@ -83,3 +85,42 @@ Persisted closure snapshots MUST NOT be recomputed or rewritten.
 - GIVEN `GET /api/DailyClosure/expected-totals` with `dateUtc` omitted or default
 - WHEN the request is handled
 - THEN the response MUST remain HTTP 400 with no totals computed
+### Requirement: REQ-COC-05 Single Closure-Rule Implementation
+
+Closure rules (validation, expected-total resolution, line building, totals and persistence) MUST
+have exactly one implementation. The public entity-returning entry point
+`DailyClosureService.CreateClosureAsync(DailyClosure)` MUST be removed, or reduced to a non-public
+adapter that delegates to `CreateClosureFromCommandAsync`; no second, divergent copy of the closure
+rules MAY remain reachable.
+
+#### Scenario: No public entity entry point
+
+- GIVEN the public surface of `DailyClosureService`
+- WHEN it is inspected
+- THEN no public method MAY accept or return `DailyClosure` to create a closure
+
+#### Scenario: Any remaining legacy seam delegates
+
+- GIVEN a closure created through any remaining entry point
+- WHEN the closure rules execute
+- THEN they MUST run the single implementation
+- AND no divergent rule copy MUST be reachable
+
+### Requirement: REQ-COC-06 Closure Service File Cohesion Budget
+
+`DailyClosureService` MUST be split so every resulting file is at most 500 lines, and the split MUST
+be by cohesive responsibility (orchestration, line building, totals) so each file has one reason to
+change.
+
+#### Scenario: Each file is within the ceiling
+
+- GIVEN the post-change `DailyClosureService` files
+- WHEN each file's line count is measured
+- THEN every file MUST be <= 500 lines
+
+#### Scenario: The split is by responsibility
+
+- GIVEN the resulting partial or sub-service files
+- WHEN their responsibilities are inspected
+- THEN each file MUST own a single closure responsibility
+- AND no rule logic MAY be duplicated across them

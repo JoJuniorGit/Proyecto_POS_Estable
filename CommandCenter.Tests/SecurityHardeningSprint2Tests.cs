@@ -130,29 +130,24 @@ public class SecurityHardeningSprint2Tests
     public async Task DailyClosureService_ThrowsOnNegativeActualAmount()
     {
         using var db = GetInMemorySalesDbContext();
-        var service = new DailyClosureService(db, Mock.Of<Core.Interfaces.ITodayExchangeRateProvider>(), Mock.Of<Sales.Module.Interfaces.ICashDrawerService>());
 
         var method = new PaymentMethod { Id = 1, Name = "Efectivo", IsActive = true };
         db.PaymentMethods.Add(method);
         await db.SaveChangesAsync();
 
-        var closure = new DailyClosure
-        {
-            ClosureDate = DateTime.UtcNow,
-            Details = new List<ClosureDetail>
+        var service = DailyClosureTestHelper.CreateService(db);
+
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Admin",
+            null,
+            new List<DeclaredPaymentAmount>
             {
-                new ClosureDetail
-                {
-                    PaymentMethodId = 1,
-                    PaymentMethodName = "Efectivo",
-                    ExpectedAmountBsS = 100m,
-                    ActualAmountBsS = -20m // Negative
-                }
-            }
-        };
+                new(1, -20m)
+            });
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.CreateClosureAsync(closure));
+            service.CreateClosureFromCommandAsync(command, CancellationToken.None));
     }
 
     [Fact]
