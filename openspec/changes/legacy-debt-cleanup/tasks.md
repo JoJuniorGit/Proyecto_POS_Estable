@@ -71,14 +71,14 @@ Chain strategy: pending
 
 ## Phase 4a: Closure DTO Boundary (S4a)
 
-- [ ] 4a.1 **RED**: Add golden-JSON contract test: capture GET closure response before/after; assert all fields survive with same JSON names
-- [ ] 4a.2 Create `Sales.Module/DTOs/DailyClosureResponseDto.cs` — immutable record, `init`-only members (AD-14)
-- [ ] 4a.3 Create `Sales.Module/DTOs/ClosureDetailResponseDto.cs` — immutable record (AD-14)
-- [ ] 4a.4 Modify `Sales.Module/Services/DailyClosureService.cs`: project closure entity into DTOs via `ShiftReportMapper` (AD-4/14); update `IDailyClosureService` signatures to return DTOs
-- [ ] 4a.5 Modify `Backend.API/Controllers/DailyClosureController.cs`: return DTOs from `GetClosure` and `CreateClosure` (AD-14)
-- [ ] 4a.6 Modify `Desktop.Client.Core/Services/DailyClosureClientService.cs`: bind to DTO field names (AD-15)
-- [ ] 4a.7 **GREEN**: Add reflection test asserting no public setter on DTO members (REQ-ADB-04)
-- [ ] 4a.8 **GREEN**: Add test asserting no `Sales.Module.Entities` type in `IDailyClosureService` or `DailyClosureController` signatures
+- [x] 4a.1 **RED**: Add golden-JSON contract test: capture GET closure response before/after; assert all fields survive with same JSON names
+- [x] 4a.2 Create `Sales.Module/DTOs/DailyClosureResponseDto.cs` — immutable record, `init`-only members (AD-14)
+- [x] 4a.3 Create `Sales.Module/DTOs/ClosureDetailResponseDto.cs` — immutable record (AD-14)
+- [x] 4a.4 Modify `Sales.Module/Services/DailyClosureService.cs`: project closure entity into DTOs via `ShiftReportMapper` (AD-4/14); update `IDailyClosureService` signatures to return DTOs
+- [x] 4a.5 Modify `Backend.API/Controllers/DailyClosureController.cs`: return DTOs from `GetClosure` and `CreateClosure` (AD-14)
+- [x] 4a.6 Modify `Desktop.Client.Core/Services/DailyClosureClientService.cs`: bind to DTO field names (AD-15)
+- [x] 4a.7 **GREEN**: Add reflection test asserting no public setter on DTO members (REQ-ADB-04)
+- [x] 4a.8 **GREEN**: Add test asserting no `Sales.Module.Entities` type in `IDailyClosureService` or `DailyClosureController` signatures
 
 ## Phase 4b: Drawer DTO Boundary (S4b)
 

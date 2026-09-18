@@ -77,7 +77,7 @@ public class PaymentMethodCurrencyClassificationTests
         await salesCtx.SaveChangesAsync();
 
         var closureService = new Mock<IDailyClosureService>();
-        closureService.Setup(s => s.GetClosureAsync(1)).ReturnsAsync(closure);
+        closureService.Setup(s => s.GetClosureAsync(1)).ReturnsAsync(ShiftReportMapper.MapClosure(closure));
 
         var controller = new ShiftsController(
             closureService.Object,
@@ -148,7 +148,7 @@ public class PaymentMethodCurrencyClassificationTests
         await salesCtx.SaveChangesAsync();
 
         var closureService = new Mock<IDailyClosureService>();
-        closureService.Setup(s => s.GetClosureAsync(42)).ReturnsAsync(closure);
+        closureService.Setup(s => s.GetClosureAsync(42)).ReturnsAsync(ShiftReportMapper.MapClosure(closure));
 
         var controller = new ShiftsController(
             closureService.Object,
@@ -169,7 +169,7 @@ public class PaymentMethodCurrencyClassificationTests
         var reportOk = Assert.IsType<OkObjectResult>(reportResult);
         var report = Assert.IsType<ShiftReportDto>(reportOk.Value);
 
-        string receipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: false);
+        string receipt = DailyClosureService.GenerateReceiptContent(ShiftReportMapper.MapClosure(closure), isBlind: false);
 
         var reportByMethod = report.Details.ToDictionary(d => d.PaymentMethodName);
 

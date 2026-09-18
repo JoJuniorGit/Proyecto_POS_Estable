@@ -1,4 +1,4 @@
-using Sales.Module.Entities;
+using Sales.Module.DTOs;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,7 +8,7 @@ namespace Sales.Module.Services;
 
 public static class ClosurePdfGenerator
 {
-    public static byte[] GeneratePdf(DailyClosure closure, bool isBlind = false)
+    public static byte[] GeneratePdf(DailyClosureResponseDto closure, bool isBlind = false)
     {
         var ms = new MemoryStream();
         var writer = new StreamWriter(ms, Encoding.ASCII);

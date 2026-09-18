@@ -3,6 +3,7 @@ using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Sales.Module.Data;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using System;
@@ -163,23 +164,31 @@ public class DailyClosureService : IDailyClosureService
         _context.DailyClosures.Add(closure);
         await _context.SaveChangesAsync();
 
-        return (await GetClosureAsync(closure.Id))!;
+        return (await LoadClosureEntityAsync(closure.Id))!;
     }
 
-    public async Task<DailyClosure?> GetClosureAsync(int id)
+    public async Task<DailyClosureResponseDto?> GetClosureAsync(int id)
+    {
+        var closure = await LoadClosureEntityAsync(id);
+        return closure is null ? null : ShiftReportMapper.MapClosure(closure);
+    }
+
+    private async Task<DailyClosure?> LoadClosureEntityAsync(int id, CancellationToken cancellationToken = default)
     {
         return await _context.DailyClosures
             .Include(dc => dc.Details)
-            .FirstOrDefaultAsync(dc => dc.Id == id);
+            .FirstOrDefaultAsync(dc => dc.Id == id, cancellationToken);
     }
 
-    public async Task<DailyClosure?> GetLatestClosureAsync(CancellationToken cancellationToken = default)
+    public async Task<DailyClosureResponseDto?> GetLatestClosureAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.DailyClosures
+        var closure = await _context.DailyClosures
             .AsNoTracking()
             .Include(dc => dc.Details)
             .OrderByDescending(dc => dc.Id)
             .FirstOrDefaultAsync(cancellationToken);
+
+        return closure is null ? null : ShiftReportMapper.MapClosure(closure);
     }
 
     public async Task<string?> GetCashierDisplayNameAsync(int userId, CancellationToken cancellationToken = default)
@@ -367,11 +376,11 @@ public class DailyClosureService : IDailyClosureService
         return (userId, cashierName, cashierCedula, observation);
     }
 
-    private async Task<DailyClosure> PersistClosureCoreAsync(DailyClosure closure)
+    private async Task<DailyClosureResponseDto> PersistClosureCoreAsync(DailyClosure closure)
     {
         _context.DailyClosures.Add(closure);
         await _context.SaveChangesAsync();
-        return (await GetClosureAsync(closure.Id))!;
+        return ShiftReportMapper.MapClosure((await LoadClosureEntityAsync(closure.Id))!);
     }
 
     private static void ValidateDeclaredMethods(
@@ -476,7 +485,7 @@ public class DailyClosureService : IDailyClosureService
         closure.TotalDifferenceBsS = closure.TotalActualBsS - closure.TotalExpectedBsS;
     }
 
-    public static string GenerateReceiptContent(DailyClosure closure, bool isBlind = false)
+    public static string GenerateReceiptContent(DailyClosureResponseDto closure, bool isBlind = false)
     {
         var dateStr = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
         var userName = string.IsNullOrWhiteSpace(closure.UserId) ? "Usuario" : closure.UserId;
@@ -548,7 +557,7 @@ public class DailyClosureService : IDailyClosureService
         return sb.ToString();
     }
 
-    public async Task WriteClosedClosureReceiptsAsync(DailyClosure closure, CancellationToken cancellationToken = default)
+    public async Task WriteClosedClosureReceiptsAsync(DailyClosureResponseDto closure, CancellationToken cancellationToken = default)
     {
         if (closure == null) throw new ArgumentNullException(nameof(closure));
 

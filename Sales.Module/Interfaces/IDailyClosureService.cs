@@ -1,4 +1,4 @@
-using Sales.Module.Entities;
+using Sales.Module.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -33,13 +33,12 @@ public sealed record ShiftReportDetailResult(
 public interface IDailyClosureService
 {
     Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc, CancellationToken cancellationToken = default);
-    Task<DailyClosure> CreateClosureAsync(DailyClosure closure);
     Task<CloseShiftResult> CreateClosureFromCommandAsync(CreateClosureCommand command, CancellationToken cancellationToken);
-    Task<DailyClosure?> GetClosureAsync(int id);
-    Task<DailyClosure?> GetLatestClosureAsync(CancellationToken cancellationToken = default);
+    Task<DailyClosureResponseDto?> GetClosureAsync(int id);
+    Task<DailyClosureResponseDto?> GetLatestClosureAsync(CancellationToken cancellationToken = default);
     Task<string?> GetCashierDisplayNameAsync(int userId, CancellationToken cancellationToken = default);
 
     // 8.7-B5: los comprobantes se escriben DESPUÉS del commit de la transacción Serializable,
     // nunca dentro de ella (evita I/O de disco bloqueando aislamiento Serializable).
-    Task WriteClosedClosureReceiptsAsync(DailyClosure closure, CancellationToken cancellationToken = default);
+    Task WriteClosedClosureReceiptsAsync(DailyClosureResponseDto closure, CancellationToken cancellationToken = default);
 }

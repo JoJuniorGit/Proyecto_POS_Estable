@@ -1,4 +1,5 @@
 using Core.Helpers;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,8 +8,34 @@ namespace Sales.Module.Services;
 
 public static class ShiftReportMapper
 {
+    public static DailyClosureResponseDto MapClosure(DailyClosure closure)
+    {
+        return new DailyClosureResponseDto(
+            closure.Id,
+            closure.ClosureDate,
+            closure.UserId,
+            closure.ExchangeRate,
+            closure.TotalExpectedBsS,
+            closure.TotalActualBsS,
+            closure.TotalDifferenceBsS,
+            closure.Observation,
+            closure.Details.Select(MapDetail).ToList());
+    }
+
+    private static ClosureDetailResponseDto MapDetail(ClosureDetail detail)
+    {
+        return new ClosureDetailResponseDto(
+            detail.Id,
+            detail.DailyClosureId,
+            detail.PaymentMethodId,
+            detail.PaymentMethodName,
+            detail.ExpectedAmountBsS,
+            detail.ActualAmountBsS,
+            detail.DifferenceBsS);
+    }
+
     public static List<ShiftReportDetailDto> MapDetails(
-        IReadOnlyList<ClosureDetail> details,
+        IReadOnlyList<ClosureDetailResponseDto> details,
         decimal exchangeRate)
     {
         return details.Select(d =>
