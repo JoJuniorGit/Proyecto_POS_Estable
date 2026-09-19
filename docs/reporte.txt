@@ -10840,3 +10840,45 @@ G4. Ese test, en su primera corrida, encontro un drift que el diff manual de la
     final del test resuelve sola.
 G5. Regla adoptada: al agregar una costura (cliente HTTP, controller con DI, endpoint
     nuevo, CSS con responsive, migracion), su guarda viaja en el mismo commit.
+
+H. AUDITORIA DE COSTURAS (verificacion de que el patron no se repita)
+
+H1. DI con constructores multiples: revisadas TODAS las clases del sistema con mas de
+    un constructor publico (excluye tests, bin/obj y migraciones). Son 9:
+    - 5 controllers (CashDrawer, ExchangeRate, Products, Settings, Users): todos con
+      [ActivatorUtilitiesConstructor] y cubiertos por ControllerConstructionTests.
+    - PagedResultDto, FatalErrorException y SalePaymentDto: DTOs/excepcion, nunca
+      resueltos por DI -> sin riesgo.
+    - UserSession (WPF): registrado en DI con dos constructores de distinta aridad
+      (parameterless y con ISecureTokenStorageService, que SI esta registrado). MS.DI
+      elige el de mas parametros compatibles y solo falla si dos empatan en aridad:
+      sin ambiguedad.
+H2. Contrato de query params cliente/servidor: guardado para el endpoint de catalogo
+    (ProductServiceQueryContractTests). El resto de los call sites HTTP del cliente
+    queda sin guarda sistematica: deuda registrada.
+H3. Forma de respuesta (T del cliente vs DTO del servidor): SIN guarda. Caso latente
+    detectado: ProductService.GetAllAsync espera List<Product> y /api/products devuelve
+    PagedResultDto<ProductDto> (hoy sin callers).
+H4. Cascade layers CSS: verificado que solo layout.css tenia media queries por debajo
+    de sus reglas base. base.css no tiene media queries; pages.css esta en una capa
+    superior a components, asi que sus overrides si aplican.
+H5. Migraciones: guardado por MigrationIndexDriftTests (indices, en ambos contextos).
+    Columnas y tablas no estan cubiertas por esa guarda: deuda registrada.
+H6. Espejos de literales (el seam mas peligroso y hasta ahora sin guarda): valores que
+    viajan por la base, por el wire o por el espejo JavaScript y que ningun compilador
+    verifica. Nuevo CrossLayerContractTests que fija:
+    - los nombres del enum SaleStatus (SaleDto.Status los expone por ToString y los
+      clientes los comparan por literal: "Pending" en CartViewModel/PosViewModel y
+      "OnHold" en SalesController.IsAuthorizedForSaleAsync);
+    - los ordinales de CashDrawerStatus, porque el indice parcial
+      IX_CashDrawerSessions_SingleOpen filtra por "Status" = 0: si Open deja de ser 0,
+      la invariante de una sola sesion de caja abierta desaparece en silencio;
+    - el literal 'Pending' del outbox contra el filtro del indice parcial
+      IX_OutboxMessages_Status_NextRetryUtc y contra el valor por defecto de la entidad;
+    - el triple espejo de CashTransactionSource (enum del servidor, enum del cliente WPF
+      y los ids numericos del archivo JS del frontend).
+    Resultado: los cuatro espejos estan CONSISTENTES hoy (los 4 tests pasan); la guarda
+    queda para que no diverjan.
+H7. Deuda registrada de esta auditoria: OutboxMessage.Status es string y convive con un
+    enum OutboxStatus que no se usa para el estado persistido; quedan sin guarda
+    sistematica los call sites HTTP del cliente (H2) y las columnas de migraciones (H5).
