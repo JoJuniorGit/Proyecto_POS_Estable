@@ -15,11 +15,6 @@ public class ProductService : IProductService
         _httpClient = httpClient;
     }
 
-    public async Task<List<Product>> GetAllAsync()
-    {
-        return await _httpClient.GetFromJsonAsync<List<Product>>("api/products") ?? new List<Product>();
-    }
-
     public async Task<Product?> GetByIdAsync(int id)
     {
         var response = await _httpClient.GetAsync($"api/products/{id}");

@@ -55,6 +55,42 @@ public class ProductServiceQueryContractTests
             $"El cliente envia '{key}', que el backend NO bindea (validos: {string.Join(", ", boundByController)})."));
     }
 
+    // Guarda la costura de forma de respuesta: si el T del cliente deja de coincidir con el DTO paginado del backend, la deserializacion queda vacia sin lanzar error.
+    [Fact]
+    public async Task GetPagedAsync_DeserializesCamelCasePagedPayloadIntoItemsAndTotalCount()
+    {
+        const string payload = "{\"items\":[{\"id\":1,\"name\":\"Arroz\",\"sku\":\"SKU1\",\"priceBsS\":12.34}],\"totalCount\":1,\"hasMore\":false}";
+        var client = new HttpClient(new JsonResponseHandler(payload))
+        {
+            BaseAddress = new Uri("http://localhost:5000/")
+        };
+        var service = new ProductService(client);
+
+        var result = await service.GetPagedAsync(null, 1, 50);
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal(1, item.Id);
+        Assert.Equal("Arroz", item.Name);
+        Assert.Equal("SKU1", item.SKU);
+        Assert.Equal(12.34m, item.PriceBsS);
+        Assert.Equal(1, result.TotalCount);
+    }
+
+    private sealed class JsonResponseHandler : HttpMessageHandler
+    {
+        private readonly string _payload;
+
+        public JsonResponseHandler(string payload) => _payload = payload;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(_payload, Encoding.UTF8, "application/json")
+            });
+        }
+    }
+
     private sealed class CapturingHandler : HttpMessageHandler
     {
         private readonly Action<Uri> _onRequest;
