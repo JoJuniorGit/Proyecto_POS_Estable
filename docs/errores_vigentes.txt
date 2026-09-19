@@ -1,280 +1,357 @@
 ================================================================================
 CONSOLIDADO MAESTRO DE PROBLEMAS Y DEUDA TÉCNICA VIGENTE — "CommandCenter POS"
 ================================================================================
-Fecha de Consolidación: 2026-09-18
+Fecha de Consolidación: 2026-09-19 (unificado con los hallazgos del ANEXO 8.142)
 Fuente de la Verdad: AGENTS.md, docs/coding-guidelines-*.md, arquitectura del sistema
-Estado: SANEADO AL 100% (Todos los hallazgos han sido resueltos y verificados)
+Estado: DEUDA TÉCNICA ACTIVA — registro único (auditoría AUD + costuras de 8.142)
 Nota: docs/reporte.txt se conserva 100% intacto como archivo histórico de trazabilidad de sprints y ANEXOS.
 ================================================================================
 
 RESUMEN EJECUTIVO DE ESTADO:
 --------------------------------------------------------------------------------
-Total de Hallazgos Auditados: 25
-- RESUELTOS EN ESTA FASE: 18 hallazgos (VIG-01, VIG-02, VIG-03, VIG-04, VIG-05, VIG-06, VIG-07, VIG-10, VIG-11, VIG-12, VIG-13, VIG-14, VIG-15, VIG-19, VIG-20, VIG-21, VIG-22, VIG-23)
-- FALSOS POSITIVOS / PREVIAMENTE RESUELTOS VERIFICADOS: 7 hallazgos (VIG-08, VIG-09, VIG-16, VIG-17, VIG-18, VIG-24, VIG-25)
-- PENDIENTES DE RESOLUCIÓN: 0 hallazgos (0% pendiente)
+Auditoría de código (AUD): 14 hallazgos activos
+- Código Muerto: 3 hallazgos (AUD-01, AUD-02, AUD-03)
+- Malas Prácticas / Violaciones a Normas: 8 hallazgos (AUD-04, AUD-05, AUD-06, AUD-07, AUD-08, AUD-09, AUD-10, AUD-11)
+- Oportunidades de Optimización: 3 hallazgos (AUD-12, AUD-13, AUD-14)
 
-Pruebas Automatizadas Backend: 1.261 / 1.261 pasando (100% Green)
+Auditoría de costuras (SEAM, ANEXO 8.142 sección H): 5 hallazgos activos
+- Uniones entre capas que ningun compilador ni test verifica (SEAM-01..SEAM-05)
+
+Residuales e infraestructura (INFRA): 3 registros (INFRA-01..INFRA-03)
+
+TOTAL REGISTROS ACTIVOS: 22
+
+Equivalencias (mismo hallazgo; no duplicar trabajo):
+- AUD-01 = hallazgo H3 del ANEXO 8.142 (GetAllAsync con contrato roto y sin callers)
+- AUD-11 = deuda D1 del ANEXO 8.142 (constructores de prueba con new)
+- AUD-13 = deuda D2 del ANEXO 8.142 (complejidad McCabe)
+
+Cerrado y verificado en 8.142 (ya no son deuda):
+- 7 índices que el modelo declaraba y ninguna migracion creaba (6 + IX_Users_Username)
+- Índice duplicado en ExchangeRateHistory.Date y esquema huérfano de adelantos de cliente
+- Filtro de estado del inventario WPF (enviaba 'status' y el API bindea 'statusFilter')
+- Login con MustChangePassword sin ProblemDetails y parser WPF que nunca detectaba el flag
+- Constructor ambiguo de ProductsController (rompía todas sus acciones en runtime)
+- Media queries del POS móvil en la capa CSS incorrecta
+- Estadísticas del planner (ANALYZE) y random_page_cost scoped a CommandCenterDb
+
+Estado de Hallazgos Previos (VIG-01..VIG-25):
+- 18 Resueltos en fases previas
+- 7 Verificados como falsos positivos o mitigados por arquitectura previa
+
+Pruebas Automatizadas Backend: 1.280 / 1.280 pasando (100% Green)
 Pruebas Automatizadas Frontend: 287 / 287 pasando (100% Green)
-Compilación: dotnet build CommandCenter.slnx -c Release -m:1 (0 errores, 0 warnings)
+Compilación: dotnet build CommandCenter.slnx -c Release (0 errores, 0 warnings)
+Guardas de costura activas: ControllerConstructionTests, ProductServiceQueryContractTests,
+MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 
 ================================================================================
-1. ARQUITECTURA Y DISEÑO EN CAPAS (CLEAN ARCHITECTURE / SRP)
+1. CÓDIGO MUERTO (DEAD CODE)
 ================================================================================
 
-[VIG-01] CRÍTICA — Fuga Masiva de DbContext a Controladores API
-- Estado: RESUELTO
-- Severidad: CRÍTICA
-- Ubicación:
-  * Backend.API/Controllers/CashDrawerController.cs
-  * Backend.API/Controllers/SettingsController.cs
-  * Backend.API/Controllers/ExchangeRateController.cs
-  * Backend.API/Controllers/UsersController.cs
-  * Backend.API/Controllers/ReceiptsController.cs
-  * Backend.API/Controllers/ReservationsController.cs
-- Regla: docs/coding-guidelines-backend.md §2.3, docs/coding-guidelines-core.md §1.1 y clean-architecture.
-- Acción Tomada: Se eliminaron por completo las referencias e inyecciones de `SalesDbContext` e `InventoryDbContext` de los 6 controladores auditados. Se crearon e implementaron los servicios de aplicación `IUserService`/`UserService`, `ISalesReceiptService`/`SalesReceiptService`, `IExchangeRateHistoryService`/`ExchangeRateHistoryService`, `ITimeZoneProvider`/`TimeZoneProvider`, y se adaptaron los métodos de `IInventoryService` para reservas y tasas. Se conservaron constructores de prueba encadenados que instancian las implementaciones por defecto, preservando el 100% de retrocompatibilidad con tests existentes sin fuga de contexto en tiempo de ejecución de producción.
-
---------------------------------------------------------------------------------
-
-[VIG-02] ALTA — Violación de SRP y Exceso de Tamaño en ProductsController (God Controller)
-- Estado: RESUELTO
-- Severidad: ALTA
-- Ubicación: Backend.API/Controllers/ProductsController.cs
-- Regla: docs/coding-guidelines-core.md §1.1 ("Anti-God Objects y Modularización: Máximo 300 a 500 líneas por archivo de clase").
-- Acción Tomada: Se redujo `ProductsController.cs` a 342 líneas (dentro del rango permitido de 300-500 líneas). Se extrajeron los mapeos de entidad/DTO a `ProductMappingExtensions.cs` y se delegó la lógica de CRUD a `IInventoryService.CreateProductFromDtoAsync`, `UpdateProductFromDtoAsync` y `GetProductDtoByIdAsync`.
-
---------------------------------------------------------------------------------
-
-[VIG-03] ALTA — DTOs y Request Objects declarados dentro de archivos de Controladores
-- Estado: RESUELTO
-- Severidad: ALTA
-- Ubicación:
-  * Backend.API/Controllers/CashDrawerController.cs
-  * Backend.API/Controllers/ShiftsController.cs
-  * Backend.API/Controllers/DailyClosureController.cs
-- Regla: docs/coding-guidelines-core.md §2.1 y clean-architecture.
-- Acción Tomada: Se crearon los archivos dedicados `Sales.Module/DTOs/CashDrawerDtos.cs`, `Sales.Module/DTOs/ShiftDtos.cs` y `Sales.Module/DTOs/DailyClosureDtos.cs`. Se eliminaron las definiciones anidadas en los controladores, limpiando la arquitectura.
-
---------------------------------------------------------------------------------
-
-[VIG-04] MEDIA — Construcción manual de entidades en Controladores API en lugar de Service/Factory
-- Estado: RESUELTO
-- Severidad: MEDIA
-- Ubicación: Backend.API/Controllers/ProductsController.cs
-- Regla: docs/coding-guidelines-backend.md y clean-architecture.
-- Acción Tomada: Se eliminó la instanciación y mutación manual de entidades `Product` en `ProductsController`. El controlador ahora delega la recepción y retorno a métodos DTO-first en `IInventoryService` (`CreateProductFromDtoAsync`, `UpdateProductFromDtoAsync`).
-
---------------------------------------------------------------------------------
-
-[VIG-05] MEDIA — Contratos de retorno anónimos en endpoints públicos de la API
-- Estado: RESUELTO
+[AUD-01] MEDIA — Método ProductService.GetAllAsync e interfaz IProductService.GetAllAsync inalcanzables y con contrato roto
+- Estado: ACTIVO
 - Severidad: MEDIA
 - Ubicación:
-  * Backend.API/Controllers/SettingsController.cs
-  * Backend.API/Controllers/ExchangeRateController.cs
-  * Backend.API/Controllers/SalesController.Customers.cs
-  * Backend.API/Controllers/ReservationsController.cs
-  * Backend.API/Controllers/ProductsController.ImportExport.cs
-- Regla: docs/coding-guidelines-backend.md y docs/coding-guidelines-core.md §2.1.
-- Acción Tomada: Se crearon DTOs fuertemente tipados con records y clases dedicadas en `Core/DTOs`, `Backend.API/DTOs` y `Sales.Module/DTOs`. Todos los endpoints retornan modelos estructurados tipados, habilitando OpenAPI/Swagger estricto.
+  * Desktop.Client.Core/Services/ProductService.cs: líneas 18-21
+  * Desktop.Client.Core/Services/IProductService.cs: línea 9
+- Regla: docs/coding-guidelines-core.md §1.1 (Mantenibilidad y Código Muerto).
+- Descripción: El método `GetAllAsync()` en `ProductService` no posee llamadores en todo el proyecto Desktop (`Desktop.Client` o `Desktop.Client.Core`). Además, realiza `GetFromJsonAsync<List<Product>>("api/products")`, mientras que el endpoint del backend (`GET api/products`) retorna un `PagedResultDto<ProductDto>`. La llamada está huérfana y rota contractualmente.
+- Recomendación: Eliminar el método de la interfaz `IProductService` y de `ProductService.cs`.
+
+--------------------------------------------------------------------------------
+
+[AUD-02] BAJA — Directiva using Sales.Module.Data sin uso en ReceiptsController.cs
+- Estado: ACTIVO
+- Severidad: BAJA
+- Ubicación: Backend.API/Controllers/ReceiptsController.cs: línea 6
+- Regla: docs/coding-guidelines-core.md §1.1 (Higiene de código).
+- Descripción: El archivo importa `using Sales.Module.Data;` pero ninguna clase, interfaz o miembro de dicho namespace es referenciado en el controlador.
+- Recomendación: Remover la directiva `using` huérfana.
+
+--------------------------------------------------------------------------------
+
+[AUD-03] BAJA — Manejador de eventos UI async void sin patrón de seguridad en ImportProductsView
+- Estado: ACTIVO
+- Severidad: BAJA
+- Ubicación: Desktop.Client/Views/ImportProductsView.xaml.cs: línea 14
+- Regla: docs/coding-guidelines-core.md §2.2 ("Prohibición de async void: Solo async Task o ValueTask. En UI, usar SafeFireAndForget").
+- Descripción: El manejador `Grid_Drop` está declarado como `private async void Grid_Drop(object sender, DragEventArgs e)`. Aunque cuenta con un bloque `try/catch` defensivo, la norma arquitectónica del sistema exige delegar operaciones asíncronas de UI mediante el método de extensión `SafeFireAndForget` de `Core.Common.TaskExtensions`.
+- Recomendación: Refactorizar hacia un método síncrono que dispare la tarea con `vm.ProcessFileAsync(files[0]).SafeFireAndForget("ImportProductsView.Grid_Drop")`.
 
 ================================================================================
-2. INTEGRIDAD DE DATOS, CONCURRENCIA Y PERSISTENCIA
+2. MALAS PRÁCTICAS Y VIOLACIONES A NORMAS (AGENTS.MD Y CODING-GUIDELINES)
 ================================================================================
 
-[VIG-06] CRÍTICA — Exposición y mutación de entidades EF Core en capa de frontera (IPaymentMethodService)
-- Estado: RESUELTO
+[AUD-04] CRÍTICA — Fuga directa de DbContext y mutación en AuthController
+- Estado: ACTIVO
 - Severidad: CRÍTICA
-- Ubicación: Sales.Module/Interfaces/IPaymentMethodService.cs, Sales.Module/Services/PaymentMethodService.cs, Backend.API/Controllers/PaymentMethodsController.cs
-- Regla: AGENTS.md §Reglas Críticas ("Datos: Entidades EF nunca al cliente (usa DTOs)") y docs/coding-guidelines-backend.md §2.3.
-- Acción Tomada:
-  1. Se crearon `PaymentMethodDto`, `CreatePaymentMethodDto` y `UpdatePaymentMethodDto` en `Sales.Module/DTOs/PaymentMethodDtos.cs`.
-  2. `IPaymentMethodService` y `PaymentMethodService` se refactorizaron para operar sobre DTOs y propagar `CancellationToken`.
-  3. `IMemoryCache` almacena exclusivamente DTOs inmutables.
-  4. `PaymentMethodsController` consume y retorna DTOs tipados con RFC 7807 y `CancellationToken`.
+- Ubicación: Backend.API/Controllers/AuthController.cs: líneas 21, 42, 75, 121, 136, 280, 318
+- Regla: docs/coding-guidelines-backend.md §2.3, docs/coding-guidelines-core.md §1.1 y clean-architecture ("Dependencies: The Domain layer CANNOT have references to EF Core... Dependency Injection: All services must be injected through the constructor").
+- Descripción: A diferencia de los otros controladores saneados en [VIG-01], `AuthController` mantiene una inyección directa de `SalesDbContext _db`. El controlador ejecuta consultas directas con Linq (`_db.Users.FirstOrDefaultAsync`), transacciones de base de datos (`_db.Database.BeginTransactionAsync`) y mutaciones con `_db.SaveChangesAsync()` directamente en las acciones HTTP de login y cambio de contraseña, violando Clean Architecture y SRP.
+- Recomendación: Delegar la autenticación, bloqueo por intentos y cambio de credenciales en `IUserService` o un servicio de aplicación dedicado `IAuthService`.
 
 --------------------------------------------------------------------------------
 
-[VIG-07] CRÍTICA — Contrato de IInventoryService opera con la entidad mutable Product
-- Estado: RESUELTO
-- Severidad: CRÍTICA
-- Ubicación: Core/Interfaces/IInventoryService.cs
-- Regla: AGENTS.md §Reglas Críticas ("Datos: Entidades EF nunca al cliente (usa DTOs)") y docs/coding-guidelines-core.md §1 Pilar 1.
-- Acción Tomada: Se incorporaron los métodos orientados a DTOs `CreateProductFromDtoAsync`, `UpdateProductFromDtoAsync` y `GetProductDtoByIdAsync` en `IInventoryService`, aislando la capa de controladores de detalles de persistencia interna.
+[AUD-05] ALTA — Contratos de retorno anónimos (new { ... }) en endpoints públicos de la API
+- Estado: ACTIVO
+- Severidad: ALTA
+- Ubicación:
+  * Backend.API/Controllers/AuthController.cs: líneas 209, 301
+  * Backend.API/Controllers/HealthController.cs: líneas 49, 58, 71, 86, 99, 128
+  * Backend.API/Controllers/AdministrationController.cs: línea 40
+  * Backend.API/Controllers/PairingController.cs: líneas 56, 64, 98, 105, 113, 116
+  * Backend.API/Controllers/VersionCheckController.cs: líneas 33, 51
+- Regla: docs/coding-guidelines-core.md §2.1 ("DTOs/Eventos: PascalCase + sufijo") y docs/coding-guidelines-backend.md.
+- Descripción: Múltiples endpoints públicos retornan objetos anónimos (`Ok(new { ... })`), impidiendo la generación de contratos OpenAPI/Swagger fuertemente tipados y violando la consistencia del contrato de API.
+- Recomendación: Crear DTOs/records fuertemente tipados (e.g. `MessageResponseDto`, `HealthStatusDto`, `PairingClaimResponseDto`, `VersionCheckResponseDto`) y utilizarlos como tipos de retorno de las acciones.
 
 --------------------------------------------------------------------------------
 
-[VIG-08] ALTA — Concurrencia Optimista con doble token redundante (xmin vs RowVersion)
-- Estado: VERIFICADO RESUELTO (Falso positivo en reporte anterior)
+[AUD-06] ALTA — Omisión de CancellationToken en método IsAuthorizedForSaleAsync y acciones HTTP
+- Estado: ACTIVO
 - Severidad: ALTA
-- Ubicación: Core/Entities/Product.cs, Inventory.Module/Data/InventoryDbContext.cs
-- Verificación: La migración `20260908152110_RemoveRowVersionFromProduct` ya eliminó completamente la propiedad y columna `RowVersion`. La entidad `Product` utiliza exclusivamente el token de concurrencia nativo de PostgreSQL `xmin`.
-
---------------------------------------------------------------------------------
-
-[VIG-09] ALTA — Sync-over-async bloqueante en el ciclo de vida y apagado de WPF
-- Estado: VERIFICADO RESUELTO (Previamente remediado en sprint 8.6-B5)
-- Severidad: ALTA
-- Ubicación: Desktop.Client/App.xaml.cs, Desktop.Client.Core/Services/ExchangeRateService.cs
-- Verificación: `App.xaml.cs` maneja el apagado mediante `IAsyncDisposable` y llamadas asíncronas con timeout cooperativo sin bloquear el hilo de despacho UI.
-
-================================================================================
-3. ESTÁNDARES DE CÓDIGO, ERROR CONTRACT Y CONVENCIONES DE API
-================================================================================
-
-[VIG-10] ALTA — Dispersión del estándar RFC 7807 (ProblemDetails) en Controladores
-- Estado: RESUELTO
-- Severidad: ALTA
-- Ubicación: Controladores en `Backend.API/Controllers/`
-- Regla: docs/coding-guidelines-backend.md §2.5, AGENTS.md §Reglas Críticas ("Errores vía ProblemDetails") y csharp-endpoints.
-- Acción Tomada: Se migraron todas las respuestas de error hacia los métodos de extensión estándar de `ApiProblemResults` (`this.ApiBadRequest`, `this.ApiNotFound`, `this.ApiForbidden`, `this.ApiConflict`).
-
---------------------------------------------------------------------------------
-
-[VIG-11] ALTA — Omisión generalizada del parámetro CancellationToken en métodos asíncronos
-- Estado: RESUELTO
-- Severidad: ALTA
-- Ubicación: Controladores en `Backend.API/Controllers/` y servicios de `Sales.Module`
+- Ubicación:
+  * Backend.API/Controllers/SalesController.cs: líneas 47-79 (`IsAuthorizedForSaleAsync`)
+  * Backend.API/Controllers/AuthController.cs: línea 227 (`ChangePasswordAsync`)
+  * Backend.API/Controllers/HealthController.cs: líneas 40 (`CheckHealth`), 108 (`GetDetails`)
 - Regla: docs/coding-guidelines-core.md §2.2 ("CancellationToken: Todos los métodos asíncronos deben aceptar y propagar CancellationToken").
-- Acción Tomada: Se añadió `CancellationToken cancellationToken = default` a las actions asíncronas y se propaga adecuadamente a las consultas EF Core y servicios.
+- Descripción:
+  1. `SalesController.IsAuthorizedForSaleAsync(int saleId)` no acepta `CancellationToken` y llama internamente a `_salesService.GetSaleAsync(saleId)` sin token. Este método privado es invocado en 17 endpoints asíncronos que sí reciben `cancellationToken`.
+  2. `AuthController.ChangePasswordAsync` omite pasar `cancellationToken` a `FindUserByCedulaAsync(searchInput)`.
+  3. `HealthController.CheckHealth` y `GetDetails` no declaran el parámetro `CancellationToken cancellationToken = default`.
+- Recomendación: Agregar `CancellationToken cancellationToken = default` como último parámetro y propagarlo en todas las llamadas asíncronas y de I/O.
 
 --------------------------------------------------------------------------------
 
-[VIG-12] ALTA — Omisión sistemática del sufijo Async en métodos asíncronos
-- Estado: RESUELTO
+[AUD-07] ALTA — Omisión sistemática del sufijo Async en métodos asíncronos de HealthController
+- Estado: ACTIVO
 - Severidad: ALTA
-- Ubicación: Controladores en `Backend.API/Controllers/`
+- Ubicación: Backend.API/Controllers/HealthController.cs: líneas 40 (`CheckHealth`), 108 (`GetDetails`)
 - Regla: docs/coding-guidelines-core.md §2.1 ("Async: Sufijo Async. Ejemplo: GetActiveSessionAsync").
-- Acción Tomada: Se renombraron las acciones asíncronas a `*Async`, manteniendo métodos de reenvío con `[NonAction]` para garantizar compatibilidad binaria con pruebas unitarias existentes.
+- Descripción: Las acciones `CheckHealth` y `GetDetails` retornan `Task<IActionResult>` pero omiten el sufijo obligatorio `Async`.
+- Recomendación: Renombrar a `CheckHealthAsync` y `GetDetailsAsync`, manteniendo métodos forwarder marcados con `[NonAction]` para compatibilidad binaria si fuere necesario.
 
 --------------------------------------------------------------------------------
 
-[VIG-13] MEDIA — Estilos Inline con valores fijos en Frontend React en lugar de Design Tokens
-- Estado: RESUELTO
-- Severidad: MEDIA
-- Ubicación:
-  * Web.Frontend/src/pages/CatalogPage.jsx
-  * Web.Frontend/src/components/pos/CustomerModal.jsx
-  * Web.Frontend/src/components/checkout/CustomerSelectorCard.jsx
-  * Web.Frontend/src/pages/RegisterClosePage.jsx
-  * Web.Frontend/src/pages/SettingsCurrencyFormat.jsx
-  * Web.Frontend/src/components/ui/ConfirmModal.jsx
-- Regla: docs/coding-guidelines-web.md §3.3 ("Cero Estilos Inline para valores fijos. Design Tokens: var(--bg-surface)...").
-- Acción Tomada: Se reemplazaron todos los colores hexadecimales fijos y `rgba(...)` dispersos (`#D97706`, `#f59e0b`, `#22c55e`, `#ef4444`, etc.) por tokens CSS semánticos (`var(--warning)`, `var(--warning-light)`, `var(--success)`, `var(--danger)`, `var(--accent-primary)`, `var(--accent-primary-light)`).
-
---------------------------------------------------------------------------------
-
-[VIG-14] BAJA — Magic Strings en Controladores y Servicios de Cierre
-- Estado: RESUELTO
-- Severidad: BAJA
-- Ubicación: Backend.API/Controllers/ShiftsController.cs, DailyClosureController.cs, ShiftReportMapper.cs
-- Regla: docs/coding-guidelines-core.md §2.1 (Constantes y Enums).
-- Acción Tomada: Se reemplazaron literales por constantes y enums (`SecurityConstants.RootAdminUsername`, `nameof(UserRole.Admin)`, `ClosureStatus.*`, `PaymentMethodCurrencyResolver.Usd`).
-
---------------------------------------------------------------------------------
-
-[VIG-15] BAJA — Comentarios explicativos y narrativos redundantes en código de producción y pruebas
-- Estado: RESUELTO
-- Severidad: BAJA
-- Ubicación:
-  * Backend.API/Controllers/CashDrawerController.cs
-  * Backend.API/Controllers/SalesController.cs
-  * Backend.API/Startup/ServiceCollectionExtensions.cs
-- Regla: docs/coding-guidelines-core.md §Reglas Críticas ("Sin comentarios explicativos (usa nombres expresivos)").
-- Acción Tomada: Se purgaron comentarios narrativos y redundantes, conservando exclusivamente etiquetas formales de trazabilidad `[8.x-*]`.
-
-================================================================================
-4. CÓDIGO MUERTO (DEAD CODE)
-================================================================================
-
-[VIG-16] MEDIA — Dependencia inyectada huérfana en SettingsController
-- Estado: VERIFICADO FALSO POSITIVO
-- Severidad: MEDIA
-- Ubicación: Backend.API/Controllers/SettingsController.cs
-- Verificación: `_settingsService` se consume activamente en `GetAllowNegativeStockAsync` y `SetAllowNegativeStockAsync` para gestionar `AllowNegativeStock`. La inyección es requerida y funcional.
-
---------------------------------------------------------------------------------
-
-[VIG-17] MEDIA — Dependencia inyectada huérfana en UsersController
-- Estado: VERIFICADO FALSO POSITIVO
-- Severidad: MEDIA
-- Ubicación: Backend.API/Controllers/UsersController.cs
-- Verificación: `_stampValidator` se utiliza activamente en mutaciones de usuario para invalidar tokens JWT al cambiar credenciales o roles. Es una dependencia de seguridad fundamental.
-
---------------------------------------------------------------------------------
-
-[VIG-18] BAJA — Método privado inalcanzable en UsersController
-- Estado: VERIFICADO FALSO POSITIVO
-- Severidad: BAJA
-- Ubicación: Backend.API/Controllers/UsersController.cs
-- Verificación: `GetCurrentUserId()` se invoca en los métodos de mutación para evitar que el usuario administrador se bloquee o desactive a sí mismo y para registrar auditoría de cambios.
-
-================================================================================
-5. RENDIMIENTO Y OPTIMIZACIÓN
-================================================================================
-
-[VIG-19] ALTA — Omisión de AsNoTracking en ExchangeRateController
-- Estado: RESUELTO
+[AUD-08] ALTA — Dispersión del estándar RFC 7807 (ProblemDetails) en respuestas de error
+- Estado: ACTIVO
 - Severidad: ALTA
-- Ubicación: Backend.API/Controllers/ExchangeRateController.cs
+- Ubicación:
+  * Backend.API/Controllers/PairingController.cs: líneas 56, 64, 98, 105, 113
+  * Backend.API/Controllers/DailyClosureController.cs: líneas 37-41
+  * Backend.API/Controllers/ShiftsController.cs: líneas 94, 98
+- Regla: AGENTS.md §Reglas Críticas ("Errores vía ProblemDetails") y docs/coding-guidelines-backend.md §2.5.
+- Descripción:
+  1. `PairingController` devuelve `StatusCode((int)HttpStatusCode.Forbidden, new { message = ... })` y `BadRequest(new { message = ... })` en formato JSON ad-hoc sin el estándar RFC 7807.
+  2. `DailyClosureController` y `ShiftsController` instancian llamadas manuales a `Problem(...)` en vez de emplear los métodos de extensión estándar del proyecto (`this.ApiBadRequest(...)`, `this.ApiForbidden(...)`).
+- Recomendación: Migrar todas las respuestas de error a `ApiProblemResults` (`this.ApiBadRequest`, `this.ApiForbidden`, etc.).
+
+--------------------------------------------------------------------------------
+
+[AUD-09] MEDIA — Request DTO declarado dentro del archivo de controlador PairingController.cs
+- Estado: ACTIVO
+- Severidad: MEDIA
+- Ubicación: Backend.API/Controllers/PairingController.cs: líneas 136-139
+- Regla: docs/coding-guidelines-core.md §2.1 y clean-architecture.
+- Descripción: La clase `ClaimPairingRequest` se encuentra declarada al final de `PairingController.cs`, violando la regla de separación de DTOs en archivos y carpetas dedicadas.
+- Recomendación: Mover `ClaimPairingRequest` a `Core/DTOs/` o `Backend.API/DTOs/`.
+
+--------------------------------------------------------------------------------
+
+[AUD-10] CRÍTICA — Exposición de entidades mutables EF Core en interfaces y clientes de frontera
+- Estado: ACTIVO
+- Severidad: CRÍTICA
+- Ubicación:
+  * Desktop.Client.Core/Services/ProductService.cs: líneas 23, 35, 48
+  * Desktop.Client.Core/Services/IProductService.cs: líneas 10, 11, 12
+  * Sales.Module/Interfaces/ISalesService.cs: línea 61 (`CreateCashAdvanceSaleAsync`)
+  * Core/Interfaces/IInventoryService.cs: líneas 12, 13, 14, 16, 21, 22
+- Regla: AGENTS.md §Reglas Críticas ("Datos: Entidades EF nunca al cliente (usa DTOs)").
+- Descripción:
+  1. `Desktop.Client.Core` manipula directamente `Core.Entities.Product` en `IProductService` y `ProductService`, acoplando la vista desktop con entidades del dominio en lugar de DTOs.
+  2. `ISalesService.CreateCashAdvanceSaleAsync` retorna `Sales.Module.Entities.Sale`, exponiendo la entidad interna en la interfaz del servicio.
+  3. `IInventoryService` aún expone métodos basados en entidad (`Product`) en lugar de trabajar exclusivamente con DTOs.
+- Recomendación: Refactorizar contratos hacia DTOs inmutables (`ProductDto`, `SaleDto`) y mapear en la capa de infraestructura.
+
+--------------------------------------------------------------------------------
+
+[AUD-11] MEDIA — Constructores de prueba con instanciación manual (new) y acoplamiento a DbContext (Deuda D1)
+- Estado: ACTIVO (Deuda Técnica Registrada)
+- Severidad: MEDIA
+- Ubicación:
+  * Backend.API/Controllers/CashDrawerController.cs: líneas 49-65
+  * Backend.API/Controllers/ExchangeRateController.cs: líneas 45-56
+  * Backend.API/Controllers/SettingsController.cs: líneas 44-57
+  * Backend.API/Controllers/UsersController.cs: líneas 36-42
+- Regla: clean-architecture ("Dependency Injection: All services must be injected through the constructor").
+- Descripción: Los controladores auditados conservan constructores sobrecargados de retrocompatibilidad para pruebas que reciben `SalesDbContext` o `InventoryDbContext` e instancian servicios mediante `new`. Si bien los constructores de producción usan inyección pura, estos constructores secundarios perpetúan la dependencia directa de la capa de presentación sobre `DbContext`.
+- Recomendación: Re-apuntar los tests unitarios para usar mocks o instancias de los servicios y eliminar los constructores que reciben `DbContext`.
+
+================================================================================
+3. OPORTUNIDADES DE OPTIMIZACIÓN Y RENDIMIENTO
+================================================================================
+
+[AUD-12] MEDIA — Consulta de usuario sin AsNoTracking en AuthController.FindUserByCedulaAsync
+- Estado: ACTIVO
+- Severidad: MEDIA
+- Ubicación: Backend.API/Controllers/AuthController.cs: líneas 28-38
 - Regla: docs/coding-guidelines-backend.md §2.3 ("Consultas de Solo Lectura: Incluir .AsNoTracking() explícitamente").
-- Acción Tomada: Se verificó y reforzó el uso explícito de `.AsNoTracking()` en las consultas de `GetTodayAsync` y `GetHistoryAsync` delegadas en `IExchangeRateHistoryService`.
+- Descripción: `FindUserByCedulaAsync` ejecuta `_db.Users.FirstOrDefaultAsync(...)` con change tracking activo. En operaciones de lectura y validación inicial, tracking innecesario consume memoria y ciclos de CPU.
+- Recomendación: Aplicar `.AsNoTracking()` en la búsqueda inicial y activar tracking únicamente si se confirma la necesidad de mutación.
+- ADVERTENCIA (verificada en 8.142 — NO aplicar mecánicamente): la entidad que devuelve
+  `FindUserByCedulaAsync` SE MUTA luego en LoginAsync/ChangePasswordAsync (AccessFailedCount++,
+  LockoutEndUtc, LastLoginUtc, SecurityStamp) y se persiste con SaveChangesAsync. Aplicar
+  AsNoTracking "tal cual" deja esas mutaciones sin efecto: el contador de intentos fallidos y el
+  bloqueo por fuerza bruta dejarian de funcionar en silencio, sin error ni test rojo. Orden
+  correcto: releer la entidad con tracking antes de mutarla, o restringir AsNoTracking a las
+  lecturas que no mutan.
 
 --------------------------------------------------------------------------------
 
-[VIG-20] ALTA — Carga con Change Tracking activo en lecturas de venta (SalesService.GetSaleEntityAsync)
-- Estado: RESUELTO
-- Severidad: ALTA
-- Ubicación: Sales.Module/Services/SalesService.cs
-- Regla: docs/coding-guidelines-backend.md §2.3 y docs/coding-guidelines-core.md §1 Pilar 4.
-- Acción Tomada: Se incorporó `GetSaleReadOnlyAsync` a `ISalesService` y se garantizó la aplicación explícita de `.AsNoTracking()` en las consultas de lectura en entornos relacionales PostgreSQL.
-
---------------------------------------------------------------------------------
-
-[VIG-21] MEDIA — Ineficiencia de red y paginación en memoria del navegador en movimientos de caja
-- Estado: RESUELTO
+[AUD-13] MEDIA — Métodos con complejidad ciclomática elevada (> 10 McCabe) y violación de SRP (Deuda D2)
+- Estado: ACTIVO (Deuda Técnica Registrada)
 - Severidad: MEDIA
-- Ubicación: Backend.API/Controllers/CashDrawerController.cs, Sales.Module/Services/CashDrawerService.cs
-- Regla: docs/coding-guidelines-core.md §1 Pilar 4 (Rendimiento Consciente).
-- Acción Tomada: Se implementó el método `GetHistoryPagedAsync` en `ICashDrawerService` y `CashDrawerService` con paginación server-side basada en `.Skip().Take()` retornando `PagedResultDto<CashTransactionResponseDto>`, expuesto en el endpoint `GET api/cashdrawer/history/paged`.
+- Ubicación:
+  * Sales.Module/Services/SalesService.cs (`AddItemAsync`)
+  * Inventory.Module/Services/InventoryService.cs (`CreateProductAsync`, `UpdateProductAsync`)
+  * Backend.API/Controllers/SalesController.Checkout.cs (`CompleteSaleAsync`)
+  * Backend.API/Controllers/CashDrawerController.cs (`ResolveAnchoredRateAsync`)
+- Regla: docs/coding-guidelines-core.md §1.1 C ("Complejidad Ciclomática (McCabe): Máximo 10 por método").
+- Descripción: Los métodos señalados concentran múltiples responsabilidades (validaciones de negocio, cálculo financiero, orquestación de inventario y persistencia), superando el umbral de complejidad ciclomática de 10.
+- Recomendación: Descomponer los flujos en clases parciales o sub-servicios inyectados especializados.
 
 --------------------------------------------------------------------------------
 
-[VIG-22] MEDIA — I/O de comprobantes con Thread.Sleep bloqueante en ruta asíncrona de DailyClosureService
-- Estado: RESUELTO
-- Severidad: MEDIA
-- Ubicación: Sales.Module/Services/DailyClosureService.Receipts.cs
-- Regla: docs/coding-guidelines-core.md §2.2.
-- Acción Tomada: Se verificó la implementación de `await Task.Delay(200, cancellationToken)` junto con logging estructurado `AppLogger.LogWarn` ante fallos de I/O en disco, eliminando bloqueos de hilos en Kestrel.
-
---------------------------------------------------------------------------------
-
-[VIG-23] BAJA — Duplicación recurrente de resolución de zona horaria por request
-- Estado: RESUELTO
+[AUD-14] BAJA — Múltiples consultas secuenciales en HealthController.GetDetails
+- Estado: ACTIVO
 - Severidad: BAJA
-- Ubicación: Backend.API/Controllers/CashDrawerController.cs, ExchangeRateController.cs, SettingsController.cs
-- Regla: docs/coding-guidelines-core.md §1.1 (DRY y Mantenibilidad).
-- Acción Tomada: Se implementó la interfaz `ITimeZoneProvider` y su clase `TimeZoneProvider` como servicio Scoped registrado en inyección de dependencias. Cachea en memoria de ámbito la zona horaria del request, evitando múltiples llamadas a la base de datos para `SelectedTimeZoneId`.
+- Ubicación: Backend.API/Controllers/HealthController.cs: líneas 110-123
+- Regla: docs/coding-guidelines-core.md §1 Pilar 4 (Rendimiento Consciente).
+- Descripción: El endpoint ejecuta de forma estrictamente secuencial cuatro consultas independientes: `GetAppliedMigrationsAsync`, `GetPendingMigrationsAsync`, y dos lecturas a `ExchangeRateHistory`.
+- Recomendación: Evaluar la ejecución paralela o consolidación de consultas para reducir la latencia global del health-check detallado.
 
 ================================================================================
-6. QA, AUTOMATIZACIÓN Y SEGURIDAD RESIDUAL
+4. COSTURAS SIN GUARDA (auditoría de uniones entre capas, ANEXO 8.142 sección H)
 ================================================================================
 
-[VIG-24] ALTA — Tests de persistencia con retorno silencioso sin PostgreSQL real
-- Estado: VERIFICADO RESUELTO (Previamente remediado en sprint 8.6-B2)
+[SEAM-01] ALTA — Call sites HTTP del cliente WPF sin guarda de contrato
+- Estado: ACTIVO
 - Severidad: ALTA
-- Ubicación: CommandCenter.Tests/Integration/CashAdvanceEnvelopeTests.cs, DailyClosureRetryIntegrationTests.cs
-- Verificación: Los tests verifican `string.IsNullOrEmpty(connectionString)` y, si se ejecutan bajo integración continua (`GITHUB_ACTIONS`), arrojan `InvalidOperationException` fallando de inmediato la prueba en vez de retornar silenciosamente.
+- Ubicación: Desktop.Client.Core/Services/*.cs (todos los servicios HTTP salvo el de catálogo)
+- Regla: regla de costuras adoptada en 8.142 (ANEXO, sección G5).
+- Descripción: el bug 'status' vs 'statusFilter' (corregido en 8.142) demostró que un nombre de
+  query param o una ruta pueden divergir entre cliente y servidor sin que nada lo detecte. Hoy
+  solo ProductService.GetPagedAsync está cubierto (ProductServiceQueryContractTests); el resto de
+  los call sites HTTP carece de verificación automática.
+- Recomendación: extender el patrón del test de contrato a los demás servicios del cliente a medida
+  que se toquen, y evaluar un test que recorra las rutas del cliente contra las de los controllers.
 
 --------------------------------------------------------------------------------
 
-[VIG-25] ALTA — Contraseña por defecto conocida en semilla de configuración
-- Estado: VERIFICADO RESUELTO (Previamente remediado en sprint 8.8)
-- Severidad: ALTA
-- Ubicación: Core/Configuration/SystemSettingsOptions.cs, Backend.API/Startup/DatabaseInitializer.cs
-- Verificación: `SystemSettingsOptions.AdminSeedPassword` se inicializa como `string.Empty`. En `DatabaseInitializer.cs`, en entornos de Producción, si no existe usuario administrador y no se provee `AdminSeedPassword`, el sistema ejecuta un fail-fast abortando el inicio de la aplicación.
+[SEAM-02] MEDIA — La forma de respuesta (T del cliente vs DTO del servidor) no tiene guarda
+- Estado: ACTIVO
+- Severidad: MEDIA
+- Ubicación: Desktop.Client.Core/Services/*.cs (deserializaciones GetFromJsonAsync<T>)
+- Descripción: AUD-01 es la única instancia detectada (GetAllAsync espera List<Product> y el API
+  devuelve PagedResultDto<ProductDto>), pero la clase de defecto no está cubierta por ninguna prueba.
+- Recomendación: al eliminar AUD-01, sumar el contrato del endpoint a ProductServiceQueryContractTests
+  o a un test equivalente que fije la forma esperada.
+
+--------------------------------------------------------------------------------
+
+[SEAM-03] MEDIA — La guarda anti-drift cubre índices, no columnas ni tablas
+- Estado: ACTIVO
+- Severidad: MEDIA
+- Ubicación: CommandCenter.Tests/Unit/MigrationIndexDriftTests.cs
+- Descripción: el drift de índices (7 casos detectados y reparados en 8.142) quedó cubierto.
+  Columnas y tablas declaradas en el modelo que ninguna migración cree no están cubiertas, y el
+  caso inverso (columna presente en la base que el modelo desconoce, como fue Sales.IsAdvanceConsumption)
+  tampoco.
+- Recomendación: extender la guarda a AddColumnOperation y al SQL crudo de columnas; evaluar además
+  un chequeo opcional de esquema real contra el modelo en CI.
+
+--------------------------------------------------------------------------------
+
+[SEAM-04] MEDIA — OutboxMessage.Status es string y convive con un enum OutboxStatus sin uso
+- Estado: ACTIVO
+- Severidad: MEDIA
+- Ubicación: Core/Entities/OutboxMessage.cs (Status: string = "Pending"; enum OutboxStatus)
+- Descripción: el estado persistido es texto libre mientras existe un enum OutboxStatus que no se
+  usa para ese campo; el literal 'Pending' está duplicado en la entidad, el job y el filtro del
+  índice parcial. CrossLayerContractTests lo fija, pero el diseño invita al drift.
+- Recomendación: unificar en el enum con conversor, o en una constante única referenciada por la
+  entidad, el job y el filtro.
+
+--------------------------------------------------------------------------------
+
+[SEAM-05] BAJA — IX_CashTransactions_SessionId quedó redundante tras la reparación de 8.142
+- Estado: ACTIVO
+- Severidad: BAJA
+- Ubicación: Sales.Module/Data/SalesDbContext.cs (HasIndex(SessionId) + compuesto SessionId,TransactionTime)
+- Descripción: al crearse el índice compuesto (SessionId, TransactionTime), el índice simple sobre
+  SessionId pasó a ser un prefijo izquierdo redundante. Es consecuencia de la propia reparación; sin
+  impacto funcional, solo costo de escritura y espacio.
+- Recomendación: eliminarlo del modelo con su migración (mismo patrón usado para
+  IX_ExchangeRateHistory_Date).
 
 ================================================================================
-FIN DEL CONSOLIDADO MAESTRO — SISTEMA POS "CommandCenter"
+5. RESIDUALES E INFRAESTRUCTURA
+================================================================================
+
+[INFRA-01] MEDIA (requiere reinicio del servicio) — Parámetros de memoria de PostgreSQL sin evaluar
+- Estado: ACTIVO
+- Ubicación: PostgreSQL 18 local (CommandCenterDb)
+- Descripción: shared_buffers = 128 MB y work_mem = 4 MB son valores por defecto y quedan bajos
+  para un equipo moderno. No se aplicaron porque exigen reinicio del servicio (random_page_cost sí
+  se ajustó a 1.1, con alcance solo a CommandCenterDb).
+- Recomendación: evaluar según la RAM del equipo en una ventana de mantenimiento.
+
+--------------------------------------------------------------------------------
+
+[INFRA-02] INFORMATIVO — COGS desconocido en el histórico previo a 8.142
+- Estado: REGISTRADO (no es un defecto)
+- Descripción: las 697 líneas de venta anteriores a 8.142 tienen UnitCostUSD = NULL (costo
+  desconocido) por diseño: nunca se guardó. El cálculo de ganancias (Paso 14 de docs/Ideas.txt)
+  debe excluirlas, marcarlas como costo desconocido o reconstruir el costo por otra vía; nunca
+  asumir 0, porque reportaría margen del 100%.
+
+--------------------------------------------------------------------------------
+
+[INFRA-03] INFORMATIVO — Backup del esquema huérfano eliminado
+- Estado: REGISTRADO
+- Descripción: la única fila de CustomerAdvances (dato de prueba) quedó respaldada fuera del repo
+  en %TEMP%\opencode\backup-customer-advances-20260919.sql antes del DROP aplicado en 8.142.
+
+================================================================================
+6. TRAZABILIDAD DE HALLAZGOS PREVIOS (VIG-01 A VIG-25)
+================================================================================
+- [VIG-01] Fuga de DbContext en Controladores: Resuelto en CashDrawer, Settings, ExchangeRate, Users, Receipts, Reservations. (Pendiente residual en AuthController: AUD-04).
+- [VIG-02] ProductsController God Controller: Resuelto (341 líneas, dentro de rango).
+- [VIG-03] DTOs anidados en Controladores: Resuelto en CashDrawer, Shifts, DailyClosure. (Pendiente residual en PairingController: AUD-09).
+- [VIG-04] Construcción manual de entidades en ProductsController: Resuelto.
+- [VIG-05] Contratos anónimos en API: Resuelto en Settings, ExchangeRate, Sales.Customers, Reservations, Products.ImportExport. (Pendiente residual: AUD-05).
+- [VIG-06] Exposición de entidades en IPaymentMethodService: Resuelto.
+- [VIG-07] Contrato de IInventoryService con entidad mutable: Mitigado con IProductManagementService (Pendiente residual en interfaz base: AUD-10).
+- [VIG-08] Concurrencia Optimista con doble token: Falso positivo verificado (xmin único).
+- [VIG-09] Sync-over-async en apagado WPF: Resuelto en 8.6-B5.
+- [VIG-10] RFC 7807 en Controladores: Resuelto en la mayoría de controladores (Pendiente residual: AUD-08).
+- [VIG-11] Omisión de CancellationToken: Resuelto en la mayoría de endpoints (Pendiente residual: AUD-06).
+- [VIG-12] Omisión del sufijo Async: Resuelto en la mayoría de endpoints (Pendiente residual: AUD-07).
+- [VIG-13] Estilos inline con valores fijos en React: Resuelto al 100% con variables CSS.
+- [VIG-14] Magic Strings en Cierre: Resuelto.
+- [VIG-15] Comentarios explicativos: Resuelto y política alineada en AGENTS.md §8.142.
+- [VIG-16] Dependencia inyectada en SettingsController: Falso positivo verificado.
+- [VIG-17] Dependencia inyectada en UsersController: Falso positivo verificado.
+- [VIG-18] Método privado en UsersController: Falso positivo verificado.
+- [VIG-19] AsNoTracking en ExchangeRate: Resuelto.
+- [VIG-20] AsNoTracking en SalesService: Resuelto.
+- [VIG-21] Paginación en CashDrawer: Resuelto.
+- [VIG-22] Thread.Sleep en DailyClosureService: Resuelto.
+- [VIG-23] Duplicación de resolución de zona horaria: Resuelto con ITimeZoneProvider.
+- [VIG-24] Tests de persistencia con retorno silencioso: Falso positivo / mitigado en 8.6-B2.
+- [VIG-25] Contraseña por defecto en semilla: Mitigado en 8.8.
+
+================================================================================
+FIN DEL CONSOLIDADO DE ERRORES VIGENTES — SISTEMA POS "CommandCenter"
 ================================================================================
