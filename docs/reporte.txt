@@ -10611,3 +10611,88 @@ sola implementacion de reglas) y REQ-COC-03 se mantiene con el guard de
 duplicados dentro de ValidateDeclaredMethods. Con S1+S2+S3a+S3b implementadas,
 el change critical-debt-closeout queda listo para la verificacion de cambio
 completo (sdd-verify).
+
+
+================================================================================
+ANEXO - REVISION 8.142 (saneamiento VIG + hallazgos de review + movil web)
+================================================================================
+
+Fecha: 2026-09-19
+Commits: 6 (ver seccion A), en rama V0.15 (sin branches/PRs).
+
+Alcance: cierre del saneamiento de los 25 hallazgos de auditoria (VIG-01..VIG-25)
+mas los hallazgos surgidos del review de cumplimiento de estandares sobre el WIP:
+propagacion de CancellationToken, contrato de error del login, ambiguedad de
+constructores por DI, HTTPS para el escaner con camara del telefono y layout del
+POS movil. Sin cambios de schema, sin config de despliegue, sin PRs, sin
+sub-agentes.
+
+A. COMMITS
+
+A1. 912f228 fix(8.142): saneamiento de los 25 hallazgos VIG-01..VIG-25 +
+    consolidado de errores vigentes (89 archivos; docs/errores_vigentes.txt).
+A2. 1a471bc refactor(8.142): propagacion de CancellationToken en IInventoryService
+    (19 metodos) e ISalesService (~27), implementaciones y call sites; regresion de
+    aridad Moq en 3 archivos de test. 32 archivos, +333/-325.
+A3. de6c8ec fix(8.142): el login con MustChangePassword responde ProblemDetails 403
+    (ApiProblemResults.ApiPasswordChangeRequired con Extensions
+    requiresPasswordChange/message) y el cliente WPF vuelve a detectar el flag
+    (Dictionary<string,JsonElement> + ValueKind: el chequeo previo `is bool` sobre
+    un JsonElement nunca coincidia). Tests de contrato server y cliente.
+A4. 7ffdc09 fix(8.142): ProductsController declaraba dos constructores resolubles
+    por DI sin [ActivatorUtilitiesConstructor] -> ActivatorUtilities lanzaba
+    InvalidOperationException en runtime y TODAS las actions del controller
+    respondian 409 (busqueda del POS, catalogo web, quick-check, variantes,
+    import/export). Guardas: reproduccion con ActivatorUtilities.CreateFactory +
+    teoria estructural sobre los controllers con mas de un ctor publico.
+A5. 9d14163 feat(8.142): el pairing anuncia HTTPS en 5001 via HttpsRuntimeInfo
+    (fuente unica registrada en Program.cs); la password del pfx se resuelve
+    tambien desde el CWD (secrets.json); el script de certificado persiste siempre
+    la password, emite SAN iPAddress para la IP de LAN y exporta el .cer;
+    start.bat autogenera el certificado si falta.
+A6. ce92d7d fix(8.142): las media queries del POS movil vivian en la capa CSS
+    `layout` mientras sus reglas base estan en `components` (mayor precedencia por
+    cascade layers, refactor 8.136) y nunca se aplicaban: en movil el grid seguia
+    `1fr 340px` (carrito aplastado, vacio y con productos) y se mostraba la tabla
+    de escritorio en vez de CartList. Se movieron las 5 reglas responsive a
+    `components` y se regenero el bundle web (Backend.API/wwwroot).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+B2. dotnet test CommandCenter.slnx -c Release: 1271 passed, 0 failed, 0 skipped.
+B3. npm test (Web.Frontend): 287 passed, 0 failed. npm run lint: exit 0.
+B4. Coverage gate (scripts/check-coverage.py sobre
+    TestResults/14cfc84e-74db-4282-8648-3d2586186c51/coverage.cobertura.xml):
+    Core 0.8501 [OK]; Sales.Module 0.8871 [OK]; Inventory.Module 0.8226 [OK];
+    exit 0.
+B5. Fix de DI verificado por reproduccion: sin el atributo el test falla con el
+    mismo mensaje y frame del crash.log de produccion; con el atributo pasa.
+B6. Fix de cascade layers verificado en el bundle compilado: la media query
+    aparece inmediatamente despues de la regla base, en la misma capa.
+
+C. GGA (puntual --no-verify, mismo criterio que 8.140/8.141)
+
+C1. Los 6 commits se sellaron con --no-verify puntual, autorizado por el
+    mantenedor, porque el hook pre-commit ejecuta `gga run` (v2.10.1) y su review
+    excede el presupuesto de tiempo por commit.
+C2. No se ejecuto gga hasta completitud en esta revision: NO se afirma un veredicto
+    de GGA sobre este diff. La deuda de GGA registrada en 8.140/8.141 (comentarios
+    narrativos, tests con retorno silencioso) sigue vigente.
+C3. Verificacion sustitutiva del arbol commiteado: build 0/0, .NET 1271/1271, web
+    287/287, lint exit 0 y coverage gate exit 0.
+
+D. DEUDA ABIERTA (registrada, fuera de alcance)
+
+D1. DI por construccion manual (`new`) en los constructores de prueba de
+    CashDrawerController, ExchangeRateController y SettingsController (~20 call
+    sites de test).
+D2. Complejidad/SRP: SalesService.AddItemAsync, InventoryService.CreateProductAsync
+    y UpdateProductAsync, SalesController.CompleteSaleAsync y
+    CashDrawerController.ResolveAnchoredRateAsync.
+D3. Politica de comentarios explicativos: saturados repo-wide; pendiente decision
+    (enmendar el guideline, aceptar como deuda o limpieza masiva en slice propio).
+D4. ProductService.GetAllAsync (WPF) espera List<Product> mientras /api/products
+    devuelve PagedResultDto<ProductDto> (latente, sin callers); GetPagedAsync envia
+    `status=` mientras el backend bindea `statusFilter=` (filtro de estado
+    ignorado).
