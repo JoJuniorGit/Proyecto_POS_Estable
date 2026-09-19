@@ -297,7 +297,7 @@ public class DrawerDtoBoundaryTests
         settings.Setup(s => s.GetSettingAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
 
         var coordinator = new CashAdvanceCoordinator(salesDb, Mock.Of<ISalesService>(), service.Object, settings.Object);
-        var controller = new CashDrawerController(service.Object, settings.Object, salesDb, new Mock<ICurrentUserService>().Object, inventoryDb, coordinator);
+        var controller = ControllerFactory.CreateCashDrawerController(service.Object, settings.Object, salesDb, new Mock<ICurrentUserService>().Object, inventoryDb, coordinator);
 
         var found = await controller.GetActiveSession(CancellationToken.None);
         var ok = Assert.IsType<OkObjectResult>(found.Result);

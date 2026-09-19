@@ -42,19 +42,6 @@ public class ExchangeRateController : ControllerBase
         _cache = cache;
     }
 
-    public ExchangeRateController(
-        InventoryDbContext context,
-        Core.Interfaces.ICurrentUserService currentUserService,
-        IMemoryCache? cache = null)
-        : this(
-            new ExchangeRateHistoryService(context),
-            null!,
-            new Core.Services.TimeZoneProvider(new SystemSettingsService(context)),
-            currentUserService,
-            cache)
-    {
-    }
-
     [AllowAnonymous]
     [HttpGet("today")]
     public async Task<ActionResult> GetTodayAsync(CancellationToken cancellationToken = default)

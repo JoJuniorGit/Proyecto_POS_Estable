@@ -63,6 +63,33 @@ public class ControllerConstructionTests
         Assert.Single(markedConstructors);
     }
 
+    [Theory]
+    [MemberData(nameof(ControllersThatMustNotBindDbContext))]
+    public void Controller_DoesNotDeclareDbContextConstructor(Type controllerType)
+    {
+        // AUD-11 regression guard: presentation controllers must not bind a DbContext (that pattern caused the ProductsController activation failure).
+        var parameterTypeNames = controllerType
+            .GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            .SelectMany(c => c.GetParameters())
+            .Select(p => p.ParameterType.Name);
+
+        Assert.DoesNotContain(parameterTypeNames, name => name.Contains("DbContext", StringComparison.Ordinal));
+    }
+
+    public static TheoryData<Type> ControllersThatMustNotBindDbContext() => new()
+    {
+        typeof(CashDrawerController),
+        typeof(ExchangeRateController),
+        typeof(SettingsController),
+        typeof(UsersController),
+        typeof(AuthController),
+        typeof(ProductsController),
+        typeof(DailyClosureController),
+        typeof(ShiftsController),
+        typeof(ReceiptsController),
+        typeof(ReservationsController),
+    };
+
     public static TheoryData<Type> ControllersWithMultiplePublicConstructors()
     {
         var data = new TheoryData<Type>();

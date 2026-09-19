@@ -1,5 +1,6 @@
 using Backend.API.Controllers;
 using Backend.API.Services;
+using CommandCenter.Tests.Builders;
 using Core.DTOs;
 using Core.Entities;
 using Desktop.Client.Services;
@@ -31,7 +32,7 @@ public class UserPasswordAndStockFormattingTests
 
     private UsersController CreateControllerWithAdminUser(SalesDbContext context, int currentUserId = 1)
     {
-        var controller = new UsersController(context);
+        var controller = ControllerFactory.CreateUsersController(context);
         var claims = new[]
         {
             new Claim(ClaimTypes.NameIdentifier, currentUserId.ToString()),

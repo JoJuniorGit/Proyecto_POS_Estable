@@ -45,7 +45,7 @@ public class CashAdvanceCommissionEndpointTests
         => new(context, Mock.Of<Sales.Module.Interfaces.ISalesService>(), Mock.Of<Sales.Module.Interfaces.ICashDrawerService>(), settings);
 
     private static CashDrawerController CreateController(SalesDbContext context, CashAdvanceCoordinator coordinator)
-        => new(
+        => ControllerFactory.CreateCashDrawerController(
             Mock.Of<Sales.Module.Interfaces.ICashDrawerService>(),
             Mock.Of<ISystemSettingsService>(),
             context,

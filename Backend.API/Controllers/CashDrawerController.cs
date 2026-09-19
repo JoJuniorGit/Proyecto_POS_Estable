@@ -46,24 +46,6 @@ public class CashDrawerController : ControllerBase
         _cashAdvanceCoordinator = cashAdvanceCoordinator;
     }
 
-    public CashDrawerController(
-        ICashDrawerService cashDrawerService, 
-        ISystemSettingsService settingsService, 
-        Sales.Module.Data.SalesDbContext db,
-        ICurrentUserService currentUserService,
-        Inventory.Module.Data.InventoryDbContext inventoryContext,
-        Sales.Module.Services.CashAdvanceCoordinator cashAdvanceCoordinator)
-        : this(
-            cashDrawerService,
-            settingsService,
-            new Inventory.Module.Services.InventoryService(inventoryContext),
-            new Sales.Module.Services.UserService(db),
-            currentUserService,
-            new Core.Services.TimeZoneProvider(settingsService),
-            cashAdvanceCoordinator)
-    {
-    }
-
     [HttpGet("active-session")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult<CashDrawerSessionResponseDto?>> GetActiveSessionAsync(CancellationToken cancellationToken)

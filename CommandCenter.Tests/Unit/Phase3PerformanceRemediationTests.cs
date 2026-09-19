@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using Backend.API.Hubs;
+using CommandCenter.Tests.Builders;
 using Core.Entities;
 using Core.Interfaces;
 using Inventory.Module.Data;
@@ -47,7 +48,7 @@ public class Phase3PerformanceRemediationTests
 
         var mockUser = new Mock<ICurrentUserService>();
 
-        var controller = new ExchangeRateController(context, mockUser.Object);
+        var controller = ControllerFactory.CreateExchangeRateController(context, mockUser.Object);
 
         // Act & Assert 1: Custom limit = 5
         var result5 = await controller.GetHistory(limit: 5) as OkObjectResult;
@@ -156,7 +157,7 @@ public class Phase3PerformanceRemediationTests
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateExchangeRate).Returns(true);
 
-        var controller = new ExchangeRateController(context, mockUser.Object);
+        var controller = ControllerFactory.CreateExchangeRateController(context, mockUser.Object);
 
         decimal? persistedRate = null;
         var writeService = new Mock<Backend.API.Services.IExchangeRateWriteService>();

@@ -158,7 +158,7 @@ public class SecurityTests
 
         var mockSalesService = new Mock<ISalesService>();
         var coordinator = new CashAdvanceCoordinator(salesDb, mockSalesService.Object, mockCashDrawer.Object, mockSettings.Object);
-        var controller = new CashDrawerController(
+        var controller = ControllerFactory.CreateCashDrawerController(
             mockCashDrawer.Object,
             mockSettings.Object,
             salesDb,

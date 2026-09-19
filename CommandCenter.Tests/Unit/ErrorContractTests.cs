@@ -20,6 +20,7 @@ using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using Sales.Module.Services;
+using CommandCenter.Tests.Builders;
 using CommandCenter.Tests.TestHelpers;
 using Xunit;
 
@@ -111,7 +112,7 @@ public class ErrorContractTests
         var coordinator = new CashAdvanceCoordinator(
             salesDb, mockSales.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        var controller = new CashDrawerController(
+        var controller = ControllerFactory.CreateCashDrawerController(
             mockCashDrawer.Object,
             mockSettings.Object,
             salesDb,

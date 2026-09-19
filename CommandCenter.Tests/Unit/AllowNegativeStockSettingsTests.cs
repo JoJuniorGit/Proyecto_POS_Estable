@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
+using CommandCenter.Tests.Builders;
 using Core.Interfaces;
 using Inventory.Module.Data;
 using Inventory.Module.Services;
@@ -27,7 +28,7 @@ public class AllowNegativeStockSettingsTests
         using var db = CreateInMemoryDb(Guid.NewGuid().ToString());
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateSettings).Returns(true);
-        var controller = new SettingsController(db, mockUser.Object, new SystemSettingsService(db));
+        var controller = ControllerFactory.CreateSettingsController(db, mockUser.Object, new SystemSettingsService(db));
 
         var result = await controller.GetAllowNegativeStock();
 
@@ -42,7 +43,7 @@ public class AllowNegativeStockSettingsTests
         using var db = CreateInMemoryDb(Guid.NewGuid().ToString());
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateSettings).Returns(true);
-        var controller = new SettingsController(db, mockUser.Object, new SystemSettingsService(db));
+        var controller = ControllerFactory.CreateSettingsController(db, mockUser.Object, new SystemSettingsService(db));
 
         await controller.SetAllowNegativeStock(new SetAllowNegativeStockRequest { Allowed = true });
 
@@ -58,7 +59,7 @@ public class AllowNegativeStockSettingsTests
         using var db = CreateInMemoryDb(Guid.NewGuid().ToString());
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateSettings).Returns(false);
-        var controller = new SettingsController(db, mockUser.Object, new SystemSettingsService(db));
+        var controller = ControllerFactory.CreateSettingsController(db, mockUser.Object, new SystemSettingsService(db));
 
         var result = await controller.SetAllowNegativeStock(new SetAllowNegativeStockRequest { Allowed = true });
 

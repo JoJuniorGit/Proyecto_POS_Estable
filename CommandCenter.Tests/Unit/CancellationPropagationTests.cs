@@ -131,11 +131,9 @@ public class CancellationPropagationTests
         settings.Setup(s => s.GetSettingAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
 
         var coordinator = new CashAdvanceCoordinator(salesDb, Mock.Of<ISalesService>(), drawerService.Object, settings.Object);
-        var controller = new CashDrawerController(
-            drawerService.Object, settings.Object, salesDb, Mock.Of<ICurrentUserService>(), inventoryDb, coordinator)
-        {
-            ControllerContext = HttpContextOf(AdminUser())
-        };
+        var controller = ControllerFactory.CreateCashDrawerController(
+            drawerService.Object, settings.Object, salesDb, Mock.Of<ICurrentUserService>(), inventoryDb, coordinator);
+        controller.ControllerContext = HttpContextOf(AdminUser());
 
         using var cts = new CancellationTokenSource();
         var result = await controller.GetActiveSession(cts.Token);
@@ -164,11 +162,9 @@ public class CancellationPropagationTests
         currentUser.Setup(u => u.UserRole).Returns(Core.Entities.UserRole.Admin);
 
         var coordinator = new CashAdvanceCoordinator(salesDb, Mock.Of<ISalesService>(), drawerService.Object, settings.Object);
-        var controller = new CashDrawerController(
-            drawerService.Object, settings.Object, salesDb, currentUser.Object, inventoryDb, coordinator)
-        {
-            ControllerContext = HttpContextOf(AdminUser())
-        };
+        var controller = ControllerFactory.CreateCashDrawerController(
+            drawerService.Object, settings.Object, salesDb, currentUser.Object, inventoryDb, coordinator);
+        controller.ControllerContext = HttpContextOf(AdminUser());
 
         using var cts = new CancellationTokenSource();
         var result = await controller.AddTransaction(new AddTransactionRequest
@@ -213,11 +209,9 @@ public class CancellationPropagationTests
             .ReturnsAsync((Sale)null!);
 
         var coordinator = new CashAdvanceCoordinator(salesDb, sales.Object, drawerService.Object, settings.Object);
-        var controller = new CashDrawerController(
-            drawerService.Object, settings.Object, salesDb, Mock.Of<ICurrentUserService>(), inventoryDb, coordinator)
-        {
-            ControllerContext = HttpContextOf(AdminUser())
-        };
+        var controller = ControllerFactory.CreateCashDrawerController(
+            drawerService.Object, settings.Object, salesDb, Mock.Of<ICurrentUserService>(), inventoryDb, coordinator);
+        controller.ControllerContext = HttpContextOf(AdminUser());
 
         using var cts = new CancellationTokenSource();
         var result = await controller.ProcessCashAdvance(new CashAdvanceRequest

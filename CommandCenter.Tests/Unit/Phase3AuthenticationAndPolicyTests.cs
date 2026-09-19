@@ -194,7 +194,7 @@ public class Phase3AuthenticationAndPolicyTests
     {
         var context = TestDatabaseFactory.CreateSalesDbContext();
         var stampValidatorMock = new Mock<ISecurityStampValidator>();
-        var usersController = new UsersController(context, _policyService, stampValidatorMock.Object);
+        var usersController = ControllerFactory.CreateUsersController(context, _policyService, stampValidatorMock.Object);
 
         var createDto = new CreateUserDto
         {
@@ -242,7 +242,7 @@ public class Phase3AuthenticationAndPolicyTests
         await context.SaveChangesAsync();
 
         var stampValidatorMock = new Mock<ISecurityStampValidator>();
-        var usersController = new UsersController(context, _policyService, stampValidatorMock.Object);
+        var usersController = ControllerFactory.CreateUsersController(context, _policyService, stampValidatorMock.Object);
 
         var actionResult = await usersController.ResetTemporaryPassword(25);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);

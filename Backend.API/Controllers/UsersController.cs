@@ -33,14 +33,6 @@ public class UsersController : ControllerBase
         _stampValidator = stampValidator;
     }
 
-    public UsersController(
-        SalesDbContext db, 
-        IPasswordPolicyService? passwordPolicyService = null,
-        ISecurityStampValidator? stampValidator = null)
-        : this(new UserService(db, passwordPolicyService), passwordPolicyService, stampValidator)
-    {
-    }
-
     private int? GetCurrentUserId()
     {
         var idClaim = User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value

@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
+using CommandCenter.Tests.Builders;
 using Core.Common;
 using Core.Entities;
 using Core.Helpers;
@@ -57,7 +58,7 @@ public class Phase6ArchitecturalHygieneTests
         var currentUserServiceMock = new Mock<ICurrentUserService>();
         currentUserServiceMock.Setup(c => c.CanMutateSettings).Returns(true);
 
-        var controller = new SettingsController(db, currentUserServiceMock.Object, new SystemSettingsService(db));
+        var controller = ControllerFactory.CreateSettingsController(db, currentUserServiceMock.Object, new SystemSettingsService(db));
 
         var request = new SetExchangeRateRequest { Value = 45.75m };
         var result = await controller.SetExchangeRate(request);

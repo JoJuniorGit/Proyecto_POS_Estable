@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using Backend.API.Services;
+using CommandCenter.Tests.Builders;
 using Core.DTOs;
 using Core.Entities;
 using Microsoft.AspNetCore.Http;
@@ -167,7 +168,7 @@ public class Phase1SecurityHardeningTests
         context.Users.Add(lockedUser);
         await context.SaveChangesAsync();
 
-        var controller = new UsersController(context, stampValidator: null);
+        var controller = ControllerFactory.CreateUsersController(context, stampValidator: null);
 
         // Act
         var result = await controller.UnlockUser(12);

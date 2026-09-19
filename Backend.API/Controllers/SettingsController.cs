@@ -41,21 +41,6 @@ public class SettingsController : ControllerBase
         _hubContext = hubContext;
     }
 
-    public SettingsController(
-        InventoryDbContext context, 
-        Core.Interfaces.ICurrentUserService currentUserService,
-        Core.Interfaces.ISystemSettingsService settingsService,
-        Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? hubContext = null)
-        : this(
-            settingsService,
-            currentUserService,
-            new ExchangeRateHistoryService(context),
-            new ExchangeRateWriteService(context, new InventoryService(context), hubContext: hubContext),
-            new Core.Services.TimeZoneProvider(settingsService),
-            hubContext)
-    {
-    }
-
     [HttpGet("exchange-rate")]
     public async Task<ActionResult> GetExchangeRateAsync(CancellationToken cancellationToken = default)
     {

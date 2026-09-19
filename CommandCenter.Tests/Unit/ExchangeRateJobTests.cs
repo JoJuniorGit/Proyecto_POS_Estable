@@ -8,6 +8,7 @@ using Backend.API.Controllers;
 using Backend.API.Hubs;
 using Backend.API.Jobs;
 using Backend.API.Services;
+using CommandCenter.Tests.Builders;
 using Core.Entities;
 using Core.Helpers;
 using Core.Interfaces;
@@ -257,7 +258,7 @@ public class ExchangeRateJobTests
 
         var userMock = new Mock<ICurrentUserService>();
 
-        var controller = new ExchangeRateController(
+        var controller = ControllerFactory.CreateExchangeRateController(
             dbContext,
             userMock.Object);
 
@@ -325,7 +326,7 @@ public class ExchangeRateJobTests
         var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
 
         var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object, new ConfigurationBuilder().Build());
-        var controller = new ExchangeRateController(
+        var controller = ControllerFactory.CreateExchangeRateController(
             dbContext,
             userMock.Object);
 
@@ -442,7 +443,7 @@ public class ExchangeRateJobTests
 
         var userMock = new Mock<ICurrentUserService>();
 
-        var controller = new ExchangeRateController(
+        var controller = ControllerFactory.CreateExchangeRateController(
             dbContext,
             userMock.Object);
 

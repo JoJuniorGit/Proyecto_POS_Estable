@@ -77,7 +77,7 @@ public class ExchangeRateReferenceBoundaryTests
         context.ExchangeRateHistory.Add(new ExchangeRateHistory { Date = today, Rate = 36.502175m, UpdatedAt = DateTime.UtcNow });
         await context.SaveChangesAsync();
 
-        var controller = new ExchangeRateController(context, new Mock<ICurrentUserService>().Object);
+        var controller = ControllerFactory.CreateExchangeRateController(context, new Mock<ICurrentUserService>().Object);
 
         var result = await controller.GetToday() as OkObjectResult;
 
@@ -137,7 +137,7 @@ public class ExchangeRateReferenceBoundaryTests
         mockSettings.Setup(s => s.GetSettingAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
         var mockSalesService = new Mock<ISalesService>();
         var coordinator = new CashAdvanceCoordinator(salesDb, mockSalesService.Object, mockCashDrawer.Object, mockSettings.Object);
-        var controller = new CashDrawerController(mockCashDrawer.Object, mockSettings.Object, salesDb, new Mock<ICurrentUserService>().Object, inventoryDb, coordinator);
+        var controller = ControllerFactory.CreateCashDrawerController(mockCashDrawer.Object, mockSettings.Object, salesDb, new Mock<ICurrentUserService>().Object, inventoryDb, coordinator);
 
         var result = await controller.AddTransaction(new AddTransactionRequest
         {
@@ -162,7 +162,7 @@ public class ExchangeRateReferenceBoundaryTests
         db.ExchangeRateHistory.Add(new ExchangeRateHistory { Date = today, Rate = 804.6301m, UpdatedAt = DateTime.UtcNow });
         await db.SaveChangesAsync();
 
-        var controller = new SettingsController(db, new Mock<ICurrentUserService>().Object, new SystemSettingsService(db));
+        var controller = ControllerFactory.CreateSettingsController(db, new Mock<ICurrentUserService>().Object, new SystemSettingsService(db));
 
         var result = await controller.GetExchangeRate() as OkObjectResult;
 
