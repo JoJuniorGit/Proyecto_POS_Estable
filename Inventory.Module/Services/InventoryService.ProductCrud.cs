@@ -69,6 +69,7 @@ public partial class InventoryService : IProductManagementService, IReservationS
         {
             Name = request.Name,
             SKU = request.SKU,
+            Description = request.Description ?? string.Empty,
             PriceRetailUSD = request.PriceRetailUSD,
             PriceUSD = request.PriceRetailUSD,
             StockQuantity = request.StockQuantity,

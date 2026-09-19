@@ -203,6 +203,47 @@ public class InventoryServiceUnitTests
     }
 
     [Fact]
+    public async Task CreateSystemProductAsync_WithDescription_PersistsDescription()
+    {
+        var (service, context, _) = CreateService(canMutateCatalog: false);
+
+        var id = await service.CreateSystemProductAsync(new CreateSystemProductRequest
+        {
+            Name = "Producto de Sistema Descripto",
+            SKU = "SYS-DESC-01",
+            Description = "Producto de sistema para operaciones internas",
+            PriceRetailUSD = 2.00m,
+            StockQuantity = 0m,
+            IsCashAdvance = false,
+            IsActive = true
+        });
+
+        var persisted = await context.Products.FindAsync(id);
+        Assert.NotNull(persisted);
+        Assert.Equal("Producto de sistema para operaciones internas", persisted!.Description);
+    }
+
+    [Fact]
+    public async Task CreateSystemProductAsync_WithoutDescription_PersistsEmptyDescription()
+    {
+        var (service, context, _) = CreateService(canMutateCatalog: false);
+
+        var id = await service.CreateSystemProductAsync(new CreateSystemProductRequest
+        {
+            Name = "Producto de Sistema sin Descripcion",
+            SKU = "SYS-DESC-02",
+            PriceRetailUSD = 2.00m,
+            StockQuantity = 0m,
+            IsCashAdvance = false,
+            IsActive = true
+        });
+
+        var persisted = await context.Products.FindAsync(id);
+        Assert.NotNull(persisted);
+        Assert.Equal(string.Empty, persisted!.Description);
+    }
+
+    [Fact]
     public async Task UpdateStockAsync_DeductsExactFractionalQuantity_WithoutTruncation()
     {
         var (service, context, _) = CreateService();

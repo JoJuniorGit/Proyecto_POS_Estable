@@ -434,20 +434,43 @@ END $$;");
             AppLogger.LogStart("[Seed] Created default Customer.");
             }
 
-            if (!invDb.Products.Any(p => p.IsCashAdvance))
+            var inventoryService = scope.ServiceProvider.GetRequiredService<Core.Interfaces.IInventoryService>();
+            var cashAdvanceProducts = invDb.Products.Where(p => p.IsCashAdvance).ToList();
+            if (cashAdvanceProducts.Count == 0)
             {
-                invDb.Products.Add(new Core.Entities.Product
+                await inventoryService.CreateSystemProductAsync(new Core.DTOs.CreateSystemProductRequest
                 {
                     Name = "Adelanto de Efectivo",
                     SKU = "ADV-001",
                     Description = "Producto de sistema para operaciones de adelanto de efectivo en caja",
                     PriceRetailUSD = 0m,
-                    StockQuantity = 999999,
+                    StockQuantity = 0m,
                     IsCashAdvance = true,
                     IsActive = true
                 });
-                invDb.SaveChanges();
-                AppLogger.LogStart("[Seed] Created default Cash Advance System Product.");
+                AppLogger.LogStart("[Seed] Created default Cash Advance System Product via CreateSystemProductAsync (stock 0 por regla, sin movimiento).");
+            }
+            else
+            {
+                // AUD-21/AUD-22: convergencia sin StockMovement — el stock del seed legacy nunca fue
+                // inventario real y el forzado a 0 por regla permanece silencioso en el ledger.
+                bool normalized = false;
+                foreach (var cashAdvanceProduct in cashAdvanceProducts)
+                {
+                    if (cashAdvanceProduct.StockQuantity != 0m || cashAdvanceProduct.ReservedQuantity != 0m || cashAdvanceProduct.LowStockThreshold != 0m)
+                    {
+                        cashAdvanceProduct.StockQuantity = 0m;
+                        cashAdvanceProduct.ReservedQuantity = 0m;
+                        cashAdvanceProduct.LowStockThreshold = 0m;
+                        normalized = true;
+                    }
+                }
+
+                if (normalized)
+                {
+                    invDb.SaveChanges();
+                    AppLogger.LogStart("[Seed] Normalized legacy Cash Advance product stock to 0 (AUD-22 convergence).");
+                }
             }
 
             var defaultMethods = Sales.Module.PaymentMethodDefaults.CreateDefault();

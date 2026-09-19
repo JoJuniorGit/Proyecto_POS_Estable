@@ -279,4 +279,32 @@ public class WebApplicationFactorySmokeTests
             await drop.ExecuteNonQueryAsync();
         }
     }
+
+    [Fact]
+    public async Task CashAdvanceProduct_AfterPipelineBoot_HasZeroStockAndNoMovements()
+    {
+        // AUD-22: el seed de ADV-001 debe pasar por el path auditado del servicio (stock 0 por regla,
+        // sin StockMovement), tanto en base nueva como al converger un seed legacy con stock centinela.
+        if (!PostgresConfiguredForPipeline()) return;
+
+        await using var factory = CreateFactory();
+        using var client = factory.CreateClient(); // Arranca el pipeline real: Program.cs migra y siembra.
+
+        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        var csb = new Npgsql.NpgsqlConnectionStringBuilder(connStr)
+        {
+            Database = SmokeDatabaseName
+        };
+        var inventoryOptions = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<Inventory.Module.Data.InventoryDbContext>()
+            .UseNpgsql(csb.ConnectionString)
+            .Options;
+
+        await using var inventoryDb = new Inventory.Module.Data.InventoryDbContext(inventoryOptions);
+
+        var product = await inventoryDb.Products.AsNoTracking().FirstOrDefaultAsync(p => p.IsCashAdvance);
+        Assert.NotNull(product);
+        Assert.Equal(0m, product!.StockQuantity);
+        Assert.Equal(0m, product.ReservedQuantity);
+        Assert.Equal(0, await inventoryDb.StockMovements.CountAsync(sm => sm.ProductId == product.Id));
+    }
 }
