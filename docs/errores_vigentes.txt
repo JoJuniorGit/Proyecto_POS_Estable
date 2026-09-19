@@ -9,9 +9,9 @@ Nota: docs/reporte.txt se conserva 100% intacto como archivo histórico de traza
 
 RESUMEN EJECUTIVO DE ESTADO:
 --------------------------------------------------------------------------------
-Auditoría de código (AUD): 3 hallazgos activos (AUD-10, AUD-11, AUD-13); 10 resueltos/cerrados (AUD-01..AUD-09, AUD-12) y 1 resuelto parcial (AUD-14)
+Auditoría de código (AUD): 3 hallazgos activos (AUD-10, AUD-13, AUD-15); 11 resueltos/cerrados (AUD-01..AUD-09, AUD-11, AUD-12) y 1 resuelto parcial (AUD-14)
 - Código Muerto: 0 activos (AUD-01, AUD-02, AUD-03 resueltos)
-- Malas Prácticas / Violaciones a Normas: 2 activos (AUD-10, AUD-11); resueltos (AUD-05, AUD-06, AUD-07, AUD-08, AUD-09)
+- Malas Prácticas / Violaciones a Normas: 2 activos (AUD-10, AUD-15); resueltos (AUD-05, AUD-06, AUD-07, AUD-08, AUD-09, AUD-11)
 - Oportunidades de Optimización: 1 activo (AUD-13) y 1 resuelto parcial (AUD-14)
 
 Auditoría de costuras (SEAM, ANEXO 8.142 sección H): 1 hallazgo activo (SEAM-01); 4 resueltos (SEAM-02..SEAM-05)
@@ -116,7 +116,7 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 - Recomendación: Crear DTOs/records fuertemente tipados (e.g. `MessageResponseDto`, `HealthStatusDto`, `PairingClaimResponseDto`, `VersionCheckResponseDto`) y utilizarlos como tipos de retorno de las acciones.
 - Nota (esta unidad de trabajo): [AUD-05.1] RESUELTO — `AuthController.LogoutAsync` y
   `ChangePasswordAsync` devuelven `MessageResponseDto` (Core.DTOs) en lugar de `new { Message }`,
-  conservando el JSON `{"message": ...}`. El resto de los controladores listados sigue pendiente.
+  conservando el JSON `{"message": ...}`. El resto de los controladores listados quedó migrado en 6c01349; con ello, el hallazgo queda cerrado en su totalidad.
 
 --------------------------------------------------------------------------------
 
@@ -189,7 +189,7 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 --------------------------------------------------------------------------------
 
 [AUD-11] MEDIA — Constructores de prueba con instanciación manual (new) y acoplamiento a DbContext (Deuda D1)
-- Estado: ACTIVO
+- Estado: RESUELTO (76aba00)
 - Severidad: MEDIA
 - Ubicación:
   * Backend.API/Controllers/CashDrawerController.cs: líneas 49-65
@@ -199,6 +199,25 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 - Regla: clean-architecture ("Dependency Injection: All services must be injected through the constructor").
 - Descripción: Los controladores auditados conservan constructores sobrecargados de retrocompatibilidad para pruebas que reciben `SalesDbContext` o `InventoryDbContext` e instancian servicios mediante `new`. Si bien los constructores de producción usan inyección pura, estos constructores secundarios perpetúan la dependencia directa de la capa de presentación sobre `DbContext`.
 - Recomendación: Re-apuntar los tests unitarios para usar mocks o instancias de los servicios y eliminar los constructores que reciben `DbContext`.
+- Resolución (76aba00): los cuatro controladores (CashDrawer, ExchangeRate, Settings, Users) ya no
+  declaran constructor que reciba `DbContext`; los 24 call sites de prueba se re-apuntaron mediante
+  el nuevo helper test-only `CommandCenter.Tests/Builders/ControllerFactory.cs`, que reconstruye
+  cada controlador a través de su constructor real de DI.
+- Guarda estructural: `CommandCenter.Tests/Unit/ControllerConstructionTests.cs`
+  (`Controller_DoesNotDeclareDbContextConstructor`, una teoría sobre diez controladores) impide que
+  cualquier controlador reintroduzca un constructor con `DbContext`.
+- Lección de auditoría: un grep de texto por `new XController(` no alcanza; un call site usaba
+  `new(...)` con tipo objetivo (target-typed new) y solo lo detectó el compilador.
+
+--------------------------------------------------------------------------------
+
+[AUD-15] MEDIA — Inyección directa de DbContext en HealthController
+- Estado: ACTIVO
+- Severidad: MEDIA
+- Ubicación: Backend.API/Controllers/HealthController.cs (constructor)
+- Regla: clean-architecture y docs/coding-guidelines-backend.md §2.3
+- Descripción: es el único controller que conserva inyección directa de `SalesDbContext` e `InventoryDbContext` en su constructor de DI para ejecutar las sondas de conectividad y de migraciones. No es el patrón de AUD-11 (no hay constructor secundario de prueba: es el constructor de producción), pero pertenece a la misma familia arquitectónica que AUD-04: la capa de presentación no debería conocer EF Core. Fue detectado al implementar AUD-11 y se dejó fuera de alcance deliberadamente para no ampliar esa unidad de trabajo.
+- Recomendación: extraer las sondas a un servicio de aplicación (`IHealthProbeService` o equivalente) o usar `IDbContextFactory` desde una capa de infraestructura, y dejar el controller sin referencias a EF.
 
 ================================================================================
 3. OPORTUNIDADES DE OPTIMIZACIÓN Y RENDIMIENTO
@@ -346,16 +365,16 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 ================================================================================
 - [VIG-01] Fuga de DbContext en Controladores: Resuelto en CashDrawer, Settings, ExchangeRate, Users, Receipts, Reservations y AuthController (AUD-04 cerrado: IAuthService/AuthService).
 - [VIG-02] ProductsController God Controller: Resuelto (341 líneas, dentro de rango).
-- [VIG-03] DTOs anidados en Controladores: Resuelto en CashDrawer, Shifts, DailyClosure. (Pendiente residual en PairingController: AUD-09).
+- [VIG-03] DTOs anidados en Controladores: Resuelto en CashDrawer, Shifts, DailyClosure. (Residual cerrado en 8.142: AUD-09 resuelto en 056f527).
 - [VIG-04] Construcción manual de entidades en ProductsController: Resuelto.
-- [VIG-05] Contratos anónimos en API: Resuelto en Settings, ExchangeRate, Sales.Customers, Reservations, Products.ImportExport. (Pendiente residual: AUD-05).
+- [VIG-05] Contratos anónimos en API: Resuelto en Settings, ExchangeRate, Sales.Customers, Reservations, Products.ImportExport. (Residual cerrado en 8.142: AUD-05 resuelto en 30f4243/32a3248/6c01349).
 - [VIG-06] Exposición de entidades en IPaymentMethodService: Resuelto.
 - [VIG-07] Contrato de IInventoryService con entidad mutable: Mitigado con IProductManagementService (Pendiente residual en interfaz base: AUD-10).
 - [VIG-08] Concurrencia Optimista con doble token: Falso positivo verificado (xmin único).
 - [VIG-09] Sync-over-async en apagado WPF: Resuelto en 8.6-B5.
-- [VIG-10] RFC 7807 en Controladores: Resuelto en la mayoría de controladores (Pendiente residual: AUD-08).
-- [VIG-11] Omisión de CancellationToken: Resuelto en la mayoría de endpoints (Pendiente residual: AUD-06).
-- [VIG-12] Omisión del sufijo Async: Resuelto en la mayoría de endpoints (Pendiente residual: AUD-07).
+- [VIG-10] RFC 7807 en Controladores: Resuelto en la mayoría de controladores (Residual cerrado en 8.142: AUD-08 resuelto en 056f527).
+- [VIG-11] Omisión de CancellationToken: Resuelto en la mayoría de endpoints (Residual cerrado en 8.142: AUD-06 resuelto en 056f527).
+- [VIG-12] Omisión del sufijo Async: Resuelto en la mayoría de endpoints (Residual cerrado en 8.142: AUD-07 resuelto en 32a3248).
 - [VIG-13] Estilos inline con valores fijos en React: Resuelto al 100% con variables CSS.
 - [VIG-14] Magic Strings en Cierre: Resuelto.
 - [VIG-15] Comentarios explicativos: Resuelto y política alineada en AGENTS.md §8.142.
