@@ -137,7 +137,7 @@ public class ProductService : IProductService
         var url = $"api/products?filter={System.Uri.EscapeDataString(filter ?? string.Empty)}&page={page}&pageSize={pageSize}";
         if (!string.IsNullOrWhiteSpace(statusFilter))
         {
-            url += $"&status={System.Uri.EscapeDataString(statusFilter)}";
+            url += $"&statusFilter={System.Uri.EscapeDataString(statusFilter)}";
         }
         if (!string.IsNullOrWhiteSpace(sortBy))
         {
