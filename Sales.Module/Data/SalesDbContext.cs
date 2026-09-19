@@ -178,10 +178,6 @@ modelBuilder.Entity<User>().HasData(
             .HasDatabaseName("IX_CashDrawerSessions_SingleOpen");
 
         modelBuilder.Entity<CashTransaction>()
-            .HasIndex(t => t.SessionId)
-            .HasDatabaseName("IX_CashTransactions_SessionId");
-
-        modelBuilder.Entity<CashTransaction>()
             .HasIndex(t => t.TransactionTime)
             .HasDatabaseName("IX_CashTransactions_TransactionTime");
 
