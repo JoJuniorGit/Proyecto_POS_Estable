@@ -15,14 +15,16 @@ using static CommandCenter.Tests.Unit.ClientHttpContractGuard;
 namespace CommandCenter.Tests.Unit;
 
 /// <summary>
-/// Guardas de costura cliente/servidor para los call sites HTTP restantes de Desktop.Client (SEAM-01).
-/// Por cada llamada: (a) la ruta y el metodo HTTP deben coincidir con la accion del controlador que la
-/// sirve; el literal del test se conserva por legibilidad y ademas se contrasta mecanicamente contra la
-/// plantilla derivada de los atributos [Route]/HttpGet/HttpPost/... reales del controlador, de modo que
-/// una deriva de ruta o de metodo en el backend sin actualizar al cliente pone la guarda en rojo; y (b)
-/// toda clave de query enviada debe ser bindeable por esa accion ([FromQuery]/[FromRoute], parametros
-/// simples o placeholders de ruta). Complementa a ProductServiceQueryContractTests (catalogo ya
-/// cubierto). Nace del mismo modo de falla que el bug 8.142 (cliente envia "status", backend bindea
+/// Guardas de costura cliente/servidor para los call sites HTTP de los servicios y ViewModels del
+/// cliente WPF (SEAM-01). Por cada llamada: (a) la ruta y el metodo HTTP deben coincidir con la accion
+/// del controlador que la sirve; el literal del test se conserva por legibilidad y ademas se contrasta
+/// mecanicamente contra la plantilla derivada de los atributos [Route]/HttpGet/HttpPost/... reales del
+/// controlador, de modo que una deriva de ruta o de metodo en el backend sin actualizar al cliente pone
+/// la guarda en rojo; y (b) toda clave de query enviada debe ser bindeable por esa accion
+/// ([FromQuery]/[FromRoute], parametros simples o placeholders de ruta). Complementa a
+/// ProductServiceQueryContractTests (contrato de query de GetPagedAsync y guardas de shape/
+/// entity-boundary); aqui quedan ancladas tambien rutas y query del resto del catalogo. Nace del mismo
+/// modo de falla que el bug 8.142 (cliente envia "status", backend bindea
 /// "statusFilter": filtro ignorado en silencio, sin error y sin test rojo).
 /// Excepciones documentadas (no se falsean guardas):
 /// - SubnetScannerService: sondea hosts LAN arbitrarios; no esta atado a un controlador.
@@ -585,6 +587,144 @@ public class ClientHttpContractTests
         await handler.WaitForCountAsync(1);
 
         AssertRequest(Assert.Single(handler.Requests), HttpMethod.Get, "/health", typeof(HealthController), nameof(HealthController.CheckHealthAsync));
+    }
+
+    // ── ProductService ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Product_GetByIdAsync_GetsProductIdRoute()
+    {
+        var requests = await CaptureAsync<ProductService>(c => new ProductService(c), s => s.GetByIdAsync(42));
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Get, "/api/products/42", typeof(ProductsController), nameof(ProductsController.GetByIdAsync));
+    }
+
+    [Fact]
+    public async Task Product_CreateAsync_PostsToProductsRoute()
+    {
+        var requests = await CaptureAsync<ProductService>(
+            c => new ProductService(c),
+            s => s.CreateAsync(new CreateProductDto { Name = "Arroz", SKU = "ARROZ-1" }));
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Post, "/api/products", typeof(ProductsController), nameof(ProductsController.CreateAsync));
+    }
+
+    [Fact]
+    public async Task Product_UpdateAsync_PutsToProductIdRoute()
+    {
+        var requests = await CaptureAsync<ProductService>(
+            c => new ProductService(c),
+            s => s.UpdateAsync(new UpdateProductDto { Id = 42, Name = "Arroz editado" }));
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Put, "/api/products/42", typeof(ProductsController), nameof(ProductsController.UpdateAsync));
+    }
+
+    [Fact]
+    public async Task Product_SetStatusAsync_PutsToStatusRoute()
+    {
+        var requests = await CaptureAsync<ProductService>(c => new ProductService(c), s => s.SetStatusAsync(42, isActive: true, isDeleted: false));
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Put, "/api/products/42/status", typeof(ProductsController), nameof(ProductsController.SetStatusAsync));
+    }
+
+    [Fact]
+    public async Task Product_DeleteAsync_SendsOnlyBindableHardDelete()
+    {
+        var requests = await CaptureAsync<ProductService>(c => new ProductService(c), s => s.DeleteAsync(42, hardDelete: true));
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Delete, "/api/products/42", typeof(ProductsController), nameof(ProductsController.DeleteAsync), "hardDelete");
+    }
+
+    [Fact]
+    public async Task Product_RestoreAsync_PostsToRestoreRoute()
+    {
+        var requests = await CaptureAsync<ProductService>(c => new ProductService(c), s => s.RestoreAsync(42));
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Post, "/api/products/42/restore", typeof(ProductsController), nameof(ProductsController.RestoreAsync));
+    }
+
+    [Fact]
+    public async Task Product_AdjustStockAsync_PostsToAdjustStockRoute()
+    {
+        var requests = await CaptureAsync<ProductService>(c => new ProductService(c), s => s.AdjustStockAsync(42, -3m, "Merma"));
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Post, "/api/products/42/adjust-stock", typeof(ProductsController), nameof(ProductsController.AdjustStockAsync));
+    }
+
+    [Fact]
+    public async Task Product_GetQuickInfoAsync_GetsQuickCheckRoute()
+    {
+        var requests = await CaptureAsync<ProductService>(c => new ProductService(c), s => s.GetQuickInfoAsync("ARROZ-1"));
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Get, "/api/products/quick-check/ARROZ-1", typeof(ProductsController), nameof(ProductsController.GetQuickInfoAsync));
+    }
+
+    [Fact]
+    public async Task Product_GetSuggestionsAsync_SendsOnlyBindableSuggestionFilters()
+    {
+        var requests = await CaptureAsync<ProductService>(
+            c => new ProductService(c),
+            s => s.GetSuggestionsAsync("arroz", activeOnly: true, CancellationToken.None),
+            payload: "[]");
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Get, "/api/products/suggestions", typeof(ProductsController), nameof(ProductsController.GetSuggestionsAsync), "filter", "activeOnly");
+    }
+
+    [Fact]
+    public async Task Product_GetPagedAsync_SendsOnlyBindableCatalogFilters()
+    {
+        var requests = await CaptureAsync<ProductService>(
+            c => new ProductService(c),
+            s => s.GetPagedAsync("arroz", 2, 25, statusFilter: "active", sortBy: "name", isDescending: true));
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Get, "/api/products", typeof(ProductsController), nameof(ProductsController.GetAllAsync), "filter", "page", "pageSize", "statusFilter", "sortBy", "isDescending");
+    }
+
+    [Fact]
+    public async Task Product_GetVariantsAsync_GetsVariantsRoute()
+    {
+        var requests = await CaptureAsync<ProductService>(c => new ProductService(c), s => s.GetVariantsAsync(42), payload: "[]");
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Get, "/api/products/42/variants", typeof(ProductsController), nameof(ProductsController.GetVariantsAsync));
+    }
+
+    [Fact]
+    public async Task Product_GetParentsAsync_GetsParentsRoute()
+    {
+        var requests = await CaptureAsync<ProductService>(c => new ProductService(c), s => s.GetParentsAsync(), payload: "[]");
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Get, "/api/products/parents", typeof(ProductsController), nameof(ProductsController.GetParentsAsync));
+    }
+
+    [Fact]
+    public async Task Product_GetCandidateVariantsPagedAsync_SendsOnlyBindablePagingAndFilter()
+    {
+        var requests = await CaptureAsync<ProductService>(
+            c => new ProductService(c),
+            s => s.GetCandidateVariantsPagedAsync(42, "arroz", 2, 25, CancellationToken.None));
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Get, "/api/products/42/candidate-variants", typeof(ProductsController), nameof(ProductsController.GetCandidateVariantsAsync), "filter", "page", "pageSize");
+    }
+
+    [Fact]
+    public async Task Product_LinkVariantsBatchAsync_PostsToLinkVariantsRoute()
+    {
+        var requests = await CaptureAsync<ProductService>(
+            c => new ProductService(c),
+            s => s.LinkVariantsBatchAsync(42, new List<int> { 1, 2 }, CancellationToken.None),
+            payload: "[]");
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Post, "/api/products/42/link-variants", typeof(ProductsController), nameof(ProductsController.LinkVariantsBatchAsync));
+    }
+
+    [Fact]
+    public async Task Product_UnlinkVariantAsync_PostsToUnlinkVariantRoute()
+    {
+        var requests = await CaptureAsync<ProductService>(
+            c => new ProductService(c),
+            s => s.UnlinkVariantAsync(42, 7, CancellationToken.None));
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Post, "/api/products/42/unlink-variant/7", typeof(ProductsController), nameof(ProductsController.UnlinkVariantAsync));
     }
 
     // ── ProductImportService ───────────────────────────────────────────────
