@@ -22,7 +22,7 @@ Para el detalle completo, consulta siempre el archivo core `docs/coding-guidelin
 
 -   **Integridad:** Solo `decimal` para dinero. Nunca recalcules historial con tasa actual.
 -   **Datos:** Entidades EF nunca al cliente (usa DTOs). Usa `AsNoTracking` y `AsSplitQuery`.
--   **Código:** Sin `async void` en servicios. Sin comentarios explicativos (usa nombres expresivos).
+-   **Código:** Sin `async void` en servicios. Comentarios explicativos permitidos: documentá el *por qué* cuando no se lee del código o cuando haya una decisión/trazabilidad que preservar; evitá narrar lo obvio y no repitas el nombre del método. Los marcadores `8.x-*` se conservan.
 -   **Seguridad:** RBAC estricto (`Driver` bloqueado en ventas/caja). Errores vía `ProblemDetails`.
 
 ## Done (Checklist)
@@ -31,3 +31,12 @@ Para el detalle completo, consulta siempre el archivo core `docs/coding-guidelin
 -   [ ] `dotnet test` y `npm test` (si aplica) al 100%.
 -   [ ] Cobertura: Core ≥0.70, Sales ≥0.80, Inventory ≥0.72.
 -   [ ] ANEXO registrado en `docs/reporte.txt`.
+
+## Commits, Hooks y `--no-verify`
+
+-   **Hooks versionados:** viven en `.githooks/`. Activación por clon: `git config core.hooksPath .githooks`.
+-   **`pre-commit`:** sin revisión con IA. Reservado para checks rápidos y deterministas (segundos), nunca minutos.
+-   **`pre-push`:** ejecuta `gga run --pr-mode --diff-only` (revisión con IA una vez por push/work unit, no por commit). Si no hay rama base detectable (`main`/`master`/`develop`), cae a `gga run --ci`.
+-   **`--no-verify`:** se permite solo con autorización explícita del mantenedor. Casos válidos: (a) GGA reporta hallazgos preexistentes fuera del alcance del work unit; (b) el review excede el presupuesto de tiempo del commit.
+-   **Evidencia sustituta obligatoria** al usar `--no-verify`: `dotnet build CommandCenter.slnx -c Release` (0/0), `dotnet test` al 100%, `npm test` + `npm run lint` si toca Web, y `scripts/check-coverage.py` dentro de umbral.
+-   **Registro:** la excepción se documenta en la sección GGA del ANEXO correspondiente en `docs/reporte.txt`, indicando qué se corrió y qué no. Nunca afirmar un veredicto de GGA que no se ejecutó hasta completitud.

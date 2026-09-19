@@ -27,7 +27,7 @@ POS: verificación de que NUESTRO CÓDIGO (no el tuyo) cumple las guías antes d
      precio unitario Bs.S con `ToBsSCeiling` 8.104, snapshots, vuelto, arqueo) — BLOQUEANTE.
    - Aislamiento Entidad → DTO (sin exponer entidades de EF, sin doble fetch) — BLOQUEANTE.
    - Seguridad/RBAC/API (sin filtrar ex.Message, camelCase JSON, RFC 7807) — BLOQUEANTE si aplica.
-   - Convenciones de código: sin comentarios explicativos salvo que se pidan;
+   - Convenciones de código: comentarios explicativos permitidos (evitá narrar lo obvio);
      nomenclatura de tests `Metodo_Escenario_ResultadoEsperado`; sin estilos inline en
      JSX nuevo (clases/tokens); WPF MVVM sin UI en code-behind; anti-god-objects.
    - Coherencia EF: migración obligatoria para cambios de modelo, verificación por el
