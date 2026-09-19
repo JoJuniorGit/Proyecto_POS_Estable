@@ -59,7 +59,17 @@ public partial class InventoryService : IProductManagementService, IReservationS
     public async Task<Product> CreateProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default)
     {
         EnsureCatalogMutationPermission();
+        return await CreateProductCoreAsync(product, cancellationToken);
+    }
 
+    // System-internal provisioning (e.g. the cash-advance infrastructure product) must not require the acting user's catalog permission.
+    public async Task<Product> CreateSystemProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default)
+    {
+        return await CreateProductCoreAsync(product, cancellationToken);
+    }
+
+    private async Task<Product> CreateProductCoreAsync(Product product, System.Threading.CancellationToken cancellationToken)
+    {
         if (product.IsCashAdvance)
         {
             if (product.IsGroupHeader)

@@ -8,6 +8,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Core.Entities;
 using Core.Interfaces;
 using Desktop.Client.ViewModels;
+using Inventory.Module.Data;
+using Inventory.Module.Services;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
@@ -34,6 +36,14 @@ public class CashAdvanceTests
             .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         return new SalesDbContext(options);
+    }
+
+    private InventoryDbContext GetInMemoryInventoryDbContext()
+    {
+        var options = new DbContextOptionsBuilder<InventoryDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+        return new InventoryDbContext(options);
     }
 
     private ServerCashService.CashAdvanceCoordinator CreateCoordinatorWithSalesService(SalesDbContext context, ISystemSettingsService? settingsService = null)
@@ -436,5 +446,44 @@ public class CashAdvanceTests
         Assert.Null(vm.CommissionAmountBsS);
         Assert.Null(vm.TotalToChargeBsS);
         Assert.False(vm.CanConfirm);
+    }
+
+    [Fact]
+    public async Task CreateCashAdvanceSale_WhenCashierAndInfrastructureProductMissing_ProvisionsProductWithoutCatalogPermission()
+    {
+        using var salesContext = GetInMemoryDbContext();
+        using var inventoryContext = GetInMemoryInventoryDbContext();
+
+        var cashier = new MockCurrentUserService { UserRole = UserRole.Cashier };
+        var inventoryService = new InventoryService(inventoryContext, cashier);
+
+        var salesService = new SalesService(
+            salesContext,
+            inventoryService,
+            new Mock<IMediator>().Object,
+            new Mock<ICashDrawerService>().Object,
+            new Mock<ISystemSettingsService>().Object);
+
+        var sale = await salesService.CreateCashAdvanceSaleAsync(
+            requestedAmountLocal: 1000m,
+            commissionAmountLocal: 70m,
+            paymentMethodId: 2,
+            paymentMethodName: "Transferencia",
+            isTransfer: true,
+            exchangeRate: 50m);
+
+        Assert.NotNull(sale);
+
+        var provisioned = Assert.Single(inventoryContext.Products.Where(p => p.SKU == "ADV-001"));
+        Assert.True(provisioned.IsCashAdvance);
+        Assert.Equal(0m, provisioned.StockQuantity);
+
+        var saleItem = await salesContext.SaleItems.FirstAsync(si => si.SaleId == sale.Id);
+        Assert.Equal(provisioned.Id, saleItem.ProductId);
+
+        // System provisioning must not grant the cashier catalog mutation rights.
+        var directEx = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => inventoryService.CreateProductAsync(
+            new Product { Name = "Manual", SKU = "MAN-001", CostPriceUSD = 1m, PriceRetailUSD = 2m }));
+        Assert.Contains("no tiene permisos para modificar el catálogo", directEx.Message);
     }
 }

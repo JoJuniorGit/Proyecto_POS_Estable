@@ -19,6 +19,7 @@ public interface IInventoryService
     void InvalidateProductSkuCache(string sku);
     void InvalidateAllProductCaches();
     Task<Product> CreateProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default);
+    Task<Product> CreateSystemProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default);
     Task UpdateProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default);
     Task SetProductStatusAsync(int id, bool isActive, bool isDeleted, System.Threading.CancellationToken cancellationToken = default);
     Task<string> DeleteProductAsync(int id, bool forceHardDelete = false, System.Threading.CancellationToken cancellationToken = default);

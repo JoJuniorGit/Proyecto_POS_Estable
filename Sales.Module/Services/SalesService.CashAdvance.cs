@@ -45,7 +45,7 @@ public partial class SalesService
                 }
                 else
                 {
-                    var newP = await _inventoryService.CreateProductAsync(new Product
+                    var newP = await _inventoryService.CreateSystemProductAsync(new Product
                     {
                         Name = "Adelanto de Efectivo",
                         SKU = "ADV-001",
