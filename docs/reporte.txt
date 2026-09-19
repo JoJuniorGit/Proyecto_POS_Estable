@@ -10713,9 +10713,10 @@ E1. Se levanta la prohibicion de comentarios explicativos en AGENTS.md (y en
     convencion de trazabilidad del propio repo y alimentaba el ciclo de
     --no-verify (un gate siempre en rojo deja de ser gate).
 E2. Hooks versionados en .githooks/. pre-commit queda sin revision con IA (solo
-    checks rapidos y deterministas); pre-push ejecuta `gga run --pr-mode
-    --diff-only` (o `gga run --ci` si no hay rama base detectable): una corrida por
-    push/work unit en lugar de una por commit.
+    checks rapidos y deterministas); GGA en pre-push es OPT-IN: por defecto el push
+    no corre revision con IA (decision del mantenedor), y se activa con
+    `git config gga.prePush true` (`gga run --pr-mode --diff-only`, o `gga run --ci`
+    si no hay rama base detectable). Bypass puntual: `git push --no-verify`.
 E3. .gitattributes: `.githooks/* text eol=lf`. Sin esto, `* text=auto` haria
     checkout con CRLF en Windows y los hooks fallarian al ejecutarse con sh.
 E4. Protocolo de --no-verify en AGENTS.md: requiere autorizacion explicita del
