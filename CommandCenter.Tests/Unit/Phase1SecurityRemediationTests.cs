@@ -1,13 +1,13 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using Backend.API.Services;
 using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
-using Inventory.Module.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -105,13 +105,13 @@ public class Phase1SecurityRemediationTests
     public async Task HealthCheck_DoesNotExposeMachineNameOrDbExceptions()
     {
         // Arrange
-        using var db = CreateInMemorySalesDbContext();
-        var inventoryDb = new InventoryDbContext(
-            new DbContextOptionsBuilder<InventoryDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var salesProbe = new Mock<ISalesHealthProbe>();
+        salesProbe.Setup(p => p.CanConnectAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var inventoryProbe = new Mock<IInventoryHealthProbe>();
         var config = new ConfigurationBuilder().AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>()).Build();
         var env = new Mock<IWebHostEnvironment>();
         env.SetupGet(e => e.ContentRootPath).Returns(AppContext.BaseDirectory);
-        var controller = new HealthController(db, inventoryDb, config, env.Object, new Backend.API.Metrics.RequestMetricsRegistry());
+        var controller = new HealthController(salesProbe.Object, inventoryProbe.Object, config, env.Object, new Backend.API.Metrics.RequestMetricsRegistry());
 
         // Act
         var result = await controller.CheckHealth();

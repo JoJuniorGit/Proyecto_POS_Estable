@@ -5,32 +5,30 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Backend.API.DTOs;
-using Inventory.Module.Data;
-using Sales.Module.Data;
+using Core.Interfaces;
 
 namespace Backend.API.Controllers;
 
 [ApiController]
 public class HealthController : ControllerBase
 {
-    private readonly SalesDbContext _salesDb;
-    private readonly InventoryDbContext _inventoryDb;
+    private readonly ISalesHealthProbe _salesHealthProbe;
+    private readonly IInventoryHealthProbe _inventoryHealthProbe;
     private readonly IConfiguration _configuration;
     private readonly IWebHostEnvironment _environment;
     private readonly Backend.API.Metrics.RequestMetricsRegistry _requestMetrics;
 
     public HealthController(
-        SalesDbContext salesDb,
-        InventoryDbContext inventoryDb,
+        ISalesHealthProbe salesHealthProbe,
+        IInventoryHealthProbe inventoryHealthProbe,
         IConfiguration configuration,
         IWebHostEnvironment environment,
         Backend.API.Metrics.RequestMetricsRegistry requestMetrics)
     {
-        _salesDb = salesDb;
-        _inventoryDb = inventoryDb;
+        _salesHealthProbe = salesHealthProbe;
+        _inventoryHealthProbe = inventoryHealthProbe;
         _configuration = configuration;
         _environment = environment;
         _requestMetrics = requestMetrics;
@@ -43,7 +41,7 @@ public class HealthController : ControllerBase
     {
         try
         {
-            bool canConnect = await _salesDb.Database.CanConnectAsync(cancellationToken);
+            bool canConnect = await _salesHealthProbe.CanConnectAsync(cancellationToken);
             if (canConnect)
             {
                 // 8.9-L9: el endpoint de salud es anónimo (lo usan el escaneo LAN y el polling
@@ -112,20 +110,9 @@ public class HealthController : ControllerBase
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> GetDetailsAsync(CancellationToken cancellationToken = default)
     {
-        var applied = await _salesDb.Database.GetAppliedMigrationsAsync(cancellationToken);
-        var pending = _salesDb.Database.GetMigrations().Except(applied);
-
-        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
-        decimal? bcvToday = await _inventoryDb.ExchangeRateHistory
-            .AsNoTracking()
-            .Where(e => e.Date == today)
-            .Select(e => (decimal?)e.Rate)
-            .FirstOrDefaultAsync(cancellationToken);
-        decimal? bcvLatest = await _inventoryDb.ExchangeRateHistory
-            .AsNoTracking()
-            .OrderByDescending(e => e.Date)
-            .Select(e => (decimal?)e.Rate)
-            .FirstOrDefaultAsync(cancellationToken);
+        var (migrationsApplied, pendingMigrations) = await _salesHealthProbe.GetMigrationStatusAsync(cancellationToken);
+        decimal? bcvToday = await _inventoryHealthProbe.GetTodayRateAsync(cancellationToken);
+        decimal? bcvLatest = await _inventoryHealthProbe.GetLatestRateAsync(cancellationToken);
 
         DateTime? certExpiryUtc = ResolveCertificateExpiry();
         var (lastBackupUtc, lastBackupAgeMinutes, lastBackupFresh) = ResolveLastBackup();
@@ -133,8 +120,8 @@ public class HealthController : ControllerBase
         return Ok(new HealthDetailsDto
         {
             Status = "Healthy",
-            MigrationsApplied = applied.Count(),
-            PendingMigrations = pending.Count(),
+            MigrationsApplied = migrationsApplied,
+            PendingMigrations = pendingMigrations,
             BcvTodayRate = bcvToday,
             BcvLatestRate = bcvLatest,
             BcvFreshToday = bcvToday.HasValue,

@@ -43,6 +43,8 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
         builder.Services.AddScoped<ITimeZoneProvider, Core.Services.TimeZoneProvider>();
         builder.Services.AddScoped<IExchangeRateHistoryService, ExchangeRateHistoryService>();
+        builder.Services.AddScoped<IInventoryHealthProbe, InventoryHealthProbe>();
+        builder.Services.AddScoped<ISalesHealthProbe, Sales.Module.Services.SalesHealthProbe>();
         builder.Services.AddScoped<IUserService, Sales.Module.Services.UserService>();
         builder.Services.AddScoped<Core.Interfaces.IAuthService, Sales.Module.Services.AuthService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.ISalesService, Sales.Module.Services.SalesService>();

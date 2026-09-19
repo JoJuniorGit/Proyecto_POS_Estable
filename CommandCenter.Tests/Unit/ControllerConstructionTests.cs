@@ -76,6 +76,21 @@ public class ControllerConstructionTests
         Assert.DoesNotContain(parameterTypeNames, name => name.Contains("DbContext", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void HealthController_PublicConstructor_ReferencesNoEfCoreTypes()
+    {
+        // AUD-15 regression guard: the health probes are consumed through Core.Interfaces, so the
+        // controller constructor must not bind any EF Core type (DbContext included).
+        var parameterTypes = typeof(HealthController)
+            .GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            .SelectMany(c => c.GetParameters())
+            .Select(p => p.ParameterType);
+
+        Assert.DoesNotContain(parameterTypes, t =>
+            t.Name.Contains("DbContext", StringComparison.Ordinal)
+            || (t.Namespace ?? string.Empty).StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal));
+    }
+
     public static TheoryData<Type> ControllersThatMustNotBindDbContext() => new()
     {
         typeof(CashDrawerController),
@@ -88,6 +103,7 @@ public class ControllerConstructionTests
         typeof(ShiftsController),
         typeof(ReceiptsController),
         typeof(ReservationsController),
+        typeof(HealthController),
     };
 
     public static TheoryData<Type> ControllersUnderConstructorGuard()
