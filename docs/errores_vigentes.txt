@@ -9,9 +9,9 @@ Nota: docs/reporte.txt se conserva 100% intacto como archivo histórico de traza
 
 RESUMEN EJECUTIVO DE ESTADO:
 --------------------------------------------------------------------------------
-Auditoría de código (AUD): 2 hallazgos activos (AUD-13, AUD-21); 18 resueltos/cerrados (AUD-01..AUD-12, AUD-15, AUD-16..AUD-20) y 1 resuelto parcial (AUD-14)
+Auditoría de código (AUD): 3 hallazgos activos (AUD-13, AUD-22, AUD-23); 19 resueltos/cerrados (AUD-01..AUD-12, AUD-15..AUD-21) y 1 resuelto parcial (AUD-14)
 - Código Muerto: 0 activos (AUD-01, AUD-02, AUD-03, AUD-17 resueltos)
-- Malas Prácticas / Violaciones a Normas: 1 activo (AUD-21); resueltos (AUD-05..AUD-11, AUD-15, AUD-16, AUD-18, AUD-19, AUD-20)
+- Malas Prácticas / Violaciones a Normas: 2 activos (AUD-22, AUD-23); resueltos (AUD-05..AUD-11, AUD-15, AUD-16, AUD-18..AUD-21)
 - Oportunidades de Optimización: 1 activo (AUD-13) y 1 resuelto parcial (AUD-14)
 
 Auditoría de costuras (SEAM, ANEXO 8.142 sección H): 0 hallazgos activos; 5 resueltos (SEAM-01..SEAM-05)
@@ -19,8 +19,8 @@ Auditoría de costuras (SEAM, ANEXO 8.142 sección H): 0 hallazgos activos; 5 re
 
 Residuales e infraestructura (INFRA): 3 registros (INFRA-01..INFRA-03; INFRA-01 activo, INFRA-02/03 informativos)
 
-TOTAL REGISTROS ACTIVOS: 5 (2 AUD + 0 SEAM + 3 INFRA; AUD-14 queda como resuelto parcial)
-- Defectos de código activos en sentido estricto: 2 (AUD-13 y AUD-21)
+TOTAL REGISTROS ACTIVOS: 6 (3 AUD + 0 SEAM + 3 INFRA; AUD-14 queda como resuelto parcial)
+- Defectos de código activos en sentido estricto: 3 (AUD-13, AUD-22 y AUD-23)
 - INFRA: 3 registros (1 activo operativo, INFRA-01; 2 informativos, INFRA-02 e INFRA-03)
 
 Equivalencias (mismo hallazgo; no duplicar trabajo):
@@ -45,7 +45,7 @@ Estado de Hallazgos Previos (VIG-01..VIG-25):
 - 18 Resueltos en fases previas
 - 7 Verificados como falsos positivos o mitigados por arquitectura previa
 
-Pruebas Automatizadas Backend: 1.401 / 1.401 pasando (100% Green)
+Pruebas Automatizadas Backend: 1.406 / 1.406 pasando (100% Green)
 Pruebas Automatizadas Frontend: 287 / 287 pasando (100% Green)
 Compilación: dotnet build CommandCenter.slnx -c Release (0 errores, 0 warnings)
 Guardas de costura activas: ControllerConstructionTests, ProductServiceQueryContractTests,
@@ -295,12 +295,46 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 --------------------------------------------------------------------------------
 
 [AUD-21] MEDIA — El stock inicial de un producto nuevo no queda auditado
-- Estado: ACTIVO
+- Estado: RESUELTO (57c6853)
 - Severidad: MEDIA
 - Ubicación: Inventory.Module/Services/InventoryService.ProductCrud.cs (creación de producto)
 - Regla: docs/coding-guidelines-core.md §1 Pilar 6 (Observabilidad y Resiliencia) — todo cambio de stock debe quedar registrado en `StockMovements`.
 - Descripción: al crear un producto con stock inicial (ver AUD-16) no se escribe ninguna fila en `StockMovements`: la creación solo hace `Products.Add` + `SaveChanges`. Los únicos sitios que escriben movimientos son venta, reservas y ajustes, así que una carga inicial de stock hoy es invisible en la auditoría de inventario.
 - Recomendación: decidir el motivo/atribución del movimiento de carga inicial y escribirlo con un path dedicado, sin reusar `UpdateStockBatchAsync` (duplicaría el conteo, porque el stock ya se setea en la entidad).
+- Resolución (57c6853): `CreateProductCoreAsync` escribe UN `StockMovement` atómico (mismo `SaveChanges`) cuando el stock
+  FINAL es > 0: `QuantityChange = NewStockLevel = stock final`, `Reason = "Carga inicial"`, `UserId` = usuario
+  actuante, `SaleId = null`; sin tocar el stock ni reusar `UpdateStockBatchAsync`. Cubre altas de usuario (DTO
+  twin) y el path system-internal (`CreateSystemProductAsync`). Las reglas de stock forzado a 0 (grupo sin stock
+  compartido, variante de padre compartido, adelanto de efectivo) permanecen silenciosas: el producto sintético
+  del adelanto termina con stock 0 por regla, por lo que no emite movimiento (forzar +999999 dejaría el ledger
+  irreconciliable: entidad 0 vs movimiento +999999).
+
+--------------------------------------------------------------------------------
+
+[AUD-22] MEDIA — El seed de ADV-001 crea el producto de adelanto con stock 999999, sin auditoría y sin la regla de stock forzado a 0
+- Estado: ACTIVO
+- Severidad: MEDIA
+- Ubicación: Backend.API/Startup/DatabaseInitializer.cs: líneas 437-451
+- Regla: docs/coding-guidelines-core.md §1 Pilar 6 (todo cambio de stock debe quedar registrado) y la regla de
+  `InventoryService.ProductCrud.cs` que fuerza stock 0 al producto de adelanto de efectivo.
+- Descripción: el inicializador crea ADV-001 directo por el contexto con `StockQuantity = 999999`, salteando el
+  path auditado del servicio y la regla de stock forzado a 0; en una base nueva la entidad queda con 999999 y
+  cero movimientos (inconsistencia ledger/entidad, la misma clase que AUD-21).
+- Recomendación: unificar el seed con el path de servicio (`CreateSystemProductAsync`) o replicar sus reglas +
+  auditoría; decidir si la semilla debe forzar stock 0 como el path de servicio.
+
+--------------------------------------------------------------------------------
+
+[AUD-23] MEDIA — La importación masiva de productos ajusta stock sin escribir StockMovements
+- Estado: ACTIVO
+- Severidad: MEDIA
+- Ubicación: Inventory.Module/Services/InventoryService.Import.cs: líneas 203, 326 (alcanzable vía
+  ProductsController.ImportExport y la UI WPF de importación)
+- Regla: docs/coding-guidelines-core.md §1 Pilar 6 (todo cambio de stock debe quedar registrado).
+- Descripción: `BulkImportProductsAsync` crea productos con stock e incrementa stock existente sin registrar
+  movimientos; la auditoría de inventario queda incompleta por esta vía.
+- Recomendación: registrar movimientos agrupados por lote en el path de import (razón con identificador de
+  lote/importación) o documentar la excepción de forma explícita.
 
 ================================================================================
 3. OPORTUNIDADES DE OPTIMIZACIÓN Y RENDIMIENTO
