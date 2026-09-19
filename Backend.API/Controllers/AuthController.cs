@@ -137,11 +137,7 @@ public class AuthController : ControllerBase
 
         if (user.MustChangePassword)
         {
-            return StatusCode(403, new LoginResultDto
-            {
-                RequiresPasswordChange = true,
-                Message = "Debe cambiar su contraseña antes de continuar."
-            });
+            return this.ApiPasswordChangeRequired("Debe cambiar su contraseña antes de continuar.");
         }
 
         var platform = request.Platform;

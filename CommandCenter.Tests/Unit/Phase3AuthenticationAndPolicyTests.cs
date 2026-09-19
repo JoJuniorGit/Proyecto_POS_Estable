@@ -262,6 +262,39 @@ public class Phase3AuthenticationAndPolicyTests
     }
 
     [Fact]
+    public async Task Login_WithMustChangePassword_Returns403ProblemDetailsWithRequiresPasswordChangeFlag()
+    {
+        var context = TestDatabaseFactory.CreateSalesDbContext();
+        var user = new User
+        {
+            Id = 88,
+            Username = "cajero_temp",
+            Cedula = "V-50000001",
+            Name = "Cajero Temporal",
+            FullName = "Cajero Temporal",
+            PasswordHash = PasswordHasher.HashPassword("TempPass#1234"),
+            IsActive = true,
+            Role = UserRole.Cashier,
+            MustChangePassword = true
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var controller = new AuthController(context, Mock.Of<ITokenService>(), _policyService)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+
+        var result = await controller.Login(new LoginRequest { Cedula = "V-50000001", Password = "TempPass#1234" });
+
+        var objectResult = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.True(Assert.IsType<bool>(problemDetails.Extensions["requiresPasswordChange"]));
+        Assert.False(string.IsNullOrWhiteSpace(problemDetails.Extensions["message"]?.ToString()));
+    }
+
+    [Fact]
     public async Task MustChangePasswordMiddleware_BlocksProtectedEndpoints_WhenClaimIsTrue()
     {
         var middleware = new MustChangePasswordMiddleware(innerContext => Task.CompletedTask);

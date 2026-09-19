@@ -21,6 +21,16 @@ public static class ApiProblemResults
             StatusCode = StatusCodes.Status403Forbidden
         };
 
+    public static ObjectResult ApiPasswordChangeRequired(this ControllerBase controller, string? message = null, string? detail = null)
+    {
+        var pd = ProblemDetails(controller, StatusCodes.Status403Forbidden, "Forbidden", message ?? "Debe cambiar su contraseña antes de continuar.", detail);
+        pd.Extensions["requiresPasswordChange"] = true;
+        return new ObjectResult(pd)
+        {
+            StatusCode = StatusCodes.Status403Forbidden
+        };
+    }
+
     public static UnauthorizedObjectResult ApiUnauthorized(this ControllerBase controller, string? message = null, string? detail = null)
         => new(ProblemDetails(controller, StatusCodes.Status401Unauthorized, "Unauthorized", message ?? "No autorizado.", detail));
 

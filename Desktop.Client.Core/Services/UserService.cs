@@ -28,12 +28,12 @@ public class UserService : IUserService
             try
             {
                 var body = await response.Content.ReadAsStringAsync();
-                var err = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(body);
-                if (err != null && err.TryGetValue("requiresPasswordChange", out var requiresChangeValue) &&
-                    requiresChangeValue is bool requiresChange && requiresChange)
+                var err = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(body);
+                if (err != null && err.TryGetValue("requiresPasswordChange", out var requiresChange) &&
+                    requiresChange.ValueKind == System.Text.Json.JsonValueKind.True)
                 {
                     string msg = err.TryGetValue("message", out var messageValue)
-                        ? messageValue?.ToString() ?? string.Empty
+                        ? messageValue.ToString() ?? string.Empty
                         : "Debe cambiar su contraseña antes de continuar.";
                     return new LoginResultDto { RequiresPasswordChange = true, Message = msg };
                 }
