@@ -137,6 +137,12 @@ modelBuilder.Entity<User>().HasData(
             .HasIndex(i => i.SaleId)
             .HasDatabaseName("IX_SaleItems_SaleId");
 
+        // 8.142: reportes de rotacion y stock muerto por producto (Paso 15 de docs/Ideas.txt).
+        // Sin FK hacia Products: la entidad vive en InventoryDbContext y no hay FKs cross-context.
+        modelBuilder.Entity<SaleItem>()
+            .HasIndex(i => i.ProductId)
+            .HasDatabaseName("IX_SaleItems_ProductId");
+
         modelBuilder.Entity<SalePayment>()
             .HasIndex(p => p.SaleId)
             .HasDatabaseName("IX_SalePayments_SaleId");
