@@ -10618,7 +10618,7 @@ ANEXO - REVISION 8.142 (saneamiento VIG + hallazgos de review + movil web)
 ================================================================================
 
 Fecha: 2026-09-19
-Commits: 6 (ver seccion A), en rama V0.15 (sin branches/PRs).
+Commits: 7 (ver seccion A), en rama V0.15 (sin branches/PRs).
 
 Alcance: cierre del saneamiento de los 25 hallazgos de auditoria (VIG-01..VIG-25)
 mas los hallazgos surgidos del review de cumplimiento de estandares sobre el WIP:
@@ -10656,6 +10656,11 @@ A6. ce92d7d fix(8.142): las media queries del POS movil vivian en la capa CSS
     `1fr 340px` (carrito aplastado, vacio y con productos) y se mostraba la tabla
     de escritorio en vez de CartList. Se movieron las 5 reglas responsive a
     `components` y se regenero el bundle web (Backend.API/wwwroot).
+A7. 52b8eae chore(8.142): gga pasa de pre-commit a pre-push con hooks versionados
+    en `.githooks/` (activacion por clon: `git config core.hooksPath .githooks`);
+    comentarios explicativos permitidos en AGENTS.md y en el agente reviewer;
+    protocolo de `--no-verify` documentado. `.gitattributes` fija `eol=lf` para
+    los hooks (CRLF los rompe al ejecutarse con sh).
 
 B. VERIFICACION
 
@@ -10673,9 +10678,10 @@ B6. Fix de cascade layers verificado en el bundle compilado: la media query
 
 C. GGA (puntual --no-verify, mismo criterio que 8.140/8.141)
 
-C1. Los 6 commits se sellaron con --no-verify puntual, autorizado por el
-    mantenedor, porque el hook pre-commit ejecuta `gga run` (v2.10.1) y su review
-    excede el presupuesto de tiempo por commit.
+C1. Los commits A1..A6 se sellaron con --no-verify puntual, autorizado por el
+    mantenedor, porque el hook pre-commit ejecutaba `gga run` (v2.10.1) y su review
+    excede el presupuesto de tiempo por commit. A7 se sello SIN --no-verify (el
+    hook de IA ya no corre en pre-commit), como verificacion de la propia seccion E.
 C2. No se ejecuto gga hasta completitud en esta revision: NO se afirma un veredicto
     de GGA sobre este diff. La deuda de GGA registrada en 8.140/8.141 (comentarios
     narrativos, tests con retorno silencioso) sigue vigente.
@@ -10690,9 +10696,33 @@ D1. DI por construccion manual (`new`) en los constructores de prueba de
 D2. Complejidad/SRP: SalesService.AddItemAsync, InventoryService.CreateProductAsync
     y UpdateProductAsync, SalesController.CompleteSaleAsync y
     CashDrawerController.ResolveAnchoredRateAsync.
-D3. Politica de comentarios explicativos: saturados repo-wide; pendiente decision
-    (enmendar el guideline, aceptar como deuda o limpieza masiva en slice propio).
+D3. Politica de comentarios explicativos: CERRADA en A7 (se levanto la prohibicion;
+    ver seccion E).
 D4. ProductService.GetAllAsync (WPF) espera List<Product> mientras /api/products
     devuelve PagedResultDto<ProductDto> (latente, sin callers); GetPagedAsync envia
     `status=` mientras el backend bindea `statusFilter=` (filtro de estado
     ignorado).
+
+E. POLITICA DE COMENTARIOS Y HOOKS (commit A7)
+
+E1. Se levanta la prohibicion de comentarios explicativos en AGENTS.md (y en
+    .opencode/agent/reviewer.md). Nueva regla: documentar el por que cuando no se
+    lee del codigo o cuando haya una decision/trazabilidad que preservar; evitar
+    narrar lo obvio y repetir el nombre del metodo. Los marcadores 8.x-* se
+    conservan. Motivo: la regla previa convertia en hallazgo permanente de GGA a la
+    convencion de trazabilidad del propio repo y alimentaba el ciclo de
+    --no-verify (un gate siempre en rojo deja de ser gate).
+E2. Hooks versionados en .githooks/. pre-commit queda sin revision con IA (solo
+    checks rapidos y deterministas); pre-push ejecuta `gga run --pr-mode
+    --diff-only` (o `gga run --ci` si no hay rama base detectable): una corrida por
+    push/work unit en lugar de una por commit.
+E3. .gitattributes: `.githooks/* text eol=lf`. Sin esto, `* text=auto` haria
+    checkout con CRLF en Windows y los hooks fallarian al ejecutarse con sh.
+E4. Protocolo de --no-verify en AGENTS.md: requiere autorizacion explicita del
+    mantenedor; evidencia sustitutiva obligatoria (build 0/0, suites al 100%,
+    lint, coverage gate); registro en la seccion GGA del ANEXO indicando que se
+    corrio y que no; prohibido afirmar un veredicto de GGA no ejecutado hasta
+    completitud.
+E5. Nota operativa: `gga install` escribe en .git/hooks/pre-commit, que queda
+    inactivo mientras core.hooksPath apunte a .githooks; reinstalar el hook local
+    requiere reaplicar el bloque GGA en .githooks/.
