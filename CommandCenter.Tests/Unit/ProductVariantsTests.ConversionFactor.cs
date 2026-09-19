@@ -290,10 +290,11 @@ public partial class ProductVariantsTests
         Assert.Equal(0m, updatedVariant.StockQuantity);
 
         var movements = await db.StockMovements.Where(m => m.ProductId == parent.Id).ToListAsync();
-        Assert.Single(movements);
-        Assert.Contains("Pintura Galón Blanco", movements[0].Reason);
-        Assert.Equal(-5m, movements[0].QuantityChange);
-        Assert.Equal(45m, movements[0].NewStockLevel);
+        Assert.Equal(2, movements.Count);
+        Assert.Contains(movements, m => m.QuantityChange == 50m && m.NewStockLevel == 50m && m.Reason == "Carga inicial");
+        var deductionMovement = movements.Single(m => m.QuantityChange == -5m);
+        Assert.Contains("Pintura Galón Blanco", deductionMovement.Reason);
+        Assert.Equal(45m, deductionMovement.NewStockLevel);
     }
 
 }

@@ -288,7 +288,7 @@ public partial class ProductVariantsTests
         Assert.NotNull(updated);
         Assert.Equal(150m, updated.StockQuantity);
 
-        var movement = await db.StockMovements.FirstOrDefaultAsync(m => m.ProductId == savedParent.Id);
+        var movement = await db.StockMovements.FirstOrDefaultAsync(m => m.ProductId == savedParent.Id && m.Reason.StartsWith("Ajuste Manual"));
         Assert.NotNull(movement);
         Assert.Contains("Ajuste Manual: Reabastecimiento", movement.Reason);
     }

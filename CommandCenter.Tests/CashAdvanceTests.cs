@@ -486,4 +486,27 @@ public class CashAdvanceTests
             new CreateProductDto { Name = "Manual", SKU = "MAN-001", CostPriceUSD = 1m, PriceRetailUSD = 2m }));
         Assert.Contains("no tiene permisos para modificar el catálogo", directEx.Message);
     }
+
+    [Fact]
+    public async Task CreateSystemProduct_CashAdvanceWithSentinelStock_ForcesZeroStockAndStaysSilentInStockMovements()
+    {
+        using var inventoryContext = GetInMemoryInventoryDbContext();
+        var cashier = new MockCurrentUserService { UserRole = UserRole.Cashier, UserId = "cashier-7" };
+        var inventoryService = new InventoryService(inventoryContext, cashier);
+
+        var id = await inventoryService.CreateSystemProductAsync(new CreateSystemProductRequest
+        {
+            Name = "Adelanto de Efectivo",
+            SKU = "ADV-001",
+            PriceRetailUSD = 0m,
+            StockQuantity = 999999,
+            IsCashAdvance = true,
+            IsActive = true
+        });
+
+        var product = await inventoryContext.Products.FindAsync(id);
+        Assert.NotNull(product);
+        Assert.Equal(0m, product.StockQuantity);
+        Assert.Empty(await inventoryContext.StockMovements.ToListAsync());
+    }
 }

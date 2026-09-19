@@ -63,11 +63,12 @@ public partial class ProductVariantsTests
         Assert.Equal(300m, parentInDb.StockQuantity);
 
         var movements = await db.StockMovements.Where(m => m.ProductId == parent.Id).ToListAsync();
-        Assert.Single(movements);
-        Assert.Equal(-60m, movements[0].QuantityChange);
-        Assert.Equal(300m, movements[0].NewStockLevel);
-        Assert.Contains("Cartón de Huevos", movements[0].Reason);
-        Assert.Contains("Factor: 30", movements[0].Reason);
+        Assert.Equal(2, movements.Count);
+        Assert.Contains(movements, m => m.QuantityChange == 360m && m.NewStockLevel == 360m && m.Reason == "Carga inicial");
+        var deductionMovement = movements.Single(m => m.QuantityChange == -60m);
+        Assert.Equal(300m, deductionMovement.NewStockLevel);
+        Assert.Contains("Cartón de Huevos", deductionMovement.Reason);
+        Assert.Contains("Factor: 30", deductionMovement.Reason);
     }
 
     [Fact]

@@ -58,7 +58,7 @@ public partial class ProductVariantsTests
         Assert.NotNull(updatedParent);
         Assert.Equal(-3m, updatedParent.StockQuantity);
 
-        var movement = await db.StockMovements.FirstOrDefaultAsync(m => m.ProductId == parent.Id);
+        var movement = await db.StockMovements.FirstOrDefaultAsync(m => m.ProductId == parent.Id && m.QuantityChange == -5m);
         Assert.NotNull(movement);
         Assert.Equal(-3m, movement.NewStockLevel);
         Assert.Equal(-5m, movement.QuantityChange);
@@ -102,7 +102,7 @@ public partial class ProductVariantsTests
             Assert.NotNull(updatedParent);
             Assert.Equal(80m, updatedParent.StockQuantity); // 100 - (10 * 2) = 80
 
-            var movementCount = await db.StockMovements.CountAsync(m => m.ProductId == parent.Id);
+            var movementCount = await db.StockMovements.CountAsync(m => m.ProductId == parent.Id && m.Reason.Contains("Sale #"));
             Assert.Equal(10, movementCount);
         }
         finally

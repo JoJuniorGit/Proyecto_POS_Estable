@@ -108,6 +108,101 @@ public class InventoryServiceUnitTests
     }
 
     [Fact]
+    public async Task CreateProductAsync_WithInitialStock_WritesSingleInitialLoadMovementForActingUser()
+    {
+        var (service, context, userMock) = CreateService();
+        userMock.Setup(u => u.UserId).Returns("user-42");
+
+        var request = new CreateProductDto
+        {
+            SKU = "CARGA-01",
+            Name = "Producto con Carga Inicial",
+            PriceRetailUSD = 1.00m,
+            StockQuantity = 24.5m
+        };
+
+        var created = await service.CreateProductFromDtoAsync(request);
+
+        var persisted = await context.Products.FindAsync(created.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(24.5m, persisted.StockQuantity);
+
+        var movements = await context.StockMovements.ToListAsync();
+        var movement = Assert.Single(movements);
+        Assert.Equal(created.Id, movement.ProductId);
+        Assert.Equal(24.5m, movement.QuantityChange);
+        Assert.Equal(24.5m, movement.NewStockLevel);
+        Assert.Equal("Carga inicial", movement.Reason);
+        Assert.Null(movement.SaleId);
+        Assert.Equal("user-42", movement.UserId);
+    }
+
+    [Fact]
+    public async Task CreateProductAsync_WithZeroStock_DoesNotWriteStockMovement()
+    {
+        var (service, context, _) = CreateService();
+
+        var request = new CreateProductDto
+        {
+            SKU = "CARGA-02",
+            Name = "Producto sin Stock Inicial",
+            PriceRetailUSD = 2.00m,
+            StockQuantity = 0m
+        };
+
+        var created = await service.CreateProductFromDtoAsync(request);
+
+        var persisted = await context.Products.FindAsync(created.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(0m, persisted.StockQuantity);
+        Assert.Empty(await context.StockMovements.ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateProductAsync_GroupHeaderWithoutSharedStock_ForcesZeroAndDoesNotWriteStockMovement()
+    {
+        var (service, context, _) = CreateService();
+
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Grupo sin Stock Compartido",
+            IsGroupHeader = true,
+            IsStockShared = false,
+            StockQuantity = 500m
+        });
+
+        var persisted = await context.Products.FindAsync(created.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(0m, persisted.StockQuantity);
+        Assert.Empty(await context.StockMovements.ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateSystemProductAsync_WithPositiveStock_WritesInitialLoadMovementForActingUser()
+    {
+        var (service, context, userMock) = CreateService(canMutateCatalog: false);
+        userMock.Setup(u => u.UserId).Returns("system-user");
+
+        var id = await service.CreateSystemProductAsync(new CreateSystemProductRequest
+        {
+            Name = "Producto de Sistema con Stock",
+            SKU = "SYS-CARGA-01",
+            PriceRetailUSD = 3.00m,
+            StockQuantity = 7m,
+            IsCashAdvance = false,
+            IsActive = true
+        });
+
+        var movements = await context.StockMovements.ToListAsync();
+        var movement = Assert.Single(movements);
+        Assert.Equal(id, movement.ProductId);
+        Assert.Equal(7m, movement.QuantityChange);
+        Assert.Equal(7m, movement.NewStockLevel);
+        Assert.Equal("Carga inicial", movement.Reason);
+        Assert.Equal("system-user", movement.UserId);
+    }
+
+    [Fact]
     public async Task UpdateStockAsync_DeductsExactFractionalQuantity_WithoutTruncation()
     {
         var (service, context, _) = CreateService();

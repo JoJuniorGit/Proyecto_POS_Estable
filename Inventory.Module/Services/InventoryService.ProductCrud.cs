@@ -194,6 +194,21 @@ public partial class InventoryService : IProductManagementService, IReservationS
         ValidateAndCalculateProductPrices(product);
 
         _context.Products.Add(product);
+
+        if (product.StockQuantity > 0)
+        {
+            _context.StockMovements.Add(new StockMovement
+            {
+                Product = product,
+                QuantityChange = product.StockQuantity,
+                NewStockLevel = product.StockQuantity,
+                Reason = "Carga inicial",
+                SaleId = null,
+                MovementDate = DateTime.UtcNow,
+                UserId = _currentUserService?.UserId
+            });
+        }
+
         await _context.SaveChangesAsync(cancellationToken);
         InvalidateProductSkuCache(product.SKU);
         if (product.ParentProduct != null) InvalidateProductSkuCache(product.ParentProduct.SKU);
