@@ -10618,7 +10618,7 @@ ANEXO - REVISION 8.142 (saneamiento VIG + hallazgos de review + movil web)
 ================================================================================
 
 Fecha: 2026-09-19
-Commits: 9 (ver seccion A), en rama V0.15 (sin branches/PRs).
+Commits: 11 (ver seccion A), en rama V0.15 (sin branches/PRs).
 
 Alcance: cierre del saneamiento de los 25 hallazgos de auditoria (VIG-01..VIG-25)
 mas los hallazgos surgidos del review de cumplimiento de estandares sobre el WIP:
@@ -10673,6 +10673,15 @@ A9. 27c39ce feat(8.142): snapshot de costo unitario en SaleItem (UnitCostUSD,
     CashAdvance) y guarda automatica anti-fuga: el campo NO se expone en SaleItemDto
     ni SaleDto. Las 697 lineas historicas quedan en NULL (costo desconocido), nunca
     0, para no reportar margen del 100%.
+A10. 50fe835 fix(8.142): el filtro de estado del inventario WPF enviaba 'status' y el
+     API bindea 'statusFilter', por lo que el filtro se ignoraba en silencio (se
+     mezclaban inactivos y borrados con los activos). Corregido + test de contrato de
+     query params cliente/servidor.
+A11. 91e6167 fix(8.142): elimina IX_Users_Username, drift puro modelo/migraciones
+     (declarado en el modelo, nunca creado por ninguna migracion; la unicidad real la
+     garantiza desde 20260823120000 el indice funcional case-insensitive
+     ix_users_username_lower, que EF no puede modelar). Incluye la guarda
+     MigrationIndexDriftTests que lo detecto.
 
 B. VERIFICACION
 
@@ -10807,3 +10816,27 @@ F6. Acciones aplicadas directamente sobre la base (no versionadas en el repo):
       shared_buffers (128MB) y work_mem (4MB) segun la RAM del equipo.
     - Backup del esquema huerfano eliminado:
       %TEMP%\opencode\backup-customer-advances-20260919.sql (fuera del repo).
+
+G. GUARDAS DE COSTURA AGREGADAS
+
+G1. Motivo: ninguno de los defectos detectados en 8.142 fue de logica de negocio.
+    Todos fueron de COSTURAS: un constructor ambiguo de DI que rompia todo un
+    controller en runtime (409), un parseo de cliente que comparaba `is bool` contra
+    un JsonElement (nunca coincidia), media queries en una capa CSS de menor
+    precedencia (letra muerta), indices declarados que ninguna migracion creaba, y un
+    nombre de query param que el backend no bindeaba. Todos pasaban build, tests y
+    lint: el suite no miraba esas uniones.
+G2. ProductServiceQueryContractTests: compara los nombres de query que envia el
+    cliente WPF contra los parametros [FromQuery] del controlador. Nace del bug
+    'status' vs 'statusFilter' (A10).
+G3. MigrationIndexDriftTests: exige que todo indice declarado en el modelo exista
+    como CreateIndex fluent O como CREATE INDEX dentro del SQL crudo de alguna
+    migracion (el SQL crudo se parsea con regex: sin listas de excepciones que
+    envejezcan). Detecta tambien migraciones huerfanas, porque sus operaciones no
+    entran al conjunto y sus indices aparecen como drift.
+G4. Ese test, en su primera corrida, encontro un drift que el diff manual de la
+    auditoria no habia visto: IX_Users_Username (corregido en A11). Los otros ocho
+    candidatos eran falsos positivos (indices creados con SQL crudo) que la version
+    final del test resuelve sola.
+G5. Regla adoptada: al agregar una costura (cliente HTTP, controller con DI, endpoint
+    nuevo, CSS con responsive, migracion), su guarda viaja en el mismo commit.
