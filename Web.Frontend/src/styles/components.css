@@ -970,6 +970,27 @@
 .desktop-only { display: block; }
 .mobile-only { display: none; }
 
+@media (max-width: 1024px) {
+  .pos-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-right-column {
+    position: static;
+  }
+}
+
+@media (max-width: 768px) {
+  .desktop-only { display: none; }
+  .mobile-only { display: block; }
+
+  .suggestion-price .price-currency-symbol {
+    display: none;
+  }
+
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }

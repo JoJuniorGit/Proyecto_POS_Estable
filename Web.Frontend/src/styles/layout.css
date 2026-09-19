@@ -242,26 +242,7 @@
   color: var(--text-primary);
 }
 
-@media (max-width: 1024px) {
-  .pos-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .pos-right-column {
-    position: static;
-  }
-}
-
 @media (max-width: 768px) {
-  .desktop-only { display: none; }
-  .mobile-only { display: block; }
-
-  .suggestion-price .price-currency-symbol {
-    display: none;
-  }
-
-  .grid-2 { grid-template-columns: 1fr; }
-
   .sidebar {
     transform: translateX(-100%);
   }
