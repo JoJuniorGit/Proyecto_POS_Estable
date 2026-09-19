@@ -297,4 +297,88 @@ public partial class ProductVariantsTests
         Assert.Equal(45m, deductionMovement.NewStockLevel);
     }
 
+    [Fact]
+    public async Task UpdateProduct_StandaloneWithProvidedConversionFactor_ForcesToOne()
+    {
+        var db = CreateInMemoryInventoryDb(Guid.NewGuid().ToString());
+        var userMock = CreateAdminUserServiceMock();
+        var service = new InventoryService(db, userMock.Object);
+
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            SKU = "STANDALONE-PIN-1",
+            Name = "Producto Simple",
+            PriceRetailUSD = 10.00m,
+            CostPriceUSD = 5.00m
+        });
+
+        var update = created.ToUpdateProductDto();
+        update.ConversionFactor = 2.5000m;
+
+        await service.UpdateProductFromDtoAsync(created.Id, update);
+
+        var persisted = await GetProductFromDbAsync(db, created.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(1.0000m, persisted.ConversionFactor);
+    }
+
+    [Fact]
+    public async Task UpdateProduct_CashAdvanceWithStockAndFractional_ForcesServiceRules()
+    {
+        var db = CreateInMemoryInventoryDb(Guid.NewGuid().ToString());
+        var userMock = CreateAdminUserServiceMock();
+        var service = new InventoryService(db, userMock.Object);
+
+        var product = new Product
+        {
+            SKU = "ADV-UPD-PIN-1",
+            Name = "Adelanto Actualizado",
+            IsActive = true,
+            IsCashAdvance = true,
+            IsFractional = true,
+            UnitOfMeasure = UnitOfMeasureType.Kg,
+            StockQuantity = 50m,
+            ReservedQuantity = 5m,
+            LowStockThreshold = 10m,
+            IsStockShared = true,
+            HasIndependentPricing = true,
+            ConversionFactor = 3.0000m,
+            PriceRetailUSD = 2.00m,
+            PriceUSD = 2.00m,
+            CostPriceUSD = 1.00m,
+            PriceBsS = 80m
+        };
+        db.Products.Add(product);
+        await db.SaveChangesAsync();
+
+        var update = new UpdateProductDto
+        {
+            Id = product.Id,
+            Name = product.Name,
+            SKU = product.SKU,
+            IsActive = true,
+            IsCashAdvance = true,
+            IsFractional = true,
+            UnitOfMeasure = UnitOfMeasureType.Kg,
+            IsStockShared = true,
+            HasIndependentPricing = true,
+            ConversionFactor = 3.0000m,
+            PriceRetailUSD = 2.00m,
+            CostPriceUSD = 1.00m
+        };
+
+        await service.UpdateProductFromDtoAsync(product.Id, update);
+
+        var persisted = await GetProductFromDbAsync(db, product.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(0m, persisted.StockQuantity);
+        Assert.Equal(0m, persisted.ReservedQuantity);
+        Assert.Equal(0m, persisted.LowStockThreshold);
+        Assert.False(persisted.IsFractional);
+        Assert.Equal(UnitOfMeasureType.Und, persisted.UnitOfMeasure);
+        Assert.Equal(1.0000m, persisted.ConversionFactor);
+        Assert.False(persisted.IsStockShared);
+        Assert.False(persisted.HasIndependentPricing);
+    }
+
 }

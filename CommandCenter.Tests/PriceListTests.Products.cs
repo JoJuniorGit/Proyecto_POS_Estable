@@ -308,6 +308,64 @@ public partial class PriceListTests
         Assert.Equal(1.125m, result.Items[0].Subtotal);
     }
 
+    [Fact]
+    public async Task AddSaleItem_WhenCustomPriceDiffersFromExistingLine_CreatesSeparateLine()
+    {
+        using var context = GetInMemoryDbContext();
+        var product = new Product { Id = 311, Name = "Cafe Molido", PriceUSD = 10m, PriceRetailUSD = 10m };
+        var mockInv = CreateMockInventory(product);
+
+        var sale = new Sale { Id = 1, Status = SaleStatus.Pending, AppliedRate = 40m };
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInv.Object, Mock.Of<IMediator>(), Mock.Of<ICashDrawerService>(), Mock.Of<ISystemSettingsService>());
+
+        await service.AddItemAsync(1, 311, 1m, 40m);
+        var result = await service.AddItemAsync(1, 311, 1m, 40m, customUnitPriceUsd: 8m, isPriceOverrideAuthorized: true);
+
+        Assert.Equal(2, result.Items.Count);
+        Assert.Contains(result.Items, i => i.UnitPrice == 10m && i.Quantity == 1m && !i.IsCustomPrice);
+        Assert.Contains(result.Items, i => i.UnitPrice == 8m && i.Quantity == 1m && i.IsCustomPrice);
+    }
+
+    [Fact]
+    public async Task AddSaleItem_WhenCustomPriceNotAuthorized_ThrowsUnauthorizedAccessException()
+    {
+        using var context = GetInMemoryDbContext();
+        var product = new Product { Id = 312, Name = "Harina", PriceUSD = 4m, PriceRetailUSD = 4m };
+        var mockInv = CreateMockInventory(product);
+
+        var sale = new Sale { Id = 1, Status = SaleStatus.Pending, AppliedRate = 40m };
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInv.Object, Mock.Of<IMediator>(), Mock.Of<ICashDrawerService>(), Mock.Of<ISystemSettingsService>());
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            () => service.AddItemAsync(1, 312, 1m, 40m, customUnitPriceUsd: 9m));
+    }
+
+    [Fact]
+    public async Task AddSaleItem_WhenCashAdvanceProduct_AllowsCustomPriceWithoutExplicitAuthorization()
+    {
+        using var context = GetInMemoryDbContext();
+        var product = new Product { Id = 313, Name = "Adelanto Efectivo", PriceUSD = 1m, IsCashAdvance = true };
+        var mockInv = CreateMockInventory(product);
+
+        var sale = new Sale { Id = 1, Status = SaleStatus.Pending, AppliedRate = 40m };
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInv.Object, Mock.Of<IMediator>(), Mock.Of<ICashDrawerService>(), Mock.Of<ISystemSettingsService>());
+
+        var result = await service.AddItemAsync(1, 313, 1m, 40m, customUnitPriceUsd: 0.50m);
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal(0.50m, item.UnitPrice);
+        Assert.True(item.IsCustomPrice);
+    }
+
     private InventoryDbContext GetInMemoryInventoryDbContext()
     {
         var options = new DbContextOptionsBuilder<InventoryDbContext>()

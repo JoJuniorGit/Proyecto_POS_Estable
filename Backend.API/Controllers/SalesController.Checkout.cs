@@ -109,69 +109,29 @@ public partial class SalesController
         }
 
         string requestPath = $"/api/sales/{id}/complete";
-        string? idempotencyKey = Request?.Headers["Idempotency-Key"].ToString();
+        var bodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
+        var resolved = await ResolveIdempotencyAsync(
+            requestPath,
+            bodyJson,
+            missingKeyMessage: "El encabezado Idempotency-Key es obligatorio para completar una venta.",
+            parseNumericBodyAsInvoice: true);
 
-        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        if (resolved.ShouldStop)
         {
-            return this.ApiBadRequest("El encabezado Idempotency-Key es obligatorio para completar una venta.");
-        }
-
-        idempotencyKey = idempotencyKey.Trim();
-        byte[]? payloadHash = null;
-
-        if (_idempotencyService != null)
-        {
-            if (!_idempotencyService.ValidateKeyFormat(idempotencyKey, out var formatError))
-            {
-                return this.ApiBadRequest(formatError);
-            }
-
-            var bodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
-            var bodyBytes = System.Text.Encoding.UTF8.GetBytes(bodyJson);
-            payloadHash = _idempotencyService.ComputePayloadHash(Request?.Method ?? "POST", requestPath, bodyBytes);
-
-            var checkResult = await _idempotencyService.CheckAsync(idempotencyKey, requestPath, payloadHash, GetActorUserId(), HttpContext?.RequestAborted ?? default);
-            if (checkResult.IsReplay)
-            {
-                if (Response?.Headers != null)
-                {
-                    Response.Headers["X-Cache-Lookup"] = "HIT";
-                }
-
-                if (int.TryParse(checkResult.StoredResponseBody, out int cachedInvoice))
-                {
-                    return Ok(cachedInvoice);
-                }
-                return Content(checkResult.StoredResponseBody ?? "", "application/json");
-            }
-
-            if (checkResult.IsMismatch)
-            {
-                var clientIp = HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
-                AppLogger.LogSecurityAudit($"[IDEMPOTENCY_MISMATCH] Key={idempotencyKey}, Path={requestPath}, IP={clientIp}, Timestamp={System.DateTime.UtcNow:O}");
-                return this.ApiUnprocessableEntity("La clave de idempotencia ya fue utilizada para una transacción diferente con otro contenido.");
-            }
+            return resolved.BlockingResult!;
         }
 
         try
         {
-            int? effectiveCashierId = _currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid)
-                ? uid
-                : request.CashierId;
-
-            var paymentInfos = request.Payments
-                ?.Where(p => p != null)
-                .Select(p => new PaymentInfo(p.PaymentMethodId, p.Amount, p.AmountBsS > 0 ? p.AmountBsS : p.AmountLocal, p.ReferenceNumber))
-                ?? Enumerable.Empty<PaymentInfo>();
             int realId = await _salesService.CompleteSaleAsync(
                 id, 
                 request.ExchangeRate, 
-                paymentInfos, 
+                MapPaymentInfos(request), 
                 request.RoundingAdjustment, 
-                effectiveCashierId, 
+                ResolveEffectiveCashierId(request), 
                 request.IsPendingPickup, 
-                idempotencyKey,
-                payloadHash,
+                resolved.Key,
+                resolved.PayloadHash,
                 HttpContext?.RequestAborted ?? default,
                 GetActorUserId());
 
@@ -182,33 +142,32 @@ public partial class SalesController
 
             return Ok(realId);
         }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.Message.Contains("IX_IdempotentRequests") || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505"))
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IsIdempotencyUniqueViolation(ex))
         {
-            if (_idempotencyService is Sales.Module.Services.IdempotencyService idService && !string.IsNullOrWhiteSpace(idempotencyKey) && payloadHash != null)
-            {
-                var collisionResult = await idService.HandleConcurrentCollisionAsync(idempotencyKey, requestPath, payloadHash, GetActorUserId(), HttpContext?.RequestAborted ?? default);
-                if (collisionResult.IsReplay)
-                {
-                    if (Response?.Headers != null)
-                    {
-                        Response.Headers["X-Cache-Lookup"] = "HIT";
-                    }
-
-                    if (int.TryParse(collisionResult.StoredResponseBody, out int cachedInvoice))
-                    {
-                        return Ok(cachedInvoice);
-                    }
-                    return Content(collisionResult.StoredResponseBody ?? "", "application/json");
-                }
-                if (collisionResult.IsMismatch)
-                {
-                    var clientIp = HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
-                    AppLogger.LogSecurityAudit($"[IDEMPOTENCY_MISMATCH] Key={idempotencyKey}, Path={requestPath}, IP={clientIp}, Timestamp={System.DateTime.UtcNow:O}");
-                    return this.ApiUnprocessableEntity("La clave de idempotencia ya fue utilizada para una transacción diferente con otro contenido.");
-                }
-            }
-            return this.ApiConflict("Operación concurrente en progreso para esta clave de idempotencia.");
+            return await HandleIdempotencyCollisionAsync(ex, requestPath, resolved.Key, resolved.PayloadHash, parseNumericBodyAsInvoice: true);
         }
+    }
+
+    private int? ResolveEffectiveCashierId(CompleteSaleRequest request)
+    {
+        return _currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid)
+            ? uid
+            : request.CashierId;
+    }
+
+    private static System.Collections.Generic.IEnumerable<PaymentInfo> MapPaymentInfos(CompleteSaleRequest request)
+    {
+        return request.Payments
+            ?.Where(p => p != null)
+            .Select(p => new PaymentInfo(p.PaymentMethodId, p.Amount, p.AmountBsS > 0 ? p.AmountBsS : p.AmountLocal, p.ReferenceNumber))
+            ?? System.Linq.Enumerable.Empty<PaymentInfo>();
+    }
+
+    private static bool IsIdempotencyUniqueViolation(Microsoft.EntityFrameworkCore.DbUpdateException ex)
+    {
+        return ex.Message.Contains("IX_IdempotentRequests")
+            || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true
+            || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505");
     }
 
     [NonAction]

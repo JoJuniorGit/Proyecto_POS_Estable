@@ -201,25 +201,9 @@ public partial class SalesService : ISalesService
             product = await _inventoryService.GetSaleProductByIdAsync(productId, cancellationToken);
         }
 
-        if (product != null && (product.IsDeleted || !product.IsActive))
-        {
-            throw new InvalidOperationException($"El producto '{product.Name}' no está disponible para la venta.");
-        }
-
-        bool isCashAdvance = product?.IsCashAdvance == true;
-        if ((customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue) && !isPriceOverrideAuthorized && !isCashAdvance)
-        {
-            throw new UnauthorizedAccessException("Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor.");
-        }
-
-        if (customUnitPriceUsd.HasValue && customUnitPriceUsd.Value < 0m)
-        {
-            throw new ArgumentException("El precio no puede ser negativo.", nameof(customUnitPriceUsd));
-        }
-        if (customUnitPriceLocal.HasValue && customUnitPriceLocal.Value < 0m)
-        {
-            throw new ArgumentException("El precio en moneda local no puede ser negativo.", nameof(customUnitPriceLocal));
-        }
+        EnsureProductAvailableForSale(product);
+        EnsurePriceOverrideAllowed(product, customUnitPriceUsd, customUnitPriceLocal, isPriceOverrideAuthorized);
+        EnsureCustomPricesNonNegative(customUnitPriceUsd, customUnitPriceLocal);
 
         quantity = ValidateAndAdjustQuantity(product, quantity);
 
@@ -233,61 +217,11 @@ public partial class SalesService : ISalesService
         var existingItem = sale.Items.FirstOrDefault(i => i.ProductId == productId);
         if (existingItem != null)
         {
-            if (customUnitPriceUsd.HasValue && existingItem.UnitPrice != customUnitPriceUsd.Value)
-            {
-                 var item = new SaleItem
-                {
-                    SaleId = saleId,
-                    ProductId = productId,
-                    ProductName = existingItem.ProductName,
-                    UnitPrice = Math.Round(customUnitPriceUsd.Value, 4),
-                    UnitPriceBsS = customUnitPriceLocal.HasValue ? Math.Round(customUnitPriceLocal.Value, 4) : 0,
-                    Quantity = quantity,
-                    UnitCostUSD = product?.CostPriceUSD,
-                    IsCustomPrice = true
-                };
-                sale.Items.Add(item);
-            }
-            else
-            {
-                existingItem.Quantity += quantity;
-                var productInfo = (customUnitPriceUsd.HasValue && customUnitPriceLocal.HasValue)
-                    ? null
-                    : await _inventoryService!.GetSaleProductByIdAsync(productId, cancellationToken);
-
-                decimal grossPrice = customUnitPriceUsd ?? productInfo?.PriceUSD ?? existingItem.UnitPrice;
-                decimal grossPriceBsS = customUnitPriceLocal ?? productInfo?.PriceBsS ?? existingItem.UnitPriceBsS;
-                
-                existingItem.UnitPrice = Math.Round(grossPrice, 4);
-                existingItem.UnitPriceBsS = Math.Round(grossPriceBsS, 4);
-                existingItem.IsCustomPrice = existingItem.IsCustomPrice || customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue;
-            }
+            await UpdateOrSplitExistingItemAsync(sale, saleId, productId, product, existingItem, quantity, customUnitPriceUsd, customUnitPriceLocal, cancellationToken);
         }
         else
         {
-            var fetchedProduct = await _inventoryService!.GetSaleProductByIdAsync(productId, cancellationToken);
-            if (fetchedProduct == null) throw new KeyNotFoundException($"Product {productId} not found.");
-
-            if (fetchedProduct.IsGroupHeader)
-            {
-                throw new ArgumentException($"El producto '{fetchedProduct.Name}' es un grupo de variantes. Debe seleccionar una variante específica para la venta.");
-            }
-
-            decimal grossPrice = customUnitPriceUsd ?? fetchedProduct.PriceUSD;
-            decimal grossPriceBsS = customUnitPriceLocal ?? fetchedProduct.PriceBsS;
-
-            var item = new SaleItem
-            {
-                SaleId = saleId,
-                ProductId = productId,
-                ProductName = fetchedProduct.Name,
-                UnitPrice = Math.Round(grossPrice, 4),
-                UnitPriceBsS = Math.Round(grossPriceBsS, 4),
-                Quantity = quantity,
-                UnitCostUSD = fetchedProduct.CostPriceUSD,
-                IsCustomPrice = customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue
-            };
-            sale.Items.Add(item);
+            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, quantity, customUnitPriceUsd, customUnitPriceLocal, cancellationToken));
         }
 
         await RecalculateTotalAsync(sale);
@@ -295,6 +229,97 @@ public partial class SalesService : ISalesService
 
         await _context.SaveChangesAsync(cancellationToken);
         return MapToDto(sale);
+    }
+
+    private static void EnsureProductAvailableForSale(SaleProductInfoDto? product)
+    {
+        if (product != null && (product.IsDeleted || !product.IsActive))
+        {
+            throw new InvalidOperationException($"El producto '{product.Name}' no está disponible para la venta.");
+        }
+    }
+
+    private static void EnsurePriceOverrideAllowed(SaleProductInfoDto? product, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, bool isPriceOverrideAuthorized)
+    {
+        bool isCashAdvance = product?.IsCashAdvance == true;
+        if ((customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue) && !isPriceOverrideAuthorized && !isCashAdvance)
+        {
+            throw new UnauthorizedAccessException("Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor.");
+        }
+    }
+
+    private static void EnsureCustomPricesNonNegative(decimal? customUnitPriceUsd, decimal? customUnitPriceLocal)
+    {
+        if (customUnitPriceUsd.HasValue && customUnitPriceUsd.Value < 0m)
+        {
+            throw new ArgumentException("El precio no puede ser negativo.", nameof(customUnitPriceUsd));
+        }
+        if (customUnitPriceLocal.HasValue && customUnitPriceLocal.Value < 0m)
+        {
+            throw new ArgumentException("El precio en moneda local no puede ser negativo.", nameof(customUnitPriceLocal));
+        }
+    }
+
+    private async Task UpdateOrSplitExistingItemAsync(Sale sale, int saleId, int productId, SaleProductInfoDto? product, SaleItem existingItem, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, System.Threading.CancellationToken cancellationToken)
+    {
+        if (customUnitPriceUsd.HasValue && existingItem.UnitPrice != customUnitPriceUsd.Value)
+        {
+            sale.Items.Add(new SaleItem
+            {
+                SaleId = saleId,
+                ProductId = productId,
+                ProductName = existingItem.ProductName,
+                UnitPrice = Math.Round(customUnitPriceUsd.Value, 4),
+                UnitPriceBsS = customUnitPriceLocal.HasValue ? Math.Round(customUnitPriceLocal.Value, 4) : 0,
+                Quantity = quantity,
+                UnitCostUSD = product?.CostPriceUSD,
+                IsCustomPrice = true
+            });
+            return;
+        }
+
+        await MergeExistingItemAsync(existingItem, productId, quantity, customUnitPriceUsd, customUnitPriceLocal, cancellationToken);
+    }
+
+    private async Task MergeExistingItemAsync(SaleItem existingItem, int productId, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, System.Threading.CancellationToken cancellationToken)
+    {
+        existingItem.Quantity += quantity;
+        var productInfo = (customUnitPriceUsd.HasValue && customUnitPriceLocal.HasValue)
+            ? null
+            : await _inventoryService!.GetSaleProductByIdAsync(productId, cancellationToken);
+
+        decimal grossPrice = customUnitPriceUsd ?? productInfo?.PriceUSD ?? existingItem.UnitPrice;
+        decimal grossPriceBsS = customUnitPriceLocal ?? productInfo?.PriceBsS ?? existingItem.UnitPriceBsS;
+
+        existingItem.UnitPrice = Math.Round(grossPrice, 4);
+        existingItem.UnitPriceBsS = Math.Round(grossPriceBsS, 4);
+        existingItem.IsCustomPrice = existingItem.IsCustomPrice || customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue;
+    }
+
+    private async Task<SaleItem> BuildNewSaleItemAsync(int saleId, int productId, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, System.Threading.CancellationToken cancellationToken)
+    {
+        var fetchedProduct = await _inventoryService!.GetSaleProductByIdAsync(productId, cancellationToken);
+        if (fetchedProduct == null) throw new KeyNotFoundException($"Product {productId} not found.");
+
+        if (fetchedProduct.IsGroupHeader)
+        {
+            throw new ArgumentException($"El producto '{fetchedProduct.Name}' es un grupo de variantes. Debe seleccionar una variante específica para la venta.");
+        }
+
+        decimal grossPrice = customUnitPriceUsd ?? fetchedProduct.PriceUSD;
+        decimal grossPriceBsS = customUnitPriceLocal ?? fetchedProduct.PriceBsS;
+
+        return new SaleItem
+        {
+            SaleId = saleId,
+            ProductId = productId,
+            ProductName = fetchedProduct.Name,
+            UnitPrice = Math.Round(grossPrice, 4),
+            UnitPriceBsS = Math.Round(grossPriceBsS, 4),
+            Quantity = quantity,
+            UnitCostUSD = fetchedProduct.CostPriceUSD,
+            IsCustomPrice = customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue
+        };
     }
 
     public async Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)

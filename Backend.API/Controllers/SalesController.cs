@@ -193,12 +193,12 @@ public partial class SalesController : ControllerBase
     [NonAction]
     public Task<ActionResult<SaleDto>> UpdateExchangeRate(int id, [FromQuery] string exchangeRate) => UpdateExchangeRateAsync(id, exchangeRate);
 
-    private async Task<(bool ShouldStop, ActionResult? BlockingResult, string? Key, byte[]? PayloadHash)> ResolveIdempotencyAsync(string requestPath, string bodyJson)
+    private async Task<(bool ShouldStop, ActionResult? BlockingResult, string? Key, byte[]? PayloadHash)> ResolveIdempotencyAsync(string requestPath, string bodyJson, string missingKeyMessage = "El encabezado Idempotency-Key es obligatorio para esta operación.", bool parseNumericBodyAsInvoice = false)
     {
         string? idempotencyKey = Request?.Headers["Idempotency-Key"].ToString();
         if (string.IsNullOrWhiteSpace(idempotencyKey))
         {
-            return (true, this.ApiBadRequest("El encabezado Idempotency-Key es obligatorio para esta operación."), null, null);
+            return (true, this.ApiBadRequest(missingKeyMessage), null, null);
         }
 
         idempotencyKey = idempotencyKey.Trim();
@@ -223,6 +223,10 @@ public partial class SalesController : ControllerBase
             {
                 Response.Headers["X-Cache-Lookup"] = "HIT";
             }
+            if (parseNumericBodyAsInvoice && int.TryParse(checkResult.StoredResponseBody, out int cachedInvoice))
+            {
+                return (true, Ok(cachedInvoice), null, null);
+            }
             return (true, Content(checkResult.StoredResponseBody ?? "", "application/json"), null, null);
         }
 
@@ -236,7 +240,7 @@ public partial class SalesController : ControllerBase
         return (false, null, idempotencyKey, payloadHash);
     }
 
-    private async Task<ActionResult> HandleIdempotencyCollisionAsync(Microsoft.EntityFrameworkCore.DbUpdateException ex, string requestPath, string? key, byte[]? payloadHash)
+    private async Task<ActionResult> HandleIdempotencyCollisionAsync(Microsoft.EntityFrameworkCore.DbUpdateException ex, string requestPath, string? key, byte[]? payloadHash, bool parseNumericBodyAsInvoice = false)
     {
         if (_idempotencyService is Sales.Module.Services.IdempotencyService idService && !string.IsNullOrWhiteSpace(key) && payloadHash != null)
         {
@@ -246,6 +250,10 @@ public partial class SalesController : ControllerBase
                 if (Response?.Headers != null)
                 {
                     Response.Headers["X-Cache-Lookup"] = "HIT";
+                }
+                if (parseNumericBodyAsInvoice && int.TryParse(collisionResult.StoredResponseBody, out int cachedInvoice))
+                {
+                    return Ok(cachedInvoice);
                 }
                 return Content(collisionResult.StoredResponseBody ?? "", "application/json");
             }

@@ -183,14 +183,44 @@ public class CashDrawerController : ControllerBase
 
     private async Task<decimal> ResolveAnchoredRateAsync(decimal clientRate, int referenceId, CancellationToken cancellationToken)
     {
+        decimal roundedClientRate = ValidateAndRoundClientRate(clientRate);
+
+        var (hasOfficialRate, officialRate) = await TryGetOfficialRateAsync(roundedClientRate, referenceId, cancellationToken);
+        if (!hasOfficialRate)
+        {
+            return roundedClientRate;
+        }
+
+        decimal deviationPct = Math.Abs(roundedClientRate - officialRate) / officialRate;
+        if (deviationPct >= 1.0m)
+        {
+            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Tasa rechazada por manipulación en txn manual #{referenceId}: recibida={roundedClientRate}, BCV={officialRate}, desvío={deviationPct:P2}");
+            throw new ArgumentException($"La tasa de cambio {roundedClientRate} fue rechazada: excede ±100% de la tasa BCV oficial ({officialRate}). Contacte al supervisor.");
+        }
+
+        decimal tolerancePct = await ResolveTolerancePctAsync(referenceId, cancellationToken);
+        if (deviationPct > tolerancePct)
+        {
+            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Desvío de tasa ({deviationPct:P2} > {tolerancePct:P2}) en txn manual #{referenceId}. Se ANCLA: {roundedClientRate} -> {officialRate}");
+            return officialRate;
+        }
+
+        return roundedClientRate;
+    }
+
+    private static decimal ValidateAndRoundClientRate(decimal clientRate)
+    {
         if (clientRate <= 0m)
         {
             throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio inválida o no inicializada (<= 0).");
         }
 
-        clientRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(clientRate);
+        return Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(clientRate);
+    }
 
-        decimal officialRate = 0m;
+    private async Task<(bool HasOfficialRate, decimal OfficialRate)> TryGetOfficialRateAsync(decimal roundedClientRate, int referenceId, CancellationToken cancellationToken)
+    {
+        decimal officialRate;
         try
         {
             officialRate = await _inventoryService.GetTodayExchangeRateAsync(cancellationToken);
@@ -198,30 +228,27 @@ public class CashDrawerController : ControllerBase
         catch (System.Exception ex)
         {
             Core.Logging.AppLogger.LogDbError(ex, "CashDrawerController.ResolveAnchoredRate");
-            return clientRate;
+            return (false, 0m);
         }
 
         if (officialRate <= 0m)
         {
-            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Sin tasa BCV del día en CashDrawerController manual txn #{referenceId}. Fail-open: tasa recibida {clientRate}.");
-            return clientRate;
+            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Sin tasa BCV del día en CashDrawerController manual txn #{referenceId}. Fail-open: tasa recibida {roundedClientRate}.");
+            return (false, 0m);
         }
 
-        decimal deviationPct = Math.Abs(clientRate - officialRate) / officialRate;
-        if (deviationPct >= 1.0m)
-        {
-            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Tasa rechazada por manipulación en txn manual #{referenceId}: recibida={clientRate}, BCV={officialRate}, desvío={deviationPct:P2}");
-            throw new ArgumentException($"La tasa de cambio {clientRate} fue rechazada: excede ±100% de la tasa BCV oficial ({officialRate}). Contacte al supervisor.");
-        }
+        return (true, officialRate);
+    }
 
-        decimal tolerancePct = 0.10m;
+    private async Task<decimal> ResolveTolerancePctAsync(int referenceId, CancellationToken cancellationToken)
+    {
         try
         {
             var toleranceSetting = await _settingsService.GetSettingAsync("RateDeviationTolerancePct");
             if (decimal.TryParse(toleranceSetting, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed)
                 && parsed > 0m && parsed < 1.0m)
             {
-                tolerancePct = parsed;
+                return parsed;
             }
         }
         catch (System.Exception ex)
@@ -229,13 +256,7 @@ public class CashDrawerController : ControllerBase
             Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] No se pudo leer la tolerancia configurada en txn manual #{referenceId}; se usa default 10%. {ex.Message}");
         }
 
-        if (deviationPct > tolerancePct)
-        {
-            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Desvío de tasa ({deviationPct:P2} > {tolerancePct:P2}) en txn manual #{referenceId}. Se ANCLA: {clientRate} -> {officialRate}");
-            return officialRate;
-        }
-
-        return clientRate;
+        return 0.10m;
     }
 
     private async Task<CashDrawerSessionResponseDto> MapLocalTimesAsync(CashDrawerSessionResponseDto session, CancellationToken cancellationToken)
