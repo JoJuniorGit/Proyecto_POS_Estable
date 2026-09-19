@@ -9,9 +9,9 @@ Nota: docs/reporte.txt se conserva 100% intacto como archivo histórico de traza
 
 RESUMEN EJECUTIVO DE ESTADO:
 --------------------------------------------------------------------------------
-Auditoría de código (AUD): 3 hallazgos activos (AUD-13, AUD-15, AUD-21); 17 resueltos/cerrados (AUD-01..AUD-12, AUD-16..AUD-20) y 1 resuelto parcial (AUD-14)
+Auditoría de código (AUD): 2 hallazgos activos (AUD-13, AUD-21); 18 resueltos/cerrados (AUD-01..AUD-12, AUD-15, AUD-16..AUD-20) y 1 resuelto parcial (AUD-14)
 - Código Muerto: 0 activos (AUD-01, AUD-02, AUD-03, AUD-17 resueltos)
-- Malas Prácticas / Violaciones a Normas: 2 activos (AUD-15, AUD-21); resueltos (AUD-05, AUD-06, AUD-07, AUD-08, AUD-09, AUD-10, AUD-11, AUD-16, AUD-18, AUD-19, AUD-20)
+- Malas Prácticas / Violaciones a Normas: 1 activo (AUD-21); resueltos (AUD-05..AUD-11, AUD-15, AUD-16, AUD-18, AUD-19, AUD-20)
 - Oportunidades de Optimización: 1 activo (AUD-13) y 1 resuelto parcial (AUD-14)
 
 Auditoría de costuras (SEAM, ANEXO 8.142 sección H): 0 hallazgos activos; 5 resueltos (SEAM-01..SEAM-05)
@@ -19,8 +19,8 @@ Auditoría de costuras (SEAM, ANEXO 8.142 sección H): 0 hallazgos activos; 5 re
 
 Residuales e infraestructura (INFRA): 3 registros (INFRA-01..INFRA-03; INFRA-01 activo, INFRA-02/03 informativos)
 
-TOTAL REGISTROS ACTIVOS: 6 (3 AUD + 0 SEAM + 3 INFRA; AUD-14 queda como resuelto parcial)
-- Defectos de código activos en sentido estricto: 3 (AUD-13, AUD-15 y AUD-21)
+TOTAL REGISTROS ACTIVOS: 5 (2 AUD + 0 SEAM + 3 INFRA; AUD-14 queda como resuelto parcial)
+- Defectos de código activos en sentido estricto: 2 (AUD-13 y AUD-21)
 - INFRA: 3 registros (1 activo operativo, INFRA-01; 2 informativos, INFRA-02 e INFRA-03)
 
 Equivalencias (mismo hallazgo; no duplicar trabajo):
@@ -45,7 +45,7 @@ Estado de Hallazgos Previos (VIG-01..VIG-25):
 - 18 Resueltos en fases previas
 - 7 Verificados como falsos positivos o mitigados por arquitectura previa
 
-Pruebas Automatizadas Backend: 1.322 / 1.322 pasando (100% Green)
+Pruebas Automatizadas Backend: 1.401 / 1.401 pasando (100% Green)
 Pruebas Automatizadas Frontend: 287 / 287 pasando (100% Green)
 Compilación: dotnet build CommandCenter.slnx -c Release (0 errores, 0 warnings)
 Guardas de costura activas: ControllerConstructionTests, ProductServiceQueryContractTests,
@@ -235,12 +235,18 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 --------------------------------------------------------------------------------
 
 [AUD-15] MEDIA — Inyección directa de DbContext en HealthController
-- Estado: ACTIVO
+- Estado: RESUELTO (b25e9b7)
 - Severidad: MEDIA
 - Ubicación: Backend.API/Controllers/HealthController.cs (constructor)
 - Regla: clean-architecture y docs/coding-guidelines-backend.md §2.3
 - Descripción: es el único controller que conserva inyección directa de `SalesDbContext` e `InventoryDbContext` en su constructor de DI para ejecutar las sondas de conectividad y de migraciones. No es el patrón de AUD-11 (no hay constructor secundario de prueba: es el constructor de producción), pero pertenece a la misma familia arquitectónica que AUD-04: la capa de presentación no debería conocer EF Core. Fue detectado al implementar AUD-11 y se dejó fuera de alcance deliberadamente para no ampliar esa unidad de trabajo.
 - Recomendación: extraer las sondas a un servicio de aplicación (`IHealthProbeService` o equivalente) o usar `IDbContextFactory` desde una capa de infraestructura, y dejar el controller sin referencias a EF.
+- Resolución (b25e9b7): sondas extraídas a `ISalesHealthProbe` (Sales.Module: conectividad + conteo de
+  migraciones aplicadas/pendientes) e `IInventoryHealthProbe` (Inventory.Module: tasas de hoy/última vía
+  `ExchangeRateHistory`), registradas scoped; `HealthController` ya no referencia EF Core y conserva
+  respuestas idénticas (31/31 literales comparados por el verificador independiente). `ControllerConstructionTests`
+  ahora cubre HealthController en la teoría anti-ctor-con-DbContext + fact de reflexión sin tipos EF; con
+  esto la familia AUD-04/AUD-11 queda extinta (ningún controller toca EF).
 
 --------------------------------------------------------------------------------
 
