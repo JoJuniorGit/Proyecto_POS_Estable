@@ -53,9 +53,11 @@ public class SalesDbContext : DbContext
             .HasIndex(u => u.Cedula)
             .IsUnique();
 
-        modelBuilder.Entity<User>()
-            .HasIndex(u => u.Username)
-            .IsUnique();
+        // 8.142: la unicidad de Username la garantiza el indice funcional case-insensitive
+        // ix_users_username_lower (migracion 20260823120000, SQL crudo: EF no modela indices
+        // funcionales). La declaracion previa HasIndex(Username).IsUnique() era drift puro: el
+        // modelo la declaraba, ninguna migracion la creaba y la base nunca tuvo ese indice
+        // (los tests si, por EnsureCreated). Detectado por MigrationIndexDriftTests.
 
 modelBuilder.Entity<User>().HasData(
             new User
