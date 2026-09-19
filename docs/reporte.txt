@@ -10618,7 +10618,7 @@ ANEXO - REVISION 8.142 (saneamiento VIG + hallazgos de review + movil web)
 ================================================================================
 
 Fecha: 2026-09-19
-Commits: 7 (ver seccion A), en rama V0.15 (sin branches/PRs).
+Commits: 9 (ver seccion A), en rama V0.15 (sin branches/PRs).
 
 Alcance: cierre del saneamiento de los 25 hallazgos de auditoria (VIG-01..VIG-25)
 mas los hallazgos surgidos del review de cumplimiento de estandares sobre el WIP:
@@ -10661,6 +10661,18 @@ A7. 52b8eae chore(8.142): gga pasa de pre-commit a pre-push con hooks versionado
     comentarios explicativos permitidos en AGENTS.md y en el agente reviewer;
     protocolo de `--no-verify` documentado. `.gitattributes` fija `eol=lf` para
     los hooks (CRLF los rompe al ejecutarse con sh).
+A8. 9eddc71 fix(8.142): migracion idempotente con los 6 indices que el modelo y el
+    snapshot declaraban y ninguna migracion creaba (IX_Sales_Status_Date,
+    IX_Sales_Status_DeliveryStatus, IX_Customers_Name, IX_Customers_Active_Name,
+    IX_CashTransactions_TransactionTime, IX_CashTransactions_SessionId_TransactionTime).
+    Raw SQL con CREATE INDEX IF NOT EXISTS + guard to_regclass, en el estilo de la
+    migracion de pg_trgm. Verificado: 6/6 presentes en pg_indexes.
+A9. 27c39ce feat(8.142): snapshot de costo unitario en SaleItem (UnitCostUSD,
+    numeric(18,2), nullable) para el COGS historico del Paso 14 de ideas; captura
+    en los 4 sitios de creacion (AddItemAsync x2, HoldOrders.UpdateSaleItems,
+    CashAdvance) y guarda automatica anti-fuga: el campo NO se expone en SaleItemDto
+    ni SaleDto. Las 697 lineas historicas quedan en NULL (costo desconocido), nunca
+    0, para no reportar margen del 100%.
 
 B. VERIFICACION
 
@@ -10727,3 +10739,53 @@ E4. Protocolo de --no-verify en AGENTS.md: requiere autorizacion explicita del
 E5. Nota operativa: `gga install` escribe en .git/hooks/pre-commit, que queda
     inactivo mientras core.hooksPath apunte a .githooks; reinstalar el hook local
     requiere reaplicar el bloque GGA en .githooks/.
+
+F. AUDITORIA DE BASE Y CRUCE CON docs/Ideas.txt (2026-09-19)
+
+F1. Auditoria read-only sobre PostgreSQL 18.1 (CommandCenterDb, 13 MB; 572
+    Products, 1919 Sales, 697 SaleItems, 309 SalePayments, 181 CashTransactions,
+    444 OutboxMessages, 69 ExchangeRateHistory). Evidencia recogida de pg_indexes,
+    pg_constraint, pg_stat_user_tables, information_schema y pg_settings.
+F2. Hallazgo principal (CERRADO por A8): 6 indices declarados en el modelo y en el
+    ModelSnapshot no existian en la base migrada. La app arrancaba sin
+    PendingModelChangesWarning porque modelo y snapshot coincidian, y los tests los
+    tenian por EnsureCreated, pero ninguna migracion los creaba: patron "verde en
+    tests, sin indice en produccion". Impacto directo en la consulta mas caliente
+    (historial de ventas filtra por Status y ordena por Date). Mismo tipo de
+    incidente que el documentado en 8.12-B3 (migracion huerfana de los GIN).
+F3. Hallazgos abiertos (registrados, sin accion en esta revision):
+    - IX_ExchangeRateHistory_Date duplica la PK: ambas son unicas sobre Date.
+    - Ninguna tabla tiene last_analyze / last_autoanalyze: el planner no tiene
+      estadisticas (n_live_tup=0 donde hay 1919 filas). Correr ANALYZE.
+    - Config: random_page_cost=4 (default HDD) con shared_buffers=128MB y
+      work_mem=4MB; evaluar 1.1 si el disco es SSD.
+    - Esquema huerfano sin referencias en codigo: tablas CustomerAdvances y
+      SaleCustomerAdvancePayments, columna Sales.IsAdvanceConsumption y su indice
+      parcial unico (feature eliminada). Limpieza destructiva: migracion revisada.
+    - CustomerAdvances.AppliedRate es numeric(18,2) mientras el resto de las tasas
+      del sistema son numeric(18,4).
+    - SaleItems no tiene indice por ProductId (y no puede tener FK: Products vive
+      en InventoryDbContext y SaleItems en SalesDbContext sobre la misma base
+      fisica). Relevante para los reportes por producto del Paso 15.
+F4. Cruce con la hoja de ruta docs/Ideas.txt (15 pasos):
+    - CRITICO resuelto por A9: el Paso 14 (calculo de ganancias) no podia producir
+      un COGS historico fiel porque SaleItem no guardaba el costo unitario;
+      recalcularlo con el costo actual habria violado la regla de inmutabilidad del
+      historial. Cuanto mas historial se acumulara antes de agregar el campo, mas
+      ventas quedaban sin costo real.
+    - Los Pasos 2 (Parked Orders), 5 (auditoria de stock), 11 (credito) y 13 (caja
+      chica) proponen tablas nuevas que duplican estructura ya existente:
+      Sale.Status=OnHold + HoldSaleAsync + claims por cajero (Paso 2),
+      StockMovements + StockMovements_Archive (Paso 5), Customers.CreditLimitUSD +
+      SalePayments + saldo pendiente (Paso 11) y CashTransaction(Source=Expense)
+      que ya alimenta el arqueo (Paso 13). Decision pendiente: extender lo
+      existente en lugar de crear tablas paralelas; en caja chica una tabla espejo
+      produciria doble conteo en el cierre.
+    - Trabajo de schema genuinamente nuevo: Paso 8 (Categories +
+      ProductCategories; habilitador de 9/14/15), Paso 3 (UserSessions para ver y
+      revocar sesiones activas; la revocacion por SecurityStamp ya existe), Paso 6
+      (StockCountSession/StockCountItem) y Paso 4 (AuthorizationRequests).
+F5. Limite de la auditoria: con 13 MB y menos de 2000 filas por tabla los planes
+    reales no son extrapolables (PostgreSQL elige seq scan y es lo correcto a ese
+    volumen). No se midio timing; la auditoria es estructural (indices, constraints,
+    tipos, configuracion).
