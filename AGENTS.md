@@ -36,7 +36,7 @@ Para el detalle completo, consulta siempre el archivo core `docs/coding-guidelin
 
 -   **Hooks versionados:** viven en `.githooks/`. Activación por clon: `git config core.hooksPath .githooks`.
 -   **`pre-commit`:** sin revisión con IA. Reservado para checks rápidos y deterministas (segundos), nunca minutos.
--   **`pre-push`:** ejecuta `gga run --pr-mode --diff-only` (revisión con IA una vez por push/work unit, no por commit). Si no hay rama base detectable (`main`/`master`/`develop`), cae a `gga run --ci`.
+-   **`pre-push`:** GGA es **opt-in**: por defecto el push no corre revisión con IA (decisión del mantenedor). Para activarlo: `git config gga.prePush true`, y entonces ejecuta `gga run --pr-mode --diff-only` (o `gga run --ci` si no hay rama base). Bypass puntual: `git push --no-verify`.
 -   **`--no-verify`:** se permite solo con autorización explícita del mantenedor. Casos válidos: (a) GGA reporta hallazgos preexistentes fuera del alcance del work unit; (b) el review excede el presupuesto de tiempo del commit.
 -   **Evidencia sustituta obligatoria** al usar `--no-verify`: `dotnet build CommandCenter.slnx -c Release` (0/0), `dotnet test` al 100%, `npm test` + `npm run lint` si toca Web, y `scripts/check-coverage.py` dentro de umbral.
 -   **Registro:** la excepción se documenta en la sección GGA del ANEXO correspondiente en `docs/reporte.txt`, indicando qué se corrió y qué no. Nunca afirmar un veredicto de GGA que no se ejecutó hasta completitud.
