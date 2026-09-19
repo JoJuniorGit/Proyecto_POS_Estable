@@ -52,7 +52,7 @@ public partial class SalesService
         }
 
         await NotifyHoldOrdersChangedAsync();
-        return await GetSaleAsync(saleId);
+        return await GetSaleAsync(saleId, cancellationToken);
     }
 
     public async Task<SaleDto> ReleaseSaleAsync(int saleId, int? actingUserId, bool force = false, CancellationToken cancellationToken = default)
@@ -72,7 +72,7 @@ public partial class SalesService
                 await _context.SaveChangesAsync(cancellationToken);
             }
 
-            return await GetSaleAsync(saleId);
+            return await GetSaleAsync(saleId, cancellationToken);
         }
 
         ClearHoldClaim(sale);
@@ -87,7 +87,7 @@ public partial class SalesService
 
             if (sale.ClaimedByUserId == null)
             {
-                return await GetSaleAsync(saleId);
+                return await GetSaleAsync(saleId, cancellationToken);
             }
 
             if (!force && sale.ClaimedByUserId != actingUserId)
@@ -100,7 +100,7 @@ public partial class SalesService
         }
 
         await NotifyHoldOrdersChangedAsync();
-        return await GetSaleAsync(saleId);
+        return await GetSaleAsync(saleId, cancellationToken);
     }
 
     private static void EnsureHoldClaimAccess(Sale sale, int? actingUserId)

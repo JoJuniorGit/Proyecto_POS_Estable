@@ -19,13 +19,13 @@ public partial class InventoryService : IProductManagementService, IReservationS
         EnsureCatalogMutationPermission();
 
         decimal retailUsd = request.PriceRetailUSD > 0 ? request.PriceRetailUSD : request.PriceUSD;
-        decimal todayRate = await GetTodayExchangeRateAsync();
+        decimal todayRate = await GetTodayExchangeRateAsync(cancellationToken);
         decimal canonicalPriceBsS = todayRate > 0
             ? Core.Helpers.PricingCalculator.ToBsSCeiling(retailUsd, todayRate)
             : Core.Helpers.PricingCalculator.RoundPriceUp(request.PriceBsS);
 
         var product = request.ToEntity(canonicalPriceBsS);
-        var created = await CreateProductAsync(product);
+        var created = await CreateProductAsync(product, cancellationToken);
         return created.ToDto(canViewCost: true);
     }
 
@@ -36,13 +36,13 @@ public partial class InventoryService : IProductManagementService, IReservationS
         var existing = await _context.Products.FindAsync(new object[] { id }, cancellationToken);
         if (existing == null) throw new KeyNotFoundException($"Producto con ID {id} no encontrado.");
 
-        decimal todayRate = await GetTodayExchangeRateAsync();
+        decimal todayRate = await GetTodayExchangeRateAsync(cancellationToken);
         decimal canonicalPriceBsS = (request.PriceRetailUSD > 0 && todayRate > 0)
             ? Core.Helpers.PricingCalculator.ToBsSCeiling(request.PriceRetailUSD, todayRate)
             : (request.PriceBsS > 0 ? Core.Helpers.PricingCalculator.RoundPriceUp(request.PriceBsS) : existing.PriceBsS);
 
         existing.UpdateFromDto(request, canonicalPriceBsS);
-        await UpdateProductAsync(existing);
+        await UpdateProductAsync(existing, cancellationToken);
     }
 
     public async Task<ProductDto?> GetProductDtoByIdAsync(int id, System.Threading.CancellationToken cancellationToken = default)
@@ -56,7 +56,7 @@ public partial class InventoryService : IProductManagementService, IReservationS
         return product != null ? product.ToDto(canViewCost: true) : null;
     }
 
-    public async Task<Product> CreateProductAsync(Product product)
+    public async Task<Product> CreateProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default)
     {
         EnsureCatalogMutationPermission();
 
@@ -114,7 +114,7 @@ public partial class InventoryService : IProductManagementService, IReservationS
         }
         else if (product.ParentProductId.HasValue)
         {
-            var parent = await _context.Products.FindAsync(product.ParentProductId.Value);
+            var parent = await _context.Products.FindAsync(new object[] { product.ParentProductId.Value }, cancellationToken);
             if (parent == null || parent.IsDeleted)
             {
                 throw new KeyNotFoundException($"Producto padre con ID {product.ParentProductId.Value} no encontrado.");
@@ -164,7 +164,7 @@ public partial class InventoryService : IProductManagementService, IReservationS
 
         ValidateProductSku(product.SKU, product.IsGroupHeader);
 
-        if (await _context.Products.AnyAsync(p => p.SKU == product.SKU && !p.IsDeleted))
+        if (await _context.Products.AnyAsync(p => p.SKU == product.SKU && !p.IsDeleted, cancellationToken))
         {
             throw new InvalidOperationException($"Product with SKU {product.SKU} already exists.");
         }
@@ -172,17 +172,17 @@ public partial class InventoryService : IProductManagementService, IReservationS
         ValidateAndCalculateProductPrices(product);
 
         _context.Products.Add(product);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
         InvalidateProductSkuCache(product.SKU);
         if (product.ParentProduct != null) InvalidateProductSkuCache(product.ParentProduct.SKU);
         return product;
     }
 
-    public async Task UpdateProductAsync(Product product)
+    public async Task UpdateProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default)
     {
         EnsureCatalogMutationPermission();
 
-        var existing = await _context.Products.FindAsync(product.Id);
+        var existing = await _context.Products.FindAsync(new object[] { product.Id }, cancellationToken);
         if (existing == null) throw new KeyNotFoundException($"Product {product.Id} not found");
 
         var entry = _context.Entry(existing);
@@ -201,7 +201,7 @@ public partial class InventoryService : IProductManagementService, IReservationS
 
         if (!product.IsGroupHeader)
         {
-            int activeVariants = await _context.Products.CountAsync(p => p.ParentProductId == product.Id && !p.IsDeleted);
+            int activeVariants = await _context.Products.CountAsync(p => p.ParentProductId == product.Id && !p.IsDeleted, cancellationToken);
             if (activeVariants > 0)
             {
                 throw new InvalidOperationException($"No se puede desmarcar el grupo '{product.Name}' porque tiene {activeVariants} variantes asociadas. Desvincule o elimine las variantes primero.");
@@ -264,7 +264,7 @@ public partial class InventoryService : IProductManagementService, IReservationS
         }
         else if (product.ParentProductId.HasValue)
         {
-            var parent = await _context.Products.FindAsync(product.ParentProductId.Value);
+            var parent = await _context.Products.FindAsync(new object[] { product.ParentProductId.Value }, cancellationToken);
             if (parent != null && !parent.IsDeleted)
             {
                 product.IsGroupHeader = false;
@@ -317,13 +317,13 @@ public partial class InventoryService : IProductManagementService, IReservationS
         ValidateProductSku(product.SKU, product.IsGroupHeader);
         ValidateAndCalculateProductPrices(product);
 
-        await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
         {
-            await using var tx = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync() : null;
+            await using var tx = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
 
             _context.Entry(existing).CurrentValues.SetValues(product);
             existing.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             if (product.IsGroupHeader && !product.HasIndependentPricing)
             {
@@ -342,11 +342,11 @@ public partial class InventoryService : IProductManagementService, IReservationS
                             .SetProperty(p => p.PriceUSD, product.PriceRetailUSD)
                             .SetProperty(p => p.Cost, product.CostPriceUSD)
                             .SetProperty(p => p.ProfitPercentage, product.ProfitMarginRetail)
-                            .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
+                            .SetProperty(p => p.UpdatedAt, DateTime.UtcNow), cancellationToken);
                 }
                 else
                 {
-                    var variants = await _context.Products.Where(p => p.ParentProductId == product.Id && !p.IsDeleted).ToListAsync();
+                    var variants = await _context.Products.Where(p => p.ParentProductId == product.Id && !p.IsDeleted).ToListAsync(cancellationToken);
                     foreach (var v in variants)
                     {
                         v.PriceRetailUSD = product.PriceRetailUSD;
@@ -361,15 +361,15 @@ public partial class InventoryService : IProductManagementService, IReservationS
                         v.ProfitPercentage = product.ProfitMarginRetail;
                         v.UpdatedAt = DateTime.UtcNow;
                     }
-                    await _context.SaveChangesAsync();
+                    await _context.SaveChangesAsync(cancellationToken);
                 }
             }
 
             if (tx != null)
             {
-                await tx.CommitAsync();
+                await tx.CommitAsync(cancellationToken);
             }
-        });
+        }, cancellationToken);
 
         InvalidateProductSkuCache(product.SKU);
         if (product.IsGroupHeader || product.ParentProductId != null)
@@ -378,36 +378,36 @@ public partial class InventoryService : IProductManagementService, IReservationS
         }
     }
 
-    public async Task SetProductStatusAsync(int id, bool isActive, bool isDeleted)
+    public async Task SetProductStatusAsync(int id, bool isActive, bool isDeleted, System.Threading.CancellationToken cancellationToken = default)
     {
         EnsureCatalogMutationPermission();
-        var product = await _context.Products.FindAsync(id);
+        var product = await _context.Products.FindAsync(new object[] { id }, cancellationToken);
         if (product != null)
         {
             product.IsActive = isActive;
             product.IsDeleted = isDeleted;
             product.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
             InvalidateProductSkuCache(product.SKU);
             if (product.IsGroupHeader) InvalidateAllProductCaches();
         }
     }
 
-    public async Task RestoreProductAsync(int id)
+    public async Task RestoreProductAsync(int id, System.Threading.CancellationToken cancellationToken = default)
     {
         EnsureCatalogMutationPermission();
-        await SetProductStatusAsync(id, isActive: true, isDeleted: false);
+        await SetProductStatusAsync(id, isActive: true, isDeleted: false, cancellationToken);
     }
 
-    public async Task<string> DeleteProductAsync(int id, bool forceHardDelete = false)
+    public async Task<string> DeleteProductAsync(int id, bool forceHardDelete = false, System.Threading.CancellationToken cancellationToken = default)
     {
         EnsureCatalogMutationPermission();
-        var product = await _context.Products.FindAsync(id);
+        var product = await _context.Products.FindAsync(new object[] { id }, cancellationToken);
         if (product == null) return "not_found";
 
         if (product.IsGroupHeader)
         {
-            int activeVariants = await _context.Products.CountAsync(p => p.ParentProductId == id && !p.IsDeleted);
+            int activeVariants = await _context.Products.CountAsync(p => p.ParentProductId == id && !p.IsDeleted, cancellationToken);
             if (activeVariants > 0)
             {
                 throw new InvalidOperationException($"No se puede eliminar el producto padre '{product.Name}' porque contiene {activeVariants} variantes asociadas. Desvincule o elimine primero las variantes.");
@@ -420,7 +420,7 @@ public partial class InventoryService : IProductManagementService, IReservationS
             try
             {
                 _context.Products.Remove(product);
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(cancellationToken);
                 result = "hard_deleted";
             }
             catch (DbUpdateException ex)
@@ -430,7 +430,7 @@ public partial class InventoryService : IProductManagementService, IReservationS
                 product.IsActive = false;
                 product.IsDeleted = true;
                 product.UpdatedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(cancellationToken);
                 result = "archived";
             }
         }
@@ -439,7 +439,7 @@ public partial class InventoryService : IProductManagementService, IReservationS
             product.IsActive = false;
             product.IsDeleted = true;
             product.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
             result = "archived";
         }
 

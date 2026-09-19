@@ -20,14 +20,14 @@ namespace Sales.Module.Services;
 public partial class SalesService
 {
 
-    public async Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null)
+    public async Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         var sale = await GetSaleEntityAsync(saleId);
         EnsureHoldClaimAccess(sale, actingUserId);
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold)
             throw new InvalidOperationException("Solo se pueden poner en espera ventas pendientes o abiertas.");
 
-        var customer = await _context.Customers.FindAsync(request.CustomerId);
+        var customer = await _context.Customers.FindAsync(new object[] { request.CustomerId }, cancellationToken);
         if (customer == null) throw new KeyNotFoundException($"Cliente con ID {request.CustomerId} no encontrado.");
         
         if (customer.IsDefault || customer.CedulaOrRif == "V-00000000")
@@ -44,7 +44,7 @@ public partial class SalesService
         if (paymentsToProcess.Any())
         {
             var pMethodIds = paymentsToProcess.Select(p => p.PaymentMethodId).Distinct().ToList();
-            var pMethodsDict = await _context.PaymentMethods.Where(pm => pMethodIds.Contains(pm.Id)).ToDictionaryAsync(pm => pm.Id);
+            var pMethodsDict = await _context.PaymentMethods.Where(pm => pMethodIds.Contains(pm.Id)).ToDictionaryAsync(pm => pm.Id, cancellationToken);
 
             foreach (var payment in paymentsToProcess)
             {
@@ -114,16 +114,16 @@ public partial class SalesService
             // 8.9-B4: caminar TODA la operación bajo execution strategy para que un fallo
             // transitorio reintente el bloque completo (sales + inventory enrollado) y no
             // quede una escritura a medias entre las dos bases.
-            await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
             {
             IDbContextTransaction? txn = null;
             if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
             {
-                txn = await _context.Database.BeginTransactionAsync();
+                txn = await _context.Database.BeginTransactionAsync(cancellationToken);
                 if (txn != null && _inventoryService != null)
                 {
                     var rawDbTx = txn.GetDbTransaction();
-                    await _inventoryService.EnrollInTransactionAsync(rawDbTx);
+                    await _inventoryService.EnrollInTransactionAsync(rawDbTx, cancellationToken);
                 }
             }
             try
@@ -139,7 +139,7 @@ public partial class SalesService
                 {
                     var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
                     var productsDict = new Dictionary<int, Product>();
-                    var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
+                    var fetched = await _inventoryService.GetProductsByIdsAsync(productIds, cancellationToken);
                     if (fetched != null && fetched.Count > 0)
                     {
                         productsDict = fetched.ToDictionary(p => p.Id);
@@ -148,7 +148,7 @@ public partial class SalesService
                     {
                         foreach (var id in productIds)
                         {
-                            var p = await _inventoryService.GetProductByIdAsync(id);
+                            var p = await _inventoryService.GetProductByIdAsync(id, cancellationToken);
                             if (p != null) productsDict[p.Id] = p;
                         }
                     }
@@ -173,7 +173,8 @@ public partial class SalesService
                         var allowNegativeStock = await IsAllowNegativeStockEnabledAsync();
                         await _inventoryService.UpdateStockBatchAsync(
                             stockDeductions,
-                            allowNegativeStock: allowNegativeStock);
+                            allowNegativeStock: allowNegativeStock,
+                            cancellationToken: cancellationToken);
                     }
                 }
 
@@ -211,12 +212,12 @@ public partial class SalesService
                     var paidMethodIds = sale.Payments.Select(p => p.PaymentMethodId).Distinct().ToList();
                     var paidMethods = await _context.PaymentMethods
                         .Where(pm => paidMethodIds.Contains(pm.Id))
-                        .ToDictionaryAsync(pm => pm.Id);
+                        .ToDictionaryAsync(pm => pm.Id, cancellationToken);
                     int? cashMethodId = sale.Payments
                         .FirstOrDefault(p => paidMethods.TryGetValue(p.PaymentMethodId, out var pm) && pm.IsCash)
                         ?.PaymentMethodId;
 
-                    var changeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(sale.AppliedRate);
+                    var changeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(sale.AppliedRate, cancellationToken);
 
                     decimal pendingCashIncomeBsS = _context.CashTransactions.Local
                         .Where(t => t.SessionId == changeSession.Id
@@ -233,18 +234,19 @@ public partial class SalesService
                         $"Vuelto Pedido #{sale.Id}",
                         sale.Id,
                         cashMethodId,
-                        pendingCashIncomeBsS);
+                        pendingCashIncomeBsS,
+                        cancellationToken);
                 }
 
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 if (txn != null)
                 {
-                    await txn.CommitAsync();
+                    await txn.CommitAsync(cancellationToken);
                     // 8.7-B7: devolver al InventoryDbContext su conexión propia tras el commit.
                     if (_inventoryService != null)
                     {
-                        await _inventoryService.DetachFromTransactionAsync();
+                        await _inventoryService.DetachFromTransactionAsync(cancellationToken);
                     }
                 }
             }
@@ -252,10 +254,10 @@ public partial class SalesService
             {
                 if (txn != null)
                 {
-                    await txn.RollbackAsync();
+                    await txn.RollbackAsync(cancellationToken);
                     if (_inventoryService != null)
                     {
-                        await _inventoryService.DetachFromTransactionAsync();
+                        await _inventoryService.DetachFromTransactionAsync(cancellationToken);
                     }
                 }
                 _logger?.LogError(ex, "[SalesService] Error al completar venta en espera #{SaleId} al 100%. Transacción revertida.", saleId);
@@ -270,13 +272,13 @@ public partial class SalesService
             {
                 var itemsSnapshot = sale.Items.Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity)).ToList();
                 var saleMadeEvent = new SaleMadeEvent(sale.Id, sale.Date, itemsSnapshot, sale.InvoiceNumber.Value);
-                await _mediator.Publish(saleMadeEvent);
+                await _mediator.Publish(saleMadeEvent, cancellationToken);
             }
             catch (Exception ex)
             {
                 _logger?.LogWarning(ex, "[SalesService] Publicación secundaria de SaleMadeEvent falló para Venta #{SaleId}, pero está respaldada en Outbox.", sale.Id);
             }
-            });
+            }, cancellationToken);
         }
         else
         {
@@ -284,7 +286,7 @@ public partial class SalesService
             sale.Status = SaleStatus.OnHold;
             sale.DeliveryStatus = SaleDeliveryStatus.PendingPickup;
             RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)), actingUserId);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
         }
 
         await NotifyHoldOrdersChangedAsync();
@@ -292,7 +294,7 @@ public partial class SalesService
         return MapToDto(sale);
     }
 
-    public async Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false, int? actingUserId = null)
+    public async Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         var sale = await GetSaleEntityAsync(saleId);
         EnsureHoldClaimAccess(sale, actingUserId);
@@ -311,7 +313,7 @@ public partial class SalesService
             var productsDict = new Dictionary<int, Product>();
             if (_inventoryService != null && productIds.Any())
             {
-                var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
+                var fetched = await _inventoryService.GetProductsByIdsAsync(productIds, cancellationToken);
                 if (fetched != null && fetched.Count > 0)
                 {
                     productsDict = fetched.ToDictionary(p => p.Id);
@@ -320,7 +322,7 @@ public partial class SalesService
                 {
                     foreach (var id in productIds)
                     {
-                        var p = await _inventoryService.GetProductByIdAsync(id);
+                        var p = await _inventoryService.GetProductByIdAsync(id, cancellationToken);
                         if (p != null) productsDict[p.Id] = p;
                     }
                 }
@@ -400,13 +402,13 @@ public partial class SalesService
 
         await RecalculateTotalAsync(sale);
         ValidateHoldSaleTotal(sale);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         await NotifyHoldOrdersChangedAsync();
         return MapToDto(sale);
     }
 
-    public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync(int? cashierId = null, int limit = 200, int offset = 0)
+    public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync(int? cashierId = null, int limit = 200, int offset = 0, System.Threading.CancellationToken cancellationToken = default)
     {
         // 8.7-B6: los GET no escriben. El recálculo masivo de OnHold ocurre en el POST de tasa
         // (ExchangeRateController → RecalculateOnHoldSalesAsync) e invalida/redifunde por SignalR.
@@ -429,19 +431,19 @@ public partial class SalesService
             .OrderByDescending(s => s.Date)
             .Skip(offset)
             .Take(limit)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         await PopulateItemsMetadataAsync(sales);
 
         return sales.Select(s => MapToDto(s));
     }
 
-    public async Task<int> CountPendingSalesAsync(int? cashierId = null)
+    public async Task<int> CountPendingSalesAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         return await _context.Sales
             .AsNoTracking()
             .CountAsync(s => s.Status == SaleStatus.OnHold
-                && (!cashierId.HasValue || s.CashierId == cashierId.Value));
+                && (!cashierId.HasValue || s.CashierId == cashierId.Value), cancellationToken);
     }
 
 

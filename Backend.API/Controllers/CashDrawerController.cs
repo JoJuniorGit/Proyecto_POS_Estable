@@ -211,7 +211,7 @@ public class CashDrawerController : ControllerBase
         decimal officialRate = 0m;
         try
         {
-            officialRate = await _inventoryService.GetTodayExchangeRateAsync();
+            officialRate = await _inventoryService.GetTodayExchangeRateAsync(cancellationToken);
         }
         catch (System.Exception ex)
         {

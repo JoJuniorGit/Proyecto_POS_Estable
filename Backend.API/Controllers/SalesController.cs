@@ -37,7 +37,7 @@ public partial class SalesController : ControllerBase
             ? uid 
             : cashierId;
 
-        var sale = await _salesService.StartSaleAsync(effectiveCashierId);
+        var sale = await _salesService.StartSaleAsync(effectiveCashierId, cancellationToken);
         return Ok(sale);
     }
 
@@ -108,7 +108,7 @@ public partial class SalesController : ControllerBase
 
         try
         {
-            var sale = await _salesService.GetSaleAsync(id);
+            var sale = await _salesService.GetSaleAsync(id, cancellationToken);
             return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException)
@@ -134,7 +134,7 @@ public partial class SalesController : ControllerBase
             return this.ApiForbidden("Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor.");
         }
 
-        var sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized, GetActorUserId());
+        var sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized, GetActorUserId(), cancellationToken);
         return Ok(sale);
     }
 
@@ -149,7 +149,7 @@ public partial class SalesController : ControllerBase
             return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
 
-        var sale = await _salesService.RemoveItemAsync(id, itemId, ParseRateInvariant(exchangeRate), GetActorUserId());
+        var sale = await _salesService.RemoveItemAsync(id, itemId, ParseRateInvariant(exchangeRate), GetActorUserId(), cancellationToken);
         return Ok(sale);
     }
 
@@ -164,7 +164,7 @@ public partial class SalesController : ControllerBase
             return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
 
-        var sale = await _salesService.UpdateItemQuantityAsync(id, itemId, request.Quantity, request.ExchangeRate, GetActorUserId());
+        var sale = await _salesService.UpdateItemQuantityAsync(id, itemId, request.Quantity, request.ExchangeRate, GetActorUserId(), cancellationToken);
         return Ok(sale);
     }
 
@@ -181,7 +181,7 @@ public partial class SalesController : ControllerBase
                 return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
             }
 
-            var sale = await _salesService.UpdateExchangeRateAsync(id, ParseRateInvariant(exchangeRate), GetActorUserId());
+            var sale = await _salesService.UpdateExchangeRateAsync(id, ParseRateInvariant(exchangeRate), GetActorUserId(), cancellationToken);
             return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)

@@ -13,7 +13,7 @@ namespace Sales.Module.Services;
 
 public partial class SalesService
 {
-    public async Task<SaleHistoryDto> ConfirmPickupAsync(int saleId, int? actingUserId = null)
+    public async Task<SaleHistoryDto> ConfirmPickupAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         // 8.9-M17: una sola consulta; se mapea el DTO desde la entidad ya cargada (sin doble fetch).
         var sale = await _context.Sales
@@ -22,7 +22,7 @@ public partial class SalesService
             .Include(s => s.Cashier)
             .Include(s => s.Items)
             .Include(s => s.Payments).ThenInclude(p => p.PaymentMethod)
-            .FirstOrDefaultAsync(s => s.Id == saleId);
+            .FirstOrDefaultAsync(s => s.Id == saleId, cancellationToken);
 
         if (sale == null) throw new KeyNotFoundException("Venta no encontrada.");
 
@@ -34,14 +34,14 @@ public partial class SalesService
         sale.DeliveryStatus = SaleDeliveryStatus.Delivered;
         sale.PickupDate = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         return MapToHistoryDetail(sale);
     }
 
     // 8.9-B2: soporta scope por cajero (Cashier filtra sus entregas; Admin/Manager ven todas).
     // 8.9-B5: proyección directa en SQL (sin materializar entidades con Items/Payments completos).
-    public async Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync(int? cashierId = null, int limit = 200, int offset = 0)
+    public async Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync(int? cashierId = null, int limit = 200, int offset = 0, System.Threading.CancellationToken cancellationToken = default)
     {
         // 8.2-M9: tope de la cola (default 200, max 1000 en el controlador).
         // 8.14-N1: paginación real por offset.
@@ -79,22 +79,22 @@ public partial class SalesService
                     SubtotalBsS = i.SubtotalBsS
                 }).ToList()
             })
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         return sales;
     }
 
-    public async Task<int> CountPendingPickupsAsync(int? cashierId = null)
+    public async Task<int> CountPendingPickupsAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         return await _context.Sales
             .AsNoTracking()
             .CountAsync(s => s.Status == SaleStatus.Completed
                 && s.DeliveryStatus == SaleDeliveryStatus.PendingPickup
-                && (!cashierId.HasValue || s.CashierId == cashierId.Value));
+                && (!cashierId.HasValue || s.CashierId == cashierId.Value), cancellationToken);
     }
 
     // 8.9-B2: un Cashier solo consulta su propio historial; Admin/Manager sin restricción.
-    public async Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, DateTime? startDate, DateTime? endDate, string? search = null, int? cashierId = null)
+    public async Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, DateTime? startDate, DateTime? endDate, string? search = null, int? cashierId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         var query = _context.Sales
             .AsNoTracking()
@@ -140,7 +140,7 @@ public partial class SalesService
                 (isNumericTerm && s.InvoiceNumber == invoiceMatch));
         }
 
-        int totalCount = await query.CountAsync();
+        int totalCount = await query.CountAsync(cancellationToken);
 
         var items = await query
             .OrderByDescending(s => s.Date)
@@ -162,12 +162,12 @@ public partial class SalesService
                 DeliveryStatus = s.DeliveryStatus.ToString(),
                 PickupDate = s.PickupDate
             })
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         return (items, totalCount);
     }
 
-    public async Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId)
+    public async Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId, System.Threading.CancellationToken cancellationToken = default)
     {
         var sale = await _context.Sales
             .AsNoTracking()
@@ -177,7 +177,7 @@ public partial class SalesService
                 .ThenInclude(p => p.PaymentMethod)
             .Include(s => s.Cashier)
             .Include(s => s.Customer)
-            .FirstOrDefaultAsync(s => s.Id == saleId);
+            .FirstOrDefaultAsync(s => s.Id == saleId, cancellationToken);
 
         if (sale == null) throw new KeyNotFoundException($"Sale {saleId} not found.");
 

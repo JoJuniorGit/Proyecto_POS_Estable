@@ -18,7 +18,8 @@ public partial class SalesService
         decimal exchangeRate,
         int? cashierId = null,
         string? userName = null,
-        IDbContextTransaction? existingTransaction = null)
+        IDbContextTransaction? existingTransaction = null,
+        System.Threading.CancellationToken cancellationToken = default)
     {
         if (existingTransaction != null && _context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
         {
@@ -35,7 +36,7 @@ public partial class SalesService
         {
             try
             {
-                var p = await _inventoryService.GetCashAdvanceProductAsync();
+                var p = await _inventoryService.GetCashAdvanceProductAsync(cancellationToken);
 
                 if (p != null)
                 {
@@ -51,7 +52,7 @@ public partial class SalesService
                         StockQuantity = 999999,
                         IsCashAdvance = true,
                         IsActive = true
-                    });
+                    }, cancellationToken);
                     productId = newP.Id;
                 }
             }
@@ -71,19 +72,19 @@ public partial class SalesService
         int? resolvedCashierId = cashierId;
         if (!resolvedCashierId.HasValue && !string.IsNullOrWhiteSpace(userName))
         {
-            var matchedUser = await _context.Users.FirstOrDefaultAsync(u => u.Name == userName || u.FullName == userName || u.Cedula == userName);
+            var matchedUser = await _context.Users.FirstOrDefaultAsync(u => u.Name == userName || u.FullName == userName || u.Cedula == userName, cancellationToken);
             resolvedCashierId = matchedUser?.Id;
         }
 
         if (!resolvedCashierId.HasValue)
         {
-            var defaultUser = await _context.Users.FirstOrDefaultAsync(u => u.IsActive);
+            var defaultUser = await _context.Users.FirstOrDefaultAsync(u => u.IsActive, cancellationToken);
             resolvedCashierId = defaultUser?.Id;
         }
 
         // 3. Obtener cliente por defecto
-        var defaultCustomer = await _context.Customers.FirstOrDefaultAsync(c => c.IsDefault)
-                           ?? await _context.Customers.FirstOrDefaultAsync(c => c.Id == 1);
+        var defaultCustomer = await _context.Customers.FirstOrDefaultAsync(c => c.IsDefault, cancellationToken)
+                           ?? await _context.Customers.FirstOrDefaultAsync(c => c.Id == 1, cancellationToken);
 
         int customerId = defaultCustomer?.Id ?? 1;
         string customerName = defaultCustomer?.Name ?? "CLIENTE CONTADO";
@@ -119,7 +120,7 @@ public partial class SalesService
         };
 
         _context.Sales.Add(sale);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         // 6. Crear SaleItem asignando explícitamente el precio unitario y subtotal (sobreescribiendo precio base 0)
         var saleItem = new SaleItem
@@ -149,7 +150,7 @@ public partial class SalesService
         };
 
         _context.SalePayments.Add(payment);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         return sale;
     }

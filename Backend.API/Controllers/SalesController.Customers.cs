@@ -22,7 +22,7 @@ public partial class SalesController
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        var (items, totalCount) = await _salesService.GetCustomersAsync(query, page, pageSize, recentOnly);
+        var (items, totalCount) = await _salesService.GetCustomersAsync(query, page, pageSize, recentOnly, cancellationToken);
         Response.Headers["X-Total-Count"] = totalCount.ToString();
         return Ok(new CustomerPagedResultDto
         {
@@ -45,7 +45,7 @@ public partial class SalesController
     {
         try
         {
-            var customer = await _salesService.GetDefaultCustomerAsync();
+            var customer = await _salesService.GetDefaultCustomerAsync(cancellationToken);
             return Ok(customer);
         }
         catch (System.Collections.Generic.KeyNotFoundException)
@@ -67,7 +67,7 @@ public partial class SalesController
 
         try
         {
-            var sale = await _salesService.UpdateSaleCustomerAsync(id, request.CustomerId, GetActorUserId());
+            var sale = await _salesService.UpdateSaleCustomerAsync(id, request.CustomerId, GetActorUserId(), cancellationToken);
             return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
@@ -83,7 +83,7 @@ public partial class SalesController
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<CustomerDto>> CreateCustomerAsync([FromBody] CreateCustomerDto request, CancellationToken cancellationToken = default)
     {
-        var customer = await _salesService.CreateCustomerAsync(request);
+        var customer = await _salesService.CreateCustomerAsync(request, cancellationToken);
         return Ok(customer);
     }
 
@@ -96,7 +96,7 @@ public partial class SalesController
     {
         try
         {
-            var customer = await _salesService.UpdateCustomerAsync(id, request);
+            var customer = await _salesService.UpdateCustomerAsync(id, request, cancellationToken);
             return Ok(customer);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
@@ -114,7 +114,7 @@ public partial class SalesController
     {
         try
         {
-            await _salesService.DeleteCustomerAsync(id);
+            await _salesService.DeleteCustomerAsync(id, cancellationToken);
             return NoContent();
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)

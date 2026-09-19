@@ -13,7 +13,7 @@ namespace Sales.Module.Services;
 
 public partial class SalesService
 {
-    public async Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate, int? actingUserId = null)
+    public async Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         var sale = await GetSaleEntityAsync(saleId);
         EnsureHoldClaimAccess(sale, actingUserId);
@@ -22,12 +22,12 @@ public partial class SalesService
 
         sale.AppliedRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "UpdateExchangeRate", referenceId: sale.Id);
         await RecalculateTotalAsync(sale);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
         return MapToDto(sale);
     }
 
     /// <inheritdoc />
-    public async Task<int> RecalculateOnHoldSalesAsync(decimal newExchangeRate)
+    public async Task<int> RecalculateOnHoldSalesAsync(decimal newExchangeRate, System.Threading.CancellationToken cancellationToken = default)
     {
         if (newExchangeRate <= 0)
             return 0;
@@ -55,7 +55,7 @@ public partial class SalesService
                     .Where(s => s.Status == SaleStatus.OnHold && s.Id > lastId)
                     .OrderBy(s => s.Id)
                     .Take(batchSize)
-                    .ToListAsync();
+                    .ToListAsync(cancellationToken);
 
                 if (batch.Count == 0)
                     break;
@@ -66,7 +66,7 @@ public partial class SalesService
                     await RecalculateTotalAsync(sale);
                 }
 
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(cancellationToken);
             }
             catch (Exception ex)
             {
@@ -85,7 +85,7 @@ public partial class SalesService
         return totalUpdated;
     }
 
-    public async Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType, int? actingUserId = null)
+    public async Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(priceListType) || (priceListType != "Retail" && priceListType != "Wholesale"))
         {
@@ -98,7 +98,7 @@ public partial class SalesService
             .Include(s => s.Payments)
                 .ThenInclude(p => p.PaymentMethod)
             .Include(s => s.Customer)
-            .FirstOrDefaultAsync(s => s.Id == saleId);
+            .FirstOrDefaultAsync(s => s.Id == saleId, cancellationToken);
 
         if (sale == null)
         {
@@ -124,7 +124,7 @@ public partial class SalesService
             }
         }
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
         return MapToDto(sale);
     }
 

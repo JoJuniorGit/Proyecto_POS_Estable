@@ -64,7 +64,7 @@ public partial class ProductsController : ControllerBase
             : null;
         if (dto == null)
         {
-            var product = await _inventoryService.GetProductByIdAsync(id);
+            var product = await _inventoryService.GetProductByIdAsync(id, cancellationToken);
             if (product != null)
             {
                 dto = product.ToDto(_currentUserService.CanMutateCatalog);
@@ -99,12 +99,12 @@ public partial class ProductsController : ControllerBase
             if (created == null)
             {
                 decimal retailUsd = request.PriceRetailUSD > 0 ? request.PriceRetailUSD : request.PriceUSD;
-                decimal todayRate = await _inventoryService.GetTodayExchangeRateAsync();
+                decimal todayRate = await _inventoryService.GetTodayExchangeRateAsync(cancellationToken);
                 decimal canonicalPriceBsS = todayRate > 0
                     ? Core.Helpers.PricingCalculator.ToBsSCeiling(retailUsd, todayRate)
                     : Core.Helpers.PricingCalculator.RoundPriceUp(request.PriceBsS);
                 var product = request.ToEntity(canonicalPriceBsS);
-                var entityCreated = await _inventoryService.CreateProductAsync(product);
+                var entityCreated = await _inventoryService.CreateProductAsync(product, cancellationToken);
                 if (entityCreated != null)
                 {
                     created = entityCreated.ToDto(_currentUserService.CanMutateCatalog);
@@ -175,7 +175,7 @@ public partial class ProductsController : ControllerBase
         }
         try
         {
-            await _inventoryService.SetProductStatusAsync(id, dto.IsActive, dto.IsDeleted);
+            await _inventoryService.SetProductStatusAsync(id, dto.IsActive, dto.IsDeleted, cancellationToken);
             return Ok(new { message = "Status updated successfully" });
         }
         catch (System.UnauthorizedAccessException)
@@ -197,7 +197,7 @@ public partial class ProductsController : ControllerBase
         }
         try
         {
-            await _inventoryService.RestoreProductAsync(id);
+            await _inventoryService.RestoreProductAsync(id, cancellationToken);
             return Ok(new { message = "Product restored successfully" });
         }
         catch (System.UnauthorizedAccessException)
@@ -219,7 +219,7 @@ public partial class ProductsController : ControllerBase
         }
         try
         {
-            var result = await _inventoryService.DeleteProductAsync(id, forceHardDelete: hardDelete);
+            var result = await _inventoryService.DeleteProductAsync(id, forceHardDelete: hardDelete, cancellationToken: cancellationToken);
             return Ok(new { result });
         }
         catch (System.UnauthorizedAccessException)
@@ -246,7 +246,7 @@ public partial class ProductsController : ControllerBase
 
         try
         {
-            await _inventoryService.AdjustStockAsync(id, dto.QuantityChange, dto.Reason);
+            await _inventoryService.AdjustStockAsync(id, dto.QuantityChange, dto.Reason, cancellationToken: cancellationToken);
             return NoContent();
         }
         catch (System.Collections.Generic.KeyNotFoundException)
@@ -302,7 +302,7 @@ public partial class ProductsController : ControllerBase
         {
             return this.ApiBadRequest("El SKU debe contener entre 1 y 50 caracteres alfanuméricos (letras, dígitos, guiones o guiones bajos).");
         }
-        var info = await _inventoryService.GetProductQuickInfoAsync(sku);
+        var info = await _inventoryService.GetProductQuickInfoAsync(sku, cancellationToken: cancellationToken);
         if (info == null) return this.ApiNotFound($"Producto con SKU '{sku}' no encontrado.");
         
         if (!_currentUserService.CanMutateCatalog)

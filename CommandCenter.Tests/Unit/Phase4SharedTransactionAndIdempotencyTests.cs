@@ -694,8 +694,8 @@ public class Phase4SharedTransactionAndIdempotencyTests
 
         var mockSalesService = new Mock<ISalesService>();
         mockSalesService.Setup(s => s.AddPaymentToHoldSaleAsync(
-                5, It.IsAny<AddPaymentRequestDto>(), "ABONO-001", It.IsAny<byte[]>(), It.IsAny<int?>()))
-            .Callback<int, AddPaymentRequestDto, string?, byte[]?, int?>((saleId, req, key, hash, actorId) =>
+                5, It.IsAny<AddPaymentRequestDto>(), "ABONO-001", It.IsAny<byte[]>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback<int, AddPaymentRequestDto, string?, byte[]?, int?, CancellationToken>((saleId, req, key, hash, actorId, _) =>
             {
                 if (!string.IsNullOrEmpty(key) && hash != null)
                 {
@@ -744,7 +744,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
         Assert.Equal("HIT", replayContext.Response.Headers["X-Cache-Lookup"].ToString());
 
         mockSalesService.Verify(s => s.AddPaymentToHoldSaleAsync(
-            5, It.IsAny<AddPaymentRequestDto>(), "ABONO-001", It.IsAny<byte[]>(), It.IsAny<int?>()),
+            5, It.IsAny<AddPaymentRequestDto>(), "ABONO-001", It.IsAny<byte[]>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()),
             Times.Once);
 
         // Se persiste un único registro de idempotencia

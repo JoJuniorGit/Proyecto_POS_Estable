@@ -94,7 +94,7 @@ public class ReservationExpiryJob : BackgroundService
         {
             try
             {
-                await inventoryService.CancelReservationAsync(reservationId).ConfigureAwait(false);
+                await inventoryService.CancelReservationAsync(reservationId, cancellationToken).ConfigureAwait(false);
                 releasedCount++;
             }
             catch (Exception ex)

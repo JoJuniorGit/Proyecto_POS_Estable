@@ -23,7 +23,7 @@ public partial class SalesController
             return this.ApiForbidden("Acceso denegado: no tiene permisos para consultar esta venta.");
         }
 
-        var sale = await _salesService.GetSaleAsync(id);
+        var sale = await _salesService.GetSaleAsync(id, cancellationToken);
         if (sale == null) return this.ApiNotFound($"Venta #{id} no encontrada.");
 
         decimal rate = request.ExchangeRate > 0 ? request.ExchangeRate : sale.AppliedRate;
@@ -241,7 +241,7 @@ public partial class SalesController
                 return this.ApiForbidden("Acceso denegado: no tiene permisos para confirmar esta entrega.");
             }
 
-            var sale = await _salesService.ConfirmPickupAsync(id, GetActorUserId());
+            var sale = await _salesService.ConfirmPickupAsync(id, GetActorUserId(), cancellationToken);
             return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException)
@@ -259,9 +259,9 @@ public partial class SalesController
     {
         limit = System.Math.Clamp(limit, 1, 1000);
         var (scopeToCashier, cashierId) = GetCashierReadScope();
-        var pending = await _salesService.GetPendingPickupsAsync(scopeToCashier ? cashierId : null, limit, offset);
+        var pending = await _salesService.GetPendingPickupsAsync(scopeToCashier ? cashierId : null, limit, offset, cancellationToken);
 
-        var totalCount = await _salesService.CountPendingPickupsAsync(scopeToCashier ? cashierId : null);
+        var totalCount = await _salesService.CountPendingPickupsAsync(scopeToCashier ? cashierId : null, cancellationToken);
         Response.Headers.Append("X-Total-Count", totalCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
         return Ok(pending);
     }

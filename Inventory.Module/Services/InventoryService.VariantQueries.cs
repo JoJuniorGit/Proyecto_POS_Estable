@@ -11,9 +11,9 @@ public partial class InventoryService
 {
 
 
-    public async Task<List<Core.DTOs.ProductDto>> GetVariantOptionsAsync(int parentProductId)
+    public async Task<List<Core.DTOs.ProductDto>> GetVariantOptionsAsync(int parentProductId, System.Threading.CancellationToken cancellationToken = default)
     {
-        var parent = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == parentProductId);
+        var parent = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == parentProductId, cancellationToken);
         bool isStockShared = parent?.IsStockShared ?? false;
         decimal parentStock = parent?.StockQuantity ?? 0m;
         bool hasIndepPricing = parent?.HasIndependentPricing ?? false;
@@ -55,10 +55,10 @@ public partial class InventoryService
                 GroupKey = p.GroupKey,
                 ConsolidatedStock = isStockShared ? parentStock : p.StockQuantity,
             })
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
     }
 
-    public async Task<List<Core.DTOs.ProductDto>> GetParentProductsAsync()
+    public async Task<List<Core.DTOs.ProductDto>> GetParentProductsAsync(System.Threading.CancellationToken cancellationToken = default)
     {
         return await _context.Products
             .AsNoTracking()
@@ -97,7 +97,7 @@ public partial class InventoryService
                     ? p.StockQuantity 
                     : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m),
             })
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetCandidateVariantsPagedAsync(int parentId, string? filter, int page, int pageSize, System.Threading.CancellationToken token = default)
@@ -171,7 +171,7 @@ public partial class InventoryService
 
         if (productIds == null || !productIds.Any())
         {
-            return await GetVariantOptionsAsync(parentId);
+            return await GetVariantOptionsAsync(parentId, token);
         }
 
         var distinctIds = productIds.Distinct().ToList();
@@ -261,7 +261,7 @@ public partial class InventoryService
             InvalidateAllProductCaches();
             Core.Logging.AppLogger.LogSecurityAudit($"[Catalog] Vinculación masiva de variantes al padre ID {parentId} ({parent.SKU}): {string.Join(", ", candidates.Select(c => $"{c.Id}:{c.SKU}"))} por usuario: {_currentUserService?.UserId ?? "System"}");
 
-            return await GetVariantOptionsAsync(parentId);
+            return await GetVariantOptionsAsync(parentId, token);
             }
             catch (Exception)
             {

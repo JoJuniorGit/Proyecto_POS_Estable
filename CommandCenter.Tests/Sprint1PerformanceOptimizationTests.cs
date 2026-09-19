@@ -65,7 +65,7 @@ public class Sprint1PerformanceOptimizationTests
         mockInventory.Setup(i => i.GetProductByIdAsync(101)).ReturnsAsync(prod1);
         mockInventory.Setup(i => i.GetProductByIdAsync(102)).ReturnsAsync(prod2);
         mockInventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
-            .ReturnsAsync((IEnumerable<int> ids) => new List<Product> { prod1, prod2 }.Where(p => ids.Contains(p.Id)).ToList());
+            .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) => new List<Product> { prod1, prod2 }.Where(p => ids.Contains(p.Id)).ToList());
 
         // 1. Start Sale
         var saleDto = await service.StartSaleAsync();
@@ -128,7 +128,7 @@ public class Sprint1PerformanceOptimizationTests
         mockInventory.Setup(i => i.GetProductByIdAsync(202)).ReturnsAsync(prod2);
         mockInventory.Setup(i => i.GetProductByIdAsync(203)).ReturnsAsync(prod3);
         mockInventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
-            .ReturnsAsync((IEnumerable<int> ids) => new List<Product> { prod1, prod2, prod3 }.Where(p => ids.Contains(p.Id)).ToList());
+            .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) => new List<Product> { prod1, prod2, prod3 }.Where(p => ids.Contains(p.Id)).ToList());
 
         // Create an on-hold sale with prod1
         var sale = new Sale
@@ -188,7 +188,7 @@ public class Sprint1PerformanceOptimizationTests
         var prod1 = new Product { Id = 301, Name = "Arroz 1kg", PriceUSD = 1.50m, PriceRetailUSD = 1.50m, IsActive = true };
         mockInventory.Setup(i => i.GetProductByIdAsync(301)).ReturnsAsync(prod1);
         mockInventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
-            .ReturnsAsync((IEnumerable<int> ids) => new List<Product> { prod1 }.Where(p => ids.Contains(p.Id)).ToList());
+            .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) => new List<Product> { prod1 }.Where(p => ids.Contains(p.Id)).ToList());
 
         var saleDto = await service.StartSaleAsync();
         var updatedSale = await service.AddItemAsync(saleDto.Id, 301, 1m, 36.502175m);
@@ -209,7 +209,7 @@ public class Sprint1PerformanceOptimizationTests
         var prod1 = new Product { Id = 302, Name = "Harina PAN", PriceUSD = 1.20m, PriceRetailUSD = 1.20m, IsActive = true };
         mockInventory.Setup(i => i.GetProductByIdAsync(302)).ReturnsAsync(prod1);
         mockInventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
-            .ReturnsAsync((IEnumerable<int> ids) => new List<Product> { prod1 }.Where(p => ids.Contains(p.Id)).ToList());
+            .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) => new List<Product> { prod1 }.Where(p => ids.Contains(p.Id)).ToList());
 
         var saleDto = await service.StartSaleAsync();
         await service.AddItemAsync(saleDto.Id, 302, 2m, 36.5022m);
@@ -236,7 +236,7 @@ public class Sprint1PerformanceOptimizationTests
         var prod1 = new Product { Id = 303, Name = "Aceite 1L", PriceUSD = 1.50m, PriceRetailUSD = 1.50m, IsActive = true };
         mockInventory.Setup(i => i.GetProductByIdAsync(303)).ReturnsAsync(prod1);
         mockInventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
-            .ReturnsAsync((IEnumerable<int> ids) => new List<Product> { prod1 }.Where(p => ids.Contains(p.Id)).ToList());
+            .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) => new List<Product> { prod1 }.Where(p => ids.Contains(p.Id)).ToList());
 
         var saleDto = await service.StartSaleAsync();
         await service.AddItemAsync(saleDto.Id, 303, 1m, 36.5022m);

@@ -114,7 +114,8 @@ public class CashAdvanceCoordinator
                 exchangeRate: exchangeRate,
                 cashierId: cashierId,
                 userName: activeUserName,
-                existingTransaction: dbTransaction
+                existingTransaction: dbTransaction,
+                cancellationToken: cancellationToken
             );
 
             if (createdSale != null && createdSale.AppliedRate > 0m)

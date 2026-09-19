@@ -22,7 +22,7 @@ public partial class SalesController
         pageSize = Math.Clamp(pageSize, 1, 100);
 
         var (scopeToCashier, cashierId) = GetCashierReadScope();
-        var (items, totalCount) = await _salesService.GetSalesHistoryAsync(page, pageSize, startDate, endDate, search, scopeToCashier ? cashierId : null);
+        var (items, totalCount) = await _salesService.GetSalesHistoryAsync(page, pageSize, startDate, endDate, search, scopeToCashier ? cashierId : null, cancellationToken);
         return Ok(new { Items = items, TotalCount = totalCount });
     }
 
@@ -40,7 +40,7 @@ public partial class SalesController
 
         try
         {
-            var detail = await _salesService.GetSaleHistoryDetailAsync(id);
+            var detail = await _salesService.GetSaleHistoryDetailAsync(id, cancellationToken);
             return Ok(detail);
         }
         catch (System.Collections.Generic.KeyNotFoundException)
@@ -62,7 +62,7 @@ public partial class SalesController
 
         try
         {
-            var sale = await _salesService.UpdatePriceListAsync(id, request.PriceListType, GetActorUserId());
+            var sale = await _salesService.UpdatePriceListAsync(id, request.PriceListType, GetActorUserId(), cancellationToken);
             return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)

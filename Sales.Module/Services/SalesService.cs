@@ -93,10 +93,10 @@ public partial class SalesService : ISalesService
         }
     }
 
-    public async Task<SaleDto> StartSaleAsync(int? cashierId = null)
+    public async Task<SaleDto> StartSaleAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        var defaultCustomer = await _context.Customers.FirstOrDefaultAsync(c => c.IsDefault) 
-                           ?? await _context.Customers.FirstOrDefaultAsync(c => c.Id == 1);
+        var defaultCustomer = await _context.Customers.FirstOrDefaultAsync(c => c.IsDefault, cancellationToken) 
+                           ?? await _context.Customers.FirstOrDefaultAsync(c => c.Id == 1, cancellationToken);
         
         if (defaultCustomer == null)
             throw new InvalidOperationException("Cliente por defecto no encontrado en la configuración del sistema. Verifique que la base de datos esté correctamente sembrada.");
@@ -113,7 +113,7 @@ public partial class SalesService : ISalesService
         };
 
         _context.Sales.Add(sale);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         return new SaleDto
         {
@@ -130,7 +130,7 @@ public partial class SalesService : ISalesService
         };
     }
 
-    public async Task<SaleDto> GetSaleAsync(int saleId)
+    public async Task<SaleDto> GetSaleAsync(int saleId, System.Threading.CancellationToken cancellationToken = default)
     {
         var sale = await GetSaleEntityAsync(saleId, includeCashier: true, asNoTracking: true);
 
@@ -188,7 +188,7 @@ public partial class SalesService : ISalesService
         return ValidateAndAdjustQuantity(product, quantity);
     }
 
-    public async Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false, int? actingUserId = null)
+    public async Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         var sale = await GetSaleEntityAsync(saleId);
         EnsureHoldClaimAccess(sale, actingUserId);
@@ -198,7 +198,7 @@ public partial class SalesService : ISalesService
         Product? product = null;
         if (_inventoryService != null)
         {
-            product = await _inventoryService.GetProductByIdAsync(productId);
+            product = await _inventoryService.GetProductByIdAsync(productId, cancellationToken);
         }
 
         if (product != null && (product.IsDeleted || !product.IsActive))
@@ -252,7 +252,7 @@ public partial class SalesService : ISalesService
                 existingItem.Quantity += quantity;
                 var productInfo = (customUnitPriceUsd.HasValue && customUnitPriceLocal.HasValue)
                     ? null
-                    : await _inventoryService!.GetProductByIdAsync(productId);
+                    : await _inventoryService!.GetProductByIdAsync(productId, cancellationToken);
 
                 decimal grossPrice = customUnitPriceUsd ?? productInfo?.PriceUSD ?? existingItem.UnitPrice;
                 decimal grossPriceBsS = customUnitPriceLocal ?? productInfo?.PriceBsS ?? existingItem.UnitPriceBsS;
@@ -264,7 +264,7 @@ public partial class SalesService : ISalesService
         }
         else
         {
-            var fetchedProduct = await _inventoryService!.GetProductByIdAsync(productId);
+            var fetchedProduct = await _inventoryService!.GetProductByIdAsync(productId, cancellationToken);
             if (fetchedProduct == null) throw new KeyNotFoundException($"Product {productId} not found.");
 
             if (fetchedProduct.IsGroupHeader)
@@ -291,11 +291,11 @@ public partial class SalesService : ISalesService
         await RecalculateTotalAsync(sale);
         ValidateHoldSaleTotal(sale);
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
         return MapToDto(sale);
     }
 
-    public async Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate, int? actingUserId = null)
+    public async Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         var sale = await GetSaleEntityAsync(saleId);
         EnsureHoldClaimAccess(sale, actingUserId);
@@ -321,13 +321,13 @@ public partial class SalesService : ISalesService
                 await RecalculateTotalAsync(sale);
             }
             ValidateHoldSaleTotal(sale);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
         }
 
         return MapToDto(sale);
     }
 
-    public async Task<SaleDto> UpdateItemQuantityAsync(int saleId, int itemId, decimal quantity, decimal exchangeRate, int? actingUserId = null)
+    public async Task<SaleDto> UpdateItemQuantityAsync(int saleId, int itemId, decimal quantity, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         var sale = await GetSaleEntityAsync(saleId);
         EnsureHoldClaimAccess(sale, actingUserId);
@@ -362,12 +362,12 @@ public partial class SalesService : ISalesService
                 await RecalculateTotalAsync(sale);
             }
             ValidateHoldSaleTotal(sale);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
         }
         return MapToDto(sale);
     }
 
-    public async Task CancelSaleAsync(int saleId, int? actingUserId = null)
+    public async Task CancelSaleAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         var sale = await GetSaleEntityAsync(saleId);
         EnsureHoldClaimAccess(sale, actingUserId);
@@ -382,7 +382,7 @@ public partial class SalesService : ISalesService
 
         sale.Status = SaleStatus.Cancelled;
         ClearHoldClaim(sale);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
         _logger?.LogInformation("Pedido #{SaleId} fue anulado exitosamente.", saleId);
         await NotifyHoldOrdersChangedAsync();
     }

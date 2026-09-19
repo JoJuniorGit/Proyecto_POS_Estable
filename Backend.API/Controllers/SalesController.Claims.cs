@@ -43,7 +43,7 @@ public partial class SalesController
 
         try
         {
-            var sale = await _salesService.ClaimSaleAsync(id, action, GetActorUserId());
+            var sale = await _salesService.ClaimSaleAsync(id, action, GetActorUserId(), cancellationToken);
             return Ok(sale);
         }
         catch (SaleLockedException ex)
@@ -87,7 +87,7 @@ public partial class SalesController
             return this.ApiForbidden("Acceso denegado: no tiene permisos para liberar esta venta.");
         }
 
-        var sale = await _salesService.ReleaseSaleAsync(id, GetActorUserId(), force);
+        var sale = await _salesService.ReleaseSaleAsync(id, GetActorUserId(), force, cancellationToken);
         return Ok(sale);
     }
 

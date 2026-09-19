@@ -16,7 +16,7 @@ public partial class InventoryService
         return Math.Round(raw, 4, MidpointRounding.AwayFromZero);
     }
 
-    public async Task UpdateStockBatchAsync(IEnumerable<StockDeductionRequest> items, string? userId = null, bool allowNegativeStock = false)
+    public async Task UpdateStockBatchAsync(IEnumerable<StockDeductionRequest> items, string? userId = null, bool allowNegativeStock = false, System.Threading.CancellationToken cancellationToken = default)
     {
         var itemList = items?.Where(i => i.QuantityChange != 0).ToList();
         if (itemList == null || itemList.Count == 0) return;
@@ -26,10 +26,10 @@ public partial class InventoryService
         // cuando UpdateStockBatchAsync se invoca SIN una transacción ambiente (p. ej. desde el
         // InventorySaleMadeEventHandler post-commit). Cuando el caller ya enroló una tx (main sales
         // flow), hasExistingTx=true y no se abre una nueva (sin retry por estar en tx ambiente).
-        await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
         {
             bool hasExistingTx = _context.Database.CurrentTransaction != null;
-            await using var tx = (!hasExistingTx && _context.Database.IsRelational()) ? await _context.Database.BeginTransactionAsync() : null;
+            await using var tx = (!hasExistingTx && _context.Database.IsRelational()) ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
 
             var productIds = itemList.Select(i => i.ProductId).Distinct().ToList();
             var productsData = await _context.Products
@@ -47,7 +47,7 @@ public partial class InventoryService
                     ParentName = p.ParentProduct != null ? p.ParentProduct.Name : null,
                     ParentSKU = p.ParentProduct != null ? p.ParentProduct.SKU : null
                 })
-                .ToDictionaryAsync(p => p.Id);
+                .ToDictionaryAsync(p => p.Id, cancellationToken);
 
             var movements = new List<StockMovement>();
             var skusToInvalidate = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -90,11 +90,11 @@ public partial class InventoryService
                             .Where(p => p.Id == targetProductId && (p.StockQuantity + effectiveQuantityChange) >= 0)
                             .ExecuteUpdateAsync(setters => setters
                                 .SetProperty(p => p.StockQuantity, p => p.StockQuantity + effectiveQuantityChange)
-                                .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
+                                .SetProperty(p => p.UpdatedAt, DateTime.UtcNow), cancellationToken);
 
                         if (rows == 0)
                         {
-                            var targetProd = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == targetProductId);
+                            var targetProd = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == targetProductId, cancellationToken);
                             if (targetProd == null) throw new KeyNotFoundException($"Producto {targetProductId} no encontrado");
                             throw new InvalidOperationException($"Stock insuficiente para el producto '{targetProd.Name}' (SKU: {targetProd.SKU}). Stock actual: {targetProd.StockQuantity}, deducción requerida: {Math.Abs(effectiveQuantityChange)}.");
                         }
@@ -106,7 +106,7 @@ public partial class InventoryService
                             .Where(p => p.Id == targetProductId)
                             .ExecuteUpdateAsync(setters => setters
                                 .SetProperty(p => p.StockQuantity, p => p.StockQuantity + effectiveQuantityChange)
-                                .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
+                                .SetProperty(p => p.UpdatedAt, DateTime.UtcNow), cancellationToken);
 
                         if (rows == 0) throw new KeyNotFoundException($"Producto {targetProductId} no encontrado");
                     }
@@ -116,7 +116,7 @@ public partial class InventoryService
                 else
                 {
                     // In-Memory Database execution for unit tests
-                    var targetProd = await _context.Products.FindAsync(targetProductId);
+                    var targetProd = await _context.Products.FindAsync(new object[] { targetProductId }, cancellationToken);
                     if (targetProd == null) throw new KeyNotFoundException($"Producto {targetProductId} no encontrado");
 
                     if (effectiveQuantityChange < 0 && !allowNegativeStock && (targetProd.StockQuantity + effectiveQuantityChange) < 0)
@@ -143,7 +143,7 @@ public partial class InventoryService
                     .AsNoTracking()
                     .Where(p => updatedTargetIds.Contains(p.Id))
                     .Select(p => new { p.Id, p.StockQuantity })
-                    .ToListAsync();
+                    .ToListAsync(cancellationToken);
 
                 foreach (var s in updatedStocks)
                 {
@@ -160,7 +160,7 @@ public partial class InventoryService
                 }
                 else
                 {
-                    var inMemoryTarget = await _context.Products.FindAsync(targetId);
+                    var inMemoryTarget = await _context.Products.FindAsync(new object[] { targetId }, cancellationToken);
                     stockAfter = inMemoryTarget?.StockQuantity ?? 0m;
                 }
 
@@ -178,11 +178,11 @@ public partial class InventoryService
             }
 
             _context.StockMovements.AddRange(movements);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             if (tx != null)
             {
-                await tx.CommitAsync();
+                await tx.CommitAsync(cancellationToken);
             }
 
             foreach (var sku in skusToInvalidate)
@@ -190,15 +190,15 @@ public partial class InventoryService
                 InvalidateProductSkuCache(sku);
             }
             InvalidateAllProductCaches();
-        });
+        }, cancellationToken);
     }
 
-    public async Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, bool allowNegativeStock = false)
+    public async Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, bool allowNegativeStock = false, System.Threading.CancellationToken cancellationToken = default)
     {
-        await UpdateStockBatchAsync(new[] { new StockDeductionRequest(productId, quantityChange, reason) }, userId, allowNegativeStock);
+        await UpdateStockBatchAsync(new[] { new StockDeductionRequest(productId, quantityChange, reason) }, userId, allowNegativeStock, cancellationToken);
     }
 
-    public async Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null)
+    public async Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         EnsureCatalogMutationPermission();
         if (quantityChange == 0) return;
@@ -219,7 +219,7 @@ public partial class InventoryService
                 ParentIsStockShared = p.ParentProduct != null && p.ParentProduct.IsStockShared,
                 ParentName = p.ParentProduct != null ? p.ParentProduct.Name : null
             })
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(cancellationToken);
 
         if (product == null) throw new KeyNotFoundException($"Product {productId} not found");
 
@@ -243,12 +243,12 @@ public partial class InventoryService
             throw new InvalidOperationException(Core.Constants.InventoryMessages.VariantSharedStockAdjustmentBlocked);
         }
 
-        await UpdateStockAsync(productId, quantityChange, $"Ajuste Manual: {reason}", userId, allowNegativeStock: false);
+        await UpdateStockAsync(productId, quantityChange, $"Ajuste Manual: {reason}", userId, allowNegativeStock: false, cancellationToken);
     }
 
-    public async Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration, string? referenceId = null)
+    public async Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration, string? referenceId = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        var product = await _context.Products.FindAsync(productId);
+        var product = await _context.Products.FindAsync(new object[] { productId }, cancellationToken);
         if (product == null) throw new KeyNotFoundException($"Product {productId} not found");
 
         if (product.IsCashAdvance)
@@ -262,7 +262,7 @@ public partial class InventoryService
 
         if (product.ParentProductId.HasValue)
         {
-            var parent = await _context.Products.FindAsync(product.ParentProductId.Value);
+            var parent = await _context.Products.FindAsync(new object[] { product.ParentProductId.Value }, cancellationToken);
             if (parent != null && parent.IsStockShared)
             {
                 targetProduct = parent;
@@ -291,7 +291,7 @@ public partial class InventoryService
             };
 
             _context.StockReservations.Add(inMemoryReservation);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
             InvalidateProductSkuCache(targetProduct.SKU);
             return inMemoryReservation.Id;
         }
@@ -301,7 +301,7 @@ public partial class InventoryService
 
         async Task ReserveWithinTransactionAsync()
         {
-            await using var transaction = hasExistingTransaction ? null : await _context.Database.BeginTransactionAsync();
+            await using var transaction = hasExistingTransaction ? null : await _context.Database.BeginTransactionAsync(cancellationToken);
 
             try
             {
@@ -309,7 +309,7 @@ public partial class InventoryService
                     .Where(p => p.Id == targetProduct.Id && (p.StockQuantity - p.ReservedQuantity) >= effectiveQuantity)
                     .ExecuteUpdateAsync(s => s
                         .SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity + effectiveQuantity)
-                        .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
+                        .SetProperty(p => p.UpdatedAt, DateTime.UtcNow), cancellationToken);
 
                 if (updated == 0)
                 {
@@ -327,11 +327,11 @@ public partial class InventoryService
                 };
 
                 _context.StockReservations.Add(reservation);
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 if (transaction != null)
                 {
-                    await transaction.CommitAsync();
+                    await transaction.CommitAsync(cancellationToken);
                 }
 
                 reservationId = reservation.Id;
@@ -340,7 +340,7 @@ public partial class InventoryService
             {
                 if (transaction != null)
                 {
-                    await transaction.RollbackAsync();
+                    await transaction.RollbackAsync(cancellationToken);
                 }
                 throw;
             }
@@ -352,21 +352,21 @@ public partial class InventoryService
         }
         else
         {
-            await _context.Database.CreateExecutionStrategy().ExecuteAsync(ReserveWithinTransactionAsync);
+            await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ => await ReserveWithinTransactionAsync(), cancellationToken);
         }
 
         InvalidateProductSkuCache(targetProduct.SKU);
         return reservationId;
     }
 
-    public async Task ConfirmReservationAsync(int reservationId, string reason)
+    public async Task ConfirmReservationAsync(int reservationId, string reason, System.Threading.CancellationToken cancellationToken = default)
     {
         if (reservationId == 0) return; // Ignore service reservations
 
         var reservation = await _context.StockReservations
             .AsNoTracking()
             .Include(r => r.Product)
-            .FirstOrDefaultAsync(r => r.Id == reservationId);
+            .FirstOrDefaultAsync(r => r.Id == reservationId, cancellationToken);
 
         if (reservation == null) throw new KeyNotFoundException("Reserva no encontrada.");
         if (reservation.IsConfirmed) return; // Already confirmed
@@ -377,18 +377,18 @@ public partial class InventoryService
         // para no lanzar InvalidOperationException bajo NpgsqlRetryingExecutionStrategy en producción.
         if (_context.Database.IsRelational())
         {
-            await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
             {
-                await using var transaction = await _context.Database.BeginTransactionAsync();
+                await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
                 // 1) Reclamación atómica: solo la primera confirmación gana.
                 int claimed = await _context.StockReservations
                     .Where(r => r.Id == reservationId && !r.IsConfirmed)
-                    .ExecuteUpdateAsync(s => s.SetProperty(r => r.IsConfirmed, true));
+                    .ExecuteUpdateAsync(s => s.SetProperty(r => r.IsConfirmed, true), cancellationToken);
 
                 if (claimed == 0)
                 {
-                    await transaction.RollbackAsync();
+                    await transaction.RollbackAsync(cancellationToken);
                     return; // Confirmación concurrente: otra request ya la confirmó.
                 }
 
@@ -397,11 +397,11 @@ public partial class InventoryService
                     .Where(p => p.Id == reservation.ProductId && p.ReservedQuantity >= reservation.Quantity)
                     .ExecuteUpdateAsync(s => s
                         .SetProperty(p => p.StockQuantity, p => p.StockQuantity - reservation.Quantity)
-                        .SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity - reservation.Quantity));
+                        .SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity - reservation.Quantity), cancellationToken);
 
                 if (updated == 0)
                 {
-                    await transaction.RollbackAsync();
+                    await transaction.RollbackAsync(cancellationToken);
                     throw new InvalidOperationException("El stock fue modificado concurrentemente. Por favor intente nuevamente.");
                 }
 
@@ -409,7 +409,7 @@ public partial class InventoryService
                 var actualStock = await _context.Products
                     .Where(p => p.Id == reservation.ProductId)
                     .Select(p => p.StockQuantity)
-                    .FirstOrDefaultAsync();
+                    .FirstOrDefaultAsync(cancellationToken);
 
                 // 3) Movimiento de inventario y eliminación de la reserva.
                 var movement = new StockMovement
@@ -421,18 +421,18 @@ public partial class InventoryService
                     MovementDate = DateTime.UtcNow
                 };
                 _context.StockMovements.Add(movement);
-                await _context.StockReservations.Where(r => r.Id == reservationId).ExecuteDeleteAsync();
+                await _context.StockReservations.Where(r => r.Id == reservationId).ExecuteDeleteAsync(cancellationToken);
 
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-            });
+                await _context.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+            }, cancellationToken);
         }
         else
         {
             // InMemory (tests): cargar entidad TRACKEADA (Remove requiere tracking en el provider).
             var trackedReservation = await _context.StockReservations
                 .Include(r => r.Product)
-                .FirstOrDefaultAsync(r => r.Id == reservationId);
+                .FirstOrDefaultAsync(r => r.Id == reservationId, cancellationToken);
 
             if (trackedReservation == null || trackedReservation.IsConfirmed) return;
 
@@ -451,7 +451,7 @@ public partial class InventoryService
             _context.StockMovements.Add(movement);
             _context.StockReservations.Remove(trackedReservation);
 
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
             InvalidateProductSkuCache(trackedReservation.Product.SKU);
             return;
         }
@@ -459,13 +459,13 @@ public partial class InventoryService
         InvalidateProductSkuCache(reservation.Product.SKU);
     }
 
-    public async Task CancelReservationAsync(int reservationId)
+    public async Task CancelReservationAsync(int reservationId, System.Threading.CancellationToken cancellationToken = default)
     {
         if (reservationId == 0) return; // Ignore service reservations
 
         var reservation = await _context.StockReservations
             .Include(r => r.Product)
-            .FirstOrDefaultAsync(r => r.Id == reservationId);
+            .FirstOrDefaultAsync(r => r.Id == reservationId, cancellationToken);
 
         if (reservation == null) return; // Already gone
 
@@ -473,7 +473,7 @@ public partial class InventoryService
         {
             await _context.Products
                 .Where(p => p.Id == reservation.ProductId)
-                .ExecuteUpdateAsync(s => s.SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity > reservation.Quantity ? p.ReservedQuantity - reservation.Quantity : 0));
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity > reservation.Quantity ? p.ReservedQuantity - reservation.Quantity : 0), cancellationToken);
         }
         else
         {
@@ -482,7 +482,7 @@ public partial class InventoryService
 
         _context.StockReservations.Remove(reservation);
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
         if (reservation.Product != null)
         {
             InvalidateProductSkuCache(reservation.Product.SKU);

@@ -18,7 +18,7 @@ public partial class ProductsController
     [HttpGet("{id}/variants")]
     public async Task<ActionResult<List<Core.DTOs.ProductDto>>> GetVariantsAsync(int id, CancellationToken token = default)
     {
-        var variants = await _inventoryService.GetVariantOptionsAsync(id);
+        var variants = await _inventoryService.GetVariantOptionsAsync(id, token);
         return Ok(MaskCostsForCurrentRole(variants));
     }
 
@@ -28,7 +28,7 @@ public partial class ProductsController
     [HttpGet("parents")]
     public async Task<ActionResult<List<Core.DTOs.ProductDto>>> GetParentsAsync(CancellationToken token = default)
     {
-        var parents = await _inventoryService.GetParentProductsAsync();
+        var parents = await _inventoryService.GetParentProductsAsync(token);
         return Ok(MaskCostsForCurrentRole(parents));
     }
 

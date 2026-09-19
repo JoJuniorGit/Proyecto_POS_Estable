@@ -42,21 +42,21 @@ public partial class InventoryService : IInventoryService
         }
     }
 
-    public async Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds)
+    public async Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds, System.Threading.CancellationToken cancellationToken = default)
     {
         var idList = productIds.Distinct().ToList();
         if (!idList.Any()) return new List<Product>();
-        return await _context.Products.AsNoTracking().Where(p => idList.Contains(p.Id)).ToListAsync();
+        return await _context.Products.AsNoTracking().Where(p => idList.Contains(p.Id)).ToListAsync(cancellationToken);
     }
 
-    public async Task<Product?> GetProductByIdAsync(int id)
+    public async Task<Product?> GetProductByIdAsync(int id, System.Threading.CancellationToken cancellationToken = default)
     {
-        return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id);
+        return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
     }
 
-    public async Task<Product?> GetCashAdvanceProductAsync()
+    public async Task<Product?> GetCashAdvanceProductAsync(System.Threading.CancellationToken cancellationToken = default)
     {
-        return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.IsCashAdvance && !p.IsDeleted && p.IsActive);
+        return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.IsCashAdvance && !p.IsDeleted && p.IsActive, cancellationToken);
     }
 
     private static MemoryCacheEntryOptions CreateProductCacheOptions() => new MemoryCacheEntryOptions
@@ -95,14 +95,14 @@ public partial class InventoryService : IInventoryService
     }
 
     [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
-    public async Task<Product?> GetProductBySkuAsync(string sku, bool useCache = true)
+    public async Task<Product?> GetProductBySkuAsync(string sku, bool useCache = true, System.Threading.CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(sku)) return null;
         var normalized = sku.Trim().ToUpperInvariant();
 
         if (!useCache || _cache == null)
         {
-            return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == normalized);
+            return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == normalized, cancellationToken);
         }
 
         var cacheKey = $"product_sku_{normalized}";
@@ -115,7 +115,7 @@ public partial class InventoryService : IInventoryService
         Core.Metrics.CacheMetrics.RecordMiss();
         try
         {
-            var product = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == normalized);
+            var product = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == normalized, cancellationToken);
             if (product != null)
             {
                 RegisterProductCacheKey(cacheKey);
@@ -229,7 +229,7 @@ public partial class InventoryService : IInventoryService
         }
     }
 
-    public async Task<Core.DTOs.ProductQuickInfoDto?> GetProductQuickInfoAsync(string sku, bool useCache = true)
+    public async Task<Core.DTOs.ProductQuickInfoDto?> GetProductQuickInfoAsync(string sku, bool useCache = true, System.Threading.CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(sku)) return null;
         var normalized = sku.Trim().ToUpperInvariant();

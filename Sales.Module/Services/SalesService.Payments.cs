@@ -21,7 +21,7 @@ public partial class SalesService
 {
 
 
-    public async Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null)
+    public async Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         var sale = await GetSaleEntityAsync(saleId);
         EnsureHoldClaimAccess(sale, actingUserId);
@@ -29,25 +29,25 @@ public partial class SalesService
             throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
 
         // 8.9-B4: envolver en execution strategy (reintento completo ante fallos transitorios).
-        return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
         {
         IDbContextTransaction? dbTransaction = null;
         if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
         {
-            dbTransaction = await _context.Database.BeginTransactionAsync();
+            dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         }
 
         try
         {
             if (_context.Database.IsNpgsql())
             {
-                await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0}, {1})", 2, saleId);
+                await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0}, {1})", new object[] { 2, saleId }, cancellationToken);
             }
 
             var freshSale = await _context.Sales
                 .Where(s => s.Id == saleId)
                 .Select(s => new { s.Status, s.TotalUSD, s.AppliedRate })
-                .FirstOrDefaultAsync();
+                .FirstOrDefaultAsync(cancellationToken);
             if (freshSale == null)
             {
                 throw new KeyNotFoundException($"Sale {saleId} not found.");
@@ -59,7 +59,7 @@ public partial class SalesService
 
             decimal runningPaidUsd = await _context.SalePayments
                 .Where(sp => sp.SaleId == saleId)
-                .SumAsync(sp => (decimal?)sp.Amount) ?? 0m;
+                .SumAsync(sp => (decimal?)sp.Amount, cancellationToken) ?? 0m;
 
             var input = await ComputePaymentInputsAsync(saleId, freshSale.TotalUSD, freshSale.AppliedRate, runningPaidUsd, request, "AddPaymentToHoldSale");
 
@@ -99,11 +99,11 @@ public partial class SalesService
 
             RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/payments", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)), actingUserId);
 
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             if (dbTransaction != null)
             {
-                await dbTransaction.CommitAsync();
+                await dbTransaction.CommitAsync(cancellationToken);
             }
 
             await NotifyHoldOrdersChangedAsync();
@@ -113,7 +113,7 @@ public partial class SalesService
         {
             if (dbTransaction != null)
             {
-                await dbTransaction.RollbackAsync();
+                await dbTransaction.RollbackAsync(cancellationToken);
             }
             _logger?.LogError(ex, "[SalesService] Error al registrar abono en venta #{SaleId}. Transacción revertida.", saleId);
             throw;
@@ -122,14 +122,14 @@ public partial class SalesService
         {
             dbTransaction?.Dispose();
         }
-        });
+        }, cancellationToken);
     }
 
     // 8.29-A05: abonos atómicos por lote. La validación y la persistencia de todos los abonos del
     // lote comparten UNA sola transacción (rollback conjunto) y UNA sola SaveChanges; el advisory
     // lock por venta serializa el cálculo contra el estado fresco. Idempotency: un único
     // Idempotency-Key por lote.
-    public async Task<SaleDto> AddPaymentsBatchToHoldSaleAsync(int saleId, List<AddPaymentRequestDto> payments, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null)
+    public async Task<SaleDto> AddPaymentsBatchToHoldSaleAsync(int saleId, List<AddPaymentRequestDto> payments, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         if (payments == null || payments.Count == 0)
             throw new ArgumentException("Debe enviar al menos un abono.");
@@ -143,25 +143,25 @@ public partial class SalesService
             throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
 
         // 8.9-B4: execution strategy para reintentos completos del lote ante fallos transitorios.
-        return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
         {
             IDbContextTransaction? dbTransaction = null;
             if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
             {
-                dbTransaction = await _context.Database.BeginTransactionAsync();
+                dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
             }
 
             try
             {
                 if (_context.Database.IsNpgsql())
                 {
-                    await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0}, {1})", 2, saleId);
+                    await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0}, {1})", new object[] { 2, saleId }, cancellationToken);
                 }
 
                 var freshSale = await _context.Sales
                     .Where(s => s.Id == saleId)
                     .Select(s => new { s.Status, s.TotalUSD, s.AppliedRate })
-                    .FirstOrDefaultAsync();
+                    .FirstOrDefaultAsync(cancellationToken);
                 if (freshSale == null)
                 {
                     throw new KeyNotFoundException($"Sale {saleId} not found.");
@@ -173,7 +173,7 @@ public partial class SalesService
 
                 decimal runningPaidUsd = await _context.SalePayments
                     .Where(sp => sp.SaleId == saleId)
-                    .SumAsync(sp => (decimal?)sp.Amount) ?? 0m;
+                    .SumAsync(sp => (decimal?)sp.Amount, cancellationToken) ?? 0m;
 
                 var computedInputs = new List<(AddPaymentRequestDto Request, ComputedPaymentInput Input)>(payments.Count);
                 foreach (var request in payments)
@@ -221,11 +221,11 @@ public partial class SalesService
 
                 RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/payments/batch", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)), actingUserId);
 
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 if (dbTransaction != null)
                 {
-                    await dbTransaction.CommitAsync();
+                    await dbTransaction.CommitAsync(cancellationToken);
                 }
 
                 await NotifyHoldOrdersChangedAsync();
@@ -235,7 +235,7 @@ public partial class SalesService
             {
                 if (dbTransaction != null)
                 {
-                    await dbTransaction.RollbackAsync();
+                    await dbTransaction.RollbackAsync(cancellationToken);
                 }
                 _logger?.LogError(ex, "[SalesService] Error al registrar abonos por lote en venta #{SaleId}. Transacción revertida.", saleId);
                 throw;
@@ -244,7 +244,7 @@ public partial class SalesService
             {
                 dbTransaction?.Dispose();
             }
-        });
+        }, cancellationToken);
     }
 
     // Cálculo y validación compartidos de un abono individual (tasa anclada BCV, montos,

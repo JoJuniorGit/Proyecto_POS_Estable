@@ -54,7 +54,8 @@ public class ReservationsController : ControllerBase
                 dto.ProductId,
                 dto.Quantity,
                 TimeSpan.FromSeconds(clampedDuration),
-                userRef
+                userRef,
+                cancellationToken
             );
             return Ok(new ReserveStockResponseDto { ReservationId = reservationId });
         }
@@ -87,7 +88,7 @@ public class ReservationsController : ControllerBase
                 }
             }
 
-            await _inventoryService.ConfirmReservationAsync(id, dto.Reason);
+            await _inventoryService.ConfirmReservationAsync(id, dto.Reason, cancellationToken);
             return NoContent();
         }
         catch (System.Collections.Generic.KeyNotFoundException)
@@ -117,7 +118,7 @@ public class ReservationsController : ControllerBase
             }
         }
 
-        await _inventoryService.CancelReservationAsync(id);
+        await _inventoryService.CancelReservationAsync(id, cancellationToken);
         return NoContent();
     }
 

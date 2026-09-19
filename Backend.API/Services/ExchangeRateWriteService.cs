@@ -67,7 +67,7 @@ public class ExchangeRateWriteService : IExchangeRateWriteService
 
         if (_salesService != null)
         {
-            await _salesService.RecalculateOnHoldSalesAsync(roundedRate);
+            await _salesService.RecalculateOnHoldSalesAsync(roundedRate, cancellationToken);
         }
 
         if (_hubContext != null)

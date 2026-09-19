@@ -25,7 +25,7 @@ public partial class SalesController
 
         try
         {
-            var sale = await _salesService.HoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash, GetActorUserId());
+            var sale = await _salesService.HoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash, GetActorUserId(), cancellationToken);
             if (Response?.Headers != null)
             {
                 Response.Headers["X-Cache-Lookup"] = "MISS";
@@ -52,7 +52,7 @@ public partial class SalesController
             }
 
             bool isAuthorized = User.IsInRole("Admin") || User.IsInRole("Manager");
-            var sale = await _salesService.UpdateSaleItemsAsync(id, request, isAuthorized, GetActorUserId());
+            var sale = await _salesService.UpdateSaleItemsAsync(id, request, isAuthorized, GetActorUserId(), cancellationToken);
             return Ok(sale);
         }
         catch (System.UnauthorizedAccessException ex)
@@ -80,7 +80,7 @@ public partial class SalesController
 
         try
         {
-            var sale = await _salesService.AddPaymentToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash, GetActorUserId());
+            var sale = await _salesService.AddPaymentToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash, GetActorUserId(), cancellationToken);
             if (Response?.Headers != null)
             {
                 Response.Headers["X-Cache-Lookup"] = "MISS";
@@ -112,7 +112,7 @@ public partial class SalesController
 
         try
         {
-            var sale = await _salesService.AddPaymentsBatchToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash, GetActorUserId());
+            var sale = await _salesService.AddPaymentsBatchToHoldSaleAsync(id, request, resolved.Key, resolved.PayloadHash, GetActorUserId(), cancellationToken);
             if (Response?.Headers != null)
             {
                 Response.Headers["X-Cache-Lookup"] = "MISS";
@@ -133,9 +133,9 @@ public partial class SalesController
     public async Task<ActionResult<System.Collections.Generic.IEnumerable<SaleDto>>> GetPendingSalesAsync([FromQuery] int limit = 200, [FromQuery] int offset = 0, CancellationToken cancellationToken = default)
     {
         limit = System.Math.Clamp(limit, 1, 1000);
-        var pending = await _salesService.GetPendingSalesAsync(null, limit, offset);
+        var pending = await _salesService.GetPendingSalesAsync(null, limit, offset, cancellationToken);
 
-        var totalCount = await _salesService.CountPendingSalesAsync(null);
+        var totalCount = await _salesService.CountPendingSalesAsync(null, cancellationToken);
         Response.Headers.Append("X-Total-Count", totalCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
         return Ok(pending);
     }
@@ -152,7 +152,7 @@ public partial class SalesController
             return this.ApiForbidden("Acceso denegado: no tiene permisos para anular esta venta.");
         }
 
-        await _salesService.CancelSaleAsync(id, GetActorUserId());
+        await _salesService.CancelSaleAsync(id, GetActorUserId(), cancellationToken);
         return Ok(new { message = $"Pedido #{id} anulado exitosamente." });
     }
 

@@ -20,7 +20,7 @@ namespace Sales.Module.Services;
 public partial class SalesService
 {
 
-    public async Task<CustomerDto> GetDefaultCustomerAsync()
+    public async Task<CustomerDto> GetDefaultCustomerAsync(System.Threading.CancellationToken cancellationToken = default)
     {
         try
         {
@@ -36,10 +36,10 @@ public partial class SalesService
 
         var defaultCustomer = await _context.Customers
             .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.IsDefault)
+            .FirstOrDefaultAsync(c => c.IsDefault, cancellationToken)
             ?? await _context.Customers
                 .AsNoTracking()
-                .FirstOrDefaultAsync(c => c.Id == 1);
+                .FirstOrDefaultAsync(c => c.Id == 1, cancellationToken);
 
         if (defaultCustomer == null) throw new KeyNotFoundException("Cliente por defecto no encontrado.");
         
@@ -70,7 +70,7 @@ public partial class SalesService
         return dto;
     }
 
-    public async Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId, int? actingUserId = null)
+    public async Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         var sale = await GetSaleEntityAsync(saleId);
         EnsureHoldClaimAccess(sale, actingUserId);
@@ -81,14 +81,14 @@ public partial class SalesService
         if (sale.Status == SaleStatus.OnHold && sale.Payments.Any())
             throw new InvalidOperationException("Una cuenta abierta con pagos registrados no permite cambio de titular.");
 
-        var customer = await _context.Customers.FindAsync(customerId);
+        var customer = await _context.Customers.FindAsync(new object[] { customerId }, cancellationToken);
         if (customer == null) throw new KeyNotFoundException($"Cliente con ID {customerId} no encontrado.");
 
         sale.CustomerId = customer.Id;
         sale.CustomerName = customer.Name;
         sale.CustomerCedula = customer.CedulaOrRif;
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
         return MapToDto(sale);
     }
 
@@ -97,7 +97,8 @@ public partial class SalesService
         string? query = null,
         int page = 1,
         int pageSize = 20,
-        bool recentOnly = false)
+        bool recentOnly = false,
+        System.Threading.CancellationToken cancellationToken = default)
     {
         if (recentOnly)
         {
@@ -108,12 +109,12 @@ public partial class SalesService
                 .OrderByDescending(g => g.Max(s => s.Date))
                 .Select(g => g.Key)
                 .Take(3)
-                .ToListAsync();
+                .ToListAsync(cancellationToken);
 
             var recentCustomers = await _context.Customers
                 .AsNoTracking()
                 .Where(c => recentCustomerIds.Contains(c.Id))
-                .ToListAsync();
+                .ToListAsync(cancellationToken);
 
             if (recentCustomers.Count < 3)
             {
@@ -123,7 +124,7 @@ public partial class SalesService
                     .Where(c => !existingIds.Contains(c.Id))
                     .OrderByDescending(c => c.Id)
                     .Take(3 - recentCustomers.Count)
-                    .ToListAsync();
+                    .ToListAsync(cancellationToken);
                 recentCustomers.AddRange(additional);
             }
 
@@ -156,7 +157,7 @@ public partial class SalesService
             q = q.Where(c => c.Name.ToLower().Contains(lower) || c.CedulaOrRif.ToLower().Contains(lower));
         }
 
-        int totalCount = await q.CountAsync();
+        int totalCount = await q.CountAsync(cancellationToken);
         page = Math.Max(1, page);
         pageSize = Math.Max(1, pageSize);
 
@@ -174,18 +175,18 @@ public partial class SalesService
                 IsActive = c.IsActive,
                 IsDefault = c.IsDefault
             })
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         return (customers, totalCount);
     }
 
-    public async Task<CustomerDto> CreateCustomerAsync(CreateCustomerDto request)
+    public async Task<CustomerDto> CreateCustomerAsync(CreateCustomerDto request, System.Threading.CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.CedulaOrRif) || string.IsNullOrWhiteSpace(request.Name))
             throw new ArgumentException("Cédula/RIF y Nombre son campos obligatorios.");
 
         var normalizedCedula = request.CedulaOrRif.Trim().ToUpperInvariant();
-        var exists = await _context.Customers.AnyAsync(c => c.CedulaOrRif.ToUpper() == normalizedCedula);
+        var exists = await _context.Customers.AnyAsync(c => c.CedulaOrRif.ToUpper() == normalizedCedula, cancellationToken);
         if (exists)
             throw new InvalidOperationException($"Ya existe un cliente registrado con la Cédula/RIF '{request.CedulaOrRif}'.");
 
@@ -201,7 +202,7 @@ public partial class SalesService
         _context.Customers.Add(customer);
         try
         {
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException ex)
         {
@@ -219,9 +220,9 @@ public partial class SalesService
         };
     }
 
-    public async Task<CustomerDto> UpdateCustomerAsync(int id, UpdateCustomerDto request)
+    public async Task<CustomerDto> UpdateCustomerAsync(int id, UpdateCustomerDto request, System.Threading.CancellationToken cancellationToken = default)
     {
-        var customer = await _context.Customers.FindAsync(id);
+        var customer = await _context.Customers.FindAsync(new object[] { id }, cancellationToken);
         if (customer == null)
             throw new KeyNotFoundException($"No se encontró el cliente con ID {id}.");
 
@@ -237,7 +238,7 @@ public partial class SalesService
             throw new ArgumentException("Cédula/RIF y Nombre son campos obligatorios.");
 
         var normalizedCedula = request.CedulaOrRif.Trim().ToUpperInvariant();
-        var exists = await _context.Customers.AnyAsync(c => c.Id != id && c.CedulaOrRif.ToUpper() == normalizedCedula);
+        var exists = await _context.Customers.AnyAsync(c => c.Id != id && c.CedulaOrRif.ToUpper() == normalizedCedula, cancellationToken);
         if (exists)
             throw new InvalidOperationException($"Ya existe otro cliente registrado con la Cédula/RIF '{request.CedulaOrRif}'.");
 
@@ -249,7 +250,7 @@ public partial class SalesService
 
         try
         {
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException ex)
         {
@@ -273,9 +274,9 @@ public partial class SalesService
         };
     }
 
-    public async Task DeleteCustomerAsync(int id)
+    public async Task DeleteCustomerAsync(int id, System.Threading.CancellationToken cancellationToken = default)
     {
-        var customer = await _context.Customers.FindAsync(id);
+        var customer = await _context.Customers.FindAsync(new object[] { id }, cancellationToken);
         if (customer == null)
             throw new KeyNotFoundException($"No se encontró el cliente con ID {id}.");
 
@@ -284,14 +285,14 @@ public partial class SalesService
             throw new InvalidOperationException("No se permite eliminar el cliente Consumidor Final predeterminado del sistema.");
         }
 
-        bool hasSales = await _context.Sales.AnyAsync(s => s.CustomerId == id);
+        bool hasSales = await _context.Sales.AnyAsync(s => s.CustomerId == id, cancellationToken);
         if (hasSales)
         {
             throw new InvalidOperationException("No se puede eliminar el cliente porque tiene ventas o transacciones asociadas.");
         }
 
         _context.Customers.Remove(customer);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
         _cache?.Remove(DefaultCustomerCacheKey);
     }
 

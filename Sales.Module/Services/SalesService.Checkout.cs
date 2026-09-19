@@ -74,7 +74,7 @@ public partial class SalesService
                         throw new ArgumentException("Para registrar un apartado pagado (mercancía en custodia), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono).");
                     }
 
-                    var cust = await _context.Customers.FindAsync(sale.CustomerId.Value);
+                    var cust = await _context.Customers.FindAsync(new object[] { sale.CustomerId.Value }, cancellationToken);
                     if (cust == null || cust.IsDefault || cust.CedulaOrRif == "V-00000000" || cust.Name.StartsWith("Consumidor Final", StringComparison.OrdinalIgnoreCase) || cust.Name.StartsWith("Cliente General", StringComparison.OrdinalIgnoreCase))
                     {
                         throw new ArgumentException("Para registrar un apartado pagado (mercancía en custodia), se requiere seleccionar o crear un cliente real (Nombre, Cédula y Teléfono).");
@@ -145,7 +145,7 @@ public partial class SalesService
                 var paymentMethodIds = payments.Select(p => p.PaymentMethodId).Distinct().ToList();
                 paymentMethodsDict = await _context.PaymentMethods
                     .Where(pm => paymentMethodIds.Contains(pm.Id))
-                    .ToDictionaryAsync(pm => pm.Id);
+                    .ToDictionaryAsync(pm => pm.Id, cancellationToken);
 
                 foreach (var p in payments)
                 {
@@ -286,7 +286,7 @@ public partial class SalesService
             if (_inventoryService != null && sale.Items != null)
             {
                 var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
-                var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
+                var fetched = await _inventoryService.GetProductsByIdsAsync(productIds, cancellationToken);
                 if (fetched != null)
                 {
                     productsDict = fetched.ToDictionary(p => p.Id);
@@ -313,7 +313,8 @@ public partial class SalesService
                     await _inventoryService.UpdateStockBatchAsync(
                         stockDeductions,
                         userId: cashierId?.ToString(),
-                        allowNegativeStock: allowNegativeStock);
+                        allowNegativeStock: allowNegativeStock,
+                        cancellationToken: cancellationToken);
                 }
             }
 
