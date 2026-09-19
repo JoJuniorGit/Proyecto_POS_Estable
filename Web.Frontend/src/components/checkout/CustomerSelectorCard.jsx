@@ -211,8 +211,8 @@ export default function CustomerSelectorCard({
       ref={containerRef}
       className="csc-card"
       style={{
-        border: isWarningHighlight ? '1px solid #f59e0b' : '1px solid var(--border)',
-        backgroundColor: isWarningHighlight ? 'rgba(245, 158, 11, 0.06)' : 'var(--bg-surface)'
+        border: isWarningHighlight ? '1px solid var(--warning)' : '1px solid var(--border)',
+        backgroundColor: isWarningHighlight ? 'var(--warning-light)' : 'var(--bg-surface)'
       }}
     >
       {/* Ficha Resumida Superior */}
@@ -221,8 +221,8 @@ export default function CustomerSelectorCard({
           <div
             className="flex-center flex-shrink-0 csc-avatar"
             style={{
-              backgroundColor: isDefaultCust ? 'var(--bg-hover, #374151)' : 'rgba(99, 102, 241, 0.15)',
-              color: isDefaultCust ? 'var(--text-muted)' : 'var(--accent-primary, #6366f1)'
+              backgroundColor: isDefaultCust ? 'var(--bg-hover)' : 'var(--accent-primary-light)',
+              color: isDefaultCust ? 'var(--text-muted)' : 'var(--accent-primary)'
             }}
           >
             <User size={18} />
@@ -247,8 +247,8 @@ export default function CustomerSelectorCard({
             onClick={handleToggleExpand}
             className="btn btn-sm btn-outline-secondary d-inline-flex flex-align-center gap-1 flex-shrink-0 csc-toggle-btn"
             style={{
-              borderColor: isWarningHighlight ? '#f59e0b' : 'var(--border)',
-              color: isWarningHighlight ? '#f59e0b' : 'var(--text-primary)'
+              borderColor: isWarningHighlight ? 'var(--warning)' : 'var(--border)',
+              color: isWarningHighlight ? 'var(--warning)' : 'var(--text-primary)'
             }}
           >
             {saving ? (
@@ -350,9 +350,9 @@ export default function CustomerSelectorCard({
                           onClick={() => handleChooseCustomer(c)}
                           className="d-flex justify-between flex-align-center px-3 py-2 text-left cursor-pointer border-bottom csc-result-item"
                           style={{
-                            backgroundColor: isChosen ? 'rgba(99, 102, 241, 0.15)' : 'transparent'
+                            backgroundColor: isChosen ? 'var(--accent-primary-light)' : 'transparent'
                           }}
-                          onMouseEnter={(e) => { if (!isChosen) e.currentTarget.style.backgroundColor = 'var(--bg-hover, rgba(255,255,255,0.06))'; }}
+                          onMouseEnter={(e) => { if (!isChosen) e.currentTarget.style.backgroundColor = 'var(--bg-hover)'; }}
                           onMouseLeave={(e) => { if (!isChosen) e.currentTarget.style.backgroundColor = 'transparent'; }}
                         >
                           <div className="csc-fill">

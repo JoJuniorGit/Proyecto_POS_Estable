@@ -11,6 +11,7 @@ using Core.Interfaces;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Exceptions;
 using Sales.Module.Interfaces;
@@ -37,6 +38,13 @@ public class SalesControllerClaimTests
 
     private static object? GetPropertyValue(object instance, string propertyName)
     {
+        if (instance is ProblemDetails pd)
+        {
+            if (string.Equals(propertyName, "message", StringComparison.OrdinalIgnoreCase))
+            {
+                return pd.Extensions.TryGetValue("message", out var m) ? m?.ToString() : pd.Detail;
+            }
+        }
         var property = instance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
         Assert.NotNull(property);
         return property.GetValue(instance);

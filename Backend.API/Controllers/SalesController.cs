@@ -2,8 +2,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Core.DTOs;
 using Core.Logging;
+using Sales.Module.DTOs;
 using Sales.Module.Interfaces;
 using System.ComponentModel.DataAnnotations;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
@@ -28,7 +31,7 @@ public partial class SalesController : ControllerBase
 
     [HttpPost("start")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
-    public async Task<ActionResult<SaleDto>> StartSale([FromQuery] int? cashierId = null)
+    public async Task<ActionResult<SaleDto>> StartSaleAsync([FromQuery] int? cashierId = null, CancellationToken cancellationToken = default)
     {
         int? effectiveCashierId = _currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid) 
             ? uid 
@@ -38,9 +41,9 @@ public partial class SalesController : ControllerBase
         return Ok(sale);
     }
 
-    // 8.5-A3: Autorización por objeto. Un cajero solo puede mutar ventas que él inició.
-    // Admin/Manager siempre autorizados. Si la venta no puede resolverse (null / mock no stubeado),
-    // el helper es tolerante y NO bloquea (la resolución real de existencia la hace el servicio).
+    [NonAction]
+    public Task<ActionResult<SaleDto>> StartSale([FromQuery] int? cashierId = null) => StartSaleAsync(cashierId);
+
     private async Task<bool> IsAuthorizedForSaleAsync(int saleId)
     {
         bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
@@ -60,14 +63,13 @@ public partial class SalesController : ControllerBase
         }
         catch (System.Collections.Generic.KeyNotFoundException)
         {
-            return true; // Permite que el servicio devuelva NotFound al mutador
+            return true;
         }
 
-        if (target == null) return true; // Tolerante a null (mocks/indefinido)
+        if (target == null) return true;
 
         if (string.Equals(target.Status, "OnHold", StringComparison.Ordinal)) return true;
 
-        // Si no es rol elevado (Cashier), exige que el cajero sea el dueño.
         if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid))
         {
             return target.CashierId == uid;
@@ -83,8 +85,6 @@ public partial class SalesController : ControllerBase
             : null;
     }
 
-    // 8.9-B2: scope de lectura para listados. Un cajero solo puede listar sus propias ventas;
-    // Admin/Manager conservan visión global. Se aplica a pending-pickups e history.
     private (bool ScopeToCashier, int CashierId) GetCashierReadScope()
     {
         bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
@@ -99,12 +99,11 @@ public partial class SalesController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<SaleDto>> GetSale(int id)
+    public async Task<ActionResult<SaleDto>> GetSaleAsync(int id, CancellationToken cancellationToken = default)
     {
-        // 8.5-A3/8.6-B1: ownership a nivel de objeto — un cajero solo puede leer ventas propias.
         if (!await IsAuthorizedForSaleAsync(id))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para consultar esta venta." });
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para consultar esta venta.");
         }
 
         try
@@ -114,60 +113,72 @@ public partial class SalesController : ControllerBase
         }
         catch (System.Collections.Generic.KeyNotFoundException)
         {
-            return NotFound();
+            return this.ApiNotFound($"Venta con ID {id} no encontrada.");
         }
     }
 
+    [NonAction]
+    public Task<ActionResult<SaleDto>> GetSale(int id) => GetSaleAsync(id);
+
     [HttpPost("{id}/items")]
-    public async Task<ActionResult<SaleDto>> AddItem(int id, [FromBody] AddItemRequest request)
+    public async Task<ActionResult<SaleDto>> AddItemAsync(int id, [FromBody] AddItemRequest request, CancellationToken cancellationToken = default)
     {
         if (!await IsAuthorizedForSaleAsync(id))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
 
         bool isAuthorized = User.IsInRole("Admin") || User.IsInRole("Manager");
         if ((request.CustomUnitPriceUsd.HasValue || request.CustomUnitPriceLocal.HasValue) && !isAuthorized)
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor." });
+            return this.ApiForbidden("Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor.");
         }
 
         var sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized, GetActorUserId());
         return Ok(sale);
     }
 
+    [NonAction]
+    public Task<ActionResult<SaleDto>> AddItem(int id, [FromBody] AddItemRequest request) => AddItemAsync(id, request);
+
     [HttpDelete("{id}/items/{itemId}")]
-    public async Task<ActionResult<SaleDto>> RemoveItem(int id, int itemId, [FromQuery] string exchangeRate)
+    public async Task<ActionResult<SaleDto>> RemoveItemAsync(int id, int itemId, [FromQuery] string exchangeRate, CancellationToken cancellationToken = default)
     {
         if (!await IsAuthorizedForSaleAsync(id))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
 
         var sale = await _salesService.RemoveItemAsync(id, itemId, ParseRateInvariant(exchangeRate), GetActorUserId());
         return Ok(sale);
     }
 
+    [NonAction]
+    public Task<ActionResult<SaleDto>> RemoveItem(int id, int itemId, [FromQuery] string exchangeRate) => RemoveItemAsync(id, itemId, exchangeRate);
+
     [HttpPut("{id}/items/{itemId}")]
-    public async Task<ActionResult<SaleDto>> UpdateItemQuantity(int id, int itemId, [FromBody] UpdateQuantityRequest request)
+    public async Task<ActionResult<SaleDto>> UpdateItemQuantityAsync(int id, int itemId, [FromBody] UpdateQuantityRequest request, CancellationToken cancellationToken = default)
     {
         if (!await IsAuthorizedForSaleAsync(id))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
 
         var sale = await _salesService.UpdateItemQuantityAsync(id, itemId, request.Quantity, request.ExchangeRate, GetActorUserId());
         return Ok(sale);
     }
 
+    [NonAction]
+    public Task<ActionResult<SaleDto>> UpdateItemQuantity(int id, int itemId, [FromBody] UpdateQuantityRequest request) => UpdateItemQuantityAsync(id, itemId, request);
+
     [HttpPut("{id}/exchange-rate")]
-    public async Task<ActionResult<SaleDto>> UpdateExchangeRate(int id, [FromQuery] string exchangeRate)
+    public async Task<ActionResult<SaleDto>> UpdateExchangeRateAsync(int id, [FromQuery] string exchangeRate, CancellationToken cancellationToken = default)
     {
         try
         {
             if (!await IsAuthorizedForSaleAsync(id))
             {
-                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+                return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
             }
 
             var sale = await _salesService.UpdateExchangeRateAsync(id, ParseRateInvariant(exchangeRate), GetActorUserId());
@@ -179,12 +190,15 @@ public partial class SalesController : ControllerBase
         }
     }
 
+    [NonAction]
+    public Task<ActionResult<SaleDto>> UpdateExchangeRate(int id, [FromQuery] string exchangeRate) => UpdateExchangeRateAsync(id, exchangeRate);
+
     private async Task<(bool ShouldStop, ActionResult? BlockingResult, string? Key, byte[]? PayloadHash)> ResolveIdempotencyAsync(string requestPath, string bodyJson)
     {
         string? idempotencyKey = Request?.Headers["Idempotency-Key"].ToString();
         if (string.IsNullOrWhiteSpace(idempotencyKey))
         {
-            return (true, BadRequest(new { message = "El encabezado Idempotency-Key es obligatorio para esta operación." }), null, null);
+            return (true, this.ApiBadRequest("El encabezado Idempotency-Key es obligatorio para esta operación."), null, null);
         }
 
         idempotencyKey = idempotencyKey.Trim();
@@ -196,7 +210,7 @@ public partial class SalesController : ControllerBase
 
         if (!_idempotencyService.ValidateKeyFormat(idempotencyKey, out var formatError))
         {
-            return (true, BadRequest(new { message = formatError }), null, null);
+            return (true, this.ApiBadRequest(formatError), null, null);
         }
 
         var bodyBytes = System.Text.Encoding.UTF8.GetBytes(bodyJson);
@@ -216,7 +230,7 @@ public partial class SalesController : ControllerBase
         {
             var clientIp = HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
             AppLogger.LogSecurityAudit($"[IDEMPOTENCY_MISMATCH] Key={idempotencyKey}, Path={requestPath}, IP={clientIp}, Timestamp={System.DateTime.UtcNow:O}");
-            return (true, StatusCode(StatusCodes.Status422UnprocessableEntity, new { message = "La clave de idempotencia ya fue utilizada para una transacción diferente con otro contenido." }), null, null);
+            return (true, this.ApiUnprocessableEntity("La clave de idempotencia ya fue utilizada para una transacción diferente con otro contenido."), null, null);
         }
 
         return (false, null, idempotencyKey, payloadHash);
@@ -239,10 +253,10 @@ public partial class SalesController : ControllerBase
             {
                 var clientIp = HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
                 AppLogger.LogSecurityAudit($"[IDEMPOTENCY_MISMATCH] Key={key}, Path={requestPath}, IP={clientIp}, Timestamp={System.DateTime.UtcNow:O}");
-                return StatusCode(StatusCodes.Status422UnprocessableEntity, new { message = "La clave de idempotencia ya fue utilizada para una transacción diferente con otro contenido." });
+                return this.ApiUnprocessableEntity("La clave de idempotencia ya fue utilizada para una transacción diferente con otro contenido.");
             }
         }
-        return StatusCode(StatusCodes.Status409Conflict, new { message = "Operación concurrente en progreso para esta clave de idempotencia." });
+        return this.ApiConflict("Operación concurrente en progreso para esta clave de idempotencia.");
     }
 
     internal static decimal ParseRateInvariant(string? raw)
@@ -252,54 +266,4 @@ public partial class SalesController : ControllerBase
             ? rate
             : 0m;
     }
-}
-
-public class AddItemRequest
-{
-    public int ProductId { get; set; }
-    public decimal Quantity { get; set; }
-    public decimal ExchangeRate { get; set; }
-    public decimal? CustomUnitPriceUsd { get; set; }
-    public decimal? CustomUnitPriceLocal { get; set; }
-}
-
-public class UpdateQuantityRequest
-{
-    public decimal Quantity { get; set; }
-    public decimal ExchangeRate { get; set; }
-}
-
-public class CompleteSaleRequest
-{
-    public decimal ExchangeRate { get; set; }
-    // 8.7-B2: El ajuste de redondeo debe acotarse; la validación en el servicio refuerza el límite.
-    [Range(-1000, 1000, ErrorMessage = "El ajuste de redondeo está fuera de los límites operacionales (-1000 a 1000).")]
-    public decimal RoundingAdjustment { get; set; }
-    public int? CashierId { get; set; }
-    public bool IsPendingPickup { get; set; } = false;
-    public IEnumerable<SalePaymentDto> Payments { get; set; } = new List<SalePaymentDto>();
-}
-public class UpdateSaleCustomerRequest
-{
-    public int CustomerId { get; set; }
-}
-
-public class CheckoutPreviewRequest
-{
-    public decimal ExchangeRate { get; set; }
-    public IEnumerable<SalePaymentDto> Payments { get; set; } = new List<SalePaymentDto>();
-}
-
-public class CheckoutPreviewResponse
-{
-    public decimal TotalUSD { get; set; }
-    public decimal TotalBsS { get; set; }
-    public decimal TotalPaidUSD { get; set; }
-    public decimal TotalPaidBsS { get; set; }
-    public decimal RemainingBalanceUSD { get; set; }
-    public decimal RemainingBalanceBsS { get; set; }
-    public decimal RoundingAdjustment { get; set; }
-    public decimal ChangeDueUSD { get; set; }
-    public decimal ChangeDueBsS { get; set; }
-    public bool IsFullyPaid { get; set; }
 }

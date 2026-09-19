@@ -1,38 +1,44 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Sales.Module.Data;
-using Core.Entities;
 using Core.DTOs;
+using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Services;
 using Core.Logging;
-
 using Core.Interfaces;
-using Core.Constants;
+using Sales.Module.Data;
+using Sales.Module.Services;
 
 namespace Backend.API.Controllers;
-
 
 [Authorize(Roles = "Admin")]
 [ApiController]
 [Route("api/[controller]")]
 public class UsersController : ControllerBase
 {
-    private readonly SalesDbContext _db;
+    private readonly IUserService _userService;
     private readonly IPasswordPolicyService _passwordPolicyService;
     private readonly ISecurityStampValidator? _stampValidator;
+
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
+    public UsersController(
+        IUserService userService, 
+        IPasswordPolicyService? passwordPolicyService = null,
+        ISecurityStampValidator? stampValidator = null)
+    {
+        _userService = userService;
+        _passwordPolicyService = passwordPolicyService ?? new Core.Services.PasswordPolicyService();
+        _stampValidator = stampValidator;
+    }
 
     public UsersController(
         SalesDbContext db, 
         IPasswordPolicyService? passwordPolicyService = null,
         ISecurityStampValidator? stampValidator = null)
+        : this(new UserService(db, passwordPolicyService), passwordPolicyService, stampValidator)
     {
-        _db = db;
-        _passwordPolicyService = passwordPolicyService ?? new Core.Services.PasswordPolicyService();
-        _stampValidator = stampValidator;
     }
 
     private int? GetCurrentUserId()
@@ -47,324 +53,186 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<UserDto>>> GetUsers()
+    public async Task<ActionResult<IEnumerable<UserDto>>> GetUsersAsync(CancellationToken cancellationToken = default)
     {
-        var users = await _db.Users
-            .AsNoTracking()
-            .OrderBy(u => u.Name)
-            .Select(u => new UserDto
-            {
-                Id = u.Id,
-                Cedula = u.Cedula,
-                Name = string.IsNullOrWhiteSpace(u.Name) ? u.FullName : u.Name,
-                Role = u.Role,
-                IsActive = u.IsActive
-            })
-            .ToListAsync();
-
+        var users = await _userService.GetUsersAsync(cancellationToken);
         return Ok(users);
     }
 
-    [HttpGet("{id}")]
-    public async Task<ActionResult<UserDto>> GetUser(int id)
-    {
-        var user = await _db.Users.FindAsync(id);
-        if (user == null) return NotFound();
+    [NonAction]
+    public Task<ActionResult<IEnumerable<UserDto>>> GetUsers() => GetUsersAsync();
 
-        return Ok(new UserDto
-        {
-            Id = user.Id,
-            Cedula = user.Cedula,
-            Name = string.IsNullOrWhiteSpace(user.Name) ? user.FullName : user.Name,
-            Role = user.Role,
-            IsActive = user.IsActive
-        });
+    [HttpGet("{id}")]
+    public async Task<ActionResult<UserDto>> GetUserAsync(int id, CancellationToken cancellationToken = default)
+    {
+        var user = await _userService.GetUserAsync(id, cancellationToken);
+        if (user == null) return this.ApiNotFound("Usuario no encontrado.");
+        return Ok(user);
     }
+
+    [NonAction]
+    public Task<ActionResult<UserDto>> GetUser(int id) => GetUserAsync(id);
 
     [HttpPost]
-    public async Task<ActionResult<UserCreatedDto>> CreateUser([FromBody] CreateUserDto dto)
+    public async Task<ActionResult<UserCreatedDto>> CreateUserAsync([FromBody] CreateUserDto dto, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(dto.Cedula) || string.IsNullOrWhiteSpace(dto.Name))
+        try
         {
-            return BadRequest(new { Message = "Usuario y Nombre son campos requeridos." });
+            var created = await _userService.CreateUserAsync(dto, cancellationToken);
+            return CreatedAtAction(nameof(GetUserAsync), new { id = created.Id }, created);
         }
-
-        var usernameClean = dto.Cedula.Trim();
-        var usernameLower = usernameClean.ToLower();
-        var existing = await _db.Users.AnyAsync(u => u.Cedula.ToLower() == usernameLower || u.Username.ToLower() == usernameLower);
-        if (existing)
+        catch (ArgumentException ex)
         {
-            return BadRequest(new { Message = "Ya existe un usuario registrado con ese nombre de usuario." });
+            return this.ApiBadRequest(ex.Message);
         }
-
-        string rawPassword;
-        bool mustChange;
-        if (!string.IsNullOrWhiteSpace(dto.Password))
+        catch (InvalidOperationException ex)
         {
-            var (isPolicyValid, policyError) = _passwordPolicyService.ValidatePassword(dto.Password, usernameClean);
-            if (!isPolicyValid)
-            {
-                return BadRequest(new { Message = policyError });
-            }
-            rawPassword = dto.Password.Trim();
-            mustChange = false;
+            return this.ApiBadRequest(ex.Message);
         }
-        else
-        {
-            rawPassword = _passwordPolicyService.GenerateSecureTemporaryPassword(12);
-            mustChange = true;
-        }
-
-        var user = new User
-        {
-            Cedula = usernameClean,
-            Name = dto.Name.Trim(),
-            FullName = dto.Name.Trim(),
-            Username = usernameClean,
-            Role = dto.Role,
-            PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(rawPassword),
-            IsActive = true,
-            MustChangePassword = mustChange,
-            SecurityStamp = Guid.NewGuid().ToString("N")
-        };
-
-        _db.Users.Add(user);
-        await _db.SaveChangesAsync();
-
-        return CreatedAtAction(nameof(GetUser), new { id = user.Id }, new UserCreatedDto
-        {
-            Id = user.Id,
-            Cedula = user.Cedula,
-            Name = user.Name,
-            Role = user.Role,
-            IsActive = user.IsActive,
-            MustChangePassword = mustChange,
-            TemporaryPassword = mustChange ? rawPassword : null
-        });
     }
+
+    [NonAction]
+    public Task<ActionResult<UserCreatedDto>> CreateUser(CreateUserDto dto) => CreateUserAsync(dto);
 
     [HttpPut("{id}")]
-    public async Task<ActionResult<UserDto>> UpdateUser(int id, [FromBody] UpdateUserDto dto)
+    public async Task<ActionResult<UserDto>> UpdateUserAsync(int id, [FromBody] UpdateUserDto dto, CancellationToken cancellationToken = default)
     {
-        var user = await _db.Users.FindAsync(id);
-        if (user == null) return NotFound();
-
-        bool isMainAdmin = SecurityConstants.IsRootAdmin(user.Cedula, user.Username);
-        if (isMainAdmin)
+        try
         {
-            if (!dto.IsActive)
-            {
-                return BadRequest(new { Message = "El Administrador principal del sistema no puede ser desactivado." });
-            }
-            if (dto.Role != Core.Entities.UserRole.Admin)
-            {
-                return BadRequest(new { Message = "El Administrador principal del sistema no puede cambiar de rol." });
-            }
-            if (!string.Equals(dto.Cedula.Trim(), user.Cedula, System.StringComparison.OrdinalIgnoreCase))
-            {
-                return BadRequest(new { Message = "El Administrador principal del sistema no puede cambiar su cédula o nombre de usuario." });
-            }
-        }
-
-        var currentUserId = GetCurrentUserId();
-        if (currentUserId.HasValue && id == currentUserId.Value && !dto.IsActive)
-        {
-            return BadRequest(new { Message = "No puede desactivar su propia cuenta de usuario en sesión." });
-        }
-
-        var usernameClean = dto.Cedula.Trim();
-        var usernameLower = usernameClean.ToLower();
-        var existingUser = await _db.Users.AnyAsync(u => (u.Cedula.ToLower() == usernameLower || u.Username.ToLower() == usernameLower) && u.Id != id);
-        if (existingUser)
-        {
-            return BadRequest(new { Message = "El nombre de usuario especificado ya pertenece a otro usuario." });
-        }
-
-        bool credentialsOrRoleChanged = false;
-        if (!string.IsNullOrWhiteSpace(dto.Password))
-        {
-            var (isPolicyValid, policyError) = _passwordPolicyService.ValidatePassword(dto.Password, user.Username);
-            if (!isPolicyValid)
-            {
-                return BadRequest(new { Message = policyError });
-            }
-            user.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(dto.Password.Trim());
-            user.MustChangePassword = false;
-            credentialsOrRoleChanged = true;
-        }
-
-        if (user.Role != dto.Role || user.IsActive != (isMainAdmin ? true : dto.IsActive))
-        {
-            credentialsOrRoleChanged = true;
-        }
-
-        user.Cedula = isMainAdmin ? user.Cedula : usernameClean;
-        user.Username = isMainAdmin ? user.Username : usernameClean;
-        user.Name = dto.Name.Trim();
-        user.FullName = dto.Name.Trim();
-        user.Role = isMainAdmin ? Core.Entities.UserRole.Admin : dto.Role;
-        user.IsActive = isMainAdmin ? true : dto.IsActive;
-
-        await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
-        {
-            await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync() : null;
+            var (user, credentialsOrRoleChanged) = await _userService.UpdateUserAsync(id, dto, GetCurrentUserId(), cancellationToken);
             if (credentialsOrRoleChanged)
             {
-                user.SecurityStamp = Guid.NewGuid().ToString("N");
+                _stampValidator?.InvalidateUserStamp(user.Id);
+                AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={user.Id}, Username={user.Cedula}, Reason=UserUpdated");
             }
-            await _db.SaveChangesAsync();
-            if (tx != null)
-            {
-                await tx.CommitAsync();
-            }
-        });
-
-        if (credentialsOrRoleChanged)
-        {
-            _stampValidator?.InvalidateUserStamp(user.Id);
-            AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={user.Id}, Username={user.Username}, Reason=UserUpdated");
+            return Ok(user);
         }
-
-        return Ok(new UserDto
+        catch (KeyNotFoundException)
         {
-            Id = user.Id,
-            Cedula = user.Cedula,
-            Name = user.Name,
-            Role = user.Role,
-            IsActive = user.IsActive
-        });
+            return this.ApiNotFound("Usuario no encontrado.");
+        }
+        catch (ArgumentException ex)
+        {
+            return this.ApiBadRequest(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return this.ApiBadRequest(ex.Message);
+        }
     }
+
+    [NonAction]
+    public Task<ActionResult<UserDto>> UpdateUser(int id, UpdateUserDto dto) => UpdateUserAsync(id, dto);
 
     [HttpDelete("{id}")]
-    public async Task<ActionResult> SoftDeleteUser(int id)
+    public async Task<ActionResult> SoftDeleteUserAsync(int id, CancellationToken cancellationToken = default)
     {
-        var user = await _db.Users.FindAsync(id);
-        if (user == null) return NotFound();
-
-        if (SecurityConstants.IsRootAdmin(user.Cedula, user.Username))
+        try
         {
-            return BadRequest(new { Message = "El Administrador principal del sistema no puede ser desactivado." });
+            await _userService.SoftDeleteUserAsync(id, GetCurrentUserId(), cancellationToken);
+            _stampValidator?.InvalidateUserStamp(id);
+            AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={id}, Reason=UserDeactivated");
+            return Ok(new { Message = "Usuario desactivado exitosamente." });
         }
-
-        var currentUserId = GetCurrentUserId();
-        if (currentUserId.HasValue && id == currentUserId.Value)
+        catch (KeyNotFoundException)
         {
-            return BadRequest(new { Message = "No puede desactivar su propia cuenta de usuario en sesión." });
+            return this.ApiNotFound("Usuario no encontrado.");
         }
-
-        user.IsActive = false;
-        user.SecurityStamp = Guid.NewGuid().ToString("N");
-        _stampValidator?.InvalidateUserStamp(user.Id);
-        AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={user.Id}, Username={user.Username}, Reason=UserDeactivated");
-        await _db.SaveChangesAsync();
-
-        return Ok(new { Message = "Usuario desactivado exitosamente." });
+        catch (InvalidOperationException ex)
+        {
+            return this.ApiBadRequest(ex.Message);
+        }
     }
+
+    [NonAction]
+    public Task<ActionResult> SoftDeleteUser(int id) => SoftDeleteUserAsync(id);
 
     [HttpPost("{id}/reactivate")]
-    public async Task<ActionResult> ReactivateUser(int id)
+    public async Task<ActionResult> ReactivateUserAsync(int id, CancellationToken cancellationToken = default)
     {
-        var user = await _db.Users.FindAsync(id);
-        if (user == null) return NotFound();
-
-        user.IsActive = true;
-        user.SecurityStamp = Guid.NewGuid().ToString("N");
-        _stampValidator?.InvalidateUserStamp(user.Id);
-        AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={user.Id}, Username={user.Username}, Reason=UserReactivated");
-        await _db.SaveChangesAsync();
-
-        return Ok(new { Message = "Usuario reactivado exitosamente." });
+        try
+        {
+            await _userService.ReactivateUserAsync(id, cancellationToken);
+            _stampValidator?.InvalidateUserStamp(id);
+            AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={id}, Reason=UserReactivated");
+            return Ok(new { Message = "Usuario reactivado exitosamente." });
+        }
+        catch (KeyNotFoundException)
+        {
+            return this.ApiNotFound("Usuario no encontrado.");
+        }
     }
+
+    [NonAction]
+    public Task<ActionResult> ReactivateUser(int id) => ReactivateUserAsync(id);
 
     [HttpDelete("{id}/permanent")]
-    public async Task<ActionResult> HardDeleteUser(int id)
+    public async Task<ActionResult> HardDeleteUserAsync(int id, CancellationToken cancellationToken = default)
     {
-        var user = await _db.Users.FindAsync(id);
-        if (user == null) return NotFound();
-
-        if (SecurityConstants.IsRootAdmin(user.Cedula, user.Username))
+        try
         {
-            return BadRequest(new { Message = "El Administrador principal del sistema no puede ser eliminado." });
+            await _userService.HardDeleteUserAsync(id, GetCurrentUserId(), cancellationToken);
+            _stampValidator?.InvalidateUserStamp(id);
+            AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={id}, Reason=UserPermanentlyDeleted");
+            return Ok(new { Message = "Usuario eliminado permanentemente." });
         }
-
-        var currentUserId = GetCurrentUserId();
-        if (currentUserId.HasValue && id == currentUserId.Value)
+        catch (KeyNotFoundException)
         {
-            return BadRequest(new { Message = "No puede eliminar su propia cuenta de usuario en sesión." });
+            return this.ApiNotFound("Usuario no encontrado.");
         }
-
-        await _db.Sales
-            .Where(s => s.CashierId == id)
-            .ExecuteUpdateAsync(s => s.SetProperty(s => s.CashierId, (int?)null));
-
-        _stampValidator?.InvalidateUserStamp(id);
-        AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={id}, Username={user.Username}, Reason=UserPermanentlyDeleted");
-
-        _db.Users.Remove(user);
-        await _db.SaveChangesAsync();
-
-        return Ok(new { Message = "Usuario eliminado permanentemente." });
+        catch (InvalidOperationException ex)
+        {
+            return this.ApiBadRequest(ex.Message);
+        }
     }
+
+    [NonAction]
+    public Task<ActionResult> HardDeleteUser(int id) => HardDeleteUserAsync(id);
 
     [HttpPost("{id}/unlock")]
-    public async Task<ActionResult> UnlockUser(int id)
+    public async Task<ActionResult> UnlockUserAsync(int id, CancellationToken cancellationToken = default)
     {
-        var user = await _db.Users.FindAsync(id);
-        if (user == null) return NotFound(new { Message = "Usuario no encontrado." });
-
-        if (!user.IsActive)
+        try
         {
-            return BadRequest(new { Message = "No se puede desbloquear una cuenta de usuario inactiva o deshabilitada." });
+            var username = await _userService.UnlockUserAsync(id, GetCurrentUserId(), cancellationToken);
+            var adminId = GetCurrentUserId();
+            AppLogger.LogSecurityAudit($"[USER_UNLOCKED] TargetUserId={id}, Username={username}, UnlockedBy={adminId}, Timestamp={DateTime.UtcNow:O}");
+            return Ok(new { Message = $"Cuenta de {username} desbloqueada exitosamente." });
         }
-
-        user.AccessFailedCount = 0;
-        user.LockoutEndUtc = null;
-        await _db.SaveChangesAsync();
-
-        var adminId = GetCurrentUserId();
-        AppLogger.LogSecurityAudit($"[USER_UNLOCKED] TargetUserId={user.Id}, Username={user.Username}, UnlockedBy={adminId}, Timestamp={DateTime.UtcNow:O}");
-
-        return Ok(new { Message = $"Cuenta de {user.Username} desbloqueada exitosamente." });
+        catch (KeyNotFoundException)
+        {
+            return this.ApiNotFound("Usuario no encontrado.");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return this.ApiBadRequest(ex.Message);
+        }
     }
+
+    [NonAction]
+    public Task<ActionResult> UnlockUser(int id) => UnlockUserAsync(id);
 
     [HttpPost("{id}/reset-temporary-password")]
-    public async Task<ActionResult<ResetTemporaryPasswordResponseDto>> ResetTemporaryPassword(int id)
+    public async Task<ActionResult<ResetTemporaryPasswordResponseDto>> ResetTemporaryPasswordAsync(int id, CancellationToken cancellationToken = default)
     {
-        var user = await _db.Users.FindAsync(id);
-        if (user == null) return NotFound(new { Message = "Usuario no encontrado." });
-
-        if (!user.IsActive)
+        try
         {
-            return BadRequest(new { Message = "No se puede restablecer la contraseña de un usuario inactivo o deshabilitado." });
+            var res = await _userService.ResetTemporaryPasswordAsync(id, GetCurrentUserId(), cancellationToken);
+            _stampValidator?.InvalidateUserStamp(id);
+            var adminId = GetCurrentUserId();
+            AppLogger.LogSecurityAudit($"[TEMP_PASSWORD_RESET] TargetUserId={id}, ResetBy={adminId}, Timestamp={DateTime.UtcNow:O}");
+            return Ok(res);
         }
-
-        var temporaryPassword = _passwordPolicyService.GenerateSecureTemporaryPassword(12);
-
-        await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        catch (KeyNotFoundException)
         {
-            await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync() : null;
-            user.PasswordHash = Backend.API.Services.PasswordHasher.HashPassword(temporaryPassword);
-            user.MustChangePassword = true;
-            user.SecurityStamp = Guid.NewGuid().ToString("N");
-            user.AccessFailedCount = 0;
-            user.LockoutEndUtc = null;
-            await _db.SaveChangesAsync();
-            if (tx != null)
-            {
-                await tx.CommitAsync();
-            }
-        });
-
-        _stampValidator?.InvalidateUserStamp(user.Id);
-
-        var adminId = GetCurrentUserId();
-        AppLogger.LogSecurityAudit($"[TEMP_PASSWORD_RESET] TargetUserId={user.Id}, Username={user.Username}, ResetBy={adminId}, Timestamp={DateTime.UtcNow:O}");
-
-        return Ok(new ResetTemporaryPasswordResponseDto
+            return this.ApiNotFound("Usuario no encontrado.");
+        }
+        catch (InvalidOperationException ex)
         {
-            UserId = user.Id,
-            TemporaryPassword = temporaryPassword,
-            Message = "Contraseña temporal regenerada exitosamente. Debe ser cambiada en el próximo inicio de sesión."
-        });
+            return this.ApiBadRequest(ex.Message);
+        }
     }
+
+    [NonAction]
+    public Task<ActionResult<ResetTemporaryPasswordResponseDto>> ResetTemporaryPassword(int id) => ResetTemporaryPasswordAsync(id);
 }

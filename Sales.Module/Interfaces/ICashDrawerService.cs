@@ -20,22 +20,10 @@ public class CashAdvanceResultDto
 public interface ICashDrawerService
 {
     Task<CashDrawerSessionResponseDto?> GetActiveSessionAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Sesión activa con sus transacciones de caja precargadas (retorna null si no hay sesión abierta).
-    /// Solo los endpoints que exponen el detalle de movimientos deben usarla (8.5-M1: el include completo
-    /// no debe ejecutarse en cada acceso interno).
-    /// </summary>
     Task<CashDrawerSessionResponseDto?> GetActiveSessionWithTransactionsAsync(CancellationToken cancellationToken = default);
     Task<CashDrawerSessionResponseDto> GetOrCreateActiveSessionAsync(decimal currentExchangeRate, CancellationToken cancellationToken = default);
     Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default);
     Task<CashDrawerSessionResponseDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Cierra la sesión activa y abre una nueva conservando el saldo esperado en caja (saldo teórico acumulado:
-    /// apertura + ingresos - egresos de la sesión que se cierra, independiente de los montos declarados del arqueo)
-    /// pero reiniciando a 0 los acumuladores de ingresos y egresos de la sesión.
-    /// </summary>
     Task RolloverSessionAfterClosureAsync(decimal currentExchangeRate, CancellationToken cancellationToken = default);
 
     Task<CashTransactionResponseDto> AddTransactionAsync(
@@ -51,12 +39,6 @@ public interface ICashDrawerService
         int? paymentMethodId = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Registra el vuelto de una venta como egreso físico de caja (Source=SalePayment) VALIDANDO saldo
-    /// (8.6-C1): usa el advisory lock de la sesión y verifica que el saldo disponible (saldo base + ingresos
-    /// cash pendientes de la venta aún no persistidos) soporte el vuelto ANTES de insertarlo, eliminando la
-    /// vía a saldo de caja negativo. Debe ejecutarse dentro de la transacción compartida de completar venta.
-    /// </summary>
     Task<CashTransactionResponseDto> RecordSaleChangeAsync(
         int sessionId,
         decimal changeUsd,
@@ -69,11 +51,6 @@ public interface ICashDrawerService
         CancellationToken cancellationToken = default);
 
     Task<decimal> GetCurrentBalanceLocalAsync(int sessionId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Historial persistente de movimientos de caja: devuelve los movimientos físicos más recientes
-    /// de TODAS las sesiones (activa y anteriores), para conservar la trazabilidad de las sesiones
-    /// cerradas junto con los movimientos de la sesión siguiente.
-    /// </summary>
     Task<System.Collections.Generic.List<CashTransactionResponseDto>> GetHistoryAsync(int limit = 300, CancellationToken cancellationToken = default);
+    Task<Core.DTOs.PagedResultDto<CashTransactionResponseDto>> GetHistoryPagedAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default);
 }

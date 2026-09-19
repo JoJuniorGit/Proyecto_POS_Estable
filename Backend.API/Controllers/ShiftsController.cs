@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Sales.Module.DTOs;
 using Sales.Module.Interfaces;
 using Sales.Module.Services;
 using Core.Interfaces;
@@ -127,7 +128,7 @@ public class ShiftsController : ControllerBase
             return this.ApiNotFound("El reporte de cierre solicitado no existe.");
         }
 
-        bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
+        bool isElevated = User.IsInRole(nameof(Core.Entities.UserRole.Admin)) || User.IsInRole(nameof(Core.Entities.UserRole.Manager));
         if (!isElevated)
         {
             var identityId = _currentUserService.UserId ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -166,23 +167,3 @@ public class ShiftsController : ControllerBase
     }
 }
 
-public class CloseShiftRequest
-{
-    public List<DeclaredAmountDto> DeclaredAmounts { get; set; } = new();
-}
-
-public class DeclaredAmountDto
-{
-    public int PaymentMethodId { get; set; }
-    public decimal Amount { get; set; }
-}
-
-public class ShiftReportDto
-{
-    public int ShiftId { get; set; }
-    public string CashierName { get; set; } = string.Empty;
-    public string CashierCedula { get; set; } = string.Empty;
-    public DateTime ClosedAt { get; set; }
-    public decimal ExchangeRate { get; set; }
-    public List<ShiftReportDetailDto> Details { get; set; } = new();
-}

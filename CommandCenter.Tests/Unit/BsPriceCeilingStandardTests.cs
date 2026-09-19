@@ -109,16 +109,21 @@ public class BsPriceCeilingStandardTests
     }
 
     [Fact]
-    public async Task ProductsController_Create_WhenClientSendsWrongBsPrice_PersistsCanonicalCeiling()
+    public async Task ProductsController_Create_WhenValid_DelegatesToInventoryService()
     {
-        var captured = new Product();
-        var mockService = new Mock<IInventoryService>();
-        mockService.Setup(s => s.CreateProductAsync(It.IsAny<Product>())).ReturnsAsync((Product p) => { captured = p; return p; });
-        mockService.Setup(s => s.GetTodayExchangeRateAsync()).ReturnsAsync(842.21m);
+        CreateProductDto? capturedDto = null;
+        var mockInventory = new Mock<IInventoryService>();
+        var mockService = new Mock<IProductManagementService>();
+        mockService.Setup(s => s.CreateProductFromDtoAsync(It.IsAny<CreateProductDto>(), It.IsAny<System.Threading.CancellationToken>()))
+            .ReturnsAsync((CreateProductDto dto, System.Threading.CancellationToken ct) =>
+            {
+                capturedDto = dto;
+                return new ProductDto { Id = 1, PriceBsS = 682.20m, Name = dto.Name, SKU = dto.SKU ?? string.Empty };
+            });
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateCatalog).Returns(true);
 
-        var controller = new ProductsController(mockService.Object, mockUser.Object);
+        var controller = new ProductsController(mockInventory.Object, mockService.Object, mockUser.Object);
         var request = new CreateProductDto
         {
             Name = "Grano Fino",
@@ -130,21 +135,55 @@ public class BsPriceCeilingStandardTests
         var result = await controller.Create(request);
 
         Assert.IsType<Microsoft.AspNetCore.Mvc.CreatedAtActionResult>(result.Result);
-        Assert.Equal(682.20m, captured.PriceBsS);
+        Assert.NotNull(capturedDto);
+        Assert.Equal("GRANO001", capturedDto.SKU);
     }
 
     [Fact]
-    public async Task ProductsController_Update_WhenClientSendsWrongBsPrice_RecalculatesCanonicalCeiling()
+    public async Task InventoryService_CreateProductFromDto_WhenClientSendsWrongBsPrice_PersistsCanonicalCeiling()
     {
-        var existing = new Product { Id = 1, Name = "Grano Fino", SKU = "GRANO001", PriceRetailUSD = 0.81m, PriceBsS = 682.20m };
-        var mockService = new Mock<IInventoryService>();
-        mockService.Setup(s => s.GetProductByIdAsync(1)).ReturnsAsync(existing);
-        mockService.Setup(s => s.UpdateProductAsync(existing)).Returns(Task.CompletedTask);
-        mockService.Setup(s => s.GetTodayExchangeRateAsync()).ReturnsAsync(842.21m);
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        context.ExchangeRateHistory.Add(new ExchangeRateHistory
+        {
+            Date = Core.Helpers.TimeZoneHelper.GetVenezuelaDate(),
+            Rate = 842.21m,
+            UpdatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var userMock = new Mock<ICurrentUserService>();
+        userMock.Setup(u => u.CanMutateCatalog).Returns(true);
+        var service = new Inventory.Module.Services.InventoryService(context, userMock.Object);
+
+        var request = new CreateProductDto
+        {
+            Name = "Grano Fino",
+            SKU = "GRANO001",
+            PriceRetailUSD = 0.81m,
+            PriceBsS = 681.19m
+        };
+
+        var created = await service.CreateProductFromDtoAsync(request);
+
+        Assert.Equal(682.20m, created.PriceBsS);
+    }
+
+    [Fact]
+    public async Task ProductsController_Update_WhenValid_DelegatesToInventoryService()
+    {
+        UpdateProductDto? capturedDto = null;
+        var mockInventory = new Mock<IInventoryService>();
+        var mockService = new Mock<IProductManagementService>();
+        mockService.Setup(s => s.UpdateProductFromDtoAsync(1, It.IsAny<UpdateProductDto>(), It.IsAny<System.Threading.CancellationToken>()))
+            .Returns((int id, UpdateProductDto dto, System.Threading.CancellationToken ct) =>
+            {
+                capturedDto = dto;
+                return Task.CompletedTask;
+            });
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateCatalog).Returns(true);
 
-        var controller = new ProductsController(mockService.Object, mockUser.Object);
+        var controller = new ProductsController(mockInventory.Object, mockService.Object, mockUser.Object);
         var request = new UpdateProductDto
         {
             Id = 1,
@@ -153,8 +192,43 @@ public class BsPriceCeilingStandardTests
             PriceBsS = 681.19m
         };
 
-await controller.Update(1, request);
+        var result = await controller.Update(1, request);
 
-        Assert.Equal(673.77m, existing.PriceBsS);
+        Assert.IsType<Microsoft.AspNetCore.Mvc.NoContentResult>(result);
+        Assert.NotNull(capturedDto);
+        Assert.Equal(0.80m, capturedDto.PriceRetailUSD);
+    }
+
+    [Fact]
+    public async Task InventoryService_UpdateProductFromDto_WhenClientSendsWrongBsPrice_RecalculatesCanonicalCeiling()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        context.ExchangeRateHistory.Add(new ExchangeRateHistory
+        {
+            Date = Core.Helpers.TimeZoneHelper.GetVenezuelaDate(),
+            Rate = 842.21m,
+            UpdatedAt = DateTime.UtcNow
+        });
+        var existing = new Product { SKU = "GRANO001", Name = "Grano Fino", PriceRetailUSD = 0.81m, PriceBsS = 682.20m, StockQuantity = 10m };
+        context.Products.Add(existing);
+        await context.SaveChangesAsync();
+
+        var userMock = new Mock<ICurrentUserService>();
+        userMock.Setup(u => u.CanMutateCatalog).Returns(true);
+        var service = new Inventory.Module.Services.InventoryService(context, userMock.Object);
+
+        var request = new UpdateProductDto
+        {
+            Id = existing.Id,
+            Name = "Grano Fino",
+            PriceRetailUSD = 0.80m,
+            PriceBsS = 681.19m
+        };
+
+        await service.UpdateProductFromDtoAsync(existing.Id, request);
+
+        var updated = await context.Products.FindAsync(existing.Id);
+        Assert.NotNull(updated);
+        Assert.Equal(673.77m, updated.PriceBsS);
     }
 }

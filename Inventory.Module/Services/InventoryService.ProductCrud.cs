@@ -1,4 +1,6 @@
+using Core.DTOs;
 using Core.Entities;
+using Core.Extensions;
 using Core.Interfaces;
 using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
@@ -10,8 +12,49 @@ using System.Threading.Tasks;
 
 namespace Inventory.Module.Services;
 
-public partial class InventoryService
+public partial class InventoryService : IProductManagementService, IReservationService
 {
+    public async Task<ProductDto> CreateProductFromDtoAsync(CreateProductDto request, System.Threading.CancellationToken cancellationToken = default)
+    {
+        EnsureCatalogMutationPermission();
+
+        decimal retailUsd = request.PriceRetailUSD > 0 ? request.PriceRetailUSD : request.PriceUSD;
+        decimal todayRate = await GetTodayExchangeRateAsync();
+        decimal canonicalPriceBsS = todayRate > 0
+            ? Core.Helpers.PricingCalculator.ToBsSCeiling(retailUsd, todayRate)
+            : Core.Helpers.PricingCalculator.RoundPriceUp(request.PriceBsS);
+
+        var product = request.ToEntity(canonicalPriceBsS);
+        var created = await CreateProductAsync(product);
+        return created.ToDto(canViewCost: true);
+    }
+
+    public async Task UpdateProductFromDtoAsync(int id, UpdateProductDto request, System.Threading.CancellationToken cancellationToken = default)
+    {
+        EnsureCatalogMutationPermission();
+
+        var existing = await _context.Products.FindAsync(new object[] { id }, cancellationToken);
+        if (existing == null) throw new KeyNotFoundException($"Producto con ID {id} no encontrado.");
+
+        decimal todayRate = await GetTodayExchangeRateAsync();
+        decimal canonicalPriceBsS = (request.PriceRetailUSD > 0 && todayRate > 0)
+            ? Core.Helpers.PricingCalculator.ToBsSCeiling(request.PriceRetailUSD, todayRate)
+            : (request.PriceBsS > 0 ? Core.Helpers.PricingCalculator.RoundPriceUp(request.PriceBsS) : existing.PriceBsS);
+
+        existing.UpdateFromDto(request, canonicalPriceBsS);
+        await UpdateProductAsync(existing);
+    }
+
+    public async Task<ProductDto?> GetProductDtoByIdAsync(int id, System.Threading.CancellationToken cancellationToken = default)
+    {
+        var product = await _context.Products
+            .AsNoTracking()
+            .Include(p => p.ParentProduct)
+            .Include(p => p.Variants)
+            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+
+        return product != null ? product.ToDto(canViewCost: true) : null;
+    }
 
     public async Task<Product> CreateProductAsync(Product product)
     {
@@ -98,7 +141,6 @@ public partial class InventoryService
 
             if (!parent.HasIndependentPricing)
             {
-                // Inherit pricing and configuration from parent
                 product.PriceRetailUSD = parent.PriceRetailUSD;
                 product.PriceWholesaleUSD = parent.PriceWholesaleUSD;
                 product.CostPriceUSD = parent.CostPriceUSD;
@@ -248,7 +290,6 @@ public partial class InventoryService
 
                 if (!parent.HasIndependentPricing)
                 {
-                    // Inherit pricing from parent
                     product.PriceRetailUSD = parent.PriceRetailUSD;
                     product.PriceWholesaleUSD = parent.PriceWholesaleUSD;
                     product.CostPriceUSD = parent.CostPriceUSD;
@@ -276,8 +317,6 @@ public partial class InventoryService
         ValidateProductSku(product.SKU, product.IsGroupHeader);
         ValidateAndCalculateProductPrices(product);
 
-        // 8.16-H02: la transacción manual debe vivir DENTRO de CreateExecutionStrategy().ExecuteAsync()
-        // para no lanzar InvalidOperationException bajo NpgsqlRetryingExecutionStrategy en producción.
         await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await using var tx = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync() : null;
@@ -286,7 +325,6 @@ public partial class InventoryService
             existing.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
-            // If updating a parent product with HasIndependentPricing == false, propagate prices/costs to all active variants in batch
             if (product.IsGroupHeader && !product.HasIndependentPricing)
             {
                 if (_context.Database.IsRelational())
@@ -308,7 +346,6 @@ public partial class InventoryService
                 }
                 else
                 {
-                    // In-memory or non-relational fallback
                     var variants = await _context.Products.Where(p => p.ParentProductId == product.Id && !p.IsDeleted).ToListAsync();
                     foreach (var v in variants)
                     {
@@ -368,7 +405,6 @@ public partial class InventoryService
         var product = await _context.Products.FindAsync(id);
         if (product == null) return "not_found";
 
-        // Safe delete rule: Block deleting a parent product if it has active variants
         if (product.IsGroupHeader)
         {
             int activeVariants = await _context.Products.CountAsync(p => p.ParentProductId == id && !p.IsDeleted);
@@ -389,9 +425,6 @@ public partial class InventoryService
             }
             catch (DbUpdateException ex)
             {
-                // 8.5-M3: el hard-delete falla solo por integridad referencial (historial contable/FK con
-                // Restrict). Se registra el motivo y se degrada a archivar (soft delete) sin enmascarar otras
-                // fallas (conexión, OOM, etc.) que se propagan al caller.
                 Core.Logging.AppLogger.LogWarn($"[DeleteProductAsync] Hard delete del producto {product.Id}/{product.SKU} degradado a archivo por restricción referencial: {ex.Message}", "Inventory");
                 _context.Entry(product).State = Microsoft.EntityFrameworkCore.EntityState.Unchanged;
                 product.IsActive = false;
@@ -403,7 +436,6 @@ public partial class InventoryService
         }
         else
         {
-            // Soft delete -> mark as deleted (archived for accounting)
             product.IsActive = false;
             product.IsDeleted = true;
             product.UpdatedAt = DateTime.UtcNow;
@@ -414,5 +446,22 @@ public partial class InventoryService
         InvalidateProductSkuCache(product.SKU);
         if (product.IsGroupHeader || product.ParentProductId != null) InvalidateAllProductCaches();
         return result;
+    }
+
+    public async Task<int> GetActiveReservationsCountAsync(string referenceId, System.Threading.CancellationToken cancellationToken = default)
+    {
+        return await _context.StockReservations
+            .AsNoTracking()
+            .CountAsync(r => !r.IsConfirmed && r.ExpiryDate > DateTime.UtcNow && r.ReferenceId == referenceId, cancellationToken);
+    }
+
+    public async Task<bool?> ValidateReservationOwnershipAsync(int reservationId, string userRef, System.Threading.CancellationToken cancellationToken = default)
+    {
+        var reservation = await _context.StockReservations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == reservationId, cancellationToken);
+
+        if (reservation == null) return null;
+        return reservation.ReferenceId != null && reservation.ReferenceId == userRef;
     }
 }

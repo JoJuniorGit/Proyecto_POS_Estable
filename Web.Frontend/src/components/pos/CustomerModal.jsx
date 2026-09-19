@@ -212,8 +212,8 @@ export default function CustomerModal({
                       }}
                       className="customer-modal-item"
                       style={{
-                        backgroundColor: isSelected ? 'var(--primary-light)' : 'transparent',
-                        borderLeft: isSelected ? '4px solid var(--primary-color)' : '4px solid transparent',
+                        backgroundColor: isSelected ? 'var(--accent-primary-light)' : 'transparent',
+                        borderLeft: isSelected ? '4px solid var(--accent-primary)' : '4px solid transparent',
                       }}
                     >
                       <div className="customer-modal-item-info">
@@ -319,7 +319,7 @@ export default function CustomerModal({
                   className="cm-name-counter"
                   style={{
                     fontWeight: name.length >= 42 ? '700' : '400',
-                    color: name.length >= 42 ? 'var(--warning-color, #d97706)' : 'var(--text-muted, #64748b)',
+                    color: name.length >= 42 ? 'var(--warning)' : 'var(--text-muted)',
                   }}
                 >
                   {name.length} / 50

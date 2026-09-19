@@ -1,29 +1,47 @@
+using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Core.DTOs;
+using Sales.Module.DTOs;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
 public partial class SalesController
 {
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpGet("customers")]
-    public async Task<ActionResult> GetCustomers(
+    public async Task<ActionResult> GetCustomersAsync(
         [FromQuery] string? query = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
-        [FromQuery] bool recentOnly = false)
+        [FromQuery] bool recentOnly = false,
+        CancellationToken cancellationToken = default)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
         var (items, totalCount) = await _salesService.GetCustomersAsync(query, page, pageSize, recentOnly);
         Response.Headers["X-Total-Count"] = totalCount.ToString();
-        return Ok(new { items, totalCount, page, pageSize });
+        return Ok(new CustomerPagedResultDto
+        {
+            Items = items.ToList(),
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        });
     }
 
+    [NonAction]
+    public Task<ActionResult> GetCustomers(
+        [FromQuery] string? query = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] bool recentOnly = false) => GetCustomersAsync(query, page, pageSize, recentOnly);
+
     [HttpGet("customers/default")]
-    public async Task<ActionResult<CustomerDto>> GetDefaultCustomer()
+    public async Task<ActionResult<CustomerDto>> GetDefaultCustomerAsync(CancellationToken cancellationToken = default)
     {
         try
         {
@@ -32,17 +50,19 @@ public partial class SalesController
         }
         catch (System.Collections.Generic.KeyNotFoundException)
         {
-            return NotFound();
+            return this.ApiNotFound("Cliente por defecto no encontrado.");
         }
     }
 
+    [NonAction]
+    public Task<ActionResult<CustomerDto>> GetDefaultCustomer() => GetDefaultCustomerAsync();
+
     [HttpPut("{id}/customer")]
-    public async Task<ActionResult<SaleDto>> UpdateSaleCustomer(int id, [FromBody] UpdateSaleCustomerRequest request)
+    public async Task<ActionResult<SaleDto>> UpdateSaleCustomerAsync(int id, [FromBody] UpdateSaleCustomerRequest request, CancellationToken cancellationToken = default)
     {
-        // 8.5-A3/8.6-B1: ownership a nivel de objeto.
         if (!await IsAuthorizedForSaleAsync(id))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
 
         try
@@ -56,17 +76,23 @@ public partial class SalesController
         }
     }
 
+    [NonAction]
+    public Task<ActionResult<SaleDto>> UpdateSaleCustomer(int id, [FromBody] UpdateSaleCustomerRequest request) => UpdateSaleCustomerAsync(id, request);
+
     [HttpPost("customers")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult<CustomerDto>> CreateCustomer([FromBody] CreateCustomerDto request)
+    public async Task<ActionResult<CustomerDto>> CreateCustomerAsync([FromBody] CreateCustomerDto request, CancellationToken cancellationToken = default)
     {
         var customer = await _salesService.CreateCustomerAsync(request);
         return Ok(customer);
     }
 
+    [NonAction]
+    public Task<ActionResult<CustomerDto>> CreateCustomer([FromBody] CreateCustomerDto request) => CreateCustomerAsync(request);
+
     [HttpPut("customers/{id}")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult<CustomerDto>> UpdateCustomer(int id, [FromBody] UpdateCustomerDto request)
+    public async Task<ActionResult<CustomerDto>> UpdateCustomerAsync(int id, [FromBody] UpdateCustomerDto request, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -79,9 +105,12 @@ public partial class SalesController
         }
     }
 
+    [NonAction]
+    public Task<ActionResult<CustomerDto>> UpdateCustomer(int id, [FromBody] UpdateCustomerDto request) => UpdateCustomerAsync(id, request);
+
     [HttpDelete("customers/{id}")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult> DeleteCustomer(int id)
+    public async Task<ActionResult> DeleteCustomerAsync(int id, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -93,4 +122,7 @@ public partial class SalesController
             return this.ApiNotFound(ex.Message);
         }
     }
+
+    [NonAction]
+    public Task<ActionResult> DeleteCustomer(int id) => DeleteCustomerAsync(id);
 }

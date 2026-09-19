@@ -95,8 +95,8 @@ export default function ConfirmModal({
             <div
               className="cfm-icon-circle"
               style={{
-                backgroundColor: isDanger ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                color: isDanger ? '#ef4444' : '#f59e0b',
+                backgroundColor: isDanger ? 'var(--danger-light)' : 'var(--warning-light)',
+                color: isDanger ? 'var(--danger)' : 'var(--warning)',
               }}
             >
               <AlertTriangle size={28} />
@@ -127,7 +127,7 @@ export default function ConfirmModal({
             type="button"
             className="btn cfm-btn cfm-btn-confirm"
             style={{
-              backgroundColor: isDanger ? '#ef4444' : isWarning ? '#f59e0b' : 'var(--color-primary)',
+              backgroundColor: isDanger ? 'var(--danger)' : isWarning ? 'var(--warning)' : 'var(--primary-color)',
             }}
             onClick={onConfirm}
           >

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Core.DTOs;
 using Sales.Module.DTOs;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
@@ -9,11 +10,11 @@ namespace Backend.API.Controllers;
 public partial class SalesController
 {
     [HttpPost("{id}/hold")]
-    public async Task<ActionResult<SaleDto>> HoldSale(int id, [FromBody] HoldSaleRequestDto request)
+    public async Task<ActionResult<SaleDto>> HoldSaleAsync(int id, [FromBody] HoldSaleRequestDto request, CancellationToken cancellationToken = default)
     {
         if (!await IsAuthorizedForSaleAsync(id))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
 
         string requestPath = $"/api/sales/{id}/hold";
@@ -37,14 +38,17 @@ public partial class SalesController
         }
     }
 
+    [NonAction]
+    public Task<ActionResult<SaleDto>> HoldSale(int id, [FromBody] HoldSaleRequestDto request) => HoldSaleAsync(id, request);
+
     [HttpPut("{id}/items")]
-    public async Task<ActionResult<SaleDto>> UpdateSaleItems(int id, [FromBody] UpdateSaleItemsRequestDto request)
+    public async Task<ActionResult<SaleDto>> UpdateSaleItemsAsync(int id, [FromBody] UpdateSaleItemsRequestDto request, CancellationToken cancellationToken = default)
     {
         try
         {
             if (!await IsAuthorizedForSaleAsync(id))
             {
-                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+                return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
             }
 
             bool isAuthorized = User.IsInRole("Admin") || User.IsInRole("Manager");
@@ -57,12 +61,15 @@ public partial class SalesController
         }
     }
 
+    [NonAction]
+    public Task<ActionResult<SaleDto>> UpdateSaleItems(int id, [FromBody] UpdateSaleItemsRequestDto request) => UpdateSaleItemsAsync(id, request);
+
     [HttpPost("{id}/payments")]
-    public async Task<ActionResult<SaleDto>> AddPayment(int id, [FromBody] AddPaymentRequestDto request)
+    public async Task<ActionResult<SaleDto>> AddPaymentAsync(int id, [FromBody] AddPaymentRequestDto request, CancellationToken cancellationToken = default)
     {
         if (!await IsAuthorizedForSaleAsync(id))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
 
         string requestPath = $"/api/sales/{id}/payments";
@@ -86,14 +93,15 @@ public partial class SalesController
         }
     }
 
-    // 8.29-A05: abonos atómicos por lote (todo o nada) en una venta en espera. Un único
-    // Idempotency-Key protege el lote completo: un replay no duplica NINGÚN abono.
+    [NonAction]
+    public Task<ActionResult<SaleDto>> AddPayment(int id, [FromBody] AddPaymentRequestDto request) => AddPaymentAsync(id, request);
+
     [HttpPost("{id}/payments/batch")]
-    public async Task<ActionResult<SaleDto>> AddPaymentsBatch(int id, [FromBody] System.Collections.Generic.List<AddPaymentRequestDto> request)
+    public async Task<ActionResult<SaleDto>> AddPaymentsBatchAsync(int id, [FromBody] System.Collections.Generic.List<AddPaymentRequestDto> request, CancellationToken cancellationToken = default)
     {
         if (!await IsAuthorizedForSaleAsync(id))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
 
         string requestPath = $"/api/sales/{id}/payments/batch";
@@ -117,30 +125,37 @@ public partial class SalesController
         }
     }
 
+    [NonAction]
+    public Task<ActionResult<SaleDto>> AddPaymentsBatch(int id, [FromBody] System.Collections.Generic.List<AddPaymentRequestDto> request) => AddPaymentsBatchAsync(id, request);
+
     [HttpGet("pending")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
-    public async Task<ActionResult<System.Collections.Generic.IEnumerable<SaleDto>>> GetPendingSales([FromQuery] int limit = 200, [FromQuery] int offset = 0)
+    public async Task<ActionResult<System.Collections.Generic.IEnumerable<SaleDto>>> GetPendingSalesAsync([FromQuery] int limit = 200, [FromQuery] int offset = 0, CancellationToken cancellationToken = default)
     {
-        // 8.2-M9: tope de cola acotado (max 1000) para no devolver el conjunto completo.
         limit = System.Math.Clamp(limit, 1, 1000);
         var pending = await _salesService.GetPendingSalesAsync(null, limit, offset);
 
-        // 8.14-N1: total de la cola en cabecera para paginacion de UI sin romper el shape.
         var totalCount = await _salesService.CountPendingSalesAsync(null);
         Response.Headers.Append("X-Total-Count", totalCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
         return Ok(pending);
     }
 
+    [NonAction]
+    public Task<ActionResult<System.Collections.Generic.IEnumerable<SaleDto>>> GetPendingSales([FromQuery] int limit = 200, [FromQuery] int offset = 0) => GetPendingSalesAsync(limit, offset);
+
     [HttpPost("{id}/cancel")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
-    public async Task<IActionResult> CancelSale(int id)
+    public async Task<IActionResult> CancelSaleAsync(int id, CancellationToken cancellationToken = default)
     {
         if (!await IsAuthorizedForSaleAsync(id))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para anular esta venta." });
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para anular esta venta.");
         }
 
         await _salesService.CancelSaleAsync(id, GetActorUserId());
         return Ok(new { message = $"Pedido #{id} anulado exitosamente." });
     }
+
+    [NonAction]
+    public Task<IActionResult> CancelSale(int id) => CancelSaleAsync(id);
 }

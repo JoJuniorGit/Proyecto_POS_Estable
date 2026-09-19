@@ -306,8 +306,8 @@ function CatalogPageContent() {
                   // Regla 3: Si hereda detal, unidades mínimas por defecto en "1" (en lugar de "0"), siempre entero sin decimales
                   const minQty = Math.round(hasRealWholesale ? (p.minWholesaleQuantity || 1) : 1);
 
-                  // Regla 3: Tono Naranja (#D97706) si hereda detal, Violeta/Primario (#6366f1) si aplica descuento
-                  const wholesaleColor = hasRealWholesale ? 'var(--primary-color, #6366f1)' : '#D97706';
+                  // [8.103]
+                  const wholesaleColor = hasRealWholesale ? 'var(--primary-color)' : 'var(--warning)';
 
                   const stockQty = p.isGroupHeader ? (p.consolidatedStock ?? 0) : (p.stockQuantity ?? p.stock ?? 0);
                   const unitStr = p.unitOfMeasureStr || (p.unitOfMeasure !== undefined && p.unitOfMeasure !== 0 ? p.unitOfMeasure : 'Und');
@@ -343,6 +343,7 @@ function CatalogPageContent() {
                           )}
                         </div>
                       </td>
+
                       <td className="cat-td text-right text-nowrap font-mono font-bold" title={isIndepParent ? 'Precios individuales definidos en cada variante' : undefined}>
                         {displayRetail}
                       </td>
@@ -361,13 +362,12 @@ function CatalogPageContent() {
                             )}
                           </td>
                           <td className="cat-td-wholesale-min font-bold">
-                            <span style={{ color: (isIndepParent || hasRealWholesale) ? 'inherit' : '#D97706' }}>
+                            <span style={{ color: (isIndepParent || hasRealWholesale) ? 'inherit' : 'var(--warning)' }}>
                               {isIndepParent ? '—' : `${minQty} ${unitStr}`}
                             </span>
                           </td>
                         </>
                       )}
-
                       <td className="cat-td text-center">
                         {p.isCashAdvance ? (
                           <span className="badge cat-badge-service">
@@ -410,7 +410,7 @@ function CatalogPageContent() {
               const wholesaleUSD = hasRealWholesale ? p.priceWholesaleUSD : retailUSD;
               const wholesaleBsS = hasRealWholesale ? toBsSCeiling(p.priceWholesaleUSD, exchangeRate) : retailBsS;
               const minQty = Math.round(hasRealWholesale ? (p.minWholesaleQuantity || 1) : 1);
-              const wholesaleColor = hasRealWholesale ? 'var(--primary-color, #6366f1)' : '#D97706';
+              const wholesaleColor = hasRealWholesale ? 'var(--primary-color)' : 'var(--warning)';
 
               const stockQty = p.isGroupHeader ? (p.consolidatedStock ?? 0) : (p.stockQuantity ?? p.stock ?? 0);
               const unitStr = p.unitOfMeasureStr || (p.unitOfMeasure !== undefined && p.unitOfMeasure !== 0 ? p.unitOfMeasure : 'Und');
@@ -479,7 +479,7 @@ function CatalogPageContent() {
 
                   {/* Renglón 4 (Opcional): PRECIO AL MAYOR Y CANTIDAD MÍNIMA en Móvil */}
                   {showWholesale && (
-                    <div className="catalog-wholesale-card-box mt-2" style={{ borderColor: hasRealWholesale ? 'rgba(99, 102, 241, 0.2)' : 'rgba(217, 119, 6, 0.3)' }}>
+                    <div className="catalog-wholesale-card-box mt-2" style={{ borderColor: hasRealWholesale ? 'var(--border)' : 'var(--warning)' }}>
                       <div className="d-flex justify-between align-center">
                         <div>
                           <div className="text-xs text-muted">
@@ -492,7 +492,7 @@ function CatalogPageContent() {
                         </div>
                         <div className="text-right">
                           <div className="text-xs text-muted">Cant. Mínima</div>
-                          <div className="font-bold text-nowrap" style={{ color: hasRealWholesale ? 'inherit' : '#D97706' }}>
+                          <div className="font-bold text-nowrap" style={{ color: hasRealWholesale ? 'inherit' : 'var(--warning)' }}>
                             {minQty} {unitStr}
                           </div>
                         </div>

@@ -115,8 +115,6 @@ public partial class SalesService : ISalesService
         _context.Sales.Add(sale);
         await _context.SaveChangesAsync();
 
-        // 8.5-M2: Evitar write-on-read (GetSaleAsync re-recarga/recalcula la venta con side effects).
-        // La venta recién creada no tiene items ni pagos; se mapea directamente sin round-trip.
         return new SaleDto
         {
             Id = sale.Id,
@@ -134,19 +132,23 @@ public partial class SalesService : ISalesService
 
     public async Task<SaleDto> GetSaleAsync(int saleId)
     {
-        var sale = await GetSaleEntityAsync(saleId, includeCashier: true);
-
-        // 8.7-B6: los GET no escriben. La tasa de las OnHold se recalcula en el POST de tasa
-        // (RecalculateOnHoldSalesAsync) y se re-difunde por SignalR; aquí solo se lee.
+        var sale = await GetSaleEntityAsync(saleId, includeCashier: true, asNoTracking: true);
 
         await PopulateItemsMetadataAsync(sale);
         return MapToDto(sale);
     }
 
-    private async Task<Sale> GetSaleEntityAsync(int saleId, bool includeCashier = false)
+    private async Task<Sale> GetSaleEntityAsync(int saleId, bool includeCashier = false, bool asNoTracking = false)
     {
         var query = _context.Sales
-            .AsSplitQuery()
+            .AsSplitQuery();
+
+        if (asNoTracking && _context.Database.IsRelational())
+        {
+            query = query.AsNoTracking();
+        }
+
+        query = query
             .Include(s => s.Items)
             .Include(s => s.Customer)
             .Include(s => s.Payments)
@@ -221,7 +223,6 @@ public partial class SalesService : ISalesService
 
         quantity = ValidateAndAdjustQuantity(product, quantity);
 
-        // 8.6-B2: La tasa de cambio debe ser > 0 para persistir montos Bs.S consistentes durante la edición del carrito.
         if (exchangeRate <= 0)
         {
             throw new ArgumentException("La tasa de cambio debe ser mayor a cero.", nameof(exchangeRate));

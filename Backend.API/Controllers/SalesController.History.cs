@@ -1,21 +1,22 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Core.DTOs;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
 public partial class SalesController
 {
-    /// <summary>
-    /// Obtiene el historial paginado de ventas completadas con filtros opcionales de fecha y término de búsqueda.
-    /// </summary>
-    /// <param name="page">Número de página (base 1, por defecto 1).</param>
-    /// <param name="pageSize">Cantidad de registros por página (1 a 100, por defecto 20).</param>
-    /// <param name="startDate">Fecha inicial del filtro (formato 'yyyy-MM-dd' o ISO 8601). Se interpreta según la hora legal de Venezuela (UTC-4, VET) desde las 00:00:00 locales.</param>
-    /// <param name="endDate">Fecha final del filtro (formato 'yyyy-MM-dd' o ISO 8601). Se interpreta según la hora legal de Venezuela (UTC-4, VET) cubriendo hasta las 23:59:59.999 locales. Si se omite habiendo startDate, asume el día actual.</param>
-    /// <param name="search">Término de búsqueda multicampo (N° factura, cédula/nombre cliente o cajero).</param>
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpGet("history")]
-    public async Task<ActionResult> GetHistory([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] System.DateTime? startDate = null, [FromQuery] System.DateTime? endDate = null, [FromQuery] string? search = null)
+    public async Task<ActionResult> GetHistoryAsync(
+        [FromQuery] int page = 1, 
+        [FromQuery] int pageSize = 20, 
+        [FromQuery] System.DateTime? startDate = null, 
+        [FromQuery] System.DateTime? endDate = null, 
+        [FromQuery] string? search = null,
+        CancellationToken cancellationToken = default)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -25,13 +26,16 @@ public partial class SalesController
         return Ok(new { Items = items, TotalCount = totalCount });
     }
 
+    [NonAction]
+    public Task<ActionResult> GetHistory(int page = 1, int pageSize = 20, System.DateTime? startDate = null, System.DateTime? endDate = null, string? search = null)
+        => GetHistoryAsync(page, pageSize, startDate, endDate, search);
+
     [HttpGet("{id}/history-detail")]
-    public async Task<ActionResult> GetHistoryDetail(int id)
+    public async Task<ActionResult> GetHistoryDetailAsync(int id, CancellationToken cancellationToken = default)
     {
-        // 8.9-B2: ownership a nivel de objeto, igual que GetSale/{id}.
         if (!await IsAuthorizedForSaleAsync(id))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para consultar esta venta." });
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para consultar esta venta.");
         }
 
         try
@@ -41,17 +45,19 @@ public partial class SalesController
         }
         catch (System.Collections.Generic.KeyNotFoundException)
         {
-            return NotFound();
+            return this.ApiNotFound($"Detalle de historial para venta #{id} no encontrado.");
         }
     }
 
+    [NonAction]
+    public Task<ActionResult> GetHistoryDetail(int id) => GetHistoryDetailAsync(id);
+
     [HttpPut("{id}/price-list")]
-    public async Task<ActionResult<SaleDto>> UpdatePriceList(int id, [FromBody] UpdatePriceListRequestDto request)
+    public async Task<ActionResult<SaleDto>> UpdatePriceListAsync(int id, [FromBody] UpdatePriceListRequestDto request, CancellationToken cancellationToken = default)
     {
-        // 8.5-A3/8.6-B1: ownership a nivel de objeto.
         if (!await IsAuthorizedForSaleAsync(id))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para modificar esta venta." });
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
 
         try
@@ -64,4 +70,7 @@ public partial class SalesController
             return this.ApiNotFound(ex.Message);
         }
     }
+
+    [NonAction]
+    public Task<ActionResult<SaleDto>> UpdatePriceList(int id, [FromBody] UpdatePriceListRequestDto request) => UpdatePriceListAsync(id, request);
 }

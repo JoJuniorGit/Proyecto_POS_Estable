@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Core.DTOs;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Exceptions;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
@@ -12,11 +14,11 @@ public partial class SalesController
 {
     [HttpPost("{id}/claim")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
-    public async Task<ActionResult<SaleDto>> ClaimSale(int id, [FromBody] ClaimSaleRequest request)
+    public async Task<ActionResult<SaleDto>> ClaimSaleAsync(int id, [FromBody] ClaimSaleRequest request, CancellationToken cancellationToken = default)
     {
         if (request == null)
         {
-            return BadRequest(new { message = "La acción debe ser 'Editing' o 'Checkout'." });
+            return this.ApiBadRequest("La acción debe ser 'Editing' o 'Checkout'.");
         }
 
         var actionValue = request.Action?.Trim();
@@ -31,12 +33,12 @@ public partial class SalesController
         }
         else
         {
-            return BadRequest(new { message = "La acción debe ser 'Editing' o 'Checkout'." });
+            return this.ApiBadRequest("La acción debe ser 'Editing' o 'Checkout'.");
         }
 
         if (!await IsAuthorizedForSaleAsync(id))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para retomar esta venta." });
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para retomar esta venta.");
         }
 
         try
@@ -46,37 +48,57 @@ public partial class SalesController
         }
         catch (SaleLockedException ex)
         {
-            return Conflict(new
+            var pd = new SaleLockedProblemDetails
             {
-                message = ex.Message,
-                claimedByUserId = ex.ClaimedByUserId,
-                claimedByUserName = ex.ClaimedByUserName,
-                claimAction = ex.ClaimAction,
-                claimedAtUtc = ex.ClaimedAtUtc
-            });
+                Status = Microsoft.AspNetCore.Http.StatusCodes.Status409Conflict,
+                Title = "Conflict",
+                Detail = ex.Message,
+                Type = "https://httpstatuses.com/409",
+                Instance = HttpContext?.Request.Path.Value,
+                ClaimedByUserId = ex.ClaimedByUserId,
+                ClaimedByUserName = ex.ClaimedByUserName,
+                ClaimAction = ex.ClaimAction,
+                ClaimedAtUtc = ex.ClaimedAtUtc
+            };
+            pd.Extensions["message"] = ex.Message;
+            pd.Extensions["claimedByUserId"] = ex.ClaimedByUserId;
+            pd.Extensions["claimedByUserName"] = ex.ClaimedByUserName;
+            pd.Extensions["claimAction"] = ex.ClaimAction;
+            pd.Extensions["claimedAtUtc"] = ex.ClaimedAtUtc;
+            pd.Extensions["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+            return new ConflictObjectResult(pd);
         }
     }
 
+    [NonAction]
+    public Task<ActionResult<SaleDto>> ClaimSale(int id, [FromBody] ClaimSaleRequest request) => ClaimSaleAsync(id, request);
+
     [HttpPost("{id}/release")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
-    public async Task<ActionResult<SaleDto>> ReleaseSale(int id, [FromQuery] bool force = false)
+    public async Task<ActionResult<SaleDto>> ReleaseSaleAsync(int id, [FromQuery] bool force = false, CancellationToken cancellationToken = default)
     {
         if (force && !User.IsInRole("Admin") && !User.IsInRole("Manager"))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Solo Administradores o Supervisores pueden liberar el bloqueo de otro cajero." });
+            return this.ApiForbidden("Solo Administradores o Supervisores pueden liberar el bloqueo de otro cajero.");
         }
 
         if (!await IsAuthorizedForSaleAsync(id))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Acceso denegado: no tiene permisos para liberar esta venta." });
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para liberar esta venta.");
         }
 
         var sale = await _salesService.ReleaseSaleAsync(id, GetActorUserId(), force);
         return Ok(sale);
     }
+
+    [NonAction]
+    public Task<ActionResult<SaleDto>> ReleaseSale(int id, [FromQuery] bool force = false) => ReleaseSaleAsync(id, force);
 }
 
-public class ClaimSaleRequest
+public class SaleLockedProblemDetails : ProblemDetails
 {
-    public string Action { get; set; } = "Editing";
+    public int? ClaimedByUserId { get; set; }
+    public string? ClaimedByUserName { get; set; }
+    public string? ClaimAction { get; set; }
+    public DateTime? ClaimedAtUtc { get; set; }
 }

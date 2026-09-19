@@ -7,6 +7,7 @@ using CommandCenter.Tests.Builders;
 using CommandCenter.Tests.TestHelpers;
 using Core.Interfaces;
 using Moq;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using Sales.Module.Services;

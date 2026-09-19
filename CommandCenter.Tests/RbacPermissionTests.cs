@@ -100,7 +100,8 @@ public class RbacPermissionTests
     private static ReservationsController CreateReservationsController(InventoryDbContext db, string userId, UserRole role)
     {
         var service = new InventoryService(db);
-        var controller = new ReservationsController(service, db);
+        var reservationService = new Inventory.Module.Services.ReservationService(db);
+        var controller = new ReservationsController(service, reservationService);
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext

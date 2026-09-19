@@ -30,7 +30,7 @@ public class DailyClosureController : ControllerBase
 
     [HttpGet("expected-totals")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult<List<ExpectedTotalDto>>> GetExpectedTotals([FromQuery] DateTime dateUtc, CancellationToken cancellationToken)
+    public async Task<ActionResult<List<ExpectedTotalDto>>> GetExpectedTotalsAsync([FromQuery] DateTime dateUtc, CancellationToken cancellationToken)
     {
         if (dateUtc == default)
         {
@@ -45,9 +45,12 @@ public class DailyClosureController : ControllerBase
         return Ok(totals);
     }
 
+    [NonAction]
+    public Task<ActionResult<List<ExpectedTotalDto>>> GetExpectedTotals(DateTime dateUtc, CancellationToken cancellationToken) => GetExpectedTotalsAsync(dateUtc, cancellationToken);
+
     [RequireSecurityStampValidation]
     [HttpPost]
-    public async Task<ActionResult> CreateClosure([FromBody] CreateClosureRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult> CreateClosureAsync([FromBody] CreateClosureRequest request, CancellationToken cancellationToken)
     {
         if (User.IsInRole("Driver"))
         {
@@ -62,6 +65,9 @@ public class DailyClosureController : ControllerBase
 
         return await ExecuteCreateClosureAsync(request, cancellationToken);
     }
+
+    [NonAction]
+    public Task<ActionResult> CreateClosure(CreateClosureRequest request, CancellationToken cancellationToken) => CreateClosureAsync(request, cancellationToken);
 
     private async Task<ActionResult> ExecuteCreateClosureAsync(CreateClosureRequest request, CancellationToken cancellationToken)
     {
@@ -106,7 +112,7 @@ public class DailyClosureController : ControllerBase
 
         return !string.IsNullOrWhiteSpace(authenticatedUserId)
             ? authenticatedUserId
-            : "Admin";
+            : Core.Constants.SecurityConstants.RootAdminUsername;
     }
 
     private static string? ValidateClosureRequest(CreateClosureRequest? request)
@@ -129,12 +135,15 @@ public class DailyClosureController : ControllerBase
 
     [HttpGet("{id}")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult<DailyClosureResponseDto>> GetClosure(int id, CancellationToken cancellationToken)
+    public async Task<ActionResult<DailyClosureResponseDto>> GetClosureAsync(int id, CancellationToken cancellationToken)
     {
         var closure = await _closureService.GetClosureAsync(id, cancellationToken);
         if (closure == null) return NotFound();
         return Ok(closure);
     }
+
+    [NonAction]
+    public Task<ActionResult<DailyClosureResponseDto>> GetClosure(int id, CancellationToken cancellationToken) => GetClosureAsync(id, cancellationToken);
 
     private static DateTime ResolveClosureDate(DateTime requestDate, string userId, bool isAdmin)
     {
@@ -170,18 +179,3 @@ public class DailyClosureController : ControllerBase
     }
 }
 
-public class CreateClosureRequest
-{
-    public DateTime ClosureDate { get; set; }
-    public string? UserId { get; set; } = "Admin";
-    public string? Observation { get; set; }
-    public List<CreateClosureDetailRequest> Details { get; set; } = new();
-}
-
-public class CreateClosureDetailRequest
-{
-    public int PaymentMethodId { get; set; }
-    public string PaymentMethodName { get; set; } = string.Empty;
-    public decimal ExpectedAmountBsS { get; set; }
-    public decimal ActualAmountBsS { get; set; }
-}

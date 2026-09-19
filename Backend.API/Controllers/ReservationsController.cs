@@ -1,12 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Core.Entities;
 using Core.Interfaces;
 using Backend.API.DTOs;
 using Backend.API.Attributes;
-using Inventory.Module.Data;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
@@ -18,55 +16,47 @@ namespace Backend.API.Controllers;
 public class ReservationsController : ControllerBase
 {
     private readonly IInventoryService _inventoryService;
-    private readonly InventoryDbContext? _inventoryContext;
+    private readonly IReservationService? _reservationService;
 
-    public ReservationsController(IInventoryService inventoryService, InventoryDbContext? inventoryContext = null)
+    public ReservationsController(IInventoryService inventoryService, IReservationService? reservationService = null)
     {
         _inventoryService = inventoryService;
-        _inventoryContext = inventoryContext;
+        _reservationService = reservationService ?? (inventoryService as IReservationService);
     }
 
     [HttpPost("reserve")]
-    public async Task<IActionResult> ReserveStock([FromBody] ReserveStockDto dto)
+    public async Task<IActionResult> ReserveStockAsync([FromBody] ReserveStockDto dto, CancellationToken cancellationToken = default)
     {
         if (dto.Quantity <= 0)
         {
-            return BadRequest(new { Message = "La cantidad a reservar debe ser mayor a cero." });
+            return this.ApiBadRequest("La cantidad a reservar debe ser mayor a cero.");
         }
 
         if (dto.Quantity > 1000m)
         {
-            return BadRequest(new { Message = "La cantidad máxima permitida por reserva individual es de 1.000 unidades." });
+            return this.ApiBadRequest("La cantidad máxima permitida por reserva individual es de 1.000 unidades.");
         }
 
         try
         {
-            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                         ?? User.Identity?.Name
-                         ?? "anonymous";
-            var userRef = $"user:{userId}";
+            var userRef = GetCurrentUserRef();
 
-            // Verificar tope de reservas activas por usuario para evitar acaparamiento / DoS (8.2-M4)
-            if (_inventoryContext != null)
+            var activeCount = _reservationService != null
+                ? await _reservationService.GetActiveReservationsCountAsync(userRef, cancellationToken)
+                : 0;
+            if (activeCount >= 10)
             {
-                var activeCount = await _inventoryContext.StockReservations
-                    .AsNoTracking()
-                    .CountAsync(r => !r.IsConfirmed && r.ExpiryDate > DateTime.UtcNow && r.ReferenceId == userRef);
-
-                if (activeCount >= 10)
-                {
-                    return BadRequest(new { Message = "Límite de reservas simultáneas alcanzado para este usuario (máximo 10 activas)." });
-                }
+                return this.ApiBadRequest("Límite de reservas simultáneas alcanzado para este usuario (máximo 10 activas).");
             }
 
-            var clampedDuration = Math.Clamp(dto.DurationSeconds, 30, 86400); // 30 seconds to 24 hours max
+            var clampedDuration = Math.Clamp(dto.DurationSeconds, 30, 86400);
             var reservationId = await _inventoryService.ReserveStockAsync(
                 dto.ProductId,
                 dto.Quantity,
                 TimeSpan.FromSeconds(clampedDuration),
                 userRef
             );
-            return Ok(new { ReservationId = reservationId });
+            return Ok(new ReserveStockResponseDto { ReservationId = reservationId });
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
@@ -74,23 +64,27 @@ public class ReservationsController : ControllerBase
         }
     }
 
+    [NonAction]
+    public Task<IActionResult> ReserveStock(ReserveStockDto dto) => ReserveStockAsync(dto);
+
     [HttpPost("confirm/{id}")]
-    public async Task<IActionResult> ConfirmReservation(int id, [FromBody] ConfirmReservationDto dto)
+    public async Task<IActionResult> ConfirmReservationAsync(int id, [FromBody] ConfirmReservationDto dto, CancellationToken cancellationToken = default)
     {
         try
         {
-            // 8.5-A3: Verificar ownership — solo el usuario que creó la reserva puede confirmarla
-            if (_inventoryContext != null)
+            var userRef = GetCurrentUserRef();
+            if (_reservationService != null)
             {
-                var reservation = await _inventoryContext.StockReservations
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(r => r.Id == id);
+                var ownership = await _reservationService.ValidateReservationOwnershipAsync(id, userRef, cancellationToken);
+                if (ownership == null)
+                {
+                    return this.ApiNotFound("La reserva especificada no existe.");
+                }
 
-                if (reservation == null) return NotFound();
-
-                if (!IsReservationOwner(reservation))
-                    return StatusCode(StatusCodes.Status403Forbidden,
-                        new { Message = "Acceso denegado: no tiene permisos para confirmar esta reserva." });
+                if (!ownership.Value)
+                {
+                    return this.ApiForbidden("Acceso denegado: no tiene permisos para confirmar esta reserva.");
+                }
             }
 
             await _inventoryService.ConfirmReservationAsync(id, dto.Reason);
@@ -98,39 +92,43 @@ public class ReservationsController : ControllerBase
         }
         catch (System.Collections.Generic.KeyNotFoundException)
         {
-            return NotFound();
+            return this.ApiNotFound("La reserva especificada no existe.");
         }
     }
 
+    [NonAction]
+    public Task<IActionResult> ConfirmReservation(int id, ConfirmReservationDto dto) => ConfirmReservationAsync(id, dto);
+
     [HttpPost("cancel/{id}")]
-    public async Task<IActionResult> CancelReservation(int id)
+    public async Task<IActionResult> CancelReservationAsync(int id, CancellationToken cancellationToken = default)
     {
-        // 8.5-A3: Verificar ownership — solo el usuario que creó la reserva puede cancelarla
-        if (_inventoryContext != null)
+        var userRef = GetCurrentUserRef();
+        if (_reservationService != null)
         {
-            var reservation = await _inventoryContext.StockReservations
-                .AsNoTracking()
-                .FirstOrDefaultAsync(r => r.Id == id);
+            var ownership = await _reservationService.ValidateReservationOwnershipAsync(id, userRef, cancellationToken);
+            if (ownership == null)
+            {
+                return this.ApiNotFound("La reserva especificada no existe.");
+            }
 
-            if (reservation == null) return NotFound();
-
-            if (!IsReservationOwner(reservation))
-                return StatusCode(StatusCodes.Status403Forbidden,
-                    new { Message = "Acceso denegado: no tiene permisos para cancelar esta reserva." });
+            if (!ownership.Value)
+            {
+                return this.ApiForbidden("Acceso denegado: no tiene permisos para cancelar esta reserva.");
+            }
         }
 
         await _inventoryService.CancelReservationAsync(id);
         return NoContent();
     }
 
-    private bool IsReservationOwner(Core.Entities.StockReservation reservation)
+    [NonAction]
+    public Task<IActionResult> CancelReservation(int id) => CancelReservationAsync(id);
+
+    private string GetCurrentUserRef()
     {
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                     ?? User.Identity?.Name;
-        if (string.IsNullOrEmpty(userId)) return false;
-        var userRef = $"user:{userId}";
-        // 8.7-M11: reservas de sistema (ReferenceId == null) u otras reservas ajenas NO son
-        // confirmables/cancelables por un usuario autenticado.
-        return reservation.ReferenceId != null && reservation.ReferenceId == userRef;
+                     ?? User.Identity?.Name
+                     ?? "anonymous";
+        return $"user:{userId}";
     }
 }

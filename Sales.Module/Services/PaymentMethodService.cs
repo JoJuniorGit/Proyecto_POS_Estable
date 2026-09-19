@@ -1,4 +1,5 @@
 using Core.Constants;
+using Sales.Module.DTOs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Caching.Memory;
@@ -8,6 +9,7 @@ using Sales.Module.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sales.Module.Services;
@@ -29,11 +31,26 @@ public class PaymentMethodService : IPaymentMethodService
         _notifier = notifier;
     }
 
-    public async Task<IEnumerable<PaymentMethod>> GetActiveMethodsAsync()
+    private static PaymentMethodDto ToDto(PaymentMethod method)
+    {
+        return new PaymentMethodDto
+        {
+            Id = method.Id,
+            Name = method.Name,
+            IsActive = method.IsActive,
+            RequiresReference = method.RequiresReference,
+            IsCash = method.IsCash,
+            Currency = method.Currency,
+            DisplayOrder = method.DisplayOrder,
+            IsDeleted = method.IsDeleted
+        };
+    }
+
+    public async Task<IEnumerable<PaymentMethodDto>> GetActiveMethodsAsync(CancellationToken cancellationToken = default)
     {
         try
         {
-            if (_cache != null && _cache.TryGetValue(CacheKeys.ActivePaymentMethods, out IEnumerable<PaymentMethod>? cached) && cached != null)
+            if (_cache != null && _cache.TryGetValue(CacheKeys.ActivePaymentMethods, out IEnumerable<PaymentMethodDto>? cached) && cached != null)
             {
                 return cached;
             }
@@ -48,9 +65,20 @@ public class PaymentMethodService : IPaymentMethodService
             .Where(p => !p.IsDeleted && p.IsActive)
             .OrderBy(p => p.DisplayOrder)
             .ThenBy(p => p.Name)
-            .ToListAsync();
+            .Select(p => new PaymentMethodDto
+            {
+                Id = p.Id,
+                Name = p.Name,
+                IsActive = p.IsActive,
+                RequiresReference = p.RequiresReference,
+                IsCash = p.IsCash,
+                Currency = p.Currency,
+                DisplayOrder = p.DisplayOrder,
+                IsDeleted = p.IsDeleted
+            })
+            .ToListAsync(cancellationToken);
 
-        var result = methods ?? (IEnumerable<PaymentMethod>)Enumerable.Empty<PaymentMethod>();
+        var result = (IEnumerable<PaymentMethodDto>)(methods ?? new List<PaymentMethodDto>());
 
         try
         {
@@ -68,11 +96,11 @@ public class PaymentMethodService : IPaymentMethodService
         return result;
     }
 
-    public async Task<IEnumerable<PaymentMethod>> GetAllAsync()
+    public async Task<IEnumerable<PaymentMethodDto>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         try
         {
-            if (_cache != null && _cache.TryGetValue(CacheKeys.AllPaymentMethods, out IEnumerable<PaymentMethod>? cached) && cached != null)
+            if (_cache != null && _cache.TryGetValue(CacheKeys.AllPaymentMethods, out IEnumerable<PaymentMethodDto>? cached) && cached != null)
             {
                 return cached;
             }
@@ -87,9 +115,20 @@ public class PaymentMethodService : IPaymentMethodService
             .Where(p => !p.IsDeleted)
             .OrderBy(p => p.DisplayOrder)
             .ThenBy(p => p.Name)
-            .ToListAsync();
+            .Select(p => new PaymentMethodDto
+            {
+                Id = p.Id,
+                Name = p.Name,
+                IsActive = p.IsActive,
+                RequiresReference = p.RequiresReference,
+                IsCash = p.IsCash,
+                Currency = p.Currency,
+                DisplayOrder = p.DisplayOrder,
+                IsDeleted = p.IsDeleted
+            })
+            .ToListAsync(cancellationToken);
 
-        var result = methods ?? (IEnumerable<PaymentMethod>)Enumerable.Empty<PaymentMethod>();
+        var result = (IEnumerable<PaymentMethodDto>)(methods ?? new List<PaymentMethodDto>());
 
         try
         {
@@ -107,43 +146,50 @@ public class PaymentMethodService : IPaymentMethodService
         return result;
     }
 
-    public async Task<PaymentMethod> GetByIdAsync(int id)
+    public async Task<PaymentMethodDto> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        var method = await _context.PaymentMethods.FindAsync(id);
-        if (method == null || method.IsDeleted) throw new KeyNotFoundException($"Método de pago con ID {id} no fue encontrado.");
-        return method;
+        var method = await _context.PaymentMethods
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, cancellationToken);
+        if (method == null) throw new KeyNotFoundException($"Método de pago con ID {id} no fue encontrado.");
+        return ToDto(method);
     }
 
-    public async Task<PaymentMethod> CreateAsync(PaymentMethod method)
+    public async Task<PaymentMethodDto> CreateAsync(PaymentMethodDto dto, CancellationToken cancellationToken = default)
     {
-        if (method == null) throw new ArgumentNullException(nameof(method));
-        if (string.IsNullOrWhiteSpace(method.Name))
+        if (dto == null) throw new ArgumentNullException(nameof(dto));
+        if (string.IsNullOrWhiteSpace(dto.Name))
             throw new ArgumentException("El nombre del método de pago es requerido.");
 
-        var cleanName = method.Name.Trim();
+        var cleanName = dto.Name.Trim();
 
-        // Validación en memoria previa
         bool exists = await _context.PaymentMethods
-            .AnyAsync(p => !p.IsDeleted && p.Name.ToLower() == cleanName.ToLower());
+            .AnyAsync(p => !p.IsDeleted && p.Name.ToLower() == cleanName.ToLower(), cancellationToken);
         if (exists)
         {
             throw new ArgumentException($"Ya existe un método de pago activo con el nombre '{cleanName}'.");
         }
 
-        method.Name = cleanName;
-        method.IsDeleted = false;
-
-        // Asignación atómica de DisplayOrder bajo concurrencia
-        if (method.DisplayOrder <= 0)
+        var entity = new PaymentMethod
         {
-            await AssignNextDisplayOrderAsync(method);
+            Name = cleanName,
+            IsActive = dto.IsActive,
+            RequiresReference = dto.RequiresReference,
+            IsCash = dto.IsCash,
+            DisplayOrder = dto.DisplayOrder,
+            IsDeleted = false
+        };
+
+        if (entity.DisplayOrder <= 0)
+        {
+            await AssignNextDisplayOrderAsync(entity, cancellationToken);
         }
 
-        _context.PaymentMethods.Add(method);
+        _context.PaymentMethods.Add(entity);
 
         try
         {
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException dbEx) when (IsUniqueConstraintViolation(dbEx))
         {
@@ -155,38 +201,43 @@ public class PaymentMethodService : IPaymentMethodService
         {
             await _notifier.NotifyPaymentMethodsUpdatedAsync();
         }
-        return method;
+        return ToDto(entity);
     }
 
-    public async Task<PaymentMethod> UpdateAsync(PaymentMethod method)
+    public Task<PaymentMethodDto> CreateAsync(PaymentMethod method, CancellationToken cancellationToken = default)
     {
         if (method == null) throw new ArgumentNullException(nameof(method));
-        var existing = await _context.PaymentMethods.FindAsync(method.Id);
-        if (existing == null) throw new KeyNotFoundException($"El método de pago con ID {method.Id} no fue encontrado.");
+        return CreateAsync(ToDto(method), cancellationToken);
+    }
+
+    public async Task<PaymentMethodDto> UpdateAsync(PaymentMethodDto dto, CancellationToken cancellationToken = default)
+    {
+        if (dto == null) throw new ArgumentNullException(nameof(dto));
+        var existing = await _context.PaymentMethods.FindAsync(new object[] { dto.Id }, cancellationToken);
+        if (existing == null) throw new KeyNotFoundException($"El método de pago con ID {dto.Id} no fue encontrado.");
         if (existing.IsDeleted) throw new InvalidOperationException($"No se puede modificar el método de pago '{existing.Name}' porque ha sido eliminado.");
 
-        if (string.IsNullOrWhiteSpace(method.Name))
+        if (string.IsNullOrWhiteSpace(dto.Name))
             throw new ArgumentException("El nombre del método de pago es requerido.");
 
-        var cleanName = method.Name.Trim();
+        var cleanName = dto.Name.Trim();
 
-        // Validación de unicidad de nombre excluyendo el método actual
         bool exists = await _context.PaymentMethods
-            .AnyAsync(p => !p.IsDeleted && p.Id != method.Id && p.Name.ToLower() == cleanName.ToLower());
+            .AnyAsync(p => !p.IsDeleted && p.Id != dto.Id && p.Name.ToLower() == cleanName.ToLower(), cancellationToken);
         if (exists)
         {
             throw new ArgumentException($"Ya existe otro método de pago activo con el nombre '{cleanName}'.");
         }
 
         existing.Name = cleanName;
-        existing.IsActive = method.IsActive;
-        existing.RequiresReference = method.RequiresReference;
-        existing.DisplayOrder = method.DisplayOrder;
-        existing.IsCash = method.IsCash;
+        existing.IsActive = dto.IsActive;
+        existing.RequiresReference = dto.RequiresReference;
+        existing.DisplayOrder = dto.DisplayOrder;
+        existing.IsCash = dto.IsCash;
 
         try
         {
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -202,34 +253,40 @@ public class PaymentMethodService : IPaymentMethodService
         {
             await _notifier.NotifyPaymentMethodsUpdatedAsync();
         }
-        return existing;
+        return ToDto(existing);
     }
 
-    public async Task DeleteAsync(int id)
+    public Task<PaymentMethodDto> UpdateAsync(PaymentMethod method, CancellationToken cancellationToken = default)
     {
-        var existing = await _context.PaymentMethods.FindAsync(id);
+        if (method == null) throw new ArgumentNullException(nameof(method));
+        return UpdateAsync(ToDto(method), cancellationToken);
+    }
+
+    public async Task DeleteAsync(int id, CancellationToken cancellationToken = default)
+    {
+        var existing = await _context.PaymentMethods.FindAsync(new object[] { id }, cancellationToken);
         if (existing == null) throw new KeyNotFoundException($"El método de pago con ID {id} no fue encontrado.");
         if (existing.IsDeleted) throw new InvalidOperationException($"El método de pago '{existing.Name}' ya fue eliminado previamente.");
 
-        bool hasSales = await _context.SalePayments.AnyAsync(sp => sp.PaymentMethodId == id);
-        bool hasClosures = await _context.ClosureDetails.AnyAsync(cd => cd.PaymentMethodId == id);
-        bool hasCashTransactions = await _context.CashTransactions.AnyAsync(ct => ct.PaymentMethodId == id);
+        bool hasSales = await _context.SalePayments.AnyAsync(sp => sp.PaymentMethodId == id, cancellationToken);
+        bool hasClosures = await _context.ClosureDetails.AnyAsync(cd => cd.PaymentMethodId == id, cancellationToken);
+        bool hasCashTransactions = await _context.CashTransactions.AnyAsync(ct => ct.PaymentMethodId == id, cancellationToken);
 
         bool hasBeenUsed = hasSales || hasClosures || hasCashTransactions;
 
         if (hasBeenUsed)
         {
             existing.IsActive = false;
-            existing.IsDeleted = true; // Soft delete
+            existing.IsDeleted = true;
         }
         else
         {
-            _context.PaymentMethods.Remove(existing); // Hard delete
+            _context.PaymentMethods.Remove(existing);
         }
 
         try
         {
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -249,7 +306,7 @@ public class PaymentMethodService : IPaymentMethodService
         _cache?.Remove(CacheKeys.AllPaymentMethods);
     }
 
-    private async Task AssignNextDisplayOrderAsync(PaymentMethod method)
+    private async Task AssignNextDisplayOrderAsync(PaymentMethod method, CancellationToken cancellationToken = default)
     {
         if (_context.Database.IsRelational())
         {
@@ -263,22 +320,22 @@ public class PaymentMethodService : IPaymentMethodService
                 }
                 if (cmd.Connection?.State != System.Data.ConnectionState.Open)
                 {
-                    await _context.Database.OpenConnectionAsync();
+                    await _context.Database.OpenConnectionAsync(cancellationToken);
                 }
-                var nextVal = await cmd.ExecuteScalarAsync();
+                var nextVal = await cmd.ExecuteScalarAsync(cancellationToken);
                 if (nextVal != null && Convert.ToInt32(nextVal) > 0)
                 {
                     method.DisplayOrder = Convert.ToInt32(nextVal);
                     return;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Fallback defensivo si la secuencia no está sembrada o no está disponible
+                Core.Logging.AppLogger.LogWarn($"No se pudo obtener el siguiente valor de secuencia para DisplayOrder, usando fallback: {ex.Message}");
             }
         }
 
-        method.DisplayOrder = (await _context.PaymentMethods.Where(p => !p.IsDeleted).MaxAsync(p => (int?)p.DisplayOrder) ?? 0) + 1;
+        method.DisplayOrder = (await _context.PaymentMethods.Where(p => !p.IsDeleted).MaxAsync(p => (int?)p.DisplayOrder, cancellationToken) ?? 0) + 1;
     }
 
     private static bool IsUniqueConstraintViolation(DbUpdateException ex)

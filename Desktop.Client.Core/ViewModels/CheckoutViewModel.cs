@@ -13,29 +13,15 @@ using SalePaymentDto = Desktop.Client.Services.SalePaymentDto;
 
 namespace Desktop.Client.ViewModels;
 
-/// <summary>
-/// Manages the payment collection process, enforcing centralized rounding 
-/// and ensuring accounting integrity with RoundingAdjustments.
-/// </summary>
 public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdatedMessage>, System.IDisposable
 {
     private readonly ISalesService _salesService;
     private readonly SaleDto _sale;
     private string? _currentIdempotencyKey;
 
-    // ── Override Sale (for pending/OnHold sales) ──
-    /// <summary>
-    /// When set, checkout operates on an existing OnHold sale instead of the active cart sale.
-    /// TotalUSD is recalculated as the remaining debt (TotalUSD - TotalPaidUSD).
-    /// FinalizeSale will either fully complete or register a partial abono.
-    /// </summary>
     public SaleDto? OverrideSale { get; }
     public bool IsOverrideMode => OverrideSale != null;
 
-    /// <summary>
-    /// The original remaining debt of the override sale before any new payments in this session.
-    /// Only meaningful when IsOverrideMode is true.
-    /// </summary>
     public decimal OriginalRemainingDebtUsd => IsOverrideMode
         ? System.Math.Max(0m, (OverrideSale!.RemainingBalanceUSD > 0m
             ? OverrideSale.RemainingBalanceUSD
@@ -68,7 +54,6 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
     public decimal CurrentExchangeRate { get; }
 
-    // ── Amounts in Bs.S (standardized via PricingHelper and persistent TotalBsS) ──
     public decimal TotalAmountLocal => IsOverrideMode
         ? System.Math.Max(0m, (OverrideSale!.TotalBsS > 0m
             ? OverrideSale.TotalBsS - OverrideSale.Payments.Sum(p => p.AmountBsS > 0m ? p.AmountBsS : (p.Amount * (p.ExchangeRate > 0m ? p.ExchangeRate : CurrentExchangeRate)))
@@ -76,26 +61,14 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         : (_sale.TotalBsS > 0m ? _sale.TotalBsS : PricingHelper.ToBsS(TotalUSD, CurrentExchangeRate));
     public decimal SubtotalLocal => _sale.SubtotalBsS > 0m ? _sale.SubtotalBsS : PricingHelper.ToBsS(_sale.Subtotal, CurrentExchangeRate);
 
-    // ── Paid ──
     public decimal PaidAmountUsd => Payments.Sum(p => p.AmountUsd);
     
-    /// <summary>
-    /// Sum of all payments received in local currency, respecting their individual rounding (Cash vs Digital).
-    /// </summary>
     public decimal PaidAmountLocal => Payments.Sum(p => p.AmountBsS);
 
-    // ── Remaining (Golden Rule: TotalLocal - PaidLocal) ──
     public decimal RemainingBalanceLocal => System.Math.Max(0, TotalAmountLocal - PaidAmountLocal);
 
-    /// <summary>
-    /// The USD equivalent of what's still owed, for display purposes.
-    /// </summary>
     public decimal RemainingBalanceUsd => System.Math.Max(0, TotalUSD - PaidAmountUsd);
 
-    /// <summary>
-    /// Captures the cent-level difference required to zero-out the balance.
-    /// Calculated when the sale is finalized.
-    /// </summary>
     public decimal RoundingAdjustment => (RemainingBalanceUsd <= 0.01m) ? (PaidAmountLocal - TotalAmountLocal) : 0m;
 
     public ObservableCollection<CheckoutPaymentItem> Payments { get; } = new();
@@ -116,7 +89,6 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         {
             if (SetProperty(ref _selectedMethod, value))
             {
-                // Refresh input rounding if method type changes (Cash vs Digital)
                 SetAmountToRemainingBalance();
             }
         }
@@ -163,6 +135,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
     public void Dispose()
     {
+        WeakReferenceMessenger.Default.UnregisterAll(this);
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;
@@ -324,15 +297,11 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
             if (IsOverrideMode)
             {
-                // Determine whether this covers the full remaining debt or is a partial abono.
-                // PaidAmountUsd = sum of payments added this session.
-                // OriginalRemainingDebtUsd = debt before this checkout session.
                 decimal debtAfterPayment = OriginalRemainingDebtUsd - PaidAmountUsd;
                 bool isFullyLiquidated = debtAfterPayment <= 0.05m;
 
                 if (isFullyLiquidated)
                 {
-                    // Full liquidation: mark sale as Completed
                     targetSale.RoundingAdjustment = RoundingAdjustment;
                     int realId = await _salesService.CompleteSaleAsync(
                         targetSale.Id, CurrentExchangeRate, rawPayments,
@@ -341,12 +310,10 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
                     _currentIdempotencyKey = null;
                     WeakReferenceMessenger.Default.Unregister<CartUpdatedMessage>(this);
-                    // Pass result: positive id = liquidated, negative = abono
                     _dialogService?.CloseCurrentModal(realId);
                 }
                 else
                 {
-                    // Partial abono: add payment to OnHold sale (keeps it pending)
                     foreach (var p in rawPayments)
                     {
                         await _salesService.AddPaymentToHoldSaleAsync(targetSale.Id, new AddPaymentRequestDto
@@ -360,13 +327,11 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
                     }
 
                     WeakReferenceMessenger.Default.Unregister<CartUpdatedMessage>(this);
-                    // Pass -1 to indicate abono (not a full sale completion)
                     _dialogService?.CloseCurrentModal(-1);
                 }
             }
             else
             {
-                // Normal checkout mode: complete the active cart sale
                 _sale.RoundingAdjustment = RoundingAdjustment;
                 var paymentsList = Payments.Select(p => new SalePaymentDto(p.Dto.PaymentMethodId, p.Dto.Amount, p.AmountBsS, p.Dto.ReferenceNumber));
                 int realId = await _salesService.CompleteSaleAsync(

@@ -52,7 +52,7 @@ public class ReceiptsControllerTests
         var currentUserServiceMock = new Moq.Mock<Core.Interfaces.ICurrentUserService>();
         currentUserServiceMock.Setup(c => c.UserId).Returns("1");
 
-        var controller = new ReceiptsController(db, new SaleReceiptRenderer(), currentUserServiceMock.Object);
+        var controller = new ReceiptsController(new SalesReceiptService(db), new SaleReceiptRenderer(), currentUserServiceMock.Object);
         var user = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(new System.Security.Claims.Claim[]
         {
             new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, "1")
@@ -89,7 +89,7 @@ public class ReceiptsControllerTests
         var currentUserServiceMock = new Moq.Mock<Core.Interfaces.ICurrentUserService>();
         currentUserServiceMock.Setup(c => c.UserId).Returns("2");
 
-        var controller = new ReceiptsController(db, new SaleReceiptRenderer(), currentUserServiceMock.Object);
+        var controller = new ReceiptsController(new SalesReceiptService(db), new SaleReceiptRenderer(), currentUserServiceMock.Object);
         var user = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(new System.Security.Claims.Claim[]
         {
             new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, "2"),
@@ -123,7 +123,7 @@ public class ReceiptsControllerTests
         var currentUserServiceMock = new Moq.Mock<Core.Interfaces.ICurrentUserService>();
         currentUserServiceMock.Setup(c => c.UserId).Returns("99");
 
-        var controller = new ReceiptsController(db, new SaleReceiptRenderer(), currentUserServiceMock.Object);
+        var controller = new ReceiptsController(new SalesReceiptService(db), new SaleReceiptRenderer(), currentUserServiceMock.Object);
         var user = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(new System.Security.Claims.Claim[]
         {
             new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, "99"),
@@ -143,10 +143,11 @@ public class ReceiptsControllerTests
     public async Task GetReceipt_ForMissingSale_ReturnsNotFound()
     {
         using var db = CreateInMemorySalesDbContext();
-        var controller = new ReceiptsController(db, new SaleReceiptRenderer(), new Moq.Mock<Core.Interfaces.ICurrentUserService>().Object);
+        var controller = new ReceiptsController(new SalesReceiptService(db), new SaleReceiptRenderer(), new Moq.Mock<Core.Interfaces.ICurrentUserService>().Object);
 
         var result = await controller.GetReceipt(999, CancellationToken.None);
 
-        Assert.IsType<NotFoundResult>(result);
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Equal(404, notFoundResult.StatusCode);
     }
 }

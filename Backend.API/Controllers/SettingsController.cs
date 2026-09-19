@@ -1,258 +1,214 @@
 using Core.Entities;
+using Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Inventory.Module.Data;
-using Microsoft.EntityFrameworkCore;
+using Inventory.Module.Services;
+using Backend.API.Services;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
-
 
 [Authorize(Roles = "Admin,Manager")]
 [ApiController]
 [Route("api/[controller]")]
 public class SettingsController : ControllerBase
 {
-    private readonly InventoryDbContext _context;
+    private readonly ISystemSettingsService _settingsService;
     private readonly Core.Interfaces.ICurrentUserService _currentUserService;
-    private readonly Core.Interfaces.ISystemSettingsService _settingsService;
+    private readonly IExchangeRateHistoryService _historyService;
+    private readonly IExchangeRateWriteService? _writeService;
+    private readonly ITimeZoneProvider _timeZoneProvider;
     private readonly Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? _hubContext;
+
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
+    public SettingsController(
+        ISystemSettingsService settingsService,
+        Core.Interfaces.ICurrentUserService currentUserService,
+        IExchangeRateHistoryService historyService,
+        IExchangeRateWriteService? writeService = null,
+        ITimeZoneProvider? timeZoneProvider = null,
+        Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? hubContext = null)
+    {
+        _settingsService = settingsService;
+        _currentUserService = currentUserService;
+        _historyService = historyService;
+        _writeService = writeService;
+        _timeZoneProvider = timeZoneProvider ?? new Core.Services.TimeZoneProvider(settingsService);
+        _hubContext = hubContext;
+    }
 
     public SettingsController(
         InventoryDbContext context, 
         Core.Interfaces.ICurrentUserService currentUserService,
         Core.Interfaces.ISystemSettingsService settingsService,
         Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? hubContext = null)
+        : this(
+            settingsService,
+            currentUserService,
+            new ExchangeRateHistoryService(context),
+            new ExchangeRateWriteService(context, new InventoryService(context), hubContext: hubContext),
+            new Core.Services.TimeZoneProvider(settingsService),
+            hubContext)
     {
-        _context = context;
-        _currentUserService = currentUserService;
-        _settingsService = settingsService;
-        _hubContext = hubContext;
     }
 
     [HttpGet("exchange-rate")]
-    public async Task<ActionResult> GetExchangeRate()
+    public async Task<ActionResult> GetExchangeRateAsync(CancellationToken cancellationToken = default)
     {
-        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
-        var record = await _context.ExchangeRateHistory.AsNoTracking().FirstOrDefaultAsync(r => r.Date == today);
-        if (record == null)
+        var (rate, _, updatedAt) = await _historyService.GetTodayRateWithMetadataAsync(cancellationToken);
+        if (rate > 0)
         {
-            record = await _context.ExchangeRateHistory
-                .AsNoTracking()
-                .Where(r => r.Date <= today)
-                .OrderByDescending(r => r.Date)
-                .FirstOrDefaultAsync();
+            return Ok(new SettingValueResponseDto { Value = rate, LastUpdated = updatedAt });
         }
 
-        if (record != null && record.Rate > 0)
+        var settingValue = await _settingsService.GetSettingAsync("ExchangeRate");
+        if (settingValue == null)
+            return Ok(new SettingValueResponseDto { Value = 0m, LastUpdated = null });
+
+        if (decimal.TryParse(settingValue, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var parsedRate))
         {
-            return Ok(new { Value = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(record.Rate), LastUpdated = (DateTime?)record.UpdatedAt });
+            return Ok(new SettingValueResponseDto { Value = parsedRate, LastUpdated = null });
         }
 
-        var setting = await _context.SystemSettings
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Key == "ExchangeRate");
-
-        if (setting == null)
-            return Ok(new { Value = 0m, LastUpdated = (DateTime?)null });
-
-        if (decimal.TryParse(setting.Value, System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var rate))
-        {
-            return Ok(new { Value = rate, LastUpdated = setting.LastUpdated });
-        }
-
-        return Ok(new { Value = 0m, LastUpdated = setting.LastUpdated });
+        return Ok(new SettingValueResponseDto { Value = 0m, LastUpdated = null });
     }
+
+    [NonAction]
+    public Task<ActionResult> GetExchangeRate() => GetExchangeRateAsync();
 
     [HttpPost("exchange-rate")]
     [Authorize(Roles = "Admin")]
-    public async Task<ActionResult> SetExchangeRate([FromBody] SetExchangeRateRequest request)
+    public async Task<ActionResult> SetExchangeRateAsync([FromBody] SetExchangeRateRequest request, CancellationToken cancellationToken = default)
     {
         if (!_currentUserService.CanMutateSettings)
         {
-            return Problem(
-                detail: "Su rol no tiene permisos para actualizar la configuración de tasa de cambio.",
-                statusCode: 403,
-                title: "Permiso denegado",
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.3");
+            return this.ApiForbidden("Su rol no tiene permisos para actualizar la configuración de tasa de cambio.");
         }
         if (request.Value <= 0 || request.Value > 1_000_000m)
-            return BadRequest(new { Message = "La tasa de cambio debe ser mayor a cero y menor o igual a 1.000.000." });
+            return this.ApiBadRequest("La tasa de cambio debe ser mayor a cero y menor o igual a 1.000.000.");
 
         var roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(request.Value);
 
-        var setting = await _context.SystemSettings
-            .FirstOrDefaultAsync(s => s.Key == "ExchangeRate");
+        await _settingsService.SetSettingAsync("ExchangeRate", roundedRate.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-        if (setting == null)
+        if (_writeService != null)
         {
-            setting = new SystemSetting
-            {
-                Key = "ExchangeRate",
-                Value = roundedRate.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                LastUpdated = DateTime.UtcNow
-            };
-            _context.SystemSettings.Add(setting);
-        }
-        else
-        {
-            setting.Value = roundedRate.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            setting.LastUpdated = DateTime.UtcNow;
+            await _writeService.UpsertTodayRateAsync(roundedRate, cancellationToken);
         }
 
-        // Sincronizar fuente autoritativa ExchangeRateHistory (H-API-7)
-        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
-        var existingHistory = await _context.ExchangeRateHistory.FirstOrDefaultAsync(r => r.Date == today);
-        if (existingHistory != null)
-        {
-            existingHistory.Rate = roundedRate;
-            existingHistory.UpdatedAt = DateTime.UtcNow;
-        }
-        else
-        {
-            _context.ExchangeRateHistory.Add(new ExchangeRateHistory
-            {
-                Date = today,
-                Rate = roundedRate,
-                UpdatedAt = DateTime.UtcNow
-            });
-        }
-
-        await _context.SaveChangesAsync();
-
-        return Ok(new { Value = roundedRate, LastUpdated = setting.LastUpdated });
+        return Ok(new SettingValueResponseDto { Value = roundedRate, LastUpdated = DateTime.UtcNow });
     }
+
+    [NonAction]
+    public Task<ActionResult> SetExchangeRate(SetExchangeRateRequest request) => SetExchangeRateAsync(request);
 
     [HttpGet("timezone")]
-    public async Task<ActionResult> GetTimeZone()
+    public async Task<ActionResult> GetTimeZoneAsync(CancellationToken cancellationToken = default)
     {
-        var setting = await _context.SystemSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "SelectedTimeZoneId");
-        return Ok(new { Id = setting?.Value ?? string.Empty });
+        var tzId = await _timeZoneProvider.GetTimeZoneIdAsync(cancellationToken);
+        return Ok(new TimeZoneSettingResponseDto { Id = tzId ?? string.Empty });
     }
+
+    [NonAction]
+    public Task<ActionResult> GetTimeZone() => GetTimeZoneAsync();
 
     [HttpPost("timezone")]
     [Authorize(Roles = "Admin")]
-    public async Task<ActionResult> SetTimeZone([FromBody] SetTimeZoneRequest request)
+    public async Task<ActionResult> SetTimeZoneAsync([FromBody] SetTimeZoneRequest request, CancellationToken cancellationToken = default)
     {
         if (!_currentUserService.CanMutateSettings)
         {
-            return Problem(
-                detail: "Su rol no tiene permisos para actualizar la zona horaria.",
-                statusCode: 403,
-                title: "Permiso denegado",
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.3");
-        }
-        var setting = await _context.SystemSettings.FirstOrDefaultAsync(s => s.Key == "SelectedTimeZoneId");
-        if (setting == null)
-        {
-            setting = new SystemSetting
-            {
-                Key = "SelectedTimeZoneId",
-                Value = request.Id,
-                LastUpdated = DateTime.UtcNow
-            };
-            _context.SystemSettings.Add(setting);
-        }
-        else
-        {
-            setting.Value = request.Id;
-            setting.LastUpdated = DateTime.UtcNow;
+            return this.ApiForbidden("Su rol no tiene permisos para actualizar la zona horaria.");
         }
 
-        await _context.SaveChangesAsync();
-        return Ok(new { Id = setting.Value });
+        await _settingsService.SetSettingAsync("SelectedTimeZoneId", request.Id);
+        _timeZoneProvider.Invalidate();
+        return Ok(new TimeZoneSettingResponseDto { Id = request.Id });
     }
 
+    [NonAction]
+    public Task<ActionResult> SetTimeZone(SetTimeZoneRequest request) => SetTimeZoneAsync(request);
+
     [HttpGet("currency-format")]
-    public async Task<ActionResult> GetCurrencyFormat()
+    public async Task<ActionResult> GetCurrencyFormatAsync(CancellationToken cancellationToken = default)
     {
-        var setting = await _context.SystemSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "CurrencyFormat");
-        var format = setting?.Value;
+        var format = await _settingsService.GetSettingAsync("CurrencyFormat");
         if (string.IsNullOrWhiteSpace(format) || 
             (!format.Equals("Venezuelan", StringComparison.OrdinalIgnoreCase) && 
              !format.Equals("International", StringComparison.OrdinalIgnoreCase)))
         {
-            format = "Venezuelan"; // Default oficial
+            format = "Venezuelan";
         }
-        return Ok(new { Format = format });
+        return Ok(new CurrencyFormatResponseDto { Format = format });
     }
+
+    [NonAction]
+    public Task<ActionResult> GetCurrencyFormat() => GetCurrencyFormatAsync();
 
     [HttpPut("currency-format")]
     [Authorize(Roles = "Admin")]
-    public async Task<ActionResult> SetCurrencyFormat([FromBody] SetCurrencyFormatRequest request)
+    public async Task<ActionResult> SetCurrencyFormatAsync([FromBody] SetCurrencyFormatRequest request, CancellationToken cancellationToken = default)
     {
         if (!_currentUserService.CanMutateSettings)
         {
-            return Problem(
-                detail: "Su rol no tiene permisos para actualizar el formato de moneda.",
-                statusCode: 403,
-                title: "Permiso denegado",
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.3");
+            return this.ApiForbidden("Su rol no tiene permisos para actualizar el formato de moneda.");
         }
 
         if (string.IsNullOrWhiteSpace(request?.Format) ||
             (!request.Format.Equals("Venezuelan", StringComparison.OrdinalIgnoreCase) &&
              !request.Format.Equals("International", StringComparison.OrdinalIgnoreCase)))
         {
-            return BadRequest(new { Message = "El formato debe ser 'Venezuelan' o 'International'." });
+            return this.ApiBadRequest("El formato debe ser 'Venezuelan' o 'International'.");
         }
 
         var normalizedFormat = request.Format.Equals("International", StringComparison.OrdinalIgnoreCase)
             ? "International"
             : "Venezuelan";
 
-        var setting = await _context.SystemSettings.FirstOrDefaultAsync(s => s.Key == "CurrencyFormat");
-        if (setting == null)
-        {
-            setting = new SystemSetting
-            {
-                Key = "CurrencyFormat",
-                Value = normalizedFormat,
-                LastUpdated = DateTime.UtcNow
-            };
-            _context.SystemSettings.Add(setting);
-        }
-        else
-        {
-            setting.Value = normalizedFormat;
-            setting.LastUpdated = DateTime.UtcNow;
-        }
-
-        await _context.SaveChangesAsync();
+        await _settingsService.SetSettingAsync("CurrencyFormat", normalizedFormat);
 
         if (_hubContext != null)
         {
-            await _hubContext.Clients.All.SendAsync("OnCurrencyFormatUpdated", normalizedFormat);
+            await _hubContext.Clients.All.SendAsync("OnCurrencyFormatUpdated", normalizedFormat, cancellationToken);
         }
 
-        return Ok(new { Format = normalizedFormat, LastUpdated = setting.LastUpdated });
+        return Ok(new CurrencyFormatResponseDto { Format = normalizedFormat, LastUpdated = DateTime.UtcNow });
     }
 
+    [NonAction]
+    public Task<ActionResult> SetCurrencyFormat(SetCurrencyFormatRequest request) => SetCurrencyFormatAsync(request);
+
     [HttpGet("allow-negative-stock")]
-    public async Task<ActionResult> GetAllowNegativeStock()
+    public async Task<ActionResult> GetAllowNegativeStockAsync(CancellationToken cancellationToken = default)
     {
         var value = await _settingsService.GetSettingAsync(Core.Constants.SettingKeys.AllowNegativeStock);
         var allowed = bool.TryParse(value, out var parsed) && parsed;
-        return Ok(new { allowed });
+        return Ok(new AllowNegativeStockResponseDto { Allowed = allowed });
     }
+
+    [NonAction]
+    public Task<ActionResult> GetAllowNegativeStock() => GetAllowNegativeStockAsync();
 
     [HttpPut("allow-negative-stock")]
     [Authorize(Roles = "Admin")]
-    public async Task<ActionResult> SetAllowNegativeStock([FromBody] SetAllowNegativeStockRequest request)
+    public async Task<ActionResult> SetAllowNegativeStockAsync([FromBody] SetAllowNegativeStockRequest request, CancellationToken cancellationToken = default)
     {
         if (!_currentUserService.CanMutateSettings)
         {
-            return Problem(
-                detail: "Su rol no tiene permisos para actualizar esta configuración.",
-                statusCode: 403,
-                title: "Permiso denegado",
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.3");
+            return this.ApiForbidden("Su rol no tiene permisos para actualizar esta configuración.");
         }
 
         await _settingsService.SetSettingAsync(Core.Constants.SettingKeys.AllowNegativeStock, request.Allowed.ToString());
-        return Ok(new { allowed = request.Allowed });
+        return Ok(new AllowNegativeStockResponseDto { Allowed = request.Allowed });
     }
+
+    [NonAction]
+    public Task<ActionResult> SetAllowNegativeStock(SetAllowNegativeStockRequest request) => SetAllowNegativeStockAsync(request);
 }
 
 public class SetExchangeRateRequest
@@ -271,6 +227,28 @@ public class SetCurrencyFormatRequest
 }
 
 public class SetAllowNegativeStockRequest
+{
+    public bool Allowed { get; set; }
+}
+
+public class SettingValueResponseDto
+{
+    public decimal Value { get; set; }
+    public DateTime? LastUpdated { get; set; }
+}
+
+public class TimeZoneSettingResponseDto
+{
+    public string Id { get; set; } = string.Empty;
+}
+
+public class CurrencyFormatResponseDto
+{
+    public string Format { get; set; } = string.Empty;
+    public DateTime? LastUpdated { get; set; }
+}
+
+public class AllowNegativeStockResponseDto
 {
     public bool Allowed { get; set; }
 }

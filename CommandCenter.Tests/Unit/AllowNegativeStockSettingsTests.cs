@@ -32,8 +32,8 @@ public class AllowNegativeStockSettingsTests
         var result = await controller.GetAllowNegativeStock();
 
         var ok = Assert.IsType<OkObjectResult>(result);
-        var allowed = (bool?)ok.Value?.GetType().GetProperty("allowed")?.GetValue(ok.Value);
-        Assert.False(allowed);
+        var dto = Assert.IsType<Backend.API.Controllers.AllowNegativeStockResponseDto>(ok.Value);
+        Assert.False(dto.Allowed);
     }
 
     [Fact]
@@ -48,8 +48,8 @@ public class AllowNegativeStockSettingsTests
 
         var result = await controller.GetAllowNegativeStock();
         var ok = Assert.IsType<OkObjectResult>(result);
-        var allowed = (bool?)ok.Value?.GetType().GetProperty("allowed")?.GetValue(ok.Value);
-        Assert.True(allowed);
+        var dto = Assert.IsType<Backend.API.Controllers.AllowNegativeStockResponseDto>(ok.Value);
+        Assert.True(dto.Allowed);
     }
 
     [Fact]

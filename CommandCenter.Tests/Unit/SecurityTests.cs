@@ -77,7 +77,7 @@ public class SecurityTests
     public void ProductsController_Mutating_Actions_Are_Decorated_With_Admin_Or_Manager_Role()
     {
         var type = typeof(ProductsController);
-        var mutatingMethodNames = new[] { "Create", "Update", "SetStatus", "Restore", "Delete", "AdjustStock", "BulkImport", "ExportProducts", "ExportTemplate" };
+        var mutatingMethodNames = new[] { "CreateAsync", "UpdateAsync", "SetStatusAsync", "RestoreAsync", "DeleteAsync", "AdjustStockAsync", "BulkImportAsync", "ExportProductsAsync", "ExportTemplateAsync" };
 
         foreach (var methodName in mutatingMethodNames)
         {

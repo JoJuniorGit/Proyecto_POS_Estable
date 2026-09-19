@@ -221,7 +221,7 @@ function RegisterClosePageContent() {
               const isShortage = d.difference < -0.05;
               const statusText = isSurplus ? 'Sobrante' : isShortage ? 'Faltante' : 'Cuadrado';
               const statusBadgeClass = isSurplus ? 'badge-success' : isShortage ? 'badge-danger' : 'badge-outline';
-              const diffColor = isSurplus ? '#22c55e' : isShortage ? '#ef4444' : '#22c55e';
+              const diffColor = isSurplus ? 'var(--success)' : isShortage ? 'var(--danger)' : 'var(--success)';
               const formatVal = (val, curr) => (curr === 'USD' ? formatUSD(val) : formatBsS(val));
 
               return (
@@ -283,10 +283,10 @@ function RegisterClosePageContent() {
                   const isShortage = d.difference < -0.05;
 
                   const diffColor = isSurplus
-                    ? '#22c55e'
+                    ? 'var(--success)'
                     : isShortage
-                    ? '#ef4444'
-                    : '#22c55e';
+                    ? 'var(--danger)'
+                    : 'var(--success)';
 
                   const formatVal = (val, curr) => (curr === 'USD' ? formatUSD(val) : formatBsS(val));
 

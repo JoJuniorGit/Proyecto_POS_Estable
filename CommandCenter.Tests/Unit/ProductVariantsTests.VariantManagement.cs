@@ -281,7 +281,8 @@ public partial class ProductVariantsTests
         mockService.Setup(s => s.AdjustStockAsync(999, 10m, "No Existe", null))
             .ThrowsAsync(new KeyNotFoundException());
         var result404 = await controller.AdjustStock(999, new AdjustStockDto { QuantityChange = 10m, Reason = "No Existe" });
-        Assert.IsType<NotFoundResult>(result404);
+        var status404 = Assert.IsAssignableFrom<ObjectResult>(result404);
+        Assert.Equal(StatusCodes.Status404NotFound, status404.StatusCode);
     }
 
     [Fact]

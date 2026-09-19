@@ -1,15 +1,16 @@
-using Sales.Module.Entities;
+using Sales.Module.DTOs;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sales.Module.Interfaces;
 
 public interface IPaymentMethodService
 {
-    Task<IEnumerable<PaymentMethod>> GetActiveMethodsAsync();
-    Task<IEnumerable<PaymentMethod>> GetAllAsync();
-    Task<PaymentMethod> GetByIdAsync(int id);
-    Task<PaymentMethod> CreateAsync(PaymentMethod method);
-    Task<PaymentMethod> UpdateAsync(PaymentMethod method);
-    Task DeleteAsync(int id); // Logical delete
+    Task<IEnumerable<PaymentMethodDto>> GetActiveMethodsAsync(CancellationToken cancellationToken = default);
+    Task<IEnumerable<PaymentMethodDto>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<PaymentMethodDto> GetByIdAsync(int id, CancellationToken cancellationToken = default);
+    Task<PaymentMethodDto> CreateAsync(PaymentMethodDto dto, CancellationToken cancellationToken = default);
+    Task<PaymentMethodDto> UpdateAsync(PaymentMethodDto dto, CancellationToken cancellationToken = default);
+    Task DeleteAsync(int id, CancellationToken cancellationToken = default);
 }

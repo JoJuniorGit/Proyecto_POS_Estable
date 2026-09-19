@@ -22,11 +22,12 @@ public class CashDrawerService : ICashDrawerService
 
     public async Task<CashDrawerSessionResponseDto?> GetActiveSessionAsync(CancellationToken cancellationToken = default)
     {
-        var session = await LoadActiveSessionEntityAsync(cancellationToken);
+        var session = await _context.CashDrawerSessions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Status == CashDrawerStatus.Open, cancellationToken);
         return session == null ? null : MapSession(session);
     }
 
-    // 8.5-M1: Sin Include de Transactions — liviano para accesos internos (cierre, apertura, rollover).
     private async Task<CashDrawerSession?> LoadActiveSessionEntityAsync(CancellationToken cancellationToken = default)
     {
         return await _context.CashDrawerSessions
@@ -152,8 +153,6 @@ public class CashDrawerService : ICashDrawerService
         var ambientTransaction = _context.Database.CurrentTransaction;
         bool ownsTransaction = !isInMemory && ambientTransaction == null;
 
-        // 8.9-B4: misma estrategia condicional que AddTransactionAsync (reintento standalone,
-        // sin anidar cuando la transacción la aporta una capa externa).
         async Task<CashDrawerSession> ExecuteWithinTransactionAsync()
         {
             IDbContextTransaction? ownTransaction = null;
@@ -170,10 +169,6 @@ public class CashDrawerService : ICashDrawerService
                     throw new InvalidOperationException("No hay una sesión de caja activa para cerrar.");
                 }
 
-                // 8.5-A2: Serializar cierres concurrentes. El advisory lock garantiza que el segundo cierre
-                // re-lea la sesión ya como Closed y NO registre un egreso Closing duplicado. La re-lectura se hace
-                // CON tracking (la consulta refresca la instancia ya trackeada desde la primera lectura) para que
-                // el flip a Status=Closed y los balances persistan en SaveChanges de la misma transacción.
                 if (!isInMemory)
                 {
                     await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", new object[] { session.Id }, cancellationToken);
@@ -273,10 +268,6 @@ public class CashDrawerService : ICashDrawerService
         var ambientTransaction = _context.Database.CurrentTransaction;
         bool ownsTransaction = !isInMemory && ambientTransaction == null;
 
-        // 8.9-B4: si no hay transacción ambiente (llamada directa/standalone) la operación corre
-        // bajo execution strategy para reintentar el bloque completo ante fallos transitorios.
-        // Cuando existe transacción compartida (p.ej. el cobro de venta), el reintento lo aporta
-        // la capa externa y aquí NO se abre otra transacción (evita anidar estrategias).
         async Task<CashTransaction> ExecuteWithinTransactionAsync()
         {
             IDbContextTransaction? ownTransaction = null;
@@ -423,9 +414,6 @@ public class CashDrawerService : ICashDrawerService
 
         if (session == null) return 0;
 
-        // 8.5-M1: Una sola consulta agregada con CASE condicional (ingresos físicos - egresos físicos),
-        // en lugar de 3 round-trips separados. El movimiento de apertura se excluye porque su saldo ya
-        // está contabilizado en OpeningBalanceLocal (evita doble conteo).
         var netCash = await _context.CashTransactions
             .AsNoTracking()
             .Where(t => t.SessionId == sessionId
@@ -463,6 +451,44 @@ public class CashDrawerService : ICashDrawerService
                 PaymentMethodId = t.PaymentMethodId
             })
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<Core.DTOs.PagedResultDto<CashTransactionResponseDto>> GetHistoryPagedAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = _context.CashTransactions
+            .AsNoTracking()
+            .Where(t => t.IsPhysicalCash);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var hasMore = (page * pageSize) < totalCount;
+
+        var items = await query
+            .OrderByDescending(t => t.TransactionTime)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(t => new CashTransactionResponseDto
+            {
+                Id = t.Id,
+                SessionId = t.SessionId,
+                TransactionTime = t.TransactionTime,
+                Type = t.Type,
+                Source = t.Source,
+                AmountUsd = t.AmountUsd,
+                ExchangeRate = t.ExchangeRate,
+                AmountLocal = t.AmountLocal,
+                Description = t.Description,
+                ReferenceId = t.ReferenceId,
+                SaleId = t.SaleId,
+                InvoiceNumber = t.Sale != null ? t.Sale.InvoiceNumber : null,
+                IsPhysicalCash = t.IsPhysicalCash,
+                PaymentMethodId = t.PaymentMethodId
+            })
+            .ToListAsync(cancellationToken);
+
+        return new Core.DTOs.PagedResultDto<CashTransactionResponseDto>(items, totalCount, hasMore);
     }
 
     private static CashDrawerSessionResponseDto MapSession(CashDrawerSession session) => new()

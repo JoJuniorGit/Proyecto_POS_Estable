@@ -18,8 +18,8 @@ export default function SettingsCurrencyFormat({ currencyFormat, handleFormatCha
           onClick={() => handleFormatChange('Venezuelan')}
           className="p-3.5 border rounded-lg cursor-pointer transition-all"
           style={{
-            borderColor: currencyFormat === 'Venezuelan' ? 'var(--primary)' : 'var(--border)',
-            backgroundColor: currencyFormat === 'Venezuelan' ? 'rgba(37, 99, 235, 0.08)' : 'var(--bg-surface)',
+            borderColor: currencyFormat === 'Venezuelan' ? 'var(--accent-primary)' : 'var(--border)',
+            backgroundColor: currencyFormat === 'Venezuelan' ? 'var(--accent-primary-light)' : 'var(--bg-surface)',
             borderWidth: currencyFormat === 'Venezuelan' ? '2px' : '1px'
           }}
           role="button"
@@ -49,8 +49,8 @@ export default function SettingsCurrencyFormat({ currencyFormat, handleFormatCha
           onClick={() => handleFormatChange('International')}
           className="p-3.5 border rounded-lg cursor-pointer transition-all"
           style={{
-            borderColor: currencyFormat === 'International' ? 'var(--primary)' : 'var(--border)',
-            backgroundColor: currencyFormat === 'International' ? 'rgba(37, 99, 235, 0.08)' : 'var(--bg-surface)',
+            borderColor: currencyFormat === 'International' ? 'var(--accent-primary)' : 'var(--border)',
+            backgroundColor: currencyFormat === 'International' ? 'var(--accent-primary-light)' : 'var(--bg-surface)',
             borderWidth: currencyFormat === 'International' ? '2px' : '1px'
           }}
           role="button"

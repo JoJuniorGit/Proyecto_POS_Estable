@@ -15,9 +15,6 @@ public static class ServiceCollectionExtensions
     {
         builder.Services.AddDbContext<InventoryDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure(3))
-                // 8.12-L3: PendingModelChangesWarning en modo THROW: si el modelo diverge del
-                // snapshot, MigrateAsync y dotnet ef fallan alto en lugar de degradar en silencio.
-                // Verificado con `dotnet ef migrations has-pending-model-changes` (sin pendientes).
                 .ConfigureWarnings(w => w.Throw(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
         builder.Services.AddDbContext<Sales.Module.Data.SalesDbContext>(options =>
@@ -26,7 +23,6 @@ public static class ServiceCollectionExtensions
                 npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
                 npgsql.EnableRetryOnFailure(3);
             })
-                // 8.12-L3: idem InventoryDbContext.
                 .ConfigureWarnings(w => w.Throw(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
         builder.Services.AddMemoryCache(options =>
@@ -42,7 +38,12 @@ public static class ServiceCollectionExtensions
         builder.Services.AddSingleton<Core.Interfaces.IPasswordPolicyService>(new Core.Services.PasswordPolicyService(customPasswordBlacklist));
         builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
         builder.Services.AddScoped<IInventoryService, InventoryService>();
+        builder.Services.AddScoped<IProductManagementService>(sp => (InventoryService)sp.GetRequiredService<IInventoryService>());
+        builder.Services.AddScoped<IReservationService, Inventory.Module.Services.ReservationService>();
         builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
+        builder.Services.AddScoped<ITimeZoneProvider, Core.Services.TimeZoneProvider>();
+        builder.Services.AddScoped<IExchangeRateHistoryService, ExchangeRateHistoryService>();
+        builder.Services.AddScoped<IUserService, Sales.Module.Services.UserService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.ISalesService, Sales.Module.Services.SalesService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.ICashDrawerService, Sales.Module.Services.CashDrawerService>();
         builder.Services.AddScoped<Sales.Module.Services.CashAdvanceCoordinator>();
@@ -51,8 +52,6 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<Sales.Module.Interfaces.IHoldOrderNotifier, Backend.API.Services.SignalRHoldOrderNotifier>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IDailyClosureService, Sales.Module.Services.DailyClosureService>();
         builder.Services.AddScoped<Core.Interfaces.ITodayExchangeRateProvider, Backend.API.Services.TodayExchangeRateProvider>();
-        // 8.14-W4: TTL de IdempotentRequests configurable (appsettings "Idempotency:TtlHours";
-        // default 24 h). Permite retención forense de reintentos sin cambios de código.
         var idempotencyTtlHours = builder.Configuration.GetValue<double?>("Idempotency:TtlHours") ?? 24.0;
         builder.Services.AddScoped<Core.Interfaces.IIdempotencyService>(sp =>
             new Sales.Module.Services.IdempotencyService(
@@ -104,8 +103,6 @@ public static class ServiceCollectionExtensions
         })
         .AddJwtBearer(options =>
         {
-            // 8.30-B03: RequireHttpsMetadata configurable (SecuritySettings:RequireHttpsMetadata,
-            // default false por topologia LAN; puede elevarse a true en despliegues solo-HTTPS).
             options.RequireHttpsMetadata = builder.Configuration.GetValue<bool>("SecuritySettings:RequireHttpsMetadata", false);
             options.SaveToken = true;
             options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
@@ -160,6 +157,7 @@ public static class ServiceCollectionExtensions
             sp => sp.GetRequiredService<Backend.API.Services.ChannelReceiptPrintQueue>());
         builder.Services.AddSingleton<Backend.API.Metrics.RequestMetricsRegistry>();
         builder.Services.AddSingleton<Sales.Module.Receipts.IReceiptDocumentRenderer, Sales.Module.Receipts.SaleReceiptRenderer>();
+        builder.Services.AddScoped<Sales.Module.Receipts.ISalesReceiptService, Sales.Module.Receipts.SalesReceiptService>();
         builder.Services.AddHostedService<Backend.API.Jobs.ReceiptPrintBackgroundService>();
 
         builder.Services.AddRateLimiter(options =>
@@ -198,8 +196,6 @@ public static class ServiceCollectionExtensions
         {
             options.AddDefaultPolicy(policy =>
             {
-                // 8.9-M6: si el entorno define una lista explícita de orígenes (Cors:AllowedOrigins),
-                // se usa esa lista exacta (cero apertura LAN). En Producción es el único modo admisible.
                 if (allowedOriginsSet.Count > 0)
                 {
                     policy.WithOrigins(allowedOriginsSet.ToArray())
@@ -223,7 +219,6 @@ public static class ServiceCollectionExtensions
                         if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.Equals("127.0.0.1") || host.Equals("::1"))
                             return true;
 
-                        // 8.9-M6: en entornos que no sean Development la LAN no se abre por defecto; se exige Cors:AllowedOrigins.
                         if (!builder.Environment.IsDevelopment()) return false;
 
                         if (System.Net.IPAddress.TryParse(host, out var ip))
@@ -231,9 +226,9 @@ public static class ServiceCollectionExtensions
                             var bytes = ip.GetAddressBytes();
                             if (bytes.Length == 4)
                             {
-                                if (bytes[0] == 10) return true; // 10.0.0.0/8
-                                if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true; // 172.16.0.0/12
-                                if (bytes[0] == 192 && bytes[1] == 168) return true; // 192.168.0.0/16
+                                if (bytes[0] == 10) return true;
+                                if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true;
+                                if (bytes[0] == 192 && bytes[1] == 168) return true;
                             }
                         }
                     }

@@ -16,6 +16,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using Sales.Module.Data;
+using Sales.Module.DTOs;
 using Sales.Module.Interfaces;
 using Sales.Module.Services;
 using Xunit;
@@ -81,9 +82,10 @@ public class Phase1SecurityRemediationTests
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.NotNull(badRequestResult.Value);
         
-        var messageProp = badRequestResult.Value.GetType().GetProperty("message", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
-        Assert.NotNull(messageProp);
-        var message = messageProp.GetValue(badRequestResult.Value)?.ToString();
+        var message = badRequestResult.Value is ProblemDetails pd 
+            ? (pd.Extensions.TryGetValue("message", out var m) ? m?.ToString() : pd.Detail) 
+            : badRequestResult.Value.GetType().GetProperty("message", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)?.GetValue(badRequestResult.Value)?.ToString();
+        Assert.NotNull(message);
         Assert.Contains("Idempotency-Key", message);
 
         // Verify sales service was never invoked
@@ -152,9 +154,10 @@ public class Phase1SecurityRemediationTests
         var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(responseNonExistent.Result);
         Assert.NotNull(unauthorizedResult.Value);
 
-        var messageProp = unauthorizedResult.Value.GetType().GetProperty("Message");
-        Assert.NotNull(messageProp);
-        var messageValue = messageProp.GetValue(unauthorizedResult.Value)?.ToString();
+        var messageValue = unauthorizedResult.Value is ProblemDetails pdAuth 
+            ? (pdAuth.Extensions.TryGetValue("message", out var m) ? m?.ToString() : pdAuth.Detail) 
+            : unauthorizedResult.Value.GetType().GetProperty("Message")?.GetValue(unauthorizedResult.Value)?.ToString();
+        Assert.NotNull(messageValue);
         Assert.Equal("Credenciales inválidas.", messageValue);
     }
 }
