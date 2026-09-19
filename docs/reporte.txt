@@ -10753,20 +10753,24 @@ F2. Hallazgo principal (CERRADO por A8): 6 indices declarados en el modelo y en 
     tests, sin indice en produccion". Impacto directo en la consulta mas caliente
     (historial de ventas filtra por Status y ordena por Date). Mismo tipo de
     incidente que el documentado en 8.12-B3 (migracion huerfana de los GIN).
-F3. Hallazgos abiertos (registrados, sin accion en esta revision):
-    - IX_ExchangeRateHistory_Date duplica la PK: ambas son unicas sobre Date.
-    - Ninguna tabla tiene last_analyze / last_autoanalyze: el planner no tiene
-      estadisticas (n_live_tup=0 donde hay 1919 filas). Correr ANALYZE.
-    - Config: random_page_cost=4 (default HDD) con shared_buffers=128MB y
-      work_mem=4MB; evaluar 1.1 si el disco es SSD.
-    - Esquema huerfano sin referencias en codigo: tablas CustomerAdvances y
-      SaleCustomerAdvancePayments, columna Sales.IsAdvanceConsumption y su indice
-      parcial unico (feature eliminada). Limpieza destructiva: migracion revisada.
-    - CustomerAdvances.AppliedRate es numeric(18,2) mientras el resto de las tasas
-      del sistema son numeric(18,4).
-    - SaleItems no tiene indice por ProductId (y no puede tener FK: Products vive
-      en InventoryDbContext y SaleItems en SalesDbContext sobre la misma base
-      fisica). Relevante para los reportes por producto del Paso 15.
+F3. Hallazgos detectados y CERRADOS en esta misma revision (commits 2cc92eb,
+    1de55f5, 0fbf090):
+    - IX_ExchangeRateHistory_Date duplicaba la PK (ambas unicas sobre Date):
+      eliminado del modelo y por migracion; el acceso por Date lo cubre la PK.
+    - Esquema huerfano de la feature "adelantos de cliente" sin referencias en
+      codigo (tablas CustomerAdvances y SaleCustomerAdvancePayments, columna
+      Sales.IsAdvanceConsumption y su indice parcial unico): eliminado por
+      migracion. Verificado antes de eliminar: 0 FKs entrantes, 0 filas en
+      SaleCustomerAdvancePayments y 0 ventas con IsAdvanceConsumption = true; la
+      unica fila de CustomerAdvances (dato de prueba de 2026-08-13) quedo respaldada
+      en backup-customer-advances-20260919.sql, fuera del repo.
+    - CustomerAdvances.AppliedRate era numeric(18,2) frente al numeric(18,4) del
+      resto de las tasas: desaparece con la tabla.
+    - SaleItems no tenia indice por ProductId (y no puede tener FK: Products vive en
+      InventoryDbContext y SaleItems en SalesDbContext sobre la misma base fisica):
+      se agrego IX_SaleItems_ProductId, habilitante de los reportes por producto del
+      Paso 15.
+    - Sin estadisticas en el planner y random_page_cost de disco mecanico: ver F6.
 F4. Cruce con la hoja de ruta docs/Ideas.txt (15 pasos):
     - CRITICO resuelto por A9: el Paso 14 (calculo de ganancias) no podia producir
       un COGS historico fiel porque SaleItem no guardaba el costo unitario;
@@ -10789,3 +10793,17 @@ F5. Limite de la auditoria: con 13 MB y menos de 2000 filas por tabla los planes
     reales no son extrapolables (PostgreSQL elige seq scan y es lo correcto a ese
     volumen). No se midio timing; la auditoria es estructural (indices, constraints,
     tipos, configuracion).
+
+F6. Acciones aplicadas directamente sobre la base (no versionadas en el repo):
+    - ANALYZE sobre CommandCenterDb: las estimaciones del planner ya reflejan la
+      realidad (Sales 1919, Products 572, SaleItems 697, CashTransactions 181) y
+      last_analyze quedo registrado en pg_stat_user_tables.
+    - random_page_cost = 1.1 SOLO para CommandCenterDb (ALTER DATABASE ... SET),
+      justificado por disco SSD (Micron MTFDKCD512QFM). Scoped por decision: la
+      instancia aloja 22 bases (incluidas varias de smoke tests) y no corresponde
+      alterar el planner de todas. Rollback:
+      ALTER DATABASE "CommandCenterDb" RESET random_page_cost;
+    - Pendiente recomendado (requiere reinicio del servicio, no aplicado): evaluar
+      shared_buffers (128MB) y work_mem (4MB) segun la RAM del equipo.
+    - Backup del esquema huerfano eliminado:
+      %TEMP%\opencode\backup-customer-advances-20260919.sql (fuera del repo).
