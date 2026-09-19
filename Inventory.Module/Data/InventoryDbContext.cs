@@ -145,10 +145,11 @@ public class InventoryDbContext : DbContext
         });
 
         // ExchangeRateHistory: One record per day, UNIQUE on Date
+        // 8.142: la PK ya provee el indice unico sobre Date; el HasIndex explicito duplicaba
+        // estructura y agregaba costo de escritura en cada upsert de tasa.
         modelBuilder.Entity<ExchangeRateHistory>(entity =>
         {
             entity.HasKey(e => e.Date);
-            entity.HasIndex(e => e.Date).IsUnique();
             entity.Property(e => e.Rate).HasPrecision(18, 4);
         });
     }
