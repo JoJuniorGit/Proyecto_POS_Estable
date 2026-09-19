@@ -30,6 +30,12 @@ echo ==========================================
 echo   Starting POS System
 echo ==========================================
 
+if not exist "%~dp0..\Backend.API\certs\pos-https.pfx" (
+    echo HTTPS certificate not found. Generating...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0create-https-cert.ps1"
+    if errorlevel 1 echo [WARN] Certificate generation failed. Continuing without HTTPS.
+)
+
 echo [1/3] Launching Backend API...
 start "Backend API" cmd /k "cd /d %~dp0.. && set ASPNETCORE_ENVIRONMENT=Development&& dotnet run --project Backend.API\Backend.API.csproj"
 

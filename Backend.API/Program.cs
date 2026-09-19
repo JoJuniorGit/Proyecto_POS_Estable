@@ -26,8 +26,13 @@ try
     // (AppEnvironmentExtra de NSSM / administrador de tareas).
     try
     {
-        var secretsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "secrets.json");
-        if (File.Exists(secretsPath))
+        var secretsPaths = new[]
+        {
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "secrets.json"),
+            Path.Combine(Directory.GetCurrentDirectory(), "secrets.json")
+        };
+        var secretsPath = Array.Find(secretsPaths, File.Exists);
+        if (secretsPath != null)
         {
             builder.Configuration.AddJsonFile(secretsPath, optional: false, reloadOnChange: false);
             AppLogger.LogStart("[8U-M2] Secretos cargados desde secrets.json (ACL restrictiva).");
@@ -66,6 +71,8 @@ try
             kestrel.ListenAnyIP(httpsPort, listen => listen.UseHttps(httpsCert));
         }
     });
+
+    builder.Services.AddSingleton(new Backend.API.Services.HttpsRuntimeInfo(httpsCert != null, httpPort, httpsPort));
 
     if (httpsCert != null)
     {

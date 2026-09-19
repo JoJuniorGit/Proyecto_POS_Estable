@@ -11,11 +11,13 @@ public class PairingController : ControllerBase
 {
     private readonly INetworkDiscoveryService _networkDiscoveryService;
     private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
+    private readonly HttpsRuntimeInfo _httpsRuntimeInfo;
 
-    public PairingController(INetworkDiscoveryService networkDiscoveryService, Microsoft.Extensions.Configuration.IConfiguration configuration)
+    public PairingController(INetworkDiscoveryService networkDiscoveryService, Microsoft.Extensions.Configuration.IConfiguration configuration, HttpsRuntimeInfo httpsRuntimeInfo)
     {
         _networkDiscoveryService = networkDiscoveryService;
         _configuration = configuration;
+        _httpsRuntimeInfo = httpsRuntimeInfo;
     }
 
     /// <summary>
@@ -65,12 +67,10 @@ public class PairingController : ControllerBase
             });
         }
 
-        bool isHttps = Request.IsHttps 
-            || System.IO.File.Exists(System.IO.Path.Combine(AppContext.BaseDirectory, "pos-https.pfx"))
-            || System.IO.File.Exists("pos-https.pfx");
+        bool isHttps = _httpsRuntimeInfo.Enabled || Request.IsHttps;
 
-        int httpPort = Request.Host.Port ?? 5000;
-        int httpsPort = Request.Host.Port ?? 5001;
+        int httpPort = _httpsRuntimeInfo.HttpPort;
+        int httpsPort = _httpsRuntimeInfo.HttpsPort;
         try 
         {
             if (_configuration != null) 
