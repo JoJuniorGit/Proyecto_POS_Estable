@@ -28,6 +28,7 @@ public partial class ProductsController : ControllerBase
     {
     }
 
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public ProductsController(IInventoryService inventoryService, IProductManagementService? productManagementService, ICurrentUserService currentUserService)
     {
         _inventoryService = inventoryService;
