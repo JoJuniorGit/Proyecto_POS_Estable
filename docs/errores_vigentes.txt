@@ -9,18 +9,18 @@ Nota: docs/reporte.txt se conserva 100% intacto como archivo histórico de traza
 
 RESUMEN EJECUTIVO DE ESTADO:
 --------------------------------------------------------------------------------
-Auditoría de código (AUD): 3 hallazgos activos (AUD-13, AUD-22, AUD-23); 19 resueltos/cerrados (AUD-01..AUD-12, AUD-15..AUD-21) y 1 resuelto parcial (AUD-14)
+Auditoría de código (AUD): 2 hallazgos activos (AUD-22, AUD-23); 20 resueltos/cerrados (AUD-01..AUD-13, AUD-15..AUD-21) y 1 resuelto parcial (AUD-14)
 - Código Muerto: 0 activos (AUD-01, AUD-02, AUD-03, AUD-17 resueltos)
 - Malas Prácticas / Violaciones a Normas: 2 activos (AUD-22, AUD-23); resueltos (AUD-05..AUD-11, AUD-15, AUD-16, AUD-18..AUD-21)
-- Oportunidades de Optimización: 1 activo (AUD-13) y 1 resuelto parcial (AUD-14)
+- Oportunidades de Optimización: 0 activos y 1 resuelto parcial (AUD-14)
 
 Auditoría de costuras (SEAM, ANEXO 8.142 sección H): 0 hallazgos activos; 5 resueltos (SEAM-01..SEAM-05)
 - Uniones entre capas sin verificación automática: ninguna activa (SEAM-01 cerrado: ClientHttpContractTests)
 
 Residuales e infraestructura (INFRA): 3 registros (INFRA-01..INFRA-03; INFRA-01 activo, INFRA-02/03 informativos)
 
-TOTAL REGISTROS ACTIVOS: 6 (3 AUD + 0 SEAM + 3 INFRA; AUD-14 queda como resuelto parcial)
-- Defectos de código activos en sentido estricto: 3 (AUD-13, AUD-22 y AUD-23)
+TOTAL REGISTROS ACTIVOS: 5 (2 AUD + 0 SEAM + 3 INFRA; AUD-14 queda como resuelto parcial)
+- Defectos de código activos en sentido estricto: 2 (AUD-22 y AUD-23)
 - INFRA: 3 registros (1 activo operativo, INFRA-01; 2 informativos, INFRA-02 e INFRA-03)
 
 Equivalencias (mismo hallazgo; no duplicar trabajo):
@@ -361,7 +361,7 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 --------------------------------------------------------------------------------
 
 [AUD-13] MEDIA — Métodos con complejidad ciclomática elevada (> 10 McCabe) y violación de SRP (Deuda D2)
-- Estado: ACTIVO
+- Estado: CERRADO (bec8b10 + 3782066)
 - Severidad: MEDIA
 - Ubicación:
   * Sales.Module/Services/SalesService.cs (`AddItemAsync`)
@@ -371,6 +371,15 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 - Regla: docs/coding-guidelines-core.md §1.1 C ("Complejidad Ciclomática (McCabe): Máximo 10 por método").
 - Descripción: Los métodos señalados concentran múltiples responsabilidades (validaciones de negocio, cálculo financiero, orquestación de inventario y persistencia), superando el umbral de complejidad ciclomática de 10.
 - Recomendación: Descomponer los flujos en clases parciales o sub-servicios inyectados especializados.
+- Cierre (esta unidad de trabajo, guards-first): 15 pins de comportamiento antes de tocar producción
+  (7 en `CommandCenter.Tests/Unit/CashDrawerRateAnchorTests.cs`, 3 en `Unit/SalesCheckoutControllerPinsTests.cs`,
+  +3 en `PriceListTests.Products.cs`, +2 en `Unit/ProductVariantsTests.ConversionFactor.cs`) y descomposición por
+  extracción de helpers (guard clauses + flujo por tipo de producto/ítem). McCabe con la convención del repo:
+  `AddItemAsync` ~32→6, `CreateProductAsync` ~17→7, `UpdateProductAsync` ~29→4, `CompleteSaleAsync` ~24→5,
+  `ResolveAnchoredRateAsync` ~10→4 (máximo helper resultante: 9). Evidencia: build Release 0/0 y suite
+  1.436/1.436; verificación independiente `pass` (bec8b10). Follow-up `3782066`: `InventoryService.ProductCrud.cs`
+  excedía el máximo de 500 líneas (533) y el flujo de update se separó a `InventoryService.ProductUpdates.cs`
+  (338 + 204 líneas; move byte-fiel verificado).
 
 --------------------------------------------------------------------------------
 
@@ -402,8 +411,9 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
   método/ruta de cada call site HTTP restante del cliente WPF al template y atributos del controller
   (regex por placeholder, constraints `:x` soportadas, query keys bindeables vía reflexión, set exacto) +
   12 guardas de shape camelCase; incluye `PairingQrViewModel`. Excepciones documentadas: `SubnetScannerService`
-  (hosts LAN arbitrarios), hub SignalR de exchange-rate y métodos de import sin HTTP. Con la extensión del
-  catálogo en entity-boundary-cleanup (`ProductServiceQueryContractTests`), no quedan call sites sin guarda.
+  (hosts LAN arbitrarios), hub SignalR de exchange-rate y métodos de import sin HTTP. Cobertura completa: la
+  extensión del catálogo en entity-boundary-cleanup (`ProductServiceQueryContractTests`) más la corrección de
+  `b945c54` (15 facts: rutas, verbos y query keys de los 14 call sites de ProductService que seguían sin ancla).
 
 --------------------------------------------------------------------------------
 
