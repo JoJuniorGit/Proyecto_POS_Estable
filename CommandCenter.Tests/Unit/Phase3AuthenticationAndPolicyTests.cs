@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
+using Sales.Module.Services;
 using Xunit;
 
 namespace CommandCenter.Tests.Unit;
@@ -134,7 +135,7 @@ public class Phase3AuthenticationAndPolicyTests
         await context.SaveChangesAsync();
 
         var tokenServiceMock = new Mock<ITokenService>();
-        var authController = new AuthController(context, tokenServiceMock.Object, _policyService);
+        var authController = new AuthController(new AuthService(context, _policyService), tokenServiceMock.Object);
 
         var request = new ChangePasswordRequest
         {
@@ -168,7 +169,7 @@ public class Phase3AuthenticationAndPolicyTests
 
         var tokenServiceMock = new Mock<ITokenService>();
         var stampValidatorMock = new Mock<ISecurityStampValidator>();
-        var authController = new AuthController(context, tokenServiceMock.Object, _policyService, stampValidatorMock.Object);
+        var authController = new AuthController(new AuthService(context, _policyService), tokenServiceMock.Object, stampValidatorMock.Object);
 
         var request = new ChangePasswordRequest
         {
@@ -280,7 +281,7 @@ public class Phase3AuthenticationAndPolicyTests
         context.Users.Add(user);
         await context.SaveChangesAsync();
 
-        var controller = new AuthController(context, Mock.Of<ITokenService>(), _policyService)
+        var controller = new AuthController(new AuthService(context, _policyService), Mock.Of<ITokenService>())
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };

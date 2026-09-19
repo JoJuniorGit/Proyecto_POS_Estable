@@ -141,7 +141,7 @@ public class Phase1SecurityRemediationTests
         var config = CreateMockConfiguration();
         var tokenService = new TokenService(config);
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
 
         // Act: Non-existent user
         var responseNonExistent = await controller.Login(new LoginRequest

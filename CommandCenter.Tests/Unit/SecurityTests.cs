@@ -74,6 +74,20 @@ public class SecurityTests
     }
 
     [Fact]
+    public void AuthController_Does_Not_Depend_On_SalesDbContext()
+    {
+        // AUD-04: the controller must stay thin; authentication persistence lives in IAuthService.
+        var constructorParameterTypes = typeof(AuthController)
+            .GetConstructors()
+            .SelectMany(c => c.GetParameters())
+            .Select(p => p.ParameterType)
+            .ToList();
+
+        Assert.DoesNotContain(typeof(SalesDbContext), constructorParameterTypes);
+        Assert.Contains(typeof(IAuthService), constructorParameterTypes);
+    }
+
+    [Fact]
     public void ProductsController_Mutating_Actions_Are_Decorated_With_Admin_Or_Manager_Role()
     {
         var type = typeof(ProductsController);
@@ -188,7 +202,7 @@ public class SecurityTests
         await db.SaveChangesAsync();
 
         var mockTokenService = new Mock<ITokenService>();
-        var controller = new AuthController(db, mockTokenService.Object);
+        var controller = new AuthController(new AuthService(db), mockTokenService.Object);
 
         var result = await controller.Login(new LoginRequest { Cedula = "V-12345678", Password = testPassword });
         var unauthorizedResult = result.Result as UnauthorizedObjectResult;

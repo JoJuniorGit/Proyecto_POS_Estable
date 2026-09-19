@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Sales.Module.Data;
+using Sales.Module.Services;
 using Xunit;
 
 namespace CommandCenter.Tests.Unit;
@@ -62,7 +63,7 @@ public class Phase1SecurityHardeningTests
         context.Users.Add(testUser);
         await context.SaveChangesAsync();
 
-        var controller = new AuthController(context, tokenService, stampValidator: null);
+        var controller = new AuthController(new AuthService(context), tokenService, stampValidator: null);
 
         // Act: 4 failed attempts
         for (int i = 1; i <= 4; i++)
@@ -128,7 +129,7 @@ public class Phase1SecurityHardeningTests
         context.Users.Add(testUser);
         await context.SaveChangesAsync();
 
-        var controller = new AuthController(context, tokenService, stampValidator: null);
+        var controller = new AuthController(new AuthService(context), tokenService, stampValidator: null);
 
         // Act: Successfully change password
         var result = await controller.ChangePassword(new ChangePasswordRequest

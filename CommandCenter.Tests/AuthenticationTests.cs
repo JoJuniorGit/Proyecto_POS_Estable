@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Sales.Module.Data;
+using Sales.Module.Services;
 using Xunit;
 
 namespace CommandCenter.Tests;
@@ -106,7 +107,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var response = await controller.Login(new LoginRequest
         {
             Cedula = "V-99999999",
@@ -140,7 +141,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var response = await controller.Login(new LoginRequest
         {
             Cedula = "V-88888888",
@@ -170,7 +171,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var response = await controller.Login(new LoginRequest
         {
             Cedula = "V-77777777",
@@ -200,7 +201,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var response = await controller.Login(new LoginRequest
         {
             Cedula = "V-66666666",
@@ -287,7 +288,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var httpContext = new DefaultHttpContext();
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
@@ -334,7 +335,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var httpContext = new DefaultHttpContext();
         SetRequestScheme(httpContext, isHttps: true);
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
@@ -373,7 +374,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var httpContext = new DefaultHttpContext();
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
@@ -406,7 +407,7 @@ public class AuthenticationTests
         var config = GetMockConfiguration();
         var tokenService = new TokenService(config);
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var httpContext = new DefaultHttpContext();
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
@@ -426,7 +427,7 @@ public class AuthenticationTests
         var config = GetMockConfiguration();
         var tokenService = new TokenService(config);
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var httpContext = new DefaultHttpContext();
         SetRequestScheme(httpContext, isHttps: true);
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
@@ -462,7 +463,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var httpContext = new DefaultHttpContext();
         SetRequestScheme(httpContext, isHttps);
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };

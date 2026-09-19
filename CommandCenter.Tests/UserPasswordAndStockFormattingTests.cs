@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using Sales.Module.Data;
+using Sales.Module.Services;
 using System;
 using System.Globalization;
 using System.Security.Claims;
@@ -422,7 +423,7 @@ public class UserPasswordAndStockFormattingTests
         var mockTokenService = new Mock<ITokenService>();
         mockTokenService.Setup(t => t.GenerateToken(It.IsAny<User>(), It.IsAny<string>())).Returns("fake-jwt-token");
 
-        var authController = new AuthController(context, mockTokenService.Object);
+        var authController = new AuthController(new AuthService(context), mockTokenService.Object);
 
         // Login with lowercase "supervisor_general"
         var request = new LoginRequest
@@ -456,7 +457,7 @@ public class UserPasswordAndStockFormattingTests
         await context.SaveChangesAsync();
 
         var mockTokenService = new Mock<ITokenService>();
-        var authController = new AuthController(context, mockTokenService.Object);
+        var authController = new AuthController(new AuthService(context), mockTokenService.Object);
 
         // Login with all lowercase password (mismatch case)
         var request = new LoginRequest
