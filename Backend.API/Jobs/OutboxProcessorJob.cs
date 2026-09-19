@@ -216,7 +216,7 @@ return totalPurged;
                 var staleThreshold = now - StaleDispatchThreshold;
                 messages = await dbContext.OutboxMessages
                     .Where(m =>
-                        (m.Status == "Pending" && m.NextRetryUtc <= now)
+                        (m.Status == OutboxMessage.PendingStatus && m.NextRetryUtc <= now)
                         || (m.Status == "Dispatching" && m.DispatchedAtUtc.HasValue && m.DispatchedAtUtc.Value < staleThreshold))
                     .OrderBy(m => m.CreatedAtUtc)
                     .Take(20)
@@ -259,7 +259,7 @@ return totalPurged;
                         message.ErrorMessage = ex.Message;
                         // 8.16-H07: el claim puso el mensaje en Dispatching; al fallar se revierte a
                         // Pending para que el siguiente ciclo (ya con backoff cumplido) lo reintente.
-                        message.Status = "Pending";
+                        message.Status = OutboxMessage.PendingStatus;
                         _logger.LogWarning(ex, "[OutboxProcessor] Error al despachar mensaje {MessageId} (Intento {Attempt}/5). Próximo reintento en {Delay}s.",
                             message.Id, message.RetryCount, delaySeconds);
                     }

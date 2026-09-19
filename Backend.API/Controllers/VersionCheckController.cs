@@ -1,4 +1,5 @@
 using System;
+using Backend.API.DTOs;
 using Core.Configuration;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -30,13 +31,13 @@ public class VersionCheckController : ControllerBase
         // Los clientes nuevos (Desktop/Web) siempre envían X-Client-Platform.
         if (string.IsNullOrWhiteSpace(clientPlatform))
         {
-            return Ok(new
+            return Ok(new VersionCheckResponseDto
             {
-                serverVersion = "*",
-                minimumClientVersion = "*",
-                updateServerUrl = (string?)null,
-                clientVersionReceived = clientVersion ?? "0.0.0",
-                isClientCompatible = true
+                ServerVersion = "*",
+                MinimumClientVersion = "*",
+                UpdateServerUrl = null,
+                ClientVersionReceived = clientVersion ?? "0.0.0",
+                IsClientCompatible = true
             });
         }
 
@@ -48,13 +49,13 @@ public class VersionCheckController : ControllerBase
             isCompatible = clientVer >= minVer;
         }
 
-        return Ok(new
+        return Ok(new VersionCheckResponseDto
         {
-            serverVersion = settings.ServerVersion,
-            minimumClientVersion = settings.MinimumClientVersion,
-            updateServerUrl = settings.UpdateServerUrl,
-            clientVersionReceived = clientVersion ?? "0.0.0",
-            isClientCompatible = isCompatible
+            ServerVersion = settings.ServerVersion,
+            MinimumClientVersion = settings.MinimumClientVersion,
+            UpdateServerUrl = settings.UpdateServerUrl,
+            ClientVersionReceived = clientVersion ?? "0.0.0",
+            IsClientCompatible = isCompatible
         });
     }
 }

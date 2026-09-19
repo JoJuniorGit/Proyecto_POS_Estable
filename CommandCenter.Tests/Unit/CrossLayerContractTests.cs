@@ -45,7 +45,7 @@ public class CrossLayerContractTests
         // El indice parcial IX_OutboxMessages_Status_NextRetryUtc filtra por el literal 'Pending'.
         // Si el valor por defecto o el que escribe el job dejan de coincidir con ese literal, los
         // mensajes quedan sin procesar o el planner pierde el indice.
-        Assert.Equal("Pending", new Core.Entities.OutboxMessage().Status);
+        Assert.Equal(Core.Entities.OutboxMessage.PendingStatus, new Core.Entities.OutboxMessage().Status);
 
         var (context, connection) = TestDatabaseFactory.CreateSqliteSalesDbContext();
         using (connection)
@@ -58,7 +58,7 @@ public class CrossLayerContractTests
                 .FirstOrDefault(value => !string.IsNullOrEmpty(value));
 
             Assert.NotNull(filter);
-            Assert.Contains("Pending", filter!);
+            Assert.Contains(Core.Entities.OutboxMessage.PendingStatus, filter!);
         }
     }
 

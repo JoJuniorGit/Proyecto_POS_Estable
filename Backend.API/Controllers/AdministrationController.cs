@@ -1,3 +1,4 @@
+using Backend.API.DTOs;
 using Backend.API.Services;
 using Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -37,6 +38,6 @@ public class AdministrationController : ControllerBase
                 "Se ignoró la petición para evitar reinicios simultáneos.");
         }
 
-        return Accepted(new { Status = "restarting", Service = "PosBackendService" });
+        return Accepted(new RestartSystemResponseDto { Status = "restarting", Service = "PosBackendService" });
     }
 }
