@@ -151,6 +151,7 @@ modelBuilder.Entity<User>().HasData(
 
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitPriceBsS).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<SaleItem>().Property(i => i.SubtotalBsS).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<SaleItem>().Property(i => i.UnitCostUSD).HasColumnType("decimal(18,2)");
 
         modelBuilder.Entity<SalePayment>().Property(p => p.AmountBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<SalePayment>().Property(p => p.ExchangeRate).HasColumnType("decimal(18,4)");

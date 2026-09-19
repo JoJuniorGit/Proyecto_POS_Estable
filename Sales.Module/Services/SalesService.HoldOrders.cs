@@ -370,6 +370,7 @@ public partial class SalesService
                     ProductId = reqItem.ProductId,
                     ProductName = productName,
                     Quantity = adjustedQty,
+                    UnitCostUSD = product.CostPriceUSD,
                     UnitPrice = unitPriceUsd,
                     UnitPriceBsS = unitPriceBsS,
                     Subtotal = subtotalUsd,

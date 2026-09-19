@@ -129,6 +129,7 @@ public partial class SalesService
             ProductId = productId,
             ProductName = $"Adelanto de Efectivo ({paymentMethodName})",
             Quantity = 1m,
+            UnitCostUSD = 0m,
             UnitPrice = totalChargedUSD,
             Subtotal = totalChargedUSD,
             UnitPriceBsS = totalChargedLocal,

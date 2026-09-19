@@ -243,6 +243,7 @@ public partial class SalesService : ISalesService
                     UnitPrice = Math.Round(customUnitPriceUsd.Value, 4),
                     UnitPriceBsS = customUnitPriceLocal.HasValue ? Math.Round(customUnitPriceLocal.Value, 4) : 0,
                     Quantity = quantity,
+                    UnitCostUSD = product?.CostPriceUSD,
                     IsCustomPrice = true
                 };
                 sale.Items.Add(item);
@@ -283,6 +284,7 @@ public partial class SalesService : ISalesService
                 UnitPrice = Math.Round(grossPrice, 4),
                 UnitPriceBsS = Math.Round(grossPriceBsS, 4),
                 Quantity = quantity,
+                UnitCostUSD = fetchedProduct.CostPriceUSD,
                 IsCustomPrice = customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue
             };
             sale.Items.Add(item);
