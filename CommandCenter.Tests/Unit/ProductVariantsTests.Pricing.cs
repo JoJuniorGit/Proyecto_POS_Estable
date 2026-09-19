@@ -50,7 +50,7 @@ public partial class ProductVariantsTests
 
         mockProductService.Setup(s => s.GetParentsAsync()).ReturnsAsync(new List<ProductDto> { parent });
 
-        var newProduct = new Product
+        var newProduct = new ProductDto
         {
             CostPriceUSD = 3.00m,
             ProfitMarginRetail = 20m,
@@ -105,7 +105,7 @@ public partial class ProductVariantsTests
 
         mockProductService.Setup(s => s.GetParentsAsync()).ReturnsAsync(new List<ProductDto> { parent });
 
-        var initialProduct = new Product
+        var initialProduct = new ProductDto
         {
             CostPriceUSD = 2.50m,
             ProfitMarginRetail = 30m,
@@ -153,7 +153,7 @@ public partial class ProductVariantsTests
 
         mockProductService.Setup(s => s.GetParentsAsync()).ReturnsAsync(new List<ProductDto> { parentA, parentB });
 
-        var initialProduct = new Product { CostPriceUSD = 5m, ProfitMarginRetail = 20m, PriceRetailUSD = 6m };
+        var initialProduct = new ProductDto { CostPriceUSD = 5m, ProfitMarginRetail = 20m, PriceRetailUSD = 6m };
         var vm = new Desktop.Client.ViewModels.ProductDialogViewModel(mockProductService.Object, mockExchangeRate.Object, initialProduct);
         await vm.LoadMetadataAsync();
 
@@ -206,7 +206,7 @@ public partial class ProductVariantsTests
         Assert.Equal("Queso Llanero", vmNew.ResultProduct.Name);
 
         // 2. Edit an existing product with Lt
-        var existing = new Product
+        var existing = new ProductDto
         {
             Id = 42,
             Name = "Aceite de Oliva 1L",

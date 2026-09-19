@@ -21,12 +21,13 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
     private readonly IExchangeRateService _exchangeRateService;
     private CancellationTokenSource? _skuDebounceCts;
     private CancellationTokenSource? _skuCancellationTokenSource;
-    private readonly Product? _initialProduct;
+    private readonly ProductDto? _initialProduct;
     private readonly IDialogService? _dialogService;
     private readonly IDispatcherInvoker _dispatcherInvoker;
 
     public Action<bool>? RequestClose;
-    public Product ResultProduct { get; private set; }
+    public CreateProductDto ResultProduct { get; private set; }
+    public int ResultProductId { get; private set; }
     public UserSession? UserSession { get; }
 
     [ObservableProperty]
@@ -100,7 +101,7 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
     public ObservableCollection<Core.Entities.UnitOfMeasureType> UnitOfMeasureTypes { get; } = new(Enum.GetValues<Core.Entities.UnitOfMeasureType>());
     public ObservableCollection<string> UnitOfMeasures { get; } = new ObservableCollection<string>();
 
-    public ProductDialogViewModel(IProductService productService, IExchangeRateService exchangeRateService, Product? product = null, UserSession? userSession = null, IDialogService? dialogService = null, IDispatcherInvoker? dispatcherInvoker = null)
+    public ProductDialogViewModel(IProductService productService, IExchangeRateService exchangeRateService, ProductDto? product = null, UserSession? userSession = null, IDialogService? dialogService = null, IDispatcherInvoker? dispatcherInvoker = null)
     {
         _productService = productService;
         _exchangeRateService = exchangeRateService;
@@ -111,7 +112,7 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
 
         IsEditMode = product != null;
         DialogTitle = IsEditMode ? "Editar Producto" : "Nuevo Producto";
-        ResultProduct = new Product { IsActive = true };
+        ResultProduct = new CreateProductDto { IsActive = true };
 
         if (_initialProduct != null)
         {
@@ -413,9 +414,7 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
         if (IsGroupHeader && HasIndependentPricing)
         {
             ResultProduct.CostPriceUSD = 0m;
-            ResultProduct.Cost = 0m;
             ResultProduct.ProfitMarginRetail = 0m;
-            ResultProduct.ProfitPercentage = 0m;
             ResultProduct.PriceRetailUSD = 0m;
             ResultProduct.PriceUSD = 0m;
             ResultProduct.HasWholesale = false;
@@ -427,9 +426,7 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
         else
         {
             ResultProduct.CostPriceUSD = CostPriceUSD;
-            ResultProduct.Cost = CostPriceUSD;
             ResultProduct.ProfitMarginRetail = ProfitMarginRetail;
-            ResultProduct.ProfitPercentage = ProfitMarginRetail;
             ResultProduct.PriceRetailUSD = PriceRetailUSD;
             ResultProduct.PriceUSD = PriceRetailUSD;
             ResultProduct.HasWholesale = HasWholesale;
@@ -476,14 +473,8 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
 
         if (_initialProduct != null)
         {
-            ResultProduct.Id = _initialProduct.Id;
+            ResultProductId = _initialProduct.Id;
             ResultProduct.IsActive = _initialProduct.IsActive;
-            ResultProduct.ReservedQuantity = (IsCashAdvance || (IsGroupHeader && !IsStockShared) || isSharedChild) ? 0m : _initialProduct.ReservedQuantity;
-
-            if (IsEditMode)
-            {
-                ResultProduct.StockQuantity = (IsGroupHeader && !IsStockShared) ? 0m : _initialProduct.StockQuantity;
-            }
         }
 
         RequestClose?.Invoke(true);

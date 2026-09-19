@@ -47,11 +47,11 @@ public partial class ProductVariantsTests
 
         mockProductService.Setup(s => s.GetVariantsAsync(50)).ReturnsAsync(new List<ProductDto> { variant1, variant2 });
 
-        var entity1 = new Product { Id = 51, Name = "Botella 330ml", ConversionFactor = 1.0m, ParentProductId = 50 };
-        var entity2 = new Product { Id = 52, Name = "Six Pack", ConversionFactor = 6.0m, ParentProductId = 50 };
+        var variant1Dto = new ProductDto { Id = 51, Name = "Botella 330ml", ConversionFactor = 1.0m, ParentProductId = 50, IsActive = true };
+        var variant2Dto = new ProductDto { Id = 52, Name = "Six Pack", ConversionFactor = 6.0m, ParentProductId = 50, IsActive = true };
 
-        mockProductService.Setup(s => s.GetByIdAsync(51)).ReturnsAsync(entity1);
-        mockProductService.Setup(s => s.GetByIdAsync(52)).ReturnsAsync(entity2);
+        mockProductService.Setup(s => s.GetByIdAsync(51)).ReturnsAsync(variant1Dto);
+        mockProductService.Setup(s => s.GetByIdAsync(52)).ReturnsAsync(variant2Dto);
 
         var vm = new Desktop.Client.ViewModels.VariantManagementViewModel(
             mockProductService.Object,
@@ -68,7 +68,7 @@ public partial class ProductVariantsTests
 
         await vm.SaveBatchAsync();
 
-        mockProductService.Verify(s => s.UpdateAsync(It.Is<Product>(p => p.Id == 52 && p.ConversionFactor == 8.0m)), Times.Once);
+        mockProductService.Verify(s => s.UpdateAsync(It.Is<UpdateProductDto>(p => p.Id == 52 && p.ConversionFactor == 8.0m)), Times.Once);
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = new Product
+        var parent = new CreateProductDto
         {
             Name = "Zapato Deportivo Varias Tallas",
             IsGroupHeader = true,
@@ -122,7 +122,7 @@ public partial class ProductVariantsTests
             PriceWholesaleUSD = 80.00m
         };
 
-        var created = await service.CreateProductAsync(parent);
+        var created = await service.CreateProductFromDtoAsync(parent);
 
         Assert.NotNull(created);
         Assert.True(created.IsGroupHeader);
@@ -144,15 +144,15 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = new Product
+        var parent = new CreateProductDto
         {
             Name = "Zapato Deportivo Varias Tallas",
             IsGroupHeader = true,
             HasIndependentPricing = true
         };
-        var savedParent = await service.CreateProductAsync(parent);
+        var savedParent = await service.CreateProductFromDtoAsync(parent);
 
-        var variant = new Product
+        var variant = new CreateProductDto
         {
             Name = "Zapato Deportivo Talla 42",
             SKU = "7590001112223",
@@ -162,11 +162,11 @@ public partial class ProductVariantsTests
             ProfitMarginRetail = 116.67m,
             StockQuantity = 10m
         };
-        var savedVariant = await service.CreateProductAsync(variant);
+        var savedVariant = await service.CreateProductFromDtoAsync(variant);
 
         // Actualizar el nombre del padre
         savedParent.Name = "Zapato Deportivo Edición 2026";
-        await service.UpdateProductAsync(savedParent);
+        await service.UpdateProductFromDtoAsync(savedParent.Id, savedParent.ToUpdateProductDto());
 
         var refreshedVariant = await db.Products.FindAsync(savedVariant.Id);
         Assert.NotNull(refreshedVariant);
@@ -181,18 +181,18 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = new Product
+        var parent = new CreateProductDto
         {
             Name = "Camisa Polo Colores",
             IsGroupHeader = true,
             HasIndependentPricing = true
         };
-        var savedParent = await service.CreateProductAsync(parent);
+        var savedParent = await service.CreateProductFromDtoAsync(parent);
 
         // Intentar cambiar HasIndependentPricing de true a false
         savedParent.HasIndependentPricing = false;
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateProductAsync(savedParent));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateProductFromDtoAsync(savedParent.Id, savedParent.ToUpdateProductDto()));
         Assert.Contains("No se permite cambiar las banderas", ex.Message);
     }
 
@@ -273,14 +273,14 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = new Product
+        var parent = new CreateProductDto
         {
             Name = "Huevos Tipo A Pool",
             IsGroupHeader = true,
             IsStockShared = true,
             StockQuantity = 100m
         };
-        var savedParent = await service.CreateProductAsync(parent);
+        var savedParent = await service.CreateProductFromDtoAsync(parent);
 
         await service.AdjustStockAsync(savedParent.Id, 50m, "Reabastecimiento de bodega central");
 
@@ -300,13 +300,13 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = new Product
+        var parent = new CreateProductDto
         {
             Name = "Camisa Polo Tallas",
             IsGroupHeader = true,
             IsStockShared = false
         };
-        var savedParent = await service.CreateProductAsync(parent);
+        var savedParent = await service.CreateProductFromDtoAsync(parent);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.AdjustStockAsync(savedParent.Id, 10m, "Intento de ajuste directo en padre"));
@@ -321,23 +321,23 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = new Product
+        var parent = new CreateProductDto
         {
             Name = "Cerveza Artesanal Pool",
             IsGroupHeader = true,
             IsStockShared = true,
             StockQuantity = 500m
         };
-        var savedParent = await service.CreateProductAsync(parent);
+        var savedParent = await service.CreateProductFromDtoAsync(parent);
 
-        var variant = new Product
+        var variant = new CreateProductDto
         {
             Name = "Cerveza Six Pack",
             SKU = "7598889990001",
             ParentProductId = savedParent.Id,
             ConversionFactor = 6.0m
         };
-        var savedVariant = await service.CreateProductAsync(variant);
+        var savedVariant = await service.CreateProductFromDtoAsync(variant);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.AdjustStockAsync(savedVariant.Id, 2m, "Intento de ajuste directo en six pack"));

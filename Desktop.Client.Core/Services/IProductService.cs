@@ -1,4 +1,4 @@
-using Core.Entities;
+using Core.DTOs;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -6,9 +6,9 @@ namespace Desktop.Client.Services;
 
 public interface IProductService
 {
-    Task<Product?> GetByIdAsync(int id);
-    Task<Product> CreateAsync(Product product);
-    Task UpdateAsync(Product product);
+    Task<ProductDto?> GetByIdAsync(int id);
+    Task<ProductDto> CreateAsync(CreateProductDto dto);
+    Task UpdateAsync(UpdateProductDto dto);
     Task SetStatusAsync(int id, bool isActive, bool isDeleted);
     Task<string> DeleteAsync(int id, bool hardDelete = false);
     Task RestoreAsync(int id);

@@ -81,7 +81,7 @@ public partial class ProductVariantsTests
         mockExchangeRate.Setup(e => e.CurrentRate).Returns(36.50m);
         mockProductService.Setup(s => s.GetParentsAsync()).ReturnsAsync(new List<ProductDto>());
 
-        var existingGroup = new Product
+        var existingGroup = new ProductDto
         {
             Id = 55,
             Name = "Refrescos 2L (Grupo)",
@@ -108,7 +108,7 @@ public partial class ProductVariantsTests
 
         Assert.True(closed);
         Assert.True(vm.ResultProduct.IsGroupHeader);
-        Assert.Equal(55, vm.ResultProduct.Id);
+        Assert.Equal(55, vm.ResultProductId);
         Assert.Equal("Refrescos 2L (Grupo)", vm.ResultProduct.Name);
     }
 
@@ -120,7 +120,7 @@ public partial class ProductVariantsTests
         var mockDialogService = new Mock<Desktop.Client.Services.IDialogService>();
         mockExchangeRate.Setup(e => e.CurrentRate).Returns(36.50m);
 
-        var existingGroup = new Product
+        var existingGroup = new ProductDto
         {
             Id = 55,
             Name = "Refrescos 2L (Grupo)",
@@ -150,7 +150,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(invDb, userMock.Object);
 
-        var parent = await service.CreateProductAsync(new Product
+        var parent = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Galletas Surtidas",
             IsGroupHeader = true,
@@ -158,7 +158,7 @@ public partial class ProductVariantsTests
             StockQuantity = 0m
         });
 
-        await service.CreateProductAsync(new Product
+        await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Galletas Chocolate",
             SKU = "99001",
@@ -168,7 +168,7 @@ public partial class ProductVariantsTests
 
         parent.IsGroupHeader = false;
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateProductAsync(parent));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateProductFromDtoAsync(parent.Id, parent.ToUpdateProductDto()));
         Assert.Contains("No se puede desmarcar el grupo", ex.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("variantes asociadas", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -180,7 +180,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(invDb, userMock.Object);
 
-        var created = await service.CreateProductAsync(new Product
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Helados 1L",
             IsGroupHeader = true,
@@ -203,7 +203,7 @@ public partial class ProductVariantsTests
             new ProductDto { Id = 11, Name = "Variante 1", ParentProductId = 10, IsDeleted = false }
         });
 
-        var existingGroup = new Product
+        var existingGroup = new ProductDto
         {
             Id = 10,
             Name = "Jugos 1L (Grupo)",
@@ -252,7 +252,7 @@ public partial class ProductVariantsTests
             new ProductDto { Id = 21, Name = "Variante A", ParentProductId = 20, IsDeleted = false }
         });
 
-        var existingGroup = new Product { Id = 20, Name = "Grupo A", IsGroupHeader = true, SKU = "GRP-20" };
+        var existingGroup = new ProductDto { Id = 20, Name = "Grupo A", IsGroupHeader = true, SKU = "GRP-20" };
         var vm = new Desktop.Client.ViewModels.ProductDialogViewModel(mockProductService.Object, mockExchangeRate.Object, existingGroup);
         await vm.LoadMetadataAsync();
 
@@ -306,7 +306,7 @@ public partial class ProductVariantsTests
         };
         mockProductService.Setup(s => s.GetParentsAsync()).ReturnsAsync(new List<ProductDto> { parentDto });
 
-        var initial = new Product
+        var initial = new ProductDto
         {
             Id = 5,
             Name = "Chupeta",

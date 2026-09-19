@@ -1,4 +1,4 @@
-using Core.Entities;
+using Core.DTOs;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -15,7 +15,7 @@ public class ProductService : IProductService
         _httpClient = httpClient;
     }
 
-    public async Task<Product?> GetByIdAsync(int id)
+    public async Task<ProductDto?> GetByIdAsync(int id)
     {
         var response = await _httpClient.GetAsync($"api/products/{id}");
         if (!response.IsSuccessStatusCode)
@@ -24,25 +24,25 @@ public class ProductService : IProductService
             throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
         var rawJson = await response.Content.ReadAsStringAsync();
-        return System.Text.Json.JsonSerializer.Deserialize<Product>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        return System.Text.Json.JsonSerializer.Deserialize<ProductDto>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
     }
 
-    public async Task<Product> CreateAsync(Product product)
+    public async Task<ProductDto> CreateAsync(CreateProductDto dto)
     {
-        var response = await _httpClient.PostAsJsonAsync("api/products", product);
+        var response = await _httpClient.PostAsJsonAsync("api/products", dto);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
             throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
         var rawJson = await response.Content.ReadAsStringAsync();
-        var created = System.Text.Json.JsonSerializer.Deserialize<Product>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        var created = System.Text.Json.JsonSerializer.Deserialize<ProductDto>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         return created ?? throw new System.Exception("No se pudo deserializar el producto devuelto.");
     }
 
-    public async Task UpdateAsync(Product product)
+    public async Task UpdateAsync(UpdateProductDto dto)
     {
-        var response = await _httpClient.PutAsJsonAsync($"api/products/{product.Id}", product);
+        var response = await _httpClient.PutAsJsonAsync($"api/products/{dto.Id}", dto);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();

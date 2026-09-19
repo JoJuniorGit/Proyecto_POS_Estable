@@ -58,7 +58,7 @@ public partial class ProductVariantsTests
 
         mockProductService.Setup(s => s.GetParentsAsync()).ReturnsAsync(parents);
 
-        var existingVariant = new Product
+        var existingVariant = new ProductDto
         {
             Id = 105,
             Name = "Jugo 1L Naranja",

@@ -1,7 +1,6 @@
 using CommunityToolkit.Mvvm.Input;
 using Core.Common;
 using Core.DTOs;
-using Core.Entities;
 using Desktop.Client.Services;
 using System;
 using System.Threading.Tasks;
@@ -22,11 +21,12 @@ public partial class InventoryViewModel
             var product = await _productService.GetByIdAsync(item.Id);
             if (product != null)
             {
-                var dto = item.GetDto();
-                product.ProfitPercentage = dto.ProfitPercentage;
-                product.PriceUSD = dto.PriceUSD;
-                product.PriceBsS = dto.PriceBsS;
-                await _productService.UpdateAsync(product);
+                var changed = item.GetDto();
+                var dto = ProductClientMapping.ToUpdateProductDto(product);
+                dto.ProfitMarginRetail = changed.ProfitPercentage;
+                dto.PriceUSD = changed.PriceUSD;
+                dto.PriceBsS = changed.PriceBsS;
+                await _productService.UpdateAsync(dto);
             }
         }
         catch (Exception ex)
@@ -143,10 +143,9 @@ public partial class InventoryViewModel
             try
             {
                 var createdProduct = await _productService.CreateAsync(dialogVm.ResultProduct);
-                var newDto = MapToDto(createdProduct);
                 
                 // Add to list and select
-                var viewModelItem = new ProductItemViewModel(newDto, _exchangeRateService, OnProductItemChanged);
+                var viewModelItem = new ProductItemViewModel(createdProduct, _exchangeRateService, OnProductItemChanged);
                 Products.Insert(0, viewModelItem);
                 
                 _dialogService.ShowSuccessDialog($"Producto '{createdProduct.Name}' agregado exitosamente.");
@@ -175,8 +174,8 @@ public partial class InventoryViewModel
             
             if (_dialogService.ShowProductDialog(dialogVm) == true)
             {
-                await _productService.UpdateAsync(dialogVm.ResultProduct);
-                var updatedDto = MapToDto(dialogVm.ResultProduct);
+                await _productService.UpdateAsync(ProductClientMapping.ToUpdateProductDto(dialogVm.ResultProduct, dialogVm.ResultProductId));
+                var updatedDto = ProductClientMapping.Merge(product, dialogVm.ResultProduct);
                 
                 var index = Products.IndexOf(item);
                 if (index != -1)
@@ -211,7 +210,7 @@ public partial class InventoryViewModel
                 return;
             }
 
-            var (success, qtyChange, reason) = _dialogService.ShowAdjustStockDialog(MapToDto(product));
+            var (success, qtyChange, reason) = _dialogService.ShowAdjustStockDialog(product);
             if (success)
             {
                 await _productService.AdjustStockAsync(product.Id, qtyChange, reason);
@@ -258,36 +257,4 @@ public partial class InventoryViewModel
         }
     }
 
-    private ProductDto MapToDto(Product p)
-    {
-        return new ProductDto
-        {
-            Id = p.Id,
-            Name = p.Name,
-            SKU = p.SKU,
-            Description = p.Description,
-            PriceUSD = p.PriceUSD,
-            PriceRetailUSD = p.PriceRetailUSD,
-            PriceWholesaleUSD = p.PriceWholesaleUSD,
-            CostPriceUSD = p.CostPriceUSD,
-            ProfitMarginRetail = p.ProfitMarginRetail,
-            ProfitMarginWholesale = p.ProfitMarginWholesale,
-            MinWholesaleQuantity = p.MinWholesaleQuantity,
-            HasWholesale = p.HasWholesale,
-            IsFractional = p.IsFractional,
-            PriceBsS = p.PriceBsS,
-            Cost = p.Cost,
-            StockQuantity = p.StockQuantity,
-            ProfitPercentage = p.ProfitPercentage,
-            UnitOfMeasure = p.UnitOfMeasure,
-            LowStockThreshold = p.LowStockThreshold,
-            IsCashAdvance = p.IsCashAdvance,
-            IsActive = p.IsActive,
-            IsDeleted = p.IsDeleted,
-            ReservedQuantity = p.ReservedQuantity,
-            IsGroupHeader = p.IsGroupHeader,
-            ParentProductId = p.ParentProductId,
-            GroupKey = p.GroupKey
-        };
-    }
 }

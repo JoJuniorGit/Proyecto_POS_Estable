@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
+using Core.DTOs;
 using Desktop.Client.Services;
 using Microsoft.AspNetCore.Mvc;
 using Xunit;
@@ -74,6 +75,54 @@ public class ProductServiceQueryContractTests
         Assert.Equal("SKU1", item.SKU);
         Assert.Equal(12.34m, item.PriceBsS);
         Assert.Equal(1, result.TotalCount);
+    }
+
+    [Fact]
+    public void GetByIdAsync_Shape_TakesIntIdAndReturnsProductDto()
+    {
+        var method = typeof(IProductService).GetMethod(nameof(IProductService.GetByIdAsync));
+
+        Assert.NotNull(method);
+        Assert.Equal(typeof(int), Assert.Single(method.GetParameters()).ParameterType);
+        Assert.Equal(typeof(ProductDto), method.ReturnType.GetGenericArguments()[0]);
+    }
+
+    [Fact]
+    public void CreateAsync_Shape_TakesCreateProductDtoAndReturnsProductDto()
+    {
+        var method = typeof(IProductService).GetMethod(nameof(IProductService.CreateAsync));
+
+        Assert.NotNull(method);
+        Assert.Equal(typeof(CreateProductDto), Assert.Single(method.GetParameters()).ParameterType);
+        Assert.Equal(typeof(ProductDto), method.ReturnType.GetGenericArguments()[0]);
+    }
+
+    [Fact]
+    public void UpdateAsync_Shape_TakesUpdateProductDto()
+    {
+        var method = typeof(IProductService).GetMethod(nameof(IProductService.UpdateAsync));
+
+        Assert.NotNull(method);
+        Assert.Equal(typeof(UpdateProductDto), Assert.Single(method.GetParameters()).ParameterType);
+        Assert.Equal(typeof(Task), method.ReturnType);
+    }
+
+    [Fact]
+    public void IProductService_NoMemberReferencesProductEntity()
+    {
+        var offenders = typeof(IProductService)
+            .GetMethods()
+            .Where(m => ReferencesProductEntity(m.ReturnType) || m.GetParameters().Any(p => ReferencesProductEntity(p.ParameterType)))
+            .Select(m => m.Name)
+            .ToList();
+
+        Assert.Empty(offenders);
+    }
+
+    private static bool ReferencesProductEntity(Type type)
+    {
+        if (type.FullName == "Core.Entities.Product") return true;
+        return type.IsGenericType && type.GetGenericArguments().Any(ReferencesProductEntity);
     }
 
     private sealed class JsonResponseHandler : HttpMessageHandler

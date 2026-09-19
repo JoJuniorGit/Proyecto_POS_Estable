@@ -7,7 +7,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Core.Common;
 using Core.DTOs;
-using Core.Entities;
 using Desktop.Client.Services;
 
 namespace Desktop.Client.ViewModels;
@@ -122,29 +121,28 @@ public partial class VariantManagementViewModel : ObservableObject, IDisposable
                 var prod = await _productService.GetByIdAsync(item.Id);
                 if (prod == null) continue;
 
-                prod.Name = item.Name.Trim();
-                prod.IsActive = item.IsActive;
+                var dto = ProductClientMapping.ToUpdateProductDto(prod);
+                dto.Name = item.Name.Trim();
+                dto.IsActive = item.IsActive;
 
                 if (HasIndependentPricing)
                 {
-                    prod.CostPriceUSD = item.CostPriceUSD;
-                    prod.Cost = item.CostPriceUSD;
-                    prod.ProfitMarginRetail = item.ProfitMarginRetail;
-                    prod.ProfitPercentage = item.ProfitMarginRetail;
-                    prod.PriceRetailUSD = item.PriceRetailUSD;
-                    prod.PriceUSD = item.PriceRetailUSD;
-                    prod.HasWholesale = item.HasWholesale;
-                    prod.ProfitMarginWholesale = item.ProfitMarginWholesale;
-                    prod.PriceWholesaleUSD = item.PriceWholesaleUSD;
-                    prod.MinWholesaleQuantity = item.MinWholesaleQuantity;
+                    dto.CostPriceUSD = item.CostPriceUSD;
+                    dto.ProfitMarginRetail = item.ProfitMarginRetail;
+                    dto.PriceRetailUSD = item.PriceRetailUSD;
+                    dto.PriceUSD = item.PriceRetailUSD;
+                    dto.HasWholesale = item.HasWholesale;
+                    dto.ProfitMarginWholesale = item.ProfitMarginWholesale;
+                    dto.PriceWholesaleUSD = item.PriceWholesaleUSD;
+                    dto.MinWholesaleQuantity = item.MinWholesaleQuantity;
                 }
 
                 if (IsStockShared)
                 {
-                    prod.ConversionFactor = item.ConversionFactor > 0 ? item.ConversionFactor : 1.0000m;
+                    dto.ConversionFactor = item.ConversionFactor > 0 ? item.ConversionFactor : 1.0000m;
                 }
 
-                await _productService.UpdateAsync(prod);
+                await _productService.UpdateAsync(dto);
                 item.IsModified = false;
             }
 
@@ -180,7 +178,7 @@ public partial class VariantManagementViewModel : ObservableObject, IDisposable
         try
         {
             IsSaving = true;
-            var newProd = new Product
+            var newProd = new CreateProductDto
             {
                 Name = name.Trim(),
                 SKU = sku.Trim(),
@@ -188,16 +186,13 @@ public partial class VariantManagementViewModel : ObservableObject, IDisposable
                 IsGroupHeader = false,
                 IsStockShared = false,
                 HasIndependentPricing = false,
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                IsActive = true
             };
 
             if (!HasIndependentPricing)
             {
                 newProd.CostPriceUSD = ParentProduct.CostPriceUSD;
-                newProd.Cost = ParentProduct.CostPriceUSD;
                 newProd.ProfitMarginRetail = ParentProduct.ProfitMarginRetail;
-                newProd.ProfitPercentage = ParentProduct.ProfitMarginRetail;
                 newProd.PriceRetailUSD = ParentProduct.PriceRetailUSD;
                 newProd.PriceUSD = ParentProduct.PriceRetailUSD;
                 newProd.HasWholesale = ParentProduct.HasWholesale;
@@ -210,23 +205,13 @@ public partial class VariantManagementViewModel : ObservableObject, IDisposable
             else
             {
                 newProd.CostPriceUSD = ParentProduct.CostPriceUSD;
-                newProd.Cost = ParentProduct.CostPriceUSD;
                 newProd.ProfitMarginRetail = ParentProduct.ProfitMarginRetail;
-                newProd.ProfitPercentage = ParentProduct.ProfitMarginRetail;
                 newProd.PriceRetailUSD = ParentProduct.PriceRetailUSD;
                 newProd.PriceUSD = ParentProduct.PriceRetailUSD;
             }
 
-            if (IsStockShared)
-            {
-                newProd.StockQuantity = 0m;
-                newProd.LowStockThreshold = 0m;
-            }
-            else
-            {
-                newProd.StockQuantity = 0m;
-                newProd.LowStockThreshold = 5m;
-            }
+            newProd.StockQuantity = 0m;
+            newProd.LowStockThreshold = IsStockShared ? 0m : 5m;
 
             await _productService.CreateAsync(newProd);
             _dialogService.ShowSuccessDialog($"Variante '{newProd.Name}' agregada con éxito.");
