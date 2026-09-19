@@ -14,13 +14,13 @@ Auditoría de código (AUD): 3 hallazgos activos (AUD-13, AUD-15, AUD-21); 17 re
 - Malas Prácticas / Violaciones a Normas: 2 activos (AUD-15, AUD-21); resueltos (AUD-05, AUD-06, AUD-07, AUD-08, AUD-09, AUD-10, AUD-11, AUD-16, AUD-18, AUD-19, AUD-20)
 - Oportunidades de Optimización: 1 activo (AUD-13) y 1 resuelto parcial (AUD-14)
 
-Auditoría de costuras (SEAM, ANEXO 8.142 sección H): 1 hallazgo activo (SEAM-01); 4 resueltos (SEAM-02..SEAM-05)
-- Uniones entre capas que ningun compilador ni test verifica (SEAM-01)
+Auditoría de costuras (SEAM, ANEXO 8.142 sección H): 0 hallazgos activos; 5 resueltos (SEAM-01..SEAM-05)
+- Uniones entre capas sin verificación automática: ninguna activa (SEAM-01 cerrado: ClientHttpContractTests)
 
 Residuales e infraestructura (INFRA): 3 registros (INFRA-01..INFRA-03; INFRA-01 activo, INFRA-02/03 informativos)
 
-TOTAL REGISTROS ACTIVOS: 7 (3 AUD + 1 SEAM + 3 INFRA; AUD-14 queda como resuelto parcial)
-- Defectos de código activos en sentido estricto: 4 (AUD-13, AUD-15, AUD-21 y SEAM-01)
+TOTAL REGISTROS ACTIVOS: 6 (3 AUD + 0 SEAM + 3 INFRA; AUD-14 queda como resuelto parcial)
+- Defectos de código activos en sentido estricto: 3 (AUD-13, AUD-15 y AUD-21)
 - INFRA: 3 registros (1 activo operativo, INFRA-01; 2 informativos, INFRA-02 e INFRA-03)
 
 Equivalencias (mismo hallazgo; no duplicar trabajo):
@@ -348,7 +348,7 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 ================================================================================
 
 [SEAM-01] ALTA — Call sites HTTP del cliente WPF sin guarda de contrato
-- Estado: ACTIVO
+- Estado: RESUELTO (8bec27d)
 - Severidad: ALTA
 - Ubicación: Desktop.Client.Core/Services/*.cs (todos los servicios HTTP salvo el de catálogo)
 - Regla: regla de costuras adoptada en 8.142 (ANEXO, sección G5).
@@ -358,9 +358,12 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
   los call sites HTTP carece de verificación automática.
 - Recomendación: extender el patrón del test de contrato a los demás servicios del cliente a medida
   que se toquen, y evaluar un test que recorra las rutas del cliente contra las de los controllers.
-- Nota (entity-boundary-cleanup, 2026-09-19): `ProductServiceQueryContractTests` quedó extendido con guardas
-  de forma para `GetByIdAsync`/`CreateAsync`/`UpdateAsync` del cliente de catálogo; el resto de los call sites
-  HTTP sigue sin guarda sistemática (SEAM-01 permanece ACTIVO).
+- Resolución (8bec27d; 65 rutas+query y 12 shapes): nuevo `ClientHttpContractTests` ancla mecánicamente
+  método/ruta de cada call site HTTP restante del cliente WPF al template y atributos del controller
+  (regex por placeholder, constraints `:x` soportadas, query keys bindeables vía reflexión, set exacto) +
+  12 guardas de shape camelCase; incluye `PairingQrViewModel`. Excepciones documentadas: `SubnetScannerService`
+  (hosts LAN arbitrarios), hub SignalR de exchange-rate y métodos de import sin HTTP. Con la extensión del
+  catálogo en entity-boundary-cleanup (`ProductServiceQueryContractTests`), no quedan call sites sin guarda.
 
 --------------------------------------------------------------------------------
 
