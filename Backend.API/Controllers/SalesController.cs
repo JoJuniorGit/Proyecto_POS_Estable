@@ -44,7 +44,7 @@ public partial class SalesController : ControllerBase
     [NonAction]
     public Task<ActionResult<SaleDto>> StartSale([FromQuery] int? cashierId = null) => StartSaleAsync(cashierId);
 
-    private async Task<bool> IsAuthorizedForSaleAsync(int saleId)
+    private async Task<bool> IsAuthorizedForSaleAsync(int saleId, CancellationToken cancellationToken)
     {
         bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
         if (isElevated) return true;
@@ -59,7 +59,7 @@ public partial class SalesController : ControllerBase
         SaleDto? target;
         try
         {
-            target = await _salesService.GetSaleAsync(saleId);
+            target = await _salesService.GetSaleAsync(saleId, cancellationToken);
         }
         catch (System.Collections.Generic.KeyNotFoundException)
         {
@@ -101,7 +101,7 @@ public partial class SalesController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<SaleDto>> GetSaleAsync(int id, CancellationToken cancellationToken = default)
     {
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para consultar esta venta.");
         }
@@ -123,7 +123,7 @@ public partial class SalesController : ControllerBase
     [HttpPost("{id}/items")]
     public async Task<ActionResult<SaleDto>> AddItemAsync(int id, [FromBody] AddItemRequest request, CancellationToken cancellationToken = default)
     {
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
@@ -144,7 +144,7 @@ public partial class SalesController : ControllerBase
     [HttpDelete("{id}/items/{itemId}")]
     public async Task<ActionResult<SaleDto>> RemoveItemAsync(int id, int itemId, [FromQuery] string exchangeRate, CancellationToken cancellationToken = default)
     {
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
@@ -159,7 +159,7 @@ public partial class SalesController : ControllerBase
     [HttpPut("{id}/items/{itemId}")]
     public async Task<ActionResult<SaleDto>> UpdateItemQuantityAsync(int id, int itemId, [FromBody] UpdateQuantityRequest request, CancellationToken cancellationToken = default)
     {
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
@@ -176,7 +176,7 @@ public partial class SalesController : ControllerBase
     {
         try
         {
-            if (!await IsAuthorizedForSaleAsync(id))
+            if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
             {
                 return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
             }

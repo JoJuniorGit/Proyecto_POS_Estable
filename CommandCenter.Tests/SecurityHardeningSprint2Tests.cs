@@ -262,7 +262,7 @@ public class SecurityHardeningSprint2Tests
 
         var result = await controller.CloseShiftAsync(request, CancellationToken.None);
 
-        var objectResult = Assert.IsType<ObjectResult>(result);
+        var objectResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
         var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
         Assert.Equal(400, problemDetails.Status);

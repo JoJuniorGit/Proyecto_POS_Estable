@@ -36,7 +36,7 @@ public partial class SalesController
             return this.ApiBadRequest("La acción debe ser 'Editing' o 'Checkout'.");
         }
 
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para retomar esta venta.");
         }
@@ -82,7 +82,7 @@ public partial class SalesController
             return this.ApiForbidden("Solo Administradores o Supervisores pueden liberar el bloqueo de otro cajero.");
         }
 
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para liberar esta venta.");
         }

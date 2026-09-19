@@ -1,4 +1,5 @@
 using System.Net;
+using Backend.API.DTOs;
 using Backend.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -53,18 +54,12 @@ public class PairingController : ControllerBase
         // 2. Si no es local, verificar que el usuario esté autenticado con rol elevado (Admin/Manager).
         if (!isLocal && !(User.Identity?.IsAuthenticated ?? false))
         {
-            return StatusCode((int)HttpStatusCode.Forbidden, new
-            {
-                message = "El acceso a la información de emparejamiento está restringido a la máquina local o usuarios autenticados."
-            });
+            return this.ApiForbidden("El acceso a la información de emparejamiento está restringido a la máquina local o usuarios autenticados.");
         }
 
         if (!isLocal && !User.IsInRole("Admin") && !User.IsInRole("Manager"))
         {
-            return StatusCode((int)HttpStatusCode.Forbidden, new
-            {
-                message = "El acceso a la información de emparejamiento requiere rol de Administrador o Supervisor."
-            });
+            return this.ApiForbidden("El acceso a la información de emparejamiento requiere rol de Administrador o Supervisor.");
         }
 
         bool isHttps = _httpsRuntimeInfo.Enabled || Request.IsHttps;
@@ -95,22 +90,19 @@ public class PairingController : ControllerBase
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Token))
         {
-            return BadRequest(new { message = "Falta el token de emparejamiento." });
+            return this.ApiBadRequest("Falta el token de emparejamiento.");
         }
 
         // Defense in depth: el reclamo solo se admite desde hosts locales o IPs privadas de la LAN.
         var remoteIp = HttpContext.Connection.RemoteIpAddress;
         if (remoteIp == null || !IsPrivateOrLocalAddress(remoteIp))
         {
-            return StatusCode((int)HttpStatusCode.Forbidden, new
-            {
-                message = "El emparejamiento solo se admite desde la red local del establecimiento."
-            });
+            return this.ApiForbidden("El emparejamiento solo se admite desde la red local del establecimiento.");
         }
 
         if (!_networkDiscoveryService.TryClaimPairingToken(request.Token))
         {
-            return BadRequest(new { message = "Token de emparejamiento inválido, expirado o ya utilizado." });
+            return this.ApiBadRequest("Token de emparejamiento inválido, expirado o ya utilizado.");
         }
 
         return Ok(new { status = "ok", paired = true });
@@ -131,9 +123,4 @@ public class PairingController : ControllerBase
         if (bytes[0] == 169 && bytes[1] == 254) return true;                  // 169.254.0.0/16
         return false;
     }
-}
-
-public class ClaimPairingRequest
-{
-    public string? Token { get; set; }
 }

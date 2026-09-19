@@ -34,11 +34,7 @@ public class DailyClosureController : ControllerBase
     {
         if (dateUtc == default)
         {
-            return Problem(
-                detail: "El parámetro dateUtc es obligatorio.",
-                statusCode: 400,
-                title: "Parámetro inválido",
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.1");
+            return this.ApiBadRequest("El parámetro dateUtc es obligatorio.");
         }
 
         var totals = await _closureService.GetExpectedTotalsByPaymentMethodAsync(dateUtc, cancellationToken);

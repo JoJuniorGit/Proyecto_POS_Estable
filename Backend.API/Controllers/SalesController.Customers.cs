@@ -60,7 +60,7 @@ public partial class SalesController
     [HttpPut("{id}/customer")]
     public async Task<ActionResult<SaleDto>> UpdateSaleCustomerAsync(int id, [FromBody] UpdateSaleCustomerRequest request, CancellationToken cancellationToken = default)
     {
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }

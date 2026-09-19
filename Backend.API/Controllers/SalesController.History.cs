@@ -33,7 +33,7 @@ public partial class SalesController
     [HttpGet("{id}/history-detail")]
     public async Task<ActionResult> GetHistoryDetailAsync(int id, CancellationToken cancellationToken = default)
     {
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para consultar esta venta.");
         }
@@ -55,7 +55,7 @@ public partial class SalesController
     [HttpPut("{id}/price-list")]
     public async Task<ActionResult<SaleDto>> UpdatePriceListAsync(int id, [FromBody] UpdatePriceListRequestDto request, CancellationToken cancellationToken = default)
     {
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }

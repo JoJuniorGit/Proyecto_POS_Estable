@@ -224,7 +224,7 @@ public class AuthController : ControllerBase
         }
 
         var searchInput = request.Cedula.Trim();
-        var user = await FindUserByCedulaAsync(searchInput);
+        var user = await FindUserByCedulaAsync(searchInput, cancellationToken);
         if (user == null)
         {
             PasswordHasher.VerifyPassword(request.CurrentPassword, _dummyPasswordHash);

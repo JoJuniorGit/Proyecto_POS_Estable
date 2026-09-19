@@ -60,7 +60,7 @@ public class DailyClosureControllerTests
 
         var actionResult = await controller.GetExpectedTotals(default, CancellationToken.None);
 
-        var objectResult = Assert.IsType<ObjectResult>(actionResult.Result);
+        var objectResult = Assert.IsType<BadRequestObjectResult>(actionResult.Result);
         Assert.Equal(400, objectResult.StatusCode);
         Assert.IsType<ProblemDetails>(objectResult.Value);
     }

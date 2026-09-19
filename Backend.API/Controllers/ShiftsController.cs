@@ -91,11 +91,11 @@ public class ShiftsController : ControllerBase
         }
         catch (ArgumentException ex)
         {
-            return Problem(detail: ex.Message, statusCode: StatusCodes.Status400BadRequest);
+            return this.ApiBadRequest(ex.Message);
         }
         catch (InvalidOperationException ex)
         {
-            return Problem(detail: ex.Message, statusCode: StatusCodes.Status400BadRequest);
+            return this.ApiBadRequest(ex.Message);
         }
         catch (DbUpdateException)
         {

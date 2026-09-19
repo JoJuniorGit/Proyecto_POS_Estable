@@ -18,7 +18,7 @@ public partial class SalesController
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<CheckoutPreviewResponse>> GetCheckoutPreviewAsync(int id, [FromBody] CheckoutPreviewRequest request, System.Threading.CancellationToken cancellationToken = default)
     {
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para consultar esta venta.");
         }
@@ -103,7 +103,7 @@ public partial class SalesController
             return this.ApiForbidden("El rol Driver no tiene permisos para completar ventas.");
         }
 
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para completar esta venta.");
         }
@@ -236,7 +236,7 @@ public partial class SalesController
     {
         try
         {
-            if (!await IsAuthorizedForSaleAsync(id))
+            if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
             {
                 return this.ApiForbidden("Acceso denegado: no tiene permisos para confirmar esta entrega.");
             }

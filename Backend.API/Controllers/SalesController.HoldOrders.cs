@@ -12,7 +12,7 @@ public partial class SalesController
     [HttpPost("{id}/hold")]
     public async Task<ActionResult<SaleDto>> HoldSaleAsync(int id, [FromBody] HoldSaleRequestDto request, CancellationToken cancellationToken = default)
     {
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
@@ -46,7 +46,7 @@ public partial class SalesController
     {
         try
         {
-            if (!await IsAuthorizedForSaleAsync(id))
+            if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
             {
                 return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
             }
@@ -67,7 +67,7 @@ public partial class SalesController
     [HttpPost("{id}/payments")]
     public async Task<ActionResult<SaleDto>> AddPaymentAsync(int id, [FromBody] AddPaymentRequestDto request, CancellationToken cancellationToken = default)
     {
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
@@ -99,7 +99,7 @@ public partial class SalesController
     [HttpPost("{id}/payments/batch")]
     public async Task<ActionResult<SaleDto>> AddPaymentsBatchAsync(int id, [FromBody] System.Collections.Generic.List<AddPaymentRequestDto> request, CancellationToken cancellationToken = default)
     {
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para modificar esta venta.");
         }
@@ -147,7 +147,7 @@ public partial class SalesController
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<IActionResult> CancelSaleAsync(int id, CancellationToken cancellationToken = default)
     {
-        if (!await IsAuthorizedForSaleAsync(id))
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para anular esta venta.");
         }
