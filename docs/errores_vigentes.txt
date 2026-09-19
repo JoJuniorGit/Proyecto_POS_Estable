@@ -9,17 +9,19 @@ Nota: docs/reporte.txt se conserva 100% intacto como archivo histórico de traza
 
 RESUMEN EJECUTIVO DE ESTADO:
 --------------------------------------------------------------------------------
-Auditoría de código (AUD): 3 hallazgos activos (AUD-10, AUD-13, AUD-15); 11 resueltos/cerrados (AUD-01..AUD-09, AUD-11, AUD-12) y 1 resuelto parcial (AUD-14)
-- Código Muerto: 0 activos (AUD-01, AUD-02, AUD-03 resueltos)
-- Malas Prácticas / Violaciones a Normas: 2 activos (AUD-10, AUD-15); resueltos (AUD-05, AUD-06, AUD-07, AUD-08, AUD-09, AUD-11)
+Auditoría de código (AUD): 4 hallazgos activos (AUD-10, AUD-13, AUD-15, AUD-21); 16 resueltos/cerrados (AUD-01..AUD-09, AUD-11, AUD-12, AUD-16..AUD-20) y 1 resuelto parcial (AUD-14)
+- Código Muerto: 0 activos (AUD-01, AUD-02, AUD-03, AUD-17 resueltos)
+- Malas Prácticas / Violaciones a Normas: 3 activos (AUD-10, AUD-15, AUD-21); resueltos (AUD-05, AUD-06, AUD-07, AUD-08, AUD-09, AUD-11, AUD-16, AUD-18, AUD-19, AUD-20)
 - Oportunidades de Optimización: 1 activo (AUD-13) y 1 resuelto parcial (AUD-14)
 
 Auditoría de costuras (SEAM, ANEXO 8.142 sección H): 1 hallazgo activo (SEAM-01); 4 resueltos (SEAM-02..SEAM-05)
 - Uniones entre capas que ningun compilador ni test verifica (SEAM-01)
 
-Residuales e infraestructura (INFRA): 3 registros (INFRA-01..INFRA-03)
+Residuales e infraestructura (INFRA): 3 registros (INFRA-01..INFRA-03; INFRA-01 activo, INFRA-02/03 informativos)
 
-TOTAL REGISTROS ACTIVOS: 7 (3 AUD + 1 SEAM + 3 INFRA; AUD-14 queda como resuelto parcial)
+TOTAL REGISTROS ACTIVOS: 8 (4 AUD + 1 SEAM + 3 INFRA; AUD-14 queda como resuelto parcial)
+- Defectos de código activos en sentido estricto: 5 (AUD-10, AUD-13, AUD-15, AUD-21 y SEAM-01)
+- INFRA: 3 registros (1 activo operativo, INFRA-01; 2 informativos, INFRA-02 e INFRA-03)
 
 Equivalencias (mismo hallazgo; no duplicar trabajo):
 - AUD-01 = hallazgo H3 del ANEXO 8.142 (GetAllAsync con contrato roto y sin callers)
@@ -43,7 +45,7 @@ Estado de Hallazgos Previos (VIG-01..VIG-25):
 - 18 Resueltos en fases previas
 - 7 Verificados como falsos positivos o mitigados por arquitectura previa
 
-Pruebas Automatizadas Backend: 1.283 / 1.283 pasando (100% Green)
+Pruebas Automatizadas Backend: 1.300 / 1.300 pasando (100% Green)
 Pruebas Automatizadas Frontend: 287 / 287 pasando (100% Green)
 Compilación: dotnet build CommandCenter.slnx -c Release (0 errores, 0 warnings)
 Guardas de costura activas: ControllerConstructionTests, ProductServiceQueryContractTests,
@@ -82,6 +84,17 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 - Regla: docs/coding-guidelines-core.md §2.2 ("Prohibición de async void: Solo async Task o ValueTask. En UI, usar SafeFireAndForget").
 - Descripción: El manejador `Grid_Drop` está declarado como `private async void Grid_Drop(object sender, DragEventArgs e)`. Aunque cuenta con un bloque `try/catch` defensivo, la norma arquitectónica del sistema exige delegar operaciones asíncronas de UI mediante el método de extensión `SafeFireAndForget` de `Core.Common.TaskExtensions`.
 - Recomendación: Refactorizar hacia un método síncrono que dispare la tarea con `vm.ProcessFileAsync(files[0]).SafeFireAndForget("ImportProductsView.Grid_Drop")`.
+
+--------------------------------------------------------------------------------
+
+[AUD-17] BAJA — `AddProductViewModel` era código muerto y además perdía el costo (CERRADO)
+- Estado: RESUELTO (5620917)
+- Severidad: BAJA
+- Ubicación: Desktop.Client.Core/ViewModels/AddProductViewModel.cs, Desktop.Client/Views/AddProductView.xaml
+- Regla: docs/coding-guidelines-core.md §1.1 (Mantenibilidad y Código Muerto).
+- Descripción: nunca se instanciaba en producción (no existía `new AddProductViewModel(` fuera de tests) y su vista nunca se abría: `WpfDialogService.Modals.cs` abre `ProductDialogViewModel`. Además enviaba `cost`/`profitPercentage`, que `CreateProductDto` no bindea.
+- Recomendación: Eliminar el view model, la vista y su code-behind, y re-apuntar los tests dependientes.
+- Resolución: eliminados el view model, la vista y su code-behind; `ProductDecimalRangeValidationTests` re-apuntado a los 8 sujetos restantes sin debilitar aserciones.
 
 ================================================================================
 2. MALAS PRÁCTICAS Y VIOLACIONES A NORMAS (AGENTS.MD Y CODING-GUIDELINES)
@@ -185,6 +198,7 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
   2. `ISalesService.CreateCashAdvanceSaleAsync` retorna `Sales.Module.Entities.Sale`, exponiendo la entidad interna en la interfaz del servicio.
   3. `IInventoryService` aún expone métodos basados en entidad (`Product`) en lugar de trabajar exclusivamente con DTOs.
 - Recomendación: Refactorizar contratos hacia DTOs inmutables (`ProductDto`, `SaleDto`) y mapear en la capa de infraestructura.
+- Progreso (60b0e7f): slice 1 cerrado — `ISalesService.CreateCashAdvanceSaleAsync` ya retorna `SaleDto` y el contrato de `ISalesService` no expone ninguna entidad; los slices 2-4 (clientes y contratos de producto e inventario) siguen activos.
 
 --------------------------------------------------------------------------------
 
@@ -218,6 +232,60 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 - Regla: clean-architecture y docs/coding-guidelines-backend.md §2.3
 - Descripción: es el único controller que conserva inyección directa de `SalesDbContext` e `InventoryDbContext` en su constructor de DI para ejecutar las sondas de conectividad y de migraciones. No es el patrón de AUD-11 (no hay constructor secundario de prueba: es el constructor de producción), pero pertenece a la misma familia arquitectónica que AUD-04: la capa de presentación no debería conocer EF Core. Fue detectado al implementar AUD-11 y se dejó fuera de alcance deliberadamente para no ampliar esa unidad de trabajo.
 - Recomendación: extraer las sondas a un servicio de aplicación (`IHealthProbeService` o equivalente) o usar `IDbContextFactory` desde una capa de infraestructura, y dejar el controller sin referencias a EF.
+
+--------------------------------------------------------------------------------
+
+[AUD-16] MEDIA — El stock inicial se descartaba al crear un producto (CERRADO)
+- Estado: RESUELTO (5620917)
+- Severidad: MEDIA
+- Ubicación: Core/DTOs/ProductManagementDtos.cs, Core/Extensions/ProductMappingExtensions.cs
+- Regla: AGENTS.md §Reglas Críticas ("Datos") — el mapeo DTO a entidad del catálogo no puede perder en silencio datos capturados por la UI.
+- Descripción: `ProductDialogViewModel` (WPF) cargaba el stock inicial en el producto que envía, pero `CreateProductDto` no tenía el campo y `ToEntity` no lo mapeaba: el valor se descartaba en silencio en el servidor.
+- Recomendación: Agregar `StockQuantity` al DTO (con validación `[Range]`) y mapearlo en `ToEntity`, preservando las reglas que fuerzan stock 0.
+- Resolución: se agregó `StockQuantity` con `[Range]` al DTO y su mapeo en `ToEntity`; las reglas que deben forzar stock 0 (adelanto de efectivo, grupo sin stock compartido, variante de padre compartido) quedaron intactas. Test de regresión en `BsPriceCeilingStandardTests`.
+
+--------------------------------------------------------------------------------
+
+[AUD-18] ALTA — Cero cobertura del masking de costos por rol (CERRADO)
+- Estado: RESUELTO (25a3c84)
+- Severidad: ALTA
+- Ubicación: Backend.API/Controllers/ProductsController.cs (GetAllAsync, GetQuickInfoAsync, GetSuggestionsAsync) y Core/Extensions/ProductMappingExtensions.cs (`MaskCosts`)
+- Regla: docs/coding-guidelines-core.md §1 Pilar 5 (Testeabilidad y Regresión Cero) y §7 (Métricas de Aceptación).
+- Descripción: no existía ningún test que assertara el enmascaramiento de costos/márgenes para usuarios sin `CanMutateCatalog`, pese a ser el invariante de seguridad del catálogo.
+- Recomendación: Agregar tests que fijen el enmascaramiento para roles sin `CanMutateCatalog` y su no regresión para roles con permiso.
+- Resolución: `ProductCostMaskingTests` (7 tests): GetAll/QuickInfo/Suggestions enmascarados para Cajero e intactos para Manager, más la recursión de `MaskCosts` en variantes anidadas y la preservación de todos los campos de la proyección de QuickInfo.
+
+--------------------------------------------------------------------------------
+
+[AUD-19] MEDIA — Cero cobertura del token de concurrencia `xmin` de Product (CERRADO)
+- Estado: RESUELTO (25a3c84)
+- Severidad: MEDIA
+- Ubicación: Inventory.Module/Data/InventoryDbContext.cs (configuración de `xmin` de Product)
+- Regla: docs/coding-guidelines-core.md §1 Pilar 5 (Testeabilidad y Regresión Cero) y §7 (Métricas de Aceptación).
+- Descripción: el token solo lo preserva el camino tracked `FindAsync` + `CurrentValues.SetValues`; un refactor a detached/`ExecuteUpdate` lo desactivaría en silencio y ningún test lo cubría.
+- Recomendación: Agregar tests que fijen la configuración del token por proveedor y adviertan si el camino tracked deja de preservarlo.
+- Resolución: `ProductConcurrencyTokenTests`: con proveedor Npgsql `xmin` existe como `xid` y `IsConcurrencyToken = true`; con SQLite está ausente (gate por proveedor).
+
+--------------------------------------------------------------------------------
+
+[AUD-20] ALTA — BUG CONFIRMADO: el producto de adelanto de efectivo no se aprovisionaba para un Cajero (CERRADO)
+- Estado: RESUELTO (c796b99)
+- Severidad: ALTA
+- Ubicación: Sales.Module/Services/SalesService.CashAdvance.cs, Inventory.Module/Services/InventoryService.ProductCrud.cs
+- Regla: AGENTS.md §Reglas Críticas ("Seguridad: RBAC estricto") — el provisionamiento system-internal no debe depender del permiso de catálogo del usuario actuante.
+- Descripción: el auto-aprovisionamiento de ADV-001 se ejecuta en un flujo alcanzable por `Cashier`, pero `CreateProductAsync` exige `CanMutateCatalog` (solo Admin/Manager). Reproducido con test: `InvalidOperationException` con `UnauthorizedAccessException` interna y **cero productos provisionados**.
+- Recomendación: Extraer el provisionamiento system-internal a un path que no evalúe el permiso de catálogo del usuario actuante, sin relajar el guard de las operaciones de catálogo.
+- Resolución: nuevo `IInventoryService.CreateSystemProductAsync` para provisionamiento system-internal que no evalúa el permiso de catálogo del usuario actuante (el guard de las operaciones de catálogo del usuario NO se relajó). Test nuevo con verificación por control negativo: al reintroducir el check, el test falla.
+
+--------------------------------------------------------------------------------
+
+[AUD-21] MEDIA — El stock inicial de un producto nuevo no queda auditado
+- Estado: ACTIVO
+- Severidad: MEDIA
+- Ubicación: Inventory.Module/Services/InventoryService.ProductCrud.cs (creación de producto)
+- Regla: docs/coding-guidelines-core.md §1 Pilar 6 (Observabilidad y Resiliencia) — todo cambio de stock debe quedar registrado en `StockMovements`.
+- Descripción: al crear un producto con stock inicial (ver AUD-16) no se escribe ninguna fila en `StockMovements`: la creación solo hace `Products.Add` + `SaveChanges`. Los únicos sitios que escriben movimientos son venta, reservas y ajustes, así que una carga inicial de stock hoy es invisible en la auditoría de inventario.
+- Recomendación: decidir el motivo/atribución del movimiento de carga inicial y escribirlo con un path dedicado, sin reusar `UpdateStockBatchAsync` (duplicaría el conteo, porque el stock ya se setea en la entidad).
 
 ================================================================================
 3. OPORTUNIDADES DE OPTIMIZACIÓN Y RENDIMIENTO
