@@ -58,7 +58,7 @@ public interface ISalesService
 
     Task<SaleDto> ReleaseSaleAsync(int saleId, int? actingUserId, bool force = false, System.Threading.CancellationToken cancellationToken = default);
 
-    Task<Sale> CreateCashAdvanceSaleAsync(
+    Task<SaleDto> CreateCashAdvanceSaleAsync(
         decimal requestedAmountLocal,
         decimal commissionAmountLocal,
         int paymentMethodId,

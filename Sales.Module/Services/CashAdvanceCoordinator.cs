@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Core.DTOs;
 using Core.Helpers;
 using Core.Interfaces;
 using Sales.Module.Data;
@@ -105,7 +106,7 @@ public class CashAdvanceCoordinator
             decimal totalChargedLocal = roundedRequested + commissionAmountLocal;
 
             decimal anchoredRate = exchangeRate;
-            Sale? createdSale = await _salesService.CreateCashAdvanceSaleAsync(
+            SaleDto? createdSale = await _salesService.CreateCashAdvanceSaleAsync(
                 requestedAmountLocal: roundedRequested,
                 commissionAmountLocal: commissionAmountLocal,
                 paymentMethodId: paymentMethodId,

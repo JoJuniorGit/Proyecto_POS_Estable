@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Backend.API.Controllers;
 using CommandCenter.Tests.Builders;
 using CommandCenter.Tests.TestHelpers;
+using Core.DTOs;
 using Core.Interfaces;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -206,7 +207,7 @@ public class CancellationPropagationTests
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<int>(), It.IsAny<string>(),
                 It.IsAny<bool>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<string>(),
                 It.IsAny<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?>()))
-            .ReturnsAsync((Sale)null!);
+            .ReturnsAsync((SaleDto)null!);
 
         var coordinator = new CashAdvanceCoordinator(salesDb, sales.Object, drawerService.Object, settings.Object);
         var controller = ControllerFactory.CreateCashDrawerController(

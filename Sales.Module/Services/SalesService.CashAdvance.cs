@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Core.DTOs;
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -9,7 +10,7 @@ namespace Sales.Module.Services;
 
 public partial class SalesService
 {
-    public async Task<Sale> CreateCashAdvanceSaleAsync(
+    public async Task<SaleDto> CreateCashAdvanceSaleAsync(
         decimal requestedAmountLocal,
         decimal commissionAmountLocal,
         int paymentMethodId,
@@ -153,6 +154,6 @@ public partial class SalesService
         _context.SalePayments.Add(payment);
         await _context.SaveChangesAsync(cancellationToken);
 
-        return sale;
+        return MapToDto(sale);
     }
 }
