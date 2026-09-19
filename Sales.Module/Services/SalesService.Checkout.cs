@@ -282,11 +282,11 @@ public partial class SalesService
             sale.RoundingAdjustment = roundingAdjustment;
 
             // Synchronous Stock Deduction inside Transaction (H-SAL-2 / H-INV-1 / A1)
-            var productsDict = new Dictionary<int, Product>();
+            var productsDict = new Dictionary<int, SaleProductInfoDto>();
             if (_inventoryService != null && sale.Items != null)
             {
                 var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
-                var fetched = await _inventoryService.GetProductsByIdsAsync(productIds, cancellationToken);
+                var fetched = await _inventoryService.GetSaleProductsByIdsAsync(productIds, cancellationToken);
                 if (fetched != null)
                 {
                     productsDict = fetched.ToDictionary(p => p.Id);
@@ -429,22 +429,14 @@ public partial class SalesService
         if (!allItems.Any()) return;
 
         var productIds = allItems.Select(i => i.ProductId).Distinct().ToList();
-        var productsDict = new Dictionary<int, Product>();
+        var productsDict = new Dictionary<int, SaleProductInfoDto>();
 
         try
         {
-            var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
+            var fetched = await _inventoryService.GetSaleProductsByIdsAsync(productIds);
             if (fetched != null && fetched.Count > 0)
             {
                 productsDict = fetched.ToDictionary(p => p.Id);
-            }
-            else
-            {
-                foreach (var id in productIds)
-                {
-                    var p = await _inventoryService.GetProductByIdAsync(id);
-                    if (p != null) productsDict[p.Id] = p;
-                }
             }
         }
         catch (Exception ex)

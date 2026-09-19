@@ -349,7 +349,9 @@ public partial class OnHoldSalesTests
         var mockMediator = new Mock<IMediator>();
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
-        mockInventory.Setup(i => i.GetProductByIdAsync(1)).ReturnsAsync(new Product { Id = 1, Name = "Prod1", PriceUSD = 30m, IsActive = true });
+        var product1 = new SaleProductInfoDto { Id = 1, Name = "Prod1", PriceUSD = 30m, IsActive = true };
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(1)).ReturnsAsync(product1);
+        mockInventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { product1 });
 
         var sale = new Sale { Id = 1, TotalUSD = 100m, Status = SaleStatus.OnHold };
         sale.ClaimedByUserId = TestActorId;
@@ -389,7 +391,9 @@ public partial class OnHoldSalesTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(1)).ReturnsAsync(new Product { Id = 1, Name = "Prod1", PriceUSD = 100m, IsActive = true });
+        var product1 = new SaleProductInfoDto { Id = 1, Name = "Prod1", PriceUSD = 100m, IsActive = true };
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(1)).ReturnsAsync(product1);
+        mockInventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { product1 });
 
         var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 50m };
         context.Customers.Add(customer);
@@ -429,8 +433,11 @@ public partial class OnHoldSalesTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(100)).ReturnsAsync(new Product { Id = 100, Name = "Prod100", PriceUSD = 2m, IsActive = true });
-        mockInventory.Setup(i => i.GetProductByIdAsync(101)).ReturnsAsync(new Product { Id = 101, Name = "Prod101", PriceUSD = 10m, IsActive = true });
+        var product100 = new SaleProductInfoDto { Id = 100, Name = "Prod100", PriceUSD = 2m, IsActive = true };
+        var product101 = new SaleProductInfoDto { Id = 101, Name = "Prod101", PriceUSD = 10m, IsActive = true };
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(100)).ReturnsAsync(product100);
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(101)).ReturnsAsync(product101);
+        mockInventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { product100, product101 });
 
         var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 100m };
         context.Customers.Add(customer);
@@ -473,7 +480,7 @@ public partial class OnHoldSalesTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(100)).ReturnsAsync((Product?)null);
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(100)).ReturnsAsync((SaleProductInfoDto?)null);
 
         var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 100m };
         context.Customers.Add(customer);

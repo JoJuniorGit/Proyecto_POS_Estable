@@ -61,7 +61,7 @@ public class HoldSalePaymentRemediationTests
         };
     }
 
-    private static Product BuildWholesaleProduct() => new()
+    private static SaleProductInfoDto BuildWholesaleProduct() => new()
     {
         Id = 500,
         Name = "Mayorista",
@@ -79,8 +79,8 @@ public class HoldSalePaymentRemediationTests
         using var context = NewInMemoryDb(Guid.NewGuid().ToString());
         var inventory = new Mock<IInventoryService>();
         var product = BuildWholesaleProduct();
-        inventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<Product> { product });
-        inventory.Setup(i => i.GetProductByIdAsync(500)).ReturnsAsync(product);
+        inventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { product });
+        inventory.Setup(i => i.GetSaleProductByIdAsync(500)).ReturnsAsync(product);
 
         var sale = BuildClaimedOnHoldSale(1, 10m, 50m);
         sale.PriceListType = "Wholesale";
@@ -106,8 +106,8 @@ public class HoldSalePaymentRemediationTests
         using var context = NewInMemoryDb(Guid.NewGuid().ToString());
         var inventory = new Mock<IInventoryService>();
         var product = BuildWholesaleProduct();
-        inventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<Product> { product });
-        inventory.Setup(i => i.GetProductByIdAsync(500)).ReturnsAsync(product);
+        inventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { product });
+        inventory.Setup(i => i.GetSaleProductByIdAsync(500)).ReturnsAsync(product);
 
         var sale = BuildClaimedOnHoldSale(1, 10m, 50m);
         sale.PriceListType = "Wholesale";
@@ -129,8 +129,8 @@ public class HoldSalePaymentRemediationTests
         using var context = NewInMemoryDb(Guid.NewGuid().ToString());
         var inventory = new Mock<IInventoryService>();
         var product = BuildWholesaleProduct();
-        inventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<Product> { product });
-        inventory.Setup(i => i.GetProductByIdAsync(500)).ReturnsAsync(product);
+        inventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { product });
+        inventory.Setup(i => i.GetSaleProductByIdAsync(500)).ReturnsAsync(product);
 
         var sale = BuildClaimedOnHoldSale(1, 10m, 50m);
         sale.PriceListType = "Wholesale";
@@ -157,11 +157,11 @@ public class HoldSalePaymentRemediationTests
         using var connection = db.connection;
 
         var inventory = new Mock<IInventoryService>();
-        var productBefore = new Product { Id = 600, Name = "Prod600", PriceUSD = 100m, PriceRetailUSD = 100m, IsActive = true };
-        var productAfter = new Product { Id = 600, Name = "Prod600", PriceUSD = 10m, PriceRetailUSD = 10m, IsActive = true };
-        inventory.SetupSequence(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
-            .ReturnsAsync(new List<Product> { productBefore })
-            .ReturnsAsync(new List<Product> { productAfter });
+        var productBefore = new SaleProductInfoDto { Id = 600, Name = "Prod600", PriceUSD = 100m, PriceRetailUSD = 100m, IsActive = true };
+        var productAfter = new SaleProductInfoDto { Id = 600, Name = "Prod600", PriceUSD = 10m, PriceRetailUSD = 10m, IsActive = true };
+        inventory.SetupSequence(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
+            .ReturnsAsync(new List<SaleProductInfoDto> { productBefore })
+            .ReturnsAsync(new List<SaleProductInfoDto> { productAfter });
 
         var sale = BuildClaimedOnHoldSale(1, 100m, 40m);
         sale.Payments.Add(new SalePayment { Id = 1, Amount = 50m, AmountBsS = 2000m, ExchangeRate = 40m, PaymentMethodId = 1 });

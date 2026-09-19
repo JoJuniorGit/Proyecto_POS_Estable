@@ -1,4 +1,5 @@
 using System;
+using Core.DTOs;
 using Core.Entities;
 
 namespace CommandCenter.Tests.Builders;
@@ -51,15 +52,24 @@ public class ProductBuilder
     }
     public ProductBuilder AsInactive() { _isActive = false; return this; }
 
-    public Product Build()
+    private decimal ComputeRetail()
     {
-        decimal retail = _priceRetailUsd > 0
+        return _priceRetailUsd > 0
             ? _priceRetailUsd
             : (_costPriceUsd > 0 ? Math.Ceiling(_costPriceUsd * (1m + (_profitMarginRetail / 100m)) * 100m) / 100m : 0m);
+    }
 
-        decimal wholesale = _hasWholesale
+    private decimal ComputeWholesale(decimal retail)
+    {
+        return _hasWholesale
             ? (_priceWholesaleUsd > 0 ? _priceWholesaleUsd : (_costPriceUsd > 0 ? Math.Ceiling(_costPriceUsd * (1m + (_profitMarginWholesale / 100m)) * 100m) / 100m : retail))
             : retail;
+    }
+
+    public Product Build()
+    {
+        decimal retail = ComputeRetail();
+        decimal wholesale = ComputeWholesale(retail);
 
         return new Product
         {
@@ -80,4 +90,28 @@ public class ProductBuilder
             IsActive = _isActive
         };
     }
+
+    public SaleProductInfoDto BuildSaleProductInfo() => Build().ToSaleProductInfo();
+}
+
+public static class ProductSaleInfoExtensions
+{
+    public static SaleProductInfoDto ToSaleProductInfo(this Product product) => new()
+    {
+        Id = product.Id,
+        Name = product.Name,
+        IsDeleted = product.IsDeleted,
+        IsActive = product.IsActive,
+        IsCashAdvance = product.IsCashAdvance,
+        PriceUSD = product.PriceUSD,
+        PriceBsS = product.PriceBsS,
+        PriceRetailUSD = product.PriceRetailUSD,
+        PriceWholesaleUSD = product.PriceWholesaleUSD,
+        MinWholesaleQuantity = product.MinWholesaleQuantity,
+        HasWholesale = product.HasWholesale,
+        IsGroupHeader = product.IsGroupHeader,
+        IsFractional = product.IsFractional,
+        UnitOfMeasure = product.UnitOfMeasure,
+        CostPriceUSD = product.CostPriceUSD
+    };
 }

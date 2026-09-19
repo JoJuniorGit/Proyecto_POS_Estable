@@ -230,7 +230,7 @@ public partial class OnHoldSalesTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(10)).ReturnsAsync(new Product
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(10)).ReturnsAsync(new SaleProductInfoDto
         {
             Id = 10,
             Name = "Acondicionador Drene Brillo 200ml",
@@ -260,7 +260,7 @@ public partial class OnHoldSalesTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(20)).ReturnsAsync(new Product
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(20)).ReturnsAsync(new SaleProductInfoDto
         {
             Id = 20,
             Name = "Producto Eliminado",
@@ -288,7 +288,7 @@ public partial class OnHoldSalesTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(21)).ReturnsAsync(new Product
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(21)).ReturnsAsync(new SaleProductInfoDto
         {
             Id = 21,
             Name = "Producto Inactivo",

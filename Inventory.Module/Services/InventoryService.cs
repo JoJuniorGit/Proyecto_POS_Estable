@@ -42,21 +42,41 @@ public partial class InventoryService : IInventoryService
         }
     }
 
-    public async Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds, System.Threading.CancellationToken cancellationToken = default)
+    private static IQueryable<Core.DTOs.SaleProductInfoDto> ProjectSaleProduct(IQueryable<Product> query) =>
+        query.Select(p => new Core.DTOs.SaleProductInfoDto
+        {
+            Id = p.Id,
+            Name = p.Name,
+            IsDeleted = p.IsDeleted,
+            IsActive = p.IsActive,
+            IsCashAdvance = p.IsCashAdvance,
+            PriceUSD = p.PriceUSD,
+            PriceBsS = p.PriceBsS,
+            PriceRetailUSD = p.PriceRetailUSD,
+            PriceWholesaleUSD = p.PriceWholesaleUSD,
+            MinWholesaleQuantity = p.MinWholesaleQuantity,
+            HasWholesale = p.HasWholesale,
+            IsGroupHeader = p.IsGroupHeader,
+            IsFractional = p.IsFractional,
+            UnitOfMeasure = p.UnitOfMeasure,
+            CostPriceUSD = (decimal?)p.CostPriceUSD
+        });
+
+    public async Task<IReadOnlyList<Core.DTOs.SaleProductInfoDto>> GetSaleProductsByIdsAsync(IEnumerable<int> productIds, System.Threading.CancellationToken cancellationToken = default)
     {
         var idList = productIds.Distinct().ToList();
-        if (!idList.Any()) return new List<Product>();
-        return await _context.Products.AsNoTracking().Where(p => idList.Contains(p.Id)).ToListAsync(cancellationToken);
+        if (idList.Count == 0) return Array.Empty<Core.DTOs.SaleProductInfoDto>();
+        return await ProjectSaleProduct(_context.Products.AsNoTracking().Where(p => idList.Contains(p.Id))).ToListAsync(cancellationToken);
     }
 
-    public async Task<Product?> GetProductByIdAsync(int id, System.Threading.CancellationToken cancellationToken = default)
+    public async Task<Core.DTOs.SaleProductInfoDto?> GetSaleProductByIdAsync(int id, System.Threading.CancellationToken cancellationToken = default)
     {
-        return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+        return await ProjectSaleProduct(_context.Products.AsNoTracking().Where(p => p.Id == id)).FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<Product?> GetCashAdvanceProductAsync(System.Threading.CancellationToken cancellationToken = default)
+    public async Task<Core.DTOs.SaleProductInfoDto?> GetCashAdvanceProductAsync(System.Threading.CancellationToken cancellationToken = default)
     {
-        return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.IsCashAdvance && !p.IsDeleted && p.IsActive, cancellationToken);
+        return await ProjectSaleProduct(_context.Products.AsNoTracking().Where(p => p.IsCashAdvance && !p.IsDeleted && p.IsActive)).FirstOrDefaultAsync(cancellationToken);
     }
 
     private static MemoryCacheEntryOptions CreateProductCacheOptions() => new MemoryCacheEntryOptions
@@ -92,41 +112,6 @@ public partial class InventoryService : IInventoryService
         }
         _cache?.Remove(ExchangeRateCacheKey);
         _productCacheKeys.Clear();
-    }
-
-    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
-    public async Task<Product?> GetProductBySkuAsync(string sku, bool useCache = true, System.Threading.CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(sku)) return null;
-        var normalized = sku.Trim().ToUpperInvariant();
-
-        if (!useCache || _cache == null)
-        {
-            return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == normalized, cancellationToken);
-        }
-
-        var cacheKey = $"product_sku_{normalized}";
-        if (_cache.TryGetValue(cacheKey, out Product? cachedProduct) && cachedProduct != null)
-        {
-            Core.Metrics.CacheMetrics.RecordHit();
-            return cachedProduct;
-        }
-
-        Core.Metrics.CacheMetrics.RecordMiss();
-        try
-        {
-            var product = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == normalized, cancellationToken);
-            if (product != null)
-            {
-                RegisterProductCacheKey(cacheKey);
-                _cache.Set(cacheKey, product, CreateProductCacheOptions());
-            }
-            return product;
-        }
-        catch
-        {
-            throw;
-        }
     }
 
     private static void ValidateAndCalculateProductPrices(Product product)

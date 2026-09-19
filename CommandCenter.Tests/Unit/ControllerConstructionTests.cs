@@ -52,8 +52,8 @@ public class ControllerConstructionTests
     }
 
     [Theory]
-    [MemberData(nameof(ControllersWithMultiplePublicConstructors))]
-    public void Controller_WithMultiplePublicConstructors_DeclaresSingleActivatorConstructor(Type controllerType)
+    [MemberData(nameof(ControllersUnderConstructorGuard))]
+    public void Controller_DeclaresSingleActivatorConstructor(Type controllerType)
     {
         var markedConstructors = controllerType
             .GetConstructors(BindingFlags.Public | BindingFlags.Instance)
@@ -90,14 +90,19 @@ public class ControllerConstructionTests
         typeof(ReservationsController),
     };
 
-    public static TheoryData<Type> ControllersWithMultiplePublicConstructors()
+    public static TheoryData<Type> ControllersUnderConstructorGuard()
     {
         var data = new TheoryData<Type>();
 
         var controllers = typeof(ProductsController).Assembly
             .GetTypes()
             .Where(t => t.IsClass && !t.IsAbstract && t.Name.EndsWith("Controller", StringComparison.Ordinal))
-            .Where(t => t.GetConstructors(BindingFlags.Public | BindingFlags.Instance).Length > 1);
+            .Where(t =>
+            {
+                var publicConstructors = t.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+                return publicConstructors.Length > 1
+                    || publicConstructors.Any(c => c.GetCustomAttribute<ActivatorUtilitiesConstructorAttribute>() != null);
+            });
 
         foreach (var controller in controllers)
         {

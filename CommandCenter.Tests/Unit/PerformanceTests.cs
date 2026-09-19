@@ -101,26 +101,24 @@ public class PerformanceTests
         int singleCallsCount = 0;
 
         var productIdsToFetch = Enumerable.Range(1, 15).ToList();
-        var returnedProducts = productIdsToFetch.Select(id => new Product
+        var returnedProducts = productIdsToFetch.Select(id => new SaleProductInfoDto
         {
             Id = id,
-            SKU = $"SKU-{id}",
             Name = $"Item {id}",
             CostPriceUSD = 2.00m,
-            ProfitMarginRetail = 50m,
             PriceRetailUSD = 3.00m,
             PriceUSD = 3.00m,
             IsActive = true
         }).ToList();
 
-        mockInventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
+        mockInventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
             .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) =>
             {
                 Interlocked.Increment(ref batchCallsCount);
                 return returnedProducts.Where(p => ids.Contains(p.Id)).ToList();
             });
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(It.IsAny<int>()))
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(It.IsAny<int>()))
             .ReturnsAsync((int id, CancellationToken _) =>
             {
                 Interlocked.Increment(ref singleCallsCount);
@@ -321,10 +319,10 @@ public class PerformanceTests
         var mockSettings = new Mock<ISystemSettingsService>();
 
         mockInventory.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(50m);
-        mockInventory.Setup(i => i.GetProductByIdAsync(It.IsAny<int>()))
-            .ReturnsAsync((int id, CancellationToken _) => new Product { Id = id, SKU = $"SKU{id}", Name = $"Prod {id}", PriceUSD = 10m, PriceRetailUSD = 10m, IsActive = true });
-        mockInventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
-            .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) => ids.Select(id => new Product { Id = id, SKU = $"SKU{id}", Name = $"Prod {id}", PriceUSD = 10m, PriceRetailUSD = 10m, IsActive = true }).ToList());
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(It.IsAny<int>()))
+            .ReturnsAsync((int id, CancellationToken _) => new SaleProductInfoDto { Id = id, Name = $"Prod {id}", PriceUSD = 10m, PriceRetailUSD = 10m, IsActive = true });
+        mockInventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
+            .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) => ids.Select(id => new SaleProductInfoDto { Id = id, Name = $"Prod {id}", PriceUSD = 10m, PriceRetailUSD = 10m, IsActive = true }).ToList());
 
         var salesService = new Sales.Module.Services.SalesService(
             context,

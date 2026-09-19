@@ -205,7 +205,7 @@ public partial class PriceListTests
 
         var result = await service.UpdatePriceListAsync(1, "Wholesale");
 
-        mockInv.Verify(x => x.GetProductByIdAsync(5), Times.Once);
+        mockInv.Verify(x => x.GetSaleProductsByIdsAsync(It.Is<IEnumerable<int>>(ids => ids.Contains(5))), Times.Once);
         Assert.Equal(1.2m, result.Items[0].UnitPrice);
     }
 
@@ -214,7 +214,7 @@ public partial class PriceListTests
     {
         using var context = GetInMemoryDbContext();
         var mockInv = new Mock<IInventoryService>();
-        mockInv.Setup(x => x.GetProductByIdAsync(999)).ReturnsAsync((Product?)null);
+        mockInv.Setup(x => x.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto>());
 
         var sale = new Sale
         {

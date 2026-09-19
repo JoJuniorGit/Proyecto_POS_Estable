@@ -1,4 +1,3 @@
-using Core.Entities;
 using Core.DTOs;
 using Core.Extensions;
 using Core.Interfaces;
@@ -20,19 +19,14 @@ namespace Backend.API.Controllers;
 public partial class ProductsController : ControllerBase
 {
     private readonly IInventoryService _inventoryService;
-    private readonly IProductManagementService? _productManagementService;
+    private readonly IProductManagementService _productManagementService;
     private readonly ICurrentUserService _currentUserService;
 
-    public ProductsController(IInventoryService inventoryService, ICurrentUserService currentUserService)
-        : this(inventoryService, inventoryService as IProductManagementService, currentUserService)
-    {
-    }
-
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
-    public ProductsController(IInventoryService inventoryService, IProductManagementService? productManagementService, ICurrentUserService currentUserService)
+    public ProductsController(IInventoryService inventoryService, IProductManagementService productManagementService, ICurrentUserService currentUserService)
     {
         _inventoryService = inventoryService;
-        _productManagementService = productManagementService ?? (inventoryService as IProductManagementService);
+        _productManagementService = productManagementService;
         _currentUserService = currentUserService;
     }
 
@@ -60,17 +54,7 @@ public partial class ProductsController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<ProductDto>> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        var dto = _productManagementService != null
-            ? await _productManagementService.GetProductDtoByIdAsync(id, cancellationToken)
-            : null;
-        if (dto == null)
-        {
-            var product = await _inventoryService.GetProductByIdAsync(id, cancellationToken);
-            if (product != null)
-            {
-                dto = product.ToDto(_currentUserService.CanMutateCatalog);
-            }
-        }
+        var dto = await _productManagementService.GetProductDtoByIdAsync(id, cancellationToken);
         if (dto == null) return this.ApiNotFound("El producto solicitado no existe.");
         if (!_currentUserService.CanMutateCatalog)
         {
@@ -92,25 +76,7 @@ public partial class ProductsController : ControllerBase
         }
         try
         {
-            ProductDto? created = null;
-            if (_productManagementService != null)
-            {
-                created = await _productManagementService.CreateProductFromDtoAsync(request, cancellationToken);
-            }
-            if (created == null)
-            {
-                decimal retailUsd = request.PriceRetailUSD > 0 ? request.PriceRetailUSD : request.PriceUSD;
-                decimal todayRate = await _inventoryService.GetTodayExchangeRateAsync(cancellationToken);
-                decimal canonicalPriceBsS = todayRate > 0
-                    ? Core.Helpers.PricingCalculator.ToBsSCeiling(retailUsd, todayRate)
-                    : Core.Helpers.PricingCalculator.RoundPriceUp(request.PriceBsS);
-                var product = request.ToEntity(canonicalPriceBsS);
-                var entityCreated = await _inventoryService.CreateProductAsync(product, cancellationToken);
-                if (entityCreated != null)
-                {
-                    created = entityCreated.ToDto(_currentUserService.CanMutateCatalog);
-                }
-            }
+            ProductDto? created = await _productManagementService.CreateProductFromDtoAsync(request, cancellationToken);
             if (created != null && !_currentUserService.CanMutateCatalog)
             {
                 created.MaskCosts();
@@ -137,14 +103,7 @@ public partial class ProductsController : ControllerBase
         if (id != request.Id) return this.ApiBadRequest("El ID del producto no coincide.");
         try
         {
-            if (_productManagementService != null)
-            {
-                await _productManagementService.UpdateProductFromDtoAsync(id, request, cancellationToken);
-            }
-            else
-            {
-                return this.ApiProblem("Servicio de administración de productos no disponible.", StatusCodes.Status500InternalServerError, "Error Interno");
-            }
+            await _productManagementService.UpdateProductFromDtoAsync(id, request, cancellationToken);
             return NoContent();
         }
         catch (System.UnauthorizedAccessException)

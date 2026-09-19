@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Builders;
+using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
 using Inventory.Module.Data;
@@ -48,7 +49,7 @@ public class CashAdvanceEnvelopeTests : IDisposable
     {
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
-            .ReturnsAsync(new Product { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
+            .ReturnsAsync(new SaleProductInfoDto { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
 
         var cashDrawerMock = new Mock<ICashDrawerService>();
         cashDrawerMock.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
@@ -148,7 +149,7 @@ public class CashAdvanceEnvelopeTests : IDisposable
 
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
-            .ReturnsAsync(new Product { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
+            .ReturnsAsync(new SaleProductInfoDto { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
 
         var settingsMock = new Mock<ISystemSettingsService>();
         settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))

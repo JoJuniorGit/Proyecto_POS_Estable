@@ -77,8 +77,8 @@ public class BsPriceCeilingStandardTests
         var service = new SalesService(context, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsMock.Object);
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var product = new ProductBuilder().WithId(77).WithSku("SKU-77").WithName("Grano Fino").WithCostAndMargin(0.60m, 35.00m).Build();
-        inventoryMock.Setup(i => i.GetProductByIdAsync(77)).ReturnsAsync(product);
+        var product = new ProductBuilder().WithId(77).WithSku("SKU-77").WithName("Grano Fino").WithCostAndMargin(0.60m, 35.00m).BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(77)).ReturnsAsync(product);
 
         var sale = await service.StartSaleAsync();
         var updated = await service.AddItemAsync(sale.Id, 77, 1, 842.21m);

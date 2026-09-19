@@ -1,4 +1,3 @@
-using Core.Entities;
 using Core.DTOs;
 using Core.Interfaces;
 using Backend.API.DTOs;

@@ -61,7 +61,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var group = new Product
+        var group = new CreateProductDto
         {
             Name = "Camisetas Deportivas (Grupo)",
             IsGroupHeader = true,
@@ -72,7 +72,7 @@ public partial class ProductVariantsTests
             CostPriceUSD = 8.00m
         };
 
-        var created = await service.CreateProductAsync(group);
+        var created = await service.CreateProductFromDtoAsync(group);
         Assert.True(created.IsGroupHeader);
         Assert.True(created.IsStockShared);
         Assert.Equal(100m, created.StockQuantity);
@@ -86,7 +86,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var group = new Product
+        var group = new CreateProductDto
         {
             Name = "Zapatos Casuales (Grupo)",
             IsGroupHeader = true,
@@ -97,7 +97,7 @@ public partial class ProductVariantsTests
             CostPriceUSD = 15.00m
         };
 
-        var created = await service.CreateProductAsync(group);
+        var created = await service.CreateProductFromDtoAsync(group);
         Assert.True(created.IsGroupHeader);
         Assert.False(created.IsStockShared);
         Assert.Equal(0m, created.StockQuantity);
@@ -111,7 +111,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var group = new Product
+        var group = new CreateProductDto
         {
             Name = "Pinturas (Grupo)",
             IsGroupHeader = true,
@@ -120,11 +120,11 @@ public partial class ProductVariantsTests
             PriceRetailUSD = 12.00m,
             CostPriceUSD = 6.00m
         };
-        var created = await service.CreateProductAsync(group);
+        var created = await service.CreateProductFromDtoAsync(group);
 
         created.IsStockShared = false; // Attempt to mutate immutable flag
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateProductAsync(created));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateProductFromDtoAsync(created.Id, created.ToUpdateProductDto()));
         Assert.Contains("Stock Compartido", ex.Message);
     }
 
@@ -135,7 +135,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var group = new Product
+        var group = new CreateProductDto
         {
             Name = "Pinturas (Grupo 2)",
             IsGroupHeader = true,
@@ -143,11 +143,11 @@ public partial class ProductVariantsTests
             PriceRetailUSD = 12.00m,
             CostPriceUSD = 6.00m
         };
-        var created = await service.CreateProductAsync(group);
+        var created = await service.CreateProductFromDtoAsync(group);
 
         created.HasIndependentPricing = true; // Attempt to mutate immutable flag
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateProductAsync(created));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateProductFromDtoAsync(created.Id, created.ToUpdateProductDto()));
         Assert.Contains("Precios Independientes", ex.Message);
     }
 
@@ -158,7 +158,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var group = new Product
+        var group = new CreateProductDto
         {
             Name = "Harina Pan Pool",
             IsGroupHeader = true,
@@ -167,16 +167,16 @@ public partial class ProductVariantsTests
             PriceRetailUSD = 1.20m,
             CostPriceUSD = 0.80m
         };
-        var parent = await service.CreateProductAsync(group);
+        var parent = await service.CreateProductFromDtoAsync(group);
 
-        var child = new Product
+        var child = new CreateProductDto
         {
             Name = "Harina Pan Tradicional",
             SKU = "7591001",
             ParentProductId = parent.Id,
             StockQuantity = 100m // Should be forced to 0
         };
-        var createdChild = await service.CreateProductAsync(child);
+        var createdChild = await service.CreateProductFromDtoAsync(child);
 
         Assert.Equal(0m, createdChild.StockQuantity);
         Assert.Equal(0m, createdChild.LowStockThreshold);
@@ -189,7 +189,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var group = new Product
+        var group = new CreateProductDto
         {
             Name = "Ropa Colección",
             IsGroupHeader = true,
@@ -197,9 +197,9 @@ public partial class ProductVariantsTests
             PriceRetailUSD = 20.00m,
             CostPriceUSD = 10.00m
         };
-        var parent = await service.CreateProductAsync(group);
+        var parent = await service.CreateProductFromDtoAsync(group);
 
-        var child = new Product
+        var child = new CreateProductDto
         {
             Name = "Ropa Talla XL (Edición Especial)",
             SKU = "7592002",
@@ -208,7 +208,7 @@ public partial class ProductVariantsTests
             ProfitMarginRetail = 50.00m,
             PriceRetailUSD = 21.00m
         };
-        var createdChild = await service.CreateProductAsync(child);
+        var createdChild = await service.CreateProductFromDtoAsync(child);
 
         Assert.Equal(14.00m, createdChild.CostPriceUSD);
         Assert.Equal(21.00m, createdChild.PriceRetailUSD);
@@ -221,7 +221,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var group = new Product
+        var group = new CreateProductDto
         {
             Name = "Helados Artesanales",
             IsGroupHeader = true,
@@ -229,9 +229,9 @@ public partial class ProductVariantsTests
             PriceRetailUSD = 3.00m,
             CostPriceUSD = 1.50m
         };
-        var parent = await service.CreateProductAsync(group);
+        var parent = await service.CreateProductFromDtoAsync(group);
 
-        var variant = new Product
+        var variant = new CreateProductDto
         {
             Name = "Helado Pistacho Premium",
             SKU = "7593003",
@@ -240,14 +240,14 @@ public partial class ProductVariantsTests
             ProfitMarginRetail = 60.00m,
             PriceRetailUSD = 4.00m
         };
-        var createdVariant = await service.CreateProductAsync(variant);
+        var createdVariant = await service.CreateProductFromDtoAsync(variant);
 
         // Update parent price to 5.00
         parent.PriceRetailUSD = 5.00m;
         parent.CostPriceUSD = 2.50m;
-        await service.UpdateProductAsync(parent);
+        await service.UpdateProductFromDtoAsync(parent.Id, parent.ToUpdateProductDto());
 
-        var fetchedVariant = await service.GetProductByIdAsync(createdVariant.Id);
+        var fetchedVariant = await GetProductFromDbAsync(db, createdVariant.Id);
         Assert.NotNull(fetchedVariant);
         Assert.Equal(4.00m, fetchedVariant.PriceRetailUSD); // Maintained independent price
     }
@@ -259,7 +259,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var group = new Product
+        var group = new CreateProductDto
         {
             Name = "Pintura Galón (Pool)",
             IsGroupHeader = true,
@@ -268,21 +268,21 @@ public partial class ProductVariantsTests
             PriceRetailUSD = 25.00m,
             CostPriceUSD = 15.00m
         };
-        var parent = await service.CreateProductAsync(group);
+        var parent = await service.CreateProductFromDtoAsync(group);
 
-        var variant = new Product
+        var variant = new CreateProductDto
         {
             Name = "Pintura Galón Blanco",
             SKU = "7594004",
             ParentProductId = parent.Id
         };
-        var createdVariant = await service.CreateProductAsync(variant);
+        var createdVariant = await service.CreateProductFromDtoAsync(variant);
 
         // Deduct 5 units from variant
         await service.UpdateStockAsync(createdVariant.Id, -5m, "Venta #101");
 
-        var updatedParent = await service.GetProductByIdAsync(parent.Id);
-        var updatedVariant = await service.GetProductByIdAsync(createdVariant.Id);
+        var updatedParent = await GetProductFromDbAsync(db, parent.Id);
+        var updatedVariant = await GetProductFromDbAsync(db, createdVariant.Id);
 
         Assert.NotNull(updatedParent);
         Assert.NotNull(updatedVariant);

@@ -32,7 +32,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var group = new Product
+        var group = new CreateProductDto
         {
             Name = "Café en Grano (Pool)",
             IsGroupHeader = true,
@@ -41,20 +41,20 @@ public partial class ProductVariantsTests
             PriceRetailUSD = 8.00m,
             CostPriceUSD = 4.00m
         };
-        var parent = await service.CreateProductAsync(group);
+        var parent = await service.CreateProductFromDtoAsync(group);
 
-        var variant = new Product
+        var variant = new CreateProductDto
         {
             Name = "Café Molido Fino",
             SKU = "7595005",
             ParentProductId = parent.Id
         };
-        var createdVariant = await service.CreateProductAsync(variant);
+        var createdVariant = await service.CreateProductFromDtoAsync(variant);
 
         // Deduct 5 units when only 2 are available with allowNegativeStock = true
         await service.UpdateStockAsync(createdVariant.Id, -5m, "Sale #202", allowNegativeStock: true);
 
-        var updatedParent = await service.GetProductByIdAsync(parent.Id);
+        var updatedParent = await GetProductFromDbAsync(db, parent.Id);
         Assert.NotNull(updatedParent);
         Assert.Equal(-3m, updatedParent.StockQuantity);
 
@@ -73,7 +73,7 @@ public partial class ProductVariantsTests
             var userMock = CreateAdminUserServiceMock();
             var service = new InventoryService(db, userMock.Object);
 
-            var group = new Product
+            var group = new CreateProductDto
             {
                 Name = "Gaseosa 1.5L Pool",
                 IsGroupHeader = true,
@@ -82,15 +82,15 @@ public partial class ProductVariantsTests
                 PriceRetailUSD = 2.00m,
                 CostPriceUSD = 1.00m
             };
-            var parent = await service.CreateProductAsync(group);
+            var parent = await service.CreateProductFromDtoAsync(group);
 
-            var variant = new Product
+            var variant = new CreateProductDto
             {
                 Name = "Gaseosa 1.5L Naranja",
                 SKU = "7596006",
                 ParentProductId = parent.Id
             };
-            var createdVariant = await service.CreateProductAsync(variant);
+            var createdVariant = await service.CreateProductFromDtoAsync(variant);
 
             // Execute 10 sequential / concurrent deductions of 2 units each
             for (int i = 1; i <= 10; i++)
@@ -98,7 +98,7 @@ public partial class ProductVariantsTests
                 await service.UpdateStockAsync(createdVariant.Id, -2m, $"Sale #{i}", allowNegativeStock: true);
             }
 
-            var updatedParent = await service.GetProductByIdAsync(parent.Id);
+            var updatedParent = await GetProductFromDbAsync(db, parent.Id);
             Assert.NotNull(updatedParent);
             Assert.Equal(80m, updatedParent.StockQuantity); // 100 - (10 * 2) = 80
 
@@ -119,7 +119,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var group = new Product
+        var group = new CreateProductDto
         {
             Name = "Azúcar 1Kg Pool",
             IsGroupHeader = true,
@@ -128,26 +128,26 @@ public partial class ProductVariantsTests
             PriceRetailUSD = 1.50m,
             CostPriceUSD = 0.90m
         };
-        var parent = await service.CreateProductAsync(group);
+        var parent = await service.CreateProductFromDtoAsync(group);
 
-        var variant = new Product
+        var variant = new CreateProductDto
         {
             Name = "Azúcar Blanca 1Kg",
             SKU = "7597007",
             ParentProductId = parent.Id
         };
-        var createdVariant = await service.CreateProductAsync(variant);
+        var createdVariant = await service.CreateProductFromDtoAsync(variant);
 
         int resId = await service.ReserveStockAsync(createdVariant.Id, 4m, TimeSpan.FromMinutes(10));
         Assert.True(resId > 0);
 
-        var parentAfterReserve = await service.GetProductByIdAsync(parent.Id);
+        var parentAfterReserve = await GetProductFromDbAsync(db, parent.Id);
         Assert.NotNull(parentAfterReserve);
         Assert.Equal(4m, parentAfterReserve.ReservedQuantity);
 
         // Confirm reservation
         await service.ConfirmReservationAsync(resId, "Pickup completed");
-        var parentAfterConfirm = await service.GetProductByIdAsync(parent.Id);
+        var parentAfterConfirm = await GetProductFromDbAsync(db, parent.Id);
         Assert.NotNull(parentAfterConfirm);
         Assert.Equal(16m, parentAfterConfirm.StockQuantity);
         Assert.Equal(0m, parentAfterConfirm.ReservedQuantity);
@@ -260,8 +260,8 @@ public partial class ProductVariantsTests
         var (added, updated) = await service.BulkImportProductsAsync(importList, overwriteMerge: false);
         Assert.Equal(2, added);
 
-        var groupInDb = await service.GetProductBySkuAsync("GRP-IMP-01");
-        var variantInDb = await service.GetProductBySkuAsync("7598881");
+        var groupInDb = await service.GetProductQuickInfoAsync("GRP-IMP-01");
+        var variantInDb = await service.GetProductQuickInfoAsync("7598881");
 
         Assert.NotNull(groupInDb);
         Assert.NotNull(variantInDb);

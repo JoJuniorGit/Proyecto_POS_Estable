@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using Backend.API.DTOs;
+using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
 using Inventory.Module.Data;
@@ -41,9 +42,9 @@ public class RbacPermissionTests
         var nullService = new MockCurrentUserService { UserRole = null };
         var inventoryService = new InventoryService(db, nullService);
 
-        var product = new Product { Name = "Soda", SKU = "100000", CostPriceUSD = 1.00m, PriceRetailUSD = 1.50m };
+        var product = new CreateProductDto { Name = "Soda", SKU = "100000", CostPriceUSD = 1.00m, PriceRetailUSD = 1.50m };
 
-        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => inventoryService.CreateProductAsync(product));
+        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => inventoryService.CreateProductFromDtoAsync(product));
         Assert.Contains("El usuario actual no tiene permisos para modificar el catálogo", ex.Message);
     }
 
@@ -54,9 +55,9 @@ public class RbacPermissionTests
         var cashierService = new MockCurrentUserService { UserRole = UserRole.Cashier };
         var inventoryService = new InventoryService(db, cashierService);
 
-        var product = new Product { Name = "Soda", SKU = "100001", CostPriceUSD = 1.00m, PriceRetailUSD = 1.50m };
+        var product = new CreateProductDto { Name = "Soda", SKU = "100001", CostPriceUSD = 1.00m, PriceRetailUSD = 1.50m };
 
-        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => inventoryService.CreateProductAsync(product));
+        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => inventoryService.CreateProductFromDtoAsync(product));
         Assert.Contains("El usuario actual no tiene permisos para modificar el catálogo", ex.Message);
     }
 
@@ -67,9 +68,9 @@ public class RbacPermissionTests
         var adminService = new MockCurrentUserService { UserRole = UserRole.Admin };
         var inventoryService = new InventoryService(db, adminService);
 
-        var product = new Product { Name = "Soda", SKU = "100002", CostPriceUSD = 1.00m, PriceRetailUSD = 1.50m };
+        var product = new CreateProductDto { Name = "Soda", SKU = "100002", CostPriceUSD = 1.00m, PriceRetailUSD = 1.50m };
 
-        var created = await inventoryService.CreateProductAsync(product);
+        var created = await inventoryService.CreateProductFromDtoAsync(product);
         Assert.NotNull(created);
         Assert.Equal("100002", created.SKU);
     }
@@ -81,13 +82,13 @@ public class RbacPermissionTests
         var adminService = new MockCurrentUserService { UserRole = UserRole.Admin };
         var inventoryService = new InventoryService(db, adminService);
 
-        var product = new Product { Name = "Juice", SKU = "100003", CostPriceUSD = 1.00m, PriceRetailUSD = 1.50m };
-        await inventoryService.CreateProductAsync(product);
+        var product = new CreateProductDto { Name = "Juice", SKU = "100003", CostPriceUSD = 1.00m, PriceRetailUSD = 1.50m };
+        var created = await inventoryService.CreateProductFromDtoAsync(product);
 
         var cashierService = new MockCurrentUserService { UserRole = UserRole.Cashier };
         var cashierInventoryService = new InventoryService(db, cashierService);
 
-        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => cashierInventoryService.DeleteProductAsync(product.Id));
+        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => cashierInventoryService.DeleteProductAsync(created.Id));
         Assert.Contains("El usuario actual no tiene permisos para modificar el catálogo", ex.Message);
     }
 
@@ -115,10 +116,10 @@ public class RbacPermissionTests
         return controller;
     }
 
-    private async Task<Product> SeedStockedProductAsync(InventoryDbContext db)
+    private async Task<ProductDto> SeedStockedProductAsync(InventoryDbContext db)
     {
         var service = new InventoryService(db);
-        var product = new Product
+        var product = new CreateProductDto
         {
             Name = "Galletas",
             SKU = Guid.NewGuid().ToString("N")[..10],
@@ -126,7 +127,7 @@ public class RbacPermissionTests
             PriceRetailUSD = 1.00m,
             StockQuantity = 50m
         };
-        return await service.CreateProductAsync(product);
+        return await service.CreateProductFromDtoAsync(product);
     }
 
     [Fact]

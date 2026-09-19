@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using CommandCenter.Tests.Builders;
+using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
 using Inventory.Module.Services;
@@ -59,7 +60,7 @@ public class CashAdvanceCommissionEndpointTests
     {
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
-            .ReturnsAsync(new Product { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
+            .ReturnsAsync(new SaleProductInfoDto { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
 
         var cashDrawerMock = new Mock<Sales.Module.Interfaces.ICashDrawerService>();
         cashDrawerMock.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))

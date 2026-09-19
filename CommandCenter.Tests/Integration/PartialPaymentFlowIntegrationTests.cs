@@ -47,9 +47,9 @@ public class PartialPaymentFlowIntegrationTests
         salesContext.Customers.Add(customer);
         await salesContext.SaveChangesAsync();
 
-        var product = new ProductBuilder().WithId(201).WithName("Batería 12V").WithCostAndMargin(80.00m, 25.00m).Build(); // $100.00 USD
+        var product = new ProductBuilder().WithId(201).WithName("Batería 12V").WithCostAndMargin(80.00m, 25.00m).BuildSaleProductInfo(); // $100.00 USD
         var inventoryServiceMock = new Mock<IInventoryService>();
-        inventoryServiceMock.Setup(i => i.GetProductByIdAsync(201)).ReturnsAsync(product);
+        inventoryServiceMock.Setup(i => i.GetSaleProductByIdAsync(201)).ReturnsAsync(product);
 
         var mediatorMock = new Mock<IMediator>();
         var cashDrawerService = new CashDrawerService(salesContext);
@@ -135,9 +135,9 @@ public class PartialPaymentFlowIntegrationTests
         salesContext.Customers.Add(customer);
         await salesContext.SaveChangesAsync();
 
-        var product = new ProductBuilder().WithId(210).WithName("Bombillo LED").WithCostAndMargin(40.00m, 25.00m).Build();
+        var product = new ProductBuilder().WithId(210).WithName("Bombillo LED").WithCostAndMargin(40.00m, 25.00m).BuildSaleProductInfo();
         var inventoryServiceMock = new Mock<IInventoryService>();
-        inventoryServiceMock.Setup(i => i.GetProductByIdAsync(210)).ReturnsAsync(product);
+        inventoryServiceMock.Setup(i => i.GetSaleProductByIdAsync(210)).ReturnsAsync(product);
 
         var mediatorMock = new Mock<IMediator>();
         var cashDrawerService = new CashDrawerService(salesContext);

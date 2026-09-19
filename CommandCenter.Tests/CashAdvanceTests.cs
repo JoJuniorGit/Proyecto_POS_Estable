@@ -50,7 +50,7 @@ public class CashAdvanceTests
     {
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
-            .ReturnsAsync(new Product { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
+            .ReturnsAsync(new SaleProductInfoDto { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
 
         var cashDrawerMock = new Mock<ICashDrawerService>();
         cashDrawerMock.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
@@ -69,7 +69,7 @@ public class CashAdvanceTests
     {
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
-            .ReturnsAsync(new Product { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
+            .ReturnsAsync(new SaleProductInfoDto { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
 
         var cashDrawerMock = new Mock<ICashDrawerService>();
         cashDrawerMock.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
@@ -482,8 +482,8 @@ public class CashAdvanceTests
         Assert.Equal(provisioned.Id, saleItem.ProductId);
 
         // System provisioning must not grant the cashier catalog mutation rights.
-        var directEx = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => inventoryService.CreateProductAsync(
-            new Product { Name = "Manual", SKU = "MAN-001", CostPriceUSD = 1m, PriceRetailUSD = 2m }));
+        var directEx = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => inventoryService.CreateProductFromDtoAsync(
+            new CreateProductDto { Name = "Manual", SKU = "MAN-001", CostPriceUSD = 1m, PriceRetailUSD = 2m }));
         Assert.Contains("no tiene permisos para modificar el catálogo", directEx.Message);
     }
 }

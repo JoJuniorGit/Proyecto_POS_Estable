@@ -43,9 +43,9 @@ public class LiquidationFlowIntegrationTests
         salesContext.Customers.Add(customer);
         await salesContext.SaveChangesAsync();
 
-        var product = new ProductBuilder().WithId(301).WithName("Aceite 20W50").WithCostAndMargin(10.00m, 50.00m).Build(); // $15.00 USD
+        var product = new ProductBuilder().WithId(301).WithName("Aceite 20W50").WithCostAndMargin(10.00m, 50.00m).BuildSaleProductInfo(); // $15.00 USD
         var inventoryServiceMock = new Mock<IInventoryService>();
-        inventoryServiceMock.Setup(i => i.GetProductByIdAsync(301)).ReturnsAsync(product);
+        inventoryServiceMock.Setup(i => i.GetSaleProductByIdAsync(301)).ReturnsAsync(product);
 
         var mediatorMock = new Mock<IMediator>();
         var cashDrawerService = new CashDrawerService(salesContext);

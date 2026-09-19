@@ -25,6 +25,9 @@ namespace CommandCenter.Tests.Unit;
 
 public partial class ProductVariantsTests
 {
+    private static Task<Product?> GetProductFromDbAsync(InventoryDbContext db, int id) =>
+        db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id);
+
     [Fact]
     public async Task AdjustStockAsync_VariantProduct_UnderIndividualParent_Succeeds()
     {
@@ -32,22 +35,22 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = new Product
+        var parent = new CreateProductDto
         {
             Name = "Zapato Deportivo",
             IsGroupHeader = true,
             IsStockShared = false
         };
-        var savedParent = await service.CreateProductAsync(parent);
+        var savedParent = await service.CreateProductFromDtoAsync(parent);
 
-        var variant = new Product
+        var variant = new CreateProductDto
         {
             Name = "Zapato Talla 42",
             SKU = "7597778889991",
             ParentProductId = savedParent.Id,
             StockQuantity = 10m
         };
-        var savedVariant = await service.CreateProductAsync(variant);
+        var savedVariant = await service.CreateProductFromDtoAsync(variant);
 
         await service.AdjustStockAsync(savedVariant.Id, 5m, "Entrada de lote");
 
@@ -63,13 +66,13 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var prod = new Product
+        var prod = new CreateProductDto
         {
             Name = "Arroz 1Kg",
             SKU = "7591234567890",
             StockQuantity = 50m
         };
-        var saved = await service.CreateProductAsync(prod);
+        var saved = await service.CreateProductFromDtoAsync(prod);
 
         await service.AdjustStockAsync(saved.Id, -5m, "Mermas por empaque dañado");
 
@@ -85,13 +88,13 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var serviceProd = new Product
+        var serviceProd = new CreateProductDto
         {
             Name = "Adelanto de Efectivo",
             SKU = "999999",
             IsCashAdvance = true
         };
-        var saved = await service.CreateProductAsync(serviceProd);
+        var saved = await service.CreateProductFromDtoAsync(serviceProd);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.AdjustStockAsync(saved.Id, 100m, "Ajuste a servicio"));
@@ -106,14 +109,17 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var prod = new Product
+        var prod = new CreateProductDto
         {
             Name = "Producto Descontinuado",
             SKU = "7593334445556",
-            StockQuantity = 20m,
-            IsDeleted = true
+            StockQuantity = 20m
         };
-        var saved = await service.CreateProductAsync(prod);
+        var saved = await service.CreateProductFromDtoAsync(prod);
+
+        var archived = await db.Products.FindAsync(saved.Id);
+        archived!.IsDeleted = true;
+        await db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.AdjustStockAsync(saved.Id, 10m, "Ajuste en archivado"));
@@ -128,15 +134,15 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = new Product
+        var parent = new CreateProductDto
         {
             Name = "Huevos Pool",
             IsGroupHeader = true,
             IsStockShared = true
         };
-        var savedParent = await service.CreateProductAsync(parent);
+        var savedParent = await service.CreateProductFromDtoAsync(parent);
 
-        var variant = new Product
+        var variant = new CreateProductDto
         {
             Name = "Variante Excesiva",
             SKU = "7599991112223",
@@ -145,7 +151,7 @@ public partial class ProductVariantsTests
         };
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.CreateProductAsync(variant));
+            service.CreateProductFromDtoAsync(variant));
 
         Assert.Equal(Core.Constants.InventoryMessages.ConversionFactorOutOfRange, ex.Message);
     }
@@ -159,24 +165,24 @@ public partial class ProductVariantsTests
         var setupService = new InventoryService(setupDb, userMock.Object);
 
         // Padre con stock inicial de 1000 unidades base
-        var parent = new Product
+        var parent = new CreateProductDto
         {
             Name = "Harina Trigo Saco",
             IsGroupHeader = true,
             IsStockShared = true,
             StockQuantity = 1000m
         };
-        var savedParent = await setupService.CreateProductAsync(parent);
+        var savedParent = await setupService.CreateProductFromDtoAsync(parent);
 
         // Variante de 5 Kg (factor 5)
-        var variant5k = new Product
+        var variant5k = new CreateProductDto
         {
             Name = "Harina Trigo 5Kg",
             SKU = "7595556667771",
             ParentProductId = savedParent.Id,
             ConversionFactor = 5.0m
         };
-        var savedVariant = await setupService.CreateProductAsync(variant5k);
+        var savedVariant = await setupService.CreateProductFromDtoAsync(variant5k);
 
         // Simulación de 20 peticiones concurrentes (cada una con su propio DbContext scoped)
         var lockObj = new object();
@@ -256,7 +262,7 @@ public partial class ProductVariantsTests
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateCatalog).Returns(true);
 
-        var controller = new ProductsController(mockService.Object, mockUser.Object);
+        var controller = new ProductsController(mockService.Object, Mock.Of<IProductManagementService>(), mockUser.Object);
 
         // 1. Éxito -> 204 NoContent
         mockService.Setup(s => s.AdjustStockAsync(1, 10m, "Ajuste OK", null)).Returns(Task.CompletedTask);
@@ -288,7 +294,7 @@ public partial class ProductVariantsTests
     [Fact]
     public async Task ProductsController_GetById_AsCashier_CensorsCostAndMargins()
     {
-        var product = new Product
+        var product = new ProductDto
         {
             Id = 1,
             Name = "Item de Prueba",
@@ -298,11 +304,12 @@ public partial class ProductVariantsTests
             ProfitPercentage = 20m
         };
         var mockService = new Mock<IInventoryService>();
-        mockService.Setup(s => s.GetProductByIdAsync(1)).ReturnsAsync(product);
+        var managementMock = new Mock<IProductManagementService>();
+        managementMock.Setup(s => s.GetProductDtoByIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(product);
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateCatalog).Returns(false);
 
-        var controller = new ProductsController(mockService.Object, mockUser.Object);
+        var controller = new ProductsController(mockService.Object, managementMock.Object, mockUser.Object);
         var result = await controller.GetById(1);
 
         var dto = Assert.IsType<ProductDto>(result.Value);
@@ -316,7 +323,7 @@ public partial class ProductVariantsTests
     [Fact]
     public async Task ProductsController_GetById_AsManager_SeesCostAndMargins()
     {
-        var product = new Product
+        var product = new ProductDto
         {
             Id = 1,
             Name = "Item de Prueba",
@@ -324,11 +331,12 @@ public partial class ProductVariantsTests
             ProfitMarginRetail = 25m
         };
         var mockService = new Mock<IInventoryService>();
-        mockService.Setup(s => s.GetProductByIdAsync(1)).ReturnsAsync(product);
+        var managementMock = new Mock<IProductManagementService>();
+        managementMock.Setup(s => s.GetProductDtoByIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(product);
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateCatalog).Returns(true);
 
-        var controller = new ProductsController(mockService.Object, mockUser.Object);
+        var controller = new ProductsController(mockService.Object, managementMock.Object, mockUser.Object);
         var result = await controller.GetById(1);
 
         var dto = Assert.IsType<ProductDto>(result.Value);

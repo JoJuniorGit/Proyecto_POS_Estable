@@ -33,7 +33,7 @@ public partial class ProductVariantsTests
         var service = new InventoryService(db, userMock.Object);
 
         // Padre "Caja de Huevos" con 360 unidades de stock base
-        var group = new Product
+        var group = new CreateProductDto
         {
             Name = "Caja de Huevos 360",
             IsGroupHeader = true,
@@ -42,23 +42,23 @@ public partial class ProductVariantsTests
             PriceRetailUSD = 40.00m,
             CostPriceUSD = 30.00m
         };
-        var parent = await service.CreateProductAsync(group);
+        var parent = await service.CreateProductFromDtoAsync(group);
 
         // Variante "Cartón" con ConversionFactor = 30 (1 cartón = 30 huevos)
-        var cartonVariant = new Product
+        var cartonVariant = new CreateProductDto
         {
             Name = "Cartón de Huevos (30 Und)",
             SKU = "759888801",
             ParentProductId = parent.Id,
             ConversionFactor = 30.0m
         };
-        var createdVariant = await service.CreateProductAsync(cartonVariant);
+        var createdVariant = await service.CreateProductFromDtoAsync(cartonVariant);
         Assert.Equal(30.0m, createdVariant.ConversionFactor);
 
         // Venta de 2 cartones (-2) -> Debe descontar 2 * 30 = 60 huevos del padre
         await service.UpdateStockAsync(createdVariant.Id, -2m, "Venta de 2 cartones", userId: "1", allowNegativeStock: false);
 
-        var parentInDb = await service.GetProductByIdAsync(parent.Id);
+        var parentInDb = await GetProductFromDbAsync(db, parent.Id);
         Assert.NotNull(parentInDb);
         Assert.Equal(300m, parentInDb.StockQuantity);
 
@@ -77,7 +77,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = await service.CreateProductAsync(new Product
+        var parent = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Queso Duro Pool (Gramos)",
             IsGroupHeader = true,
@@ -86,7 +86,7 @@ public partial class ProductVariantsTests
         });
 
         // Variante "Cuarto de Kilo" -> Factor = 250 gramos
-        var variant = await service.CreateProductAsync(new Product
+        var variant = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Cuarto de Kilo Queso",
             SKU = "759999901",
@@ -97,7 +97,7 @@ public partial class ProductVariantsTests
         // Vender 0.5 unidades de la variante -> 0.5 * 250 = 125 gramos
         await service.UpdateStockAsync(variant.Id, -0.5m, "Venta 0.5 paquete", userId: "1", allowNegativeStock: false);
 
-        var parentInDb = await service.GetProductByIdAsync(parent.Id);
+        var parentInDb = await GetProductFromDbAsync(db, parent.Id);
         Assert.NotNull(parentInDb);
         Assert.Equal(4875m, parentInDb.StockQuantity);
     }
@@ -109,7 +109,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = await service.CreateProductAsync(new Product
+        var parent = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Caja de Huevos 360",
             IsGroupHeader = true,
@@ -117,7 +117,7 @@ public partial class ProductVariantsTests
             StockQuantity = 360m
         });
 
-        var carton = await service.CreateProductAsync(new Product
+        var carton = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Cartón de Huevos (30 Und)",
             SKU = "759888802",
@@ -129,7 +129,7 @@ public partial class ProductVariantsTests
         int resId = await service.ReserveStockAsync(carton.Id, 3m, TimeSpan.FromMinutes(15));
         Assert.True(resId > 0);
 
-        var parentInDb = await service.GetProductByIdAsync(parent.Id);
+        var parentInDb = await GetProductFromDbAsync(db, parent.Id);
         Assert.NotNull(parentInDb);
         Assert.Equal(90m, parentInDb.ReservedQuantity);
 
@@ -141,7 +141,7 @@ public partial class ProductVariantsTests
 
         // Cancelar reserva -> Desaloja los 90 del padre
         await service.CancelReservationAsync(resId);
-        var parentAfterCancel = await service.GetProductByIdAsync(parent.Id);
+        var parentAfterCancel = await GetProductFromDbAsync(db, parent.Id);
         Assert.NotNull(parentAfterCancel);
         Assert.Equal(0m, parentAfterCancel.ReservedQuantity);
     }
@@ -154,7 +154,7 @@ public partial class ProductVariantsTests
         var service = new InventoryService(db, userMock.Object);
 
         // 1. Grupo con factor != 1 -> Debe forzarse a 1.0m
-        var group = await service.CreateProductAsync(new Product
+        var group = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Grupo Test",
             IsGroupHeader = true,
@@ -164,14 +164,14 @@ public partial class ProductVariantsTests
         Assert.Equal(1.0000m, group.ConversionFactor);
 
         // 2. Variante de padre con IsStockShared = false -> Debe forzarse a 1.0m
-        var parentIndividual = await service.CreateProductAsync(new Product
+        var parentIndividual = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Padre No Compartido",
             IsGroupHeader = true,
             IsStockShared = false
         });
 
-        var variantIndep = await service.CreateProductAsync(new Product
+        var variantIndep = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Variante Individual",
             SKU = "759111222",
@@ -188,7 +188,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = await service.CreateProductAsync(new Product
+        var parent = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Padre Pool",
             IsGroupHeader = true,
@@ -196,7 +196,7 @@ public partial class ProductVariantsTests
             StockQuantity = 100m
         });
 
-        var variant = await service.CreateProductAsync(new Product
+        var variant = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Variante 20x",
             SKU = "759333444",
@@ -208,9 +208,9 @@ public partial class ProductVariantsTests
         variant.Name = "Variante 20x Modificada";
         variant.ConversionFactor = 0m;
 
-        await service.UpdateProductAsync(variant);
+        await service.UpdateProductFromDtoAsync(variant.Id, variant.ToUpdateProductDto());
 
-        var updated = await service.GetProductByIdAsync(variant.Id);
+        var updated = await GetProductFromDbAsync(db, variant.Id);
         Assert.NotNull(updated);
         Assert.Equal("Variante 20x Modificada", updated.Name);
         Assert.Equal(20.0m, updated.ConversionFactor); // Preservado

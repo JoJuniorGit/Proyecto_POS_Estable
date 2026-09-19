@@ -56,16 +56,28 @@ public partial class InventoryService : IProductManagementService, IReservationS
         return product != null ? product.ToDto(canViewCost: true) : null;
     }
 
-    public async Task<Product> CreateProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default)
+    private async Task<Product> CreateProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default)
     {
         EnsureCatalogMutationPermission();
         return await CreateProductCoreAsync(product, cancellationToken);
     }
 
     // System-internal provisioning (e.g. the cash-advance infrastructure product) must not require the acting user's catalog permission.
-    public async Task<Product> CreateSystemProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default)
+    public async Task<int> CreateSystemProductAsync(CreateSystemProductRequest request, System.Threading.CancellationToken cancellationToken = default)
     {
-        return await CreateProductCoreAsync(product, cancellationToken);
+        var product = new Product
+        {
+            Name = request.Name,
+            SKU = request.SKU,
+            PriceRetailUSD = request.PriceRetailUSD,
+            PriceUSD = request.PriceRetailUSD,
+            StockQuantity = request.StockQuantity,
+            IsCashAdvance = request.IsCashAdvance,
+            IsActive = request.IsActive
+        };
+
+        var created = await CreateProductCoreAsync(product, cancellationToken);
+        return created.Id;
     }
 
     private async Task<Product> CreateProductCoreAsync(Product product, System.Threading.CancellationToken cancellationToken)
@@ -188,7 +200,7 @@ public partial class InventoryService : IProductManagementService, IReservationS
         return product;
     }
 
-    public async Task UpdateProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default)
+    private async Task UpdateProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default)
     {
         EnsureCatalogMutationPermission();
 

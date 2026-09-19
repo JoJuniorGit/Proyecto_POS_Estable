@@ -162,7 +162,7 @@ public partial class SalesService : ISalesService
         return sale;
     }
 
-    private static decimal ValidateAndAdjustQuantity(Product? product, decimal quantity)
+    private static decimal ValidateAndAdjustQuantity(SaleProductInfoDto? product, decimal quantity)
     {
         if (quantity <= 0m)
         {
@@ -179,10 +179,10 @@ public partial class SalesService : ISalesService
 
     private async Task<decimal> ValidateAndAdjustQuantityForProductAsync(int productId, decimal quantity)
     {
-        Product? product = null;
+        SaleProductInfoDto? product = null;
         if (_inventoryService != null)
         {
-            product = await _inventoryService.GetProductByIdAsync(productId);
+            product = await _inventoryService.GetSaleProductByIdAsync(productId);
         }
 
         return ValidateAndAdjustQuantity(product, quantity);
@@ -195,10 +195,10 @@ public partial class SalesService : ISalesService
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
-        Product? product = null;
+        SaleProductInfoDto? product = null;
         if (_inventoryService != null)
         {
-            product = await _inventoryService.GetProductByIdAsync(productId, cancellationToken);
+            product = await _inventoryService.GetSaleProductByIdAsync(productId, cancellationToken);
         }
 
         if (product != null && (product.IsDeleted || !product.IsActive))
@@ -253,7 +253,7 @@ public partial class SalesService : ISalesService
                 existingItem.Quantity += quantity;
                 var productInfo = (customUnitPriceUsd.HasValue && customUnitPriceLocal.HasValue)
                     ? null
-                    : await _inventoryService!.GetProductByIdAsync(productId, cancellationToken);
+                    : await _inventoryService!.GetSaleProductByIdAsync(productId, cancellationToken);
 
                 decimal grossPrice = customUnitPriceUsd ?? productInfo?.PriceUSD ?? existingItem.UnitPrice;
                 decimal grossPriceBsS = customUnitPriceLocal ?? productInfo?.PriceBsS ?? existingItem.UnitPriceBsS;
@@ -265,7 +265,7 @@ public partial class SalesService : ISalesService
         }
         else
         {
-            var fetchedProduct = await _inventoryService!.GetProductByIdAsync(productId, cancellationToken);
+            var fetchedProduct = await _inventoryService!.GetSaleProductByIdAsync(productId, cancellationToken);
             if (fetchedProduct == null) throw new KeyNotFoundException($"Product {productId} not found.");
 
             if (fetchedProduct.IsGroupHeader)

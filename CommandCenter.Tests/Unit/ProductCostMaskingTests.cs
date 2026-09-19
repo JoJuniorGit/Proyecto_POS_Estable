@@ -28,7 +28,7 @@ public class ProductCostMaskingTests
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateCatalog).Returns(false);
 
-        var controller = new ProductsController(mockService.Object, mockUser.Object);
+        var controller = new ProductsController(mockService.Object, Mock.Of<IProductManagementService>(), mockUser.Object);
         var result = await controller.GetAllAsync();
 
         var payload = Assert.IsType<PagedResultDto<ProductDto>>(result.Value);
@@ -62,7 +62,7 @@ public class ProductCostMaskingTests
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateCatalog).Returns(true);
 
-        var controller = new ProductsController(mockService.Object, mockUser.Object);
+        var controller = new ProductsController(mockService.Object, Mock.Of<IProductManagementService>(), mockUser.Object);
         var result = await controller.GetAllAsync();
 
         var payload = Assert.IsType<PagedResultDto<ProductDto>>(result.Value);
@@ -94,7 +94,7 @@ public class ProductCostMaskingTests
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateCatalog).Returns(false);
 
-        var controller = new ProductsController(mockService.Object, mockUser.Object);
+        var controller = new ProductsController(mockService.Object, Mock.Of<IProductManagementService>(), mockUser.Object);
         var result = await controller.GetQuickInfoAsync("SKU-7");
 
         var dto = Assert.IsType<ProductQuickInfoDto>(result.Value);
@@ -113,7 +113,7 @@ public class ProductCostMaskingTests
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateCatalog).Returns(true);
 
-        var controller = new ProductsController(mockService.Object, mockUser.Object);
+        var controller = new ProductsController(mockService.Object, Mock.Of<IProductManagementService>(), mockUser.Object);
         var result = await controller.GetQuickInfoAsync("SKU-7");
 
         var dto = Assert.IsType<ProductQuickInfoDto>(result.Value);
@@ -132,7 +132,7 @@ public class ProductCostMaskingTests
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateCatalog).Returns(false);
 
-        var controller = new ProductsController(mockService.Object, mockUser.Object);
+        var controller = new ProductsController(mockService.Object, Mock.Of<IProductManagementService>(), mockUser.Object);
         var result = await controller.GetSuggestionsAsync("Arroz");
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
@@ -155,7 +155,7 @@ public class ProductCostMaskingTests
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateCatalog).Returns(true);
 
-        var controller = new ProductsController(mockService.Object, mockUser.Object);
+        var controller = new ProductsController(mockService.Object, Mock.Of<IProductManagementService>(), mockUser.Object);
         var result = await controller.GetSuggestionsAsync("Arroz");
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);

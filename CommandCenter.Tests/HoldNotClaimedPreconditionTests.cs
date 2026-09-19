@@ -215,7 +215,7 @@ public class HoldNotClaimedPreconditionTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(10)).ReturnsAsync(new Product { Id = 10, Name = "Test", PriceUSD = 10m });
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(10)).ReturnsAsync(new SaleProductInfoDto { Id = 10, Name = "Test", PriceUSD = 10m });
 
         var sale = new Sale { Id = 1, TotalUSD = 100m, Status = SaleStatus.OnHold, AppliedRate = 50m };
         context.Sales.Add(sale);
@@ -260,7 +260,7 @@ public class HoldNotClaimedPreconditionTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(10)).ReturnsAsync(new Product { Id = 10, Name = "Test", PriceUSD = 10m });
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(10)).ReturnsAsync(new SaleProductInfoDto { Id = 10, Name = "Test", PriceUSD = 10m });
 
         var sale = new Sale { Id = 1, TotalUSD = 100m, Status = SaleStatus.OnHold, AppliedRate = 50m };
         SeedClaim(sale, TestActorId);

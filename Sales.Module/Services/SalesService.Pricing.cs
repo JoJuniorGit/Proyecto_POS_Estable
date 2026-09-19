@@ -133,26 +133,14 @@ public partial class SalesService
         if (sale.Items != null && sale.Items.Any())
         {
             var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
-            var products = new Dictionary<int, Product>();
+            var products = new Dictionary<int, SaleProductInfoDto>();
 
             if (_inventoryService != null)
             {
-                var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
+                var fetched = await _inventoryService.GetSaleProductsByIdsAsync(productIds);
                 if (fetched != null && fetched.Count > 0)
                 {
                     products = fetched.ToDictionary(p => p.Id);
-                }
-                else
-                {
-                    // Fallback para stubs/mocks en pruebas que únicamente configuran GetProductByIdAsync
-                    foreach (var id in productIds)
-                    {
-                        var p = await _inventoryService.GetProductByIdAsync(id);
-                        if (p != null)
-                        {
-                            products[p.Id] = p;
-                        }
-                    }
                 }
             }
 

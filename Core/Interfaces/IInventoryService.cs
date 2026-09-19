@@ -1,4 +1,3 @@
-using Core.Entities;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -9,18 +8,14 @@ public interface IInventoryService
 {
     Task<decimal> GetTodayExchangeRateAsync(System.Threading.CancellationToken cancellationToken = default);
     void InvalidateTodayExchangeRateCache();
-    Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds, System.Threading.CancellationToken cancellationToken = default);
-    Task<Product?> GetProductByIdAsync(int id, System.Threading.CancellationToken cancellationToken = default);
-    Task<Product?> GetCashAdvanceProductAsync(System.Threading.CancellationToken cancellationToken = default);
-    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
-    Task<Product?> GetProductBySkuAsync(string sku, bool useCache = true, System.Threading.CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Core.DTOs.SaleProductInfoDto>> GetSaleProductsByIdsAsync(IEnumerable<int> productIds, System.Threading.CancellationToken cancellationToken = default);
+    Task<Core.DTOs.SaleProductInfoDto?> GetSaleProductByIdAsync(int id, System.Threading.CancellationToken cancellationToken = default);
+    Task<Core.DTOs.SaleProductInfoDto?> GetCashAdvanceProductAsync(System.Threading.CancellationToken cancellationToken = default);
     [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
     Task<Core.DTOs.ProductQuickInfoDto?> GetProductQuickInfoAsync(string sku, bool useCache = true, System.Threading.CancellationToken cancellationToken = default);
     void InvalidateProductSkuCache(string sku);
     void InvalidateAllProductCaches();
-    Task<Product> CreateProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default);
-    Task<Product> CreateSystemProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default);
-    Task UpdateProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default);
+    Task<int> CreateSystemProductAsync(Core.DTOs.CreateSystemProductRequest request, System.Threading.CancellationToken cancellationToken = default);
     Task SetProductStatusAsync(int id, bool isActive, bool isDeleted, System.Threading.CancellationToken cancellationToken = default);
     Task<string> DeleteProductAsync(int id, bool forceHardDelete = false, System.Threading.CancellationToken cancellationToken = default);
     Task RestoreProductAsync(int id, System.Threading.CancellationToken cancellationToken = default);

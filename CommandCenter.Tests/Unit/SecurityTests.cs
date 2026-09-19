@@ -121,8 +121,8 @@ public class SecurityTests
         var mockCashDrawer = new Mock<Sales.Module.Interfaces.ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(It.IsAny<int>()))
-            .ReturnsAsync(new Product { Id = 1, SKU = "1001", Name = "Arroz", PriceUSD = 2m, PriceRetailUSD = 2m, CostPriceUSD = 1m, IsActive = true });
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(It.IsAny<int>()))
+            .ReturnsAsync(new SaleProductInfoDto { Id = 1, Name = "Arroz", PriceUSD = 2m, PriceRetailUSD = 2m, CostPriceUSD = 1m, IsActive = true });
 
         mockCashDrawer.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
             .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1 });

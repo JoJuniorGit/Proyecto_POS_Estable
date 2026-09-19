@@ -45,7 +45,7 @@ public partial class SalesService
                 }
                 else
                 {
-                    var newP = await _inventoryService.CreateSystemProductAsync(new Product
+                    productId = await _inventoryService.CreateSystemProductAsync(new CreateSystemProductRequest
                     {
                         Name = "Adelanto de Efectivo",
                         SKU = "ADV-001",
@@ -54,7 +54,6 @@ public partial class SalesService
                         IsCashAdvance = true,
                         IsActive = true
                     }, cancellationToken);
-                    productId = newP.Id;
                 }
             }
             catch (KeyNotFoundException)

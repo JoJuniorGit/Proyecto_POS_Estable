@@ -56,7 +56,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = new Product
+        var parent = new CreateProductDto
         {
             Name = "Refresco 2L Sabores",
             IsGroupHeader = true,
@@ -66,7 +66,7 @@ public partial class ProductVariantsTests
             StockQuantity = 0m
         };
 
-        var created = await service.CreateProductAsync(parent);
+        var created = await service.CreateProductFromDtoAsync(parent);
 
         Assert.NotNull(created);
         Assert.True(created.IsGroupHeader);
@@ -81,7 +81,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = new Product
+        var parent = new CreateProductDto
         {
             Name = "Refresco 2L Sabores",
             IsGroupHeader = true,
@@ -93,9 +93,9 @@ public partial class ProductVariantsTests
             MinWholesaleQuantity = 6.000m,
             StockQuantity = 0m
         };
-        var savedParent = await service.CreateProductAsync(parent);
+        var savedParent = await service.CreateProductFromDtoAsync(parent);
 
-        var variant = new Product
+        var variant = new CreateProductDto
         {
             Name = "Refresco 2L Sabor Fresa",
             SKU = "7591234567890",
@@ -104,7 +104,7 @@ public partial class ProductVariantsTests
             LowStockThreshold = 5m
         };
 
-        var savedVariant = await service.CreateProductAsync(variant);
+        var savedVariant = await service.CreateProductFromDtoAsync(variant);
 
         Assert.NotNull(savedVariant);
         Assert.Equal(savedParent.Id, savedVariant.ParentProductId);
@@ -123,7 +123,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = await service.CreateProductAsync(new Product
+        var parent = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Jugo 1L Frutas",
             IsGroupHeader = true,
@@ -132,7 +132,7 @@ public partial class ProductVariantsTests
             StockQuantity = 0m
         });
 
-        await service.CreateProductAsync(new Product
+        await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Jugo 1L Naranja",
             SKU = "7591112223334",
@@ -151,7 +151,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = await service.CreateProductAsync(new Product
+        var parent = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Galletas Rellenas 100g",
             IsGroupHeader = true,
@@ -160,7 +160,7 @@ public partial class ProductVariantsTests
             StockQuantity = 0m
         });
 
-        await service.CreateProductAsync(new Product
+        await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Galletas Rellenas Fresa 100g",
             SKU = "7591001",
@@ -168,7 +168,7 @@ public partial class ProductVariantsTests
             StockQuantity = 15m
         });
 
-        await service.CreateProductAsync(new Product
+        await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Galletas Rellenas Chocolate 100g",
             SKU = "7591002",
@@ -194,7 +194,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = await service.CreateProductAsync(new Product
+        var parent = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Galletas Rellenas 100g",
             IsGroupHeader = true,
@@ -203,7 +203,7 @@ public partial class ProductVariantsTests
             StockQuantity = 0m
         });
 
-        var variant = await service.CreateProductAsync(new Product
+        var variant = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Galletas Rellenas Fresa 100g",
             SKU = "7591001",
@@ -229,7 +229,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = await service.CreateProductAsync(new Product
+        var parent = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Cereal Flakes 500g",
             IsGroupHeader = true,
@@ -238,7 +238,7 @@ public partial class ProductVariantsTests
             StockQuantity = 0m
         });
 
-        await service.CreateProductAsync(new Product
+        await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Cereal Flakes Miel 500g",
             SKU = "7593001",
@@ -246,7 +246,7 @@ public partial class ProductVariantsTests
             StockQuantity = 8m
         });
 
-        await service.CreateProductAsync(new Product
+        await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Cereal Flakes Chocolate 500g",
             SKU = "7593002",
@@ -271,7 +271,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var service = new InventoryService(db, userMock.Object);
 
-        var parent = await service.CreateProductAsync(new Product
+        var parent = await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Detergente 1L",
             IsGroupHeader = true,
@@ -279,7 +279,7 @@ public partial class ProductVariantsTests
             StockQuantity = 0m
         });
 
-        await service.CreateProductAsync(new Product
+        await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Detergente Lavanda 1L",
             SKU = "7594001",
@@ -287,7 +287,7 @@ public partial class ProductVariantsTests
             StockQuantity = 10m
         });
 
-        await service.CreateProductAsync(new Product
+        await service.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Detergente Limón 1L",
             SKU = "7594002",
@@ -309,7 +309,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var invService = new InventoryService(invDb, userMock.Object);
 
-        var parent = await invService.CreateProductAsync(new Product
+        var parent = await invService.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Bebida Energética 500ml",
             IsGroupHeader = true,
@@ -336,7 +336,7 @@ public partial class ProductVariantsTests
         var userMock = CreateAdminUserServiceMock();
         var invService = new InventoryService(invDb, userMock.Object);
 
-        var parent = await invService.CreateProductAsync(new Product
+        var parent = await invService.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Bebida Energética 500ml",
             IsGroupHeader = true,
@@ -344,7 +344,7 @@ public partial class ProductVariantsTests
             StockQuantity = 0m
         });
 
-        var variant = await invService.CreateProductAsync(new Product
+        var variant = await invService.CreateProductFromDtoAsync(new CreateProductDto
         {
             Name = "Bebida Energética Manzana 500ml",
             SKU = "7595001",

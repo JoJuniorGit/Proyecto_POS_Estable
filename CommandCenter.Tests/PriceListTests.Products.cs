@@ -230,7 +230,7 @@ public partial class PriceListTests
         using var invContext = new Inventory.Module.Data.InventoryDbContext(options);
         var invService = new Inventory.Module.Services.InventoryService(invContext);
 
-        var validProduct = new Product
+        var validProduct = new CreateProductDto
         {
             Name = "Producto Valido",
             SKU = "100784",
@@ -241,7 +241,7 @@ public partial class PriceListTests
             HasWholesale = true
         };
 
-        var created = await invService.CreateProductAsync(validProduct);
+        var created = await invService.CreateProductFromDtoAsync(validProduct);
         Assert.Equal(13m, created.PriceRetailUSD);
         Assert.Equal(12m, created.PriceWholesaleUSD);
     }
@@ -255,11 +255,11 @@ public partial class PriceListTests
         using var invContext = new Inventory.Module.Data.InventoryDbContext(options);
         var invService = new Inventory.Module.Services.InventoryService(invContext);
 
-        var p = new Product { Name = "Prod", SKU = "100806", CostPriceUSD = 10m, ProfitMarginRetail = 20m, ProfitMarginWholesale = 10m, HasWholesale = true };
-        var created = await invService.CreateProductAsync(p);
+        var p = new CreateProductDto { Name = "Prod", SKU = "100806", CostPriceUSD = 10m, ProfitMarginRetail = 20m, ProfitMarginWholesale = 10m, HasWholesale = true };
+        var created = await invService.CreateProductFromDtoAsync(p);
 
         created.ProfitMarginWholesale = 40m; // Higher than retail (20m)
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => invService.UpdateProductAsync(created));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => invService.UpdateProductFromDtoAsync(created.Id, created.ToUpdateProductDto()));
         Assert.Contains("margen al mayor", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -323,7 +323,7 @@ public partial class PriceListTests
         var service = new InventoryService(context);
 
         // 1.00 cost with 20.004% margin -> 1.20004 -> Math.Ceiling(120.004) / 100 = 1.21
-        var product = new Product
+        var product = new CreateProductDto
         {
             SKU = "100876",
             Name = "Producto Techo",
@@ -332,7 +332,7 @@ public partial class PriceListTests
             PriceRetailUSD = 0m
         };
 
-        var result = await service.CreateProductAsync(product);
+        var result = await service.CreateProductFromDtoAsync(product);
 
         Assert.Equal(1.21m, result.PriceRetailUSD);
     }
@@ -344,7 +344,7 @@ public partial class PriceListTests
         var service = new InventoryService(context);
 
         // 1.00 cost with 20.00% margin -> 1.20000 -> Math.Ceiling(120.000) / 100 = 1.20
-        var product = new Product
+        var product = new CreateProductDto
         {
             SKU = "100897",
             Name = "Producto Exacto",
@@ -353,7 +353,7 @@ public partial class PriceListTests
             PriceRetailUSD = 0m
         };
 
-        var result = await service.CreateProductAsync(product);
+        var result = await service.CreateProductFromDtoAsync(product);
 
         Assert.Equal(1.20m, result.PriceRetailUSD);
     }
@@ -365,7 +365,7 @@ public partial class PriceListTests
         var service = new InventoryService(context);
 
         // Manual price 1.50 with cost 1.00 and margin 20% -> Manual price 1.50 MUST BE PRESERVED
-        var product = new Product
+        var product = new CreateProductDto
         {
             SKU = "100918",
             Name = "Producto Precio Manual",
@@ -374,7 +374,7 @@ public partial class PriceListTests
             PriceRetailUSD = 1.50m
         };
 
-        var result = await service.CreateProductAsync(product);
+        var result = await service.CreateProductFromDtoAsync(product);
 
         Assert.Equal(1.50m, result.PriceRetailUSD);
     }

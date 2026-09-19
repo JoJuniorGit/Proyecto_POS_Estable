@@ -33,12 +33,34 @@ public partial class PriceListTests
     private Mock<IInventoryService> CreateMockInventory(params Product[] products)
     {
         var mock = new Mock<IInventoryService>();
-        foreach (var p in products)
+        var dtos = products.Select(ToSaleProductInfo).ToList();
+        mock.Setup(x => x.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
+            .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) => dtos.Where(d => ids.Contains(d.Id)).ToList());
+        foreach (var dto in dtos)
         {
-            mock.Setup(x => x.GetProductByIdAsync(p.Id)).ReturnsAsync(p);
+            mock.Setup(x => x.GetSaleProductByIdAsync(dto.Id)).ReturnsAsync(dto);
         }
         return mock;
     }
+
+    private static SaleProductInfoDto ToSaleProductInfo(Product product) => new()
+    {
+        Id = product.Id,
+        Name = product.Name,
+        IsDeleted = product.IsDeleted,
+        IsActive = product.IsActive,
+        IsCashAdvance = product.IsCashAdvance,
+        PriceUSD = product.PriceUSD,
+        PriceBsS = product.PriceBsS,
+        PriceRetailUSD = product.PriceRetailUSD,
+        PriceWholesaleUSD = product.PriceWholesaleUSD,
+        MinWholesaleQuantity = product.MinWholesaleQuantity,
+        HasWholesale = product.HasWholesale,
+        IsGroupHeader = product.IsGroupHeader,
+        IsFractional = product.IsFractional,
+        UnitOfMeasure = product.UnitOfMeasure,
+        CostPriceUSD = product.CostPriceUSD
+    };
 
     [Fact]
     public async Task UpdatePriceList_Throws_WhenOnHoldAndNewTotalBelowPaid()
@@ -269,7 +291,7 @@ public partial class PriceListTests
         using var invContext = new Inventory.Module.Data.InventoryDbContext(options);
         var invService = new Inventory.Module.Services.InventoryService(invContext);
 
-        var invalidProduct = new Product
+        var invalidProduct = new CreateProductDto
         {
             Name = "Producto Invalido",
             SKU = "100534",
@@ -282,7 +304,7 @@ public partial class PriceListTests
             HasWholesale = true
         };
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => invService.CreateProductAsync(invalidProduct));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => invService.CreateProductFromDtoAsync(invalidProduct));
         Assert.Contains("precio al mayor", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -295,7 +317,7 @@ public partial class PriceListTests
         using var invContext = new Inventory.Module.Data.InventoryDbContext(options);
         var invService = new Inventory.Module.Services.InventoryService(invContext);
 
-        var invalidProduct = new Product
+        var invalidProduct = new CreateProductDto
         {
             Name = "Producto Invalido Margen",
             SKU = "100560",
@@ -308,7 +330,7 @@ public partial class PriceListTests
             HasWholesale = true
         };
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => invService.CreateProductAsync(invalidProduct));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => invService.CreateProductFromDtoAsync(invalidProduct));
         Assert.Contains("margen al mayor", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 

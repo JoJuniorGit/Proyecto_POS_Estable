@@ -138,19 +138,11 @@ public partial class SalesService
                 if (_inventoryService != null && sale.Items != null)
                 {
                     var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
-                    var productsDict = new Dictionary<int, Product>();
-                    var fetched = await _inventoryService.GetProductsByIdsAsync(productIds, cancellationToken);
+                    var productsDict = new Dictionary<int, SaleProductInfoDto>();
+                    var fetched = await _inventoryService.GetSaleProductsByIdsAsync(productIds, cancellationToken);
                     if (fetched != null && fetched.Count > 0)
                     {
                         productsDict = fetched.ToDictionary(p => p.Id);
-                    }
-                    else
-                    {
-                        foreach (var id in productIds)
-                        {
-                            var p = await _inventoryService.GetProductByIdAsync(id, cancellationToken);
-                            if (p != null) productsDict[p.Id] = p;
-                        }
                     }
 
                     var stockDeductions = new List<StockDeductionRequest>();
@@ -310,21 +302,13 @@ public partial class SalesService
         if (request?.Items != null && request.Items.Any())
         {
             var productIds = request.Items.Where(i => i.Quantity > 0m).Select(i => i.ProductId).Distinct().ToList();
-            var productsDict = new Dictionary<int, Product>();
+            var productsDict = new Dictionary<int, SaleProductInfoDto>();
             if (_inventoryService != null && productIds.Any())
             {
-                var fetched = await _inventoryService.GetProductsByIdsAsync(productIds, cancellationToken);
+                var fetched = await _inventoryService.GetSaleProductsByIdsAsync(productIds, cancellationToken);
                 if (fetched != null && fetched.Count > 0)
                 {
                     productsDict = fetched.ToDictionary(p => p.Id);
-                }
-                else
-                {
-                    foreach (var id in productIds)
-                    {
-                        var p = await _inventoryService.GetProductByIdAsync(id, cancellationToken);
-                        if (p != null) productsDict[p.Id] = p;
-                    }
                 }
             }
 

@@ -62,8 +62,8 @@ public class SalesServiceUnitTests
         var (service, context, inventoryMock, _, _) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var product = new ProductBuilder().WithId(10).WithSku("SKU-10").WithName("Harina").WithCostAndMargin(2.00m, 25.00m).Build();
-        inventoryMock.Setup(i => i.GetProductByIdAsync(10)).ReturnsAsync(product);
+        var product = new ProductBuilder().WithId(10).WithSku("SKU-10").WithName("Harina").WithCostAndMargin(2.00m, 25.00m).BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(10)).ReturnsAsync(product);
 
         var sale = await service.StartSaleAsync();
         var updated = await service.AddItemAsync(sale.Id, 10, 3, 50.00m);
@@ -82,8 +82,8 @@ public class SalesServiceUnitTests
         var (service, context, inventoryMock, _, _) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var product = new ProductBuilder().WithId(11).WithCostAndMargin(10m, 20m).Build();
-        inventoryMock.Setup(i => i.GetProductByIdAsync(11)).ReturnsAsync(product);
+        var product = new ProductBuilder().WithId(11).WithCostAndMargin(10m, 20m).BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(11)).ReturnsAsync(product);
 
         var sale = await service.StartSaleAsync();
         var addedSale = await service.AddItemAsync(sale.Id, 11, 2, 50m);
@@ -102,8 +102,8 @@ public class SalesServiceUnitTests
         var (service, context, inventoryMock, _, _) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var product = new ProductBuilder().WithId(12).WithCostAndMargin(5m, 20m).Build();
-        inventoryMock.Setup(i => i.GetProductByIdAsync(12)).ReturnsAsync(product);
+        var product = new ProductBuilder().WithId(12).WithCostAndMargin(5m, 20m).BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(12)).ReturnsAsync(product);
 
         var sale = await service.StartSaleAsync();
         await service.AddItemAsync(sale.Id, 12, 1, 50m);
@@ -128,10 +128,10 @@ public class SalesServiceUnitTests
             .WithId(13)
             .WithCostAndMargin(10m, 30m)
             .WithWholesale(minQty: 6m, wholesaleMargin: 10m)
-            .Build();
+            .BuildSaleProductInfo();
 
-        inventoryMock.Setup(i => i.GetProductByIdAsync(13)).ReturnsAsync(product);
-        inventoryMock.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<Product> { product });
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(13)).ReturnsAsync(product);
+        inventoryMock.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { product });
 
         var sale = await service.StartSaleAsync();
         await service.AddItemAsync(sale.Id, 13, 10, 50m);
@@ -257,8 +257,8 @@ public class SalesServiceUnitTests
         var (service, context, inventoryMock, _, _) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var product = new ProductBuilder().WithId(50).WithCostAndMargin(10m, 50m).Build();
-        inventoryMock.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<Product> { product });
+        var product = new ProductBuilder().WithId(50).WithCostAndMargin(10m, 50m).BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { product });
 
         var sale = new SaleBuilder()
             .WithId(40)
@@ -313,17 +313,15 @@ public class SalesServiceUnitTests
         var (service, context, inventoryMock, _, _) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var advProduct = new Product
+        var advProduct = new SaleProductInfoDto
         {
             Id = 99,
-            SKU = "ADV-001",
             Name = "Adelanto de Efectivo",
             IsCashAdvance = true,
-            StockQuantity = 0m,
             IsActive = true
         };
 
-        inventoryMock.Setup(i => i.GetProductByIdAsync(99)).ReturnsAsync(advProduct);
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(99)).ReturnsAsync(advProduct);
         inventoryMock.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(50m);
 
         var sale = await service.StartSaleAsync();
@@ -356,8 +354,8 @@ public class SalesServiceUnitTests
             .WithSku("SKU-60")
             .WithName("Producto Negociable")
             .WithCostAndMargin(20.00m, 25.00m)
-            .Build();
-        inventoryMock.Setup(i => i.GetProductByIdAsync(60)).ReturnsAsync(product);
+            .BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(60)).ReturnsAsync(product);
 
         var sale = await service.StartSaleAsync();
         var itemAdded = await service.AddItemAsync(sale.Id, 60, 2, 50.00m, customUnitPriceUsd: 15.00m, customUnitPriceLocal: 750.00m, isPriceOverrideAuthorized: true);
@@ -386,8 +384,8 @@ public class SalesServiceUnitTests
             .WithSku("SKU-61")
             .WithName("Producto Catalogo")
             .WithCostAndMargin(10.00m, 50.00m)
-            .Build();
-        inventoryMock.Setup(i => i.GetProductByIdAsync(61)).ReturnsAsync(product);
+            .BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(61)).ReturnsAsync(product);
 
         var sale = await service.StartSaleAsync();
         await service.AddItemAsync(sale.Id, 61, 1, 50.00m);

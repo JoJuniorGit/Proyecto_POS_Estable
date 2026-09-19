@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
 using Inventory.Module.Data;
@@ -33,7 +34,7 @@ public class CashAdvanceCoordinatorTests
     {
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
-            .ReturnsAsync(new Product { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
+            .ReturnsAsync(new SaleProductInfoDto { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
 
         var cashDrawerMock = new Mock<ICashDrawerService>();
         cashDrawerMock.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
@@ -115,7 +116,7 @@ public class CashAdvanceCoordinatorTests
 
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
-            .ReturnsAsync(new Product { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
+            .ReturnsAsync(new SaleProductInfoDto { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
         inventoryMock.Setup(i => i.GetTodayExchangeRateAsync())
             .ReturnsAsync(60.0m);
 
