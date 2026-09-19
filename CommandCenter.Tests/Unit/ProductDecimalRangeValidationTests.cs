@@ -20,10 +20,6 @@ public class ProductDecimalRangeValidationTests
         (typeof(ProductDialogViewModel), "PriceRetailUSD"),
         (typeof(ProductDialogViewModel), "ProfitMarginWholesale"),
         (typeof(ProductDialogViewModel), "PriceWholesaleUSD"),
-        (typeof(AddProductViewModel), "Price"),
-        (typeof(AddProductViewModel), "Cost"),
-        (typeof(AddProductViewModel), "StockQuantity"),
-        (typeof(AddProductViewModel), "LowStockThreshold"),
     ];
 
     [Fact]

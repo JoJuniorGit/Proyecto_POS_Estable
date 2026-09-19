@@ -169,6 +169,37 @@ public class BsPriceCeilingStandardTests
     }
 
     [Fact]
+    public async Task InventoryService_CreateProductFromDto_WithInitialStock_PersistsStockQuantity()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        context.ExchangeRateHistory.Add(new ExchangeRateHistory
+        {
+            Date = Core.Helpers.TimeZoneHelper.GetVenezuelaDate(),
+            Rate = 842.21m,
+            UpdatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var userMock = new Mock<ICurrentUserService>();
+        userMock.Setup(u => u.CanMutateCatalog).Returns(true);
+        var service = new Inventory.Module.Services.InventoryService(context, userMock.Object);
+
+        var request = new CreateProductDto
+        {
+            Name = "Harina PAN",
+            SKU = "HARINA001",
+            PriceRetailUSD = 1.20m,
+            StockQuantity = 24.5m
+        };
+
+        var created = await service.CreateProductFromDtoAsync(request);
+
+        var persisted = await context.Products.FindAsync(created.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(24.5m, persisted.StockQuantity);
+    }
+
+    [Fact]
     public async Task ProductsController_Update_WhenValid_DelegatesToInventoryService()
     {
         UpdateProductDto? capturedDto = null;

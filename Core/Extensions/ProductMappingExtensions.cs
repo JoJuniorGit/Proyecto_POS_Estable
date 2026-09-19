@@ -68,6 +68,7 @@ public static class ProductMappingExtensions
             IsFractional = request.IsFractional,
             UnitOfMeasure = request.UnitOfMeasure,
             LowStockThreshold = request.LowStockThreshold,
+            StockQuantity = request.StockQuantity,
             IsCashAdvance = request.IsCashAdvance,
             IsActive = request.IsActive,
             ParentProductId = request.ParentProductId,

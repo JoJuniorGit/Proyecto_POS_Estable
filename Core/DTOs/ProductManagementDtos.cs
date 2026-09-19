@@ -40,6 +40,9 @@ public class CreateProductDto
     public bool IsFractional { get; set; }
     public UnitOfMeasureType UnitOfMeasure { get; set; } = UnitOfMeasureType.Und;
     public decimal LowStockThreshold { get; set; }
+
+    [Range(0, 1000000)]
+    public decimal StockQuantity { get; set; }
     public bool IsCashAdvance { get; set; }
     public bool IsActive { get; set; } = true;
 
