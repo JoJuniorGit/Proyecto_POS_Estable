@@ -185,7 +185,7 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 --------------------------------------------------------------------------------
 
 [AUD-10] CRÍTICA — Exposición de entidades mutables EF Core en interfaces y clientes de frontera
-- Estado: RESUELTO (change SDD `entity-boundary-cleanup`, archive 2026-09-19; verify pass 6/6 requerimientos, 13/13 escenarios; commits de entrega pendientes)
+- Estado: RESUELTO (389d78b, a71f578; change SDD `entity-boundary-cleanup` archivado 2026-09-19; verify pass 6/6 requerimientos, 13/13 escenarios)
 - Severidad: CRÍTICA
 - Ubicación:
   * Desktop.Client.Core/Services/ProductService.cs: líneas 23, 35, 48
