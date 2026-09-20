@@ -1,4 +1,7 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# POSIX /bin/sh: git lo ejecuta con su propio sh, sin depender del PATH del usuario.
+# (Con "#!/usr/bin/env bash", "bash" podia resolver al launcher de WSL en entornos donde
+# el PATH no prioriza el bash de Git -p. ej. GitHub Desktop asi bloqueaba el push.)
 
 # ======== GGA START ========
 # Gentleman Guardian Angel - Code Review (OPT-IN)
