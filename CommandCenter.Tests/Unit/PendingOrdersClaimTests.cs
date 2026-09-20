@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Core.Entities;
 using Desktop.Client.Converters;
@@ -51,6 +52,10 @@ public class PendingOrdersClaimTests : IDisposable
             _dialogServiceMock.Object,
             session);
         _viewModels.Add(vm);
+
+        // Aísla del bus global compartido entre pruebas (mensajes externos alteran el estado).
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
+
         return vm;
     }
 

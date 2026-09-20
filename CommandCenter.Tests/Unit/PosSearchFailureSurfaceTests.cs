@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
@@ -102,13 +103,22 @@ public class PosSearchFailureSurfaceTests
             mockRate.Object,
             cartVm,
             new UserSession());
+
+        // El bus de mensajes es estático y compartido entre pruebas: sin este aislamiento, los
+        // PaymentMethodsChangedMessage que difunden otras clases disparan recargas concurrentes
+        // sobre este VM, alterando el estado observado por las aserciones.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
         return (vm, mockProducts);
     }
 
     private static async Task WaitForAsync(Func<bool> condition)
     {
+        // Espera acotada por condición: la búsqueda pasa por un debounce de 300 ms y el thread pool
+        // puede demorar su continuación bajo carga de la suite completa (se observaron corridas ~4x
+        // más lentas); 5 s era una ventana de timing insuficiente en esos picos. El assert posterior
+        // sigue siendo estricto: si la condición no se cumple en 30 s, el test falla.
         var sw = Stopwatch.StartNew();
-        while (!condition() && sw.Elapsed < TimeSpan.FromSeconds(5))
+        while (!condition() && sw.Elapsed < TimeSpan.FromSeconds(30))
         {
             await Task.Delay(25);
         }

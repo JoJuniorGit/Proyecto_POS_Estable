@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Core.Entities;
 using Desktop.Client.Services;
@@ -53,6 +54,9 @@ public class CheckoutCompletionUxTests
         session.SetUser(new UserDto { Id = 1, Name = "Cajero", Role = UserRole.Cashier }, "token");
 
         var cartVm = new CartViewModel(mockSales.Object, mockRate.Object);
+        // Aísla el carrito del bus global compartido entre pruebas: un CurrentSaleChangedMessage
+        // externo (SalesService real en ClientHttpContractTests) lo dejaría vacío antes del cobro.
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
         cartVm.CurrentSale = initialSale;
 
         using var posVm = new PosViewModel(
@@ -112,6 +116,8 @@ public class CheckoutCompletionUxTests
         session.SetUser(new UserDto { Id = 1, Name = "Cajero", Role = UserRole.Cashier }, "token");
 
         var cartVm = new CartViewModel(mockSales.Object, mockRate.Object);
+        // Mismo aislamiento del bus global que el test de recibo aceptado.
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
         cartVm.CurrentSale = initialSale;
 
         using var posVm = new PosViewModel(

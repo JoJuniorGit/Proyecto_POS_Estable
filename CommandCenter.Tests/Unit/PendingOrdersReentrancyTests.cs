@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Core.Entities;
 using Desktop.Client.Services;
@@ -80,6 +81,10 @@ public class PendingOrdersReentrancyTests
             new Mock<IPaymentService>().Object,
             dialogs.Object,
             session);
+
+        // Aísla del bus global compartido entre pruebas: un mensaje externo dispararía un
+        // EnsureLoadedAsync extra y rompería las aserciones de reentrancia (overlap/defers).
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         return (sales, rate, dialogs, vm);
     }

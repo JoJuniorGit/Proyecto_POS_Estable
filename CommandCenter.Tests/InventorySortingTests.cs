@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Core.Entities;
 using Desktop.Client.Services;
@@ -177,6 +178,8 @@ public class InventorySortingTests
         rateMock.Setup(s => s.GetCurrentRateAsync()).ReturnsAsync((36.5m, (DateTime?)DateTime.UtcNow));
 
         var vm = new InventoryViewModel(productMock.Object, rateMock.Object);
+        // Aísla del bus global compartido entre pruebas (mensajes externos alteran el inventario).
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
         vm.CurrentPage = 3;
 
         // 1. Initial defaults

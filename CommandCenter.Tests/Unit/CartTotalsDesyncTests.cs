@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Desktop.Client.Helpers;
 using Desktop.Client.Services;
@@ -16,6 +17,8 @@ public class CartTotalsDesyncTests
     {
         mockRate.SetupGet(r => r.CurrentRate).Returns(Rate);
         var cart = new CartViewModel(mockSales.Object, mockRate.Object);
+        // Aísla el carrito del bus global compartido entre pruebas (CurrentSaleChangedMessage).
+        WeakReferenceMessenger.Default.UnregisterAll(cart);
         cart.CurrentSale = sale;
         return cart;
     }

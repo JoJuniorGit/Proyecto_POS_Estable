@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Microsoft.EntityFrameworkCore;
@@ -174,6 +175,10 @@ public class CashDrawerClosureTests
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Expense, Sales.Module.Entities.CashTransactionSource.CashOut, 200m, 4m, 50m, "Retiro previo");
 
         using var vm = new CashDrawerViewModel(clientService, rateService);
+        // El bus de mensajes es estático y compartido entre pruebas: otras clases difunden
+        // ShiftClosedMessage/TimeZoneChangedMessage y dispararían RefreshAsync concurrente
+        // sobre el mismo DbContext InMemory, pisando la carga bajo aserción.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
         await vm.LoadSessionAsync();
 
         Assert.NotNull(vm.ActiveSession);
@@ -219,6 +224,9 @@ public class CashDrawerClosureTests
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Expense, Sales.Module.Entities.CashTransactionSource.CashOut, 200m, 4m, 50m, "Retiro sesión 1");
 
         using var vm = new CashDrawerViewModel(clientService, rateService);
+        // Mismo aislamiento del bus global que el test de cierre: evita RefreshAsync concurrente
+        // disparado por mensajes de otras pruebas mientras se carga la sesión.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
         await vm.LoadSessionAsync();
 
         Assert.Equal(3, vm.OrderedTransactions.Count);

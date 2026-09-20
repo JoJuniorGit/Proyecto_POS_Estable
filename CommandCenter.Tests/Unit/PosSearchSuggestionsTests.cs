@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
@@ -19,6 +20,8 @@ public class PosSearchSuggestionsTests
         var mockRate = new Mock<IExchangeRateService>();
         var cartVm = new CartViewModel(mockSales.Object, mockRate.Object);
         var session = new UserSession();
+        // Aísla el carrito del bus global compartido entre pruebas (CurrentSaleChangedMessage).
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
 
         var existingSale = new SaleDto
         {
@@ -72,6 +75,8 @@ public class PosSearchSuggestionsTests
         var mockRate = new Mock<IExchangeRateService>();
         var cartVm = new CartViewModel(mockSales.Object, mockRate.Object);
         var session = new UserSession();
+        // Aísla el carrito del bus global compartido entre pruebas (CurrentSaleChangedMessage).
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
 
         var existingSale = new SaleDto { Id = 10, CashierId = 1 };
         cartVm.CurrentSale = existingSale;
@@ -105,6 +110,8 @@ public class PosSearchSuggestionsTests
         var mockRate = new Mock<IExchangeRateService>();
         var cartVm = new CartViewModel(mockSales.Object, mockRate.Object);
         var session = new UserSession();
+        // Aísla el carrito del bus global compartido entre pruebas (CurrentSaleChangedMessage).
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
 
         var existingSale = new SaleDto { Id = 10, CashierId = 1 };
         cartVm.CurrentSale = existingSale;
@@ -139,6 +146,8 @@ public class PosSearchSuggestionsTests
         var mockRate = new Mock<IExchangeRateService>();
         var cartVm = new CartViewModel(mockSales.Object, mockRate.Object);
         var session = new UserSession();
+        // Aísla el carrito del bus global compartido entre pruebas (CurrentSaleChangedMessage).
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
 
         var existingSale = new SaleDto { Id = 10, CashierId = 1 };
         cartVm.CurrentSale = existingSale;

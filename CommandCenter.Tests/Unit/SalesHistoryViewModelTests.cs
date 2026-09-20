@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
@@ -17,7 +18,10 @@ public class SalesHistoryViewModelTests
 
     private SalesHistoryViewModel CreateViewModel()
     {
-        return new SalesHistoryViewModel(_salesServiceMock.Object, action => action());
+        var vm = new SalesHistoryViewModel(_salesServiceMock.Object, action => action());
+        // Aísla del bus global compartido entre pruebas (mensajes externos alteran el historial).
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
+        return vm;
     }
 
     [Fact]

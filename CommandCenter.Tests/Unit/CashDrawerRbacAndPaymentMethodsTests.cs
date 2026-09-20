@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Core.Entities;
 using Desktop.Client.Services;
@@ -44,6 +45,8 @@ public class CashDrawerRbacAndPaymentMethodsTests
         var (cash, rate, dialog, payments) = CreateMocks();
 
         using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, null);
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         Assert.False(vm.IsAdmin);
     }
@@ -54,7 +57,11 @@ public class CashDrawerRbacAndPaymentMethodsTests
         var (cash, rate, dialog, payments) = CreateMocks();
 
         using var adminVm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Admin));
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(adminVm);
         using var cashierVm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Cashier));
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(cashierVm);
 
         Assert.True(adminVm.IsAdmin);
         Assert.False(cashierVm.IsAdmin);
@@ -65,6 +72,8 @@ public class CashDrawerRbacAndPaymentMethodsTests
     {
         var (cash, rate, dialog, payments) = CreateMocks();
         using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, null);
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         await vm.ProcessCashInCommand.ExecuteAsync(null);
 
@@ -77,6 +86,8 @@ public class CashDrawerRbacAndPaymentMethodsTests
     {
         var (cash, rate, dialog, payments) = CreateMocks();
         using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Cashier));
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         await vm.ProcessCashOutCommand.ExecuteAsync(null);
 
@@ -89,6 +100,8 @@ public class CashDrawerRbacAndPaymentMethodsTests
     {
         var (cash, rate, dialog, payments) = CreateMocks();
         using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Admin));
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         await vm.ProcessCashInCommand.ExecuteAsync(null);
 
@@ -111,6 +124,8 @@ public class CashDrawerRbacAndPaymentMethodsTests
             .ReturnsAsync(((bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?)null);
 
         using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Admin));
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         await vm.ProcessCashAdvanceCommand.ExecuteAsync(null);
 
@@ -131,6 +146,8 @@ public class CashDrawerRbacAndPaymentMethodsTests
             .ReturnsAsync(((bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?)null);
 
         using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, null, CreateSession(UserRole.Admin));
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         await vm.ProcessCashAdvanceCommand.ExecuteAsync(null);
 

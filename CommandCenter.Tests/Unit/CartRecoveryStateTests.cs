@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
@@ -85,7 +86,14 @@ public class CartRecoveryStateTests
         var mockSales = new Mock<ISalesService>();
         var mockRate = new Mock<IExchangeRateService>();
         mockRate.SetupGet(r => r.CurrentRate).Returns(60.0m);
-        return new CartViewModel(mockSales.Object, mockRate.Object, recoveryStore: store.Object);
+        var cart = new CartViewModel(mockSales.Object, mockRate.Object, recoveryStore: store.Object);
+
+        // El bus de mensajes es estático y compartido entre pruebas: otras clases concurrentes
+        // (p. ej. ClientHttpContractTests con el SalesService real) difunden CurrentSaleChangedMessage
+        // y reemplazarían el CurrentSale de este carrito, disparando Clear() del store fuera de la
+        // secuencia bajo prueba. Aislar el carrito elimina ese efecto cruzado.
+        WeakReferenceMessenger.Default.UnregisterAll(cart);
+        return cart;
     }
 
     private static SaleDto CreateSale(int id, string status, params SaleItemDto[] items) => new()

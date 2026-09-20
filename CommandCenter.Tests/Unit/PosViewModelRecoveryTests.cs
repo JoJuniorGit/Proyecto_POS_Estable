@@ -48,6 +48,8 @@ public class PosViewModelRecoveryTests
             mockStore.Object);
 
         WeakReferenceMessenger.Default.Unregister<PaymentMethodsChangedMessage>(posVm);
+        // Aísla también el carrito del bus global (CurrentSaleChangedMessage de otras pruebas).
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
 
         await posVm.InitializeForSessionAsync();
 
@@ -92,6 +94,8 @@ public class PosViewModelRecoveryTests
             mockStore.Object);
 
         WeakReferenceMessenger.Default.Unregister<PaymentMethodsChangedMessage>(posVm);
+        // Aísla también el carrito del bus global (CurrentSaleChangedMessage de otras pruebas).
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
 
         await posVm.InitializeForSessionAsync();
 
@@ -135,6 +139,8 @@ public class PosViewModelRecoveryTests
             mockStore.Object);
 
         WeakReferenceMessenger.Default.Unregister<PaymentMethodsChangedMessage>(posVm);
+        // Aísla también el carrito del bus global (CurrentSaleChangedMessage de otras pruebas).
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
 
         await posVm.InitializeForSessionAsync();
 
@@ -170,6 +176,8 @@ public class PosViewModelRecoveryTests
             mockStore.Object);
 
         WeakReferenceMessenger.Default.Unregister<PaymentMethodsChangedMessage>(posVm);
+        // Aísla también el carrito del bus global (CurrentSaleChangedMessage de otras pruebas).
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
 
         cartVm.CurrentSale = CreateSale(77, "Pending", 1);
 
@@ -215,6 +223,8 @@ public class PosViewModelRecoveryTests
             mockStore.Object);
 
         WeakReferenceMessenger.Default.Unregister<PaymentMethodsChangedMessage>(posVm);
+        // Aísla también el carrito del bus global (CurrentSaleChangedMessage de otras pruebas).
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
 
         await posVm.InitializeForSessionAsync();
 
@@ -255,6 +265,8 @@ public class PosViewModelRecoveryTests
             mockStore.Object);
 
         WeakReferenceMessenger.Default.Unregister<PaymentMethodsChangedMessage>(posVm);
+        // Aísla también el carrito del bus global (CurrentSaleChangedMessage de otras pruebas).
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
 
         await posVm.InitializeForSessionAsync();
 

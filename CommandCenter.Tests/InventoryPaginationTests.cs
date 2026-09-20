@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
@@ -19,7 +20,10 @@ public class InventoryPaginationTests
     {
         _exchangeRateServiceMock.Setup(s => s.CurrentRate).Returns(36.5m);
         _exchangeRateServiceMock.Setup(s => s.GetCurrentRateAsync()).ReturnsAsync((36.5m, (DateTime?)DateTime.UtcNow));
-        return new InventoryViewModel(_productServiceMock.Object, _exchangeRateServiceMock.Object);
+        var vm = new InventoryViewModel(_productServiceMock.Object, _exchangeRateServiceMock.Object);
+        // Aísla del bus global compartido entre pruebas (mensajes externos alteran el inventario).
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
+        return vm;
     }
 
     [Fact]

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Moq;
@@ -33,6 +34,8 @@ public class HistoryWindowBoundsTests
         rate.SetupGet(r => r.CurrentRate).Returns(50m);
 
         var vm = new CashDrawerViewModel(cashDrawer.Object, rate.Object);
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
         using var vmDisposer = vm;
         await vm.LoadSessionAsync();
 
@@ -59,6 +62,8 @@ public class HistoryWindowBoundsTests
         rate.Setup(r => r.GetHistoryAsync()).ReturnsAsync(items);
 
         var vm = new ExchangeRateViewModel(rate.Object);
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
         using var vmDisposer = vm;
 
         await WaitForAsync(() => vm.History.Count > 0);
@@ -77,6 +82,8 @@ public class HistoryWindowBoundsTests
         rate.Setup(r => r.GetHistoryAsync()).ReturnsAsync(new List<ExchangeRateHistoryDto>());
 
         var vm = new ExchangeRateViewModel(rate.Object);
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
         using var vmDisposer = vm;
 
         var overlapping = vm.LoadAllCommand.ExecuteAsync(null);

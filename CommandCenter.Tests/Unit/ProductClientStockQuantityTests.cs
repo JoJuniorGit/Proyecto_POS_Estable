@@ -1,4 +1,5 @@
 using System.Text;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
@@ -106,6 +107,8 @@ public class ProductClientStockQuantityTests
         mockExchangeRate.Setup(e => e.CurrentRate).Returns(36.50m);
 
         var vm = new InventoryViewModel(mockProductService.Object, mockExchangeRate.Object);
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
         await vm.EnsureLoadedAsync();
         var item = Assert.Single(vm.Products);
 
