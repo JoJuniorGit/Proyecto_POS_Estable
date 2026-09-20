@@ -153,6 +153,7 @@
                         
                         <TextBox Grid.Column="1"
                                  x:Name="SearchInput"
+                                 AutomationProperties.AutomationId="Inventory_SearchInput"
                                  materialDesign:HintAssist.Hint="Buscar producto o SKU..."
                                  materialDesign:TextFieldAssist.HasClearButton="True"
                                  Style="{DynamicResource MaterialDesignTextBox}"
@@ -247,6 +248,7 @@
 
                     <!-- Botón Actualizar Catálogo (Ghost/Outlined sutil) -->
                     <Button Command="{Binding RefreshCommand}"
+                            AutomationProperties.AutomationId="Inventory_RefreshButton"
                             Background="#FFFFFF"
                             BorderBrush="#CBD5E1"
                             BorderThickness="1"
@@ -317,6 +319,7 @@
                     Padding="0"
                     Effect="{StaticResource EnterpriseCardShadow}">
                 <DataGrid x:Name="ProductsDataGrid"
+                          AutomationProperties.AutomationId="Inventory_DataGrid"
                           ItemsSource="{Binding Products}" 
                           AutoGenerateColumns="False" 
                           CanUserAddRows="False" 

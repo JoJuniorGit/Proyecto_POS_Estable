@@ -33,7 +33,9 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="Configuración del Sistema" Style="{DynamicResource MaterialDesignHeadline4TextBlock}" FontWeight="Bold"/>
+                        <TextBlock Text="Configuración del Sistema" 
+                                   AutomationProperties.AutomationId="Settings_Title"
+                                   Style="{DynamicResource MaterialDesignHeadline4TextBlock}" FontWeight="Bold"/>
                         <TextBlock Text="Gestione las preferencias globales, conectividad de red, zona horaria y los métodos de pago aceptados." 
                                    Style="{DynamicResource MaterialDesignBody1TextBlock}" Opacity="0.7" Margin="0,4,0,0"/>
                     </StackPanel>

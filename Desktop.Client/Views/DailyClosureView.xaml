@@ -57,6 +57,7 @@
                                                  VerticalAlignment="Center"
                                                  Margin="0,0,8,0"/>
                         <TextBlock Text="Cierre Diario y Arqueo de Caja"
+                                   AutomationProperties.AutomationId="DailyClosure_Title"
                                    FontSize="18"
                                    Foreground="#1E293B"
                                    FontWeight="Bold"
@@ -102,6 +103,7 @@
 
                     <!-- Reload Button -->
                     <Button Style="{StaticResource MaterialDesignOutlinedButton}"
+                            AutomationProperties.AutomationId="DailyClosure_RefreshButton"
                             Command="{Binding LoadExpectedTotalsCommand}"
                             Height="36"
                             Padding="12,0"

@@ -22,13 +22,7 @@ public class PosSaleTests : IClassFixture<WpfAppFixture>
         Assert.NotNull(window);
 
         // First authenticate if login screen is displayed
-        var usernameBox = window.FindFirstDescendant(cf => cf.ByAutomationId("Login_Username"))?.AsTextBox();
-        if (usernameBox != null)
-        {
-            usernameBox.Text = "admin";
-            var submitButton = window.FindFirstDescendant(cf => cf.ByAutomationId("Login_SubmitButton"))?.AsButton();
-            submitButton?.Invoke();
-        }
+        TestHelper.EnsureLoggedIn(window);
 
         // Wait for POS view to load
         var searchInput = Retry.WhileNull(
@@ -36,12 +30,10 @@ public class PosSaleTests : IClassFixture<WpfAppFixture>
             TimeSpan.FromSeconds(10)
         );
 
-        if (searchInput.Result != null)
-        {
-            searchInput.Result.Text = "Harina";
+        Assert.NotNull(searchInput.Result);
+        searchInput.Result.Text = "Harina";
 
-            var checkoutButton = window.FindFirstDescendant(cf => cf.ByAutomationId("Pos_CheckoutButton"))?.AsButton();
-            Assert.NotNull(checkoutButton);
-        }
+        var checkoutButton = window.FindFirstDescendant(cf => cf.ByAutomationId("Pos_CheckoutButton"))?.AsButton();
+        Assert.NotNull(checkoutButton);
     }
 }

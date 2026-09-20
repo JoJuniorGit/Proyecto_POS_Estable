@@ -31,6 +31,7 @@
        empaquetarse en la publicacion Release destinada a instaladores de clientes. -->
   <ItemGroup Condition="'$(Configuration)' == 'Release'">
     <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
+    <Content Update="secrets.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
   <!-- Certificado HTTPS de desarrollo (scripts/create-https-cert.ps1): se copia a la salida en

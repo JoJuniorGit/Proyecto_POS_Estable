@@ -64,7 +64,7 @@
 
 
     <!-- Root: Drawer Host -->
-    <materialDesign:DrawerHost>
+    <materialDesign:DrawerHost IsRightDrawerOpen="{Binding IsRightDrawerOpen, Mode=TwoWay}">
         
         <materialDesign:DrawerHost.RightDrawerContent>
             <!-- ════════════════════════════════════════
@@ -115,6 +115,7 @@
 
                         <!-- POS (Point of Sale) -->
                         <Button x:Name="BtnPos"
+                                AutomationProperties.AutomationId="Nav_BtnPos"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToPosCommand}"
                                 ToolTip="Point of Sale">
@@ -135,6 +136,7 @@
 
                         <!-- Products / Catalog -->
                         <Button x:Name="BtnInventory"
+                                AutomationProperties.AutomationId="Nav_BtnInventory"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToInventoryCommand}"
                                 ToolTip="Products &amp; Catalog">
@@ -150,6 +152,7 @@
 
                         <!-- Import Excel -->
                         <Button x:Name="BtnImportProducts"
+                                AutomationProperties.AutomationId="Nav_BtnImportProducts"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToImportProductsCommand}"
                                 ToolTip="Import Products Excel">
@@ -165,6 +168,7 @@
 
                         <!-- Sales History -->
                         <Button x:Name="BtnSalesHistory"
+                                AutomationProperties.AutomationId="Nav_BtnSalesHistory"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToSalesHistoryCommand}"
                                 ToolTip="Sales History">
@@ -180,6 +184,7 @@
 
                         <!-- Cash Register -->
                         <Button x:Name="BtnCashDrawer"
+                                AutomationProperties.AutomationId="Nav_BtnCashDrawer"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToCashDrawerCommand}"
                                 ToolTip="Cash Drawer &amp; Register">
@@ -195,6 +200,7 @@
 
                         <!-- Cuentas Abiertas -->
                         <Button x:Name="BtnPendingOrders"
+                                AutomationProperties.AutomationId="Nav_BtnPendingOrders"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToPendingOrdersCommand}"
                                 ToolTip="Cuentas Abiertas (Pedidos en Espera)">
@@ -210,6 +216,7 @@
 
                         <!-- Retiros Pendientes -->
                         <Button x:Name="BtnPendingPickups"
+                                AutomationProperties.AutomationId="Nav_BtnPendingPickups"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToPendingPickupsCommand}"
                                 ToolTip="Retiros Pendientes (Mercancía en Custodia)">
@@ -225,6 +232,7 @@
 
                         <!-- Cierre de Caja -->
                         <Button x:Name="BtnDailyClosure"
+                                AutomationProperties.AutomationId="Nav_BtnDailyClosure"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToDailyClosureCommand}"
                                 ToolTip="Cierre Diario y Arqueo de Caja">
@@ -245,6 +253,7 @@
 
                         <!-- Users Management (Admin Only) -->
                         <Button x:Name="BtnUsersManagement"
+                                AutomationProperties.AutomationId="Nav_BtnUsersManagement"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToUsersManagementCommand}"
                                 Visibility="{Binding UserSession.IsAdmin, Converter={StaticResource BooleanToVisibilityConverter}}"
@@ -261,6 +270,7 @@
 
                         <!-- Settings -->
                         <Button x:Name="BtnSettings"
+                                AutomationProperties.AutomationId="Nav_BtnSettings"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToSettingsCommand}"
                                 ToolTip="System Settings">
@@ -276,6 +286,7 @@
 
                         <!-- Exchange Rate -->
                         <Button x:Name="BtnExchangeRate"
+                                AutomationProperties.AutomationId="Nav_BtnExchangeRate"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToExchangeRateCommand}"
                                 ToolTip="Exchange Rate Configuration">

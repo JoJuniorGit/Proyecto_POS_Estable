@@ -293,6 +293,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _isAnyModalOpen, value);
     }
 
+    [ObservableProperty]
+    private bool _isRightDrawerOpen = Array.Exists(Environment.GetCommandLineArgs(), a => a.Equals("--e2e", StringComparison.OrdinalIgnoreCase));
+
     public bool HasUncommittedCartItems => _posViewModel?.Cart?.HasUncommittedItems == true;
 
     [RelayCommand]

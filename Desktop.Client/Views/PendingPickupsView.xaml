@@ -34,6 +34,7 @@
         <DockPanel Grid.Row="0" Margin="24,20,24,14" LastChildFill="True">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button Command="{Binding RefreshCommand}"
+                        AutomationProperties.AutomationId="PendingPickups_RefreshButton"
                         Style="{DynamicResource MaterialDesignOutlinedButton}"
                         BorderBrush="#CBD5E1"
                         Foreground="#475569"
@@ -86,6 +87,7 @@
                     </Grid.ColumnDefinitions>
                     <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18" Foreground="#94A3B8" VerticalAlignment="Center" Margin="12,0,2,0"/>
                     <TextBox Grid.Column="1"
+                             AutomationProperties.AutomationId="PendingPickups_SearchInput"
                              Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              materialDesign:HintAssist.Hint="Buscar por N° factura, cliente o cédula/RIF..."
                              materialDesign:TextFieldAssist.HasClearButton="True"
@@ -112,6 +114,7 @@
 
         <!-- ── 3. Lista de Tarjetas Virtualizada (ListBox, 1 columna) ── -->
         <ListBox x:Name="PickupsList" Grid.Row="2"
+                 AutomationProperties.AutomationId="PendingPickups_List"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  VirtualizingStackPanel.IsVirtualizing="True"
                  VirtualizingStackPanel.VirtualizationMode="Standard"

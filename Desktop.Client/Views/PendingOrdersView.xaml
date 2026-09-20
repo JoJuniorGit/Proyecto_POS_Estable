@@ -211,6 +211,7 @@
         <DockPanel Grid.Row="0" Margin="24,20,24,14" LastChildFill="True">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button Command="{Binding RefreshCommand}"
+                        AutomationProperties.AutomationId="PendingOrders_RefreshButton"
                         Style="{DynamicResource MaterialDesignOutlinedButton}"
                         BorderBrush="#CBD5E1"
                         Foreground="#475569"
@@ -278,6 +279,7 @@
                             </Grid.ColumnDefinitions>
                             <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18" Foreground="#94A3B8" VerticalAlignment="Center" Margin="10,0,2,0"/>
                             <TextBox Grid.Column="1"
+                                     AutomationProperties.AutomationId="PendingOrders_SearchInput"
                                      Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      materialDesign:HintAssist.Hint="Buscar por cliente, cédula/RIF o N° de pedido..."
                                      materialDesign:TextFieldAssist.HasClearButton="True"
@@ -330,6 +332,7 @@
                 ClipToBounds="True">
             <Grid>
                 <DataGrid ItemsSource="{Binding FilteredPendingSales}"
+                          AutomationProperties.AutomationId="PendingOrders_DataGrid"
                           AutoGenerateColumns="False" CanUserAddRows="False"
                           IsReadOnly="True" SelectionMode="Single"
                           Background="#FFFFFF"

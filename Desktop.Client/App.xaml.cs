@@ -134,6 +134,24 @@ public partial class App : Application
         builder.Services.AddTransient<UserSessionHeaderHandler>();
         builder.Services.AddTransient<ResilienceHandler>();
 
+        bool isE2E = args != null && Array.Exists(args, a => a.Equals("--e2e", StringComparison.OrdinalIgnoreCase));
+        if (isE2E)
+        {
+            builder.Services.AddSingleton<E2EMockHttpMessageHandler>();
+        }
+
+        void ConfigureClient(IHttpClientBuilder clientBuilder)
+        {
+            if (isE2E)
+            {
+                clientBuilder.ConfigurePrimaryHttpMessageHandler<E2EMockHttpMessageHandler>();
+            }
+            else
+            {
+                clientBuilder.AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+            }
+        }
+
         var settingsStore = new ClientSettingsStore();
         var clientSettings = settingsStore.LoadSettings();
         var baseAddressStr = clientSettings.ServerBaseAddress;
@@ -149,25 +167,27 @@ public partial class App : Application
         // suscripción a OnHealthRecovered podía perderse. Ahora hay un único HealthPollingService
         // con su propio HttpClient dedicado (sin ResilienceHandler). El timeout del cliente se
         // fija en StartPolling via CancellationToken linkeado (8.9-M12).
-        builder.Services.AddHttpClient("HealthPolling", client =>
+        var healthClient = builder.Services.AddHttpClient("HealthPolling", client =>
         {
             client.BaseAddress = baseAddressUri;
         });
+        if (isE2E) healthClient.ConfigurePrimaryHttpMessageHandler<E2EMockHttpMessageHandler>();
+
         builder.Services.AddSingleton<IHealthPollingService>(sp =>
             new HealthPollingService(
                 sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("HealthPolling"),
                 sp.GetService<IClientStateService>(),
                 sp.GetService<IConnectionManager>()));
 
-        builder.Services.AddHttpClient<IProductService, ProductService>(client =>
+        ConfigureClient(builder.Services.AddHttpClient<IProductService, ProductService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
-        builder.Services.AddHttpClient("SalesApi", client =>
+        ConfigureClient(builder.Services.AddHttpClient("SalesApi", client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
         builder.Services.AddSingleton<ISalesService>(sp => 
         {
@@ -175,15 +195,15 @@ public partial class App : Application
             return new SalesService(httpClient);
         });
 
-        builder.Services.AddHttpClient<IPaymentService, PaymentService>(client =>
+        ConfigureClient(builder.Services.AddHttpClient<IPaymentService, PaymentService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
-        builder.Services.AddHttpClient("ExchangeRateApi", client =>
+        ConfigureClient(builder.Services.AddHttpClient("ExchangeRateApi", client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
         builder.Services.AddSingleton<IExchangeRateService>(sp => 
         {
@@ -191,10 +211,10 @@ public partial class App : Application
             return new ExchangeRateService(httpClient, sp.GetRequiredService<IDispatcherInvoker>(), sp.GetRequiredService<UserSession>());
         });
 
-        builder.Services.AddHttpClient<IUserService, UserService>(client =>
+        ConfigureClient(builder.Services.AddHttpClient<IUserService, UserService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
         // 8.9-L13: los VMs retenidos de por vida por MainViewModel son de-facto singletons;
         // se registran Singleton para que el contenedor refleje su ciclo de vida real.
@@ -224,32 +244,33 @@ public partial class App : Application
         builder.Services.AddSingleton<ExchangeRateViewModel>();
 
         // Register new Cash Drawer Service
-        builder.Services.AddHttpClient<ICashDrawerService, CashDrawerService>(client =>
+        ConfigureClient(builder.Services.AddHttpClient<ICashDrawerService, CashDrawerService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
-        builder.Services.AddHttpClient<ISettingsService, SettingsService>(client =>
+        ConfigureClient(builder.Services.AddHttpClient<ISettingsService, SettingsService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
-        builder.Services.AddHttpClient<IDailyClosureClientService, DailyClosureClientService>(client =>
+        ConfigureClient(builder.Services.AddHttpClient<IDailyClosureClientService, DailyClosureClientService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
-        builder.Services.AddHttpClient<IVersionCheckService, VersionCheckService>(client =>
+        var versionClient = builder.Services.AddHttpClient<IVersionCheckService, VersionCheckService>(client =>
         {
             client.BaseAddress = baseAddressUri;
             // 8.9-M12: el version-check de arranque nunca debe colgar la UI; timeout duro de 5s.
             client.Timeout = TimeSpan.FromSeconds(5);
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        });
+        ConfigureClient(versionClient);
 
-        builder.Services.AddHttpClient<IProductImportService, ProductImportService>(client =>
+        ConfigureClient(builder.Services.AddHttpClient<IProductImportService, ProductImportService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
         builder.Services.AddSingleton<DailyClosureViewModel>();
         builder.Services.AddSingleton<CashDrawerViewModel>();
