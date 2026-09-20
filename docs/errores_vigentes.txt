@@ -3,7 +3,7 @@ CONSOLIDADO MAESTRO DE PROBLEMAS Y DEUDA TÉCNICA VIGENTE — "CommandCenter POS
 ================================================================================
 Fecha de Consolidación: 2026-09-19 (unificado con los hallazgos del ANEXO 8.142)
 Fuente de la Verdad: AGENTS.md, docs/coding-guidelines-*.md, arquitectura del sistema
-Estado: DEUDA TÉCNICA ACTIVA — registro único (auditoría AUD + costuras de 8.142)
+Estado: SIN PENDIENTES OPERATIVOS — registro único (auditoría AUD + costuras de 8.142); INFRA-02/03 quedan como informativos
 Nota: docs/reporte.txt se conserva 100% intacto como archivo histórico de trazabilidad de sprints y ANEXOS.
 ================================================================================
 
@@ -15,13 +15,13 @@ Auditoría de código (AUD): 0 hallazgos activos; 22 resueltos/cerrados (AUD-01.
 - Oportunidades de Optimización: 0 activos y 1 resuelto parcial (AUD-14)
 
 Auditoría de costuras (SEAM, ANEXO 8.142 sección H): 0 hallazgos activos; 5 resueltos (SEAM-01..SEAM-05)
-- Uniones entre capas sin verificación automática: ninguna activa (SEAM-01 cerrado: ClientHttpContractTests)
+- Uniones entre capas sin verificación automática: ninguna activa (SEAM-01 cerrado: ClientHttpContractTests + extensión del catálogo en b945c54)
 
-Residuales e infraestructura (INFRA): 3 registros (INFRA-01..INFRA-03; INFRA-01 activo, INFRA-02/03 informativos)
+Residuales e infraestructura (INFRA): 3 registros (INFRA-01..INFRA-03; INFRA-01 resuelto, INFRA-02/03 informativos)
 
-TOTAL REGISTROS ACTIVOS: 3 (0 AUD + 0 SEAM + 3 INFRA; AUD-14 queda como resuelto parcial)
+TOTAL REGISTROS ACTIVOS: 0 (0 AUD + 0 SEAM + 0 INFRA operativos; INFRA-02/03 permanecen como informativos registrados y AUD-14 como resuelto parcial)
 - Defectos de código activos en sentido estricto: 0
-- INFRA: 3 registros (1 activo operativo, INFRA-01; 2 informativos, INFRA-02 e INFRA-03)
+- INFRA: 3 registros (0 activos operativos: INFRA-01 resuelto; 2 informativos, INFRA-02 e INFRA-03)
 
 Equivalencias (mismo hallazgo; no duplicar trabajo):
 - AUD-01 = hallazgo H3 del ANEXO 8.142 (GetAllAsync con contrato roto y sin callers)
@@ -45,11 +45,12 @@ Estado de Hallazgos Previos (VIG-01..VIG-25):
 - 18 Resueltos en fases previas
 - 7 Verificados como falsos positivos o mitigados por arquitectura previa
 
-Pruebas Automatizadas Backend: 1.406 / 1.406 pasando (100% Green)
+Pruebas Automatizadas Backend: 1.446 / 1.446 pasando (100% Green)
 Pruebas Automatizadas Frontend: 287 / 287 pasando (100% Green)
 Compilación: dotnet build CommandCenter.slnx -c Release (0 errores, 0 warnings)
-Guardas de costura activas: ControllerConstructionTests, ProductServiceQueryContractTests,
-MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
+Guardas de costura activas: ControllerConstructionTests, ProductServiceQueryContractTests, ClientHttpContractTests,
+MigrationIndexDriftTests, CrossLayerContractTests, ProductCostMaskingTests, ProductConcurrencyTokenTests,
+SaleItemCostSnapshotTests, ProductImportStockAuditTests.
 
 ================================================================================
 1. CÓDIGO MUERTO (DEAD CODE)
@@ -485,12 +486,19 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 ================================================================================
 
 [INFRA-01] MEDIA (requiere reinicio del servicio) — Parámetros de memoria de PostgreSQL sin evaluar
-- Estado: ACTIVO
+- Estado: RESUELTO (2026-09-19; shared_buffers=1GB / work_mem=16MB aplicados con reinicio del servicio)
 - Ubicación: PostgreSQL 18 local (CommandCenterDb)
 - Descripción: shared_buffers = 128 MB y work_mem = 4 MB son valores por defecto y quedan bajos
   para un equipo moderno. No se aplicaron porque exigen reinicio del servicio (random_page_cost sí
   se ajustó a 1.1, con alcance solo a CommandCenterDb).
 - Recomendación: evaluar según la RAM del equipo en una ventana de mantenimiento.
+- Cierre (esta unidad de trabajo): `shared_buffers` 128MB → **1GB** y `work_mem` 4MB → **16MB** (equipo de 13,8 GB de
+  RAM; valores conservadores para estación de desarrollo). Aplicado en `postgresql.conf` del cluster local y servicio
+  `postgresql-x64-18` **reiniciado** (requirió elevación; servicio Running y `pg_isready` aceptando conexiones tras el
+  reinicio de las 20:52). Validación previa sin arrancar el server: `postgres -C shared_buffers -D <data>` → 131072
+  bloques de 8kB (= 1GB) y `-C work_mem` → 16384 kB (= 16MB). Backup del conf previo:
+  `%TEMP%\opencode\postgresql.conf.bak-20260919`. Nota: la verificación SQL en runtime (`SHOW shared_buffers`) queda
+  a cargo del mantenedor — la credencial local vive en `.env`, fuera del alcance de los agentes.
 
 --------------------------------------------------------------------------------
 
@@ -517,7 +525,7 @@ MigrationIndexDriftTests, CrossLayerContractTests, SaleItemCostSnapshotTests.
 - [VIG-04] Construcción manual de entidades en ProductsController: Resuelto.
 - [VIG-05] Contratos anónimos en API: Resuelto en Settings, ExchangeRate, Sales.Customers, Reservations, Products.ImportExport. (Residual cerrado en 8.142: AUD-05 resuelto en 30f4243/32a3248/6c01349).
 - [VIG-06] Exposición de entidades en IPaymentMethodService: Resuelto.
-- [VIG-07] Contrato de IInventoryService con entidad mutable: Mitigado con IProductManagementService (Pendiente residual en interfaz base: AUD-10).
+- [VIG-07] Contrato de IInventoryService con entidad mutable: Resuelto (AUD-10 cerrado: IInventoryService DTO-only en entity-boundary-cleanup).
 - [VIG-08] Concurrencia Optimista con doble token: Falso positivo verificado (xmin único).
 - [VIG-09] Sync-over-async en apagado WPF: Resuelto en 8.6-B5.
 - [VIG-10] RFC 7807 en Controladores: Resuelto en la mayoría de controladores (Residual cerrado en 8.142: AUD-08 resuelto en 056f527).
