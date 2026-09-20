@@ -10,6 +10,8 @@
     "dev": "vite --host",
     "build": "vite build",
     "test": "node --import ./test/esbuild-jsx-loader.mjs --test \"src/**/*.test.js\"",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -21,6 +23,7 @@
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.51.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",

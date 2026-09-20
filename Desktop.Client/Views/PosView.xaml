@@ -136,6 +136,7 @@
 
                             <TextBox Grid.Column="1"
                                      x:Name="SearchInput"
+                                     AutomationProperties.AutomationId="Pos_SearchInput"
                                      Tag="PosSearchBox"
                                      materialDesign:HintAssist.Hint="Ingrese el producto deseado o escanee código"
                                      materialDesign:TextFieldAssist.HasClearButton="True"
@@ -174,6 +175,7 @@
                            PopupAnimation="Slide">
                         <materialDesign:Card MaxHeight="300" Width="{Binding ElementName=SearchInput, Path=ActualWidth}">
                             <ListBox x:Name="SuggestionsList"
+                                     AutomationProperties.AutomationId="Pos_SuggestionsList"
                                      ItemsSource="{Binding Suggestions}"
                                      SelectedItem="{Binding SelectedSuggestion, Mode=TwoWay}"
                                      BorderThickness="0"
@@ -609,6 +611,7 @@
                             </Button>
 
                             <Button Grid.Column="2"
+                                    AutomationProperties.AutomationId="Pos_CheckoutButton"
                                     Command="{Binding CheckoutCommand}" 
                                     Height="54"
                                     Background="#5E35B1"

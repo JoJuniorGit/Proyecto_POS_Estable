@@ -449,3 +449,7 @@ docs/monitor-config.json
 *.dump
 secrets.json
 Backend.API/secrets.json
+
+# Playwright (E2E web): reportes y resultados generados
+Web.Frontend/playwright-report/
+Web.Frontend/test-results/
