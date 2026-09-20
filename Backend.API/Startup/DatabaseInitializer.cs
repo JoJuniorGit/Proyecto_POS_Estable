@@ -53,7 +53,7 @@ public static class DatabaseInitializer
             var criticalMsg = "[ERROR CRÍTICO] La cadena de conexión no especifica la base de datos (Database).";
             Console.WriteLine(criticalMsg);
             AppLogger.LogDbError(criticalMsg, "Program.DatabaseName");
-            Environment.ExitCode = 1;
+            Environment.ExitCode = StartupExitCodes.ConfigurationError;
             return false;
         }
 
