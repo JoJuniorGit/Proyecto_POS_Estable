@@ -211,12 +211,14 @@ public partial class InventoryService
 
                         // AUD-23: los forzados a 0 por regla (grupo sin stock compartido / variante de
                         // padre compartido) no emiten movimiento — silencio consistente con AUD-21.
+                        // La referencia va por navegación (no ProductId): el "existente" puede ser un alta
+                        // del mismo lote con Id aún sin asignar; un FK explícito 0 falla en relacional.
                         decimal stockDelta = existingProduct.StockQuantity - stockBefore;
                         if (stockDelta > 0)
                         {
                             _context.StockMovements.Add(new StockMovement
                             {
-                                ProductId = existingProduct.Id,
+                                Product = existingProduct,
                                 QuantityChange = stockDelta,
                                 NewStockLevel = existingProduct.StockQuantity,
                                 Reason = importReason,

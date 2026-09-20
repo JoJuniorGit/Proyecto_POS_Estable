@@ -174,4 +174,35 @@ public class ProductImportStockAuditTests
         var movement = Assert.Single(await db.StockMovements.ToListAsync());
         Assert.Equal("importer-7", movement.UserId);
     }
+
+    [Fact]
+    public async Task BulkImport_WithOverwriteMerge_DuplicateSkuInSameBatch_MergesStockAndReferencesSameProduct()
+    {
+        // AUD-23 follow-up: en un lote con SKU duplicado, el segundo renglón actualiza un producto
+        // creado en el mismo lote (Id aún sin asignar). Con FK explícito 0 el proveedor relacional
+        // rechaza el INSERT; la referencia por navegación lo resuelve (SQLite reproduce el caso).
+        var (db, connection) = Builders.TestDatabaseFactory.CreateSqliteInventoryDbContext();
+        using (connection)
+        using (db)
+        {
+            var service = new InventoryService(db);
+            var (added, updated) = await service.BulkImportProductsAsync(new List<ProductImportDto>
+            {
+                BuildStockDto("AUD23-DUP-SKU", "Duplicado en Lote", 10m),
+                BuildStockDto("AUD23-DUP-SKU", "Duplicado en Lote", 5m)
+            }, overwriteMerge: true);
+
+            Assert.Equal(1, added);
+            Assert.Equal(1, updated);
+
+            var product = await db.Products.SingleAsync(p => p.SKU == "AUD23-DUP-SKU");
+            Assert.Equal(15m, product.StockQuantity);
+
+            var movements = await db.StockMovements.OrderBy(m => m.Id).ToListAsync();
+            Assert.Equal(2, movements.Count);
+            Assert.All(movements, m => Assert.Equal(product.Id, m.ProductId));
+            Assert.Equal(10m, movements[0].QuantityChange);
+            Assert.Equal(5m, movements[1].QuantityChange);
+        }
+    }
 }
