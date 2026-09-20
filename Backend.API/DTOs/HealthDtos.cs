@@ -45,5 +45,8 @@ public class HealthDetailsDto
     public DateTime? LastBackupUtc { get; set; }
     public double? LastBackupAgeMinutes { get; set; }
     public bool LastBackupFresh { get; set; }
+    public string ConvergenceStatus { get; set; } = "not-run";
+    public string? ConvergenceVersion { get; set; }
+    public string? ConvergenceError { get; set; }
     public string Timestamp { get; set; } = string.Empty;
 }

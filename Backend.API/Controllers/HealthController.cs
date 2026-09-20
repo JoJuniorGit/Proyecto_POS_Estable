@@ -116,6 +116,7 @@ public class HealthController : ControllerBase
 
         DateTime? certExpiryUtc = ResolveCertificateExpiry();
         var (lastBackupUtc, lastBackupAgeMinutes, lastBackupFresh) = ResolveLastBackup();
+        var (convStatus, convVersion, convError) = Backend.API.Startup.StartupDiagnostics.GetConvergence();
 
         return Ok(new HealthDetailsDto
         {
@@ -131,6 +132,9 @@ public class HealthController : ControllerBase
             LastBackupUtc = lastBackupUtc,
             LastBackupAgeMinutes = lastBackupAgeMinutes,
             LastBackupFresh = lastBackupFresh,
+            ConvergenceStatus = convStatus,
+            ConvergenceVersion = convVersion,
+            ConvergenceError = convError,
             Timestamp = DateTime.UtcNow.ToString("o")
         });
     }

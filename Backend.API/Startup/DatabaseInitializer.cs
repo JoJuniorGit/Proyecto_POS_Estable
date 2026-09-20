@@ -19,9 +19,15 @@ namespace Backend.API.Startup;
 public static class DatabaseInitializer
 {
     /// <summary>
+    /// Versión del bloque de convergencia legacy. Se persiste en la tabla __ConvergenceApplied:
+    /// al cambiarla, el bloque defensivo vuelve a ejecutarse una vez en el próximo arranque.
+    /// </summary>
+    public const string ConvergenceVersion = "v1-2026-09-19";
+
+    /// <summary>
     /// Ejecuta la inicialización completa de la BD con política fail-fast: ante cualquier fallo
-    /// crítico registra el error, fija Environment.ExitCode = 1 y devuelve false para que el
-    /// arranque se aborte sin servir peticiones.
+    /// crítico registra el error, fija Environment.ExitCode (1 operativo / 2 de configuración)
+    /// y devuelve false para que el arranque se aborte sin servir peticiones.
     /// </summary>
     public static async Task<bool> InitializeAsync(WebApplication app, string? connectionString)
     {
@@ -36,7 +42,7 @@ public static class DatabaseInitializer
                 "Establezca la variable de entorno ConnectionStrings__DefaultConnection (o el appsettings) antes de arrancar.";
             Console.WriteLine(criticalMsg);
             AppLogger.LogDbError(criticalMsg, "Program.ConnectionString");
-            Environment.ExitCode = 1;
+            Environment.ExitCode = StartupExitCodes.ConfigurationError;
             return false;
         }
 
@@ -86,7 +92,13 @@ public static class DatabaseInitializer
                 $"ConnectionStrings__DefaultConnection (o el appsettings) sea correcta. {connEx.Message}";
             Console.WriteLine(criticalMsg);
             AppLogger.LogDbError(connEx, "Program.ProbePostgres");
-            Environment.ExitCode = 1;
+            // 8.142: 28P01/28000 = credenciales inválidas (configuración: no se reintenta);
+            // cualquier otro fallo de conexión es operativo y sí se reintenta.
+            var isAuthenticationFailure = connEx is PostgresException pg &&
+                (pg.SqlState == "28P01" || pg.SqlState == "28000");
+            Environment.ExitCode = isAuthenticationFailure
+                ? StartupExitCodes.ConfigurationError
+                : StartupExitCodes.OperationalFailure;
             return false;
         }
 
@@ -106,6 +118,34 @@ public static class DatabaseInitializer
             // detectar cualquier divergencia futura del modelo.
             // CONSERVAR: no agregar más ALTER TABLE inline aquí — toda evolución de esquema debe ser una
             // migración EF (dotnet ef migrations add).
+            // 8.142: gate de convergencia versionado. El marcador se escribe SOLO si el bloque
+            // terminó OK (al final del try); ante un fallo parcial se reintenta en el próximo
+            // arranque. Chequeo tolerante a fallos: si no se puede leer, se ejecuta el bloque.
+            bool convergenceAlreadyApplied = false;
+            try
+            {
+                var markerTableExists = (await salesDb.Database.SqlQueryRaw<int>(
+                    @"SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '__ConvergenceApplied'"
+                ).ToListAsync()).Any();
+
+                if (markerTableExists)
+                {
+                    convergenceAlreadyApplied = (await salesDb.Database.SqlQueryRaw<int>(
+                        $@"SELECT 1 FROM ""__ConvergenceApplied"" WHERE ""Version"" = '{ConvergenceVersion}'"
+                    ).ToListAsync()).Any();
+                }
+            }
+            catch (System.Exception markerEx)
+            {
+                AppLogger.LogDbError(markerEx, "Program.ConvergenceMarkerCheck");
+            }
+
+            if (convergenceAlreadyApplied)
+            {
+                AppLogger.LogStart($"[Convergence] Convergencia legacy ya aplicada ({ConvergenceVersion}); se omite el bloque defensivo.");
+                StartupDiagnostics.RecordConvergence("skipped", ConvergenceVersion, null);
+            }
+            else
             try
             {
                 AppLogger.LogStart("Verifying and adjusting database schema and column precision (numeric 18,3)...");
@@ -279,10 +319,17 @@ END $$;");
                 }
 
                 AppLogger.LogStart("Database schema and column precision verification completed successfully.");
+
+                await salesDb.Database.ExecuteSqlRawAsync(
+                    @"CREATE TABLE IF NOT EXISTS ""__ConvergenceApplied"" (""Version"" text NOT NULL, ""AppliedAt"" timestamp with time zone NOT NULL DEFAULT NOW());
+                      INSERT INTO ""__ConvergenceApplied"" (""Version"") SELECT {0} WHERE NOT EXISTS (SELECT 1 FROM ""__ConvergenceApplied"" WHERE ""Version"" = {0});",
+                    ConvergenceVersion);
+                StartupDiagnostics.RecordConvergence("ok", ConvergenceVersion, null);
             }
             catch (System.Exception schemaEx)
             {
                 AppLogger.LogDbError(schemaEx, "Program.DefensiveSchemaCheck");
+                StartupDiagnostics.RecordConvergence("failed", ConvergenceVersion, schemaEx.Message);
             }
 
             AppLogger.LogStart("EF Core Database Migrations applied successfully.");
@@ -316,7 +363,7 @@ END $$;");
                     "Establezca la variable de entorno del servicio antes de arrancar en Producción.";
                 Console.WriteLine(criticalMsg);
                 AppLogger.LogDbError(criticalMsg, "Program.SeedPassword");
-                Environment.ExitCode = 1;
+                Environment.ExitCode = StartupExitCodes.ConfigurationError;
                 return false;
             }
 
@@ -342,7 +389,7 @@ END $$;");
                     var policyMsg = "[ERROR CRÍTICO] SystemSettings__AdminSeedPassword no cumple la política de contraseñas: " + seedPolicyError;
                     Console.WriteLine(policyMsg);
                     AppLogger.LogDbError(policyMsg, "Program.SeedPolicy");
-                    Environment.ExitCode = 1;
+                    Environment.ExitCode = StartupExitCodes.ConfigurationError;
                     return false;
                 }
             }

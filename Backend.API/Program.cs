@@ -16,6 +16,13 @@ AppDomain.CurrentDomain.UnhandledException += (s, e) =>
 
 try
 {
+    // 8.142: modo de diagnóstico del instalador (--check-db); no levanta el host web.
+    if (args.Any(a => string.Equals(a, "--check-db", StringComparison.OrdinalIgnoreCase)))
+    {
+        Environment.ExitCode = await Backend.API.Startup.DatabaseProbe.RunAsync();
+        return;
+    }
+
     AppLogger.LogStart("Backend API initialization starting...");
 
     var builder = WebApplication.CreateBuilder(args);

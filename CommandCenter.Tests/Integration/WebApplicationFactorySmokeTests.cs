@@ -307,4 +307,32 @@ public class WebApplicationFactorySmokeTests
         Assert.Equal(0m, product.ReservedQuantity);
         Assert.Equal(0, await inventoryDb.StockMovements.CountAsync(sm => sm.ProductId == product.Id));
     }
+
+    [Fact]
+    public async Task ConvergenceMarker_AfterPipelineBoot_IsRecorded()
+    {
+        // 8.142: el pipeline real debe registrar el marcador de convergencia versionado
+        // (el gate lo escribe solo si el bloque legacy terminó OK).
+        if (!PostgresConfiguredForPipeline()) return;
+
+        await using var factory = CreateFactory();
+        using var client = factory.CreateClient(); // Arranca el pipeline real: Program.cs migra y converge.
+
+        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        var csb = new Npgsql.NpgsqlConnectionStringBuilder(connStr)
+        {
+            Database = SmokeDatabaseName
+        };
+        var salesOptions = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<Sales.Module.Data.SalesDbContext>()
+            .UseNpgsql(csb.ConnectionString)
+            .Options;
+
+        await using var salesDb = new Sales.Module.Data.SalesDbContext(salesOptions);
+
+        var applied = await salesDb.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*)::int AS \"Value\" FROM \"__ConvergenceApplied\" WHERE \"Version\" = {0}",
+            Backend.API.Startup.DatabaseInitializer.ConvergenceVersion).FirstOrDefaultAsync();
+
+        Assert.Equal(1, applied);
+    }
 }
