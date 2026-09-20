@@ -74,6 +74,9 @@ public partial class InventoryService
                 .Where(p => p.IsGroupHeader && !p.IsDeleted)
                 .ToDictionaryAsync(p => p.GroupKey ?? p.Name, p => p, StringComparer.OrdinalIgnoreCase, cancellationToken);
 
+            // AUD-23: identificador de lote compartido por todos los movimientos de esta llamada.
+            var importReason = $"Importación masiva IMP-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
+
             foreach (var dto in productList)
             {
                 if (!IsImportable(dto)) continue; // 8I-M3: validación en servidor, no dto.IsValid
@@ -94,6 +97,7 @@ public partial class InventoryService
                 {
                     if (overwriteMerge)
                     {
+                        decimal stockBefore = existingProduct.StockQuantity;
                         existingProduct.Name = dto.Name.Trim();
                         existingProduct.Description = dto.Description?.Trim() ?? string.Empty;
                         existingProduct.IsGroupHeader = isGroup;
@@ -203,6 +207,23 @@ public partial class InventoryService
                                 existingProduct.StockQuantity = existingProduct.StockQuantity + Math.Max(0, dto.StockQuantity);
                                 existingProduct.LowStockThreshold = Math.Max(0, dto.LowStockThreshold);
                             }
+                        }
+
+                        // AUD-23: los forzados a 0 por regla (grupo sin stock compartido / variante de
+                        // padre compartido) no emiten movimiento — silencio consistente con AUD-21.
+                        decimal stockDelta = existingProduct.StockQuantity - stockBefore;
+                        if (stockDelta > 0)
+                        {
+                            _context.StockMovements.Add(new StockMovement
+                            {
+                                ProductId = existingProduct.Id,
+                                QuantityChange = stockDelta,
+                                NewStockLevel = existingProduct.StockQuantity,
+                                Reason = importReason,
+                                SaleId = null,
+                                MovementDate = DateTime.UtcNow,
+                                UserId = _currentUserService?.UserId
+                            });
                         }
 
                         existingProduct.UpdatedAt = DateTime.UtcNow;
@@ -321,6 +342,20 @@ public partial class InventoryService
                             newProduct.StockQuantity = Math.Max(0, dto.StockQuantity);
                             newProduct.LowStockThreshold = Math.Max(0, dto.LowStockThreshold);
                         }
+                    }
+
+                    if (newProduct.StockQuantity > 0)
+                    {
+                        _context.StockMovements.Add(new StockMovement
+                        {
+                            Product = newProduct,
+                            QuantityChange = newProduct.StockQuantity,
+                            NewStockLevel = newProduct.StockQuantity,
+                            Reason = importReason,
+                            SaleId = null,
+                            MovementDate = DateTime.UtcNow,
+                            UserId = _currentUserService?.UserId
+                        });
                     }
 
                     _context.Products.Add(newProduct);
