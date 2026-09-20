@@ -5,7 +5,8 @@
 #   1. Valida la disponibilidad de nssm.exe con auto-recuperación de rutas.
 #   2. Configura reglas de Windows Firewall (TCP 5000 y 5001) para la subred local,
 #      eliminando reglas duplicadas o residuales de instalaciones previas.
-#   3. Registra o actualiza el servicio Windows 'PosBackendService' con NSSM.
+#   3. Registra o actualiza el servicio Windows 'PosBackendService' con NSSM y fija la
+#      política de reinicio (Default=Restart; exit 2=Exit; throttle 30s).
 #   4. Aplica la Política de Fusión de Variables de Entorno (AppEnvironmentExtra):
 #      - SECRETOS FUERA de AppEnvironmentExtra: cadena de conexión, contraseña semilla,
 #        clave JWT y contraseña del certificado viven ÚNICAMENTE en secrets.json
@@ -13,7 +14,9 @@
 #      - Variables NO sensibles (negocio, usuario semilla): se actualizan con los
 #        valores provistos, conservando cualquier variable personalizada.
 #      - Se RETIRAN los secretos heredados de instalaciones legacy (EnvExtra -> secrets.json).
-#   5. Inicia o reinicia el servicio con un bucle de reintentos resiliente.
+#   5. Valida la conexión a PostgreSQL con el backend (--check-db); código 3 = aborta la
+#      configuración sin arrancar el servicio.
+#   6. Inicia o reinicia el servicio con un bucle de reintentos resiliente.
 # =====================================================================
 
 [CmdletBinding()]
@@ -190,6 +193,14 @@ try {
 
 & $Nssm set $ServiceName AppDirectory $BackendDir | Out-Null
 & $Nssm set $ServiceName Start SERVICE_AUTO_START | Out-Null
+
+# 8.142: politica de reinicio — un error de configuracion (exit 2) NO se reintenta;
+# errores operativos se reintentan con anti-spin de 30s.
+& $Nssm set $ServiceName AppExit Default Restart | Out-Null
+& $Nssm set $ServiceName AppExit 2 Exit | Out-Null
+& $Nssm set $ServiceName AppThrottle 30000 | Out-Null
+& $Nssm set $ServiceName AppRestartDelay 0 | Out-Null
+Log "Politica de reinicio NSSM aplicada (Default=Restart; exit 2=Exit; throttle=30s)."
 
 # Rehabilitar en SCM por si el servicio fue deshabilitado en Windows anteriormente
 Start-Process -FilePath "sc.exe" -ArgumentList "config $ServiceName start= auto" -Wait -NoNewWindow | Out-Null
@@ -546,7 +557,26 @@ if (Test-Path $monitorScript) {
 }
 
 # ---------------------------------------------------------------------
-# 5. Arranque / Reinicio del Servicio con Reintentos Resilientes
+# 5. (8.142) Validación temprana de la conexión a PostgreSQL (Backend.API.exe --check-db).
+#    Código 3 = validación fallida: se reporta y NO se arranca el servicio.
+# ---------------------------------------------------------------------
+$probeExe = Join-Path $BackendDir "Backend.API.exe"
+if (Test-Path $probeExe) {
+    Log "Validando conexion a PostgreSQL (Backend.API.exe --check-db)..."
+    $probeOut = & $probeExe --check-db 2>&1
+    $probeCode = $LASTEXITCODE
+    foreach ($line in $probeOut) { Log ("  " + $line) }
+    if ($probeCode -ne 0) {
+        Log "VALIDACION DE BASE DE DATOS FALLIDA (codigo $probeCode). El servicio NO se iniciara. Corrija los datos de conexion (secrets.json) o el estado de PostgreSQL y vuelva a ejecutar la configuracion." "ERROR"
+        exit 3
+    }
+    Log "Validacion de BD OK." "SUCCESS"
+} else {
+    Log "AVISO: Backend.API.exe no encontrado; se omite la validacion --check-db." "WARN"
+}
+
+# ---------------------------------------------------------------------
+# 6. Arranque / Reinicio del Servicio con Reintentos Resilientes
 # ---------------------------------------------------------------------
 $serviceState = (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue).Status
 

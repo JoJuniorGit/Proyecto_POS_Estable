@@ -376,6 +376,19 @@ begin
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppDirectory "' + AppDir + '"');
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Start SERVICE_AUTO_START');
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + SeedUserEnv + '" "' + SeedNameEnv + '" "' + BusinessEnv + '"');
+      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppExit Default Restart');
+      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppExit 2 Exit');
+      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppThrottle 30000');
+      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppRestartDelay 0');
+
+      Code := RunCmd(AppExe, '--check-db');
+      if Code <> 0 then
+      begin
+        MsgBox('La validación de la conexión a PostgreSQL falló (código ' + IntToStr(Code) + ').' + #13#10 +
+          'El servicio no se iniciará. Corrija los datos de conexión y reintente.', mbError, MB_OK);
+        Exit;
+      end;
+
       Code := RunCmd(AppDir + '\nssm.exe', 'restart ' + ServiceName);
     end
     else
@@ -386,6 +399,19 @@ begin
         RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppDirectory "' + AppDir + '"');
         RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Start SERVICE_AUTO_START');
         RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + SeedUserEnv + '" "' + SeedNameEnv + '" "' + BusinessEnv + '"');
+        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppExit Default Restart');
+        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppExit 2 Exit');
+        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppThrottle 30000');
+        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppRestartDelay 0');
+
+        Code := RunCmd(AppExe, '--check-db');
+        if Code <> 0 then
+        begin
+          MsgBox('La validación de la conexión a PostgreSQL falló (código ' + IntToStr(Code) + ').' + #13#10 +
+            'El servicio no se iniciará. Corrija los datos de conexión y reintente.', mbError, MB_OK);
+          Exit;
+        end;
+
         Code := RunCmd(AppDir + '\nssm.exe', 'start ' + ServiceName);
       end;
     end;
@@ -528,12 +554,14 @@ begin
     ' -BusinessName "' + Trim(AdminPage.Values[4]) + '"';
 
   Code := RunCmd('powershell.exe', PsParams);
-  if Code <> 0 then
-  begin
+  if Code = 3 then
+    MsgBox('La validación de la conexión a PostgreSQL falló.' + #13#10 + #13#10 +
+      'El servicio del backend quedó SIN INICIAR. Corrija los datos de conexión o el estado de PostgreSQL y vuelva a ejecutar el instalador (o edite secrets.json y arranque el servicio).' + #13#10 + #13#10 +
+      'Detalle completo en: ' + ExpandConstant('{app}\BackendAPI\logs\installer.log'), mbError, MB_OK)
+  else if Code <> 0 then
     MsgBox('Aviso: La configuración del servicio reportó código ' + IntToStr(Code) + '.' + #13#10 +
       'Revise el registro detallado en:' + #13#10 +
       ExpandConstant('{app}\BackendAPI\logs\installer.log'), mbInformation, MB_OK);
-  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
