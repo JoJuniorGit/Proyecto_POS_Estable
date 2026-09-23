@@ -199,13 +199,14 @@
                        Visibility="{Binding PendingPickupErrorMessage, Converter={StaticResource StringToVisibilityConverter}}"/>
 
             <Grid>
-                <Button Content="CANCEL" 
+                <Button Content="CANCELAR" 
                         Command="{x:Static materialDesign:DialogHost.CloseDialogCommand}"
                         CommandParameter="{x:Null}"
                         Style="{DynamicResource MaterialDesignOutlinedButton}" 
                         HorizontalAlignment="Left"
+                        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"
                         Height="40" Padding="20,0"/>
-                        
+
                 <Button Content="{Binding FinalizeSaleButtonLabel}" 
                         Command="{Binding FinalizeSaleCommand}"
                         Style="{DynamicResource MaterialDesignRaisedButton}" 

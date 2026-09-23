@@ -1,71 +1,102 @@
+using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Sales.Module.Data;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sales.Module.Services;
 
-public class DailyClosureService : IDailyClosureService
+public partial class DailyClosureService : IDailyClosureService
 {
-    private readonly SalesDbContext _context;
+    private const int UnattributedChangeMethodId = 0;
 
-    public DailyClosureService(SalesDbContext context)
+    private readonly SalesDbContext _context;
+    private readonly ITodayExchangeRateProvider _rateProvider;
+    private readonly ICashDrawerService _cashDrawerService;
+
+    public DailyClosureService(SalesDbContext context, ITodayExchangeRateProvider rateProvider, ICashDrawerService cashDrawerService)
     {
         _context = context;
+        _rateProvider = rateProvider;
+        _cashDrawerService = cashDrawerService;
     }
 
-    public async Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc)
+    public async Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc, CancellationToken cancellationToken = default)
     {
-        // 1. Calcular ventana comercial de Venezuela en UTC (VET UTC-4, H-API-14)
-        var venDate = Core.Helpers.TimeZoneHelper.GetVenezuelaDate(dateUtc);
-        var tz = Core.Helpers.TimeZoneHelper.GetVenezuelaTimeZone();
-        var startOfDayLocal = venDate.ToDateTime(TimeOnly.MinValue);
-        var startOfDayUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(startOfDayLocal, DateTimeKind.Unspecified), tz);
-        var endOfDayUtc = startOfDayUtc.AddDays(1);
-
-        // Fetch latest daily closure if any exists
         var lastClosure = await _context.DailyClosures
             .AsNoTracking()
             .OrderByDescending(dc => dc.ClosureDate)
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(cancellationToken);
 
-        // Effective start time: if last closure occurred after startOfDayUtc, count sales after last closure
-        var effectiveStartTime = (lastClosure != null && lastClosure.ClosureDate > startOfDayUtc)
-            ? lastClosure.ClosureDate
-            : startOfDayUtc;
+        var activeSession = await _context.CashDrawerSessions
+            .AsNoTracking()
+            .Where(s => s.Status == CashDrawerStatus.Open)
+            .OrderByDescending(s => s.OpenedAt)
+            .FirstOrDefaultAsync(cancellationToken);
 
-        // 1. Calculate expected sales totals per payment method for completed sales after effectiveStartTime
+        var (startUtc, endUtc) = ClosureWindowResolver.Resolve(
+            dateUtc,
+            activeSession?.OpenedAt,
+            lastClosure?.ClosureDate);
+
         var salesTotals = await _context.SalePayments
             .AsNoTracking()
             .Where(sp => sp.Sale != null
                 && sp.Sale.Status == SaleStatus.Completed
-                && sp.Sale.Date > effectiveStartTime
-                && sp.Sale.Date < endOfDayUtc)
+                && sp.Sale.Date >= startUtc
+                && sp.Sale.Date < endUtc)
             .GroupBy(sp => sp.PaymentMethodId)
             .Select(g => new { PaymentMethodId = g.Key, TotalBsS = g.Sum(sp => sp.AmountBsS) })
-            .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS);
+            .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS, cancellationToken);
 
-        // 2. Fetch all payment methods not deleted ordered by priority
+        var changeTotals = await _context.CashTransactions
+            .AsNoTracking()
+            .Where(ct => ct.Type == CashTransactionType.Expense
+                && ct.Source == CashTransactionSource.SalePayment
+                && ct.IsPhysicalCash
+                && ct.TransactionTime >= startUtc
+                && ct.TransactionTime < endUtc)
+            .GroupBy(ct => ct.PaymentMethodId)
+            .Select(g => new { PaymentMethodId = g.Key ?? UnattributedChangeMethodId, TotalBsS = g.Sum(ct => ct.AmountLocal) })
+            .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS, cancellationToken);
+
         var allMethods = await _context.PaymentMethods
             .AsNoTracking()
             .Where(p => !p.IsDeleted)
             .OrderBy(p => p.DisplayOrder)
             .ThenBy(p => p.Name)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
-        // 3. Include active methods OR methods with historical sales in the period (even if deactivated)
         var relevantMethods = allMethods
             .Where(p => p.IsActive || salesTotals.ContainsKey(p.Id))
             .ToList();
+
+        var firstCashMethodId = relevantMethods.FirstOrDefault(p => p.IsCash)?.Id;
 
         var result = new List<ExpectedTotalDto>();
         foreach (var method in relevantMethods)
         {
             salesTotals.TryGetValue(method.Id, out decimal expected);
+
+            if (method.IsCash)
+            {
+                changeTotals.TryGetValue(method.Id, out decimal change);
+                if (method.Id == firstCashMethodId)
+                {
+                    changeTotals.TryGetValue(UnattributedChangeMethodId, out decimal unattributedChange);
+                    change += unattributedChange;
+                }
+                expected -= change;
+            }
+
             result.Add(new ExpectedTotalDto
             {
                 PaymentMethodId = method.Id,
@@ -77,224 +108,178 @@ public class DailyClosureService : IDailyClosureService
         return result;
     }
 
-    public async Task<DailyClosure> CreateClosureAsync(DailyClosure closure)
+    public async Task<DailyClosureResponseDto?> GetClosureAsync(int id, CancellationToken cancellationToken = default)
     {
-        // Ensure all relevant payment methods (active or with sales) are present in details
-        var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(closure.ClosureDate);
-        var expectedMap = expectedTotals.ToDictionary(e => e.PaymentMethodId, e => e.ExpectedAmountBsS);
+        var closure = await LoadClosureEntityAsync(id, cancellationToken);
+        return closure is null ? null : ShiftReportMapper.MapClosure(closure);
+    }
 
-        var existingMethodIds = closure.Details.Select(d => d.PaymentMethodId).ToHashSet();
-        if (existingMethodIds.Count < expectedTotals.Count)
+    private async Task<DailyClosure?> LoadClosureEntityAsync(int id, CancellationToken cancellationToken = default)
+    {
+        return await _context.DailyClosures
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(dc => dc.Details)
+            .FirstOrDefaultAsync(dc => dc.Id == id, cancellationToken);
+    }
+
+    public async Task<DailyClosureResponseDto?> GetLatestClosureAsync(CancellationToken cancellationToken = default)
+    {
+        var closure = await _context.DailyClosures
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(dc => dc.Details)
+            .OrderByDescending(dc => dc.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return closure is null ? null : ShiftReportMapper.MapClosure(closure);
+    }
+
+    public async Task<string?> GetCashierDisplayNameAsync(int userId, CancellationToken cancellationToken = default)
+    {
+        var user = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        return user?.Name;
+    }
+
+    public async Task<CloseShiftResult> CreateClosureFromCommandAsync(
+        CreateClosureCommand command,
+        CancellationToken cancellationToken)
+    {
+        decimal exchangeRate = await _rateProvider.GetEffectiveTodayRateAsync(cancellationToken);
+        if (exchangeRate <= 0)
         {
+            throw new InvalidOperationException(
+                "No se puede cerrar el turno: no existe una tasa BCV registrada para hoy. Registre la tasa del día antes de cerrar la caja.");
+        }
+
+        if (_context.Database.CurrentTransaction is not null)
+        {
+            return await ExecuteClosureCommandAsync(command, exchangeRate, cancellationToken);
+        }
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(() => ExecuteClosureCommandAsync(command, exchangeRate, cancellationToken));
+    }
+
+    private async Task<IDbContextTransaction?> OpenSerializableTransactionAsync(CancellationToken cancellationToken)
+    {
+        if (_context.Database.CurrentTransaction is not null)
+        {
+            return null;
+        }
+
+        if (_context.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return null;
+        }
+
+        return await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+    }
+
+    private async Task<CloseShiftResult> ExecuteClosureCommandAsync(
+        CreateClosureCommand command,
+        decimal exchangeRate,
+        CancellationToken cancellationToken)
+    {
+        IDbContextTransaction? transaction = await OpenSerializableTransactionAsync(cancellationToken);
+
+        try
+        {
+            var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(command.ClosureDateUtc, cancellationToken);
+            var expectedById = expectedTotals.ToDictionary(e => e.PaymentMethodId);
+
+            ValidateDeclaredMethods(command.Declarations, expectedById);
+
+            var details = new List<ClosureDetail>();
+            var reportDetails = new List<ShiftReportDetailResult>();
+            BuildDeclaredDetails(command.Declarations, expectedById, exchangeRate, details, reportDetails);
+
+            var existingMethodIds = details.Select(d => d.PaymentMethodId).ToHashSet();
             var methodEntities = await _context.PaymentMethods
                 .AsNoTracking()
                 .Where(p => !p.IsDeleted)
-                .ToDictionaryAsync(p => p.Id);
+                .ToDictionaryAsync(p => p.Id, cancellationToken);
 
-            foreach (var exp in expectedTotals)
+            MergeMissingMethodsWithReport(details, reportDetails, expectedTotals, existingMethodIds, methodEntities, exchangeRate);
+
+            var resolvedUser = await ResolveUserDetailsAsync(command.UserId, cancellationToken);
+
+            var dailyClosure = new DailyClosure
             {
-                if (!existingMethodIds.Contains(exp.PaymentMethodId))
-                {
-                    methodEntities.TryGetValue(exp.PaymentMethodId, out var methodEntity);
-                    decimal actualAmount = (methodEntity != null && methodEntity.IsCash) ? 0m : exp.ExpectedAmountBsS;
+                ClosureDate = command.ClosureDateUtc,
+                UserId = resolvedUser.UserId,
+                Observation = resolvedUser.Observation,
+                ExchangeRate = exchangeRate,
+                Details = details
+            };
 
-                    closure.Details.Add(new ClosureDetail
-                    {
-                        PaymentMethodId = exp.PaymentMethodId,
-                        PaymentMethodName = exp.PaymentMethodName,
-                        ExpectedAmountBsS = exp.ExpectedAmountBsS,
-                        ActualAmountBsS = actualAmount,
-                        DifferenceBsS = actualAmount - exp.ExpectedAmountBsS
-                    });
-                }
+            RecalculateTotals(dailyClosure);
+
+            var savedClosure = await PersistClosureCoreAsync(dailyClosure, cancellationToken);
+            await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate, cancellationToken);
+
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
             }
-        }
 
-        // Recalculate differences to enforce domain rule
-        foreach (var detail in closure.Details)
+            // 8.7-B5: los comprobantes se escriben DESPUÉS del commit, fuera de la transacción Serializable.
+            await WriteClosedClosureReceiptsAsync(savedClosure, cancellationToken);
+
+            return new CloseShiftResult(
+                savedClosure.Id,
+                resolvedUser.CashierName,
+                resolvedUser.CashierCedula,
+                savedClosure.ClosureDate,
+                exchangeRate,
+                reportDetails);
+        }
+        catch
         {
-            if (detail.ActualAmountBsS < 0)
+            if (transaction is not null)
             {
-                throw new ArgumentException($"El monto declarado para '{detail.PaymentMethodName}' no puede ser negativo.", nameof(closure));
+                await transaction.RollbackAsync(cancellationToken);
             }
-            detail.DifferenceBsS = detail.ActualAmountBsS - detail.ExpectedAmountBsS;
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+            {
+                await transaction.DisposeAsync();
+            }
+        }
+    }
+
+    private async Task<(string UserId, string CashierName, string CashierCedula, string Observation)> ResolveUserDetailsAsync(
+        string? inputUserId, CancellationToken cancellationToken)
+    {
+        string userId = inputUserId ?? "Cajero";
+        string cashierName = "Cajero Activo";
+        string cashierCedula = "V-00000000";
+        string observation = "";
+
+        if (int.TryParse(userId, out int userIdInt))
+        {
+            var user = await _context.Users.FindAsync(new object[] { userIdInt }, cancellationToken);
+            if (user != null)
+            {
+                cashierName = user.Name;
+                cashierCedula = user.Cedula ?? user.Username ?? "V-00000000";
+                userId = user.Id.ToString();
+                observation = cashierCedula;
+            }
         }
 
-        closure.TotalExpectedBsS = closure.Details.Sum(d => d.ExpectedAmountBsS);
-        closure.TotalActualBsS = closure.Details.Sum(d => d.ActualAmountBsS);
-        closure.TotalDifferenceBsS = closure.TotalActualBsS - closure.TotalExpectedBsS;
+        return (userId, cashierName, cashierCedula, observation);
+    }
 
+    private async Task<DailyClosureResponseDto> PersistClosureCoreAsync(DailyClosure closure, CancellationToken cancellationToken)
+    {
         _context.DailyClosures.Add(closure);
-        await _context.SaveChangesAsync();
-
-        var savedClosure = (await GetClosureAsync(closure.Id))!;
-
-        // Auto-save closure receipt copies to Downloads & Documents\Registro de cierres
-        SaveClosureReceiptsSilently(savedClosure);
-
-        return savedClosure;
-    }
-
-    public async Task<DailyClosure?> GetClosureAsync(int id)
-    {
-        return await _context.DailyClosures
-            .Include(dc => dc.Details)
-            .FirstOrDefaultAsync(dc => dc.Id == id);
-    }
-
-    public static string GenerateReceiptContent(DailyClosure closure, bool isBlind = false)
-    {
-        var dateStr = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-        var userName = string.IsNullOrWhiteSpace(closure.UserId) ? "Usuario" : closure.UserId;
-        var sb = new System.Text.StringBuilder();
-
-        if (isBlind)
-        {
-            sb.AppendLine("==========================================================================================");
-            sb.AppendLine("                             COMPROBANTE DE ARQUEO A CIEGAS                               ");
-            sb.AppendLine("==========================================================================================");
-            sb.AppendLine($"Fecha/Hora: {dateStr}");
-            sb.AppendLine($"Cajero:     {userName}");
-            sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine(string.Format("{0,-25} {1,-8} {2,22}", "MÉTODO DE PAGO", "MONEDA", "MONTO DECLARADO (Bs.S)"));
-            sb.AppendLine("------------------------------------------------------------------------------------------");
-            foreach (var detail in closure.Details)
-            {
-                string curr = detail.PaymentMethodName.Contains("USD", StringComparison.OrdinalIgnoreCase) ? "USD" : "Bs.S";
-                sb.AppendLine(string.Format("{0,-25} {1,-8} {2,22:N2}", detail.PaymentMethodName, curr, detail.ActualAmountBsS));
-            }
-            sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine(string.Format("{0,-25} {1,-8} {2,22:N2}", "TOTALES", "-", closure.TotalActualBsS));
-            if (!string.IsNullOrWhiteSpace(closure.Observation))
-            {
-                sb.AppendLine($"Notas: {closure.Observation}");
-            }
-            sb.AppendLine("==========================================================================================");
-        }
-        else
-        {
-            string diffStatus = Math.Abs(closure.TotalDifferenceBsS) < 0.05m ? "Cuadrado" : (closure.TotalDifferenceBsS > 0 ? "Sobrante" : "Faltante");
-            sb.AppendLine("==========================================================================================");
-            sb.AppendLine("                       COMPROBANTE DE CIERRE Y AUDITORÍA DE CAJA                          ");
-            sb.AppendLine("==========================================================================================");
-            sb.AppendLine($"Fecha/Hora:    {dateStr}");
-            sb.AppendLine($"Administrador: {userName}");
-            sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine(string.Format("{0,-22} {1,-8} {2,22} {3,20} {4,18}", "MÉTODO DE PAGO", "MONEDA", "MONTO DECLARADO (Bs.S)", "MONTO SISTEMA (Bs.S)", "DIFERENCIA (Bs.S)"));
-            sb.AppendLine("------------------------------------------------------------------------------------------");
-            foreach (var detail in closure.Details)
-            {
-                string curr = detail.PaymentMethodName.Contains("USD", StringComparison.OrdinalIgnoreCase) ? "USD" : "Bs.S";
-                sb.AppendLine(string.Format("{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}", 
-                    detail.PaymentMethodName, 
-                    curr, 
-                    detail.ActualAmountBsS, 
-                    detail.ExpectedAmountBsS, 
-                    detail.DifferenceBsS));
-            }
-            sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine(string.Format("{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}", 
-                "TOTALES", 
-                "-", 
-                closure.TotalActualBsS, 
-                closure.TotalExpectedBsS, 
-                closure.TotalDifferenceBsS));
-            sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO:  Bs.S {closure.TotalActualBsS,10:N2}");
-            sb.AppendLine($"TOTAL ESPERADO:   Bs.S {closure.TotalExpectedBsS,10:N2}");
-            sb.AppendLine($"DIFERENCIA TOTAL: Bs.S {closure.TotalDifferenceBsS,10:N2}");
-            sb.AppendLine($"ESTADO DE CAJA:   {diffStatus}");
-            if (!string.IsNullOrWhiteSpace(closure.Observation))
-            {
-                sb.AppendLine($"Notas: {closure.Observation}");
-            }
-            sb.AppendLine("==========================================================================================");
-        }
-
-        return sb.ToString();
-    }
-
-    private static void SaveClosureReceiptsSilently(DailyClosure closure)
-    {
-        try
-        {
-            bool isBlind = closure.UserId?.Contains("Cajero", StringComparison.OrdinalIgnoreCase) == true;
-            string txtContent = GenerateReceiptContent(closure, isBlind);
-            byte[] pdfBytes = ClosurePdfGenerator.GeneratePdf(closure, isBlind);
-
-            string dateStamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-            string uniqueSuffix = Guid.NewGuid().ToString("N")[..8];
-            string pdfFileName = $"Cierre_{dateStamp}_{closure.Id}_{uniqueSuffix}.pdf";
-            string txtFileName = $"Cierre_{dateStamp}_{closure.Id}_{uniqueSuffix}.txt";
-
-            // 1. Ruta segura y canónica del sistema para servicios: %ProgramData%\CommandCenterPOS\Closures
-            string commonAppData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
-            string primaryDir = System.IO.Path.Combine(commonAppData, "CommandCenterPOS", "Closures");
-            string legacyCommonDir = System.IO.Path.Combine(commonAppData, "Registro de cierres");
-
-            // 2. Ruta de documentos personales si está disponible en sesión interactiva
-            string docsDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            string userDocsDir = !string.IsNullOrWhiteSpace(docsDir) ? System.IO.Path.Combine(docsDir, "Registro de cierres") : string.Empty;
-
-            var targetDirs = new System.Collections.Generic.List<string> { primaryDir, legacyCommonDir };
-            if (!string.IsNullOrWhiteSpace(userDocsDir))
-            {
-                targetDirs.Add(userDocsDir);
-            }
-
-            foreach (var dir in targetDirs)
-            {
-                try
-                {
-                    if (!System.IO.Directory.Exists(dir))
-                    {
-                        System.IO.Directory.CreateDirectory(dir);
-                    }
-
-                    TryWriteFileWithRetry(System.IO.Path.Combine(dir, pdfFileName), pdfBytes);
-                    TryWriteTextWithRetry(System.IO.Path.Combine(dir, txtFileName), txtContent);
-                }
-                catch (Exception ex)
-                {
-                    Core.Logging.AppLogger.LogWarn($"[DailyClosureService] Aviso al escribir comprobantes en '{dir}': {ex.Message}");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Core.Logging.AppLogger.LogWarn($"[DailyClosureService] Advertencia general al auto-guardar comprobantes de cierre #{closure.Id}: {ex.Message}");
-        }
-    }
-
-    private static void TryWriteFileWithRetry(string path, byte[] bytes)
-    {
-        for (int attempt = 0; attempt < 2; attempt++)
-        {
-            try
-            {
-                System.IO.File.WriteAllBytes(path, bytes);
-                return;
-            }
-            catch
-            {
-                if (attempt == 0) System.Threading.Thread.Sleep(200);
-            }
-        }
-    }
-
-    private static void TryWriteTextWithRetry(string path, string text)
-    {
-        for (int attempt = 0; attempt < 2; attempt++)
-        {
-            try
-            {
-                System.IO.File.WriteAllText(path, text);
-                return;
-            }
-            catch
-            {
-                if (attempt == 0) System.Threading.Thread.Sleep(200);
-            }
-        }
+        await _context.SaveChangesAsync(cancellationToken);
+        return ShiftReportMapper.MapClosure((await LoadClosureEntityAsync(closure.Id, cancellationToken))!);
     }
 }

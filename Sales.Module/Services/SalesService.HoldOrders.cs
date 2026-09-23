@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Core.DTOs;
 using Core.Entities;
 using Core.Events;
+using Core.Helpers;
 using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -18,88 +19,23 @@ namespace Sales.Module.Services;
 
 public partial class SalesService
 {
-    public async Task<CustomerDto> GetDefaultCustomerAsync()
-    {
-        try
-        {
-            if (_cache != null && _cache.TryGetValue(DefaultCustomerCacheKey, out CustomerDto? cachedCustomer) && cachedCustomer != null)
-            {
-                return cachedCustomer;
-            }
-        }
-        catch { }
 
-        var defaultCustomer = await _context.Customers
-            .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.IsDefault)
-            ?? await _context.Customers
-                .AsNoTracking()
-                .FirstOrDefaultAsync(c => c.Id == 1);
-
-        if (defaultCustomer == null) throw new KeyNotFoundException("Cliente por defecto no encontrado.");
-        
-        var dto = new CustomerDto
-        {
-            Id = defaultCustomer.Id,
-            CedulaOrRif = defaultCustomer.CedulaOrRif,
-            Name = defaultCustomer.Name,
-            Phone = defaultCustomer.Phone,
-            CreditLimitUSD = defaultCustomer.CreditLimitUSD,
-            IsActive = defaultCustomer.IsActive,
-            IsDefault = defaultCustomer.IsDefault
-        };
-
-        try
-        {
-            _cache?.Set(DefaultCustomerCacheKey, dto, new MemoryCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1),
-                Size = 1
-            });
-        }
-        catch { }
-
-        return dto;
-    }
-
-    public async Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId)
+    public async Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         var sale = await GetSaleEntityAsync(saleId);
-        
-        if (sale.Status == SaleStatus.Completed || sale.Status == SaleStatus.Cancelled)
-            throw new InvalidOperationException("No se puede modificar el cliente de una venta finalizada.");
-            
-        if (sale.Status == SaleStatus.OnHold && sale.Payments.Any())
-            throw new InvalidOperationException("Una cuenta abierta con pagos registrados no permite cambio de titular.");
-
-        var customer = await _context.Customers.FindAsync(customerId);
-        if (customer == null) throw new KeyNotFoundException($"Cliente con ID {customerId} no encontrado.");
-
-        sale.CustomerId = customer.Id;
-        sale.CustomerName = customer.Name;
-        sale.CustomerCedula = customer.CedulaOrRif;
-
-        await _context.SaveChangesAsync();
-        return MapToDto(sale);
-    }
-
-    public async Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request)
-    {
-        var _sale = await GetSaleEntityAsync(saleId);
-        if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold)
+        EnsureHoldClaimAccess(sale, actingUserId);
+        if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold)
             throw new InvalidOperationException("Solo se pueden poner en espera ventas pendientes o abiertas.");
 
-        var customer = await _context.Customers.FindAsync(request.CustomerId);
+        var customer = await _context.Customers.FindAsync(new object[] { request.CustomerId }, cancellationToken);
         if (customer == null) throw new KeyNotFoundException($"Cliente con ID {request.CustomerId} no encontrado.");
         
         if (customer.IsDefault || customer.CedulaOrRif == "V-00000000")
-            throw new InvalidOperationException("Las ventas en espera requieren un cliente real identificable. Asigne un cliente distinto al Consumidor Final.");
+            throw new ArgumentException("Las ventas en espera requieren un cliente real identificable. Asigne un cliente distinto al Consumidor Final.");
 
-        if (request.ExchangeRate > 0)
-        {
-            _sale.AppliedRate = request.ExchangeRate;
-            await RecalculateTotalAsync(_sale);
-        }
+        // 8.6-B3: La tasa del HOLD se ancla a la tasa BCV del día (misma política que CompleteSale).
+        sale.AppliedRate = await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: "HoldSale", referenceId: sale.Id);
+        await RecalculateTotalAsync(sale);
 
         var paymentsToProcess = new List<AddPaymentRequestDto>();
         if (request.InitialPayment != null) paymentsToProcess.Add(request.InitialPayment);
@@ -108,30 +44,40 @@ public partial class SalesService
         if (paymentsToProcess.Any())
         {
             var pMethodIds = paymentsToProcess.Select(p => p.PaymentMethodId).Distinct().ToList();
-            var pMethodsDict = await _context.PaymentMethods.Where(pm => pMethodIds.Contains(pm.Id)).ToDictionaryAsync(pm => pm.Id);
+            var pMethodsDict = await _context.PaymentMethods.Where(pm => pMethodIds.Contains(pm.Id)).ToDictionaryAsync(pm => pm.Id, cancellationToken);
 
             foreach (var payment in paymentsToProcess)
             {
-                decimal rate = payment.ExchangeRate > 0 ? payment.ExchangeRate : _sale.AppliedRate;
+                // 8.7-B2: Rechazo de montos negativos en abonos (misma política que CompleteSale).
+                if (payment.AmountUSD < 0m || payment.AmountBsS < 0m)
+                {
+                    throw new ArgumentException($"La validación del abono (PaymentMethodId={payment.PaymentMethodId}) rechaza montos negativos.");
+                }
+
+                decimal rate = payment.ExchangeRate > 0
+                    ? await ResolveAnchoredRateAsync(payment.ExchangeRate, contextLabel: "HoldSaleInitialPayment", referenceId: sale.Id)
+                    : sale.AppliedRate;
                 decimal amountUsd = payment.AmountUSD > 0 
                     ? Math.Round(payment.AmountUSD, 2, MidpointRounding.AwayFromZero) 
                     : (rate > 0 ? Math.Round(payment.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
 
+                var (resolvedAmountUsd, resolvedAmountBsS) = ResolveConsistentPaymentAmounts(amountUsd, payment.AmountBsS, rate);
+
                 var initialPaymentEntity = new SalePayment
                 {
-                    SaleId = _sale.Id,
+                    SaleId = sale.Id,
                     PaymentMethodId = payment.PaymentMethodId,
-                    Amount = Math.Round(amountUsd, 2, MidpointRounding.AwayFromZero),
-                    AmountBsS = payment.AmountBsS,
+                    Amount = Math.Round(resolvedAmountUsd, 2, MidpointRounding.AwayFromZero),
+                    AmountBsS = Math.Round(resolvedAmountBsS, 2, MidpointRounding.AwayFromZero),
                     ExchangeRate = rate,
                     ReferenceNumber = payment.ReferenceNumber,
                     CreatedAt = DateTime.UtcNow
                 };
 
-                _sale.Payments.Add(initialPaymentEntity);
+                sale.Payments.Add(initialPaymentEntity);
 
                 // H-SAL-5: Asentar ingresos físicos en sesión activa de caja
-                if (amountUsd > 0 && pMethodsDict.TryGetValue(payment.PaymentMethodId, out var pMethod) && pMethod.IsCash && _cashDrawerService != null)
+                if (resolvedAmountUsd > 0 && pMethodsDict.TryGetValue(payment.PaymentMethodId, out var pMethod) && pMethod.IsCash && _cashDrawerService != null)
                 {
                     var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(rate);
                     if (activeSession != null)
@@ -141,13 +87,13 @@ public partial class SalesService
                             SessionId = activeSession.Id,
                             Type = CashTransactionType.Income,
                             Source = CashTransactionSource.SalePayment,
-                            AmountUsd = amountUsd,
+                            AmountUsd = resolvedAmountUsd,
                             ExchangeRate = rate,
-                            AmountLocal = Math.Round(payment.AmountBsS, 2, MidpointRounding.AwayFromZero),
+                            AmountLocal = Math.Round(resolvedAmountBsS, 2, MidpointRounding.AwayFromZero),
                             IsPhysicalCash = true,
-                            Description = $"Abono Inicial Venta #{_sale.Id}",
+                            Description = $"Abono Inicial Venta #{sale.Id}",
                             TransactionTime = DateTime.UtcNow,
-                            SaleId = _sale.Id,
+                            SaleId = sale.Id,
                             PaymentMethodId = payment.PaymentMethodId
                         });
                     }
@@ -155,49 +101,52 @@ public partial class SalesService
             }
         }
 
-        decimal totalPaidUsd = Math.Round(_sale.Payments.Sum(p => p.Amount), 2, MidpointRounding.AwayFromZero);
-        decimal remainingBalanceUsd = Math.Round(_sale.TotalUSD - totalPaidUsd, 2, MidpointRounding.AwayFromZero);
+        decimal totalPaidUsd = Math.Round(sale.Payments.Sum(p => p.Amount), 2, MidpointRounding.AwayFromZero);
+        decimal remainingBalanceUsd = Math.Round(sale.TotalUSD - totalPaidUsd, 2, MidpointRounding.AwayFromZero);
 
-        _sale.CustomerId = customer.Id;
-        _sale.CustomerName = customer.Name;
-        _sale.CustomerCedula = customer.CedulaOrRif;
+        sale.CustomerId = customer.Id;
+        sale.CustomerName = customer.Name;
+        sale.CustomerCedula = customer.CedulaOrRif;
 
-        if (totalPaidUsd > 0 && _sale.TotalUSD > 0 && remainingBalanceUsd <= 0.05m && totalPaidUsd >= (_sale.TotalUSD - 0.05m))
+        if (totalPaidUsd > 0 && sale.TotalUSD > 0 && remainingBalanceUsd <= 0.05m && totalPaidUsd >= (sale.TotalUSD - 0.05m))
         {
             // Se cubrió el 100% mediante los pagos iniciales -> Completar y generar factura
+            // 8.9-B4: caminar TODA la operación bajo execution strategy para que un fallo
+            // transitorio reintente el bloque completo (sales + inventory enrollado) y no
+            // quede una escritura a medias entre las dos bases.
+            await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
+            {
             IDbContextTransaction? txn = null;
             if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
             {
-                txn = await _context.Database.BeginTransactionAsync();
+                txn = await _context.Database.BeginTransactionAsync(cancellationToken);
+                if (txn != null && _inventoryService != null)
+                {
+                    var rawDbTx = txn.GetDbTransaction();
+                    await _inventoryService.EnrollInTransactionAsync(rawDbTx, cancellationToken);
+                }
             }
             try
             {
-                _sale.InvoiceNumber = await GenerateNextInvoiceNumberAsync();
-                _sale.Status = SaleStatus.Completed;
-                _sale.Date = DateTime.UtcNow;
-                _sale.FinalPaidAmountBsS = _sale.Payments.Sum(p => p.AmountBsS);
+                sale.InvoiceNumber = await GenerateNextInvoiceNumberAsync();
+                sale.Status = SaleStatus.Completed;
+                sale.Date = DateTime.UtcNow;
+                sale.FinalPaidAmountBsS = sale.Payments.Sum(p => p.AmountBsS);
+                ClearHoldClaim(sale);
 
                 // Synchronous stock deduction
-                if (_inventoryService != null && _sale.Items != null)
+                if (_inventoryService != null && sale.Items != null)
                 {
-                    var productIds = _sale.Items.Select(i => i.ProductId).Distinct().ToList();
-                    var productsDict = new Dictionary<int, Product>();
-                    var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
+                    var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
+                    var productsDict = new Dictionary<int, SaleProductInfoDto>();
+                    var fetched = await _inventoryService.GetSaleProductsByIdsAsync(productIds, cancellationToken);
                     if (fetched != null && fetched.Count > 0)
                     {
                         productsDict = fetched.ToDictionary(p => p.Id);
                     }
-                    else
-                    {
-                        foreach (var id in productIds)
-                        {
-                            var p = await _inventoryService.GetProductByIdAsync(id);
-                            if (p != null) productsDict[p.Id] = p;
-                        }
-                    }
 
                     var stockDeductions = new List<StockDeductionRequest>();
-                    foreach (var item in _sale.Items)
+                    foreach (var item in sale.Items)
                     {
                         if (productsDict.TryGetValue(item.ProductId, out var product) && product.IsCashAdvance)
                         {
@@ -207,14 +156,17 @@ public partial class SalesService
                         stockDeductions.Add(new StockDeductionRequest(
                             item.ProductId,
                             -item.Quantity,
-                            $"Sale #{_sale.InvoiceNumber.Value}"));
+                            $"Sale #{sale.InvoiceNumber.Value}",
+                            sale.Id));
                     }
 
                     if (stockDeductions.Count > 0)
                     {
+                        var allowNegativeStock = await IsAllowNegativeStockEnabledAsync();
                         await _inventoryService.UpdateStockBatchAsync(
                             stockDeductions,
-                            allowNegativeStock: false);
+                            allowNegativeStock: allowNegativeStock,
+                            cancellationToken: cancellationToken);
                     }
                 }
 
@@ -225,30 +177,80 @@ public partial class SalesService
                     EventType = "SaleCompleted",
                     Payload = JsonSerializer.Serialize(new
                     {
-                        SaleId = _sale.Id,
-                        InvoiceNumber = _sale.InvoiceNumber.Value,
-                        Date = _sale.Date,
-                        TotalUSD = _sale.TotalUSD,
-                        TotalBsS = _sale.TotalBsS,
-                        CashierId = _sale.CashierId
+                        SaleId = sale.Id,
+                        InvoiceNumber = sale.InvoiceNumber.Value,
+                        Date = sale.Date,
+                        TotalUSD = sale.TotalUSD,
+                        TotalBsS = sale.TotalBsS,
+                        CashierId = sale.CashierId
                     }),
                     CreatedAtUtc = DateTime.UtcNow,
                     NextRetryUtc = DateTime.UtcNow,
                     Status = "Pending"
                 });
 
-                await _context.SaveChangesAsync();
+                RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)), actingUserId);
+
+                if (_cashDrawerService != null && remainingBalanceUsd < -0.05m)
+                {
+                    decimal changeUsd = Math.Abs(remainingBalanceUsd);
+                    if (changeUsd > 100m && changeUsd > sale.TotalUSD)
+                    {
+                        throw new ArgumentException($"El sobrepago o vuelto requerido (${changeUsd:F2} USD) excede los límites operacionales de seguridad.");
+                    }
+
+                    decimal changeBsS = Math.Round(changeUsd * sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
+
+                    var paidMethodIds = sale.Payments.Select(p => p.PaymentMethodId).Distinct().ToList();
+                    var paidMethods = await _context.PaymentMethods
+                        .Where(pm => paidMethodIds.Contains(pm.Id))
+                        .ToDictionaryAsync(pm => pm.Id, cancellationToken);
+                    int? cashMethodId = sale.Payments
+                        .FirstOrDefault(p => paidMethods.TryGetValue(p.PaymentMethodId, out var pm) && pm.IsCash)
+                        ?.PaymentMethodId;
+
+                    var changeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(sale.AppliedRate, cancellationToken);
+
+                    decimal pendingCashIncomeBsS = _context.CashTransactions.Local
+                        .Where(t => t.SessionId == changeSession.Id
+                                 && t.Type == CashTransactionType.Income
+                                 && t.Source == CashTransactionSource.SalePayment
+                                 && t.IsPhysicalCash)
+                        .Sum(t => t.AmountLocal);
+
+                    await _cashDrawerService.RecordSaleChangeAsync(
+                        changeSession.Id,
+                        changeUsd,
+                        changeBsS,
+                        sale.AppliedRate,
+                        $"Vuelto Pedido #{sale.Id}",
+                        sale.Id,
+                        cashMethodId,
+                        pendingCashIncomeBsS,
+                        cancellationToken);
+                }
+
+                await _context.SaveChangesAsync(cancellationToken);
 
                 if (txn != null)
                 {
-                    await txn.CommitAsync();
+                    await txn.CommitAsync(cancellationToken);
+                    // 8.7-B7: devolver al InventoryDbContext su conexión propia tras el commit.
+                    if (_inventoryService != null)
+                    {
+                        await _inventoryService.DetachFromTransactionAsync(cancellationToken);
+                    }
                 }
             }
             catch (Exception ex)
             {
                 if (txn != null)
                 {
-                    await txn.RollbackAsync();
+                    await txn.RollbackAsync(cancellationToken);
+                    if (_inventoryService != null)
+                    {
+                        await _inventoryService.DetachFromTransactionAsync(cancellationToken);
+                    }
                 }
                 _logger?.LogError(ex, "[SalesService] Error al completar venta en espera #{SaleId} al 100%. Transacción revertida.", saleId);
                 throw;
@@ -260,33 +262,38 @@ public partial class SalesService
 
             try
             {
-                var itemsSnapshot = _sale.Items.Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity)).ToList();
-                var saleMadeEvent = new SaleMadeEvent(_sale.Id, _sale.Date, itemsSnapshot);
-                await _mediator.Publish(saleMadeEvent);
+                var itemsSnapshot = sale.Items.Select(i => new SaleItemSnapshot(i.ProductId, i.Quantity)).ToList();
+                var saleMadeEvent = new SaleMadeEvent(sale.Id, sale.Date, itemsSnapshot, sale.InvoiceNumber.Value);
+                await _mediator.Publish(saleMadeEvent, cancellationToken);
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "[SalesService] Publicación secundaria de SaleMadeEvent falló para Venta #{SaleId}, pero está respaldada en Outbox.", _sale.Id);
+                _logger?.LogWarning(ex, "[SalesService] Publicación secundaria de SaleMadeEvent falló para Venta #{SaleId}, pero está respaldada en Outbox.", sale.Id);
             }
+            }, cancellationToken);
         }
         else
         {
-            _sale.Status = SaleStatus.OnHold;
-            _sale.DeliveryStatus = SaleDeliveryStatus.PendingPickup;
-            await _context.SaveChangesAsync();
+            ClearHoldClaim(sale);
+            sale.Status = SaleStatus.OnHold;
+            sale.DeliveryStatus = SaleDeliveryStatus.PendingPickup;
+            RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)), actingUserId);
+            await _context.SaveChangesAsync(cancellationToken);
         }
 
-        await PopulateItemsMetadataAsync(_sale);
-        return MapToDto(_sale);
+        await NotifyHoldOrdersChangedAsync();
+        await PopulateItemsMetadataAsync(sale);
+        return MapToDto(sale);
     }
 
-    public async Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false)
+    public async Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        var _sale = await GetSaleEntityAsync(saleId);
-        if (_sale.Status != SaleStatus.OnHold)
+        var sale = await GetSaleEntityAsync(saleId);
+        EnsureHoldClaimAccess(sale, actingUserId);
+        if (sale.Status != SaleStatus.OnHold)
             throw new InvalidOperationException("Solo se pueden modificar productos en ventas que estén en estado en espera (OnHold).");
 
-        decimal totalPaidUsd = _sale.Payments != null ? _sale.Payments.Sum(p => p.Amount) : 0;
+        decimal totalPaidUsd = sale.Payments != null ? sale.Payments.Sum(p => p.Amount) : 0;
 
         // Calcular nuevo total USD a partir de la lista de ítems enviada
         decimal newTotalUsd = 0;
@@ -295,21 +302,13 @@ public partial class SalesService
         if (request?.Items != null && request.Items.Any())
         {
             var productIds = request.Items.Where(i => i.Quantity > 0m).Select(i => i.ProductId).Distinct().ToList();
-            var productsDict = new Dictionary<int, Product>();
+            var productsDict = new Dictionary<int, SaleProductInfoDto>();
             if (_inventoryService != null && productIds.Any())
             {
-                var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
+                var fetched = await _inventoryService.GetSaleProductsByIdsAsync(productIds, cancellationToken);
                 if (fetched != null && fetched.Count > 0)
                 {
                     productsDict = fetched.ToDictionary(p => p.Id);
-                }
-                else
-                {
-                    foreach (var id in productIds)
-                    {
-                        var p = await _inventoryService.GetProductByIdAsync(id);
-                        if (p != null) productsDict[p.Id] = p;
-                    }
                 }
             }
 
@@ -318,33 +317,49 @@ public partial class SalesService
                 if (reqItem.Quantity <= 0m) continue;
 
                 productsDict.TryGetValue(reqItem.ProductId, out var product);
+                if (product == null || !product.IsActive)
+                {
+                    throw new KeyNotFoundException($"El producto especificado (ID: {reqItem.ProductId}) no existe o está inactivo.");
+                }
+
                 decimal adjustedQty = ValidateAndAdjustQuantity(product, reqItem.Quantity);
 
-                string productName = product != null ? product.Name : $"Producto #{reqItem.ProductId}";
-                decimal catalogPrice = product != null ? product.PriceUSD : 0m;
+                string productName = product.Name;
+                decimal wholesalePrice = product.PriceWholesaleUSD > 0
+                    ? product.PriceWholesaleUSD
+                    : (product.PriceRetailUSD > 0 ? product.PriceRetailUSD : product.PriceUSD);
+                decimal retailPrice = product.PriceRetailUSD > 0 ? product.PriceRetailUSD : product.PriceUSD;
+                decimal minWholesaleQty = product.MinWholesaleQuantity > 0 ? product.MinWholesaleQuantity : 6m;
+                bool isWholesale = string.Equals(sale.PriceListType, "Wholesale", StringComparison.OrdinalIgnoreCase)
+                    && product.HasWholesale
+                    && adjustedQty >= minWholesaleQty;
+                decimal effectivePrice = isWholesale ? wholesalePrice : retailPrice;
 
-                if (product != null && !product.IsCashAdvance && reqItem.UnitPrice > 0 && reqItem.UnitPrice != catalogPrice && !isPriceOverrideAuthorized)
+                if (!product.IsCashAdvance && reqItem.UnitPrice > 0 && reqItem.UnitPrice != effectivePrice && !isPriceOverrideAuthorized)
                 {
                     throw new UnauthorizedAccessException($"Modificación de precio no autorizada para el producto '{productName}'. Se requiere autorización de Administrador o Supervisor.");
                 }
 
-                decimal unitPriceUsd = reqItem.UnitPrice > 0 ? reqItem.UnitPrice : catalogPrice;
+                decimal unitPriceUsd = reqItem.UnitPrice > 0 ? reqItem.UnitPrice : effectivePrice;
                 decimal subtotalUsd = Math.Round(unitPriceUsd * adjustedQty, 2, MidpointRounding.AwayFromZero);
-                decimal unitPriceBsS = Math.Round(unitPriceUsd * _sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
-                decimal subtotalBsS = Math.Round(subtotalUsd * _sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
+                decimal unitPriceBsS = PricingCalculator.ToBsSCeiling(unitPriceUsd, sale.AppliedRate);
+                decimal subtotalBsS = PricingCalculator.RoundToDigital(adjustedQty * unitPriceBsS);
+                bool isCustomPrice = reqItem.UnitPrice > 0 && reqItem.UnitPrice != effectivePrice;
 
                 newTotalUsd += subtotalUsd;
 
                 newItemsList.Add(new SaleItem
                 {
-                    SaleId = _sale.Id,
+                    SaleId = sale.Id,
                     ProductId = reqItem.ProductId,
                     ProductName = productName,
                     Quantity = adjustedQty,
+                    UnitCostUSD = product.CostPriceUSD,
                     UnitPrice = unitPriceUsd,
                     UnitPriceBsS = unitPriceBsS,
                     Subtotal = subtotalUsd,
-                    SubtotalBsS = subtotalBsS
+                    SubtotalBsS = subtotalBsS,
+                    IsCustomPrice = isCustomPrice
                 });
             }
         }
@@ -354,140 +369,39 @@ public partial class SalesService
         // 1. Validar que el nuevo total no sea menor a lo ya abonado por el cliente
         if (newTotalUsd < totalPaidUsd)
         {
-            throw new InvalidOperationException($"El nuevo total del pedido (${newTotalUsd:F2} USD) no puede ser menor al monto total ya abonado por el cliente (${totalPaidUsd:F2} USD).");
+            throw new ArgumentException($"El nuevo total del pedido (${newTotalUsd:F2} USD) no puede ser menor al monto total ya abonado por el cliente (${totalPaidUsd:F2} USD).");
         }
 
         // Reemplazar los ítems existentes
-        if (_sale.Items != null && _sale.Items.Any())
+        if (sale.Items != null && sale.Items.Any())
         {
-            _context.SaleItems.RemoveRange(_sale.Items);
-            _sale.Items.Clear();
+            _context.SaleItems.RemoveRange(sale.Items);
+            sale.Items.Clear();
         }
 
-        _sale.Items ??= new List<SaleItem>();
+        sale.Items ??= new List<SaleItem>();
         foreach (var newItem in newItemsList)
         {
-            _sale.Items.Add(newItem);
+            sale.Items.Add(newItem);
         }
 
-        await RecalculateTotalAsync(_sale);
-        await _context.SaveChangesAsync();
+        await RecalculateTotalAsync(sale);
+        ValidateHoldSaleTotal(sale);
+        await _context.SaveChangesAsync(cancellationToken);
 
-        return MapToDto(_sale);
+        await NotifyHoldOrdersChangedAsync();
+        return MapToDto(sale);
     }
 
-    public async Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request)
+    public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync(int? cashierId = null, int limit = 200, int offset = 0, System.Threading.CancellationToken cancellationToken = default)
     {
-        var _sale = await GetSaleEntityAsync(saleId);
-        if (_sale.Status != SaleStatus.OnHold)
-            throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
-
-        decimal rate = request.ExchangeRate > 0 ? request.ExchangeRate : _sale.AppliedRate;
-        decimal amountUsd = request.AmountUSD > 0 
-            ? Math.Round(request.AmountUSD, 2, MidpointRounding.AwayFromZero) 
-            : (rate > 0 ? Math.Round(request.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
-
-        if (amountUsd <= 0 && request.AmountBsS <= 0)
-        {
-            throw new ArgumentException("El monto del abono debe ser mayor a cero.");
-        }
-
-        decimal currentPaidUsd = _sale.Payments.Sum(p => p.Amount);
-        if (currentPaidUsd + amountUsd > _sale.TotalUSD + 0.05m)
-        {
-            throw new InvalidOperationException("El monto del abono excede el total pendiente de la venta.");
-        }
-
-        // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
-        var method = await _context.PaymentMethods.FindAsync(request.PaymentMethodId);
-        if (method != null && method.IsCash && request.AmountBsS % 1 != 0)
-        {
-            throw new InvalidOperationException("El método de pago en efectivo solo acepta montos enteros.");
-        }
-
-        IDbContextTransaction? dbTransaction = null;
-        if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
-        {
-            dbTransaction = await _context.Database.BeginTransactionAsync();
-        }
-
-        try
-        {
-            var paymentEntity = new SalePayment
-            {
-                SaleId = _sale.Id,
-                PaymentMethodId = request.PaymentMethodId,
-                Amount = Math.Round(amountUsd, 2, MidpointRounding.AwayFromZero),
-                AmountBsS = Math.Round(request.AmountBsS, 2, MidpointRounding.AwayFromZero),
-                ExchangeRate = rate,
-                ReferenceNumber = request.ReferenceNumber,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            _context.SalePayments.Add(paymentEntity);
-
-            // Si es efectivo y monto positivo, registrar en sesión activa de caja
-            if (method != null && method.IsCash && amountUsd > 0 && _cashDrawerService != null)
-            {
-                var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(rate);
-                var cashTx = new CashTransaction
-                {
-                    SessionId = activeSession.Id,
-                    Type = CashTransactionType.Income,
-                    Source = CashTransactionSource.SalePayment,
-                    AmountUsd = amountUsd,
-                    ExchangeRate = rate,
-                    AmountLocal = Math.Round(request.AmountBsS, 2, MidpointRounding.AwayFromZero),
-                    IsPhysicalCash = true,
-                    Description = $"Abono Venta #{saleId}",
-                    TransactionTime = DateTime.UtcNow,
-                    SaleId = _sale.Id,
-                    PaymentMethodId = request.PaymentMethodId
-                };
-                _context.CashTransactions.Add(cashTx);
-            }
-
-            await _context.SaveChangesAsync();
-
-            if (dbTransaction != null)
-            {
-                await dbTransaction.CommitAsync();
-            }
-
-            return MapToDto(_sale);
-        }
-        catch (Exception ex)
-        {
-            if (dbTransaction != null)
-            {
-                await dbTransaction.RollbackAsync();
-            }
-            _logger?.LogError(ex, "[SalesService] Error al registrar abono en venta #{SaleId}. Transacción revertida.", saleId);
-            throw;
-        }
-        finally
-        {
-            dbTransaction?.Dispose();
-        }
-    }
-
-    public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync()
-    {
-        if (_inventoryService != null)
-        {
-            try
-            {
-                var todayRate = await _inventoryService.GetTodayExchangeRateAsync();
-                if (todayRate > 0)
-                {
-                    await RecalculateOnHoldSalesAsync(todayRate);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning(ex, "Failed to auto-recalculate OnHold sales in GetPendingSalesAsync.");
-            }
-        }
+        // 8.7-B6: los GET no escriben. El recálculo masivo de OnHold ocurre en el POST de tasa
+        // (ExchangeRateController → RecalculateOnHoldSalesAsync) e invalida/redifunde por SignalR.
+        // 8.9-B2: el filtro por cajero es opcional; el listado compartido multiterminal consulta con cashierId null.
+        // 8.2-M9: tope de la cola (default 200, max 1000 en el controlador) — acota memoria/CPU.
+        // 8.14-N1: paginación real por offset (los clientes pueden pedir más páginas).
+        if (limit <= 0) limit = 200;
+        if (offset < 0) offset = 0;
 
         var sales = await _context.Sales
             .AsNoTracking()
@@ -498,197 +412,40 @@ public partial class SalesService
                 .ThenInclude(p => p.PaymentMethod)
             .Include(s => s.Cashier)
             .Where(s => s.Status == SaleStatus.OnHold)
+            .Where(s => !cashierId.HasValue || s.CashierId == cashierId.Value)
             .OrderByDescending(s => s.Date)
-            .ToListAsync();
+            .Skip(offset)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
 
         await PopulateItemsMetadataAsync(sales);
 
         return sales.Select(s => MapToDto(s));
     }
 
-    public async Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(
-        string? query = null,
-        int page = 1,
-        int pageSize = 20,
-        bool recentOnly = false)
+    public async Task<int> CountPendingSalesAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        if (recentOnly)
-        {
-            var recentCustomerIds = await _context.Sales
-                .AsNoTracking()
-                .Where(s => s.CustomerId.HasValue)
-                .GroupBy(s => s.CustomerId!.Value)
-                .OrderByDescending(g => g.Max(s => s.Date))
-                .Select(g => g.Key)
-                .Take(3)
-                .ToListAsync();
-
-            var recentCustomers = await _context.Customers
-                .AsNoTracking()
-                .Where(c => recentCustomerIds.Contains(c.Id))
-                .ToListAsync();
-
-            if (recentCustomers.Count < 3)
-            {
-                var existingIds = recentCustomers.Select(c => c.Id).ToList();
-                var additional = await _context.Customers
-                    .AsNoTracking()
-                    .Where(c => !existingIds.Contains(c.Id))
-                    .OrderByDescending(c => c.Id)
-                    .Take(3 - recentCustomers.Count)
-                    .ToListAsync();
-                recentCustomers.AddRange(additional);
-            }
-
-            var ordered = recentCustomerIds
-                .Select(id => recentCustomers.FirstOrDefault(c => c.Id == id))
-                .Where(c => c != null)
-                .Concat(recentCustomers.Where(c => !recentCustomerIds.Contains(c.Id)))
-                .DistinctBy(c => c!.Id)
-                .Take(3)
-                .Select(c => new CustomerDto
-                {
-                    Id = c!.Id,
-                    CedulaOrRif = c.CedulaOrRif,
-                    Name = c.Name,
-                    Phone = c.Phone,
-                    CreditLimitUSD = c.CreditLimitUSD,
-                    IsActive = c.IsActive,
-                    IsDefault = c.IsDefault
-                })
-                .ToList();
-
-            return (ordered, ordered.Count);
-        }
-
-        var q = _context.Customers.AsNoTracking().AsQueryable();
-
-        if (!string.IsNullOrWhiteSpace(query))
-        {
-            var lower = query.Trim().ToLower();
-            q = q.Where(c => c.Name.ToLower().Contains(lower) || c.CedulaOrRif.ToLower().Contains(lower));
-        }
-
-        int totalCount = await q.CountAsync();
-        page = Math.Max(1, page);
-        pageSize = Math.Max(1, pageSize);
-
-        var customers = await q
-            .OrderBy(c => c.Name)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(c => new CustomerDto
-            {
-                Id = c.Id,
-                CedulaOrRif = c.CedulaOrRif,
-                Name = c.Name,
-                Phone = c.Phone,
-                CreditLimitUSD = c.CreditLimitUSD,
-                IsActive = c.IsActive,
-                IsDefault = c.IsDefault
-            })
-            .ToListAsync();
-
-        return (customers, totalCount);
+        return await _context.Sales
+            .AsNoTracking()
+            .CountAsync(s => s.Status == SaleStatus.OnHold
+                && (!cashierId.HasValue || s.CashierId == cashierId.Value), cancellationToken);
     }
 
-    public async Task<CustomerDto> CreateCustomerAsync(CreateCustomerDto request)
+
+    private void RegisterIdempotencyRecord(string? key, byte[]? payloadHash, string requestPath, string responseBody, int? actingUserId)
     {
-        if (string.IsNullOrWhiteSpace(request.CedulaOrRif) || string.IsNullOrWhiteSpace(request.Name))
-            throw new ArgumentException("Cédula/RIF y Nombre son campos obligatorios.");
+        if (string.IsNullOrWhiteSpace(key) || payloadHash == null) return;
 
-        var exists = await _context.Customers.AnyAsync(c => c.CedulaOrRif.ToLower() == request.CedulaOrRif.Trim().ToLower());
-        if (exists)
-            throw new InvalidOperationException($"Ya existe un cliente registrado con la Cédula/RIF '{request.CedulaOrRif}'.");
-
-        var customer = new Customer
+        _context.IdempotentRequests.Add(new IdempotentRequest
         {
-            CedulaOrRif = request.CedulaOrRif.Trim(),
-            Name = request.Name.Trim(),
-            Phone = request.Phone?.Trim() ?? string.Empty,
-            CreditLimitUSD = request.CreditLimitUSD >= 0 ? request.CreditLimitUSD : 0m,
-            IsActive = true
-        };
-
-        _context.Customers.Add(customer);
-        await _context.SaveChangesAsync();
-
-        return new CustomerDto
-        {
-            Id = customer.Id,
-            CedulaOrRif = customer.CedulaOrRif,
-            Name = customer.Name,
-            Phone = customer.Phone,
-            CreditLimitUSD = customer.CreditLimitUSD,
-            IsActive = customer.IsActive
-        };
-    }
-
-    public async Task<CustomerDto> UpdateCustomerAsync(int id, UpdateCustomerDto request)
-    {
-        var customer = await _context.Customers.FindAsync(id);
-        if (customer == null)
-            throw new KeyNotFoundException($"No se encontró el cliente con ID {id}.");
-
-        if (customer.IsDefault && customer.CedulaOrRif.Equals("V-00000000", StringComparison.OrdinalIgnoreCase))
-        {
-            if (!string.Equals(customer.CedulaOrRif, request.CedulaOrRif?.Trim(), StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("No se permite cambiar la Cédula/RIF del cliente Consumidor Final.");
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(request.CedulaOrRif) || string.IsNullOrWhiteSpace(request.Name))
-            throw new ArgumentException("Cédula/RIF y Nombre son campos obligatorios.");
-
-        var exists = await _context.Customers.AnyAsync(c => c.Id != id && c.CedulaOrRif.ToLower() == request.CedulaOrRif.Trim().ToLower());
-        if (exists)
-            throw new InvalidOperationException($"Ya existe otro cliente registrado con la Cédula/RIF '{request.CedulaOrRif}'.");
-
-        customer.CedulaOrRif = request.CedulaOrRif.Trim();
-        customer.Name = request.Name.Trim();
-        customer.Phone = request.Phone?.Trim() ?? string.Empty;
-        customer.CreditLimitUSD = request.CreditLimitUSD >= 0 ? request.CreditLimitUSD : 0m;
-        customer.IsActive = request.IsActive;
-
-        await _context.SaveChangesAsync();
-
-        if (customer.IsDefault || id == 1)
-        {
-            _cache?.Remove(DefaultCustomerCacheKey);
-        }
-
-        return new CustomerDto
-        {
-            Id = customer.Id,
-            CedulaOrRif = customer.CedulaOrRif,
-            Name = customer.Name,
-            Phone = customer.Phone,
-            CreditLimitUSD = customer.CreditLimitUSD,
-            IsActive = customer.IsActive,
-            IsDefault = customer.IsDefault
-        };
-    }
-
-    public async Task DeleteCustomerAsync(int id)
-    {
-        var customer = await _context.Customers.FindAsync(id);
-        if (customer == null)
-            throw new KeyNotFoundException($"No se encontró el cliente con ID {id}.");
-
-        if (customer.IsDefault || customer.CedulaOrRif.Equals("V-00000000", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("No se permite eliminar el cliente Consumidor Final predeterminado del sistema.");
-        }
-
-        bool hasSales = await _context.Sales.AnyAsync(s => s.CustomerId == id);
-        if (hasSales)
-        {
-            throw new InvalidOperationException("No se puede eliminar el cliente porque tiene ventas o transacciones asociadas.");
-        }
-
-        _context.Customers.Remove(customer);
-        await _context.SaveChangesAsync();
-        _cache?.Remove(DefaultCustomerCacheKey);
+            Key = key,
+            RequestPath = requestPath,
+            PayloadHash = payloadHash,
+            StatusCode = 200,
+            ResponseBody = responseBody,
+            UserId = actingUserId,
+            CreatedAtUtc = DateTime.UtcNow,
+            ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
+        });
     }
 }

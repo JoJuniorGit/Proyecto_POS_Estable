@@ -1,13 +1,18 @@
-# Logistics.Module
+# Logistics.Module [NO PRODUCTIVO / EXPERIMENTAL]
 
-Este módulo forma parte de la arquitectura modular de Soluciones POS (`CommandCenter.slnx`) y está reservado para la expansión de capacidades de despacho, seguimiento de repartos y logística de entregas a domicilio (Delivery).
+> [!WARNING]
+> **ESTADO DE PRODUCCIÓN: NO PRODUCTIVO / EXPERIMENTAL**
+> Este módulo forma parte de la arquitectura modular de Soluciones POS (`CommandCenter.slnx`) pero está clasificado oficialmente como **NO PRODUCTIVO**. Opera exclusivamente con almacenamiento en memoria (`ConcurrentDictionary`) sin persistencia en base de datos PostgreSQL (`[8L-CR3]`).
+> No debe utilizarse en entornos de producción para despachos reales hasta implementar la persistencia transaccional con EF Core y la máquina de estados de reparto.
 
 ## Estado y Alcance
-- **Estado**: Módulo planificado y desacoplado para Fase de Entregas.
+- **Estado**: Módulo planificado y desacoplado para Fase de Entregas (Actualmente en Preview / No Producción).
+- **Persistencia**: En memoria (`ConcurrentDictionary`), reinicios del servicio limpian el estado.
 - **Entidades de Dominio enlazadas**:
   - `Core.Entities.UserRole.Driver`: Rol de conductor/repartidor para autenticación y despacho.
   - `Core.Entities.DeliveryStatus`: Estados de ciclo de vida de entregas (`Pending`, `InTransit`, `Delivered`, `Failed`).
-- **Puntos de Integración Futuros**:
+- **Puntos de Integración Futuros (Fase 2 Producción)**:
+  - Persistencia de `DeliveryOrder` en PostgreSQL (entidad, DbContext y migraciones).
   - Gestión de rutas y asignación de pedidos a conductores.
   - Monitoreo geográfico y confirmación digital de entrega (firma/código QR).
-  - Integración desacoplada con `Sales.Module` mediante eventos de dominio (`SaleDispatchedEvent`, `SaleDeliveredEvent`).
+  - Integración desacoplada con `Sales.Module` mediante eventos de dominio (`SaleDispatchedEvent`).

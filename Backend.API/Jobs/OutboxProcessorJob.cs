@@ -17,16 +17,20 @@ namespace Backend.API.Jobs;
 
 public class OutboxProcessorJob : BackgroundService
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<OutboxProcessorJob> _logger;
 
-    public OutboxProcessorJob(IServiceProvider serviceProvider, ILogger<OutboxProcessorJob> logger)
+    public OutboxProcessorJob(IServiceScopeFactory scopeFactory, ILogger<OutboxProcessorJob> logger)
     {
-        _serviceProvider = serviceProvider;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
     private DateTime _lastPurgeCheckUtc = DateTime.MinValue;
+
+    // 8.16-H07: un mensaje Dispatching es reclamado (reatribuido) si su claim excede este umbral.
+    // Cubre el crash del worker entre el commit de la tx y el SaveChanges del estado final.
+    private static readonly TimeSpan StaleDispatchThreshold = TimeSpan.FromSeconds(90);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -40,13 +44,26 @@ public class OutboxProcessorJob : BackgroundService
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                await ProcessPendingMessagesAsync(stoppingToken);
-
-                // Ejecutar purga de mensajes procesados con más de 7 días de antigüedad (cada 1 hora)
-                if (DateTime.UtcNow - _lastPurgeCheckUtc >= TimeSpan.FromHours(1))
+                try
                 {
-                    await PurgeProcessedMessagesAsync(cancellationToken: stoppingToken);
-                    _lastPurgeCheckUtc = DateTime.UtcNow;
+                    await ProcessPendingMessagesAsync(stoppingToken);
+
+                    // Ejecutar purga de mensajes procesados con más de 7 días de antigüedad (cada 1 hora)
+                    if (DateTime.UtcNow - _lastPurgeCheckUtc >= TimeSpan.FromHours(1))
+                    {
+                        await PurgeProcessedMessagesAsync(cancellationToken: stoppingToken);
+                        _lastPurgeCheckUtc = DateTime.UtcNow;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw; // Dejar que el finally externo lo maneje correctamente
+                }
+                catch (Exception tickEx)
+                {
+                    // 8.5-M5: Un error en un tick NO debe matar el servicio. Se registra y se
+                    // continúa con el siguiente ciclo de polling tras el intervalo normal.
+                    _logger.LogWarning(tickEx, "[OutboxProcessor] Error transitorio en ciclo de polling; se reintentará en el siguiente tick.");
                 }
 
                 await timer.WaitForNextTickAsync(stoppingToken);
@@ -75,7 +92,7 @@ public class OutboxProcessorJob : BackgroundService
 
         try
         {
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<SalesDbContext>();
 
             using var cycleCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -129,7 +146,7 @@ public class OutboxProcessorJob : BackgroundService
             _logger.LogError(ex, "[OutboxProcessor] Error inesperado durante la purga de mensajes procesados de Outbox.");
         }
 
-        return totalPurged;
+return totalPurged;
     }
 
 
@@ -137,29 +154,88 @@ public class OutboxProcessorJob : BackgroundService
     {
         try
         {
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<SalesDbContext>();
             var hubContext = scope.ServiceProvider.GetService<IHubContext<ExchangeRateHub>>();
 
-            List<OutboxMessage> messages;
+            List<OutboxMessage>? messages = null;
 
             if (dbContext.Database.IsNpgsql())
             {
-                messages = await dbContext.OutboxMessages
-                    .FromSqlRaw("SELECT * FROM \"OutboxMessages\" WHERE \"Status\" = 'Pending' AND \"NextRetryUtc\" <= NOW() ORDER BY \"CreatedAtUtc\" LIMIT 20 FOR UPDATE SKIP LOCKED")
-                    .ToListAsync(cancellationToken);
+                // 8.9-B4: con NpgsqlRetryingExecutionStrategy (EnableRetryOnFailure) EF Core exige
+                // que la transacción manual viva DENTRO del lambda de CreateExecutionStrategy().
+                // El SELECT con FOR UPDATE SKIP LOCKED es SQL crudo (FromSqlRaw) y EF lo enruta por
+                // la execution strategy: fuera del lambda, la retrying strategy rechaza transacciones
+                // user-initiated ("does not support user-initiated transactions") en la primera query.
+                await dbContext.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+                {
+                    if (dbContext.Database.CurrentTransaction is not null)
+                        throw new InvalidOperationException("[OutboxProcessor] No se admite una transacción ya abierta al seleccionar mensajes pendientes.");
+
+                    await using var tx = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+                    // 8.16-H07: además de Pendientes elegibles, se reclaman mensajes Dispatching con
+                    // claim stale (> StaleDispatchThreshold) para cubrir crashes entre commit y estado final.
+                    var pending = await dbContext.OutboxMessages
+                        .FromSqlRaw("SELECT * FROM \"OutboxMessages\" WHERE ((\"Status\" = 'Pending' AND \"NextRetryUtc\" <= NOW()) OR (\"Status\" = 'Dispatching' AND \"DispatchedAtUtc\" < NOW() - MAKE_INTERVAL(secs => {0}))) ORDER BY \"CreatedAtUtc\" LIMIT 20 FOR UPDATE SKIP LOCKED",
+                            new object[] { StaleDispatchThreshold.TotalSeconds })
+                        .ToListAsync(cancellationToken);
+
+                    if (!pending.Any())
+                    {
+                        await tx.RollbackAsync(cancellationToken);
+                        return;
+                    }
+
+                    // 8.16-H07: transición Pending->Dispatching DENTRO de la misma tx del SELECT FOR
+                    // UPDATE. El commit subsiguiente libera el lock, pero otro worker ya NO re-selecciona
+                    // estos Ids (no cumplen Status='Pending'), cerrando la ventana de doble dispatch.
+                    var claimedAtUtc = DateTime.UtcNow;
+                    foreach (var message in pending)
+                    {
+                        message.Status = "Dispatching";
+                        message.DispatchedAtUtc = claimedAtUtc;
+                        message.ErrorMessage = null;
+                    }
+                    await dbContext.SaveChangesAsync(cancellationToken);
+
+                    // 8.9-M8: el despacho SignalR (llamada de red a todos los clientes) se ejecuta
+                    // FUERA de la transacción. El commit ANTES de difundir libera el lock FOR UPDATE
+                    // SKIP LOCKED; mantenerlo durante la operación de red bloquearía otras escrituras
+                    // sobre OutboxMessages.
+                    await tx.CommitAsync(cancellationToken);
+
+                    messages = pending;
+                });
             }
             else
             {
+                // InMemory (unit tests): no hay locking; se replica la semántica del claim con un
+                // filtro de staleness equivalente para poder probar la ventana de doble dispatch.
                 var now = DateTime.UtcNow;
+                var staleThreshold = now - StaleDispatchThreshold;
                 messages = await dbContext.OutboxMessages
-                    .Where(m => m.Status == "Pending" && m.NextRetryUtc <= now)
+                    .Where(m =>
+                        (m.Status == OutboxMessage.PendingStatus && m.NextRetryUtc <= now)
+                        || (m.Status == "Dispatching" && m.DispatchedAtUtc.HasValue && m.DispatchedAtUtc.Value < staleThreshold))
                     .OrderBy(m => m.CreatedAtUtc)
                     .Take(20)
                     .ToListAsync(cancellationToken);
+
+                if (messages.Count > 0)
+                {
+                    var claimedAtUtc = DateTime.UtcNow;
+                    foreach (var message in messages)
+                    {
+                        message.Status = "Dispatching";
+                        message.DispatchedAtUtc = claimedAtUtc;
+                        message.ErrorMessage = null;
+                    }
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                }
             }
 
-            if (!messages.Any()) return;
+            if (messages == null || messages.Count == 0) return;
 
             foreach (var message in messages)
             {
@@ -181,6 +257,9 @@ public class OutboxProcessorJob : BackgroundService
                         var delaySeconds = Math.Pow(2, message.RetryCount);
                         message.NextRetryUtc = DateTime.UtcNow.AddSeconds(delaySeconds);
                         message.ErrorMessage = ex.Message;
+                        // 8.16-H07: el claim puso el mensaje en Dispatching; al fallar se revierte a
+                        // Pending para que el siguiente ciclo (ya con backoff cumplido) lo reintente.
+                        message.Status = OutboxMessage.PendingStatus;
                         _logger.LogWarning(ex, "[OutboxProcessor] Error al despachar mensaje {MessageId} (Intento {Attempt}/5). Próximo reintento en {Delay}s.",
                             message.Id, message.RetryCount, delaySeconds);
                     }

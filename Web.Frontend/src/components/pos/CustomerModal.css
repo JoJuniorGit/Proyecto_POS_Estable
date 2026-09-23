@@ -1,0 +1,45 @@
+/* CustomerModal.css - Estilos propios del modal de clientes
+   (reemplazan estilos inline estáticos en CustomerModal.jsx, prefijo cm-) */
+
+/* ── Buscador de clientes ── */
+.cm-search-wrapper { position: relative; }
+.cm-search-input { padding-left: 35px; }
+.cm-search-icon { position: absolute; left: 10px; top: 10px; opacity: 0.5; }
+.cm-customer-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 8px;
+  margin-top: 10px;
+}
+
+/* ── Estados de lista (vacío / cargando) ── */
+.cm-list-state { padding: 15px; }
+.cm-list-empty { color: #888; }
+
+/* ── Botón "Seleccionar" de cada cliente ── */
+.cm-select-btn {
+  margin-left: 12px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+/* ── Formulario crear cliente ── */
+.cm-create-form { gap: 15px; }
+.cm-input-wrap { position: relative; }
+.cm-valid-icon {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  color: var(--success-color, #10b981);
+}
+.cm-form-hint { margin: 0; }
+.cm-name-counter { font-size: 0.8rem; white-space: nowrap; }
+
+/* ── Abono inicial ── */
+.cm-payment-col { min-width: 200px; }
+.cm-cash-note { color: var(--accent-primary, #6366f1); }
+
+/* ── Resumen financiero ── */
+.cm-summary-box { margin-top: 15px; }
+.cm-summary-total { font-size: 1.1rem; }

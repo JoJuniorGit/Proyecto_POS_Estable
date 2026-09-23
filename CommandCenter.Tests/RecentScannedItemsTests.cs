@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
@@ -21,6 +22,8 @@ public class RecentScannedItemsTests
         rateMock.Setup(r => r.CurrentRate).Returns(36.5m);
 
         var cart = new CartViewModel(salesMock.Object, rateMock.Object);
+        // Aísla el carrito del bus global compartido entre pruebas (CurrentSaleChangedMessage).
+        WeakReferenceMessenger.Default.UnregisterAll(cart);
 
         var sale = new SaleDto
         {

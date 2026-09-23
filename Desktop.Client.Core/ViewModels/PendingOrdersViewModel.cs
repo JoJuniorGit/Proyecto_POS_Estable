@@ -9,12 +9,10 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
-using MaterialDesignThemes.Wpf;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class PendingOrdersViewModel : ObservableObject
+public partial class PendingOrdersViewModel : ObservableObject, IDisposable
 {
     private readonly ISalesService _salesService;
     private readonly IExchangeRateService _exchangeRateService;
@@ -37,6 +35,18 @@ public partial class PendingOrdersViewModel : ObservableObject
     [ObservableProperty]
     private string? _successMessage;
 
+    [ObservableProperty]
+    private bool _hasMore;
+
+    [ObservableProperty]
+    private bool _isLoadingMore;
+
+    private const int PageSize = 200;
+    private int _totalCount;
+    private bool _loaded;
+    private int _loadGeneration;
+    private bool _reloadRequested;
+
     public ObservableCollection<SaleDto> PendingSales { get; } = new();
 
     public IEnumerable<SaleDto> FilteredPendingSales
@@ -55,6 +65,10 @@ public partial class PendingOrdersViewModel : ObservableObject
     }
 
     partial void OnSearchQueryChanged(string value) => OnPropertyChanged(nameof(FilteredPendingSales));
+
+    public bool CanForceRelease => _userSession?.IsAdmin == true || _userSession?.IsManager == true;
+
+    private bool CanActOnOrder(SaleDto? sale) => sale != null && (sale.ClaimedByUserId == null || sale.ClaimedByUserId == _userSession?.CurrentUser?.Id);
 
     public PendingOrdersViewModel(
         ISalesService salesService,
@@ -93,30 +107,85 @@ public partial class PendingOrdersViewModel : ObservableObject
     public async Task EnsureLoadedAsync()
     {
         if (_userSession != null && !_userSession.IsLoggedIn) return;
+        if (IsLoading)
+        {
+            _reloadRequested = true;
+            return;
+        }
 
         IsLoading = true;
+        var generation = ++_loadGeneration;
         SuccessMessage = null;
         try
         {
             var rateInfo = await _exchangeRateService.GetCurrentRateAsync();
             if (rateInfo.Rate > 0) CurrentExchangeRate = rateInfo.Rate;
 
-            var list = await _salesService.GetPendingSalesAsync();
+            var (list, totalCount) = await _salesService.GetPendingSalesPagedAsync(PageSize, 0);
+            if (generation != _loadGeneration) return;
+            _totalCount = totalCount;
             PendingSales.Clear();
             foreach (var item in list.OrderByDescending(s => s.Date))
                 PendingSales.Add(item);
+            _loaded = true;
+            UpdateHasMore();
+            LiquidarAbonarCommand.NotifyCanExecuteChanged();
+            EditarCommand.NotifyCanExecuteChanged();
         }
         catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
-            // Ignore 401 Unauthorized when session is not logged in yet or token expired
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al cargar cuentas abiertas: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            _dialogService.ShowError("Error", $"Error al cargar cuentas abiertas: {ex.Message}");
         }
         finally
         {
             IsLoading = false;
+            if (_reloadRequested)
+            {
+                _reloadRequested = false;
+                await EnsureLoadedAsync();
+            }
+        }
+    }
+
+    private void UpdateHasMore()
+    {
+        HasMore = _loaded && PendingSales.Count < _totalCount;
+    }
+
+    [RelayCommand]
+    private async Task LoadMoreAsync()
+    {
+        if (_userSession != null && !_userSession.IsLoggedIn) return;
+        if (IsLoading || IsLoadingMore || !HasMore) return;
+
+        IsLoadingMore = true;
+        var generation = ++_loadGeneration;
+        try
+        {
+            var (list, totalCount) = await _salesService.GetPendingSalesPagedAsync(PageSize, PendingSales.Count);
+            if (generation != _loadGeneration) return;
+            _totalCount = totalCount;
+            foreach (var item in list.OrderByDescending(s => s.Date))
+            {
+                if (!PendingSales.Any(p => p.Id == item.Id))
+                {
+                    PendingSales.Add(item);
+                }
+            }
+            UpdateHasMore();
+            LiquidarAbonarCommand.NotifyCanExecuteChanged();
+            EditarCommand.NotifyCanExecuteChanged();
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Error", $"Error al cargar más cuentas: {ex.Message}");
+        }
+        finally
+        {
+            IsLoadingMore = false;
         }
     }
 
@@ -130,58 +199,120 @@ public partial class PendingOrdersViewModel : ObservableObject
         ExpandedSaleId = ExpandedSaleId == sale.Id ? (int?)null : sale.Id;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanActOnOrder))]
     private async Task LiquidarAbonarAsync(SaleDto? sale)
     {
-        if (sale == null) return;
+        if (!CanActOnOrder(sale)) return;
+
+        try
+        {
+            await _salesService.ClaimSaleAsync(sale!.Id, "Checkout");
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Pedido bloqueado", ex.Message);
+            await EnsureLoadedAsync();
+            return;
+        }
+
+        object? result = null;
+        CheckoutViewModel? checkoutVm = null;
         try
         {
             var paymentMethods = new ObservableCollection<PaymentMethodDto>(
                 (await _paymentService.GetActiveMethodsAsync()).ToList());
 
-            var checkoutVm = new CheckoutViewModel(
-                sale: sale,
-                available_methods: paymentMethods,
-                sales_service: _salesService,
-                current_exchange_rate: CurrentExchangeRate,
-                user_session: _userSession,
-                override_sale: sale,
-                dialog_service: _dialogService);
+            checkoutVm = new CheckoutViewModel(
+                sale: sale!,
+                availableMethods: paymentMethods,
+                salesService: _salesService,
+                currentExchangeRate: CurrentExchangeRate,
+                userSession: _userSession,
+                overrideSale: sale,
+                dialogService: _dialogService);
 
-            var result = await DialogHost.Show(checkoutVm, "RootDialog");
-
-            // Always refresh after checkout dialog closes
-            await EnsureLoadedAsync();
-
-            if (result is int invoiceId && invoiceId > 0)
-                SuccessMessage = $"¡Cuenta #{sale.Id} liquidada! Factura N° {invoiceId:D5} completada.";
-            else if (result is int abono && abono == -1)
-                SuccessMessage = $"Abono registrado exitosamente en la cuenta #{sale.Id}.";
+            result = await _dialogService.ShowModalAsync(checkoutVm, "RootDialog");
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al abrir cobro: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            _dialogService.ShowError("Error", $"Error al abrir cobro: {ex.Message}");
+        }
+        finally
+        {
+            try { await _salesService.ReleaseSaleAsync(sale!.Id); } catch { }
+            checkoutVm?.Dispose();
+            await EnsureLoadedAsync();
+            if (result is int invoiceId && invoiceId > 0)
+                SuccessMessage = $"¡Cuenta #{sale!.Id} liquidada! Factura N° {invoiceId:D5} completada.";
+            else if (result is int abono && abono == -1)
+                SuccessMessage = $"Abono registrado exitosamente en la cuenta #{sale!.Id}.";
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanActOnOrder))]
     private async Task EditarAsync(SaleDto? sale)
     {
-        if (sale == null) return;
+        if (!CanActOnOrder(sale)) return;
+
         try
         {
-            var (confirmed, modifiedItems) = await _dialogService.ShowEditSaleDialogAsync(sale, CurrentExchangeRate);
+            await _salesService.ClaimSaleAsync(sale!.Id, "Editing");
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Pedido bloqueado", ex.Message);
+            await EnsureLoadedAsync();
+            return;
+        }
+
+        bool updated = false;
+        try
+        {
+            var (confirmed, modifiedItems) = await _dialogService.ShowEditSaleDialogAsync(sale!, CurrentExchangeRate);
             if (confirmed && modifiedItems != null && modifiedItems.Any())
             {
-                await _salesService.UpdateSaleItemsAsync(sale.Id, modifiedItems, CurrentExchangeRate);
-                await EnsureLoadedAsync();
-                SuccessMessage = $"Pedido #{sale.Id} actualizado correctamente.";
+                await _salesService.UpdateSaleItemsAsync(sale!.Id, modifiedItems, CurrentExchangeRate);
+                updated = true;
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al editar pedido: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            _dialogService.ShowError("Error", $"Error al editar pedido: {ex.Message}");
         }
+        finally
+        {
+            try { await _salesService.ReleaseSaleAsync(sale!.Id); } catch { }
+            await EnsureLoadedAsync();
+            if (updated)
+                SuccessMessage = $"Pedido #{sale!.Id} actualizado correctamente.";
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanForceRelease))]
+    private async Task LiberarBloqueoAsync(SaleDto? sale)
+    {
+        if (sale == null || !CanForceRelease) return;
+
+        string? releaseMessage = null;
+        try
+        {
+            await _salesService.ReleaseSaleAsync(sale.Id, force: true);
+            releaseMessage = $"Bloqueo del pedido #{sale.Id} liberado.";
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Error", $"Error al liberar bloqueo: {ex.Message}");
+        }
+        finally
+        {
+            await EnsureLoadedAsync();
+            if (releaseMessage != null) SuccessMessage = releaseMessage;
+        }
+    }
+
+    public void Dispose()
+    {
+        WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 }
 

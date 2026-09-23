@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import { getCustomers, createCustomer } from '../../services/customerApi';
+import useDebounce from '../../hooks/useDebounce';
 import { Search, UserPlus, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
-import { formatBsS } from '../../utils/formatters';
+import './CustomerModal.css';
 
 const VALID_RIF_PREFIXES = ['V', 'E', 'J', 'G', 'P'];
 const VALID_PHONE_PREFIXES = [
@@ -12,12 +13,7 @@ const VALID_PHONE_PREFIXES = [
 export default function CustomerModal({
   isOpen,
   onClose,
-  onConfirmHold,
   onSelectCustomer,
-  mode = 'select',
-  saleTotalUSD = 0,
-  exchangeRate = 1,
-  paymentMethods = []
 }) {
   const [tab, setTab] = useState('search'); // 'search' | 'create'
   const [query, setQuery] = useState('');
@@ -30,44 +26,32 @@ export default function CustomerModal({
   const [cedulaOrRif, setCedulaOrRif] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  // Initial Payment fields
-  const [enableInitialPayment, setEnableInitialPayment] = useState(false);
-  const [initialPaymentBsS, setInitialPaymentBsS] = useState('');
-  const [paymentMethodId, setPaymentMethodId] = useState('');
+
+  // 8.7-M9: búsqueda de clientes con debounce (250 ms) + AbortController. El input solo cambia
+  // estado; el efecto dispara un único fetch por consulta. Se refresca cuando el modal abre.
+  const debouncedQuery = useDebounce(query, 250);
 
   useEffect(() => {
-    if (paymentMethods && paymentMethods.length > 0 && !paymentMethodId) {
-      setPaymentMethodId(paymentMethods[0].id);
-    }
-  }, [paymentMethods, paymentMethodId]);
-
-  const loadCustomers = useCallback(async (searchQuery) => {
+    if (!isOpen) return;
+    const controller = new AbortController();
     setLoading(true);
-    try {
-      const data = await getCustomers(searchQuery);
-      if (mode === 'hold') {
-        setCustomers((data || []).filter(c => !c.isDefault && c.cedulaOrRif !== 'V-00000000'));
-      } else {
+    getCustomers(debouncedQuery, controller.signal)
+      .then((data) => {
         setCustomers(data || []);
-      }
-    } catch {
-      setError('Error al cargar la lista de clientes.');
-    } finally {
-      setLoading(false);
-    }
-  }, [mode]);
-
-  useEffect(() => {
-    if (isOpen) {
-      loadCustomers('');
-      setError(null);
-    }
-  }, [isOpen, loadCustomers]);
+      })
+      .catch((err) => {
+        if (err?.name !== 'AbortError') {
+          setError('Error al cargar la lista de clientes.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [isOpen, debouncedQuery]);
 
   const handleSearchChange = (e) => {
-    const val = e.target.value;
-    setQuery(val);
-    loadCustomers(val);
+    setQuery(e.target.value);
   };
 
   // ── Controlled Input 1: Cédula / RIF (V or E + 7-8 digits) ──
@@ -150,61 +134,22 @@ export default function CustomerModal({
         phone: phone.trim(),
       });
       setSelectedCustomer(created);
-      if (mode === 'select') {
-        if (onSelectCustomer) onSelectCustomer(created.id);
-        return;
-      }
-      setTab('search');
-      setQuery(created.cedulaOrRif);
-      loadCustomers(created.cedulaOrRif);
+      if (onSelectCustomer) onSelectCustomer(created.id);
     } catch (err) {
-      setError(err.response?.data || err.message || 'Error al crear cliente');
+      setError(err.message || 'Error al crear cliente');
     }
   };
-
-  // Calculations for live preview (defensive against undefined/null values)
-  const safeSaleTotalUSD = typeof saleTotalUSD === 'number' && !isNaN(saleTotalUSD) ? saleTotalUSD : 0;
-  const safeExchangeRate = typeof exchangeRate === 'number' && exchangeRate > 0 ? exchangeRate : 1;
-  const initialBs = parseFloat(initialPaymentBsS) || 0;
-  const initialUsd = safeExchangeRate > 0 ? initialBs / safeExchangeRate : 0;
-  const remainingDebtUsd = Math.max(0, safeSaleTotalUSD - (enableInitialPayment ? initialUsd : 0));
-
-  // El efectivo solo acepta montos enteros (sin centavos)
-  const selectedMethod = paymentMethods.find((m) => String(m.id) === String(paymentMethodId));
-  const isCashSelected = !!selectedMethod?.isCash;
-  const finalInitialBs = isCashSelected ? Math.trunc(initialBs) : initialBs;
-  const finalInitialUsd = safeExchangeRate > 0 ? finalInitialBs / safeExchangeRate : 0;
 
   const handleConfirm = () => {
     if (!selectedCustomer) {
       setError('Debes seleccionar o registrar un cliente obligatoriamente.');
       return;
     }
-    
-    if (mode === 'hold' && selectedCustomer.cedulaOrRif === 'V-00000000') {
-      setError('Las ventas en espera requieren un cliente real identificable. Registre o seleccione un cliente distinto al Consumidor Final.');
-      return;
-    }
-    if (mode === 'select') {
-      if (onSelectCustomer) onSelectCustomer(selectedCustomer.id);
-      return;
-    }
 
-    let initialPaymentObj = null;
-    if (enableInitialPayment && finalInitialBs > 0) {
-      initialPaymentObj = {
-        paymentMethodId: parseInt(paymentMethodId),
-        amountBsS: finalInitialBs,
-        amountUSD: finalInitialUsd,
-        exchangeRate: exchangeRate,
-        referenceNumber: referenceNumber,
-      };
-    }
-
-    onConfirmHold(selectedCustomer.id, initialPaymentObj);
+    if (onSelectCustomer) onSelectCustomer(selectedCustomer.id);
   };
 
-  const modalTitle = mode === 'hold' ? "🔒 Asignar Cliente - Pedido en Espera" : "👥 Cambiar Cliente";
+  const modalTitle = '👥 Cambiar Cliente';
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={modalTitle} maxWidth="650px">
@@ -237,25 +182,24 @@ export default function CustomerModal({
       <div className="checkout-section">
         {tab === 'search' ? (
           <div>
-            <div className="form-group" style={{ position: 'relative' }}>
+            <div className="form-group cm-search-wrapper">
               <input
                 id="customer-search-input"
                 name="customerSearch"
                 type="text"
-                className="form-control"
+                className="form-control cm-search-input"
                 placeholder="Buscar por Cédula/RIF o Nombre..."
                 value={query}
                 onChange={handleSearchChange}
-                style={{ paddingLeft: '35px' }}
               />
-              <Search size={18} style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }} />
+              <Search size={18} className="cm-search-icon" />
             </div>
 
-            <div className="customer-list border custom-scrollbar" style={{ maxHeight: '220px', overflowY: 'auto', borderRadius: '8px', marginTop: '10px' }}>
+            <div className="customer-list border custom-scrollbar cm-customer-list">
               {loading ? (
-                <p className="text-center" style={{ padding: '15px' }}>Cargando clientes...</p>
+                <p className="text-center cm-list-state">Cargando clientes...</p>
               ) : !Array.isArray(customers) || customers.length === 0 ? (
-                <p className="text-center" style={{ padding: '15px', color: '#888' }}>No se encontraron clientes registrados.</p>
+                <p className="text-center cm-list-state cm-list-empty">No se encontraron clientes registrados.</p>
               ) : (
                 customers.map((c) => {
                   const isSelected = selectedCustomer?.id === c.id;
@@ -264,18 +208,12 @@ export default function CustomerModal({
                       key={c.id}
                       onClick={() => {
                         setSelectedCustomer(c);
-                        if (mode === 'select') {
-                          if (onSelectCustomer) onSelectCustomer(c.id);
-                        }
+                        if (onSelectCustomer) onSelectCustomer(c.id);
                       }}
                       className="customer-modal-item"
                       style={{
-                        backgroundColor: isSelected ? 'var(--primary-light)' : 'transparent',
-                        borderLeft: isSelected ? '4px solid var(--primary-color)' : '4px solid transparent',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
+                        backgroundColor: isSelected ? 'var(--accent-primary-light)' : 'transparent',
+                        borderLeft: isSelected ? '4px solid var(--accent-primary)' : '4px solid transparent',
                       }}
                     >
                       <div className="customer-modal-item-info">
@@ -287,20 +225,17 @@ export default function CustomerModal({
                           {c.phone && <span>• Tel: {c.phone}</span>}
                         </div>
                       </div>
-                      {mode === 'select' && (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-primary"
-                          style={{ marginLeft: '12px', padding: '5px 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedCustomer(c);
-                            if (onSelectCustomer) onSelectCustomer(c.id);
-                          }}
-                        >
-                          <Check size={14} /> Seleccionar
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary cm-select-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCustomer(c);
+                          if (onSelectCustomer) onSelectCustomer(c.id);
+                        }}
+                      >
+                        <Check size={14} /> Seleccionar
+                      </button>
                     </div>
                   );
                 })
@@ -308,12 +243,12 @@ export default function CustomerModal({
             </div>
           </div>
         ) : (
-          <form onSubmit={handleCreateCustomer} className="customer-modal-create-form d-flex flex-column" style={{ gap: '15px' }}>
+          <form onSubmit={handleCreateCustomer} className="customer-modal-create-form d-flex flex-column cm-create-form">
             <div className="customer-modal-form-grid">
               {/* Cédula / RIF Input Controlado */}
               <div className="form-group mb-0 customer-form-group">
                 <label htmlFor="customer-cedula-input">Cédula o RIF *</label>
-                <div className="w-full" style={{ position: 'relative' }}>
+                <div className="w-full cm-input-wrap">
                   <input
                     id="customer-cedula-input"
                     name="cedulaOrRif"
@@ -328,7 +263,7 @@ export default function CustomerModal({
                   {isCedulaValid && (
                     <CheckCircle2
                       size={18}
-                      style={{ position: 'absolute', right: '10px', top: '10px', color: 'var(--success-color, #10b981)' }}
+                      className="cm-valid-icon"
                       title="Formato Cédula/RIF válido"
                     />
                   )}
@@ -339,7 +274,7 @@ export default function CustomerModal({
               {/* Teléfono Input Controlado */}
               <div className="form-group mb-0 customer-form-group">
                 <label htmlFor="customer-phone-input">Teléfono *</label>
-                <div className="w-full" style={{ position: 'relative' }}>
+                <div className="w-full cm-input-wrap">
                   <input
                     id="customer-phone-input"
                     name="phone"
@@ -353,7 +288,7 @@ export default function CustomerModal({
                   {isPhoneValid && (
                     <CheckCircle2
                       size={18}
-                      style={{ position: 'absolute', right: '10px', top: '10px', color: 'var(--success-color, #10b981)' }}
+                      className="cm-valid-icon"
                       title="Teléfono de 11 dígitos válido"
                     />
                   )}
@@ -379,13 +314,12 @@ export default function CustomerModal({
                 />
               </div>
               <div className="d-flex flex-between flex-align-center w-full mt-1 customer-name-counter-wrapper">
-                <small className="form-text text-muted" style={{ margin: 0 }}>Máximo 50 caracteres para facturas impresas</small>
+                <small className="form-text text-muted cm-form-hint">Máximo 50 caracteres para facturas impresas</small>
                 <span
+                  className="cm-name-counter"
                   style={{
-                    fontSize: '0.8rem',
                     fontWeight: name.length >= 42 ? '700' : '400',
-                    color: name.length >= 42 ? 'var(--warning-color, #d97706)' : 'var(--text-muted, #64748b)',
-                    whiteSpace: 'nowrap'
+                    color: name.length >= 42 ? 'var(--warning)' : 'var(--text-muted)',
                   }}
                 >
                   {name.length} / 50
@@ -408,107 +342,6 @@ export default function CustomerModal({
         )}
       </div>
 
-      {mode === 'hold' && tab === 'search' && (
-        <>
-          {/* Abono Inicial Sección */}
-          <div className="checkout-section">
-            <label className="d-flex flex-align-center gap-2 cursor-pointer font-bold" htmlFor="enable-initial-payment">
-              <input
-                id="enable-initial-payment"
-                name="enableInitialPayment"
-                type="checkbox"
-                checked={enableInitialPayment}
-                onChange={(e) => setEnableInitialPayment(e.target.checked)}
-              />
-              Registrar Abono Inicial en esta transacción
-            </label>
-
-            {enableInitialPayment && (
-              <div className="d-flex flex-wrap gap-2 mt-3 p-3 border">
-                <div className="flex-1 form-group mb-0" style={{ minWidth: '200px' }}>
-                  <label htmlFor="initial-payment-bss">Monto Abonado (Bs.S)</label>
-                  <input
-                    id="initial-payment-bss"
-                    name="initialPaymentBsS"
-                    type="number"
-                    step={isCashSelected ? 1 : 0.01}
-                    min="1"
-                    className="form-control"
-                    placeholder="Monto en Bolívares"
-                    value={initialPaymentBsS}
-                    onChange={(e) => setInitialPaymentBsS(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (isCashSelected && ['.', ',', 'e', 'E', '+', '-'].includes(e.key)) {
-                        e.preventDefault();
-                      }
-                    }}
-                  />
-                  {isCashSelected ? (
-                    <span className="form-text" style={{ color: 'var(--accent-primary, #6366f1)' }}>El pago en efectivo solo acepta montos enteros.</span>
-                  ) : (
-                    <span className="form-text text-muted">Equivale a: ${initialUsd.toFixed(2)} USD</span>
-                  )}
-                </div>
-
-                <div className="flex-1 form-group mb-0" style={{ minWidth: '200px' }}>
-                  <label htmlFor="payment-method-id">Método de Pago</label>
-                  <select
-                    id="payment-method-id"
-                    name="paymentMethodId"
-                    className="form-control"
-                    value={paymentMethodId}
-                    onChange={(e) => setPaymentMethodId(e.target.value)}
-                  >
-                    {paymentMethods.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Resumen Financiero */}
-          {selectedCustomer && (
-            <div className="checkout-summary-box" style={{ marginTop: '15px' }}>
-              <div className="checkout-summary-row">
-                <span>Total Pedido:</span>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="font-bold text-primary" style={{ fontSize: '1.1rem' }}>
-                    {formatBsS(safeSaleTotalUSD * safeExchangeRate)}
-                  </div>
-                  <div className="text-xs text-muted">
-                    Ref: ${safeSaleTotalUSD.toFixed(2)} USD
-                  </div>
-                </div>
-              </div>
-              <div className="checkout-summary-row text-success">
-                <span>Abono Inicial:</span>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="font-bold">
-                    {formatBsS(finalInitialBs)}
-                  </div>
-                  <div className="text-xs text-muted">
-                    Ref: -${initialUsd.toFixed(2)} USD
-                  </div>
-                </div>
-              </div>
-              <div className="checkout-summary-row highlight">
-                <span>Deuda Restante:</span>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="font-bold" style={{ fontSize: '1.1rem' }}>
-                    {formatBsS(remainingDebtUsd * safeExchangeRate)}
-                  </div>
-                  <div className="text-xs text-muted">
-                    Ref: ${remainingDebtUsd.toFixed(2)} USD
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
       {/* Footer Buttons - Exclusivo para la pestaña de Búsqueda */}
       {tab === 'search' && (
         <div className="customer-modal-footer">
@@ -519,9 +352,9 @@ export default function CustomerModal({
             type="button" 
             className="btn btn-primary flex-2" 
             onClick={handleConfirm} 
-            disabled={!selectedCustomer || (enableInitialPayment && isCashSelected && initialBs % 1 !== 0)}
+            disabled={!selectedCustomer}
           >
-            <Check size={18} /> {mode === 'hold' ? 'Guardar' : 'Confirmar Cliente'}
+            <Check size={18} /> Confirmar Cliente
           </button>
         </div>
       )}

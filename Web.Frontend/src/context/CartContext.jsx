@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useExchangeRate } from './ExchangeRateContext';
 import { useAuth } from './AuthContext';
 import {
@@ -12,9 +12,20 @@ import {
   updatePriceList,
 } from '../services/salesApi';
 import { getLineAmounts } from '../utils/formatters';
+import { hasOrphanedSnapshot, readRecoverySnapshot, saveRecoverySnapshot, clearRecoverySnapshot } from '../utils/saleRecovery';
+import { detectOtherTab, startTabPresenceResponder } from '../utils/tabPresence';
 
 const CartStateContext = createContext(null);
 const CartActionsContext = createContext(null);
+
+export function resolveSaleResponse(updatedSale, requestId, latestRequestId) {
+  if (!updatedSale) return null;
+  return requestId === latestRequestId ? updatedSale : null;
+}
+
+export function selectEffectiveRate(exchangeRate, appliedRate) {
+  return exchangeRate > 0 ? exchangeRate : (appliedRate || 1);
+}
 
 export function CartProvider({ children }) {
   const { exchangeRate } = useExchangeRate();
@@ -25,7 +36,7 @@ export function CartProvider({ children }) {
         const cached = sessionStorage.getItem('active_pos_sale_cache');
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (parsed && (parsed.status === 'Pending' || parsed.status === 'OnHold')) {
+          if (parsed && parsed.status === 'Pending') {
             return parsed;
           }
         }
@@ -35,43 +46,137 @@ export function CartProvider({ children }) {
     }
     return null;
   });
+  const [pendingRecovery, setPendingRecovery] = useState(() => (hasOrphanedSnapshot() ? readRecoverySnapshot() : null));
+  const [recoveryResolved, setRecoveryResolved] = useState(() => !hasOrphanedSnapshot());
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [recoveryError, setRecoveryError] = useState(null);
+  const [recoveryProcessing, setRecoveryProcessing] = useState(false);
 
-  // Sincronizar instantáneamente la venta activa en sessionStorage para persistencia síncrona en recargas
-  useEffect(() => {
+  const cartRequestIdRef = useRef(0);
+  const inFlightCreateRef = useRef(null);
+  const currentSaleRef = useRef(currentSale);
+  currentSaleRef.current = currentSale;
+  const recoveryUnresolvedRef = useRef(Boolean(pendingRecovery));
+  recoveryUnresolvedRef.current = Boolean(pendingRecovery);
+
+  const persistSaleState = useCallback((saleOverride) => {
     if (typeof window === 'undefined') return;
-    if (currentSale?.id && (currentSale.status === 'Pending' || currentSale.status === 'OnHold')) {
-      sessionStorage.setItem('active_pos_sale_id', String(currentSale.id));
-      sessionStorage.setItem('active_pos_sale_cache', JSON.stringify(currentSale));
-      sessionStorage.setItem('active_pos_has_items', (currentSale.items?.length > 0) ? 'true' : 'false');
-    } else if (!currentSale) {
+    const sale = saleOverride ?? currentSaleRef.current;
+
+    if (!sale && recoveryUnresolvedRef.current) {
+      return;
+    }
+
+    if (sale?.status === 'OnHold') {
+      sessionStorage.removeItem('active_pos_sale_id');
       sessionStorage.removeItem('active_pos_sale_cache');
       sessionStorage.removeItem('active_pos_has_items');
+      return;
     }
-  }, [currentSale]);
 
-  // Inicializar o crear nueva venta
-  const createNewSale = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    const hasItems = (sale?.items?.length || 0) > 0;
     try {
-      const sale = await startSale(user?.id);
-      setCurrentSale(sale);
-      setSelectedItemId(null);
-      if (sale?.id) {
+      if (sale?.id && sale.status === 'Pending') {
         sessionStorage.setItem('active_pos_sale_id', String(sale.id));
         sessionStorage.setItem('active_pos_sale_cache', JSON.stringify(sale));
-        sessionStorage.setItem('active_pos_has_items', (sale.items?.length > 0) ? 'true' : 'false');
+        sessionStorage.setItem('active_pos_has_items', hasItems ? 'true' : 'false');
+      } else if (!sale) {
+        sessionStorage.removeItem('active_pos_sale_cache');
+        sessionStorage.removeItem('active_pos_has_items');
+        sessionStorage.removeItem('active_pos_sale_id');
       }
-      return sale;
-    } catch (err) {
-      console.error('[CartContext] Error al crear nueva venta:', err);
-      setError('No se pudo iniciar la sesión de venta. Intente de nuevo.');
-    } finally {
-      setLoading(false);
+    } catch (e) {
+      console.warn('[CartContext] Error persistiendo la venta activa:', e);
     }
+
+    if (sale?.id && sale.status === 'Pending' && hasItems) {
+      saveRecoverySnapshot({
+        saleId: sale.id,
+        cashierId: sale.cashierId ?? user?.id ?? null,
+        cashierName: user?.name ?? null,
+        customerName: sale.customerName ?? null,
+        itemCount: sale.items.length,
+        totalUSD: sale.totalUSD ?? 0,
+        status: sale.status,
+      });
+    } else {
+      clearRecoverySnapshot();
+    }
+  }, [user?.id, user?.name]);
+
+// Sincronizar la venta activa en sessionStorage para persistencia en recargas.
+  // 8.5-WEB2: Debounce de 400ms — evita JSON.stringify en cada render intermedio (ráfagas de
+  // actualizaciones de tasa/ítems producen una sola escritura persistida).
+  useEffect(() => {
+    const timer = setTimeout(() => persistSaleState(), 400);
+    return () => clearTimeout(timer);
+  }, [currentSale, persistSaleState]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        persistSaleState();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [persistSaleState]);
+
+  useEffect(() => startTabPresenceResponder(), []);
+
+  useEffect(() => {
+    if (!pendingRecovery) return undefined;
+
+    let cancelled = false;
+
+    detectOtherTab().then((otherTabOpen) => {
+      if (cancelled || !otherTabOpen) return;
+      setPendingRecovery(null);
+      setRecoveryResolved(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingRecovery]);
+
+// Inicializar o crear nueva venta
+  const createNewSale = useCallback(async () => {
+    // 8.7-M10: sin usuario autenticado NO se crean ventas Pending huérfanas (cashierId null).
+    if (!user?.id) {
+      setError('Inicie sesión para iniciar una venta.');
+      return null;
+    }
+    if (inFlightCreateRef.current) {
+      return inFlightCreateRef.current;
+    }
+    setLoading(true);
+    setError(null);
+    const promise = (async () => {
+      try {
+        const sale = await startSale(user?.id);
+        setCurrentSale(sale);
+        setSelectedItemId(null);
+        setError(null);
+        if (sale?.id) {
+          sessionStorage.setItem('active_pos_sale_id', String(sale.id));
+          sessionStorage.setItem('active_pos_sale_cache', JSON.stringify(sale));
+          sessionStorage.setItem('active_pos_has_items', (sale.items?.length > 0) ? 'true' : 'false');
+        }
+        return sale;
+      } catch (err) {
+        console.error('[CartContext] Error al crear nueva venta:', err);
+        setError('No se pudo iniciar la sesión de venta. Intente de nuevo.');
+      } finally {
+        setLoading(false);
+        inFlightCreateRef.current = null;
+      }
+    })();
+    inFlightCreateRef.current = promise;
+    return promise;
   }, [user?.id]);
 
   // Cargar venta existente (para editar pedido en espera)
@@ -80,6 +185,14 @@ export function CartProvider({ children }) {
     setError(null);
     try {
       const sale = await getSale(saleId);
+      if (sale?.status === 'OnHold') {
+        setError('Los pedidos en espera se editan desde Cuentas Abiertas.');
+        sessionStorage.removeItem('active_pos_sale_id');
+        sessionStorage.removeItem('active_pos_sale_cache');
+        sessionStorage.removeItem('active_pos_has_items');
+        createNewSale();
+        return null;
+      }
       setCurrentSale(sale);
       setSelectedItemId(null);
       if (sale?.id) {
@@ -92,16 +205,28 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [createNewSale]);
 
-  // Al montar, restaurar venta activa de la sesión o crear una nueva
+// Al montar, restaurar venta activa de la sesión o crear una nueva.
+  // 8.7-M10: SOLO cuando hay usuario autenticado (user.id). En la pantalla de login no se crean
+  // ventas Pending huérfanas sin cajero asignado; al iniciar sesión el efecto se re-ejecuta.
   useEffect(() => {
+    if (!user?.id || !recoveryResolved || currentSaleRef.current?.id) return;
+
     const restoreOrStartSale = async () => {
       const savedSaleId = sessionStorage.getItem('active_pos_sale_id');
       if (savedSaleId) {
         try {
           const sale = await getSale(Number(savedSaleId));
-          if (sale && (sale.status === 'Pending' || sale.status === 'OnHold')) {
+          if (sale?.status === 'OnHold') {
+            setError('Los pedidos en espera se editan desde Cuentas Abiertas.');
+            sessionStorage.removeItem('active_pos_sale_id');
+            sessionStorage.removeItem('active_pos_sale_cache');
+            sessionStorage.removeItem('active_pos_has_items');
+            createNewSale();
+            return;
+          }
+          if (sale && sale.status === 'Pending') {
             setCurrentSale(sale);
             return;
           }
@@ -115,17 +240,27 @@ export function CartProvider({ children }) {
     };
 
     restoreOrStartSale();
-  }, [createNewSale]);
+  }, [user?.id, recoveryResolved, createNewSale]);
 
-  // Si cambia la tasa global de cambio y hay venta pendiente o en espera, notificar al backend o actualizar
+// Si cambia la tasa global de cambio y hay venta pendiente o en espera, notificar al backend o actualizar
+  // 8.5-WEB2: Debounce trailing de 1500ms — cada ráfaga de SignalR (o cambios rápidos de tasa) produce
+  // UNA escritura al final, no un write por evento.
   useEffect(() => {
-    if (currentSale?.id && exchangeRate > 0 && (currentSale.status === 'Pending' || currentSale.status === 'OnHold')) {
+    if (!currentSale?.id || !(exchangeRate > 0) || currentSale.status !== 'Pending') {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      const reqId = ++cartRequestIdRef.current;
       updateSaleExchangeRate(currentSale.id, exchangeRate)
         .then(updatedSale => {
-          if (updatedSale) setCurrentSale(updatedSale);
+          const resolved = resolveSaleResponse(updatedSale, reqId, cartRequestIdRef.current);
+          if (resolved) setCurrentSale(resolved);
         })
         .catch(err => console.warn('[CartContext] Error actualizando tasa en venta:', err.message));
-    }
+    }, 1500);
+
+    return () => clearTimeout(timer);
   }, [exchangeRate, currentSale?.id, currentSale?.status]);
 
   const validateOnHoldRules = useCallback((prospectiveTotalUSD) => {
@@ -151,20 +286,27 @@ export function CartProvider({ children }) {
       }
     }
 
+    const reqId = ++cartRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
-      const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale.appliedRate || 1);
+      const rateToUse = selectEffectiveRate(exchangeRate, currentSale.appliedRate);
       const updatedSale = await removeItemFromSale(currentSale.id, itemId, rateToUse);
-      setCurrentSale(updatedSale);
-      if (selectedItemId === itemId) {
-        setSelectedItemId(null);
+      if (reqId === cartRequestIdRef.current) {
+        setCurrentSale(updatedSale);
+        if (selectedItemId === itemId) {
+          setSelectedItemId(null);
+        }
       }
     } catch (err) {
       console.error('[CartContext] Error eliminando item:', err);
-      setError(err.message || 'Error al eliminar producto del carrito');
+      if (reqId === cartRequestIdRef.current) {
+        setError(err.message || 'Error al eliminar producto del carrito');
+      }
     } finally {
-      setLoading(false);
+      if (reqId === cartRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [currentSale?.id, currentSale?.status, currentSale?.items, currentSale?.appliedRate, exchangeRate, selectedItemId, validateOnHoldRules]);
 
@@ -184,18 +326,25 @@ export function CartProvider({ children }) {
       }
     }
 
+    const reqId = ++cartRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
-      const rateToUse = exchangeRate > 0 ? exchangeRate : (sale.appliedRate || 1);
+      const rateToUse = selectEffectiveRate(exchangeRate, sale.appliedRate);
       const updatedSale = await addItemToSale(sale.id, product.id, quantity, rateToUse);
-      setCurrentSale(updatedSale);
+      if (reqId === cartRequestIdRef.current) {
+        setCurrentSale(updatedSale);
+      }
       return updatedSale;
     } catch (err) {
       console.error('[CartContext] Error agregando item:', err);
-      setError(err.message || 'Error al agregar producto al carrito');
+      if (reqId === cartRequestIdRef.current) {
+        setError(err.message || 'Error al agregar producto al carrito');
+      }
     } finally {
-      setLoading(false);
+      if (reqId === cartRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [currentSale, createNewSale, exchangeRate, validateOnHoldRules]);
 
@@ -226,43 +375,105 @@ export function CartProvider({ children }) {
       }
     }
 
+    const reqId = ++cartRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
-      const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale.appliedRate || 1);
+      const rateToUse = selectEffectiveRate(exchangeRate, currentSale.appliedRate);
       const updatedSale = await updateItemQuantity(currentSale.id, itemId, validatedQty, rateToUse);
-      setCurrentSale(updatedSale);
+      if (reqId === cartRequestIdRef.current) {
+        setCurrentSale(updatedSale);
+      }
     } catch (err) {
       console.error('[CartContext] Error modificando cantidad:', err);
-      setError(err.message || 'Error al modificar la cantidad');
+      if (reqId === cartRequestIdRef.current) {
+        setError(err.message || 'Error al modificar la cantidad');
+      }
     } finally {
-      setLoading(false);
+      if (reqId === cartRequestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [currentSale?.id, currentSale?.status, currentSale?.items, currentSale?.appliedRate, exchangeRate, removeItem, validateOnHoldRules]);
+  }, [currentSale?.id, currentSale?.status, currentSale?.items, currentSale?.appliedRate, exchangeRate, validateOnHoldRules]);
 
   // Cambiar lista de precios ("Retail" | "Wholesale")
   const changePriceList = useCallback(async (priceListType) => {
     if (!currentSale?.id) return;
+    const reqId = ++cartRequestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const updatedSale = await updatePriceList(currentSale.id, priceListType);
-      setCurrentSale(updatedSale);
+      if (reqId === cartRequestIdRef.current) {
+        setCurrentSale(updatedSale);
+      }
       return updatedSale;
     } catch (err) {
       console.error('[CartContext] Error cambiando lista de precios:', err);
-      const msg = err.response?.data?.message || err.response?.data?.Message || err.message || 'Error al cambiar lista de precios';
-      setError(msg);
-      throw new Error(msg);
+      const msg = err.message || 'Error al cambiar lista de precios';
+      if (reqId === cartRequestIdRef.current) {
+        setError(msg);
+      }
+      throw err;
     } finally {
-      setLoading(false);
+      if (reqId === cartRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [currentSale?.id]);
 
   // Limpiar carrito / Iniciar nueva venta
-  const resetCart = useCallback(async () => {
-    await createNewSale();
+const resetCart = useCallback(async () => {
+    // 8.5-WEB5: retorna si se pudo iniciar la nueva venta; el caller decide anunciar éxito o avisar.
+    const sale = await createNewSale();
+    return !!sale;
   }, [createNewSale]);
+
+  const recoverPendingSale = useCallback(async () => {
+    const snapshot = pendingRecovery;
+
+    if (!snapshot?.saleId) {
+      clearRecoverySnapshot();
+      setPendingRecovery(null);
+      setRecoveryResolved(true);
+      return false;
+    }
+
+    setRecoveryProcessing(true);
+    setRecoveryError(null);
+
+    try {
+      const sale = await getSale(Number(snapshot.saleId));
+      if (sale?.id && sale.status === 'Pending') {
+        setCurrentSale(sale);
+        setSelectedItemId(null);
+        persistSaleState(sale);
+        setPendingRecovery(null);
+        setRecoveryResolved(true);
+        return true;
+      }
+
+      clearRecoverySnapshot();
+      setPendingRecovery(null);
+      setRecoveryResolved(true);
+      return false;
+    } catch (err) {
+      console.warn('[CartContext] No se pudo recuperar la venta pendiente:', err);
+      setRecoveryError('No se pudo recuperar la venta pendiente. Verifique la conexión e intente nuevamente.');
+      return false;
+    } finally {
+      setRecoveryProcessing(false);
+    }
+  }, [pendingRecovery, persistSaleState]);
+
+  const discardPendingRecovery = useCallback(() => {
+    clearRecoverySnapshot();
+    setPendingRecovery(null);
+    setRecoveryResolved(true);
+    setRecoveryError(null);
+  }, []);
+
+  const flushSaleState = useCallback(() => persistSaleState(), [persistSaleState]);
 
   // Actualizar cliente de la venta
   const updateCustomer = useCallback(async (customerId) => {
@@ -281,17 +492,27 @@ export function CartProvider({ children }) {
     }
   }, [currentSale?.id]);
 
-  const items = currentSale?.items || [];
-  const subtotalUSD = currentSale?.subtotal ?? items.reduce((acc, item) => acc + (item.subtotal || 0), 0);
+const items = useMemo(() => currentSale?.items || [], [currentSale?.items]);
+  const subtotalUSD = useMemo(
+    () => currentSale?.subtotal ?? items.reduce((acc, item) => acc + (item.subtotal || 0), 0),
+    [currentSale?.subtotal, items]
+  );
   const totalUSD = currentSale?.totalUSD ?? subtotalUSD;
-  const rateToUse = exchangeRate > 0 ? exchangeRate : (currentSale?.appliedRate || 1);
+  const rateToUse = selectEffectiveRate(exchangeRate, currentSale?.appliedRate);
 
-  const itemsSubtotalBsS = items.reduce((acc, item) => acc + getLineAmounts(item, rateToUse).subtotalBsS, 0);
-  const subtotalBsS = (currentSale?.subtotalBsS > 0) ? currentSale.subtotalBsS : itemsSubtotalBsS;
-  const totalBsS = (currentSale?.totalBsS > 0) ? currentSale.totalBsS : itemsSubtotalBsS;
+  const { subtotalBsS, totalBsS } = useMemo(() => {
+    const calculated = items.reduce((acc, item) => acc + getLineAmounts(item, rateToUse).subtotalBsS, 0);
+    return {
+      subtotalBsS: (currentSale?.subtotalBsS > 0) ? currentSale.subtotalBsS : calculated,
+      totalBsS: (currentSale?.totalBsS > 0) ? currentSale.totalBsS : calculated,
+    };
+  }, [items, rateToUse, currentSale?.subtotalBsS, currentSale?.totalBsS]);
 
   const stateValue = useMemo(() => ({
     currentSale,
+    pendingRecovery,
+    recoveryError,
+    recoveryProcessing,
     items,
     selectedItemId,
     setSelectedItemId,
@@ -302,7 +523,7 @@ export function CartProvider({ children }) {
     totalUSD,
     subtotalBsS,
     totalBsS,
-  }), [currentSale, items, selectedItemId, loading, error, subtotalUSD, totalUSD, subtotalBsS, totalBsS]);
+  }), [currentSale, pendingRecovery, recoveryError, recoveryProcessing, items, selectedItemId, loading, error, subtotalUSD, totalUSD, subtotalBsS, totalBsS]);
 
   const actionsValue = useMemo(() => ({
     addItem,
@@ -313,7 +534,10 @@ export function CartProvider({ children }) {
     loadExistingSale,
     updateCustomer,
     changePriceList,
-  }), [addItem, updateQuantity, removeItem, resetCart, createNewSale, loadExistingSale, updateCustomer, changePriceList]);
+    recoverPendingSale,
+    discardPendingRecovery,
+    flushSaleState,
+  }), [addItem, updateQuantity, removeItem, resetCart, createNewSale, loadExistingSale, updateCustomer, changePriceList, recoverPendingSale, discardPendingRecovery, flushSaleState]);
 
   return (
     <CartStateContext.Provider value={stateValue}>

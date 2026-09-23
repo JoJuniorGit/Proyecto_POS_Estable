@@ -1,0 +1,18 @@
+/* RegisterModals.css - Acciones y botones compartidos de los modales de caja
+   (CashInModal / CashOutModal / CashAdvanceModal). Prefijo regmod-. */
+
+.regmod-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.regmod-btn-130 {
+  min-width: 130px;
+  justify-content: center;
+}
+
+.regmod-btn-180 {
+  min-width: 180px;
+  justify-content: center;
+}

@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
+using CommandCenter.Tests.Builders;
 using Core.Constants;
 using Core.DTOs;
 using Core.Entities;
@@ -84,7 +85,7 @@ public class Phase4ResilienceRemediationTests
         db.Users.Add(rootAdmin);
         await db.SaveChangesAsync();
 
-        var controller = new UsersController(db, Mock.Of<IPasswordPolicyService>(), null);
+        var controller = ControllerFactory.CreateUsersController(db, Mock.Of<IPasswordPolicyService>(), null);
         var httpContext = new DefaultHttpContext();
         var claims = new[]
         {

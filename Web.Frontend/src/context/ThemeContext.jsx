@@ -1,22 +1,39 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import {
+  THEME_STORAGE_KEY,
+  THEME_SYNC_CHANNEL,
+  THEME_VALUES,
+  readStoredState,
+  writeStoredState,
+  broadcastStateSync,
+  subscribeStateSync,
+  subscribeWindowRevalidation,
+  resolveRevalidatedValue,
+} from '../utils/crossTabStateSync';
 
 const ThemeContext = createContext();
 
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem('pos-theme');
-    if (saved) return saved;
-    return 'dark';
-  });
+  const [theme, setTheme] = useState(() => readStoredState(THEME_STORAGE_KEY, THEME_VALUES) || 'dark');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('pos-theme', theme);
+    writeStoredState(THEME_STORAGE_KEY, theme);
+    broadcastStateSync(THEME_SYNC_CHANNEL, theme);
   }, [theme]);
 
-  const toggleTheme = () => {
+  useEffect(() => subscribeStateSync(THEME_SYNC_CHANNEL, THEME_VALUES, (value) => {
+    setTheme((prev) => (prev === value ? prev : value));
+  }), []);
+
+  useEffect(() => subscribeWindowRevalidation(() => {
+    const stored = readStoredState(THEME_STORAGE_KEY, THEME_VALUES);
+    if (stored) setTheme((prev) => resolveRevalidatedValue(stored, prev, THEME_VALUES));
+  }), []);
+
+  const toggleTheme = useCallback(() => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
-  };
+  }, []);
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>

@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Core.DTOs;
 using Desktop.Client.Services;
 using System;
@@ -37,7 +38,7 @@ public partial class VariantSelectionViewModel : ObservableObject
     public decimal ExchangeRate => _exchangeRateService?.CurrentRate ?? 1m;
 
     public decimal BasePriceUSD => ParentProduct?.PriceRetailUSD > 0 ? ParentProduct.PriceRetailUSD : (ParentProduct?.PriceUSD ?? 0m);
-    public decimal BasePriceBsS => ParentProduct?.PriceBsS > 0 ? ParentProduct.PriceBsS : (BasePriceUSD * ExchangeRate);
+    public decimal BasePriceBsS => ParentProduct?.PriceBsS > 0 ? ParentProduct.PriceBsS : Helpers.PricingHelper.ToBsSCeiling(BasePriceUSD, ExchangeRate);
 
     public VariantSelectionViewModel(
         IProductService productService,
@@ -48,7 +49,7 @@ public partial class VariantSelectionViewModel : ObservableObject
         _exchangeRateService = exchangeRateService;
         ParentProduct = parentProduct;
 
-        _ = LoadVariantsAsync();
+        LoadVariantsAsync().SafeFireAndForget("VariantSelectionViewModel.LoadVariants");
     }
 
     public async Task LoadVariantsAsync()

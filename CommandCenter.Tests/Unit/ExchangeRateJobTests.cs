@@ -8,6 +8,7 @@ using Backend.API.Controllers;
 using Backend.API.Hubs;
 using Backend.API.Jobs;
 using Backend.API.Services;
+using CommandCenter.Tests.Builders;
 using Core.Entities;
 using Core.Helpers;
 using Core.Interfaces;
@@ -19,6 +20,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -81,17 +83,20 @@ public class ExchangeRateJobTests
         var inventoryMock = new Mock<IInventoryService>();
         var salesMock = new Mock<ISalesService>();
 
+        var rateWriteService = new ExchangeRateWriteService(dbContext, inventoryMock.Object, salesMock.Object, hubContextMock.Object);
+
         var services = new ServiceCollection();
         services.AddSingleton(scraperMock.Object);
         services.AddSingleton(dbContext);
         services.AddSingleton(hubContextMock.Object);
         services.AddSingleton(inventoryMock.Object);
         services.AddSingleton(salesMock.Object);
+        services.AddSingleton<IExchangeRateWriteService>(rateWriteService);
 
         var serviceProvider = services.BuildServiceProvider();
         var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
 
-        var job = new BcvExchangeRateJob(serviceProvider, jobLogger.Object);
+        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object, new ConfigurationBuilder().Build());
 
         // Act - should NOT throw
         await job.SyncRateAsync(CancellationToken.None);
@@ -128,17 +133,20 @@ public class ExchangeRateJobTests
         var inventoryMock = new Mock<IInventoryService>();
         var salesMock = new Mock<ISalesService>();
 
+        var rateWriteService = new ExchangeRateWriteService(dbContext, inventoryMock.Object, salesMock.Object, hubContextMock.Object);
+
         var services = new ServiceCollection();
         services.AddSingleton(scraperMock.Object);
         services.AddSingleton(dbContext);
         services.AddSingleton(hubContextMock.Object);
         services.AddSingleton(inventoryMock.Object);
         services.AddSingleton(salesMock.Object);
+        services.AddSingleton<IExchangeRateWriteService>(rateWriteService);
 
         var serviceProvider = services.BuildServiceProvider();
         var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
 
-        var job = new BcvExchangeRateJob(serviceProvider, jobLogger.Object);
+        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object, new ConfigurationBuilder().Build());
 
         // Act
         await job.SyncRateAsync(CancellationToken.None);
@@ -159,9 +167,9 @@ public class ExchangeRateJobTests
 
         var scraperLogger = new Mock<ILogger<BcvScraperService>>();
         var scraperMock = new Mock<BcvScraperService>(new HttpClient(), scraperLogger.Object, null!);
-        // Raw rate with precision: 804.6301 -> should be rounded up to 804.64
+        // Raw rate with extra precision: 804.63001 -> should be rounded up to 2 decimals (804.64)
         scraperMock.Setup(s => s.GetOfficialUsdRateAsync(It.IsAny<CancellationToken>()))
-                   .ReturnsAsync(804.6301m);
+                   .ReturnsAsync(804.63001m);
 
         var hubContextMock = new Mock<IHubContext<ExchangeRateHub>>();
         var hubClientsMock = new Mock<IHubClients>();
@@ -172,17 +180,20 @@ public class ExchangeRateJobTests
         var inventoryMock = new Mock<IInventoryService>();
         var salesMock = new Mock<ISalesService>();
 
+        var rateWriteService = new ExchangeRateWriteService(dbContext, inventoryMock.Object, salesMock.Object, hubContextMock.Object);
+
         var services = new ServiceCollection();
         services.AddSingleton(scraperMock.Object);
         services.AddSingleton(dbContext);
         services.AddSingleton(hubContextMock.Object);
         services.AddSingleton(inventoryMock.Object);
         services.AddSingleton(salesMock.Object);
+        services.AddSingleton<IExchangeRateWriteService>(rateWriteService);
 
         var serviceProvider = services.BuildServiceProvider();
         var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
 
-        var job = new BcvExchangeRateJob(serviceProvider, jobLogger.Object);
+        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object, new ConfigurationBuilder().Build());
 
         // Act
         await job.SyncRateAsync(CancellationToken.None);
@@ -205,12 +216,12 @@ public class ExchangeRateJobTests
     }
 
     [Theory]
-    [InlineData(804.6301, 804.64)]
-    [InlineData(804.6300, 804.63)]
-    [InlineData(805.1234, 805.13)]
-    [InlineData(800.0000, 800.00)]
-    [InlineData(36.4567, 36.46)]
-    public void PricingCalculator_RoundExchangeRateCeiling_RoundsUpToCent(decimal input, decimal expected)
+    [InlineData(804.63001, 804.64)]
+    [InlineData(804.64, 804.64)]
+    [InlineData(805.123456, 805.13)]
+    [InlineData(800.00001, 800.01)]
+    [InlineData(36.456789, 36.46)]
+    public void PricingCalculator_RoundExchangeRateCeiling_RoundsUpTo2Decimals(decimal input, decimal expected)
     {
         var result = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(input);
         Assert.Equal(expected, result);
@@ -246,16 +257,10 @@ public class ExchangeRateJobTests
         await dbContext.SaveChangesAsync();
 
         var userMock = new Mock<ICurrentUserService>();
-        var salesMock = new Mock<ISalesService>();
-        var inventoryMock = new Mock<IInventoryService>();
-        var hubContextMock = new Mock<IHubContext<ExchangeRateHub>>();
 
-        var controller = new ExchangeRateController(
+        var controller = ControllerFactory.CreateExchangeRateController(
             dbContext,
-            userMock.Object,
-            salesMock.Object,
-            inventoryMock.Object,
-            hubContextMock.Object);
+            userMock.Object);
 
         // Act
         var actionResult = await controller.GetToday();
@@ -307,6 +312,7 @@ public class ExchangeRateJobTests
         var userMock = new Mock<ICurrentUserService>();
         var inventoryService = new InventoryService(dbContext, userMock.Object, memoryCache);
         var salesMock = new Mock<ISalesService>();
+        var rateWriteService = new ExchangeRateWriteService(dbContext, inventoryService, salesMock.Object, hubContextMock.Object);
 
         var services = new ServiceCollection();
         services.AddSingleton(scraperMock.Object);
@@ -314,17 +320,15 @@ public class ExchangeRateJobTests
         services.AddSingleton(hubContextMock.Object);
         services.AddSingleton<IInventoryService>(inventoryService);
         services.AddSingleton(salesMock.Object);
+        services.AddSingleton<IExchangeRateWriteService>(rateWriteService);
 
         var serviceProvider = services.BuildServiceProvider();
         var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
 
-        var job = new BcvExchangeRateJob(serviceProvider, jobLogger.Object);
-        var controller = new ExchangeRateController(
+        var job = new BcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object, new ConfigurationBuilder().Build());
+        var controller = ControllerFactory.CreateExchangeRateController(
             dbContext,
-            userMock.Object,
-            salesMock.Object,
-            inventoryService,
-            hubContextMock.Object);
+            userMock.Object);
 
         // 1. Before job runs: GetToday returns yesterday's rate (800.00m) via fallback
         var initialRes = Assert.IsType<OkObjectResult>(await controller.GetToday());
@@ -438,16 +442,10 @@ public class ExchangeRateJobTests
         await dbContext.SaveChangesAsync();
 
         var userMock = new Mock<ICurrentUserService>();
-        var salesMock = new Mock<ISalesService>();
-        var inventoryMock = new Mock<IInventoryService>();
-        var hubContextMock = new Mock<IHubContext<ExchangeRateHub>>();
 
-        var controller = new ExchangeRateController(
+        var controller = ControllerFactory.CreateExchangeRateController(
             dbContext,
-            userMock.Object,
-            salesMock.Object,
-            inventoryMock.Object,
-            hubContextMock.Object);
+            userMock.Object);
 
         // Act - GetToday
         var todayResult = Assert.IsType<OkObjectResult>(await controller.GetToday());
@@ -465,5 +463,49 @@ public class ExchangeRateJobTests
         Assert.NotNull(historyLocalProp);
         var historyLocalTime = Assert.IsType<DateTime>(historyLocalProp);
         Assert.Equal(new DateTime(2026, 9, 4, 23, 55, 0), historyLocalTime);
+    }
+
+    [Fact]
+    public async Task BcvExchangeRateJob_WhenAutoSyncDisabled_ReturnsWithoutWaitingOrSyncing()
+    {
+        // Arrange: BcvSettings:AutoSyncIntervalMinutes <= 0 desactiva el ciclo periodico
+        // (modo manual exclusivo, 8.16-B09/B10).
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["BcvSettings:AutoSyncIntervalMinutes"] = "0"
+            })
+            .Build();
+
+        // Provider sin servicios: si el job intentara sincronizar fallaria al resolver
+        // InventoryDbContext; el path desactivado no debe crearlo.
+        var serviceProvider = new ServiceCollection().BuildServiceProvider();
+        var jobLogger = new Mock<ILogger<BcvExchangeRateJob>>();
+        var job = new ExposedBcvExchangeRateJob(serviceProvider.GetRequiredService<IServiceScopeFactory>(), jobLogger.Object, configuration);
+
+        // Act
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await job.RunAsync(CancellationToken.None);
+        sw.Stop();
+
+        // Assert: retorna de inmediato (sin el retardo inicial de 5s) y sin excepciones.
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3), "Con auto-sync desactivado el job debe retornar sin esperar el retardo inicial.");
+        jobLogger.Verify(l => l.Log(
+            LogLevel.Information,
+            It.IsAny<EventId>(),
+            It.IsAny<It.IsAnyType>(),
+            It.IsAny<Exception?>(),
+            It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.AtLeastOnce);
+    }
+
+    private sealed class ExposedBcvExchangeRateJob : BcvExchangeRateJob
+    {
+        public ExposedBcvExchangeRateJob(IServiceScopeFactory scopeFactory, ILogger<BcvExchangeRateJob> logger, IConfiguration configuration)
+            : base(scopeFactory, logger, configuration)
+        {
+        }
+
+        public Task RunAsync(CancellationToken cancellationToken) => ExecuteAsync(cancellationToken);
     }
 }

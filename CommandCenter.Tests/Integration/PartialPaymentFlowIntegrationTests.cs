@@ -1,13 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Backend.API.Controllers;
 using CommandCenter.Tests.Builders;
 using Core.DTOs;
 using Core.Entities;
 using Core.Events;
 using Core.Interfaces;
 using MediatR;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using Sales.Module.Data;
@@ -26,6 +30,8 @@ namespace CommandCenter.Tests.Integration;
 
 public class PartialPaymentFlowIntegrationTests
 {
+    private const int TestActorId = 42;
+
     [Fact]
     public async Task PartialPaymentFlow_HoldsOrder_RecordsAbonos_UpdatesBalance_AndRegistersDrawerCash()
     {
@@ -41,9 +47,9 @@ public class PartialPaymentFlowIntegrationTests
         salesContext.Customers.Add(customer);
         await salesContext.SaveChangesAsync();
 
-        var product = new ProductBuilder().WithId(201).WithName("Batería 12V").WithCostAndMargin(80.00m, 25.00m).Build(); // $100.00 USD
+        var product = new ProductBuilder().WithId(201).WithName("Batería 12V").WithCostAndMargin(80.00m, 25.00m).BuildSaleProductInfo(); // $100.00 USD
         var inventoryServiceMock = new Mock<IInventoryService>();
-        inventoryServiceMock.Setup(i => i.GetProductByIdAsync(201)).ReturnsAsync(product);
+        inventoryServiceMock.Setup(i => i.GetSaleProductByIdAsync(201)).ReturnsAsync(product);
 
         var mediatorMock = new Mock<IMediator>();
         var cashDrawerService = new CashDrawerService(salesContext);
@@ -77,7 +83,13 @@ public class PartialPaymentFlowIntegrationTests
         Assert.Equal("OnHold", holdResult.Status);
         Assert.Equal(100.00m, holdResult.TotalUSD);
 
-        // 5. Add second partial payment: $30.00 USD via Cash (1500 Bs.S)
+        var holdClaim = await salesContext.Sales.FindAsync(saleDto.Id);
+        holdClaim!.ClaimedByUserId = TestActorId;
+        holdClaim.ClaimAction = SaleClaimAction.Editing;
+        holdClaim.ClaimedByUserName = "Test Actor";
+        holdClaim.ClaimedAtUtc = DateTime.UtcNow;
+        await salesContext.SaveChangesAsync();
+
         var secondPaymentRequest = new AddPaymentRequestDto
         {
             PaymentMethodId = 1,
@@ -87,7 +99,7 @@ public class PartialPaymentFlowIntegrationTests
             ReferenceNumber = null
         };
 
-        var secondResult = await salesService.AddPaymentToHoldSaleAsync(saleDto.Id, secondPaymentRequest);
+        var secondResult = await salesService.AddPaymentToHoldSaleAsync(saleDto.Id, secondPaymentRequest, actingUserId: TestActorId);
 
         // 6. Assertions
         var savedSale = await salesContext.Sales.Include(s => s.Payments).FirstAsync(s => s.Id == saleDto.Id);
@@ -107,5 +119,102 @@ public class PartialPaymentFlowIntegrationTests
         Assert.NotNull(cashTx);
         Assert.True(cashTx.IsPhysicalCash);
         Assert.Equal(1500.00m, cashTx.AmountLocal);
+    }
+
+    [Fact]
+    public async Task AddPayment_RetryWithSameIdempotencyKey_AppliesAbonoOnlyOnce()
+    {
+        var salesContext = TestDatabaseFactory.CreateSalesDbContext();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(salesContext);
+
+        var customer = new CustomerBuilder()
+            .WithId(60)
+            .WithCedula("V-27123456")
+            .WithName("Ana Torres")
+            .Build();
+        salesContext.Customers.Add(customer);
+        await salesContext.SaveChangesAsync();
+
+        var product = new ProductBuilder().WithId(210).WithName("Bombillo LED").WithCostAndMargin(40.00m, 25.00m).BuildSaleProductInfo();
+        var inventoryServiceMock = new Mock<IInventoryService>();
+        inventoryServiceMock.Setup(i => i.GetSaleProductByIdAsync(210)).ReturnsAsync(product);
+
+        var mediatorMock = new Mock<IMediator>();
+        var cashDrawerService = new CashDrawerService(salesContext);
+        var settingsMock = new Mock<ISystemSettingsService>();
+
+        var salesService = new SalesService(salesContext, inventoryServiceMock.Object, mediatorMock.Object, cashDrawerService, settingsMock.Object);
+        var idService = new IdempotencyService(salesContext);
+
+        var saleDto = await salesService.StartSaleAsync(cashierId: 1);
+        await salesService.AddItemAsync(saleDto.Id, 210, 1, 50.00m);
+
+        var holdRequest = new HoldSaleRequestDto
+        {
+            CustomerId = customer.Id,
+            ExchangeRate = 50.00m,
+            InitialPayment = new AddPaymentRequestDto
+            {
+                PaymentMethodId = 3, // Punto de Venta (no cash)
+                AmountUSD = 10.00m,
+                AmountBsS = 500.00m,
+                ExchangeRate = 50.00m
+            }
+        };
+        await salesService.HoldSaleAsync(saleDto.Id, holdRequest);
+
+        var holdClaim = await salesContext.Sales.FindAsync(saleDto.Id);
+        holdClaim!.ClaimedByUserId = 1;
+        holdClaim.ClaimAction = SaleClaimAction.Editing;
+        holdClaim.ClaimedByUserName = "Test Actor";
+        holdClaim.ClaimedAtUtc = DateTime.UtcNow;
+        await salesContext.SaveChangesAsync();
+
+        var mockUser = new Mock<ICurrentUserService>();
+        mockUser.Setup(u => u.UserId).Returns("1");
+
+        var controller = new SalesController(salesService, mockUser.Object, idService);
+
+        var paymentReq = new AddPaymentRequestDto
+        {
+            PaymentMethodId = 3,
+            AmountUSD = 10.00m,
+            AmountBsS = 500.00m,
+            ExchangeRate = 50.00m
+        };
+        const string key = "ABONO-RETRY-INTEGRATION-01";
+
+        // Primer intento: se aplica el abono → MISS
+        controller.ControllerContext = CreatePaymentHttpContext(key);
+        var first = await controller.AddPayment(saleDto.Id, paymentReq);
+        Assert.IsType<OkObjectResult>(first.Result);
+        Assert.Equal("MISS", controller.Response.Headers["X-Cache-Lookup"].ToString());
+
+        // Retry con la misma clave: replica → HIT, sin re-aplicar el abono
+        controller.ControllerContext = CreatePaymentHttpContext(key);
+        var second = await controller.AddPayment(saleDto.Id, paymentReq);
+        Assert.IsType<ContentResult>(second.Result);
+        Assert.Equal("HIT", controller.Response.Headers["X-Cache-Lookup"].ToString());
+
+        var savedSale = await salesContext.Sales
+            .AsNoTracking()
+            .Include(s => s.Payments)
+            .FirstAsync(s => s.Id == saleDto.Id);
+
+        // 1 abono del hold + 1 único abono registrado (el retry NO lo duplicó)
+        Assert.Equal(2, savedSale.Payments.Count);
+        Assert.Equal(2, savedSale.Payments.Count(p => p.Amount == 10.00m));
+
+        var idempotencyCount = await salesContext.IdempotentRequests.CountAsync(r => r.Key == key && r.RequestPath == $"/api/sales/{saleDto.Id}/payments");
+        Assert.Equal(1, idempotencyCount);
+    }
+
+    private static ControllerContext CreatePaymentHttpContext(string key)
+    {
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["Idempotency-Key"] = key;
+        httpContext.Request.Method = "POST";
+        httpContext.Response.Body = new MemoryStream();
+        return new ControllerContext { HttpContext = httpContext };
     }
 }

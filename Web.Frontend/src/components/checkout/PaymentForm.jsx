@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
-import { formatNumberEs } from '../../utils/formatters';
+import { formatNumberEs, amountToCents } from '../../utils/formatters';
+import './PaymentForm.css';
 
 export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAddPayment }) {
   const [selectedMethodId, setSelectedMethodId] = useState('');
   const [amountText, setAmountText] = useState('');
   const [reference, setReference] = useState('');
+  const [referenceError, setReferenceError] = useState(null);
   const inputRef = useRef(null);
+  const refInputRef = useRef(null);
 
   // Seleccionar automáticamente el primer método activo
   useEffect(() => {
@@ -17,23 +20,28 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
 
   const selectedMethod = methods.find((m) => m.id.toString() === selectedMethodId);
   const isCashSelected = !!selectedMethod?.isCash;
+  const isManuallyEditedRef = useRef(false);
 
-  // Prellenar el monto al cambiar saldo restante o método de pago
+  // Prellenar el monto al cambiar saldo restante o método de pago, sin sobreescribir edición manual
   useEffect(() => {
-    if (remainingBsS > 0) {
-      setAmountText(isCashSelected ? Math.round(remainingBsS).toString() : remainingBsS.toFixed(2));
-    } else {
-      setAmountText('');
+    if (!isManuallyEditedRef.current) {
+      if (remainingBsS > 0) {
+        setAmountText(isCashSelected ? Math.round(remainingBsS).toString() : remainingBsS.toFixed(2));
+      } else {
+        setAmountText('');
+      }
     }
-  }, [remainingBsS, isCashSelected]);
+  }, [remainingBsS, isCashSelected, selectedMethodId]);
 
-  // Normalización del texto (soporta punto y coma decimal)
+  // Normalización del texto (soporta punto y coma decimal) y parseo en escala entera de
+  // centésimas mediante la rutina canónica (8.9-M18): >2 decimales se redondea al céntimo.
   const normalizedText = amountText.replace(',', '.').trim();
-  const parsedAmount = parseFloat(normalizedText);
-  const isValidNum = !isNaN(parsedAmount) && parsedAmount > 0 && isFinite(parsedAmount);
+  const amountMatch = normalizedText.match(/^(\d+)(?:\.(\d+))?$/);
+  const parsedCents = amountMatch ? amountToCents(normalizedText) : 0;
+  const isValidNum = !!amountMatch && parsedCents > 0;
 
   // Verificación de número entero o terminación en .00 (ej: 10, 12.00, 15.00)
-  const isIntegerOrZeroDecimal = isValidNum && Math.abs(parsedAmount - Math.round(parsedAmount)) < 0.0001;
+  const isIntegerOrZeroDecimal = isValidNum && (parsedCents % 100) === 0;
 
   // Validación de monto:
   // - Para efectivo: acepta enteros o .00 (ej: 10, 12.00, 15.00), pero rechaza centavos (ej: 15.01)
@@ -56,8 +64,15 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
     }
   }, [hasDecimalError, amountText, isValidNum]);
 
-  const finalAmountBsS = isValidNum ? (isCashSelected ? Math.round(parsedAmount) : parsedAmount) : 0;
-  const usdPreview = exchangeRate > 0 ? (finalAmountBsS / exchangeRate).toFixed(2) : '0.00';
+  const finalAmountBsS = parsedCents / 100;
+  const usdPreview = (() => {
+    if (exchangeRate <= 0 || parsedCents <= 0) return '0.00';
+    // Equivalencia USD redondeada a 2 decimales en escala entera (evita drift de punto flotante)
+    const rateCents = Math.round(exchangeRate * 100);
+    if (rateCents <= 0) return '0.00';
+    const usdCents = Math.round((parsedCents * 100) / rateCents);
+    return (usdCents / 100).toFixed(2);
+  })();
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -71,20 +86,24 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
     if (!selectedMethod || !isAmountValid || finalAmountBsS <= 0) return;
 
     if (selectedMethod.requiresReference && !reference.trim()) {
-      alert(`El método de pago (${selectedMethod.name}) requiere un número de referencia.`);
+      setReferenceError(`El método de pago (${selectedMethod.name}) requiere un número de referencia.`);
+      refInputRef.current?.focus();
       return;
     }
 
     onAddPayment({
+      uid: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       methodId: selectedMethod.id,
       methodName: selectedMethod.name,
       isCash: selectedMethod.isCash,
       amountBsS: finalAmountBsS,
-      amountUsd: parseFloat(usdPreview),
+      amountUsd: Number(usdPreview),
       reference: reference.trim() || null,
     });
 
     setReference('');
+    setReferenceError(null);
+    isManuallyEditedRef.current = false;
   };
 
   return (
@@ -94,7 +113,11 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
         <select
           className="form-select"
           value={selectedMethodId}
-          onChange={(e) => setSelectedMethodId(e.target.value)}
+          onChange={(e) => {
+            isManuallyEditedRef.current = false;
+            setSelectedMethodId(e.target.value);
+            setReferenceError(null);
+          }}
         >
           {methods.map((method) => (
             <option key={method.id} value={method.id}>
@@ -114,16 +137,16 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
             className={`form-input font-bold ${hasDecimalError ? 'is-invalid' : ''}`}
             placeholder={isCashSelected ? '10 o 10.00' : '0.00'}
             value={amountText}
-            onChange={(e) => setAmountText(e.target.value)}
+            onChange={(e) => {
+              isManuallyEditedRef.current = true;
+              setAmountText(e.target.value);
+            }}
             onFocus={(e) => e.target.select()}
           />
           {isCashSelected && (
             <small
-              className="form-text"
+              className="form-text pf-hint"
               style={{
-                display: 'block',
-                marginTop: '4px',
-                fontSize: '0.75rem',
                 color: hasDecimalError ? '#ef4444' : 'var(--text-muted)',
                 fontWeight: hasDecimalError ? 600 : 400
               }}
@@ -145,13 +168,22 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
         <div className="form-group">
           <label className="form-label">Número de Referencia *</label>
           <input
+            ref={refInputRef}
             type="text"
-            className="form-input"
+            className={`form-input ${referenceError ? 'is-invalid' : ''}`}
             placeholder="Ingrese el N° de transacción / referencia"
             value={reference}
-            onChange={(e) => setReference(e.target.value)}
+            onChange={(e) => {
+              setReference(e.target.value);
+              if (referenceError) setReferenceError(null);
+            }}
             required
           />
+          {referenceError && (
+            <small className="pf-error-hint">
+              {referenceError}
+            </small>
+          )}
         </div>
       )}
 

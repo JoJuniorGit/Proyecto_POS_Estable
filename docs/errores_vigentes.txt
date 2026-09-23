@@ -1,0 +1,61 @@
+================================================================================
+REGISTRO DE ERRORES VIGENTES — "CommandCenter POS"
+================================================================================
+Actualizado: 2026-09-19 (tras el cierre de la ola AUD-22/23 + INFRA-01)
+Nota: el REGISTRO GLOBAL E HISTÓRICO de errores cerrados vive en docs/reporte.txt
+      (anexo "Registro global de errores cerrados", 2026-09-19). Este archivo contiene
+      SOLO hallazgos vigentes (abiertos, parciales o informativos).
+================================================================================
+
+RESUMEN EJECUTIVO DE ESTADO:
+--------------------------------------------------------------------------------
+- Errores vigentes operativos: 0 (0 AUD + 0 SEAM + 0 INFRA)
+- Resueltos parciales: 1 (AUD-14; residual por diseño)
+- Informativos registrados: 2 (INFRA-02, INFRA-03)
+- Defectos de código activos en sentido estricto: 0
+
+Pruebas Automatizadas Backend: 1.446 / 1.446 pasando (100% Green)
+Pruebas Automatizadas Frontend: 287 / 287 pasando (100% Green)
+Compilación: dotnet build CommandCenter.slnx -c Release (0 errores, 0 warnings)
+Guardas de costura activas: ControllerConstructionTests, ProductServiceQueryContractTests, ClientHttpContractTests,
+MigrationIndexDriftTests, CrossLayerContractTests, ProductCostMaskingTests, ProductConcurrencyTokenTests,
+SaleItemCostSnapshotTests, ProductImportStockAuditTests.
+
+================================================================================
+VIGENTES (ERRORES ABIERTOS)
+================================================================================
+Ninguno. Todos los hallazgos AUD/SEAM/INFRA operativos están cerrados; el detalle
+histórico de cada cierre vive en docs/reporte.txt.
+
+================================================================================
+RESUELTOS PARCIALES
+================================================================================
+[AUD-14] BAJA — Múltiples consultas secuenciales en HealthController.GetDetails
+- Estado: RESUELTO PARCIAL (32a3248)
+- Severidad: BAJA
+- Ubicación: Backend.API/Controllers/HealthController.cs: líneas 110-123
+- Regla: docs/coding-guidelines-core.md §1 Pilar 4 (Rendimiento Consciente).
+- Descripción: El endpoint ejecuta de forma estrictamente secuencial cuatro consultas independientes: `GetAppliedMigrationsAsync`, `GetPendingMigrationsAsync`, y dos lecturas a `ExchangeRateHistory`.
+- Recomendación: Evaluar la ejecución paralela o consolidación de consultas para reducir la latencia global del health-check detallado.
+- Resolución parcial (32a3248): el par de consultas de migraciones se consolidó en una sola consulta a la base de datos; el par de ExchangeRateHistory permanece secuencial por diseño, porque DbContext no es thread-safe y consolidarlo en una sola consulta cambiaría la semántica.
+
+================================================================================
+INFORMATIVOS (NO SON DEFECTOS)
+================================================================================
+[INFRA-02] INFORMATIVO — COGS desconocido en el histórico previo a 8.142
+- Estado: REGISTRADO (no es un defecto)
+- Descripción: las 697 líneas de venta anteriores a 8.142 tienen UnitCostUSD = NULL (costo
+  desconocido) por diseño: nunca se guardó. El cálculo de ganancias (Paso 14 de docs/Ideas.txt)
+  debe excluirlas, marcarlas como costo desconocido o reconstruir el costo por otra vía; nunca
+  asumir 0, porque reportaría margen del 100%.
+
+--------------------------------------------------------------------------------
+
+[INFRA-03] INFORMATIVO — Backup del esquema huérfano eliminado
+- Estado: REGISTRADO
+- Descripción: la única fila de CustomerAdvances (dato de prueba) quedó respaldada fuera del repo
+  en %TEMP%\opencode\backup-customer-advances-20260919.sql antes del DROP aplicado en 8.142.
+
+================================================================================
+FIN DEL REGISTRO DE ERRORES VIGENTES — SISTEMA POS "CommandCenter"
+================================================================================

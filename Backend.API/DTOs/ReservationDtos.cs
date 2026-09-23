@@ -20,3 +20,8 @@ public class ConfirmReservationDto
     [Required]
     public string Reason { get; set; } = string.Empty;
 }
+
+public class ReserveStockResponseDto
+{
+    public int ReservationId { get; set; }
+}

@@ -1,39 +1,45 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ExchangeRateProvider, useExchangeRate } from './context/ExchangeRateContext';
 import { CurrencyFormatProvider } from './context/CurrencyFormatContext';
 import { CartProvider, useCart } from './context/CartContext';
 import Layout from './components/layout/Layout';
 import LoginPage from './pages/LoginPage';
-import PosPage from './pages/PosPage';
-import CatalogPage from './pages/CatalogPage';
-import HistoryPage from './pages/HistoryPage';
-import PendingOrdersPage from './pages/PendingOrdersPage';
-import PendingPickupsPage from './pages/PendingPickupsPage';
-import RegisterPage from './pages/RegisterPage';
-import RegisterClosePage from './pages/RegisterClosePage';
-import SettingsPage from './pages/SettingsPage';
-import ExchangeRatePage from './pages/ExchangeRatePage';
 import CheckoutModal from './components/checkout/CheckoutModal';
 import HoldSaleModal from './components/pos/HoldSaleModal';
 import SuccessScreen from './components/checkout/SuccessScreen';
+import FullScreenLoader from './components/ui/FullScreenLoader';
+import SaleRecoveryModal from './components/pos/SaleRecoveryModal';
+import { useShutdownGuard } from './hooks/useShutdownGuard';
+import { hasOpenModals } from './utils/modalRegistry';
+import { isValidView, resolveAccessibleView } from './navigation/roleViews';
+import AccessDenied from './navigation/AccessDenied';
 
-const VALID_VIEWS = ['pos', 'catalog', 'history', 'pending', 'pickups', 'register', 'closing', 'settings', 'exchange'];
+// 8.6-M5: code splitting — cada página se carga como chunk propio (React.lazy).
+const PosPage = lazy(() => import('./pages/PosPage'));
+const CatalogPage = lazy(() => import('./pages/CatalogPage'));
+const HistoryPage = lazy(() => import('./pages/HistoryPage'));
+const PendingOrdersPage = lazy(() => import('./pages/PendingOrdersPage'));
+const PendingPickupsPage = lazy(() => import('./pages/PendingPickupsPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const RegisterClosePage = lazy(() => import('./pages/RegisterClosePage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const ExchangeRatePage = lazy(() => import('./pages/ExchangeRatePage'));
 
 function getInitialView() {
   const hash = window.location.hash.replace('#', '').trim();
-  if (hash && VALID_VIEWS.includes(hash)) {
+  if (hash && isValidView(hash)) {
     return hash;
   }
   const saved = localStorage.getItem('pos_active_view');
-  if (saved && VALID_VIEWS.includes(saved)) {
+  if (saved && isValidView(saved)) {
     return saved;
   }
   return 'pos';
 }
 
 function MainApp() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [currentView, setCurrentView] = useState(getInitialView);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isHoldModalOpen, setIsHoldModalOpen] = useState(false);
@@ -42,12 +48,24 @@ function MainApp() {
   const checkoutRef = useRef(null);
 
   const { exchangeRate, isRateOutdated } = useExchangeRate();
-  const { currentSale, totalUSD, totalBsS, resetCart } = useCart();
+  const { currentSale, totalUSD, totalBsS, resetCart, items, pendingRecovery, recoveryError, recoveryProcessing, recoverPendingSale, discardPendingRecovery, flushSaleState } = useCart();
+
+  const viewAccess = resolveAccessibleView(user?.role, currentView);
+  const activeView = viewAccess.allowed ? currentView : viewAccess.view;
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const resolved = resolveAccessibleView(user?.role, currentView);
+    if (!resolved.allowed && resolved.view) {
+      setCurrentView(resolved.view);
+      localStorage.setItem('pos_active_view', resolved.view);
+    }
+  }, [isAuthenticated, user?.role, currentView]);
 
   useEffect(() => {
     function handleHashChange() {
       const hash = window.location.hash.replace('#', '').trim();
-      if (hash && VALID_VIEWS.includes(hash)) {
+      if (isValidView(hash)) {
         setCurrentView(hash);
         localStorage.setItem('pos_active_view', hash);
       }
@@ -56,21 +74,38 @@ function MainApp() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const handleNavigate = (view) => {
+  const handleNavigate = useCallback((view) => {
     setCurrentView(view);
     localStorage.setItem('pos_active_view', view);
     window.location.hash = view;
-  };
+  }, []);
 
-  const handleCheckoutSuccess = (invoiceNumber) => {
+  const handleCheckoutSuccess = async (invoiceNumber, cartResetOk = true) => {
     setIsCheckoutOpen(false);
+    // 8.5-WEB5: si el CheckoutModal no logró iniciar una nueva venta, se re-intenta aquí antes de
+    // anunciar el éxito (evita dejar el carrito con la venta ya liquidada).
+    if (!cartResetOk) {
+      const ok = await resetCart();
+      if (!ok) {
+        console.warn('[App] No se pudo iniciar la nueva venta tras la liquidación.');
+      }
+    }
     setCompletedInvoice(invoiceNumber);
   };
 
   const handleHoldSuccess = async () => {
     const saleId = currentSale?.id;
     setIsHoldModalOpen(false);
-    await resetCart();
+    const ok = await resetCart();
+    if (!ok) {
+      // 8.5-WEB5: no anunciar éxito si el carrito no pudo iniciar una nueva venta.
+      setCompletedHoldSuccess({
+        title: "Pedido Guardado en Espera",
+        badgeText: saleId ? `Pedido N° #${saleId}` : null,
+        message: "El pedido fue guardado correctamente, pero no se pudo iniciar una nueva venta automáticamente. Intente crear una nueva venta manualmente o recargue la página."
+      });
+      return;
+    }
     setCompletedHoldSuccess({
       title: "¡Pedido Guardado en Espera!",
       badgeText: saleId ? `Pedido N° #${saleId}` : null,
@@ -78,10 +113,14 @@ function MainApp() {
     });
   };
 
-  const handleCloseHoldSuccess = () => {
+  const handleCloseHoldSuccess = useCallback(() => {
     setCompletedHoldSuccess(null);
     handleNavigate('pending');
-  };
+  }, [handleNavigate]);
+
+  const handleCloseCompletedInvoice = useCallback(() => {
+    setCompletedInvoice(null);
+  }, []);
 
   const isExternalModalOpen = isCheckoutOpen || isHoldModalOpen || Boolean(completedInvoice) || Boolean(completedHoldSuccess);
 
@@ -110,7 +149,10 @@ function MainApp() {
   };
 
   const renderView = () => {
-    switch (currentView) {
+    if (!activeView) {
+      return <AccessDenied />;
+    }
+    switch (activeView) {
       case 'pos':
         return (
           <PosPage
@@ -137,16 +179,22 @@ function MainApp() {
       case 'exchange':
         return <ExchangeRatePage />;
       default:
-        return (
-          <PosPage
-            onOpenCheckout={() => setIsCheckoutOpen(true)}
-            onOpenHold={() => setIsHoldModalOpen(true)}
-            isExternalModalOpen={isExternalModalOpen}
-            onCloseExternalModal={handleCloseExternalModal}
-          />
-        );
+        return <AccessDenied />;
     }
   };
+
+  const getHasVolatileState = useCallback(() => (
+    items.length > 0 ||
+    isCheckoutOpen ||
+    isHoldModalOpen ||
+    Boolean(completedInvoice) ||
+    Boolean(completedHoldSuccess) ||
+    Boolean(pendingRecovery) ||
+    Boolean(checkoutRef.current?.hasPayments) ||
+    hasOpenModals()
+  ), [items.length, isCheckoutOpen, isHoldModalOpen, completedInvoice, completedHoldSuccess, pendingRecovery]);
+
+  useShutdownGuard({ getHasVolatileState, flushState: flushSaleState });
 
   if (!isAuthenticated) {
     return <LoginPage />;
@@ -154,12 +202,14 @@ function MainApp() {
 
   return (
     <Layout
-      currentView={currentView}
+      currentView={activeView}
       onNavigate={handleNavigate}
       exchangeRate={exchangeRate}
       isRateOutdated={isRateOutdated}
     >
-      {renderView()}
+      <Suspense fallback={<FullScreenLoader />}>
+        {renderView()}
+      </Suspense>
 
       {/* Modal de Checkout / Cobro */}
       <CheckoutModal
@@ -185,7 +235,7 @@ function MainApp() {
       {completedInvoice && (
         <SuccessScreen
           invoiceNumber={completedInvoice}
-          onClose={() => setCompletedInvoice(null)}
+          onClose={handleCloseCompletedInvoice}
         />
       )}
 
@@ -200,6 +250,15 @@ function MainApp() {
           onClose={handleCloseHoldSuccess}
         />
       )}
+
+      <SaleRecoveryModal
+        isOpen={Boolean(pendingRecovery)}
+        recovery={pendingRecovery}
+        isProcessing={recoveryProcessing}
+        error={recoveryError}
+        onRecover={recoverPendingSale}
+        onDiscard={discardPendingRecovery}
+      />
     </Layout>
   );
 }

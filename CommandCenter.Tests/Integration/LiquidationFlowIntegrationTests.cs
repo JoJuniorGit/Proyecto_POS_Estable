@@ -26,6 +26,8 @@ namespace CommandCenter.Tests.Integration;
 
 public class LiquidationFlowIntegrationTests
 {
+    private const int TestActorId = 42;
+
     [Fact]
     public async Task LiquidationFlow_FinalizesOnHoldSale_AssignsInvoice_AndDeductsInventoryExactlyOnce()
     {
@@ -41,9 +43,9 @@ public class LiquidationFlowIntegrationTests
         salesContext.Customers.Add(customer);
         await salesContext.SaveChangesAsync();
 
-        var product = new ProductBuilder().WithId(301).WithName("Aceite 20W50").WithCostAndMargin(10.00m, 50.00m).Build(); // $15.00 USD
+        var product = new ProductBuilder().WithId(301).WithName("Aceite 20W50").WithCostAndMargin(10.00m, 50.00m).BuildSaleProductInfo(); // $15.00 USD
         var inventoryServiceMock = new Mock<IInventoryService>();
-        inventoryServiceMock.Setup(i => i.GetProductByIdAsync(301)).ReturnsAsync(product);
+        inventoryServiceMock.Setup(i => i.GetSaleProductByIdAsync(301)).ReturnsAsync(product);
 
         var mediatorMock = new Mock<IMediator>();
         var cashDrawerService = new CashDrawerService(salesContext);
@@ -72,7 +74,13 @@ public class LiquidationFlowIntegrationTests
         };
         await salesService.HoldSaleAsync(saleDto.Id, holdRequest);
 
-        // Verify initial hold state
+        var holdClaim = await salesContext.Sales.FindAsync(saleDto.Id);
+        holdClaim!.ClaimedByUserId = TestActorId;
+        holdClaim.ClaimAction = SaleClaimAction.Editing;
+        holdClaim.ClaimedByUserName = "Test Actor";
+        holdClaim.ClaimedAtUtc = DateTime.UtcNow;
+        await salesContext.SaveChangesAsync();
+
         var holdSale = await salesContext.Sales.FindAsync(saleDto.Id);
         Assert.Equal(SaleStatus.OnHold, holdSale!.Status);
         mediatorMock.Verify(m => m.Publish(It.IsAny<SaleMadeEvent>(), default), Times.Never);
@@ -83,7 +91,7 @@ public class LiquidationFlowIntegrationTests
             new PaymentInfo(3, 40.00m, 2000.00m, "REF-POS-LIQUIDATE")
         };
 
-        int invoiceNumber = await salesService.CompleteSaleAsync(saleDto.Id, 50.00m, finalPayments);
+        int invoiceNumber = await salesService.CompleteSaleAsync(saleDto.Id, 50.00m, finalPayments, actingUserId: TestActorId);
 
         // 5. Assertions
         var finalizedSale = await salesContext.Sales.Include(s => s.Payments).FirstAsync(s => s.Id == saleDto.Id);

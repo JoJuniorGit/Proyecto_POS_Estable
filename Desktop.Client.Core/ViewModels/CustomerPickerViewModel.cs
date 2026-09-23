@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Desktop.Client.Services;
 using System;
@@ -12,7 +13,7 @@ using Core.Common;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class CustomerPickerViewModel : ObservableObject
+public partial class CustomerPickerViewModel : ObservableObject, IDisposable
 {
     private readonly ISalesService _salesService;
     private CancellationTokenSource? _searchCts;
@@ -333,5 +334,18 @@ public partial class CustomerPickerViewModel : ObservableObject
         {
             IsCreating = false;
         }
+    }
+
+    public void Dispose()
+    {
+        var oldCts = Interlocked.Exchange(ref _searchCts, null);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+
+        WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 }

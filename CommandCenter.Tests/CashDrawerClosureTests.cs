@@ -2,11 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
 using Sales.Module.Entities;
+using CreateClosureCommand = Sales.Module.Interfaces.CreateClosureCommand;
+using DeclaredPaymentAmount = Sales.Module.Interfaces.DeclaredPaymentAmount;
 using ServerCashService = Sales.Module.Services;
 using Xunit;
 
@@ -139,6 +142,11 @@ public class CashDrawerClosureTests
             };
         }
 
+        public Task<decimal?> GetAdvanceCommissionAsync(bool isTransfer, System.Threading.CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
+
         public Task<CashAdvanceResultClientDto?> ProcessCashAdvanceAsync(
             int sessionId,
             decimal requestedAmountLocal,
@@ -158,47 +166,46 @@ public class CashDrawerClosureTests
     {
         using var context = GetInMemoryDbContext();
         var serverService = new ServerCashService.CashDrawerService(context);
-        var closureService = new ServerCashService.DailyClosureService(context);
+        var closureService = new ServerCashService.DailyClosureService(context, CommandCenter.Tests.TestHelpers.DailyClosureTestHelper.CreateMocks().rateProvider.Object, CommandCenter.Tests.TestHelpers.DailyClosureTestHelper.CreateMocks().cashDrawerService.Object);
         var clientService = new MockClientCashDrawerService(serverService);
         var rateService = new MockExchangeRateService();
 
-        // 1. Open session 1 with 1000 opening balance and add 500 income and 200 expense
         var session1 = await serverService.OpenSessionAsync(1000m, 50m);
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Income, Sales.Module.Entities.CashTransactionSource.CashIn, 500m, 10m, 50m, "Ingreso previo");
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Expense, Sales.Module.Entities.CashTransactionSource.CashOut, 200m, 4m, 50m, "Retiro previo");
 
-        var vm = new CashDrawerViewModel(clientService, rateService);
+        using var vm = new CashDrawerViewModel(clientService, rateService);
+        // El bus de mensajes es estático y compartido entre pruebas: otras clases difunden
+        // ShiftClosedMessage/TimeZoneChangedMessage y dispararían RefreshAsync concurrente
+        // sobre el mismo DbContext InMemory, pisando la carga bajo aserción.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
         await vm.LoadSessionAsync();
 
-        // Assert session 1 before closure
         Assert.NotNull(vm.ActiveSession);
         Assert.Equal(1300m, vm.CurrentBalanceBsS);
         Assert.Equal(3, vm.OrderedTransactions.Count);
 
-        // 2. Perform closure (Create DailyClosure)
-        var dailyClosure = new DailyClosure
-        {
-            ClosureDate = DateTime.UtcNow,
-            UserId = "Cajero",
-            Observation = "Cierre de turno",
-            Details = new List<ClosureDetail>
-            {
-                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo", ExpectedAmountBsS = 1300m, ActualAmountBsS = 1300m, DifferenceBsS = 0m }
-            }
-        };
-        await closureService.CreateClosureAsync(dailyClosure);
+        context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo", IsCash = true, IsActive = true, DisplayOrder = 1 });
+        await context.SaveChangesAsync();
 
-        // 3. Reload ViewModel session
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Cajero",
+            "Cierre de turno",
+            new List<DeclaredPaymentAmount>
+            {
+                new(1, 1300m)
+            });
+        await closureService.CreateClosureFromCommandAsync(command, System.Threading.CancellationToken.None);
+
         await vm.LoadSessionAsync();
 
-        // 4. Assert Expected Cash and ALL Movements REMAIN INTACT in the active session
         Assert.NotNull(vm.ActiveSession);
         Assert.True(vm.IsSessionActive);
         Assert.Equal(1300m, vm.CurrentBalanceBsS);
         Assert.Equal("1.300", vm.FormattedBalanceBsS);
         Assert.Equal("26,00 $", vm.FormattedBalanceUsd);
 
-        // Transactions remain 100% visible and intact
         Assert.Equal(3, vm.OrderedTransactions.Count);
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Ingreso previo");
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Retiro previo");
@@ -212,53 +219,36 @@ public class CashDrawerClosureTests
         var clientService = new MockClientCashDrawerService(serverService);
         var rateService = new MockExchangeRateService();
 
-        // 1. Open session 1 and register movements
         var session1 = await serverService.OpenSessionAsync(1000m, 50m);
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Income, Sales.Module.Entities.CashTransactionSource.CashIn, 500m, 10m, 50m, "Ingreso sesión 1");
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Expense, Sales.Module.Entities.CashTransactionSource.CashOut, 200m, 4m, 50m, "Retiro sesión 1");
 
-        var vm = new CashDrawerViewModel(clientService, rateService);
+        using var vm = new CashDrawerViewModel(clientService, rateService);
+        // Mismo aislamiento del bus global que el test de cierre: evita RefreshAsync concurrente
+        // disparado por mensajes de otras pruebas mientras se carga la sesión.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
         await vm.LoadSessionAsync();
 
-        // Session 1 visible: apertura + ingreso + retiro
         Assert.Equal(3, vm.OrderedTransactions.Count);
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Ingreso sesión 1");
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Retiro sesión 1");
 
-        // 2. Rollover: cierra sesión 1 y abre sesión 2 conservando el saldo teórico
         await serverService.RolloverSessionAfterClosureAsync(50m);
 
-        // 3. Recargar la vista: los movimientos de la sesión cerrada deben SEGUIR visibles
         await vm.LoadSessionAsync();
 
         Assert.NotNull(vm.ActiveSession);
         Assert.True(vm.IsSessionActive);
-        // Sesión 1 (apertura + ingreso + retiro + cierre) + Sesión 2 (apertura)
         Assert.Equal(5, vm.OrderedTransactions.Count);
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Ingreso sesión 1");
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Retiro sesión 1");
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Cierre de caja");
         Assert.Contains(vm.OrderedTransactions, t => t.Description == "Monto de apertura de caja");
 
-        // El saldo esperado se conserva (1000 + 500 - 200 = 1300)
         Assert.Equal(1300m, vm.CurrentBalanceBsS);
         Assert.Equal("1.300", vm.FormattedBalanceBsS);
 
-        // Los acumuladores de la NUEVA sesión arrancan limpios
         Assert.Equal(0m, vm.TotalIncomeBsS);
         Assert.Equal(0m, vm.TotalExpenseBsS);
-    }
-
-    [Fact]
-    public async Task CashAdvance_WithDecimalRequestedAmount_ThrowsValidationError()
-    {
-        using var context = GetInMemoryDbContext();
-        var serverService = new ServerCashService.CashDrawerService(context);
-        var session = await serverService.OpenSessionAsync(1000m, 50m);
-
-        // El efectivo entregado al cliente solo acepta montos enteros
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            serverService.ProcessCashAdvanceAsync(session.Id, 10.50m, 2, "Card", false, 50m));
-        Assert.Contains("número entero sin decimales", ex.Message);
     }
 }

@@ -1,0 +1,149 @@
+/* ══════════════════════════════════════════════════════════
+   Estilos propios de RegisterPage (prefijo reg-)
+   Reemplazan estilos inline style={{...}}. El prefijo :root
+   eleva la especificidad a (0,2,0) para ganar a index.css
+   (.cart-table th/td, .sticky-header th) sin importar el
+   orden de concatenación del bundle.
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Layout y contenedor de página ── */
+:root .reg-page-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ── Aviso de acceso limitado ── */
+:root .reg-alert-gap {
+  gap: 10px;
+}
+
+:root .reg-alert-icon {
+  margin-top: 2px;
+}
+
+/* ── Tarjetas de resumen (ESPERADO / INGRESOS / EGRESOS) ── */
+:root .reg-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  margin-bottom: 20px;
+}
+
+:root .reg-card-indigo {
+  border-left: 4px solid var(--primary-color, #6366f1);
+  background-color: rgba(99, 102, 241, 0.04);
+}
+
+:root .reg-card-green {
+  border-left: 4px solid #10B981;
+  background-color: rgba(16, 185, 129, 0.04);
+}
+
+:root .reg-card-red {
+  border-left: 4px solid #EF4444;
+  background-color: rgba(239, 68, 68, 0.04);
+}
+
+:root .reg-label-green {
+  color: #059669;
+}
+
+:root .reg-label-red {
+  color: #DC2626;
+}
+
+:root .reg-currency-gap {
+  margin-left: 6px;
+}
+
+:root .reg-card-icon-circle {
+  width: 48px;
+  height: 48px;
+  background-color: rgba(99, 102, 241, 0.12);
+}
+
+/* ── Carrusel de últimos ingresos ── */
+:root .reg-income-scroll {
+  overflow-y: hidden;
+}
+
+:root .reg-income-card {
+  flex: 0 0 220px;
+  min-width: 220px;
+  text-align: left;
+}
+
+:root .reg-clock-mr {
+  margin-right: 4px;
+}
+
+/* ── Tabla de movimientos físicos ── */
+:root .reg-fullwidth {
+  width: 100%;
+  max-width: 100%;
+}
+
+:root .reg-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+:root .reg-table-min {
+  min-width: 780px;
+}
+
+:root .reg-th-date {
+  width: 125px;
+  white-space: nowrap;
+}
+
+:root .reg-th-type {
+  width: 105px;
+  white-space: nowrap;
+}
+
+:root .reg-th-origin {
+  width: 135px;
+  white-space: nowrap;
+}
+
+:root .reg-th-concept {
+  min-width: 180px;
+  white-space: nowrap;
+}
+
+:root .reg-th-amount {
+  width: 140px;
+  padding-right: 16px;
+  white-space: nowrap;
+  text-align: right;
+}
+
+:root .reg-th-usd {
+  width: 120px;
+  padding-right: 16px;
+  white-space: nowrap;
+  text-align: right;
+}
+
+:root .reg-cell-stack {
+  line-height: 1.25;
+}
+
+:root .reg-td-type {
+  width: 105px;
+  white-space: nowrap;
+}
+
+:root .reg-badge-type {
+  width: 90px;
+}
+
+:root .reg-concept-cell {
+  max-width: 220px;
+}
+
+:root .reg-amount-cell {
+  white-space: nowrap;
+  padding-right: 16px;
+}

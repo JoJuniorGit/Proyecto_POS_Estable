@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
@@ -45,10 +46,13 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: sale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            dialogService: _mockDialogService.Object);
+
+        // Aislamiento del bus global compartido entre pruebas (CartUpdatedMessage cambiaría TotalUSD).
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         Assert.False(vm.HasValidPayments);
         Assert.False(vm.IsFullLiquidation);
@@ -70,10 +74,13 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: sale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            dialogService: _mockDialogService.Object);
+
+        // Aislamiento del bus global compartido entre pruebas (CartUpdatedMessage cambiaría TotalUSD).
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         // Add 50 USD payment (out of 100 USD) -> 2500 Bs.S
         vm.SelectedMethod = _paymentMethods[0];
@@ -100,10 +107,13 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: sale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            dialogService: _mockDialogService.Object);
+
+        // Aislamiento del bus global compartido entre pruebas (CartUpdatedMessage cambiaría TotalUSD).
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         // Add 100 USD full payment -> 5000 Bs.S
         vm.SelectedMethod = _paymentMethods[0];
@@ -132,11 +142,14 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: onHoldSale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            override_sale: onHoldSale,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            overrideSale: onHoldSale,
+            dialogService: _mockDialogService.Object);
+
+        // Aislamiento del bus global compartido entre pruebas (CartUpdatedMessage cambiaría TotalUSD).
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         // Add 30 USD partial abono -> 1500 Bs.S
         vm.SelectedMethod = _paymentMethods[0];
@@ -165,11 +178,14 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: onHoldSale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            override_sale: onHoldSale,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            overrideSale: onHoldSale,
+            dialogService: _mockDialogService.Object);
+
+        // Aislamiento del bus global compartido entre pruebas (CartUpdatedMessage cambiaría TotalUSD).
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         // Add 100 USD full payment -> 5000 Bs.S
         vm.SelectedMethod = _paymentMethods[0];
@@ -196,10 +212,13 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: sale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            dialogService: _mockDialogService.Object);
+
+        // Aislamiento del bus global compartido entre pruebas (CartUpdatedMessage cambiaría TotalUSD).
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         // Add 100% payment
         vm.SelectedMethod = _paymentMethods[0];
@@ -230,10 +249,13 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: sale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            dialogService: _mockDialogService.Object);
+
+        // Aislamiento del bus global compartido entre pruebas (CartUpdatedMessage cambiaría TotalUSD).
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         // Add 100% payment
         vm.SelectedMethod = _paymentMethods[0];
@@ -263,10 +285,13 @@ public class CheckoutUxTests
 
         var vm = new CheckoutViewModel(
             sale: sale,
-            available_methods: _paymentMethods,
-            sales_service: _mockSalesService.Object,
-            current_exchange_rate: 50m,
-            dialog_service: _mockDialogService.Object);
+            availableMethods: _paymentMethods,
+            salesService: _mockSalesService.Object,
+            currentExchangeRate: 50m,
+            dialogService: _mockDialogService.Object);
+
+        // Aislamiento del bus global compartido entre pruebas (CartUpdatedMessage cambiaría TotalUSD).
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         // Add 100% payment
         vm.SelectedMethod = _paymentMethods[0];
@@ -316,14 +341,15 @@ public class CheckoutUxTests
         };
 
         // 1. Blind receipt (Cajero)
-        string blindReceipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: true);
+        var closureDto = ShiftReportMapper.MapClosure(closure);
+        string blindReceipt = DailyClosureService.GenerateReceiptContent(closureDto, isBlind: true);
         Assert.Contains("COMPROBANTE DE ARQUEO A CIEGAS", blindReceipt);
         Assert.DoesNotContain("DIFERENCIA", blindReceipt);
         Assert.DoesNotContain("MONTO SISTEMA", blindReceipt);
         Assert.Contains("MONTO DECLARADO (Bs.S)", blindReceipt);
 
         // 2. Audit receipt (Admin)
-        string auditReceipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: false);
+        string auditReceipt = DailyClosureService.GenerateReceiptContent(closureDto, isBlind: false);
         Assert.Contains("COMPROBANTE DE CIERRE Y AUDITORÍA DE CAJA", auditReceipt);
         Assert.Contains("MONTO SISTEMA (Bs.S)", auditReceipt);
         Assert.Contains("DIFERENCIA (Bs.S)", auditReceipt);

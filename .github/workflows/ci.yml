@@ -2,37 +2,44 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, V0.15 ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, V0.15 ]
+
+# 8.29-B3: mínimo privilegio — el workflow solo necesita contenido de solo lectura;
+# evitar tokens GITHUB_TOKEN con permisos de escritura por defecto.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend-build-and-test:
     name: Backend Build & Test (.NET 10 + PostgreSQL)
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: pos_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    # 8.128: la suite referencia WPF (net10.0-windows) y el testhost exige
+    # Microsoft.WindowsDesktop.App, ausente en Linux. El runner Windows trae
+    # PostgreSQL preinstalado (servicio detenido), sin service containers.
+    runs-on: windows-2025
+    timeout-minutes: 45
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.0.101'
+
+      - name: Cache NuGet Packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props', '**/Directory.Build.props', '**/dotnet-tools.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
 
       - name: Restore Dependencies
         run: dotnet restore CommandCenter.slnx
@@ -40,30 +47,93 @@ jobs:
       - name: Build Solution (TreatWarningsAsErrors)
         run: dotnet build CommandCenter.slnx --no-restore --configuration Release
 
-      - name: Run Test Suite & Collect Code Coverage
-        env:
-          TEST_POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=pos_test;Username=postgres;Password=testpass"
-        run: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build --configuration Release --collect:"XPlat Code Coverage" --verbosity normal
+      - name: Start PostgreSQL and Create Test Database
+        shell: pwsh
+        run: |
+          $service = Get-Service -Name 'postgresql*' | Select-Object -First 1
+          if (-not $service) { throw 'PostgreSQL preinstalado no encontrado en el runner.' }
+          Set-Service -Name $service.Name -StartupType Manual
+          Start-Service -Name $service.Name
+          $pgRoot = Get-ChildItem 'C:\Program Files\PostgreSQL' -Directory | Sort-Object { [int]$_.Name } -Descending | Select-Object -First 1
+          $psql = Join-Path $pgRoot.FullName 'bin\psql.exe'
+          $env:PGPASSWORD = 'root'
+          $ready = $false
+          for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            & $psql -U postgres -h localhost -tAc 'SELECT 1' | Out-Null
+            if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+            Start-Sleep -Seconds 2
+          }
+          if (-not $ready) { throw 'PostgreSQL no respondio en localhost:5432.' }
+          & $psql -U postgres -h localhost -c 'DROP DATABASE IF EXISTS pos_test WITH (FORCE)'
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo eliminar la base pos_test.' }
+          & $psql -U postgres -h localhost -c 'CREATE DATABASE pos_test'
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo crear la base pos_test.' }
 
-      - name: Upload Coverage Results
-        uses: actions/upload-artifact@v4
+      - name: Run Test Suite & Collect Code Coverage
+        # 8.9-L2: TEST_POSTGRES_CONNECTION es un contrato de CI; sin ella PostgresRealIntegrationTests
+        # falla en pipelines (GITHUB_ACTIONS=true), nunca hace silent-pass.
+        # 8.9-L5: coverage.runsettings restringe la medicion a las capas criticas de dominio
+        # (Sales.Module, Inventory.Module, Core) segun politica Rev 8.2.
+        env:
+          TEST_POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=pos_test;Username=postgres;Password=root"
+          SMOKE_DB_SUFFIX: ${{ github.run_id }}
+        run: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build --configuration Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings --verbosity normal
+
+      # 8.9-L5 + 8.26-E4: gate de cobertura por capa de DOMINIO (scripts/check-coverage.py),
+      # excluye el scaffolding de migraciones (*.Migrations.*) verificado por ejecucion real
+      # via smoke MigratedSchema. Core >= 0.70 (politica); Sales.Module >= 0.80 e
+      # Inventory.Module >= 0.72 (baselines 8.26-E4, deuda Rev 8.11 saldada).
+      - name: Enforce Coverage Gate (by layer, >= thresholds)
+        if: always()
+        shell: pwsh
+        run: |
+          $report = Get-ChildItem -Path ./CommandCenter.Tests/TestResults -Recurse -Filter coverage.cobertura.xml -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $report) {
+            Write-Host '::error::No se generó el reporte de cobertura en CI (gate de cobertura insuficientemente medible).'
+            exit 1
+          }
+          Write-Host "Coverage report: $($report.FullName)"
+          python scripts/check-coverage.py $report.FullName
+
+      # RFC/DoD 7 : sin dependencias vulnerables conocidas (dotnet list package --vulnerable).
+      - name: Vulnerable Packages Audit (.NET)
+        if: always()
+        shell: pwsh
+        run: |
+          $audit = dotnet list CommandCenter.slnx package --vulnerable --include-transitive 2>&1 | Out-String
+          $auditExit = $LASTEXITCODE
+          Write-Host $audit
+          if ($auditExit -ne 0) {
+            Write-Host "::error::La auditoria de paquetes fallo (dotnet list salio con codigo $auditExit): restore/NuGet no disponibles; el gate no puede validarse."
+            exit 1
+          }
+          if ($audit -match 'has the following vulnerable packages|Vulnerable packages|vulnerabilities were found') {
+            Write-Host '::error::Se detectaron dependencias con vulnerabilidades conocidas en el backend.'
+            exit 1
+          }
+
+      - name: Upload Backend Results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
-          name: code-coverage-report
+          name: backend-results
           path: ./CommandCenter.Tests/TestResults/**/coverage.cobertura.xml
 
   frontend-lint-and-test:
     name: Frontend Lint & Test (React 19 + Node.js)
+    # 8.128: Node 24 (npm 11) alineado con el lockfile versionado; npm 10 rechaza
+    # la resolucion de dependencias opcionales @emnapi/* con EUSAGE.
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22.x'
+          node-version: '24.x'
           cache: 'npm'
           cache-dependency-path: Web.Frontend/package-lock.json
 
@@ -78,3 +148,20 @@ jobs:
       - name: Run Frontend Tests
         run: npm test
         working-directory: Web.Frontend
+
+      # RFC/DoD 7 : sin dependencias vulnerables conocidas en dependencias directas/transitivas.
+      - name: Vulnerable Dependencies Audit (npm)
+        run: npm audit --audit-level=high
+        working-directory: Web.Frontend
+
+      # 8.9-L5: gate de build del bundle (evita que el bundle Web de Backend.API/wwwroot quede stale).
+      - name: Build Frontend Bundle
+        run: npm run build
+        working-directory: Web.Frontend
+
+      - name: Upload Frontend Results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: frontend-results
+          path: Web.Frontend/dist/

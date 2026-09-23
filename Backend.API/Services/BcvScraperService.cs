@@ -61,7 +61,7 @@ public class BcvScraperService
             if (decimal.TryParse(rateText, NumberStyles.Any, CultureInfo.InvariantCulture, out var rawRate))
             {
                 // Round to two decimal places by taking ceiling: 3.111 -> 3.12
-                var roundedRate = Math.Ceiling(rawRate * 100m) / 100m;
+                var roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(rawRate);
                 _logger.LogInformation("Successfully extracted BCV USD rate: Raw={RawRate}, Rounded={RoundedRate}", rawRate, roundedRate);
                 return roundedRate;
             }

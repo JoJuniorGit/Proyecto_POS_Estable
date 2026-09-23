@@ -4,6 +4,7 @@ using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -15,6 +16,16 @@ public partial class InventoryService : IInventoryService
     private readonly ICurrentUserService? _currentUserService;
     private readonly IMemoryCache? _cache;
     private const string ExchangeRateCacheKey = "bcv_rate_today";
+    // 8.7-L5: registro de claves de caché de producto emitidas para invalidación efectiva.
+    private static readonly ConcurrentDictionary<string, byte> _productCacheKeys = new(StringComparer.OrdinalIgnoreCase);
+
+    private static void RegisterProductCacheKey(string cacheKey)
+    {
+        if (!string.IsNullOrWhiteSpace(cacheKey))
+        {
+            _productCacheKeys.TryAdd(cacheKey, 0);
+        }
+    }
 
     public InventoryService(InventoryDbContext context, ICurrentUserService? currentUserService = null, IMemoryCache? cache = null)
     {
@@ -31,26 +42,41 @@ public partial class InventoryService : IInventoryService
         }
     }
 
-    public async Task<List<Product>> GetAllProductsAsync()
-    {
-        return await _context.Products.AsNoTracking().ToListAsync();
-    }
+    private static IQueryable<Core.DTOs.SaleProductInfoDto> ProjectSaleProduct(IQueryable<Product> query) =>
+        query.Select(p => new Core.DTOs.SaleProductInfoDto
+        {
+            Id = p.Id,
+            Name = p.Name,
+            IsDeleted = p.IsDeleted,
+            IsActive = p.IsActive,
+            IsCashAdvance = p.IsCashAdvance,
+            PriceUSD = p.PriceUSD,
+            PriceBsS = p.PriceBsS,
+            PriceRetailUSD = p.PriceRetailUSD,
+            PriceWholesaleUSD = p.PriceWholesaleUSD,
+            MinWholesaleQuantity = p.MinWholesaleQuantity,
+            HasWholesale = p.HasWholesale,
+            IsGroupHeader = p.IsGroupHeader,
+            IsFractional = p.IsFractional,
+            UnitOfMeasure = p.UnitOfMeasure,
+            CostPriceUSD = (decimal?)p.CostPriceUSD
+        });
 
-    public async Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds)
+    public async Task<IReadOnlyList<Core.DTOs.SaleProductInfoDto>> GetSaleProductsByIdsAsync(IEnumerable<int> productIds, System.Threading.CancellationToken cancellationToken = default)
     {
         var idList = productIds.Distinct().ToList();
-        if (!idList.Any()) return new List<Product>();
-        return await _context.Products.AsNoTracking().Where(p => idList.Contains(p.Id)).ToListAsync();
+        if (idList.Count == 0) return Array.Empty<Core.DTOs.SaleProductInfoDto>();
+        return await ProjectSaleProduct(_context.Products.AsNoTracking().Where(p => idList.Contains(p.Id))).ToListAsync(cancellationToken);
     }
 
-    public async Task<Product?> GetProductByIdAsync(int id)
+    public async Task<Core.DTOs.SaleProductInfoDto?> GetSaleProductByIdAsync(int id, System.Threading.CancellationToken cancellationToken = default)
     {
-        return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id);
+        return await ProjectSaleProduct(_context.Products.AsNoTracking().Where(p => p.Id == id)).FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<Product?> GetCashAdvanceProductAsync()
+    public async Task<Core.DTOs.SaleProductInfoDto?> GetCashAdvanceProductAsync(System.Threading.CancellationToken cancellationToken = default)
     {
-        return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.IsCashAdvance && !p.IsDeleted && p.IsActive);
+        return await ProjectSaleProduct(_context.Products.AsNoTracking().Where(p => p.IsCashAdvance && !p.IsDeleted && p.IsActive)).FirstOrDefaultAsync(cancellationToken);
     }
 
     private static MemoryCacheEntryOptions CreateProductCacheOptions() => new MemoryCacheEntryOptions
@@ -73,41 +99,19 @@ public partial class InventoryService : IInventoryService
 
     public void InvalidateAllProductCaches()
     {
+        // 8.7-L5: ahora SÍ invalida las claves de producto (SKU/quick) registradas, además de la
+        // tasa BCV que históricamente era lo único que se removía aquí.
+        // 8.16-H12: tras invalidar todas las claves registradas se limpia el diccionario de
+        // seguimiento, evitando el crecimiento no acotado en procesos long-running. Las claves
+        // ya no existen en el caché (Remove sobre claves ausentes es no-op), por lo que las
+        // entradas huérfanas solo acarreaban memoria. El diccionario se repuebla con el próximo
+        // uso de la caché.
+        foreach (var cacheKey in _productCacheKeys.Keys)
+        {
+            _cache?.Remove(cacheKey);
+        }
         _cache?.Remove(ExchangeRateCacheKey);
-    }
-
-    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
-    public async Task<Product?> GetProductBySkuAsync(string sku, bool useCache = true)
-    {
-        if (string.IsNullOrWhiteSpace(sku)) return null;
-        var normalized = sku.Trim().ToUpperInvariant();
-
-        if (!useCache || _cache == null)
-        {
-            return await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == sku);
-        }
-
-        var cacheKey = $"product_sku_{normalized}";
-        if (_cache.TryGetValue(cacheKey, out Product? cachedProduct) && cachedProduct != null)
-        {
-            Core.Metrics.CacheMetrics.RecordHit();
-            return cachedProduct;
-        }
-
-        Core.Metrics.CacheMetrics.RecordMiss();
-        try
-        {
-            var product = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.SKU == sku);
-            if (product != null)
-            {
-                _cache.Set(cacheKey, product, CreateProductCacheOptions());
-            }
-            return product;
-        }
-        catch
-        {
-            throw;
-        }
+        _productCacheKeys.Clear();
     }
 
     private static void ValidateAndCalculateProductPrices(Product product)
@@ -146,7 +150,7 @@ public partial class InventoryService : IInventoryService
         else if (product.CostPriceUSD > 0 && product.ProfitMarginRetail > 0)
         {
             decimal rawPrice = product.CostPriceUSD * (1m + (product.ProfitMarginRetail / 100m));
-            product.PriceRetailUSD = Math.Ceiling(rawPrice * 100m) / 100m;
+            product.PriceRetailUSD = Core.Helpers.PricingCalculator.RoundPriceUp(rawPrice);
         }
 
         if (!product.HasWholesale)
@@ -168,17 +172,17 @@ public partial class InventoryService : IInventoryService
             else if (product.CostPriceUSD > 0 && product.ProfitMarginWholesale > 0)
             {
                 decimal rawWholesalePrice = product.CostPriceUSD * (1m + (product.ProfitMarginWholesale / 100m));
-                product.PriceWholesaleUSD = Math.Ceiling(rawWholesalePrice * 100m) / 100m;
+                product.PriceWholesaleUSD = Core.Helpers.PricingCalculator.RoundPriceUp(rawWholesalePrice);
             }
 
             if (product.PriceWholesaleUSD > product.PriceRetailUSD && product.PriceRetailUSD > 0)
             {
-                throw new InvalidOperationException($"El precio al mayor (${product.PriceWholesaleUSD:F2}) no puede ser mayor al precio al detal (${product.PriceRetailUSD:F2}).");
+                throw new ArgumentException($"El precio al mayor (${product.PriceWholesaleUSD:F2}) no puede ser mayor al precio al detal (${product.PriceRetailUSD:F2}).");
             }
 
             if (product.ProfitMarginWholesale > product.ProfitMarginRetail && product.ProfitMarginRetail > 0)
             {
-                throw new InvalidOperationException($"El margen al mayor ({product.ProfitMarginWholesale:F2}%) no puede ser mayor al margen al detal ({product.ProfitMarginRetail:F2}%).");
+                throw new ArgumentException($"El margen al mayor ({product.ProfitMarginWholesale:F2}%) no puede ser mayor al margen al detal ({product.ProfitMarginRetail:F2}%).");
             }
         }
 
@@ -206,412 +210,11 @@ public partial class InventoryService : IInventoryService
 
         if (string.IsNullOrWhiteSpace(sku) || !System.Text.RegularExpressions.Regex.IsMatch(sku.Trim(), @"^[A-Za-z0-9\-_]{1,50}$"))
         {
-            throw new InvalidOperationException("El SKU/Código del producto debe contener entre 1 y 50 caracteres alfanuméricos (letras, dígitos, guiones o guiones bajos).");
+            throw new ArgumentException("El SKU/Código del producto debe contener entre 1 y 50 caracteres alfanuméricos (letras, dígitos, guiones o guiones bajos).");
         }
     }
 
-    public async Task<Product> CreateProductAsync(Product product)
-    {
-        EnsureCatalogMutationPermission();
-
-        if (product.IsCashAdvance)
-        {
-            if (product.IsGroupHeader)
-            {
-                throw new InvalidOperationException("Un producto configurado como Servicio de Adelanto de Efectivo no puede ser un grupo de variantes.");
-            }
-            if (product.ParentProductId.HasValue)
-            {
-                throw new InvalidOperationException("Un producto configurado como Servicio de Adelanto de Efectivo no puede ser variante de un producto padre.");
-            }
-
-            product.IsFractional = false;
-            product.UnitOfMeasure = UnitOfMeasureType.Und;
-            product.StockQuantity = 0m;
-            product.ReservedQuantity = 0m;
-            product.LowStockThreshold = 0m;
-            product.IsStockShared = false;
-            product.HasIndependentPricing = false;
-            product.ConversionFactor = 1.0000m;
-        }
-        else if (product.IsGroupHeader)
-        {
-            product.ConversionFactor = 1.0000m;
-            if (string.IsNullOrWhiteSpace(product.SKU))
-            {
-                product.SKU = $"GRP-{DateTime.UtcNow.Ticks}";
-            }
-            product.ParentProductId = null;
-            product.ReservedQuantity = 0m;
-            if (!product.IsStockShared)
-            {
-                product.StockQuantity = 0m;
-                product.LowStockThreshold = 0m;
-            }
-            if (string.IsNullOrWhiteSpace(product.GroupKey))
-            {
-                product.GroupKey = product.Name.Trim();
-            }
-            if (product.HasIndependentPricing)
-            {
-                product.CostPriceUSD = 0m;
-                product.Cost = 0m;
-                product.ProfitMarginRetail = 0m;
-                product.ProfitPercentage = 0m;
-                product.PriceRetailUSD = 0m;
-                product.PriceUSD = 0m;
-                product.PriceBsS = 0m;
-                product.HasWholesale = false;
-                product.ProfitMarginWholesale = 0m;
-                product.PriceWholesaleUSD = 0m;
-            }
-        }
-        else if (product.ParentProductId.HasValue)
-        {
-            var parent = await _context.Products.FindAsync(product.ParentProductId.Value);
-            if (parent == null || parent.IsDeleted)
-            {
-                throw new InvalidOperationException("El producto padre especificado no existe o ha sido eliminado.");
-            }
-
-            product.IsGroupHeader = false;
-            product.IsStockShared = false;
-            product.HasIndependentPricing = false;
-
-            if (parent.IsStockShared)
-            {
-                product.StockQuantity = 0m;
-                product.ReservedQuantity = 0m;
-                product.LowStockThreshold = 0m;
-                if (product.ConversionFactor < 0.0001m || product.ConversionFactor > 1_000_000m)
-                {
-                    throw new InvalidOperationException(Core.Constants.InventoryMessages.ConversionFactorOutOfRange);
-                }
-            }
-            else
-            {
-                product.ConversionFactor = 1.0000m;
-            }
-
-            if (!parent.HasIndependentPricing)
-            {
-                // Inherit pricing and configuration from parent
-                product.PriceRetailUSD = parent.PriceRetailUSD;
-                product.PriceWholesaleUSD = parent.PriceWholesaleUSD;
-                product.CostPriceUSD = parent.CostPriceUSD;
-                product.ProfitMarginRetail = parent.ProfitMarginRetail;
-                product.ProfitMarginWholesale = parent.ProfitMarginWholesale;
-                product.HasWholesale = parent.HasWholesale;
-                product.IsFractional = parent.IsFractional;
-                product.UnitOfMeasure = parent.UnitOfMeasure;
-                product.MinWholesaleQuantity = parent.MinWholesaleQuantity;
-                product.PriceUSD = parent.PriceRetailUSD;
-                product.Cost = parent.CostPriceUSD;
-                product.ProfitPercentage = parent.ProfitMarginRetail;
-            }
-        }
-        else
-        {
-            product.IsStockShared = false;
-            product.HasIndependentPricing = false;
-            product.ConversionFactor = 1.0000m;
-        }
-
-        ValidateProductSku(product.SKU, product.IsGroupHeader);
-
-        if (await _context.Products.AnyAsync(p => p.SKU == product.SKU && !p.IsDeleted))
-        {
-            throw new InvalidOperationException($"Product with SKU {product.SKU} already exists.");
-        }
-
-        ValidateAndCalculateProductPrices(product);
-
-        _context.Products.Add(product);
-        await _context.SaveChangesAsync();
-        InvalidateProductSkuCache(product.SKU);
-        if (product.ParentProduct != null) InvalidateProductSkuCache(product.ParentProduct.SKU);
-        return product;
-    }
-
-    public async Task UpdateProductAsync(Product product)
-    {
-        EnsureCatalogMutationPermission();
-
-        var existing = await _context.Products.FindAsync(product.Id);
-        if (existing == null) throw new KeyNotFoundException($"Product {product.Id} not found");
-
-        var entry = _context.Entry(existing);
-        bool originalIsGroupHeader = entry.OriginalValues.GetValue<bool>(nameof(Product.IsGroupHeader));
-        bool originalIsStockShared = entry.OriginalValues.GetValue<bool>(nameof(Product.IsStockShared));
-        bool originalHasIndependentPricing = entry.OriginalValues.GetValue<bool>(nameof(Product.HasIndependentPricing));
-        decimal originalConversionFactor = entry.OriginalValues.GetValue<decimal>(nameof(Product.ConversionFactor));
-
-        if (originalIsGroupHeader)
-        {
-            if (product.IsStockShared != originalIsStockShared || product.HasIndependentPricing != originalHasIndependentPricing)
-            {
-                throw new InvalidOperationException("No se permite cambiar las banderas de Stock Compartido o Precios Independientes en un grupo existente.");
-            }
-        }
-
-        if (!product.IsGroupHeader)
-        {
-            int activeVariants = await _context.Products.CountAsync(p => p.ParentProductId == product.Id && !p.IsDeleted);
-            if (activeVariants > 0)
-            {
-                throw new InvalidOperationException($"No se puede desmarcar el grupo '{product.Name}' porque tiene {activeVariants} variantes asociadas. Desvincule o elimine las variantes primero.");
-            }
-            product.IsStockShared = false;
-            product.HasIndependentPricing = false;
-        }
-
-        if (product.IsCashAdvance)
-        {
-            if (product.IsGroupHeader)
-            {
-                throw new InvalidOperationException("Un producto configurado como Servicio de Adelanto de Efectivo no puede ser un grupo de variantes.");
-            }
-            if (product.ParentProductId.HasValue)
-            {
-                throw new InvalidOperationException("Un producto configurado como Servicio de Adelanto de Efectivo no puede ser variante de un producto padre.");
-            }
-
-            product.IsFractional = false;
-            product.UnitOfMeasure = UnitOfMeasureType.Und;
-            product.StockQuantity = 0m;
-            product.ReservedQuantity = 0m;
-            product.LowStockThreshold = 0m;
-            product.IsStockShared = false;
-            product.HasIndependentPricing = false;
-            product.ConversionFactor = 1.0000m;
-        }
-        else if (product.IsGroupHeader)
-        {
-            product.ConversionFactor = 1.0000m;
-            if (string.IsNullOrWhiteSpace(product.SKU))
-            {
-                product.SKU = existing.SKU;
-            }
-            product.ParentProductId = null;
-            product.ReservedQuantity = 0m;
-            if (!product.IsStockShared)
-            {
-                product.StockQuantity = 0m;
-                product.LowStockThreshold = 0m;
-            }
-            if (string.IsNullOrWhiteSpace(product.GroupKey))
-            {
-                product.GroupKey = product.Name.Trim();
-            }
-            if (product.HasIndependentPricing)
-            {
-                product.CostPriceUSD = 0m;
-                product.Cost = 0m;
-                product.ProfitMarginRetail = 0m;
-                product.ProfitPercentage = 0m;
-                product.PriceRetailUSD = 0m;
-                product.PriceUSD = 0m;
-                product.PriceBsS = 0m;
-                product.HasWholesale = false;
-                product.ProfitMarginWholesale = 0m;
-                product.PriceWholesaleUSD = 0m;
-            }
-        }
-        else if (product.ParentProductId.HasValue)
-        {
-            var parent = await _context.Products.FindAsync(product.ParentProductId.Value);
-            if (parent != null && !parent.IsDeleted)
-            {
-                product.IsGroupHeader = false;
-                product.IsStockShared = false;
-                product.HasIndependentPricing = false;
-
-                if (parent.IsStockShared)
-                {
-                    product.StockQuantity = 0m;
-                    product.ReservedQuantity = 0m;
-                    product.LowStockThreshold = 0m;
-                    decimal factor = product.ConversionFactor > 0 ? product.ConversionFactor : (originalConversionFactor > 0 ? originalConversionFactor : 1.0000m);
-                    if (factor < 0.0001m || factor > 1_000_000m)
-                    {
-                        throw new InvalidOperationException(Core.Constants.InventoryMessages.ConversionFactorOutOfRange);
-                    }
-                    product.ConversionFactor = factor;
-                }
-                else
-                {
-                    product.ConversionFactor = 1.0000m;
-                }
-
-                if (!parent.HasIndependentPricing)
-                {
-                    // Inherit pricing from parent
-                    product.PriceRetailUSD = parent.PriceRetailUSD;
-                    product.PriceWholesaleUSD = parent.PriceWholesaleUSD;
-                    product.CostPriceUSD = parent.CostPriceUSD;
-                    product.ProfitMarginRetail = parent.ProfitMarginRetail;
-                    product.ProfitMarginWholesale = parent.ProfitMarginWholesale;
-                    product.HasWholesale = parent.HasWholesale;
-                    product.IsFractional = parent.IsFractional;
-                    product.UnitOfMeasure = parent.UnitOfMeasure;
-                    product.MinWholesaleQuantity = parent.MinWholesaleQuantity;
-                    product.PriceUSD = parent.PriceRetailUSD;
-                    product.Cost = parent.CostPriceUSD;
-                    product.ProfitPercentage = parent.ProfitMarginRetail;
-                }
-            }
-            else
-            {
-                product.ConversionFactor = 1.0000m;
-            }
-        }
-        else
-        {
-            product.ConversionFactor = 1.0000m;
-        }
-
-        ValidateProductSku(product.SKU, product.IsGroupHeader);
-        ValidateAndCalculateProductPrices(product);
-
-        if (product.RowVersion == null || product.RowVersion.Length == 0)
-        {
-            product.RowVersion = existing.RowVersion;
-        }
-
-        await using var tx = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync() : null;
-
-        _context.Entry(existing).CurrentValues.SetValues(product);
-        existing.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-
-        // If updating a parent product with HasIndependentPricing == false, propagate prices/costs to all active variants in batch
-        if (product.IsGroupHeader && !product.HasIndependentPricing)
-        {
-            if (_context.Database.IsRelational())
-            {
-                await _context.Products
-                    .Where(p => p.ParentProductId == product.Id && !p.IsDeleted)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(p => p.PriceRetailUSD, product.PriceRetailUSD)
-                        .SetProperty(p => p.PriceWholesaleUSD, product.PriceWholesaleUSD)
-                        .SetProperty(p => p.CostPriceUSD, product.CostPriceUSD)
-                        .SetProperty(p => p.ProfitMarginRetail, product.ProfitMarginRetail)
-                        .SetProperty(p => p.ProfitMarginWholesale, product.ProfitMarginWholesale)
-                        .SetProperty(p => p.HasWholesale, product.HasWholesale)
-                        .SetProperty(p => p.MinWholesaleQuantity, product.MinWholesaleQuantity)
-                        .SetProperty(p => p.PriceUSD, product.PriceRetailUSD)
-                        .SetProperty(p => p.Cost, product.CostPriceUSD)
-                        .SetProperty(p => p.ProfitPercentage, product.ProfitMarginRetail)
-                        .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
-            }
-            else
-            {
-                // In-memory or non-relational fallback
-                var variants = await _context.Products.Where(p => p.ParentProductId == product.Id && !p.IsDeleted).ToListAsync();
-                foreach (var v in variants)
-                {
-                    v.PriceRetailUSD = product.PriceRetailUSD;
-                    v.PriceWholesaleUSD = product.PriceWholesaleUSD;
-                    v.CostPriceUSD = product.CostPriceUSD;
-                    v.ProfitMarginRetail = product.ProfitMarginRetail;
-                    v.ProfitMarginWholesale = product.ProfitMarginWholesale;
-                    v.HasWholesale = product.HasWholesale;
-                    v.MinWholesaleQuantity = product.MinWholesaleQuantity;
-                    v.PriceUSD = product.PriceRetailUSD;
-                    v.Cost = product.CostPriceUSD;
-                    v.ProfitPercentage = product.ProfitMarginRetail;
-                    v.UpdatedAt = DateTime.UtcNow;
-                }
-                await _context.SaveChangesAsync();
-            }
-        }
-
-        if (tx != null)
-        {
-            await tx.CommitAsync();
-        }
-
-        InvalidateProductSkuCache(product.SKU);
-        if (product.IsGroupHeader || product.ParentProductId != null)
-        {
-            InvalidateAllProductCaches();
-        }
-    }
-
-    public async Task SetProductStatusAsync(int id, bool isActive, bool isDeleted)
-    {
-        EnsureCatalogMutationPermission();
-        var product = await _context.Products.FindAsync(id);
-        if (product != null)
-        {
-            product.IsActive = isActive;
-            product.IsDeleted = isDeleted;
-            product.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-            InvalidateProductSkuCache(product.SKU);
-            if (product.IsGroupHeader) InvalidateAllProductCaches();
-        }
-    }
-
-    public async Task RestoreProductAsync(int id)
-    {
-        EnsureCatalogMutationPermission();
-        await SetProductStatusAsync(id, isActive: true, isDeleted: false);
-    }
-
-    public async Task<string> DeleteProductAsync(int id, bool forceHardDelete = false)
-    {
-        EnsureCatalogMutationPermission();
-        var product = await _context.Products.FindAsync(id);
-        if (product == null) return "not_found";
-
-        // Safe delete rule: Block deleting a parent product if it has active variants
-        if (product.IsGroupHeader)
-        {
-            int activeVariants = await _context.Products.CountAsync(p => p.ParentProductId == id && !p.IsDeleted);
-            if (activeVariants > 0)
-            {
-                throw new InvalidOperationException($"No se puede eliminar el producto padre '{product.Name}' porque contiene {activeVariants} variantes asociadas. Desvincule o elimine primero las variantes.");
-            }
-        }
-
-        string result = "archived";
-        if (forceHardDelete)
-        {
-            try
-            {
-                _context.Products.Remove(product);
-                await _context.SaveChangesAsync();
-                result = "hard_deleted";
-            }
-            catch
-            {
-                // Has FK relationships (e.g. accounting history), fallback to archived
-                _context.Entry(product).State = Microsoft.EntityFrameworkCore.EntityState.Unchanged;
-                product.IsActive = false;
-                product.IsDeleted = true;
-                product.UpdatedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
-                result = "archived";
-            }
-        }
-        else
-        {
-            // Soft delete -> mark as deleted (archived for accounting)
-            product.IsActive = false;
-            product.IsDeleted = true;
-            product.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-            result = "archived";
-        }
-
-        InvalidateProductSkuCache(product.SKU);
-        if (product.IsGroupHeader || product.ParentProductId != null) InvalidateAllProductCaches();
-        return result;
-    }
-
-    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
-    public async Task<Core.DTOs.ProductQuickInfoDto?> GetProductQuickInfoAsync(string sku, bool useCache = true)
+    public async Task<Core.DTOs.ProductQuickInfoDto?> GetProductQuickInfoAsync(string sku, bool useCache = true, System.Threading.CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(sku)) return null;
         var normalized = sku.Trim().ToUpperInvariant();
@@ -629,26 +232,21 @@ public partial class InventoryService : IInventoryService
         }
 
         Core.Metrics.CacheMetrics.RecordMiss();
-        try
+        var dto = await FetchProductQuickInfoFromDbAsync(sku);
+        if (dto != null)
         {
-            var dto = await FetchProductQuickInfoFromDbAsync(sku);
-            if (dto != null)
-            {
-                _cache.Set(cacheKey, dto, CreateProductCacheOptions());
-            }
-            return dto;
+            RegisterProductCacheKey(cacheKey);
+            _cache.Set(cacheKey, dto, CreateProductCacheOptions());
         }
-        catch
-        {
-            throw;
-        }
+        return dto;
     }
 
     private async Task<Core.DTOs.ProductQuickInfoDto?> FetchProductQuickInfoFromDbAsync(string sku)
     {
+        var normalized = sku.Trim().ToUpperInvariant();
         return await _context.Products
             .AsNoTracking()
-            .Where(p => p.SKU == sku)
+            .Where(p => p.SKU == normalized && !p.IsDeleted)
             .Select(p => new Core.DTOs.ProductQuickInfoDto
             {
                 Id = p.Id,
@@ -688,5 +286,15 @@ public partial class InventoryService : IInventoryService
             }
             await _context.Database.UseTransactionAsync(transaction, cancellationToken);
         }
+    }
+
+    public async Task DetachFromTransactionAsync(System.Threading.CancellationToken cancellationToken = default)
+    {
+        if (!_context.Database.IsRelational())
+        {
+            return;
+        }
+
+        await _context.Database.UseTransactionAsync(null, cancellationToken);
     }
 }

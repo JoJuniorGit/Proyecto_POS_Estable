@@ -3,27 +3,29 @@ import Modal from '../ui/Modal';
 import SearchBar from './SearchBar';
 import QuantityInput from './QuantityInput';
 import { updateSaleItems } from '../../services/salesApi';
-import { formatBsS, formatUSD, formatNumberEs, getLineAmounts } from '../../utils/formatters';
+import { formatBsS, formatUSD, formatNumberEs } from '../../utils/formatters';
+import { selectEffectiveRate } from '../../context/CartContext';
 import { Trash2, AlertTriangle, Save, Loader2, Plus, Minus } from 'lucide-react';
+import './EditSaleModal.css';
+
+const toBsSCeiling = (usd, rate) => (usd > 0 && rate > 0 ? Math.ceil(usd * rate * 100) / 100 : 0);
 
 export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onSuccess }) {
   const [items, setItems] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  const rateToUse = Number(sale?.appliedRate || exchangeRate || 1);
+  const rateToUse = selectEffectiveRate(exchangeRate, sale?.appliedRate);
 
   useEffect(() => {
     if (sale?.items) {
       setItems(sale.items.map(i => {
         const unitPriceUSD = Number(i.unitPrice ?? i.unitPriceUSD ?? 0);
         const qty = Number(i.quantity) || 1;
-        const unitPriceBsS = Number(i.unitPriceBsS) > 0 ? Number(i.unitPriceBsS) : Math.round(unitPriceUSD * rateToUse * 100) / 100;
+        const unitPriceBsS = Number(i.unitPriceBsS) > 0 ? Number(i.unitPriceBsS) : toBsSCeiling(unitPriceUSD, rateToUse);
         const isFractional = Boolean(
           i.isFractional ||
           i.isFractionable ||
-          i.IsFractional ||
-          i.IsFractionable ||
           (i.unitOfMeasure && i.unitOfMeasure !== 'Und' && i.unitOfMeasure !== 0)
         );
 
@@ -44,7 +46,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       setItems([]);
     }
     setError(null);
-  }, [sale, exchangeRate]);
+  }, [sale, exchangeRate, rateToUse]);
 
   const handleAddProduct = (prod) => {
     if (!prod) return;
@@ -52,12 +54,10 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
     const isFrac = Boolean(
       prod.isFractional ||
       prod.isFractionable ||
-      prod.IsFractional ||
-      prod.IsFractionable ||
       (prod.unitOfMeasure && prod.unitOfMeasure !== 'Und' && prod.unitOfMeasure !== 0)
     );
     const unitOfMeasure = prod.unitOfMeasure || 'Und';
-    const unitBsS = Math.round(price * rateToUse * 100) / 100;
+    const unitBsS = toBsSCeiling(price, rateToUse);
 
     setItems(prev => {
       const existingIdx = prev.findIndex(i => i.productId === prod.id);
@@ -66,7 +66,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
         const current = updated[existingIdx];
         const step = !current.isFractional ? 1 : (current.unitOfMeasure === 'Grs' || current.unitOfMeasure === 'Ml' ? 100 : current.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
         const newQty = Math.round(((Number(current.quantity) || 0) + step) * 1000) / 1000;
-        const currentUnitBsS = Number(current.unitPriceBsS) > 0 ? Number(current.unitPriceBsS) : Math.round((current.unitPrice || 0) * rateToUse * 100) / 100;
+        const currentUnitBsS = Number(current.unitPriceBsS) > 0 ? Number(current.unitPriceBsS) : toBsSCeiling(current.unitPrice, rateToUse);
 
         updated[existingIdx] = {
           ...current,
@@ -108,8 +108,6 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
     const isFrac = Boolean(
       targetItem?.isFractional ||
       targetItem?.isFractionable ||
-      targetItem?.IsFractional ||
-      targetItem?.IsFractionable ||
       (targetItem?.unitOfMeasure && targetItem.unitOfMeasure !== 'Und' && targetItem.unitOfMeasure !== 0)
     );
     const qty = isNaN(rawNum) ? 1 : rawNum;
@@ -117,7 +115,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
     setItems(prev => {
       const updated = [...prev];
       const current = updated[idx];
-      const unitBsS = Number(current.unitPriceBsS) > 0 ? Number(current.unitPriceBsS) : Math.round((current.unitPrice || 0) * rateToUse * 100) / 100;
+      const unitBsS = Number(current.unitPriceBsS) > 0 ? Number(current.unitPriceBsS) : toBsSCeiling(current.unitPrice, rateToUse);
       const subUSD = Math.round(validatedQty * (current.unitPrice || 0) * 100) / 100;
       const subBsS = Math.round(validatedQty * unitBsS * 100) / 100;
 
@@ -139,10 +137,10 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
   // Cálculos financieros reactivos en tiempo real
   const totalPaidUSD = Number(sale?.totalPaidUSD || (sale?.payments?.reduce((acc, p) => acc + (p.amount || 0), 0)) || 0);
   const newTotalUSD = items.reduce((acc, i) => acc + ((Number(i.quantity) || 0) * (Number(i.unitPrice) || 0)), 0);
-  const newTotalBsS = items.reduce((acc, i) => {
-    const unitBsS = Number(i.unitPriceBsS) > 0 ? Number(i.unitPriceBsS) : ((Number(i.unitPrice) || 0) * rateToUse);
+  const newTotalBsS = Math.round(items.reduce((acc, i) => {
+    const unitBsS = Number(i.unitPriceBsS) > 0 ? Number(i.unitPriceBsS) : toBsSCeiling(Number(i.unitPrice) || 0, rateToUse);
     return acc + ((Number(i.quantity) || 0) * unitBsS);
-  }, 0);
+  }, 0) * 100) / 100;
   const newRemainingBalanceUSD = Math.max(0, newTotalUSD - totalPaidUSD);
 
   // Validaciones
@@ -164,7 +162,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       onClose();
     } catch (err) {
       console.error('[EditSaleModal] Error al guardar cambios:', err);
-      setError(err.response?.data || err.message || 'Error al guardar las modificaciones del pedido.');
+      setError(err.message || 'Error al guardar las modificaciones del pedido.');
     } finally {
       setIsSaving(false);
     }
@@ -179,15 +177,15 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       )}
 
       {/* Buscador de Productos (Mismo componente del POS) */}
-      <div className="mb-3" style={{ position: 'relative', zIndex: 1000 }}>
+      <div className="mb-3 es-search-area">
         <label className="font-medium text-sm mb-1 d-block text-muted">Agregar producto al pedido:</label>
         <SearchBar onSelectProduct={handleAddProduct} />
       </div>
 
       {/* Tabla de Productos Editables con Estilo del Carrito del POS */}
-      <div className="cart-table-wrapper custom-scrollbar mb-4" style={{ maxHeight: '250px', overflowY: 'auto' }}>
+      <div className="cart-table-wrapper custom-scrollbar mb-4 es-table-wrapper">
         {items.length === 0 ? (
-          <div className="text-center py-4 text-muted border-dashed" style={{ borderRadius: '8px' }}>
+          <div className="text-center py-4 text-muted border-dashed es-empty-table">
             No hay productos en la lista.
           </div>
         ) : (
@@ -198,25 +196,23 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
                 <th className="text-center">Cant.</th>
                 <th className="text-right">Precio Bs.S</th>
                 <th className="text-right">Subtotal Bs.S</th>
-                <th className="text-center" style={{ width: '50px' }}>Acción</th>
+                <th className="text-center es-th-action">Acción</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item, idx) => {
                 const qty = Number(item.quantity) || 0;
-                const unitBsS = Number(item.unitPriceBsS) > 0 ? Number(item.unitPriceBsS) : Math.round(((Number(item.unitPrice) || 0) * rateToUse) * 100) / 100;
+                const unitBsS = Number(item.unitPriceBsS) > 0 ? Number(item.unitPriceBsS) : toBsSCeiling(Number(item.unitPrice) || 0, rateToUse);
                 const subtotalBsS = Math.round(qty * unitBsS * 100) / 100;
                 const isFrac = Boolean(
                   item.isFractional ||
                   item.isFractionable ||
-                  item.IsFractional ||
-                  item.IsFractionable ||
                   (item.unitOfMeasure && item.unitOfMeasure !== 'Und' && item.unitOfMeasure !== 0)
                 );
                 const step = !isFrac ? 1 : (item.unitOfMeasure === 'Grs' || item.unitOfMeasure === 'Ml' ? 100 : item.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
 
                 return (
-                  <tr key={idx} className="cart-row">
+                  <tr key={item.productId != null ? item.productId : item.productName} className="cart-row">
                     <td className="font-medium">{item.displayProductName || item.productName}</td>
 
                     <td className="text-center">
@@ -281,7 +277,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
 
       {/* Alertas de Validación */}
       {isBelowPaidAmount && (
-        <div className="alert alert-warning mb-3 flex-align-center gap-2" style={{ fontSize: '0.85rem' }}>
+        <div className="alert alert-warning mb-3 flex-align-center gap-2 es-warning">
           <AlertTriangle size={18} className="flex-shrink-0" />
           <span>El nuevo total ({formatUSD(newTotalUSD)}) no puede ser menor a lo ya abonado por el cliente ({formatUSD(totalPaidUSD)}).</span>
         </div>
@@ -289,24 +285,19 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
 
       {/* Resumen Financiero */}
       <div 
-        className="border text-sm mb-4"
-        style={{ 
-          backgroundColor: 'var(--bg-secondary, rgba(255,255,255,0.03))', 
-          borderRadius: '8px', 
-          padding: '12px 16px'
-        }}
+        className="border text-sm mb-4 es-summary-box"
       >
         <div className="flex-between mb-1">
           <span className="text-muted">Nuevo Total:</span>
-          <span className="font-bold"><span className="color-primary font-bold" style={{ fontSize: '1.05rem' }}>{formatBsS(newTotalBsS)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newTotalUSD)})</span></span>
+          <span className="font-bold"><span className="color-primary font-bold es-total-bs">{formatBsS(newTotalBsS)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newTotalUSD)})</span></span>
         </div>
         <div className="flex-between mb-1">
           <span className="text-muted">Total Ya Abonado:</span>
-          <span className="font-bold text-success"><span style={{ fontSize: '1.05rem' }}>{formatBsS(totalPaidUSD * rateToUse)}</span> <span className="text-muted text-xs font-normal">({formatUSD(totalPaidUSD)})</span></span>
+          <span className="font-bold text-success"><span className="es-total-bs">{formatBsS(totalPaidUSD * rateToUse)}</span> <span className="text-muted text-xs font-normal">({formatUSD(totalPaidUSD)})</span></span>
         </div>
         <div className="flex-between mb-1">
           <span className="text-muted">Nuevo Saldo Restante:</span>
-          <span className="font-bold text-danger"><span style={{ fontSize: '1.05rem' }}>{formatBsS(newRemainingBalanceUSD * rateToUse)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newRemainingBalanceUSD)})</span></span>
+          <span className="font-bold text-danger"><span className="es-total-bs">{formatBsS(newRemainingBalanceUSD * rateToUse)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newRemainingBalanceUSD)})</span></span>
         </div>
       </div>
 

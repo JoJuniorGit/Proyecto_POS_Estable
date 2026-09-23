@@ -8,6 +8,16 @@ import {
   formatUSD as formatUSDUtil, 
   parseAmount as parseAmountUtil 
 } from '../utils/formatters';
+import {
+  CURRENCY_FORMAT_STORAGE_KEY,
+  CURRENCY_FORMAT_SYNC_CHANNEL,
+  CURRENCY_FORMAT_VALUES,
+  readStoredState,
+  broadcastStateSync,
+  subscribeStateSync,
+  subscribeWindowRevalidation,
+  resolveRevalidatedValue,
+} from '../utils/crossTabStateSync';
 
 const CurrencyFormatContext = createContext();
 
@@ -40,12 +50,27 @@ export function CurrencyFormatProvider({ children }) {
       if (newFormat === 'Venezuelan' || newFormat === 'International') {
         setFormatState(newFormat);
         setCachedCurrencyFormat(newFormat);
+        broadcastStateSync(CURRENCY_FORMAT_SYNC_CHANNEL, newFormat);
       }
     };
+
+    const unsubscribeSync = subscribeStateSync(CURRENCY_FORMAT_SYNC_CHANNEL, CURRENCY_FORMAT_VALUES, (value) => {
+      setFormatState((prev) => (prev === value ? prev : value));
+      setCachedCurrencyFormat(value);
+    });
+
+    const unsubscribeRevalidation = subscribeWindowRevalidation(() => {
+      const stored = readStoredState(CURRENCY_FORMAT_STORAGE_KEY, CURRENCY_FORMAT_VALUES);
+      if (!stored) return;
+      setFormatState((prev) => resolveRevalidatedValue(stored, prev, CURRENCY_FORMAT_VALUES));
+      setCachedCurrencyFormat(stored);
+    });
 
     window.addEventListener('onCurrencyFormatUpdated', handleUpdate);
     return () => {
       window.removeEventListener('onCurrencyFormatUpdated', handleUpdate);
+      unsubscribeSync();
+      unsubscribeRevalidation();
     };
   }, [fetchFormat]);
 
@@ -58,6 +83,7 @@ export function CurrencyFormatProvider({ children }) {
 
     try {
       await api.put('/api/settings/currency-format', { format: val });
+      broadcastStateSync(CURRENCY_FORMAT_SYNC_CHANNEL, val);
     } catch (err) {
       console.error('[CurrencyFormatContext] Error al persistir formato en servidor:', err);
       // Revertir en caso de error severo

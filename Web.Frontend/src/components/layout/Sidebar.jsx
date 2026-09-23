@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import ThemeToggle from '../ui/ThemeToggle';
 import { useAuth } from '../../context/AuthContext';
+import { getAllowedViews, normalizeRole } from '../../navigation/roleViews';
 
 const NAV_SECTIONS = [
   {
@@ -43,13 +44,14 @@ const NAV_SECTIONS = [
 
 export default function Sidebar({ currentView, onNavigate, isOpen, onClose }) {
   const { user, logout } = useAuth();
+  const allowedViews = getAllowedViews(user?.role);
 
   const handleNav = (viewId) => {
     onNavigate(viewId);
     onClose();
   };
 
-  const roleLabel = user?.role === 0 || user?.role === 'Admin' ? 'Administrador' : 'Cajero';
+  const roleLabel = normalizeRole(user?.role) === 'Admin' ? 'Administrador' : 'Cajero';
 
   return (
     <>
@@ -73,43 +75,36 @@ export default function Sidebar({ currentView, onNavigate, isOpen, onClose }) {
 
         {/* Navegación */}
         <nav className="sidebar-nav">
-          {NAV_SECTIONS.map((section) => (
-            <div key={section.label}>
-              <div className="sidebar-section">{section.label}</div>
-              {section.items.map((item) => (
-                <button
-                  key={item.id}
-                  className={`sidebar-link ${currentView === item.id ? 'active' : ''}`}
-                  onClick={() => handleNav(item.id)}
-                >
-                  <item.icon size={18} />
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          ))}
+          {NAV_SECTIONS.map((section) => {
+            const visibleItems = section.items.filter(item => allowedViews.includes(item.id));
+            if (visibleItems.length === 0) return null;
+            return (
+              <div key={section.label}>
+                <div className="sidebar-section">{section.label}</div>
+                {visibleItems.map((item) => (
+                  <button
+                    key={item.id}
+                    className={`sidebar-link ${currentView === item.id ? 'active' : ''}`}
+                    onClick={() => handleNav(item.id)}
+                  >
+                    <item.icon size={18} />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
         {/* Footer */}
-        <div className="sidebar-footer" style={{ flexDirection: 'column', gap: '0.75rem', alignItems: 'stretch' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="sidebar-footer">
+          <div className="d-flex flex-align-center justify-between">
             <ThemeToggle />
             <button
               type="button"
               onClick={logout}
               title="Cerrar Sesión"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#ef4444',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-                fontSize: '0.8rem',
-                padding: '0.25rem 0.5rem',
-                borderRadius: '0.25rem',
-              }}
+              className="sidebar-logout"
             >
               <LogOut size={16} /> Salir
             </button>

@@ -40,7 +40,9 @@
                     Margin="0,0,16,0" VerticalAlignment="Center">
                 <materialDesign:PackIcon Kind="Cog" Width="24" Height="24" />
             </Button>
-            <TextBlock Text="IMPORTACIÓN Y EXPORTACIÓN DE PRODUCTOS" Style="{DynamicResource MaterialDesignHeadline5TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
+            <TextBlock Text="IMPORTACIÓN Y EXPORTACIÓN DE PRODUCTOS" 
+                       AutomationProperties.AutomationId="ImportProducts_Title"
+                       Style="{DynamicResource MaterialDesignHeadline5TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
         </StackPanel>
         <TextBlock Grid.Row="1" Text="Exporte el catálogo actual o descargue la plantilla para cargar/actualizar masivamente productos." Style="{DynamicResource MaterialDesignSubtitle2TextBlock}" Foreground="{DynamicResource MaterialDesignTextBoxBorder}" Margin="0,0,0,15"/>
 
@@ -61,7 +63,9 @@
                 </StackPanel>
             </Button>
 
-            <Button Grid.Column="1" Command="{Binding SelectFileCommand}" Style="{StaticResource MaterialDesignRaisedButton}" IsEnabled="{Binding CanMutateCatalog}" Margin="0,0,10,0" ToolTip="Seleccionar un archivo Excel (.xlsx) o CSV (.csv) para importar masivamente productos">
+            <Button Grid.Column="1" 
+                    AutomationProperties.AutomationId="ImportProducts_SelectFileButton"
+                    Command="{Binding SelectFileCommand}" Style="{StaticResource MaterialDesignRaisedButton}" IsEnabled="{Binding CanMutateCatalog}" Margin="0,0,10,0" ToolTip="Seleccionar un archivo Excel (.xlsx) o CSV (.csv) para importar masivamente productos">
                 <StackPanel Orientation="Horizontal">
                     <materialDesign:PackIcon Kind="CloudUploadOutline" VerticalAlignment="Center" Margin="0,0,5,0"/>
                     <TextBlock Text="Cargar / Importar Productos" VerticalAlignment="Center" FontWeight="Bold"/>
@@ -133,6 +137,8 @@
                 <DataGridCheckBoxColumn Header="Mayorista" Binding="{Binding HasWholesale}" Width="75"/>
                 <DataGridCheckBoxColumn Header="Fraccionable" Binding="{Binding IsFractional}" Width="85"/>
                 <DataGridTextColumn Header="Unidad" Binding="{Binding UnitOfMeasure}" Width="70"/>
+                <DataGridTextColumn Header="Tipo" Binding="{Binding ProductType}" Width="80"/>
+                <DataGridTextColumn Header="Grupo" Binding="{Binding GroupNameOrKey}" Width="90"/>
                 <DataGridTextColumn Header="Stock" Binding="{Binding StockQuantity}" Width="70"/>
                 
                 <DataGridTextColumn Header="Estado / Error" Binding="{Binding ErrorMessage}" Foreground="DarkRed" Width="SizeToCells" MinWidth="150">

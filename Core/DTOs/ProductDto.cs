@@ -39,5 +39,4 @@ public class ProductDto
     public int VariantCount { get; set; }
     public decimal ConsolidatedStock { get; set; }
     public List<ProductDto>? Variants { get; set; }
-    public byte[]? RowVersion { get; set; }
 }

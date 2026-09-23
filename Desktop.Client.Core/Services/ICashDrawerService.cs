@@ -28,6 +28,12 @@ public class CashAdvanceResultClientDto
     public int? InvoiceNumber { get; set; }
 }
 
+public class AdvanceCommissionClientDto
+{
+    public bool IsTransfer { get; set; }
+    public decimal Percentage { get; set; }
+}
+
 public interface ICashDrawerService
 {
     Task<CashDrawerSessionDto?> GetActiveSessionAsync();
@@ -41,6 +47,7 @@ public interface ICashDrawerService
     /// ordenado por fecha descendente. Permite conservar la trazabilidad tras el cierre de caja.
     /// </summary>
     Task<System.Collections.Generic.List<CashTransactionDto>> GetHistoryAsync(int limit = 300);
+    Task<decimal?> GetAdvanceCommissionAsync(bool isTransfer, System.Threading.CancellationToken cancellationToken = default);
     Task<CashAdvanceResultClientDto?> ProcessCashAdvanceAsync(
         int sessionId,
         decimal requestedAmountLocal,

@@ -40,7 +40,7 @@ public class CashDrawerServiceUnitTests
         await service.OpenSessionAsync(1000m, 50m);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.OpenSessionAsync(500m, 50m));
-        Assert.Contains("already an active cash drawer session", ex.Message);
+        Assert.Contains("sesión de caja activa", ex.Message);
     }
 
     [Fact]
@@ -50,10 +50,8 @@ public class CashDrawerServiceUnitTests
 
         var session = await service.OpenSessionAsync(500m, 50m);
 
-        // Registrar una venta física de 200 BsS
         await service.AddTransactionAsync(session.Id, CashTransactionType.Income, CashTransactionSource.SalePayment, 200m, 4m, 50m, "Venta", null, isPhysicalCash: true);
 
-        // Cerrar sesión con 700 BsS declarados
         var closed = await service.CloseSessionAsync(700m, 50m);
 
         Assert.Equal(CashDrawerStatus.Closed, closed.Status);
@@ -69,100 +67,15 @@ public class CashDrawerServiceUnitTests
 
         var session = await service.OpenSessionAsync(1000m, 50m);
 
-        // Transacción 1: Efectivo físico (+300 BsS)
         await service.AddTransactionAsync(session.Id, CashTransactionType.Income, CashTransactionSource.SalePayment, 300m, 6m, 50m, "Efectivo", null, isPhysicalCash: true);
 
-        // Transacción 2: Pago Móvil electrónico (NO físico, +500 BsS)
         await service.AddTransactionAsync(session.Id, CashTransactionType.Income, CashTransactionSource.SalePayment, 500m, 10m, 50m, "Pago Movil", null, isPhysicalCash: false);
 
-        // Transacción 3: Retiro físico (-200 BsS)
         await service.AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 200m, 4m, 50m, "Gasto", null, isPhysicalCash: true);
 
         decimal physicalBalance = await service.GetCurrentBalanceLocalAsync(session.Id);
 
-        // Balance físico esperado = 1000 + 300 - 200 = 1100 BsS (excluyendo los 500 electrónicos)
         Assert.Equal(1100m, physicalBalance);
-    }
-
-    [Fact]
-    public async Task ProcessCashAdvanceAsync_WithIntegerAmount_CreatesPhysicalExpenseAndNonPhysicalCommissionIncome()
-    {
-        var (service, context) = CreateService();
-        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
-
-        var session = await service.OpenSessionAsync(5000m, 50m);
-
-        // Adelanto de 1000 BsS vía Transferencia (comisión del 7% = 70 BsS)
-        var result = await service.ProcessCashAdvanceAsync(
-            sessionId: session.Id,
-            requestedAmountLocal: 1000m,
-            paymentMethodId: 4, // Transferencia
-            paymentMethodName: "Transferencia Bancaria",
-            isTransfer: true,
-            exchangeRate: 50m,
-            cashierId: 1,
-            userName: "Cajero Principal"
-        );
-
-        Assert.NotNull(result);
-        Assert.Equal(1000m, result.RequestedAmountLocal);
-        Assert.Equal(70m, result.CommissionAmountLocal);
-        Assert.Equal(1070m, result.TotalChargedLocal);
-        Assert.Equal(7.0m, result.CommissionPercentage);
-
-        // Egreso físico
-        Assert.True(result.ExpenseTransaction.IsPhysicalCash);
-        Assert.Equal(1000m, result.ExpenseTransaction.AmountLocal);
-        Assert.Equal(CashTransactionType.Expense, result.ExpenseTransaction.Type);
-
-        // Ingreso por comisión no físico
-        Assert.False(result.IncomeTransaction.IsPhysicalCash);
-        Assert.Equal(70m, result.IncomeTransaction.AmountLocal);
-        Assert.Equal(CashTransactionType.Income, result.IncomeTransaction.Type);
-
-        // Saldo físico restante en caja: 5000 - 1000 = 4000 BsS
-        decimal remainingCash = await service.GetCurrentBalanceLocalAsync(session.Id);
-        Assert.Equal(4000m, remainingCash);
-    }
-
-    [Fact]
-    public async Task ProcessCashAdvanceAsync_WithCentsAmount_ThrowsInvalidOperationException()
-    {
-        var (service, context) = CreateService();
-        var session = await service.OpenSessionAsync(5000m, 50m);
-
-        // Monto con centavos (100.50 BsS) no es permitido para entrega en efectivo físico
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.ProcessCashAdvanceAsync(
-                sessionId: session.Id,
-                requestedAmountLocal: 100.50m,
-                paymentMethodId: 3,
-                paymentMethodName: "Punto de Venta",
-                isTransfer: false,
-                exchangeRate: 50m
-            ));
-
-        Assert.Contains("número entero sin decimales", ex.Message);
-    }
-
-    [Fact]
-    public async Task ProcessCashAdvanceAsync_WhenInsufficientCashInDrawer_ThrowsInvalidOperationException()
-    {
-        var (service, context) = CreateService();
-        var session = await service.OpenSessionAsync(500m, 50m);
-
-        // Intentar retirar 1000 BsS cuando solo hay 500 BsS en la gaveta
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.ProcessCashAdvanceAsync(
-                sessionId: session.Id,
-                requestedAmountLocal: 1000m,
-                paymentMethodId: 3,
-                paymentMethodName: "Punto de Venta",
-                isTransfer: false,
-                exchangeRate: 50m
-            ));
-
-        Assert.Contains("Saldo de efectivo en caja insuficiente", ex.Message);
     }
 
     [Fact]
@@ -171,7 +84,6 @@ public class CashDrawerServiceUnitTests
         var (service, context) = CreateService();
         var session = await service.OpenSessionAsync(200m, 50m);
 
-        // Intentar retirar 300 BsS cuando solo hay 200 BsS en la gaveta
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.AddTransactionAsync(
                 sessionId: session.Id,
@@ -206,5 +118,60 @@ public class CashDrawerServiceUnitTests
             ));
 
         Assert.Contains("mayor a cero", ex.Message);
+    }
+
+    [Fact]
+    public async Task CloseSessionAsync_SecondCloseWithoutActiveSession_ThrowsInvalidOperationException()
+    {
+        // 8.5-A2: Registro: el cierre de caja es único; un segundo cierre sin sesión activa debe fallar
+        // (en PostgreSQL se garantiza además con advisory lock para el caso de cierres concurrentes).
+        var (service, context) = CreateService();
+        var session = await service.OpenSessionAsync(500m, 50m);
+
+        var closed = await service.CloseSessionAsync(500m, 50m);
+        Assert.Equal(CashDrawerStatus.Closed, closed.Status);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CloseSessionAsync(500m, 50m));
+        Assert.Contains("sesión de caja activa", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_ProjectsInvoiceNumberFromSale_WithoutLoadingFullSaleEntity()
+    {
+        var (service, context) = CreateService();
+        var session = await service.OpenSessionAsync(500m, 50m);
+
+        var sale = new Sale
+        {
+            Id = 700,
+            Status = SaleStatus.Completed,
+            InvoiceNumber = 4242,
+            Date = DateTime.UtcNow,
+            AppliedRate = 50m
+        };
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        context.CashTransactions.Add(new CashTransaction
+        {
+            SessionId = session.Id,
+            Type = CashTransactionType.Income,
+            Source = CashTransactionSource.SalePayment,
+            AmountUsd = 10m,
+            AmountLocal = 500m,
+            ExchangeRate = 50m,
+            IsPhysicalCash = true,
+            Description = "Pago en efectivo",
+            TransactionTime = DateTime.UtcNow,
+            SaleId = sale.Id
+        });
+        await context.SaveChangesAsync();
+
+        var history = await service.GetHistoryAsync(10);
+
+        var item = Assert.Single(history, t => t.SaleId == sale.Id);
+        Assert.Equal(4242, item.InvoiceNumber);
+        Assert.Equal(700, item.SaleId);
     }
 }

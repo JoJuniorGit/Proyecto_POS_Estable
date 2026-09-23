@@ -92,7 +92,7 @@ public partial class ProductItemViewModel : ObservableObject
     public decimal EffectivePriceWholesaleUSD => HasRealWholesale ? PriceWholesaleUSD : PriceUSD;
 
     public decimal EffectivePriceWholesaleBsS => HasRealWholesale 
-        ? (PriceWholesaleUSD > 0 ? Math.Round(PriceWholesaleUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : PriceBsS) 
+        ? (PriceWholesaleUSD > 0 ? Helpers.PricingHelper.ToBsSCeiling(PriceWholesaleUSD, _exchangeRateService.CurrentRate) : PriceBsS) 
         : PriceBsS;
 
     public decimal EffectiveMinWholesaleQuantity => HasRealWholesale ? (MinWholesaleQuantity > 0 ? MinWholesaleQuantity : 1m) : 1m;
@@ -132,7 +132,7 @@ public partial class ProductItemViewModel : ObservableObject
             if (SelectedCurrency == "USD") return $"${PriceUSD:N2}";
             decimal bss = PriceBsS > 0 
                 ? PriceBsS 
-                : (_exchangeRateService.CurrentRate > 0 ? Math.Round(PriceUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0m);
+                : (_exchangeRateService.CurrentRate > 0 ? Helpers.PricingHelper.ToBsSCeiling(PriceUSD, _exchangeRateService.CurrentRate) : 0m);
             return $"Bs.S {bss:N2}";
         }
     }
@@ -145,7 +145,7 @@ public partial class ProductItemViewModel : ObservableObject
             if (SelectedCurrency == "USD") return $"${EffectivePriceWholesaleUSD:N2}";
             decimal bss = EffectivePriceWholesaleBsS > 0 
                 ? EffectivePriceWholesaleBsS 
-                : (_exchangeRateService.CurrentRate > 0 ? Math.Round(EffectivePriceWholesaleUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0m);
+                : (_exchangeRateService.CurrentRate > 0 ? Helpers.PricingHelper.ToBsSCeiling(EffectivePriceWholesaleUSD, _exchangeRateService.CurrentRate) : 0m);
             return $"Bs.S {bss:N2}";
         }
     }
@@ -182,11 +182,11 @@ public partial class ProductItemViewModel : ObservableObject
         _stockQuantity = dto.StockQuantity;
         _profitPercentage = dto.ProfitPercentage;
         _priceUSD = dto.PriceUSD;
-        _priceBsS = dto.PriceBsS > 0 ? dto.PriceBsS : (_exchangeRateService.CurrentRate > 0 ? Math.Round(dto.PriceUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0m);
+        _priceBsS = dto.PriceBsS > 0 ? dto.PriceBsS : (_exchangeRateService.CurrentRate > 0 ? Helpers.PricingHelper.ToBsSCeiling(dto.PriceUSD, _exchangeRateService.CurrentRate) : 0m);
         
         _priceWholesaleUSD = dto.PriceWholesaleUSD;
         _priceWholesaleBsS = dto.PriceWholesaleUSD > 0 
-            ? (_exchangeRateService.CurrentRate > 0 ? Math.Round(dto.PriceWholesaleUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0m) 
+            ? (_exchangeRateService.CurrentRate > 0 ? Helpers.PricingHelper.ToBsSCeiling(dto.PriceWholesaleUSD, _exchangeRateService.CurrentRate) : 0m) 
             : 0m;
         _minWholesaleQuantity = dto.MinWholesaleQuantity;
         _hasWholesale = dto.HasWholesale || dto.PriceWholesaleUSD > 0;
@@ -212,8 +212,8 @@ public partial class ProductItemViewModel : ObservableObject
     public void UpdateExchangeRate()
     {
         if (_isCalculating) return;
-        PriceBsS = Math.Round(PriceUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero);
-        PriceWholesaleBsS = Math.Round(PriceWholesaleUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero);
+        PriceBsS = Helpers.PricingHelper.ToBsSCeiling(PriceUSD, _exchangeRateService.CurrentRate);
+        PriceWholesaleBsS = Helpers.PricingHelper.ToBsSCeiling(PriceWholesaleUSD, _exchangeRateService.CurrentRate);
         OnPropertyChanged(nameof(DisplayRetailPrice));
         OnPropertyChanged(nameof(DisplayWholesalePrice));
     }
@@ -253,11 +253,11 @@ public partial class ProductItemViewModel : ObservableObject
             PriceUSD = dto.PriceUSD;
             PriceBsS = dto.PriceBsS > 0 
                 ? dto.PriceBsS 
-                : (_exchangeRateService.CurrentRate > 0 ? Math.Round(dto.PriceUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0m);
+                : (_exchangeRateService.CurrentRate > 0 ? Helpers.PricingHelper.ToBsSCeiling(dto.PriceUSD, _exchangeRateService.CurrentRate) : 0m);
 
             PriceWholesaleUSD = dto.PriceWholesaleUSD;
             PriceWholesaleBsS = dto.PriceWholesaleUSD > 0 
-                ? (_exchangeRateService.CurrentRate > 0 ? Math.Round(dto.PriceWholesaleUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero) : 0m) 
+                ? (_exchangeRateService.CurrentRate > 0 ? Helpers.PricingHelper.ToBsSCeiling(dto.PriceWholesaleUSD, _exchangeRateService.CurrentRate) : 0m) 
                 : 0m;
             MinWholesaleQuantity = dto.MinWholesaleQuantity;
             HasWholesale = dto.HasWholesale || dto.PriceWholesaleUSD > 0;
@@ -315,7 +315,7 @@ public partial class ProductItemViewModel : ObservableObject
         try
         {
             PriceUSD = Math.Round(Cost * (1 + (value / 100m)), 2, MidpointRounding.AwayFromZero);
-            PriceBsS = Math.Round(PriceUSD * _exchangeRateService.CurrentRate, 2, MidpointRounding.AwayFromZero);
+            PriceBsS = Helpers.PricingHelper.ToBsSCeiling(PriceUSD, _exchangeRateService.CurrentRate);
             
             _dto.ProfitPercentage = value;
             _dto.PriceUSD = PriceUSD;

@@ -16,18 +16,18 @@ namespace Backend.API.Jobs;
 /// </summary>
 public class StockMovementArchiverJob : BackgroundService
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<StockMovementArchiverJob> _logger;
 
     private readonly TimeSpan _period;
     private readonly TimeSpan _retentionPeriod;
 
     public StockMovementArchiverJob(
-        IServiceProvider serviceProvider,
+        IServiceScopeFactory scopeFactory,
         ILogger<StockMovementArchiverJob> logger,
         Microsoft.Extensions.Configuration.IConfiguration? configuration = null)
     {
-        _serviceProvider = serviceProvider;
+        _scopeFactory = scopeFactory;
         _logger = logger;
 
         int intervalHours = configuration != null && int.TryParse(configuration["Archiver:IntervalHours"], out var hours) && hours > 0
@@ -66,7 +66,7 @@ public class StockMovementArchiverJob : BackgroundService
 
     private async Task ArchiveOldRecordsAsync(CancellationToken stoppingToken)
     {
-        using var scope = _serviceProvider.CreateScope();
+        using var scope = _scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
 
         var cutoffDate = DateTime.UtcNow.Subtract(_retentionPeriod);
@@ -90,6 +90,7 @@ public class StockMovementArchiverJob : BackgroundService
                     m.QuantityChange,
                     m.NewStockLevel,
                     m.Reason,
+                    m.SaleId,
                     m.MovementDate,
                     m.UserId
                 })
@@ -107,29 +108,46 @@ public class StockMovementArchiverJob : BackgroundService
                 QuantityChange = m.QuantityChange,
                 NewStockLevel = m.NewStockLevel,
                 Reason = m.Reason,
+                SaleId = m.SaleId,
                 MovementDate = m.MovementDate,
                 UserId = m.UserId,
                 ArchivedAtUtc = DateTime.UtcNow
             }).ToList();
 
-            context.StockMovements_Archive.AddRange(archiveEntries);
-            await context.SaveChangesAsync(stoppingToken);
+            // 8.7-L4: INSERT de archivo y DELETE de original en la MISMA transacción atómica.
+            // Un fallo a mitad de lote revierte ambos, evitando pérdida de datos.
+            // 8.16-H02: la transacción manual debe vivir DENTRO de CreateExecutionStrategy().ExecuteAsync()
+            // para no lanzar InvalidOperationException bajo NpgsqlRetryingExecutionStrategy en producción.
+            await context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                await using var transaction = context.Database.IsRelational()
+                    ? await context.Database.BeginTransactionAsync(stoppingToken)
+                    : null;
 
-            var batchIds = batch.Select(m => m.Id).ToList();
-            if (context.Database.IsRelational())
-            {
-                await context.StockMovements
-                    .Where(m => batchIds.Contains(m.Id))
-                    .ExecuteDeleteAsync(stoppingToken);
-            }
-            else
-            {
-                var entitiesToDelete = await context.StockMovements
-                    .Where(m => batchIds.Contains(m.Id))
-                    .ToListAsync(stoppingToken);
-                context.StockMovements.RemoveRange(entitiesToDelete);
+                context.StockMovements_Archive.AddRange(archiveEntries);
                 await context.SaveChangesAsync(stoppingToken);
-            }
+
+                var batchIds = batch.Select(m => m.Id).ToList();
+                if (context.Database.IsRelational())
+                {
+                    await context.StockMovements
+                        .Where(m => batchIds.Contains(m.Id))
+                        .ExecuteDeleteAsync(stoppingToken);
+                }
+                else
+                {
+                    var entitiesToDelete = await context.StockMovements
+                        .Where(m => batchIds.Contains(m.Id))
+                        .ToListAsync(stoppingToken);
+                    context.StockMovements.RemoveRange(entitiesToDelete);
+                    await context.SaveChangesAsync(stoppingToken);
+                }
+
+                if (transaction != null)
+                {
+                    await transaction.CommitAsync(stoppingToken);
+                }
+            });
 
             totalArchived += batch.Count;
             await Task.Delay(100, stoppingToken);

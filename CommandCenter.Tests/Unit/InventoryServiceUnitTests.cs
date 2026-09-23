@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Builders;
+using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
 using Inventory.Module.Data;
@@ -30,7 +31,7 @@ public class InventoryServiceUnitTests
     {
         var (service, context, _) = CreateService();
 
-        var product = new Product
+        var product = new CreateProductDto
         {
             SKU = "10001",
             Name = "Producto Ceil",
@@ -38,7 +39,7 @@ public class InventoryServiceUnitTests
             ProfitMarginRetail = 20.001m // 1.00 * 1.20001 = 1.20001 -> ceil a 1.21
         };
 
-        var created = await service.CreateProductAsync(product);
+        var created = await service.CreateProductFromDtoAsync(product);
 
         Assert.NotNull(created);
         Assert.True(created.Id > 0);
@@ -50,7 +51,7 @@ public class InventoryServiceUnitTests
     {
         var (service, context, _) = CreateService();
 
-        var product = new Product
+        var product = new CreateProductDto
         {
             SKU = "10002",
             Name = "Producto Precio Manual",
@@ -59,7 +60,7 @@ public class InventoryServiceUnitTests
             ProfitMarginRetail = 0m
         };
 
-        var created = await service.CreateProductAsync(product);
+        var created = await service.CreateProductFromDtoAsync(product);
 
         Assert.Equal(15.00m, created.PriceRetailUSD);
         // Debe auto-calcular el margen: ((15 / 10) - 1) * 100 = 50%
@@ -71,7 +72,7 @@ public class InventoryServiceUnitTests
     {
         var (service, context, _) = CreateService();
 
-        var product = new Product
+        var product = new CreateProductDto
         {
             SKU = "10003",
             Name = "Producto Mayor",
@@ -82,12 +83,164 @@ public class InventoryServiceUnitTests
             MinWholesaleQuantity = 12m
         };
 
-        var created = await service.CreateProductAsync(product);
+        var created = await service.CreateProductFromDtoAsync(product);
 
         Assert.True(created.HasWholesale);
         Assert.Equal(12m, created.MinWholesaleQuantity);
         Assert.Equal(13.00m, created.PriceRetailUSD);
         Assert.Equal(11.50m, created.PriceWholesaleUSD);
+    }
+
+    [Fact]
+    public async Task CreateProductAsync_WhenParentProductMissing_ThrowsKeyNotFoundException()
+    {
+        var (service, context, _) = CreateService();
+
+        var variant = new CreateProductDto
+        {
+            SKU = "10004",
+            Name = "Variante Sin Padre",
+            ParentProductId = 999
+        };
+
+        var ex = await Assert.ThrowsAsync<KeyNotFoundException>(() => service.CreateProductFromDtoAsync(variant));
+        Assert.Contains("Producto padre con ID 999 no encontrado", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateProductAsync_WithInitialStock_WritesSingleInitialLoadMovementForActingUser()
+    {
+        var (service, context, userMock) = CreateService();
+        userMock.Setup(u => u.UserId).Returns("user-42");
+
+        var request = new CreateProductDto
+        {
+            SKU = "CARGA-01",
+            Name = "Producto con Carga Inicial",
+            PriceRetailUSD = 1.00m,
+            StockQuantity = 24.5m
+        };
+
+        var created = await service.CreateProductFromDtoAsync(request);
+
+        var persisted = await context.Products.FindAsync(created.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(24.5m, persisted.StockQuantity);
+
+        var movements = await context.StockMovements.ToListAsync();
+        var movement = Assert.Single(movements);
+        Assert.Equal(created.Id, movement.ProductId);
+        Assert.Equal(24.5m, movement.QuantityChange);
+        Assert.Equal(24.5m, movement.NewStockLevel);
+        Assert.Equal("Carga inicial", movement.Reason);
+        Assert.Null(movement.SaleId);
+        Assert.Equal("user-42", movement.UserId);
+    }
+
+    [Fact]
+    public async Task CreateProductAsync_WithZeroStock_DoesNotWriteStockMovement()
+    {
+        var (service, context, _) = CreateService();
+
+        var request = new CreateProductDto
+        {
+            SKU = "CARGA-02",
+            Name = "Producto sin Stock Inicial",
+            PriceRetailUSD = 2.00m,
+            StockQuantity = 0m
+        };
+
+        var created = await service.CreateProductFromDtoAsync(request);
+
+        var persisted = await context.Products.FindAsync(created.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(0m, persisted.StockQuantity);
+        Assert.Empty(await context.StockMovements.ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateProductAsync_GroupHeaderWithoutSharedStock_ForcesZeroAndDoesNotWriteStockMovement()
+    {
+        var (service, context, _) = CreateService();
+
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Grupo sin Stock Compartido",
+            IsGroupHeader = true,
+            IsStockShared = false,
+            StockQuantity = 500m
+        });
+
+        var persisted = await context.Products.FindAsync(created.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(0m, persisted.StockQuantity);
+        Assert.Empty(await context.StockMovements.ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateSystemProductAsync_WithPositiveStock_WritesInitialLoadMovementForActingUser()
+    {
+        var (service, context, userMock) = CreateService(canMutateCatalog: false);
+        userMock.Setup(u => u.UserId).Returns("system-user");
+
+        var id = await service.CreateSystemProductAsync(new CreateSystemProductRequest
+        {
+            Name = "Producto de Sistema con Stock",
+            SKU = "SYS-CARGA-01",
+            PriceRetailUSD = 3.00m,
+            StockQuantity = 7m,
+            IsCashAdvance = false,
+            IsActive = true
+        });
+
+        var movements = await context.StockMovements.ToListAsync();
+        var movement = Assert.Single(movements);
+        Assert.Equal(id, movement.ProductId);
+        Assert.Equal(7m, movement.QuantityChange);
+        Assert.Equal(7m, movement.NewStockLevel);
+        Assert.Equal("Carga inicial", movement.Reason);
+        Assert.Equal("system-user", movement.UserId);
+    }
+
+    [Fact]
+    public async Task CreateSystemProductAsync_WithDescription_PersistsDescription()
+    {
+        var (service, context, _) = CreateService(canMutateCatalog: false);
+
+        var id = await service.CreateSystemProductAsync(new CreateSystemProductRequest
+        {
+            Name = "Producto de Sistema Descripto",
+            SKU = "SYS-DESC-01",
+            Description = "Producto de sistema para operaciones internas",
+            PriceRetailUSD = 2.00m,
+            StockQuantity = 0m,
+            IsCashAdvance = false,
+            IsActive = true
+        });
+
+        var persisted = await context.Products.FindAsync(id);
+        Assert.NotNull(persisted);
+        Assert.Equal("Producto de sistema para operaciones internas", persisted!.Description);
+    }
+
+    [Fact]
+    public async Task CreateSystemProductAsync_WithoutDescription_PersistsEmptyDescription()
+    {
+        var (service, context, _) = CreateService(canMutateCatalog: false);
+
+        var id = await service.CreateSystemProductAsync(new CreateSystemProductRequest
+        {
+            Name = "Producto de Sistema sin Descripcion",
+            SKU = "SYS-DESC-02",
+            PriceRetailUSD = 2.00m,
+            StockQuantity = 0m,
+            IsCashAdvance = false,
+            IsActive = true
+        });
+
+        var persisted = await context.Products.FindAsync(id);
+        Assert.NotNull(persisted);
+        Assert.Equal(string.Empty, persisted!.Description);
     }
 
     [Fact]
@@ -183,9 +336,9 @@ public class InventoryServiceUnitTests
     {
         var (service, _, _) = CreateService(canMutateCatalog: false);
 
-        var product = new Product { SKU = "UNAUTH", Name = "No Permiso" };
+        var product = new CreateProductDto { SKU = "UNAUTH", Name = "No Permiso" };
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.CreateProductAsync(product));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.CreateProductFromDtoAsync(product));
     }
 
     [Fact]
@@ -194,7 +347,7 @@ public class InventoryServiceUnitTests
         var (service, context, _) = CreateService(canMutateCatalog: true);
 
         // 1. Valid Cash Advance creation forces Und, non-fractional, and 0 stock
-        var advanceProduct = new Product
+        var advanceProduct = new CreateProductDto
         {
             SKU = "1001",
             Name = "Retiro Efectivo",
@@ -205,7 +358,7 @@ public class InventoryServiceUnitTests
             LowStockThreshold = 10m
         };
 
-        var created = await service.CreateProductAsync(advanceProduct);
+        var created = await service.CreateProductFromDtoAsync(advanceProduct);
 
         Assert.True(created.IsCashAdvance);
         Assert.False(created.IsFractional);
@@ -215,14 +368,14 @@ public class InventoryServiceUnitTests
         Assert.Equal(0m, created.ReservedQuantity);
 
         // 2. Reject if IsGroupHeader is true
-        var groupAdvance = new Product
+        var groupAdvance = new CreateProductDto
         {
             SKU = "1002",
             Name = "Grupo Invalido",
             IsCashAdvance = true,
             IsGroupHeader = true
         };
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateProductAsync(groupAdvance));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.CreateProductFromDtoAsync(groupAdvance));
 
         // 3. Reject if ParentProductId is set
         var parentProduct = new Product
@@ -234,14 +387,14 @@ public class InventoryServiceUnitTests
         context.Products.Add(parentProduct);
         await context.SaveChangesAsync();
 
-        var variantAdvance = new Product
+        var variantAdvance = new CreateProductDto
         {
             SKU = "1004",
             Name = "Variante Invalida",
             IsCashAdvance = true,
             ParentProductId = parentProduct.Id
         };
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateProductAsync(variantAdvance));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.CreateProductFromDtoAsync(variantAdvance));
     }
 
     [Fact]
@@ -272,5 +425,48 @@ public class InventoryServiceUnitTests
         Assert.NotNull(reloaded);
         Assert.Equal(0m, reloaded.StockQuantity);
         Assert.Equal(0m, reloaded.ReservedQuantity);
+    }
+
+    [Fact]
+    public async Task GetProductQuickInfoAsync_WithDeletedProduct_ReturnsNull()
+    {
+        var (service, context, _) = CreateService();
+
+        var product = new Product
+        {
+            SKU = "10020",
+            Name = "Producto Eliminado QuickCheck",
+            PriceUSD = 5.00m,
+            IsActive = true,
+            IsDeleted = true
+        };
+        context.Products.Add(product);
+        await context.SaveChangesAsync();
+
+        var result = await service.GetProductQuickInfoAsync("10020", useCache: false);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetProductQuickInfoAsync_WithActiveProduct_ReturnsDto()
+    {
+        var (service, context, _) = CreateService();
+
+        var product = new Product
+        {
+            SKU = "10021",
+            Name = "Producto Activo QuickCheck",
+            PriceUSD = 5.00m,
+            IsActive = true
+        };
+        context.Products.Add(product);
+        await context.SaveChangesAsync();
+
+        var result = await service.GetProductQuickInfoAsync("10021", useCache: false);
+
+        Assert.NotNull(result);
+        Assert.Equal("10021", result.SKU);
+        Assert.Equal("Producto Activo QuickCheck", result.Name);
     }
 }

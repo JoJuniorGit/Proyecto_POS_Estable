@@ -1,0 +1,245 @@
+/* HistoryPage */
+.hist-table-card {
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+}
+
+.hist-state-pad {
+  padding: 60px;
+  text-align: center;
+}
+
+.hist-m-card {
+  padding: 14px;
+  gap: 10px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.hist-sale-id-row {
+  gap: 6px;
+  font-size: 0.95rem;
+}
+
+.hist-mid-row {
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+.hist-gap-6 { gap: 6px; }
+
+.hist-truncate-200 { max-width: 200px; }
+
+.hist-fin-row {
+  font-size: 0.8rem;
+  padding-top: 2px;
+}
+
+.hist-total-label {
+  display: block;
+  font-size: 0.7rem;
+  margin-bottom: 2px;
+}
+
+.hist-total-amnt { font-size: 0.95rem; }
+
+.hist-fs-08 { font-size: 0.8rem; }
+
+.hist-fs-07 { font-size: 0.7rem; }
+
+.hist-gap-12 { gap: 12px; }
+
+.hist-invoice-box {
+  padding: 10px;
+  border-radius: 8px;
+  background-color: var(--bg-tertiary, rgba(128, 128, 128, 0.08));
+}
+
+.hist-h4-sm { margin-bottom: 6px; }
+
+.hist-radius-8 { border-radius: 8px; }
+
+.hist-cell-pad th,
+.hist-cell-pad td { padding: 6px; }
+
+.hist-pay-item {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background-color: var(--bg-surface);
+  font-size: 0.7rem;
+}
+
+.hist-pr-16 { padding-right: 16px; }
+
+.hist-truncate-180 { max-width: 180px; }
+
+.hist-detail-date-row {
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 0.875rem;
+}
+
+.hist-detail-grid {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.hist-h4-lg { font-size: 0.95rem; }
+
+.hist-scroll-x {
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.hist-summary-box {
+  border-radius: 8px;
+  margin-bottom: 12px;
+  background-color: var(--bg-surface);
+}
+
+.history-filter-row-secondary {
+  display: none;
+  gap: 16px;
+  align-items: flex-end;
+  width: 100%;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.history-filter-row-secondary.open {
+  display: flex;
+}
+
+.history-funnel-btn {
+  position: relative;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  background-color: transparent;
+}
+
+.history-funnel-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+}
+
+.history-funnel-btn.active {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background-color: var(--bg-hover);
+}
+
+.history-funnel-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--danger);
+  border: 1px solid var(--bg-surface);
+}
+
+.history-flyout-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 4px;
+}
+
+.history-cashier-field {
+  flex: 1 1 320px;
+  min-width: 240px;
+  max-width: 380px;
+}
+
+.history-cashier-combo {
+  position: relative;
+}
+
+.history-cashier-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  list-style: none;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+
+.history-cashier-option {
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.history-cashier-option:hover,
+.history-cashier-option.selected {
+  background-color: var(--bg-hover);
+}
+
+.history-cashier-empty {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.history-toggle-col {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 10px;
+}
+
+.history-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.history-toggle-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-primary, #673AB7);
+  cursor: pointer;
+}
+
+.history-hidden-count {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+@media (max-width: 860px) {
+  .history-filter-row-secondary.open {
+    flex-wrap: wrap;
+  }
+
+  .history-cashier-field {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .history-flyout-actions {
+    flex: 1 1 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+
+  .history-hidden-count {
+    margin-left: 0;
+  }
+}

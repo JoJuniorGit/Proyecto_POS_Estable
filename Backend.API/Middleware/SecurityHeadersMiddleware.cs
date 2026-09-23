@@ -40,13 +40,24 @@ public class SecurityHeadersMiddleware
             headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
         }
 
+        // 8.9-M5 (ajustado 8.110): la camara queda permitida para el propio origen (escaner web de codigos).
+        if (!headers.ContainsKey("Permissions-Policy"))
+        {
+            headers["Permissions-Policy"] = "camera=(self), geolocation=(), microphone=(), payment=(), usb=(), fullscreen=()";
+        }
+
         if (!headers.ContainsKey("Content-Security-Policy"))
         {
             bool isDev = _env?.IsDevelopment() ?? false;
             string connectSrc = isDev ? "connect-src 'self' http://localhost:* ws: wss:;" : "connect-src 'self' ws: wss:;";
             string scriptSrc = isDev ? "script-src 'self' 'unsafe-inline';" : "script-src 'self';";
 
-            headers["Content-Security-Policy"] = $"default-src 'self'; {scriptSrc} style-src 'self' 'unsafe-inline'; img-src 'self' data:; {connectSrc}";
+            // 8W-B2: directivas ampliadas — base-uri (evita clic-jacking de base), form-action
+            // (fija destinos de formularios), frame-ancestors 'none' (equivalente a X-Frame-Options
+            // DENY), object-src 'none' y font-src 'self'.
+            headers["Content-Security-Policy"] =
+                $"default-src 'self'; {scriptSrc} style-src 'self' 'unsafe-inline'; img-src 'self' data:; {connectSrc} " +
+                "base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; font-src 'self';";
         }
 
         await _next(context);

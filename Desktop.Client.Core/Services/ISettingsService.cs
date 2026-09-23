@@ -8,4 +8,7 @@ public interface ISettingsService
     Task SetTimeZoneAsync(string timeZoneId);
     Task<string> GetCurrencyFormatAsync();
     Task SetCurrencyFormatAsync(string format);
+    Task<bool> GetAllowNegativeStockAsync();
+    Task SetAllowNegativeStockAsync(bool allowed);
+    Task RestartSystemAsync();
 }

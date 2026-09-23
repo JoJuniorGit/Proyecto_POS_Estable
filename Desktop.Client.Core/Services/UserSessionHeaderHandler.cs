@@ -9,11 +9,13 @@ public class UserSessionHeaderHandler : DelegatingHandler
 {
     private readonly UserSession _userSession;
     private readonly IConnectionManager? _connectionManager;
+    private readonly IDispatcherInvoker _dispatcherInvoker;
 
-    public UserSessionHeaderHandler(UserSession userSession, IConnectionManager? connectionManager = null)
+    public UserSessionHeaderHandler(UserSession userSession, IConnectionManager? connectionManager = null, IDispatcherInvoker? dispatcherInvoker = null)
     {
         _userSession = userSession;
         _connectionManager = connectionManager;
+        _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -46,6 +48,12 @@ public class UserSessionHeaderHandler : DelegatingHandler
 
         if (!string.IsNullOrWhiteSpace(_userSession.Token))
         {
+            bool isLoopback = request.RequestUri != null && request.RequestUri.IsLoopback;
+            if (request.RequestUri?.Scheme == "http" && !isLoopback)
+            {
+                ClientStateLogger.LogWarning("[SECURITY] Intentando enviar Bearer sobre HTTP no loopback. Bloqueado.", "UserSessionHeaderHandler");
+                return new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized);
+            }
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _userSession.Token);
         }
 
@@ -56,10 +64,9 @@ public class UserSessionHeaderHandler : DelegatingHandler
             request.RequestUri?.AbsolutePath.Contains("api/auth/login") != true)
         {
             ClientStateLogger.LogWarning("[AUTH] Sesión expirada o token inválido (HTTP 401). Forzando cierre de sesión.", "UserSessionHeaderHandler");
-            var app = System.Windows.Application.Current;
-            if (app != null && !app.Dispatcher.CheckAccess())
+            if (!_dispatcherInvoker.CheckAccess())
             {
-                app.Dispatcher.Invoke(() => _userSession.Logout());
+                _dispatcherInvoker.Invoke(_userSession.Logout);
             }
             else
             {

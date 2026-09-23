@@ -5,8 +5,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Core.DTOs;
-using Core.Entities;
 using Desktop.Client.Services;
 
 namespace Desktop.Client.ViewModels;
@@ -72,7 +72,7 @@ public partial class VariantManagementViewModel : ObservableObject, IDisposable
         _dialogService = dialogService;
         _parentProduct = parentProduct;
 
-        _ = LoadVariantsAsync();
+        LoadVariantsAsync().SafeFireAndForget("VariantManagementViewModel.LoadVariants");
     }
 
     [RelayCommand]
@@ -121,30 +121,28 @@ public partial class VariantManagementViewModel : ObservableObject, IDisposable
                 var prod = await _productService.GetByIdAsync(item.Id);
                 if (prod == null) continue;
 
-                prod.Name = item.Name.Trim();
-                prod.IsActive = item.IsActive;
-                prod.RowVersion = item.RowVersion ?? prod.RowVersion;
+                var dto = ProductClientMapping.ToUpdateProductDto(prod);
+                dto.Name = item.Name.Trim();
+                dto.IsActive = item.IsActive;
 
                 if (HasIndependentPricing)
                 {
-                    prod.CostPriceUSD = item.CostPriceUSD;
-                    prod.Cost = item.CostPriceUSD;
-                    prod.ProfitMarginRetail = item.ProfitMarginRetail;
-                    prod.ProfitPercentage = item.ProfitMarginRetail;
-                    prod.PriceRetailUSD = item.PriceRetailUSD;
-                    prod.PriceUSD = item.PriceRetailUSD;
-                    prod.HasWholesale = item.HasWholesale;
-                    prod.ProfitMarginWholesale = item.ProfitMarginWholesale;
-                    prod.PriceWholesaleUSD = item.PriceWholesaleUSD;
-                    prod.MinWholesaleQuantity = item.MinWholesaleQuantity;
+                    dto.CostPriceUSD = item.CostPriceUSD;
+                    dto.ProfitMarginRetail = item.ProfitMarginRetail;
+                    dto.PriceRetailUSD = item.PriceRetailUSD;
+                    dto.PriceUSD = item.PriceRetailUSD;
+                    dto.HasWholesale = item.HasWholesale;
+                    dto.ProfitMarginWholesale = item.ProfitMarginWholesale;
+                    dto.PriceWholesaleUSD = item.PriceWholesaleUSD;
+                    dto.MinWholesaleQuantity = item.MinWholesaleQuantity;
                 }
 
                 if (IsStockShared)
                 {
-                    prod.ConversionFactor = item.ConversionFactor > 0 ? item.ConversionFactor : 1.0000m;
+                    dto.ConversionFactor = item.ConversionFactor > 0 ? item.ConversionFactor : 1.0000m;
                 }
 
-                await _productService.UpdateAsync(prod);
+                await _productService.UpdateAsync(dto);
                 item.IsModified = false;
             }
 
@@ -180,7 +178,7 @@ public partial class VariantManagementViewModel : ObservableObject, IDisposable
         try
         {
             IsSaving = true;
-            var newProd = new Product
+            var newProd = new CreateProductDto
             {
                 Name = name.Trim(),
                 SKU = sku.Trim(),
@@ -188,16 +186,13 @@ public partial class VariantManagementViewModel : ObservableObject, IDisposable
                 IsGroupHeader = false,
                 IsStockShared = false,
                 HasIndependentPricing = false,
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                IsActive = true
             };
 
             if (!HasIndependentPricing)
             {
                 newProd.CostPriceUSD = ParentProduct.CostPriceUSD;
-                newProd.Cost = ParentProduct.CostPriceUSD;
                 newProd.ProfitMarginRetail = ParentProduct.ProfitMarginRetail;
-                newProd.ProfitPercentage = ParentProduct.ProfitMarginRetail;
                 newProd.PriceRetailUSD = ParentProduct.PriceRetailUSD;
                 newProd.PriceUSD = ParentProduct.PriceRetailUSD;
                 newProd.HasWholesale = ParentProduct.HasWholesale;
@@ -210,23 +205,13 @@ public partial class VariantManagementViewModel : ObservableObject, IDisposable
             else
             {
                 newProd.CostPriceUSD = ParentProduct.CostPriceUSD;
-                newProd.Cost = ParentProduct.CostPriceUSD;
                 newProd.ProfitMarginRetail = ParentProduct.ProfitMarginRetail;
-                newProd.ProfitPercentage = ParentProduct.ProfitMarginRetail;
                 newProd.PriceRetailUSD = ParentProduct.PriceRetailUSD;
                 newProd.PriceUSD = ParentProduct.PriceRetailUSD;
             }
 
-            if (IsStockShared)
-            {
-                newProd.StockQuantity = 0m;
-                newProd.LowStockThreshold = 0m;
-            }
-            else
-            {
-                newProd.StockQuantity = 0m;
-                newProd.LowStockThreshold = 5m;
-            }
+            newProd.StockQuantity = 0m;
+            newProd.LowStockThreshold = IsStockShared ? 0m : 5m;
 
             await _productService.CreateAsync(newProd);
             _dialogService.ShowSuccessDialog($"Variante '{newProd.Name}' agregada con éxito.");
@@ -246,158 +231,6 @@ public partial class VariantManagementViewModel : ObservableObject, IDisposable
     public void Close()
     {
         RequestClose?.Invoke(true);
-    }
-
-    partial void OnSearchCatalogTextChanged(string value)
-    {
-        _ = SearchCandidatesDebouncedAsync();
-    }
-
-    private async Task SearchCandidatesDebouncedAsync()
-    {
-        var oldCts = System.Threading.Interlocked.Exchange(ref _searchCts, new System.Threading.CancellationTokenSource());
-        try { oldCts?.Cancel(); oldCts?.Dispose(); } catch (ObjectDisposedException) { }
-
-        var token = _searchCts.Token;
-        try
-        {
-            await Task.Delay(300, token);
-            await SearchCandidatesAsync(token);
-        }
-        catch (OperationCanceledException)
-        {
-            // Debounce cancel is normal
-        }
-    }
-
-    [RelayCommand]
-    public async Task SearchCandidatesAsync(System.Threading.CancellationToken token = default)
-    {
-        try
-        {
-            IsSearchingCatalog = true;
-            var result = await _productService.GetCandidateVariantsPagedAsync(ParentProduct.Id, SearchCatalogText, 1, 30, token);
-            CandidateProducts.Clear();
-            foreach (var item in result.Items)
-            {
-                var vm = new CandidateProductItemViewModel(item)
-                {
-                    SelectionChanged = UpdateSelectedCandidatesState
-                };
-                CandidateProducts.Add(vm);
-            }
-            UpdateSelectedCandidatesState();
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Error al buscar candidatos: {ex.Message}";
-        }
-        finally
-        {
-            IsSearchingCatalog = false;
-        }
-    }
-
-    public void UpdateSelectedCandidatesState()
-    {
-        HasSelectedCandidates = CandidateProducts.Any(c => c.IsSelected);
-    }
-
-    [RelayCommand]
-    public void ToggleSelectAllCandidates()
-    {
-        bool target = !CandidateProducts.All(c => c.IsSelected);
-        foreach (var c in CandidateProducts)
-        {
-            c.IsSelected = target;
-        }
-        UpdateSelectedCandidatesState();
-    }
-
-    [RelayCommand]
-    public async Task ToggleLinkingPanelAsync()
-    {
-        IsLinkingPanelOpen = !IsLinkingPanelOpen;
-        if (IsLinkingPanelOpen)
-        {
-            SearchCatalogText = string.Empty;
-            await SearchCandidatesAsync();
-        }
-    }
-
-    [RelayCommand]
-    public async Task LinkSelectedCandidatesAsync()
-    {
-        var selectedIds = CandidateProducts.Where(c => c.IsSelected).Select(c => c.Id).ToList();
-        if (!selectedIds.Any()) return;
-
-        try
-        {
-            IsSaving = true;
-            StatusMessage = "Vinculando productos seleccionados...";
-            var updatedVariants = await _productService.LinkVariantsBatchAsync(ParentProduct.Id, selectedIds);
-
-            Variants.Clear();
-            foreach (var dto in updatedVariants)
-            {
-                Variants.Add(new VariantItemViewModel(dto, HasIndependentPricing, IsStockShared, _exchangeRateService.CurrentRate));
-            }
-
-            StatusMessage = $"{selectedIds.Count} productos vinculados exitosamente.";
-            _dialogService.ShowSuccessDialog($"Se vincularon {selectedIds.Count} variantes exitosamente.");
-            IsLinkingPanelOpen = false;
-            SearchCatalogText = string.Empty;
-            CandidateProducts.Clear();
-            UpdateSelectedCandidatesState();
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = "Conflicto o error al vincular productos.";
-            _dialogService.ShowError("Error al vincular", $"No se pudieron vincular las variantes:\n{ex.Message}\n\nSe recargará la lista de variantes.");
-            await LoadVariantsAsync();
-            if (IsLinkingPanelOpen)
-            {
-                await SearchCandidatesAsync();
-            }
-        }
-        finally
-        {
-            IsSaving = false;
-        }
-    }
-
-    [RelayCommand]
-    public async Task UnlinkVariantAsync(VariantItemViewModel? item)
-    {
-        if (item == null) return;
-
-        bool confirmed = _dialogService.ShowConfirm("Desvincular Variante", $"¿Está seguro de que desea desvincular '{item.Name}' del producto padre? Pasará a ser un producto individual independiente.");
-        if (!confirmed) return;
-
-        try
-        {
-            IsSaving = true;
-            StatusMessage = $"Desvinculando {item.Name}...";
-            await _productService.UnlinkVariantAsync(ParentProduct.Id, item.Id);
-            Variants.Remove(item);
-            StatusMessage = $"Variante '{item.Name}' desvinculada exitosamente.";
-            _dialogService.ShowSuccessDialog($"La variante '{item.Name}' fue desvinculada correctamente.");
-            if (IsLinkingPanelOpen)
-            {
-                await SearchCandidatesAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = "Conflicto o error al desvincular.";
-            _dialogService.ShowError("Error al desvincular", $"No se pudo desvincular la variante:\n{ex.Message}");
-            await LoadVariantsAsync();
-        }
-        finally
-        {
-            IsSaving = false;
-        }
     }
 
     public void Dispose()
@@ -441,7 +274,6 @@ public partial class VariantItemViewModel : ObservableObject
     public string SKU { get; set; }
     public bool CanEditPrices { get; }
     public bool CanEditStock { get; }
-    public byte[]? RowVersion { get; set; }
 
     [ObservableProperty]
     private string _name;
@@ -501,7 +333,6 @@ public partial class VariantItemViewModel : ObservableObject
         _minWholesaleQuantity = dto.MinWholesaleQuantity > 0 ? dto.MinWholesaleQuantity : 6m;
         _stockQuantity = dto.StockQuantity;
         _conversionFactor = dto.ConversionFactor > 0 ? dto.ConversionFactor : 1.0000m;
-        RowVersion = dto.RowVersion;
 
         CanEditPrices = hasIndependentPricing;
         CanEditStock = !isStockShared;
@@ -509,7 +340,7 @@ public partial class VariantItemViewModel : ObservableObject
         _exchangeRate = exchangeRate;
 
         _priceRetailBsS = (_exchangeRate > 0 && _priceRetailUSD > 0)
-            ? Math.Round(_priceRetailUSD * _exchangeRate, 2, MidpointRounding.AwayFromZero)
+            ? Helpers.PricingHelper.ToBsSCeiling(_priceRetailUSD, _exchangeRate)
             : dto.PriceBsS;
 
         IsModified = false;
@@ -535,7 +366,7 @@ public partial class VariantItemViewModel : ObservableObject
     {
         IsModified = true;
         PriceRetailBsS = (_exchangeRate > 0 && value > 0)
-            ? Math.Round(value * _exchangeRate, 2, MidpointRounding.AwayFromZero)
+            ? Helpers.PricingHelper.ToBsSCeiling(value, _exchangeRate)
             : 0m;
     }
 

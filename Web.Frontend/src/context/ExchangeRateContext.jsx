@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '../services/api';
 import { connectRateHub, disconnectRateHub } from '../services/signalr';
+import { registerShutdownCleanup } from '../utils/shutdownRegistry';
 
 const ExchangeRateContext = createContext();
 
@@ -30,6 +31,10 @@ export function ExchangeRateProvider({ children }) {
 
     initRate();
 
+    const unregisterShutdownCleanup = registerShutdownCleanup(() => {
+      void disconnectRateHub();
+    });
+
     // Conectar SignalR
     connectRateHub(
       (newRate) => {
@@ -51,15 +56,31 @@ export function ExchangeRateProvider({ children }) {
     );
 
     return () => {
+      unregisterShutdownCleanup();
       isMounted = false;
       disconnectRateHub();
     };
   }, []);
 
-  const isRateOutdated = !lastUpdated || (Date.now() - new Date(lastUpdated).getTime() > 24 * 60 * 60 * 1000);
+  const isRateOutdated = useMemo(
+    () => !lastUpdated || (Date.now() - new Date(lastUpdated).getTime() > 24 * 60 * 60 * 1000),
+    [lastUpdated]
+  );
+
+  // 8.6-M1: F5 ahora expone syncBcvRate real. Llama al endpoint que raspa el portal BCV y
+  // re-difunde la tasa vía SignalR a todos los clientes.
+  const syncBcvRate = useCallback(async () => {
+    const data = await api.post('/api/exchange-rate/sync-bcv');
+    if (data?.Value || data?.value) {
+      const newRate = data.Value || data.value;
+      setExchangeRate(newRate);
+      setLastUpdated(data.UpdatedAt || data.updatedAt || new Date().toISOString());
+    }
+    return data?.Value || data?.value || 0;
+  }, []);
 
   return (
-    <ExchangeRateContext.Provider value={{ exchangeRate, setExchangeRate, lastUpdated, setLastUpdated, isRateOutdated, loading }}>
+    <ExchangeRateContext.Provider value={{ exchangeRate, setExchangeRate, lastUpdated, setLastUpdated, isRateOutdated, loading, syncBcvRate }}>
       {children}
     </ExchangeRateContext.Provider>
   );

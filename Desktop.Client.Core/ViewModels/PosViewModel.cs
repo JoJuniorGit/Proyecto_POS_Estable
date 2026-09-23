@@ -1,24 +1,33 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Core.Common;
 using Core.DTOs;
+using Desktop.Client.Messages;
 using Desktop.Client.Services;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 
 namespace Desktop.Client.ViewModels;
 
 /// <summary>
-/// Orchestrates the POS UI, including product search and coordination with the Cart logic.
+/// Orchestrates the POS UI, including product search, sales workflow, and coordination with the Cart logic.
 /// </summary>
 public partial class PosViewModel : ObservableObject, IDisposable
 {
-    private readonly ISalesService _sales_service;
-    private readonly IProductService _product_service;
-    private readonly IPaymentService _payment_service;
-    private readonly IExchangeRateService _exchange_rate_service;
+    private readonly ISalesService _salesService;
+    private readonly IProductService _productService;
+    private readonly IPaymentService _paymentService;
+    private readonly IExchangeRateService _exchangeRateService;
+    private readonly UserSession? _userSession;
+    private readonly IDialogService? _dialogService;
+    private readonly IDispatcherInvoker _dispatcherInvoker;
+    private readonly ISaleRecoveryStore? _recoveryStore;
+    private bool _recoveryCheckCompleted;
 
     private CartViewModel _cart;
     public CartViewModel Cart
@@ -27,98 +36,109 @@ public partial class PosViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _cart, value);
     }
 
-    private bool _is_processing;
+    private bool _isProcessing;
     public bool IsProcessing
     {
-        get => _is_processing;
-        set => SetProperty(ref _is_processing, value);
+        get => _isProcessing;
+        set => SetProperty(ref _isProcessing, value);
     }
 
-    public decimal CurrentExchangeRate => _exchange_rate_service.CurrentRate;
-    public bool IsRateOutdated => _exchange_rate_service.IsRateOutdated;
+    public decimal CurrentExchangeRate => _exchangeRateService.CurrentRate;
+    public bool IsRateOutdated => _exchangeRateService.IsRateOutdated;
 
     public ObservableCollection<PaymentMethodDto> ActivePaymentMethods { get; } = new();
 
-    private System.Threading.CancellationTokenSource? _cancellation_token_source;
+    private CancellationTokenSource? _cancellationTokenSource;
 
-    private ObservableCollection<Core.DTOs.ProductQuickInfoDto> _suggestions = new();
-    public ObservableCollection<Core.DTOs.ProductQuickInfoDto> Suggestions
+    private ObservableCollection<ProductQuickInfoDto> _suggestions = new();
+    public ObservableCollection<ProductQuickInfoDto> Suggestions
     {
         get => _suggestions;
         private set => SetProperty(ref _suggestions, value);
     }
 
-    private string _search_text = string.Empty;
+    private string _searchText = string.Empty;
     public string SearchText
     {
-        get => _search_text;
+        get => _searchText;
         set
         {
-            if (SetProperty(ref _search_text, value))
+            if (SetProperty(ref _searchText, value))
             {
-                _ = ExecuteSearchAsync();
+                ExecuteSearchAsync().SafeFireAndForget("PosViewModel.ExecuteSearch");
             }
         }
     }
 
-    private bool _has_suggestions;
+    private bool _hasSuggestions;
     public bool HasSuggestions
     {
-        get => _has_suggestions;
-        set => SetProperty(ref _has_suggestions, value);
+        get => _hasSuggestions;
+        set => SetProperty(ref _hasSuggestions, value);
     }
 
-    private bool _is_searching;
+    private bool _isSearching;
     public bool IsSearching
     {
-        get => _is_searching;
-        set => SetProperty(ref _is_searching, value);
+        get => _isSearching;
+        set => SetProperty(ref _isSearching, value);
     }
 
-    private Core.DTOs.ProductQuickInfoDto? _selected_suggestion;
-    public Core.DTOs.ProductQuickInfoDto? SelectedSuggestion
+    private ProductQuickInfoDto? _selectedSuggestion;
+    public ProductQuickInfoDto? SelectedSuggestion
     {
-        get => _selected_suggestion;
-        set => SetProperty(ref _selected_suggestion, value);
+        get => _selectedSuggestion;
+        set
+        {
+            if (SetProperty(ref _selectedSuggestion, value))
+            {
+                OnSelectedSuggestionChanged(value);
+            }
+        }
     }
 
-    private readonly UserSession? _user_session;
-    private readonly IDialogService? _dialog_service;
+    partial void OnSelectedSuggestionChanged(ProductQuickInfoDto? value);
 
     public PosViewModel(
-        ISalesService sales_service, 
-        IProductService product_service, 
-        IPaymentService payment_service, 
-        IExchangeRateService exchange_rate_service,
-        CartViewModel cart_view_model,
-        UserSession? user_session = null,
-        IDialogService? dialog_service = null)
+        ISalesService salesService, 
+        IProductService productService, 
+        IPaymentService paymentService, 
+        IExchangeRateService exchangeRateService,
+        CartViewModel cartViewModel,
+        UserSession? userSession = null,
+        IDialogService? dialogService = null,
+        IDispatcherInvoker? dispatcherInvoker = null,
+        ISaleRecoveryStore? recoveryStore = null)
     {
-        _sales_service = sales_service;
-        _product_service = product_service;
-        _payment_service = payment_service;
-        _exchange_rate_service = exchange_rate_service;
-        _cart = cart_view_model;
-        _user_session = user_session;
-        _dialog_service = dialog_service;
+        _salesService = salesService ?? throw new ArgumentNullException(nameof(salesService));
+        _productService = productService ?? throw new ArgumentNullException(nameof(productService));
+        _paymentService = paymentService ?? throw new ArgumentNullException(nameof(paymentService));
+        _exchangeRateService = exchangeRateService ?? throw new ArgumentNullException(nameof(exchangeRateService));
+        _cart = cartViewModel ?? throw new ArgumentNullException(nameof(cartViewModel));
+        _userSession = userSession;
+        _dialogService = dialogService;
+        _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
+        _recoveryStore = recoveryStore;
 
-        // Sync local property when exchange rate changes globaly
-        WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.ExchangeRateChangedMessage>(this, (r, m) =>
+        // Sync local property when exchange rate changes globally
+        WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
         {
             OnPropertyChanged(nameof(CurrentExchangeRate));
             OnPropertyChanged(nameof(IsRateOutdated));
         });
 
-        WeakReferenceMessenger.Default.Register<Desktop.Client.ViewModels.PaymentMethodsChangedMessage>(this, async (r, m) =>
+        WeakReferenceMessenger.Default.Register<PaymentMethodsChangedMessage>(this, async (r, m) =>
         {
             await ((PosViewModel)r).ReloadPaymentMethodsAsync();
         });
     }
 
-    private readonly System.Threading.SemaphoreSlim _sessionInitializationGate = new(1, 1);
+    private readonly SemaphoreSlim _sessionInitializationGate = new(1, 1);
 
     public void ResetSession()
     {
+        _recoveryCheckCompleted = false;
+
         Action clearAction = () =>
         {
             ActivePaymentMethods.Clear();
@@ -129,28 +149,22 @@ public partial class PosViewModel : ObservableObject, IDisposable
             Suggestions.Clear();
         };
 
-        if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
-        {
-            Application.Current.Dispatcher.Invoke(clearAction);
-        }
-        else
-        {
-            clearAction();
-        }
+        Cart.PreserveRecoverySnapshotOnNextClear();
+        _dispatcherInvoker.Invoke(clearAction);
     }
 
     public async Task InitializeForSessionAsync()
     {
-        if (_user_session != null && !_user_session.IsLoggedIn) return;
+        if (_userSession != null && !_userSession.IsLoggedIn) return;
 
         await _sessionInitializationGate.WaitAsync();
         try
         {
-            if (_user_session != null && !_user_session.IsLoggedIn) return;
+            if (_userSession != null && !_userSession.IsLoggedIn) return;
 
             if (CurrentExchangeRate <= 0)
             {
-                await _exchange_rate_service.GetCurrentRateAsync();
+                await _exchangeRateService.GetCurrentRateAsync();
                 OnPropertyChanged(nameof(CurrentExchangeRate));
                 OnPropertyChanged(nameof(IsRateOutdated));
             }
@@ -162,7 +176,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
 
             if (Cart.CurrentSale == null)
             {
-                await StartNewSaleAsync();
+                await RestoreOrStartSaleAsync();
             }
         }
         finally
@@ -171,57 +185,106 @@ public partial class PosViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task LoadPaymentMethodsAsync()
+    private async Task RestoreOrStartSaleAsync()
     {
-        if (_user_session != null && !_user_session.IsLoggedIn) return;
+        if (_recoveryCheckCompleted)
+        {
+            await StartNewSaleAsync();
+            return;
+        }
 
-        int _max_retries = 3;
-        int _delay_ms = 2000;
+        _recoveryCheckCompleted = true;
 
-        for (int _attempt = 1; _attempt <= _max_retries; _attempt++)
+        var snapshot = _recoveryStore?.Load();
+
+        if (snapshot == null || snapshot.ItemCount <= 0 || snapshot.Status != "Pending")
+        {
+            if (snapshot != null)
+            {
+                _recoveryStore?.Clear();
+            }
+
+            await StartNewSaleAsync();
+            return;
+        }
+
+        string mensaje = $"Se detectó una venta sin finalizar del {snapshot.SavedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm} con {snapshot.ItemCount} artículo(s) por un total de ${snapshot.TotalUSD:0.00} USD. ¿Desea recuperarla?";
+        bool recover = _dialogService?.ShowConfirm("Recuperar venta sin finalizar", mensaje) ?? false;
+
+        if (recover)
         {
             try
             {
-                var _methods = (await _payment_service.GetActiveMethodsAsync())?.ToList() ?? new List<PaymentMethodDto>();
-                if (!_methods.Any())
+                var sale = await _salesService.GetSaleAsync(snapshot.SaleId);
+                if (sale is { Status: "Pending" } && sale.Items != null && sale.Items.Count > 0)
                 {
-                    _dialog_service?.ShowError("Error de Configuración", "No hay métodos de pago activos configurados en el sistema. Las ventas no podrán procesarse hasta que el administrador agregue al menos una configuración.");
+                    Cart.CurrentSale = sale;
+                    return;
+                }
+
+                _recoveryStore?.Clear();
+            }
+            catch (Exception ex)
+            {
+                _recoveryCheckCompleted = false;
+                Core.Logging.ClientStateLogger.LogError($"Error al recuperar la venta pendiente #{snapshot.SaleId}: {ex.Message}", nameof(PosViewModel));
+                _dialogService?.ShowWarning("Recuperar venta sin finalizar", $"No se pudo recuperar la venta #{snapshot.SaleId}. La venta sigue pendiente; verifique la conexión y vuelva a entrar al Punto de Venta para reintentar.");
+                return;
+            }
+        }
+        else
+        {
+            _recoveryStore?.Clear();
+        }
+
+        await StartNewSaleAsync();
+    }
+
+    private async Task LoadPaymentMethodsAsync()
+    {
+        if (_userSession != null && !_userSession.IsLoggedIn) return;
+
+        int maxRetries = 3;
+        int delayMs = 2000;
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                var methods = (await _paymentService.GetActiveMethodsAsync())?.ToList() ?? new List<PaymentMethodDto>();
+                if (!methods.Any())
+                {
+                    _dialogService?.ShowError("Error de Configuración", "No hay métodos de pago activos configurados en el sistema. Las ventas no podrán procesarse hasta que el administrador agregue al menos una configuración.");
                     return;
                 }
 
                 Action updateAction = () =>
                 {
                     ActivePaymentMethods.Clear();
-                    foreach (var _m in _methods)
+                    foreach (var m in methods)
                     {
-                        if (!ActivePaymentMethods.Any(existing => existing.Id == _m.Id))
+                        if (!ActivePaymentMethods.Any(existing => existing.Id == m.Id))
                         {
-                            ActivePaymentMethods.Add(_m);
+                            ActivePaymentMethods.Add(m);
                         }
                     }
                 };
 
-                if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
-                {
-                    Application.Current.Dispatcher.Invoke(updateAction);
-                }
-                else
-                {
-                    updateAction();
-                }
+                _dispatcherInvoker.Invoke(updateAction);
                 return;
             }
-            catch (System.Exception _ex)
+            catch (Exception ex)
             {
-                if (_user_session != null && !_user_session.IsLoggedIn) return;
+                if (_userSession != null && !_userSession.IsLoggedIn) return;
 
-                if (_attempt == _max_retries)
+                if (attempt == maxRetries)
                 {
-                    _dialog_service?.ShowError("Error de Conexión", $"Error al cargar métodos de pago tras {_max_retries} intentos: {_ex.Message}");
+                    Core.Logging.ClientStateLogger.LogError($"Error al cargar métodos de pago tras {maxRetries} intentos: {ex.Message}", nameof(PosViewModel));
+                    _dialogService?.ShowError("Error de Conexión", $"No se pudieron cargar los métodos de pago tras {maxRetries} intentos. Verifique la conexión con el servidor e intente nuevamente.");
                 }
                 else
                 {
-                    await Task.Delay(_delay_ms);
+                    await Task.Delay(delayMs);
                 }
             }
         }
@@ -229,7 +292,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
 
     public async Task ReloadPaymentMethodsAsync()
     {
-        _payment_service.InvalidateCache();
+        _paymentService.InvalidateCache();
         await _sessionInitializationGate.WaitAsync();
         try
         {
@@ -243,22 +306,23 @@ public partial class PosViewModel : ObservableObject, IDisposable
 
     private async Task StartNewSaleAsync()
     {
-        if (_user_session != null && !_user_session.IsLoggedIn) return;
+        if (_userSession != null && !_userSession.IsLoggedIn) return;
 
         System.Diagnostics.Debug.WriteLine("[POS] StartNewSaleAsync: calling StartSaleAsync...");
         IsProcessing = true;
         try
         {
-            var _newSale = await _sales_service.StartSaleAsync(_user_session?.CurrentUser?.Id);
-            System.Diagnostics.Debug.WriteLine($"[POS] StartNewSaleAsync: sale started OK, Id={_newSale.Id}");
-            Cart.CurrentSale = _newSale;
+            var newSale = await _salesService.StartSaleAsync(_userSession?.CurrentUser?.Id);
+            System.Diagnostics.Debug.WriteLine($"[POS] StartNewSaleAsync: sale started OK, Id={newSale.Id}");
+            Cart.CurrentSale = newSale;
             RecentScannedProducts.Clear();
             System.Diagnostics.Debug.WriteLine($"[POS] StartNewSaleAsync: Cart.CurrentSale set. IsNull={Cart.CurrentSale == null}");
         }
-        catch (System.Exception _ex)
+        catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[POS] StartNewSaleAsync FAILED: {_ex.GetType().Name}: {_ex.Message}");
-            MessageBox.Show($"Error starting sale: {_ex.Message}", "Sale Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            System.Diagnostics.Debug.WriteLine($"[POS] StartNewSaleAsync FAILED: {ex.GetType().Name}: {ex.Message}");
+            Core.Logging.ClientStateLogger.LogError($"Error al iniciar la venta: {ex.Message}", nameof(PosViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error de Venta", "No se pudo iniciar la venta. Verifique la conexión con el servidor e intente nuevamente.");
         }
         finally
         {
@@ -268,8 +332,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
 
     private async Task ExecuteSearchAsync()
     {
-        var newCts = new System.Threading.CancellationTokenSource();
-        var oldCts = System.Threading.Interlocked.Exchange(ref _cancellation_token_source, newCts);
+        var newCts = new CancellationTokenSource();
+        var oldCts = Interlocked.Exchange(ref _cancellationTokenSource, newCts);
         try
         {
             oldCts?.Cancel();
@@ -277,18 +341,12 @@ public partial class PosViewModel : ObservableObject, IDisposable
         }
         catch (ObjectDisposedException) { }
 
-        var _token = newCts.Token;
+        var token = newCts.Token;
+        var term = SearchText ?? string.Empty;
 
-        var _term = SearchText ?? string.Empty;
-        var _dispatcher = System.Windows.Application.Current?.Dispatcher;
+        void RunOnUI(Action action) => _dispatcherInvoker.Invoke(action);
 
-        void RunOnUI(Action action)
-        {
-            if (_dispatcher == null || _dispatcher.CheckAccess()) action();
-            else _dispatcher.Invoke(action);
-        }
-
-        if (string.IsNullOrWhiteSpace(_term))
+        if (string.IsNullOrWhiteSpace(term))
         {
             RunOnUI(() =>
             {
@@ -301,25 +359,27 @@ public partial class PosViewModel : ObservableObject, IDisposable
         try
         {
             // 300ms debounce to prevent overwhelming the server during fast typing
-            await Task.Delay(300, _token);
+            await Task.Delay(300, token);
 
             IsSearching = true;
-            var _results = await _product_service.GetSuggestionsAsync(_term, true, _token);
+            var results = await _productService.GetSuggestionsAsync(term, true, token);
 
             RunOnUI(() =>
             {
                 Suggestions.Clear();
 
-                if (!_results.Any())
+                if (!results.Any())
                 {
-                    Suggestions.Add(new Core.DTOs.ProductQuickInfoDto { Id = -1, Name = "Product not found", SKU = "-" });
+                    Suggestions.Add(new ProductQuickInfoDto { Id = -1, Name = "Product not found", SKU = "-" });
                 }
                 else
                 {
-                    foreach (var _item in _results)
+                    foreach (var item in results)
                     {
-                        _item.PriceBsS = Helpers.PricingHelper.ToBsS(_item.PriceUSD, CurrentExchangeRate);
-                        Suggestions.Add(_item);
+                        item.PriceBsS = item.PriceBsS > 0
+                        ? item.PriceBsS
+                        : Helpers.PricingHelper.ToBsSCeiling(item.PriceUSD, CurrentExchangeRate);
+                        Suggestions.Add(item);
                     }
                 }
 
@@ -327,18 +387,21 @@ public partial class PosViewModel : ObservableObject, IDisposable
                 if (SelectedSuggestion != null) SelectedSuggestion = null;
             });
         }
-        catch (System.OperationCanceledException) { }
-        catch (System.Exception)
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogError($"Error al buscar productos '{term}': {ex.Message}", "PosViewModel");
             RunOnUI(() =>
             {
                 Suggestions.Clear();
-                HasSuggestions = false;
+                Suggestions.Add(new ProductQuickInfoDto { Id = -2, Name = "Error de conexión. Reintente la búsqueda.", SKU = "-" });
+                HasSuggestions = Suggestions.Any();
+                if (SelectedSuggestion != null) SelectedSuggestion = null;
             });
         }
         finally
         {
-            if (!_token.IsCancellationRequested)
+            if (!token.IsCancellationRequested)
             {
                 RunOnUI(() => IsSearching = false);
             }
@@ -347,7 +410,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
-        var oldCts = System.Threading.Interlocked.Exchange(ref _cancellation_token_source, null);
+        var oldCts = Interlocked.Exchange(ref _cancellationTokenSource, null);
         try
         {
             oldCts?.Cancel();
@@ -377,469 +440,5 @@ public partial class PosViewModel : ObservableObject, IDisposable
         {
             await ExecuteSearchAsync();
         }
-    }
-
-    [RelayCommand]
-    private async Task ChangeCustomerAsync()
-    {
-        if (Cart.CurrentSale == null) return;
-        if (_dialog_service == null) return;
-
-        var customer = await _dialog_service.ShowCustomerPickerAsync();
-        if (customer == null) return;
-
-        try
-        {
-            var updatedSale = await _sales_service.UpdateSaleCustomerAsync(Cart.CurrentSale.Id, customer.Id);
-            Cart.CurrentSale = updatedSale;
-        }
-        catch (System.Exception ex)
-        {
-            _dialog_service.ShowError("Error al cambiar cliente", $"No se pudo actualizar el cliente de la venta: {ex.Message}");
-        }
-    }
-
-    [RelayCommand]
-    private async Task AddSelectedSuggestionAsync(Core.DTOs.ProductQuickInfoDto? suggestion)
-    {
-        var _value = suggestion ?? SelectedSuggestion;
-        System.Diagnostics.Debug.WriteLine($"[POS] AddSelectedSuggestionAsync called. resolved='{_value?.Name ?? "null"}' (Id={_value?.Id ?? -99}), Cart.CurrentSale null={Cart.CurrentSale == null}");
-
-        if (_value == null || _value.Id <= 0)
-        {
-            System.Diagnostics.Debug.WriteLine("[POS] Guard: value is null or Id <= 0, ignoring.");
-            return;
-        }
-
-        // Lazy-start: if the sale hasn't been created yet (e.g. startup race), try now
-        if (Cart.CurrentSale == null)
-        {
-            System.Diagnostics.Debug.WriteLine("[POS] Cart.CurrentSale is NULL — attempting lazy StartSaleAsync...");
-            await StartNewSaleAsync();
-
-            // If still null after the attempt, the API is unreachable — abort with visible error
-            if (Cart.CurrentSale == null)
-            {
-                System.Diagnostics.Debug.WriteLine("[POS] Lazy start FAILED — CurrentSale still null after retry.");
-                System.Windows.MessageBox.Show("Could not start a sale session. Please check that the server is running and try again.", "Connection Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-                return;
-            }
-
-            System.Diagnostics.Debug.WriteLine("[POS] Lazy start succeeded.");
-        }
-
-        if (_value != null && _value.Id > 0 && Cart.CurrentSale != null)
-        {
-            if (_value.IsGroupHeader)
-            {
-                var variant = await (_dialog_service?.ShowVariantSelectionDialogAsync(_value) ?? Task.FromResult<ProductDto?>(null));
-                if (variant == null)
-                {
-                    SelectedSuggestion = null;
-                    return;
-                }
-
-                _value = new Core.DTOs.ProductQuickInfoDto
-                {
-                    Id = variant.Id,
-                    Name = variant.Name,
-                    SKU = variant.SKU,
-                    PriceUSD = variant.PriceUSD,
-                    PriceRetailUSD = variant.PriceRetailUSD,
-                    PriceWholesaleUSD = variant.PriceWholesaleUSD,
-                    PriceBsS = variant.PriceBsS,
-                    StockQuantity = variant.StockQuantity,
-                    IsActive = variant.IsActive
-                };
-            }
-
-            decimal? _custom_price_usd = null;
-            decimal? _custom_price_local = null;
-
-            if (_value.IsCashAdvance)
-            {
-                if (CurrentExchangeRate <= 0)
-                {
-                    System.Windows.MessageBox.Show("Please set a valid Exchange Rate in the top header before requesting a cash advance.", "Missing Rate", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
-                    SelectedSuggestion = null;
-                    return;
-                }
-
-                decimal? requestedBsS = _dialog_service?.ShowCashAdvanceDialog();
-
-                if (requestedBsS.HasValue && requestedBsS.Value > 0)
-                {
-                    decimal _total_bs_s = requestedBsS.Value * (1 + (_value.ProfitPercentage / 100m));
-                    _custom_price_usd = _total_bs_s / CurrentExchangeRate;
-                    _custom_price_local = _total_bs_s;
-                }
-                else
-                {
-                    SelectedSuggestion = null;
-                    return;
-                }
-            }
-
-            IsProcessing = true;
-            try
-            {
-                Cart.CurrentSale = await _sales_service.AddItemAsync(Cart.CurrentSale.Id, _value.Id, 1, CurrentExchangeRate, _custom_price_usd, _custom_price_local);
-            }
-            catch (System.Exception _ex)
-            {
-                MessageBox.Show($"Error adding item: {_ex.Message}");
-            }
-            finally
-            {
-                IsProcessing = false;
-                SearchText = string.Empty;
-                SelectedSuggestion = null;
-                Suggestions.Clear();
-                HasSuggestions = false;
-            }
-        }
-    }
-
-    public ObservableCollection<RecentScannedItemViewModel> RecentScannedProducts { get; } = new();
-
-    private string? _lastScannedCode;
-    private DateTime _lastScannedTime = DateTime.MinValue;
-    private const int SameCodeCooldownMs = 2000;
-
-    private readonly System.Threading.SemaphoreSlim _scannerLock = new(1, 1);
-
-    /// <summary>
-    /// Adds a scanned barcode (or any code coming from the camera tool) directly to the cart.
-    /// Resolves the product by exact SKU match; unknown codes / cash-advance items are not
-    /// added. Cooldown de 2.0s exactos para el mismo código y panel de últimos 3 productos escaneados.
-    /// </summary>
-    public async Task AddProductByCodeAsync(string code)
-    {
-        if (string.IsNullOrWhiteSpace(code)) return;
-        var trimmedCode = code.Trim();
-
-        // Restringir lectura exclusivamente a códigos de barras válidos (ignorar QR / URLs / texto largo)
-        if (!Core.Helpers.BarcodeValidator.IsValidBarcode(trimmedCode))
-        {
-            SearchText = string.Empty;
-            return;
-        }
-
-        // Cooldown de 2.0 segundos exactos para el mismo producto
-        var now = DateTime.UtcNow;
-        if (_lastScannedCode == trimmedCode && (now - _lastScannedTime).TotalMilliseconds < SameCodeCooldownMs)
-        {
-            SearchText = string.Empty;
-            return;
-        }
-        _lastScannedCode = trimmedCode;
-        _lastScannedTime = now;
-
-        await _scannerLock.WaitAsync();
-        try
-        {
-            // Lazy-start the sale, mirroring AddSelectedSuggestionAsync.
-            if (Cart.CurrentSale == null)
-            {
-                await StartNewSaleAsync();
-
-                if (Cart.CurrentSale == null)
-                {
-                    MessageBox.Show("Could not start a sale session. Please check that the server is running and try again.", "Connection Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
-            }
-
-            try
-            {
-                var results = await _product_service.GetSuggestionsAsync(trimmedCode, true, System.Threading.CancellationToken.None);
-                var product = results.FirstOrDefault(p => p.SKU == trimmedCode) ?? results.FirstOrDefault();
-
-                // Unknown code, or a cash-advance item:
-                if (product == null || product.Id <= 0 || product.IsCashAdvance)
-                {
-                    return;
-                }
-
-                if (product.IsGroupHeader)
-                {
-                    var variant = await (_dialog_service?.ShowVariantSelectionDialogAsync(product) ?? Task.FromResult<ProductDto?>(null));
-                    if (variant == null) return;
-
-                    product = new Core.DTOs.ProductQuickInfoDto
-                    {
-                        Id = variant.Id,
-                        Name = variant.Name,
-                        SKU = variant.SKU,
-                        PriceUSD = variant.PriceUSD,
-                        PriceRetailUSD = variant.PriceRetailUSD,
-                        PriceWholesaleUSD = variant.PriceWholesaleUSD,
-                        PriceBsS = variant.PriceBsS,
-                        StockQuantity = variant.StockQuantity,
-                        IsActive = variant.IsActive
-                    };
-                }
-
-                IsProcessing = true;
-                try
-                {
-                    Cart.CurrentSale = await _sales_service.AddItemAsync(Cart.CurrentSale.Id, product.Id, 1, CurrentExchangeRate, null, null);
-
-                    // Actualizar panel reactivo de los últimos 3 productos escaneados
-                    var existingRecent = RecentScannedProducts.FirstOrDefault(r => r.ProductId == product.Id);
-                    if (existingRecent != null)
-                    {
-                        RecentScannedProducts.Remove(existingRecent);
-                        RecentScannedProducts.Insert(0, existingRecent);
-                    }
-                    else
-                    {
-                        var recentVm = new RecentScannedItemViewModel(
-                            product.Id,
-                            product.SKU,
-                            product.Name,
-                            product.PriceBsS,
-                            product.PriceUSD,
-                            Cart,
-                            async (saleDetailId, newQty) =>
-                            {
-                                if (Cart.CurrentSale != null)
-                                {
-                                    Cart.CurrentSale = await _sales_service.UpdateItemQuantityAsync(Cart.CurrentSale.Id, saleDetailId, newQty, CurrentExchangeRate);
-                                    foreach (var r in RecentScannedProducts) r.Refresh();
-                                }
-                            });
-                        RecentScannedProducts.Insert(0, recentVm);
-                        while (RecentScannedProducts.Count > 3)
-                        {
-                            RecentScannedProducts.RemoveAt(RecentScannedProducts.Count - 1);
-                        }
-                    }
-                    foreach (var r in RecentScannedProducts) r.Refresh();
-                }
-                catch (System.Exception ex)
-                {
-                    MessageBox.Show($"Error adding item: {ex.Message}");
-                }
-                finally
-                {
-                    IsProcessing = false;
-                }
-            }
-            catch (System.Net.Http.HttpRequestException ex)
-            {
-                MessageBox.Show($"Error de conexión al consultar el código: {ex.Message}", "Error de Red", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-            catch (System.OperationCanceledException)
-            {
-                // Operación cancelada por timeout o token
-            }
-            catch (System.Exception ex)
-            {
-                MessageBox.Show($"Error looking up the scanned code: {ex.Message}");
-            }
-        }
-        finally
-        {
-            _scannerLock.Release();
-            // La caja de búsqueda se limpia tras CADA intento de escaneo, sin importar el
-            // resultado (producto encontrado, no encontrado o error de lectura).
-            SearchText = string.Empty;
-        }
-    }
-
-    /// <summary>
-    /// Exact-SKU lookup used by the barcode scanner window to show the product name, price
-    /// and status (found / not found / inactive) on the scan result card.
-    /// Non-numeric SKUs (e.g. alphanumeric Code-128 values) are treated as "not found".
-    /// </summary>
-    public async Task<Core.DTOs.ProductQuickInfoDto?> ResolveScannedCodeAsync(string code)
-    {
-        if (string.IsNullOrWhiteSpace(code)) return null;
-        var trimmed = code.Trim();
-        if (!Core.Helpers.BarcodeValidator.IsValidBarcode(trimmed)) return null;
-        try
-        {
-            return await _product_service.GetQuickInfoAsync(trimmed);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    [RelayCommand]
-    private async Task CheckoutAsync()
-    {
-        if (IsProcessing) return;
-        if (Cart.CurrentSale == null) return;
-
-        await Cart.FlushAllQuantitiesAsync();
-
-        if (!Cart.CartItems.Any())
-        {
-            if (_dialog_service != null)
-                _dialog_service.ShowWarning("Validación", "El carrito está vacío. Por favor agregue productos antes de cobrar.");
-            else
-                MessageBox.Show("El carrito está vacío. Por favor agregue productos antes de cobrar.", "Validación", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        if (CurrentExchangeRate <= 0)
-        {
-            if (_dialog_service != null)
-                _dialog_service.ShowWarning("Tasa Requerida", "No se puede proceder al cobro. Por favor establezca una tasa de cambio válida en el encabezado.");
-            else
-                MessageBox.Show("No se puede proceder al cobro. Por favor establezca una tasa de cambio válida en el encabezado.", "Tasa Requerida", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var _checkout_vm = new CheckoutViewModel(Cart.CurrentSale, ActivePaymentMethods, _sales_service, CurrentExchangeRate, _user_session, override_sale: null, dialog_service: _dialog_service);
-        var _result = await MaterialDesignThemes.Wpf.DialogHost.Show(_checkout_vm, "RootDialog");
-
-        if (_result is int _real_invoice)
-        {
-            string formattedMessage = _checkout_vm.IsPendingPickup
-                ? $"Factura N° {_real_invoice:D5}: Cuenta liquidada, stock descontado y enviada a Mercancía en Custodia."
-                : $"¡Factura N° {_real_invoice:D5} completada con éxito!";
-
-            _dialog_service?.ShowSuccessDialog(formattedMessage);
-            
-            _ = StartNewSaleAsync();
-        }
-    }
-
-    [RelayCommand]
-    private async Task HoldOrderAsync()
-    {
-        if (IsProcessing) return;
-        if (Cart.CurrentSale == null) return;
-
-        await Cart.FlushAllQuantitiesAsync();
-
-        if (!Cart.CartItems.Any())
-        {
-            MessageBox.Show("El carrito está vacío. Agregue productos antes de guardar en espera.", "Validación", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        if (CurrentExchangeRate <= 0)
-        {
-            MessageBox.Show("No se puede guardar en espera. Por favor establezca una tasa de cambio válida.", "Tasa Requerida", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        // Customer validation: Hold sale requires a registered real customer (cannot be Consumidor Final / IsDefault / V-00000000)
-        var currentCustomer = Cart.CurrentSale.Customer;
-        bool isDefaultCustomer = currentCustomer == null || currentCustomer.IsDefault || currentCustomer.CedulaOrRif == "V-00000000";
-
-        if (isDefaultCustomer)
-        {
-            if (_dialog_service == null) return;
-
-            MessageBox.Show(
-                "Las ventas en espera requieren asignar un cliente real registrado.\nA continuación seleccione o registre un cliente.",
-                "Cliente Requerido", MessageBoxButton.OK, MessageBoxImage.Information);
-
-            var selectedCustomer = await _dialog_service.ShowCustomerPickerAsync();
-            if (selectedCustomer == null || selectedCustomer.IsDefault || selectedCustomer.CedulaOrRif == "V-00000000")
-            {
-                MessageBox.Show(
-                    "Operación cancelada. No se puede guardar en espera a nombre del Consumidor Final.",
-                    "Cliente Inválido", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            try
-            {
-                Cart.CurrentSale = await _sales_service.UpdateSaleCustomerAsync(Cart.CurrentSale.Id, selectedCustomer.Id);
-            }
-            catch (System.Exception ex)
-            {
-                MessageBox.Show($"Error al asignar cliente: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-        }
-
-        if (!Cart.CurrentSale.CustomerId.HasValue)
-        {
-            MessageBox.Show("Error de consistencia: La venta no posee cliente asociado.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        IsProcessing = true;
-        try
-        {
-            var request = new HoldSaleRequestDto
-            {
-                CustomerId = Cart.CurrentSale.CustomerId.Value,
-                ExchangeRate = CurrentExchangeRate,
-                IsProductDelivered = false,
-                InitialPayments = null
-            };
-
-            var heldSale = await _sales_service.HoldSaleAsync(Cart.CurrentSale.Id, request);
-
-            string customerName = heldSale.CustomerName ?? Cart.CurrentSale.CustomerName ?? "Cliente";
-            string successMsg = $"¡Pedido #{heldSale.Id} guardado exitosamente en Cuentas Abiertas para {customerName}!";
-
-            _dialog_service?.ShowSuccessDialog(successMsg);
-
-            await StartNewSaleAsync();
-        }
-        catch (System.Exception ex)
-        {
-            MessageBox.Show($"Error al guardar pedido en espera: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-        finally
-        {
-            IsProcessing = false;
-        }
-    }
-
-    [RelayCommand]
-    private async Task TogglePriceListAsync()
-    {
-        if (Cart.CurrentSale == null || IsProcessing) return;
-        string nextType = Cart.IsWholesalePriceList ? "Retail" : "Wholesale";
-        await Cart.SetPriceListAsync(nextType);
-    }
-
-    [RelayCommand]
-    private async Task ClearCartAsync()
-    {
-        if (Cart.CurrentSale == null || !Cart.CartItems.Any() || IsProcessing) return;
-
-        bool confirmed = _dialog_service != null
-            ? _dialog_service.ShowConfirm("Cancelar Venta (F8)", "¿Está seguro de que desea cancelar la venta actual y limpiar el carrito?")
-            : MessageBox.Show("¿Está seguro de que desea cancelar la venta actual y limpiar el carrito?", "Cancelar Venta (F8)", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
-
-        if (confirmed)
-        {
-            await StartNewSaleAsync();
-        }
-    }
-
-    [RelayCommand]
-    private void CancelOrClear()
-    {
-        if (!string.IsNullOrWhiteSpace(SearchText))
-        {
-            SearchText = string.Empty;
-            Suggestions.Clear();
-            HasSuggestions = false;
-        }
-    }
-
-    [RelayCommand]
-    private async Task SyncExchangeRateAsync()
-    {
-        try
-        {
-            await _exchange_rate_service.SyncBcvAsync();
-            OnPropertyChanged(nameof(CurrentExchangeRate));
-            OnPropertyChanged(nameof(IsRateOutdated));
-        }
-        catch { }
     }
 }

@@ -1,13 +1,16 @@
 using System;
+using System.Threading.Tasks;
 using System.Windows;
+using Core.Common;
 using Core.DTOs;
 using Core.Logging;
 using Desktop.Client.Views;
+using MaterialDesignThemes.Wpf;
 using Microsoft.Extensions.Logging;
 
 namespace Desktop.Client.Services;
 
-public class WpfDialogService : IDialogService
+public partial class WpfDialogService : IDialogService
 {
     private readonly IClientStateService _clientState;
     private readonly ISalesService _salesService;
@@ -38,6 +41,7 @@ public class WpfDialogService : IDialogService
     private readonly ISubnetScannerService? _scannerService;
     private readonly System.Net.Http.IHttpClientFactory? _httpClientFactory;
     private readonly IExchangeRateService? _exchangeRateService;
+    private readonly ICashDrawerService? _cashDrawerService;
 
     public WpfDialogService(
         IClientStateService clientState, 
@@ -47,7 +51,8 @@ public class WpfDialogService : IDialogService
         IConnectionManager? connectionManager = null,
         ISubnetScannerService? scannerService = null,
         System.Net.Http.IHttpClientFactory? httpClientFactory = null,
-        IExchangeRateService? exchangeRateService = null)
+        IExchangeRateService? exchangeRateService = null,
+        ICashDrawerService? cashDrawerService = null)
     {
         _clientState = clientState ?? throw new ArgumentNullException(nameof(clientState));
         _salesService = salesService!;
@@ -57,8 +62,25 @@ public class WpfDialogService : IDialogService
         _scannerService = scannerService;
         _httpClientFactory = httpClientFactory;
         _exchangeRateService = exchangeRateService;
+        _cashDrawerService = cashDrawerService;
     }
 
+    public async Task<object?> ShowModalAsync(object content, string? dialogIdentifier = null)
+    {
+        if (Application.Current == null)
+        {
+            _logger?.LogWarning("[NO-OP DIALOG SUPPRESSED] Application.Current es nulo en ShowModalAsync.");
+            return null;
+        }
+
+        using var scope = TrackModal();
+        return await DialogHost.Show(content, dialogIdentifier ?? "RootDialog");
+    }
+
+    public void CloseCurrentModal(object? result = null)
+    {
+        DialogHost.CloseDialogCommand.Execute(result, null);
+    }
 
     public bool ShowConfirm(string title, string message)
     {
@@ -144,363 +166,13 @@ public class WpfDialogService : IDialogService
         }
         else
         {
-            Application.Current.Dispatcher.Invoke(() =>
+            // 8.9-B7: los diálogos informativos no bloquean el hilo de llamada (servicio/polling);
+            // se envían al hilo UI en async y se reportan fallos vía SafeFireAndForget.
+            Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 var dialog = new CustomDialogWindow(title, message, type);
                 dialog.ShowDialog();
-            });
+            }).Task.SafeFireAndForget($"WpfDialogService.{methodName}");
         }
-    }
-
-    public async System.Threading.Tasks.Task<string?> ShowTextInputAsync(string prompt, string hint)
-    {
-        if (Application.Current == null) return null;
-        using var _ = TrackModal();
-        var inputDialog = new TextInputDialog(prompt, hint);
-        var result = await MaterialDesignThemes.Wpf.DialogHost.Show(inputDialog, "RootDialog");
-        return result as string;
-    }
-
-    public System.Threading.Tasks.Task<(bool success, string currentPassword, string newPassword)?> ShowChangePasswordDialogAsync()
-    {
-        if (Application.Current == null)
-            return System.Threading.Tasks.Task.FromResult<(bool, string, string)?>(null);
-
-        (bool success, string currentPassword, string newPassword)? result = null;
-
-        using var _ = TrackModal();
-        Action openDialog = () =>
-        {
-            var dialog = new ChangePasswordDialog
-            {
-                Owner = Application.Current.MainWindow
-            };
-            if (dialog.ShowDialog() == true)
-            {
-                result = (true, dialog.CurrentPassword, dialog.NewPassword);
-            }
-            else
-            {
-                result = (false, string.Empty, string.Empty);
-            }
-        };
-
-        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
-        else Application.Current.Dispatcher.Invoke(openDialog);
-
-        return System.Threading.Tasks.Task.FromResult(result);
-    }
-
-    public decimal? ShowCashAdvanceDialog()
-    {
-        if (Application.Current == null) return null;
-
-        decimal? resultAmount = null;
-        using var _ = TrackModal();
-        Action openDialog = () =>
-        {
-            var dialog = new CashAdvanceDialog();
-            dialog.Owner = Application.Current.MainWindow;
-            var res = dialog.ShowDialog();
-            if (res == true && dialog.RequestedAmountBsS > 0)
-            {
-                resultAmount = dialog.RequestedAmountBsS;
-            }
-        };
-
-        if (Application.Current.Dispatcher.CheckAccess())
-        {
-            openDialog();
-        }
-        else
-        {
-            Application.Current.Dispatcher.Invoke(openDialog);
-        }
-
-        return resultAmount;
-    }
-
-    public void ShowSuccessDialog(string message)
-    {
-        if (Application.Current == null) return;
-        using var _ = TrackModal();
-        Action openDialog = () =>
-        {
-            var dialog = new SuccessDialogWindow(message)
-            {
-                Owner = Application.Current.MainWindow
-            };
-            dialog.ShowDialog();
-        };
-
-        if (Application.Current.Dispatcher.CheckAccess())
-        {
-            openDialog();
-        }
-        else
-        {
-            Application.Current.Dispatcher.Invoke(openDialog);
-        }
-    }
-
-    public async System.Threading.Tasks.Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title)
-    {
-        if (Application.Current == null) return null;
-        using var _ = TrackModal();
-        var dialog = new CashTransactionDialog(title);
-        var result = await MaterialDesignThemes.Wpf.DialogHost.Show(dialog, "RootDialog");
-        if (result is bool success && success)
-        {
-            return (true, dialog.Amount, dialog.Reason);
-        }
-        return null;
-    }
-
-    public bool? ShowProductDialog(ViewModels.ProductDialogViewModel dialogVm)
-    {
-        if (Application.Current == null) return null;
-        using var _ = TrackModal();
-        bool? res = null;
-        Action openDialog = () =>
-        {
-            var dialog = new ProductDialog(dialogVm);
-            dialog.Owner = Application.Current.MainWindow;
-            res = dialog.ShowDialog();
-        };
-
-        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
-        else Application.Current.Dispatcher.Invoke(openDialog);
-
-        return res;
-    }
-
-    public (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(Core.DTOs.ProductDto product)
-    {
-        if (Application.Current == null) return (false, 0m, string.Empty);
-        using var _ = TrackModal();
-        bool success = false;
-        decimal qtyChange = 0m;
-        string reason = string.Empty;
-
-        Action openDialog = () =>
-        {
-            var dialog = new AdjustStockDialog(product);
-            dialog.Owner = Application.Current.MainWindow;
-            if (dialog.ShowDialog() == true)
-            {
-                success = true;
-                qtyChange = dialog.QuantityChange;
-                reason = dialog.Reason;
-            }
-        };
-
-        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
-        else Application.Current.Dispatcher.Invoke(openDialog);
-
-        return (success, qtyChange, reason);
-    }
-
-    public void ShowInterruptedTransactionDialog(string title, string message)
-    {
-        if (Application.Current == null) return;
-        using var _ = TrackModal();
-        Action openDialog = () =>
-        {
-            var vm = new ViewModels.InterruptedTransactionViewModel(title, message);
-            var dialog = new InterruptedTransactionDialog(vm);
-            dialog.Owner = Application.Current.MainWindow;
-            dialog.ShowDialog();
-        };
-
-        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
-        else Application.Current.Dispatcher.Invoke(openDialog);
-    }
-
-    public async System.Threading.Tasks.Task<CustomerDto?> ShowCustomerPickerAsync()
-    {
-        if (Application.Current == null) return null;
-
-        var vm = new ViewModels.CustomerPickerViewModel(_salesService);
-        await vm.InitializeAsync();
-
-        CustomerDto? result = null;
-        using var _ = TrackModal();
-        Action openDialog = () =>
-        {
-            var dialog = new CustomerPickerDialog(vm);
-            dialog.Owner = Application.Current.MainWindow;
-            if (dialog.ShowDialog() == true)
-                result = dialog.SelectedCustomer;
-        };
-
-        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
-        else Application.Current.Dispatcher.Invoke(openDialog);
-
-        return result;
-    }
-
-    public System.Threading.Tasks.Task<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?> ShowCashAdvanceRegisterDialogAsync(
-        System.Collections.Generic.List<PaymentMethodDto> paymentMethods, 
-        decimal availableCashLocal)
-    {
-        if (Application.Current == null) 
-            return System.Threading.Tasks.Task.FromResult<(bool, decimal, decimal, int, string, bool)?>(null);
-
-        (bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)? result = null;
-
-        using var _ = TrackModal();
-        Action openDialog = () =>
-        {
-            var vm = new ViewModels.CashAdvanceRegisterViewModel(paymentMethods, availableCashLocal);
-            var dialog = new CashAdvanceRegisterDialog(vm);
-            dialog.ShowDialog();
-            if (vm.DialogResult && vm.SelectedPaymentMethod != null)
-            {
-                result = (true, vm.RequestedAmountBsS, vm.CommissionAmountBsS, vm.SelectedPaymentMethod.Id, vm.SelectedPaymentMethod.Name, vm.IsTransfer);
-            }
-        };
-
-        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
-        else Application.Current.Dispatcher.Invoke(openDialog);
-
-        return System.Threading.Tasks.Task.FromResult(result);
-    }
-
-    public System.Threading.Tasks.Task<(bool confirmed, System.Collections.Generic.IEnumerable<UpdateSaleItemDto>? modifiedItems)> ShowEditSaleDialogAsync(
-        SaleDto sale, decimal exchangeRate)
-    {
-        if (Application.Current == null)
-            return System.Threading.Tasks.Task.FromResult<(bool, System.Collections.Generic.IEnumerable<UpdateSaleItemDto>?)>((false, null));
-
-        bool confirmed = false;
-        System.Collections.Generic.IEnumerable<UpdateSaleItemDto>? modifiedItems = null;
-
-        using var _ = TrackModal();
-        Action openDialog = () =>
-        {
-            var dialog = new EditSaleDialog();
-            dialog.LoadSale(sale, exchangeRate, _productService);
-            dialog.Owner = Application.Current.MainWindow;
-            if (dialog.ShowDialog() == true && dialog.HasChanges)
-            {
-                confirmed = true;
-                modifiedItems = dialog.ModifiedItems;
-            }
-        };
-
-
-        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
-        else Application.Current.Dispatcher.Invoke(openDialog);
-
-        return System.Threading.Tasks.Task.FromResult((confirmed, modifiedItems));
-    }
-
-    public System.Threading.Tasks.Task ShowPairingQrDialogAsync()
-    {
-        if (Application.Current == null)
-            return System.Threading.Tasks.Task.CompletedTask;
-
-        using var _ = TrackModal();
-        Action openDialog = () =>
-        {
-            var serverAddr = _connectionManager?.CurrentServerAddress ?? "http://localhost:5000/";
-            var httpClient = _httpClientFactory != null 
-                ? _httpClientFactory.CreateClient("SalesApi")
-                : new System.Net.Http.HttpClient { BaseAddress = new Uri(serverAddr) };
-
-            var vm = new ViewModels.PairingQrViewModel(httpClient);
-            var dialog = new PairingQrDialog(vm);
-            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
-            {
-                dialog.Owner = Application.Current.MainWindow;
-            }
-            dialog.ShowDialog();
-        };
-
-        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
-        else Application.Current.Dispatcher.Invoke(openDialog);
-
-        return System.Threading.Tasks.Task.CompletedTask;
-    }
-
-    public System.Threading.Tasks.Task<bool> ShowServerConnectionDialogAsync()
-    {
-        if (Application.Current == null)
-            return System.Threading.Tasks.Task.FromResult(false);
-
-        bool result = false;
-        using var _ = TrackModal();
-        Action openDialog = () =>
-        {
-            var connMgr = _connectionManager ?? new ConnectionManager(new ClientSettingsStore(), new SubnetScannerService());
-            var scanner = _scannerService ?? new SubnetScannerService();
-            var vm = new ViewModels.ServerConnectionViewModel(connMgr, scanner);
-            var dialog = new ServerConnectionDialog(vm);
-            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
-            {
-                dialog.Owner = Application.Current.MainWindow;
-            }
-            var dr = dialog.ShowDialog();
-            result = dr == true;
-        };
-
-        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
-        else Application.Current.Dispatcher.Invoke(openDialog);
-
-        return System.Threading.Tasks.Task.FromResult(result);
-    }
-
-    public System.Threading.Tasks.Task<ProductDto?> ShowVariantSelectionDialogAsync(ProductQuickInfoDto parentProduct)
-    {
-        if (Application.Current == null || _productService == null)
-            return System.Threading.Tasks.Task.FromResult<ProductDto?>(null);
-
-        ProductDto? result = null;
-        using var _ = TrackModal();
-        Action openDialog = () =>
-        {
-            var exchangeRateService = _exchangeRateService ?? new ExchangeRateService(new System.Net.Http.HttpClient());
-            var vm = new ViewModels.VariantSelectionViewModel(_productService, exchangeRateService, parentProduct);
-            var dialog = new VariantSelectionDialog(vm);
-            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
-            {
-                dialog.Owner = Application.Current.MainWindow;
-            }
-            var dr = dialog.ShowDialog();
-            if (dr == true)
-            {
-                result = vm.SelectedVariant;
-            }
-        };
-
-        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
-        else Application.Current.Dispatcher.Invoke(openDialog);
-
-        return System.Threading.Tasks.Task.FromResult(result);
-    }
-
-    public System.Threading.Tasks.Task ShowVariantManagementDialogAsync(ProductDto parentProduct)
-    {
-        if (Application.Current == null || _productService == null)
-            return System.Threading.Tasks.Task.CompletedTask;
-
-        using var _ = TrackModal();
-        Action openDialog = () =>
-        {
-            var exchangeRateService = _exchangeRateService ?? new ExchangeRateService(new System.Net.Http.HttpClient());
-            var vm = new ViewModels.VariantManagementViewModel(_productService, exchangeRateService, this, parentProduct);
-            var dialog = new VariantManagementDialog(vm);
-            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
-            {
-                dialog.Owner = Application.Current.MainWindow;
-            }
-            dialog.ShowDialog();
-        };
-
-        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
-        else Application.Current.Dispatcher.Invoke(openDialog);
-
-        return System.Threading.Tasks.Task.CompletedTask;
     }
 }
-

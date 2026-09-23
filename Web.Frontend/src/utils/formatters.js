@@ -203,6 +203,30 @@ export function parseFormattedNumber(val) {
 }
 
 /**
+ * 8.9-M18: normalización canónica de montos a escala entera de centésimas.
+ * Convierte cualquier entrada que parseAmount entienda (incluido >2 decimales) al valor
+ * monetario redondeado al céntimo más próximo (regla única usada por AtmAmountInput y
+ * PaymentForm para que ambos redondeen idéntico).
+ * @param {number|string} rawValue
+ * @returns {number} centésimas (ej: "172.786" -> 17279)
+ */
+export function amountToCents(rawValue) {
+  const num = parseAmount(rawValue);
+  if (!isFinite(num)) return 0;
+  return Math.round(num * 100);
+}
+
+/**
+ * Convierte centésimas al número decimal equivalente (ej: 17279 -> 172.79).
+ * @param {number} cents
+ * @returns {number}
+ */
+export function centsToAmount(cents) {
+  const n = Number(cents);
+  return isFinite(n) ? n / 100 : 0;
+}
+
+/**
  * ATM-style input formatting: shifts typed digits to cents
  */
 export function formatAtmInput(rawValue, decimals = 2) {
@@ -247,15 +271,15 @@ export function getLineAmounts(item, fallbackExchangeRate = 1) {
   
   const unitUSD = Number(item.unitPrice) || 0;
   const subtotalUSD = item.subtotal !== undefined ? Number(item.subtotal) : (qty * unitUSD);
-  
+
   const unitBsS = Number(item.unitPriceBsS) > 0 
     ? Number(item.unitPriceBsS) 
-    : (unitUSD > 0 ? unitUSD * rate : 0);
-    
+    : (unitUSD > 0 ? Math.ceil(unitUSD * rate * 100) / 100 : 0);
+
   const subtotalBsS = Number(item.subtotalBsS) > 0 
     ? Number(item.subtotalBsS) 
-    : (unitBsS > 0 ? qty * unitBsS : subtotalUSD * rate);
-    
+    : (unitBsS > 0 ? Math.round(qty * unitBsS * 100) / 100 : Math.ceil(subtotalUSD * rate * 100) / 100);
+
   return { unitBsS, subtotalBsS, unitUSD, subtotalUSD };
 }
 
@@ -274,7 +298,7 @@ export function formatProductDisplayPrice(product, isWholesale = false, currency
   }
 
   const retailUSD = product.priceUSD || 0;
-  const retailBsS = product.priceUSD > 0 ? product.priceUSD * exchangeRate : (product.priceBsS || 0);
+  const retailBsS = product.priceBsS > 0 ? product.priceBsS : (product.priceUSD > 0 && exchangeRate > 0 ? Math.ceil(product.priceUSD * exchangeRate * 100) / 100 : 0);
 
   if (!isWholesale) {
     return currency === 'USD' ? formatUSD(retailUSD) : formatBsS(retailBsS);
@@ -282,7 +306,7 @@ export function formatProductDisplayPrice(product, isWholesale = false, currency
 
   const hasRealWholesale = (product.hasWholesale || product.priceWholesaleUSD > 0) && product.priceWholesaleUSD > 0 && product.priceWholesaleUSD < retailUSD;
   const wholesaleUSD = hasRealWholesale ? product.priceWholesaleUSD : retailUSD;
-  const wholesaleBsS = hasRealWholesale ? product.priceWholesaleUSD * exchangeRate : retailBsS;
+  const wholesaleBsS = hasRealWholesale ? (product.priceWholesaleUSD > 0 && exchangeRate > 0 ? Math.ceil(product.priceWholesaleUSD * exchangeRate * 100) / 100 : 0) : retailBsS;
 
   return currency === 'USD' ? formatUSD(wholesaleUSD) : formatBsS(wholesaleBsS);
 }

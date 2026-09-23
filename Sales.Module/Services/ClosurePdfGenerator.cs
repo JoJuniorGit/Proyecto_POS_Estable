@@ -1,4 +1,4 @@
-using Sales.Module.Entities;
+using Sales.Module.DTOs;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,7 +8,7 @@ namespace Sales.Module.Services;
 
 public static class ClosurePdfGenerator
 {
-    public static byte[] GeneratePdf(DailyClosure closure, bool isBlind = false)
+    public static byte[] GeneratePdf(DailyClosureResponseDto closure, bool isBlind = false)
     {
         var ms = new MemoryStream();
         var writer = new StreamWriter(ms, Encoding.ASCII);
@@ -69,7 +69,7 @@ public static class ClosurePdfGenerator
                 contentSb.AppendLine($"0.95 0.96 0.97 rg 40 {yPos} 532 20 re f");
             }
 
-            string currency = detail.PaymentMethodName.Contains("USD", StringComparison.OrdinalIgnoreCase) ? "USD" : "Bs.S";
+            string currency = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
             string declaredValStr = detail.ActualAmountBsS.ToString("N2");
             string systemValStr = isBlind ? "-" : detail.ExpectedAmountBsS.ToString("N2");
             

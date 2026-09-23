@@ -1,16 +1,65 @@
-import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo, useImperativeHandle, forwardRef } from 'react';
+
+import { createCheckoutKeyHolder } from '../../utils/idempotency.js';
 import Modal from '../ui/Modal';
 import ConfirmModal from '../ui/ConfirmModal';
 import PaymentForm from './PaymentForm';
 import PaymentList from './PaymentList';
 import { getActivePaymentMethods } from '../../services/paymentApi';
-import { completeSale, updateSaleCustomer } from '../../services/salesApi';
+import { completeSale, updateSaleCustomer, getCheckoutPreview } from '../../services/salesApi';
 import { useCart } from '../../context/CartContext';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatBsS } from '../../utils/formatters';
 import CustomerSelectorCard from './CustomerSelectorCard';
 import { Check, Loader2, PackageCheck } from 'lucide-react';
+import './CheckoutModal.css';
+
+export function buildCheckoutPreviewRequest({ saleId, exchangeRate, payments, overrideSale }) {
+  const previousPayments = overrideSale
+    ? (overrideSale.payments || []).map((p) => ({
+        paymentMethodId: p.paymentMethodId,
+        amount: p.amount || 0,
+        amountBsS: p.amountBsS || 0,
+      }))
+    : [];
+
+  const currentPayments = (payments || []).map((p) => ({
+    paymentMethodId: p.methodId,
+    amount: p.amountUsd,
+    amountBsS: p.amountBsS,
+    amountLocal: p.amountBsS,
+    referenceNumber: p.reference,
+  }));
+
+  return {
+    saleId,
+    exchangeRate,
+    payments: [...previousPayments, ...currentPayments],
+  };
+}
+
+export function computeCheckoutGate({
+  preview,
+  previewSignature,
+  currentSignature,
+  previewFailed,
+  hasValidPayments,
+  isOverrideSale,
+  isDefaultCust,
+  isPendingPickup,
+}) {
+  const isPreviewFresh = preview != null && !previewFailed && previewSignature != null && previewSignature === currentSignature;
+  const isFullLiquidation = isPreviewFresh && preview.isFullyPaid === true;
+  const isCustodyAllowed = isFullLiquidation && !isDefaultCust;
+  const canFinalize = hasValidPayments
+    && isPreviewFresh
+    && (isOverrideSale ? true : isFullLiquidation)
+    && (!isPendingPickup || isCustodyAllowed);
+  const roundingAdjustment = isPreviewFresh ? preview.roundingAdjustment : null;
+
+  return { isPreviewFresh, isFullLiquidation, isCustodyAllowed, canFinalize, roundingAdjustment };
+}
 
 const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale = null, onCompleteSale = null }, ref) {
   const { currentSale, totalBsS: cartTotalBsS, totalUSD: cartTotalUSD, resetCart, updateCustomer } = useCart();
@@ -24,12 +73,20 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
   const [error, setError] = useState(null);
   const [selectedSaleCustomer, setSelectedSaleCustomer] = useState(null);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [previewSignature, setPreviewSignature] = useState(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const checkoutKeyHolderRef = useRef(null);
+  if (!checkoutKeyHolderRef.current) {
+    checkoutKeyHolderRef.current = createCheckoutKeyHolder();
+  }
 
   const handleRequestClose = useCallback(() => {
     if (payments.length > 0) {
       setShowDiscardConfirm(true);
       return false;
     }
+    checkoutKeyHolderRef.current.reset();
     onClose?.();
     return true;
   }, [payments.length, onClose]);
@@ -58,15 +115,33 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
 
   // Cargar métodos de pago activos
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+    let cancelled = false;
+    setPayments([]);
+    setIsPendingPickup(false);
+    setError(null);
+    setSelectedSaleCustomer(null);
+
+    // 8.5-WEB3: reintento único ante fallo transitorio de payment-methods; error visible si persiste.
+    const loadMethods = (attempt) => {
       getActivePaymentMethods()
-        .then((res) => setMethods(res || []))
-        .catch((err) => console.error('[CheckoutModal] Error al cargar métodos:', err));
-      setPayments([]);
-      setIsPendingPickup(false);
-      setError(null);
-      setSelectedSaleCustomer(null);
-    }
+        .then((res) => {
+          if (cancelled) return;
+          setMethods(res || []);
+        })
+        .catch((err) => {
+          console.error('[CheckoutModal] Error al cargar métodos:', err);
+          if (cancelled) return;
+          if (attempt < 1) {
+            setTimeout(() => loadMethods(attempt + 1), 800);
+          } else {
+            setError('No se pudieron cargar los métodos de pago. Verifique la conexión e intente nuevamente.');
+          }
+        });
+    };
+    loadMethods(0);
+
+    return () => { cancelled = true; };
   }, [isOpen]);
 
   const paidBsS = payments.reduce((acc, p) => acc + p.amountBsS, 0);
@@ -75,20 +150,73 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
   const remainingBsS = Math.max(0, targetTotalBsS - paidBsS);
   const remainingUsd = Math.max(0, targetTotalUSD - paidUsd);
 
-  const hasValidPayments = payments.length > 0 && payments.every((p) => (p.amountBsS > 0 || p.amountUsd > 0));
-  const isFullLiquidation = hasValidPayments && remainingUsd <= 0.05;
+  // Previsualización canónica del backend: redondeo fiscal, saldo, vuelto y estado de pago total
+  const previewRequest = useMemo(
+    () => buildCheckoutPreviewRequest({ saleId: activeSale?.id, exchangeRate: rateToUse, payments, overrideSale }),
+    [activeSale?.id, rateToUse, payments, overrideSale]
+  );
+  const previewRequestSignature = useMemo(() => JSON.stringify(previewRequest), [previewRequest]);
 
-  // Ajuste de redondeo si la diferencia en USD es < 0.01
-  const roundingAdjustment = remainingUsd <= 0.01 ? paidBsS - targetTotalBsS : 0;
+  useEffect(() => {
+    if (!isOpen || !previewRequest.saleId) {
+      setPreview(null);
+      setPreviewSignature(null);
+      return;
+    }
+
+    let cancelled = false;
+    setPreviewFailed(false);
+    getCheckoutPreview(previewRequest.saleId, previewRequest.exchangeRate, previewRequest.payments)
+      .then((res) => {
+        if (!cancelled) {
+          if (!res) {
+            setPreviewFailed(true);
+            setPreview(null);
+            setPreviewSignature(null);
+          } else {
+            setPreviewFailed(false);
+            setPreview(res);
+            setPreviewSignature(previewRequestSignature);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error('[CheckoutModal] Error al obtener previsualización de cobro:', err);
+        if (!cancelled) {
+          setPreviewFailed(true);
+          setPreview(null);
+          setPreviewSignature(null);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [isOpen, previewRequest, previewRequestSignature]);
+
+  const hasValidPayments = payments.length > 0 && payments.every((p) => (p.amountBsS > 0 || p.amountUsd > 0));
 
   const custName = (activeSale?.customerName || '').toLowerCase();
   const isDefaultCust = !activeSale?.customerId || activeSale?.customer?.isDefault || custName.includes('consumidor final') || custName.includes('general');
 
-  const isCustodyAllowed = isFullLiquidation && !isDefaultCust;
-  const effectiveIsPendingPickup = isPendingPickup && isCustodyAllowed;
-
+  // 8.5-WEB1: Zero-trust en el redondeo fiscal. El ajuste canónico proviene EXCLUSIVAMENTE del
+  // preview del backend; sin fallback local aproximado que pueda cerrar con vuelto distinto.
   // Venta normal POS: requiere al menos 1 pago y saldo cubierto. Cuentas Abiertas (overrideSale): permite abonos parciales con al menos 1 pago.
-  const canFinalize = hasValidPayments && (overrideSale ? true : isFullLiquidation) && (!isPendingPickup || isCustodyAllowed);
+  const {
+    isFullLiquidation,
+    isCustodyAllowed,
+    canFinalize,
+    roundingAdjustment,
+  } = computeCheckoutGate({
+    preview,
+    previewSignature,
+    currentSignature: previewRequestSignature,
+    previewFailed,
+    hasValidPayments,
+    isOverrideSale: !!overrideSale,
+    isDefaultCust,
+    isPendingPickup,
+  });
+
+  const effectiveIsPendingPickup = isPendingPickup && isCustodyAllowed;
 
   const handleSelectCustomer = async (cust) => {
     if (!cust?.id) return;
@@ -106,7 +234,9 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
 
   const noPaymentsNotice = !hasValidPayments
     ? 'Agregue al menos un método de pago presionando "+ Agregar Pago" para procesar el cobro.'
-    : (!overrideSale && !isFullLiquidation ? 'El monto acumulado aún no cubre el 100% del total de la venta.' : null);
+    : (previewFailed
+        ? 'No se pudo validar el cobro con el servidor. Verifique la conexión e intente nuevamente (la transacción no puede cerrarse sin la validación canónica).'
+        : (!overrideSale && !isFullLiquidation ? 'El monto acumulado aún no cubre el 100% del total de la venta.' : null));
 
   const displayError = error || pendingPickupError;
 
@@ -114,8 +244,13 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
     setPayments((prev) => [...prev, newPayment]);
   };
 
-  const handleRemovePayment = (index) => {
-    setPayments((prev) => prev.filter((_, i) => i !== index));
+  const handleRemovePayment = (targetPayment) => {
+    // 8.5-WEB5: remover por uid estable (la key del PaymentList ya no es el índice).
+    setPayments((prev) =>
+      targetPayment?.uid
+        ? prev.filter((p) => p.uid !== targetPayment.uid)
+        : prev.filter((p) => p !== targetPayment)
+    );
   };
 
   const handleFinalizeSale = async () => {
@@ -143,7 +278,8 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       }));
 
       if (onCompleteSale) {
-        await onCompleteSale(rawPayments, roundingAdjustment, effectiveIsPendingPickup);
+        await onCompleteSale(rawPayments, roundingAdjustment, effectiveIsPendingPickup, checkoutKeyHolderRef.current.getOrCreateKey());
+        checkoutKeyHolderRef.current.reset();
       } else {
         const invoiceNumber = await completeSale(
           activeSale.id,
@@ -151,16 +287,25 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
           rawPayments,
           roundingAdjustment,
           user?.id,
-          effectiveIsPendingPickup
+          effectiveIsPendingPickup,
+          checkoutKeyHolderRef.current.getOrCreateKey()
         );
 
+        checkoutKeyHolderRef.current.reset();
+
         // Limpiar carrito e iniciar nueva venta (solo en venta normal del POS)
+        let cartResetOk = true;
         if (!overrideSale) {
-          await resetCart();
+          // 8.5-WEB5: se honra el booleano de resetCart(); si la nueva venta no pudo iniciarse,
+          // se notifica al caller para que no anuncie éxito con un currentSale obsoleto.
+          cartResetOk = await resetCart();
+          if (!cartResetOk) {
+            console.warn('[CheckoutModal] Venta liquidada, pero el carrito no pudo iniciar una nueva venta.');
+          }
         }
 
         if (onSuccess) {
-          onSuccess(invoiceNumber);
+          onSuccess(invoiceNumber, cartResetOk);
         }
       }
     } catch (err) {
@@ -178,7 +323,6 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
         onClose={handleRequestClose} 
         title={overrideSale ? (isFullLiquidation ? "Liquidar Cuenta Completa" : "Liquidar / Registrar Abono a Cuenta") : "Cobranza"} 
         maxWidth="560px"
-        centerTitle={true}
       >
       <CustomerSelectorCard
         currentCustomer={activeSale?.customer || (activeSale?.customerName ? { id: activeSale.customerId, name: activeSale.customerName, cedulaOrRif: activeSale.customerCedula } : null)}
@@ -191,24 +335,24 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       <div className="checkout-summary-box">
         <div className="checkout-summary-row">
           <span>{overrideSale ? "Saldo Pendiente:" : "Total Venta:"}</span>
-          <div style={{ textAlign: 'right' }}>
-            <div className="font-bold color-primary" style={{ fontSize: '1.2rem' }}>{formatBsS(targetTotalBsS || 0)}</div>
+          <div className="text-right">
+            <div className="font-bold color-primary chk-font-total">{formatBsS(targetTotalBsS || 0)}</div>
             <div className="text-xs text-muted font-medium">Ref: ${targetTotalUSD.toFixed(2)} USD</div>
           </div>
         </div>
 
         <div className="checkout-summary-row text-success">
           <span>Total Pagado Ahora:</span>
-          <div style={{ textAlign: 'right' }}>
-            <div className="font-bold" style={{ fontSize: '1.05rem' }}>{formatBsS(paidBsS)}</div>
+          <div className="text-right">
+            <div className="font-bold chk-font-paid">{formatBsS(paidBsS)}</div>
             <div className="text-xs text-muted font-medium">Ref: ${paidUsd.toFixed(2)} USD</div>
           </div>
         </div>
 
         <div className="checkout-summary-row text-danger highlight">
           <span>Restante Tras Cobro:</span>
-          <div style={{ textAlign: 'right' }}>
-            <div className="font-bold" style={{ fontSize: '1.15rem' }}>{formatBsS(remainingBsS)}</div>
+          <div className="text-right">
+            <div className="font-bold chk-font-remaining">{formatBsS(remainingBsS)}</div>
             <div className="text-xs text-muted font-medium">Ref: ${remainingUsd.toFixed(2)} USD</div>
           </div>
         </div>
@@ -228,37 +372,29 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       </div>
 
       <div className="checkout-section mt-3">
-        <div
-          style={{
-            padding: '12px 14px',
-            borderRadius: '8px',
-            border: isPendingPickup ? '1px solid #f59e0b' : '1px solid var(--border)',
-            backgroundColor: isPendingPickup ? 'rgba(245, 158, 11, 0.08)' : 'var(--bg-surface)',
-            transition: 'all 0.2s ease',
-            opacity: (!isFullLiquidation || isDefaultCust) ? 0.8 : 1
-          }}
+        <div className={`chk-pickup-box${isPendingPickup ? ' chk-pickup-box--pending' : ''}${(!isFullLiquidation || isDefaultCust) ? ' chk-pickup-box--disabled' : ''}`}
         >
-          <label className="flex-align-center gap-2 cursor-pointer font-bold" style={{ fontSize: '0.9rem', color: isPendingPickup ? '#f59e0b' : 'var(--text-primary)' }}>
+          <label className={`flex-align-center gap-2 cursor-pointer font-bold chk-pickup-label${isPendingPickup ? ' chk-pickup-label--pending' : ''}`}>
             <input
               type="checkbox"
               checked={isPendingPickup}
               disabled={!isFullLiquidation || isDefaultCust}
               onChange={(e) => setIsPendingPickup(e.target.checked)}
-              style={{ width: '18px', height: '18px', cursor: (!isFullLiquidation || isDefaultCust) ? 'not-allowed' : 'pointer' }}
+              className={`chk-pickup-checkbox${(!isFullLiquidation || isDefaultCust) ? ' chk-pickup-checkbox--disabled' : ''}`}
             />
             <span>📦 Mercancía en Custodia (Pendiente por Retirar)</span>
           </label>
 
           {!isFullLiquidation ? (
-            <div className="text-xs text-warning mt-2 pl-6" style={{ color: '#f59e0b', lineHeight: '1.4' }}>
+            <div className="text-xs text-warning mt-2 pl-6 chk-warning-note">
               ⚠️ Requiere pagar el 100% de la venta para poder enviar a Retiros Pendientes.
             </div>
           ) : isDefaultCust ? (
-            <div className="text-xs text-warning mt-2 pl-6" style={{ color: '#f59e0b', lineHeight: '1.4' }}>
+            <div className="text-xs text-warning mt-2 pl-6 chk-warning-note">
               ⚠️ Requiere seleccionar un cliente real (Nombre, Cédula y Teléfono) para activar la entrega posterior.
             </div>
           ) : isPendingPickup && (
-            <div className="text-xs text-muted mt-2 pl-6" style={{ lineHeight: '1.4' }}>
+            <div className="text-xs text-muted mt-2 pl-6 chk-info-note">
               El cliente cancela la factura al 100% en caja y deja los productos resguardados en el local para su retiro posterior. El inventario se descuenta inmediatamente.
             </div>
           )}
@@ -267,11 +403,11 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
 
       <div className="checkout-footer">
         {displayError ? (
-          <div className="alert alert-danger mb-3" style={{ fontSize: '0.85rem', lineHeight: '1.4', padding: '10px 14px', borderRadius: '8px' }}>
+          <div className="alert alert-danger mb-3 chk-alert-note">
             {displayError}
           </div>
         ) : (noPaymentsNotice && (
-          <div className="alert alert-warning mb-3" style={{ fontSize: '0.85rem', lineHeight: '1.4', padding: '10px 14px', borderRadius: '8px' }}>
+          <div className="alert alert-warning mb-3 chk-alert-note">
             {noPaymentsNotice}
           </div>
         ))}
@@ -320,6 +456,7 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       onConfirm={() => {
         setShowDiscardConfirm(false);
         setPayments([]);
+        checkoutKeyHolderRef.current.reset();
         onClose?.();
       }}
       title="¿Cancelar cobro en curso?"

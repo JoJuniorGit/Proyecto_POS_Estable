@@ -33,12 +33,15 @@ public class ConcreteTestViewModel : BaseViewModel
     {
     }
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(TaskCompletionSource<bool>? startedSignal = null)
     {
         await SafeInitializeAsync(async (ct) =>
         {
             LastTokenPassed = ct;
-            await Task.Delay(50, ct);
+            startedSignal?.TrySetResult(true);
+            // Espera infinita cancelable: el flujo se libera SOLO por cancelación, sin la
+            // ventana de timing de Task.Delay(100) que podía vencer bajo carga del thread pool.
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             Initialized = true;
         });
     }
@@ -89,12 +92,17 @@ public class UiCircuitBreakerTests
         var jitterProvider = new TestJitterProvider(0);
         using var vm = new ConcreteTestViewModel(clientState, jitterProvider);
 
-        var initTask = vm.InitializeAsync();
+        var startedSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var initTask = vm.InitializeAsync(startedSignal);
+
+        await startedSignal.Task;
 
         // Trigger Fatal Error mid-execution
         clientState.TryActivateFatalError();
 
-        await initTask; // Should complete cleanly without throwing OperationCanceledException
+        // Debe completar limpio sin OperationCanceledException; si la cancelación no ocurriera,
+        // el delay infinito no terminaría: el timeout acotado hace fallar rápido en vez de colgar.
+        await initTask.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.False(vm.Initialized);
         Assert.True(vm.LastTokenPassed.IsCancellationRequested);
@@ -112,8 +120,12 @@ public class UiCircuitBreakerTests
 
         clientState.ResetFatalError();
 
-        // Give a tiny delay for async event completion
-        await Task.Delay(50);
+        // El reset corre fire-and-forget: espera acotada por condición (antes: Task.Delay(50) fijo).
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!vm.Resumed && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
 
         Assert.True(vm.Resumed);
         Assert.False(vm.LastTokenPassed.IsCancellationRequested);

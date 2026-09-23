@@ -21,7 +21,7 @@ END $$;
 
 -- 2. Registro en Historia de Migraciones de EF Core
 INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
-VALUES ('20260805120000_ExpandSubtotalPrecisionTo4Decimals', '10.0.3')
+VALUES ('20260805120000_ExpandSubtotalPrecisionTo4Decimals', '10.0.4')
 ON CONFLICT ("MigrationId") DO NOTHING;
 
 COMMIT;

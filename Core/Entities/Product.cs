@@ -94,7 +94,4 @@ public class Product : BaseEntity
 
     [StringLength(50)]
     public string? GroupKey { get; set; }
-
-    [Timestamp]
-    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 }

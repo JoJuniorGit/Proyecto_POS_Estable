@@ -1,0 +1,29 @@
+/* ══════════════════════════════════════════════════════════
+   VariantSelectorModal — Clases propias reemplazando estilos
+   inline sin utilidad 1:1 en utilities.css / index.css
+   ══════════════════════════════════════════════════════════ */
+.vs-relative { position: relative; }
+
+.vs-title-box { padding: 0 36px; }
+
+.vs-modal-title { margin: 0; }
+
+.vs-btn-close {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.vs-loading {
+  padding: 2.5rem 0;
+  gap: 10px;
+}
+
+.vs-alert-error { border-radius: 8px; }
+
+.vs-empty { padding: 2.5rem 0; }
+
+.vs-card-price { line-height: 1.2; }
+
+.vs-price-bs { color: var(--accent-primary, #6366f1); }

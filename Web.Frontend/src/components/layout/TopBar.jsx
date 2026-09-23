@@ -21,7 +21,9 @@ export default function TopBar({ title, exchangeRate, isRateOutdated, onMenuClic
             Bs.S {formatNumberEs(exchangeRate)}
             {isRateOutdated && (
               <span className="rate-outdated-icon" title="Tasa desactualizada (>24h)">
-                <AlertTriangle size={13} style={{ marginLeft: '4px', color: '#f59e0b' }} />
+                <span className="rate-outdated-icon" title="Tasa desactualizada (>24h)">
+                <AlertTriangle size={13} />
+              </span>
               </span>
             )}
           </div>

@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Core.DTOs;
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -9,7 +10,7 @@ namespace Sales.Module.Services;
 
 public partial class SalesService
 {
-    public async Task<Sale> CreateCashAdvanceSaleAsync(
+    public async Task<SaleDto> CreateCashAdvanceSaleAsync(
         decimal requestedAmountLocal,
         decimal commissionAmountLocal,
         int paymentMethodId,
@@ -18,7 +19,8 @@ public partial class SalesService
         decimal exchangeRate,
         int? cashierId = null,
         string? userName = null,
-        IDbContextTransaction? existingTransaction = null)
+        IDbContextTransaction? existingTransaction = null,
+        System.Threading.CancellationToken cancellationToken = default)
     {
         if (existingTransaction != null && _context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
         {
@@ -35,7 +37,7 @@ public partial class SalesService
         {
             try
             {
-                var p = await _inventoryService.GetCashAdvanceProductAsync();
+                var p = await _inventoryService.GetCashAdvanceProductAsync(cancellationToken);
 
                 if (p != null)
                 {
@@ -43,7 +45,7 @@ public partial class SalesService
                 }
                 else
                 {
-                    var newP = await _inventoryService.CreateProductAsync(new Product
+                    productId = await _inventoryService.CreateSystemProductAsync(new CreateSystemProductRequest
                     {
                         Name = "Adelanto de Efectivo",
                         SKU = "ADV-001",
@@ -51,13 +53,18 @@ public partial class SalesService
                         StockQuantity = 999999,
                         IsCashAdvance = true,
                         IsActive = true
-                    });
-                    productId = newP.Id;
+                    }, cancellationToken);
                 }
             }
-            catch
+            catch (KeyNotFoundException)
             {
+                // Cash advance product not found by lookup — safe to fall through to id=1 as last resort.
                 productId = 1;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // DB or concurrency failure: propagate instead of silently imputting to product id=1.
+                throw new InvalidOperationException($"No se pudo obtener el producto de adelanto de efectivo. Detalle: {ex.Message}", ex);
             }
         }
 
@@ -65,19 +72,19 @@ public partial class SalesService
         int? resolvedCashierId = cashierId;
         if (!resolvedCashierId.HasValue && !string.IsNullOrWhiteSpace(userName))
         {
-            var matchedUser = await _context.Users.FirstOrDefaultAsync(u => u.Name == userName || u.FullName == userName || u.Cedula == userName);
+            var matchedUser = await _context.Users.FirstOrDefaultAsync(u => u.Name == userName || u.FullName == userName || u.Cedula == userName, cancellationToken);
             resolvedCashierId = matchedUser?.Id;
         }
 
         if (!resolvedCashierId.HasValue)
         {
-            var defaultUser = await _context.Users.FirstOrDefaultAsync(u => u.IsActive);
+            var defaultUser = await _context.Users.FirstOrDefaultAsync(u => u.IsActive, cancellationToken);
             resolvedCashierId = defaultUser?.Id;
         }
 
         // 3. Obtener cliente por defecto
-        var defaultCustomer = await _context.Customers.FirstOrDefaultAsync(c => c.IsDefault)
-                           ?? await _context.Customers.FirstOrDefaultAsync(c => c.Id == 1);
+        var defaultCustomer = await _context.Customers.FirstOrDefaultAsync(c => c.IsDefault, cancellationToken)
+                           ?? await _context.Customers.FirstOrDefaultAsync(c => c.Id == 1, cancellationToken);
 
         int customerId = defaultCustomer?.Id ?? 1;
         string customerName = defaultCustomer?.Name ?? "CLIENTE CONTADO";
@@ -86,8 +93,12 @@ public partial class SalesService
         // 4. Consecutivo de Facturación atómico en transacción
         int nextInvoice = await GenerateNextInvoiceNumberAsync();
 
+        // 8.5-A5 (residual): el adelanto de efectivo ancla su tasa a la BCV del día con la misma
+        // política que CompleteSale/HoldSale (desvío > tolerancia => ancla; >= ±100% => rechazo).
+        decimal anchoredRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "CashAdvance", referenceId: nextInvoice);
+
         decimal totalChargedLocal = requestedAmountLocal + commissionAmountLocal;
-        decimal totalChargedUSD = exchangeRate > 0 ? Math.Round(totalChargedLocal / exchangeRate, 4) : 0m;
+        decimal totalChargedUSD = anchoredRate > 0 ? Math.Round(totalChargedLocal / anchoredRate, 4) : 0m;
 
         // 5. Crear Sale completado con el CashierId resuelto
         var sale = new Sale
@@ -100,7 +111,7 @@ public partial class SalesService
             CustomerId = customerId,
             CustomerName = customerName,
             CustomerCedula = customerCedula,
-            AppliedRate = exchangeRate,
+            AppliedRate = anchoredRate,
             Subtotal = totalChargedUSD,
             TotalUSD = totalChargedUSD,
             SubtotalBsS = totalChargedLocal,
@@ -109,7 +120,7 @@ public partial class SalesService
         };
 
         _context.Sales.Add(sale);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         // 6. Crear SaleItem asignando explícitamente el precio unitario y subtotal (sobreescribiendo precio base 0)
         var saleItem = new SaleItem
@@ -118,6 +129,7 @@ public partial class SalesService
             ProductId = productId,
             ProductName = $"Adelanto de Efectivo ({paymentMethodName})",
             Quantity = 1m,
+            UnitCostUSD = 0m,
             UnitPrice = totalChargedUSD,
             Subtotal = totalChargedUSD,
             UnitPriceBsS = totalChargedLocal,
@@ -133,14 +145,14 @@ public partial class SalesService
             PaymentMethodId = paymentMethodId,
             Amount = totalChargedUSD,
             AmountBsS = totalChargedLocal,
-            ExchangeRate = exchangeRate,
+            ExchangeRate = anchoredRate,
             CreatedAt = DateTime.UtcNow,
             ReferenceNumber = $"ADELANTO-{DateTime.UtcNow:yyyyMMddHHmmss}"
         };
 
         _context.SalePayments.Add(payment);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
-        return sale;
+        return MapToDto(sale);
     }
 }

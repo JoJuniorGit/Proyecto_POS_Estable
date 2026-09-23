@@ -1,10 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Sales.Module.Data;
-using Sales.Module.Entities;
+using Sales.Module.DTOs;
 using Sales.Module.Interfaces;
-using Inventory.Module.Data;
 using Core.Interfaces;
 using System;
 using System.Collections.Generic;
@@ -20,168 +18,160 @@ namespace Backend.API.Controllers;
 public class DailyClosureController : ControllerBase
 {
     private readonly IDailyClosureService _closureService;
-    private readonly ICashDrawerService _cashDrawerService;
-    private readonly InventoryDbContext _inventoryContext;
-    private readonly ISystemSettingsService _settingsService;
-    private readonly SalesDbContext _salesContext;
     private readonly ICurrentUserService _currentUserService;
 
     public DailyClosureController(
         IDailyClosureService closureService,
-        ICashDrawerService cashDrawerService,
-        InventoryDbContext inventoryContext,
-        ISystemSettingsService settingsService,
-        SalesDbContext salesContext,
         ICurrentUserService currentUserService)
     {
         _closureService = closureService;
-        _cashDrawerService = cashDrawerService;
-        _inventoryContext = inventoryContext;
-        _settingsService = settingsService;
-        _salesContext = salesContext;
         _currentUserService = currentUserService;
     }
 
-    private async Task<decimal> GetTodayExchangeRateAsync()
+    [HttpGet("expected-totals")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<ActionResult<List<ExpectedTotalDto>>> GetExpectedTotalsAsync([FromQuery] DateTime dateUtc, CancellationToken cancellationToken)
     {
-        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
-        var record = await _inventoryContext.ExchangeRateHistory
-            .FirstOrDefaultAsync(r => r.Date == today);
-
-        if (record == null)
+        if (dateUtc == default)
         {
-            record = await _inventoryContext.ExchangeRateHistory
-                .Where(r => r.Date <= today)
-                .OrderByDescending(r => r.Date)
-                .FirstOrDefaultAsync();
+            return this.ApiBadRequest("El parámetro dateUtc es obligatorio.");
         }
 
-        if (record != null && record.Rate > 0)
-            return record.Rate;
-
-        return 1.0m;
-    }
-
-    [HttpGet("expected-totals")]
-    public async Task<ActionResult<List<ExpectedTotalDto>>> GetExpectedTotals([FromQuery] DateTime dateUtc)
-    {
-        var totals = await _closureService.GetExpectedTotalsByPaymentMethodAsync(dateUtc);
+        var totals = await _closureService.GetExpectedTotalsByPaymentMethodAsync(dateUtc, cancellationToken);
         return Ok(totals);
     }
 
+    [NonAction]
+    public Task<ActionResult<List<ExpectedTotalDto>>> GetExpectedTotals(DateTime dateUtc, CancellationToken cancellationToken) => GetExpectedTotalsAsync(dateUtc, cancellationToken);
+
     [RequireSecurityStampValidation]
     [HttpPost]
-    public async Task<ActionResult> CreateClosure([FromBody] CreateClosureRequest request)
+    public async Task<ActionResult> CreateClosureAsync([FromBody] CreateClosureRequest request, CancellationToken cancellationToken)
     {
+        if (User.IsInRole("Driver"))
+        {
+            return this.ApiForbidden("El rol Driver no tiene permisos para registrar cierres diarios.");
+        }
+
+        string? validationError = ValidateClosureRequest(request);
+        if (validationError is not null)
+        {
+            return this.ApiBadRequest(validationError);
+        }
+
+        return await ExecuteCreateClosureAsync(request, cancellationToken);
+    }
+
+    [NonAction]
+    public Task<ActionResult> CreateClosure(CreateClosureRequest request, CancellationToken cancellationToken) => CreateClosureAsync(request, cancellationToken);
+
+    private async Task<ActionResult> ExecuteCreateClosureAsync(CreateClosureRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
         try
         {
-            // 1. Identidad fidedigna por claims autenticados (H-API-2)
-            var authenticatedUserId = _currentUserService.UserId 
-                ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                ?? User.Identity?.Name;
+            string finalUserId = ResolveUserId();
+            DateTime closureDate = ResolveClosureDate(request.ClosureDate, finalUserId, User.IsInRole("Admin"));
 
-            var finalUserId = !string.IsNullOrWhiteSpace(authenticatedUserId)
-                ? authenticatedUserId
-                : (!string.IsNullOrWhiteSpace(request.UserId) ? request.UserId : "Admin");
+            var command = new CreateClosureCommand(
+                ClosureDateUtc: closureDate,
+                UserId: finalUserId,
+                Observation: request.Observation,
+                Declarations: request.Details
+                    .Select(d => new DeclaredPaymentAmount(d.PaymentMethodId, d.ActualAmountBsS))
+                    .ToList());
 
-            DateTime closureDate = DateTime.UtcNow;
-            if (request.ClosureDate != default)
-            {
-                var now = DateTime.UtcNow;
-                var requestedDateUtc = request.ClosureDate.Kind == DateTimeKind.Unspecified
-                    ? DateTime.SpecifyKind(request.ClosureDate, DateTimeKind.Utc)
-                    : request.ClosureDate.ToUniversalTime();
-
-                bool isAdmin = User.IsInRole("Admin");
-                if (isAdmin)
-                {
-                    if (requestedDateUtc > now.AddMinutes(5))
-                    {
-                        return BadRequest(new { message = "La fecha de cierre no puede ser en el futuro." });
-                    }
-                    if (now - requestedDateUtc > TimeSpan.FromHours(24))
-                    {
-                        return BadRequest(new { message = "No se permite registrar cierres con más de 24 horas de retroactividad." });
-                    }
-
-                    closureDate = requestedDateUtc;
-                    Core.Logging.AppLogger.LogSecurityAudit(
-                        $"[DAILY_CLOSURE_BACKDATE] Admin '{finalUserId}' registró un cierre con fecha retroactiva: {closureDate:O} (Actual: {now:O})");
-                }
-                else
-                {
-                    closureDate = now;
-                }
-            }
-
-            // 2. Totales esperados autoritativos calculados server-side (H-API-3)
-            var serverExpectedTotals = await _closureService.GetExpectedTotalsByPaymentMethodAsync(closureDate);
-            var expectedMap = serverExpectedTotals.ToDictionary(e => e.PaymentMethodId, e => e.ExpectedAmountBsS);
-
-            var closure = new DailyClosure
-            {
-                ClosureDate = closureDate,
-                UserId = finalUserId,
-                Observation = request.Observation,
-                Details = request.Details.Select(d =>
-                {
-                    expectedMap.TryGetValue(d.PaymentMethodId, out var authoritativeExpected);
-                    return new ClosureDetail
-                    {
-                        PaymentMethodId = d.PaymentMethodId,
-                        PaymentMethodName = d.PaymentMethodName,
-                        ExpectedAmountBsS = authoritativeExpected,
-                        ActualAmountBsS = d.ActualAmountBsS
-                    };
-                }).ToList()
-            };
-
-            decimal exchangeRate = await GetTodayExchangeRateAsync();
-
-            using var dbTransaction = await _salesContext.Database.BeginTransactionAsync();
-
-            var result = await _closureService.CreateClosureAsync(closure);
-
-            // Al cerrar el turno, se cierra la sesión anterior y se inicia una nueva conservando el saldo esperado
-            // en caja (saldo teórico acumulado) pero reiniciando a 0 los acumuladores de ingresos y egresos de la sesión.
-            await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate);
-
-            await dbTransaction.CommitAsync();
+            var result = await _closureService.CreateClosureFromCommandAsync(command, cancellationToken);
 
             return Ok(result);
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { Message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { Message = ex.Message });
+            return this.ApiBadRequest(ex.Message);
         }
+        catch (DbUpdateException)
+        {
+            return this.ApiConflict("Conflicto de concurrencia al registrar el cierre diario. Es posible que ya se haya ejecutado otro cierre en paralelo.");
+        }
+    }
+
+    private string ResolveUserId()
+    {
+        string? authenticatedUserId = _currentUserService.UserId
+            ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? User.Identity?.Name;
+
+        return !string.IsNullOrWhiteSpace(authenticatedUserId)
+            ? authenticatedUserId
+            : Core.Constants.SecurityConstants.RootAdminUsername;
+    }
+
+    private static string? ValidateClosureRequest(CreateClosureRequest? request)
+    {
+        if (request?.Details is null || request.Details.Count == 0)
+        {
+            return "El arqueo debe incluir el desglose por métodos de pago.";
+        }
+
+        var duplicatedMethodIds = request.Details
+            .GroupBy(d => d.PaymentMethodId)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        return duplicatedMethodIds.Count > 0
+            ? $"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}."
+            : null;
     }
 
     [HttpGet("{id}")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult> GetClosure(int id)
+    public async Task<ActionResult<DailyClosureResponseDto>> GetClosureAsync(int id, CancellationToken cancellationToken)
     {
-        var closure = await _closureService.GetClosureAsync(id);
+        var closure = await _closureService.GetClosureAsync(id, cancellationToken);
         if (closure == null) return NotFound();
         return Ok(closure);
     }
+
+    [NonAction]
+    public Task<ActionResult<DailyClosureResponseDto>> GetClosure(int id, CancellationToken cancellationToken) => GetClosureAsync(id, cancellationToken);
+
+    private static DateTime ResolveClosureDate(DateTime requestDate, string userId, bool isAdmin)
+    {
+        if (requestDate == default)
+        {
+            return DateTime.UtcNow;
+        }
+
+        var now = DateTime.UtcNow;
+        var requestedDateUtc = requestDate.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(requestDate, DateTimeKind.Utc)
+            : requestDate.ToUniversalTime();
+
+        if (!isAdmin)
+        {
+            return now;
+        }
+
+        if (requestedDateUtc > now.AddMinutes(5))
+        {
+            throw new InvalidOperationException("La fecha de cierre no puede ser en el futuro.");
+        }
+
+        if (now - requestedDateUtc > TimeSpan.FromHours(24))
+        {
+            throw new InvalidOperationException("No se permite registrar cierres con más de 24 horas de retroactividad.");
+        }
+
+        Core.Logging.AppLogger.LogSecurityAudit(
+            $"[DAILY_CLOSURE_BACKDATE] Admin '{userId}' registró un cierre con fecha retroactiva: {requestedDateUtc:O} (Actual: {now:O})");
+
+        return requestedDateUtc;
+    }
 }
 
-public class CreateClosureRequest
-{
-    public DateTime ClosureDate { get; set; }
-    public string? UserId { get; set; } = "Admin";
-    public string? Observation { get; set; }
-    public List<CreateClosureDetailRequest> Details { get; set; } = new();
-}
-
-public class CreateClosureDetailRequest
-{
-    public int PaymentMethodId { get; set; }
-    public string PaymentMethodName { get; set; } = string.Empty;
-    public decimal ExpectedAmountBsS { get; set; }
-    public decimal ActualAmountBsS { get; set; }
-}

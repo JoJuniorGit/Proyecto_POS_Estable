@@ -20,6 +20,8 @@ namespace CommandCenter.Tests;
 
 public class Sprint1PerformanceOptimizationTests
 {
+    private const int TestActorId = 42;
+
     private SalesDbContext GetInMemoryDbContext()
     {
         var options = new DbContextOptionsBuilder<SalesDbContext>()
@@ -38,7 +40,7 @@ public class Sprint1PerformanceOptimizationTests
 
         mockCashDrawer
             .Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1, Status = CashDrawerStatus.Open });
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
         return (service, context, mockInventory);
@@ -57,13 +59,13 @@ public class Sprint1PerformanceOptimizationTests
         context.PaymentMethods.Add(paymentMethod);
         await context.SaveChangesAsync();
 
-        var prod1 = new Product { Id = 101, Name = "Arroz 1kg", PriceUSD = 1.50m, PriceRetailUSD = 1.50m, IsActive = true };
-        var prod2 = new Product { Id = 102, Name = "Harina PAN", PriceUSD = 1.20m, PriceRetailUSD = 1.20m, IsActive = true };
+        var prod1 = new SaleProductInfoDto { Id = 101, Name = "Arroz 1kg", PriceUSD = 1.50m, PriceRetailUSD = 1.50m, IsActive = true };
+        var prod2 = new SaleProductInfoDto { Id = 102, Name = "Harina PAN", PriceUSD = 1.20m, PriceRetailUSD = 1.20m, IsActive = true };
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(101)).ReturnsAsync(prod1);
-        mockInventory.Setup(i => i.GetProductByIdAsync(102)).ReturnsAsync(prod2);
-        mockInventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
-            .ReturnsAsync((IEnumerable<int> ids) => new List<Product> { prod1, prod2 }.Where(p => ids.Contains(p.Id)).ToList());
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(101)).ReturnsAsync(prod1);
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(102)).ReturnsAsync(prod2);
+        mockInventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
+            .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) => new List<SaleProductInfoDto> { prod1, prod2 }.Where(p => ids.Contains(p.Id)).ToList());
 
         // 1. Start Sale
         var saleDto = await service.StartSaleAsync();
@@ -118,15 +120,15 @@ public class Sprint1PerformanceOptimizationTests
         context.PaymentMethods.Add(paymentMethod);
         await context.SaveChangesAsync();
 
-        var prod1 = new Product { Id = 201, Name = "Aceite 1L", PriceUSD = 3.00m, PriceRetailUSD = 3.00m, IsActive = true };
-        var prod2 = new Product { Id = 202, Name = "Azúcar 1kg", PriceUSD = 1.00m, PriceRetailUSD = 1.00m, IsActive = true };
-        var prod3 = new Product { Id = 203, Name = "Café 500g", PriceUSD = 4.50m, PriceRetailUSD = 4.50m, IsActive = true };
+        var prod1 = new SaleProductInfoDto { Id = 201, Name = "Aceite 1L", PriceUSD = 3.00m, PriceRetailUSD = 3.00m, IsActive = true };
+        var prod2 = new SaleProductInfoDto { Id = 202, Name = "Azúcar 1kg", PriceUSD = 1.00m, PriceRetailUSD = 1.00m, IsActive = true };
+        var prod3 = new SaleProductInfoDto { Id = 203, Name = "Café 500g", PriceUSD = 4.50m, PriceRetailUSD = 4.50m, IsActive = true };
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(201)).ReturnsAsync(prod1);
-        mockInventory.Setup(i => i.GetProductByIdAsync(202)).ReturnsAsync(prod2);
-        mockInventory.Setup(i => i.GetProductByIdAsync(203)).ReturnsAsync(prod3);
-        mockInventory.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
-            .ReturnsAsync((IEnumerable<int> ids) => new List<Product> { prod1, prod2, prod3 }.Where(p => ids.Contains(p.Id)).ToList());
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(201)).ReturnsAsync(prod1);
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(202)).ReturnsAsync(prod2);
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(203)).ReturnsAsync(prod3);
+        mockInventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
+            .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) => new List<SaleProductInfoDto> { prod1, prod2, prod3 }.Where(p => ids.Contains(p.Id)).ToList());
 
         // Create an on-hold sale with prod1
         var sale = new Sale
@@ -146,10 +148,13 @@ public class Sprint1PerformanceOptimizationTests
                 new SaleItem { ProductId = 201, ProductName = "Aceite 1L", Quantity = 1m, UnitPrice = 3.00m, Subtotal = 3.00m }
             }
         };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
-        // Update items to prod2 and prod3 via batch
         var request = new UpdateSaleItemsRequestDto
         {
             Items = new List<UpdateSaleItemDto>
@@ -159,7 +164,7 @@ public class Sprint1PerformanceOptimizationTests
             }
         };
 
-        var result = await service.UpdateSaleItemsAsync(sale.Id, request);
+        var result = await service.UpdateSaleItemsAsync(sale.Id, request, actingUserId: TestActorId);
 
         Assert.Equal(2, result.Items.Count);
         Assert.Contains(result.Items, i => i.ProductId == 202 && i.Quantity == 2m);
@@ -168,6 +173,81 @@ public class Sprint1PerformanceOptimizationTests
         Assert.Equal(325.00m, result.TotalBsS); // 6.50 * 50 = 325.00
 
         // Verify batch method was called
-        mockInventory.Verify(i => i.GetProductsByIdsAsync(It.Is<IEnumerable<int>>(ids => ids.Contains(202) && ids.Contains(203))), Times.AtLeastOnce());
+        mockInventory.Verify(i => i.GetSaleProductsByIdsAsync(It.Is<IEnumerable<int>>(ids => ids.Contains(202) && ids.Contains(203))), Times.AtLeastOnce());
+    }
+
+    [Fact]
+    public async Task AddItemAsync_WhenRateExact_RoundsAppliedRateToCeiling2Decimals()
+    {
+        using var context = GetInMemoryDbContext();
+        var (service, _, mockInventory) = CreateSalesService(context);
+
+        context.Customers.Add(new Customer { Id = 1, Name = "Consumidor Final", CedulaOrRif = "V-00000000", IsDefault = true, IsActive = true });
+        await context.SaveChangesAsync();
+
+        var prod1 = new SaleProductInfoDto { Id = 301, Name = "Arroz 1kg", PriceUSD = 1.50m, PriceRetailUSD = 1.50m, IsActive = true };
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(301)).ReturnsAsync(prod1);
+        mockInventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
+            .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) => new List<SaleProductInfoDto> { prod1 }.Where(p => ids.Contains(p.Id)).ToList());
+
+        var saleDto = await service.StartSaleAsync();
+        var updatedSale = await service.AddItemAsync(saleDto.Id, 301, 1m, 36.502175m);
+
+        Assert.Equal(36.51m, updatedSale.AppliedRate);
+        Assert.Equal(54.77m, updatedSale.Items.Single(i => i.ProductId == 301).UnitPriceBsS);
+    }
+
+    [Fact]
+    public async Task UpdateExchangeRateAsync_WhenRateExact_RoundsAppliedRateToCeiling2Decimals()
+    {
+        using var context = GetInMemoryDbContext();
+        var (service, _, mockInventory) = CreateSalesService(context);
+
+        context.Customers.Add(new Customer { Id = 1, Name = "Consumidor Final", CedulaOrRif = "V-00000000", IsDefault = true, IsActive = true });
+        await context.SaveChangesAsync();
+
+        var prod1 = new SaleProductInfoDto { Id = 302, Name = "Harina PAN", PriceUSD = 1.20m, PriceRetailUSD = 1.20m, IsActive = true };
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(302)).ReturnsAsync(prod1);
+        mockInventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
+            .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) => new List<SaleProductInfoDto> { prod1 }.Where(p => ids.Contains(p.Id)).ToList());
+
+        var saleDto = await service.StartSaleAsync();
+        await service.AddItemAsync(saleDto.Id, 302, 2m, 36.5022m);
+
+        var updatedSale = await service.UpdateExchangeRateAsync(saleDto.Id, 36.502175m);
+
+        Assert.Equal(36.51m, updatedSale.AppliedRate);
+
+        var savedSale = await context.Sales.FirstAsync(s => s.Id == saleDto.Id);
+        Assert.Equal(36.51m, savedSale.AppliedRate);
+    }
+
+    [Fact]
+    public async Task CompleteSaleAsync_WhenRateExact_RoundsAppliedRateToCeiling2Decimals()
+    {
+        using var context = GetInMemoryDbContext();
+        var (service, _, mockInventory) = CreateSalesService(context);
+
+        context.Customers.Add(new Customer { Id = 1, Name = "Consumidor Final", CedulaOrRif = "V-00000000", IsDefault = true, IsActive = true });
+        var paymentMethod = new PaymentMethod { Id = 3, Name = "Punto de Venta", IsCash = false };
+        context.PaymentMethods.Add(paymentMethod);
+        await context.SaveChangesAsync();
+
+        var prod1 = new SaleProductInfoDto { Id = 303, Name = "Aceite 1L", PriceUSD = 1.50m, PriceRetailUSD = 1.50m, IsActive = true };
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(303)).ReturnsAsync(prod1);
+        mockInventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>()))
+            .ReturnsAsync((IEnumerable<int> ids, CancellationToken _) => new List<SaleProductInfoDto> { prod1 }.Where(p => ids.Contains(p.Id)).ToList());
+
+        var saleDto = await service.StartSaleAsync();
+        await service.AddItemAsync(saleDto.Id, 303, 1m, 36.5022m);
+
+        var amountLocal = Math.Round(1.50m * 36.51m, 2, MidpointRounding.AwayFromZero);
+        var payments = new List<PaymentInfo> { new PaymentInfo(3, 1.50m, amountLocal, null) };
+
+        int invoiceNumber = await service.CompleteSaleAsync(saleDto.Id, 36.502175m, payments, 0m);
+        Assert.True(invoiceNumber > 0);
+
+        var savedSale = await context.Sales.FirstAsync(s => s.Id == saleDto.Id);
+        Assert.Equal(36.51m, savedSale.AppliedRate);
     }
 }

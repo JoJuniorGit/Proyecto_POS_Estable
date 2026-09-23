@@ -10,6 +10,8 @@ description: >-
 
 # Web POS Patterns & React Standards Guide
 
+> **Referencia de código:** Este skill supplementa `docs/coding-guidelines-web.md`. Léelo antes de escribir código React.
+
 This skill governs the web client development in `React 19 + Vite + Vanilla CSS Custom Properties`, ensuring instant responsiveness, touchscreen compatibility, and 100% behavioral parity with the Desktop WPF application.
 
 ---

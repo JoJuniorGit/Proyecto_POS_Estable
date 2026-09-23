@@ -7,7 +7,7 @@
       "command": "powershell",
       "args": [
         "-ExecutionPolicy", "Bypass",
-        "-File", "${workspaceFolder}/build-clean.ps1"
+        "-File", "${workspaceFolder}/scripts/build-clean.ps1"
       ],
       "group": {
         "kind": "build",
@@ -28,7 +28,7 @@
       "command": "powershell",
       "args": [
         "-ExecutionPolicy", "Bypass",
-        "-File", "${workspaceFolder}/build-clean.ps1",
+        "-File", "${workspaceFolder}/scripts/build-clean.ps1",
         "-clp:PerformanceSummary"
       ],
       "group": "build",

@@ -5,6 +5,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using Sales.Module.Data;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using Sales.Module.Services;
@@ -14,8 +15,10 @@ using Xunit;
 
 namespace CommandCenter.Tests;
 
-public class OnHoldSalesTests
+public partial class OnHoldSalesTests
 {
+    private const int TestActorId = 42;
+
     private SalesDbContext GetInMemoryDbContext()
     {
         var options = new DbContextOptionsBuilder<SalesDbContext>()
@@ -97,6 +100,50 @@ public class OnHoldSalesTests
     }
 
     [Fact]
+    public async Task HoldSale_InitialPayment_AnchorsClientRateToBcv()
+    {
+        using var context = GetInMemoryDbContext();
+        var mockInventory = new Mock<IInventoryService>();
+        var mockMediator = new Mock<IMediator>();
+        var mockCashDrawer = new Mock<ICashDrawerService>();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        // Tasa BCV del día = 65. Cliente envía 90 (desvío >10% pero <100%): debe anclarse a 65.
+        mockInventory.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(65m);
+
+        var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 50m };
+        context.Customers.Add(customer);
+
+        var sale = new Sale { Id = 1, TotalUSD = 100m, Status = SaleStatus.Pending };
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
+        var request = new HoldSaleRequestDto
+        {
+            CustomerId = 1,
+            ExchangeRate = 90m,
+            InitialPayment = new AddPaymentRequestDto
+            {
+                PaymentMethodId = 1,
+                AmountBsS = 3250m,
+                ExchangeRate = 90m
+            }
+        };
+
+        var result = await service.HoldSaleAsync(1, request);
+
+        Assert.Equal("OnHold", result.Status);
+        Assert.Equal(50m, result.TotalPaidUSD);
+        Assert.Equal(50m, result.RemainingBalanceUSD);
+
+        var storedPayment = await context.SalePayments.FirstAsync(p => p.SaleId == 1);
+        Assert.Equal(65m, storedPayment.ExchangeRate);
+        Assert.Equal(50m, storedPayment.Amount);
+    }
+
+    [Fact]
     public async Task AddPaymentToHoldSale_ConvertsBsSToUSD_AntiDevaluation()
     {
         using var context = GetInMemoryDbContext();
@@ -109,12 +156,15 @@ public class OnHoldSalesTests
         context.Customers.Add(customer);
 
         var sale = new Sale { Id = 1, CustomerId = 1, TotalUSD = 100m, Status = SaleStatus.OnHold, AppliedRate = 40m };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        // Abono de 2000 Bs.S a tasa 50 (devaluación ocurrió de 40 -> 50) => $40 USD abonados
         var paymentReq = new AddPaymentRequestDto
         {
             PaymentMethodId = 1,
@@ -122,7 +172,7 @@ public class OnHoldSalesTests
             ExchangeRate = 50m
         };
 
-        var result = await service.AddPaymentToHoldSaleAsync(1, paymentReq);
+        var result = await service.AddPaymentToHoldSaleAsync(1, paymentReq, actingUserId: TestActorId);
 
         Assert.Equal(40m, result.TotalPaidUSD);
         Assert.Equal(60m, result.RemainingBalanceUSD);
@@ -138,20 +188,24 @@ public class OnHoldSalesTests
         var mockSettings = new Mock<ISystemSettingsService>();
 
         mockCashDrawer.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1 });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1 });
 
         var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 100m };
         context.Customers.Add(customer);
 
         var sale = new Sale { Id = 1, CustomerId = 1, TotalUSD = 100m, Status = SaleStatus.OnHold, AppliedRate = 50m };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
+        context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true });
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        // Abono parcial de $40 USD vía CompleteSaleAsync debe lanzar excepción
         var payments = new[] { new Sales.Module.Interfaces.PaymentInfo(1, 40m, 2000m, null) };
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteSaleAsync(1, 50m, payments));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.CompleteSaleAsync(1, 50m, payments, actingUserId: TestActorId));
         Assert.Contains("El flujo de cobro requiere liquidación al 100%", ex.Message);
     }
 
@@ -179,7 +233,7 @@ public class OnHoldSalesTests
             ExchangeRate = 40m
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.HoldSaleAsync(1, request));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.HoldSaleAsync(1, request));
         Assert.Contains("Asigne un cliente distinto al Consumidor Final", ex.Message);
     }
 
@@ -193,22 +247,25 @@ public class OnHoldSalesTests
         var mockSettings = new Mock<ISystemSettingsService>();
 
         mockCashDrawer.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1 });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1 });
 
         var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 100m };
         context.Customers.Add(customer);
 
-        // Sale has $40 USD already paid, $60 USD remaining out of $100 USD
         var sale = new Sale { Id = 1, CustomerId = 1, TotalUSD = 100m, Status = SaleStatus.OnHold, AppliedRate = 50m };
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         sale.Payments.Add(new SalePayment { Amount = 40m, AmountBsS = 2000m, ExchangeRate = 50m });
         context.Sales.Add(sale);
+        context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true });
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        // Paying remaining $60 USD
         var payments = new[] { new Sales.Module.Interfaces.PaymentInfo(1, 60m, 3000m, null) };
-        var invoiceNum = await service.CompleteSaleAsync(1, 50m, payments);
+        var invoiceNum = await service.CompleteSaleAsync(1, 50m, payments, actingUserId: TestActorId);
 
         Assert.True(invoiceNum > 0);
         var updatedSale = await service.GetSaleAsync(1);
@@ -227,7 +284,7 @@ public class OnHoldSalesTests
         var mockSettings = new Mock<ISystemSettingsService>();
 
         mockCashDrawer.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1 });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1 });
 
         var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez" };
         context.Customers.Add(customer);
@@ -237,6 +294,7 @@ public class OnHoldSalesTests
         var sale = new Sale { Id = 1, CustomerId = 1, TotalUSD = 20m, TotalBsS = 1000m, Status = SaleStatus.Pending, AppliedRate = 50m };
         sale.Items.Add(item);
         context.Sales.Add(sale);
+        context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true });
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
@@ -291,9 +349,16 @@ public class OnHoldSalesTests
         var mockMediator = new Mock<IMediator>();
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
+        var product1 = new SaleProductInfoDto { Id = 1, Name = "Prod1", PriceUSD = 30m, IsActive = true };
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(1)).ReturnsAsync(product1);
+        mockInventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { product1 });
 
         var sale = new Sale { Id = 1, TotalUSD = 100m, Status = SaleStatus.OnHold };
-        sale.Payments.Add(new SalePayment { Id = 1, Amount = 50m, AmountBsS = 2000m, ExchangeRate = 40m }); // Abonado = $50 USD
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
+        sale.Payments.Add(new SalePayment { Id = 1, Amount = 50m, AmountBsS = 2000m, ExchangeRate = 40m });
         sale.Items.Add(new SaleItem { Id = 1, ProductId = 2, ProductName = "Original Item", Quantity = 1, UnitPrice = 100m, Subtotal = 100m });
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
@@ -303,11 +368,11 @@ public class OnHoldSalesTests
         {
             Items = new System.Collections.Generic.List<Sales.Module.DTOs.UpdateSaleItemDto>
             {
-                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 1, Quantity = 1, UnitPrice = 30m } // Nuevo Total = $30 USD < $50 USD Abonados
+                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 1, Quantity = 1, UnitPrice = 30m }
             }
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateSaleItemsAsync(1, request));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateSaleItemsAsync(1, request, actingUserId: TestActorId));
         Assert.Contains("no puede ser menor al monto total ya abonado", ex.Message);
 
         // Salvaguarda financiera: la venta NO fue modificada (total, abonos e ítems intactos)
@@ -326,11 +391,19 @@ public class OnHoldSalesTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
+        var product1 = new SaleProductInfoDto { Id = 1, Name = "Prod1", PriceUSD = 100m, IsActive = true };
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(1)).ReturnsAsync(product1);
+        mockInventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { product1 });
+
         var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 50m };
         context.Customers.Add(customer);
 
         var sale = new Sale { Id = 1, CustomerId = 1, TotalUSD = 60m, Status = SaleStatus.OnHold };
-        sale.Payments.Add(new SalePayment { Id = 1, Amount = 20m, AmountBsS = 800m, ExchangeRate = 40m }); // Abonado = $20 USD
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
+        sale.Payments.Add(new SalePayment { Id = 1, Amount = 20m, AmountBsS = 800m, ExchangeRate = 40m });
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
@@ -339,12 +412,11 @@ public class OnHoldSalesTests
         {
             Items = new System.Collections.Generic.List<Sales.Module.DTOs.UpdateSaleItemDto>
             {
-                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 1, Quantity = 1, UnitPrice = 100m } // Nuevo Total = $100 USD. Nuevo saldo = $80 USD > $50 USD Límite
+                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 1, Quantity = 1, UnitPrice = 100m }
             }
         };
 
-        // Se permite actualizar los ítems aun cuando el nuevo saldo pendiente supere el límite de crédito
-        var updatedSale = await service.UpdateSaleItemsAsync(1, request);
+        var updatedSale = await service.UpdateSaleItemsAsync(1, request, actingUserId: TestActorId);
 
         Assert.Equal("OnHold", updatedSale.Status);
         Assert.Equal(100m, updatedSale.TotalUSD);
@@ -361,32 +433,80 @@ public class OnHoldSalesTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
-        mockInventory.Setup(i => i.GetProductByIdAsync(10))
-            .ReturnsAsync(new Product { Id = 10, Name = "Laptop Lenovo", PriceUSD = 500m });
+        var product100 = new SaleProductInfoDto { Id = 100, Name = "Prod100", PriceUSD = 2m, IsActive = true };
+        var product101 = new SaleProductInfoDto { Id = 101, Name = "Prod101", PriceUSD = 10m, IsActive = true };
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(100)).ReturnsAsync(product100);
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(101)).ReturnsAsync(product101);
+        mockInventory.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { product100, product101 });
 
-        var sale = new Sale { Id = 1, TotalUSD = 300m, AppliedRate = 40m, Status = SaleStatus.OnHold };
-        sale.Payments.Add(new SalePayment { Id = 1, Amount = 100m, AmountBsS = 4000m, ExchangeRate = 40m }); // Paid = $100 USD
-        sale.Items.Add(new SaleItem { Id = 1, ProductId = 2, ProductName = "Old Item", Quantity = 1, UnitPrice = 300m, Subtotal = 300m });
+        var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 100m };
+        context.Customers.Add(customer);
+
+        var sale = new Sale { Id = 1, CustomerId = 1, TotalUSD = 10m, TotalBsS = 400m, Subtotal = 10m, SubtotalBsS = 400m, Status = SaleStatus.OnHold, AppliedRate = 40m, CashierId = TestActorId };
+        sale.Items.Add(new SaleItem { ProductId = 100, ProductName = "Prod100", Quantity = 5m, UnitPrice = 2m, Subtotal = 10m, UnitPriceBsS = 80m, SubtotalBsS = 400m });
+        
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
         var request = new Sales.Module.DTOs.UpdateSaleItemsRequestDto
         {
             Items = new System.Collections.Generic.List<Sales.Module.DTOs.UpdateSaleItemDto>
             {
-                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 10, Quantity = 1, UnitPrice = 500m } // New Total = $500 USD
+                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 101, Quantity = 2m }
             }
         };
 
-        var updatedSale = await service.UpdateSaleItemsAsync(1, request);
+        var updatedSale = await service.UpdateSaleItemsAsync(1, request, actingUserId: TestActorId);
 
         Assert.Equal("OnHold", updatedSale.Status);
-        Assert.Equal(500m, updatedSale.TotalUSD);
-        Assert.Equal(100m, updatedSale.TotalPaidUSD);
-        Assert.Equal(400m, updatedSale.RemainingBalanceUSD);
         Assert.Single(updatedSale.Items);
-        Assert.Equal("Laptop Lenovo", updatedSale.Items[0].ProductName);
+        Assert.Equal(101, updatedSale.Items[0].ProductId);
+        Assert.Equal(20m, updatedSale.TotalUSD);
+        Assert.Equal(800m, updatedSale.TotalBsS);
+    }
+
+    [Fact]
+    public async Task UpdateSaleItemsAsync_WhenProductNotFound_Throws()
+    {
+        using var context = GetInMemoryDbContext();
+        var mockInventory = new Mock<IInventoryService>();
+        var mockMediator = new Mock<IMediator>();
+        var mockCashDrawer = new Mock<ICashDrawerService>();
+        var mockSettings = new Mock<ISystemSettingsService>();
+
+        mockInventory.Setup(i => i.GetSaleProductByIdAsync(100)).ReturnsAsync((SaleProductInfoDto?)null);
+
+        var customer = new Customer { Id = 1, CedulaOrRif = "V-12345678", Name = "Juan Perez", CreditLimitUSD = 100m };
+        context.Customers.Add(customer);
+
+        var sale = new Sale { Id = 1, CustomerId = 1, TotalUSD = 10m, TotalBsS = 400m, Subtotal = 10m, SubtotalBsS = 400m, Status = SaleStatus.OnHold, AppliedRate = 40m, CashierId = TestActorId };
+        sale.Items.Add(new SaleItem { ProductId = 99, ProductName = "Prod99", Quantity = 5m, UnitPrice = 2m, Subtotal = 10m, UnitPriceBsS = 80m, SubtotalBsS = 400m });
+        
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
+
+        var request = new Sales.Module.DTOs.UpdateSaleItemsRequestDto
+        {
+            Items = new System.Collections.Generic.List<Sales.Module.DTOs.UpdateSaleItemDto>
+            {
+                new Sales.Module.DTOs.UpdateSaleItemDto { ProductId = 100, Quantity = 2m, UnitPrice = 999m }
+            }
+        };
+
+        var ex = await Assert.ThrowsAsync<System.Collections.Generic.KeyNotFoundException>(() => service.UpdateSaleItemsAsync(1, request, actingUserId: TestActorId));
+        Assert.Contains("no existe", ex.Message);
     }
 
     [Fact]
@@ -398,24 +518,31 @@ public class OnHoldSalesTests
         var mockCashDrawer = new Mock<ICashDrawerService>();
         var mockSettings = new Mock<ISystemSettingsService>();
 
+        mockCashDrawer.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1 });
+
         var realCustomer = new Customer { Id = 5, CedulaOrRif = "V-99999999", Name = "Maria Gomez", IsDefault = false };
         context.Customers.Add(realCustomer);
 
         var sale = new Sale { Id = 1, TotalUSD = 100m, AppliedRate = 40m, Status = SaleStatus.OnHold, CustomerId = 5 };
-        sale.Payments.Add(new SalePayment { Id = 1, Amount = 40m, AmountBsS = 1600m, ExchangeRate = 40m }); // Abono previo = $40 USD
+        sale.ClaimedByUserId = TestActorId;
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedByUserName = "Test Actor";
+        sale.ClaimedAtUtc = DateTime.UtcNow;
+        sale.Payments.Add(new SalePayment { Id = 1, Amount = 40m, AmountBsS = 1600m, ExchangeRate = 40m });
         sale.Items.Add(new SaleItem { Id = 1, ProductId = 10, ProductName = "Harina", Quantity = 2, UnitPrice = 50m, Subtotal = 100m });
         context.Sales.Add(sale);
+        context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true });
         await context.SaveChangesAsync();
 
         var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
 
-        // Pago restante de $60 USD
         var payments = new System.Collections.Generic.List<PaymentInfo>
         {
             new PaymentInfo(1, 60m, 2400m, "REF-100")
         };
 
-        int invoiceNumber = await service.CompleteSaleAsync(1, 40m, payments, 0m, 1, isPendingPickup: true);
+        int invoiceNumber = await service.CompleteSaleAsync(1, 40m, payments, 0m, 1, isPendingPickup: true, actingUserId: TestActorId);
 
         Assert.True(invoiceNumber > 0);
         var completedSale = await context.Sales.FindAsync(1);
@@ -427,323 +554,4 @@ public class OnHoldSalesTests
         mockMediator.Verify(m => m.Publish(It.Is<Core.Events.SaleMadeEvent>(e => e.SaleId == 1), default), Times.Once);
     }
 
-    [Fact]
-    public async Task LiquidateOnHoldSale_WithPendingPickup_RejectsDefaultCustomer()
-    {
-        using var context = GetInMemoryDbContext();
-        var mockInventory = new Mock<IInventoryService>();
-        var mockMediator = new Mock<IMediator>();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
-        var defaultCustomer = new Customer { Id = 1, CedulaOrRif = "V-00000000", Name = "Consumidor Final", IsDefault = true };
-        context.Customers.Add(defaultCustomer);
-
-        var sale = new Sale { Id = 1, TotalUSD = 100m, AppliedRate = 40m, Status = SaleStatus.OnHold, CustomerId = 1 };
-        sale.Payments.Add(new SalePayment { Id = 1, Amount = 100m, AmountBsS = 4000m, ExchangeRate = 40m });
-        context.Sales.Add(sale);
-        await context.SaveChangesAsync();
-
-        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteSaleAsync(1, 40m, System.Linq.Enumerable.Empty<PaymentInfo>(), 0m, 1, isPendingPickup: true));
-        Assert.Contains("se requiere seleccionar o crear un cliente real", ex.Message);
-    }
-
-    [Fact]
-    public async Task RecalculateOnHoldSalesAsync_UpdatesAppliedRateAndBsSTotals_ForOnHoldSalesOnly()
-    {
-        using var context = GetInMemoryDbContext();
-        var mockInventory = new Mock<IInventoryService>();
-        var mockMediator = new Mock<IMediator>();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
-        var onHoldSale = new Sale
-        {
-            Id = 1,
-            Status = SaleStatus.OnHold,
-            AppliedRate = 50m,
-            TotalUSD = 100m,
-            TotalBsS = 5000m,
-            Items = new System.Collections.Generic.List<SaleItem>
-            {
-                new SaleItem { Id = 10, ProductId = 1, ProductName = "Product A", Quantity = 2m, UnitPrice = 50m, Subtotal = 100m, UnitPriceBsS = 2500m, SubtotalBsS = 5000m }
-            }
-        };
-
-        var completedSale = new Sale
-        {
-            Id = 2,
-            Status = SaleStatus.Completed,
-            AppliedRate = 50m,
-            TotalUSD = 100m,
-            TotalBsS = 5000m
-        };
-
-        context.Sales.AddRange(onHoldSale, completedSale);
-        await context.SaveChangesAsync();
-
-        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
-
-        // Recalculate with new rate = 60m
-        int count = await service.RecalculateOnHoldSalesAsync(60m);
-
-        Assert.Equal(1, count);
-
-        var updatedOnHold = await context.Sales.Include(s => s.Items).FirstOrDefaultAsync(s => s.Id == 1);
-        Assert.NotNull(updatedOnHold);
-        Assert.Equal(60m, updatedOnHold.AppliedRate);
-        Assert.Equal(6000m, updatedOnHold.TotalBsS);
-        Assert.Equal(3000m, updatedOnHold.Items[0].UnitPriceBsS);
-        Assert.Equal(6000m, updatedOnHold.Items[0].SubtotalBsS);
-
-        var updatedCompleted = await context.Sales.FindAsync(2);
-        Assert.NotNull(updatedCompleted);
-        Assert.Equal(50m, updatedCompleted.AppliedRate);
-        Assert.Equal(5000m, updatedCompleted.TotalBsS);
-    }
-
-    [Fact]
-    public async Task RecalculateOnHoldSalesAsync_PreservesExistingPayments()
-    {
-        using var context = GetInMemoryDbContext();
-        var mockInventory = new Mock<IInventoryService>();
-        var mockMediator = new Mock<IMediator>();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
-        var onHoldSale = new Sale
-        {
-            Id = 1,
-            Status = SaleStatus.OnHold,
-            AppliedRate = 50m,
-            TotalUSD = 100m,
-            TotalBsS = 5000m,
-            Payments = new System.Collections.Generic.List<SalePayment>
-            {
-                new SalePayment { Id = 1, Amount = 20m, AmountBsS = 1000m, ExchangeRate = 50m }
-            }
-        };
-
-        context.Sales.Add(onHoldSale);
-        await context.SaveChangesAsync();
-
-        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
-
-        await service.RecalculateOnHoldSalesAsync(60m);
-
-        var updatedSale = await context.Sales.Include(s => s.Payments).FirstOrDefaultAsync(s => s.Id == 1);
-        Assert.NotNull(updatedSale);
-        Assert.Equal(60m, updatedSale.AppliedRate);
-        Assert.Equal(6000m, updatedSale.TotalBsS);
-
-        // Previous payment retains its original rate and amounts
-        var payment = updatedSale.Payments[0];
-        Assert.Equal(20m, payment.Amount);
-        Assert.Equal(1000m, payment.AmountBsS);
-        Assert.Equal(50m, payment.ExchangeRate);
-    }
-
-    [Fact]
-    public async Task GetPendingSalesAsync_AutoRecalculatesOutdatedOnHoldSalesWithTodayExchangeRate()
-    {
-        using var context = GetInMemoryDbContext();
-        var mockInventory = new Mock<IInventoryService>();
-        var mockMediator = new Mock<IMediator>();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
-        mockInventory.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(65m);
-
-        var oldOnHoldSale = new Sale
-        {
-            Id = 1,
-            Status = SaleStatus.OnHold,
-            AppliedRate = 50m,
-            TotalUSD = 100m,
-            TotalBsS = 5000m
-        };
-
-        context.Sales.Add(oldOnHoldSale);
-        await context.SaveChangesAsync();
-
-        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
-
-        var pendingSales = (await service.GetPendingSalesAsync()).ToList();
-
-        Assert.Single(pendingSales);
-        Assert.Equal(65m, pendingSales[0].AppliedRate);
-        Assert.Equal(6500m, pendingSales[0].TotalBsS);
-    }
-
-    [Fact]
-    public async Task AddItemAsync_TruncatesDecimalQuantityForNonFractionalProducts()
-    {
-        using var context = GetInMemoryDbContext();
-        var mockInventory = new Mock<IInventoryService>();
-        var mockMediator = new Mock<IMediator>();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
-        mockInventory.Setup(i => i.GetProductByIdAsync(10)).ReturnsAsync(new Product
-        {
-            Id = 10,
-            Name = "Acondicionador Drene Brillo 200ml",
-            PriceUSD = 15.69m / 60m,
-            IsFractional = false
-        });
-
-        var sale = new Sale { Id = 1, Status = SaleStatus.Pending };
-        context.Sales.Add(sale);
-        await context.SaveChangesAsync();
-
-        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
-
-        var updatedSale = await service.AddItemAsync(1, 10, 1.5m, 60m);
-
-        Assert.NotNull(updatedSale);
-        Assert.Single(updatedSale.Items);
-        Assert.Equal(1m, updatedSale.Items[0].Quantity);
-    }
-
-    [Fact]
-    public async Task HoldSaleAsync_SmallAmountFractionalProduct_StaysOnHoldWhenUnpaid()
-    {
-        using var context = GetInMemoryDbContext();
-        var mockInventory = new Mock<IInventoryService>();
-        var mockMediator = new Mock<IMediator>();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
-        var customer = new Customer { Id = 5, Name = "Carlos Sanchez", CedulaOrRif = "V-20111222" };
-        context.Customers.Add(customer);
-
-        var sale = new Sale
-        {
-            Id = 1,
-            Status = SaleStatus.Pending,
-            TotalUSD = 0.03m,
-            AppliedRate = 784.67m,
-            TotalBsS = 20.87m
-        };
-        sale.Items.Add(new SaleItem
-        {
-            Id = 1,
-            ProductId = 10,
-            ProductName = "Acondicionador Drene Brillo 200ml",
-            Quantity = 1.33m,
-            UnitPrice = 0.026m,
-            Subtotal = 0.03m,
-            UnitPriceBsS = 15.69m,
-            SubtotalBsS = 20.87m
-        });
-        context.Sales.Add(sale);
-        await context.SaveChangesAsync();
-
-        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
-
-        var heldSale = await service.HoldSaleAsync(1, new HoldSaleRequestDto
-        {
-            CustomerId = 5,
-            ExchangeRate = 784.67m
-        });
-
-        Assert.Equal("OnHold", heldSale.Status);
-        Assert.Null(heldSale.InvoiceNumber);
-
-        var pendingSales = (await service.GetPendingSalesAsync()).ToList();
-        Assert.Single(pendingSales);
-        Assert.Equal(1, pendingSales[0].Id);
-        Assert.Single(pendingSales[0].Items);
-        Assert.Equal(1.33m, pendingSales[0].Items[0].Quantity);
-    }
-
-    [Fact]
-    public async Task CancelSaleAsync_WithoutPayments_ChangesStatusToCancelled()
-    {
-        using var context = GetInMemoryDbContext();
-        var mockInventory = new Mock<IInventoryService>();
-        var mockMediator = new Mock<IMediator>();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
-        var sale = new Sale { Id = 1, TotalUSD = 50m, Status = SaleStatus.OnHold, DeliveryStatus = SaleDeliveryStatus.PendingPickup };
-        context.Sales.Add(sale);
-        await context.SaveChangesAsync();
-
-        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
-
-        await service.CancelSaleAsync(1);
-
-        var updatedSale = await context.Sales.FindAsync(1);
-        Assert.NotNull(updatedSale);
-        Assert.Equal(SaleStatus.Cancelled, updatedSale.Status);
-    }
-
-    [Fact]
-    public async Task CancelSaleAsync_WithPayments_ThrowsInvalidOperationException()
-    {
-        using var context = GetInMemoryDbContext();
-        var mockInventory = new Mock<IInventoryService>();
-        var mockMediator = new Mock<IMediator>();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
-        var paymentMethod = new PaymentMethod { Id = 1, Name = "Efectivo USD", IsActive = true };
-        context.PaymentMethods.Add(paymentMethod);
-
-        var sale = new Sale { Id = 1, TotalUSD = 50m, Status = SaleStatus.OnHold, DeliveryStatus = SaleDeliveryStatus.PendingPickup };
-        sale.Payments.Add(new SalePayment { Id = 1, SaleId = 1, PaymentMethodId = 1, Amount = 10m, AmountBsS = 7800m });
-        context.Sales.Add(sale);
-        await context.SaveChangesAsync();
-
-        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelSaleAsync(1));
-        Assert.Contains("abonos acumulados", ex.Message);
-    }
-
-    [Fact]
-    public async Task CancelSaleAsync_DeliveredOrder_ThrowsInvalidOperationException()
-    {
-        using var context = GetInMemoryDbContext();
-        var mockInventory = new Mock<IInventoryService>();
-        var mockMediator = new Mock<IMediator>();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
-        var sale = new Sale { Id = 1, TotalUSD = 50m, Status = SaleStatus.OnHold, DeliveryStatus = SaleDeliveryStatus.Delivered, PickupDate = DateTime.UtcNow };
-        context.Sales.Add(sale);
-        await context.SaveChangesAsync();
-
-        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelSaleAsync(1));
-        Assert.Contains("entregado al cliente", ex.Message);
-    }
-
-    [Fact]
-    public async Task GetPendingSalesAsync_ExcludesCancelledSales()
-    {
-        using var context = GetInMemoryDbContext();
-        var mockInventory = new Mock<IInventoryService>();
-        var mockMediator = new Mock<IMediator>();
-        var mockCashDrawer = new Mock<ICashDrawerService>();
-        var mockSettings = new Mock<ISystemSettingsService>();
-
-        var saleOnHold = new Sale { Id = 1, TotalUSD = 50m, Status = SaleStatus.OnHold };
-        var saleCancelled = new Sale { Id = 2, TotalUSD = 30m, Status = SaleStatus.Cancelled };
-        context.Sales.AddRange(saleOnHold, saleCancelled);
-        await context.SaveChangesAsync();
-
-        var service = new SalesService(context, mockInventory.Object, mockMediator.Object, mockCashDrawer.Object, mockSettings.Object);
-
-        var pendingSales = (await service.GetPendingSalesAsync()).ToList();
-
-        Assert.Single(pendingSales);
-        Assert.Equal(1, pendingSales[0].Id);
-    }
 }
-
-

@@ -9,5 +9,9 @@ public partial class InterruptedTransactionDialog : Window
     {
         InitializeComponent();
         DataContext = viewModel;
+        viewModel.RequestClose += OnRequestClose;
+        Closed += (_, _) => viewModel.RequestClose -= OnRequestClose;
     }
+
+    private void OnRequestClose() => Close();
 }

@@ -12,6 +12,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Logistics.Module.Services;
 
+/// <summary>
+/// [NO PRODUCTIVO / EXPERIMENTAL] Servicio de gestión de entregas en memoria.
+/// Opera exclusivamente con ConcurrentDictionary sin persistencia en base de datos PostgreSQL ([8L-CR3]).
+/// </summary>
 public class DeliveryService : IDeliveryService
 {
     private readonly ConcurrentDictionary<int, DeliveryOrderDto> _deliveries = new();
@@ -22,6 +26,7 @@ public class DeliveryService : IDeliveryService
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
         _logger = logger;
+        _logger?.LogWarning("[Logistics.Module] DeliveryService instanciado en modo NO PRODUCTIVO / EXPERIMENTAL (almacenamiento en memoria sin persistencia).");
     }
 
     public Task<DeliveryOrderDto> RegisterDeliveryOrderAsync(DeliveryOrderDto order, CancellationToken cancellationToken = default)
@@ -33,8 +38,12 @@ public class DeliveryService : IDeliveryService
         }
 
         _deliveries[order.OrderId] = order;
-        _logger?.LogInformation("[Logistics] Orden de entrega #{OrderId} registrada para cliente '{Customer}' con destino '{Address}'.",
-            order.OrderId, order.CustomerName, order.DeliveryAddress);
+        // 8C-M4: sin PII en logs — CustomerName/DeliveryAddress completos son datos personales;
+        // solo se registran el id y un fragmento no sensible del nombre.
+        var nameFragment = order.CustomerName?.Length > 3 ? order.CustomerName.Substring(0, 3) : (order.CustomerName ?? "?");
+        _logger?.LogInformation(
+            "[Logistics] Orden de entrega #{OrderId} registrada para cliente '{Customer}' (direccion registrada: {HasAddress}).",
+            order.OrderId, nameFragment + "…", !string.IsNullOrWhiteSpace(order.DeliveryAddress));
 
         return Task.FromResult(order);
     }

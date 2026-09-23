@@ -50,7 +50,7 @@ public class Sale
     [Column(TypeName = "decimal(18,2)")]
     public decimal TotalUSD { get; set; }
     
-    [Column(TypeName = "decimal(18,2)")]
+    [Column(TypeName = "decimal(18,4)")]
     public decimal AppliedRate { get; set; }
 
     [Column(TypeName = "decimal(18,2)")]
@@ -67,6 +67,15 @@ public class Sale
 
     public int? CashierId { get; set; }
     public User? Cashier { get; set; }
+
+    public int? ClaimedByUserId { get; set; }
+
+    [MaxLength(150)]
+    public string? ClaimedByUserName { get; set; }
+
+    public SaleClaimAction ClaimAction { get; set; } = SaleClaimAction.None;
+
+    public DateTime? ClaimedAtUtc { get; set; }
 
     public bool IsZeroAmountOrder => TotalUSD == 0;
 

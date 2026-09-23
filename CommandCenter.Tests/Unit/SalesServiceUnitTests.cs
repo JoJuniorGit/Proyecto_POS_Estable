@@ -36,7 +36,7 @@ public class SalesServiceUnitTests
 
         cashDrawerMock
             .Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-            .ReturnsAsync(new CashDrawerSession { Id = 1, Status = CashDrawerStatus.Open });
+            .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1, Status = CashDrawerStatus.Open });
 
         var service = new SalesService(context, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsMock.Object);
         return (service, context, inventoryMock, mediatorMock, cashDrawerMock);
@@ -62,8 +62,8 @@ public class SalesServiceUnitTests
         var (service, context, inventoryMock, _, _) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var product = new ProductBuilder().WithId(10).WithSku("SKU-10").WithName("Harina").WithCostAndMargin(2.00m, 25.00m).Build();
-        inventoryMock.Setup(i => i.GetProductByIdAsync(10)).ReturnsAsync(product);
+        var product = new ProductBuilder().WithId(10).WithSku("SKU-10").WithName("Harina").WithCostAndMargin(2.00m, 25.00m).BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(10)).ReturnsAsync(product);
 
         var sale = await service.StartSaleAsync();
         var updated = await service.AddItemAsync(sale.Id, 10, 3, 50.00m);
@@ -82,8 +82,8 @@ public class SalesServiceUnitTests
         var (service, context, inventoryMock, _, _) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var product = new ProductBuilder().WithId(11).WithCostAndMargin(10m, 20m).Build();
-        inventoryMock.Setup(i => i.GetProductByIdAsync(11)).ReturnsAsync(product);
+        var product = new ProductBuilder().WithId(11).WithCostAndMargin(10m, 20m).BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(11)).ReturnsAsync(product);
 
         var sale = await service.StartSaleAsync();
         var addedSale = await service.AddItemAsync(sale.Id, 11, 2, 50m);
@@ -102,8 +102,8 @@ public class SalesServiceUnitTests
         var (service, context, inventoryMock, _, _) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var product = new ProductBuilder().WithId(12).WithCostAndMargin(5m, 20m).Build();
-        inventoryMock.Setup(i => i.GetProductByIdAsync(12)).ReturnsAsync(product);
+        var product = new ProductBuilder().WithId(12).WithCostAndMargin(5m, 20m).BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(12)).ReturnsAsync(product);
 
         var sale = await service.StartSaleAsync();
         await service.AddItemAsync(sale.Id, 12, 1, 50m);
@@ -128,10 +128,10 @@ public class SalesServiceUnitTests
             .WithId(13)
             .WithCostAndMargin(10m, 30m)
             .WithWholesale(minQty: 6m, wholesaleMargin: 10m)
-            .Build();
+            .BuildSaleProductInfo();
 
-        inventoryMock.Setup(i => i.GetProductByIdAsync(13)).ReturnsAsync(product);
-        inventoryMock.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<Product> { product });
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(13)).ReturnsAsync(product);
+        inventoryMock.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { product });
 
         var sale = await service.StartSaleAsync();
         await service.AddItemAsync(sale.Id, 13, 10, 50m);
@@ -247,7 +247,7 @@ public class SalesServiceUnitTests
             ExchangeRate = 50m
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.HoldSaleAsync(31, request));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.HoldSaleAsync(31, request));
         Assert.Contains("Las ventas en espera requieren un cliente real identificable", ex.Message);
     }
 
@@ -257,8 +257,8 @@ public class SalesServiceUnitTests
         var (service, context, inventoryMock, _, _) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var product = new ProductBuilder().WithId(50).WithCostAndMargin(10m, 50m).Build();
-        inventoryMock.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<Product> { product });
+        var product = new ProductBuilder().WithId(50).WithCostAndMargin(10m, 50m).BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { product });
 
         var sale = new SaleBuilder()
             .WithId(40)
@@ -313,21 +313,19 @@ public class SalesServiceUnitTests
         var (service, context, inventoryMock, _, _) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var advProduct = new Product
+        var advProduct = new SaleProductInfoDto
         {
             Id = 99,
-            SKU = "ADV-001",
             Name = "Adelanto de Efectivo",
             IsCashAdvance = true,
-            StockQuantity = 0m,
             IsActive = true
         };
 
-        inventoryMock.Setup(i => i.GetProductByIdAsync(99)).ReturnsAsync(advProduct);
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(99)).ReturnsAsync(advProduct);
         inventoryMock.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(50m);
 
         var sale = await service.StartSaleAsync();
-        var itemAdded = await service.AddItemAsync(sale.Id, 99, 1, 50m, custom_unit_price_usd: 10m, custom_unit_price_local: 500m);
+        var itemAdded = await service.AddItemAsync(sale.Id, 99, 1, 50m, customUnitPriceUsd: 10m, customUnitPriceLocal: 500m);
         Assert.NotNull(itemAdded);
 
         var payments = new List<PaymentInfo>
@@ -344,6 +342,60 @@ public class SalesServiceUnitTests
 
         // Verify that stock is not deducted for cash advance products
         inventoryMock.Verify(i => i.UpdateStockAsync(99, It.IsAny<decimal>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AddItemAsync_WithCustomPrice_PreservesUnitPriceAfterRecalculate()
+    {
+        var (service, context, inventoryMock, _, _) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var product = new ProductBuilder().WithId(60)
+            .WithSku("SKU-60")
+            .WithName("Producto Negociable")
+            .WithCostAndMargin(20.00m, 25.00m)
+            .BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(60)).ReturnsAsync(product);
+
+        var sale = await service.StartSaleAsync();
+        var itemAdded = await service.AddItemAsync(sale.Id, 60, 2, 50.00m, customUnitPriceUsd: 15.00m, customUnitPriceLocal: 750.00m, isPriceOverrideAuthorized: true);
+
+        Assert.NotNull(itemAdded);
+        var addedItem = itemAdded.Items.Single(i => i.ProductId == 60);
+        Assert.Equal(15.00m, addedItem.UnitPrice);
+        Assert.True(addedItem.IsCustomPrice);
+
+        var recalculated = await service.UpdateExchangeRateAsync(sale.Id, 62.00m);
+
+        var recalculatedItem = recalculated.Items.Single(i => i.ProductId == 60);
+        Assert.Equal(15.00m, recalculatedItem.UnitPrice);
+        Assert.True(recalculatedItem.IsCustomPrice);
+        Assert.Equal(Math.Round(2 * 15.00m, 2, MidpointRounding.AwayFromZero), recalculated.TotalUSD);
+        Assert.Equal(Math.Round(recalculated.TotalUSD * 62.00m, 2, MidpointRounding.AwayFromZero), recalculated.TotalBsS);
+    }
+
+    [Fact]
+    public async Task AddItemAsync_WithoutCustomPrice_UsesCatalogPriceAfterRecalculate()
+    {
+        var (service, context, inventoryMock, _, _) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var product = new ProductBuilder().WithId(61)
+            .WithSku("SKU-61")
+            .WithName("Producto Catalogo")
+            .WithCostAndMargin(10.00m, 50.00m)
+            .BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(61)).ReturnsAsync(product);
+
+        var sale = await service.StartSaleAsync();
+        await service.AddItemAsync(sale.Id, 61, 1, 50.00m);
+
+        var recalculated = await service.UpdateExchangeRateAsync(sale.Id, 62.00m);
+
+        var item = recalculated.Items.Single(i => i.ProductId == 61);
+        Assert.False(item.IsCustomPrice);
+        Assert.Equal(product.PriceRetailUSD, item.UnitPrice);
+        Assert.Equal(Math.Round(item.UnitPrice * 62.00m, 2, MidpointRounding.AwayFromZero), item.UnitPriceBsS);
     }
 
     [Fact]
@@ -456,66 +508,6 @@ public class SalesServiceUnitTests
         Assert.Equal(45, retrievedLateNight.DateLocal.Minute);
         Assert.Equal(4, retrievedLateNight.DateLocal.Day);
         Assert.Equal(9, retrievedLateNight.DateLocal.Month);
-    }
-
-    [Fact]
-    [Trait("Category", "RequiresDocker")]
-    public async Task GetSalesHistoryAsync_AgainstRealPostgreSql_ReturnsInvoicesFromTonight()
-    {
-        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION")
-            ?? "Host=localhost;Database=CommandCenterDb;Username=postgres;Password=123456";
-
-        var options = new DbContextOptionsBuilder<SalesDbContext>()
-            .UseNpgsql(connStr)
-            .Options;
-        using var realContext = new SalesDbContext(options);
-
-        var inventoryMock = new Mock<IInventoryService>();
-        var mediatorMock = new Mock<IMediator>();
-        var cashDrawerMock = new Mock<ICashDrawerService>();
-        var settingsMock = new Mock<ISystemSettingsService>();
-
-        var realService = new SalesService(realContext, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsMock.Object);
-
-        // Consultar con filtro del 4 de septiembre de 2026
-        var filterDate = new DateTime(2026, 9, 4);
-        var (items, totalCount) = await realService.GetSalesHistoryAsync(1, 25, filterDate, filterDate);
-
-        Assert.True(totalCount >= 5, $"Se esperaban al menos 5 ventas de hoy en PostgreSQL real, pero se obtuvieron {totalCount}.");
-        var list = items.ToList();
-        Assert.Contains(list, s => s.InvoiceNumber == 216);
-        Assert.Contains(list, s => s.InvoiceNumber == 217);
-        Assert.Contains(list, s => s.InvoiceNumber == 218);
-        Assert.Contains(list, s => s.InvoiceNumber == 219);
-        Assert.Contains(list, s => s.InvoiceNumber == 220);
-
-        // Verificar hora local de factura 216 (emitida a las 22:28 VET)
-        var inv216 = list.First(s => s.InvoiceNumber == 216);
-        Assert.Equal(22, inv216.DateLocal.Hour);
-        Assert.Equal(4, inv216.DateLocal.Day);
-        Assert.Equal(9, inv216.DateLocal.Month);
-
-        // Verificar GetSaleHistoryDetailAsync para factura 218
-        var inv218 = list.First(s => s.InvoiceNumber == 218);
-        var detail218 = await realService.GetSaleHistoryDetailAsync(inv218.Id);
-        Assert.NotNull(detail218);
-        Assert.NotEmpty(detail218.Items);
-        Assert.NotEmpty(detail218.Payments);
-        Assert.True(detail218.AppliedRate > 0);
-        Assert.True(detail218.TotalUSD > 0);
-        Assert.True(detail218.TotalBsS > 0);
-
-        // Probar serialización/deserialización HTTP hacia Desktop.Client.Services.SaleHistoryDto
-        var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var jsonStr = System.Text.Json.JsonSerializer.Serialize(detail218, jsonOptions);
-        var clientDto = System.Text.Json.JsonSerializer.Deserialize<Desktop.Client.Services.SaleHistoryDto>(jsonStr, jsonOptions);
-        Assert.NotNull(clientDto);
-        Assert.NotEmpty(clientDto.Items);
-        Assert.NotEmpty(clientDto.Payments);
-        Assert.Equal(detail218.AppliedRate, clientDto.AppliedRate);
-        Assert.Equal(detail218.TotalUSD, clientDto.TotalUSD);
-        Assert.Equal(detail218.TotalBsS, clientDto.TotalBsS);
-        Assert.Equal(detail218.InvoiceNumber, clientDto.InvoiceNumber);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using Backend.API.Controllers;
 using Backend.API.Services;
+using CommandCenter.Tests.Builders;
 using Core.DTOs;
 using Core.Entities;
 using Desktop.Client.Services;
@@ -8,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using Sales.Module.Data;
+using Sales.Module.Services;
 using System;
 using System.Globalization;
 using System.Security.Claims;
@@ -30,7 +32,7 @@ public class UserPasswordAndStockFormattingTests
 
     private UsersController CreateControllerWithAdminUser(SalesDbContext context, int currentUserId = 1)
     {
-        var controller = new UsersController(context);
+        var controller = ControllerFactory.CreateUsersController(context);
         var claims = new[]
         {
             new Claim(ClaimTypes.NameIdentifier, currentUserId.ToString()),
@@ -137,7 +139,8 @@ public class UserPasswordAndStockFormattingTests
             Cedula = "V-12345678",
             Name = "Cajero Modificado",
             Password = "NewSecretPassword2026!",
-            IsActive = true
+            IsActive = true,
+            Role = Core.Entities.UserRole.Admin
         };
 
         var result = await controller.UpdateUser(10, updateDto);
@@ -272,7 +275,7 @@ public class UserPasswordAndStockFormattingTests
         var userSession = new UserSession();
         var mockSalesService = new Mock<ISalesService>();
         var mockDialogService = new Mock<IDialogService>();
-        var customerVm = new CustomerManagementViewModel(mockSalesService.Object, userSession, mockDialogService.Object);
+        using var customerVm = new CustomerManagementViewModel(mockSalesService.Object, userSession, mockDialogService.Object);
 
         var vm = new UsersManagementViewModel(mockUserService.Object, userSession, customerVm);
 
@@ -299,7 +302,7 @@ public class UserPasswordAndStockFormattingTests
         var userSession = new UserSession();
         var mockSalesService = new Mock<ISalesService>();
         var mockDialogService = new Mock<IDialogService>();
-        var customerVm = new CustomerManagementViewModel(mockSalesService.Object, userSession, mockDialogService.Object);
+        using var customerVm = new CustomerManagementViewModel(mockSalesService.Object, userSession, mockDialogService.Object);
 
         var vm = new UsersManagementViewModel(mockUserService.Object, userSession, customerVm);
 
@@ -419,9 +422,9 @@ public class UserPasswordAndStockFormattingTests
         await context.SaveChangesAsync();
 
         var mockTokenService = new Mock<ITokenService>();
-        mockTokenService.Setup(t => t.GenerateToken(It.IsAny<User>())).Returns("fake-jwt-token");
+        mockTokenService.Setup(t => t.GenerateToken(It.IsAny<User>(), It.IsAny<string>())).Returns("fake-jwt-token");
 
-        var authController = new AuthController(context, mockTokenService.Object);
+        var authController = new AuthController(new AuthService(context), mockTokenService.Object);
 
         // Login with lowercase "supervisor_general"
         var request = new LoginRequest
@@ -455,7 +458,7 @@ public class UserPasswordAndStockFormattingTests
         await context.SaveChangesAsync();
 
         var mockTokenService = new Mock<ITokenService>();
-        var authController = new AuthController(context, mockTokenService.Object);
+        var authController = new AuthController(new AuthService(context), mockTokenService.Object);
 
         // Login with all lowercase password (mismatch case)
         var request = new LoginRequest

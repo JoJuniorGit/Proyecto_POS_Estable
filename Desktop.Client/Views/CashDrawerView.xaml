@@ -54,6 +54,7 @@
             
             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                 <Button Command="{Binding RefreshCommand}" 
+                        AutomationProperties.AutomationId="CashDrawer_RefreshButton"
                         Style="{DynamicResource MaterialDesignIconButton}" 
                         Margin="0,0,12,0" 
                         ToolTip="Refrescar datos de caja"
@@ -61,14 +62,18 @@
                     <materialDesign:PackIcon Kind="Refresh" Width="24" Height="24"/>
                 </Button>
                 
-                <Button Command="{Binding ProcessCashInCommand}" IsEnabled="{Binding IsAdmin}" Style="{DynamicResource MaterialDesignOutlinedButton}" Margin="0,0,10,0" ToolTip="Ingresar efectivo a caja (Solo Administradores)" Foreground="#27AE60" BorderBrush="#27AE60" Visibility="{Binding IsSessionActive, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Button Command="{Binding ProcessCashInCommand}" 
+                        AutomationProperties.AutomationId="CashDrawer_CashInButton"
+                        IsEnabled="{Binding IsAdmin}" Style="{DynamicResource MaterialDesignOutlinedButton}" Margin="0,0,10,0" ToolTip="Ingresar efectivo a caja (Solo Administradores)" Foreground="#27AE60" BorderBrush="#27AE60" Visibility="{Binding IsSessionActive, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <StackPanel Orientation="Horizontal">
                         <materialDesign:PackIcon Kind="ArrowDownThick" VerticalAlignment="Center"/>
                         <TextBlock Text="CASH IN" Margin="6,0,0,0" VerticalAlignment="Center" FontWeight="Bold"/>
                     </StackPanel>
                 </Button>
 
-                <Button Command="{Binding ProcessCashOutCommand}" IsEnabled="{Binding IsAdmin}" Style="{DynamicResource MaterialDesignOutlinedButton}" Margin="0,0,10,0" ToolTip="Retirar efectivo de caja (Solo Administradores)" Foreground="#C0392B" BorderBrush="#C0392B" Visibility="{Binding IsSessionActive, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Button Command="{Binding ProcessCashOutCommand}" 
+                        AutomationProperties.AutomationId="CashDrawer_CashOutButton"
+                        IsEnabled="{Binding IsAdmin}" Style="{DynamicResource MaterialDesignOutlinedButton}" Margin="0,0,10,0" ToolTip="Retirar efectivo de caja (Solo Administradores)" Foreground="#C0392B" BorderBrush="#C0392B" Visibility="{Binding IsSessionActive, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <StackPanel Orientation="Horizontal">
                         <materialDesign:PackIcon Kind="ArrowUpThick" VerticalAlignment="Center"/>
                         <TextBlock Text="CASH OUT" Margin="6,0,0,0" VerticalAlignment="Center" FontWeight="Bold"/>
@@ -231,6 +236,9 @@
             
             <controls:PerformantDataGrid Grid.Row="1" ItemsSource="{Binding OrderedTransactions}" 
                       AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True"
+                      VirtualizingStackPanel.IsVirtualizing="True"
+                      VirtualizingStackPanel.VirtualizationMode="Recycling"
+                      VirtualizingPanel.ScrollUnit="Pixel"
                       Visibility="{Binding IsSessionActive, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:PerformantDataGrid.Columns>
                     

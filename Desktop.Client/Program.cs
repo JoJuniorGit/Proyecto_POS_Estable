@@ -12,13 +12,16 @@ public class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        bool createdNew;
-        _singleInstanceMutex = new Mutex(true, "Global\\POS_Desktop_Client_SingleInstance_Mutex", out createdNew);
-
-        if (!createdNew)
+        bool isE2E = args != null && Array.Exists(args, a => a.Equals("--e2e", StringComparison.OrdinalIgnoreCase));
+        if (!isE2E)
         {
-            AppLogger.LogStart("Desktop.Client instance is already running. Aborting secondary launch.");
-            return;
+            _singleInstanceMutex = new Mutex(true, "Global\\POS_Desktop_Client_SingleInstance_Mutex", out bool createdNew);
+
+            if (!createdNew)
+            {
+                AppLogger.LogStart("Desktop.Client instance is already running. Aborting secondary launch.");
+                return;
+            }
         }
 
         try

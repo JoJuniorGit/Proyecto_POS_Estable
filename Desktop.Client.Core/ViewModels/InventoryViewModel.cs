@@ -1,27 +1,29 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Core.Common;
 using Core.Entities;
 using Desktop.Client.Messages;
 using Desktop.Client.Services;
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 
 namespace Desktop.Client.ViewModels;
 
-public class PageNumberItem
-{
-    public int PageNumber { get; set; }
-    public bool IsActive { get; set; }
-}
-
 public partial class InventoryViewModel : ObservableObject, IDisposable
 {
-    private readonly Desktop.Client.Services.IProductService _product_service;
-    private readonly Desktop.Client.Services.IExchangeRateService _exchange_rate_service;
-    private System.Threading.CancellationTokenSource? _cancellation_token_source;
+    private readonly IProductService _productService;
+    private readonly IExchangeRateService _exchangeRateService;
+    private readonly IDialogService? _dialogService;
+    private readonly IDispatcherInvoker _dispatcherInvoker;
+    private CancellationTokenSource? _cancellationTokenSource;
+    private readonly SemaphoreSlim _loadLock = new(1, 1);
+
+    public UserSession? UserSession { get; }
+    public decimal CurrentRate => _exchangeRateService.CurrentRate;
 
     private ObservableCollection<ProductItemViewModel> _products = new();
     public ObservableCollection<ProductItemViewModel> Products
@@ -30,15 +32,15 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _products, value);
     }
 
-    private string _search_text = string.Empty;
+    private string _searchText = string.Empty;
     public string SearchText
     {
-        get => _search_text;
+        get => _searchText;
         set
         {
-            if (SetProperty(ref _search_text, value))
+            if (SetProperty(ref _searchText, value))
             {
-                _ = RestartSearchTimerAsync();
+                RestartSearchTimerAsync().SafeFireAndForget("InventoryViewModel.RestartSearchTimer");
             }
         }
     }
@@ -83,7 +85,6 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(WholesaleButtonText));
     }
 
-
     [ObservableProperty]
     private int _totalCount;
 
@@ -102,11 +103,11 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isSortDescending = false;
 
-    public bool IsSortedByName => SortBy.Equals("name", System.StringComparison.OrdinalIgnoreCase);
-    public bool IsSortedBySku => SortBy.Equals("sku", System.StringComparison.OrdinalIgnoreCase);
-    public bool IsSortedByStock => SortBy.Equals("stock", System.StringComparison.OrdinalIgnoreCase);
-    public bool IsSortedByCost => SortBy.Equals("cost", System.StringComparison.OrdinalIgnoreCase);
-    public bool IsSortedByPrice => SortBy.Equals("price", System.StringComparison.OrdinalIgnoreCase);
+    public bool IsSortedByName => SortBy.Equals("name", StringComparison.OrdinalIgnoreCase);
+    public bool IsSortedBySku => SortBy.Equals("sku", StringComparison.OrdinalIgnoreCase);
+    public bool IsSortedByStock => SortBy.Equals("stock", StringComparison.OrdinalIgnoreCase);
+    public bool IsSortedByCost => SortBy.Equals("cost", StringComparison.OrdinalIgnoreCase);
+    public bool IsSortedByPrice => SortBy.Equals("price", StringComparison.OrdinalIgnoreCase);
 
     public ObservableCollection<PageNumberItem> PageNumbers { get; } = new();
 
@@ -114,30 +115,6 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     public bool CanGoPrevious => CurrentPage > 1 && TotalPages > 1;
     public bool CanGoNext => CurrentPage < TotalPages && TotalPages > 1;
     public bool CanGoLast => CurrentPage < TotalPages && TotalPages > 1;
-
-    [RelayCommand]
-    public async Task Sort(string column)
-    {
-        if (string.IsNullOrWhiteSpace(column)) return;
-
-        if (SortBy.Equals(column, System.StringComparison.OrdinalIgnoreCase))
-        {
-            IsSortDescending = !IsSortDescending;
-        }
-        else
-        {
-            SortBy = column.ToLower().Trim();
-            IsSortDescending = false;
-        }
-
-        OnPropertyChanged(nameof(IsSortedByName));
-        OnPropertyChanged(nameof(IsSortedBySku));
-        OnPropertyChanged(nameof(IsSortedByStock));
-        OnPropertyChanged(nameof(IsSortedByCost));
-        OnPropertyChanged(nameof(IsSortedByPrice));
-
-        await LoadDataAsync(false, targetPage: 1);
-    }
 
     [ObservableProperty]
     private bool _hasMore;
@@ -151,149 +128,31 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isRefreshing;
 
-    [RelayCommand]
-    public async Task Refresh()
+    private string _selectedStatusFilter = "active";
+    public string SelectedStatusFilter
     {
-        if (IsRefreshing) return;
-        IsRefreshing = true;
-        try
+        get => _selectedStatusFilter;
+        set
         {
-            await _exchange_rate_service.GetCurrentRateAsync();
-            OnPropertyChanged(nameof(CurrentRate));
-            await LoadDataAsync(false, targetPage: CurrentPage > 0 ? CurrentPage : 1);
-        }
-        catch (System.Exception ex)
-        {
-            _dialog_service?.ShowError("Error de Actualización", $"No se pudo actualizar el catálogo: {ex.Message}");
-        }
-        finally
-        {
-            IsRefreshing = false;
-        }
-    }
-
-    [RelayCommand]
-    private void ToggleWholesale()
-    {
-        ShowWholesale = !ShowWholesale;
-    }
-
-    [RelayCommand]
-    private async Task FirstPage()
-    {
-        if (CanGoFirst)
-        {
-            await LoadDataAsync(false, targetPage: 1);
-        }
-    }
-
-    [RelayCommand]
-    private async Task PreviousPage()
-    {
-        if (CanGoPrevious)
-        {
-            await LoadDataAsync(false, targetPage: CurrentPage - 1);
-        }
-    }
-
-    [RelayCommand]
-    private async Task NextPage()
-    {
-        if (CanGoNext)
-        {
-            await LoadDataAsync(false, targetPage: CurrentPage + 1);
-        }
-    }
-
-    [RelayCommand]
-    private async Task LastPage()
-    {
-        if (CanGoLast)
-        {
-            await LoadDataAsync(false, targetPage: TotalPages);
-        }
-    }
-
-    [RelayCommand]
-    private async Task GoToPage(int page)
-    {
-        if (page >= 1 && page <= TotalPages && page != CurrentPage)
-        {
-            await LoadDataAsync(false, targetPage: page);
-        }
-    }
-
-    [RelayCommand]
-    private async Task SubmitGoToPage()
-    {
-        if (int.TryParse(TargetPageInput, out int target) && TotalPages > 0)
-        {
-            int clamped = Math.Clamp(target, 1, TotalPages);
-            if (clamped != CurrentPage)
+            if (SetProperty(ref _selectedStatusFilter, value))
             {
-                await LoadDataAsync(false, targetPage: clamped);
-            }
-            else
-            {
-                TargetPageInput = CurrentPage.ToString();
+                LoadDataAsync(false).SafeFireAndForget("InventoryViewModel.StatusFilterChanged");
             }
         }
-        else
-        {
-            TargetPageInput = CurrentPage > 0 ? CurrentPage.ToString() : "1";
-        }
     }
 
-    public void UpdatePageNumbers()
+    public InventoryViewModel(
+        IProductService productService,
+        IExchangeRateService exchangeRateService,
+        UserSession? userSession = null,
+        IDialogService? dialogService = null,
+        IDispatcherInvoker? dispatcherInvoker = null)
     {
-        PageNumbers.Clear();
-
-        if (TotalPages <= 0 || TotalCount == 0)
-        {
-            CurrentPage = 0;
-            PageSummary = "Página 0 de 0 (0 productos)";
-            TargetPageInput = "0";
-            NotifyPaginationCanExecute();
-            return;
-        }
-
-        if (CurrentPage <= 0) CurrentPage = 1;
-        if (CurrentPage > TotalPages) CurrentPage = TotalPages;
-
-        int startPage = Math.Max(1, CurrentPage - 2);
-        int endPage = Math.Min(TotalPages, CurrentPage + 2);
-
-        for (int p = startPage; p <= endPage; p++)
-        {
-            PageNumbers.Add(new PageNumberItem
-            {
-                PageNumber = p,
-                IsActive = (p == CurrentPage)
-            });
-        }
-
-        TargetPageInput = CurrentPage.ToString();
-        NotifyPaginationCanExecute();
-    }
-
-    public void NotifyPaginationCanExecute()
-    {
-        OnPropertyChanged(nameof(CanGoFirst));
-        OnPropertyChanged(nameof(CanGoPrevious));
-        OnPropertyChanged(nameof(CanGoNext));
-        OnPropertyChanged(nameof(CanGoLast));
-    }
-
-    public decimal CurrentRate => _exchange_rate_service.CurrentRate;
-    public UserSession? UserSession { get; }
-    private readonly IDialogService? _dialog_service;
-    
-    public InventoryViewModel(Desktop.Client.Services.IProductService product_service, Desktop.Client.Services.IExchangeRateService exchange_rate_service, Desktop.Client.Services.UserSession? userSession = null, IDialogService? dialog_service = null)
-    {
-        _product_service = product_service;
-        _exchange_rate_service = exchange_rate_service;
+        _productService = productService;
+        _exchangeRateService = exchangeRateService;
         UserSession = userSession;
-        _dialog_service = dialog_service;
+        _dialogService = dialogService;
+        _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
 
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
         {
@@ -311,7 +170,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
 
         if (UserSession == null || UserSession.IsLoggedIn)
         {
-            _ = LoadDataAsync(false);
+            LoadDataAsync(false).SafeFireAndForget("InventoryViewModel.InitialLoad");
         }
     }
 
@@ -323,72 +182,40 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         }
     }
 
-    private readonly System.Threading.SemaphoreSlim _load_lock = new(1, 1);
-
-    private async Task TaskWithDelay(int ms, System.Threading.CancellationToken token)
+    [RelayCommand]
+    public async Task Refresh()
     {
-        await Task.Delay(ms, token);
-    }
-
-    private async Task RestartSearchTimerAsync()
-    {
-        var newCts = new System.Threading.CancellationTokenSource();
-        var oldCts = System.Threading.Interlocked.Exchange(ref _cancellation_token_source, newCts);
+        if (IsRefreshing) return;
+        IsRefreshing = true;
         try
         {
-            oldCts?.Cancel();
-            oldCts?.Dispose();
+            await _exchangeRateService.GetCurrentRateAsync();
+            OnPropertyChanged(nameof(CurrentRate));
+            await LoadDataAsync(false, targetPage: CurrentPage > 0 ? CurrentPage : 1);
         }
-        catch (ObjectDisposedException) { }
-
-        var token = newCts.Token;
-
-        try
+        catch (Exception ex)
         {
-            var text = _search_text?.Trim() ?? string.Empty;
-
-            // Requisito: Cuando se borra el contenido (por ejemplo con la 'x' o borrando el texto),
-            // se reinicia inmediatamente mostrando la lista completa desde la página 1.
-            if (string.IsNullOrEmpty(text))
-            {
-                await LoadDataAsync(false, targetPage: 1, token: token);
-                return;
-            }
-
-            // Solo buscar con 2 o más caracteres
-            if (text.Length < 2)
-            {
-                return; 
-            }
-
-            // 40ms Debounce para escritura rápida
-            await Task.Delay(40, token);
-            
-            await LoadDataAsync(false, targetPage: 1, token: token);
+            _dialogService?.ShowError("Error de Actualización", $"No se pudo actualizar el catálogo: {ex.Message}");
         }
-        catch (OperationCanceledException) { }
+        finally
+        {
+            IsRefreshing = false;
+        }
     }
 
-    private string _selectedStatusFilter = "active";
-    public string SelectedStatusFilter
+    [RelayCommand]
+    private void ToggleWholesale()
     {
-        get => _selectedStatusFilter;
-        set
-        {
-            if (SetProperty(ref _selectedStatusFilter, value))
-            {
-                _ = LoadDataAsync(false);
-            }
-        }
+        ShowWholesale = !ShowWholesale;
     }
 
-    private async Task LoadDataAsync(bool incremental, int? targetPage = null, System.Threading.CancellationToken token = default)
+    private async Task LoadDataAsync(bool incremental, int? targetPage = null, CancellationToken token = default)
     {
         if (UserSession != null && !UserSession.IsLoggedIn) return;
 
         try
         {
-            await _load_lock.WaitAsync(token);
+            await _loadLock.WaitAsync(token);
         }
         catch (OperationCanceledException)
         {
@@ -412,19 +239,19 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 CurrentPage++;
             }
 
-            if (_exchange_rate_service.CurrentRate <= 0)
+            if (_exchangeRateService.CurrentRate <= 0)
             {
-                await _exchange_rate_service.GetCurrentRateAsync();
+                await _exchangeRateService.GetCurrentRateAsync();
             }
 
             var queryText = string.IsNullOrWhiteSpace(SearchText) ? null : SearchText.Trim();
-            var result = await _product_service.GetPagedAsync(queryText, CurrentPage, PageSize, statusFilter: SelectedStatusFilter, sortBy: SortBy, isDescending: IsSortDescending, token: token);
+            var result = await _productService.GetPagedAsync(queryText, CurrentPage, PageSize, statusFilter: SelectedStatusFilter, sortBy: SortBy, isDescending: IsSortDescending, token: token);
             
             // Build ProductItemViewModel instances on background thread to prevent UI thread stutter
             var newItems = new System.Collections.Generic.List<ProductItemViewModel>();
             foreach (var dto in result.Items)
             {
-                var itemVm = new ProductItemViewModel(dto, _exchange_rate_service, OnProductItemChanged);
+                var itemVm = new ProductItemViewModel(dto, _exchangeRateService, OnProductItemChanged);
                 itemVm.NotifyCurrencyChanged(SelectedCurrency);
                 newItems.Add(itemVm);
             }
@@ -453,9 +280,9 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 UpdatePageNumbers();
             }
 
-            if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+            if (!_dispatcherInvoker.CheckAccess())
             {
-                System.Windows.Application.Current.Dispatcher.Invoke(UpdateState);
+                _dispatcherInvoker.Invoke(UpdateState);
             }
             else
             {
@@ -463,27 +290,27 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             }
         }
         catch (OperationCanceledException) { }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
-            _dialog_service?.ShowError("Error de Carga", $"Error al cargar productos: {ex.Message}");
+            _dialogService?.ShowError("Error de Carga", $"Error al cargar productos: {ex.Message}");
         }
         finally
         {
             IsSearching = false;
             try
             {
-                _load_lock.Release();
+                _loadLock.Release();
             }
             catch (ObjectDisposedException) { }
-            catch (System.Threading.SemaphoreFullException) { }
+            catch (SemaphoreFullException) { }
         }
     }
 
-    private async Task MergeProductsAsync(System.Threading.CancellationToken token = default)
+    private async Task MergeProductsAsync(CancellationToken token = default)
     {
         try
         {
-            await _load_lock.WaitAsync(token);
+            await _loadLock.WaitAsync(token);
         }
         catch (OperationCanceledException)
         {
@@ -495,7 +322,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             IsSearching = true;
 
             var queryText = string.IsNullOrWhiteSpace(SearchText) ? null : SearchText.Trim();
-            var result = await _product_service.GetPagedAsync(queryText, _currentPage, PageSize, statusFilter: SelectedStatusFilter, token: token);
+            var result = await _productService.GetPagedAsync(queryText, _currentPage, PageSize, statusFilter: SelectedStatusFilter, token: token);
 
             var fetchedDict = result.Items.ToDictionary(dto => dto.SKU, dto => dto);
             var existingSkus = Products.Select(p => p.SKU).ToHashSet();
@@ -505,7 +332,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             {
                 if (!existingSkus.Contains(dto.SKU))
                 {
-                    var itemVm = new ProductItemViewModel(dto, _exchange_rate_service, OnProductItemChanged);
+                    var itemVm = new ProductItemViewModel(dto, _exchangeRateService, OnProductItemChanged);
                     itemVm.NotifyCurrencyChanged(SelectedCurrency);
                     newItemsToAdd.Add(itemVm);
                 }
@@ -531,9 +358,9 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 HasMore = result.HasMore;
             }
 
-            if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+            if (!_dispatcherInvoker.CheckAccess())
             {
-                System.Windows.Application.Current.Dispatcher.Invoke(UpdateMerge);
+                _dispatcherInvoker.Invoke(UpdateMerge);
             }
             else
             {
@@ -541,25 +368,25 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             }
         }
         catch (OperationCanceledException) { }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
-            _dialog_service?.ShowError("Error de Catálogo", $"Error al actualizar catálogo: {ex.Message}");
+            _dialogService?.ShowError("Error de Catálogo", $"Error al actualizar catálogo: {ex.Message}");
         }
         finally
         {
             IsSearching = false;
             try
             {
-                _load_lock.Release();
+                _loadLock.Release();
             }
             catch (ObjectDisposedException) { }
-            catch (System.Threading.SemaphoreFullException) { }
+            catch (SemaphoreFullException) { }
         }
     }
 
     public void Dispose()
     {
-        var oldCts = System.Threading.Interlocked.Exchange(ref _cancellation_token_source, null);
+        var oldCts = Interlocked.Exchange(ref _cancellationTokenSource, null);
         try
         {
             oldCts?.Cancel();
@@ -569,291 +396,10 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
 
         try
         {
-            _load_lock.Dispose();
+            _loadLock.Dispose();
         }
         catch (ObjectDisposedException) { }
 
         WeakReferenceMessenger.Default.UnregisterAll(this);
-    }
-
-    private void OnProductItemChanged(ProductItemViewModel item)
-    {
-        Core.Common.TaskExtensions.SafeFireAndForget(OnProductItemChangedAsync(item), "InventoryViewModel.ProductItemChanged");
-    }
-
-    private async Task OnProductItemChangedAsync(ProductItemViewModel item)
-    {
-        try
-        {
-            var product = await _product_service.GetByIdAsync(item.Id);
-            if (product != null)
-            {
-                var dto = item.GetDto();
-                product.ProfitPercentage = dto.ProfitPercentage;
-                product.PriceUSD = dto.PriceUSD;
-                product.PriceBsS = dto.PriceBsS;
-                await _product_service.UpdateAsync(product);
-            }
-        }
-        catch (Exception ex)
-        {
-            _dialog_service?.ShowWarning("Error de Auto-Guardado", $"Error al guardar automáticamente el producto {item.Id}: {ex.Message}");
-        }
-    }
-
-    [RelayCommand]
-    private void SetStatusFilter(string filter)
-    {
-        SelectedStatusFilter = filter;
-    }
-
-    [RelayCommand]
-    private async Task TogglePauseProduct(ProductItemViewModel item)
-    {
-        try
-        {
-            bool newActive = !item.IsActive;
-            await _product_service.SetStatusAsync(item.Id, newActive, false);
-            item.IsActive = newActive;
-            item.IsDeleted = false;
-
-            if (SelectedStatusFilter != "all")
-            {
-                Products.Remove(item);
-            }
-        }
-        catch (System.Exception ex)
-        {
-            _dialog_service?.ShowError("Error de Estado", $"Error al cambiar estado del producto: {ex.Message}");
-        }
-    }
-
-    [RelayCommand]
-    private async Task RestoreProduct(ProductItemViewModel item)
-    {
-        try
-        {
-            await _product_service.RestoreAsync(item.Id);
-            item.IsActive = true;
-            item.IsDeleted = false;
-            
-            if (SelectedStatusFilter != "all")
-            {
-                Products.Remove(item);
-            }
-            _dialog_service?.ShowSuccessDialog($"Producto '{item.Name}' restaurado exitosamente a estado Activo.");
-        }
-        catch (System.Exception ex)
-        {
-            _dialog_service?.ShowError("Error al Restaurar", $"Error restaurando producto: {ex.Message}");
-        }
-    }
-
-    [RelayCommand]
-    private async Task DeleteProduct(ProductItemViewModel item)
-    {
-        if (_dialog_service == null) return;
-
-        // Paso 1: Preguntar si desea pausar/deshabilitar el producto
-        bool wantPause = _dialog_service.ShowConfirm(
-            "Pausar / Deshabilitar Producto",
-            $"¿Desea pausar/deshabilitar el producto '{item.Name}'?\n\n(El producto quedará Inactivo y podrá reactivarse posteriormente)");
-
-        if (wantPause)
-        {
-            await TogglePauseProduct(item);
-            return;
-        }
-
-        // Paso 2: Si no deseaba pausar, preguntar si desea eliminar definitivamente / archivar
-        bool wantDelete = _dialog_service.ShowConfirm(
-            "Eliminar Producto",
-            $"¿Desea eliminar definitivamente el producto '{item.Name}'?\n\n(Si el producto posee ventas pasadas en el historial, se archivará automáticamente para auditoría contable)");
-
-        if (wantDelete)
-        {
-            try
-            {
-                var res = await _product_service.DeleteAsync(item.Id, hardDelete: true);
-                if (res == "hard_deleted")
-                {
-                    Products.Remove(item);
-                    _dialog_service.ShowSuccessDialog($"Producto '{item.Name}' eliminado permanentemente de la base de datos.");
-                }
-                else
-                {
-                    item.IsActive = false;
-                    item.IsDeleted = true;
-                    if (SelectedStatusFilter == "active")
-                    {
-                        Products.Remove(item);
-                    }
-                    _dialog_service.ShowWarning("Archivado por Auditoría", $"El producto '{item.Name}' posee ventas registradas en el historial. Ha sido archivado en 'Eliminados - Archivo Contable' para preservar la integridad de los datos.");
-                }
-            }
-            catch (System.Exception ex)
-            {
-                _dialog_service.ShowError("Error al Eliminar", $"Error al eliminar producto: {ex.Message}");
-            }
-        }
-    }
-
-    [RelayCommand]
-    private async Task OpenAddProduct()
-    {
-        if (_dialog_service == null) return;
-        var _dialogVm = new ProductDialogViewModel(_product_service, _exchange_rate_service, null, UserSession, _dialog_service);
-        
-        if (_dialog_service.ShowProductDialog(_dialogVm) == true)
-        {
-            try
-            {
-                var createdProduct = await _product_service.CreateAsync(_dialogVm.ResultProduct);
-                var newDto = MapToDto(createdProduct);
-                
-                // Add to list and select
-                var viewModelItem = new ProductItemViewModel(newDto, _exchange_rate_service, OnProductItemChanged);
-                Products.Insert(0, viewModelItem);
-                
-                _dialog_service.ShowSuccessDialog($"Producto '{createdProduct.Name}' agregado exitosamente.");
-            }
-            catch (System.Exception ex)
-            {
-                _dialog_service.ShowError("Error al Agregar", $"Error al agregar producto: {ex.Message}");
-            }
-        }
-    }
-
-    [RelayCommand]
-    private async Task EditProduct(ProductItemViewModel item)
-    {
-        if (_dialog_service == null) return;
-        try
-        {
-            var product = await _product_service.GetByIdAsync(item.Id);
-            if (product == null)
-            {
-                _dialog_service.ShowWarning("Producto no encontrado", "No se encontró el producto especificado.");
-                return;
-            }
-
-            var _dialogVm = new ProductDialogViewModel(_product_service, _exchange_rate_service, product, UserSession, _dialog_service);
-            
-            if (_dialog_service.ShowProductDialog(_dialogVm) == true)
-            {
-                await _product_service.UpdateAsync(_dialogVm.ResultProduct);
-                var updatedDto = MapToDto(_dialogVm.ResultProduct);
-                
-                var index = Products.IndexOf(item);
-                if (index != -1)
-                {
-                    Products[index] = new ProductItemViewModel(updatedDto, _exchange_rate_service, OnProductItemChanged);
-                }
-                
-                _dialog_service.ShowSuccessDialog($"Producto '{_dialogVm.ResultProduct.Name}' actualizado con éxito.");
-            }
-        }
-        catch (System.Exception ex)
-        {
-            _dialog_service.ShowError("Error al Editar", $"Error al editar el producto: {ex.Message}");
-        }
-    }
-
-    [RelayCommand]
-    private async Task AdjustStock(ProductItemViewModel item)
-    {
-        if (_dialog_service == null) return;
-        if (!item.CanAdjustStock)
-        {
-            _dialog_service.ShowWarning("Ajuste no permitido", item.AdjustStockToolTip);
-            return;
-        }
-        try
-        {
-            var product = await _product_service.GetByIdAsync(item.Id);
-            if (product == null)
-            {
-                _dialog_service.ShowWarning("Producto no encontrado", "No se encontró el producto especificado.");
-                return;
-            }
-
-            var (success, qtyChange, reason) = _dialog_service.ShowAdjustStockDialog(MapToDto(product));
-            if (success)
-            {
-                await _product_service.AdjustStockAsync(product.Id, qtyChange, reason);
-                // The item in our list needs to show updated stock
-                var dto = item.GetDto();
-                dto.StockQuantity += qtyChange;
-                
-                var _index = Products.IndexOf(item);
-                if (_index != -1)
-                {
-                    Products[_index] = new ProductItemViewModel(dto, _exchange_rate_service, OnProductItemChanged);
-                }
-            }
-        }
-        catch (System.Exception _ex)
-        {
-            _dialog_service.ShowError("Error al Ajustar Stock", $"Error al ajustar stock: {_ex.Message}");
-        }
-    }
-
-    [RelayCommand]
-    private async Task Scan(string term)
-    {
-        IsScanning = true;
-        try
-        {
-            var _product = await _product_service.GetQuickInfoAsync(term);
-            if (_product != null)
-            {
-                _dialog_service?.ShowInfo("Verificación Rápida", $"Escaneado: {_product.Name}\nPrecio USD: ${_product.PriceUSD:N2}\nStock: {_product.StockQuantity}");
-            }
-            else
-            {
-                _dialog_service?.ShowWarning("Búsqueda por Escaneo", $"Producto no encontrado con el código: {term}");
-            }
-        }
-        catch (System.Exception _ex)
-        {
-            _dialog_service?.ShowError("Error de Escaneo", $"Fallo en la lectura del código: {_ex.Message}");
-        }
-        finally
-        {
-            IsScanning = false;
-        }
-    }
-
-    private Core.DTOs.ProductDto MapToDto(Product p)
-    {
-        return new Core.DTOs.ProductDto
-        {
-            Id = p.Id,
-            Name = p.Name,
-            SKU = p.SKU,
-            Description = p.Description,
-            PriceUSD = p.PriceUSD,
-            PriceRetailUSD = p.PriceRetailUSD,
-            PriceWholesaleUSD = p.PriceWholesaleUSD,
-            CostPriceUSD = p.CostPriceUSD,
-            ProfitMarginRetail = p.ProfitMarginRetail,
-            ProfitMarginWholesale = p.ProfitMarginWholesale,
-            MinWholesaleQuantity = p.MinWholesaleQuantity,
-            HasWholesale = p.HasWholesale,
-            IsFractional = p.IsFractional,
-            PriceBsS = p.PriceBsS,
-            Cost = p.Cost,
-            StockQuantity = p.StockQuantity,
-            ProfitPercentage = p.ProfitPercentage,
-            UnitOfMeasure = p.UnitOfMeasure,
-            LowStockThreshold = p.LowStockThreshold,
-            IsCashAdvance = p.IsCashAdvance,
-            IsActive = p.IsActive,
-            IsDeleted = p.IsDeleted,
-            ReservedQuantity = p.ReservedQuantity,
-            IsGroupHeader = p.IsGroupHeader,
-            ParentProductId = p.ParentProductId,
-            GroupKey = p.GroupKey
-        };
     }
 }

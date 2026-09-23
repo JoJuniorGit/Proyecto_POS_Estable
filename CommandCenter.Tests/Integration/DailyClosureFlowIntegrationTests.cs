@@ -6,6 +6,7 @@ using CommandCenter.Tests.Builders;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
 using Sales.Module.Entities;
+using Sales.Module.Interfaces;
 using Sales.Module.Services;
 using Xunit;
 
@@ -19,7 +20,7 @@ public class DailyClosureFlowIntegrationTests
         // 1. Setup Context & Service
         var context = TestDatabaseFactory.CreateSalesDbContext();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
-        var closureService = new DailyClosureService(context);
+        var closureService = CommandCenter.Tests.TestHelpers.DailyClosureTestHelper.CreateService(context);
 
         var baseTime = DateTime.UtcNow.Date.AddHours(9); // 9:00 AM
 
@@ -43,20 +44,20 @@ public class DailyClosureFlowIntegrationTests
         Assert.Equal(0m, totalsBefore.First(t => t.PaymentMethodId == 4).ExpectedAmountBsS); // Pago móvil sin ventas
 
         // 4. Perform Shift 1 Daily Closure (at 12:30 PM)
-        var closureShift1 = new DailyClosure
-        {
-            ClosureDate = baseTime.AddHours(3).AddMinutes(30),
-            UserId = "Admin Auditor",
-            Observation = "Cierre Turno 1 OK",
-            Details = new List<ClosureDetail>
+        var command = new CreateClosureCommand(
+            baseTime.AddHours(3).AddMinutes(30),
+            "Admin Auditor",
+            "Cierre Turno 1 OK",
+            new List<DeclaredPaymentAmount>
             {
-                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 1000m, ActualAmountBsS = 1000m },
-                new ClosureDetail { PaymentMethodId = 3, PaymentMethodName = "Punto de Venta", ExpectedAmountBsS = 2500m, ActualAmountBsS = 2500m }
-            }
-        };
+                new(1, 20m),
+                new(3, 2500m)
+            });
 
-        var savedClosure = await closureService.CreateClosureAsync(closureShift1);
-        Assert.NotNull(savedClosure);
+        var result = await closureService.CreateClosureFromCommandAsync(command, System.Threading.CancellationToken.None);
+
+        var savedClosure = await context.DailyClosures.AsNoTracking().FirstAsync(dc => dc.Id == result.ClosureId);
+        Assert.True(savedClosure.Id > 0);
         Assert.Equal(3500m, savedClosure.TotalExpectedBsS);
         Assert.Equal(3500m, savedClosure.TotalActualBsS);
         Assert.Equal(0m, savedClosure.TotalDifferenceBsS);

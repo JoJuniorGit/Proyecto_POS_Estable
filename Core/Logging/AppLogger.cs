@@ -43,11 +43,19 @@ public static class AppLogger
 
     public static void LogCrash(Exception ex, string context = "General")
     {
+#if DEBUG
         var msg = $"Context: {context}\nException: {ex.GetType().FullName}\nMessage: {ex.Message}\nStackTrace:\n{ex.StackTrace}";
         if (ex.InnerException != null)
         {
             msg += $"\nInner Exception: {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}\n{ex.InnerException.StackTrace}";
         }
+#else
+        var msg = $"Context: {context}\nException: {ex.GetType().FullName}\nMessage: {ex.Message}";
+        if (ex.InnerException != null)
+        {
+            msg += $"\nInner Exception: {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}";
+        }
+#endif
         WriteLog(CrashLogPath, "CRASH", msg);
     }
 
@@ -58,11 +66,19 @@ public static class AppLogger
 
     public static void LogDbError(Exception ex, string context = "Database")
     {
+#if DEBUG
         var msg = $"Context: {context}\nException: {ex.GetType().FullName}\nMessage: {ex.Message}\nStackTrace:\n{ex.StackTrace}";
         if (ex.InnerException != null)
         {
             msg += $"\nInner Exception: {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}\n{ex.InnerException.StackTrace}";
         }
+#else
+        var msg = $"Context: {context}\nException: {ex.GetType().FullName}\nMessage: {ex.Message}";
+        if (ex.InnerException != null)
+        {
+            msg += $"\nInner Exception: {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}";
+        }
+#endif
         WriteLog(DbErrorsLogPath, "DB-ERROR", msg);
         WriteLog(CrashLogPath, "CRASH", msg);
     }

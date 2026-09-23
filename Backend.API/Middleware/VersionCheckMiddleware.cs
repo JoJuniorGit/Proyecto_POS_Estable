@@ -37,8 +37,17 @@ public class VersionCheckMiddleware
 
         var settings = optionsMonitor.CurrentValue;
         var clientVersionHeader = context.Request.Headers["X-Client-Version"].ToString();
+        
         if (string.IsNullOrWhiteSpace(clientVersionHeader))
         {
+            if (!path.StartsWith("/api/pairing", StringComparison.OrdinalIgnoreCase) && 
+                !path.StartsWith("/api/auth", StringComparison.OrdinalIgnoreCase))
+            {
+                context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = "El header X-Client-Version es obligatorio para esta ruta." }));
+                return;
+            }
             clientVersionHeader = settings.MinimumClientVersion;
         }
 

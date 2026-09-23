@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Modal from '../ui/Modal';
 import { ArrowDownLeft, Loader2, AlertCircle } from 'lucide-react';
 import { api } from '../../services/api';
+import './RegisterModals.css';
 
 export default function CashInModal({ isOpen, onClose, sessionId, exchangeRate, user, onSuccess }) {
   const [amountBsS, setAmountBsS] = useState('');
@@ -119,11 +120,11 @@ export default function CashInModal({ isOpen, onClose, sessionId, exchangeRate, 
           </small>
         </div>
 
-        <div className="modal-actions flex-center gap-3 pt-2" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <button type="button" className="btn btn-outline flex-center" onClick={handleClose} disabled={loading} style={{ minWidth: '130px', justifyContent: 'center' }}>
+        <div className="modal-actions flex-center gap-3 pt-2 regmod-actions">
+          <button type="button" className="btn btn-outline flex-center regmod-btn-130" onClick={handleClose} disabled={loading}>
             Cancelar
           </button>
-          <button type="submit" className="btn btn-success flex-center gap-2 font-bold" disabled={loading} style={{ minWidth: '180px', justifyContent: 'center' }}>
+          <button type="submit" className="btn btn-success flex-center gap-2 font-bold regmod-btn-180" disabled={loading}>
             {loading ? <Loader2 size={16} className="animate-spin" /> : <ArrowDownLeft size={16} />}
             Confirmar CASH IN
           </button>

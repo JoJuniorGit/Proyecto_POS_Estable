@@ -2,17 +2,16 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
-        Title="Success" Height="180" Width="380"
+        Title="Éxito" Width="460" MinHeight="180" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize">
     
-    <!-- Transparent outer grid to allow drop shadow rendering space outside the border -->
     <Grid Margin="16">
         <Border Background="{DynamicResource MaterialDesignPaper}" 
                 CornerRadius="8" 
                 BorderBrush="#E0E0E0" BorderThickness="1">
             <Border.Effect>
-                <DropShadowEffect BlurRadius="12" ShadowDepth="4" Direction="270" Opacity="0.15" />
+                <DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.18" />
             </Border.Effect>
             
             <Grid Margin="24">
@@ -21,20 +20,38 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 
-                <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <materialDesign:PackIcon Kind="CheckCircle" Width="48" Height="48" Foreground="#10B981" VerticalAlignment="Center" Margin="0,0,16,0" />
+                <Grid Grid.Row="0" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <materialDesign:PackIcon Kind="CheckCircle" Width="44" Height="44" Foreground="#10B981" VerticalAlignment="Top" Margin="0,2,16,0" />
                     
-                    <TextBlock Text="{Binding Message}" 
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding Message}" 
                                FontFamily="Segoe UI" 
-                               FontSize="18" 
+                               FontSize="15" 
                                FontWeight="Medium" 
                                TextWrapping="Wrap" 
+                               LineHeight="22"
                                VerticalAlignment="Center"
-                               Foreground="{DynamicResource MaterialDesignBodyLight}" />
-                </StackPanel>
+                               Foreground="{DynamicResource MaterialDesignBody}" />
+                </Grid>
 
-                <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-                    <Button Content="Continue" 
+                <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+                    <Button x:Name="SecondaryActionButton"
+                            Content="{Binding SecondaryActionLabel}" 
+                            Click="SecondaryActionButton_Click"
+                            Style="{DynamicResource MaterialDesignOutlinedButton}" 
+                            BorderBrush="#94A3B8"
+                            Foreground="#475569"
+                            FontWeight="SemiBold"
+                            Margin="0,0,12,0"
+                            MinWidth="110"
+                            Visibility="{Binding HasSecondaryAction, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                    <Button Content="Continuar" 
                             IsDefault="True"
                             Click="AcceptButton_Click"
                             Style="{DynamicResource MaterialDesignFlatButton}" 

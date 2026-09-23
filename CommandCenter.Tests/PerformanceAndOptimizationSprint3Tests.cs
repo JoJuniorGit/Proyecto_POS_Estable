@@ -35,7 +35,7 @@ public class PerformanceAndOptimizationSprint3Tests
     }
 
     [Fact]
-    public async Task GetProductsByIdsAsync_ReturnsOnlyRequestedProductsInBatch()
+    public async Task GetSaleProductsByIdsAsync_ReturnsOnlyRequestedProductsInBatch()
     {
         using var db = GetInMemoryInventoryDbContext();
         var service = new InventoryService(db);
@@ -47,7 +47,7 @@ public class PerformanceAndOptimizationSprint3Tests
         );
         await db.SaveChangesAsync();
 
-        var results = await service.GetProductsByIdsAsync(new[] { 1, 3 });
+        var results = await service.GetSaleProductsByIdsAsync(new[] { 1, 3 });
 
         Assert.Equal(2, results.Count);
         Assert.Contains(results, p => p.Id == 1);
@@ -105,14 +105,60 @@ public class PerformanceAndOptimizationSprint3Tests
         // First execution: deducts 3 items (20 -> 17)
         await handler.Handle(saleEvent, CancellationToken.None);
 
-        var refreshed = await service.GetProductByIdAsync(5);
+        var refreshed = await db.Products.FindAsync(5);
         Assert.Equal(17.000m, refreshed!.StockQuantity);
 
         // Second execution with same SaleId: must be skipped by idempotency check!
         await handler.Handle(saleEvent, CancellationToken.None);
 
-        refreshed = await service.GetProductByIdAsync(5);
+        refreshed = await db.Products.FindAsync(5);
         Assert.Equal(17.000m, refreshed!.StockQuantity); // Still 17, not 14!
+    }
+
+    [Fact]
+    public async Task InventorySaleMadeEventHandler_WhenPreDeductedByInvoiceNumber_DoesNotDoubleDeduct()
+    {
+        using var db = GetInMemoryInventoryDbContext();
+        var service = new InventoryService(db);
+        var handler = new InventorySaleMadeEventHandler(service, db);
+
+        var product = new Product
+        {
+            Id = 10,
+            SKU = "SNK-001",
+            Name = "Snack Salado",
+            PriceRetailUSD = 1.00m,
+            CostPriceUSD = 0.50m,
+            StockQuantity = 50.000m
+        };
+        db.Products.Add(product);
+        await db.SaveChangesAsync();
+
+        // Simulate that SalesService already deducted stock during transaction using InvoiceNumber (5001)
+        // while Sale.Id is 100 (DST-1 scenario)
+        int saleId = 100;
+        int invoiceNumber = 5001;
+        await service.UpdateStockAsync(10, -5.000m, $"Sale #{invoiceNumber}", allowNegativeStock: false);
+
+        var productAfterTx = await db.Products.FindAsync(10);
+        Assert.Equal(45.000m, productAfterTx!.StockQuantity);
+
+        // Now MediatR publishes SaleMadeEvent with SaleId=100 and InvoiceNumber=5001
+        var saleEvent = new SaleMadeEvent(
+            SaleId: saleId,
+            SaleDate: DateTime.UtcNow,
+            Items: new List<SaleItemSnapshot>
+            {
+                new SaleItemSnapshot(ProductId: 10, Quantity: 5.000m)
+            },
+            InvoiceNumber: invoiceNumber
+        );
+
+        // Handler must recognize that InvoiceNumber was already deducted and skip!
+        await handler.Handle(saleEvent, CancellationToken.None);
+
+        var productAfterHandler = await db.Products.FindAsync(10);
+        Assert.Equal(45.000m, productAfterHandler!.StockQuantity); // MUST remain 45, NOT 40!
     }
 
     [Fact]

@@ -14,6 +14,7 @@ public partial class UsersManagementViewModel : ObservableObject
 {
     private readonly IUserService _userService;
     private readonly UserSession _userSession;
+    private readonly IDialogService? _dialogService;
 
     public CustomerManagementViewModel CustomerViewModel { get; }
 
@@ -70,11 +71,13 @@ public partial class UsersManagementViewModel : ObservableObject
     public UsersManagementViewModel(
         IUserService userService,
         UserSession userSession,
-        CustomerManagementViewModel customerViewModel)
+        CustomerManagementViewModel customerViewModel,
+        IDialogService? dialogService = null)
     {
         _userService = userService;
         _userSession = userSession;
         CustomerViewModel = customerViewModel;
+        _dialogService = dialogService;
     }
 
     public async Task EnsureLoadedAsync()
@@ -144,9 +147,21 @@ public partial class UsersManagementViewModel : ObservableObject
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(Password) && Password.Trim().Length < 4)
+        if (!string.IsNullOrWhiteSpace(Password) && Password.Trim().Length < 8)
         {
-            StatusMessage = "La contraseña personalizada debe tener al menos 4 caracteres.";
+            StatusMessage = "La contraseña personalizada debe tener al menos 8 caracteres.";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Password) && !Password.Any(char.IsLetter))
+        {
+            StatusMessage = "La contraseña personalizada debe incluir al menos una letra.";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Password) && !Password.Any(char.IsDigit))
+        {
+            StatusMessage = "La contraseña personalizada debe incluir al menos un número.";
             return;
         }
 
@@ -158,14 +173,14 @@ public partial class UsersManagementViewModel : ObservableObject
                 if (isMainAdmin && !IsActive)
                 {
                     StatusMessage = "El Administrador principal del sistema no se puede desactivar.";
-                    System.Windows.MessageBox.Show(StatusMessage, "Operación No Permitida", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                    if (_dialogService != null) _dialogService.ShowWarning("Operación No Permitida", StatusMessage);
                     return;
                 }
 
                 if (_userSession.CurrentUser != null && SelectedUser.Id == _userSession.CurrentUser.Id && !IsActive)
                 {
                     StatusMessage = "No puedes desactivar tu propia cuenta actualmente en sesión.";
-                    System.Windows.MessageBox.Show(StatusMessage, "Operación No Permitida", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                    if (_dialogService != null) _dialogService.ShowWarning("Operación No Permitida", StatusMessage);
                     return;
                 }
 
@@ -215,14 +230,14 @@ public partial class UsersManagementViewModel : ObservableObject
                 if (target.Cedula == "V-00000000" || target.Name == "Admin")
                 {
                     StatusMessage = "El Administrador principal del sistema no se puede desactivar.";
-                    System.Windows.MessageBox.Show(StatusMessage, "Operación No Permitida", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                    if (_dialogService != null) _dialogService.ShowWarning("Operación No Permitida", StatusMessage);
                     return;
                 }
 
                 if (_userSession.CurrentUser != null && target.Id == _userSession.CurrentUser.Id)
                 {
                     StatusMessage = "No puedes desactivar tu propia cuenta actualmente en sesión.";
-                    System.Windows.MessageBox.Show(StatusMessage, "Operación No Permitida", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                    if (_dialogService != null) _dialogService.ShowWarning("Operación No Permitida", StatusMessage);
                     return;
                 }
 
@@ -253,24 +268,24 @@ public partial class UsersManagementViewModel : ObservableObject
         if (target.Cedula == "V-00000000" || target.Name == "Admin")
         {
             StatusMessage = "El Administrador principal del sistema no se puede eliminar.";
-            System.Windows.MessageBox.Show(StatusMessage, "Operación No Permitida", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            if (_dialogService != null) _dialogService.ShowWarning("Operación No Permitida", StatusMessage);
             return;
         }
 
         if (_userSession.CurrentUser != null && target.Id == _userSession.CurrentUser.Id)
         {
             StatusMessage = "No puedes eliminar tu propia cuenta actualmente en sesión.";
-            System.Windows.MessageBox.Show(StatusMessage, "Operación No Permitida", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            if (_dialogService != null) _dialogService.ShowWarning("Operación No Permitida", StatusMessage);
             return;
         }
 
-        var confirm = System.Windows.MessageBox.Show(
-            $"¿Está seguro de que desea eliminar PERMANENTEMENTE al usuario '{target.Name}' (Usuario: {target.Cedula})?\n\nEsta acción eliminará el usuario de la base de datos de forma definitiva.",
-            "Confirmar Eliminación Definitiva",
-            System.Windows.MessageBoxButton.YesNo,
-            System.Windows.MessageBoxImage.Warning);
+        bool confirmed = _dialogService != null
+            ? _dialogService.ShowConfirm(
+                "Confirmar Eliminación Definitiva",
+                $"¿Está seguro de que desea eliminar PERMANENTEMENTE al usuario '{target.Name}' (Usuario: {target.Cedula})?\n\nEsta acción eliminará el usuario de la base de datos de forma definitiva.")
+            : false;
 
-        if (confirm != System.Windows.MessageBoxResult.Yes) return;
+        if (!confirmed) return;
 
         try
         {

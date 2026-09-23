@@ -1,0 +1,18 @@
+/* SuccessScreen.css - Pantalla de venta completada / orden en espera */
+
+/* ── SuccessScreen ── */
+.ss-icon-accent {
+  color: var(--accent-primary, #6366f1);
+}
+
+.ss-icon-success {
+  color: var(--success, #10b981);
+}
+
+.ss-actions-btn {
+  margin-top: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}

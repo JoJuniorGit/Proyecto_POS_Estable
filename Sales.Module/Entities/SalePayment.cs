@@ -21,7 +21,7 @@ public class SalePayment
     [Column(TypeName = "decimal(18,2)")]
     public decimal AmountBsS { get; set; }
 
-    [Column(TypeName = "decimal(18,2)")]
+    [Column(TypeName = "decimal(18,4)")]
     public decimal ExchangeRate { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

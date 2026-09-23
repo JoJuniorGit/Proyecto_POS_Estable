@@ -1,6 +1,6 @@
+using Core.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 
 namespace Backend.API.Controllers;
@@ -18,93 +18,114 @@ public class PaymentMethodsController : ControllerBase
     }
 
     [HttpGet("active")]
-    public async Task<IActionResult> GetActiveMethods()
+    public async Task<IActionResult> GetActiveMethodsAsync(CancellationToken cancellationToken = default)
     {
-        var methods = await _paymentService.GetActiveMethodsAsync();
+        var methods = await _paymentService.GetActiveMethodsAsync(cancellationToken);
         return Ok(methods);
     }
+
+    [NonAction]
+    public Task<IActionResult> GetActiveMethods() => GetActiveMethodsAsync();
 
     [HttpGet]
-    public async Task<IActionResult> GetAllMethods()
+    public async Task<IActionResult> GetAllMethodsAsync(CancellationToken cancellationToken = default)
     {
-        var methods = await _paymentService.GetAllAsync();
+        var methods = await _paymentService.GetAllAsync(cancellationToken);
         return Ok(methods);
     }
 
+    [NonAction]
+    public Task<IActionResult> GetAllMethods() => GetAllMethodsAsync();
+
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetMethod(int id)
+    public async Task<IActionResult> GetMethodAsync(int id, CancellationToken cancellationToken = default)
     {
         try
         {
-            var method = await _paymentService.GetByIdAsync(id);
+            var method = await _paymentService.GetByIdAsync(id, cancellationToken);
             return Ok(method);
         }
         catch (KeyNotFoundException)
         {
-            return NotFound();
+            return this.ApiNotFound("Método de pago no encontrado.");
         }
     }
+
+    [NonAction]
+    public Task<IActionResult> GetMethod(int id) => GetMethodAsync(id);
 
     [HttpPost]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> CreateMethod([FromBody] PaymentMethod method)
+    public async Task<IActionResult> CreateMethodAsync([FromBody] CreatePaymentMethodDto dto, CancellationToken cancellationToken = default)
     {
         if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+            return this.ApiValidationProblem(ModelState);
 
-        try
+        var methodDto = new PaymentMethodDto
         {
-            var created = await _paymentService.CreateAsync(method);
-            return CreatedAtAction(nameof(GetMethod), new { id = created.Id }, created);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
+            Name = dto.Name,
+            RequiresReference = dto.RequiresReference,
+            IsCash = dto.IsCash,
+            DisplayOrder = dto.DisplayOrder,
+            IsActive = dto.IsActive
+        };
+
+        var created = await _paymentService.CreateAsync(methodDto, cancellationToken);
+        return CreatedAtAction(nameof(GetMethodAsync), new { id = created.Id }, created);
     }
+
+    [NonAction]
+    public Task<IActionResult> CreateMethod(CreatePaymentMethodDto dto) => CreateMethodAsync(dto);
 
     [HttpPut("{id}")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> UpdateMethod(int id, [FromBody] PaymentMethod method)
+    public async Task<IActionResult> UpdateMethodAsync(int id, [FromBody] UpdatePaymentMethodDto dto, CancellationToken cancellationToken = default)
     {
-        if (id != method.Id)
-            return BadRequest(new { message = "ID mismatch" });
+        if (id != dto.Id)
+            return this.ApiBadRequest("El ID de la ruta no coincide con el ID del cuerpo de la petición.");
+
+        if (!ModelState.IsValid)
+            return this.ApiValidationProblem(ModelState);
 
         try
         {
-            var updated = await _paymentService.UpdateAsync(method);
+            var methodDto = new PaymentMethodDto
+            {
+                Id = id,
+                Name = dto.Name,
+                RequiresReference = dto.RequiresReference,
+                IsCash = dto.IsCash,
+                DisplayOrder = dto.DisplayOrder,
+                IsActive = dto.IsActive
+            };
+
+            var updated = await _paymentService.UpdateAsync(methodDto, cancellationToken);
             return Ok(updated);
         }
         catch (KeyNotFoundException ex)
         {
-            return NotFound(new { message = ex.Message });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
     }
 
+    [NonAction]
+    public Task<IActionResult> UpdateMethod(int id, UpdatePaymentMethodDto dto) => UpdateMethodAsync(id, dto);
+
     [HttpDelete("{id}")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> DeleteMethod(int id)
+    public async Task<IActionResult> DeleteMethodAsync(int id, CancellationToken cancellationToken = default)
     {
         try
         {
-            await _paymentService.DeleteAsync(id);
+            await _paymentService.DeleteAsync(id, cancellationToken);
             return NoContent();
         }
         catch (KeyNotFoundException ex)
         {
-            return NotFound(new { message = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { message = ex.Message });
+            return this.ApiNotFound(ex.Message);
         }
     }
+
+    [NonAction]
+    public Task<IActionResult> DeleteMethod(int id) => DeleteMethodAsync(id);
 }

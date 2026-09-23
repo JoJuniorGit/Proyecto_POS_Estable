@@ -1,0 +1,6 @@
+/* SummaryPanel.css - Estilos locales del panel de Resumen de Venta. Prefijo sp-. */
+
+.sp-price-list-toggle {
+  display: flex;
+  gap: 6px;
+}

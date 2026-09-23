@@ -17,18 +17,23 @@ public class UserService : IUserService
 
     public async Task<LoginResultDto?> LoginAsync(string cedula, string password)
     {
+        if (_httpClient.BaseAddress != null && _httpClient.BaseAddress.Scheme == "http" && !_httpClient.BaseAddress.IsLoopback)
+        {
+            throw new System.Exception("Por seguridad, no se puede iniciar sesión sobre una conexión HTTP insegura. Configure el servidor para usar HTTPS.");
+        }
+
         var response = await _httpClient.PostAsJsonAsync("api/auth/login", new LoginRequest { Cedula = cedula, Password = password });
         if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
         {
             try
             {
                 var body = await response.Content.ReadAsStringAsync();
-                var err = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(body);
-                if (err != null && err.TryGetValue("requiresPasswordChange", out var requiresChangeValue) &&
-                    requiresChangeValue is bool requiresChange && requiresChange)
+                var err = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(body);
+                if (err != null && err.TryGetValue("requiresPasswordChange", out var requiresChange) &&
+                    requiresChange.ValueKind == System.Text.Json.JsonValueKind.True)
                 {
                     string msg = err.TryGetValue("message", out var messageValue)
-                        ? messageValue?.ToString() ?? string.Empty
+                        ? messageValue.ToString() ?? string.Empty
                         : "Debe cambiar su contraseña antes de continuar.";
                     return new LoginResultDto { RequiresPasswordChange = true, Message = msg };
                 }
@@ -43,6 +48,19 @@ public class UserService : IUserService
         }
 
         return await response.Content.ReadFromJsonAsync<LoginResultDto>();
+    }
+
+    public async Task<bool> CheckSessionStatusAsync()
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync("api/auth/me");
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task<bool> ChangePasswordAsync(string cedula, string currentPassword, string newPassword)

@@ -1,0 +1,346 @@
+/* ══════════════════════════════════════════════════════════
+   PendingPickupsPage — Retiros Pendientes (Mercancía en Custodia)
+   Clases propias de la página (prefijo ppk-), antes estilos
+   inline. Prefijo :root para ganar en especificidad a index.css
+   / utilities.css / PendingOrdersPage.css sin importar el orden
+   de concatenación del bundle.
+   ══════════════════════════════════════════════════════════ */
+
+/* PendingPickups */
+
+/* ── Barra de búsqueda ── */
+:root .ppk-search-wrapper {
+  height: 42px;
+}
+
+:root .ppk-search-input {
+  height: 42px;
+  padding-left: 36px;
+  box-sizing: border-box;
+}
+
+:root .ppk-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+:root .ppk-bcv-badge {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  margin: 0;
+  height: 42px;
+}
+
+:root .ppk-bcv-count {
+  color: var(--primary-color, #818cf8);
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+/* ── Aviso de éxito ── */
+:root .ppk-success-alert {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background-color: rgba(16, 185, 129, 0.12);
+  border: 1px solid #10b981;
+  color: #10b981;
+}
+
+:root .ppk-alert-close {
+  margin-left: auto;
+  color: #10b981;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+/* ── Estados de carga / vacío ── */
+:root .ppk-loading {
+  padding: 60px;
+}
+
+:root .ppk-empty-card {
+  padding: 40px;
+}
+
+:root .ppk-empty-title {
+  font-size: 1.2rem;
+}
+
+:root .ppk-faded {
+  opacity: 0.7;
+}
+
+/* ── Tabla de escritorio ── */
+:root .ppk-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+:root .ppk-border-bottom {
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+:root .ppk-border-dashed {
+  border-bottom: 1px dashed var(--border-color);
+}
+
+:root .ppk-border-top-dashed {
+  border-top: 1px dashed var(--border-color);
+}
+
+:root .ppk-border-top-solid {
+  border-top: 1px solid var(--border-color);
+}
+
+:root .ppk-thead-bg {
+  background-color: var(--bg-secondary, rgba(255, 255, 255, 0.03));
+}
+
+:root .ppk-table-pad {
+  padding: 14px 16px !important;
+}
+
+:root .ppk-maxw240 {
+  max-width: 240px;
+}
+
+:root .ppk-maxw100 {
+  max-width: 100%;
+}
+
+:root .ppk-caret {
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+:root .ppk-caret-active {
+  color: var(--primary-color, #818cf8);
+}
+
+:root .ppk-caret-inactive {
+  opacity: 0.6;
+}
+
+:root .ppk-invoice-date {
+  font-size: 0.78rem;
+  opacity: 0.6;
+  margin-top: 2px;
+}
+
+:root .ppk-customer-meta {
+  font-size: 0.78rem;
+  opacity: 0.7;
+}
+
+:root .ppk-mt-2px {
+  margin-top: 2px;
+}
+
+:root .ppk-total-mono {
+  font-size: 0.95rem;
+  display: block;
+  text-align: right;
+}
+
+:root .ppk-custody-badge {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+  color: #f59e0b !important;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+:root .ppk-custody-badge-xl {
+  padding: 4px 12px;
+}
+
+:root .ppk-custody-badge-md {
+  padding: 4px 10px;
+}
+
+:root .ppk-confirm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #818cf8;
+  border-color: rgba(99, 102, 241, 0.4);
+  background-color: rgba(99, 102, 241, 0.08);
+  font-weight: 600;
+  font-size: 0.82rem;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+:root .ppk-detail-cell {
+  padding: 20px !important;
+  background-color: var(--bg-secondary, rgba(0, 0, 0, 0.2)) !important;
+}
+
+:root .ppk-detail-h4 {
+  margin: 0 0 10px 0;
+  font-size: 0.95rem;
+}
+
+:root .ppk-detail-table {
+  font-size: 0.9em;
+  border-collapse: collapse;
+}
+
+:root .ppk-detail-th-first {
+  padding: 8px 12px 8px 0;
+}
+
+:root .ppk-detail-th-mid {
+  text-align: right;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+:root .ppk-th-cant {
+  width: 80px;
+}
+
+:root .ppk-th-punit {
+  width: 160px;
+}
+
+:root .ppk-th-subtotal {
+  width: 180px;
+}
+
+:root .ppk-item-name {
+  padding: 6px 12px 6px 0;
+  font-weight: 500;
+}
+
+:root .ppk-item-cell {
+  padding: 6px 12px;
+}
+
+/* ── Vista móvil ── */
+:root .ppk-caret-mobile {
+  margin-right: 4px;
+}
+
+:root .ppk-customer-mobile {
+  gap: 6px;
+  min-width: 0;
+}
+
+:root .ppk-customer-meta-col {
+  gap: 2px;
+}
+
+:root .ppk-summary-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+:root .ppk-total-sm {
+  font-size: 1.1rem;
+}
+
+:root .ppk-confirm-btn-mobile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 42px;
+  font-size: 0.9rem;
+  color: #818cf8;
+  border-color: rgba(99, 102, 241, 0.4);
+  background-color: rgba(99, 102, 241, 0.08);
+  font-weight: 600;
+}
+
+:root .ppk-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 38px;
+}
+
+:root .ppk-detail-mobile {
+  font-size: 0.85rem;
+}
+
+:root .ppk-detail-h4-mobile {
+  margin: 0 0 8px 0;
+  font-size: 0.9rem;
+}
+
+:root .ppk-items-col {
+  gap: 6px;
+}
+
+:root .ppk-item-row {
+  padding: 6px 0;
+}
+
+:root .ppk-item-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 12px;
+}
+
+:root .ppk-load-more {
+  min-width: 180px;
+}
+
+/* ── Modal de confirmación de retiro ── */
+:root .ppk-modal-body {
+  padding: 10px 4px;
+}
+
+:root .ppk-confirm-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background-color: rgba(99, 102, 241, 0.15);
+  color: var(--primary-color, #818cf8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px auto;
+}
+
+:root .ppk-modal-title {
+  font-size: 1.15rem;
+  line-height: 1.4;
+}
+
+:root .ppk-customer-white {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+:root .ppk-modal-text {
+  opacity: 0.85;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+:root .ppk-modal-highlight {
+  color: var(--primary-color, #818cf8);
+}
+
+:root .ppk-modal-actions {
+  padding-top: 16px;
+}
+
+:root .ppk-btn-min110 {
+  min-width: 110px;
+}
+
+:root .ppk-btn-confirm {
+  gap: 8px;
+  min-width: 170px;
+}

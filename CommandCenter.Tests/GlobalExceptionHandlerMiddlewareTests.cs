@@ -2,10 +2,12 @@ using System;
 using System.IO;
 using System.Net;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Middleware;
 using Core.Logging;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Npgsql;
 using Xunit;
 
@@ -117,8 +119,6 @@ public class GlobalExceptionHandlerMiddlewareTests
         Assert.Equal("InvalidOperation", doc.RootElement.GetProperty("error").GetString());
         Assert.Equal("No se puede anular un pedido ya completado.", doc.RootElement.GetProperty("message").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("Message", out _));
     }
 
     [Fact]
@@ -145,9 +145,7 @@ public class GlobalExceptionHandlerMiddlewareTests
 
         Assert.Equal("NotFound", doc.RootElement.GetProperty("error").GetString());
         Assert.Equal("Producto no encontrado en inventario.", doc.RootElement.GetProperty("message").GetString());
-        Assert.Equal("Producto no encontrado en inventario.", doc.RootElement.GetProperty("Message").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
     }
 
     [Fact]
@@ -174,9 +172,7 @@ public class GlobalExceptionHandlerMiddlewareTests
 
         Assert.Equal("BadRequest", doc.RootElement.GetProperty("error").GetString());
         Assert.Equal("La cantidad debe ser mayor a 0.", doc.RootElement.GetProperty("message").GetString());
-        Assert.Equal("La cantidad debe ser mayor a 0.", doc.RootElement.GetProperty("Message").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
     }
 
     [Fact]
@@ -203,9 +199,7 @@ public class GlobalExceptionHandlerMiddlewareTests
 
         Assert.Equal("Forbidden", doc.RootElement.GetProperty("error").GetString());
         Assert.Equal("El rol Cajero no tiene permisos de exportación.", doc.RootElement.GetProperty("message").GetString());
-        Assert.Equal("El rol Cajero no tiene permisos de exportación.", doc.RootElement.GetProperty("Message").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
     }
 
     [Fact]
@@ -232,10 +226,8 @@ public class GlobalExceptionHandlerMiddlewareTests
 
         Assert.Equal("NotNullConstraintViolation", doc.RootElement.GetProperty("error").GetString());
         Assert.Equal("El campo 'Barcode' es obligatorio y no puede ser nulo.", doc.RootElement.GetProperty("message").GetString());
-        Assert.Equal("El campo 'Barcode' es obligatorio y no puede ser nulo.", doc.RootElement.GetProperty("Message").GetString());
         Assert.Equal("23502", doc.RootElement.GetProperty("sqlState").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
     }
 
     [Fact]
@@ -262,10 +254,8 @@ public class GlobalExceptionHandlerMiddlewareTests
 
         Assert.Equal("UniqueConstraintViolation", doc.RootElement.GetProperty("error").GetString());
         Assert.Equal("El código de barras ya está asignado a otro producto registrado.", doc.RootElement.GetProperty("message").GetString());
-        Assert.Equal("El código de barras ya está asignado a otro producto registrado.", doc.RootElement.GetProperty("Message").GetString());
         Assert.Equal("23505", doc.RootElement.GetProperty("sqlState").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
     }
 
     [Fact]
@@ -294,6 +284,97 @@ public class GlobalExceptionHandlerMiddlewareTests
         Assert.Contains("referencia un registro inexistente", doc.RootElement.GetProperty("message").GetString());
         Assert.Equal("23503", doc.RootElement.GetProperty("sqlState").GetString());
         Assert.True(doc.RootElement.TryGetProperty("traceId", out _));
-        Assert.True(doc.RootElement.TryGetProperty("TraceId", out _));
+    }
+
+    [Fact]
+    public async Task Middleware_CatchesIOException_ReturnsHttp503WithJson()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/sales/checkout";
+        context.Request.Method = "POST";
+        context.Response.Body = new MemoryStream();
+
+        var middleware = new GlobalExceptionHandlerMiddleware(innerContext =>
+        {
+            throw new IOException("Broken pipe: conexión interrumpida al transferir la respuesta.");
+        });
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal((int)HttpStatusCode.ServiceUnavailable, context.Response.StatusCode);
+
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var reader = new StreamReader(context.Response.Body);
+        var jsonText = await reader.ReadToEndAsync();
+        var doc = JsonDocument.Parse(jsonText);
+
+        Assert.Equal("DatabaseConnectionError", doc.RootElement.GetProperty("error").GetString());
+        Assert.Contains("comunicación", doc.RootElement.GetProperty("message").GetString());
+        Assert.True(File.Exists(AppLogger.DbErrorsLogPath));
+    }
+
+    [Fact]
+    public async Task Middleware_CatchesFileNotFoundException_ReturnsHttp500Not503()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/products/export";
+        context.Request.Method = "GET";
+        context.Response.Body = new MemoryStream();
+
+        var middleware = new GlobalExceptionHandlerMiddleware(innerContext =>
+        {
+            throw new FileNotFoundException("Plantilla de exportación no encontrada.", "template.xlsx");
+        });
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal((int)HttpStatusCode.InternalServerError, context.Response.StatusCode);
+
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var reader = new StreamReader(context.Response.Body);
+        var jsonText = await reader.ReadToEndAsync();
+        var doc = JsonDocument.Parse(jsonText);
+
+        Assert.Equal("InternalServerError", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Middleware_CatchesOperationCanceled_ReturnsHttp499WithoutAlarming()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/sales/1";
+        context.Request.Method = "GET";
+        context.Response.Body = new MemoryStream();
+
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+        context.Features.Set<IHttpRequestLifetimeFeature>(new CanceledLifetimeFeature(cts.Token));
+
+        var middleware = new GlobalExceptionHandlerMiddleware(innerContext =>
+            {
+                throw new OperationCanceledException(innerContext.RequestAborted);
+            });
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(499, context.Response.StatusCode);
+    }
+
+    private sealed class CanceledLifetimeFeature : IHttpRequestLifetimeFeature
+    {
+        private readonly CancellationToken _aborted;
+
+        public CanceledLifetimeFeature(CancellationToken aborted)
+        {
+            _aborted = aborted;
+        }
+
+        public CancellationToken RequestAborted
+        {
+            get => _aborted;
+            set => _ = value;
+        }
+
+        public void Abort() { }
     }
 }

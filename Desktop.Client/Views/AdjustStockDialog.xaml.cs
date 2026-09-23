@@ -26,12 +26,14 @@ public partial class AdjustStockDialog : Window
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
+        ValidationMessageText.Visibility = Visibility.Collapsed;
+
         var rawText = QuantityInput.Text.Replace(',', '.');
         if (decimal.TryParse(rawText, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal absoluteQty) && absoluteQty > 0)
         {
             if (string.IsNullOrWhiteSpace(ReasonInput.Text) || ReasonInput.Text.Trim().Length < 3)
             {
-                MessageBox.Show("Debe ingresar un motivo o descripción explícita (mínimo 3 caracteres) para justificar el ajuste de inventario.", "Error de Validación", MessageBoxButton.OK, MessageBoxImage.Warning);
+                ShowValidationMessage("Debe ingresar un motivo o descripción explícita (mínimo 3 caracteres) para justificar el ajuste de inventario.");
                 ReasonInput.Focus();
                 return;
             }
@@ -45,9 +47,15 @@ public partial class AdjustStockDialog : Window
         }
         else
         {
-            MessageBox.Show("Por favor ingrese una cantidad positiva mayor a 0.", "Error de Validación", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowValidationMessage("Por favor ingrese una cantidad positiva mayor a 0.");
             QuantityInput.Focus();
         }
+    }
+
+    private void ShowValidationMessage(string message)
+    {
+        ValidationMessageText.Text = message;
+        ValidationMessageText.Visibility = Visibility.Visible;
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)

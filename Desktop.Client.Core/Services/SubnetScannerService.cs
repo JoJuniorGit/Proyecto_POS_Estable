@@ -45,17 +45,16 @@ public class SubnetScannerService : ISubnetScannerService
         {
             RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
             {
-                if (errors == System.Net.Security.SslPolicyErrors.None)
-                {
-                    return true;
-                }
-
+                // 8.9-M4 (TOFU pinning) + 8.16-R18: pinning Trust-On-First-Use compartido.
+                // El primer fingerprint visto por host queda registrado y cualquier certificado
+                // distinto posterior es rechazado (mitiga MITM LAN). Solo aplica a hosts
+                // privados/locales; los públicos se validan con la cadena de confianza.
                 if (sender is System.Net.Http.HttpRequestMessage req && req.RequestUri != null)
                 {
-                    return IsPrivateOrLocalAddress(req.RequestUri.Host);
+                    return CertificatePinning.IsTrusted(req.RequestUri.Host, cert, errors);
                 }
 
-                return false;
+                return errors == System.Net.Security.SslPolicyErrors.None;
             }
         }
     })
@@ -74,12 +73,12 @@ public class SubnetScannerService : ISubnetScannerService
     private List<DiscoveredServer> _lastScanResults = new();
     private readonly object _lock = new object();
 
-    public async Task<DiscoveredServer?> ProbeSingleHostAsync(string hostOrIp, int port = 5000, int timeoutMs = 1500, CancellationToken ct = default)
+    public async Task<DiscoveredServer?> ProbeSingleHostAsync(string hostOrIp, int port = 5001, int timeoutMs = 1500, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(hostOrIp)) return null;
 
         var raw = hostOrIp.Trim();
-        var scheme = "http";
+        var scheme = "https";
         if (raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
             scheme = "https";
@@ -106,6 +105,18 @@ public class SubnetScannerService : ISubnetScannerService
             {
                 targetPort = parsedPort;
             }
+        }
+
+        // 8.16-ALTO-2: HTTP solo se admite hacia loopback (localhost/127.0.0.1/::1); todo host remoto exige HTTPS.
+        bool isLoopback = cleanHost.Equals("localhost", StringComparison.OrdinalIgnoreCase) || cleanHost.Equals("127.0.0.1");
+        if (!isLoopback && IPAddress.TryParse(cleanHost, out var ipAddress))
+        {
+            isLoopback = IPAddress.IsLoopback(ipAddress);
+        }
+
+        if (scheme == "http" && !isLoopback)
+        {
+            return null;
         }
 
         var targetUrl = $"{scheme}://{cleanHost}:{targetPort}/api/health";
@@ -167,7 +178,7 @@ public class SubnetScannerService : ISubnetScannerService
         // Paso 0: Probar IP preferida / anterior si existe
         if (!string.IsNullOrWhiteSpace(preferredHostOrIp))
         {
-            var cachedProbe = await ProbeSingleHostAsync(preferredHostOrIp, port: 5000, timeoutMs: 400, ct).ConfigureAwait(false);
+            var cachedProbe = await ProbeSingleHostAsync(preferredHostOrIp, port: ServerPortResolver.Resolve(preferredHostOrIp), timeoutMs: 400, ct).ConfigureAwait(false);
             if (cachedProbe != null)
                 return cachedProbe;
         }
@@ -214,7 +225,7 @@ public class SubnetScannerService : ISubnetScannerService
         {
             await Parallel.ForEachAsync(candidateIps, parallelOptions, async (ip, token) =>
             {
-                var result = await ProbeSingleHostAsync(ip, port: 5000, timeoutMs: 500, token).ConfigureAwait(false);
+                var result = await ProbeSingleHostAsync(ip, port: ServerPortResolver.Resolve(ip), timeoutMs: 500, token).ConfigureAwait(false);
                 if (result != null)
                 {
                     foundServers.Add(result);
