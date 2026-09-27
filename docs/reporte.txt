@@ -11449,15 +11449,15 @@ C. CORRECCIONES A UN ANÁLISIS EXTERNO (descartadas por improcedentes)
   el gate de versión (pre-routing), no el pipeline de errores.
 - "Upgrade de paquete vulnerable": no hay vulnerabilidades; era falso positivo del gate.
 
-D. DEUDA RESIDUAL (fuera de alcance, sin cobertura en CI)
-- Misma clase de formato por cultura en: ClosurePdfGenerator, DailyClosureViewModel,
-  CashDrawerViewModel línea 426 y mensajes de caja (CashAdvanceCoordinator/CashDrawerService).
-  En host no-es-VE, el PDF del mismo cierre puede diferir del TXT ya normalizado.
+D. DEUDA RESIDUAL (posterior a la adenda F)
+- Familia precios/checkout (requiere decisión de producto de convención):
+  ProductItemViewModel, EditSaleDialogViewModel, PendingPickupsViewModel,
+  InventoryViewModel.Operations y SaleReceiptPdfGenerator (InvariantCulture deliberado).
 - Seed PG: Id=2 sigue "Card"/IsCash=false (InMemory usa "Efectivo Bs.S"/true) y
   "Pago Movil" sin tilde; no afecta la clasificación de moneda (no contienen "USD").
-- Convergencia del seed: en un pos_test local "sucio" (fila canónica soft-deleted) puede
-  no restaurar IsActive/IsDeleted; CI recrea la base por run (ci.yml). Recomendación:
-  recrear pos_test local si se reutiliza.
+- Operativa local: recrear pos_test si se reutiliza — el rerun de tests de cierre sobre
+  una base con cierres previos queda fuera de la ventana del resolver (comportamiento
+  preexistente del test, no del seed).
 - Comentario 8.128 del job frontend en ci.yml menciona "npm 11"; el runner corre npm 12.
 
 E. ARCHIVOS
@@ -11467,4 +11467,15 @@ E. ARCHIVOS
   CommandCenter.Tests/Builders/TestDatabaseFactory.cs, CommandCenter.Tests/Integration/CashAdvanceEnvelopeTests.cs,
   CommandCenter.Tests/Integration/WebApplicationFactorySmokeTests.cs, .github/workflows/ci.yml,
   Web.Frontend/package-lock.json.
+
+F. ADENDA (2026-09-27) — CIERRE DE RESIDUALES DE FORMATO (misma fecha)
+- Resueltos con MoneyFormat es-VE: ClosurePdfGenerator, DailyClosureViewModel (incluido
+  el caso cero de DifferenceDisplay), CashDrawerViewModel:426, CashAdvanceCoordinator,
+  CashDrawerService (mensajes de saldo) y CashAdvanceRegisterViewModel.
+- Seed PG endurecido: la convergencia restaura también IsActive/IsDeleted de los Id
+  canónicos. Validado end-to-end: Id=1 corrompido a "Cash"/inactivo/soft-deleted →
+  restaurado a "Efectivo USD" y el test de cierre pasó sobre esa base.
+- Tests con host en-US forzado: VM de cierre (asertos exactos) y PDF de cierre (content
+  stream ASCII extraíble; rojo→verde real). Suite .NET completa re-verificada contra
+  PostgreSQL real: 1452/1452; build 0/0.
 ================================================================================
