@@ -21,8 +21,9 @@ public partial class PosViewModel
 
     /// <summary>
     /// Adds a scanned barcode (or any code coming from the camera tool) directly to the cart.
-    /// Resolves the product by exact SKU match; unknown codes / cash-advance items are not
-    /// added. Cooldown de 2.0s exactos para el mismo código y panel de últimos 3 productos escaneados.
+    /// Resolves the product by exact SKU match; an unknown code shows a "Producto no encontrado"
+    /// warning (8.143) and cash-advance items are intentionally not added (tienen su propio flujo).
+    /// Cooldown de 2.0s exactos para el mismo código y panel de últimos 3 productos escaneados.
     /// </summary>
     public async Task AddProductByCodeAsync(string code)
     {
@@ -66,8 +67,19 @@ public partial class PosViewModel
                 var results = await _productService.GetSuggestionsAsync(trimmedCode, true, CancellationToken.None);
                 var product = results.FirstOrDefault(p => p.SKU == trimmedCode) ?? results.FirstOrDefault();
 
-                // Unknown code, or a cash-advance item:
-                if (product == null || product.Id <= 0 || product.IsCashAdvance)
+                // 8.143: código desconocido => feedback explícito al usuario (antes era un no-op silencioso).
+                if (product == null || product.Id <= 0)
+                {
+                    if (_dialogService != null)
+                    {
+                        _dialogService.ShowWarning("Producto no encontrado", $"El código {trimmedCode} no corresponde a ningún producto.");
+                    }
+
+                    return;
+                }
+
+                // Los artículos de adelanto de efectivo no se agregan por escaneo (tienen su propio flujo).
+                if (product.IsCashAdvance)
                 {
                     return;
                 }
