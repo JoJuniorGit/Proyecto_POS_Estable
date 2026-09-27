@@ -24,7 +24,8 @@ import {
   planLaptopVisionTick,
   LAPTOP_VISION_BASE_INTERVAL_MS,
 } from '../../utils/laptopVisionEnhancer';
-import { formatBsS, formatUSD } from '../../utils/formatters';
+import { formatBsS, formatUSD, resolveBsSPrice } from '../../utils/formatters';
+import { useExchangeRate } from '../../context/ExchangeRateContext';
 import { resolveCameraGuidance, shouldFallbackWithoutDeviceId } from '../../utils/scannerCameraErrors';
 import './BarcodeScannerModal.css';
 
@@ -62,6 +63,14 @@ export default function BarcodeScannerModal({
   const boundingBoxRef = useRef(null);
   const boundingBoxTimerRef = useRef(null);
   const revocationListenerRef = useRef(null);
+
+  // 8.143: la tasa vigente llega por contexto, pero los loops de cámara capturan el callback de
+  // decode una sola vez; el ref garantiza que cada escaneo use la tasa más reciente.
+  const { exchangeRate } = useExchangeRate();
+  const exchangeRateRef = useRef(exchangeRate);
+  useEffect(() => {
+    exchangeRateRef.current = exchangeRate;
+  }, [exchangeRate]);
 
   // Detección de entorno: Laptop/PC vs Mobile
   const isLaptop = useMemo(() => isLaptopOrDesktopEnvironment(), []);
@@ -238,7 +247,10 @@ export default function BarcodeScannerModal({
       }
 
       playScanSuccess();
-      const price = Number(info.priceBsS) > 0 ? formatBsS(Number(info.priceBsS)) : formatUSD(Number(info.priceUSD));
+      // 8.143: quick-info rate-first — Bs.S = USD × tasa vigente (ceiling a 2 decimales);
+      // el snapshot persistido solo cae como fallback sin USD o sin tasa válida.
+      const bs = resolveBsSPrice(info.priceUSD, info.priceBsS, exchangeRateRef.current);
+      const price = bs > 0 ? formatBsS(bs) : formatUSD(Number(info.priceUSD));
       
       // Actualizar la lista de los últimos 3 productos distintos escaneados
       setRecentScannedProductIds((prev) => [info.id, ...prev.filter((id) => id !== info.id)].slice(0, 3));
