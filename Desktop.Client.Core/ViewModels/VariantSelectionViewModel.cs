@@ -38,7 +38,10 @@ public partial class VariantSelectionViewModel : ObservableObject
     public decimal ExchangeRate => _exchangeRateService?.CurrentRate ?? 1m;
 
     public decimal BasePriceUSD => ParentProduct?.PriceRetailUSD > 0 ? ParentProduct.PriceRetailUSD : (ParentProduct?.PriceUSD ?? 0m);
-    public decimal BasePriceBsS => ParentProduct?.PriceBsS > 0 ? ParentProduct.PriceBsS : Helpers.PricingHelper.ToBsSCeiling(BasePriceUSD, ExchangeRate);
+    // 8.143: derivar de USD x tasa vigente; el snapshot PriceBsS solo es fallback sin USD o sin tasa valida.
+    public decimal BasePriceBsS => BasePriceUSD > 0 && ExchangeRate > 0
+        ? Helpers.PricingHelper.ToBsSCeiling(BasePriceUSD, ExchangeRate)
+        : (ParentProduct?.PriceBsS > 0 ? ParentProduct.PriceBsS : 0m);
 
     public VariantSelectionViewModel(
         IProductService productService,
