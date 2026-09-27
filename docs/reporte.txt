@@ -11449,10 +11449,14 @@ C. CORRECCIONES A UN ANÁLISIS EXTERNO (descartadas por improcedentes)
   el gate de versión (pre-routing), no el pipeline de errores.
 - "Upgrade de paquete vulnerable": no hay vulnerabilidades; era falso positivo del gate.
 
-D. DEUDA RESIDUAL (posterior a la adenda F)
-- Familia precios/checkout (requiere decisión de producto de convención):
-  ProductItemViewModel, EditSaleDialogViewModel, PendingPickupsViewModel,
-  InventoryViewModel.Operations y SaleReceiptPdfGenerator (InvariantCulture deliberado).
+D. DEUDA RESIDUAL (posterior a la adenda G)
+- ProductQuickInfoDto (Core/DTOs) mantiene su InvariantCulture deliberado y no honra el
+  ajuste de moneda (fuera del alcance de la familia precios/checkout).
+- Refresco live del formato: cambiarlo en Settings aplica al recomputar/rebindear las
+  vistas (sin re-notificación inmediata de PropertyChanged); el refresco live (messenger)
+  y la reacción al SignalR OnCurrencyFormatUpdated del WPF quedan como mejora futura.
+- Arranque WPF: la carga del ajuste precede a MainWindow.Show(); con backend caído el
+  ResilienceHandler puede demorar el show (candidato a timeout acotado).
 - Seed PG: Id=2 sigue "Card"/IsCash=false (InMemory usa "Efectivo Bs.S"/true) y
   "Pago Movil" sin tilde; no afecta la clasificación de moneda (no contienen "USD").
 - Operativa local: recrear pos_test si se reutiliza — el rerun de tests de cierre sobre
@@ -11478,4 +11482,19 @@ F. ADENDA (2026-09-27) — CIERRE DE RESIDUALES DE FORMATO (misma fecha)
 - Tests con host en-US forzado: VM de cierre (asertos exactos) y PDF de cierre (content
   stream ASCII extraíble; rojo→verde real). Suite .NET completa re-verificada contra
   PostgreSQL real: 1452/1452; build 0/0.
+
+G. ADENDA 2 (2026-09-27) — LA FAMILIA PRECIOS/CHECKOUT HONRA EL AJUSTE DE MONEDA
+- Decisión de producto: honrar el ajuste existente Venezuelan/International
+  (SettingsController, clave "CurrencyFormat", default Venezuelan) — fix de raíz.
+- Core: MoneyDisplayFormat + MoneyFormat.Number/ParseFormat (aditivo; N0/N2 del cierre
+  intactos).
+- WPF: CurrencyDisplay (estado activo) sincronizado en App.OnStartup y Settings
+  (carga/cambio/catch); aplicado a ProductItemViewModel, EditSaleDialogViewModel,
+  PendingPickupsViewModel, InventoryViewModel.Operations y CurrencyMultiplierConverter.
+- Server: el recibo de venta PDF (por request) y el recibo encolado
+  (ReceiptPrintBackgroundService, scope propio por documento) siguen el ajuste; el nombre
+  de archivo usa fecha InvariantCulture. Evidencia: "730,00"/"73,0000" (VE) vs
+  "730.00"/"73.0000" (INT) en el mismo PDF.
+- Tests: rojo→verde real (2 fallos deterministas → 94/94 focal); suite .NET completa
+  1470/1470 contra PostgreSQL real; build 0/0.
 ================================================================================
