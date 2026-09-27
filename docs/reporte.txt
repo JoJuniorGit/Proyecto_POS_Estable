@@ -11533,4 +11533,14 @@ J. ADENDA 5 (2026-09-27) — CIERRE DE RESIDUALES DE LA SECCIÓN D
 - Arranque WPF: la carga del ajuste se acota a 2 s (WaitAsync + catch TimeoutException) — un
   backend caído ya no demora MainWindow.Show().
 - Verificación: suite .NET 1481/1481 contra PostgreSQL real (3 tests nuevos); build 0/0.
+
+K. ADENDA 6 (2026-09-27) — FEEDBACK AL ESCANEAR CÓDIGO DESCONOCIDO (WPF)
+- Causa: AddProductByCodeAsync (escáner wedge del POS) retornaba en silencio cuando el código
+  no correspondía a ningún producto — no-op sin feedback para el cajero.
+- Fix: advertencia explícita "Producto no encontrado — El código {code} no corresponde a ningún
+  producto." (IDialogService, mismo canal que el resto de los avisos del POS). El producto de
+  adelanto de efectivo conserva su no-op deliberado (tiene flujo propio); la búsqueda por teclado
+  ya mostraba placeholder y la ventana de escáner su tarjeta de estado (sin cambios).
+- Tests: 2 nuevos (warning en no-encontrado + happy path agrega sin warning). Suite .NET:
+  1483/1483 contra PostgreSQL real; build 0/0.
 ================================================================================
