@@ -213,6 +213,15 @@ public partial class ProductItemViewModel : ObservableObject
         OnPropertyChanged(nameof(DisplayWholesalePrice));
     }
 
+    // 8.143: re-notifica los displays formateados cuando el ajuste de moneda cambia en caliente.
+    public void NotifyCurrencyFormatChanged()
+    {
+        OnPropertyChanged(nameof(DisplayCost));
+        OnPropertyChanged(nameof(DisplayRetailPrice));
+        OnPropertyChanged(nameof(DisplayWholesalePrice));
+        OnPropertyChanged(nameof(EffectivePriceWholesaleBsS));
+    }
+
     public void UpdateExchangeRate()
     {
         if (_isCalculating) return;

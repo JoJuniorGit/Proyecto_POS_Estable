@@ -63,12 +63,20 @@ public partial class ClosureDetailRow : ObservableObject
         _ => "#94A3B8"
     };
 
+    // 8.143: la diferencia mostrada honra el ajuste activo (Venezolano/Internacional) y se
+    // re-formatea al vuelo cuando el formato cambia.
     public string DifferenceDisplay => DifferenceBsS switch
     {
-        > 0 => $"+{MoneyFormat.N2(DifferenceBsS)}",
-        < 0 => $"{MoneyFormat.N2(DifferenceBsS)}",
-        _ => MoneyFormat.N2(0m)
+        > 0 => $"+{CurrencyDisplay.Number(DifferenceBsS)}",
+        < 0 => $"{CurrencyDisplay.Number(DifferenceBsS)}",
+        _ => CurrencyDisplay.Number(0m)
     };
+
+    // 8.143: re-notifica la diferencia formateada al cambiar el ajuste de moneda en caliente.
+    public void NotifyCurrencyFormatChanged()
+    {
+        OnPropertyChanged(nameof(DifferenceDisplay));
+    }
 }
 
 public partial class DailyClosureViewModel : ObservableObject
@@ -89,6 +97,18 @@ public partial class DailyClosureViewModel : ObservableObject
 
         // Forced true for cashiers, default false for admins
         _isBlindClosing = UserSession?.IsCashier == true;
+
+        // 8.143: refresco en vivo del formato de moneda para el cierre diario abierto.
+        WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.CurrencyFormatChangedMessage>(this, (r, m) =>
+        {
+            var vm = (DailyClosureViewModel)r;
+            vm.OnPropertyChanged(nameof(DifferenceStatusLabel));
+            vm.OnPropertyChanged(nameof(DifferenceStatusColor));
+            foreach (var row in vm.DetailRows)
+            {
+                row.NotifyCurrencyFormatChanged();
+            }
+        });
     }
 
     // 8.6-M7: instante único de cierre en la zona legal (Venezuela). La API recibe UTC y el
@@ -166,8 +186,8 @@ public partial class DailyClosureViewModel : ObservableObject
     }
 
     public string DifferenceStatusLabel => TotalDifferenceBsS > 0
-        ? $"SOBRANTE EN CAJA (+{MoneyFormat.N2(TotalDifferenceBsS)} Bs.S)"
-        : (TotalDifferenceBsS < 0 ? $"FALTANTE EN CAJA ({MoneyFormat.N2(TotalDifferenceBsS)} Bs.S)" : "CUADRADO EXACTO");
+        ? $"SOBRANTE EN CAJA (+{CurrencyDisplay.Number(TotalDifferenceBsS)} Bs.S)"
+        : (TotalDifferenceBsS < 0 ? $"FALTANTE EN CAJA ({CurrencyDisplay.Number(TotalDifferenceBsS)} Bs.S)" : "CUADRADO EXACTO");
 
     public string DifferenceStatusColor => TotalDifferenceBsS > 0
         ? "#10B981"

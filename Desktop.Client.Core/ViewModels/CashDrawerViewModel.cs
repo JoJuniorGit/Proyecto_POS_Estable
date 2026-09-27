@@ -155,6 +155,13 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             }
         });
 
+        // 8.143: si el ajuste de moneda cambia en caliente (Settings o SignalR), re-formatear los
+        // montos visibles de la caja abierta.
+        WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.CurrencyFormatChangedMessage>(this, (r, m) =>
+        {
+            _dispatcherInvoker.Invoke(() => ((CashDrawerViewModel)r).UpdateFormattedBalances());
+        });
+
         WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.ShiftClosedMessage>(this, (r, m) =>
         {
             _dispatcherInvoker.Invoke(() => RefreshAsync().SafeFireAndForget("CashDrawer.ShiftClosed"));
@@ -170,8 +177,10 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     {
         var rate = _exchangeRateService.CurrentRate;
         var balanceLocal = CurrentBalanceBsS;
-        FormattedBalanceBsS = MoneyFormat.N0(balanceLocal);
-        FormattedBalanceUsd = MoneyFormat.N2(rate > 0 ? balanceLocal / rate : 0) + " $";
+        // 8.143: los montos visibles honran el ajuste activo (Venezolano/Internacional) y se
+        // re-formatean al vuelo cuando el formato cambia.
+        FormattedBalanceBsS = CurrencyDisplay.Number(balanceLocal, 0);
+        FormattedBalanceUsd = CurrencyDisplay.Number(rate > 0 ? balanceLocal / rate : 0) + " $";
 
         if (ActiveSession != null && ActiveSession.Transactions != null)
         {
@@ -188,8 +197,8 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             TotalExpenseBsS = 0;
         }
 
-        FormattedTotalIncomeBsS = MoneyFormat.N0(TotalIncomeBsS) + " Bs.S";
-        FormattedTotalExpenseBsS = MoneyFormat.N0(TotalExpenseBsS) + " Bs.S";
+        FormattedTotalIncomeBsS = CurrencyDisplay.Number(TotalIncomeBsS, 0) + " Bs.S";
+        FormattedTotalExpenseBsS = CurrencyDisplay.Number(TotalExpenseBsS, 0) + " Bs.S";
     }
 
     public async Task LoadSessionAsync()

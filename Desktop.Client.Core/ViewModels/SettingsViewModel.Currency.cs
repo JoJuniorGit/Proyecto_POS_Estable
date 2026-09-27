@@ -1,5 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.Common;
+using Desktop.Client.Messages;
 using Desktop.Client.Services;
 using System;
 using System.Collections.ObjectModel;
@@ -69,9 +71,11 @@ public partial class SettingsViewModel
         if (option == null) return;
         try
         {
-            // 8.143: aplica el formato al display del cliente antes de persistirlo.
+            // 8.143: aplica el formato al display del cliente antes de persistirlo y re-notifica
+            // las vistas abiertas (el estado activo vive en CurrencyDisplay; el mensaje no lleva payload).
             CurrencyDisplay.SetFromSetting(option.Key);
             UpdateCurrencyPreview(option.Key);
+            WeakReferenceMessenger.Default.Send(new CurrencyFormatChangedMessage());
             await _settingsService.SetCurrencyFormatAsync(option.Key);
         }
         catch (Exception ex)
