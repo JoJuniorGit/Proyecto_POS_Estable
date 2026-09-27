@@ -107,7 +107,8 @@ jobs:
             Write-Host "::error::La auditoria de paquetes fallo (dotnet list salio con codigo $auditExit): restore/NuGet no disponibles; el gate no puede validarse."
             exit 1
           }
-          if ($audit -match 'has the following vulnerable packages|Vulnerable packages|vulnerabilities were found') {
+          # 8.143: 'Vulnerable packages' matcheaba también "has no vulnerable packages" (case-insensitive) → falso positivo.
+          if ($audit -match 'has the following vulnerable packages') {
             Write-Host '::error::Se detectaron dependencias con vulnerabilidades conocidas en el backend.'
             exit 1
           }
