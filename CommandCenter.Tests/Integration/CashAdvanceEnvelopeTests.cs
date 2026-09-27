@@ -45,6 +45,17 @@ public class CashAdvanceEnvelopeTests : IDisposable
         }
     }
 
+    private async Task EnsureNoActiveSessionAsync()
+    {
+        if (_context == null) return;
+        var service = new CashDrawerService(_context);
+        var active = await service.GetActiveSessionAsync();
+        if (active != null)
+        {
+            await service.CloseSessionAsync(await service.GetCurrentBalanceLocalAsync(active.Id), 50m);
+        }
+    }
+
     private (CashAdvanceCoordinator coordinator, ICashDrawerService drawerService) CreateCoordinator()
     {
         var inventoryMock = new Mock<IInventoryService>();
@@ -74,28 +85,36 @@ public class CashAdvanceEnvelopeTests : IDisposable
         SkipIfNoPostgres();
         if (!IsPostgresAvailable) return;
 
+        await EnsureNoActiveSessionAsync();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(_context!);
         var (coordinator, drawerService) = CreateCoordinator();
         var session = await drawerService.OpenSessionAsync(5000m, 50.0m);
 
-        var result = await coordinator.ProcessAsync(
-            sessionId: session.Id,
-            requestedAmountLocal: 1000m,
-            paymentMethodId: 2,
-            paymentMethodName: "Transferencia Bancaria",
-            isTransfer: true,
-            exchangeRate: 50.0m
-        );
+        try
+        {
+            var result = await coordinator.ProcessAsync(
+                sessionId: session.Id,
+                requestedAmountLocal: 1000m,
+                paymentMethodId: 2,
+                paymentMethodName: "Transferencia Bancaria",
+                isTransfer: true,
+                exchangeRate: 50.0m
+            );
 
-        Assert.NotNull(result.RelatedSaleId);
+            Assert.NotNull(result.RelatedSaleId);
 
-        var sale = await _context!.Sales.FindAsync(result.RelatedSaleId!.Value);
-        Assert.NotNull(sale);
-        Assert.Equal(SaleStatus.Completed, sale.Status);
+            var sale = await _context!.Sales.FindAsync(result.RelatedSaleId!.Value);
+            Assert.NotNull(sale);
+            Assert.Equal(SaleStatus.Completed, sale.Status);
 
-        var drawerTxs = await _context!.CashTransactions
-            .CountAsync(t => t.SessionId == session.Id && t.Source == CashTransactionSource.CashAdvance);
-        Assert.Equal(2, drawerTxs);
+            var drawerTxs = await _context!.CashTransactions
+                .CountAsync(t => t.SessionId == session.Id && t.Source == CashTransactionSource.CashAdvance);
+            Assert.Equal(2, drawerTxs);
+        }
+        finally
+        {
+            try { await EnsureNoActiveSessionAsync(); } catch { /* best-effort: la limpieza del próximo test reintenta */ }
+        }
     }
 
     [Fact]
@@ -104,6 +123,7 @@ public class CashAdvanceEnvelopeTests : IDisposable
         SkipIfNoPostgres();
         if (!IsPostgresAvailable) return;
 
+        await EnsureNoActiveSessionAsync();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(_context!);
 
         var settingsMock = new Mock<ISystemSettingsService>();
@@ -119,24 +139,31 @@ public class CashAdvanceEnvelopeTests : IDisposable
         var drawerService = new CashDrawerService(_context!);
         var session = await drawerService.OpenSessionAsync(5000m, 50.0m);
 
-        var mediatorMock = new Mock<IMediator>();
-        var cashDrawerMock = new Mock<ICashDrawerService>();
-        var salesService = new SalesService(_context!, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsMock.Object);
-        var coordinator = new CashAdvanceCoordinator(_context!, salesService, drawerService, settingsMock.Object);
+        try
+        {
+            var mediatorMock = new Mock<IMediator>();
+            var cashDrawerMock = new Mock<ICashDrawerService>();
+            var salesService = new SalesService(_context!, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsMock.Object);
+            var coordinator = new CashAdvanceCoordinator(_context!, salesService, drawerService, settingsMock.Object);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            coordinator.ProcessAsync(
-                sessionId: session.Id,
-                requestedAmountLocal: 1000m,
-                paymentMethodId: 2,
-                paymentMethodName: "Transferencia Bancaria",
-                isTransfer: true,
-                exchangeRate: 50.0m
-            ));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                coordinator.ProcessAsync(
+                    sessionId: session.Id,
+                    requestedAmountLocal: 1000m,
+                    paymentMethodId: 2,
+                    paymentMethodName: "Transferencia Bancaria",
+                    isTransfer: true,
+                    exchangeRate: 50.0m
+                ));
 
-        var drawerTxs = await _context!.CashTransactions
-            .CountAsync(t => t.SessionId == session.Id && t.Source == CashTransactionSource.CashAdvance);
-        Assert.Equal(0, drawerTxs);
+            var drawerTxs = await _context!.CashTransactions
+                .CountAsync(t => t.SessionId == session.Id && t.Source == CashTransactionSource.CashAdvance);
+            Assert.Equal(0, drawerTxs);
+        }
+        finally
+        {
+            try { await EnsureNoActiveSessionAsync(); } catch { /* best-effort: la limpieza del próximo test reintenta */ }
+        }
     }
 
     [Fact]
@@ -145,6 +172,7 @@ public class CashAdvanceEnvelopeTests : IDisposable
         SkipIfNoPostgres();
         if (!IsPostgresAvailable) return;
 
+        await EnsureNoActiveSessionAsync();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(_context!);
 
         var inventoryMock = new Mock<IInventoryService>();
@@ -175,19 +203,26 @@ public class CashAdvanceEnvelopeTests : IDisposable
         var realDrawer = new CashDrawerService(_context!);
         var session = await realDrawer.OpenSessionAsync(5000m, 50.0m);
 
-        var saleCountBefore = await _context!.Sales.CountAsync();
+        try
+        {
+            var saleCountBefore = await _context!.Sales.CountAsync();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            coordinator.ProcessAsync(
-                sessionId: session.Id,
-                requestedAmountLocal: 1000m,
-                paymentMethodId: 2,
-                paymentMethodName: "Transferencia Bancaria",
-                isTransfer: true,
-                exchangeRate: 50.0m
-            ));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                coordinator.ProcessAsync(
+                    sessionId: session.Id,
+                    requestedAmountLocal: 1000m,
+                    paymentMethodId: 2,
+                    paymentMethodName: "Transferencia Bancaria",
+                    isTransfer: true,
+                    exchangeRate: 50.0m
+                ));
 
-        var saleCountAfter = await _context!.Sales.CountAsync();
-        Assert.Equal(saleCountBefore, saleCountAfter);
+            var saleCountAfter = await _context!.Sales.CountAsync();
+            Assert.Equal(saleCountBefore, saleCountAfter);
+        }
+        finally
+        {
+            try { await EnsureNoActiveSessionAsync(); } catch { /* best-effort: la limpieza del próximo test reintenta */ }
+        }
     }
 }
