@@ -11449,16 +11449,10 @@ C. CORRECCIONES A UN ANÁLISIS EXTERNO (descartadas por improcedentes)
   el gate de versión (pre-routing), no el pipeline de errores.
 - "Upgrade de paquete vulnerable": no hay vulnerabilidades; era falso positivo del gate.
 
-D. DEUDA RESIDUAL (posterior a la adenda I)
-- ProductQuickInfoDto (Core/DTOs) mantiene su InvariantCulture deliberado y no honra el
-  ajuste de moneda (fuera del alcance de la familia precios/checkout).
-- Web: el quick-info del escáner (BarcodeScannerModal, línea del precio del "found") sigue
-  prefiriendo el snapshot y no tiene la tasa cableada — mismo patrón pendiente en ese punto.
-- Refresco live del formato: cambiarlo en Settings aplica al recomputar/rebindear las
-  vistas (sin re-notificación inmediata de PropertyChanged); el refresco live (messenger)
-  y la reacción al SignalR OnCurrencyFormatUpdated del WPF quedan como mejora futura.
-- Arranque WPF: la carga del ajuste precede a MainWindow.Show(); con backend caído el
-  ResilienceHandler puede demorar el show (candidato a timeout acotado).
+D. DEUDA RESIDUAL (posterior a la adenda J)
+- Divergencia pantalla vs comprobante: los displays de Caja/Cierre del cliente honran el ajuste
+  (Venezolano/Internacional), pero los comprobantes server-side (TXT/PDF de cierre) siguen es-VE
+  fijo; con International puede notarse la diferencia entre lo impreso y lo visible.
 - Seed PG: Id=2 sigue "Card"/IsCash=false (InMemory usa "Efectivo Bs.S"/true) y
   "Pago Movil" sin tilde; no afecta la clasificación de moneda (no contienen "USD").
 - Operativa local: recrear pos_test si se reutiliza — el rerun de tests de cierre sobre
@@ -11523,4 +11517,20 @@ I. ADENDA 4 (2026-09-27) — PRECIOS Bs.S REACTIVOS A LA TASA EN LA WEB
 - Tests: rojo→verde real (6 fallos: 1 regresión de formatProductDisplayPrice + 5 de
   resolveBsSPrice → 293/293); oxlint 0 diagnósticos; build OK. Bundle regenerado en
   Backend.API/wwwroot (convención del repo).
+
+J. ADENDA 5 (2026-09-27) — CIERRE DE RESIDUALES DE LA SECCIÓN D
+- Web escáner: el quick-info del producto encontrado (BarcodeScannerModal) deriva el precio de
+  USD × tasa vigente (useExchangeRate + ref para los loops de cámara + resolveBsSPrice); las
+  tarjetas de "últimos escaneados" quedan en contexto de venta (derivan del carrito). npm test
+  293/293; oxlint 0; bundle regenerado.
+- Refresco live del formato (WPF): nuevo CurrencyFormatChangedMessage emitido desde Settings y
+  desde el SignalR OnCurrencyFormatUpdated (ExchangeRateService); re-notifican CashDrawerViewModel,
+  InventoryViewModel (+ ProductItemViewModel.NotifyCurrencyFormatChanged) y DailyClosureViewModel
+  (+ ClosureDetailRow). Los displays de Caja/Cierre pasan de MoneyFormat fijo a CurrencyDisplay
+  (default Venezuelan byte-idéntico a los strings previos; los comprobantes server-side siguen es-VE).
+- ProductQuickInfoDto: DisplayPriceBsS/DisplayPriceUSD pasan a MoneyFormat es-VE (sin consumidores
+  de UI; solo tests).
+- Arranque WPF: la carga del ajuste se acota a 2 s (WaitAsync + catch TimeoutException) — un
+  backend caído ya no demora MainWindow.Show().
+- Verificación: suite .NET 1481/1481 contra PostgreSQL real (3 tests nuevos); build 0/0.
 ================================================================================
