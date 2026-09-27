@@ -39,11 +39,12 @@
                 <Border Background="#1FEE5353" BorderBrush="#EE5353" BorderThickness="1"
                         CornerRadius="6" Padding="12,8" Margin="0,0,0,16"
                         Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}">
-                    <TextBlock Text="{Binding ErrorMessage}" Foreground="#EE5353" FontSize="12" TextWrapping="Wrap" HorizontalAlignment="Center"/>
+                    <TextBlock AutomationProperties.AutomationId="Login_ErrorMessage" Text="{Binding ErrorMessage}" Foreground="#EE5353" FontSize="12" TextWrapping="Wrap" HorizontalAlignment="Center"/>
                 </Border>
 
                 <!-- Input Field: Username -->
                 <TextBox Text="{Binding Cedula, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.AutomationId="Login_Username"
                          materialDesign:HintAssist.Hint="Usuario"
                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                          FontSize="20" FontWeight="Bold" HorizontalContentAlignment="Center"
@@ -54,6 +55,7 @@
                 <!-- Input Field: Password con Botón de Ojo (Mostrar / Ocultar) -->
                 <Grid Margin="0,0,0,16">
                     <PasswordBox x:Name="PasswordInput"
+                                 AutomationProperties.AutomationId="Login_Password"
                                  materialDesign:HintAssist.Hint="Contraseña"
                                  Style="{StaticResource MaterialDesignOutlinedPasswordBox}"
                                  FontSize="20" FontWeight="Bold" HorizontalContentAlignment="Center"
@@ -63,6 +65,7 @@
                                  KeyDown="PasswordInput_KeyDown"/>
 
                     <TextBox x:Name="PasswordTextInput"
+                             AutomationProperties.AutomationId="Login_PasswordText"
                              Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
                              materialDesign:HintAssist.Hint="Contraseña"
                              Style="{StaticResource MaterialDesignOutlinedTextBox}"
@@ -111,6 +114,7 @@
 
                 <!-- Login Button -->
                 <Button Command="{Binding LoginCommand}"
+                        AutomationProperties.AutomationId="Login_SubmitButton"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         Height="48" FontSize="16" FontWeight="Bold"
                         materialDesign:ButtonProgressAssist.IsIndeterminate="{Binding IsLoading}">

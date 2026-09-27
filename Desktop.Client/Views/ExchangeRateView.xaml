@@ -31,6 +31,7 @@
 
             <StackPanel Grid.Column="0">
                 <TextBlock Text="Exchange Rate" 
+                           AutomationProperties.AutomationId="ExchangeRate_Title"
                            Style="{DynamicResource MaterialDesignHeadline4TextBlock}" 
                            FontWeight="Bold"/>
                 <TextBlock Text="Modo Manual: Sincronice con el BCV a demanda o digite la tasa oficial del día." 
@@ -116,6 +117,7 @@
                     </Grid.ColumnDefinitions>
 
                     <TextBox x:Name="RateInput"
+                             AutomationProperties.AutomationId="ExchangeRate_RateInput"
                              Grid.Column="0"
                              Text="{Binding NewRateText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              behaviors:DecimalCentsBehavior.IsEnabled="True"
@@ -127,6 +129,7 @@
                              Margin="0,0,10,0"/>
 
                     <Button Grid.Column="1"
+                            AutomationProperties.AutomationId="ExchangeRate_SaveButton"
                             Command="{Binding SaveRateCommand}"
                             IsEnabled="{Binding UserSession.CanMutateExchangeRate}"
                             Style="{DynamicResource MaterialDesignRaisedButton}"
@@ -138,6 +141,7 @@
                     </Button>
                     
                     <Button Grid.Column="2"
+                            AutomationProperties.AutomationId="ExchangeRate_SyncButton"
                             Command="{Binding SyncBcvCommand}"
                             IsEnabled="{Binding UserSession.CanMutateExchangeRate}"
                             Style="{DynamicResource MaterialDesignOutlinedButton}"

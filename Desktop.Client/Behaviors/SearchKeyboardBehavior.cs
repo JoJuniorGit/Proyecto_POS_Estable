@@ -76,17 +76,16 @@ namespace Desktop.Client.Behaviors
             }
             else if (e.Key == Key.Enter || e.Key == Key.Return)
             {
-                // Only swallow enter if there's actually a valid selection and command
-                if (TargetListBox.SelectedItem != null && EnterCommand != null)
+                var itemToSelect = TargetListBox.SelectedItem ?? (TargetListBox.Items.Count > 0 ? TargetListBox.Items[0] : null);
+                if (itemToSelect != null && EnterCommand != null)
                 {
                     e.Handled = true;
 
-                    if (EnterCommand.CanExecute(TargetListBox.SelectedItem))
+                    if (EnterCommand.CanExecute(itemToSelect))
                     {
-                        EnterCommand.Execute(TargetListBox.SelectedItem);
+                        EnterCommand.Execute(itemToSelect);
                     }
-                    
-                    // Keep the focus strictly locked to the textbox
+
                     AssociatedObject.Focus();
                 }
             }

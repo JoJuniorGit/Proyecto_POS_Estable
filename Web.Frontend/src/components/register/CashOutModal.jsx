@@ -3,6 +3,7 @@ import Modal from '../ui/Modal';
 import { ArrowUpRight, Loader2, AlertCircle } from 'lucide-react';
 import { api } from '../../services/api';
 import { formatBsS } from '../../utils/formatters';
+import './RegisterModals.css';
 
 export default function CashOutModal({ isOpen, onClose, sessionId, availableCashBsS, exchangeRate, user, onSuccess }) {
   const [amountBsS, setAmountBsS] = useState('');
@@ -125,11 +126,11 @@ export default function CashOutModal({ isOpen, onClose, sessionId, availableCash
           </small>
         </div>
 
-        <div className="modal-actions flex-center gap-3 pt-2" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <button type="button" className="btn btn-outline flex-center" onClick={handleClose} disabled={loading} style={{ minWidth: '130px', justifyContent: 'center' }}>
+        <div className="modal-actions flex-center gap-3 pt-2 regmod-actions">
+          <button type="button" className="btn btn-outline flex-center regmod-btn-130" onClick={handleClose} disabled={loading}>
             Cancelar
           </button>
-          <button type="submit" className="btn btn-danger flex-center gap-2 font-bold" disabled={loading} style={{ minWidth: '180px', justifyContent: 'center' }}>
+          <button type="submit" className="btn btn-danger flex-center gap-2 font-bold regmod-btn-180" disabled={loading}>
             {loading ? <Loader2 size={16} className="animate-spin" /> : <ArrowUpRight size={16} />}
             Confirmar CASH OUT
           </button>

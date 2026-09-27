@@ -14,6 +14,9 @@ public class DailyClosure
     [MaxLength(100)]
     public string? UserId { get; set; } = "Admin";
 
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal ExchangeRate { get; set; }
+
     [Column(TypeName = "decimal(18,2)")]
     public decimal TotalExpectedBsS { get; set; }
 

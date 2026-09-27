@@ -1,0 +1,111 @@
+using System.ComponentModel.DataAnnotations;
+using Core.Entities;
+
+namespace Core.DTOs;
+
+public class CreateProductDto
+{
+    [Required(ErrorMessage = "El nombre del producto es obligatorio.")]
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+
+    public string? SKU { get; set; }
+
+    [MaxLength(1000)]
+    public string? Description { get; set; }
+
+    [Range(0, 1000000)]
+    public decimal PriceUSD { get; set; }
+
+    [Range(0, 1000000)]
+    public decimal PriceRetailUSD { get; set; }
+
+    [Range(0, 1000000)]
+    public decimal PriceBsS { get; set; }
+
+    [Range(0, 1000000)]
+    public decimal PriceWholesaleUSD { get; set; }
+
+    [Range(0, 1000000)]
+    public decimal CostPriceUSD { get; set; }
+
+    [Range(0, 10000)]
+    public decimal ProfitMarginRetail { get; set; }
+
+    [Range(0, 10000)]
+    public decimal ProfitMarginWholesale { get; set; }
+
+    public decimal MinWholesaleQuantity { get; set; } = 6.000m;
+    public bool HasWholesale { get; set; }
+    public bool IsFractional { get; set; }
+    public UnitOfMeasureType UnitOfMeasure { get; set; } = UnitOfMeasureType.Und;
+    public decimal LowStockThreshold { get; set; }
+
+    [Range(0, 1000000)]
+    public decimal StockQuantity { get; set; }
+    public bool IsCashAdvance { get; set; }
+    public bool IsActive { get; set; } = true;
+
+    public int? ParentProductId { get; set; }
+    public bool IsGroupHeader { get; set; }
+    public bool IsStockShared { get; set; }
+    public bool HasIndependentPricing { get; set; }
+    public decimal ConversionFactor { get; set; } = 1.0000m;
+    public string? GroupKey { get; set; }
+}
+
+public class UpdateProductDto
+{
+    public int Id { get; set; }
+
+    [Required(ErrorMessage = "El nombre del producto es obligatorio.")]
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+
+    public string? SKU { get; set; }
+
+    [MaxLength(1000)]
+    public string? Description { get; set; }
+
+    [Range(0, 1000000)]
+    public decimal PriceUSD { get; set; }
+
+    [Range(0, 1000000)]
+    public decimal PriceRetailUSD { get; set; }
+
+    [Range(0, 1000000)]
+    public decimal PriceBsS { get; set; }
+
+    [Range(0, 1000000)]
+    public decimal PriceWholesaleUSD { get; set; }
+
+    [Range(0, 1000000)]
+    public decimal CostPriceUSD { get; set; }
+
+    [Range(0, 10000)]
+    public decimal ProfitMarginRetail { get; set; }
+
+    [Range(0, 10000)]
+    public decimal ProfitMarginWholesale { get; set; }
+
+    public decimal MinWholesaleQuantity { get; set; } = 6.000m;
+    public bool HasWholesale { get; set; }
+    public bool IsFractional { get; set; }
+    public UnitOfMeasureType UnitOfMeasure { get; set; } = UnitOfMeasureType.Und;
+    public decimal LowStockThreshold { get; set; }
+    public bool IsCashAdvance { get; set; }
+    public bool IsActive { get; set; }
+
+    public int? ParentProductId { get; set; }
+    public bool IsGroupHeader { get; set; }
+    public bool IsStockShared { get; set; }
+    public bool HasIndependentPricing { get; set; }
+    public decimal ConversionFactor { get; set; } = 1.0000m;
+    public string? GroupKey { get; set; }
+}
+
+public class StatusUpdateDto
+{
+    public bool IsActive { get; set; }
+    public bool IsDeleted { get; set; }
+}

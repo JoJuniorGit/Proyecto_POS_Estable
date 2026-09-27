@@ -10,41 +10,55 @@ public record PaymentInfo(int PaymentMethodId, decimal Amount, decimal AmountLoc
 
 public interface ISalesService
 {
-    Task<SaleDto> StartSaleAsync(int? cashierId = null);
-    Task<SaleDto> GetSaleAsync(int saleId);
-    Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false);
-    Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate);
-    Task<SaleDto> UpdateItemQuantityAsync(int saleId, int itemId, decimal quantity, decimal exchangeRate);
-    Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate);
-    Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType);
-    Task CancelSaleAsync(int saleId);
-    Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<PaymentInfo> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, System.Threading.CancellationToken cancellationToken = default);
-    Task<SaleHistoryDto> ConfirmPickupAsync(int saleId);
-    Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync();
-    Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, System.DateTime? startDate, System.DateTime? endDate, string? search = null);
-    Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId);
+    Task<SaleDto> StartSaleAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<SaleDto> GetSaleAsync(int saleId, System.Threading.CancellationToken cancellationToken = default);
+    Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<SaleDto> UpdateItemQuantityAsync(int saleId, int itemId, decimal quantity, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task CancelSaleAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<PaymentInfo> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, System.Threading.CancellationToken cancellationToken = default, int? actingUserId = null);
+    Task<SaleHistoryDto> ConfirmPickupAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync(int? cashierId = null, int limit = 200, int offset = 0, System.Threading.CancellationToken cancellationToken = default);
+    Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, System.DateTime? startDate, System.DateTime? endDate, string? search = null, int? cashierId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId, System.Threading.CancellationToken cancellationToken = default);
 
     // OnHold / Customer Methods
-    Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request);
-    Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false);
-    Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request);
-    Task<IEnumerable<SaleDto>> GetPendingSalesAsync();
-    Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId);
-    Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(string? query = null, int page = 1, int pageSize = 20, bool recentOnly = false);
+    Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
 
-    Task<CustomerDto> GetDefaultCustomerAsync();
-    Task<CustomerDto> CreateCustomerAsync(CreateCustomerDto request);
-    Task<CustomerDto> UpdateCustomerAsync(int id, UpdateCustomerDto request);
-    Task DeleteCustomerAsync(int id);
+    /// <summary>8.29-A05: aplica varios abonos a una venta en espera en UNA sola transacción
+    /// (todo o nada): si CUALQUIER abono del lote falla la validación, ninguno se persiste.</summary>
+    Task<SaleDto> AddPaymentsBatchToHoldSaleAsync(int saleId, List<AddPaymentRequestDto> payments, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<IEnumerable<SaleDto>> GetPendingSalesAsync(int? cashierId = null, int limit = 200, int offset = 0, System.Threading.CancellationToken cancellationToken = default);
+
+    /// <summary>8.14-N1: total de ventas OnHold para paginación de UI.</summary>
+    Task<int> CountPendingSalesAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default);
+
+    /// <summary>8.14-N1: total de retiros pendientes para paginación de UI.</summary>
+    Task<int> CountPendingPickupsAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(string? query = null, int page = 1, int pageSize = 20, bool recentOnly = false, System.Threading.CancellationToken cancellationToken = default);
+
+    Task<CustomerDto> GetDefaultCustomerAsync(System.Threading.CancellationToken cancellationToken = default);
+    Task<CustomerDto> CreateCustomerAsync(CreateCustomerDto request, System.Threading.CancellationToken cancellationToken = default);
+    Task<CustomerDto> UpdateCustomerAsync(int id, UpdateCustomerDto request, System.Threading.CancellationToken cancellationToken = default);
+    Task DeleteCustomerAsync(int id, System.Threading.CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Recalculates prices and totals for all OnHold sales using the new exchange rate.
     /// Updates both USD prices from the catalog and BsS conversion.
     /// Existing payments (abonos) are NOT modified.
     /// </summary>
-    Task<int> RecalculateOnHoldSalesAsync(decimal newExchangeRate);
+    Task<int> RecalculateOnHoldSalesAsync(decimal newExchangeRate, System.Threading.CancellationToken cancellationToken = default);
 
-    Task<Sale> CreateCashAdvanceSaleAsync(
+    Task<SaleDto> ClaimSaleAsync(int saleId, SaleClaimAction action, int? actingUserId, System.Threading.CancellationToken cancellationToken = default);
+
+    Task<SaleDto> ReleaseSaleAsync(int saleId, int? actingUserId, bool force = false, System.Threading.CancellationToken cancellationToken = default);
+
+    Task<SaleDto> CreateCashAdvanceSaleAsync(
         decimal requestedAmountLocal,
         decimal commissionAmountLocal,
         int paymentMethodId,
@@ -53,5 +67,6 @@ public interface ISalesService
         decimal exchangeRate,
         int? cashierId = null,
         string? userName = null,
-        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? existingTransaction = null);
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? existingTransaction = null,
+        System.Threading.CancellationToken cancellationToken = default);
 }

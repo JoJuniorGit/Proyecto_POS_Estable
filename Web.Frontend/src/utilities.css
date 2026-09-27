@@ -1,15 +1,5 @@
-/* ══════════════════════════════════════════════════════════
-   UTILITIES — Clases utilitarias faltantes del sistema
-   (gap-1, text-xs, border-bottom, flex-column, d-flex, etc.)
+@layer utilities {
 
-   Integrado en main.jsx DESPUÉS de index.css, por lo que sus
-   reglas se concatenan al final del bundle. El prefijo :root
-   eleva la especificidad a (0,1,1), igualando reglas de
-   componente como .cart-table th, y el orden final del bundle
-   decide el empate a favor de estas utilidades.
-   ══════════════════════════════════════════════════════════ */
-
-/* ── Layout ── */
 :root .d-flex { display: flex; }
 :root .d-inline-flex { display: inline-flex; }
 :root .d-block { display: block; }
@@ -23,11 +13,9 @@
 :root .justify-end { justify-content: flex-end; }
 :root .align-start { align-items: flex-start; }
 
-/* ── Gap ── */
 :root .gap-1 { gap: 0.25rem; }
 :root .gap-3 { gap: 0.75rem; }
 
-/* ── Margins ── */
 :root .mb-1 { margin-bottom: 0.25rem; }
 :root .mt-1 { margin-top: 0.25rem; }
 :root .mt-3 { margin-top: 0.75rem; }
@@ -37,7 +25,6 @@
 :root .mr-2 { margin-right: 0.5rem; }
 :root .mx-auto { margin-left: auto; margin-right: auto; }
 
-/* ── Padding ── */
 :root .p-1 { padding: 0.25rem; }
 :root .p-2 { padding: 0.5rem; }
 :root .pb-1 { padding-bottom: 0.25rem; }
@@ -48,7 +35,6 @@
 :root .px-1 { padding-left: 0.25rem; padding-right: 0.25rem; }
 :root .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
 
-/* ── Typography ── */
 :root .text-xs { font-size: 0.75rem; }
 :root .text-sm { font-size: 0.875rem; }
 :root .text-base { font-size: 1rem; }
@@ -63,7 +49,6 @@
 :root .font-normal { font-weight: 400; }
 :root .font-semibold { font-weight: 600; }
 
-/* ── Borders (usando el token real --border) ── */
 :root .border { border: 1px solid var(--border); }
 :root .border-bottom { border-bottom: 1px solid var(--border); }
 :root .border-top { border-top: 1px solid var(--border); }
@@ -71,7 +56,7 @@
 :root .border-bottom-dashed { border-bottom: 1px dashed var(--border); }
 :root .border-dashed { border: 1px dashed var(--border); }
 
-/* ── Sizing y misc ── */
 :root .w-full { width: 100%; }
 :root .opacity-50 { opacity: 0.5; }
 :root .spin { animation: spin 1s linear infinite; }
+}

@@ -41,4 +41,5 @@ public class SaleItemHistoryDto
     public decimal UnitPrice { get; set; }
     public decimal UnitPriceBsS { get; set; }
     public decimal SubtotalBsS { get; set; }
+    public bool IsCustomPrice { get; set; }
 }

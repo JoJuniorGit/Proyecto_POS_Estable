@@ -8,6 +8,7 @@ using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Moq;
 using Xunit;
+using CommunityToolkit.Mvvm.Messaging;
 
 namespace CommandCenter.Tests.Unit;
 
@@ -36,10 +37,11 @@ public class PosViewModelPaymentMethodsDeduplicationTests
         mockSales.Setup(s => s.StartSaleAsync(It.IsAny<int?>()))
             .ReturnsAsync(new SaleDto { Id = 101, Status = "Draft" });
 
+        var releasePaymentMethods = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         mockPayments.Setup(p => p.GetActiveMethodsAsync())
             .Returns(async () =>
             {
-                await Task.Delay(50); // Simula latencia de red para forzar carrera
+                await releasePaymentMethods.Task;
                 return CreateSamplePaymentMethods();
             });
 
@@ -56,9 +58,16 @@ public class PosViewModelPaymentMethodsDeduplicationTests
             session,
             mockDialog.Object);
 
+        // Aislamos del bus estático global de mensajes para evitar que pruebas paralelas disparen recargas
+        WeakReferenceMessenger.Default.Unregister<PaymentMethodsChangedMessage>(posVm);
+        // El carrito también escucha CurrentSaleChangedMessage en el bus global: aislarlo evita que
+        // otra prueba reemplace CurrentSale y provoque un StartSaleAsync extra fuera de la secuencia.
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
+
         // Act: Dos llamadas concurrentes simulando SessionChanged + LoginSuccess
         var task1 = posVm.InitializeForSessionAsync();
         var task2 = posVm.InitializeForSessionAsync();
+        releasePaymentMethods.SetResult();
         await Task.WhenAll(task1, task2);
 
         // Assert: Se debió invocar exactamente una vez y no haber métodos duplicados
@@ -125,6 +134,9 @@ public class PosViewModelPaymentMethodsDeduplicationTests
 
         var session = new UserSession();
         var cartVm = new CartViewModel(mockSales.Object, mockRate.Object);
+        // Aísla el carrito del bus global: un CurrentSaleChangedMessage externo reaparecería
+        // tras ResetSession y rompería el assert de estado limpio.
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
         cartVm.CurrentSale = new SaleDto { Id = 55 };
 
         using var posVm = new PosViewModel(
@@ -180,6 +192,11 @@ public class PosViewModelPaymentMethodsDeduplicationTests
             userSession,
             mockDialogService.Object);
 
+        // Aislamos del bus estático global para evitar que pruebas paralelas disparen recargas
+        // o reemplacen CurrentSale del carrito durante la inicialización posterior al login.
+        WeakReferenceMessenger.Default.UnregisterAll(posVm);
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
+
         mockUserService.Setup(u => u.LoginAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(new LoginResultDto
             {
@@ -208,8 +225,14 @@ public class PosViewModelPaymentMethodsDeduplicationTests
         // Assert: CurrentViewModel debe ser posVm
         Assert.Equal(posVm, mainVm.CurrentViewModel);
 
-        // Esperar cualquier inicialización asíncrona pendiente
-        await Task.Delay(100);
+        // La inicialización posterior al login corre fire-and-forget: esperar por condición acotada
+        // (en vez de una ventana fija de 100 ms) a que carguen los métodos y arranque la venta.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while ((posVm.ActivePaymentMethods.Count != 5 || posVm.Cart.CurrentSale == null) &&
+               DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
 
         // ActivePaymentMethods debe tener exactamente 5 elementos sin duplicación
         Assert.Equal(5, posVm.ActivePaymentMethods.Count);

@@ -5,4 +5,5 @@ namespace Backend.API.Services;
 public interface ITokenService
 {
     string GenerateToken(User user, string scope = "pos:desktop");
+    int ExpiryMinutes { get; }
 }

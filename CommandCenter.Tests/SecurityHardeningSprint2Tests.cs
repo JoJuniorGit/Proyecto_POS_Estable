@@ -2,10 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using Backend.API.DTOs;
 using Backend.API.Middleware;
+using CommandCenter.Tests.Builders;
+using CommandCenter.Tests.TestHelpers;
 using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
@@ -14,8 +17,11 @@ using Inventory.Module.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Moq;
 using Sales.Module.Data;
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
+using Sales.Module.Interfaces;
 using Sales.Module.Services;
 using Xunit;
 
@@ -60,6 +66,13 @@ public class SecurityHardeningSprint2Tests
         Assert.Equal("1; mode=block", context.Response.Headers["X-XSS-Protection"]);
         Assert.Equal("strict-origin-when-cross-origin", context.Response.Headers["Referrer-Policy"]);
         Assert.True(context.Response.Headers.ContainsKey("Content-Security-Policy"));
+
+        string permissionsPolicy = context.Response.Headers["Permissions-Policy"].ToString();
+        Assert.Contains("camera=(self)", permissionsPolicy);
+        Assert.Contains("geolocation=()", permissionsPolicy);
+        Assert.Contains("microphone=()", permissionsPolicy);
+        Assert.Contains("payment=()", permissionsPolicy);
+        Assert.Contains("usb=()", permissionsPolicy);
     }
 
     [Fact]
@@ -118,29 +131,24 @@ public class SecurityHardeningSprint2Tests
     public async Task DailyClosureService_ThrowsOnNegativeActualAmount()
     {
         using var db = GetInMemorySalesDbContext();
-        var service = new DailyClosureService(db);
 
         var method = new PaymentMethod { Id = 1, Name = "Efectivo", IsActive = true };
         db.PaymentMethods.Add(method);
         await db.SaveChangesAsync();
 
-        var closure = new DailyClosure
-        {
-            ClosureDate = DateTime.UtcNow,
-            Details = new List<ClosureDetail>
+        var service = DailyClosureTestHelper.CreateService(db);
+
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Admin",
+            null,
+            new List<DeclaredPaymentAmount>
             {
-                new ClosureDetail
-                {
-                    PaymentMethodId = 1,
-                    PaymentMethodName = "Efectivo",
-                    ExpectedAmountBsS = 100m,
-                    ActualAmountBsS = -20m // Negative
-                }
-            }
-        };
+                new(1, -20m)
+            });
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.CreateClosureAsync(closure));
+            service.CreateClosureFromCommandAsync(command, CancellationToken.None));
     }
 
     [Fact]
@@ -159,5 +167,107 @@ public class SecurityHardeningSprint2Tests
         });
 
         Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task DailyClosureController_UnknownPaymentMethodId_ReturnsBadRequestWithoutCreatingClosure()
+    {
+        var mockClosure = new Mock<IDailyClosureService>();
+        var mockUser = new Mock<ICurrentUserService>();
+        mockUser.Setup(u => u.UserId).Returns("1");
+
+        mockClosure.Setup(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ArgumentException("El desglose contiene métodos de pago no reconocidos: 999."));
+
+        var controller = new DailyClosureController(
+            mockClosure.Object,
+            mockUser.Object);
+
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                {
+                    new Claim(ClaimTypes.NameIdentifier, "1"),
+                    new Claim(ClaimTypes.Role, "Admin")
+                }, "TestAuth"))
+            }
+        };
+
+        var request = new CreateClosureRequest
+        {
+            Details = new List<CreateClosureDetailRequest>
+            {
+                new CreateClosureDetailRequest { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ActualAmountBsS = 1000m },
+                new CreateClosureDetailRequest { PaymentMethodId = 999, PaymentMethodName = "Método Inyectado", ActualAmountBsS = 0m }
+            }
+        };
+
+        var result = await controller.CreateClosure(request, CancellationToken.None);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+        mockClosure.Verify(c => c.CreateClosureFromCommandAsync(It.IsAny<CreateClosureCommand>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ShiftsController_UnknownDeclaredPaymentMethodId_ReturnsBadRequestWithoutCreatingClosure()
+    {
+        using var salesDb = TestDatabaseFactory.CreateSalesDbContext();
+        if (!await salesDb.PaymentMethods.AnyAsync(p => p.Id == 1))
+        {
+            salesDb.PaymentMethods.Add(new PaymentMethod
+            {
+                Id = 1,
+                Name = "Efectivo USD",
+                IsCash = true,
+                IsActive = true,
+                IsDeleted = false,
+                DisplayOrder = 1
+            });
+            await salesDb.SaveChangesAsync();
+        }
+
+        var (rateProvider, cashDrawer) = DailyClosureTestHelper.CreateMocks();
+        var mockUser = new Mock<ICurrentUserService>();
+        mockUser.Setup(u => u.UserId).Returns("1");
+
+        var closureService = DailyClosureTestHelper.CreateService(salesDb, rateProvider, cashDrawer);
+
+        var controller = new ShiftsController(
+            closureService,
+            mockUser.Object);
+
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                {
+                    new Claim(ClaimTypes.NameIdentifier, "1"),
+                    new Claim(ClaimTypes.Role, "Admin")
+                }, "TestAuth"))
+            }
+        };
+
+        var request = new CloseShiftRequest
+        {
+            DeclaredAmounts = new List<DeclaredAmountDto>
+            {
+                new DeclaredAmountDto { PaymentMethodId = 1, Amount = 1000m },
+                new DeclaredAmountDto { PaymentMethodId = 999, Amount = 0m }
+            }
+        };
+
+        var result = await controller.CloseShiftAsync(request, CancellationToken.None);
+
+        var objectResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(400, problemDetails.Status);
+        Assert.Contains("999", problemDetails.Detail);
+        Assert.Empty(await salesDb.DailyClosures.AsNoTracking().ToListAsync());
+        cashDrawer.Verify(c => c.RolloverSessionAfterClosureAsync(It.IsAny<decimal>()), Times.Never);
     }
 }

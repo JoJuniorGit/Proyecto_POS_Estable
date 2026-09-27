@@ -1,0 +1,14 @@
+/* PaymentForm.css - Estilos locales del formulario de pago. Prefijo pf-. */
+
+.pf-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+}
+
+.pf-error-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: #ef4444;
+}

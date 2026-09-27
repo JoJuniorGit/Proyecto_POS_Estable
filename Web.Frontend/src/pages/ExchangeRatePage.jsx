@@ -3,8 +3,18 @@ import { api } from '../services/api';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { DollarSign, RefreshCw, Save, Loader2, History } from 'lucide-react';
 import { formatBsS, formatNumberEs } from '../utils/formatters';
+import RoleGuard from '../navigation/RoleGuard';
+import './ExchangeRatePage.css';
 
 export default function ExchangeRatePage() {
+  return (
+    <RoleGuard view="exchange" message="No tienes los permisos necesarios para modificar la Tasa de Cambio.">
+      <ExchangeRatePageContent />
+    </RoleGuard>
+  );
+}
+
+function ExchangeRatePageContent() {
   const { exchangeRate, setExchangeRate, lastUpdated, isRateOutdated } = useExchangeRate();
   const [newRateText, setNewRateText] = useState('');
   const [history, setHistory] = useState([]);
@@ -82,17 +92,17 @@ export default function ExchangeRatePage() {
   };
 
   return (
-    <div className="exchange-page" style={{ maxWidth: '800px', margin: '0 auto' }}>
+    <div className="exchange-page xr-container">
       <h2 className="page-title mb-4">Gestión de Tasa de Cambio</h2>
 
       {/* Modo Híbrido Informativo */}
-      <div className="alert alert-info mb-3" style={{ fontSize: '0.875rem' }}>
+      <div className="alert alert-info mb-3 text-sm">
         ℹ️ El sistema sincroniza automáticamente con el BCV cada 2 horas. También puede sincronizar a demanda con el botón oficial o ingresar la tasa de la jornada manualmente.
       </div>
 
       {/* Alerta de Desactualización (> 24h) */}
       {isRateOutdated && (
-        <div className="alert alert-warning mb-3" style={{ fontSize: '0.875rem', borderColor: '#f59e0b' }}>
+        <div className="alert alert-warning mb-3 xr-warning-bordered">
           ⚠️ <strong>Tasa desactualizada:</strong> No se ha registrado actualización en más de 24 horas. Por favor sincronice con el BCV o establezca la tasa del día.
         </div>
       )}
@@ -111,7 +121,7 @@ export default function ExchangeRatePage() {
                 {isSyncing ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
                 Reintentar Sincronización
               </button>
-              <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+              <span className="text-muted xr-fs-08">
                 o puede ingresar la tasa manualmente abajo
               </span>
             </div>
@@ -141,16 +151,16 @@ export default function ExchangeRatePage() {
           </button>
         </div>
 
-        <div className="current-rate-display mb-4" style={{ flexWrap: 'wrap', gap: '8px' }}>
+        <div className="current-rate-display mb-4 flex-wrap gap-2">
           <div className="flex-align-center gap-2">
             <DollarSign size={32} className="color-primary" />
             <span className="current-rate-value">
               Bs.S {exchangeRate > 0 ? formatNumberEs(exchangeRate) : '---'}
             </span>
-            <span className="text-muted" style={{ fontSize: '0.9rem' }}>/ 1.00 USD</span>
+            <span className="text-muted xr-fs-09">/ 1.00 USD</span>
           </div>
           {lastUpdated && (
-            <span className="text-muted" style={{ fontSize: '0.8rem', marginLeft: 'auto' }}>
+            <span className="text-muted xr-updated-at">
               Última actualización: {new Date(lastUpdated).toLocaleString()}
             </span>
           )}

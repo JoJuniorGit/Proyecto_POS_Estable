@@ -23,6 +23,8 @@ namespace CommandCenter.Tests.Integration;
 
 public class EditHoldOrderFlowIntegrationTests
 {
+    private const int TestActorId = 42;
+
     [Fact]
     public async Task EditHoldOrderFlow_UpdatesItems_RecalculatesTotals_AndPreservesExistingAbonos()
     {
@@ -38,13 +40,13 @@ public class EditHoldOrderFlowIntegrationTests
         salesContext.Customers.Add(customer);
         await salesContext.SaveChangesAsync();
 
-        var productA = new ProductBuilder().WithId(401).WithName("Bujía Bosch").WithCostAndMargin(5.00m, 100.00m).Build(); // $10.00 USD
-        var productB = new ProductBuilder().WithId(402).WithName("Filtro Aceite").WithCostAndMargin(8.00m, 50.00m).Build();  // $12.00 USD
+        var productA = new ProductBuilder().WithId(401).WithName("Bujía Bosch").WithCostAndMargin(5.00m, 100.00m).BuildSaleProductInfo(); // $10.00 USD
+        var productB = new ProductBuilder().WithId(402).WithName("Filtro Aceite").WithCostAndMargin(8.00m, 50.00m).BuildSaleProductInfo();  // $12.00 USD
 
         var inventoryServiceMock = new Mock<IInventoryService>();
-        inventoryServiceMock.Setup(i => i.GetProductByIdAsync(401)).ReturnsAsync(productA);
-        inventoryServiceMock.Setup(i => i.GetProductByIdAsync(402)).ReturnsAsync(productB);
-        inventoryServiceMock.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<Product> { productA, productB });
+        inventoryServiceMock.Setup(i => i.GetSaleProductByIdAsync(401)).ReturnsAsync(productA);
+        inventoryServiceMock.Setup(i => i.GetSaleProductByIdAsync(402)).ReturnsAsync(productB);
+        inventoryServiceMock.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { productA, productB });
 
         var mediatorMock = new Mock<IMediator>();
         var cashDrawerService = new CashDrawerService(salesContext);
@@ -70,6 +72,13 @@ public class EditHoldOrderFlowIntegrationTests
         };
         await salesService.HoldSaleAsync(saleDto.Id, holdRequest);
 
+        var holdClaim = await salesContext.Sales.FindAsync(saleDto.Id);
+        holdClaim!.ClaimedByUserId = TestActorId;
+        holdClaim.ClaimAction = SaleClaimAction.Editing;
+        holdClaim.ClaimedByUserName = "Test Actor";
+        holdClaim.ClaimedAtUtc = DateTime.UtcNow;
+        await salesContext.SaveChangesAsync();
+
         var initialHold = await salesContext.Sales.Include(s => s.Payments).FirstAsync(s => s.Id == saleDto.Id);
         Assert.Equal(20.00m, initialHold.TotalUSD);
         Assert.Single(initialHold.Payments);
@@ -85,7 +94,7 @@ public class EditHoldOrderFlowIntegrationTests
             }
         };
 
-        var updatedSaleDto = await salesService.UpdateSaleItemsAsync(saleDto.Id, updateItemsRequest);
+        var updatedSaleDto = await salesService.UpdateSaleItemsAsync(saleDto.Id, updateItemsRequest, actingUserId: TestActorId);
 
         // 4. Assertions
         var editedSale = await salesContext.Sales.Include(s => s.Items).Include(s => s.Payments).FirstAsync(s => s.Id == saleDto.Id);

@@ -120,7 +120,7 @@ public class ForwardedHeadersIntegrationTests
     public void PairingController_WhenLocal_AllowsAnonymous()
     {
         // Arrange
-        var controller = new PairingController(_networkDiscoveryMock.Object);
+        var controller = new PairingController(_networkDiscoveryMock.Object, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), new HttpsRuntimeInfo(Enabled: false, HttpPort: 5000, HttpsPort: 5001));
         var context = new DefaultHttpContext();
         context.Connection.RemoteIpAddress = IPAddress.Loopback;
         controller.ControllerContext = new ControllerContext { HttpContext = context };
@@ -137,7 +137,7 @@ public class ForwardedHeadersIntegrationTests
     public void PairingController_WhenRemoteAndUnauthenticated_Returns403Forbidden()
     {
         // Arrange
-        var controller = new PairingController(_networkDiscoveryMock.Object);
+        var controller = new PairingController(_networkDiscoveryMock.Object, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), new HttpsRuntimeInfo(Enabled: false, HttpPort: 5000, HttpsPort: 5001));
         var context = new DefaultHttpContext();
         context.Connection.RemoteIpAddress = IPAddress.Parse("192.168.1.88");
         // No user authenticated
@@ -154,11 +154,16 @@ public class ForwardedHeadersIntegrationTests
     [Fact]
     public void PairingController_WhenRemoteAndAuthenticated_Returns200OK()
     {
-        // Arrange
-        var controller = new PairingController(_networkDiscoveryMock.Object);
+// Arrange
+        var controller = new PairingController(_networkDiscoveryMock.Object, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), new HttpsRuntimeInfo(Enabled: false, HttpPort: 5000, HttpsPort: 5001));
         var context = new DefaultHttpContext();
         context.Connection.RemoteIpAddress = IPAddress.Parse("192.168.1.88");
-        var identity = new ClaimsIdentity(new[] { new Claim(ClaimTypes.Name, "Cajero1") }, "TestAuth");
+        // 8.7-L1: el acceso no-local exige rol Admin/Manager, no basta con estar autenticado.
+        var identity = new ClaimsIdentity(new[]
+        {
+            new Claim(ClaimTypes.Name, "AdminPrincipal"),
+            new Claim(ClaimTypes.Role, "Admin")
+        }, "TestAuth");
         context.User = new ClaimsPrincipal(identity);
         controller.ControllerContext = new ControllerContext { HttpContext = context };
 
@@ -192,12 +197,84 @@ public class ForwardedHeadersIntegrationTests
         await middleware.Invoke(context);
 
         // Act 2: Execute PairingController
-        var controller = new PairingController(_networkDiscoveryMock.Object);
+        var controller = new PairingController(_networkDiscoveryMock.Object, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), new HttpsRuntimeInfo(Enabled: false, HttpPort: 5000, HttpsPort: 5001));
         controller.ControllerContext = new ControllerContext { HttpContext = context };
         var result = controller.GetPairingInfo();
 
         // Assert: The proxy header is processed, remote IP is 192.168.1.100, anonymous access blocked
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal((int)HttpStatusCode.Forbidden, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public void PairingController_WhenHttpsRuntimeEnabled_AdvertisesHttpsPortAndSecurePayload()
+    {
+        // Arrange
+        _networkDiscoveryMock
+            .Setup(s => s.GetPairingInfo(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>()))
+            .Returns((int httpPort, int httpsPort, bool isHttpsEnabled) => new ServerPairingInfo
+            {
+                HttpPort = httpPort,
+                HttpsPort = httpsPort,
+                IsHttpsEnabled = isHttpsEnabled,
+                QrPayload = isHttpsEnabled
+                    ? $"https://192.168.1.10:{httpsPort}/?paired=true&pair=TESTTOKEN"
+                    : $"http://192.168.1.10:{httpPort}/?paired=true&pair=TESTTOKEN"
+            });
+
+        var controller = new PairingController(
+            _networkDiscoveryMock.Object,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
+            new HttpsRuntimeInfo(Enabled: true, HttpPort: 5000, HttpsPort: 5001));
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Loopback;
+        context.Request.Host = new HostString("192.168.1.10", 5000);
+        controller.ControllerContext = new ControllerContext { HttpContext = context };
+
+        // Act
+        var result = controller.GetPairingInfo();
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var info = Assert.IsType<ServerPairingInfo>(okResult.Value);
+        Assert.True(info.IsHttpsEnabled);
+        Assert.Equal(5001, info.HttpsPort);
+        Assert.StartsWith("https://", info.QrPayload);
+    }
+
+    [Fact]
+    public void PairingController_WhenHttpsRuntimeDisabled_AdvertisesHttpPortAndInsecurePayload()
+    {
+        // Arrange
+        _networkDiscoveryMock
+            .Setup(s => s.GetPairingInfo(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>()))
+            .Returns((int httpPort, int httpsPort, bool isHttpsEnabled) => new ServerPairingInfo
+            {
+                HttpPort = httpPort,
+                HttpsPort = httpsPort,
+                IsHttpsEnabled = isHttpsEnabled,
+                QrPayload = isHttpsEnabled
+                    ? $"https://192.168.1.10:{httpsPort}/?paired=true&pair=TESTTOKEN"
+                    : $"http://192.168.1.10:{httpPort}/?paired=true&pair=TESTTOKEN"
+            });
+
+        var controller = new PairingController(
+            _networkDiscoveryMock.Object,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
+            new HttpsRuntimeInfo(Enabled: false, HttpPort: 5000, HttpsPort: 5001));
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Loopback;
+        context.Request.Host = new HostString("192.168.1.10", 5000);
+        controller.ControllerContext = new ControllerContext { HttpContext = context };
+
+        // Act
+        var result = controller.GetPairingInfo();
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var info = Assert.IsType<ServerPairingInfo>(okResult.Value);
+        Assert.False(info.IsHttpsEnabled);
+        Assert.StartsWith("http://", info.QrPayload);
+        Assert.Contains(":5000", info.QrPayload);
     }
 }

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using Backend.API.Services;
+using CommandCenter.Tests.Builders;
 using Core.DTOs;
 using Core.Entities;
 using Microsoft.AspNetCore.Http;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Sales.Module.Data;
+using Sales.Module.Services;
 using Xunit;
 
 namespace CommandCenter.Tests.Unit;
@@ -62,7 +64,7 @@ public class Phase1SecurityHardeningTests
         context.Users.Add(testUser);
         await context.SaveChangesAsync();
 
-        var controller = new AuthController(context, tokenService, stampValidator: null);
+        var controller = new AuthController(new AuthService(context), tokenService, stampValidator: null);
 
         // Act: 4 failed attempts
         for (int i = 1; i <= 4; i++)
@@ -94,7 +96,7 @@ public class Phase1SecurityHardeningTests
         Assert.NotNull(lockedUser.LockoutEndUtc);
         Assert.True(lockedUser.LockoutEndUtc.Value > DateTime.UtcNow);
 
-        // Act: 6th attempt (even with right or wrong password) -> rejected with 423 Locked
+        // Act: 6th attempt (even with right or wrong password) -> rejected with 401 genérico (8B-M3: sin revelar lockout)
         var sixthResult = await controller.ChangePassword(new ChangePasswordRequest
         {
             Cedula = "cajero1",
@@ -102,8 +104,7 @@ public class Phase1SecurityHardeningTests
             NewPassword = "NewPassword123!"
         });
 
-        var lockedResult = Assert.IsType<ObjectResult>(sixthResult);
-        Assert.Equal(StatusCodes.Status423Locked, lockedResult.StatusCode);
+        Assert.IsType<UnauthorizedObjectResult>(sixthResult);
     }
 
     [Fact]
@@ -129,7 +130,7 @@ public class Phase1SecurityHardeningTests
         context.Users.Add(testUser);
         await context.SaveChangesAsync();
 
-        var controller = new AuthController(context, tokenService, stampValidator: null);
+        var controller = new AuthController(new AuthService(context), tokenService, stampValidator: null);
 
         // Act: Successfully change password
         var result = await controller.ChangePassword(new ChangePasswordRequest
@@ -167,7 +168,7 @@ public class Phase1SecurityHardeningTests
         context.Users.Add(lockedUser);
         await context.SaveChangesAsync();
 
-        var controller = new UsersController(context, stampValidator: null);
+        var controller = ControllerFactory.CreateUsersController(context, stampValidator: null);
 
         // Act
         var result = await controller.UnlockUser(12);

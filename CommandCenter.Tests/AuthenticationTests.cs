@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Sales.Module.Data;
+using Sales.Module.Services;
 using Xunit;
 
 namespace CommandCenter.Tests;
@@ -106,7 +107,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var response = await controller.Login(new LoginRequest
         {
             Cedula = "V-99999999",
@@ -140,7 +141,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var response = await controller.Login(new LoginRequest
         {
             Cedula = "V-88888888",
@@ -170,7 +171,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var response = await controller.Login(new LoginRequest
         {
             Cedula = "V-77777777",
@@ -200,7 +201,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var response = await controller.Login(new LoginRequest
         {
             Cedula = "V-66666666",
@@ -250,9 +251,7 @@ public class AuthenticationTests
             var emptyConfig = new ConfigurationBuilder()
                 .AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>())
                 .Build();
-            var serviceEmpty = new TokenService(emptyConfig);
-            var user = new User { Id = 1, Cedula = "V-1", Name = "U1" };
-            Assert.Throws<InvalidOperationException>(() => serviceEmpty.GenerateToken(user));
+            Assert.Throws<InvalidOperationException>(() => new TokenService(emptyConfig));
 
             // Caso B: Clave secreta por defecto de desarrollo en producción
             var devKeyConfig = new ConfigurationBuilder()
@@ -261,8 +260,7 @@ public class AuthenticationTests
                     {"JWT_SETTINGS_KEY", "POS_System_Default_Development_Secret_Key_At_Least_32_Chars!"}
                 })
                 .Build();
-            var serviceDevKey = new TokenService(devKeyConfig);
-            Assert.Throws<InvalidOperationException>(() => serviceDevKey.GenerateToken(user));
+            Assert.Throws<InvalidOperationException>(() => new TokenService(devKeyConfig));
         }
         finally
         {
@@ -290,7 +288,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var httpContext = new DefaultHttpContext();
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
@@ -314,6 +312,46 @@ public class AuthenticationTests
         Assert.Contains("pos_jwt=", setCookieHeader);
         Assert.Contains("httponly", setCookieHeader, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("samesite=strict", setCookieHeader, StringComparison.OrdinalIgnoreCase);
+        Assert.False(HasSecureCookieAttribute(setCookieHeader), "Sobre HTTP la cookie pos_jwt no debe llevar Secure (H-05).");
+    }
+
+    [Fact]
+    public async Task Login_WithWebPlatform_OverHttps_MarksCookieSecure()
+    {
+        using var db = GetInMemorySalesDbContext();
+        var config = GetMockConfiguration();
+        var tokenService = new TokenService(config);
+
+        string rawPassword = "WebHttpsPassword123!";
+        var user = new User
+        {
+            Id = 17,
+            Cedula = "V-17171717",
+            Name = "Web Https Cashier",
+            PasswordHash = PasswordHasher.HashPassword(rawPassword),
+            Role = UserRole.Cashier,
+            IsActive = true
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var controller = new AuthController(new AuthService(db), tokenService);
+        var httpContext = new DefaultHttpContext();
+        SetRequestScheme(httpContext, isHttps: true);
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        var response = await controller.Login(new LoginRequest
+        {
+            Cedula = "V-17171717",
+            Password = rawPassword,
+            Platform = "Web"
+        });
+
+        Assert.IsType<OkObjectResult>(response.Result);
+
+        var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
+        Assert.Contains("pos_jwt=", setCookieHeader);
+        Assert.True(HasSecureCookieAttribute(setCookieHeader), "Sobre HTTPS la cookie pos_jwt debe llevar Secure (H-05).");
     }
 
     [Fact]
@@ -336,7 +374,7 @@ public class AuthenticationTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var httpContext = new DefaultHttpContext();
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
@@ -359,26 +397,89 @@ public class AuthenticationTests
         var jwt = handler.ReadJwtToken(resultDto.Token);
         var scopeClaim = jwt.Claims.FirstOrDefault(c => c.Type == "scope");
         Assert.NotNull(scopeClaim);
-        Assert.Equal("pos:desktop", scopeClaim.Value);
+        Assert.Equal("pos:api", scopeClaim.Value);
     }
 
     [Fact]
-    public void Logout_RemovesPosJwtCookie()
+    public async Task Logout_RemovesPosJwtCookie()
     {
         using var db = GetInMemorySalesDbContext();
         var config = GetMockConfiguration();
         var tokenService = new TokenService(config);
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
         var httpContext = new DefaultHttpContext();
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
-        var result = controller.Logout();
+        var result = await controller.Logout();
         Assert.IsType<OkObjectResult>(result);
 
         var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
         Assert.Contains("pos_jwt=", setCookieHeader);
         Assert.Contains("expires=", setCookieHeader, StringComparison.OrdinalIgnoreCase);
+        Assert.False(HasSecureCookieAttribute(setCookieHeader), "Sobre HTTP el borrado de pos_jwt no debe llevar Secure (H-05).");
+    }
+
+    [Fact]
+    public async Task Logout_OverHttps_DeletesCookieWithSecureFlag()
+    {
+        using var db = GetInMemorySalesDbContext();
+        var config = GetMockConfiguration();
+        var tokenService = new TokenService(config);
+
+        var controller = new AuthController(new AuthService(db), tokenService);
+        var httpContext = new DefaultHttpContext();
+        SetRequestScheme(httpContext, isHttps: true);
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        var result = await controller.Logout();
+        Assert.IsType<OkObjectResult>(result);
+
+        var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
+        Assert.Contains("pos_jwt=", setCookieHeader);
+        Assert.True(HasSecureCookieAttribute(setCookieHeader), "Sobre HTTPS el borrado de pos_jwt debe llevar Secure (H-05).");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ChangePassword_Success_DeletesCookieWithSchemeMatchingSecureFlag(bool isHttps)
+    {
+        using var db = GetInMemorySalesDbContext();
+        var config = GetMockConfiguration();
+        var tokenService = new TokenService(config);
+
+        string currentPassword = "CurrentPass123!";
+        var user = new User
+        {
+            Id = 18,
+            Username = "cajero_cookie",
+            Cedula = "V-18181818",
+            Name = "Cookie User",
+            PasswordHash = PasswordHasher.HashPassword(currentPassword),
+            Role = UserRole.Cashier,
+            IsActive = true
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var controller = new AuthController(new AuthService(db), tokenService);
+        var httpContext = new DefaultHttpContext();
+        SetRequestScheme(httpContext, isHttps);
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        var result = await controller.ChangePassword(new ChangePasswordRequest
+        {
+            Cedula = "V-18181818",
+            CurrentPassword = currentPassword,
+            NewPassword = "BrandNewPass123!"
+        });
+
+        Assert.IsType<OkObjectResult>(result);
+
+        var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
+        Assert.Contains("pos_jwt=", setCookieHeader);
+        Assert.Equal(isHttps, HasSecureCookieAttribute(setCookieHeader));
     }
 
     [Fact]
@@ -433,4 +534,14 @@ public class AuthenticationTests
         Assert.True(desktopPrincipal.HasClaim("scope", "pos:desktop"));
         Assert.False(desktopPrincipal.HasClaim("scope", "pos:web"));
     }
+
+    private static void SetRequestScheme(DefaultHttpContext httpContext, bool isHttps)
+    {
+        httpContext.Request.IsHttps = isHttps;
+        httpContext.Request.Scheme = isHttps ? "https" : "http";
+    }
+
+    private static bool HasSecureCookieAttribute(string setCookieHeader)
+        => System.Text.RegularExpressions.Regex.IsMatch(
+            setCookieHeader, @"(?i)(?:^|;\s*)secure(?:;|$)");
 }

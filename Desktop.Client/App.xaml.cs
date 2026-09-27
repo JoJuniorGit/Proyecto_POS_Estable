@@ -36,7 +36,7 @@ public partial class App : Application
             var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
             while (dir != null)
             {
-                if (File.Exists(Path.Combine(dir.FullName, "start.bat")) || File.Exists(Path.Combine(dir.FullName, "Start.bat")))
+                if (File.Exists(Path.Combine(dir.FullName, "start.bat")) || File.Exists(Path.Combine(dir.FullName, "Start.bat")) || File.Exists(Path.Combine(dir.FullName, "scripts", "start.bat")))
                 {
                     return Path.Combine(dir.FullName, "crash.txt");
                 }
@@ -83,7 +83,7 @@ public partial class App : Application
 
     private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
     {
-        try { File.AppendAllText(_crashPath, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] UI Exception: " + e.Exception.Message + "\n" + e.Exception.StackTrace + "\n\n"); } catch { }
+        RecordUnhandledException("UI Exception", "WpfDesktop.DispatcherUnhandledException", e.Exception);
         e.Handled = true;
         IsShutdownRequested = true;
         ShutdownReason = "Error fatal (excepción de UI)";
@@ -94,32 +94,63 @@ public partial class App : Application
     {
         if (e.ExceptionObject is Exception ex)
         {
-            try { File.AppendAllText(_crashPath, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] AppDomain Exception: " + ex.Message + "\n" + ex.StackTrace + "\n\n"); } catch { }
+            RecordUnhandledException("AppDomain Exception", "WpfDesktop.UnhandledException", ex);
         }
         try { Environment.Exit(1); } catch { }
     }
 
     private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
-        try { File.AppendAllText(_crashPath, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] Task Exception: " + e.Exception.Message + "\n" + e.Exception.StackTrace + "\n\n"); } catch { }
+        RecordUnhandledException("Task Exception", "WpfDesktop.TaskUnobservedException", e.Exception);
         e.SetObserved();
+    }
+
+    private void RecordUnhandledException(string fileCategory, string logContext, Exception ex)
+    {
+        try { File.AppendAllText(_crashPath, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] " + fileCategory + ": " + ex.Message + "\n" + ex.StackTrace + "\n\n"); } catch { }
+        Core.Logging.AppLogger.LogCrash(ex, logContext);
     }
 
     public IHost CreateAndStartHost(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(args);
+        // 8.6-B5: acota el teardown del host (Dispose best-effort de salida) a 3s máx.
+        builder.Services.Configure<Microsoft.Extensions.Hosting.HostOptions>(opts =>
+            opts.ShutdownTimeout = TimeSpan.FromSeconds(3));
 
         // Service Registration
         builder.Services.AddSingleton<IClientStateService, ClientStateService>();
         builder.Services.AddSingleton<IClientSettingsStore, ClientSettingsStore>();
+        builder.Services.AddSingleton<ISaleRecoveryStore, SaleRecoveryStore>();
         builder.Services.AddSingleton<ISubnetScannerService, SubnetScannerService>();
         builder.Services.AddSingleton<IConnectionManager, ConnectionManager>();
         builder.Services.AddSingleton<IDialogService, WpfDialogService>();
+        builder.Services.AddSingleton<IDispatcherInvoker, WpfDispatcherInvoker>();
+        builder.Services.AddSingleton<IFilePickerDialog, WpfFilePickerDialog>();
+        builder.Services.AddSingleton<IAppShutdown, WpfAppShutdown>();
         builder.Services.AddSingleton<IJitterProvider, ProductionJitterProvider>();
         builder.Services.AddSingleton<ISecureTokenStorageService, SecureTokenStorageService>();
         builder.Services.AddSingleton<UserSession>();
         builder.Services.AddTransient<UserSessionHeaderHandler>();
         builder.Services.AddTransient<ResilienceHandler>();
+
+        bool isE2E = args != null && Array.Exists(args, a => a.Equals("--e2e", StringComparison.OrdinalIgnoreCase));
+        if (isE2E)
+        {
+            builder.Services.AddSingleton<E2EMockHttpMessageHandler>();
+        }
+
+        void ConfigureClient(IHttpClientBuilder clientBuilder)
+        {
+            if (isE2E)
+            {
+                clientBuilder.ConfigurePrimaryHttpMessageHandler<E2EMockHttpMessageHandler>();
+            }
+            else
+            {
+                clientBuilder.AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+            }
+        }
 
         var settingsStore = new ClientSettingsStore();
         var clientSettings = settingsStore.LoadSettings();
@@ -131,21 +162,32 @@ public partial class App : Application
         if (!baseAddressStr.EndsWith("/")) baseAddressStr += "/";
         var baseAddressUri = new Uri(baseAddressStr);
 
-        // Register HealthPollingService with dedicated HttpClient (without ResilienceHandler loop)
-        builder.Services.AddHttpClient<IHealthPollingService, HealthPollingService>(client =>
+        // 8.9-B6: HealthPollingService SINGLETON. Antes se registraba con AddHttpClient<T,T>
+        // (transient): MainViewModel y el job de arranque resolvían instancias distintas y la
+        // suscripción a OnHealthRecovered podía perderse. Ahora hay un único HealthPollingService
+        // con su propio HttpClient dedicado (sin ResilienceHandler). El timeout del cliente se
+        // fija en StartPolling via CancellationToken linkeado (8.9-M12).
+        var healthClient = builder.Services.AddHttpClient("HealthPolling", client =>
         {
             client.BaseAddress = baseAddressUri;
         });
+        if (isE2E) healthClient.ConfigurePrimaryHttpMessageHandler<E2EMockHttpMessageHandler>();
 
-        builder.Services.AddHttpClient<IProductService, ProductService>(client =>
+        builder.Services.AddSingleton<IHealthPollingService>(sp =>
+            new HealthPollingService(
+                sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("HealthPolling"),
+                sp.GetService<IClientStateService>(),
+                sp.GetService<IConnectionManager>()));
+
+        ConfigureClient(builder.Services.AddHttpClient<IProductService, ProductService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
-        builder.Services.AddHttpClient("SalesApi", client =>
+        ConfigureClient(builder.Services.AddHttpClient("SalesApi", client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
         builder.Services.AddSingleton<ISalesService>(sp => 
         {
@@ -153,38 +195,40 @@ public partial class App : Application
             return new SalesService(httpClient);
         });
 
-        builder.Services.AddHttpClient<IPaymentService, PaymentService>(client =>
+        ConfigureClient(builder.Services.AddHttpClient<IPaymentService, PaymentService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
-        builder.Services.AddHttpClient("ExchangeRateApi", client =>
+        ConfigureClient(builder.Services.AddHttpClient("ExchangeRateApi", client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
         builder.Services.AddSingleton<IExchangeRateService>(sp => 
         {
             var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("ExchangeRateApi");
-            return new ExchangeRateService(httpClient);
+            return new ExchangeRateService(httpClient, sp.GetRequiredService<IDispatcherInvoker>(), sp.GetRequiredService<UserSession>());
         });
 
-        builder.Services.AddHttpClient<IUserService, UserService>(client =>
+        ConfigureClient(builder.Services.AddHttpClient<IUserService, UserService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
-        builder.Services.AddTransient<LoginViewModel>();
+        // 8.9-L13: los VMs retenidos de por vida por MainViewModel son de-facto singletons;
+        // se registran Singleton para que el contenedor refleje su ciclo de vida real.
+        builder.Services.AddSingleton<LoginViewModel>();
         builder.Services.AddTransient<PairingQrViewModel>();
         builder.Services.AddTransient<ServerConnectionViewModel>();
         builder.Services.AddTransient<CustomerManagementViewModel>();
-        builder.Services.AddTransient<UsersManagementViewModel>();
+        builder.Services.AddSingleton<UsersManagementViewModel>();
 
 
         builder.Services.AddSingleton<CartViewModel>();
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddSingleton<PosViewModel>();
-        builder.Services.AddTransient<InventoryViewModel>();
+        builder.Services.AddSingleton<InventoryViewModel>();
         builder.Services.AddSingleton<SalesHistoryViewModel>();
         builder.Services.AddSingleton<PendingOrdersViewModel>(sp => new Desktop.Client.ViewModels.PendingOrdersViewModel(
             sp.GetRequiredService<Desktop.Client.Services.ISalesService>(),
@@ -196,38 +240,41 @@ public partial class App : Application
 
         builder.Services.AddSingleton<PendingPickupsViewModel>();
 
-        builder.Services.AddTransient<SettingsViewModel>();
+        builder.Services.AddSingleton<SettingsViewModel>();
         builder.Services.AddSingleton<ExchangeRateViewModel>();
 
         // Register new Cash Drawer Service
-        builder.Services.AddHttpClient<ICashDrawerService, CashDrawerService>(client =>
+        ConfigureClient(builder.Services.AddHttpClient<ICashDrawerService, CashDrawerService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
-        builder.Services.AddHttpClient<ISettingsService, SettingsService>(client =>
+        ConfigureClient(builder.Services.AddHttpClient<ISettingsService, SettingsService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
-        builder.Services.AddHttpClient<IDailyClosureClientService, DailyClosureClientService>(client =>
+        ConfigureClient(builder.Services.AddHttpClient<IDailyClosureClientService, DailyClosureClientService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
-        builder.Services.AddHttpClient<IVersionCheckService, VersionCheckService>(client =>
+        var versionClient = builder.Services.AddHttpClient<IVersionCheckService, VersionCheckService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+            // 8.9-M12: el version-check de arranque nunca debe colgar la UI; timeout duro de 5s.
+            client.Timeout = TimeSpan.FromSeconds(5);
+        });
+        ConfigureClient(versionClient);
 
-        builder.Services.AddHttpClient<IProductImportService, ProductImportService>(client =>
+        ConfigureClient(builder.Services.AddHttpClient<IProductImportService, ProductImportService>(client =>
         {
             client.BaseAddress = baseAddressUri;
-        }).AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
+        }));
 
-        builder.Services.AddTransient<DailyClosureViewModel>();
-        builder.Services.AddTransient<CashDrawerViewModel>();
-        builder.Services.AddTransient<ImportProductsViewModel>();
+        builder.Services.AddSingleton<DailyClosureViewModel>();
+        builder.Services.AddSingleton<CashDrawerViewModel>();
+        builder.Services.AddSingleton<ImportProductsViewModel>();
 
         // Main Window Registration
         builder.Services.AddSingleton<MainWindow>();
@@ -239,19 +286,6 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        AppDomain.CurrentDomain.UnhandledException += (s, ev) =>
-        {
-            if (ev.ExceptionObject is Exception ex)
-            {
-                Core.Logging.AppLogger.LogCrash(ex, "WpfDesktop.UnhandledException");
-            }
-        };
-
-        DispatcherUnhandledException += (s, ev) =>
-        {
-            Core.Logging.AppLogger.LogCrash(ev.Exception, "WpfDesktop.DispatcherUnhandledException");
-        };
-
         try
         {
             Core.Logging.AppLogger.LogStart("WPF Desktop Client initializing...");
@@ -260,13 +294,20 @@ public partial class App : Application
             await _host.StartAsync();
 
             var versionService = _host.Services.GetRequiredService<IVersionCheckService>();
-            var checkResult = await versionService.CheckVersionAsync();
+            // 8.9-M12: timeout de 5s en el arranque — si el servidor no responde, se continúa
+            // con la versión actual (el servicio degrada a IsCompatible=true y no bloquea).
+            using var versionCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var checkResult = await versionService.CheckVersionAsync(versionCts.Token);
 
             if (!checkResult.IsCompatible)
             {
                 var currentVersion = Core.Common.AppVersionHelper.CurrentVersion;
                 Core.Logging.AppLogger.LogStart($"Client version obsolete. Installed: {currentVersion}, Required: {checkResult.MinimumClientVersion}. Displaying lockout modal.");
-                var lockoutVm = new ViewModels.VersionLockoutViewModel(currentVersion, checkResult.MinimumClientVersion, checkResult.UpdateServerUrl);
+                var lockoutVm = new ViewModels.VersionLockoutViewModel(
+                    currentVersion,
+                    checkResult.MinimumClientVersion,
+                    checkResult.UpdateServerUrl,
+                    _host.Services.GetRequiredService<IAppShutdown>());
                 var lockoutDialog = new Views.VersionLockoutDialog(lockoutVm);
                 lockoutDialog.ShowDialog();
                 ShutdownReason = "Versión del cliente no compatible";
@@ -282,7 +323,18 @@ public partial class App : Application
                 var userSession = _host.Services.GetRequiredService<UserSession>();
                 if (userSession.TryRestoreTokenFromStorage())
                 {
-                    Core.Logging.AppLogger.LogStart($"Sesión previa restaurada exitosamente para '{userSession.UserName}' ({userSession.CurrentUser?.Role}).");
+                    Core.Logging.AppLogger.LogStart($"Sesión previa restaurada exitosamente para '{userSession.UserName}' ({userSession.CurrentUser?.Role}). Validando con el backend...");
+                    var userService = _host.Services.GetRequiredService<IUserService>();
+                    bool isValid = await userService.CheckSessionStatusAsync();
+                    if (!isValid)
+                    {
+                        userSession.Logout();
+                        Core.Logging.AppLogger.LogStart("El token restaurado fue rechazado por el servidor (401). Sesión local purgada.");
+                    }
+                    else
+                    {
+                        Core.Logging.AppLogger.LogStart("Token restaurado es válido en el servidor.");
+                    }
                 }
             }
             catch (Exception ex)
@@ -312,6 +364,15 @@ public partial class App : Application
         {
             try
             {
+                _host.Services.GetService<ISaleRecoveryStore>()?.Clear();
+            }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogCrash(ex, "App.StopServicesAsync.ClearRecovery");
+            }
+
+            try
+            {
                 Core.Logging.AppLogger.LogStart("Deteniendo servicio de sondeo de salud...");
                 var healthService = _host.Services.GetService<IHealthPollingService>();
                 if (healthService != null)
@@ -329,7 +390,13 @@ public partial class App : Application
             {
                 Core.Logging.AppLogger.LogStart("Disponiendo servicio de tasa de cambio y cerrando SignalR...");
                 var exchangeRateService = _host.Services.GetService<IExchangeRateService>();
-                if (exchangeRateService is IDisposable disposableExchange)
+                if (exchangeRateService is IAsyncDisposable asyncExchange)
+                {
+                    // 8.6-B5: se espera el teardown asíncrono (no Dispose().Wait) desde hilo no-UI.
+                    await asyncExchange.DisposeAsync();
+                    Core.Logging.AppLogger.LogStart("Servicio de tasa de cambio dispuesto con éxito.");
+                }
+                else if (exchangeRateService is IDisposable disposableExchange)
                 {
                     disposableExchange.Dispose();
                     Core.Logging.AppLogger.LogStart("Servicio de tasa de cambio dispuesto con éxito.");
@@ -375,11 +442,12 @@ public partial class App : Application
         {
             try
             {
-                var stopTask = StopServicesAsync();
-                if (!stopTask.Wait(TimeSpan.FromSeconds(3)))
-                {
-                    Core.Logging.AppLogger.LogStart("StopServicesAsync timed out during OnExit shutdown (3s limit).");
-                }
+                // 8.6-B5: el apagado canónico es ASÍNCRONO en MainWindow.OnClosing (await StopServicesAsync)
+                // y ya está completo antes de OnExit. Esta rama es un respaldo best-effort para rutas
+                // alternativas: NO se bloquea la UI con Wait/GetResult; se delega al pool y el proceso
+                // sigue su salida (el Host limita su propio shutdown vía HostOptions.ShutdownTimeout).
+                Core.Logging.AppLogger.LogStart("OnExit: el apagado asíncrono no se completó (ruta alternativa); disponiendo host best-effort.");
+                _ = Task.Run(() => _host.Dispose());
             }
             catch (Exception ex)
             {

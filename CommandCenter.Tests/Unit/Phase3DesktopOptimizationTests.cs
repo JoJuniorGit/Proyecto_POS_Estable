@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Messaging;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Microsoft.EntityFrameworkCore;
@@ -52,6 +53,8 @@ public class Phase3DesktopOptimizationTests
         var userSession = new UserSession();
 
         var inventoryVm = new InventoryViewModel(mockProductService.Object, mockExchangeService.Object, userSession);
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(inventoryVm);
         
         // Simular búsqueda debounced
         inventoryVm.SearchText = "Laptop";

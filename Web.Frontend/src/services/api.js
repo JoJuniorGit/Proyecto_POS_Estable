@@ -7,6 +7,46 @@
  * 5. Modo desarrollo Vite (puerto 5173 u otros) -> http://${hostname}:5000 o https://${hostname}:5001 según protocolo.
  * 6. Fallback general: window.location.origin o http://${hostname}:5000.
  */
+function isAllowedApiHost(hostname) {
+  if (!hostname) return false;
+  const h = hostname.toLowerCase();
+  // Loopback
+  if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
+  // Mismo host del documento (origen de servido)
+  if (typeof window !== 'undefined' && window.location?.hostname && h === window.location.hostname.toLowerCase()) return true;
+  // Rango IP privado LAN (red de despliegue del POS): verifica si es una IP privada pura.
+  const ipMatch = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (ipMatch) {
+    const [a, b] = [Number(ipMatch[1]), Number(ipMatch[2])];
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+    return false;
+  }
+  return false;
+}
+
+/**
+ * 8.9-M4: reclama el secreto efímero de emparejamiento (single-use) incrustado en el QR.
+ * Solo persiste la URL si el backend confirma el token antes de su expiración y consumo.
+ */
+export async function claimPairingToken(apiBaseUrl, token) {
+  if (!token) return false;
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/pairing/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (!response.ok) return false;
+    const body = await response.json().catch(() => null);
+    return !!(body && body.status === 'ok' && body.paired === true);
+  } catch {
+    return false;
+  }
+}
+
 export function resolveBaseUrl() {
   if (typeof window === 'undefined') {
     return 'http://localhost:5000';
@@ -21,14 +61,6 @@ export function resolveBaseUrl() {
   if (port === '5000' || port === '5001') {
     return origin || (isHttps ? `https://${hostname}:5001` : `http://${hostname}:5000`);
   }
-
-function isAllowedApiHost(hostname) {
-  if (!hostname) return false;
-  const h = hostname.toLowerCase();
-  if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
-  if (typeof window !== 'undefined' && window.location?.hostname && h === window.location.hostname.toLowerCase()) return true;
-  return false;
-}
 
   // 2. Parámetro en URL (?api=... o ?server=...)
   try {
@@ -63,22 +95,32 @@ function isAllowedApiHost(hostname) {
       }
 
       if (isAllowed) {
-        try {
-          localStorage.setItem('pos_custom_api_url', normalized);
-        } catch {}
-
-        // Limpiar los parámetros de la URL sin recargar la página
-        if (window.history?.replaceState && window.location?.pathname) {
-          urlParams.delete('api');
-          urlParams.delete('server');
-          urlParams.delete('backend');
-          urlParams.delete('paired');
-          const newQuery = urlParams.toString();
-          const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '') + (window.location.hash || '');
-          window.history.replaceState({}, (typeof document !== 'undefined' ? document.title : ''), newUrl);
+        // 8.16-ALTO-4: Fail-closed. Sin claim exitoso no se persiste ni usa el override.
+        // Rechazar URLs con ?api= sin ?pair.
+        const pairToken = urlParams.get('pair');
+        if (pairToken) {
+          claimPairingToken(normalized, pairToken).then((claimed) => {
+            try {
+              if (claimed) {
+                localStorage.setItem('pos_custom_api_url', normalized);
+                if (window.history?.replaceState && window.location?.pathname) {
+                  urlParams.delete('api');
+                  urlParams.delete('server');
+                  urlParams.delete('backend');
+                  urlParams.delete('paired');
+                  urlParams.delete('pair');
+                  const newQuery = urlParams.toString();
+                  const newUrl = window.location.pathname + (newQuery ? `?${newQuery}` : '') + (window.location.hash || '');
+                  window.history.replaceState({}, (typeof document !== 'undefined' ? document.title : ''), newUrl);
+                }
+                // Si cambió, forzar recarga para usar la nueva URL validada
+                window.location.reload();
+              }
+            } catch {}
+          });
         }
-
-        return normalized;
+        // No retornamos `normalized` aquí. Se resolverá usando la URL anterior o por defecto
+        // hasta que el claim sea exitoso y recargue la página.
       }
     }
   } catch {}
@@ -90,17 +132,41 @@ function isAllowedApiHost(hostname) {
       let sanitized = stored.trim();
       if (isHttps && sanitized.startsWith('http://')) {
         sanitized = sanitized.replace(/^http:\/\//i, 'https://').replace(/:5000$/, ':5001');
-        localStorage.setItem('pos_custom_api_url', sanitized);
       }
-      return sanitized;
+      // 8.9-L11: revalidación zero-trust del host guardado (una URL previamente válida puede
+      // quedar comprometida o ser manipulada en localStorage).
+      let storedHostAllowed = false;
+      try {
+        storedHostAllowed = isAllowedApiHost(new URL(sanitized).hostname);
+      } catch {
+        storedHostAllowed = false;
+      }
+      if (storedHostAllowed) {
+        if (sanitized !== stored) {
+          try {
+            localStorage.setItem('pos_custom_api_url', sanitized);
+          } catch {}
+        }
+        return sanitized;
+      }
+      try {
+        localStorage.removeItem('pos_custom_api_url');
+      } catch {}
     }
   } catch {}
 
-  // 4. Variables de entorno (con guard seguro para Node/Jest/Vitest/Vite)
+  // 4. Variables de entorno (con guard seguro para Node/Jest/Vitest/Vite).
+  // 8.9-L11: también se revalidan contra la whitelist LAN/Loopback.
   const isDev = typeof import.meta !== 'undefined' && import.meta.env?.DEV;
   const viteApiUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_API_URL : undefined;
   if (viteApiUrl) {
-    return viteApiUrl;
+    let viteAllowed = false;
+    try {
+      viteAllowed = isAllowedApiHost(new URL(viteApiUrl).hostname);
+    } catch {
+      viteAllowed = false;
+    }
+    if (viteAllowed) return viteApiUrl;
   }
 
   // 5. Servidor de desarrollo Vite (ej. puerto 5173 o puerto no Kestrel)
@@ -141,11 +207,59 @@ export function setCustomBaseUrl(url) {
       }
     }
 
+    // Validación zero-trust del host contra la whitelist LAN/Loopback (H-WEB-2, 8.4-N1)
+    let isAllowed = false;
+    try {
+      const parsed = new URL(normalized);
+      isAllowed = isAllowedApiHost(parsed.hostname);
+    } catch {
+      isAllowed = false;
+    }
+
+    if (!isAllowed) {
+      localStorage.removeItem('pos_custom_api_url');
+      // 8.9-L11: al rechazar se revierte la URL base activa a la resolución válida (no se
+      // mantiene un estado huérfano apuntando al host rechazado).
+      CURRENT_BASE_URL = resolveBaseUrl();
+      return;
+    }
+
     localStorage.setItem('pos_custom_api_url', normalized);
     CURRENT_BASE_URL = normalized;
   }
 }
 
+
+const API_TIMEOUT_MS = 15000;
+const RETRYABLE_STATUS = new Set([503, 504]);
+const MAX_RETRIES = 1;
+
+function createRequestSignal(signal) {
+  if (typeof AbortSignal === 'undefined' || typeof AbortSignal.timeout !== 'function') {
+    return signal;
+  }
+  const timeoutSignal = AbortSignal.timeout(API_TIMEOUT_MS);
+  if (signal && typeof AbortSignal.any === 'function') {
+    return AbortSignal.any([signal, timeoutSignal]);
+  }
+  return signal || timeoutSignal;
+}
+
+function shouldRetry(config, response) {
+  if (!RETRYABLE_STATUS.has(response.status)) return false;
+  const method = (config.method || 'GET').toUpperCase();
+  if (method === 'GET' || method === 'DELETE') return true;
+  return Boolean(config.headers && config.headers['Idempotency-Key']);
+}
+
+export class ApiError extends Error {
+  constructor(message, status, body) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
 
 /**
  * Realiza una petición HTTP al backend.
@@ -156,31 +270,17 @@ export function setCustomBaseUrl(url) {
 export async function apiFetch(endpoint, options = {}) {
   const url = `${CURRENT_BASE_URL}${endpoint}`;
 
-  const userStr = typeof localStorage !== 'undefined' ? localStorage.getItem('pos_user') : null;
-  let userHeaders = {};
-  if (userStr) {
-    try {
-      const u = JSON.parse(userStr);
-      const token = u?.token || u?.Token || (typeof localStorage !== 'undefined' ? localStorage.getItem('pos_token') : null);
-      if (token) {
-        userHeaders['Authorization'] = `Bearer ${token}`;
-      }
-    } catch {
-      // Ignorar error de parsing
-    }
-  }
-
+  const { headers: customHeaders, signal: callerSignal, _includeMeta, ...restOptions } = options;
   const config = {
     credentials: 'include',
+    ...restOptions,
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'X-Client-Platform': 'Web',
       'X-Client-Version': '1.0.0',
-      ...userHeaders,
-      ...options.headers,
+      ...customHeaders,
     },
-    ...options,
   };
 
   // No enviar Content-Type para peticiones sin body (GET, DELETE)
@@ -188,16 +288,22 @@ export async function apiFetch(endpoint, options = {}) {
     delete config.headers['Content-Type'];
   }
 
-  const response = await fetch(url, config);
+  let response;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    response = await fetch(url, { ...config, signal: createRequestSignal(callerSignal) });
+    if (attempt === MAX_RETRIES || !shouldRetry(config, response)) break;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
 
   // 204 No Content — no hay body que parsear
   if (response.status === 204) {
-    return null;
+    return _includeMeta ? { data: null, totalCount: 0 } : null;
   }
 
   if (!response.ok) {
     if (response.status === 401 && !endpoint.includes('api/auth/login')) {
       try {
+        // 8.5-WEB4: limpiar el perfil guardado (PII) al revocar la sesión por 401.
         localStorage.removeItem('pos_user');
         localStorage.removeItem('pos_token');
         sessionStorage.clear();
@@ -213,14 +319,17 @@ export async function apiFetch(endpoint, options = {}) {
     let errorMessage = response.status === 401
       ? 'Cédula o contraseña incorrecta.'
       : `Error ${response.status}: ${response.statusText}`;
+    let errorBody = null;
 
     try {
-      const errorBody = await response.text();
-      if (errorBody) {
+      const rawBody = await response.text();
+      if (rawBody) {
+        errorBody = rawBody;
         try {
-          const jsonErr = JSON.parse(errorBody);
+          const jsonErr = JSON.parse(rawBody);
+          errorBody = jsonErr;
           if (jsonErr.requiresPasswordChange) {
-            const err = new Error(jsonErr.message || 'Debe cambiar su contraseña antes de continuar.');
+            const err = new ApiError(jsonErr.message || 'Debe cambiar su contraseña antes de continuar.', response.status, jsonErr);
             err.requiresPasswordChange = true;
             throw err;
           }
@@ -236,24 +345,30 @@ export async function apiFetch(endpoint, options = {}) {
           else if (jsonErr.Title) errorMessage = jsonErr.Title;
         } catch (e) {
           if (e.requiresPasswordChange) throw e;
-          if (!errorBody.includes('<html') && errorBody.length < 300) {
-            errorMessage = errorBody;
+          // 8.9-M15: descartar cuerpos que contengan marcas HTML/markup ('<' o '>') para
+          // nunca volcar HTML crudo u otro contenido no estructurado a la UI.
+          if (!/</.test(rawBody) && !/>/.test(rawBody) && rawBody.length < 300) {
+            errorMessage = rawBody;
           }
         }
       }
     } catch (e) {
       if (e.requiresPasswordChange) throw e;
     }
-    throw new Error(errorMessage);
+    throw new ApiError(errorMessage, response.status, errorBody);
   }
 
   // Intentar parsear como JSON, si falla retornar texto plano
   const contentType = response.headers.get('content-type');
-  if (contentType && contentType.includes('application/json')) {
-    return response.json();
-  }
+  const data = contentType && contentType.includes('application/json')
+    ? await response.json()
+    : await response.text();
 
-  return response.text();
+  if (_includeMeta) {
+    const totalCount = Number(response.headers.get('X-Total-Count') || 0);
+    return { data, totalCount };
+  }
+  return data;
 }
 
 /**
@@ -262,6 +377,10 @@ export async function apiFetch(endpoint, options = {}) {
 export const api = {
   get: (endpoint, signal) =>
     apiFetch(endpoint, { method: 'GET', signal }),
+
+  // 8.14-N1: GET devolviendo { data, totalCount } para paginación (X-Total-Count).
+  getWithMeta: (endpoint, signal) =>
+    apiFetch(endpoint, { method: 'GET', signal, _includeMeta: true }),
 
   post: (endpoint, body, optionsOrSignal) => {
     const opts = (optionsOrSignal && typeof optionsOrSignal === 'object' && !('aborted' in optionsOrSignal))

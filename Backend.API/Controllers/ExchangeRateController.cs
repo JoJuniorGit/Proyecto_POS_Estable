@@ -1,12 +1,18 @@
 using Core.Entities;
+using Core.Interfaces;
+using Core.Logging;
 using Inventory.Module.Data;
+using Inventory.Module.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.SignalR;
-using Sales.Module.Interfaces;
-using Backend.API.Hubs;
-using Core.Logging;
+using Microsoft.Extensions.Caching.Memory;
+using Backend.API.Services;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
@@ -15,72 +21,79 @@ namespace Backend.API.Controllers;
 [Route("api/exchange-rate")]
 public class ExchangeRateController : ControllerBase
 {
-    private readonly InventoryDbContext _context;
+    private readonly IExchangeRateHistoryService _historyService;
+    private readonly IExchangeRateWriteService? _writeService;
+    private readonly ITimeZoneProvider _timeZoneProvider;
     private readonly Core.Interfaces.ICurrentUserService _currentUserService;
-    private readonly ISalesService _salesService;
-    private readonly Core.Interfaces.IInventoryService _inventoryService;
-    private readonly IHubContext<ExchangeRateHub> _hubContext;
+    private readonly IMemoryCache? _cache;
 
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public ExchangeRateController(
-        InventoryDbContext context,
+        IExchangeRateHistoryService historyService,
+        IExchangeRateWriteService writeService,
+        ITimeZoneProvider timeZoneProvider,
         Core.Interfaces.ICurrentUserService currentUserService,
-        ISalesService salesService,
-        Core.Interfaces.IInventoryService inventoryService,
-        IHubContext<ExchangeRateHub> hubContext)
+        IMemoryCache? cache = null)
     {
-        _context = context;
+        _historyService = historyService;
+        _writeService = writeService;
+        _timeZoneProvider = timeZoneProvider;
         _currentUserService = currentUserService;
-        _salesService = salesService;
-        _inventoryService = inventoryService;
-        _hubContext = hubContext;
+        _cache = cache;
     }
 
-    /// <summary>
-    /// Returns today's exchange rate, or 0 if none has been set.
-    /// </summary>
     [AllowAnonymous]
     [HttpGet("today")]
-    public async Task<ActionResult> GetToday()
+    public async Task<ActionResult> GetTodayAsync(CancellationToken cancellationToken = default)
     {
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
-        var record = await _context.ExchangeRateHistory
-            .FirstOrDefaultAsync(r => r.Date == today);
-
-        if (record == null)
+        var cacheKey = $"er_today_{today:yyyy-MM-dd}";
+        if (_cache != null && _cache.TryGetValue(cacheKey, out object? cached))
         {
-            // Fallback al último registro histórico válido hasta hoy (ignora registros futuros erróneos y cubre fines de semana/feriados)
-            record = await _context.ExchangeRateHistory
-                .Where(r => r.Date <= today)
-                .OrderByDescending(r => r.Date)
-                .FirstOrDefaultAsync();
+            return Ok(cached);
         }
 
-        var tz = await GetConfiguredTimeZoneAsync();
+        var (rate, date, updatedAt) = await _historyService.GetTodayRateWithMetadataAsync(cancellationToken);
+        var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
 
-        if (record == null)
-            return Ok(new { Value = 0m, Date = today, UpdatedAt = (DateTime?)null, UpdatedAtLocal = (DateTime?)null });
+        ExchangeRateTodayResponseDto result;
+        if (updatedAt == null && rate == 0m)
+        {
+            result = new ExchangeRateTodayResponseDto { Value = 0m, Date = today, UpdatedAt = null, UpdatedAtLocal = null };
+        }
+        else
+        {
+            var utc = updatedAt.HasValue && updatedAt.Value.Kind == DateTimeKind.Utc
+                ? updatedAt.Value
+                : (updatedAt.HasValue ? DateTime.SpecifyKind(updatedAt.Value, DateTimeKind.Utc) : (DateTime?)null);
+            var local = utc.HasValue ? TimeZoneInfo.ConvertTimeFromUtc(utc.Value, tz) : (DateTime?)null;
 
-        var utc = record.UpdatedAt.Kind == DateTimeKind.Utc
-            ? record.UpdatedAt
-            : DateTime.SpecifyKind(record.UpdatedAt, DateTimeKind.Utc);
-        var local = TimeZoneInfo.ConvertTimeFromUtc(utc, tz);
+            result = new ExchangeRateTodayResponseDto
+            {
+                Value = rate,
+                Date = date,
+                UpdatedAt = updatedAt,
+                UpdatedAtLocal = local
+            };
+        }
 
-        return Ok(new { Value = record.Rate, Date = record.Date, UpdatedAt = record.UpdatedAt, UpdatedAtLocal = (DateTime?)local });
+        _cache?.Set(cacheKey, result, new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(20),
+            Size = 1
+        });
+        return Ok(result);
     }
 
-    /// <summary>
-    /// Returns the exchange rate history sorted by date descending, clamped to a maximum of 365 days.
-    /// </summary>
+    [NonAction]
+    public Task<ActionResult> GetToday(CancellationToken cancellationToken = default) => GetTodayAsync(cancellationToken);
+
     [HttpGet("history")]
-    public async Task<ActionResult> GetHistory([FromQuery] int limit = 365)
+    public async Task<ActionResult> GetHistoryAsync([FromQuery] int limit = 365, CancellationToken cancellationToken = default)
     {
         limit = Math.Clamp(limit, 1, 365);
-        var tz = await GetConfiguredTimeZoneAsync();
-        var history = await _context.ExchangeRateHistory
-            .OrderByDescending(r => r.Date)
-            .Take(limit)
-            .Select(r => new { r.Date, r.Rate, r.UpdatedAt })
-            .ToListAsync();
+        var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
+        var history = await _historyService.GetHistoryAsync(limit, cancellationToken);
 
         var result = history.Select(r =>
         {
@@ -89,11 +102,11 @@ public class ExchangeRateController : ControllerBase
                 : DateTime.SpecifyKind(r.UpdatedAt, DateTimeKind.Utc);
             var local = TimeZoneInfo.ConvertTimeFromUtc(utc, tz);
 
-            return new
+            return new ExchangeRateHistoryResponseDto
             {
-                r.Date,
-                r.Rate,
-                r.UpdatedAt,
+                Date = r.Date,
+                Rate = r.Rate,
+                UpdatedAt = r.UpdatedAt,
                 UpdatedAtLocal = local
             };
         });
@@ -101,69 +114,52 @@ public class ExchangeRateController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// Upserts today's exchange rate. One record per day; overwrites if already set.
-    /// </summary>
+    [NonAction]
+    public Task<ActionResult> GetHistory(int limit = 365, CancellationToken cancellationToken = default) => GetHistoryAsync(limit, cancellationToken);
+
     [HttpPost]
     [Authorize(Roles = "Admin")]
-    public async Task<ActionResult> UpsertRate([FromBody] UpsertExchangeRateRequest request)
+    public async Task<ActionResult> UpsertRateAsync(
+        [FromBody] UpsertExchangeRateRequest request,
+        [FromServices] IExchangeRateWriteService? rateWriteService = null)
     {
         if (!_currentUserService.CanMutateExchangeRate)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "El rol Cajero no tiene permisos para actualizar la tasa de cambio.");
+            return this.ApiForbidden("El rol Cajero no tiene permisos para actualizar la tasa de cambio.");
         }
         if (request.Value <= 0 || request.Value > 1_000_000m)
-            return BadRequest("Exchange rate must be greater than zero and less than or equal to 1,000,000.");
+            return this.ApiBadRequest("Exchange rate must be greater than zero and less than or equal to 1,000,000.");
 
         var roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(request.Value);
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
-        var existing = await _context.ExchangeRateHistory
-            .FirstOrDefaultAsync(r => r.Date == today);
 
-        if (existing != null)
+        var effectiveWriteService = rateWriteService ?? _writeService;
+        if (effectiveWriteService != null)
         {
-            existing.Rate = roundedRate;
-            existing.UpdatedAt = DateTime.UtcNow;
-        }
-        else
-        {
-            _context.ExchangeRateHistory.Add(new ExchangeRateHistory
-            {
-                Date = today,
-                Rate = roundedRate,
-                UpdatedAt = DateTime.UtcNow
-            });
+            await effectiveWriteService.UpsertTodayRateAsync(roundedRate);
         }
 
-        await _context.SaveChangesAsync();
+        _cache?.Remove($"er_today_{today:yyyy-MM-dd}");
 
-        // Invalidate today's cached exchange rate
-        _inventoryService.InvalidateTodayExchangeRateCache();
-
-        // Recalculate OnHold sales with the new exchange rate
-        await _salesService.RecalculateOnHoldSalesAsync(roundedRate);
-
-        // Broadcast rate update and OnHold sales refresh signal to all connected clients
-        await _hubContext.Clients.All.SendAsync("ReceiveRateUpdate", roundedRate);
-        await _hubContext.Clients.All.SendAsync("OnHoldSalesUpdated");
-
-        var tz = await GetConfiguredTimeZoneAsync();
+        var tz = await _timeZoneProvider.GetTimeZoneInfoAsync();
         var nowUtc = DateTime.UtcNow;
         var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, tz);
 
-        return Ok(new { Value = roundedRate, Date = today, UpdatedAt = nowUtc, UpdatedAtLocal = nowLocal });
+        return Ok(new ExchangeRateTodayResponseDto { Value = roundedRate, Date = today, UpdatedAt = nowUtc, UpdatedAtLocal = nowLocal });
     }
 
-    /// <summary>
-    /// Forces a manual scrape of the BCV website and upserts today's exchange rate.
-    /// </summary>
+    [NonAction]
+    public Task<ActionResult> UpsertRate(UpsertExchangeRateRequest request, IExchangeRateWriteService? rateWriteService = null) => UpsertRateAsync(request, rateWriteService);
+
     [HttpPost("sync-bcv")]
     [Authorize(Roles = "Admin")]
-    public async Task<ActionResult> SyncBcv([FromServices] Backend.API.Services.BcvScraperService scraperService)
+    public async Task<ActionResult> SyncBcvAsync(
+        [FromServices] Backend.API.Services.BcvScraperService scraperService,
+        [FromServices] IExchangeRateWriteService? rateWriteService = null)
     {
         if (!_currentUserService.CanMutateExchangeRate)
         {
-            return StatusCode(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, "El rol Cajero no tiene permisos para sincronizar la tasa de cambio.");
+            return this.ApiForbidden("El rol Cajero no tiene permisos para sincronizar la tasa de cambio.");
         }
         decimal? rate;
         try
@@ -171,83 +167,74 @@ public class ExchangeRateController : ControllerBase
             rate = await scraperService.GetOfficialUsdRateAsync();
             if (!rate.HasValue)
             {
-                return StatusCode(StatusCodes.Status502BadGateway, new { Message = "No se pudo extraer la tasa oficial del BCV. Verifique el portal o ingrese la tasa manualmente." });
+                return this.ApiProblem("No se pudo extraer la tasa oficial del BCV. Verifique el portal o ingrese la tasa manualmente.", StatusCodes.Status502BadGateway, "Bad Gateway");
             }
         }
         catch (TimeoutException ex)
         {
-            return StatusCode(StatusCodes.Status504GatewayTimeout, new { Message = "Tiempo de espera agotado al conectar con el portal del BCV. Puede reintentar la sincronización o ingresar la tasa manualmente.", Detail = ex.Message });
+            AppLogger.LogCrash(ex, "ExchangeRateController.SyncBcvRate.Timeout");
+            return this.ApiProblem("Tiempo de espera agotado al conectar con el portal del BCV. Puede reintentar la sincronización o ingresar la tasa manualmente.", StatusCodes.Status504GatewayTimeout, "Gateway Timeout");
         }
         catch (InvalidOperationException ex)
         {
-            return StatusCode(StatusCodes.Status502BadGateway, new { Message = "La estructura del portal del BCV ha cambiado o no contiene el formato esperado. Por favor, reintente o ingrese la tasa manualmente.", Detail = ex.Message });
+            AppLogger.LogCrash(ex, "ExchangeRateController.SyncBcvRate.InvalidOperation");
+            return this.ApiProblem("La estructura del portal del BCV ha cambiado o no contiene el formato esperado. Por favor, reintente o ingrese la tasa manualmente.", StatusCodes.Status502BadGateway, "Bad Gateway");
         }
         catch (HttpRequestException ex)
         {
-            return StatusCode(StatusCodes.Status502BadGateway, new { Message = "Error de red o conexión al consultar el portal del BCV. Verifique el acceso a internet o ingrese la tasa manualmente.", Detail = ex.Message });
+            AppLogger.LogCrash(ex, "ExchangeRateController.SyncBcvRate.HttpRequest");
+            return this.ApiProblem("Error de red o conexión al consultar el portal del BCV. Verifique el acceso a internet o ingrese la tasa manualmente.", StatusCodes.Status502BadGateway, "Bad Gateway");
         }
         catch (Exception ex)
         {
             AppLogger.LogCrash(ex, "ExchangeRateController.SyncBcvRate");
-            return StatusCode(StatusCodes.Status500InternalServerError, new { Message = "Error inesperado al sincronizar con el BCV. Intente más tarde o ingrese la tasa manualmente." });
+            return this.ApiProblem("Error inesperado al sincronizar con el BCV. Intente más tarde o ingrese la tasa manualmente.", StatusCodes.Status500InternalServerError, "Internal Server Error");
         }
 
         if (rate.Value <= 0 || rate.Value > 1_000_000m)
         {
-            return BadRequest("La tasa extraída del BCV se encuentra fuera del rango válido (0, 1.000.000].");
+            return this.ApiBadRequest("La tasa extraída del BCV se encuentra fuera del rango válido (0, 1.000.000].");
         }
 
         var roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(rate.Value);
         var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
-        var existing = await _context.ExchangeRateHistory
-            .FirstOrDefaultAsync(r => r.Date == today);
 
-        if (existing != null)
+        var effectiveWriteService = rateWriteService ?? _writeService;
+        if (effectiveWriteService != null)
         {
-            existing.Rate = roundedRate;
-            existing.UpdatedAt = DateTime.UtcNow;
-        }
-        else
-        {
-            _context.ExchangeRateHistory.Add(new ExchangeRateHistory
-            {
-                Date = today,
-                Rate = roundedRate,
-                UpdatedAt = DateTime.UtcNow
-            });
+            await effectiveWriteService.UpsertTodayRateAsync(roundedRate);
         }
 
-        await _context.SaveChangesAsync();
+        _cache?.Remove($"er_today_{today:yyyy-MM-dd}");
 
-        // Invalidate today's cached exchange rate immediately
-        _inventoryService.InvalidateTodayExchangeRateCache();
-
-        // Recalculate OnHold sales with the new exchange rate
-        await _salesService.RecalculateOnHoldSalesAsync(roundedRate);
-
-        // Broadcast to clients via SignalR
-        await _hubContext.Clients.All.SendAsync("ReceiveRateUpdate", roundedRate);
-        await _hubContext.Clients.All.SendAsync("OnHoldSalesUpdated");
-
-        var tz = await GetConfiguredTimeZoneAsync();
+        var tz = await _timeZoneProvider.GetTimeZoneInfoAsync();
         var nowUtc = DateTime.UtcNow;
         var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, tz);
 
-        return Ok(new { Value = roundedRate, Date = today, UpdatedAt = nowUtc, UpdatedAtLocal = nowLocal });
+        return Ok(new ExchangeRateTodayResponseDto { Value = roundedRate, Date = today, UpdatedAt = nowUtc, UpdatedAtLocal = nowLocal });
     }
 
-    private async Task<TimeZoneInfo> GetConfiguredTimeZoneAsync()
-    {
-        var tzId = await _context.SystemSettings
-            .Where(s => s.Key == "SelectedTimeZoneId")
-            .Select(s => s.Value)
-            .FirstOrDefaultAsync();
-
-        return Core.Helpers.TimeZoneHelper.GetTimeZone(tzId);
-    }
+    [NonAction]
+    public Task<ActionResult> SyncBcv(Backend.API.Services.BcvScraperService scraperService, IExchangeRateWriteService? rateWriteService = null) => SyncBcvAsync(scraperService, rateWriteService);
 }
 
 public class UpsertExchangeRateRequest
 {
     public decimal Value { get; set; }
+}
+
+public class ExchangeRateTodayResponseDto
+{
+    public decimal Value { get; set; }
+    public DateOnly Date { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public DateTime? UpdatedAtLocal { get; set; }
+}
+
+public class ExchangeRateHistoryResponseDto
+{
+    public DateOnly Date { get; set; }
+    public decimal Rate { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public DateTime UpdatedAtLocal { get; set; }
 }

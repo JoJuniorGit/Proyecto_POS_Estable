@@ -1,4 +1,3 @@
-using Core.Entities;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -7,33 +6,29 @@ namespace Core.Interfaces;
 
 public interface IInventoryService
 {
-    Task<List<Product>> GetAllProductsAsync();
-    Task<decimal> GetTodayExchangeRateAsync();
+    Task<decimal> GetTodayExchangeRateAsync(System.Threading.CancellationToken cancellationToken = default);
     void InvalidateTodayExchangeRateCache();
-    Task<List<Product>> GetProductsByIdsAsync(IEnumerable<int> productIds);
-    Task<Product?> GetProductByIdAsync(int id);
-    Task<Product?> GetCashAdvanceProductAsync();
+    Task<IReadOnlyList<Core.DTOs.SaleProductInfoDto>> GetSaleProductsByIdsAsync(IEnumerable<int> productIds, System.Threading.CancellationToken cancellationToken = default);
+    Task<Core.DTOs.SaleProductInfoDto?> GetSaleProductByIdAsync(int id, System.Threading.CancellationToken cancellationToken = default);
+    Task<Core.DTOs.SaleProductInfoDto?> GetCashAdvanceProductAsync(System.Threading.CancellationToken cancellationToken = default);
     [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
-    Task<Product?> GetProductBySkuAsync(string sku, bool useCache = true);
-    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
-    Task<Core.DTOs.ProductQuickInfoDto?> GetProductQuickInfoAsync(string sku, bool useCache = true);
+    Task<Core.DTOs.ProductQuickInfoDto?> GetProductQuickInfoAsync(string sku, bool useCache = true, System.Threading.CancellationToken cancellationToken = default);
     void InvalidateProductSkuCache(string sku);
     void InvalidateAllProductCaches();
-    Task<Product> CreateProductAsync(Product product);
-    Task UpdateProductAsync(Product product);
-    Task SetProductStatusAsync(int id, bool isActive, bool isDeleted);
-    Task<string> DeleteProductAsync(int id, bool forceHardDelete = false);
-    Task RestoreProductAsync(int id);
-    Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, bool allowNegativeStock = false);
-    Task UpdateStockBatchAsync(IEnumerable<StockDeductionRequest> items, string? userId = null, bool allowNegativeStock = false);
-    Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null);
-    Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration);
-    Task ConfirmReservationAsync(int reservationId, string reason);
-    Task CancelReservationAsync(int reservationId);
+    Task<int> CreateSystemProductAsync(Core.DTOs.CreateSystemProductRequest request, System.Threading.CancellationToken cancellationToken = default);
+    Task SetProductStatusAsync(int id, bool isActive, bool isDeleted, System.Threading.CancellationToken cancellationToken = default);
+    Task<string> DeleteProductAsync(int id, bool forceHardDelete = false, System.Threading.CancellationToken cancellationToken = default);
+    Task RestoreProductAsync(int id, System.Threading.CancellationToken cancellationToken = default);
+    Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, bool allowNegativeStock = false, System.Threading.CancellationToken cancellationToken = default);
+    Task UpdateStockBatchAsync(IEnumerable<StockDeductionRequest> items, string? userId = null, bool allowNegativeStock = false, System.Threading.CancellationToken cancellationToken = default);
+    Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration, string? referenceId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task ConfirmReservationAsync(int reservationId, string reason, System.Threading.CancellationToken cancellationToken = default);
+    Task CancelReservationAsync(int reservationId, System.Threading.CancellationToken cancellationToken = default);
     Task<List<Core.DTOs.ProductQuickInfoDto>> GetSuggestionsAsync(string filter, bool activeOnly, System.Threading.CancellationToken token);
     Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetProductsPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default);
-    Task<List<Core.DTOs.ProductDto>> GetVariantOptionsAsync(int parentProductId);
-    Task<List<Core.DTOs.ProductDto>> GetParentProductsAsync();
+    Task<List<Core.DTOs.ProductDto>> GetVariantOptionsAsync(int parentProductId, System.Threading.CancellationToken cancellationToken = default);
+    Task<List<Core.DTOs.ProductDto>> GetParentProductsAsync(System.Threading.CancellationToken cancellationToken = default);
     Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetCandidateVariantsPagedAsync(int parentId, string? filter, int page, int pageSize, System.Threading.CancellationToken token = default);
     Task<List<Core.DTOs.ProductDto>> LinkVariantsBatchAsync(int parentId, List<int> productIds, System.Threading.CancellationToken token = default);
     Task<Core.DTOs.ProductDto> UnlinkVariantAsync(int parentId, int variantId, System.Threading.CancellationToken token = default);
@@ -42,6 +37,8 @@ public interface IInventoryService
     Task<byte[]> ExportProductsAsync(string format, bool activeOnly, string? filter = null, System.Threading.CancellationToken cancellationToken = default);
     Task<byte[]> GenerateTemplateAsync(string format, System.Threading.CancellationToken cancellationToken = default);
     Task EnrollInTransactionAsync(System.Data.Common.DbTransaction transaction, System.Threading.CancellationToken cancellationToken = default);
+    /// <summary>Restaura la conexión propia del scope tras una transacción compartida (8.7-B7).</summary>
+    Task DetachFromTransactionAsync(System.Threading.CancellationToken cancellationToken = default);
 }
 
-public record StockDeductionRequest(int ProductId, decimal QuantityChange, string Reason);
+public record StockDeductionRequest(int ProductId, decimal QuantityChange, string Reason, int? SaleId = null);

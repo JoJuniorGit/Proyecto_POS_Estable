@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Messaging;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Moq;
@@ -17,6 +18,8 @@ public class InventoryWholesaleVisibilityTests
 
         // Act
         var vm = new InventoryViewModel(mockProductService.Object, mockRateService.Object, loggedOutSession);
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         // Assert
         Assert.False(vm.ShowWholesale, "ShowWholesale debe ser false por defecto al inicializar el catálogo.");
@@ -31,6 +34,8 @@ public class InventoryWholesaleVisibilityTests
         var mockRateService = new Mock<IExchangeRateService>();
         var loggedOutSession = new UserSession();
         var vm = new InventoryViewModel(mockProductService.Object, mockRateService.Object, loggedOutSession);
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         // Act 1: Toggle on
         vm.ToggleWholesaleCommand.Execute(null);
@@ -55,6 +60,8 @@ public class InventoryWholesaleVisibilityTests
         var mockRateService = new Mock<IExchangeRateService>();
         var loggedOutSession = new UserSession();
         var vm = new InventoryViewModel(mockProductService.Object, mockRateService.Object, loggedOutSession);
+        // Aislamiento del bus global compartido entre pruebas.
+        WeakReferenceMessenger.Default.UnregisterAll(vm);
 
         // Assert default headers in Bs.S
         Assert.Equal("Bs.S", vm.SelectedCurrency);

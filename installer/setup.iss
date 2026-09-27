@@ -28,11 +28,12 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; Publicación Autónoma Backend API (.NET Self-Contained)
-Source: "..\publish\BackendAPI\*"; DestDir: "{app}\BackendAPI"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "appsettings.Production.json,appsettings.Development.json"
+; 8.27-A01/A04: se excluyen appsettings de entorno y el pfx stale del puesto de build;
+; el certificado HTTPS se genera en la MÁQUINA DESTINO (tools\create-https-cert.ps1) para
+; que sus SANs correspondan al cliente y nunca viajen credenciales de desarrollo.
+Source: "..\publish\BackendAPI\*"; DestDir: "{app}\BackendAPI"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "appsettings.Production.json,appsettings.Development.json,certs\pos-https.pfx,secrets.json"
 ; Publicación Autónoma Cliente WPF Desktop (.NET Self-Contained)
 Source: "..\publish\DesktopClient\*"; DestDir: "{app}\DesktopClient"; Flags: ignoreversion recursesubdirs createallsubdirs
-; UpdaterService ejecutable
-Source: "..\publish\UpdaterService\*"; DestDir: "{app}\UpdaterService"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NSSM ejecutable y Licencia (Opcional: Si está presente se empaqueta, si no se usa el fallback sc.exe)
 #if FileExists("nssm.exe")
 Source: "nssm.exe"; DestDir: "{app}\BackendAPI"; Flags: ignoreversion
@@ -42,24 +43,48 @@ Source: "NSSM_LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 #endif
 ; Script PowerShell de Configuración Idempotente (Firewall, NSSM, Env Vars)
 Source: "Configure-PosService.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
+; 8.27-A02/A4: scripts de operación desplegados al puesto: certificado HTTPS por sitio y backup PostgreSQL
+Source: "..\scripts\create-https-cert.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
+Source: "..\scripts\backup-postgres.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
+; 8.69-A1: reinicio fácil del servicio (Req.9, DQ-009 opción C); detecta nssm.exe relativo a la instalación
+Source: "RestartPOS.bat"; DestDir: "{app}"; Flags: ignoreversion
+; 8.107-A1: monitoreo de salud y SLO (headless + dashboard WinForms) y plantilla de config compartida
+Source: "..\docs\monitor-health.ps1"; DestDir: "{app}\tools\monitoring"; Flags: ignoreversion
+Source: "..\docs\monitor-health-ui.ps1"; DestDir: "{app}\tools\monitoring"; Flags: ignoreversion
+Source: "..\docs\monitor-config.json.example"; DestDir: "{app}\tools\monitoring"; Flags: ignoreversion
 
 
 [Dirs]
 Name: "{commonappdata}\Registro de cierres"; Permissions: users-modify
+; 8.107-A1: datos del monitoreo (CSVs, log, estado y resumen SLO) escribibles sin elevacion
+Name: "{commonappdata}\CommandCenterPOS\monitoring"; Permissions: users-read
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\DesktopClient\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\DesktopClient\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}\Reiniciar Sistema POS"; Filename: "{app}\RestartPOS.bat"; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"
+Name: "{autodesktop}\Reiniciar Sistema POS"; Filename: "{app}\RestartPOS.bat"; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"; Tasks: desktopicon
+; 8.107-A1: acceso directo al Monitor de Salud (dashboard WinForms de monitor-health.ps1),
+; lanzado con el console PowerShell 5.1 oculto y la config compartida de ProgramData.
+Name: "{autoprograms}\{#MyAppName}\Monitor de Salud"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\tools\monitoring\monitor-health.ps1"" -Dashboard -Config ""{commonappdata}\CommandCenterPOS\monitoring\monitor-config.json"""; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"
+Name: "{autodesktop}\Monitor de Salud"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\tools\monitoring\monitor-health.ps1"" -Dashboard -Config ""{commonappdata}\CommandCenterPOS\monitoring\monitor-config.json"""; IconFilename: "{app}\DesktopClient\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 ; El registro/actualización del servicio y la regla de firewall se gestionan en [Code] (ssPostInstall):
-; - Guard de reinstalación: si PosBackendService ya existe se actualiza (binPath + AppEnvironmentExtra) en vez de fallar (INSTALLATION.md §5).
-; - Los secretos (cadena de conexión y contraseña semilla) se aplican como AppEnvironmentExtra del servicio NSSM, no en appsettings (INSTALLATION.md §3.5, §2.5).
+; - Guard de reinstalación: si PosBackendService ya existe se actualiza (binPath) en vez de fallar (INSTALLATION.md §5).
+; - 8.29-A1: los secretos (cadena de conexión, contraseña semilla, clave JWT y contraseña del
+;   certificado) residen ÚNICAMENTE en BackendAPI\secrets.json con ACL restrictiva; NO viajan
+;   por argv ni AppEnvironmentExtra del servicio NSSM (INSTALLATION.md §2.5, §3.5).
 ; - Firewall: solo HTTP 5000 a la subred local (INSTALLATION.md §3.2, §5).
 ; Iniciar Cliente Desktop al finalizar el Setup
 Filename: "{app}\DesktopClient\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
+; Limpieza de firewall y tareas programadas
+Filename: "schtasks.exe"; Parameters: "/delete /tn ""Sistema POS - Monitor de Salud"" /f"; Flags: runhidden
+Filename: "schtasks.exe"; Parameters: "/delete /tn ""Sistema POS - Backup PostgreSQL"" /f"; Flags: runhidden
+Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Sistema POS - Backend API (TCP 5000)"""; Flags: runhidden
+Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Sistema POS - Backend API (TCP 5000/5001)"""; Flags: runhidden
 ; Detención y eliminación silenciosa del servicio de Windows al desinstalar (NSSM)
 Filename: "{app}\BackendAPI\nssm.exe"; Parameters: "stop PosBackendService"; Flags: runhidden; Check: HasNssm; RunOnceId: "StopBackendServiceNssm"
 Filename: "{app}\BackendAPI\nssm.exe"; Parameters: "remove PosBackendService confirm"; Flags: runhidden; Check: HasNssm; RunOnceId: "RemoveBackendServiceNssm"
@@ -78,6 +103,23 @@ var
   DbPage: TInputQueryWizardPage;
   AdminPage: TInputQueryWizardPage;
   UpdatePage: TInputQueryWizardPage;
+
+procedure WriteProtectedSecretsFile(AppDir: String; ConnString, JwtKey, CertPass, SeedPass: String); forward;
+
+function JsonEsc(const S: String): String;
+var
+  i: Integer;
+  c: Char;
+begin
+  Result := '';
+  for i := 1 to Length(S) do
+  begin
+    c := S[i];
+    if c = '\' then Result := Result + '\\'
+    else if c = '"' then Result := Result + '\"'
+    else Result := Result + c;
+  end;
+end;
 
 function HasNssm: Boolean;
 begin
@@ -105,21 +147,48 @@ begin
   Result := (RunCmd('sc.exe', 'query ' + ServiceName) = 0);
 end;
 
-function GetOrGenerateJwtKey: String;
+// 8.29-A1: genera un secreto criptográfico con CSPRNG (RandomNumberGenerator) vía
+// PowerShell, escribiéndolo en un archivo temporal (NUNCA por línea de comandos).
+// Devuelve cadena hexadecimal (Bytes*2 chars) o '' si falla.
+function GenerateCryptoSecret(Bytes: Integer): String;
 var
-  ExistingKey: String;
+  OutFile, PS: String;
+  Raw: AnsiString;
+  ResCode: Integer;
 begin
-  // Si existiera una clave previa en instalaciones legacy, se respeta temporalmente;
-  // la generación criptográfica segura (CSPRNG 512 bits) y la protección ACL se delegan a Configure-PosService.ps1
-  if RegQueryStringValue(HKEY_LOCAL_MACHINE, 'Software\POS', 'JwtSecretKey', ExistingKey) and 
-     (Length(ExistingKey) >= 32) and 
-     (ExistingKey <> 'ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795') then
-  begin
-    Result := ExistingKey;
-    Exit;
-  end;
-
   Result := '';
+  OutFile := GetTempDir + '\pos-csp.tmp';
+  DeleteFile(OutFile);
+  PS := '-NoProfile -ExecutionPolicy Bypass -Command "$b = New-Object byte[] ' + IntToStr(Bytes) +
+    '; [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); ' +
+    '[System.IO.File]::WriteAllText(''' + OutFile + ''', ' +
+    '[System.BitConverter]::ToString($b).Replace('' '','''').Replace(''-'','''').ToLower())"';
+  try
+    if Exec('powershell.exe', PS, '', SW_HIDE, ewWaitUntilTerminated, ResCode) and (ResCode = 0) and
+       LoadStringFromFile(OutFile, Raw) and (Length(Raw) > 0) then
+    begin
+      Result := String(Raw);
+      DeleteFile(OutFile);
+      Exit;
+    end;
+  finally
+    if FileExists(OutFile) then
+      DeleteFile(OutFile);
+  end;
+end;
+
+// 8.29-A1 (revisión reviewer): la clave JWT y la password del certificado se generan
+// por sitio pero NO se persisten en el registro (HKLM\Software\POS queda limpio). Solo
+// viajan en memoria a WriteProtectedSecretsFile -> secrets.json (única fuente veraz con
+// ACL). En reinstalaciones se preservan desde secrets.json (Configure-PosService.ps1).
+function GetOrGenerateJwtKey: String;
+begin
+  Result := GenerateCryptoSecret(32);
+end;
+
+function GetOrGenerateCertPass: String;
+begin
+  Result := GenerateCryptoSecret(16);
 end;
 
 procedure InitializeWizard;
@@ -138,7 +207,7 @@ begin
   DbPage.Values[1] := '5432';
   DbPage.Values[2] := 'CommandCenterDb';
   DbPage.Values[3] := 'postgres';
-  DbPage.Values[4] := 'postgres';
+  DbPage.Values[4] := '';
 
   // Página 2: Credenciales Semilla del Administrador
   AdminPage := CreateInputQueryPage(DbPage.ID,
@@ -165,24 +234,26 @@ begin
   UpdatePage.Values[0] := 'http://localhost:5000/updates/';
 end;
 
-// Función auxiliar: escapa comillas dobles en un valor para uso en líneas de comandos.
-function EscapeQuotes(const S: String): String;
+// Validación de la página AdminPage antes de avanzar al siguiente paso.
+function PasswordHasLetterAndDigit(const Value: String): Boolean;
 var
-  I: Integer;
-  Result2: String;
+  i: Integer;
+  HasLetter, HasDigit: Boolean;
+  c: Char;
 begin
-  Result2 := '';
-  for I := 1 to Length(S) do
+  HasLetter := False;
+  HasDigit := False;
+  for i := 1 to Length(Value) do
   begin
-    if S[I] = '"' then
-      Result2 := Result2 + '\"'
-    else
-      Result2 := Result2 + S[I];
+    c := Value[i];
+    if ((c >= 'A') and (c <= 'Z')) or ((c >= 'a') and (c <= 'z')) then
+      HasLetter := True
+    else if (c >= '0') and (c <= '9') then
+      HasDigit := True;
   end;
-  Result := Result2;
+  Result := HasLetter and HasDigit;
 end;
 
-// Validación de la página AdminPage antes de avanzar al siguiente paso.
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   Username, Password, Confirm: String;
@@ -203,9 +274,17 @@ begin
       Exit;
     end;
 
-    if Length(Password) < 4 then
+    if Length(Password) < 8 then
     begin
-      MsgBox('La contraseña debe tener al menos 4 caracteres.',
+      MsgBox('La contraseña debe tener al menos 8 caracteres.',
+        mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+
+    if not PasswordHasLetterAndDigit(Password) then
+    begin
+      MsgBox('La contraseña debe contener al menos 1 letra y 1 número.',
         mbError, MB_OK);
       Result := False;
       Exit;
@@ -221,90 +300,72 @@ begin
   end;
 end;
 
-// Escribe appsettings.Production.json SIN secretos cuando el servicio usa NSSM
-// (la conexión y la contraseña semilla van como AppEnvironmentExtra del servicio).
-// Solo el fallback sc.exe (que no puede fijar variables de entorno por servicio)
-// incluye los secretos en el archivo, para que el backend pueda arrancar.
-procedure WriteProductionConfig(IncludeSecrets: Boolean);
+// 8.29-A1: escribe appsettings.Production.json SIN secretos. Los secretos (cadena de
+// conexión, contraseña semilla, clave JWT y contraseña del certificado) viven
+// ÚNICAMENTE en secrets.json (WriteProtectedSecretsFile), que el backend carga con
+// máxima precedencia, tanto en el path NSSM como en el fallback sc.exe.
+procedure WriteProductionConfig;
 var
-  ConfigFile, JsonContent, ConnString: String;
+  ConfigFile, JsonContent: String;
 begin
   ConfigFile := ExpandConstant('{app}\BackendAPI\appsettings.Production.json');
   if FileExists(ConfigFile) then
     Exit; // Conserva configuraciones existentes en reinstalaciones/actualizaciones.
 
-  if IncludeSecrets then
-    ConnString := 'Host=' + DbPage.Values[0] + ';Port=' + DbPage.Values[1] + ';Database=' +
-      DbPage.Values[2] + ';Username=' + DbPage.Values[3] + ';Password=' + DbPage.Values[4];
-
   // Nota: AdminPage.Values[0]=Username, [1]=FullName, [2]=Password, [3]=Confirm, [4]=BusinessName
-  JsonContent := '{' + #13#10;
-  if IncludeSecrets then
-    JsonContent := JsonContent +
-      '  "ConnectionStrings": {' + #13#10 +
-      '    "DefaultConnection": "' + ConnString + '"' + #13#10 +
-      '  },' + #13#10;
-  JsonContent := JsonContent +
+  JsonContent := '{' + #13#10 +
     '  "SystemSettings": {' + #13#10 +
     '    "MinimumClientVersion": "1.0.0",' + #13#10 +
     '    "ServerVersion": "1.0.0",' + #13#10 +
     '    "UpdateServerUrl": "' + UpdatePage.Values[0] + '",' + #13#10 +
     '    "AdminSeedUsername": "' + Trim(AdminPage.Values[0]) + '",' + #13#10 +
-    '    "AdminSeedName": "' + Trim(AdminPage.Values[1]) + '",' + #13#10;
-  if IncludeSecrets then
-    JsonContent := JsonContent +
-      '    "AdminSeedPassword": "' + AdminPage.Values[2] + '",' + #13#10;
-  JsonContent := JsonContent +
+    '    "AdminSeedName": "' + Trim(AdminPage.Values[1]) + '",' + #13#10 +
     '    "BusinessName": "' + AdminPage.Values[4] + '"' + #13#10 +
-    '  }';
-  if IncludeSecrets then
-    JsonContent := JsonContent + ',' + #13#10 +
-      '  "JwtSettings": {' + #13#10 +
-      '    "Key": "' + GetOrGenerateJwtKey + '"' + #13#10 +
-      '  }';
-  JsonContent := JsonContent + #13#10 + '}';
+    '  }' + #13#10 +
+    '}';
 
   SaveStringToFile(ConfigFile, JsonContent, False);
 end;
 
-// Regla de firewall idempotente: expone SOLO HTTP 5000 a la subred local.
-// El puerto 5001 (HTTPS) usa un certificado autofirmado que los clientes de la LAN no pueden
-// validar (INSTALLATION.md §3.2 y §5); por eso se deshabilita en la regla y se fuerza HTTP en la red.
+// Regla de firewall idempotente: expone HTTP 5000 y HTTPS 5001 a la subred local.
 procedure ConfigureFirewall;
 var
   Code: Integer;
 begin
-  // Retira la regla antigua (5000/5001) si existe: idempotente y elimina la exposición del 5001.
+  // Retira reglas antiguas si existen
   RunCmd('netsh.exe', 'advfirewall firewall delete rule name="' + FirewallRuleLegacy + '"');
+  RunCmd('netsh.exe', 'advfirewall firewall delete rule name="' + FirewallRuleHttp + '"');
 
-  Code := RunCmd('netsh.exe', 'advfirewall firewall add rule name="' + FirewallRuleHttp +
-    '" dir=in action=allow protocol=TCP localport=5000 remoteip=localsubnet profile=any');
+  Code := RunCmd('netsh.exe', 'advfirewall firewall add rule name="' + FirewallRuleLegacy +
+    '" dir=in action=allow protocol=TCP localport=5000,5001 remoteip=localsubnet profile=any');
   if Code <> 0 then
-    MsgBox('No se pudo crear la regla de Firewall de Windows para el puerto 5000.' + #13#10 + #13#10 +
+    MsgBox('No se pudo crear la regla de Firewall de Windows para los puertos 5000 y 5001.' + #13#10 + #13#10 +
       'Créela manualmente en una consola elevada:' + #13#10 +
-      'netsh advfirewall firewall add rule name="' + FirewallRuleHttp +
-      '" dir=in action=allow protocol=TCP localport=5000 remoteip=localsubnet profile=any',
+      'netsh advfirewall firewall add rule name="' + FirewallRuleLegacy +
+      '" dir=in action=allow protocol=TCP localport=5000,5001 remoteip=localsubnet profile=any',
       mbError, MB_OK);
 end;
 
-// Registra o actualiza el servicio PosBackendService sin fallar en reinstalaciones,
-// y reaplica siempre las variables de entorno (ConnectionStrings__DefaultConnection,
-// SystemSettings__* y JWT_SETTINGS_KEY) vía AppEnvironmentExtra de NSSM (INSTALLATION.md §3.5, §5 y JWT_Key.md).
+// Registra o actualiza el servicio PosBackendService sin fallar en reinstalaciones.
+// 8.29-A1: AppEnvironmentExtra conserva SOLO variables NO sensibles (negocio y usuario
+// semilla). Los secretos (cadena de conexión, contraseña semilla, clave JWT y
+// contraseña del certificado) se escriben únicamente en secrets.json protegido.
 procedure RegisterOrUpdateService(UseNssm: Boolean);
 var
-  AppExe, AppDir, ConnEnv, SeedUserEnv, SeedNameEnv, SeedPassEnv, BusinessEnv, JwtEnv, ConnString: String;
+  AppExe, AppDir, SeedUserEnv, SeedNameEnv, BusinessEnv, ConnString: String;
   Code: Integer;
 begin
   AppExe := ExpandConstant('{app}\BackendAPI\Backend.API.exe');
   AppDir := ExpandConstant('{app}\BackendAPI');
   ConnString := 'Host=' + DbPage.Values[0] + ';Port=' + DbPage.Values[1] + ';Database=' +
     DbPage.Values[2] + ';Username=' + DbPage.Values[3] + ';Password=' + DbPage.Values[4];
-  ConnEnv := 'ConnectionStrings__DefaultConnection=' + ConnString;
   SeedUserEnv := 'SystemSettings__AdminSeedUsername=' + Trim(AdminPage.Values[0]);
   SeedNameEnv := 'SystemSettings__AdminSeedName=' + Trim(AdminPage.Values[1]);
-  SeedPassEnv := 'SystemSettings__AdminSeedPassword=' + EscapeQuotes(AdminPage.Values[2]);
   BusinessEnv := 'SystemSettings__BusinessName=' + Trim(AdminPage.Values[4]);
-  JwtEnv := 'JWT_SETTINGS_KEY=' + GetOrGenerateJwtKey;
+
+  // 8.29-A1: los secretos se escriben en secrets.json protegido (el backend los carga con
+  // máxima precedencia); AppEnvironmentExtra conserva solo lo no sensible (negocio/usuario).
+  WriteProtectedSecretsFile(AppDir, ConnString, GetOrGenerateJwtKey, GetOrGenerateCertPass, AdminPage.Values[2]);
 
   if UseNssm then
   begin
@@ -314,7 +375,20 @@ begin
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Application "' + AppExe + '"');
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppDirectory "' + AppDir + '"');
       RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Start SERVICE_AUTO_START');
-      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedUserEnv + '" "' + SeedNameEnv + '" "' + SeedPassEnv + '" "' + BusinessEnv + '" "' + JwtEnv + '"');
+      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + SeedUserEnv + '" "' + SeedNameEnv + '" "' + BusinessEnv + '"');
+      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppExit Default Restart');
+      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppExit 2 Exit');
+      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppThrottle 30000');
+      RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppRestartDelay 0');
+
+      Code := RunCmd(AppExe, '--check-db');
+      if Code <> 0 then
+      begin
+        MsgBox('La validación de la conexión a PostgreSQL falló (código ' + IntToStr(Code) + ').' + #13#10 +
+          'El servicio no se iniciará. Corrija los datos de conexión y reintente.', mbError, MB_OK);
+        Exit;
+      end;
+
       Code := RunCmd(AppDir + '\nssm.exe', 'restart ' + ServiceName);
     end
     else
@@ -324,15 +398,29 @@ begin
       begin
         RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppDirectory "' + AppDir + '"');
         RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' Start SERVICE_AUTO_START');
-        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + ConnEnv + '" "' + SeedUserEnv + '" "' + SeedNameEnv + '" "' + SeedPassEnv + '" "' + BusinessEnv + '" "' + JwtEnv + '"');
+        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppEnvironmentExtra "' + SeedUserEnv + '" "' + SeedNameEnv + '" "' + BusinessEnv + '"');
+        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppExit Default Restart');
+        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppExit 2 Exit');
+        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppThrottle 30000');
+        RunCmd(AppDir + '\nssm.exe', 'set ' + ServiceName + ' AppRestartDelay 0');
+
+        Code := RunCmd(AppExe, '--check-db');
+        if Code <> 0 then
+        begin
+          MsgBox('La validación de la conexión a PostgreSQL falló (código ' + IntToStr(Code) + ').' + #13#10 +
+            'El servicio no se iniciará. Corrija los datos de conexión y reintente.', mbError, MB_OK);
+          Exit;
+        end;
+
         Code := RunCmd(AppDir + '\nssm.exe', 'start ' + ServiceName);
       end;
     end;
   end
   else
   begin
-    // Fallback sin NSSM: sc.exe no puede fijar variables de entorno por servicio,
-    // por lo que los secretos quedan en appsettings.Production.json (WriteProductionConfig(True)).
+    // Fallback sin NSSM: sc.exe no puede fijar variables de entorno por servicio, pero
+    // los secretos ya residen en secrets.json (escrito antes), así que no se requiere
+    // appsettings.Production.json con credenciales.
     if ServiceExists then
     begin
       RunCmd('sc.exe', 'stop ' + ServiceName);
@@ -353,6 +441,89 @@ begin
       AppDir + '\logs para más detalles.', mbError, MB_OK);
 end;
 
+// 8.29-A1 (ex 8U-M2/M07): escribe los secretos en secrets.json naciendo con la ACL
+// restrictiva (SYSTEM/Administradores y la cuenta del servicio cuando ya existe,
+// herencia bloqueada): el archivo nunca existe legible por usuarios locales, ni siquiera
+// en el camino fallback sin Configure-PosService.ps1. El JSON viaja por un temporal en
+// {tmp} (solo Administradores), nunca por argv del setup, y se reemplaza desde un
+// staging creado en el directorio destino con la ACL final (sin borrado previo).
+function WriteSecretsJsonWithAcl(const TempJson, SecretsPath, ServiceAccount: String): Integer;
+var
+  HelperPath, HelperScript: String;
+begin
+  HelperPath := GetTempDir + 'pos-secrets-acl.ps1';
+  HelperScript :=
+    '$ErrorActionPreference = "Stop"' + #13#10 +
+    '$source = $args[0]; $dest = $args[1]; $serviceAccount = $args[2]; $staging = $null' + #13#10 +
+    'try {' + #13#10 +
+    '  $sec = New-Object System.Security.AccessControl.FileSecurity' + #13#10 +
+    '  $sec.SetAccessRuleProtection($true, $false)' + #13#10 +
+    '  $sidSystem = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::LocalSystemSid, $null)' + #13#10 +
+    '  $sidAdmin = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)' + #13#10 +
+    '  $sec.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sidSystem, "FullControl", "None", "None", "Allow")))' + #13#10 +
+    '  $sec.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sidAdmin, "FullControl", "None", "None", "Allow")))' + #13#10 +
+    '  if ($serviceAccount) {' + #13#10 +
+    '    try {' + #13#10 +
+    '      $sidService = (New-Object System.Security.Principal.NTAccount($serviceAccount)).Translate([System.Security.Principal.SecurityIdentifier])' + #13#10 +
+    '      $sec.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sidService, "Read", "None", "None", "Allow")))' + #13#10 +
+    '    } catch { }' + #13#10 +
+    '  }' + #13#10 +
+    '  $staging = $dest + ".new-" + [System.Guid]::NewGuid().ToString("N")' + #13#10 +
+    '  $fs = New-Object System.IO.FileStream($staging, [System.IO.FileMode]::Create, [System.Security.AccessControl.FileSystemRights]::Write, [System.IO.FileShare]::None, 4096, [System.IO.FileOptions]::None, $sec)' + #13#10 +
+    '  $enc = New-Object System.Text.UTF8Encoding($false)' + #13#10 +
+    '  $writer = New-Object System.IO.StreamWriter($fs, $enc)' + #13#10 +
+    '  $writer.Write([System.IO.File]::ReadAllText($source))' + #13#10 +
+    '  $writer.Close()' + #13#10 +
+    '  Move-Item -LiteralPath $staging -Destination $dest -Force' + #13#10 +
+    '  Remove-Item -LiteralPath $source -Force' + #13#10 +
+    '  exit 0' + #13#10 +
+    '} catch {' + #13#10 +
+    '  if ($staging -and (Test-Path -LiteralPath $staging)) { Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue }' + #13#10 +
+    '  Remove-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue' + #13#10 +
+    '  exit 1' + #13#10 +
+    '}';
+  SaveStringToFile(HelperPath, HelperScript, False);
+  Result := RunCmd('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + HelperPath +
+    '" "' + TempJson + '" "' + SecretsPath + '" "' + ServiceAccount + '"');
+  DeleteFile(HelperPath);
+end;
+
+procedure WriteProtectedSecretsFile(AppDir: String; ConnString, JwtKey, CertPass, SeedPass: String);
+var
+  SecretsPath, JsonLines, TempJson: String;
+  JsonLinesArr: TArrayOfString;
+begin
+  SecretsPath := AppDir + '\secrets.json';
+  // Formato ANIDADO compatible con el sistema de configuración .NET:
+  // GetConnectionString("DefaultConnection"), config["SystemSettings:AdminSeedPassword"],
+  // config["JwtSettings:Key"] y config["Kestrel:Certificates:Default:Password"].
+  // Las claves planas con "__" solo funcionan en variables de entorno, no en JSON.
+  JsonLines := '{' +
+    '"ConnectionStrings": { "DefaultConnection": "' + JsonEsc(ConnString) + '" },' +
+    '"SystemSettings": { "AdminSeedPassword": "' + JsonEsc(SeedPass) + '" },' +
+    '"JwtSettings": { "Key": "' + JsonEsc(JwtKey) + '" },' +
+    '"Kestrel": { "Certificates": { "Default": { "Password": "' + JsonEsc(CertPass) + '" } } }' +
+    '}';
+
+  TempJson := GetTempDir + 'pos-secrets.json.tmp';
+  DeleteFile(TempJson);
+  SetArrayLength(JsonLinesArr, 1);
+  JsonLinesArr[0] := JsonLines;
+  SaveStringsToUTF8File(TempJson, JsonLinesArr, False);
+  if not FileExists(TempJson) then
+  begin
+    MsgBox('No se pudo preparar el archivo temporal de secretos en: ' + GetTempDir, mbError, MB_OK);
+    Exit;
+  end;
+
+  if (WriteSecretsJsonWithAcl(TempJson, SecretsPath, 'NT SERVICE\' + ServiceName) <> 0) or (not FileExists(SecretsPath)) then
+  begin
+    DeleteFile(TempJson);
+    MsgBox('No se pudo escribir secrets.json con ACL restrictiva: ' + SecretsPath + #13#10 +
+      'El servicio no podrá iniciar sin sus credenciales.', mbError, MB_OK);
+  end;
+end;
+
 procedure ConfigureServiceWithPowerShell;
 var
   PsScript, PsParams, ConnString: String;
@@ -370,30 +541,36 @@ begin
   ConnString := 'Host=' + DbPage.Values[0] + ';Port=' + DbPage.Values[1] + ';Database=' +
     DbPage.Values[2] + ';Username=' + DbPage.Values[3] + ';Password=' + DbPage.Values[4];
 
+  // 8.29-A1: los secretos se escriben en secrets.json protegido ANTES de invocar el
+  // script; el argv de PowerShell queda limpio de credenciales (sin -ConnectionString,
+  // -AdminSeedPassword ni -HttpsCertPassword).
+  WriteProtectedSecretsFile(ExpandConstant('{app}\BackendAPI'), ConnString,
+    GetOrGenerateJwtKey, GetOrGenerateCertPass, AdminPage.Values[2]);
+
   PsParams := '-NoProfile -ExecutionPolicy Bypass -File "' + PsScript + '"' +
     ' -InstallDir "' + ExpandConstant('{app}') + '"' +
-    ' -ConnectionString "' + ConnString + '"' +
-    ' -AdminSeedPassword "' + EscapeQuotes(AdminPage.Values[2]) + '"' +
     ' -AdminSeedUsername "' + Trim(AdminPage.Values[0]) + '"' +
     ' -AdminSeedName "' + Trim(AdminPage.Values[1]) + '"' +
     ' -BusinessName "' + Trim(AdminPage.Values[4]) + '"';
 
   Code := RunCmd('powershell.exe', PsParams);
-  if Code <> 0 then
-  begin
+  if Code = 3 then
+    MsgBox('La validación de la conexión a PostgreSQL falló.' + #13#10 + #13#10 +
+      'El servicio del backend quedó SIN INICIAR. Corrija los datos de conexión o el estado de PostgreSQL y vuelva a ejecutar el instalador (o edite secrets.json y arranque el servicio).' + #13#10 + #13#10 +
+      'Detalle completo en: ' + ExpandConstant('{app}\BackendAPI\logs\installer.log'), mbError, MB_OK)
+  else if Code <> 0 then
     MsgBox('Aviso: La configuración del servicio reportó código ' + IntToStr(Code) + '.' + #13#10 +
       'Revise el registro detallado en:' + #13#10 +
       ExpandConstant('{app}\BackendAPI\logs\installer.log'), mbInformation, MB_OK);
-  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
-    // 1) Config de producción inicial (respaldo estático)
-    WriteProductionConfig(not HasNssm);
-    // 2) Configuración idempotente del servicio y firewall mediante PowerShell
+    // 1) Config de producción inicial (respaldo estático, SIN secretos; 8.29-A1)
+    WriteProductionConfig;
+    // 2) Configuración idempotente del servicio, firewall, secrets.json y backup
     ConfigureServiceWithPowerShell;
   end;
 end;

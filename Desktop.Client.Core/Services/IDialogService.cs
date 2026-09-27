@@ -18,7 +18,7 @@ public interface IDialogService
     Task<string?> ShowTextInputAsync(string prompt, string hint);
     Task<(bool success, string currentPassword, string newPassword)?> ShowChangePasswordDialogAsync();
     decimal? ShowCashAdvanceDialog();
-    void ShowSuccessDialog(string message);
+    bool ShowSuccessDialog(string message, string? secondaryActionLabel = null);
     Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title);
     bool? ShowProductDialog(ViewModels.ProductDialogViewModel dialogVm);
     (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(ProductDto product);
@@ -30,6 +30,12 @@ public interface IDialogService
     Task<bool> ShowServerConnectionDialogAsync();
     Task<ProductDto?> ShowVariantSelectionDialogAsync(ProductQuickInfoDto parentProduct);
     Task ShowVariantManagementDialogAsync(ProductDto parentProduct);
+
+    /// <summary>Abre el dialogo modal alojado (p. ej. checkout) y devuelve el resultado al cerrarse.</summary>
+    Task<object?> ShowModalAsync(object content, string? dialogIdentifier = null);
+
+    /// <summary>Cierra el dialogo modal actual devolviendo un resultado (sustituye DialogHost.CloseDialogCommand).</summary>
+    void CloseCurrentModal(object? result = null);
 }
 
 

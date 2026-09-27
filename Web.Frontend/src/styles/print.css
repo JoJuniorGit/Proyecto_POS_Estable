@@ -1,0 +1,42 @@
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 12pt !important;
+  }
+
+  .sidebar,
+  .topbar,
+  .no-print,
+  .menu-btn,
+  button,
+  .modal-overlay {
+    display: none !important;
+  }
+
+  .layout-main,
+  .layout-content,
+  .register-close-container {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  .card,
+  .print-clean-card {
+    border: 1px solid #cccccc !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 15px !important;
+  }
+
+  .cart-table th,
+  .cart-table td {
+    border-bottom: 1px solid #dddddd !important;
+    color: #000000 !important;
+  }
+}

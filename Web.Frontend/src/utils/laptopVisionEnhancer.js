@@ -156,6 +156,105 @@ export function applyLuminanceInversion(imageData) {
   return imageData;
 }
 
+export const LAPTOP_VISION_MAX_WIDTH = 800;
+export const LAPTOP_VISION_BASE_INTERVAL_MS = 50;
+export const LAPTOP_VISION_RECENT_INTERVAL_MS = 120;
+export const LAPTOP_VISION_HEAVY_INTERVAL_MS = 250;
+export const LAPTOP_VISION_RECENT_WINDOW_MS = 1500;
+export const LAPTOP_VISION_CHEAP_PASS = 2;
+export const LAPTOP_VISION_HEAVY_PASSES = [0, 1, 3];
+export const LAPTOP_VISION_SIGNATURE_WIDTH = 32;
+export const LAPTOP_VISION_SIGNATURE_HEIGHT = 18;
+const LAPTOP_VISION_SIGNATURE_DELTA = 12;
+
+export function computeLaptopVisionCrop(videoWidth, videoHeight, passIndex = 0, maxWidth = LAPTOP_VISION_MAX_WIDTH) {
+  const zoomFactor = passIndex === 2 ? 0.55 : 0.45;
+  const sw = videoWidth * zoomFactor;
+  const sh = videoHeight * zoomFactor;
+  const scale = sw > maxWidth ? maxWidth / sw : 1;
+
+  return {
+    sx: (videoWidth - sw) / 2,
+    sy: (videoHeight - sh) / 2,
+    sw,
+    sh,
+    dw: Math.round(sw * scale),
+    dh: Math.round(sh * scale),
+  };
+}
+
+export function captureLaptopFrameSignature(video, canvas, width = LAPTOP_VISION_SIGNATURE_WIDTH, height = LAPTOP_VISION_SIGNATURE_HEIGHT) {
+  if (!video || !canvas || video.readyState < 2) return null;
+
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+
+  ctx.drawImage(video, 0, 0, width, height);
+  const { data } = ctx.getImageData(0, 0, width, height);
+
+  const signature = new Uint8Array(width * height);
+  for (let i = 0; i < signature.length; i++) {
+    const idx = i * 4;
+    signature[i] = ((data[idx] * 299 + data[idx + 1] * 587 + data[idx + 2] * 114 + 500) / 1000) | 0;
+  }
+
+  return signature;
+}
+
+export function isFrameSignatureChanged(previous, next, delta = LAPTOP_VISION_SIGNATURE_DELTA) {
+  if (!previous || !next || previous.length !== next.length) return true;
+
+  for (let i = 0; i < previous.length; i++) {
+    if (Math.abs(previous[i] - next[i]) >= delta) return true;
+  }
+
+  return false;
+}
+
+export function computeLaptopVisionIntervalMs({
+  now,
+  lastDetectedAt = 0,
+  baseIntervalMs = LAPTOP_VISION_BASE_INTERVAL_MS,
+  recentIntervalMs = LAPTOP_VISION_RECENT_INTERVAL_MS,
+  recentWindowMs = LAPTOP_VISION_RECENT_WINDOW_MS,
+}) {
+  if (lastDetectedAt > 0 && now - lastDetectedAt < recentWindowMs) return recentIntervalMs;
+  return baseIntervalMs;
+}
+
+export function planLaptopVisionTick({
+  now,
+  lastHeavyPassAt = 0,
+  lastDetectedAt = 0,
+  frameChanged = true,
+  heavyPassCursor = 0,
+  heavyIntervalMs = LAPTOP_VISION_HEAVY_INTERVAL_MS,
+  cheapPass = LAPTOP_VISION_CHEAP_PASS,
+  heavyPasses = LAPTOP_VISION_HEAVY_PASSES,
+}) {
+  const intervalMs = computeLaptopVisionIntervalMs({ now, lastDetectedAt });
+
+  if (now - lastHeavyPassAt >= heavyIntervalMs) {
+    return {
+      action: 'heavy',
+      passIndex: heavyPasses[heavyPassCursor % heavyPasses.length],
+      heavyPassCursor: heavyPassCursor + 1,
+      intervalMs,
+    };
+  }
+
+  if (!frameChanged) {
+    return { action: 'skip', passIndex: null, heavyPassCursor, intervalMs };
+  }
+
+  return { action: 'cheap', passIndex: cheapPass, heavyPassCursor, intervalMs };
+}
+
 /**
  * Prepara y procesa un fotograma según el paso del pipeline multi-fase.
  * @param {HTMLVideoElement} video
@@ -163,7 +262,7 @@ export function applyLuminanceInversion(imageData) {
  * @param {number} passIndex (0: Sauvola Binarized, 1: 1D Horizontal Sharpen, 2: Raw High-Res Crop, 3: Invertido)
  * @returns {ImageData|null}
  */
-export function processMultiPassLaptopFrame(video, canvas, passIndex = 0) {
+export function processMultiPassLaptopFrame(video, canvas, passIndex = 0, options = {}) {
   if (!video || !canvas || video.readyState < 2) return null;
 
   const vw = video.videoWidth || 1280;
@@ -172,21 +271,18 @@ export function processMultiPassLaptopFrame(video, canvas, passIndex = 0) {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
 
-  // Zoom central 2.2x para máxima densidad de píxeles a distancia focal nítida (35-45 cm)
-  const zoomFactor = passIndex === 2 ? 0.55 : 0.45;
-  const sw = vw * zoomFactor;
-  const sh = vh * zoomFactor;
-  const sx = (vw - sw) / 2;
-  const sy = (vh - sh) / 2;
+  const { sx, sy, sw, sh, dw, dh } = computeLaptopVisionCrop(vw, vh, passIndex, options.maxWidth);
 
-  const dw = (canvas.width = Math.round(sw));
-  const dh = (canvas.height = Math.round(sh));
+  if (canvas.width !== dw || canvas.height !== dh) {
+    canvas.width = dw;
+    canvas.height = dh;
+  }
 
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, dw, dh);
 
   if (passIndex === 2) {
     // Paso 2: Fotograma original recortado en alta resolución
-    return ctx.getImageData(0, 0, dw, dh);
+    return null;
   }
 
   const imageData = ctx.getImageData(0, 0, dw, dh);

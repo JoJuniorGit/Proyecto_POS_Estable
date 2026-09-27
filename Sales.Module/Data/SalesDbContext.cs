@@ -53,11 +53,13 @@ public class SalesDbContext : DbContext
             .HasIndex(u => u.Cedula)
             .IsUnique();
 
-        modelBuilder.Entity<User>()
-            .HasIndex(u => u.Username)
-            .IsUnique();
+        // 8.142: la unicidad de Username la garantiza el indice funcional case-insensitive
+        // ix_users_username_lower (migracion 20260823120000, SQL crudo: EF no modela indices
+        // funcionales). La declaracion previa HasIndex(Username).IsUnique() era drift puro: el
+        // modelo la declaraba, ninguna migracion la creaba y la base nunca tuvo ese indice
+        // (los tests si, por EnsureCreated). Detectado por MigrationIndexDriftTests.
 
-        modelBuilder.Entity<User>().HasData(
+modelBuilder.Entity<User>().HasData(
             new User
             {
                 Id = 1,
@@ -66,7 +68,8 @@ public class SalesDbContext : DbContext
                 Username = "admin",
                 Role = UserRole.Admin,
                 IsActive = true,
-                CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+                CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                SecurityStamp = ""
             }
         );
 
@@ -108,7 +111,7 @@ public class SalesDbContext : DbContext
 
         modelBuilder.Entity<Sale>()
             .Property(s => s.AppliedRate)
-            .HasColumnType("decimal(18,2)");
+            .HasColumnType("decimal(18,4)");
 
         modelBuilder.Entity<Sale>().Property(s => s.TotalBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<Sale>().Property(s => s.SubtotalBsS).HasColumnType("decimal(18,4)");
@@ -136,6 +139,12 @@ public class SalesDbContext : DbContext
             .HasIndex(i => i.SaleId)
             .HasDatabaseName("IX_SaleItems_SaleId");
 
+        // 8.142: reportes de rotacion y stock muerto por producto (Paso 15 de docs/Ideas.txt).
+        // Sin FK hacia Products: la entidad vive en InventoryDbContext y no hay FKs cross-context.
+        modelBuilder.Entity<SaleItem>()
+            .HasIndex(i => i.ProductId)
+            .HasDatabaseName("IX_SaleItems_ProductId");
+
         modelBuilder.Entity<SalePayment>()
             .HasIndex(p => p.SaleId)
             .HasDatabaseName("IX_SalePayments_SaleId");
@@ -150,9 +159,10 @@ public class SalesDbContext : DbContext
 
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitPriceBsS).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<SaleItem>().Property(i => i.SubtotalBsS).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<SaleItem>().Property(i => i.UnitCostUSD).HasColumnType("decimal(18,2)");
 
         modelBuilder.Entity<SalePayment>().Property(p => p.AmountBsS).HasColumnType("decimal(18,2)");
-        modelBuilder.Entity<SalePayment>().Property(p => p.ExchangeRate).HasColumnType("decimal(18,2)");
+        modelBuilder.Entity<SalePayment>().Property(p => p.ExchangeRate).HasColumnType("decimal(18,4)");
 
         // Cash Drawer Configurations
         modelBuilder.Entity<CashDrawerSession>()
@@ -162,11 +172,10 @@ public class SalesDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<CashDrawerSession>()
-            .HasIndex(s => s.Status);
-
-        modelBuilder.Entity<CashTransaction>()
-            .HasIndex(t => t.SessionId)
-            .HasDatabaseName("IX_CashTransactions_SessionId");
+            .HasIndex(s => s.Status)
+            .IsUnique()
+            .HasFilter("\"Status\" = 0")
+            .HasDatabaseName("IX_CashDrawerSessions_SingleOpen");
 
         modelBuilder.Entity<CashTransaction>()
             .HasIndex(t => t.TransactionTime)
@@ -186,12 +195,12 @@ public class SalesDbContext : DbContext
             .HasDatabaseName("IX_CashTransactions_PaymentMethodId");
 
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningBalanceLocal).HasColumnType("decimal(18,2)");
-        modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningExchangeRate).HasColumnType("decimal(18,2)");
+        modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningExchangeRate).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingBalanceLocal).HasColumnType("decimal(18,2)");
-        modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingExchangeRate).HasColumnType("decimal(18,2)");
+        modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingExchangeRate).HasColumnType("decimal(18,4)");
 
         modelBuilder.Entity<CashTransaction>().Property(t => t.AmountUsd).HasColumnType("decimal(18,2)");
-        modelBuilder.Entity<CashTransaction>().Property(t => t.ExchangeRate).HasColumnType("decimal(18,2)");
+        modelBuilder.Entity<CashTransaction>().Property(t => t.ExchangeRate).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashTransaction>().Property(t => t.AmountLocal).HasColumnType("decimal(18,2)");
 
         // Daily Closure Configurations
@@ -224,6 +233,24 @@ public class SalesDbContext : DbContext
                 .IsConcurrencyToken();
         }
 
+        // Tokens de concurrencia basados en `xmin` de PostgreSQL (hallazgo 8.2-A1).
+        // `xmin` es una pseudo-columna de sistema que toda tabla PostgreSQL expone, por lo
+        // que se configura en caliente sin DDL adicional y se omite en SQLite (tests).
+        if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            modelBuilder.Entity<Sale>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+
+            modelBuilder.Entity<CashDrawerSession>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+        }
+
         // Seed initial payment methods
         modelBuilder.Entity<PaymentMethod>().HasData(
             new PaymentMethod { Id = 1, Name = "Cash", IsActive = true, RequiresReference = false, IsCash = true, IsDeleted = false },
@@ -250,7 +277,8 @@ public class SalesDbContext : DbContext
             entity.Property(e => e.Status).HasMaxLength(20).IsRequired();
             entity.Property(e => e.Payload).HasColumnType("jsonb").IsRequired();
             entity.HasIndex(e => new { e.Status, e.NextRetryUtc })
-                .HasDatabaseName("IX_OutboxMessages_Status_NextRetryUtc");
+                .HasDatabaseName("IX_OutboxMessages_Status_NextRetryUtc")
+                .HasFilter("\"Status\" = 'Pending'");
             entity.HasIndex(e => e.CreatedAtUtc)
                 .HasDatabaseName("IX_OutboxMessages_CreatedAtUtc");
         });

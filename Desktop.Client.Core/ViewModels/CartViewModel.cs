@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Core.Common;
 using Core.DTOs;
 using Desktop.Client.Helpers;
 using Desktop.Client.Messages;
@@ -8,7 +9,6 @@ using Desktop.Client.Services;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
 
 namespace Desktop.Client.ViewModels;
 
@@ -18,13 +18,20 @@ namespace Desktop.Client.ViewModels;
 /// </summary>
 public partial class CartViewModel : ObservableObject, System.IDisposable
 {
-    private readonly ISalesService _sales_service;
-    private readonly IExchangeRateService _exchange_rate_service;
+    private readonly ISalesService _salesService;
+    private readonly IExchangeRateService _exchangeRateService;
+    private readonly IDialogService? _dialogService;
+    private readonly IDispatcherInvoker _dispatcherInvoker;
+    private readonly ISaleRecoveryStore? _recoveryStore;
+    private bool _preserveRecoveryClearOnce;
 
-    public CartViewModel(ISalesService sales_service, IExchangeRateService exchange_rate_service)
+    public CartViewModel(ISalesService salesService, IExchangeRateService exchangeRateService, IDialogService? dialogService = null, IDispatcherInvoker? dispatcherInvoker = null, ISaleRecoveryStore? recoveryStore = null)
     {
-        _sales_service = sales_service;
-        _exchange_rate_service = exchange_rate_service;
+        _salesService = salesService;
+        _exchangeRateService = exchangeRateService;
+        _dialogService = dialogService;
+        _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
+        _recoveryStore = recoveryStore;
 
         // Reactive sync: When the rate changes, update all items and totals at once.
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
@@ -45,7 +52,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             {
                 try
                 {
-                    var updated = await _sales_service.GetSaleAsync(CurrentSale.Id);
+                    var updated = await _salesService.GetSaleAsync(CurrentSale.Id);
                     CurrentSale = updated;
                 }
                 catch
@@ -56,25 +63,25 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         });
     }
 
-    private ObservableCollection<CartItemViewModel> _cart_items = new();
+    private ObservableCollection<CartItemViewModel> _cartItems = new();
     public ObservableCollection<CartItemViewModel> CartItems
     {
-        get => _cart_items;
-        private set => SetProperty(ref _cart_items, value);
+        get => _cartItems;
+        private set => SetProperty(ref _cartItems, value);
     }
 
-    private CartItemViewModel? _selected_sale_item;
+    private CartItemViewModel? _selectedSaleItem;
     public CartItemViewModel? SelectedSaleItem
     {
-        get => _selected_sale_item;
-        set => SetProperty(ref _selected_sale_item, value);
+        get => _selectedSaleItem;
+        set => SetProperty(ref _selectedSaleItem, value);
     }
 
-    private decimal _total_usd;
+    private decimal _totalUsd;
     public decimal TotalUSD
     {
-        get => _total_usd;
-        set => SetProperty(ref _total_usd, value);
+        get => _totalUsd;
+        set => SetProperty(ref _totalUsd, value);
     }
 
     private decimal _subtotal;
@@ -84,28 +91,38 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         set => SetProperty(ref _subtotal, value);
     }
 
-    private bool _is_empty = true;
+    private bool _isEmpty = true;
     public bool IsEmpty
     {
-        get => _is_empty;
-        set => SetProperty(ref _is_empty, value);
+        get => _isEmpty;
+        set => SetProperty(ref _isEmpty, value);
     }
 
-    public decimal SubtotalLocal => CurrentSale != null && CurrentSale.Status != "Pending"
-        ? CurrentSale.SubtotalBsS 
-        : PricingHelper.ToBsS(Subtotal, _exchange_rate_service.CurrentRate);
-        
-    public decimal TotalAmountLocal => CurrentSale != null && CurrentSale.Status != "Pending"
-        ? CurrentSale.TotalBsS 
-        : PricingHelper.ToBsS(TotalUSD, _exchange_rate_service.CurrentRate);
+    public decimal SubtotalLocal => IsLivePendingSale
+        ? LiveTotalBsS
+        : CurrentSale?.SubtotalBsS > 0
+            ? CurrentSale.SubtotalBsS
+            : PricingHelper.RoundToDigital(Subtotal * _exchangeRateService.CurrentRate);
 
-    private SaleDto? _current_sale;
+    public decimal TotalAmountLocal => IsLivePendingSale
+        ? LiveTotalBsS
+        : CurrentSale?.TotalBsS > 0
+            ? CurrentSale.TotalBsS
+            : PricingHelper.RoundToDigital(TotalUSD * _exchangeRateService.CurrentRate);
+
+    private bool IsLivePendingSale => CurrentSale is { Status: "Pending" } && CartItems.Count > 0;
+
+    public bool HasUncommittedItems => CurrentSale is { Status: "Pending" } && CartItems.Count > 0;
+
+    private decimal LiveTotalBsS => PricingHelper.RoundToDigital(CartItems.Sum(c => c.SubtotalBsS));
+
+    private SaleDto? _currentSale;
     public SaleDto? CurrentSale
     {
-        get => _current_sale;
+        get => _currentSale;
         set
         {
-            if (SetProperty(ref _current_sale, value))
+            if (SetProperty(ref _currentSale, value))
             {
                 OnPropertyChanged(nameof(CustomerName));
                 OnPropertyChanged(nameof(CustomerCedula));
@@ -116,9 +133,9 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         }
     }
 
-    public string CustomerName => _current_sale?.CustomerName ?? "Consumidor Final";
-    public string CustomerCedula => _current_sale?.CustomerCedula ?? "V-00000000";
-    public string PriceListType => _current_sale?.PriceListType ?? "Retail";
+    public string CustomerName => _currentSale?.CustomerName ?? "Consumidor Final";
+    public string CustomerCedula => _currentSale?.CustomerCedula ?? "V-00000000";
+    public string PriceListType => _currentSale?.PriceListType ?? "Retail";
     public bool IsWholesalePriceList => PriceListType == "Wholesale";
 
     [RelayCommand]
@@ -127,12 +144,12 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         if (CurrentSale == null || string.Equals(CurrentSale.PriceListType, type, System.StringComparison.OrdinalIgnoreCase)) return;
         try
         {
-            var updated = await _sales_service.UpdatePriceListAsync(CurrentSale.Id, type);
+            var updated = await _salesService.UpdatePriceListAsync(CurrentSale.Id, type);
             CurrentSale = updated;
         }
         catch (System.Exception ex)
         {
-            MessageBox.Show(ex.Message, "Lista de Precios", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (_dialogService != null) _dialogService.ShowWarning("Lista de Precios", ex.Message);
         }
     }
 
@@ -143,9 +160,9 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             if (CurrentSale != null)
             {
                 var idToRestore = SelectedSaleItem?.Id;
-                
+
                 CartItems.Clear();
-                decimal rateToUse = CurrentSale.AppliedRate > 0 ? CurrentSale.AppliedRate : _exchange_rate_service.CurrentRate;
+                decimal rateToUse = CurrentSale.AppliedRate > 0 ? CurrentSale.AppliedRate : _exchangeRateService.CurrentRate;
                 bool isHistorical = CurrentSale.Status != "Pending";
                 foreach (var item in CurrentSale.Items)
                 {
@@ -164,13 +181,46 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
                 RecalculateTotals();
                 IsEmpty = true;
             }
+
+            PersistRecoveryState();
         }
 
-        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        if (dispatcher == null || dispatcher.CheckAccess())
-            DoUpdate();
-        else
-            dispatcher.Invoke(DoUpdate);
+        _dispatcherInvoker.Invoke(DoUpdate);
+    }
+
+    private void PersistRecoveryState()
+    {
+        try
+        {
+            if (CurrentSale is { Status: "Pending" } sale && CartItems.Count > 0)
+            {
+                _recoveryStore?.Save(new SaleRecoverySnapshot
+                {
+                    SaleId = sale.Id,
+                    CustomerName = sale.CustomerName,
+                    ItemCount = CartItems.Count,
+                    TotalUSD = sale.TotalUSD,
+                    Status = sale.Status,
+                    SavedAtUtc = DateTime.UtcNow
+                });
+            }
+            else if (_preserveRecoveryClearOnce)
+            {
+                _preserveRecoveryClearOnce = false;
+            }
+            else
+            {
+                _recoveryStore?.Clear();
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    public void PreserveRecoverySnapshotOnNextClear()
+    {
+        _preserveRecoveryClearOnce = true;
     }
 
     private void RecalculateTotals()
@@ -205,26 +255,9 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         {
             if (CurrentSale.Status == "OnHold")
             {
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        var updated = await _sales_service.GetSaleAsync(CurrentSale.Id);
-                        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-                        if (dispatcher != null && !dispatcher.CheckAccess())
-                        {
-                            dispatcher.Invoke(() => CurrentSale = updated);
-                        }
-                        else
-                        {
-                            CurrentSale = updated;
-                        }
-                    }
-                    catch
-                    {
-                        // Ignore transient network issues
-                    }
-                });
+                // 8.9-M14: sin Task.Run para I/O pura (GetSaleAsync es async, no bloquea);
+                // se despacha en background implícito del await con fire-and-forget sancionado.
+                RefreshOnHoldSaleAsync().SafeFireAndForget("CartViewModel.UpdateAllPrices");
                 return;
             }
 
@@ -243,6 +276,19 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         OnPropertyChanged(nameof(SubtotalLocal));
     }
 
+    private async Task RefreshOnHoldSaleAsync()
+    {
+        try
+        {
+            var updated = await _salesService.GetSaleAsync(CurrentSale!.Id);
+            _dispatcherInvoker.Invoke(() => CurrentSale = updated);
+        }
+        catch
+        {
+            // Ignorar errores de red transitorios (misma semántica que el código previo).
+        }
+    }
+
     [RelayCommand]
     private async Task IncreaseQuantity(CartItemViewModel? vm)
     {
@@ -251,12 +297,12 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         {
             int selectedId = vm.Id;
             decimal newQty = Math.Round(vm.Model.Quantity + vm.StepAmount, 3, MidpointRounding.AwayFromZero);
-            CurrentSale = await _sales_service.UpdateItemQuantityAsync(CurrentSale.Id, vm.Id, newQty, _exchange_rate_service.CurrentRate);
+            CurrentSale = await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, vm.Id, newQty, _exchangeRateService.CurrentRate);
             SelectedSaleItem = CartItems.FirstOrDefault(i => i.Id == selectedId);
         }
         catch (System.Exception ex)
         {
-            MessageBox.Show(ex.Message);
+            if (_dialogService != null) _dialogService.ShowWarning("Error", ex.Message);
         }
     }
 
@@ -274,12 +320,12 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             }
 
             int selectedId = vm.Id;
-            CurrentSale = await _sales_service.UpdateItemQuantityAsync(CurrentSale.Id, vm.Id, newQty, _exchange_rate_service.CurrentRate);
+            CurrentSale = await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, vm.Id, newQty, _exchangeRateService.CurrentRate);
             SelectedSaleItem = CartItems.FirstOrDefault(i => i.Id == selectedId);
         }
         catch (System.Exception ex)
         {
-            MessageBox.Show(ex.Message);
+            if (_dialogService != null) _dialogService.ShowWarning("Error", ex.Message);
         }
     }
 
@@ -289,11 +335,11 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         if (CurrentSale == null || vm == null) return;
         try
         {
-            CurrentSale = await _sales_service.RemoveItemAsync(CurrentSale.Id, vm.Id, _exchange_rate_service.CurrentRate);
+            CurrentSale = await _salesService.RemoveItemAsync(CurrentSale.Id, vm.Id, _exchangeRateService.CurrentRate);
         }
         catch (System.Exception ex)
         {
-            MessageBox.Show($"Error removing item: {ex.Message}");
+            if (_dialogService != null) _dialogService.ShowError("Error", $"Error removing item: {ex.Message}");
         }
     }
 
@@ -312,7 +358,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
                 return;
             }
 
-            var updated = await _sales_service.UpdateItemQuantityAsync(CurrentSale.Id, itemId, newQty, _exchange_rate_service.CurrentRate);
+            var updated = await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, itemId, newQty, _exchangeRateService.CurrentRate);
             
             var existingVm = CartItems.FirstOrDefault(i => i.Id == itemId);
             if (existingVm != null)
@@ -328,7 +374,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
                 }
             }
 
-            _current_sale = updated;
+            _currentSale = updated;
             RecalculateTotals();
         }
         catch (System.Exception ex)
@@ -346,10 +392,10 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             {
                 if (item.Model.Quantity > 0m)
                 {
-                    await _sales_service.UpdateItemQuantityAsync(CurrentSale.Id, item.Id, item.Model.Quantity, _exchange_rate_service.CurrentRate);
+                    await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, item.Id, item.Model.Quantity, _exchangeRateService.CurrentRate);
                 }
             }
-            var reloaded = await _sales_service.GetSaleAsync(CurrentSale.Id);
+            var reloaded = await _salesService.GetSaleAsync(CurrentSale.Id);
             CurrentSale = reloaded;
         }
         catch (System.Exception ex)

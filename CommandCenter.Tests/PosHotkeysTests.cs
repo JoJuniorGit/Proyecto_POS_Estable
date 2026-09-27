@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
@@ -81,6 +82,11 @@ public class PosHotkeysTests
             mockRate.Object,
             cartVm,
             loggedOutSession);
+
+        // El bus de mensajes es estático y compartido entre pruebas: otras clases concurrentes
+        // difunden CurrentSaleChangedMessage (SalesService real en ClientHttpContractTests) y
+        // reemplazarían el CurrentSale del carrito durante el toggle, alterando PriceListType.
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
 
         // Act
         await vm.TogglePriceListCommand.ExecuteAsync(null);

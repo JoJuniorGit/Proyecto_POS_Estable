@@ -15,6 +15,8 @@ public static class PricingHelper
 
     public static decimal ToBsS(decimal amountUsd, decimal rate) => PricingCalculator.ToBsS(amountUsd, rate);
 
+    public static decimal ToBsSCeiling(decimal amountUsd, decimal rate) => PricingCalculator.ToBsSCeiling(amountUsd, rate);
+
     public static decimal ToUSD(decimal amountBsS, decimal rate) => PricingCalculator.ToUSD(amountBsS, rate);
 }
 

@@ -1,12 +1,14 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using Backend.API.Services;
 using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +16,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using Sales.Module.Data;
+using Sales.Module.DTOs;
 using Sales.Module.Interfaces;
 using Sales.Module.Services;
 using Xunit;
@@ -79,9 +82,10 @@ public class Phase1SecurityRemediationTests
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.NotNull(badRequestResult.Value);
         
-        var messageProp = badRequestResult.Value.GetType().GetProperty("message", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
-        Assert.NotNull(messageProp);
-        var message = messageProp.GetValue(badRequestResult.Value)?.ToString();
+        var message = badRequestResult.Value is ProblemDetails pd 
+            ? (pd.Extensions.TryGetValue("message", out var m) ? m?.ToString() : pd.Detail) 
+            : badRequestResult.Value.GetType().GetProperty("message", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)?.GetValue(badRequestResult.Value)?.ToString();
+        Assert.NotNull(message);
         Assert.Contains("Idempotency-Key", message);
 
         // Verify sales service was never invoked
@@ -101,8 +105,13 @@ public class Phase1SecurityRemediationTests
     public async Task HealthCheck_DoesNotExposeMachineNameOrDbExceptions()
     {
         // Arrange
-        using var db = CreateInMemorySalesDbContext();
-        var controller = new HealthController(db);
+        var salesProbe = new Mock<ISalesHealthProbe>();
+        salesProbe.Setup(p => p.CanConnectAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var inventoryProbe = new Mock<IInventoryHealthProbe>();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>()).Build();
+        var env = new Mock<IWebHostEnvironment>();
+        env.SetupGet(e => e.ContentRootPath).Returns(AppContext.BaseDirectory);
+        var controller = new HealthController(salesProbe.Object, inventoryProbe.Object, config, env.Object, new Backend.API.Metrics.RequestMetricsRegistry());
 
         // Act
         var result = await controller.CheckHealth();
@@ -132,7 +141,7 @@ public class Phase1SecurityRemediationTests
         var config = CreateMockConfiguration();
         var tokenService = new TokenService(config);
 
-        var controller = new AuthController(db, tokenService);
+        var controller = new AuthController(new AuthService(db), tokenService);
 
         // Act: Non-existent user
         var responseNonExistent = await controller.Login(new LoginRequest
@@ -145,9 +154,10 @@ public class Phase1SecurityRemediationTests
         var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(responseNonExistent.Result);
         Assert.NotNull(unauthorizedResult.Value);
 
-        var messageProp = unauthorizedResult.Value.GetType().GetProperty("Message");
-        Assert.NotNull(messageProp);
-        var messageValue = messageProp.GetValue(unauthorizedResult.Value)?.ToString();
+        var messageValue = unauthorizedResult.Value is ProblemDetails pdAuth 
+            ? (pdAuth.Extensions.TryGetValue("message", out var m) ? m?.ToString() : pdAuth.Detail) 
+            : unauthorizedResult.Value.GetType().GetProperty("Message")?.GetValue(unauthorizedResult.Value)?.ToString();
+        Assert.NotNull(messageValue);
         Assert.Equal("Credenciales inválidas.", messageValue);
     }
 }

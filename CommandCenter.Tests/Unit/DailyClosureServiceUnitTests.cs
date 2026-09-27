@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Builders;
+using CommandCenter.Tests.TestHelpers;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
 using Sales.Module.Entities;
+using Sales.Module.Interfaces;
 using Sales.Module.Services;
 using Xunit;
 
@@ -16,7 +19,7 @@ public class DailyClosureServiceUnitTests
     private (DailyClosureService service, SalesDbContext context) CreateService()
     {
         var context = TestDatabaseFactory.CreateSalesDbContext();
-        var service = new DailyClosureService(context);
+        var service = DailyClosureTestHelper.CreateService(context);
         return (service, context);
     }
 
@@ -33,49 +36,53 @@ public class DailyClosureServiceUnitTests
     }
 
     [Fact]
-    public async Task CreateClosureAsync_CalculatesTotalDifferencesCorrectly()
+    public async Task CreateClosureFromCommand_CalculatesTotalDifferencesCorrectly()
     {
         var (service, context) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var closure = new DailyClosure
-        {
-            ClosureDate = DateTime.UtcNow,
-            UserId = "Admin1",
-            Observation = "Cierre Normal",
-            Details = new List<ClosureDetail>
+        var now = DateTime.UtcNow;
+        context.Sales.AddRange(
+            new Sale { Id = 501, Status = SaleStatus.Completed, Date = now },
+            new Sale { Id = 502, Status = SaleStatus.Completed, Date = now });
+        context.SalePayments.AddRange(
+            new SalePayment { SaleId = 501, PaymentMethodId = 1, AmountBsS = 1000m },
+            new SalePayment { SaleId = 502, PaymentMethodId = 3, AmountBsS = 2000m });
+        await context.SaveChangesAsync();
+
+        var command = new CreateClosureCommand(
+            now,
+            "Admin1",
+            "Cierre Normal",
+            new List<DeclaredPaymentAmount>
             {
-                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 1000m, ActualAmountBsS = 1050m }, // +50
-                new ClosureDetail { PaymentMethodId = 3, PaymentMethodName = "Punto de Venta", ExpectedAmountBsS = 2000m, ActualAmountBsS = 1980m } // -20
-            }
-        };
+                new(1, 21m),
+                new(3, 1980m)
+            });
 
-        var saved = await service.CreateClosureAsync(closure);
+        var result = await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
 
-        Assert.NotNull(saved);
+        var saved = await context.DailyClosures.AsNoTracking().FirstAsync(dc => dc.Id == result.ClosureId);
         Assert.True(saved.Id > 0);
         Assert.Equal(3000m, saved.TotalExpectedBsS);
         Assert.Equal(3030m, saved.TotalActualBsS);
-        Assert.Equal(30m, saved.TotalDifferenceBsS); // Sobrante neto de 30 BsS
+        Assert.Equal(30m, saved.TotalDifferenceBsS);
     }
 
     [Fact]
-    public async Task CreateClosureAsync_WithNegativeDeclaredAmount_ThrowsArgumentException()
+    public async Task CreateClosureFromCommand_WithNegativeDeclaredAmount_ThrowsArgumentException()
     {
         var (service, context) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var closure = new DailyClosure
-        {
-            ClosureDate = DateTime.UtcNow,
-            UserId = "Admin",
-            Details = new List<ClosureDetail>
-            {
-                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 100m, ActualAmountBsS = -50m }
-            }
-        };
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Admin",
+            null,
+            new List<DeclaredPaymentAmount> { new(1, -50m) });
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.CreateClosureAsync(closure));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => service.CreateClosureFromCommandAsync(command, CancellationToken.None));
         Assert.Contains("no puede ser negativo", ex.Message);
     }
 
@@ -95,7 +102,7 @@ public class DailyClosureServiceUnitTests
             }
         };
 
-        string receipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: true);
+        string receipt = DailyClosureService.GenerateReceiptContent(ShiftReportMapper.MapClosure(closure), isBlind: true);
 
         Assert.Contains("COMPROBANTE DE ARQUEO A CIEGAS", receipt);
         Assert.Contains("Cajero Turno Manana", receipt);
@@ -122,7 +129,7 @@ public class DailyClosureServiceUnitTests
             }
         };
 
-        string receipt = DailyClosureService.GenerateReceiptContent(closure, isBlind: false);
+        string receipt = DailyClosureService.GenerateReceiptContent(ShiftReportMapper.MapClosure(closure), isBlind: false);
 
         Assert.Contains("COMPROBANTE DE CIERRE Y AUDITORÍA DE CAJA", receipt);
         Assert.Contains("Administrador General", receipt);
@@ -157,7 +164,7 @@ public class DailyClosureServiceUnitTests
     }
 
     [Fact]
-    public async Task CreateClosureAsync_MissingActivePaymentMethods_PopulatesAuthoritativeTotals()
+    public async Task CreateClosureFromCommand_MissingActivePaymentMethods_PopulatesAuthoritativeTotals()
     {
         var (service, context) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
@@ -168,25 +175,195 @@ public class DailyClosureServiceUnitTests
         context.SalePayments.Add(new SalePayment { SaleId = 999, PaymentMethodId = 4, AmountBsS = 750m });
         await context.SaveChangesAsync();
 
-        // El cliente envía solo el método 1 y omite los demás métodos activos (incluyendo Pago Móvil)
-        var closure = new DailyClosure
-        {
-            ClosureDate = DateTime.UtcNow,
-            UserId = "Cajero1",
-            Details = new List<ClosureDetail>
-            {
-                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ActualAmountBsS = 500m, ExpectedAmountBsS = 0m }
-            }
-        };
+        // El cliente declara solo el método 1 y omite los demás métodos activos (incluyendo Pago Móvil)
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Cajero1",
+            null,
+            new List<DeclaredPaymentAmount> { new(1, 10m) });
 
-        var saved = await service.CreateClosureAsync(closure);
+        var result = await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
 
         // El método 4 omitido debe haberse poblado automáticamente con su total esperado de 750 Bs.S
-        var method4Detail = saved.Details.FirstOrDefault(d => d.PaymentMethodId == 4);
+        var method4Detail = await context.ClosureDetails
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.DailyClosureId == result.ClosureId && d.PaymentMethodId == 4);
         Assert.NotNull(method4Detail);
         Assert.Equal(750m, method4Detail.ExpectedAmountBsS);
         // Para métodos no-efectivo se consolida automáticamente
         Assert.Equal(750m, method4Detail.ActualAmountBsS);
         Assert.Equal(0m, method4Detail.DifferenceBsS);
+    }
+
+    [Fact]
+    public async Task GetExpectedTotalsByPaymentMethodAsync_PhysicalChangeExpense_NetsOnlyCashMethod()
+    {
+        var (service, context) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var now = DateTime.UtcNow;
+        context.Sales.Add(new Sale { Id = 700, Status = SaleStatus.Completed, Date = now });
+        context.SalePayments.Add(new SalePayment { SaleId = 700, PaymentMethodId = 1, AmountBsS = 1000m });
+        context.Sales.Add(new Sale { Id = 701, Status = SaleStatus.Completed, Date = now });
+        context.SalePayments.Add(new SalePayment { SaleId = 701, PaymentMethodId = 3, AmountBsS = 500m });
+        context.CashTransactions.Add(new CashTransaction
+        {
+            Type = CashTransactionType.Expense,
+            Source = CashTransactionSource.SalePayment,
+            IsPhysicalCash = true,
+            AmountLocal = 150m,
+            PaymentMethodId = 1,
+            SaleId = 700,
+            TransactionTime = now
+        });
+        context.CashTransactions.Add(new CashTransaction
+        {
+            Type = CashTransactionType.Expense,
+            Source = CashTransactionSource.CashAdvance,
+            IsPhysicalCash = true,
+            AmountLocal = 700m,
+            PaymentMethodId = 1,
+            TransactionTime = now
+        });
+        context.CashTransactions.Add(new CashTransaction
+        {
+            Type = CashTransactionType.Income,
+            Source = CashTransactionSource.SalePayment,
+            IsPhysicalCash = true,
+            AmountLocal = 400m,
+            PaymentMethodId = 1,
+            TransactionTime = now
+        });
+        context.CashTransactions.Add(new CashTransaction
+        {
+            Type = CashTransactionType.Expense,
+            Source = CashTransactionSource.SalePayment,
+            IsPhysicalCash = true,
+            AmountLocal = 60m,
+            PaymentMethodId = 1,
+            TransactionTime = now.AddDays(-3)
+        });
+        await context.SaveChangesAsync();
+
+        var totals = await service.GetExpectedTotalsByPaymentMethodAsync(now);
+
+        Assert.Equal(850m, totals.First(t => t.PaymentMethodId == 1).ExpectedAmountBsS);
+        Assert.Equal(500m, totals.First(t => t.PaymentMethodId == 3).ExpectedAmountBsS);
+        Assert.Equal(0m, totals.First(t => t.PaymentMethodId == 2).ExpectedAmountBsS);
+    }
+
+    [Fact]
+    public async Task GetExpectedTotalsByPaymentMethodAsync_ChangeWithoutPaymentMethod_IsAttributedToFirstCashMethod()
+    {
+        var (service, context) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var now = DateTime.UtcNow;
+        context.Sales.Add(new Sale { Id = 710, Status = SaleStatus.Completed, Date = now });
+        context.SalePayments.Add(new SalePayment { SaleId = 710, PaymentMethodId = 1, AmountBsS = 1000m });
+        context.CashTransactions.Add(new CashTransaction
+        {
+            Type = CashTransactionType.Expense,
+            Source = CashTransactionSource.SalePayment,
+            IsPhysicalCash = true,
+            AmountLocal = 200m,
+            PaymentMethodId = null,
+            SaleId = 710,
+            TransactionTime = now
+        });
+        await context.SaveChangesAsync();
+
+        var totals = await service.GetExpectedTotalsByPaymentMethodAsync(now);
+
+        Assert.Equal(800m, totals.First(t => t.PaymentMethodId == 1).ExpectedAmountBsS);
+        Assert.Equal(0m, totals.First(t => t.PaymentMethodId == 2).ExpectedAmountBsS);
+    }
+
+    [Fact]
+    public async Task CreateClosureFromCommand_UnknownPaymentMethodId_ThrowsArgumentException()
+    {
+        var (service, context) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Admin",
+            null,
+            new List<DeclaredPaymentAmount> { new(999, 0m) });
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => service.CreateClosureFromCommandAsync(command, CancellationToken.None));
+        Assert.Contains("no reconocidos", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateClosureFromCommand_PersistedPaymentMethodName_ComesFromAuthoritativeCatalog()
+    {
+        var (service, context) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Admin",
+            null,
+            new List<DeclaredPaymentAmount> { new(1, 0m) });
+
+        var result = await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
+
+        var persisted = await context.ClosureDetails
+            .AsNoTracking()
+            .FirstAsync(d => d.DailyClosureId == result.ClosureId && d.PaymentMethodId == 1);
+        Assert.Equal("Efectivo USD", persisted.PaymentMethodName);
+    }
+
+    [Fact]
+    public async Task CreateClosureFromCommand_DetailsPaddedWithUnknownMethodId_AreRejectedWithoutPersisting()
+    {
+        var (service, context) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Admin",
+            null,
+            new List<DeclaredPaymentAmount>
+            {
+                new(1, 0m),
+                new(2, 0m),
+                new(3, 0m),
+                new(4, 0m),
+                new(999, 0m)
+            });
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => service.CreateClosureFromCommandAsync(command, CancellationToken.None));
+        Assert.Empty(await context.DailyClosures.ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateClosureFromCommand_IncompleteDetails_AddsEveryExpectedMethod()
+    {
+        var (service, context) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Admin",
+            null,
+            new List<DeclaredPaymentAmount> { new(1, 2m) });
+
+        var result = await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
+        var expectedIds = (await service.GetExpectedTotalsByPaymentMethodAsync(command.ClosureDateUtc))
+            .Select(t => t.PaymentMethodId)
+            .ToList();
+
+        var persistedIds = await context.ClosureDetails
+            .AsNoTracking()
+            .Where(d => d.DailyClosureId == result.ClosureId)
+            .Select(d => d.PaymentMethodId)
+            .ToListAsync();
+
+        Assert.All(expectedIds, id => Assert.Contains(id, persistedIds));
+        Assert.Equal(expectedIds.Count, persistedIds.Distinct().Count());
     }
 }

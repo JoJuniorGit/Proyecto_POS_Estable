@@ -2,6 +2,7 @@ using System;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Core.Common;
 using Core.Logging;
 
 namespace Desktop.Client.Services;
@@ -19,6 +20,7 @@ public class HealthPollingService : IHealthPollingService, IDisposable
     private readonly HttpClient _httpClient;
     private readonly IClientStateService? _clientStateService;
     private readonly IConnectionManager? _connectionManager;
+    private readonly TimeSpan _pollInterval;
     private CancellationTokenSource? _cts;
     private readonly object _lock = new object();
     private bool _isPollingActive;
@@ -37,11 +39,12 @@ public class HealthPollingService : IHealthPollingService, IDisposable
 
     public event EventHandler? OnHealthRecovered;
 
-    public HealthPollingService(HttpClient httpClient, IClientStateService? clientStateService = null, IConnectionManager? connectionManager = null)
+    public HealthPollingService(HttpClient httpClient, IClientStateService? clientStateService = null, IConnectionManager? connectionManager = null, TimeSpan? pollInterval = null)
     {
         _httpClient = httpClient;
         _clientStateService = clientStateService;
         _connectionManager = connectionManager;
+        _pollInterval = pollInterval ?? TimeSpan.FromSeconds(3);
     }
 
     public void StartPolling()
@@ -76,7 +79,7 @@ public class HealthPollingService : IHealthPollingService, IDisposable
 
     private async Task PollLoopAsync(CancellationTokenSource originCts, CancellationToken cancellationToken)
     {
-        ClientStateLogger.LogInfo("Health polling loop started in background (polling /health every 3s).");
+        ClientStateLogger.LogInfo($"Health polling loop started in background (polling /health every {_pollInterval.TotalSeconds:0.###}s).");
         int consecutiveFailures = 0;
 
         while (!cancellationToken.IsCancellationRequested)
@@ -118,13 +121,13 @@ public class HealthPollingService : IHealthPollingService, IDisposable
                 _connectionManager?.NotifyConnectionFailed("Sin respuesta del servidor tras múltiples intentos.");
                 if (_connectionManager != null)
                 {
-                    _ = _connectionManager.AutoRecoverAsync(cancellationToken);
+                    _connectionManager.AutoRecoverAsync(cancellationToken).SafeFireAndForget("HealthPollingService.AutoRecover");
                 }
             }
 
             try
             {
-                await Task.Delay(3000, cancellationToken);
+                await Task.Delay(_pollInterval, cancellationToken);
             }
             catch (OperationCanceledException)
             {

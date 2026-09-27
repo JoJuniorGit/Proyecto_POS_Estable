@@ -37,12 +37,31 @@ public static class TestDatabaseFactory
         var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
         if (string.IsNullOrWhiteSpace(connStr)) return null;
 
+        TestSchemaBootstrap.EnsureSharedSchema(connStr);
+
         var options = new DbContextOptionsBuilder<SalesDbContext>()
             .UseNpgsql(connStr)
             .Options;
-        var ctx = new SalesDbContext(options);
-        ctx.Database.EnsureCreated();
-        return ctx;
+        return new SalesDbContext(options);
+    }
+
+    /// <summary>
+    /// 8.9-B4 regression: espejo de la configuracion REAL de Produccion/CI
+    /// (Program.cs) con EnableRetryOnFailure(3) -> NpgsqlRetryingExecutionStrategy.
+    /// Necesaria para reproducir el fallo "retrying strategy does not support
+    /// user-initiated transactions" en queries FromSqlRaw dentro de transaccion manual.
+    /// </summary>
+    public static SalesDbContext? CreatePostgreSqlSalesDbContextWithRetry()
+    {
+        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connStr)) return null;
+
+        TestSchemaBootstrap.EnsureSharedSchema(connStr);
+
+        var options = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseNpgsql(connStr, npgsql => npgsql.EnableRetryOnFailure(3))
+            .Options;
+        return new SalesDbContext(options);
     }
 
     public static (InventoryDbContext context, Microsoft.Data.Sqlite.SqliteConnection connection) CreateSqliteInventoryDbContext()
@@ -78,6 +97,88 @@ public static class TestDatabaseFactory
     }
 
     public static async Task SeedStandardSalesDataAsync(SalesDbContext context)
+    {
+        if (context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory" ||
+            context.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            await SeedInMemoryAsync(context);
+            return;
+        }
+
+        await using var conn = new Npgsql.NpgsqlConnection(context.Database.GetConnectionString());
+        await conn.OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+        await using var lockCmd = new Npgsql.NpgsqlCommand("SELECT pg_advisory_xact_lock(42000)", conn, tx);
+        await lockCmd.ExecuteScalarAsync();
+
+        var methods = new (int Id, string Name, bool IsCash)[]
+        {
+            // 8.143: nombres canónicos del fixture para la clasificación de moneda; el Id=1 debe
+            // quedar dolarizado (PaymentMethodCurrencyResolver clasifica por nombre, 8.9-M16).
+            // Ojo: el esquema de tests se crea con CreateTablesAsync, que inserta el HasData del
+            // modelo ("Cash"/"Card" en Id=1/2); por eso el seed CONVERGE por Id y no asume tabla
+            // vacía. (Id=2/4 conservan nombre/IsCash propios; no contienen "USD": sin efecto
+            // en la clasificación.)
+            (1, "Efectivo USD", true),
+            (2, "Card", false),
+            (3, "Punto de Venta", false),
+            (4, "Pago Movil", false),
+            (5, "Zelle", false)
+        };
+
+        foreach (var (id, name, isCash) in methods)
+        {
+            // Convergencia del Id canónico: si la fila ya existe (p. ej. HasData), se actualizan
+            // nombre/tipo, salvo conflicto con otro registro que use el nombre destino (BD sucia).
+            await using var convergeCmd = new Npgsql.NpgsqlCommand(
+                "UPDATE \"PaymentMethods\" SET \"Name\" = @name, \"IsCash\" = @isCash " +
+                "WHERE \"Id\" = @id AND (\"Name\" <> @name OR \"IsCash\" <> @isCash) " +
+                "AND NOT EXISTS (SELECT 1 FROM \"PaymentMethods\" p2 WHERE p2.\"Name\" = @name AND p2.\"Id\" <> @id)",
+                conn, tx);
+            convergeCmd.Parameters.AddWithValue("@id", id);
+            convergeCmd.Parameters.AddWithValue("@name", name);
+            convergeCmd.Parameters.AddWithValue("@isCash", isCash);
+            await convergeCmd.ExecuteNonQueryAsync();
+
+            await using var idCheck = new Npgsql.NpgsqlCommand(
+                "SELECT COUNT(*) FROM \"PaymentMethods\" WHERE \"Id\" = @id",
+                conn, tx);
+            idCheck.Parameters.AddWithValue("@id", id);
+            var idExists = (long)(await idCheck.ExecuteScalarAsync())! > 0;
+            if (idExists) continue;
+
+            await using var nameCheck = new Npgsql.NpgsqlCommand(
+                "SELECT COUNT(*) FROM \"PaymentMethods\" WHERE \"Name\" = @name AND \"IsDeleted\" = false",
+                conn, tx);
+            nameCheck.Parameters.AddWithValue("@name", name);
+            var nameExists = (long)(await nameCheck.ExecuteScalarAsync())! > 0;
+            if (nameExists) continue;
+
+            await using var insertCmd = new Npgsql.NpgsqlCommand(
+                "INSERT INTO \"PaymentMethods\" (\"Id\", \"Name\", \"IsCash\", \"IsActive\", \"IsDeleted\", \"RequiresReference\", \"DisplayOrder\") VALUES (@id, @name, @isCash, true, false, false, @id)",
+                conn, tx);
+            insertCmd.Parameters.AddWithValue("@id", id);
+            insertCmd.Parameters.AddWithValue("@name", name);
+            insertCmd.Parameters.AddWithValue("@isCash", isCash);
+            await insertCmd.ExecuteNonQueryAsync();
+        }
+
+        await using var custCheck = new Npgsql.NpgsqlCommand(
+            "SELECT COUNT(*) FROM \"Customers\" WHERE \"Id\" = 1 OR \"IsDefault\" = true",
+            conn, tx);
+        var custExists = (long)(await custCheck.ExecuteScalarAsync())! > 0;
+        if (!custExists)
+        {
+            await using var insertCust = new Npgsql.NpgsqlCommand(
+                "INSERT INTO \"Customers\" (\"Id\", \"Name\", \"CedulaOrRif\", \"Phone\", \"CreditLimitUSD\", \"IsDefault\", \"IsActive\", \"CreatedAt\") VALUES (1, 'Consumidor Final', 'V-00000000', '', 0, true, true, NOW())",
+                conn, tx);
+            await insertCust.ExecuteNonQueryAsync();
+        }
+
+        await tx.CommitAsync();
+    }
+
+    private static async Task SeedInMemoryAsync(SalesDbContext context)
     {
         if (!await context.Customers.AnyAsync(c => c.IsDefault || c.Id == 1))
         {

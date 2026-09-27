@@ -1,4 +1,5 @@
 using System;
+using Backend.API.DTOs;
 using Core.Configuration;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,9 +20,26 @@ public class VersionCheckController : ControllerBase
     }
 
     [HttpGet("version-check")]
-    public IActionResult CheckVersion([FromHeader(Name = "X-Client-Version")] string? clientVersion)
+    public IActionResult CheckVersion([
+        FromHeader(Name = "X-Client-Platform")] string? clientPlatform,
+        [FromHeader(Name = "X-Client-Version")] string? clientVersion)
     {
         var settings = _systemSettingsMonitor.CurrentValue;
+
+        // 8.9-L9: sin el marcador de plataforma de un cliente conocido, no se divulga la
+        // versión exacta del servidor a peticiones anónimas (respuesta genérica no vinculante).
+        // Los clientes nuevos (Desktop/Web) siempre envían X-Client-Platform.
+        if (string.IsNullOrWhiteSpace(clientPlatform))
+        {
+            return Ok(new VersionCheckResponseDto
+            {
+                ServerVersion = "*",
+                MinimumClientVersion = "*",
+                UpdateServerUrl = null,
+                ClientVersionReceived = clientVersion ?? "0.0.0",
+                IsClientCompatible = true
+            });
+        }
 
         bool isCompatible = true;
         if (!string.IsNullOrWhiteSpace(clientVersion) &&
@@ -31,13 +49,13 @@ public class VersionCheckController : ControllerBase
             isCompatible = clientVer >= minVer;
         }
 
-        return Ok(new
+        return Ok(new VersionCheckResponseDto
         {
-            serverVersion = settings.ServerVersion,
-            minimumClientVersion = settings.MinimumClientVersion,
-            updateServerUrl = settings.UpdateServerUrl,
-            clientVersionReceived = clientVersion ?? "0.0.0",
-            isClientCompatible = isCompatible
+            ServerVersion = settings.ServerVersion,
+            MinimumClientVersion = settings.MinimumClientVersion,
+            UpdateServerUrl = settings.UpdateServerUrl,
+            ClientVersionReceived = clientVersion ?? "0.0.0",
+            IsClientCompatible = isCompatible
         });
     }
 }

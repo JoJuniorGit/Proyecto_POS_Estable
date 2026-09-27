@@ -50,4 +50,23 @@ public class PricingCalculatorTests
         var result = PricingCalculator.ToUSD(bss, rate);
         Assert.Equal(expected, result);
     }
+
+    [Theory]
+    [InlineData(0.81, 842.21, 682.20)]
+    [InlineData(1.50, 36.51, 54.77)]
+    [InlineData(12.75, 40.00, 510.00)]
+    [InlineData(0.00, 842.21, 0.00)]
+    [InlineData(0.81, 0.00, 0.00)]
+    public void ToBsSCeiling_ConvertsRoundingUpTo2Decimals(decimal usd, decimal rate, decimal expected)
+    {
+        var result = PricingCalculator.ToBsSCeiling(usd, rate);
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void ToBsSCeiling_WhenExact2Decimals_IsIdentity()
+    {
+        var result = PricingCalculator.ToBsSCeiling(681.20m, 1.00m);
+        Assert.Equal(681.20m, result);
+    }
 }

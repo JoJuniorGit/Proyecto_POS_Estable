@@ -1,0 +1,7 @@
+/* SuggestionList.css - Estilos locales de la lista de sugerencias. Prefijo sl-. */
+
+.sl-tags-row {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 6px;
+}

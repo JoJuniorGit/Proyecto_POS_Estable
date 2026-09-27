@@ -111,6 +111,51 @@ public class ProductImportExportTests
     }
 
     [Fact]
+    public async Task BulkImport_WithOverwriteMerge_AccumulatesExistingStock()
+    {
+        var db = CreateInMemoryDbContext();
+        db.Products.Add(new Product
+        {
+            SKU = "100320",
+            Name = "Merge Stock Product",
+            CostPriceUSD = 2.00m,
+            ProfitMarginRetail = 50.00m,
+            PriceRetailUSD = 3.00m,
+            StockQuantity = 50m,
+            LowStockThreshold = 5m,
+            UnitOfMeasure = UnitOfMeasureType.Und,
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+
+        var service = new InventoryService(db);
+        var importList = new List<ProductImportDto>
+        {
+            new ProductImportDto
+            {
+                SKU = "100320",
+                Name = "Merge Stock Product",
+                CostPriceUSD = 2.00m,
+                ProfitMarginRetail = 50.00m,
+                PriceRetailUSD = 3.00m,
+                StockQuantity = 20m,
+                LowStockThreshold = 6m,
+                UnitOfMeasure = "UND",
+                IsValid = true
+            }
+        };
+
+        var (added, updated) = await service.BulkImportProductsAsync(importList, overwriteMerge: true);
+
+        Assert.Equal(0, added);
+        Assert.Equal(1, updated);
+        var product = await db.Products.FirstOrDefaultAsync(p => p.SKU == "100320");
+        Assert.NotNull(product);
+        Assert.Equal(70m, product!.StockQuantity);
+        Assert.Equal(6m, product.LowStockThreshold);
+    }
+
+    [Fact]
     public async Task ExportProductsAsync_ReturnsCsvWith11HeaderColumns()
     {
         var db = CreateInMemoryDbContext();
@@ -604,7 +649,7 @@ internal class StubDialogService : Desktop.Client.Services.IDialogService
     public Task<string?> ShowTextInputAsync(string prompt, string hint) => Task.FromResult<string?>(null);
     public Task<(bool success, string currentPassword, string newPassword)?> ShowChangePasswordDialogAsync() => Task.FromResult<(bool success, string currentPassword, string newPassword)?>(null);
     public decimal? ShowCashAdvanceDialog() => null;
-    public void ShowSuccessDialog(string message) { }
+    public bool ShowSuccessDialog(string message, string? secondaryActionLabel = null) => false;
     public Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title) => Task.FromResult<(bool success, decimal amount, string reason)?>(null);
     public bool? ShowProductDialog(Desktop.Client.ViewModels.ProductDialogViewModel dialogVm) => false;
     public (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(Core.DTOs.ProductDto product) => (false, 0m, string.Empty);
@@ -616,6 +661,8 @@ internal class StubDialogService : Desktop.Client.Services.IDialogService
     public Task<bool> ShowServerConnectionDialogAsync() => Task.FromResult(false);
     public Task<Core.DTOs.ProductDto?> ShowVariantSelectionDialogAsync(Core.DTOs.ProductQuickInfoDto parentProduct) => Task.FromResult<Core.DTOs.ProductDto?>(null);
     public Task ShowVariantManagementDialogAsync(Core.DTOs.ProductDto parentProduct) => Task.CompletedTask;
+    public Task<object?> ShowModalAsync(object content, string? dialogIdentifier = null) => Task.FromResult<object?>(null);
+    public void CloseCurrentModal(object? result = null) { }
 }
 
 

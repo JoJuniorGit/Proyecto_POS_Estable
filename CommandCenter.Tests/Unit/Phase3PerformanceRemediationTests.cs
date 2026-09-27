@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using Backend.API.Hubs;
+using CommandCenter.Tests.Builders;
 using Core.Entities;
 using Core.Interfaces;
 using Inventory.Module.Data;
@@ -46,11 +47,8 @@ public class Phase3PerformanceRemediationTests
         await context.SaveChangesAsync();
 
         var mockUser = new Mock<ICurrentUserService>();
-        var mockSales = new Mock<ISalesService>();
-        var mockInventory = new Mock<IInventoryService>();
-        var mockHub = new Mock<IHubContext<ExchangeRateHub>>();
 
-        var controller = new ExchangeRateController(context, mockUser.Object, mockSales.Object, mockInventory.Object, mockHub.Object);
+        var controller = ControllerFactory.CreateExchangeRateController(context, mockUser.Object);
 
         // Act & Assert 1: Custom limit = 5
         var result5 = await controller.GetHistory(limit: 5) as OkObjectResult;
@@ -150,5 +148,32 @@ public class Phase3PerformanceRemediationTests
         // Assert
         Assert.NotNull(suggestions);
         Assert.Equal(10, suggestions.Count);
+    }
+
+    [Fact]
+    public async Task UpsertRate_WhenRateHasMoreThan2Decimals_RoundsToCeiling2DecimalsAndPersists()
+    {
+        using var context = CreateInMemoryInventoryDbContext();
+        var mockUser = new Mock<ICurrentUserService>();
+        mockUser.Setup(u => u.CanMutateExchangeRate).Returns(true);
+
+        var controller = ControllerFactory.CreateExchangeRateController(context, mockUser.Object);
+
+        decimal? persistedRate = null;
+        var writeService = new Mock<Backend.API.Services.IExchangeRateWriteService>();
+        writeService.Setup(w => w.UpsertTodayRateAsync(It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
+            .Callback<decimal, CancellationToken>((r, _) => persistedRate = r)
+            .ReturnsAsync(true);
+
+        var request = new UpsertExchangeRateRequest { Value = 804.63001m };
+
+        // Act
+        var result = await controller.UpsertRate(request, writeService.Object) as OkObjectResult;
+
+        // Assert
+        Assert.NotNull(result);
+        dynamic payload = result!.Value!;
+        Assert.Equal(804.64m, (decimal)payload.Value);
+        Assert.Equal(804.64m, persistedRate);
     }
 }

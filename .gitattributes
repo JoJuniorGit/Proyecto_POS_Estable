@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Los hooks de git se ejecutan con sh: deben conservar LF en el working tree
+.githooks/* text eol=lf

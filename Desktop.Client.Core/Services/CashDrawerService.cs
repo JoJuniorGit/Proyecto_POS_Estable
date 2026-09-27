@@ -73,6 +73,21 @@ public class CashDrawerService : ICashDrawerService
         return (await response.Content.ReadFromJsonAsync<CashTransactionDto>())!;
     }
 
+    public async Task<decimal?> GetAdvanceCommissionAsync(bool isTransfer, System.Threading.CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync($"api/cashdrawer/advance-commission?isTransfer={(isTransfer ? "true" : "false")}", cancellationToken);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        var dto = await response.Content.ReadFromJsonAsync<AdvanceCommissionClientDto>(cancellationToken: cancellationToken);
+
+        return dto != null && dto.Percentage > 0 ? dto.Percentage : null;
+    }
+
     public async Task<CashAdvanceResultClientDto?> ProcessCashAdvanceAsync(
         int sessionId,
         decimal requestedAmountLocal,

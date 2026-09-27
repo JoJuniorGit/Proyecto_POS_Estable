@@ -27,6 +27,23 @@ namespace Sales.Module.Migrations
                 name: "paymentmethod_displayorder_seq",
                 startValue: 1L);
 
+            // 2b. Autocuración: en instalaciones nuevas creadas 100% por MigrateAsync la columna
+            // DisplayOrder puede NO existir, porque la migración histórica
+            // 20260809232500_AddDisplayOrderToPaymentMethod quedó huérfana (sin atributo
+            // [Migration] ni Designer -> EF la ignora en el discovery de migraciones y nunca se
+            // aplica). Guardado con information_schema: no-op en BD legacy (la columna ya existe)
+            // y crea la columna en instalaciones frescas antes del setval siguiente. Ref [8.11-F].
+            migrationBuilder.Sql(@"
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'PaymentMethods' AND column_name = 'DisplayOrder'
+    ) THEN
+        ALTER TABLE ""PaymentMethods"" ADD COLUMN ""DisplayOrder"" integer NOT NULL DEFAULT 0;
+    END IF;
+END $$;");
+
             migrationBuilder.Sql(@"
                 SELECT setval('paymentmethod_displayorder_seq', GREATEST(COALESCE((SELECT MAX(""DisplayOrder"") FROM ""PaymentMethods""), 0) + 1, 1), false);
             ");

@@ -3,10 +3,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using Backend.API.Hubs;
+using CommandCenter.Tests.Builders;
 using Core.Entities;
 using Core.Interfaces;
 using Desktop.Client.Behaviors;
 using Inventory.Module.Data;
+using Inventory.Module.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -33,7 +35,7 @@ public class CurrencyFormatSettingsTests
         var mockUserService = new Mock<ICurrentUserService>();
         mockUserService.Setup(u => u.CanMutateSettings).Returns(true);
 
-        var controller = new SettingsController(db, mockUserService.Object);
+        var controller = ControllerFactory.CreateSettingsController(db, mockUserService.Object, new SystemSettingsService(db));
 
         var result = await controller.GetCurrencyFormat();
 
@@ -56,7 +58,7 @@ public class CurrencyFormatSettingsTests
         mockHubContext.SetupGet(h => h.Clients).Returns(mockClients.Object);
         mockClients.SetupGet(c => c.All).Returns(mockClientProxy.Object);
 
-        var controller = new SettingsController(db, mockUserService.Object, mockHubContext.Object);
+        var controller = ControllerFactory.CreateSettingsController(db, mockUserService.Object, new SystemSettingsService(db), mockHubContext.Object);
 
         var request = new SetCurrencyFormatRequest { Format = "Venezuelan" };
         var result = await controller.SetCurrencyFormat(request);
@@ -90,7 +92,7 @@ public class CurrencyFormatSettingsTests
         mockHubContext.SetupGet(h => h.Clients).Returns(mockClients.Object);
         mockClients.SetupGet(c => c.All).Returns(mockClientProxy.Object);
 
-        var controller = new SettingsController(db, mockUserService.Object, mockHubContext.Object);
+        var controller = ControllerFactory.CreateSettingsController(db, mockUserService.Object, new SystemSettingsService(db), mockHubContext.Object);
 
         var request = new SetCurrencyFormatRequest { Format = "International" };
         var result = await controller.SetCurrencyFormat(request);
@@ -119,7 +121,7 @@ public class CurrencyFormatSettingsTests
         var mockUserService = new Mock<ICurrentUserService>();
         mockUserService.Setup(u => u.CanMutateSettings).Returns(true);
 
-        var controller = new SettingsController(db, mockUserService.Object);
+        var controller = ControllerFactory.CreateSettingsController(db, mockUserService.Object, new SystemSettingsService(db));
 
         var request = new SetCurrencyFormatRequest { Format = invalidFormat };
         var result = await controller.SetCurrencyFormat(request);
@@ -134,7 +136,7 @@ public class CurrencyFormatSettingsTests
         var mockUserService = new Mock<ICurrentUserService>();
         mockUserService.Setup(u => u.CanMutateSettings).Returns(false); // Cajero
 
-        var controller = new SettingsController(db, mockUserService.Object);
+        var controller = ControllerFactory.CreateSettingsController(db, mockUserService.Object, new SystemSettingsService(db));
 
         var request = new SetCurrencyFormatRequest { Format = "International" };
         var result = await controller.SetCurrencyFormat(request);

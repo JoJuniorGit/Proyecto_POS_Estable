@@ -27,14 +27,14 @@ public class CashDrawerSession
     [Column(TypeName = "decimal(18,2)")]
     public decimal OpeningBalanceLocal { get; set; }
 
-    [Column(TypeName = "decimal(18,2)")]
+    [Column(TypeName = "decimal(18,4)")]
     public decimal OpeningExchangeRate { get; set; }
 
     // Optional: Used if the closing count differs from the expected system count
     [Column(TypeName = "decimal(18,2)")]
     public decimal? ClosingBalanceLocal { get; set; }
 
-    [Column(TypeName = "decimal(18,2)")]
+    [Column(TypeName = "decimal(18,4)")]
     public decimal? ClosingExchangeRate { get; set; }
 
     public List<CashTransaction> Transactions { get; set; } = new();

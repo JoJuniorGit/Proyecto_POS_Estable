@@ -60,10 +60,10 @@ describe('PosFlowIntegration End-to-End Test Suite', () => {
     // Simulate prop resolution in CartTable / CartList
     const props = {
       items: [{ id: 42, quantity: 2, unitPrice: 15, isFractional: false }],
-      onUpdateQuantity: mockUpdateQuantity,
+      onUpdateQty: mockUpdateQuantity,
     };
-    const updateQty = props.onUpdateQty || props.onUpdateQuantity;
-    assert.ok(typeof updateQty === 'function', 'updateQty must resolve correctly from onUpdateQuantity');
+    const updateQty = props.onUpdateQty;
+    assert.ok(typeof updateQty === 'function', 'updateQty must resolve correctly from onUpdateQty');
 
     // Simulate Plus button click (+ step)
     const item = props.items[0];

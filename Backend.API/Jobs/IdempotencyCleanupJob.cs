@@ -15,13 +15,14 @@ namespace Backend.API.Jobs;
 /// </summary>
 public class IdempotencyCleanupJob : BackgroundService
 {
-    private readonly IServiceProvider _serviceProvider;
+    // 8.7-M4: se inyecta IServiceScopeFactory (no IServiceProvider) para acotar la superficie del contenedor.
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<IdempotencyCleanupJob> _logger;
     private readonly TimeSpan _interval = TimeSpan.FromHours(1);
 
-    public IdempotencyCleanupJob(IServiceProvider serviceProvider, ILogger<IdempotencyCleanupJob> logger)
+    public IdempotencyCleanupJob(IServiceScopeFactory scopeFactory, ILogger<IdempotencyCleanupJob> logger)
     {
-        _serviceProvider = serviceProvider;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -62,7 +63,7 @@ public class IdempotencyCleanupJob : BackgroundService
 
     public async Task<int> RunCleanupCycleAsync(CancellationToken cancellationToken = default)
     {
-        using var scope = _serviceProvider.CreateScope();
+        using var scope = _scopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<SalesDbContext>();
 
         if (!dbContext.Database.IsRelational())

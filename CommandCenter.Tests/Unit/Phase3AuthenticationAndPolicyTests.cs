@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
+using Sales.Module.Services;
 using Xunit;
 
 namespace CommandCenter.Tests.Unit;
@@ -27,8 +28,8 @@ public class Phase3AuthenticationAndPolicyTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("Ab1!")]
-    [InlineData("Short1!")]
+    [InlineData("Ab12345")]     // 7 caracteres (mínimo 8)
+    [InlineData("1234567")]     // 7 caracteres (mínimo 8)
     public void ValidatePassword_RejectsShortOrEmptyPasswords(string password)
     {
         var (isValid, errorMsg) = _policyService.ValidatePassword(password);
@@ -48,25 +49,20 @@ public class Phase3AuthenticationAndPolicyTests
     [Fact]
     public void ValidatePassword_RejectsMissingCharacterClasses()
     {
-        // Falta mayúscula
-        var (v1, e1) = _policyService.ValidatePassword("nouppercase123!");
+        // Falta letra
+        var (v1, e1) = _policyService.ValidatePassword("39281746");
         Assert.False(v1);
-        Assert.Contains("mayúscula", e1);
+        Assert.Contains("letra", e1);
 
-        // Falta minúscula
-        var (v2, e2) = _policyService.ValidatePassword("NOLOWERCASE123!");
+        // Falta número
+        var (v2, e2) = _policyService.ValidatePassword("sololetras");
         Assert.False(v2);
-        Assert.Contains("minúscula", e2);
+        Assert.Contains("número", e2);
 
-        // Falta dígito
-        var (v3, e3) = _policyService.ValidatePassword("NoDigitsSpecial!@");
-        Assert.False(v3);
-        Assert.Contains("número", e3);
-
-        // Falta especial
-        var (v4, e4) = _policyService.ValidatePassword("NoSpecialChars123");
-        Assert.False(v4);
-        Assert.Contains("especial", e4);
+        // Cumple regla mínima: 8+ caracteres, con letra y número (aceptada sin mayúscula/especial)
+        var (v3, e3) = _policyService.ValidatePassword("solo1234");
+        Assert.True(v3);
+        Assert.Null(e3);
     }
 
     [Fact]
@@ -139,7 +135,7 @@ public class Phase3AuthenticationAndPolicyTests
         await context.SaveChangesAsync();
 
         var tokenServiceMock = new Mock<ITokenService>();
-        var authController = new AuthController(context, tokenServiceMock.Object, _policyService);
+        var authController = new AuthController(new AuthService(context, _policyService), tokenServiceMock.Object);
 
         var request = new ChangePasswordRequest
         {
@@ -173,7 +169,7 @@ public class Phase3AuthenticationAndPolicyTests
 
         var tokenServiceMock = new Mock<ITokenService>();
         var stampValidatorMock = new Mock<ISecurityStampValidator>();
-        var authController = new AuthController(context, tokenServiceMock.Object, _policyService, stampValidatorMock.Object);
+        var authController = new AuthController(new AuthService(context, _policyService), tokenServiceMock.Object, stampValidatorMock.Object);
 
         var request = new ChangePasswordRequest
         {
@@ -198,7 +194,7 @@ public class Phase3AuthenticationAndPolicyTests
     {
         var context = TestDatabaseFactory.CreateSalesDbContext();
         var stampValidatorMock = new Mock<ISecurityStampValidator>();
-        var usersController = new UsersController(context, _policyService, stampValidatorMock.Object);
+        var usersController = ControllerFactory.CreateUsersController(context, _policyService, stampValidatorMock.Object);
 
         var createDto = new CreateUserDto
         {
@@ -246,7 +242,7 @@ public class Phase3AuthenticationAndPolicyTests
         await context.SaveChangesAsync();
 
         var stampValidatorMock = new Mock<ISecurityStampValidator>();
-        var usersController = new UsersController(context, _policyService, stampValidatorMock.Object);
+        var usersController = ControllerFactory.CreateUsersController(context, _policyService, stampValidatorMock.Object);
 
         var actionResult = await usersController.ResetTemporaryPassword(25);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
@@ -264,6 +260,39 @@ public class Phase3AuthenticationAndPolicyTests
         Assert.NotEqual(initialStamp, updatedUser.SecurityStamp);
         Assert.True(PasswordHasher.VerifyPassword(response.TemporaryPassword, updatedUser.PasswordHash));
         stampValidatorMock.Verify(s => s.InvalidateUserStamp(25), Times.Once);
+    }
+
+    [Fact]
+    public async Task Login_WithMustChangePassword_Returns403ProblemDetailsWithRequiresPasswordChangeFlag()
+    {
+        var context = TestDatabaseFactory.CreateSalesDbContext();
+        var user = new User
+        {
+            Id = 88,
+            Username = "cajero_temp",
+            Cedula = "V-50000001",
+            Name = "Cajero Temporal",
+            FullName = "Cajero Temporal",
+            PasswordHash = PasswordHasher.HashPassword("TempPass#1234"),
+            IsActive = true,
+            Role = UserRole.Cashier,
+            MustChangePassword = true
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var controller = new AuthController(new AuthService(context, _policyService), Mock.Of<ITokenService>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+
+        var result = await controller.Login(new LoginRequest { Cedula = "V-50000001", Password = "TempPass#1234" });
+
+        var objectResult = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+        var problemDetails = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.True(Assert.IsType<bool>(problemDetails.Extensions["requiresPasswordChange"]));
+        Assert.False(string.IsNullOrWhiteSpace(problemDetails.Extensions["message"]?.ToString()));
     }
 
     [Fact]

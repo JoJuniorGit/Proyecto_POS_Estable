@@ -240,6 +240,7 @@ ClientBin/
 *.dbproj.schemaview
 *.jfm
 *.pfx
+Backend.API/certs/*.cer
 *.publishsettings
 orleans.codegen.cs
 
@@ -401,6 +402,13 @@ FodyWeavers.xsd
 *.sln.iml
 
 # Project Specific Ignores
+
+# SECRETS (hallazgo 8.2-CR2): credenciales de entorno y clave JWT NO se versionan
+Backend.API/appsettings.Development.json
+docs/JWT_Key.md
+*.local.json
+*.secrets.json
+
 dist_installer/
 installer/Output/
 Web.Frontend/dist/
@@ -409,8 +417,39 @@ publish/
 publish_backend/
 crash*.txt
 build_output.txt
+.last-restore-timestamp
 .env
 .freebuff-test-out/
+.freebuff/
 desktop.ini
 Thumbs.db
 
+
+# Local build tooling / code-signing (no versionados; 8.54)
+tools/local/
+build.local.env
+*.code-signing.pfx
+
+# Prueba de estres unificada (8.115): artefactos de corridas y config local del ejecutor
+results/
+scripts/pos-test-config.json
+# Local AI runtime state
+.atl/
+.gga
+.gentle-ai-default-agent.json
+.codegraph/
+
+# Config local de monitoreo (se genera desde docs/monitor-config.json.example)
+docs/monitor-config.json
+
+# DBs locales y dumps de backup (MED-14)
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+secrets.json
+Backend.API/secrets.json
+
+# Playwright (E2E web): reportes y resultados generados
+Web.Frontend/playwright-report/
+Web.Frontend/test-results/

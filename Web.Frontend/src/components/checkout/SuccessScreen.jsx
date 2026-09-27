@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { CheckCircle2, ShoppingBag, Clock, Check } from 'lucide-react';
+import '../ui/SuccessScreen.css';
 
 export default function SuccessScreen({ 
   invoiceNumber, 
@@ -24,9 +25,9 @@ export default function SuccessScreen({
       <div className="success-modal card text-center" onClick={(e) => e.stopPropagation()}>
         <div className="success-icon-wrapper">
           {type === 'hold' ? (
-            <Clock size={72} className="success-icon animate-bounce-short" style={{ color: 'var(--accent-primary, #6366f1)' }} />
+            <Clock size={72} className="success-icon animate-bounce-short ss-icon-accent" />
           ) : (
-            <CheckCircle2 size={72} className="success-icon animate-bounce-short" style={{ color: 'var(--success, #10b981)' }} />
+            <CheckCircle2 size={72} className="success-icon animate-bounce-short ss-icon-success" />
           )}
         </div>
         <h2 className="success-title">{title}</h2>
@@ -41,8 +42,7 @@ export default function SuccessScreen({
 
         <button
           type="button"
-          className="btn btn-primary btn-block"
-          style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+          className="btn btn-primary btn-block ss-actions-btn"
           onClick={onClose}
         >
           {type === 'checkout' ? <ShoppingBag size={18} /> : <Check size={18} />}

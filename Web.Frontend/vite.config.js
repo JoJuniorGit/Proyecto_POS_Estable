@@ -9,8 +9,6 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    // Escuchar en todas las interfaces de red para acceso desde dispositivos móviles
-    host: '0.0.0.0',
     port: 5173,
   },
 })

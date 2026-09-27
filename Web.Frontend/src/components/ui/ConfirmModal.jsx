@@ -1,5 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { registerOpenModal } from '../../utils/modalRegistry';
+import './ConfirmModal.css';
 
 /**
  * ConfirmModal
@@ -19,15 +21,59 @@ export default function ConfirmModal({
   variant = 'warning', // 'warning' | 'danger' | 'primary'
   icon = null,
 }) {
+  const modalRef = useRef(null);
+  const titleId = useId();
+
   useEffect(() => {
+    if (!isOpen) return;
+
     function handleKeyDown(e) {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape') {
         onClose?.();
+        return;
+      }
+
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusableElements = modalRef.current.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusableElements.length === 0) return;
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement.focus();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement.focus();
+          }
+        }
       }
     }
+
+    const timer = setTimeout(() => {
+      if (modalRef.current) {
+        const focusable = modalRef.current.querySelector('button.btn:not(.btn-outline), button');
+        if (focusable) focusable.focus();
+      }
+    }, 50);
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      clearTimeout(timer);
+    };
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    return registerOpenModal();
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -35,38 +81,22 @@ export default function ConfirmModal({
   const isWarning = variant === 'warning';
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 1200 }} onClick={onClose}>
+    <div className="modal-overlay cfm-overlay" onClick={onClose}>
       <div
-        className="modal-container card"
-        style={{
-          maxWidth: '430px',
-          width: '92%',
-          padding: '1.75rem 1.5rem',
-          textAlign: 'center',
-          borderRadius: '12px',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.35), 0 10px 10px -5px rgba(0, 0, 0, 0.2)',
-          border: '1px solid var(--border)',
-          backgroundColor: 'var(--bg-surface)',
-          color: 'var(--text-primary)',
-          margin: 'auto',
-        }}
+        ref={modalRef}
+        className="modal-container card cfm-container"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="confirm-dialog-title"
+        aria-labelledby={titleId}
       >
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.1rem' }}>
+        <div className="cfm-icon-row">
           {icon || (
             <div
+              className="cfm-icon-circle"
               style={{
-                width: '56px',
-                height: '56px',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: isDanger ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                color: isDanger ? '#ef4444' : '#f59e0b',
+                backgroundColor: isDanger ? 'var(--danger-light)' : 'var(--warning-light)',
+                color: isDanger ? 'var(--danger)' : 'var(--warning)',
               }}
             >
               <AlertTriangle size={28} />
@@ -75,59 +105,29 @@ export default function ConfirmModal({
         </div>
 
         <h3
-          id="confirm-dialog-title"
-          style={{
-            fontSize: '1.25rem',
-            fontWeight: 700,
-            marginBottom: '0.6rem',
-            color: 'var(--text-primary)',
-            textAlign: 'center',
-          }}
+          id={titleId}
+          className="cfm-title"
         >
           {title}
         </h3>
 
-        <p
-          style={{
-            fontSize: '0.95rem',
-            lineHeight: '1.45',
-            color: 'var(--text-secondary, var(--text-muted))',
-            marginBottom: '1.75rem',
-            padding: '0 0.5rem',
-          }}
-        >
+        <p className="cfm-message">
           {message}
         </p>
 
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+        <div className="d-flex gap-3 justify-center">
           <button
             type="button"
-            className="btn btn-outline"
-            style={{
-              flex: 1,
-              padding: '0.75rem 1rem',
-              fontWeight: 600,
-              fontSize: '0.95rem',
-              borderRadius: '8px',
-              cursor: 'pointer',
-            }}
+            className="btn btn-outline cfm-btn"
             onClick={onClose}
           >
             {cancelText}
           </button>
           <button
             type="button"
-            className="btn"
+            className="btn cfm-btn cfm-btn-confirm"
             style={{
-              flex: 1,
-              padding: '0.75rem 1rem',
-              fontWeight: 600,
-              fontSize: '0.95rem',
-              borderRadius: '8px',
-              backgroundColor: isDanger ? '#ef4444' : isWarning ? '#f59e0b' : 'var(--color-primary)',
-              color: '#ffffff',
-              border: 'none',
-              cursor: 'pointer',
+              backgroundColor: isDanger ? 'var(--danger)' : isWarning ? 'var(--warning)' : 'var(--primary-color)',
             }}
             onClick={onConfirm}
           >

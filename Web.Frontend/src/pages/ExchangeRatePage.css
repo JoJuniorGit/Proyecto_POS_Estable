@@ -1,0 +1,19 @@
+/* ExchangeRatePage */
+.xr-container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.xr-warning-bordered {
+  font-size: 0.875rem;
+  border-color: #f59e0b;
+}
+
+.xr-fs-08 { font-size: 0.8rem; }
+
+.xr-fs-09 { font-size: 0.9rem; }
+
+.xr-updated-at {
+  font-size: 0.8rem;
+  margin-left: auto;
+}

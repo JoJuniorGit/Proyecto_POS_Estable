@@ -7,7 +7,8 @@ namespace Core.Events;
 public record SaleMadeEvent(
     int SaleId,
     DateTime SaleDate,
-    IEnumerable<SaleItemSnapshot> Items) : INotification;
+    IEnumerable<SaleItemSnapshot> Items,
+    int? InvoiceNumber = null) : INotification;
 
 public record SaleItemSnapshot(
     int ProductId,

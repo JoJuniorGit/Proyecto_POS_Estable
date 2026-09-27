@@ -1,12 +1,14 @@
+using Sales.Module.DTOs;
 using Sales.Module.Entities;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sales.Module.Interfaces;
 
 public class CashAdvanceResultDto
 {
-    public CashTransaction ExpenseTransaction { get; set; } = null!;
-    public CashTransaction IncomeTransaction { get; set; } = null!;
+    public CashTransactionResponseDto ExpenseTransaction { get; set; } = null!;
+    public CashTransactionResponseDto IncomeTransaction { get; set; } = null!;
     public decimal RequestedAmountLocal { get; set; }
     public decimal CommissionAmountLocal { get; set; }
     public decimal TotalChargedLocal { get; set; }
@@ -17,19 +19,14 @@ public class CashAdvanceResultDto
 
 public interface ICashDrawerService
 {
-    Task<CashDrawerSession?> GetActiveSessionAsync();
-    Task<CashDrawerSession> GetOrCreateActiveSessionAsync(decimal currentExchangeRate);
-    Task<CashDrawerSession> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate);
-    Task<CashDrawerSession> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate);
+    Task<CashDrawerSessionResponseDto?> GetActiveSessionAsync(CancellationToken cancellationToken = default);
+    Task<CashDrawerSessionResponseDto?> GetActiveSessionWithTransactionsAsync(CancellationToken cancellationToken = default);
+    Task<CashDrawerSessionResponseDto> GetOrCreateActiveSessionAsync(decimal currentExchangeRate, CancellationToken cancellationToken = default);
+    Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default);
+    Task<CashDrawerSessionResponseDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default);
+    Task RolloverSessionAfterClosureAsync(decimal currentExchangeRate, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Cierra la sesión activa y abre una nueva conservando el saldo esperado en caja (saldo teórico acumulado:
-    /// apertura + ingresos - egresos de la sesión que se cierra, independiente de los montos declarados del arqueo)
-    /// pero reiniciando a 0 los acumuladores de ingresos y egresos de la sesión.
-    /// </summary>
-    Task RolloverSessionAfterClosureAsync(decimal currentExchangeRate);
-
-    Task<CashTransaction> AddTransactionAsync(
+    Task<CashTransactionResponseDto> AddTransactionAsync(
         int sessionId,
         CashTransactionType type,
         CashTransactionSource source,
@@ -39,22 +36,21 @@ public interface ICashDrawerService
         string description,
         int? referenceId = null,
         bool isPhysicalCash = true,
-        int? paymentMethodId = null);
-    Task<decimal> GetCurrentBalanceLocalAsync(int sessionId);
+        int? paymentMethodId = null,
+        CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Historial persistente de movimientos de caja: devuelve los movimientos físicos más recientes
-    /// de TODAS las sesiones (activa y anteriores), para conservar la trazabilidad de las sesiones
-    /// cerradas junto con los movimientos de la sesión siguiente.
-    /// </summary>
-    Task<System.Collections.Generic.List<CashTransaction>> GetHistoryAsync(int limit = 300);
-    Task<CashAdvanceResultDto> ProcessCashAdvanceAsync(
+    Task<CashTransactionResponseDto> RecordSaleChangeAsync(
         int sessionId,
-        decimal requestedAmountLocal,
-        int paymentMethodId,
-        string paymentMethodName,
-        bool isTransfer,
+        decimal changeUsd,
+        decimal changeBsS,
         decimal exchangeRate,
-        int? cashierId = null,
-        string? userName = null);
+        string description,
+        int saleId,
+        int? cashPaymentMethodId,
+        decimal pendingCashIncomeBsS = 0m,
+        CancellationToken cancellationToken = default);
+
+    Task<decimal> GetCurrentBalanceLocalAsync(int sessionId, CancellationToken cancellationToken = default);
+    Task<System.Collections.Generic.List<CashTransactionResponseDto>> GetHistoryAsync(int limit = 300, CancellationToken cancellationToken = default);
+    Task<Core.DTOs.PagedResultDto<CashTransactionResponseDto>> GetHistoryPagedAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default);
 }

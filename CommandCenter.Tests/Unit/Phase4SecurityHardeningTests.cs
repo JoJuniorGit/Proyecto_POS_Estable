@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Sales.Module.Data;
+using Sales.Module.Services;
 using Xunit;
 
 namespace CommandCenter.Tests.Unit;
@@ -59,7 +60,7 @@ public class Phase4SecurityHardeningTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService, stampValidator: validator);
+        var controller = new AuthController(new AuthService(db), tokenService, stampValidator: validator);
 
         // 4 failed attempts
         for (int i = 0; i < 4; i++)
@@ -81,10 +82,10 @@ public class Phase4SecurityHardeningTests
         Assert.NotNull(checkUser.LockoutEndUtc);
         Assert.True(checkUser.LockoutEndUtc.Value > DateTime.UtcNow);
 
-        // 6th attempt (even with correct password) -> 423 Locked
+        // 6th attempt (even with correct password) -> 401 genérico (anti-enumeración 8B-M3,
+        // no se revela que la cuenta está bloqueada)
         var lockedRes = await controller.Login(new LoginRequest { Cedula = "V-12345678", Password = "CorrectPassword123!" });
-        var statusResult = Assert.IsType<ObjectResult>(lockedRes.Result);
-        Assert.Equal(423, statusResult.StatusCode);
+        Assert.IsType<UnauthorizedObjectResult>(lockedRes.Result);
     }
 
     [Fact]
@@ -109,7 +110,7 @@ public class Phase4SecurityHardeningTests
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, tokenService, stampValidator: validator);
+        var controller = new AuthController(new AuthService(db), tokenService, stampValidator: validator);
 
         var okRes = await controller.Login(new LoginRequest { Cedula = "V-87654321", Password = "CorrectPassword123!" });
         Assert.IsType<OkObjectResult>(okRes.Result);
@@ -195,6 +196,13 @@ public class Phase4SecurityHardeningTests
         // Second call should hit the cache successfully
         bool isValidSecondCall = await validator.ValidateStampAsync(20, stamp);
         Assert.True(isValidSecondCall);
+    }
+
+    [Fact]
+    public void ResolveCacheWindow_StrictMode_ReturnsStrictWindow()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(5), SecurityStampValidator.ResolveCacheWindow(forceImmediateCheck: true));
+        Assert.Equal(TimeSpan.FromSeconds(45), SecurityStampValidator.ResolveCacheWindow(forceImmediateCheck: false));
     }
 
     [Fact]

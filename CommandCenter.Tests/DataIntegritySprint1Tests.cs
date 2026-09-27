@@ -167,7 +167,13 @@ public class DataIntegritySprint1Tests
             ExchangeRate = 50m
         });
 
-        // 1. Payment with $0 must throw ArgumentException
+        var heldSale = await salesDb.Sales.FindAsync(sale.Id);
+        heldSale!.ClaimedByUserId = 42;
+        heldSale.ClaimAction = SaleClaimAction.Editing;
+        heldSale.ClaimedByUserName = "Test Actor";
+        heldSale.ClaimedAtUtc = DateTime.UtcNow;
+        await salesDb.SaveChangesAsync();
+
         await Assert.ThrowsAsync<ArgumentException>(() =>
             salesService.AddPaymentToHoldSaleAsync(sale.Id, new AddPaymentRequestDto
             {
@@ -175,17 +181,17 @@ public class DataIntegritySprint1Tests
                 AmountBsS = 0m,
                 ExchangeRate = 50m,
                 PaymentMethodId = 1
-            }));
+            }, actingUserId: 42));
 
-        // 2. Payment exceeding $10 (e.g. $15) must throw InvalidOperationException
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        // 2. Payment exceeding $10 (e.g. $15) must throw ArgumentException
+        await Assert.ThrowsAsync<ArgumentException>(() =>
             salesService.AddPaymentToHoldSaleAsync(sale.Id, new AddPaymentRequestDto
             {
                 AmountUSD = 15m,
                 AmountBsS = 750m,
                 ExchangeRate = 50m,
                 PaymentMethodId = 1
-            }));
+            }, actingUserId: 42));
     }
 
     [Fact]
@@ -208,5 +214,88 @@ public class DataIntegritySprint1Tests
 
         var fromDb = await service.GetByIdAsync(created.Id);
         Assert.True(fromDb.IsCash);
+    }
+
+    [Fact]
+    public async Task RecordSaleChangeAsync_WhenDrawerHasNoCoverage_ThrowsAndDoesNotInsert()
+    {
+        using var salesDb = GetInMemorySalesDbContext();
+        var cashDrawerService = new CashDrawerService(salesDb);
+
+        var session = await cashDrawerService.OpenSessionAsync(openingBalanceLocal: 10m, currentExchangeRate: 50m);
+
+        // Vuelto de 20 Bs.S excede el saldo de caja (10 Bs.S) y no hay ingresos pendientes: debe fallar.
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            cashDrawerService.RecordSaleChangeAsync(
+                sessionId: session.Id,
+                changeUsd: 0.4m,
+                changeBsS: 20m,
+                exchangeRate: 50m,
+                description: "Vuelto Factura N° 1",
+                saleId: 1,
+                cashPaymentMethodId: 1));
+
+        Assert.Contains("Saldo de efectivo en caja insuficiente", ex.Message);
+        Assert.Empty(await salesDb.CashTransactions.Where(t => t.Type == CashTransactionType.Expense).ToListAsync());
+    }
+
+    [Fact]
+    public async Task RecordSaleChangeAsync_WithPendingCashIncome_CoveredByDrawer()
+    {
+        using var salesDb = GetInMemorySalesDbContext();
+        var cashDrawerService = new CashDrawerService(salesDb);
+
+        var session = await cashDrawerService.OpenSessionAsync(openingBalanceLocal: 10m, currentExchangeRate: 50m);
+
+        // Vuelto de 20 Bs.S con 12 Bs.S de ingresos cash pendientes (aún no persistidos): el saldo disponible
+        // (10 + 12 = 22) sí cubre el vuelto.
+        var tx = await cashDrawerService.RecordSaleChangeAsync(
+            sessionId: session.Id,
+            changeUsd: 0.4m,
+            changeBsS: 20m,
+            exchangeRate: 50m,
+            description: "Vuelto Factura N° 2",
+            saleId: 2,
+            cashPaymentMethodId: 1,
+            pendingCashIncomeBsS: 12m);
+
+        Assert.NotNull(tx);
+        Assert.Equal(CashTransactionType.Expense, tx.Type);
+        Assert.Equal(CashTransactionSource.SalePayment, tx.Source);
+        Assert.True(tx.IsPhysicalCash);
+        Assert.Equal(2, tx.SaleId);
+        Assert.Equal(1, tx.PaymentMethodId);
+        Assert.Equal(20m, tx.AmountLocal);
+    }
+
+    [Fact]
+    public async Task RecordSaleChangeAsync_RejectsNonPositiveChangeOrRate()
+    {
+        using var salesDb = GetInMemorySalesDbContext();
+        var cashDrawerService = new CashDrawerService(salesDb);
+
+        var session = await cashDrawerService.OpenSessionAsync(openingBalanceLocal: 100m, currentExchangeRate: 50m);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            cashDrawerService.RecordSaleChangeAsync(
+                sessionId: session.Id,
+                changeUsd: 0m,
+                changeBsS: 0m,
+                exchangeRate: 50m,
+                description: "Vuelto",
+                saleId: 1,
+                cashPaymentMethodId: 1));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            cashDrawerService.RecordSaleChangeAsync(
+                sessionId: session.Id,
+                changeUsd: 1m,
+                changeBsS: 50m,
+                exchangeRate: 0m,
+                description: "Vuelto",
+                saleId: 1,
+                cashPaymentMethodId: 1));
+
+        Assert.Empty(await salesDb.CashTransactions.Where(t => t.Type == CashTransactionType.Expense).ToListAsync());
     }
 }

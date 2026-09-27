@@ -78,29 +78,68 @@ export async function updateSaleExchangeRate(saleId, exchangeRate) {
 /**
  * Pone una venta en espera asignando un cliente y opcionalmente un abono inicial.
  */
-export async function holdSale(saleId, requestData, exchangeRate = 0, initialPayment = null) {
-  if (typeof requestData === 'object' && requestData !== null) {
-    return await api.post(`/api/sales/${saleId}/hold`, requestData);
-  }
-  return await api.post(`/api/sales/${saleId}/hold`, {
-    customerId: requestData,
-    exchangeRate,
-    initialPayment,
+export async function holdSale(saleId, requestData, exchangeRate = 0, initialPayment = null, idempotencyKey = null) {
+  const key = idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `hold-${saleId}-${Date.now()}`);
+  const payload = typeof requestData === 'object' && requestData !== null
+    ? requestData
+    : {
+        customerId: requestData,
+        exchangeRate,
+        initialPayment,
+      };
+  return await api.post(`/api/sales/${saleId}/hold`, payload, {
+    headers: {
+      'Idempotency-Key': key,
+    },
   });
 }
 
 /**
  * Registra un abono parcial en una venta en espera.
  */
-export async function addPaymentToHoldSale(saleId, paymentReq) {
-  return await api.post(`/api/sales/${saleId}/payments`, paymentReq);
+export async function addPaymentToHoldSale(saleId, paymentReq, idempotencyKey = null) {
+  const key = idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `pay-${saleId}-${Date.now()}`);
+  return await api.post(`/api/sales/${saleId}/payments`, paymentReq, {
+    headers: {
+      'Idempotency-Key': key,
+    },
+  });
 }
 
 /**
- * Obtiene las ventas que se encuentran en espera (OnHold / Cuentas abiertas).
+ * 8.29-A05: aplica varios abonos a una venta en espera de forma ATÓMICA (todo o nada)
+ * en UNA sola transacción, con un ÚNICO Idempotency-Key para el lote completo.
+ * Si un reintento alcanza al servidor, un replay no duplica NINGÚN abono del lote.
+ * @param {number} saleId
+ * @param {Array} paymentRequests - [{ paymentMethodId, amountBsS, exchangeRate, referenceNumber }]
+ * @param {string} [idempotencyKey]
  */
-export async function getPendingSales() {
-  return await api.get('/api/sales/pending');
+export async function addPaymentsBatchToHoldSale(saleId, paymentRequests, idempotencyKey = null) {
+  const key = idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `pay-batch-${saleId}-${Date.now()}`);
+  return await api.post(`/api/sales/${saleId}/payments/batch`, paymentRequests, {
+    headers: {
+      'Idempotency-Key': key,
+    },
+  });
+}
+
+/**
+ * Obtiene la previsualización canónica de cobro, redondeo y vuelto calculada por el backend.
+ */
+export async function getCheckoutPreview(saleId, exchangeRate, payments) {
+  return await api.post(`/api/sales/${saleId}/checkout-preview`, {
+    exchangeRate,
+    payments,
+  });
+}
+
+/**
+ * 8.14-N1: página de ventas OnHold con totalCount (paginación de UI "ver más").
+ * @returns {Promise<{items: Array, totalCount: number}>}
+ */
+export async function getPendingSalesPage({ limit = 200, offset = 0 } = {}) {
+  const { data, totalCount } = await api.getWithMeta(`/api/sales/pending?limit=${limit}&offset=${offset}`);
+  return { items: Array.isArray(data) ? data : [], totalCount };
 }
 
 /**
@@ -155,4 +194,12 @@ export async function updateSaleItems(saleId, items) {
  */
 export async function cancelSale(saleId) {
   return await api.post(`/api/sales/${saleId}/cancel`);
+}
+
+export async function claimSale(saleId, action) {
+  return await api.post(`/api/sales/${saleId}/claim`, { action });
+}
+
+export async function releaseSale(saleId, force = false) {
+  return await api.post(`/api/sales/${saleId}/release?force=${force ? 'true' : 'false'}`);
 }

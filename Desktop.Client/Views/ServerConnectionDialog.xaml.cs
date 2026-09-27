@@ -18,6 +18,11 @@ public partial class ServerConnectionDialog : Window
             DialogResult = success;
             Close();
         };
+
+        Closed += (s, e) =>
+        {
+            (DataContext as System.IDisposable)?.Dispose();
+        };
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)

@@ -30,16 +30,17 @@ public class HealthPollingServiceTests
     {
         var handler = new CountingHandler();
         using var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5000/") };
-        using var service = new HealthPollingService(client);
+        var pollInterval = TimeSpan.FromMilliseconds(50);
+        using var service = new HealthPollingService(client, pollInterval: pollInterval);
 
         service.StartPolling();
         Assert.True(service.IsPollingActive);
 
         // Espera (con límite) a que el bucle itere al menos dos veces: prueba que está vivo y avanzando.
         var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (handler.RequestCount < 2 && DateTime.UtcNow < deadline)
+        while (Volatile.Read(ref handler.RequestCount) < 2 && DateTime.UtcNow < deadline)
         {
-            await Task.Delay(50);
+            await Task.Delay(10);
         }
 
         Assert.True(handler.RequestCount >= 2, "El bucle de sondeo no llegó a iterar dos veces.");
@@ -48,13 +49,18 @@ public class HealthPollingServiceTests
         Assert.False(service.IsPollingActive);
 
         // Deja asentar cualquier petición que hubiera quedado en vuelo iniciada antes del stop.
-        await Task.Delay(300);
-        int countAfterStop = handler.RequestCount;
+        await Task.Delay(pollInterval * 2);
+        int countAfterStop = Volatile.Read(ref handler.RequestCount);
 
-        // Espera más que el intervalo de 3s: si el bucle siguiera vivo, emitiría otra petición.
-        await Task.Delay(3500);
+        // Un bucle aún vivo emitiría una petición por intervalo: exigir inmovilidad durante varios intervalos.
+        var stillDeadline = DateTime.UtcNow.Add(pollInterval * 6);
+        while (DateTime.UtcNow < stillDeadline)
+        {
+            Assert.Equal(countAfterStop, Volatile.Read(ref handler.RequestCount));
+            await Task.Delay(pollInterval);
+        }
 
-        Assert.Equal(countAfterStop, handler.RequestCount);
+        Assert.Equal(countAfterStop, Volatile.Read(ref handler.RequestCount));
         Assert.False(service.IsPollingActive);
     }
 

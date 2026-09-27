@@ -7,6 +7,7 @@ using Core.Entities;
 using Inventory.Module.Data;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -15,21 +16,35 @@ namespace Backend.API.Jobs;
 
 public class BcvExchangeRateJob : BackgroundService
 {
-    private readonly IServiceProvider _serviceProvider;
+    // 8.7-M4: se inyecta IServiceScopeFactory (no IServiceProvider) para acotar la superficie del contenedor.
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BcvExchangeRateJob> _logger;
+    private readonly IConfiguration _configuration;
 
-    public BcvExchangeRateJob(IServiceProvider serviceProvider, ILogger<BcvExchangeRateJob> logger)
+    public BcvExchangeRateJob(IServiceScopeFactory scopeFactory, ILogger<BcvExchangeRateJob> logger, IConfiguration configuration)
     {
-        _serviceProvider = serviceProvider;
+        _scopeFactory = scopeFactory;
         _logger = logger;
+        _configuration = configuration;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("BCV Exchange Rate Background Service is starting with a 2-hour periodic sync cycle.");
+        // 8.16-B09/B10: la sincronizacion automatica del BCV es CONFIGURABLE.
+        // "BcvSettings:AutoSyncIntervalMinutes" (default 120 = 2h); un valor <= 0 desactiva
+        // el ciclo periodico (modo manual exclusivo, diseno declarado del BCV).
+        int intervalMinutes = _configuration.GetValue<int?>("BcvSettings:AutoSyncIntervalMinutes") ?? 120;
 
-        // Periodic timer every 2 hours as per system specifications
-        using var timer = new PeriodicTimer(TimeSpan.FromHours(2));
+        if (intervalMinutes <= 0)
+        {
+            _logger.LogInformation("BCV Exchange Rate Background Service auto-sync is DISABLED (BcvSettings:AutoSyncIntervalMinutes <= 0). It will only sync on demand.");
+            return;
+        }
+
+        _logger.LogInformation("BCV Exchange Rate Background Service is starting with a {Minutes}-minute periodic sync cycle.", intervalMinutes);
+
+        // Periodic timer; el intervalo se resuelve desde configuracion (8.16-B10).
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(intervalMinutes));
 
         try
         {
@@ -55,7 +70,7 @@ public class BcvExchangeRateJob : BackgroundService
     {
         try
         {
-            using var scope = _serviceProvider.CreateScope();
+            using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
 
             bool isNpgsql = dbContext.Database.IsNpgsql();
@@ -76,7 +91,7 @@ public class BcvExchangeRateJob : BackgroundService
                         return;
                     }
 
-                    await ExecuteSyncInternalAsync(scope, dbContext, cancellationToken);
+await ExecuteSyncInternalAsync(scope, cancellationToken);
                 }
                     finally
                     {
@@ -104,7 +119,7 @@ public class BcvExchangeRateJob : BackgroundService
             }
             else
             {
-                await ExecuteSyncInternalAsync(scope, dbContext, cancellationToken);
+                await ExecuteSyncInternalAsync(scope, cancellationToken);
             }
         }
         catch (Exception ex)
@@ -113,10 +128,10 @@ public class BcvExchangeRateJob : BackgroundService
         }
     }
 
-    private async Task ExecuteSyncInternalAsync(IServiceScope scope, InventoryDbContext dbContext, CancellationToken cancellationToken)
+    private async Task ExecuteSyncInternalAsync(IServiceScope scope, CancellationToken cancellationToken)
     {
         var scraperService = scope.ServiceProvider.GetRequiredService<BcvScraperService>();
-        var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<ExchangeRateHub>>();
+        var rateWriteService = scope.ServiceProvider.GetRequiredService<IExchangeRateWriteService>();
 
         var rawRate = await scraperService.GetOfficialUsdRateAsync(cancellationToken);
         if (!rawRate.HasValue)
@@ -132,50 +147,15 @@ public class BcvExchangeRateJob : BackgroundService
             return;
         }
 
-        // Ceiling rounding to 2 decimal places (redondeo hacia arriba: ej. 804.6301 -> 804.64)
+        // Ceiling rounding to 2 decimal places (redondeo hacia arriba, guia §2.4: ej. 804.63005 -> 804.64)
         decimal roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(rawRate.Value);
 
-        // Resolve date according to Venezuela legal time zone (America/Caracas / UTC-4)
-        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
-        var existing = await dbContext.ExchangeRateHistory.FirstOrDefaultAsync(r => r.Date == today, cancellationToken);
-        
-        bool changed = false;
-
-        if (existing != null)
-        {
-            if (existing.Rate != roundedRate)
-            {
-                existing.Rate = roundedRate;
-                existing.UpdatedAt = DateTime.UtcNow;
-                changed = true;
-            }
-        }
-        else
-        {
-            dbContext.ExchangeRateHistory.Add(new ExchangeRateHistory
-            {
-                Date = today,
-                Rate = roundedRate,
-                UpdatedAt = DateTime.UtcNow
-            });
-            changed = true;
-        }
+        // 8.7-M3: upsert + invalidación de caché + recálculo OnHold + broadcast centralizados.
+        bool changed = await rateWriteService.UpsertTodayRateAsync(roundedRate, cancellationToken);
 
         if (changed)
         {
-            await dbContext.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("System exchange rate updated to {Rate} for Venezuela date {Date}", roundedRate, today);
-
-            var inventoryService = scope.ServiceProvider.GetRequiredService<Core.Interfaces.IInventoryService>();
-            inventoryService.InvalidateTodayExchangeRateCache();
-
-            // Recalculate OnHold sales
-            var salesService = scope.ServiceProvider.GetRequiredService<Sales.Module.Interfaces.ISalesService>();
-            await salesService.RecalculateOnHoldSalesAsync(roundedRate);
-
-            // Broadcast to clients via SignalR
-            await hubContext.Clients.All.SendAsync("ReceiveRateUpdate", roundedRate, cancellationToken);
-            await hubContext.Clients.All.SendAsync("OnHoldSalesUpdated", cancellationToken);
+            _logger.LogInformation("System exchange rate updated to {Rate} for Venezuela date {Date}", roundedRate, Core.Helpers.TimeZoneHelper.GetVenezuelaDate());
         }
         else
         {

@@ -1,12 +1,13 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Core.Logging;
-using System.Windows;
 
 namespace Desktop.Client.ViewModels;
 
 public partial class InterruptedTransactionViewModel : ObservableObject
 {
+    public event Action? RequestClose;
+
     [ObservableProperty]
     private string _operationName = "Cobro / Transacción";
 
@@ -30,8 +31,5 @@ public partial class InterruptedTransactionViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Dismiss(Window window)
-    {
-        window?.Close();
-    }
+    private void Dismiss() => RequestClose?.Invoke();
 }

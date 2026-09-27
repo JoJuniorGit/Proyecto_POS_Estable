@@ -7,5 +7,6 @@
   <Project Path="Inventory.Module/Inventory.Module.csproj" />
   <Project Path="Logistics.Module/Logistics.Module.csproj" />
   <Project Path="Sales.Module/Sales.Module.csproj" />
+  <Project Path="tests/CommandCenter.Wpf.E2ETests/CommandCenter.Wpf.E2ETests.csproj" />
   <Project Path="UpdaterService/UpdaterService.csproj" />
 </Solution>

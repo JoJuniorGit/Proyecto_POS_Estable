@@ -4,52 +4,88 @@ using System.Linq;
 using System.Threading.Tasks;
 using Core.DTOs;
 using Core.Entities;
+using Core.Helpers;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Sales.Module.Entities;
 
 namespace Sales.Module.Services;
 
 public partial class SalesService
 {
-    public async Task<SaleDto> UpdateExchangeRateAsync(int sale_id, decimal exchange_rate)
+    public async Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        var _sale = await GetSaleEntityAsync(sale_id);
-        if (_sale.Status != SaleStatus.Pending && _sale.Status != SaleStatus.OnHold) 
-            throw new InvalidOperationException("Cannot modify a completed sale.");
+        var sale = await GetSaleEntityAsync(saleId);
+        EnsureHoldClaimAccess(sale, actingUserId);
+        if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
+            throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
-        _sale.AppliedRate = exchange_rate;
-        await RecalculateTotalAsync(_sale);
-        await _context.SaveChangesAsync();
-        return MapToDto(_sale);
+        sale.AppliedRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "UpdateExchangeRate", referenceId: sale.Id);
+        await RecalculateTotalAsync(sale);
+        await _context.SaveChangesAsync(cancellationToken);
+        return MapToDto(sale);
     }
 
     /// <inheritdoc />
-    public async Task<int> RecalculateOnHoldSalesAsync(decimal newExchangeRate)
+    public async Task<int> RecalculateOnHoldSalesAsync(decimal newExchangeRate, System.Threading.CancellationToken cancellationToken = default)
     {
         if (newExchangeRate <= 0)
             return 0;
 
-        var onHoldSales = await _context.Sales
-            .AsSplitQuery()
-            .Include(s => s.Items)
-            .Include(s => s.Payments)
-            .Where(s => s.Status == SaleStatus.OnHold)
-            .ToListAsync();
+        // 8.9-B5: procesamiento por lotes (paginado) para no cargar todo el conjunto OnHold en
+        // memoria; cada página se graba al terminar. El recálculo unitario (RecalculateTotalAsync)
+        // ya usa batch fetch de productos, de modo que el costo por página se mantiene acotado.
+        // 8.16-H14: paginación por KEYSET (WHERE Id > último) en lugar de Skip/Take: la fila
+        // filtrada no cambia su Id durante el recalculo (solo AppliedRate/totales), de modo que
+        // el keyset es estable y evita el re-escaneo Offset del Skip en cada página.
+        const int batchSize = 200;
+        int totalUpdated = 0;
+        int lastId = 0;
 
-        if (!onHoldSales.Any())
-            return 0;
-
-        foreach (var sale in onHoldSales)
+        while (true)
         {
-            sale.AppliedRate = newExchangeRate;
-            await RecalculateTotalAsync(sale);
+            List<Sale> batch;
+
+            try
+            {
+                batch = await _context.Sales
+                    .AsSplitQuery()
+                    .Include(s => s.Items)
+                    .Include(s => s.Payments)
+                    .Where(s => s.Status == SaleStatus.OnHold && s.Id > lastId)
+                    .OrderBy(s => s.Id)
+                    .Take(batchSize)
+                    .ToListAsync(cancellationToken);
+
+                if (batch.Count == 0)
+                    break;
+
+                foreach (var sale in batch)
+                {
+                    sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(newExchangeRate);
+                    await RecalculateTotalAsync(sale);
+                }
+
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[RecalculateOnHold] Fallo al recalcular una página de ventas OnHold; {TotalUpdated} ventas ya fueron actualizadas y persistidas con la nueva tasa.", totalUpdated);
+                throw;
+            }
+
+            totalUpdated += batch.Count;
+            lastId = batch[batch.Count - 1].Id;
+
+            _logger?.LogInformation("[RecalculateOnHold] Página recalculada: {PageCount} ventas OnHold (acumulado: {TotalUpdated}).", batch.Count, totalUpdated);
         }
 
-        await _context.SaveChangesAsync();
-        return onHoldSales.Count;
+        _logger?.LogInformation("[RecalculateOnHold] Recálculo completado: {TotalUpdated} ventas OnHold actualizadas con la nueva tasa.", totalUpdated);
+
+        return totalUpdated;
     }
 
-    public async Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType)
+    public async Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(priceListType) || (priceListType != "Retail" && priceListType != "Wholesale"))
         {
@@ -62,12 +98,14 @@ public partial class SalesService
             .Include(s => s.Payments)
                 .ThenInclude(p => p.PaymentMethod)
             .Include(s => s.Customer)
-            .FirstOrDefaultAsync(s => s.Id == saleId);
+            .FirstOrDefaultAsync(s => s.Id == saleId, cancellationToken);
 
         if (sale == null)
         {
             throw new KeyNotFoundException($"Venta #{saleId} no encontrada.");
         }
+
+        EnsureHoldClaimAccess(sale, actingUserId);
 
         if (sale.Status == SaleStatus.Completed)
         {
@@ -82,11 +120,11 @@ public partial class SalesService
             decimal totalPaidUsd = sale.Payments.Sum(p => p.Amount);
             if (sale.TotalUSD < totalPaidUsd)
             {
-                throw new InvalidOperationException("No se puede cambiar la lista de precios: el nuevo total en USD es menor al monto ya abonado por el cliente.");
+                throw new ArgumentException("No se puede cambiar la lista de precios: el nuevo total en USD es menor al monto ya abonado por el cliente.");
             }
         }
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
         return MapToDto(sale);
     }
 
@@ -95,26 +133,14 @@ public partial class SalesService
         if (sale.Items != null && sale.Items.Any())
         {
             var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
-            var products = new Dictionary<int, Product>();
+            var products = new Dictionary<int, SaleProductInfoDto>();
 
             if (_inventoryService != null)
             {
-                var fetched = await _inventoryService.GetProductsByIdsAsync(productIds);
+                var fetched = await _inventoryService.GetSaleProductsByIdsAsync(productIds);
                 if (fetched != null && fetched.Count > 0)
                 {
                     products = fetched.ToDictionary(p => p.Id);
-                }
-                else
-                {
-                    // Fallback para stubs/mocks en pruebas que únicamente configuran GetProductByIdAsync
-                    foreach (var id in productIds)
-                    {
-                        var p = await _inventoryService.GetProductByIdAsync(id);
-                        if (p != null)
-                        {
-                            products[p.Id] = p;
-                        }
-                    }
                 }
             }
 
@@ -135,7 +161,11 @@ public partial class SalesService
 
                     var minWholesaleQty = product.MinWholesaleQuantity > 0 ? product.MinWholesaleQuantity : 6m;
 
-                    if (string.Equals(sale.PriceListType, "Wholesale", StringComparison.OrdinalIgnoreCase) && product.HasWholesale && item.Quantity >= minWholesaleQty)
+                    if (item.IsCustomPrice)
+                    {
+                        item.IsWholesaleApplied = false;
+                    }
+                    else if (string.Equals(sale.PriceListType, "Wholesale", StringComparison.OrdinalIgnoreCase) && product.HasWholesale && item.Quantity >= minWholesaleQty)
                     {
                         item.UnitPrice = wholesalePrice;
                         item.IsWholesaleApplied = true;
@@ -151,20 +181,20 @@ public partial class SalesService
                     throw new KeyNotFoundException($"Producto #{item.ProductId} no encontrado en la base de datos.");
                 }
 
-                item.UnitPriceBsS = item.UnitPrice * sale.AppliedRate;
-                item.Subtotal = item.Quantity * item.UnitPrice;
-                item.SubtotalBsS = item.Subtotal * sale.AppliedRate;
+                item.UnitPriceBsS = PricingCalculator.ToBsSCeiling(item.UnitPrice, sale.AppliedRate);
+                item.Subtotal = Math.Round(item.Quantity * item.UnitPrice, 4, MidpointRounding.AwayFromZero);
+                item.SubtotalBsS = PricingCalculator.RoundToDigital(item.Quantity * item.UnitPriceBsS);
             }
 
-            sale.Subtotal = sale.Items.Sum(i => i.Subtotal);
-            sale.SubtotalBsS = sale.Items.Sum(i => i.SubtotalBsS);
+            sale.Subtotal = Math.Round(sale.Items.Sum(i => i.Subtotal), 4, MidpointRounding.AwayFromZero);
+            sale.SubtotalBsS = PricingCalculator.RoundToDigital(sale.Items.Sum(i => i.SubtotalBsS));
 
             sale.TotalUSD = Math.Round(sale.Subtotal, 2, MidpointRounding.AwayFromZero);
-            sale.TotalBsS = Math.Round(sale.SubtotalBsS, 2, MidpointRounding.AwayFromZero);
+            sale.TotalBsS = PricingCalculator.RoundToDigital(sale.SubtotalBsS);
         }
         else if (sale.AppliedRate > 0)
         {
-            sale.TotalBsS = Math.Round(sale.TotalUSD * sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
+            sale.TotalBsS = PricingCalculator.RoundToDigital(sale.TotalUSD * sale.AppliedRate);
             sale.SubtotalBsS = sale.TotalBsS;
         }
     }
@@ -176,7 +206,7 @@ public partial class SalesService
             decimal totalPaidUsd = sale.Payments.Sum(p => p.Amount);
             if (sale.TotalUSD < totalPaidUsd)
             {
-                throw new InvalidOperationException($"El nuevo total de la venta (${sale.TotalUSD:F2}) no puede ser menor al monto que ya ha sido abonado por el cliente (${totalPaidUsd:F2}).");
+                throw new ArgumentException($"El nuevo total de la venta (${sale.TotalUSD:F2}) no puede ser menor al monto que ya ha sido abonado por el cliente (${totalPaidUsd:F2}).");
             }
         }
     }

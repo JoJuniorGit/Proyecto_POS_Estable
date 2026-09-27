@@ -1,0 +1,27 @@
+/* ══════════════════════════════════════════════════════════
+   EditSaleModal — Clases propias reemplazando estilos
+   inline sin utilidad 1:1 en utilities.css / index.css
+   ══════════════════════════════════════════════════════════ */
+.es-search-area {
+  position: relative;
+  z-index: 1000;
+}
+
+.es-table-wrapper {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.es-empty-table { border-radius: 8px; }
+
+.es-th-action { width: 50px; }
+
+.es-warning { font-size: 0.85rem; }
+
+.es-summary-box {
+  background-color: var(--bg-secondary, rgba(255, 255, 255, 0.03));
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.es-total-bs { font-size: 1.05rem; }

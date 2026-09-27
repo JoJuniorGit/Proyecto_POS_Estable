@@ -6,7 +6,6 @@ using Core.DTOs;
 using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
-using System.Windows;
 using System.Linq;
 using Core.Common;
 
@@ -14,25 +13,25 @@ namespace Desktop.Client.ViewModels;
 
 public partial class SettingsViewModel : ObservableObject, IDisposable
 {
-    private readonly IPaymentService _payment_service;
-    private readonly ISettingsService _settings_service;
-    private readonly IConnectionManager? _connection_manager;
-    private EventHandler<ConnectionStatusEventArgs>? _connection_status_handler;
-    private bool _is_dialog_open;
+    private readonly IPaymentService _paymentService;
+    private readonly ISettingsService _settingsService;
+    private readonly IConnectionManager? _connectionManager;
+    private EventHandler<ConnectionStatusEventArgs>? _connectionStatusHandler;
+    private bool _isDialogOpen;
     private bool _disposed;
 
-    private bool _is_loading;
+    private bool _isLoading;
     public bool IsLoading
     {
-        get => _is_loading;
-        set => SetProperty(ref _is_loading, value);
+        get => _isLoading;
+        set => SetProperty(ref _isLoading, value);
     }
 
-    private string _error_message = string.Empty;
+    private string _errorMessage = string.Empty;
     public string ErrorMessage
     {
-        get => _error_message;
-        set => SetProperty(ref _error_message, value);
+        get => _errorMessage;
+        set => SetProperty(ref _errorMessage, value);
     }
 
     [ObservableProperty]
@@ -44,97 +43,91 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _connectionStatusColor = "#27AE60";
 
+    [ObservableProperty]
+    private bool _allowNegativeStock;
+
     public ObservableCollection<PaymentMethodDto> PaymentMethods { get; } = new();
     public ObservableCollection<TimeZoneInfo> AvailableTimeZones { get; } = new();
 
-    public class CurrencyFormatOption
-    {
-        public string Key { get; set; } = "Venezuelan";
-        public string DisplayName { get; set; } = "Venezolano Contable (1.234,56)";
-        public string Description { get; set; } = "Separador de miles: punto (.), decimal: coma (,)";
-    }
-
-    public ObservableCollection<CurrencyFormatOption> AvailableCurrencyFormats { get; } = new()
-    {
-        new CurrencyFormatOption { Key = "Venezuelan", DisplayName = "Venezolano Contable (1.234,56)", Description = "Separador de miles: punto (.), decimal: coma (,)" },
-        new CurrencyFormatOption { Key = "International", DisplayName = "Internacional (1,234.56)", Description = "Separador de miles: coma (,), decimal: punto (.)" }
-    };
-
-    private CurrencyFormatOption? _selectedCurrencyFormat;
-    public CurrencyFormatOption? SelectedCurrencyFormat
-    {
-        get => _selectedCurrencyFormat;
-        set
-        {
-            if (SetProperty(ref _selectedCurrencyFormat, value))
-            {
-                OnSelectedCurrencyFormatChangedAsync(value).SafeFireAndForget("Settings.CurrencyFormatChanged");
-            }
-        }
-    }
-
-    [ObservableProperty]
-    private string _currencyFormatPreviewBsS = "Bs.S 172.786,94";
-
-    [ObservableProperty]
-    private string _currencyFormatPreviewUSD = "$ 1.250,50";
-
-    private TimeZoneInfo? _selected_time_zone;
+    private TimeZoneInfo? _selectedTimeZone;
     public TimeZoneInfo? SelectedTimeZone
     {
-        get => _selected_time_zone;
+        get => _selectedTimeZone;
         set
         {
-            if (SetProperty(ref _selected_time_zone, value))
+            if (SetProperty(ref _selectedTimeZone, value))
             {
                 OnSelectedTimeZoneChangedAsync(value).SafeFireAndForget("Settings.TimeZoneChanged");
             }
         }
     }
 
-    private readonly IDialogService? _dialog_service;
+    private readonly IDialogService? _dialogService;
+    private readonly IDispatcherInvoker _dispatcherInvoker;
 
     public SettingsViewModel(
-        IPaymentService payment_service,
-        ISettingsService settings_service,
+        IPaymentService paymentService,
+        ISettingsService settingsService,
         UserSession? userSession = null,
-        IDialogService? dialog_service = null,
-        IConnectionManager? connection_manager = null)
+        IDialogService? dialogService = null,
+        IConnectionManager? connectionManager = null,
+        IDispatcherInvoker? dispatcherInvoker = null)
     {
-        _payment_service = payment_service;
-        _settings_service = settings_service;
+        _paymentService = paymentService;
+        _settingsService = settingsService;
         UserSession = userSession;
-        _dialog_service = dialog_service;
-        _connection_manager = connection_manager;
+        _dialogService = dialogService;
+        _connectionManager = connectionManager;
+        _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
 
-        if (_connection_manager != null)
+        if (_connectionManager != null)
         {
-            CurrentServerAddress = _connection_manager.CurrentServerAddress;
-            UpdateConnectionStatusDisplay(_connection_manager.Status);
+            CurrentServerAddress = _connectionManager.CurrentServerAddress;
+            UpdateConnectionStatusDisplay(_connectionManager.Status);
 
-            _connection_status_handler = OnConnectionStatusChanged;
-            _connection_manager.ConnectionStatusChanged += _connection_status_handler;
+            _connectionStatusHandler = OnConnectionStatusChanged;
+            _connectionManager.ConnectionStatusChanged += _connectionStatusHandler;
         }
 
-        if (UserSession == null || UserSession.IsLoggedIn)
-        {
-            _ = LoadMethodsAsync();
-            _ = LoadTimeZonesAsync();
-            _ = LoadCurrencyFormatAsync();
-        }
+        // 8.5-W4: El constructor NO dispara fetch. EnsureLoadedAsync() es la única fuente de carga
+        // (idempotente) y evita fetches duplicados en navegación al VM.
     }
+
+    private bool _hasLoaded;
 
     public async Task EnsureLoadedAsync()
     {
+        if (_hasLoaded) return;
         if (UserSession == null || UserSession.IsLoggedIn)
         {
             await LoadMethodsAsync();
             await LoadTimeZonesAsync();
             await LoadCurrencyFormatAsync();
+            await LoadAllowNegativeStockAsync();
+            _hasLoaded = true;
         }
     }
 
     public UserSession? UserSession { get; }
+
+    private async Task LoadAllowNegativeStockAsync()
+    {
+        AllowNegativeStock = await _settingsService.GetAllowNegativeStockAsync();
+    }
+
+    [RelayCommand]
+    private async Task ToggleAllowNegativeStockAsync()
+    {
+        try
+        {
+            await _settingsService.SetAllowNegativeStockAsync(AllowNegativeStock);
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.ClientStateLogger.LogError($"Error al guardar la configuración de stock negativo: {ex.Message}", nameof(SettingsViewModel));
+            _dialogService?.ShowError("Stock Negativo", "No se pudo guardar la configuración. Intente nuevamente.");
+        }
+    }
 
     [RelayCommand]
     private async Task LoadMethodsAsync()
@@ -147,15 +140,16 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
         try
         {
-            var _methods = await _payment_service.GetAllMethodsAsync();
-            foreach (var _m in _methods)
+            var methods = await _paymentService.GetAllMethodsAsync();
+            foreach (var m in methods)
             {
-                PaymentMethods.Add(_m);
+                PaymentMethods.Add(m);
             }
         }
-        catch (Exception _ex)
+        catch (Exception ex)
         {
-            ErrorMessage = $"Failed to load payment configurations: {_ex.Message}";
+            Core.Logging.ClientStateLogger.LogError($"Error al cargar métodos de pago: {ex.Message}", nameof(SettingsViewModel));
+            ErrorMessage = "No se pudieron cargar los métodos de pago. Verifique la conexión con el servidor e intente nuevamente.";
         }
         finally
         {
@@ -168,12 +162,13 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     {
         try
         {
-            await _payment_service.UpdateAsync(method);
+            await _paymentService.UpdateAsync(method);
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
-        catch (Exception _ex)
+        catch (Exception ex)
         {
-            MessageBox.Show($"Failed to update status: {_ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Core.Logging.ClientStateLogger.LogError($"Error al actualizar el estado del método de pago: {ex.Message}", nameof(SettingsViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo actualizar el estado del método de pago. Intente nuevamente.");
             method.IsActive = !method.IsActive; // Revert
             OnPropertyChanged(nameof(PaymentMethods));
         }
@@ -184,12 +179,13 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     {
         try
         {
-            await _payment_service.UpdateAsync(method);
+            await _paymentService.UpdateAsync(method);
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
-        catch (Exception _ex)
+        catch (Exception ex)
         {
-            MessageBox.Show($"Failed to update rule: {_ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Core.Logging.ClientStateLogger.LogError($"Error al actualizar la regla del método de pago: {ex.Message}", nameof(SettingsViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo actualizar la regla del método de pago. Intente nuevamente.");
             method.RequiresReference = !method.RequiresReference; // Revert
             OnPropertyChanged(nameof(PaymentMethods));
         }
@@ -203,7 +199,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         try
         {
             method.IsCash = !method.IsCash;
-            var updated = await _payment_service.UpdateAsync(method);
+            var updated = await _paymentService.UpdateAsync(method);
             var index = PaymentMethods.IndexOf(method);
             if (index >= 0)
             {
@@ -222,8 +218,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogError($"Error al cambiar el tipo de método de pago: {ex.Message}", nameof(SettingsViewModel));
             method.IsCash = original;
-            MessageBox.Show($"Error al cambiar el tipo de método de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo cambiar el tipo del método de pago. Intente nuevamente.");
             await LoadMethodsAsync();
         }
     }
@@ -231,36 +228,37 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task AddNewMethodAsync()
     {
-        if (_dialog_service == null) return;
-        var _newName = await _dialog_service.ShowTextInputAsync(
-            "Enter the name of the new Payment Method (e.g. Check, Transfer, Crypto):",
-            "Method Name");
+        if (_dialogService == null) return;
+        var newName = await _dialogService.ShowTextInputAsync(
+            "Ingrese el nombre del nuevo método de pago (ej. Cheque, Transferencia, Criptomoneda):",
+            "Nombre del Método");
 
-        if (string.IsNullOrWhiteSpace(_newName)) return;
+        if (string.IsNullOrWhiteSpace(newName)) return;
 
-        if (PaymentMethods.Any(p => p.Name.Equals(_newName, StringComparison.OrdinalIgnoreCase)))
+        if (PaymentMethods.Any(p => p.Name.Equals(newName, StringComparison.OrdinalIgnoreCase)))
         {
-            MessageBox.Show("A payment method with this name already exists!", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
+            _dialogService.ShowWarning("Validación", "Ya existe un método de pago con ese nombre.");
             return;
         }
 
         try
         {
-            var _method = new PaymentMethodDto
+            var method = new PaymentMethodDto
             {
-                Name = _newName,
+                Name = newName,
                 IsActive = true,
                 RequiresReference = false,
                 IsCash = false // Digital por defecto
             };
 
-            var _created = await _payment_service.CreateAsync(_method);
-            PaymentMethods.Add(_created);
+            var created = await _paymentService.CreateAsync(method);
+            PaymentMethods.Add(created);
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
-        catch (Exception _ex)
+        catch (Exception ex)
         {
-            MessageBox.Show($"Failed to create method: {_ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Core.Logging.ClientStateLogger.LogError($"Error al crear el método de pago: {ex.Message}", nameof(SettingsViewModel));
+            _dialogService.ShowError("Error", "No se pudo crear el método de pago. Intente nuevamente.");
             await LoadMethodsAsync();
         }
     }
@@ -270,9 +268,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     {
         if (method == null) return;
         string? newName = null;
-        if (_dialog_service != null)
+        if (_dialogService != null)
         {
-            newName = await _dialog_service.ShowTextInputAsync(
+            newName = await _dialogService.ShowTextInputAsync(
                 $"Ingrese el nuevo nombre para el método de pago '{method.Name}':",
                 "Nombre del Método de Pago");
         }
@@ -282,14 +280,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         var cleanName = newName.Trim();
         if (PaymentMethods.Any(p => p.Id != method.Id && p.Name.Equals(cleanName, StringComparison.OrdinalIgnoreCase)))
         {
-            MessageBox.Show("Ya existe un método de pago con ese nombre.", "Validación", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (_dialogService != null) _dialogService.ShowWarning("Validación", "Ya existe un método de pago con ese nombre.");
             return;
         }
 
         try
         {
             method.Name = cleanName;
-            var updated = await _payment_service.UpdateAsync(method);
+            var updated = await _paymentService.UpdateAsync(method);
             var index = PaymentMethods.IndexOf(method);
             if (index >= 0)
             {
@@ -307,7 +305,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al renombrar el método de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Core.Logging.ClientStateLogger.LogError($"Error al renombrar el método de pago: {ex.Message}", nameof(SettingsViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo renombrar el método de pago. Intente nuevamente.");
         }
     }
 
@@ -331,13 +330,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
         try
         {
-            await _payment_service.UpdateAsync(PaymentMethods[index - 1]);
-            await _payment_service.UpdateAsync(PaymentMethods[index]);
+            await _paymentService.UpdateAsync(PaymentMethods[index - 1]);
+            await _paymentService.UpdateAsync(PaymentMethods[index]);
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al reordenar métodos de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Core.Logging.ClientStateLogger.LogError($"Error al reordenar los métodos de pago: {ex.Message}", nameof(SettingsViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo reordenar los métodos de pago. Intente nuevamente.");
         }
     }
 
@@ -361,13 +361,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
         try
         {
-            await _payment_service.UpdateAsync(PaymentMethods[index]);
-            await _payment_service.UpdateAsync(PaymentMethods[index + 1]);
+            await _paymentService.UpdateAsync(PaymentMethods[index]);
+            await _paymentService.UpdateAsync(PaymentMethods[index + 1]);
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al reordenar métodos de pago: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Core.Logging.ClientStateLogger.LogError($"Error al reordenar los métodos de pago: {ex.Message}", nameof(SettingsViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo reordenar los métodos de pago. Intente nuevamente.");
         }
     }
 
@@ -375,23 +376,24 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private async Task DeleteMethodAsync(PaymentMethodDto method)
     {
         if (method == null) return;
-        var result = MessageBox.Show(
-            $"¿Está seguro de eliminar el método de pago '{method.Name}'?\n\nSi el método tiene transacciones históricas registradas, será archivado de forma segura sin afectar las ventas ni auditorías.",
-            "Confirmar Eliminación",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
+        bool confirmed = _dialogService != null
+            ? _dialogService.ShowConfirm(
+                "Confirmar Eliminación",
+                $"¿Está seguro de eliminar el método de pago '{method.Name}'?\n\nSi el método tiene transacciones históricas registradas, será archivado de forma segura sin afectar las ventas ni auditorías.")
+            : false;
 
-        if (result == MessageBoxResult.Yes)
+        if (confirmed)
         {
             try
             {
-                await _payment_service.DeleteAsync(method.Id);
+                await _paymentService.DeleteAsync(method.Id);
                 PaymentMethods.Remove(method);
                 WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al eliminar el método de pago: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                Core.Logging.ClientStateLogger.LogError($"Error al eliminar el método de pago: {ex.Message}", nameof(SettingsViewModel));
+                if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo eliminar el método de pago. Intente nuevamente.");
                 await LoadMethodsAsync();
             }
         }
@@ -400,15 +402,15 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private async Task LoadTimeZonesAsync()
     {
         AvailableTimeZones.Clear();
-        foreach (var _tz in TimeZoneInfo.GetSystemTimeZones())
+        foreach (var tz in TimeZoneInfo.GetSystemTimeZones())
         {
-            AvailableTimeZones.Add(_tz);
+            AvailableTimeZones.Add(tz);
         }
 
-        var _savedTzId = await _settings_service.GetTimeZoneAsync();
-        if (!string.IsNullOrEmpty(_savedTzId))
+        var savedTzId = await _settingsService.GetTimeZoneAsync();
+        if (!string.IsNullOrEmpty(savedTzId))
         {
-            SelectedTimeZone = AvailableTimeZones.FirstOrDefault(t => t.Id == _savedTzId);
+            SelectedTimeZone = AvailableTimeZones.FirstOrDefault(t => t.Id == savedTzId);
         }
     }
 
@@ -417,96 +419,50 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         if (value == null) return;
         try
         {
-            await _settings_service.SetTimeZoneAsync(value.Id);
+            await _settingsService.SetTimeZoneAsync(value.Id);
             WeakReferenceMessenger.Default.Send(new TimeZoneChangedMessage());
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to save timezone: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private async Task LoadCurrencyFormatAsync()
-    {
-        try
-        {
-            var savedFormat = await _settings_service.GetCurrencyFormatAsync();
-            var selected = AvailableCurrencyFormats.FirstOrDefault(f => f.Key.Equals(savedFormat, StringComparison.OrdinalIgnoreCase))
-                           ?? AvailableCurrencyFormats[0];
-            _selectedCurrencyFormat = selected;
-            OnPropertyChanged(nameof(SelectedCurrencyFormat));
-            UpdateCurrencyPreview(selected.Key);
-        }
-        catch
-        {
-            _selectedCurrencyFormat = AvailableCurrencyFormats[0];
-            OnPropertyChanged(nameof(SelectedCurrencyFormat));
-            UpdateCurrencyPreview("Venezuelan");
-        }
-    }
-
-    private async Task OnSelectedCurrencyFormatChangedAsync(CurrencyFormatOption? option)
-    {
-        if (option == null) return;
-        try
-        {
-            UpdateCurrencyPreview(option.Key);
-            await _settings_service.SetCurrencyFormatAsync(option.Key);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Error al guardar formato de moneda: {ex.Message}", "Settings Error", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private void UpdateCurrencyPreview(string formatKey)
-    {
-        if (formatKey.Equals("International", StringComparison.OrdinalIgnoreCase))
-        {
-            CurrencyFormatPreviewBsS = "Bs.S 172,786.94";
-            CurrencyFormatPreviewUSD = "$ 1,250.50";
-        }
-        else
-        {
-            CurrencyFormatPreviewBsS = "Bs.S 172.786,94";
-            CurrencyFormatPreviewUSD = "$ 1.250,50";
+            Core.Logging.ClientStateLogger.LogError($"Error al guardar la zona horaria: {ex.Message}", nameof(SettingsViewModel));
+            if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo guardar la zona horaria. Intente nuevamente.");
         }
     }
 
     [RelayCommand]
     private async Task OpenServerConnectionAsync()
     {
-        if (_dialog_service == null || _is_dialog_open) return;
+        if (_dialogService == null || _isDialogOpen) return;
 
-        _is_dialog_open = true;
+        _isDialogOpen = true;
         try
         {
-            var saved = await _dialog_service.ShowServerConnectionDialogAsync();
-            if (saved && _connection_manager != null)
+            var saved = await _dialogService.ShowServerConnectionDialogAsync();
+            if (saved && _connectionManager != null)
             {
-                CurrentServerAddress = _connection_manager.CurrentServerAddress;
-                UpdateConnectionStatusDisplay(_connection_manager.Status);
+                CurrentServerAddress = _connectionManager.CurrentServerAddress;
+                UpdateConnectionStatusDisplay(_connectionManager.Status);
             }
         }
         finally
         {
-            _is_dialog_open = false;
+            _isDialogOpen = false;
         }
     }
 
     [RelayCommand]
     private async Task OpenPairingQrAsync()
     {
-        if (_dialog_service == null || _is_dialog_open) return;
+        if (_dialogService == null || _isDialogOpen) return;
 
-        _is_dialog_open = true;
+        _isDialogOpen = true;
         try
         {
-            await _dialog_service.ShowPairingQrDialogAsync();
+            await _dialogService.ShowPairingQrDialogAsync();
         }
         finally
         {
-            _is_dialog_open = false;
+            _isDialogOpen = false;
         }
     }
 
@@ -518,37 +474,13 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             UpdateConnectionStatusDisplay(e.Status);
         }
 
-        if (System.Windows.Application.Current != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+        if (!_dispatcherInvoker.CheckAccess())
         {
-            System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(Apply));
+            _dispatcherInvoker.BeginInvoke(Apply);
         }
         else
         {
             Apply();
-        }
-    }
-
-    private void UpdateConnectionStatusDisplay(ConnectionStatus status)
-    {
-        switch (status)
-        {
-            case ConnectionStatus.Connected:
-                ConnectionStatusText = "Conectado";
-                ConnectionStatusColor = "#27AE60"; // Verde esmeralda
-                break;
-            case ConnectionStatus.Connecting:
-                ConnectionStatusText = "Conectando...";
-                ConnectionStatusColor = "#F39C12"; // Ámbar
-                break;
-            case ConnectionStatus.Scanning:
-                ConnectionStatusText = "Buscando servidor...";
-                ConnectionStatusColor = "#F39C12"; // Ámbar
-                break;
-            case ConnectionStatus.Disconnected:
-            default:
-                ConnectionStatusText = "Desconectado";
-                ConnectionStatusColor = "#E74C3C"; // Rojo coral
-                break;
         }
     }
 
@@ -564,10 +496,10 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             if (disposing)
             {
-                if (_connection_manager != null && _connection_status_handler != null)
+                if (_connectionManager != null && _connectionStatusHandler != null)
                 {
-                    _connection_manager.ConnectionStatusChanged -= _connection_status_handler;
-                    _connection_status_handler = null;
+                    _connectionManager.ConnectionStatusChanged -= _connectionStatusHandler;
+                    _connectionStatusHandler = null;
                 }
             }
             _disposed = true;

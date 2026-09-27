@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { resolveBaseUrl, setCustomBaseUrl, apiFetch } from './api.js';
+import { resolveBaseUrl, setCustomBaseUrl, apiFetch, api } from './api.js';
 
 describe('api.js resolveBaseUrl & setCustomBaseUrl', () => {
   let originalWindow;
@@ -94,7 +94,7 @@ describe('api.js resolveBaseUrl & setCustomBaseUrl', () => {
     assert.strictEqual(url, 'http://192.168.1.10:5000');
   });
 
-  it('6. With ?server=192.168.1.100:5000 on HTTPS page, normalizes and maps to https://192.168.1.100:5001', () => {
+  it('6. With ?server=192.168.1.100:5000 on HTTPS page without ?pair token, does not persist to localStorage immediately (Fail-closed)', () => {
     global.window = {
       location: {
         protocol: 'https:',
@@ -110,11 +110,11 @@ describe('api.js resolveBaseUrl & setCustomBaseUrl', () => {
     };
 
     const url = resolveBaseUrl();
-    assert.strictEqual(url, 'https://192.168.1.100:5001');
-    assert.strictEqual(mockStorage['pos_custom_api_url'], 'https://192.168.1.100:5001');
+    assert.strictEqual(url, 'https://192.168.1.100:5001'); // Falls back to hostname:5001
+    assert.strictEqual(mockStorage['pos_custom_api_url'], undefined);
   });
 
-  it('7. setCustomBaseUrl sanitizes http to https on HTTPS page', () => {
+  it('7. setCustomBaseUrl sanitizes http to https on HTTPS page for a permitted LAN host', () => {
     global.window = {
       location: {
         protocol: 'https:',
@@ -126,6 +126,35 @@ describe('api.js resolveBaseUrl & setCustomBaseUrl', () => {
 
     setCustomBaseUrl('http://192.168.1.20:5000');
     assert.strictEqual(mockStorage['pos_custom_api_url'], 'https://192.168.1.20:5001');
+  });
+
+  it('8. setCustomBaseUrl rejects a remote (non-private, non-loopback) host', () => {
+    global.window = {
+      location: {
+        protocol: 'https:',
+        origin: 'https://localhost:5001',
+        hostname: 'localhost',
+        port: '5001'
+      }
+    };
+
+    setCustomBaseUrl('https://api.evil.com');
+    // No debe persistirse ni actualizar la URL base
+    assert.strictEqual(mockStorage['pos_custom_api_url'], undefined);
+  });
+
+  it('9. setCustomBaseUrl rejects a public-IP LAN-looking host', () => {
+    global.window = {
+      location: {
+        protocol: 'https:',
+        origin: 'https://localhost:5001',
+        hostname: 'localhost',
+        port: '5001'
+      }
+    };
+
+    setCustomBaseUrl('https://8.8.8.8');
+    assert.strictEqual(mockStorage['pos_custom_api_url'], undefined);
   });
 });
 
@@ -207,6 +236,134 @@ describe('apiFetch ProblemDetails and validation error extraction', () => {
       async () => await apiFetch('/api/test'),
       { message: 'Operación no permitida para el usuario' }
     );
+  });
+
+  it('6. Preserves Content-Type application/json when options.headers are provided with body', async () => {
+    let capturedConfig = null;
+    originalFetch = global.fetch;
+    global.fetch = async (url, config) => {
+      capturedConfig = config;
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        text: async () => JSON.stringify({ success: true }),
+        json: async () => ({ success: true })
+      };
+    };
+
+    await apiFetch('/api/sales/1/complete', {
+      method: 'POST',
+      body: JSON.stringify({ exchangeRate: 40 }),
+      headers: { 'Idempotency-Key': 'test-uuid-123' }
+    });
+
+    assert.ok(capturedConfig, 'fetch should have been called');
+    assert.strictEqual(capturedConfig.headers['Content-Type'], 'application/json');
+    assert.strictEqual(capturedConfig.headers['Accept'], 'application/json');
+    assert.strictEqual(capturedConfig.headers['Idempotency-Key'], 'test-uuid-123');
+    assert.strictEqual(capturedConfig.headers['X-Client-Platform'], 'Web');
+  });
+
+  it('7. api.post restarts the POS service via /api/administration/restart', async () => {
+    let capturedUrl = null;
+    let capturedConfig = null;
+    originalFetch = global.fetch;
+    global.fetch = async (url, config) => {
+      capturedUrl = url;
+      capturedConfig = config;
+      return {
+        ok: true,
+        status: 202,
+        headers: { get: () => 'application/json' },
+        text: async () => JSON.stringify({ status: 'restarting' }),
+        json: async () => ({ status: 'restarting' })
+      };
+    };
+
+    const result = await api.post('/api/administration/restart');
+
+    assert.ok(capturedUrl.endsWith('/api/administration/restart'));
+    assert.strictEqual(capturedConfig.method, 'POST');
+    assert.strictEqual(capturedConfig.body, undefined);
+    assert.strictEqual(result.status, 'restarting');
+    assert.strictEqual(capturedConfig.headers['X-Client-Platform'], 'Web');
+  });
+
+  it('8. Retries once on 503 and then succeeds', async () => {
+    let calls = 0;
+    originalFetch = global.fetch;
+    global.fetch = async () => {
+      calls++;
+      if (calls === 1) {
+        return {
+          ok: false,
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { get: () => 'application/json' },
+          text: async () => '{}',
+          json: async () => ({})
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        text: async () => JSON.stringify({ recovered: true }),
+        json: async () => ({ recovered: true })
+      };
+    };
+
+    const result = await apiFetch('/api/test');
+
+    assert.strictEqual(calls, 2);
+    assert.deepStrictEqual(result, { recovered: true });
+  });
+
+  it('9. Retries only once on persistent 504 and surfaces the error', async () => {
+    let calls = 0;
+    originalFetch = global.fetch;
+    global.fetch = async () => {
+      calls++;
+      return {
+        ok: false,
+        status: 504,
+        statusText: 'Gateway Timeout',
+        headers: { get: () => 'application/json' },
+        text: async () => '{}',
+        json: async () => ({})
+      };
+    };
+
+    await assert.rejects(
+      async () => await apiFetch('/api/test'),
+      { message: 'Error 504: Gateway Timeout' }
+    );
+    assert.strictEqual(calls, 2);
+  });
+
+  it('10. getWithMeta unifies with apiFetch and returns X-Total-Count', async () => {
+    let capturedSignal = null;
+    originalFetch = global.fetch;
+    global.fetch = async (url, config) => {
+      capturedSignal = config.signal;
+      return {
+        ok: true,
+        status: 200,
+        headers: {
+          get: (h) => (h.toLowerCase() === 'content-type' ? 'application/json'
+            : h.toLowerCase() === 'x-total-count' ? '42' : null)
+        },
+        text: async () => JSON.stringify([{ id: 1 }]),
+        json: async () => [{ id: 1 }]
+      };
+    };
+
+    const { data, totalCount } = await api.getWithMeta('/api/sales/pending');
+
+    assert.ok(capturedSignal, 'signal should be a combined AbortSignal');
+    assert.strictEqual(totalCount, 42);
+    assert.deepStrictEqual(data, [{ id: 1 }]);
   });
 });
 

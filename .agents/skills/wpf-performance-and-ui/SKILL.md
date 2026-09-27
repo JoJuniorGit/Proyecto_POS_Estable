@@ -9,6 +9,8 @@ description: >-
 
 # WPF Performance, MVVM & UI Polishing Guide
 
+> **Referencia de código:** Este skill supplementa `docs/coding-guidelines-wpf.md`. Léelo antes de escribir código WPF.
+
 This skill governs desktop client development in `.NET 10 WPF`, focusing on 60fps responsiveness, clean MVVM declarative bindings, memory leak prevention, and POS industry hotkey standards.
 
 ---
@@ -195,7 +197,16 @@ private void UserControl_PreviewKeyDown(object sender, KeyEventArgs e)
 
 ---
 
-## 7. Self-Evaluation Test Suite
+## 7. MVVM Conventions, Code-Behind & POS Monetary Display
+
+* **Zero code-behind**: NEVER write business or presentation logic in `.xaml.cs`. Use `Behaviors` from `Microsoft.Xaml.Behaviors.Wpf` for visual events (KeyDown, Loaded, etc.). The only allowed exception is `OnClosed` to release memory via `(DataContext as IDisposable)?.Dispose()`.
+* **CommunityToolkit.Mvvm**: Generate properties with `[ObservableProperty]` on private `_camelCase` fields (e.g. `private string _name;`) and commands with `[RelayCommand]`; never instantiate `ICommand` manually or use `_snake_case`.
+* **POS monetary display** (decision 8.104): Unit price in Bs.S is always `PricingCalculator.ToBsSCeiling(usd, rate)` (ceiling to 2 decimals) and `SubtotalBsS = RoundToDigital(quantity * UnitPriceBsS)`. Do not round Bs.S amounts to integers. Keep the minimalist aesthetic: no currency symbols, large Bs.S numbers with USD in small, faint text.
+* **Visual performance**: `DataGrid`/`ListView` must keep `VirtualizingStackPanel.IsVirtualizing="True"` and `VirtualizationMode="Recycling"`.
+
+---
+
+## 8. Self-Evaluation Test Suite
 
 Run WPF ViewModel and UI unit tests:
 ```powershell

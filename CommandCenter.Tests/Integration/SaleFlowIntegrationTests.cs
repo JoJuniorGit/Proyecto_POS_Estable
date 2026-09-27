@@ -39,10 +39,13 @@ public class SaleFlowIntegrationTests
         inventoryContext.Products.AddRange(product1, product2);
         await inventoryContext.SaveChangesAsync();
 
+        var productInfo1 = product1.ToSaleProductInfo();
+        var productInfo2 = product2.ToSaleProductInfo();
+
         var inventoryServiceMock = new Mock<IInventoryService>();
-        inventoryServiceMock.Setup(i => i.GetProductByIdAsync(101)).ReturnsAsync(product1);
-        inventoryServiceMock.Setup(i => i.GetProductByIdAsync(102)).ReturnsAsync(product2);
-        inventoryServiceMock.Setup(i => i.GetProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<Product> { product1, product2 });
+        inventoryServiceMock.Setup(i => i.GetSaleProductByIdAsync(101)).ReturnsAsync(productInfo1);
+        inventoryServiceMock.Setup(i => i.GetSaleProductByIdAsync(102)).ReturnsAsync(productInfo2);
+        inventoryServiceMock.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>())).ReturnsAsync(new List<SaleProductInfoDto> { productInfo1, productInfo2 });
 
         var mediatorMock = new Mock<IMediator>();
         var cashDrawerService = new CashDrawerService(salesContext);

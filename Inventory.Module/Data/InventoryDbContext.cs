@@ -60,11 +60,6 @@ public class InventoryDbContext : DbContext
             entity.Property(p => p.HasIndependentPricing).HasDefaultValue(false);
             entity.Property(p => p.ConversionFactor).HasPrecision(18, 4).HasDefaultValue(1.0000m);
 
-            if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
-            {
-                entity.Property(p => p.RowVersion).HasDefaultValue(new byte[] { 1 });
-            }
-
             entity.ToTable(t => {
                 t.HasCheckConstraint("CK_Products_Variant_Flags",
                     "(\"IsGroupHeader\" = TRUE AND \"ParentProductId\" IS NULL) OR (\"IsStockShared\" = FALSE AND \"HasIndependentPricing\" = FALSE)");
@@ -103,6 +98,10 @@ public class InventoryDbContext : DbContext
         modelBuilder.Entity<StockMovement>().HasOne(m => m.Product).WithMany().HasForeignKey(m => m.ProductId);
         modelBuilder.Entity<StockMovement>().Property(m => m.QuantityChange).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
         modelBuilder.Entity<StockMovement>().Property(m => m.NewStockLevel).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+        // 8.9-M9: el archiver recorre por MovementDate (StockMovementArchiverJob).
+        modelBuilder.Entity<StockMovement>().HasIndex(m => m.MovementDate).HasDatabaseName("IX_StockMovements_MovementDate");
+        // 8.16-H03: lookup de idempotencia por SaleId (dedupe de deducción, handler de inventario).
+        modelBuilder.Entity<StockMovement>().HasIndex(m => m.SaleId).HasDatabaseName("IX_StockMovements_SaleId");
 
         modelBuilder.Entity<StockMovementArchive>(entity =>
         {
@@ -114,12 +113,28 @@ public class InventoryDbContext : DbContext
             entity.HasIndex(m => m.MovementDate).HasDatabaseName("IX_StockMovements_Archive_MovementDate");
         });
 
-        modelBuilder.Entity<Product>().Property(p => p.RowVersion).IsRowVersion();
+        // Token de concurrencia basado en la pseudo-columna de sistema `xmin` de PostgreSQL
+        // (hallazgo 8.2-A1). Se configura en caliente sin DDL adicional; se omite en SQLite.
+        if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            modelBuilder.Entity<Product>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+        }
 
         modelBuilder.Entity<StockReservation>().HasKey(r => r.Id);
         modelBuilder.Entity<StockReservation>().HasOne(r => r.Product).WithMany().HasForeignKey(r => r.ProductId);
         modelBuilder.Entity<StockReservation>().HasOne(r => r.SourceProduct).WithMany().HasForeignKey(r => r.SourceProductId).OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<StockReservation>().Property(r => r.Quantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+        modelBuilder.Entity<StockReservation>()
+            .HasIndex(r => new { r.ExpiryDate, r.IsConfirmed })
+            .HasDatabaseName("IX_StockReservations_ExpiryDate_IsConfirmed");
+        // 8.9-M9: tope de reservas por usuario/referencia (ReservationsController).
+        modelBuilder.Entity<StockReservation>()
+            .HasIndex(r => r.ReferenceId)
+            .HasDatabaseName("IX_StockReservations_ReferenceId");
 
         // SystemSetting: Key-value store for app configuration
         modelBuilder.Entity<SystemSetting>(entity =>
@@ -130,10 +145,11 @@ public class InventoryDbContext : DbContext
         });
 
         // ExchangeRateHistory: One record per day, UNIQUE on Date
+        // 8.142: la PK ya provee el indice unico sobre Date; el HasIndex explicito duplicaba
+        // estructura y agregaba costo de escritura en cada upsert de tasa.
         modelBuilder.Entity<ExchangeRateHistory>(entity =>
         {
             entity.HasKey(e => e.Date);
-            entity.HasIndex(e => e.Date).IsUnique();
             entity.Property(e => e.Rate).HasPrecision(18, 4);
         });
     }

@@ -20,6 +20,11 @@ public class IdempotentRequest
     public string RequestPath { get; set; } = string.Empty;
 
     /// <summary>
+    /// ID del usuario que realizó la petición. Nullable para endpoints anónimos o compatibilidad.
+    /// </summary>
+    public int? UserId { get; set; }
+
+    /// <summary>
     /// Hash criptográfico SHA-256 (32 bytes) del payload compuesto (Method + Path + Body).
     /// Almacenado como tipo nativo bytea en PostgreSQL.
     /// </summary>

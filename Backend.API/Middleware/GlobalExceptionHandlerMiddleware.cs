@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -34,7 +35,8 @@ public class GlobalExceptionHandlerMiddleware
     private static async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         var requestPath = $"{context.Request.Method} {context.Request.Path}";
-        context.Response.ContentType = "application/json";
+        // 8B-B2: RFC 7807 — el cuerpo ya es un problem+json (WriteProblemDetailsAsync).
+        context.Response.ContentType = "application/problem+json";
 
         // 1. PostgreSQL specific exceptions (H-API-6 / H-API-20)
         var postgresEx = FindException<PostgresException>(exception);
@@ -161,9 +163,39 @@ public class GlobalExceptionHandlerMiddleware
             return;
         }
 
+        // 3. Request cancellation, client aborted: do not alarm
+        if (exception is OperationCanceledException)
+        {
+            context.Response.StatusCode = StatusCodes.Status499ClientClosedRequest;
+            return;
+        }
+
+        // 3b. IOException: socket roto / transporte interrumpido a nivel de flujo de red.
+        // Un corte de red durante la escritura de la respuesta NO debe caer como 500 interno;
+        // los subtipos de I/O de archivos (requisito, plantilla, etc.) se excluyen para no
+        // reportarlos como fallo de BD.
+        var ioEx = FindException<IOException>(exception);
+        if (ioEx != null && !IsFileSystemIOException(ioEx))
+        {
+            AppLogger.LogDbError(exception, $"Request: {requestPath}");
+            string message = "Error de comunicación de red durante la operación. Verifique la conectividad del sistema y vuelva a intentar la operación.";
+            await WriteProblemDetailsAsync(
+                context,
+                StatusCodes.Status503ServiceUnavailable,
+                "Service Unavailable",
+                "https://tools.ietf.org/html/rfc7231#section-6.6.4",
+                "DatabaseConnectionError",
+                message,
+                message,
+                requestPath,
+                null);
+            return;
+        }
+
         // 3. Known domain & business exceptions
         if (exception is KeyNotFoundException)
         {
+            AppLogger.LogCrash(exception, $"Handled KeyNotFoundException in Request: {requestPath}");
             await WriteProblemDetailsAsync(
                 context,
                 StatusCodes.Status404NotFound,
@@ -179,6 +211,7 @@ public class GlobalExceptionHandlerMiddleware
 
         if (exception is UnauthorizedAccessException)
         {
+            AppLogger.LogCrash(exception, $"Handled UnauthorizedAccessException in Request: {requestPath}");
             await WriteProblemDetailsAsync(
                 context,
                 StatusCodes.Status403Forbidden,
@@ -194,14 +227,17 @@ public class GlobalExceptionHandlerMiddleware
 
         if (exception is ArgumentException)
         {
+            AppLogger.LogCrash(exception, $"Handled ArgumentException in Request: {requestPath}");
+            bool isDomain = IsDomainException(exception);
+            string msg = isDomain ? exception.Message : "Parámetros de entrada inválidos.";
             await WriteProblemDetailsAsync(
                 context,
                 StatusCodes.Status400BadRequest,
                 "Bad Request",
                 "https://tools.ietf.org/html/rfc7231#section-6.5.1",
                 "BadRequest",
-                exception.Message,
-                exception.Message,
+                msg,
+                msg,
                 requestPath,
                 null);
             return;
@@ -209,6 +245,7 @@ public class GlobalExceptionHandlerMiddleware
 
         if (exception is Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
         {
+            AppLogger.LogCrash(exception, $"Handled DbUpdateConcurrencyException in Request: {requestPath}");
             string msg = "El registro fue modificado concurrentemente por otro usuario o proceso. Por favor recargue e intente nuevamente.";
             await WriteProblemDetailsAsync(
                 context,
@@ -225,14 +262,17 @@ public class GlobalExceptionHandlerMiddleware
 
         if (exception is InvalidOperationException)
         {
+            AppLogger.LogCrash(exception, $"Handled InvalidOperationException in Request: {requestPath}");
+            bool isDomain = IsDomainException(exception);
+            string msg = isDomain ? exception.Message : "Operación inválida debido al estado actual del sistema.";
             await WriteProblemDetailsAsync(
                 context,
                 StatusCodes.Status409Conflict,
                 "Conflicto de Operación",
                 "https://tools.ietf.org/html/rfc7231#section-6.5.8",
                 "InvalidOperation",
-                exception.Message,
-                exception.Message,
+                msg,
+                msg,
                 requestPath,
                 null);
             return;
@@ -240,14 +280,21 @@ public class GlobalExceptionHandlerMiddleware
 
         // 4. Non-database unhandled internal exception
         AppLogger.LogCrash(exception, $"Unhandled Exception in Request: {requestPath}");
+        
+        var env = context.RequestServices?.GetService(typeof(Microsoft.AspNetCore.Hosting.IWebHostEnvironment)) as Microsoft.AspNetCore.Hosting.IWebHostEnvironment;
+        bool isDev = env != null && Microsoft.Extensions.Hosting.HostEnvironmentEnvExtensions.IsDevelopment(env);
+        
+        string userMessage = "Ocurrió un error interno al procesar la solicitud.";
+        string devMessage = isDev ? exception.ToString() : "Ocurrió un error interno no esperado al procesar la solicitud.";
+
         await WriteProblemDetailsAsync(
             context,
             StatusCodes.Status500InternalServerError,
             "Internal Server Error",
             "https://tools.ietf.org/html/rfc7231#section-6.6.1",
             "InternalServerError",
-            "Ocurrió un error interno al procesar la solicitud.",
-            "Ocurrió un error interno no esperado al procesar la solicitud.",
+            userMessage,
+            devMessage,
             requestPath,
             null);
     }
@@ -273,11 +320,9 @@ public class GlobalExceptionHandlerMiddleware
             ["status"] = statusCode,
             ["error"] = error,
             ["message"] = message,
-            ["Message"] = message,
             ["detail"] = detail,
             ["instance"] = requestPath,
-            ["traceId"] = traceId,
-            ["TraceId"] = traceId
+            ["traceId"] = traceId
         };
 
         if (!string.IsNullOrEmpty(sqlState))
@@ -297,5 +342,20 @@ public class GlobalExceptionHandlerMiddleware
             current = current.InnerException!;
         }
         return null;
+    }
+
+    private static bool IsFileSystemIOException(IOException ioException)
+    {
+        return ioException is FileNotFoundException
+            or DirectoryNotFoundException
+            or PathTooLongException
+            or DriveNotFoundException
+            or EndOfStreamException;
+    }
+
+    private static bool IsDomainException(Exception ex)
+    {
+        var source = ex.TargetSite?.DeclaringType?.Assembly.GetName().Name ?? "";
+        return source.StartsWith("Sales") || source.StartsWith("Inventory") || source.StartsWith("Core") || source.StartsWith("Backend") || source.StartsWith("Logistics") || source.StartsWith("CommandCenter");
     }
 }

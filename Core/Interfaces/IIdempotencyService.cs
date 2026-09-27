@@ -39,12 +39,17 @@ public interface IIdempotencyService
     /// <summary>
     /// Verifica si una petición previa ya fue registrada bajo la misma (Key, RequestPath).
     /// </summary>
-    Task<IdempotencyCheckResult> CheckAsync(string key, string requestPath, byte[] payloadHash, CancellationToken cancellationToken = default);
+    Task<IdempotencyCheckResult> CheckAsync(string key, string requestPath, byte[] payloadHash, int? userId = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Registra el resultado exitoso de una operación dentro de la transacción activa de SalesDbContext.
     /// </summary>
-    Task RegisterSuccessAsync(string key, string requestPath, byte[] payloadHash, int statusCode, string responseBody, CancellationToken cancellationToken = default);
+    Task RegisterSuccessAsync(string key, string requestPath, byte[] payloadHash, int statusCode, string responseBody, int? userId = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Maneja colisiones concurrentes (fallback tras error en PK).
+    /// </summary>
+    Task<IdempotencyCheckResult> HandleConcurrentCollisionAsync(string key, string requestPath, byte[] payloadHash, int? userId = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Telemetría: Cantidad de solicitudes resueltas directamente desde la caché de idempotencia.

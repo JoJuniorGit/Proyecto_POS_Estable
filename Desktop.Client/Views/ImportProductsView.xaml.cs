@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using Core.Common;
 using Desktop.Client.ViewModels;
 
 namespace Desktop.Client.Views;
@@ -11,7 +12,7 @@ public partial class ImportProductsView : UserControl
         InitializeComponent();
     }
 
-    private async void Grid_Drop(object sender, DragEventArgs e)
+    private void Grid_Drop(object sender, DragEventArgs e)
     {
         try
         {
@@ -22,7 +23,7 @@ public partial class ImportProductsView : UserControl
                 {
                     if (DataContext is ImportProductsViewModel vm)
                     {
-                        await vm.ProcessFileAsync(files[0]);
+                        vm.ProcessFileAsync(files[0]).SafeFireAndForget("ImportProductsView.Grid_Drop");
                     }
                 }
             }

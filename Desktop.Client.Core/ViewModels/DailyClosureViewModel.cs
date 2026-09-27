@@ -14,70 +14,105 @@ namespace Desktop.Client.ViewModels;
 
 public partial class ClosureDetailRow : ObservableObject
 {
-    private readonly Action _on_changed;
+    private readonly Action _onChanged;
 
-    public ClosureDetailRow(int payment_method_id, string payment_method_name, decimal expected_amount_bs_s, Action on_changed)
+    public ClosureDetailRow(int paymentMethodId, string paymentMethodName, decimal expectedAmountBsS, Action onChanged)
     {
-        _payment_method_id = payment_method_id;
-        _payment_method_name = payment_method_name;
-        _expected_amount_bs_s = expected_amount_bs_s;
-        _on_changed = on_changed;
+        _paymentMethodId = paymentMethodId;
+        _paymentMethodName = paymentMethodName;
+        _expectedAmountBsS = expectedAmountBsS;
+        _onChanged = onChanged;
     }
 
-    private int _payment_method_id;
-    public int PaymentMethodId => _payment_method_id;
+    private int _paymentMethodId;
+    public int PaymentMethodId => _paymentMethodId;
 
-    private string _payment_method_name;
-    public string PaymentMethodName => _payment_method_name;
+    private string _paymentMethodName;
+    public string PaymentMethodName => _paymentMethodName;
 
-    private decimal _expected_amount_bs_s;
+    private decimal _expectedAmountBsS;
     public decimal ExpectedAmountBsS
     {
-        get => _expected_amount_bs_s;
-        set => SetProperty(ref _expected_amount_bs_s, value);
+        get => _expectedAmountBsS;
+        set => SetProperty(ref _expectedAmountBsS, value);
     }
 
-    private decimal _actual_amount_bs_s;
+    private decimal _actualAmountBsS;
     public decimal ActualAmountBsS
     {
-        get => _actual_amount_bs_s;
+        get => _actualAmountBsS;
         set
         {
-            if (SetProperty(ref _actual_amount_bs_s, value))
+            if (SetProperty(ref _actualAmountBsS, value))
             {
                 OnPropertyChanged(nameof(DifferenceBsS));
-                _on_changed?.Invoke();
+                OnPropertyChanged(nameof(DifferenceColor));
+                OnPropertyChanged(nameof(DifferenceDisplay));
+                _onChanged?.Invoke();
             }
         }
     }
 
     public decimal DifferenceBsS => ActualAmountBsS - ExpectedAmountBsS;
+
+    public string DifferenceColor => DifferenceBsS switch
+    {
+        < 0 => "#EF4444",
+        > 0 => "#10B981",
+        _ => "#94A3B8"
+    };
+
+    public string DifferenceDisplay => DifferenceBsS switch
+    {
+        > 0 => $"+{DifferenceBsS:N2}",
+        < 0 => $"{DifferenceBsS:N2}",
+        _ => "0.00"
+    };
 }
 
 public partial class DailyClosureViewModel : ObservableObject
 {
-    private readonly IDailyClosureClientService _closure_service;
+    private readonly IDailyClosureClientService _closureService;
     private readonly IDialogService _dialogService;
+    private readonly IFilePickerDialog _filePicker;
     public UserSession? UserSession { get; }
 
     public bool CanToggleBlindClosing => UserSession?.IsAdmin == true;
 
-    public DailyClosureViewModel(IDailyClosureClientService closure_service, IDialogService dialogService, UserSession? userSession = null)
+    public DailyClosureViewModel(IDailyClosureClientService closureService, IDialogService dialogService, UserSession? userSession = null, IFilePickerDialog? filePicker = null)
     {
-        _closure_service = closure_service;
+        _closureService = closureService;
         _dialogService = dialogService;
+        _filePicker = filePicker ?? new NoopFilePicker();
         UserSession = userSession;
 
         // Forced true for cashiers, default false for admins
-        _is_blind_closing = UserSession?.IsCashier == true;
+        _isBlindClosing = UserSession?.IsCashier == true;
+    }
+
+    // 8.6-M7: instante único de cierre en la zona legal (Venezuela). La API recibe UTC y el
+    // comprobante/fecha se muestran en hora local legal para no mezclar ahora-UTC con DateTime.Now
+    // del equipo (que podría estar en otra zona y desalinear fecha del arqueo).
+    private DateTime LocalClosureNow()
+    {
+        var utcNow = DateTime.UtcNow;
+        try
+        {
+            var tz = Core.Helpers.TimeZoneHelper.GetTimeZone(null);
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc), tz);
+        }
+        catch
+        {
+            return DateTime.SpecifyKind(utcNow, DateTimeKind.Utc).ToLocalTime();
+        }
     }
 
     public ObservableCollection<ClosureDetailRow> DetailRows { get; } = new();
 
-    private bool _is_blind_closing;
+    private bool _isBlindClosing;
     public bool IsBlindClosing
     {
-        get => _is_blind_closing;
+        get => _isBlindClosing;
         set
         {
             if (!CanToggleBlindClosing && !value)
@@ -85,7 +120,7 @@ public partial class DailyClosureViewModel : ObservableObject
                 // Prevent Cashiers from disabling blind closing
                 return;
             }
-            if (SetProperty(ref _is_blind_closing, value))
+            if (SetProperty(ref _isBlindClosing, value))
             {
                 OnPropertyChanged(nameof(DifferenceStatusLabel));
                 OnPropertyChanged(nameof(DifferenceStatusColor));
@@ -97,28 +132,36 @@ public partial class DailyClosureViewModel : ObservableObject
     public string? Observation
     {
         get => _observation;
-        set => SetProperty(ref _observation, value);
+        set
+        {
+            if (SetProperty(ref _observation, value))
+            {
+                OnPropertyChanged(nameof(ObservationCounterText));
+            }
+        }
     }
 
-    private decimal _total_expected_bs_s;
+    public string ObservationCounterText => $"{Observation?.Length ?? 0} / 500";
+
+    private decimal _totalExpectedBsS;
     public decimal TotalExpectedBsS
     {
-        get => _total_expected_bs_s;
-        set => SetProperty(ref _total_expected_bs_s, value);
+        get => _totalExpectedBsS;
+        set => SetProperty(ref _totalExpectedBsS, value);
     }
 
-    private decimal _total_actual_bs_s;
+    private decimal _totalActualBsS;
     public decimal TotalActualBsS
     {
-        get => _total_actual_bs_s;
-        set => SetProperty(ref _total_actual_bs_s, value);
+        get => _totalActualBsS;
+        set => SetProperty(ref _totalActualBsS, value);
     }
 
-    private decimal _total_difference_bs_s;
+    private decimal _totalDifferenceBsS;
     public decimal TotalDifferenceBsS
     {
-        get => _total_difference_bs_s;
-        set => SetProperty(ref _total_difference_bs_s, value);
+        get => _totalDifferenceBsS;
+        set => SetProperty(ref _totalDifferenceBsS, value);
     }
 
     public string DifferenceStatusLabel => TotalDifferenceBsS > 0
@@ -129,18 +172,32 @@ public partial class DailyClosureViewModel : ObservableObject
         ? "#10B981"
         : (TotalDifferenceBsS < 0 ? "#EF4444" : "#3B82F6");
 
-    private bool _is_loading;
+    public string DifferenceCardBackground => TotalDifferenceBsS switch
+    {
+        < 0 => "#FEF2F2",
+        > 0 => "#F0FDF4",
+        _ => "#F8FAFC"
+    };
+
+    public string DifferenceCardBorder => TotalDifferenceBsS switch
+    {
+        < 0 => "#FECACA",
+        > 0 => "#BBF7D0",
+        _ => "#E2E8F0"
+    };
+
+    private bool _isLoading;
     public bool IsLoading
     {
-        get => _is_loading;
-        set => SetProperty(ref _is_loading, value);
+        get => _isLoading;
+        set => SetProperty(ref _isLoading, value);
     }
 
-    private bool _is_saved;
+    private bool _isSaved;
     public bool IsSaved
     {
-        get => _is_saved;
-        set => SetProperty(ref _is_saved, value);
+        get => _isSaved;
+        set => SetProperty(ref _isSaved, value);
     }
 
     private void RecalculateTotals()
@@ -150,6 +207,8 @@ public partial class DailyClosureViewModel : ObservableObject
         TotalDifferenceBsS = TotalActualBsS - TotalExpectedBsS;
         OnPropertyChanged(nameof(DifferenceStatusLabel));
         OnPropertyChanged(nameof(DifferenceStatusColor));
+        OnPropertyChanged(nameof(DifferenceCardBackground));
+        OnPropertyChanged(nameof(DifferenceCardBorder));
     }
 
     [RelayCommand]
@@ -161,7 +220,7 @@ public partial class DailyClosureViewModel : ObservableObject
         IsSaved = false;
         try
         {
-            var totals = await _closure_service.GetExpectedTotalsAsync(DateTime.UtcNow);
+            var totals = await _closureService.GetExpectedTotalsAsync(DateTime.UtcNow);
 
             DetailRows.Clear();
             foreach (var t in totals)
@@ -197,7 +256,7 @@ public partial class DailyClosureViewModel : ObservableObject
     private string BuildConfirmationMessage()
     {
         var userName = UserSession?.CurrentUser?.Name ?? UserSession?.CurrentUser?.Cedula ?? "Usuario";
-        var dateStr = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+        var dateStr = LocalClosureNow().ToString("dd/MM/yyyy HH:mm");
 
         if (IsBlindClosing)
         {
@@ -253,7 +312,7 @@ public partial class DailyClosureViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ConfirmAndSaveClosure()
+    private async Task ConfirmClosure()
     {
         if (!DetailRows.Any())
         {
@@ -284,7 +343,7 @@ public partial class DailyClosureViewModel : ObservableObject
                 }).ToList()
             };
 
-            await _closure_service.CreateClosureAsync(request);
+            await _closureService.CreateClosureAsync(request);
             IsSaved = true;
             CommunityToolkit.Mvvm.Messaging.WeakReferenceMessenger.Default.Send(new Desktop.Client.Messages.ShiftClosedMessage());
             _dialogService.ShowInfo("Éxito de Cierre", "Cierre diario procesado y guardado exitosamente. Comprobantes guardados automáticamente en Descargas y en Documentos\\Registro de cierres.\n\nLos acumuladores de ingresos y egresos han sido reiniciados a 0.00 Bs.S para el nuevo turno.");
@@ -310,7 +369,8 @@ public partial class DailyClosureViewModel : ObservableObject
         }
 
         var userName = UserSession?.CurrentUser?.Name ?? UserSession?.CurrentUser?.Cedula ?? "Usuario";
-        var dateStr = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+        var localNow = LocalClosureNow();
+        var dateStr = localNow.ToString("dd/MM/yyyy HH:mm:ss");
 
         var sb = new System.Text.StringBuilder();
         if (IsBlindClosing)
@@ -362,16 +422,15 @@ public partial class DailyClosureViewModel : ObservableObject
 
         try
         {
-            var saveDialog = new Microsoft.Win32.SaveFileDialog
-            {
-                Filter = "Archivo de Texto (*.txt)|*.txt",
-                FileName = $"Comprobante_Cierre_{DateTime.Now:yyyyMMdd_HHmmss}.txt"
-            };
+            var savePath = _filePicker.PickSaveFilePath(
+                "Guardar Comprobante de Cierre",
+                "Archivo de Texto (*.txt)|*.txt",
+                $"Comprobante_Cierre_{localNow:yyyyMMdd_HHmmss}.txt");
 
-            if (saveDialog.ShowDialog() == true)
+            if (!string.IsNullOrEmpty(savePath))
             {
-                System.IO.File.WriteAllText(saveDialog.FileName, sb.ToString());
-                _dialogService.ShowInfo("Comprobante Guardado", $"El comprobante se guardó correctamente en:\n{saveDialog.FileName}");
+                System.IO.File.WriteAllText(savePath, sb.ToString());
+                _dialogService.ShowInfo("Comprobante Guardado", $"El comprobante se guardó correctamente en:\n{savePath}");
             }
         }
         catch (Exception ex)

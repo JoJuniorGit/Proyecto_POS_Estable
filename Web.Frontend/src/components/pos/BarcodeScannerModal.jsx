@@ -1,28 +1,31 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } from '@zxing/library';
+import * as zxing from '@zxing/library';
+const { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } = zxing.default ?? zxing;
 import { 
-  Loader2, 
-  CameraOff, 
-  ShieldAlert, 
   AlertCircle, 
   XCircle, 
-  Flashlight, 
-  FlashlightOff, 
-  SwitchCamera, 
-  ZoomIn,
-  Plus,
-  Minus,
-  Sparkles,
-  Barcode,
-  Wand2
+  Plus, 
+  Minus, 
+  Barcode 
 } from 'lucide-react';
 import Modal from '../ui/Modal';
+import BarcodeScannerHud from './BarcodeScannerHud';
+import BarcodeScannerControls from './BarcodeScannerControls';
 import { getProductBySku } from '../../services/productsApi';
 import { isValidBarcode } from '../../utils/barcodeValidator';
 import { playScanSuccess, playScanWarning, playScanError, closeAudioContext } from '../../utils/soundEffects';
+import { registerShutdownCleanup } from '../../utils/shutdownRegistry';
 import { checkBarcodeDetectorSupport, createNativeBarcodeDetector } from '../../utils/nativeBarcodeScanner';
-import { isLaptopOrDesktopEnvironment, processMultiPassLaptopFrame } from '../../utils/laptopVisionEnhancer';
+import {
+  isLaptopOrDesktopEnvironment,
+  processMultiPassLaptopFrame,
+  captureLaptopFrameSignature,
+  isFrameSignatureChanged,
+  planLaptopVisionTick,
+  LAPTOP_VISION_BASE_INTERVAL_MS,
+} from '../../utils/laptopVisionEnhancer';
 import { formatBsS, formatUSD } from '../../utils/formatters';
+import { resolveCameraGuidance, shouldFallbackWithoutDeviceId } from '../../utils/scannerCameraErrors';
 import './BarcodeScannerModal.css';
 
 const INSECURE_CONTEXT_MESSAGE =
@@ -42,8 +45,8 @@ export default function BarcodeScannerModal({
   onUpdateQuantity = null,
 }) {
   const videoRef = useRef(null);
-  const hudCanvasRef = useRef(null);
   const filterCanvasRef = useRef(null);
+  const signatureCanvasRef = useRef(null);
   const onCodeScannedRef = useRef(onCodeScanned);
   const resolveProductRef = useRef(resolveProduct);
   const resultSeqRef = useRef(0);
@@ -56,11 +59,11 @@ export default function BarcodeScannerModal({
   const nativeActiveRef = useRef(false);
   const laptopVisionActiveRef = useRef(false);
   const sessionCancelTokenRef = useRef(0);
-  const hudAnimRef = useRef(null);
   const boundingBoxRef = useRef(null);
   const boundingBoxTimerRef = useRef(null);
+  const revocationListenerRef = useRef(null);
 
-  // Detección exclusiva de entorno: Solo en Laptop/PC
+  // Detección de entorno: Laptop/PC vs Mobile
   const isLaptop = useMemo(() => isLaptopOrDesktopEnvironment(), []);
 
   const [starting, setStarting] = useState(false);
@@ -79,6 +82,7 @@ export default function BarcodeScannerModal({
   const [currentDeviceId, setCurrentDeviceId] = useState('');
   const [engineType, setEngineType] = useState('zxing'); // 'native' | 'zxing'
   const [scanCount, setScanCount] = useState(0);
+  const [errorGuidance, setErrorGuidance] = useState(null);
 
   // Data Binding puro: los últimos 3 productos derivan su cantidad del carrito central
   const recentScannedItems = useMemo(() => {
@@ -95,16 +99,19 @@ export default function BarcodeScannerModal({
     resolveProductRef.current = resolveProduct;
   }, [onCodeScanned, resolveProduct]);
 
-  // Detención estricta e inmediata de todos los recursos de hardware de la cámara
+  // Detención de recursos de hardware de la cámara
   const stopActiveStream = useCallback(() => {
-    // 1. Invalidar token de sesión activa
     sessionCancelTokenRef.current += 1;
-
-    // 2. Detener bucles de procesamiento
     nativeActiveRef.current = false;
     laptopVisionActiveRef.current = false;
 
-    // 3. Resetear y destruir lector ZXing
+    if (revocationListenerRef.current) {
+      try {
+        revocationListenerRef.current.track.removeEventListener('ended', revocationListenerRef.current.handler);
+      } catch {}
+      revocationListenerRef.current = null;
+    }
+
     if (zxingReaderRef.current) {
       try {
         zxingReaderRef.current.reset();
@@ -114,27 +121,21 @@ export default function BarcodeScannerModal({
       zxingReaderRef.current = null;
     }
 
-    // 4. Detener tracks del stream activo
     if (activeStreamRef.current) {
       try {
         activeStreamRef.current.getTracks().forEach((t) => {
-          try {
-            t.stop();
-          } catch {}
+          try { t.stop(); } catch {}
         });
       } catch {}
       activeStreamRef.current = null;
     }
 
-    // 5. Limpiar y detener cualquier stream remanente en el elemento video
     if (videoRef.current) {
       try {
         const streamObj = videoRef.current.srcObject;
         if (streamObj && typeof streamObj.getTracks === 'function') {
           streamObj.getTracks().forEach((t) => {
-            try {
-              t.stop();
-            } catch {}
+            try { t.stop(); } catch {}
           });
         }
       } catch {}
@@ -168,86 +169,13 @@ export default function BarcodeScannerModal({
     }
   }, [isOpen, stopActiveStream]);
 
-  // Dibujado del HUD (Láser y Bounding Box) en canvas superpuesto
   useEffect(() => {
-    if (!isOpen) {
-      if (hudAnimRef.current) cancelAnimationFrame(hudAnimRef.current);
-      return;
-    }
-
-    const canvas = hudCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let laserY = 0;
-    let laserDir = 1;
-
-    const renderHud = () => {
-      if (!canvas || !videoRef.current) return;
-      const width = canvas.width = canvas.clientWidth || 400;
-      const height = canvas.height = canvas.clientHeight || 280;
-
-      ctx.clearRect(0, 0, width, height);
-
-      // 1. Recuadro guía de enfoque óptimo para Laptop
-      if (isLaptop) {
-        ctx.save();
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([6, 6]);
-        const rw = width * 0.7;
-        const rh = height * 0.6;
-        const rx = (width - rw) / 2;
-        const ry = (height - rh) / 2;
-        ctx.strokeRect(rx, ry, rw, rh);
-        ctx.restore();
-      }
-
-      // 2. Línea láser animada
-      laserY += laserDir * 2.5;
-      if (laserY > height - 10) laserDir = -1;
-      if (laserY < 10) laserDir = 1;
-
-      ctx.save();
-      ctx.strokeStyle = 'rgba(16, 185, 129, 0.9)';
-      ctx.lineWidth = 2.5;
-      ctx.shadowColor = '#10b981';
-      ctx.shadowBlur = 12;
-      ctx.beginPath();
-      ctx.moveTo(width * 0.12, laserY);
-      ctx.lineTo(width * 0.88, laserY);
-      ctx.stroke();
-      ctx.restore();
-
-      // 3. Bounding Box sobre el código detectado
-      if (boundingBoxRef.current && boundingBoxRef.current.length >= 4) {
-        const pts = boundingBoxRef.current;
-        ctx.save();
-        ctx.strokeStyle = '#10b981';
-        ctx.lineWidth = 3;
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.25)';
-        ctx.shadowColor = '#10b981';
-        ctx.shadowBlur = 12;
-
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x * (width / (videoRef.current.videoWidth || width)), pts[0].y * (height / (videoRef.current.videoHeight || height)));
-        for (let i = 1; i < pts.length; i++) {
-          ctx.lineTo(pts[i].x * (width / (videoRef.current.videoWidth || width)), pts[i].y * (height / (videoRef.current.videoHeight || height)));
-        }
-        ctx.closePath();
-        ctx.stroke();
-        ctx.fill();
-        ctx.restore();
-      }
-
-      hudAnimRef.current = requestAnimationFrame(renderHud);
-    };
-
-    hudAnimRef.current = requestAnimationFrame(renderHud);
-
-    return () => {
-      if (hudAnimRef.current) cancelAnimationFrame(hudAnimRef.current);
-    };
-  }, [isOpen, isLaptop]);
+    if (!isOpen) return undefined;
+    return registerShutdownCleanup(() => {
+      stopActiveStream();
+      void closeAudioContext();
+    });
+  }, [isOpen, stopActiveStream]);
 
   const triggerBoundingBox = useCallback((cornerPoints) => {
     if (cornerPoints && cornerPoints.length >= 4) {
@@ -334,7 +262,6 @@ export default function BarcodeScannerModal({
     try {
       const capabilities = track.getCapabilities?.() || {};
 
-      // Torch
       if (capabilities.torch) {
         setHasTorch(true);
         if (preserveTorch && torchActive) {
@@ -345,7 +272,6 @@ export default function BarcodeScannerModal({
         setTorchActive(false);
       }
 
-      // Zoom
       if (capabilities.zoom) {
         setZoomCapabilities(capabilities.zoom);
         setCurrentZoom(1);
@@ -362,6 +288,7 @@ export default function BarcodeScannerModal({
     const currentToken = ++sessionCancelTokenRef.current;
     setStarting(true);
     setStatus({ type: 'info', text: 'Iniciando cámara…' });
+    setErrorGuidance(null);
 
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       setStarting(false);
@@ -369,103 +296,140 @@ export default function BarcodeScannerModal({
       return;
     }
 
+    stopActiveStream();
+    sessionCancelTokenRef.current = currentToken;
+
+    const buildConstraints = (withDeviceId) => ({
+      video: withDeviceId
+        ? { deviceId: { exact: withDeviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30 } }
+        : { facingMode: { ideal: 'environment' }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30 } }
+    });
+
+    let stream;
     try {
-      // 1. Enumerar cámaras disponibles
       try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        if (sessionCancelTokenRef.current !== currentToken) return;
-        const videoInputs = devices.filter((d) => d.kind === 'videoinput');
-        setVideoDevices(videoInputs);
-      } catch {}
+        stream = await navigator.mediaDevices.getUserMedia(buildConstraints(targetDeviceId));
+      } catch (firstErr) {
+        if (shouldFallbackWithoutDeviceId(firstErr.name, Boolean(targetDeviceId))) {
+          setCurrentDeviceId('');
+          stream = await navigator.mediaDevices.getUserMedia(buildConstraints(''));
+        } else {
+          throw firstErr;
+        }
+      }
+    } catch (err) {
+      const guidance = await resolveCameraGuidance(err);
+      if (sessionCancelTokenRef.current === currentToken) {
+        setStarting(false);
+        setErrorGuidance(guidance);
+        setStatus({ type: 'error', text: guidance.text });
+      }
+      return;
+    }
 
-      // 2. Detener stream previo
-      stopActiveStream();
-      sessionCancelTokenRef.current = currentToken;
-
-      // 3. Solicitar stream de video en Máxima Resolución (1080p ideal / 720p min)
-      const constraints = {
-        video: targetDeviceId 
-          ? { deviceId: { exact: targetDeviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30 } }
-          : { facingMode: { ideal: 'environment' }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30 } }
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-      // Si el usuario cerró el modal mientras se abría la cámara, detener de inmediato
-      if (sessionCancelTokenRef.current !== currentToken) {
+    if (sessionCancelTokenRef.current !== currentToken) {
+      try {
         stream.getTracks().forEach((t) => {
           try { t.stop(); } catch {}
         });
-        return;
+      } catch {}
+      return;
+    }
+
+    activeStreamRef.current = stream;
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      if (sessionCancelTokenRef.current === currentToken) {
+        const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+        setVideoDevices(videoInputs);
       }
+    } catch {}
 
-      activeStreamRef.current = stream;
+    if (sessionCancelTokenRef.current !== currentToken) {
+      stopActiveStream();
+      return;
+    }
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
-      }
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play().catch(() => {});
+    }
 
-      if (sessionCancelTokenRef.current !== currentToken) {
+    if (sessionCancelTokenRef.current !== currentToken) {
+      stopActiveStream();
+      return;
+    }
+
+    const track = stream.getVideoTracks()[0];
+    if (track) {
+      const settings = track.getSettings?.() || {};
+      if (settings.deviceId) setCurrentDeviceId(settings.deviceId);
+      applyHardwareCapabilities(track, true);
+
+      const onTrackEnded = () => {
+        if (sessionCancelTokenRef.current !== currentToken) return;
         stopActiveStream();
-        return;
-      }
+        setStarting(false);
+        const guidance = {
+          text: 'Permiso de cámara revocado: abra el candado del navegador y vuelva a autorizar la cámara, luego presione Reintentar.',
+          reloadHint: false,
+        };
+        setErrorGuidance(guidance);
+        setStatus({ type: 'error', text: guidance.text });
+      };
+      revocationListenerRef.current = { track, handler: onTrackEnded };
+      track.addEventListener('ended', onTrackEnded);
+    }
 
-      const track = stream.getVideoTracks()[0];
-      if (track) {
-        const settings = track.getSettings?.() || {};
-        if (settings.deviceId) setCurrentDeviceId(settings.deviceId);
-        applyHardwareCapabilities(track, true);
-      }
+    // Móvil: Detección acelerada por GPU si soporta BarcodeDetector nativo
+    const isNativeSupported = await checkBarcodeDetectorSupport();
+    if (sessionCancelTokenRef.current !== currentToken) {
+      stopActiveStream();
+      return;
+    }
 
-      // 4. Móvil: Si soporta BarcodeDetector nativo por hardware (GPU/NPU)
-      const isNativeSupported = await checkBarcodeDetectorSupport();
-      if (sessionCancelTokenRef.current !== currentToken) {
-        stopActiveStream();
-        return;
-      }
+    if (isNativeSupported && !isLaptop) {
+      const nativeDetector = createNativeBarcodeDetector();
+      if (nativeDetector) {
+        setEngineType('native');
+        setStarting(false);
+        setStatus({ type: 'info', text: 'Apunte la cámara a un código de barras…' });
 
-      if (isNativeSupported && !isLaptop) {
-        const nativeDetector = createNativeBarcodeDetector();
-        if (nativeDetector) {
-          setEngineType('native');
-          setStarting(false);
-          setStatus({ type: 'info', text: 'Apunte la cámara a un código de barras…' });
+        nativeActiveRef.current = true;
+        const runNativeLoop = async () => {
+          if (!nativeActiveRef.current || sessionCancelTokenRef.current !== currentToken || !videoRef.current || !activeStreamRef.current) return;
 
-          nativeActiveRef.current = true;
-          const runNativeLoop = async () => {
-            if (!nativeActiveRef.current || sessionCancelTokenRef.current !== currentToken || !videoRef.current || !activeStreamRef.current) return;
-
-            try {
-              if (videoRef.current.readyState >= 2) {
-                const barcodes = await nativeDetector.detect(videoRef.current);
-                if (barcodes && barcodes.length > 0) {
-                  const first = barcodes[0];
-                  if (first.rawValue) {
-                    handleDecodedCode(first.rawValue.trim(), first.cornerPoints);
-                  }
-                } else {
-                  codeVisibleRef.current = false;
+          try {
+            if (videoRef.current.readyState >= 2) {
+              const barcodes = await nativeDetector.detect(videoRef.current);
+              if (barcodes && barcodes.length > 0) {
+                const first = barcodes[0];
+                if (first.rawValue) {
+                  handleDecodedCode(first.rawValue.trim(), first.cornerPoints);
                 }
+              } else {
+                codeVisibleRef.current = false;
               }
-            } catch {
-              // Fallback suave
             }
+          } catch (err) {
+            console.warn('[Scanner] Error en la detección nativa de códigos:', err);
+          }
 
-            if (nativeActiveRef.current && sessionCancelTokenRef.current === currentToken) {
-              setTimeout(runNativeLoop, ATTEMPT_PACING_MS);
-            }
-          };
+          if (nativeActiveRef.current && sessionCancelTokenRef.current === currentToken) {
+            setTimeout(runNativeLoop, ATTEMPT_PACING_MS);
+          }
+        };
 
-          runNativeLoop();
-          return;
-        }
+        runNativeLoop();
+        return;
       }
+    }
 
-      // Fallback: ZXing Library Reader con TRY_HARDER y Pipeline Multi-Pass
-      setEngineType('zxing');
-      const hints = new Map();
-      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+    // Fallback: ZXing Library Reader con TRY_HARDER y Pipeline Multi-Pass
+    setEngineType('zxing');
+    const hints = new Map([
+      [DecodeHintType.POSSIBLE_FORMATS, [
         BarcodeFormat.EAN_13,
         BarcodeFormat.EAN_8,
         BarcodeFormat.UPC_A,
@@ -474,74 +438,97 @@ export default function BarcodeScannerModal({
         BarcodeFormat.CODE_39,
         BarcodeFormat.ITF,
         BarcodeFormat.CODABAR,
-      ]);
-      hints.set(DecodeHintType.TRY_HARDER, true);
+      ]],
+      [DecodeHintType.TRY_HARDER, true]
+    ]);
 
-      const reader = new BrowserMultiFormatReader(hints, 0);
-      reader.timeBetweenDecodingAttempts = ATTEMPT_PACING_MS;
-      zxingReaderRef.current = reader;
+    const reader = new BrowserMultiFormatReader(hints, 0);
+    reader.timeBetweenDecodingAttempts = ATTEMPT_PACING_MS;
+    zxingReaderRef.current = reader;
 
-      if (videoRef.current && activeStreamRef.current) {
-        if (isLaptop && laptopEnhancement && filterCanvasRef.current) {
-          // Bucle de Visión Multi-Pass de Alta Efectividad para Laptops
-          laptopVisionActiveRef.current = true;
-          let passCounter = 0;
+    if (videoRef.current && activeStreamRef.current) {
+      if (isLaptop && laptopEnhancement && filterCanvasRef.current) {
+        laptopVisionActiveRef.current = true;
+        let heavyPassCursor = 0;
+        let lastHeavyPassAt = 0;
+        let lastSignature = null;
 
-          const runLaptopVisionLoop = () => {
-            if (!laptopVisionActiveRef.current || sessionCancelTokenRef.current !== currentToken || !videoRef.current || !activeStreamRef.current) return;
+        const runLaptopVisionLoop = () => {
+          if (!laptopVisionActiveRef.current || sessionCancelTokenRef.current !== currentToken || !videoRef.current || !activeStreamRef.current) return;
 
-            try {
-              if (videoRef.current.readyState >= 2 && filterCanvasRef.current) {
-                // Ciclar entre 4 variantes de procesamiento por fotograma:
-                // 0: Sauvola Adaptativa Local, 1: 1D Horizontal Sharpen, 2: HD Raw Crop, 3: Invertido
-                const currentPass = passCounter % 4;
-                passCounter++;
+          let nextIntervalMs = LAPTOP_VISION_BASE_INTERVAL_MS;
 
-                processMultiPassLaptopFrame(videoRef.current, filterCanvasRef.current, currentPass);
-                
+          try {
+            if (videoRef.current.readyState >= 2 && filterCanvasRef.current) {
+              const signature = captureLaptopFrameSignature(videoRef.current, signatureCanvasRef.current);
+              const frameChanged = isFrameSignatureChanged(lastSignature, signature);
+              lastSignature = signature;
+
+              const now = Date.now();
+              const plan = planLaptopVisionTick({
+                now,
+                lastHeavyPassAt,
+                lastDetectedAt: lastHitAtRef.current,
+                frameChanged,
+                heavyPassCursor,
+              });
+              heavyPassCursor = plan.heavyPassCursor;
+              nextIntervalMs = plan.intervalMs;
+
+              if (plan.action !== 'skip') {
+                if (plan.action === 'heavy') lastHeavyPassAt = now;
+
+                processMultiPassLaptopFrame(videoRef.current, filterCanvasRef.current, plan.passIndex);
+
                 try {
                   const zxingResult = reader.decode(filterCanvasRef.current);
-                  if (zxingResult && zxingResult.getText && zxingResult.getText().trim()) {
+                  if (zxingResult?.getText && zxingResult.getText().trim()) {
                     handleDecodedCode(zxingResult.getText().trim());
                   }
                 } catch {
                   codeVisibleRef.current = false;
                 }
               }
-            } catch {
-              // Siguiente ciclo
             }
+          } catch (err) {
+            console.warn('[Scanner] Error en el pipeline de visión de laptop:', err);
+          }
 
-            if (laptopVisionActiveRef.current && sessionCancelTokenRef.current === currentToken) {
-              setTimeout(runLaptopVisionLoop, ATTEMPT_PACING_MS);
-            }
-          };
+          if (laptopVisionActiveRef.current && sessionCancelTokenRef.current === currentToken) {
+            setTimeout(runLaptopVisionLoop, nextIntervalMs);
+          }
+        };
 
-          runLaptopVisionLoop();
-        } else {
-          // Lectura directa desde stream
-          reader.decodeFromStream(
+        runLaptopVisionLoop();
+      } else {
+        reader
+          .decodeFromStream(
             activeStreamRef.current,
             videoRef.current,
             (zxingResult) => {
-              if (!zxingResult || !zxingResult.getText || !zxingResult.getText().trim()) {
+              if (!zxingResult?.getText || !zxingResult.getText.trim()) {
                 codeVisibleRef.current = false;
                 return;
               }
               handleDecodedCode(zxingResult.getText().trim());
             }
-          );
-        }
-      }
+          )
+          .catch((err) => {
+            if (sessionCancelTokenRef.current !== currentToken || !activeStreamRef.current) return;
 
-      setStarting(false);
-      setStatus({ type: 'info', text: 'Apunte la cámara a un código de barras…' });
-    } catch (err) {
-      if (sessionCancelTokenRef.current === currentToken) {
-        setStarting(false);
-        setStatus({ type: 'error', text: friendlyCameraError(err) });
+            console.warn('[Scanner] Se interrumpió la lectura de video continua:', err);
+            const guidance = {
+              text: 'Se interrumpió la lectura de la cámara. Presione Reintentar para continuar.',
+              reloadHint: false,
+            };
+            setErrorGuidance(guidance);
+            setStatus({ type: 'error', text: guidance.text });
+          });
       }
     }
+
+    setStarting(false);
+    setStatus({ type: 'info', text: 'Apunte la cámara a un código de barras…' });
   };
 
   useEffect(() => {
@@ -553,6 +540,7 @@ export default function BarcodeScannerModal({
       stopActiveStream();
       closeAudioContext();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, stopActiveStream]);
 
   const toggleTorch = async () => {
@@ -592,112 +580,51 @@ export default function BarcodeScannerModal({
     }
   };
 
+  const handleToggleLaptopEnhancement = () => {
+    setLaptopEnhancement((v) => !v);
+    startScanningSession(currentDeviceId);
+  };
+
+  const retryScanning = () => {
+    startScanningSession(currentDeviceId);
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Escanear código de barras" maxWidth="540px">
       <div className="scanner-container">
         {/* Canvas de procesamiento oculto para filtros de laptop */}
-        <canvas ref={filterCanvasRef} style={{ display: 'none' }} />
-
-        {/* Controles Flotantes Superiores */}
-        <div className="scanner-controls-top">
-          {/* Botón de Realce Óptico exclusivo para Laptops */}
-          {isLaptop && (
-            <button
-              type="button"
-              className={`scanner-icon-btn ${laptopEnhancement ? 'active' : ''}`}
-              onClick={() => {
-                setLaptopEnhancement((v) => !v);
-                startScanningSession(currentDeviceId);
-              }}
-              title={laptopEnhancement ? 'Desactivar Realce Óptico Laptop' : 'Activar Realce Óptico Laptop (Sauvola + Sharpen + Zoom)'}
-              aria-label="Realce Óptico Laptop"
-              aria-pressed={laptopEnhancement}
-            >
-              <Wand2 size={18} />
-            </button>
-          )}
-
-          {videoDevices.length > 1 && (
-            <button
-              type="button"
-              className="scanner-icon-btn"
-              onClick={() => {
-                const nextIndex = (videoDevices.findIndex((d) => d.deviceId === currentDeviceId) + 1) % videoDevices.length;
-                switchCamera(videoDevices[nextIndex].deviceId);
-              }}
-              title="Cambiar lente/cámara"
-              aria-label="Cambiar lente de la cámara"
-            >
-              <SwitchCamera size={18} />
-            </button>
-          )}
-
-          {hasTorch && (
-            <button
-              type="button"
-              className={`scanner-icon-btn ${torchActive ? 'active' : ''}`}
-              onClick={toggleTorch}
-              title={torchActive ? 'Apagar linterna' : 'Encender linterna'}
-              aria-label="Linterna"
-              aria-pressed={torchActive}
-            >
-              {torchActive ? <FlashlightOff size={18} /> : <Flashlight size={18} />}
-            </button>
-          )}
-
-          {scanCount > 0 && (
-            <div className="scanner-session-badge" title="Artículos escaneados en esta sesión">
-              <Sparkles size={14} />
-              <span>{scanCount}</span>
-            </div>
-          )}
-        </div>
+        <canvas ref={filterCanvasRef} className="scanner-filter-canvas" />
+        <canvas ref={signatureCanvasRef} className="scanner-filter-canvas" />
 
         {/* Visor de Video + HUD Canvas Superpuesto */}
-        <div className="scanner-video-wrap">
-          <video ref={videoRef} className="scanner-video" muted playsInline />
-          <canvas ref={hudCanvasRef} className="scanner-hud-canvas" />
+        <BarcodeScannerHud
+          videoRef={videoRef}
+          isOpen={isOpen}
+          isLaptop={isLaptop}
+          starting={starting}
+          status={status}
+          insecureContextMessage={INSECURE_CONTEXT_MESSAGE}
+          boundingBoxRef={boundingBoxRef}
+          onRetry={retryScanning}
+          reloadHint={errorGuidance?.reloadHint === true}
+        />
 
-          {/* Guía de distancia focal para webcam de laptop */}
-          {isLaptop && !starting && status.type !== 'error' && (
-            <div className="scanner-focus-hint">
-              💡 Distancia recomendada: 30 a 40 cm de la pantalla
-            </div>
-          )}
-
-          {starting && (
-            <div className="scanner-overlay">
-              <Loader2 className="animate-spin" size={28} />
-              <span>Iniciando cámara…</span>
-            </div>
-          )}
-
-          {!starting && status.type === 'error' && (
-            <div className="scanner-overlay error">
-              {status.text === INSECURE_CONTEXT_MESSAGE ? <ShieldAlert size={28} /> : <CameraOff size={28} />}
-              <span>{status.text}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Selector de Zoom Rápido si el hardware lo soporta */}
-        {zoomCapabilities && zoomCapabilities.max > 1 && (
-          <div className="scanner-zoom-bar">
-            <ZoomIn size={14} className="scanner-zoom-icon" />
-            {[1, 2, 3].filter((z) => z <= zoomCapabilities.max).map((z) => (
-              <button
-                key={z}
-                type="button"
-                className={`scanner-zoom-pill ${currentZoom === z ? 'active' : ''}`}
-                onClick={() => applyZoom(z)}
-                aria-label={`Zoom ${z}x`}
-                aria-pressed={currentZoom === z}
-              >
-                {z}×
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Controles Flotantes Superiores y Barra de Zoom */}
+        <BarcodeScannerControls
+          isLaptop={isLaptop}
+          laptopEnhancement={laptopEnhancement}
+          onToggleLaptopEnhancement={handleToggleLaptopEnhancement}
+          videoDevices={videoDevices}
+          currentDeviceId={currentDeviceId}
+          onSwitchCamera={switchCamera}
+          hasTorch={hasTorch}
+          torchActive={torchActive}
+          onToggleTorch={toggleTorch}
+          scanCount={scanCount}
+          zoomCapabilities={zoomCapabilities}
+          currentZoom={currentZoom}
+          onApplyZoom={applyZoom}
+        />
 
         {/* Barra de Cooldown de 2.0 Segundos */}
         {cooldownKey > 0 && (
@@ -779,18 +706,4 @@ export default function BarcodeScannerModal({
       </div>
     </Modal>
   );
-}
-
-function friendlyCameraError(err) {
-  if (!err) return 'No se pudo iniciar la cámara.';
-  if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-    return 'Permiso denegado: autorice el acceso a la cámara en los ajustes del navegador.';
-  }
-  if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-    return 'No se encontró ninguna cámara conectada en este dispositivo.';
-  }
-  if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-    return 'La cámara está ocupada por otra aplicación o pestaña del navegador.';
-  }
-  return `Error de cámara (${err.name || 'Desconocido'}): ${err.message || 'no disponible'}`;
 }

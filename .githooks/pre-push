@@ -1,0 +1,24 @@
+#!/bin/sh
+# POSIX /bin/sh: git lo ejecuta con su propio sh, sin depender del PATH del usuario.
+# (Con "#!/usr/bin/env bash", "bash" podia resolver al launcher de WSL en entornos donde
+# el PATH no prioriza el bash de Git -p. ej. GitHub Desktop asi bloqueaba el push.)
+
+# ======== GGA START ========
+# Gentleman Guardian Angel - Code Review (OPT-IN)
+# Por defecto el push NO corre GGA: el mantenedor pushea sin gate.
+# Para activarlo:  git config gga.prePush true
+# Bypass puntual:  git push --no-verify
+if [ "$(git config --get gga.prePush)" = "true" ]; then
+  if git rev-parse --verify --quiet refs/heads/main >/dev/null \
+     || git rev-parse --verify --quiet refs/heads/master >/dev/null \
+     || git rev-parse --verify --quiet refs/heads/develop >/dev/null \
+     || git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null; then
+    gga run --pr-mode --diff-only || exit 1
+  else
+    echo "[GGA] Sin rama base detectable; se revisa el ultimo commit (--ci)." >&2
+    gga run --ci || exit 1
+  fi
+else
+  echo "[GGA] pre-push omitido (gga.prePush no esta en true)." >&2
+fi
+# ======== GGA END ========

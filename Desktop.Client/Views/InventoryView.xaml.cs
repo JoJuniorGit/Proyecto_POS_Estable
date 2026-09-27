@@ -90,10 +90,11 @@ namespace Desktop.Client.Views
             }
         }
 
+        private static readonly System.Text.RegularExpressions.Regex NonDigitsRegex = new("[^0-9]+");
+
         private void NumberValidationTextBox(object sender, TextCompositionEventArgs e)
         {
-            System.Text.RegularExpressions.Regex regex = new System.Text.RegularExpressions.Regex("[^0-9]+");
-            e.Handled = regex.IsMatch(e.Text);
+            e.Handled = NonDigitsRegex.IsMatch(e.Text);
         }
 
         private void UserControl_PreviewKeyDown(object sender, KeyEventArgs e)

@@ -1,4 +1,4 @@
-using Core.Entities;
+using Core.DTOs;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -15,43 +15,38 @@ public class ProductService : IProductService
         _httpClient = httpClient;
     }
 
-    public async Task<List<Product>> GetAllAsync()
-    {
-        return await _httpClient.GetFromJsonAsync<List<Product>>("api/products") ?? new List<Product>();
-    }
-
-    public async Task<Product?> GetByIdAsync(int id)
+    public async Task<ProductDto?> GetByIdAsync(int id)
     {
         var response = await _httpClient.GetAsync($"api/products/{id}");
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
         var rawJson = await response.Content.ReadAsStringAsync();
-        return System.Text.Json.JsonSerializer.Deserialize<Product>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        return System.Text.Json.JsonSerializer.Deserialize<ProductDto>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
     }
 
-    public async Task<Product> CreateAsync(Product product)
+    public async Task<ProductDto> CreateAsync(CreateProductDto dto)
     {
-        var response = await _httpClient.PostAsJsonAsync("api/products", product);
+        var response = await _httpClient.PostAsJsonAsync("api/products", dto);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
         var rawJson = await response.Content.ReadAsStringAsync();
-        var created = System.Text.Json.JsonSerializer.Deserialize<Product>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        var created = System.Text.Json.JsonSerializer.Deserialize<ProductDto>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         return created ?? throw new System.Exception("No se pudo deserializar el producto devuelto.");
     }
 
-    public async Task UpdateAsync(Product product)
+    public async Task UpdateAsync(UpdateProductDto dto)
     {
-        var response = await _httpClient.PutAsJsonAsync($"api/products/{product.Id}", product);
+        var response = await _httpClient.PutAsJsonAsync($"api/products/{dto.Id}", dto);
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
     }
 
@@ -61,7 +56,7 @@ public class ProductService : IProductService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
     }
 
@@ -71,7 +66,7 @@ public class ProductService : IProductService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
         var resObj = await response.Content.ReadFromJsonAsync<DeleteResultResponse>();
         return resObj?.Result ?? "ok";
@@ -83,7 +78,7 @@ public class ProductService : IProductService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
     }
 
@@ -96,7 +91,7 @@ public class ProductService : IProductService
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
     }
 
@@ -125,9 +120,10 @@ public class ProductService : IProductService
             // Propagate cancellation
             throw;
         }
-        catch
+        catch (System.Exception ex)
         {
-            return new List<Core.DTOs.ProductQuickInfoDto>();
+            Core.Logging.ClientStateLogger.LogError($"Fallo al consultar sugerencias de productos (filtro: '{filter}'): {ex.Message}", "ProductService");
+            throw;
         }
     }
 
@@ -136,7 +132,7 @@ public class ProductService : IProductService
         var url = $"api/products?filter={System.Uri.EscapeDataString(filter ?? string.Empty)}&page={page}&pageSize={pageSize}";
         if (!string.IsNullOrWhiteSpace(statusFilter))
         {
-            url += $"&status={System.Uri.EscapeDataString(statusFilter)}";
+            url += $"&statusFilter={System.Uri.EscapeDataString(statusFilter)}";
         }
         if (!string.IsNullOrWhiteSpace(sortBy))
         {
@@ -192,9 +188,9 @@ public class ProductService : IProductService
             var err = await response.Content.ReadAsStringAsync(token);
             if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             {
-                throw new System.Net.Http.HttpRequestException(string.IsNullOrWhiteSpace(err) ? "Conflicto de concurrencia al vincular variantes." : err, null, System.Net.HttpStatusCode.Conflict);
+                throw new System.Net.Http.HttpRequestException(ApiErrorParser.FromBody(err, "Conflicto de concurrencia al vincular variantes."), null, System.Net.HttpStatusCode.Conflict);
             }
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
         var rawJson = await response.Content.ReadAsStringAsync(token);
         return System.Text.Json.JsonSerializer.Deserialize<List<Core.DTOs.ProductDto>>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
@@ -209,9 +205,9 @@ public class ProductService : IProductService
             var err = await response.Content.ReadAsStringAsync(token);
             if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             {
-                throw new System.Net.Http.HttpRequestException(string.IsNullOrWhiteSpace(err) ? "Conflicto de concurrencia al desvincular variante." : err, null, System.Net.HttpStatusCode.Conflict);
+                throw new System.Net.Http.HttpRequestException(ApiErrorParser.FromBody(err, "Conflicto de concurrencia al desvincular variante."), null, System.Net.HttpStatusCode.Conflict);
             }
-            throw new System.Exception(string.IsNullOrWhiteSpace(err) ? $"Error HTTP {(int)response.StatusCode}" : err);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
         }
         var rawJson = await response.Content.ReadAsStringAsync(token);
         return System.Text.Json.JsonSerializer.Deserialize<Core.DTOs.ProductDto>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })

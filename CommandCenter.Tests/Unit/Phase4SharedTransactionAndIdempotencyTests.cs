@@ -279,6 +279,8 @@ public class Phase4SharedTransactionAndIdempotencyTests
             var replayHits = 0;
             var conflictsHandled = 0;
 
+            var sqliteLock = new SemaphoreSlim(1, 1);
+
             // Ejecutar 12 tareas concurrentes simulando solicitudes paralelas con sus propios DbContext
             var tasks = Enumerable.Range(0, concurrentThreads).Select(async i =>
             {
@@ -286,20 +288,46 @@ public class Phase4SharedTransactionAndIdempotencyTests
                 using var taskContext = TestDatabaseFactory.CreateSqliteSalesDbContext(connection);
                 var service = new IdempotencyService(taskContext);
 
-                var check = await service.CheckAsync(key, path, hash);
+                await sqliteLock.WaitAsync();
+                IdempotencyCheckResult check;
+                try
+                {
+                    check = await service.CheckAsync(key, path, hash);
+                }
+                finally
+                {
+                    sqliteLock.Release();
+                }
+
                 if (check.IsNew)
                 {
                     try
                     {
-                        await service.RegisterSuccessAsync(key, path, hash, 200, "5000");
-                        Interlocked.Increment(ref successfulRegistrations);
+                        await sqliteLock.WaitAsync();
+                        try
+                        {
+                            await service.RegisterSuccessAsync(key, path, hash, 200, "5000");
+                            Interlocked.Increment(ref successfulRegistrations);
+                        }
+                        finally
+                        {
+                            sqliteLock.Release();
+                        }
                     }
                     catch (Exception)
                     {
                         // Colisión concurrente resuelta
-                        var collision = await service.HandleConcurrentCollisionAsync(key, path, hash);
-                        if (collision.IsReplay) Interlocked.Increment(ref replayHits);
-                        else Interlocked.Increment(ref conflictsHandled);
+                        await sqliteLock.WaitAsync();
+                        try
+                        {
+                            var collision = await service.HandleConcurrentCollisionAsync(key, path, hash);
+                            if (collision.IsReplay) Interlocked.Increment(ref replayHits);
+                            else Interlocked.Increment(ref conflictsHandled);
+                        }
+                        finally
+                        {
+                            sqliteLock.Release();
+                        }
                     }
                 }
                 else if (check.IsReplay)
@@ -332,9 +360,9 @@ public class Phase4SharedTransactionAndIdempotencyTests
 
         var mockSalesService = new Mock<ISalesService>();
         mockSalesService.Setup(s => s.CompleteSaleAsync(
-            1, 45.0m, It.IsAny<IEnumerable<PaymentInfo>>(), 0m, It.IsAny<int?>(), false, "IDEMP-001", It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
-            .Callback<int, decimal, IEnumerable<PaymentInfo>, decimal, int?, bool, string?, byte[]?, CancellationToken>(
-                (sId, rate, pay, round, cId, pick, k, h, ct) =>
+            1, 45.0m, It.IsAny<IEnumerable<PaymentInfo>>(), 0m, It.IsAny<int?>(), false, "IDEMP-001", It.IsAny<byte[]>(), It.IsAny<CancellationToken>(), It.IsAny<int?>()))
+            .Callback<int, decimal, IEnumerable<PaymentInfo>, decimal, int?, bool, string?, byte[]?, CancellationToken, int?>(
+                (sId, rate, pay, round, cId, pick, k, h, ct, actorId) =>
                 {
                     if (!string.IsNullOrEmpty(k) && h != null)
                     {
@@ -345,6 +373,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
                             PayloadHash = h,
                             StatusCode = 200,
                             ResponseBody = "777",
+                            UserId = actorId,
                             CreatedAtUtc = DateTime.UtcNow,
                             ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
                         });
@@ -393,7 +422,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
 
         // El servicio de ventas solo fue llamado UNA vez
         mockSalesService.Verify(s => s.CompleteSaleAsync(
-            1, 45.0m, It.IsAny<IEnumerable<PaymentInfo>>(), 0m, It.IsAny<int?>(), false, "IDEMP-001", It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+            1, 45.0m, It.IsAny<IEnumerable<PaymentInfo>>(), 0m, It.IsAny<int?>(), false, "IDEMP-001", It.IsAny<byte[]>(), It.IsAny<CancellationToken>(), It.IsAny<int?>()),
             Times.Once);
     }
 
@@ -405,9 +434,9 @@ public class Phase4SharedTransactionAndIdempotencyTests
 
         var mockSalesService = new Mock<ISalesService>();
         mockSalesService.Setup(s => s.CompleteSaleAsync(
-            1, 45.0m, It.IsAny<IEnumerable<PaymentInfo>>(), 0m, It.IsAny<int?>(), false, "IDEMP-002", It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
-            .Callback<int, decimal, IEnumerable<PaymentInfo>, decimal, int?, bool, string?, byte[]?, CancellationToken>(
-                (sId, rate, pay, round, cId, pick, k, h, ct) =>
+            1, 45.0m, It.IsAny<IEnumerable<PaymentInfo>>(), 0m, It.IsAny<int?>(), false, "IDEMP-002", It.IsAny<byte[]>(), It.IsAny<CancellationToken>(), It.IsAny<int?>()))
+            .Callback<int, decimal, IEnumerable<PaymentInfo>, decimal, int?, bool, string?, byte[]?, CancellationToken, int?>(
+                (sId, rate, pay, round, cId, pick, k, h, ct, actorId) =>
                 {
                     if (!string.IsNullOrEmpty(k) && h != null)
                     {
@@ -418,6 +447,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
                             PayloadHash = h,
                             StatusCode = 200,
                             ResponseBody = "888",
+                            UserId = actorId,
                             CreatedAtUtc = DateTime.UtcNow,
                             ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
                         });
@@ -518,7 +548,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
 
             var mockCashDrawer = new Mock<ICashDrawerService>();
             mockCashDrawer.Setup(c => c.GetOrCreateActiveSessionAsync(It.IsAny<decimal>()))
-                .ReturnsAsync(session);
+                .ReturnsAsync(new CashDrawerSessionResponseDto { Id = session.Id, Status = session.Status });
             var mockSettings = new Mock<ISystemSettingsService>();
 
             // Crear una venta inicial con un item
@@ -650,6 +680,100 @@ public class Phase4SharedTransactionAndIdempotencyTests
             Assert.Equal(invContext.Database.GetDbConnection(), rawTx.Connection);
             Assert.NotNull(invContext.Database.CurrentTransaction);
         }
+    }
+
+    #endregion
+
+    #region 7. Idempotencia en Abonos (8.2-M6): retry de abono → 1 sola aplicación
+
+    [Fact]
+    public async Task AddPayment_WithSameIdempotencyKey_ReturnsSaleButServiceCalledOnce()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var idService = new IdempotencyService(context);
+
+        var mockSalesService = new Mock<ISalesService>();
+        mockSalesService.Setup(s => s.AddPaymentToHoldSaleAsync(
+                5, It.IsAny<AddPaymentRequestDto>(), "ABONO-001", It.IsAny<byte[]>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback<int, AddPaymentRequestDto, string?, byte[]?, int?, CancellationToken>((saleId, req, key, hash, actorId, _) =>
+            {
+                if (!string.IsNullOrEmpty(key) && hash != null)
+                {
+                    context.IdempotentRequests.Add(new IdempotentRequest
+                    {
+                        Key = key,
+                        RequestPath = "/api/sales/5/payments",
+                        PayloadHash = hash,
+                        StatusCode = 200,
+                        ResponseBody = "{\"status\":\"OnHold\"}",
+                        UserId = actorId,
+                        CreatedAtUtc = DateTime.UtcNow,
+                        ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
+                    });
+                    context.SaveChanges();
+                }
+            })
+            .ReturnsAsync(new SaleDto { Id = 5, Status = "OnHold" });
+
+        var mockUser = new Mock<ICurrentUserService>();
+        mockUser.Setup(u => u.UserId).Returns("1");
+
+        var controller = new SalesController(mockSalesService.Object, mockUser.Object, idService);
+        var paymentReq = new AddPaymentRequestDto { PaymentMethodId = 1, AmountUSD = 10m, AmountBsS = 500m, ExchangeRate = 50m };
+
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["Idempotency-Key"] = "ABONO-001";
+        httpContext.Request.Path = "/api/sales/5/payments";
+        httpContext.Request.Method = "POST";
+        httpContext.Response.Body = new MemoryStream();
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        // Primer intento: MISS → se registra y se llama al servicio
+        var first = Assert.IsType<OkObjectResult>((await controller.AddPayment(5, paymentReq)).Result);
+        Assert.Equal("MISS", httpContext.Response.Headers["X-Cache-Lookup"].ToString());
+
+        // Segundo intento con la misma clave: replay HIT, sin volver a llamar al servicio
+        var replayContext = new DefaultHttpContext();
+        replayContext.Request.Headers["Idempotency-Key"] = "ABONO-001";
+        replayContext.Request.Path = "/api/sales/5/payments";
+        replayContext.Request.Method = "POST";
+        replayContext.Response.Body = new MemoryStream();
+        controller.ControllerContext = new ControllerContext { HttpContext = replayContext };
+
+        await controller.AddPayment(5, paymentReq);
+        Assert.Equal("HIT", replayContext.Response.Headers["X-Cache-Lookup"].ToString());
+
+        mockSalesService.Verify(s => s.AddPaymentToHoldSaleAsync(
+            5, It.IsAny<AddPaymentRequestDto>(), "ABONO-001", It.IsAny<byte[]>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        // Se persiste un único registro de idempotencia
+        var count = await context.IdempotentRequests.CountAsync(r => r.Key == "ABONO-001" && r.RequestPath == "/api/sales/5/payments");
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task HoldSale_WithoutIdempotencyKey_Returns400BadRequest()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var idService = new IdempotencyService(context);
+
+        var mockSalesService = new Mock<ISalesService>();
+        var mockUser = new Mock<ICurrentUserService>();
+        mockUser.Setup(u => u.UserId).Returns("1");
+
+        var controller = new SalesController(mockSalesService.Object, mockUser.Object, idService);
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Path = "/api/sales/3/hold";
+        httpContext.Request.Method = "POST";
+        httpContext.Response.Body = new MemoryStream();
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        var request = new HoldSaleRequestDto { CustomerId = 7, ExchangeRate = 50m };
+
+        var result = await controller.HoldSale(3, request);
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        mockSalesService.Verify(s => s.HoldSaleAsync(3, request, null, null), Times.Never);
     }
 
     #endregion

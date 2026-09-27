@@ -1,7 +1,8 @@
-import { useRef } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import { useCartState, useCartActions } from '../context/CartContext';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { usePosHotkeys } from '../hooks/usePosHotkeys';
+import './PosPage.css';
 import { useScannerTrap } from '../hooks/useScannerTrap';
 import { usePosModalFlow } from '../hooks/usePosModalFlow';
 import { useMobileBackGuard } from '../hooks/useMobileBackGuard';
@@ -17,8 +18,38 @@ import ConfirmModal from '../components/ui/ConfirmModal';
 import { getProductBySku } from '../services/productsApi';
 import { isValidBarcode } from '../utils/barcodeValidator';
 import { Edit2, ScanLine } from 'lucide-react';
+import RoleGuard from '../navigation/RoleGuard';
 
-export default function PosPage({
+const PRODUCT_REF_CACHE_TTL_MS = 1200;
+const productRefCache = new Map();
+
+export function resolveProductRefDeduped(code, { resolve = getProductBySku, now = Date.now(), ttlMs = PRODUCT_REF_CACHE_TTL_MS } = {}) {
+  const cached = productRefCache.get(code);
+  if (cached && now - cached.createdAt < ttlMs) return cached.promise;
+
+  const promise = resolve(code);
+  productRefCache.set(code, { createdAt: now, promise });
+
+  for (const [key, entry] of productRefCache) {
+    if (key !== code && now - entry.createdAt >= ttlMs) productRefCache.delete(key);
+  }
+
+  return promise;
+}
+
+export function clearProductRefCache() {
+  productRefCache.clear();
+}
+
+export default function PosPage(props) {
+  return (
+    <RoleGuard view="pos">
+      <PosPageContent {...props} />
+    </RoleGuard>
+  );
+}
+
+function PosPageContent({
   onOpenCheckout,
   onOpenHold,
   isExternalModalOpen = false,
@@ -26,7 +57,9 @@ export default function PosPage({
 }) {
   const searchBarRef = useRef(null);
   const abortControllerRef = useRef(null);
-  const { exchangeRate, syncBcvRate } = useExchangeRate();
+  const resolveScannedProduct = useCallback((code) => resolveProductRefDeduped(code), []);
+  const { syncBcvRate } = useExchangeRate();
+  const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
 
   const {
     currentSale,
@@ -87,8 +120,8 @@ export default function PosPage({
       changePriceList(nextType);
     },
     onClearCart: () => {
-      if (items.length > 0 && window.confirm('¿Desea limpiar el carrito e iniciar una nueva venta?')) {
-        createNewSale();
+      if (items.length > 0) {
+        setIsConfirmClearOpen(true);
       }
     },
     onDeleteItem: () => {
@@ -161,7 +194,7 @@ export default function PosPage({
     abortControllerRef.current = controller;
 
     try {
-      const product = await getProductBySku(code, controller.signal);
+      const product = await resolveScannedProduct(code);
       if (controller.signal.aborted) return;
 
       if (product?.id && !product.isCashAdvance) {
@@ -185,51 +218,31 @@ export default function PosPage({
 
   useScannerTrap(handleScannedCode);
 
-  return (
+return (
     <div className="pos-page">
       {error && (
-        <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>
+        <div className="alert alert-danger mb-4">
           {error}
         </div>
       )}
 
-      <div className="d-flex align-items-center justify-content-center gap-2 mb-3 px-1 flex-wrap text-center" style={{ fontSize: '0.875rem', minHeight: '32px' }}>
-        <span style={{ fontWeight: '500', color: '#94a3b8', display: 'inline-flex', alignItems: 'center' }}>
+      <div className="d-flex align-items-center justify-content-center gap-2 mb-3 px-1 flex-wrap text-center pos-customer-bar">
+        <span className="pos-customer-label">
           Cliente:&nbsp;
         </span>
-        <strong style={{ fontWeight: '700', color: 'var(--text-main, #f8fafc)', letterSpacing: '0.02em', display: 'inline-flex', alignItems: 'center' }}>
+        <strong className="pos-customer-name">
           {currentSale?.customerName || 'Consumidor Final'}
         </strong>
         {currentSale?.customerCedula && (
-          <span 
-            className="badge d-inline-flex align-items-center justify-content-center" 
-            style={{ 
-              backgroundColor: 'rgba(148, 163, 184, 0.15)', 
-              color: 'var(--text-main, #f8fafc)', 
-              fontSize: '0.75rem', 
-              fontWeight: '600', 
-              border: '1px solid rgba(148, 163, 184, 0.3)',
-              padding: '3px 10px',
-              borderRadius: '12px',
-              height: '22px',
-              lineHeight: '1'
-            }}
+          <span
+            className="badge d-inline-flex align-items-center justify-content-center pos-cust-cedula-badge"
           >
             {currentSale.customerCedula}
           </span>
         )}
-        <button 
-          type="button" 
-          className="btn btn-sm d-inline-flex align-items-center justify-content-center gap-1 ms-1"
-          style={{ 
-            fontSize: '0.75rem', 
-            fontWeight: '600', 
-            padding: '2px 8px',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-            color: '#3b82f6',
-            border: '1px solid rgba(59, 130, 246, 0.3)',
-            borderRadius: '6px'
-          }}
+        <button
+          type="button"
+          className="btn btn-sm d-inline-flex align-items-center justify-content-center gap-1 ms-1 pos-customer-edit-btn"
           onClick={() => setIsCustomerModalOpen(true)}
           title="Cambiar cliente (F3)"
         >
@@ -238,14 +251,11 @@ export default function PosPage({
         </button>
       </div>
 
-      <div className="pos-search-bar mb-3" style={{ display: 'flex', gap: '0.6rem', alignItems: 'stretch', width: '100%' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="pos-search-bar mb-3 pos-search-row">
+        <div className="pos-search-input-wrap">
           <SearchBar
             ref={searchBarRef}
             onSelectProduct={handleSelectProduct}
-            exchangeRate={exchangeRate}
-            disabled={!currentSale?.id}
-            priceListType={currentSale?.priceListType || 'Retail'}
           />
         </div>
         <button
@@ -253,21 +263,7 @@ export default function PosPage({
           aria-label="Escanear código de barras con la cámara"
           title="Escanear código de barras con la cámara"
           onClick={() => setIsScannerOpen(true)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 48,
-            height: 48,
-            flexShrink: 0,
-            color: 'var(--primary-color, #673AB7)',
-            backgroundColor: 'var(--bg-surface, #1e293b)',
-            border: '1px solid var(--border, #334155)',
-            borderRadius: 'var(--radius-md, 8px)',
-            boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.1))',
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-          }}
+          className="pos-scanner-btn"
         >
           <ScanLine size={20} />
         </button>
@@ -286,9 +282,7 @@ export default function PosPage({
                   selectedItemId={selectedItemId}
                   onSelectItem={setSelectedItemId}
                   onUpdateQty={updateQuantity}
-                  onUpdateQuantity={updateQuantity}
                   onRemoveItem={removeItem}
-                  exchangeRate={exchangeRate}
                 />
               </div>
               {/* Lista en Tarjetas para Móvil */}
@@ -298,9 +292,7 @@ export default function PosPage({
                   selectedItemId={selectedItemId}
                   onSelectItem={setSelectedItemId}
                   onUpdateQty={updateQuantity}
-                  onUpdateQuantity={updateQuantity}
                   onRemoveItem={removeItem}
-                  exchangeRate={exchangeRate}
                 />
               </div>
             </>
@@ -320,16 +312,13 @@ export default function PosPage({
         isOpen={isCustomerModalOpen}
         onClose={() => setIsCustomerModalOpen(false)}
         onSelectCustomer={handleSelectCustomer}
-        currentCustomerId={currentSale?.customerId}
-        mode="select"
-        saleTotalUSD={currentSale?.totalUSD || 0}
-        exchangeRate={exchangeRate}
       />
 
       <BarcodeScannerModal
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onCodeScanned={handleScannedCode}
+        resolveProduct={resolveScannedProduct}
         currentSale={currentSale}
         onUpdateQuantity={updateQuantity}
       />
@@ -350,6 +339,21 @@ export default function PosPage({
         message="Tiene productos agregados en el carrito de compras. Si abandona la página ahora, se perderá la venta en curso."
         cancelText="Continuar en POS"
         confirmText="Salir del Sistema"
+        variant="warning"
+      />
+
+      {/* Modal de confirmación personalizada para limpiar carrito */}
+      <ConfirmModal
+        isOpen={isConfirmClearOpen}
+        onClose={() => setIsConfirmClearOpen(false)}
+        onConfirm={() => {
+          setIsConfirmClearOpen(false);
+          createNewSale();
+        }}
+        title="¿Limpiar carrito?"
+        message="¿Desea limpiar el carrito de compras e iniciar una nueva venta? Esta acción no se puede deshacer."
+        cancelText="Cancelar"
+        confirmText="Limpiar Carrito"
         variant="warning"
       />
     </div>

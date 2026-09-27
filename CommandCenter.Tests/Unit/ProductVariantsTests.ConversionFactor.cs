@@ -1,0 +1,384 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Backend.API.Controllers;
+using Backend.API.DTOs;
+using Core.DTOs;
+using Core.Entities;
+using Core.Interfaces;
+using Inventory.Module.Data;
+using Inventory.Module.Services;
+using MediatR;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Moq;
+using Sales.Module.Data;
+using Sales.Module.Entities;
+using Sales.Module.Interfaces;
+using Sales.Module.Services;
+using Xunit;
+
+namespace CommandCenter.Tests.Unit;
+
+public partial class ProductVariantsTests
+{
+    [Fact]
+    public async Task ProductDialogViewModel_SaveAsync_ForcesSkuVerification_ForNonGroups()
+    {
+        var mockProductService = new Mock<Desktop.Client.Services.IProductService>();
+        var mockExchangeRate = new Mock<Desktop.Client.Services.IExchangeRateService>();
+        mockExchangeRate.Setup(e => e.CurrentRate).Returns(36.50m);
+        mockProductService.Setup(s => s.GetParentsAsync()).ReturnsAsync(new List<ProductDto>());
+        
+        // Setup SKU 77777 as already existing
+        mockProductService.Setup(s => s.GetQuickInfoAsync("77777")).ReturnsAsync(new Core.DTOs.ProductQuickInfoDto { Id = 999, SKU = "77777" });
+
+        var vm = new Desktop.Client.ViewModels.ProductDialogViewModel(mockProductService.Object, mockExchangeRate.Object, null);
+        await vm.LoadMetadataAsync();
+
+        vm.Name = "Producto Duplicado";
+        vm.Sku = "77777";
+        vm.CostPriceUSD = 1.00m;
+        vm.PriceRetailUSD = 2.00m;
+
+        bool closed = false;
+        vm.RequestClose = res => closed = res;
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(closed);
+        Assert.False(vm.IsSkuValid);
+        Assert.Contains("ya existe", vm.SkuVerificationMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+
+    [Fact]
+    public async Task CreateGroup_WithStockShared_AllowsInitialStockOnParent()
+    {
+        var db = CreateInMemoryInventoryDb(Guid.NewGuid().ToString());
+        var userMock = CreateAdminUserServiceMock();
+        var service = new InventoryService(db, userMock.Object);
+
+        var group = new CreateProductDto
+        {
+            Name = "Camisetas Deportivas (Grupo)",
+            IsGroupHeader = true,
+            IsStockShared = true,
+            StockQuantity = 100m,
+            LowStockThreshold = 10m,
+            PriceRetailUSD = 15.00m,
+            CostPriceUSD = 8.00m
+        };
+
+        var created = await service.CreateProductFromDtoAsync(group);
+        Assert.True(created.IsGroupHeader);
+        Assert.True(created.IsStockShared);
+        Assert.Equal(100m, created.StockQuantity);
+        Assert.Equal(10m, created.LowStockThreshold);
+    }
+
+    [Fact]
+    public async Task CreateGroup_WithoutStockShared_ForcesParentStockToZero()
+    {
+        var db = CreateInMemoryInventoryDb(Guid.NewGuid().ToString());
+        var userMock = CreateAdminUserServiceMock();
+        var service = new InventoryService(db, userMock.Object);
+
+        var group = new CreateProductDto
+        {
+            Name = "Zapatos Casuales (Grupo)",
+            IsGroupHeader = true,
+            IsStockShared = false,
+            StockQuantity = 50m,
+            LowStockThreshold = 5m,
+            PriceRetailUSD = 30.00m,
+            CostPriceUSD = 15.00m
+        };
+
+        var created = await service.CreateProductFromDtoAsync(group);
+        Assert.True(created.IsGroupHeader);
+        Assert.False(created.IsStockShared);
+        Assert.Equal(0m, created.StockQuantity);
+        Assert.Equal(0m, created.LowStockThreshold);
+    }
+
+    [Fact]
+    public async Task UpdateGroup_AttemptingToChangeStockShared_ThrowsInvalidOperationException()
+    {
+        var db = CreateInMemoryInventoryDb(Guid.NewGuid().ToString());
+        var userMock = CreateAdminUserServiceMock();
+        var service = new InventoryService(db, userMock.Object);
+
+        var group = new CreateProductDto
+        {
+            Name = "Pinturas (Grupo)",
+            IsGroupHeader = true,
+            IsStockShared = true,
+            StockQuantity = 40m,
+            PriceRetailUSD = 12.00m,
+            CostPriceUSD = 6.00m
+        };
+        var created = await service.CreateProductFromDtoAsync(group);
+
+        created.IsStockShared = false; // Attempt to mutate immutable flag
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateProductFromDtoAsync(created.Id, created.ToUpdateProductDto()));
+        Assert.Contains("Stock Compartido", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateGroup_AttemptingToChangeIndependentPricing_ThrowsInvalidOperationException()
+    {
+        var db = CreateInMemoryInventoryDb(Guid.NewGuid().ToString());
+        var userMock = CreateAdminUserServiceMock();
+        var service = new InventoryService(db, userMock.Object);
+
+        var group = new CreateProductDto
+        {
+            Name = "Pinturas (Grupo 2)",
+            IsGroupHeader = true,
+            HasIndependentPricing = false,
+            PriceRetailUSD = 12.00m,
+            CostPriceUSD = 6.00m
+        };
+        var created = await service.CreateProductFromDtoAsync(group);
+
+        created.HasIndependentPricing = true; // Attempt to mutate immutable flag
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateProductFromDtoAsync(created.Id, created.ToUpdateProductDto()));
+        Assert.Contains("Precios Independientes", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateChildVariant_UnderStockSharedParent_ForcesChildStockToZero()
+    {
+        var db = CreateInMemoryInventoryDb(Guid.NewGuid().ToString());
+        var userMock = CreateAdminUserServiceMock();
+        var service = new InventoryService(db, userMock.Object);
+
+        var group = new CreateProductDto
+        {
+            Name = "Harina Pan Pool",
+            IsGroupHeader = true,
+            IsStockShared = true,
+            StockQuantity = 500m,
+            PriceRetailUSD = 1.20m,
+            CostPriceUSD = 0.80m
+        };
+        var parent = await service.CreateProductFromDtoAsync(group);
+
+        var child = new CreateProductDto
+        {
+            Name = "Harina Pan Tradicional",
+            SKU = "7591001",
+            ParentProductId = parent.Id,
+            StockQuantity = 100m // Should be forced to 0
+        };
+        var createdChild = await service.CreateProductFromDtoAsync(child);
+
+        Assert.Equal(0m, createdChild.StockQuantity);
+        Assert.Equal(0m, createdChild.LowStockThreshold);
+    }
+
+    [Fact]
+    public async Task CreateChildVariant_UnderIndependentPricingParent_PreservesCustomPrices()
+    {
+        var db = CreateInMemoryInventoryDb(Guid.NewGuid().ToString());
+        var userMock = CreateAdminUserServiceMock();
+        var service = new InventoryService(db, userMock.Object);
+
+        var group = new CreateProductDto
+        {
+            Name = "Ropa Colección",
+            IsGroupHeader = true,
+            HasIndependentPricing = true,
+            PriceRetailUSD = 20.00m,
+            CostPriceUSD = 10.00m
+        };
+        var parent = await service.CreateProductFromDtoAsync(group);
+
+        var child = new CreateProductDto
+        {
+            Name = "Ropa Talla XL (Edición Especial)",
+            SKU = "7592002",
+            ParentProductId = parent.Id,
+            CostPriceUSD = 14.00m,
+            ProfitMarginRetail = 50.00m,
+            PriceRetailUSD = 21.00m
+        };
+        var createdChild = await service.CreateProductFromDtoAsync(child);
+
+        Assert.Equal(14.00m, createdChild.CostPriceUSD);
+        Assert.Equal(21.00m, createdChild.PriceRetailUSD);
+    }
+
+    [Fact]
+    public async Task UpdateParentPrices_WhenIndependentPricing_DoesNotOverwriteVariantPrices()
+    {
+        var db = CreateInMemoryInventoryDb(Guid.NewGuid().ToString());
+        var userMock = CreateAdminUserServiceMock();
+        var service = new InventoryService(db, userMock.Object);
+
+        var group = new CreateProductDto
+        {
+            Name = "Helados Artesanales",
+            IsGroupHeader = true,
+            HasIndependentPricing = true,
+            PriceRetailUSD = 3.00m,
+            CostPriceUSD = 1.50m
+        };
+        var parent = await service.CreateProductFromDtoAsync(group);
+
+        var variant = new CreateProductDto
+        {
+            Name = "Helado Pistacho Premium",
+            SKU = "7593003",
+            ParentProductId = parent.Id,
+            CostPriceUSD = 2.50m,
+            ProfitMarginRetail = 60.00m,
+            PriceRetailUSD = 4.00m
+        };
+        var createdVariant = await service.CreateProductFromDtoAsync(variant);
+
+        // Update parent price to 5.00
+        parent.PriceRetailUSD = 5.00m;
+        parent.CostPriceUSD = 2.50m;
+        await service.UpdateProductFromDtoAsync(parent.Id, parent.ToUpdateProductDto());
+
+        var fetchedVariant = await GetProductFromDbAsync(db, createdVariant.Id);
+        Assert.NotNull(fetchedVariant);
+        Assert.Equal(4.00m, fetchedVariant.PriceRetailUSD); // Maintained independent price
+    }
+
+    [Fact]
+    public async Task UpdateStockAsync_VariantWithStockShared_DeductsFromParentStock_AndLogsMovement()
+    {
+        var db = CreateInMemoryInventoryDb(Guid.NewGuid().ToString());
+        var userMock = CreateAdminUserServiceMock();
+        var service = new InventoryService(db, userMock.Object);
+
+        var group = new CreateProductDto
+        {
+            Name = "Pintura Galón (Pool)",
+            IsGroupHeader = true,
+            IsStockShared = true,
+            StockQuantity = 50m,
+            PriceRetailUSD = 25.00m,
+            CostPriceUSD = 15.00m
+        };
+        var parent = await service.CreateProductFromDtoAsync(group);
+
+        var variant = new CreateProductDto
+        {
+            Name = "Pintura Galón Blanco",
+            SKU = "7594004",
+            ParentProductId = parent.Id
+        };
+        var createdVariant = await service.CreateProductFromDtoAsync(variant);
+
+        // Deduct 5 units from variant
+        await service.UpdateStockAsync(createdVariant.Id, -5m, "Venta #101");
+
+        var updatedParent = await GetProductFromDbAsync(db, parent.Id);
+        var updatedVariant = await GetProductFromDbAsync(db, createdVariant.Id);
+
+        Assert.NotNull(updatedParent);
+        Assert.NotNull(updatedVariant);
+        Assert.Equal(45m, updatedParent.StockQuantity);
+        Assert.Equal(0m, updatedVariant.StockQuantity);
+
+        var movements = await db.StockMovements.Where(m => m.ProductId == parent.Id).ToListAsync();
+        Assert.Equal(2, movements.Count);
+        Assert.Contains(movements, m => m.QuantityChange == 50m && m.NewStockLevel == 50m && m.Reason == "Carga inicial");
+        var deductionMovement = movements.Single(m => m.QuantityChange == -5m);
+        Assert.Contains("Pintura Galón Blanco", deductionMovement.Reason);
+        Assert.Equal(45m, deductionMovement.NewStockLevel);
+    }
+
+    [Fact]
+    public async Task UpdateProduct_StandaloneWithProvidedConversionFactor_ForcesToOne()
+    {
+        var db = CreateInMemoryInventoryDb(Guid.NewGuid().ToString());
+        var userMock = CreateAdminUserServiceMock();
+        var service = new InventoryService(db, userMock.Object);
+
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            SKU = "STANDALONE-PIN-1",
+            Name = "Producto Simple",
+            PriceRetailUSD = 10.00m,
+            CostPriceUSD = 5.00m
+        });
+
+        var update = created.ToUpdateProductDto();
+        update.ConversionFactor = 2.5000m;
+
+        await service.UpdateProductFromDtoAsync(created.Id, update);
+
+        var persisted = await GetProductFromDbAsync(db, created.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(1.0000m, persisted.ConversionFactor);
+    }
+
+    [Fact]
+    public async Task UpdateProduct_CashAdvanceWithStockAndFractional_ForcesServiceRules()
+    {
+        var db = CreateInMemoryInventoryDb(Guid.NewGuid().ToString());
+        var userMock = CreateAdminUserServiceMock();
+        var service = new InventoryService(db, userMock.Object);
+
+        var product = new Product
+        {
+            SKU = "ADV-UPD-PIN-1",
+            Name = "Adelanto Actualizado",
+            IsActive = true,
+            IsCashAdvance = true,
+            IsFractional = true,
+            UnitOfMeasure = UnitOfMeasureType.Kg,
+            StockQuantity = 50m,
+            ReservedQuantity = 5m,
+            LowStockThreshold = 10m,
+            IsStockShared = true,
+            HasIndependentPricing = true,
+            ConversionFactor = 3.0000m,
+            PriceRetailUSD = 2.00m,
+            PriceUSD = 2.00m,
+            CostPriceUSD = 1.00m,
+            PriceBsS = 80m
+        };
+        db.Products.Add(product);
+        await db.SaveChangesAsync();
+
+        var update = new UpdateProductDto
+        {
+            Id = product.Id,
+            Name = product.Name,
+            SKU = product.SKU,
+            IsActive = true,
+            IsCashAdvance = true,
+            IsFractional = true,
+            UnitOfMeasure = UnitOfMeasureType.Kg,
+            IsStockShared = true,
+            HasIndependentPricing = true,
+            ConversionFactor = 3.0000m,
+            PriceRetailUSD = 2.00m,
+            CostPriceUSD = 1.00m
+        };
+
+        await service.UpdateProductFromDtoAsync(product.Id, update);
+
+        var persisted = await GetProductFromDbAsync(db, product.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(0m, persisted.StockQuantity);
+        Assert.Equal(0m, persisted.ReservedQuantity);
+        Assert.Equal(0m, persisted.LowStockThreshold);
+        Assert.False(persisted.IsFractional);
+        Assert.Equal(UnitOfMeasureType.Und, persisted.UnitOfMeasure);
+        Assert.Equal(1.0000m, persisted.ConversionFactor);
+        Assert.False(persisted.IsStockShared);
+        Assert.False(persisted.HasIndependentPricing);
+    }
+
+}

@@ -7,9 +7,10 @@ describe('ExchangeRate Manual Flow & Outdated Detection Unit Tests', () => {
     const twentyFiveHoursAgo = new Date(now - 25 * 60 * 60 * 1000).toISOString();
     const oneHourAgo = new Date(now - 1 * 60 * 60 * 1000).toISOString();
 
-    const isOutdatedOld = !twentyFiveHoursAgo || (now - new Date(twentyFiveHoursAgo).getTime() > 24 * 60 * 60 * 1000);
-    const isOutdatedRecent = !oneHourAgo || (now - new Date(oneHourAgo).getTime() > 24 * 60 * 60 * 1000);
-    const isOutdatedNull = !null || (now - new Date(null).getTime() > 24 * 60 * 60 * 1000);
+    const checkIsOutdated = (timestamp) => !timestamp || (now - new Date(timestamp).getTime() > 24 * 60 * 60 * 1000);
+    const isOutdatedOld = checkIsOutdated(twentyFiveHoursAgo);
+    const isOutdatedRecent = checkIsOutdated(oneHourAgo);
+    const isOutdatedNull = checkIsOutdated(null);
 
     assert.strictEqual(isOutdatedOld, true, 'Rate older than 24h must be flagged as outdated');
     assert.strictEqual(isOutdatedRecent, false, 'Rate updated 1h ago must NOT be flagged as outdated');

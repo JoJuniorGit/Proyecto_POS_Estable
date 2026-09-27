@@ -21,12 +21,21 @@ public static class PricingCalculator
     }
 
     /// <summary>
-    /// Rounds an exchange rate up to 2 decimal places (ceiling rounding).
-    /// Example: 804.6301 -> 804.64, 804.6300 -> 804.63.
+    /// Rounds an exchange rate up to 2 decimal places (ceiling rounding), alineado a la guia §2.4.
+    /// Example: 804.63001 -> 804.64, 804.64 -> 804.64 (identidad al tope de precision).
     /// </summary>
     public static decimal RoundExchangeRateCeiling(decimal rate)
     {
         return Math.Ceiling(rate * 100m) / 100m;
+    }
+
+    /// <summary>
+    /// Rounds a monetary value up to 2 decimal places (ceiling rounding).
+    /// Used para precios calculados desde costo+margen (nunca se redondea hacia abajo).
+    /// </summary>
+    public static decimal RoundPriceUp(decimal amount)
+    {
+        return Math.Ceiling(amount * 100m) / 100m;
     }
 
     /// <summary>
@@ -49,11 +58,23 @@ public static class PricingCalculator
     }
 
     /// <summary>
-    /// Converts a Bs.S amount to USD using the provided exchange rate and digital rounding.
+    /// Converts a USD amount to Bs.S rounding UP to 2 decimal places (ceiling).
+    /// Estandar 8.104: el precio unitario en Bs.S se redondea siempre hacia arriba (0.81 * 842.21 = 682.1901 -> 682.20)
+    /// y es la unica fuente de verdad en catalogo, carrito, caja, facturacion y recibos.
     /// </summary>
-    public static decimal ToUSD(decimal amountBsS, decimal rate)
+    public static decimal ToBsSCeiling(decimal amountUsd, decimal rate)
     {
         if (rate <= 0) return 0m;
-        return RoundToDigital(amountBsS / rate);
+        return RoundPriceUp(amountUsd * rate);
+    }
+
+    /// <summary>
+    /// Converts a Bs.S amount to USD using the provided exchange rate.
+    /// Defaults to 2 decimals for digital presentation, supports 4 decimals for high-precision currency conversions [8C-M1].
+    /// </summary>
+    public static decimal ToUSD(decimal amountBsS, decimal rate, int decimals = 2)
+    {
+        if (rate <= 0) return 0m;
+        return Math.Round(amountBsS / rate, decimals, MidpointRounding.AwayFromZero);
     }
 }

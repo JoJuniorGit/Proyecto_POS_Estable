@@ -13,8 +13,10 @@ export default function PaymentList({ payments, onRemovePayment }) {
   return (
     <div className="payment-list">
       <h4 className="payment-list-title">Pagos Aplicados</h4>
-      {payments.map((p, idx) => (
-        <div key={idx} className="payment-item">
+      {payments.map((p) => (
+        // 8.5-WEB5: key estable por uid generado al crear el pago; remover por objeto evita
+        // bugs de React key={index} al eliminar o reordenar pagos rápidos.
+        <div key={p.uid} className="payment-item">
           <div className="payment-item-main">
             <span className="payment-item-name">{p.methodName}</span>
             {p.reference && (
@@ -28,7 +30,7 @@ export default function PaymentList({ payments, onRemovePayment }) {
             <button
               type="button"
               className="delete-btn"
-              onClick={() => onRemovePayment(idx)}
+              onClick={() => onRemovePayment(p)}
               title="Eliminar este pago"
             >
               <Trash2 size={16} />
