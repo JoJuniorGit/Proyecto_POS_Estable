@@ -11383,3 +11383,88 @@ Estado de Hallazgos Previos (VIG-01..VIG-25):
 ================================================================================
 FIN DEL REGISTRO GLOBAL DE ERRORES CERRADOS
 ================================================================================
+
+================================================================================
+ANEXO 8.143 — ESTABILIZACIÓN DEL CI (7 tests + gates) — 2026-09-27
+================================================================================
+Motivo: el run 35863493495 (HEAD e1b0f88, PR V0.15) quedó rojo por 7 tests de la
+suite .NET, el gate de vulnerabilidades del backend (falso positivo) y npm ci del
+frontend (lockfile vs npm 12). Diagnóstico contra el log real del run y el árbol;
+verificación con suite completa sobre PostgreSQL real y verificación independiente
+adversarial (agente fresco, read-only).
+
+A. CAUSAS RAÍZ Y FIXES
+1) Formato monetario atado a la cultura del SO (en-US en CI): 3 tests
+   (CashDrawer_Closure_Preserves..., CashDrawer_AfterRollover...,
+   GenerateReceiptContent_WithCashier_OmitsExpectedAmounts).
+   - CashDrawerViewModel.UpdateFormattedBalances y DailyClosureService.GenerateReceiptContent
+     formateaban con ToString("N0"/"N2") y :N2 ambientales.
+   - Fix: Core.Helpers.MoneyFormat (cultura es-VE explícita) como fuente única;
+     los tests de formato fuerzan en-US (CultureScope) para blindar la convención.
+2) DailyClosureRetryIntegrationTests (3500 vs 2520): el esquema de tests se crea con
+   CreateTablesAsync, que inserta el HasData del modelo ("Cash"/"Card" en Id=1/2);
+   el seed PG insert-only agregaba "Efectivo USD" en un Id corrido, dejando Id=1 =
+   "Cash" (no-USD para PaymentMethodCurrencyResolver 8.9-M16 → sin conversión de los
+   20 USD declarados).
+   - Fix: el seed PG converge por Id canónico (UPDATE best-effort + INSERT si falta).
+   - Evidencia SQL: PaymentMethods 1..5 = Efectivo USD / Card / Punto de Venta /
+     Pago Movil / Zelle; cierre con TotalExpected=3500.00 y TotalActual=3500.00.
+3) UnhandledRoute_Returns404_ThroughGlobalPipeline (BadRequest vs NotFound):
+   VersionCheckMiddleware (pre-routing) corta /api/* sin X-Client-Version con 400 y
+   el MapFallback (404) nunca corre.
+   - Fix conservador: el smoke envía X-Client-Version "1.0.0" (= MinimumClientVersion)
+     y valida el 404 del pipeline real. No se tocó el gate ni el middleware.
+4) CashAdvanceEnvelopeTests (2 fallos, "Ya existe una sesión de caja activa."): los 3
+   tests abrían sesión y no la cerraban (el primero en correr pasaba y filtraba).
+   - Fix: cierre best-effort en finally + limpieza preventiva al inicio (mismo patrón
+     de PostgresRealSharedTransactionTests). Guard de producción intacto.
+5) Gate de vulnerabilidades: falso positivo — el regex matcheaba por substring
+   (PowerShell -match es case-insensitive) el texto "has no vulnerable packages".
+   - Evidencia: log CI 10/10 proyectos "no vulnerable packages"; `dotnet list ... --vulnerable`
+     local exit 0 sin hallazgos; el string del SDK 10.0.101 confirmado en el assembly.
+   - Fix: regex anclado a 'has the following vulnerable packages'.
+6) Frontend npm ci (EUSAGE): el lockfile no satisfacía npm 12.1.0 (Node 24.x del runner):
+   "Missing: @emnapi/core@2.0.0-alpha.5 / @emnapi/runtime@2.0.0-alpha.5 from lock file".
+   - Fix: package-lock regenerado con npm 12.1.0; dry-runs plain y --os=linux --cpu=x64
+     en verde; `npm ci` real OK; suite web 287/287; oxlint 0/0; npm audit 0.
+
+B. VERIFICACIÓN
+- dotnet build -c Release: 0 advertencias / 0 errores.
+- Suite .NET COMPLETA contra PostgreSQL 18 real (cluster temporal aislado con scram,
+  sin tocar el cluster del usuario): 1451/1451 (0 fallos, 0 omitidos).
+- Smoke del pipeline: 6/6 (incluye el 404 corregido).
+- Cultura: rojo→verde reproducible con en-US forzado (red: "1,300"/"26.00 $"/"250.00";
+  green: "1.300"/"26,00 $"/"250,00").
+- Frontend: ver A.6.
+- Verificación independiente adversarial (agente fresco, read-only): PASS_WITH_WARNINGS;
+  spot-check 3/3 verde; sin defectos bloqueantes; hallazgos bajos en D.
+- Nota entorno local: Program.cs (Development) carga el .env del repo y DB_PASSWORD
+  pisa el password del connection string; en CI no aplica. La corrida local de smoke
+  usó un .env temporal de verificación, eliminado al terminar.
+
+C. CORRECCIONES A UN ANÁLISIS EXTERNO (descartadas por improcedentes)
+- Agregar ExchangeRate a CreateClosureCommand: la tasa la resuelve ITodayExchangeRateProvider;
+  el contrato no se tocó.
+- UseStatusCodePages / reordenar el exception middleware para el 404: el 400 lo produce
+  el gate de versión (pre-routing), no el pipeline de errores.
+- "Upgrade de paquete vulnerable": no hay vulnerabilidades; era falso positivo del gate.
+
+D. DEUDA RESIDUAL (fuera de alcance, sin cobertura en CI)
+- Misma clase de formato por cultura en: ClosurePdfGenerator, DailyClosureViewModel,
+  CashDrawerViewModel línea 426 y mensajes de caja (CashAdvanceCoordinator/CashDrawerService).
+  En host no-es-VE, el PDF del mismo cierre puede diferir del TXT ya normalizado.
+- Seed PG: Id=2 sigue "Card"/IsCash=false (InMemory usa "Efectivo Bs.S"/true) y
+  "Pago Movil" sin tilde; no afecta la clasificación de moneda (no contienen "USD").
+- Convergencia del seed: en un pos_test local "sucio" (fila canónica soft-deleted) puede
+  no restaurar IsActive/IsDeleted; CI recrea la base por run (ci.yml). Recomendación:
+  recrear pos_test local si se reutiliza.
+- Comentario 8.128 del job frontend en ci.yml menciona "npm 11"; el runner corre npm 12.
+
+E. ARCHIVOS
+- Fixes: Core/Helpers/MoneyFormat.cs (nuevo), Desktop.Client.Core/ViewModels/CashDrawerViewModel.cs,
+  Sales.Module/Services/DailyClosureService.Receipts.cs, CommandCenter.Tests/TestHelpers/CultureScope.cs (nuevo),
+  CommandCenter.Tests/CashDrawerClosureTests.cs, CommandCenter.Tests/CheckoutAndPaymentTests.cs,
+  CommandCenter.Tests/Builders/TestDatabaseFactory.cs, CommandCenter.Tests/Integration/CashAdvanceEnvelopeTests.cs,
+  CommandCenter.Tests/Integration/WebApplicationFactorySmokeTests.cs, .github/workflows/ci.yml,
+  Web.Frontend/package-lock.json.
+================================================================================
