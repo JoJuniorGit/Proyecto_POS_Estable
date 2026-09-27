@@ -164,6 +164,7 @@ public class CashDrawerClosureTests
     [Fact]
     public async Task CashDrawer_Closure_PreservesMovementsAndExpectedCash_InActiveSession()
     {
+        using var cultureScope = new CommandCenter.Tests.TestHelpers.CultureScope("en-US");
         using var context = GetInMemoryDbContext();
         var serverService = new ServerCashService.CashDrawerService(context);
         var closureService = new ServerCashService.DailyClosureService(context, CommandCenter.Tests.TestHelpers.DailyClosureTestHelper.CreateMocks().rateProvider.Object, CommandCenter.Tests.TestHelpers.DailyClosureTestHelper.CreateMocks().cashDrawerService.Object);
@@ -214,6 +215,7 @@ public class CashDrawerClosureTests
     [Fact]
     public async Task CashDrawer_AfterRollover_KeepsPreviousSessionMovementsVisible()
     {
+        using var cultureScope = new CommandCenter.Tests.TestHelpers.CultureScope("en-US");
         using var context = GetInMemoryDbContext();
         var serverService = new ServerCashService.CashDrawerService(context);
         var clientService = new MockClientCashDrawerService(serverService);

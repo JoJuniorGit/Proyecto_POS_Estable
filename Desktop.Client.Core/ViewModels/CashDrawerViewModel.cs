@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.Common;
+using Core.Helpers;
 using Desktop.Client.Services;
 using System;
 using System.Collections.ObjectModel;
@@ -169,8 +170,8 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     {
         var rate = _exchangeRateService.CurrentRate;
         var balanceLocal = CurrentBalanceBsS;
-        FormattedBalanceBsS = balanceLocal.ToString("N0");
-        FormattedBalanceUsd = (rate > 0 ? balanceLocal / rate : 0).ToString("N2") + " $";
+        FormattedBalanceBsS = MoneyFormat.N0(balanceLocal);
+        FormattedBalanceUsd = MoneyFormat.N2(rate > 0 ? balanceLocal / rate : 0) + " $";
 
         if (ActiveSession != null && ActiveSession.Transactions != null)
         {
@@ -187,8 +188,8 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             TotalExpenseBsS = 0;
         }
 
-        FormattedTotalIncomeBsS = TotalIncomeBsS.ToString("N0") + " Bs.S";
-        FormattedTotalExpenseBsS = TotalExpenseBsS.ToString("N0") + " Bs.S";
+        FormattedTotalIncomeBsS = MoneyFormat.N0(TotalIncomeBsS) + " Bs.S";
+        FormattedTotalExpenseBsS = MoneyFormat.N0(TotalExpenseBsS) + " Bs.S";
     }
 
     public async Task LoadSessionAsync()

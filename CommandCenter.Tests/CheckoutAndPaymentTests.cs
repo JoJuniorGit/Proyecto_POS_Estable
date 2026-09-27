@@ -462,6 +462,7 @@ public class CheckoutAndPaymentTests
     [Fact]
     public void GenerateReceiptContent_WithCashier_OmitsExpectedAmounts()
     {
+        using var cultureScope = new CommandCenter.Tests.TestHelpers.CultureScope("en-US");
         var closure = new DailyClosure
         {
             ClosureDate = DateTime.UtcNow,

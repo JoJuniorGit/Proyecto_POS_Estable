@@ -24,10 +24,10 @@ public partial class DailyClosureService
             foreach (var detail in closure.Details)
             {
                 string curr = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
-                sb.AppendLine(string.Format("{0,-25} {1,-8} {2,22:N2}", detail.PaymentMethodName, curr, detail.ActualAmountBsS));
+                sb.AppendLine(string.Format(MoneyFormat.Culture, "{0,-25} {1,-8} {2,22:N2}", detail.PaymentMethodName, curr, detail.ActualAmountBsS));
             }
             sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine(string.Format("{0,-25} {1,-8} {2,22:N2}", "TOTALES", "-", closure.TotalActualBsS));
+            sb.AppendLine(string.Format(MoneyFormat.Culture, "{0,-25} {1,-8} {2,22:N2}", "TOTALES", "-", closure.TotalActualBsS));
             if (!string.IsNullOrWhiteSpace(closure.Observation))
             {
                 sb.AppendLine($"Notas: {closure.Observation}");
@@ -48,7 +48,7 @@ public partial class DailyClosureService
             foreach (var detail in closure.Details)
             {
                 string curr = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
-                sb.AppendLine(string.Format("{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}",
+                sb.AppendLine(string.Format(MoneyFormat.Culture, "{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}",
                     detail.PaymentMethodName,
                     curr,
                     detail.ActualAmountBsS,
@@ -56,16 +56,16 @@ public partial class DailyClosureService
                     detail.DifferenceBsS));
             }
             sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine(string.Format("{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}",
+            sb.AppendLine(string.Format(MoneyFormat.Culture, "{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}",
                 "TOTALES",
                 "-",
                 closure.TotalActualBsS,
                 closure.TotalExpectedBsS,
                 closure.TotalDifferenceBsS));
             sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO:  Bs.S {closure.TotalActualBsS,10:N2}");
-            sb.AppendLine($"TOTAL ESPERADO:   Bs.S {closure.TotalExpectedBsS,10:N2}");
-            sb.AppendLine($"DIFERENCIA TOTAL: Bs.S {closure.TotalDifferenceBsS,10:N2}");
+            sb.AppendLine($"TOTAL DECLARADO:  Bs.S {MoneyFormat.N2(closure.TotalActualBsS),10}");
+            sb.AppendLine($"TOTAL ESPERADO:   Bs.S {MoneyFormat.N2(closure.TotalExpectedBsS),10}");
+            sb.AppendLine($"DIFERENCIA TOTAL: Bs.S {MoneyFormat.N2(closure.TotalDifferenceBsS),10}");
             sb.AppendLine($"ESTADO DE CAJA:   {diffStatus}");
             if (!string.IsNullOrWhiteSpace(closure.Observation))
             {
