@@ -284,6 +284,23 @@ export function getLineAmounts(item, fallbackExchangeRate = 1) {
 }
 
 /**
+ * 8.143: resuelve el precio en Bs.S derivándolo SIEMPRE de USD × tasa vigente
+ * (ceiling a 2 decimales). El snapshot persistido `priceBsS` es solo fallback
+ * cuando no hay USD o la tasa no es válida.
+ * @param {number} priceUSD
+ * @param {number} priceBsS
+ * @param {number} exchangeRate
+ * @returns {number}
+ */
+export function resolveBsSPrice(priceUSD, priceBsS, exchangeRate) {
+  const usd = Number(priceUSD) || 0;
+  const rate = Number(exchangeRate) || 0;
+  if (usd > 0 && rate > 0) return Math.ceil(usd * rate * 100) / 100;
+  const stored = Number(priceBsS) || 0;
+  return stored > 0 ? stored : 0;
+}
+
+/**
  * Formats a product's price for catalog views, returning '—' if it's a group header with independent pricing.
  * @param {object} product
  * @param {boolean} isWholesale
@@ -298,7 +315,7 @@ export function formatProductDisplayPrice(product, isWholesale = false, currency
   }
 
   const retailUSD = product.priceUSD || 0;
-  const retailBsS = product.priceBsS > 0 ? product.priceBsS : (product.priceUSD > 0 && exchangeRate > 0 ? Math.ceil(product.priceUSD * exchangeRate * 100) / 100 : 0);
+  const retailBsS = resolveBsSPrice(product.priceUSD, product.priceBsS, exchangeRate);
 
   if (!isWholesale) {
     return currency === 'USD' ? formatUSD(retailUSD) : formatBsS(retailBsS);
@@ -306,7 +323,7 @@ export function formatProductDisplayPrice(product, isWholesale = false, currency
 
   const hasRealWholesale = (product.hasWholesale || product.priceWholesaleUSD > 0) && product.priceWholesaleUSD > 0 && product.priceWholesaleUSD < retailUSD;
   const wholesaleUSD = hasRealWholesale ? product.priceWholesaleUSD : retailUSD;
-  const wholesaleBsS = hasRealWholesale ? (product.priceWholesaleUSD > 0 && exchangeRate > 0 ? Math.ceil(product.priceWholesaleUSD * exchangeRate * 100) / 100 : 0) : retailBsS;
+  const wholesaleBsS = hasRealWholesale ? resolveBsSPrice(product.priceWholesaleUSD, 0, exchangeRate) : retailBsS;
 
   return currency === 'USD' ? formatUSD(wholesaleUSD) : formatBsS(wholesaleBsS);
 }

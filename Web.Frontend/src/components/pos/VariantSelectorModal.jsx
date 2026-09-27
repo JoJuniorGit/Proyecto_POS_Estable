@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Loader2, Package, Check, AlertCircle, Link2 } from 'lucide-react';
 import { api } from '../../services/api';
-import { formatUSD, formatBsS } from '../../utils/formatters';
+import { formatUSD, formatBsS, resolveBsSPrice } from '../../utils/formatters';
 import './VariantSelectorModal.css';
 
 function formatVariantTitle(variantName, parentName) {
@@ -136,6 +136,8 @@ export default function VariantSelectorModal({ isOpen, onClose, parentProduct, o
               {variants.map((v) => {
                 const displayName = formatVariantTitle(v.name, parentProduct.name);
                 const isOutOfStock = (v.availableQuantity ?? v.stockQuantity) <= 0;
+                // 8.143: precio Bs.S derivado de USD × tasa vigente; snapshot solo como fallback
+                const displayBsS = resolveBsSPrice(v.priceRetailUSD || basePriceUSD, v.priceBsS, exchangeRate);
 
                 return (
                   <button
@@ -152,7 +154,7 @@ export default function VariantSelectorModal({ isOpen, onClose, parentProduct, o
                       </div>
                       <div className="variant-card-price d-flex flex-column align-end vs-card-price">
                         <span className="font-bold vs-price-bs text-base">
-                          {(v.priceBsS > 0 ? formatBsS(v.priceBsS) : (exchangeRate > 0 ? formatBsS(Math.ceil((v.priceRetailUSD || basePriceUSD) * exchangeRate * 100) / 100) : ''))}
+                          {displayBsS > 0 ? formatBsS(displayBsS) : ''}
                         </span>
                         <span className="text-xs text-muted">
                           Ref: {formatUSD(v.priceRetailUSD || basePriceUSD)}

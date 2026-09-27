@@ -113,4 +113,44 @@ describe('formatters.js formatProductDisplayPrice', () => {
     assert.strictEqual(parseAmount('172,,94'), 0); // Dos comas consecutivas
     assert.strictEqual(parseAmount('172..94'), 0); // Dos puntos consecutivos
   });
+
+  it('6. 8.143: Derives catalog Bs.S from USD × vigente rate and ignores a stale stored snapshot', () => {
+    const product = {
+      id: 10,
+      name: 'Harina de Maíz Precocida',
+      priceUSD: 10,
+      priceBsS: 100
+    };
+
+    // Snapshot viejo (100) con tasa vigente 50 → debe mostrar el derivado (500,00)
+    assert.strictEqual(formatProductDisplayPrice(product, false, 'Bs.S', 50), 'Bs.S 500,00');
+  });
+});
+
+describe('formatters.js resolveBsSPrice', () => {
+  it('1. 8.143: Derives Bs.S from USD × current rate, ignoring a stale stored snapshot', async () => {
+    const { resolveBsSPrice } = await import('./formatters.js');
+    assert.strictEqual(resolveBsSPrice(10, 100, 50), 500);
+  });
+
+  it('2. Falls back to the stored snapshot when there is no USD price', async () => {
+    const { resolveBsSPrice } = await import('./formatters.js');
+    assert.strictEqual(resolveBsSPrice(0, 300, 50), 300);
+  });
+
+  it('3. Falls back to the stored snapshot when the exchange rate is invalid', async () => {
+    const { resolveBsSPrice } = await import('./formatters.js');
+    assert.strictEqual(resolveBsSPrice(10, 100, 0), 100);
+  });
+
+  it('4. Returns 0 when neither USD nor stored snapshot are available', async () => {
+    const { resolveBsSPrice } = await import('./formatters.js');
+    assert.strictEqual(resolveBsSPrice(0, 0, 50), 0);
+  });
+
+  it('5. Applies commercial ceiling to 2 decimals', async () => {
+    const { resolveBsSPrice } = await import('./formatters.js');
+    assert.strictEqual(resolveBsSPrice(3.333, 0, 50), 166.65);
+    assert.strictEqual(resolveBsSPrice(1, 0, 1.001), 1.01);
+  });
 });
