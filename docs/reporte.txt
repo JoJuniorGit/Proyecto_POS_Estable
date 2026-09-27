@@ -11449,12 +11449,11 @@ C. CORRECCIONES A UN ANÁLISIS EXTERNO (descartadas por improcedentes)
   el gate de versión (pre-routing), no el pipeline de errores.
 - "Upgrade de paquete vulnerable": no hay vulnerabilidades; era falso positivo del gate.
 
-D. DEUDA RESIDUAL (posterior a la adenda H)
+D. DEUDA RESIDUAL (posterior a la adenda I)
 - ProductQuickInfoDto (Core/DTOs) mantiene su InvariantCulture deliberado y no honra el
   ajuste de moneda (fuera del alcance de la familia precios/checkout).
-- La WEB tiene el mismo patrón snapshot-first para Bs.S que se corrigió en el WPF
-  (CatalogPage, SuggestionList, VariantSelectorModal: `priceBsS > 0 ? priceBsS : derive`);
-  catálogo/buscador web pueden quedar viejos al cambiar la tasa. No corregido (pedido WPF).
+- Web: el quick-info del escáner (BarcodeScannerModal, línea del precio del "found") sigue
+  prefiriendo el snapshot y no tiene la tasa cableada — mismo patrón pendiente en ese punto.
 - Refresco live del formato: cambiarlo en Settings aplica al recomputar/rebindear las
   vistas (sin re-notificación inmediata de PropertyChanged); el refresco live (messenger)
   y la reacción al SignalR OnCurrencyFormatUpdated del WPF quedan como mejora futura.
@@ -11514,4 +11513,14 @@ H. ADENDA 3 (2026-09-27) — PRECIOS EN Bs.S REACTIVOS A LA TASA (catálogo y bu
 - Tests: rojo→verde real (6 tests rate-first fallando → 106/106 focal; incluye re-search
   asíncrono con polling acotado y limpieza del bus). Suite .NET completa: 1478/1478 contra
   PostgreSQL real; build 0/0.
+
+I. ADENDA 4 (2026-09-27) — PRECIOS Bs.S REACTIVOS A LA TASA EN LA WEB
+- Helper canónico `resolveBsSPrice` en Web.Frontend/src/utils/formatters.js (rate-first con
+  fallback al snapshot solo sin USD o sin tasa válida) y aplicación en CatalogPage (desktop
+  y móvil), SuggestionList (buscador del POS) y VariantSelectorModal; `formatProductDisplayPrice`
+  alineado al mismo criterio. La web ya re-renderiza con el contexto de tasa, así que el fix
+  es únicamente la derivación (sin plumbing extra).
+- Tests: rojo→verde real (6 fallos: 1 regresión de formatProductDisplayPrice + 5 de
+  resolveBsSPrice → 293/293); oxlint 0 diagnósticos; build OK. Bundle regenerado en
+  Backend.API/wwwroot (convención del repo).
 ================================================================================
