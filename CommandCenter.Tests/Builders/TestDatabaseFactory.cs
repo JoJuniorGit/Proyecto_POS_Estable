@@ -128,11 +128,12 @@ public static class TestDatabaseFactory
 
         foreach (var (id, name, isCash) in methods)
         {
-            // Convergencia del Id canónico: si la fila ya existe (p. ej. HasData), se actualizan
-            // nombre/tipo, salvo conflicto con otro registro que use el nombre destino (BD sucia).
+            // Convergencia del Id canónico: si la fila ya existe (p. ej. HasData), se restauran
+            // nombre/tipo y actividad (IsActive/IsDeleted) para que una BD local sucia no degrade
+            // el fixture en silencio; se omite si otro registro ya usa el nombre destino.
             await using var convergeCmd = new Npgsql.NpgsqlCommand(
-                "UPDATE \"PaymentMethods\" SET \"Name\" = @name, \"IsCash\" = @isCash " +
-                "WHERE \"Id\" = @id AND (\"Name\" <> @name OR \"IsCash\" <> @isCash) " +
+                "UPDATE \"PaymentMethods\" SET \"Name\" = @name, \"IsCash\" = @isCash, \"IsActive\" = true, \"IsDeleted\" = false " +
+                "WHERE \"Id\" = @id AND (\"Name\" <> @name OR \"IsCash\" <> @isCash OR \"IsActive\" = false OR \"IsDeleted\" = true) " +
                 "AND NOT EXISTS (SELECT 1 FROM \"PaymentMethods\" p2 WHERE p2.\"Name\" = @name AND p2.\"Id\" <> @id)",
                 conn, tx);
             convergeCmd.Parameters.AddWithValue("@id", id);
