@@ -11449,9 +11449,12 @@ C. CORRECCIONES A UN ANÁLISIS EXTERNO (descartadas por improcedentes)
   el gate de versión (pre-routing), no el pipeline de errores.
 - "Upgrade de paquete vulnerable": no hay vulnerabilidades; era falso positivo del gate.
 
-D. DEUDA RESIDUAL (posterior a la adenda G)
+D. DEUDA RESIDUAL (posterior a la adenda H)
 - ProductQuickInfoDto (Core/DTOs) mantiene su InvariantCulture deliberado y no honra el
   ajuste de moneda (fuera del alcance de la familia precios/checkout).
+- La WEB tiene el mismo patrón snapshot-first para Bs.S que se corrigió en el WPF
+  (CatalogPage, SuggestionList, VariantSelectorModal: `priceBsS > 0 ? priceBsS : derive`);
+  catálogo/buscador web pueden quedar viejos al cambiar la tasa. No corregido (pedido WPF).
 - Refresco live del formato: cambiarlo en Settings aplica al recomputar/rebindear las
   vistas (sin re-notificación inmediata de PropertyChanged); el refresco live (messenger)
   y la reacción al SignalR OnCurrencyFormatUpdated del WPF quedan como mejora futura.
@@ -11497,4 +11500,18 @@ G. ADENDA 2 (2026-09-27) — LA FAMILIA PRECIOS/CHECKOUT HONRA EL AJUSTE DE MONE
   "730.00"/"73.0000" (INT) en el mismo PDF.
 - Tests: rojo→verde real (2 fallos deterministas → 94/94 focal); suite .NET completa
   1470/1470 contra PostgreSQL real; build 0/0.
+
+H. ADENDA 3 (2026-09-27) — PRECIOS EN Bs.S REACTIVOS A LA TASA (catálogo y buscador WPF)
+- Causa raíz: los displays preferían el snapshot persistido PriceBsS (fijado al alta con la
+  tasa de ese momento) en vez de derivar USD × tasa vigente; el F5 del catálogo recargaba
+  los DTO con el snapshot (pisando el recálculo del handler de tasa) y el buscador del POS
+  no regeneraba sugerencias al cambiar la tasa (DTO no observables); UpdateExchangeRate
+  podía pisar con 0 los productos sin USD.
+- Fix (rate-first con fallback al snapshot solo sin USD o sin tasa válida): ProductItemViewModel
+  (DisplayRetailPrice / DisplayWholesalePrice / EffectivePriceWholesaleBsS + UpdateExchangeRate
+  con guardas), PosViewModel (derivación en ExecuteSearchAsync + re-búsqueda al
+  ExchangeRateChangedMessage con búsqueda activa) y VariantSelectionViewModel.BasePriceBsS.
+- Tests: rojo→verde real (6 tests rate-first fallando → 106/106 focal; incluye re-search
+  asíncrono con polling acotado y limpieza del bus). Suite .NET completa: 1478/1478 contra
+  PostgreSQL real; build 0/0.
 ================================================================================
