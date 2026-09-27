@@ -83,6 +83,9 @@ public class WebApplicationFactorySmokeTests
 
         await using var factory = CreateFactory();
         var client = factory.CreateClient();
+        // 8.143: el gate de versión exige X-Client-Version para /api/*; con un cliente válido
+        // la request llega al MapFallback y responde 404 (antes: 400 del gate).
+        client.DefaultRequestHeaders.Add("X-Client-Version", "1.0.0");
         using var response = await client.GetAsync("/api/ruta/no/existente-8b6");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
