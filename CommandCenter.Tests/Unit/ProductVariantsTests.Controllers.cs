@@ -235,8 +235,52 @@ public partial class ProductVariantsTests
         };
         var variantVm = new Desktop.Client.ViewModels.ProductItemViewModel(variantDto, mockExchangeRate.Object);
 
-        Assert.Equal(string.Format("${0:N2}", 15.00m), variantVm.DisplayCost);
-        Assert.Equal(string.Format("Bs.S {0:N2}", 912.50m), variantVm.DisplayRetailPrice);
+        // 8.143: el display honra el ajuste de moneda (default Venezuelan), no la cultura del SO.
+        // Se fuerza en-US para probar que el resultado no depende de la cultura ambiente.
+        var originalCulture = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+            Assert.Equal("$15,00", variantVm.DisplayCost);
+            Assert.Equal("Bs.S 912,50", variantVm.DisplayRetailPrice);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    [Fact]
+    public void ProductItemViewModel_DisplayPrice_InternationalFormat_UsesInvariantNumberFormat()
+    {
+        var mockExchangeRate = new Mock<Desktop.Client.Services.IExchangeRateService>();
+        mockExchangeRate.Setup(e => e.CurrentRate).Returns(36.50m);
+
+        var variantDto = new ProductDto
+        {
+            Id = 3,
+            Name = "Camisa Polo Talla L",
+            SKU = "7591112223335",
+            IsGroupHeader = false,
+            HasIndependentPricing = false,
+            Cost = 15.00m,
+            PriceUSD = 25.00m,
+            PriceBsS = 912.50m
+        };
+
+        var previous = Desktop.Client.Services.CurrencyDisplay.Current;
+        try
+        {
+            Desktop.Client.Services.CurrencyDisplay.SetFromSetting("International");
+            var variantVm = new Desktop.Client.ViewModels.ProductItemViewModel(variantDto, mockExchangeRate.Object);
+
+            Assert.Equal("$15.00", variantVm.DisplayCost);
+            Assert.Equal("Bs.S 912.50", variantVm.DisplayRetailPrice);
+        }
+        finally
+        {
+            Desktop.Client.Services.CurrencyDisplay.Current = previous;
+        }
     }
 
     [Fact]

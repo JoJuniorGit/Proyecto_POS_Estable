@@ -1,6 +1,8 @@
 using System;
 using System.Globalization;
 using System.Windows.Data;
+using Core.Helpers;
+using Desktop.Client.Services;
 
 namespace Desktop.Client.Converters;
 
@@ -13,16 +15,20 @@ public class CurrencyMultiplierConverter : IMultiValueConverter
 {
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        if (values.Length < 2) return "0.00";
+        if (values.Length < 2) return CurrencyDisplay.Number(0m);
 
         if (values[0] is decimal amount && values[1] is decimal rate)
         {
             var local = Math.Round(amount * rate, 2, MidpointRounding.AwayFromZero);
             var format = parameter as string ?? "{0:N2}";
-            return string.Format(culture, format, local);
+            // 8.143: la cultura del display la fija el ajuste de moneda de la app, no la del SO.
+            var displayCulture = CurrencyDisplay.Current == MoneyDisplayFormat.International
+                ? CultureInfo.InvariantCulture
+                : MoneyFormat.Culture;
+            return string.Format(displayCulture, format, local);
         }
 
-        return "0.00";
+        return CurrencyDisplay.Number(0m);
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)

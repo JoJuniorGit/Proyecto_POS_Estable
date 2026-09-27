@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Core.DTOs;
+using Desktop.Client.Services;
 using System;
 
 namespace Desktop.Client.ViewModels;
@@ -122,18 +123,18 @@ public partial class ProductItemViewModel : ObservableObject
 
     public string WholesalePriceColor => HasRealWholesale ? "#6366F1" : "#D97706";
 
-    public string DisplayCost => (IsGroupHeader && HasIndependentPricing) ? "—" : $"${Cost:N2}";
+    public string DisplayCost => (IsGroupHeader && HasIndependentPricing) ? "—" : $"${CurrencyDisplay.Number(Cost)}";
 
     public string DisplayRetailPrice
     {
         get
         {
             if (IsGroupHeader && HasIndependentPricing) return "—";
-            if (SelectedCurrency == "USD") return $"${PriceUSD:N2}";
+            if (SelectedCurrency == "USD") return $"${CurrencyDisplay.Number(PriceUSD)}";
             decimal bss = PriceBsS > 0 
                 ? PriceBsS 
                 : (_exchangeRateService.CurrentRate > 0 ? Helpers.PricingHelper.ToBsSCeiling(PriceUSD, _exchangeRateService.CurrentRate) : 0m);
-            return $"Bs.S {bss:N2}";
+            return $"Bs.S {CurrencyDisplay.Number(bss)}";
         }
     }
 
@@ -142,11 +143,11 @@ public partial class ProductItemViewModel : ObservableObject
         get
         {
             if (IsGroupHeader && HasIndependentPricing) return "—";
-            if (SelectedCurrency == "USD") return $"${EffectivePriceWholesaleUSD:N2}";
+            if (SelectedCurrency == "USD") return $"${CurrencyDisplay.Number(EffectivePriceWholesaleUSD)}";
             decimal bss = EffectivePriceWholesaleBsS > 0 
                 ? EffectivePriceWholesaleBsS 
                 : (_exchangeRateService.CurrentRate > 0 ? Helpers.PricingHelper.ToBsSCeiling(EffectivePriceWholesaleUSD, _exchangeRateService.CurrentRate) : 0m);
-            return $"Bs.S {bss:N2}";
+            return $"Bs.S {CurrencyDisplay.Number(bss)}";
         }
     }
 

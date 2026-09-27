@@ -240,7 +240,7 @@ public partial class InventoryViewModel
             var product = await _productService.GetQuickInfoAsync(term);
             if (product != null)
             {
-                _dialogService?.ShowInfo("Verificación Rápida", $"Escaneado: {product.Name}\nPrecio USD: ${product.PriceUSD:N2}\nStock: {product.StockQuantity}");
+                _dialogService?.ShowInfo("Verificación Rápida", $"Escaneado: {product.Name}\nPrecio USD: ${CurrencyDisplay.Number(product.PriceUSD)}\nStock: {product.StockQuantity}");
             }
             else
             {

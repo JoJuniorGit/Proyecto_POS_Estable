@@ -139,7 +139,7 @@ public partial class PendingPickupsViewModel : ObservableObject
 
         bool confirmed = _dialogService.ShowConfirm(
             "Confirmar Entrega",
-            $"¿Confirmar la entrega de mercancía a {pickup.CustomerName}?\n{invoiceLabel}\nTotal: ${pickup.TotalUSD:N2} USD");
+            $"¿Confirmar la entrega de mercancía a {pickup.CustomerName}?\n{invoiceLabel}\nTotal: ${CurrencyDisplay.Number(pickup.TotalUSD)} USD");
 
         if (!confirmed) return;
 

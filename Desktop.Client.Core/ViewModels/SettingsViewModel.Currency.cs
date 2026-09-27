@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Core.Common;
+using Desktop.Client.Services;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -50,12 +51,15 @@ public partial class SettingsViewModel
                            ?? AvailableCurrencyFormats[0];
             _selectedCurrencyFormat = selected;
             OnPropertyChanged(nameof(SelectedCurrencyFormat));
+            // 8.143: el display de precios/checkout del WPF sigue el ajuste cargado.
+            CurrencyDisplay.SetFromSetting(selected.Key);
             UpdateCurrencyPreview(selected.Key);
         }
         catch
         {
             _selectedCurrencyFormat = AvailableCurrencyFormats[0];
             OnPropertyChanged(nameof(SelectedCurrencyFormat));
+            CurrencyDisplay.SetFromSetting("Venezuelan");
             UpdateCurrencyPreview("Venezuelan");
         }
     }
@@ -65,6 +69,8 @@ public partial class SettingsViewModel
         if (option == null) return;
         try
         {
+            // 8.143: aplica el formato al display del cliente antes de persistirlo.
+            CurrencyDisplay.SetFromSetting(option.Key);
             UpdateCurrencyPreview(option.Key);
             await _settingsService.SetCurrencyFormatAsync(option.Key);
         }

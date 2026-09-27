@@ -342,6 +342,19 @@ public partial class App : Application
                 Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.RestoreToken");
             }
 
+            // 8.143: el formato de moneda configurado server-side (Venezolano/Internacional) debe
+            // honrarse en el display del WPF. Carga best-effort: si falla, queda Venezuelan.
+            try
+            {
+                var settingsService = _host.Services.GetRequiredService<ISettingsService>();
+                CurrencyDisplay.SetFromSetting(await settingsService.GetCurrencyFormatAsync());
+            }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.LoadCurrencyFormat");
+                CurrencyDisplay.SetFromSetting(null);
+            }
+
             var mainWindow = _host.Services.GetRequiredService<MainWindow>();
             mainWindow.Show();
         }
