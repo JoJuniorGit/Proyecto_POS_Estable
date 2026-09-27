@@ -57,7 +57,7 @@ Source: "..\docs\monitor-config.json.example"; DestDir: "{app}\tools\monitoring"
 [Dirs]
 Name: "{commonappdata}\Registro de cierres"; Permissions: users-modify
 ; 8.107-A1: datos del monitoreo (CSVs, log, estado y resumen SLO) escribibles sin elevacion
-Name: "{commonappdata}\CommandCenterPOS\monitoring"; Permissions: users-read
+Name: "{commonappdata}\CommandCenterPOS\monitoring"; Permissions: users-modify
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\DesktopClient\{#MyAppExeName}"
