@@ -343,11 +343,16 @@ public partial class App : Application
             }
 
             // 8.143: el formato de moneda configurado server-side (Venezolano/Internacional) debe
-            // honrarse en el display del WPF. Carga best-effort: si falla, queda Venezuelan.
+            // honrarse en el display del WPF. Carga best-effort con timeout acotado: un backend
+            // caído no debe demorar MainWindow.Show() más allá de 2s; si falla o expira, queda Venezuelan.
             try
             {
                 var settingsService = _host.Services.GetRequiredService<ISettingsService>();
-                CurrencyDisplay.SetFromSetting(await settingsService.GetCurrencyFormatAsync());
+                CurrencyDisplay.SetFromSetting(await settingsService.GetCurrencyFormatAsync().WaitAsync(TimeSpan.FromSeconds(2)));
+            }
+            catch (TimeoutException)
+            {
+                CurrencyDisplay.SetFromSetting(null);
             }
             catch (Exception ex)
             {
