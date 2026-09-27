@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Core.Helpers;
 using Sales.Module.Entities;
 using Sales.Module.Receipts;
 using Xunit;
@@ -14,7 +15,7 @@ public class ReceiptArchitectureBaseTests
         var renderer = new StubReceiptRenderer();
         var context = new SaleReceiptContext { SaleId = 1 };
 
-        var ex = Assert.Throws<NotImplementedException>(() => renderer.Render(context));
+        var ex = Assert.Throws<NotImplementedException>(() => renderer.Render(context, MoneyDisplayFormat.Venezuelan));
 
         Assert.Contains("siguiente fase", ex.Message);
     }

@@ -3,14 +3,15 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using Core.Helpers;
 
 namespace Sales.Module.Receipts;
 
 public static class SaleReceiptPdfGenerator
 {
-    public static byte[] BuildPdf(SaleReceiptContext context, ReceiptDocumentKind kind)
+    public static byte[] BuildPdf(SaleReceiptContext context, ReceiptDocumentKind kind, MoneyDisplayFormat format)
     {
-        var content = BuildContent(context, kind);
+        var content = BuildContent(context, kind, format);
         byte[] contentBytes = Encoding.ASCII.GetBytes(content);
         var objects = new List<string>
         {
@@ -58,7 +59,7 @@ public static class SaleReceiptPdfGenerator
         return ms.ToArray();
     }
 
-    private static string BuildContent(SaleReceiptContext context, ReceiptDocumentKind kind)
+    private static string BuildContent(SaleReceiptContext context, ReceiptDocumentKind kind, MoneyDisplayFormat format)
     {
         var sb = new StringBuilder();
         sb.AppendLine("0.12 0.11 0.29 rg");
@@ -92,22 +93,22 @@ public static class SaleReceiptPdfGenerator
             sb.AppendLine($"0.88 0.9 0.92 RG 0.5 w 40 {y} 532 0 m 572 {y} l S");
             WriteLeft(sb, Truncate(line.ProductName, 28), 48, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
             WriteRight(sb, line.Quantity.ToString("0.###", CultureInfo.InvariantCulture), 200, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
-            WriteRight(sb, line.UnitPrice.ToString("N2", CultureInfo.InvariantCulture), 300, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
-            WriteRight(sb, line.Subtotal.ToString("N2", CultureInfo.InvariantCulture), 565, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
+            WriteRight(sb, MoneyFormat.Number(line.UnitPrice, format), 300, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
+            WriteRight(sb, MoneyFormat.Number(line.Subtotal, format), 565, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
             y -= 20;
         }
 
         sb.AppendLine($"0.86 0.9 0.94 rg 40 {y - 2} 532 22 re f");
         sb.AppendLine($"0.7 0.75 0.8 RG 1 w 40 {y - 2} 532 22 re S");
         WriteLeft(sb, "TOTALES", 48, y + 4, "/F2 9 Tf", "0.1 0.15 0.25 rg");
-        WriteRight(sb, $"Bs.S {context.TotalBsS.ToString("N2", CultureInfo.InvariantCulture)}", 555, y + 4, "/F2 9.5 Tf", "0.15 0.2 0.3 rg", true);
+        WriteRight(sb, $"Bs.S {MoneyFormat.Number(context.TotalBsS, format)}", 555, y + 4, "/F2 9.5 Tf", "0.15 0.2 0.3 rg", true);
 
         y -= 30;
-        WriteRight(sb, $"Tasa aplicada: {context.AppliedRate.ToString("N4", CultureInfo.InvariantCulture)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
+        WriteRight(sb, $"Tasa aplicada: {MoneyFormat.Number(context.AppliedRate, format, 4)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
         y -= 14;
-        WriteRight(sb, $"Total USD: {context.TotalUSD.ToString("N2", CultureInfo.InvariantCulture)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
+        WriteRight(sb, $"Total USD: {MoneyFormat.Number(context.TotalUSD, format)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
         y -= 14;
-        WriteRight(sb, $"Pago final (Bs.S): {context.FinalPaidAmountBsS.ToString("N2", CultureInfo.InvariantCulture)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
+        WriteRight(sb, $"Pago final (Bs.S): {MoneyFormat.Number(context.FinalPaidAmountBsS, format)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
 
         if (context.Payments.Count > 0)
         {
@@ -115,7 +116,7 @@ public static class SaleReceiptPdfGenerator
             foreach (var p in context.Payments)
             {
                 y -= 14;
-                WriteRight(sb, $"{p.MethodName ?? "Pago"}: {p.AmountBsS.ToString("N2", CultureInfo.InvariantCulture)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
+                WriteRight(sb, $"{p.MethodName ?? "Pago"}: {MoneyFormat.Number(p.AmountBsS, format)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
             }
         }
 

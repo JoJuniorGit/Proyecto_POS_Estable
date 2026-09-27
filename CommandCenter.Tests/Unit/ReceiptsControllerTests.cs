@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Backend.API.Controllers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Moq;
 using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Receipts;
@@ -23,14 +24,30 @@ public class ReceiptsControllerTests
         return new SalesDbContext(options);
     }
 
-    [Fact]
-    public async Task GetReceipt_ForCompletedSale_ReturnsPdfFile()
+    // 8.143: el controller lee el ajuste "CurrencyFormat" para el PDF; default Venezuelan.
+    private static Moq.Mock<Core.Interfaces.ISystemSettingsService> CreateSettingsMock(string format = "Venezuelan")
     {
-        using var db = CreateInMemorySalesDbContext();
+        var mock = new Moq.Mock<Core.Interfaces.ISystemSettingsService>();
+        mock.Setup(s => s.GetSettingAsync("CurrencyFormat")).ReturnsAsync(format);
+        return mock;
+    }
+
+    private static ReceiptsController CreateController(
+        SalesDbContext db,
+        Core.Interfaces.ICurrentUserService currentUserService,
+        string format = "Venezuelan")
+        => new ReceiptsController(
+            new SalesReceiptService(db),
+            new SaleReceiptRenderer(),
+            currentUserService,
+            CreateSettingsMock(format).Object);
+
+    private static Sale BuildCompletedSale(int id, int invoiceNumber)
+    {
         var sale = new Sale
         {
-            Id = 42,
-            InvoiceNumber = 1001,
+            Id = id,
+            InvoiceNumber = invoiceNumber,
             Date = DateTime.UtcNow,
             Status = SaleStatus.Completed,
             PriceListType = "Retail",
@@ -46,21 +63,41 @@ public class ReceiptsControllerTests
         };
         sale.Items.Add(new SaleItem { ProductName = "Producto A", Quantity = 2m, UnitPrice = 5m, Subtotal = 10m, UnitPriceBsS = 365m, SubtotalBsS = 730m });
         sale.Payments.Add(new SalePayment { PaymentMethod = new PaymentMethod { Name = "Efectivo", IsCash = true }, Amount = 10m, AmountBsS = 730m, ExchangeRate = 73m });
+        return sale;
+    }
+
+    private static void AttachUser(ReceiptsController controller, string userId, string? role = null)
+    {
+        var claims = new System.Collections.Generic.List<System.Security.Claims.Claim>
+        {
+            new(System.Security.Claims.ClaimTypes.NameIdentifier, userId)
+        };
+        if (role != null)
+        {
+            claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, role));
+        }
+
+        var user = new System.Security.Claims.ClaimsPrincipal(
+            new System.Security.Claims.ClaimsIdentity(claims, "mock"));
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = user }
+        };
+    }
+
+    [Fact]
+    public async Task GetReceipt_ForCompletedSale_ReturnsPdfFile()
+    {
+        using var db = CreateInMemorySalesDbContext();
+        var sale = BuildCompletedSale(42, 1001);
         db.Sales.Add(sale);
         await db.SaveChangesAsync();
 
         var currentUserServiceMock = new Moq.Mock<Core.Interfaces.ICurrentUserService>();
         currentUserServiceMock.Setup(c => c.UserId).Returns("1");
 
-        var controller = new ReceiptsController(new SalesReceiptService(db), new SaleReceiptRenderer(), currentUserServiceMock.Object);
-        var user = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(new System.Security.Claims.Claim[]
-        {
-            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, "1")
-        }, "mock"));
-        controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = user }
-        };
+        var controller = CreateController(db, currentUserServiceMock.Object);
+        AttachUser(controller, "1");
 
         var result = await controller.GetReceipt(42, CancellationToken.None);
 
@@ -70,6 +107,50 @@ public class ReceiptsControllerTests
         Assert.NotEmpty(fileContentResult.FileContents);
         var header = Encoding.ASCII.GetString(fileContentResult.FileContents.AsSpan(0, 5).ToArray());
         Assert.Equal("%PDF-", header);
+    }
+
+    [Fact]
+    public async Task GetReceipt_WithVenezuelanSetting_PdfUsesEsVeNumberFormat()
+    {
+        using var db = CreateInMemorySalesDbContext();
+        db.Sales.Add(BuildCompletedSale(45, 1004));
+        await db.SaveChangesAsync();
+
+        var currentUserServiceMock = new Moq.Mock<Core.Interfaces.ICurrentUserService>();
+        currentUserServiceMock.Setup(c => c.UserId).Returns("1");
+
+        var controller = CreateController(db, currentUserServiceMock.Object, "Venezuelan");
+        AttachUser(controller, "1");
+
+        var result = await controller.GetReceipt(45, CancellationToken.None);
+
+        var fileContentResult = Assert.IsType<FileContentResult>(result);
+        var content = Encoding.ASCII.GetString(fileContentResult.FileContents!);
+        Assert.Contains("730,00", content);
+        Assert.Contains("73,0000", content);
+        Assert.DoesNotContain("730.00", content);
+    }
+
+    [Fact]
+    public async Task GetReceipt_WithInternationalSetting_PdfUsesInvariantNumberFormat()
+    {
+        using var db = CreateInMemorySalesDbContext();
+        db.Sales.Add(BuildCompletedSale(46, 1005));
+        await db.SaveChangesAsync();
+
+        var currentUserServiceMock = new Moq.Mock<Core.Interfaces.ICurrentUserService>();
+        currentUserServiceMock.Setup(c => c.UserId).Returns("1");
+
+        var controller = CreateController(db, currentUserServiceMock.Object, "International");
+        AttachUser(controller, "1");
+
+        var result = await controller.GetReceipt(46, CancellationToken.None);
+
+        var fileContentResult = Assert.IsType<FileContentResult>(result);
+        var content = Encoding.ASCII.GetString(fileContentResult.FileContents!);
+        Assert.Contains("730.00", content);
+        Assert.Contains("73.0000", content);
+        Assert.DoesNotContain("730,00", content);
     }
 
     [Fact]
@@ -89,16 +170,8 @@ public class ReceiptsControllerTests
         var currentUserServiceMock = new Moq.Mock<Core.Interfaces.ICurrentUserService>();
         currentUserServiceMock.Setup(c => c.UserId).Returns("2");
 
-        var controller = new ReceiptsController(new SalesReceiptService(db), new SaleReceiptRenderer(), currentUserServiceMock.Object);
-        var user = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(new System.Security.Claims.Claim[]
-        {
-            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, "2"),
-            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, "Cashier")
-        }, "mock"));
-        controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = user }
-        };
+        var controller = CreateController(db, currentUserServiceMock.Object);
+        AttachUser(controller, "2", "Cashier");
 
         var result = await controller.GetReceipt(43, CancellationToken.None);
 
@@ -123,16 +196,8 @@ public class ReceiptsControllerTests
         var currentUserServiceMock = new Moq.Mock<Core.Interfaces.ICurrentUserService>();
         currentUserServiceMock.Setup(c => c.UserId).Returns("99");
 
-        var controller = new ReceiptsController(new SalesReceiptService(db), new SaleReceiptRenderer(), currentUserServiceMock.Object);
-        var user = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(new System.Security.Claims.Claim[]
-        {
-            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, "99"),
-            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, "Admin")
-        }, "mock"));
-        controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = user }
-        };
+        var controller = CreateController(db, currentUserServiceMock.Object);
+        AttachUser(controller, "99", "Admin");
 
         var result = await controller.GetReceipt(44, CancellationToken.None);
 
@@ -143,7 +208,7 @@ public class ReceiptsControllerTests
     public async Task GetReceipt_ForMissingSale_ReturnsNotFound()
     {
         using var db = CreateInMemorySalesDbContext();
-        var controller = new ReceiptsController(new SalesReceiptService(db), new SaleReceiptRenderer(), new Moq.Mock<Core.Interfaces.ICurrentUserService>().Object);
+        var controller = CreateController(db, new Moq.Mock<Core.Interfaces.ICurrentUserService>().Object);
 
         var result = await controller.GetReceipt(999, CancellationToken.None);
 
