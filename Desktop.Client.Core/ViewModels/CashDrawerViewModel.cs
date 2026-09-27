@@ -423,7 +423,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
                     ? $" (Factura N° {advanceResult.InvoiceNumber.Value})"
                     : string.Empty;
 
-                _dialogService.ShowSuccessDialog($"Adelanto de {res.requestedAmount:N0} Bs.S procesado con éxito{invoiceInfo}. Registrado en el Historial de Ventas.");
+                _dialogService.ShowSuccessDialog($"Adelanto de {MoneyFormat.N0(res.requestedAmount)} Bs.S procesado con éxito{invoiceInfo}. Registrado en el Historial de Ventas.");
                 await LoadSessionAsync();
             }
         }

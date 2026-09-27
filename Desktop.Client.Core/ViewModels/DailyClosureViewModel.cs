@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Core.Helpers;
 using Core.Logging;
 
 namespace Desktop.Client.ViewModels;
@@ -64,9 +65,9 @@ public partial class ClosureDetailRow : ObservableObject
 
     public string DifferenceDisplay => DifferenceBsS switch
     {
-        > 0 => $"+{DifferenceBsS:N2}",
-        < 0 => $"{DifferenceBsS:N2}",
-        _ => "0.00"
+        > 0 => $"+{MoneyFormat.N2(DifferenceBsS)}",
+        < 0 => $"{MoneyFormat.N2(DifferenceBsS)}",
+        _ => MoneyFormat.N2(0m)
     };
 }
 
@@ -165,8 +166,8 @@ public partial class DailyClosureViewModel : ObservableObject
     }
 
     public string DifferenceStatusLabel => TotalDifferenceBsS > 0
-        ? $"SOBRANTE EN CAJA (+{TotalDifferenceBsS:N2} Bs.S)"
-        : (TotalDifferenceBsS < 0 ? $"FALTANTE EN CAJA ({TotalDifferenceBsS:N2} Bs.S)" : "CUADRADO EXACTO");
+        ? $"SOBRANTE EN CAJA (+{MoneyFormat.N2(TotalDifferenceBsS)} Bs.S)"
+        : (TotalDifferenceBsS < 0 ? $"FALTANTE EN CAJA ({MoneyFormat.N2(TotalDifferenceBsS)} Bs.S)" : "CUADRADO EXACTO");
 
     public string DifferenceStatusColor => TotalDifferenceBsS > 0
         ? "#10B981"
@@ -269,10 +270,10 @@ public partial class DailyClosureViewModel : ObservableObject
             sb.AppendLine("DESGLOSE DE MONTOS DECLARADOS:");
             foreach (var row in DetailRows)
             {
-                sb.AppendLine($"• {row.PaymentMethodName}: {row.ActualAmountBsS:N2} Bs.S");
+                sb.AppendLine($"• {row.PaymentMethodName}: {MoneyFormat.N2(row.ActualAmountBsS)} Bs.S");
             }
             sb.AppendLine("-----------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO: {TotalActualBsS:N2} Bs.S");
+            sb.AppendLine($"TOTAL DECLARADO: {MoneyFormat.N2(TotalActualBsS)} Bs.S");
             if (!string.IsNullOrWhiteSpace(Observation))
             {
                 sb.AppendLine($"Observaciones: {Observation}");
@@ -293,15 +294,15 @@ public partial class DailyClosureViewModel : ObservableObject
             {
                 var diffSign = row.DifferenceBsS >= 0 ? "+" : "";
                 sb.AppendLine($"• {row.PaymentMethodName}:");
-                sb.AppendLine($"    Esperado:  {row.ExpectedAmountBsS:N2} Bs.S");
-                sb.AppendLine($"    Declarado: {row.ActualAmountBsS:N2} Bs.S");
-                sb.AppendLine($"    Diferencia: {diffSign}{row.DifferenceBsS:N2} Bs.S");
+                sb.AppendLine($"    Esperado:  {MoneyFormat.N2(row.ExpectedAmountBsS)} Bs.S");
+                sb.AppendLine($"    Declarado: {MoneyFormat.N2(row.ActualAmountBsS)} Bs.S");
+                sb.AppendLine($"    Diferencia: {diffSign}{MoneyFormat.N2(row.DifferenceBsS)} Bs.S");
             }
             sb.AppendLine("-----------------------------------");
-            sb.AppendLine($"TOTAL ESPERADO:  {TotalExpectedBsS:N2} Bs.S");
-            sb.AppendLine($"TOTAL DECLARADO: {TotalActualBsS:N2} Bs.S");
+            sb.AppendLine($"TOTAL ESPERADO:  {MoneyFormat.N2(TotalExpectedBsS)} Bs.S");
+            sb.AppendLine($"TOTAL DECLARADO: {MoneyFormat.N2(TotalActualBsS)} Bs.S");
             var totalDiffSign = TotalDifferenceBsS >= 0 ? "+" : "";
-            sb.AppendLine($"DIFERENCIA NETA: {totalDiffSign}{TotalDifferenceBsS:N2} Bs.S ({DifferenceStatusLabel})");
+            sb.AppendLine($"DIFERENCIA NETA: {totalDiffSign}{MoneyFormat.N2(TotalDifferenceBsS)} Bs.S ({DifferenceStatusLabel})");
             if (!string.IsNullOrWhiteSpace(Observation))
             {
                 sb.AppendLine($"Observaciones: {Observation}");
@@ -384,10 +385,10 @@ public partial class DailyClosureViewModel : ObservableObject
             sb.AppendLine("MÉTODOS DE PAGO DECLARADOS:");
             foreach (var row in DetailRows)
             {
-                sb.AppendLine($"  {row.PaymentMethodName,-22} Bs.S {row.ActualAmountBsS,10:N2}");
+                sb.AppendLine($"  {row.PaymentMethodName,-22} Bs.S {MoneyFormat.N2(row.ActualAmountBsS),10}");
             }
             sb.AppendLine("-----------------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO:         Bs.S {TotalActualBsS,10:N2}");
+            sb.AppendLine($"TOTAL DECLARADO:         Bs.S {MoneyFormat.N2(TotalActualBsS),10}");
             if (!string.IsNullOrWhiteSpace(Observation))
             {
                 sb.AppendLine($"Notas: {Observation}");
@@ -406,12 +407,12 @@ public partial class DailyClosureViewModel : ObservableObject
             foreach (var row in DetailRows)
             {
                 sb.AppendLine($"  {row.PaymentMethodName}");
-                sb.AppendLine($"    Declarado: Bs.S {row.ActualAmountBsS:N2} | Esperado: Bs.S {row.ExpectedAmountBsS:N2} | Dif: Bs.S {row.DifferenceBsS:N2}");
+                sb.AppendLine($"    Declarado: Bs.S {MoneyFormat.N2(row.ActualAmountBsS)} | Esperado: Bs.S {MoneyFormat.N2(row.ExpectedAmountBsS)} | Dif: Bs.S {MoneyFormat.N2(row.DifferenceBsS)}");
             }
             sb.AppendLine("-----------------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO:  Bs.S {TotalActualBsS,10:N2}");
-            sb.AppendLine($"TOTAL ESPERADO:   Bs.S {TotalExpectedBsS,10:N2}");
-            sb.AppendLine($"DIFERENCIA TOTAL: Bs.S {TotalDifferenceBsS,10:N2}");
+            sb.AppendLine($"TOTAL DECLARADO:  Bs.S {MoneyFormat.N2(TotalActualBsS),10}");
+            sb.AppendLine($"TOTAL ESPERADO:   Bs.S {MoneyFormat.N2(TotalExpectedBsS),10}");
+            sb.AppendLine($"DIFERENCIA TOTAL: Bs.S {MoneyFormat.N2(TotalDifferenceBsS),10}");
             sb.AppendLine($"ESTADO DE CAJA:   {DifferenceStatusLabel}");
             if (!string.IsNullOrWhiteSpace(Observation))
             {

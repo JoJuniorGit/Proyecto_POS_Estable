@@ -101,6 +101,9 @@ public class DailyClosureViewModelTests
     [Fact]
     public async Task LoadExpectedTotalsCommand_WhenInvoked_CalculatesExpectedAndDifferenceTotals()
     {
+        // 8.143: con en-US forzado, el formateo del VM debe seguir siendo es-VE (no depender del SO).
+        using var cultureScope = new CommandCenter.Tests.TestHelpers.CultureScope("en-US");
+
         _closureServiceMock
             .Setup(s => s.GetExpectedTotalsAsync(It.IsAny<DateTime>()))
             .ReturnsAsync(new List<ExpectedTotalDto>
@@ -123,6 +126,10 @@ public class DailyClosureViewModelTests
         Assert.Equal(850m, vm.TotalActualBsS);
         Assert.Equal(50m, vm.TotalDifferenceBsS);
         Assert.Contains("SOBRANTE EN CAJA", vm.DifferenceStatusLabel);
+
+        // 8.143: strings formateados exactos según convención es-VE, independientes del SO.
+        Assert.Equal("SOBRANTE EN CAJA (+50,00 Bs.S)", vm.DifferenceStatusLabel);
+        Assert.Equal("+50,00", vm.DetailRows[1].DifferenceDisplay);
     }
 
     [Fact]

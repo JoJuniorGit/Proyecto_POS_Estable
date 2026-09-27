@@ -548,4 +548,33 @@ public class CheckoutAndPaymentTests
         string header = System.Text.Encoding.ASCII.GetString(pdfBytes, 0, 8);
         Assert.StartsWith("%PDF-", header);
     }
+
+    [Fact]
+    public void GeneratePdf_UnderEnUsCulture_UsesEsVeNumberFormat()
+    {
+        // 8.143: el comprobante PDF debe conservar la convención es-VE (miles '.', decimal ',')
+        // aunque el proceso corra en un host con cultura en-US.
+        using var cultureScope = new CultureScope("en-US");
+        var closure = new DailyClosure
+        {
+            Id = 43,
+            ClosureDate = DateTime.UtcNow,
+            UserId = "Admin Test",
+            Observation = "V-12345678",
+            TotalActualBsS = 1500m,
+            TotalExpectedBsS = 1500m,
+            TotalDifferenceBsS = 0m,
+            Details = new List<ClosureDetail>
+            {
+                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ActualAmountBsS = 1500m, ExpectedAmountBsS = 1500m, DifferenceBsS = 0m }
+            }
+        };
+
+        byte[] pdfBytes = ClosurePdfGenerator.GeneratePdf(ShiftReportMapper.MapClosure(closure), isBlind: false);
+
+        // El generador no comprime el content stream: el texto del PDF es extraíble en ASCII directo.
+        string raw = System.Text.Encoding.ASCII.GetString(pdfBytes);
+        Assert.Contains("1.500,00", raw);
+        Assert.DoesNotContain("1,500.00", raw);
+    }
 }
