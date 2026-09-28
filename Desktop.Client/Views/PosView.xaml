@@ -337,14 +337,14 @@
                             <DataGridTemplateColumn Header="Precio" IsReadOnly="True" Width="Auto" MinWidth="110" MaxWidth="160">
                                 <DataGridTemplateColumn.HeaderStyle>
                                     <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
-                                        <Setter Property="HorizontalContentAlignment" Value="Right"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Center"/>
                                     </Style>
                                 </DataGridTemplateColumn.HeaderStyle>
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding UnitPriceBsS, StringFormat='{}{0:N2}'}" 
                                                    FontWeight="Bold" FontSize="14" 
-                                                   HorizontalAlignment="Right" VerticalAlignment="Center" 
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" 
                                                    Typography.NumeralAlignment="Tabular"
                                                    Margin="0,2"/>
                                     </DataTemplate>
@@ -354,7 +354,7 @@
                             <DataGridTemplateColumn Header="Total" IsReadOnly="True" Width="Auto" MinWidth="110" MaxWidth="160">
                                 <DataGridTemplateColumn.HeaderStyle>
                                     <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
-                                        <Setter Property="HorizontalContentAlignment" Value="Right"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Center"/>
                                     </Style>
                                 </DataGridTemplateColumn.HeaderStyle>
                                 <DataGridTemplateColumn.CellTemplate>
@@ -362,7 +362,7 @@
                                         <TextBlock Text="{Binding SubtotalBsS, StringFormat='{}{0:N2}'}" 
                                                    FontWeight="Bold" FontSize="15" 
                                                    Foreground="{DynamicResource PrimaryHueMidBrush}" 
-                                                   HorizontalAlignment="Right" VerticalAlignment="Center" 
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" 
                                                    Typography.NumeralAlignment="Tabular"
                                                    Margin="0,2"/>
                                     </DataTemplate>
@@ -373,11 +373,13 @@
                             <DataGridTemplateColumn Width="46">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
+                                        <!-- 8.143: anclado al extremo derecho de la fila -->
                                         <Button Style="{DynamicResource MaterialDesignToolButton}"
                                                 Padding="0"
                                                 Width="28" Height="28"
                                                 ToolTip="Eliminar producto"
-                                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                Margin="0,0,6,0"
                                                 Command="{Binding Data.Cart.RemoveItemCommand, Source={StaticResource Proxy}}"
                                                 CommandParameter="{Binding}">
                                             <materialDesign:PackIcon Kind="TrashCanOutline" Width="16" Height="16" Foreground="#94A3B8"/>
