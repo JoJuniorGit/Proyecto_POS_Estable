@@ -64,6 +64,20 @@ public static class TestDatabaseFactory
         return new SalesDbContext(options);
     }
 
+    /// <summary>
+    /// 8.143: variante con conexión explícita (BD aislada por test) que conserva
+    /// EnableRetryOnFailure(3), espejo de la execution strategy de Producción/CI.
+    /// </summary>
+    public static SalesDbContext CreatePostgreSqlSalesDbContextWithRetry(string connString)
+    {
+        TestSchemaBootstrap.EnsureSharedSchema(connString);
+
+        var options = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseNpgsql(connString, npgsql => npgsql.EnableRetryOnFailure(3))
+            .Options;
+        return new SalesDbContext(options);
+    }
+
     public static (InventoryDbContext context, Microsoft.Data.Sqlite.SqliteConnection connection) CreateSqliteInventoryDbContext()
     {
         var connection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=:memory:");
