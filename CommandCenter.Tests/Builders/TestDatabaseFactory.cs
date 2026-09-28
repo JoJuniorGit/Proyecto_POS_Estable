@@ -113,16 +113,14 @@ public static class TestDatabaseFactory
 
         var methods = new (int Id, string Name, bool IsCash)[]
         {
-            // 8.143: nombres canónicos del fixture para la clasificación de moneda; el Id=1 debe
+            // 8.143: nombres canónicos del fixture, espejo exacto del seed InMemory. El Id=1 debe
             // quedar dolarizado (PaymentMethodCurrencyResolver clasifica por nombre, 8.9-M16).
             // Ojo: el esquema de tests se crea con CreateTablesAsync, que inserta el HasData del
-            // modelo ("Cash"/"Card" en Id=1/2); por eso el seed CONVERGE por Id y no asume tabla
-            // vacía. (Id=2/4 conservan nombre/IsCash propios; no contienen "USD": sin efecto
-            // en la clasificación.)
+            // modelo ("Cash"/"Card" en Id=1/2); por eso el seed CONVERGE por Id y no asume tabla vacía.
             (1, "Efectivo USD", true),
-            (2, "Card", false),
+            (2, "Efectivo Bs.S", true),
             (3, "Punto de Venta", false),
-            (4, "Pago Movil", false),
+            (4, "Pago Móvil", false),
             (5, "Zelle", false)
         };
 
