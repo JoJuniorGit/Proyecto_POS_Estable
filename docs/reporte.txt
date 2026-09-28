@@ -11449,13 +11449,10 @@ C. CORRECCIONES A UN ANÁLISIS EXTERNO (descartadas por improcedentes)
   el gate de versión (pre-routing), no el pipeline de errores.
 - "Upgrade de paquete vulnerable": no hay vulnerabilidades; era falso positivo del gate.
 
-D. DEUDA RESIDUAL (posterior a la adenda L)
-- Divergencia pantalla vs comprobante: los displays de Caja/Cierre del cliente honran el ajuste
-  (Venezolano/Internacional), pero los comprobantes server-side (TXT/PDF de cierre) siguen es-VE
-  fijo; con International puede notarse la diferencia entre lo impreso y lo visible.
-- Operativa local: recrear pos_test si se reutiliza — el rerun de tests de cierre sobre
-  una base con cierres previos queda fuera de la ventana del resolver (comportamiento
-  preexistente del test, no del seed).
+D. DEUDA RESIDUAL
+Cerrada al 2026-09-27 (adendas F..N): comprobantes de cierre y displays siguen el ajuste de moneda;
+DailyClosureRetryIntegrationTests aislado en BD propia (sin recrear pos_test); sin literales "0,00"
+fijos en el PDF; flake de concurrencia SQLite (ef_add) estabilizado. Sin deuda residual abierta.
 
 E. ARCHIVOS
 - Fixes: Core/Helpers/MoneyFormat.cs (nuevo), Desktop.Client.Core/ViewModels/CashDrawerViewModel.cs,
@@ -11549,4 +11546,29 @@ L. ADENDA 7 (2026-09-27) — CIERRE DE TRIVIALES DE LA SECCIÓN D
   con npm 12.1.0). Cambio de SOLO comentario (diff verificado línea a línea).
 - Verificación: suite .NET completa 1483/1483 contra PostgreSQL real (seed nuevo ejercitado por
   los tests PG); build 0/0.
+
+M. ADENDA 8 (2026-09-27) — CIERRE DE LA SECCIÓN D (comprobantes con ajuste + test aislado)
+- Comprobantes de CIERRE honran el ajuste: DailyClosureService recibe ISystemSettingsService
+  (opcional; default Venezuelan) y WriteClosedClosureReceiptsAsync resuelve "CurrencyFormat"
+  best-effort; GenerateReceiptContent y ClosurePdfGenerator aceptan MoneyDisplayFormat (default
+  Venezuelan para callers existentes) y MoneyFormat.CultureFor agrega el mapeo de cultura.
+  Evidencia: TXT/PDF con "1,500.00" (INT) vs "1.500,00" (VE); la diff balanceada dejó de ser
+  literal fijo ("0,00") y sigue el ajuste.
+- DailyClosureRetryIntegrationTests aislado en su propia BD por corrida (pos_retry_<guid8>, creada
+  y dropeada en finally, patrón pos_conc/pos_fault): el rerun local ya no depende de recrear
+  pos_test. Evidencia: suite PG completa sin restos pos_retry_*.
+- Verificación: suite .NET 1485/1485 contra PostgreSQL real; build 0/0.
+
+N. ADENDA 9 (2026-09-27) — UI DEL POS (carrito + modal) Y ESTABILIZACIÓN DE FLAKE
+- Carrito: el botón de eliminar quedó anclado al extremo derecho de la fila; las columnas
+  "Precio" y "Total" centran encabezado y montos (aplicado por columna).
+- Modal de productos: se quitó IsDefault del botón Guardar (Enter ya no guarda/cierra) y el
+  atajo pasó a Ctrl+Enter vía InputBindings del Window (bindea SaveCommand).
+- Flake detectado en la verificación de este lote: UpdateStockAsync_..._Relational (SQLite)
+  falló 1 vez bajo suite con "no such function: ef_add" (conexiones pre-abiertas a mano +
+  primer uso concurrente). Estabilizado: las conexiones se crean e inicializan SECUENCIALMENTE
+  dejando que EF las abra (registro de funciones del provider), y las deducciones siguen
+  concurrentes; el assert de negocio (sin updates perdidos) no cambió. Validado: 3/3 focal +
+  suite completa verde; CI acumulará evidencia.
+- Verificación: build 0/0; suite .NET 1485/1485 contra PostgreSQL real.
 ================================================================================
