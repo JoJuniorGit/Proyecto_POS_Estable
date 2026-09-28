@@ -1,5 +1,6 @@
 using Core.DTOs;
 using Core.Entities;
+using Core.Helpers;
 using Core.Interfaces;
 using Desktop.Client.ViewModels;
 using MediatR;
@@ -576,5 +577,58 @@ public class CheckoutAndPaymentTests
         string raw = System.Text.Encoding.ASCII.GetString(pdfBytes);
         Assert.Contains("1.500,00", raw);
         Assert.DoesNotContain("1,500.00", raw);
+    }
+
+    [Fact]
+    public void GenerateReceiptContent_InternationalFormat_UsesInvariantNumbers()
+    {
+        // 8.143: con CurrencyFormat=International el TXT de cierre usa convención invariante (miles ',', decimal '.').
+        var closure = new DailyClosure
+        {
+            ClosureDate = DateTime.UtcNow,
+            UserId = "Cajero Turno 1",
+            Observation = "Cierre a ciegas",
+            TotalActualBsS = 1500m,
+            Details = new List<ClosureDetail>
+            {
+                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ActualAmountBsS = 1500m, ExpectedAmountBsS = 1500m, DifferenceBsS = 0m }
+            }
+        };
+
+        string receipt = DailyClosureService.GenerateReceiptContent(
+            ShiftReportMapper.MapClosure(closure), isBlind: true, format: MoneyDisplayFormat.International);
+
+        Assert.Contains("1,500.00", receipt);
+        Assert.DoesNotContain("1.500,00", receipt);
+    }
+
+    [Fact]
+    public void GeneratePdf_InternationalFormat_UsesInvariantNumbers()
+    {
+        // 8.143: con CurrencyFormat=International el PDF de cierre usa convención invariante (miles ',', decimal '.').
+        var closure = new DailyClosure
+        {
+            Id = 44,
+            ClosureDate = DateTime.UtcNow,
+            UserId = "Admin Test",
+            Observation = "V-12345678",
+            TotalActualBsS = 1500m,
+            TotalExpectedBsS = 1500m,
+            TotalDifferenceBsS = 0m,
+            Details = new List<ClosureDetail>
+            {
+                new ClosureDetail { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ActualAmountBsS = 1500m, ExpectedAmountBsS = 1500m, DifferenceBsS = 0m }
+            }
+        };
+
+        byte[] pdfBytes = ClosurePdfGenerator.GeneratePdf(
+            ShiftReportMapper.MapClosure(closure), isBlind: false, format: MoneyDisplayFormat.International);
+
+        // El generador no comprime el content stream: el texto del PDF es extraíble en ASCII directo.
+        string raw = System.Text.Encoding.ASCII.GetString(pdfBytes);
+        Assert.Contains("1,500.00", raw);
+        Assert.DoesNotContain("1.500,00", raw);
+        // 8.143: la diff balanceada también sigue el ajuste (sin literales "0,00" fijos).
+        Assert.DoesNotContain("0,00", raw);
     }
 }

@@ -9,7 +9,7 @@ namespace Sales.Module.Services;
 
 public static class ClosurePdfGenerator
 {
-    public static byte[] GeneratePdf(DailyClosureResponseDto closure, bool isBlind = false)
+    public static byte[] GeneratePdf(DailyClosureResponseDto closure, bool isBlind = false, MoneyDisplayFormat format = MoneyDisplayFormat.Venezuelan)
     {
         var ms = new MemoryStream();
         var writer = new StreamWriter(ms, Encoding.ASCII);
@@ -71,8 +71,8 @@ public static class ClosurePdfGenerator
             }
 
             string currency = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
-            string declaredValStr = MoneyFormat.N2(detail.ActualAmountBsS);
-            string systemValStr = isBlind ? "-" : MoneyFormat.N2(detail.ExpectedAmountBsS);
+            string declaredValStr = MoneyFormat.Number(detail.ActualAmountBsS, format);
+            string systemValStr = isBlind ? "-" : MoneyFormat.Number(detail.ExpectedAmountBsS, format);
             
             string diffValStr;
             string diffColor;
@@ -87,17 +87,18 @@ public static class ClosurePdfGenerator
                 decimal diff = detail.DifferenceBsS;
                 if (Math.Abs(diff) < 0.05m)
                 {
-                    diffValStr = "0,00";
+                    // 8.143: sin literal fijo — la diff balanceada sigue el ajuste activo.
+                    diffValStr = MoneyFormat.Number(0m, format);
                     diffColor = "0.09 0.64 0.29 rg"; // Green for Cuadrado
                 }
                 else if (diff > 0)
                 {
-                    diffValStr = $"+ {MoneyFormat.N2(diff)} (Sobrante)";
+                    diffValStr = $"+ {MoneyFormat.Number(diff, format)} (Sobrante)";
                     diffColor = "0.15 0.39 0.92 rg"; // Blue for Sobrante
                 }
                 else
                 {
-                    diffValStr = $"- {MoneyFormat.N2(Math.Abs(diff))} (Faltante)";
+                    diffValStr = $"- {MoneyFormat.Number(Math.Abs(diff), format)} (Faltante)";
                     diffColor = "0.86 0.15 0.15 rg"; // Dark Red for Faltante
                 }
             }
@@ -135,28 +136,29 @@ public static class ClosurePdfGenerator
             decimal totalDiff = closure.TotalDifferenceBsS;
             if (Math.Abs(totalDiff) < 0.05m)
             {
-                totalDiffStr = "0,00";
+                // 8.143: sin literal fijo — la diff balanceada sigue el ajuste activo.
+                totalDiffStr = MoneyFormat.Number(0m, format);
                 totalDiffColor = "0.09 0.64 0.29 rg"; // Green
             }
             else if (totalDiff > 0)
             {
-                totalDiffStr = $"+ {MoneyFormat.N2(totalDiff)} (Sobrante)";
+                totalDiffStr = $"+ {MoneyFormat.Number(totalDiff, format)} (Sobrante)";
                 totalDiffColor = "0.15 0.39 0.92 rg"; // Blue
             }
             else
             {
-                totalDiffStr = $"- {MoneyFormat.N2(Math.Abs(totalDiff))} (Faltante)";
+                totalDiffStr = $"- {MoneyFormat.Number(Math.Abs(totalDiff), format)} (Faltante)";
                 totalDiffColor = "0.86 0.15 0.15 rg"; // Red
             }
         }
 
         WriteTextLeft(contentSb, "TOTALES", 48, yPos + 4, "/F2 9 Tf", "0.1 0.15 0.25 rg");
         WriteTextCenter(contentSb, "-", 185, yPos + 4, "/F2 9 Tf", "0.1 0.15 0.25 rg");
-        WriteTextRight(contentSb, MoneyFormat.N2(closure.TotalActualBsS), 315, yPos + 4, "/F2 9 Tf", "0.1 0.15 0.25 rg", true);
+        WriteTextRight(contentSb, MoneyFormat.Number(closure.TotalActualBsS, format), 315, yPos + 4, "/F2 9 Tf", "0.1 0.15 0.25 rg", true);
 
         if (!isBlind)
         {
-            WriteTextRight(contentSb, MoneyFormat.N2(closure.TotalExpectedBsS), 440, yPos + 4, "/F2 9 Tf", "0.1 0.15 0.25 rg", true);
+            WriteTextRight(contentSb, MoneyFormat.Number(closure.TotalExpectedBsS, format), 440, yPos + 4, "/F2 9 Tf", "0.1 0.15 0.25 rg", true);
             WriteTextRight(contentSb, totalDiffStr, 565, yPos + 4, "/F2 9 Tf", totalDiffColor, true);
         }
 
@@ -166,10 +168,10 @@ public static class ClosurePdfGenerator
         contentSb.AppendLine($"0.96 0.97 0.98 rg 40 {yPos - 60} 532 60 re f");
         contentSb.AppendLine($"0.8 0.84 0.88 RG 1 w 40 {yPos - 60} 532 60 re S");
 
-        WriteTextRight(contentSb, $"TOTAL DECLARADO:   Bs.S {MoneyFormat.N2(closure.TotalActualBsS)}", 555, yPos - 18, "/F2 9.5 Tf", "0.15 0.2 0.3 rg", true);
+        WriteTextRight(contentSb, $"TOTAL DECLARADO:   Bs.S {MoneyFormat.Number(closure.TotalActualBsS, format)}", 555, yPos - 18, "/F2 9.5 Tf", "0.15 0.2 0.3 rg", true);
         if (!isBlind)
         {
-            WriteTextRight(contentSb, $"TOTAL ESPERADO:    Bs.S {MoneyFormat.N2(closure.TotalExpectedBsS)}", 555, yPos - 32, "/F2 9.5 Tf", "0.15 0.2 0.3 rg", true);
+            WriteTextRight(contentSb, $"TOTAL ESPERADO:    Bs.S {MoneyFormat.Number(closure.TotalExpectedBsS, format)}", 555, yPos - 32, "/F2 9.5 Tf", "0.15 0.2 0.3 rg", true);
             WriteTextRight(contentSb, $"DIFERENCIA TOTAL:  Bs.S {totalDiffStr}", 555, yPos - 46, "/F2 9.5 Tf", totalDiffColor, true);
         }
 

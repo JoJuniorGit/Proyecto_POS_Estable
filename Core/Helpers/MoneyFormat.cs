@@ -26,6 +26,10 @@ public static class MoneyFormat
     public static string Number(decimal value, MoneyDisplayFormat format, int decimals = 2)
         => value.ToString($"N{decimals}", format == MoneyDisplayFormat.International ? CultureInfo.InvariantCulture : Culture);
 
+    /// <summary>8.143: cultura para string.Format/alineaciones según el ajuste activo.</summary>
+    public static CultureInfo CultureFor(MoneyDisplayFormat format)
+        => format == MoneyDisplayFormat.International ? CultureInfo.InvariantCulture : Culture;
+
     /// <summary>8.143: normaliza el valor persistido de CurrencyFormat; cualquier valor distinto de
     /// "International" (case-insensitive) cae a Venezuelan, igual criterio que SettingsController.</summary>
     public static MoneyDisplayFormat ParseFormat(string? value)

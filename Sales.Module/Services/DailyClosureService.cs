@@ -21,12 +21,19 @@ public partial class DailyClosureService : IDailyClosureService
     private readonly SalesDbContext _context;
     private readonly ITodayExchangeRateProvider _rateProvider;
     private readonly ICashDrawerService _cashDrawerService;
+    private readonly ISystemSettingsService? _systemSettingsService;
 
-    public DailyClosureService(SalesDbContext context, ITodayExchangeRateProvider rateProvider, ICashDrawerService cashDrawerService)
+    // 8.143: settings opcional para que los comprobantes de cierre honren CurrencyFormat; DI lo resuelve solo.
+    public DailyClosureService(
+        SalesDbContext context,
+        ITodayExchangeRateProvider rateProvider,
+        ICashDrawerService cashDrawerService,
+        ISystemSettingsService? systemSettingsService = null)
     {
         _context = context;
         _rateProvider = rateProvider;
         _cashDrawerService = cashDrawerService;
+        _systemSettingsService = systemSettingsService;
     }
 
     public async Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc, CancellationToken cancellationToken = default)

@@ -5,7 +5,7 @@ namespace Sales.Module.Services;
 
 public partial class DailyClosureService
 {
-    public static string GenerateReceiptContent(DailyClosureResponseDto closure, bool isBlind = false)
+    public static string GenerateReceiptContent(DailyClosureResponseDto closure, bool isBlind = false, MoneyDisplayFormat format = MoneyDisplayFormat.Venezuelan)
     {
         var dateStr = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
         var userName = string.IsNullOrWhiteSpace(closure.UserId) ? "Usuario" : closure.UserId;
@@ -24,10 +24,10 @@ public partial class DailyClosureService
             foreach (var detail in closure.Details)
             {
                 string curr = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
-                sb.AppendLine(string.Format(MoneyFormat.Culture, "{0,-25} {1,-8} {2,22:N2}", detail.PaymentMethodName, curr, detail.ActualAmountBsS));
+                sb.AppendLine(string.Format(MoneyFormat.CultureFor(format), "{0,-25} {1,-8} {2,22:N2}", detail.PaymentMethodName, curr, detail.ActualAmountBsS));
             }
             sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine(string.Format(MoneyFormat.Culture, "{0,-25} {1,-8} {2,22:N2}", "TOTALES", "-", closure.TotalActualBsS));
+            sb.AppendLine(string.Format(MoneyFormat.CultureFor(format), "{0,-25} {1,-8} {2,22:N2}", "TOTALES", "-", closure.TotalActualBsS));
             if (!string.IsNullOrWhiteSpace(closure.Observation))
             {
                 sb.AppendLine($"Notas: {closure.Observation}");
@@ -48,7 +48,7 @@ public partial class DailyClosureService
             foreach (var detail in closure.Details)
             {
                 string curr = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
-                sb.AppendLine(string.Format(MoneyFormat.Culture, "{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}",
+                sb.AppendLine(string.Format(MoneyFormat.CultureFor(format), "{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}",
                     detail.PaymentMethodName,
                     curr,
                     detail.ActualAmountBsS,
@@ -56,16 +56,16 @@ public partial class DailyClosureService
                     detail.DifferenceBsS));
             }
             sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine(string.Format(MoneyFormat.Culture, "{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}",
+            sb.AppendLine(string.Format(MoneyFormat.CultureFor(format), "{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}",
                 "TOTALES",
                 "-",
                 closure.TotalActualBsS,
                 closure.TotalExpectedBsS,
                 closure.TotalDifferenceBsS));
             sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO:  Bs.S {MoneyFormat.N2(closure.TotalActualBsS),10}");
-            sb.AppendLine($"TOTAL ESPERADO:   Bs.S {MoneyFormat.N2(closure.TotalExpectedBsS),10}");
-            sb.AppendLine($"DIFERENCIA TOTAL: Bs.S {MoneyFormat.N2(closure.TotalDifferenceBsS),10}");
+            sb.AppendLine($"TOTAL DECLARADO:  Bs.S {MoneyFormat.Number(closure.TotalActualBsS, format),10}");
+            sb.AppendLine($"TOTAL ESPERADO:   Bs.S {MoneyFormat.Number(closure.TotalExpectedBsS, format),10}");
+            sb.AppendLine($"DIFERENCIA TOTAL: Bs.S {MoneyFormat.Number(closure.TotalDifferenceBsS, format),10}");
             sb.AppendLine($"ESTADO DE CAJA:   {diffStatus}");
             if (!string.IsNullOrWhiteSpace(closure.Observation))
             {
@@ -84,8 +84,17 @@ public partial class DailyClosureService
         try
         {
             bool isBlind = closure.UserId?.Contains("Cajero", StringComparison.OrdinalIgnoreCase) == true;
-            string txtContent = GenerateReceiptContent(closure, isBlind);
-            byte[] pdfBytes = ClosurePdfGenerator.GeneratePdf(closure, isBlind);
+
+            // 8.143: los comprobantes de cierre honran el ajuste CurrencyFormat; best-effort con default Venezuelan.
+            var format = MoneyDisplayFormat.Venezuelan;
+            if (_systemSettingsService != null)
+            {
+                try { format = MoneyFormat.ParseFormat(await _systemSettingsService.GetSettingAsync("CurrencyFormat")); }
+                catch { format = MoneyDisplayFormat.Venezuelan; }
+            }
+
+            string txtContent = GenerateReceiptContent(closure, isBlind, format);
+            byte[] pdfBytes = ClosurePdfGenerator.GeneratePdf(closure, isBlind, format);
 
             string dateStamp = DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss");
             string uniqueSuffix = Guid.NewGuid().ToString("N")[..8];
