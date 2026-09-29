@@ -2,7 +2,9 @@ using System;
 using System.Net;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace CommandCenter.Tests.Integration;
@@ -337,5 +339,23 @@ public class WebApplicationFactorySmokeTests
             Backend.API.Startup.DatabaseInitializer.ConvergenceVersion).FirstOrDefaultAsync();
 
         Assert.Equal(1, applied);
+    }
+
+    [Fact]
+    public void AsyncActionNames_ResolveThroughCreatedAtAction_OnRealPipeline()
+    {
+        // 8.143: CreatedAtAction(nameof(GetByIdAsync)) debe resolver la ruta del GET por nombre de
+        // acción. Con el default de MVC (SuppressAsyncSuffixInActionNames=true) el nombre real queda
+        // como "GetById" y la generación falla al formatear la respuesta, DESPUÉS de persistir: el
+        // POST devuelve 409 con el producto ya creado (falso "Error al Agregar" en el modal WPF).
+        if (!PostgresConfiguredForPipeline()) return;
+
+        using var factory = CreateFactory();
+        using var client = factory.CreateClient(); // Arranca el pipeline real: Program.cs migra.
+
+        var linkGenerator = factory.Services.GetRequiredService<Microsoft.AspNetCore.Routing.LinkGenerator>();
+        var path = linkGenerator.GetPathByAction("GetByIdAsync", "Products", new { id = 1 });
+
+        Assert.Equal("/api/Products/1", path, ignoreCase: true);
     }
 }

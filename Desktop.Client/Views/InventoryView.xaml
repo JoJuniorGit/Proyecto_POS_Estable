@@ -29,41 +29,6 @@
                           Direction="270"
                           ShadowDepth="2"/>
 
-        <!-- Pestañas Corporativas (Activo: Morado #5E35B1 con línea inferior; Inactivo: Gris #64748B) -->
-        <Style x:Key="CorporateTabRadioButton" TargetType="RadioButton">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="#64748B"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Padding" Value="14,8"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="TabBorder"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="Transparent"
-                                BorderThickness="0,0,0,2.5"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="TabBorder" Property="Background" Value="#F1F5F9"/>
-                                <Setter Property="Foreground" Value="#1E293B"/>
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter Property="Foreground" Value="#5E35B1"/>
-                                <Setter Property="FontWeight" Value="Bold"/>
-                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#5E35B1"/>
-                                <Setter TargetName="TabBorder" Property="Background" Value="Transparent"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <!-- ── 2. Estilos para Encabezados Alineados (Fondo #F8FAFC, Texto #64748B, 12px SemiBold) ── -->
         <Style x:Key="LeftAlignedHeader" TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="#F8FAFC"/>
@@ -186,28 +151,23 @@
                     </Grid>
                 </Border>
 
-                <!-- 2. Pestañas de Filtro de Estado (Morado corporativo y Gris) -->
+                <!-- 2. Filtro de Estado — control único (ComboBox en lugar de pestañas) -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="20,0,15,0">
-                    <RadioButton Content="Activos" 
-                                 Style="{StaticResource CorporateTabRadioButton}" 
-                                 IsChecked="True" 
-                                 Command="{Binding SetStatusFilterCommand}" 
-                                 CommandParameter="active"
-                                 Margin="0,0,4,0"/>
-                    <RadioButton Content="Inactivos" 
-                                 Style="{StaticResource CorporateTabRadioButton}" 
-                                 Command="{Binding SetStatusFilterCommand}" 
-                                 CommandParameter="inactive"
-                                 Margin="0,0,4,0"/>
-                    <RadioButton Content="Eliminados (Archivo)" 
-                                 Style="{StaticResource CorporateTabRadioButton}" 
-                                 Command="{Binding SetStatusFilterCommand}" 
-                                 CommandParameter="deleted"
-                                 Margin="0,0,4,0"/>
-                    <RadioButton Content="Todos" 
-                                 Style="{StaticResource CorporateTabRadioButton}" 
-                                 Command="{Binding SetStatusFilterCommand}" 
-                                 CommandParameter="all"/>
+                    <TextBlock Text="Estado:" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,0,6,0" Foreground="#64748B"/>
+                    <ComboBox SelectedValue="{Binding SelectedStatusFilter, Mode=TwoWay}"
+                              SelectedValuePath="Tag"
+                              AutomationProperties.AutomationId="Inventory_StatusFilterCombo"
+                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                              Height="40"
+                              MinWidth="170"
+                              Padding="10,4"
+                              FontWeight="SemiBold"
+                              ToolTip="Filtrar productos por estado">
+                        <ComboBoxItem Content="Activos" Tag="active"/>
+                        <ComboBoxItem Content="Inactivos" Tag="inactive"/>
+                        <ComboBoxItem Content="Eliminados (Archivo)" Tag="deleted"/>
+                        <ComboBoxItem Content="Todos" Tag="all"/>
+                    </ComboBox>
                 </StackPanel>
                 
                 <!-- 3. Botones de Acción y Selectores a la Derecha -->

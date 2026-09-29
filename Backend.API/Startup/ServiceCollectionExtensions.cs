@@ -144,6 +144,12 @@ public static class ServiceCollectionExtensions
         builder.Services.AddControllers(options =>
         {
             options.Filters.Add<Backend.API.Filters.ModelStateValidationFilter>();
+            // 8.143: conserva el sufijo "Async" en el nombre de acción. El default de MVC lo elimina
+            // (GetByIdAsync -> "GetById") y CreatedAtAction(nameof(GetByIdAsync)) deja de resolver la
+            // ruta: "No route matches the supplied values" se lanza al formatear la respuesta,
+            // después de persistir, y el POST responde 409 con el registro ya creado (falso error
+            // de "Error al Agregar" en el modal de productos del cliente WPF).
+            options.SuppressAsyncSuffixInActionNames = false;
         }).AddJsonOptions(x =>
         {
             x.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
