@@ -11571,4 +11571,34 @@ N. ADENDA 9 (2026-09-27) — UI DEL POS (carrito + modal) Y ESTABILIZACIÓN DE F
   concurrentes; el assert de negocio (sin updates perdidos) no cambió. Validado: 3/3 focal +
   suite completa verde; CI acumulará evidencia.
 - Verificación: build 0/0; suite .NET 1485/1485 contra PostgreSQL real.
+
+O. ADENDA 10 (2026-10-02) — PEDIDO RECUPERADO: Bs.S DERIVADOS DE LA TASA VIGENTE (WPF) + AUDITORÍA WEB
+- Causa raíz: CartViewModel.UpdateCollection hidrataba los ítems de una venta Pending con el
+  AppliedRate persistido (tasa "A" del momento del autoguardado) cuando era > 0. Tras un cierre
+  inesperado y un cambio de tasa a "B", el carrito recuperado mostraba Bs.S con "A" mientras el
+  modal de cobro (que tras FlushAllQuantitiesAsync recalcula en el servidor con "B") mostraba "B".
+- Fix (Desktop.Client.Core/ViewModels/CartViewModel.cs): en ventas Pending la tasa de derivación
+  de los ítems es la VIGENTE (rate-first), el mismo criterio que UpdateAllPrices al cambiar la
+  tasa en runtime y que selectEffectiveRate de la web; el AppliedRate queda solo como fallback si
+  la tasa vigente aún no está cargada (arranque offline). Las ventas no-Pending (histórico)
+  conservan los snapshots persistidos (sin cambios). Redondeo idéntico a agregar un producto:
+  ToBsSCeiling por unidad + RoundToDigital por cantidad.
+- Tests: 6 nuevos en CommandCenter.Tests/Unit/CartRecoveryRateHydrationTests.cs (rojo→verde real:
+  3 fallos deterministas antes del fix), incluido el flujo completo de recuperación huérfana vía
+  PosViewModel.InitializeForSessionAsync; cubren ceiling (0.81 × 842.21 → 682.20), fallback sin
+  tasa vigente, inmutabilidad del snapshot y ventas históricas.
+- Auditoría Web (criterio 4): la desincronización NO se replica. CartTable/CartList/CheckoutModal
+  comparten selectEffectiveRate (tasa vigente primero) y, en contexto de venta, el snapshot es ley
+  (decisión 8.143-H/I) con convergencia automática: CartContext dispara updateSaleExchangeRate
+  (debounce 1.5 s) al cambiar la tasa o recuperar una venta Pending, y el servidor recalcula
+  AppliedRate/snapshots; ambas superficies quedan siempre mutuamente consistentes. Sin cambios web.
+- Verificación: build Release 0/0; suite .NET 1492/1492 + WPF E2E 13/13. Nota: sin
+  TEST_POSTGRES_CONNECTION local (credenciales del cluster no disponibles — bloqueo preexistente,
+  no se reseteó el cluster) las clases PG quedan en skip documentado; el total local no ejerce
+  esos caminos.
+- Hallazgo de infraestructura de tests (no bloqueante): los E2E WPF dejan procesos Desktop.Client
+  huérfanos porque WpfAppFixture.Launch() reemplaza App sin cerrar la instancia previa (clases con
+  >1 Launch: WpfIndependentFlowsTests ×4, LoginViewTests ×2) y Dispose() solo cierra la última;
+  los huérfanos retienen el pipe de stdout y hacen que un `dotnet test ... | Select-Object` parezca
+  colgado tras terminar las pruebas. Pendiente: fix del fixture (kill de todas las instancias).
 ================================================================================
