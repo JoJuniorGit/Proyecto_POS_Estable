@@ -11601,4 +11601,17 @@ O. ADENDA 10 (2026-10-02) — PEDIDO RECUPERADO: Bs.S DERIVADOS DE LA TASA VIGEN
   >1 Launch: WpfIndependentFlowsTests ×4, LoginViewTests ×2) y Dispose() solo cierra la última;
   los huérfanos retienen el pipe de stdout y hacen que un `dotnet test ... | Select-Object` parezca
   colgado tras terminar las pruebas. Pendiente: fix del fixture (kill de todas las instancias).
+
+P. ADENDA 11 (2026-10-02) — FIXTURE E2E WPF: SIN PROCESOS HUÉRFANOS
+- Causa raíz del "cuelgue": WpfAppFixture.Launch() reemplazaba App sin cerrar la instancia previa
+  y Dispose() solo cerraba la última; las clases con >1 Launch (WpfIndependentFlowsTests ×4,
+  LoginViewTests ×2) dejaban 4 Desktop.Client.exe --e2e huérfanos por corrida. Los huérfanos
+  heredan el stdout del testhost y PowerShell espera EOF de todos los writers del pipe: el
+  comando `dotnet test ... | Select-Object` no retornaba aunque las pruebas ya habían terminado.
+- Fix (tests/CommandCenter.Wpf.E2ETests/Fixtures/WpfAppFixture.cs): el fixture trackea todas las
+  apps lanzadas; Launch() termina la instancia previa antes de lanzar la nueva y Dispose() termina
+  todas (Close(killIfCloseFails: true) + Kill de respaldo). Cada test conserva su app fresca.
+- Verificación: el comando exacto `dotnet test CommandCenter.slnx -c Release --no-build --nologo
+  -v q | Select-Object -Last 8` retorna normalmente; suite .NET 1492/1492 + WPF E2E 13/13; 0
+  procesos Desktop.Client al finalizar (antes: 4 por corrida). Build 0/0.
 ================================================================================

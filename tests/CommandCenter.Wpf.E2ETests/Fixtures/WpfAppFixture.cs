@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using FlaUI.Core;
@@ -9,7 +10,14 @@ namespace CommandCenter.Wpf.E2ETests.Fixtures;
 
 public class WpfAppFixture : IDisposable
 {
-    public Application? App { get; private set; }
+    // Cada test que llama Launch() espera una app fresca. La instancia anterior se termina en
+    // Launch() y todas las restantes en Dispose(); sin esto quedaban procesos Desktop.Client.exe
+    // huérfanos que heredan el stdout del testhost y hacen que un `dotnet test ... | Select-Object`
+    // parezca colgado aunque las pruebas ya hayan terminado.
+    private readonly List<Application> _launchedApps = new();
+    private bool _disposed;
+
+    public Application? App => _launchedApps.Count > 0 ? _launchedApps[^1] : null;
     public UIA3Automation Automation { get; }
     public Window? MainWindow { get; private set; }
 
@@ -20,6 +28,8 @@ public class WpfAppFixture : IDisposable
 
     public Window Launch(string? appPath = null)
     {
+        TerminateLaunchedApps();
+
         if (appPath == null)
         {
             // Search standard build output directories
@@ -46,22 +56,39 @@ public class WpfAppFixture : IDisposable
             Arguments = "--e2e"
         };
 
-        App = Application.Launch(processStartInfo);
-        MainWindow = App.GetMainWindow(Automation, TimeSpan.FromSeconds(15));
+        var app = Application.Launch(processStartInfo);
+        _launchedApps.Add(app);
+        MainWindow = app.GetMainWindow(Automation, TimeSpan.FromSeconds(15));
         return MainWindow;
     }
 
-    public void Dispose()
+    private void TerminateLaunchedApps()
     {
+        for (int i = _launchedApps.Count - 1; i >= 0; i--)
+        {
+            Terminate(_launchedApps[i]);
+        }
+
+        _launchedApps.Clear();
+        MainWindow = null;
+    }
+
+    private static void Terminate(Application? app)
+    {
+        if (app == null) return;
+
         try
         {
-            if (App != null && !App.HasExited)
+            if (!app.HasExited)
             {
-                App.Close();
-                if (!App.HasExited)
-                {
-                    App.Kill();
-                }
+                // Close(killIfCloseFails: true) cierra con gracia y fuerza el kill si el cierre
+                // no completa en CloseTimeout (la ventana puede interceptar WM_CLOSE).
+                app.Close(killIfCloseFails: true);
+            }
+
+            if (!app.HasExited)
+            {
+                app.Kill();
             }
         }
         catch
@@ -70,9 +97,24 @@ public class WpfAppFixture : IDisposable
         }
         finally
         {
-            App?.Dispose();
-            Automation.Dispose();
-            System.Threading.Thread.Sleep(300);
+            try
+            {
+                app.Dispose();
+            }
+            catch
+            {
+                // Ignored on cleanup
+            }
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        TerminateLaunchedApps();
+        Automation.Dispose();
+        System.Threading.Thread.Sleep(300);
     }
 }
