@@ -208,7 +208,8 @@ public partial class App : Application
         builder.Services.AddSingleton<IExchangeRateService>(sp => 
         {
             var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("ExchangeRateApi");
-            return new ExchangeRateService(httpClient, sp.GetRequiredService<IDispatcherInvoker>(), sp.GetRequiredService<UserSession>());
+            // 8.143-fix: en E2E no se abre el hub SignalR real; la tasa proviene del mock HTTP.
+            return new ExchangeRateService(httpClient, sp.GetRequiredService<IDispatcherInvoker>(), sp.GetRequiredService<UserSession>(), enableRealtime: !isE2E);
         });
 
         ConfigureClient(builder.Services.AddHttpClient<IUserService, UserService>(client =>

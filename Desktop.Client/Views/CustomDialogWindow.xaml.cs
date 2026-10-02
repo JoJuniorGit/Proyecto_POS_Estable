@@ -39,6 +39,9 @@ public partial class CustomDialogWindow : Window
 
     private void ConfigureDialog(CustomDialogType dialogType)
     {
+        // Hook de automatización E2E: permite detectar diálogos de error por tipo sin acoplarse al título.
+        System.Windows.Automation.AutomationProperties.SetAutomationId(this, $"CustomDialogWindow_{dialogType}");
+
         switch (dialogType)
         {
             case CustomDialogType.Confirm:

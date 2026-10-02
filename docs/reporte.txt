@@ -11614,4 +11614,30 @@ P. ADENDA 11 (2026-10-02) — FIXTURE E2E WPF: SIN PROCESOS HUÉRFANOS
 - Verificación: el comando exacto `dotnet test CommandCenter.slnx -c Release --no-build --nologo
   -v q | Select-Object -Last 8` retorna normalmente; suite .NET 1492/1492 + WPF E2E 13/13; 0
   procesos Desktop.Client al finalizar (antes: 4 por corrida). Build 0/0.
+
+Q. ADENDA 12 (2026-10-02) — MODO --e2e: MOCK ALINEADO AL CONTRATO REAL (SIN ERRORES VISUALES)
+- Causa raíz: el mock E2E estaba desalineado con los contratos de los servicios cliente (no era
+  "falta de backend": el modo --e2e es autocontenido por diseño). Evidencia: api/sales/start
+  devolvía [] y el cliente espera SaleDto (JsonException → "Error de Venta" al entrar al POS);
+  api/PaymentMethods/active caía al fallback {} y el cliente espera lista (3 reintentos →
+  "Error de Conexión"); api/exchange-rate/today devolvía {rate} y el cliente lee {value,updatedAt}
+  (tasa 0 en el header); api/products paginado devolvía array vs PagedResultDto; api/sales/history
+  array vs SalesHistoryResponse.
+- Fix: E2EMockHttpMessageHandler reescrito con respuestas contrato-exactas (camelCase, enums
+  numéricos, listas vs objetos) y estado de venta mínimo (start/add/update/remove/complete) para
+  que el POS funcione de punta a punta: catálogo, sugerencias, quick-check, métodos de pago,
+  clientes, caja (sesión/balance/historial), cierre diario, ajustes, usuarios y tasa
+  (today/history/save/sync-bcv). CompleteSale devuelve el N° de factura crudo como la API real.
+- Aislamiento total: ExchangeRateService acepta enableRealtime (default true; producción intacta);
+  App lo pasa en false en E2E para no abrir el hub SignalR real (antes reintentaba 5×5s y podía
+  recibir tasas reales, rompiendo el determinismo del mock).
+- Test de regresión (E2EAppHealthTests, 2 tests): (1) tras login, el badge "Tasa" muestra 50 y no
+  aparecen diálogos de error durante la inicialización del POS; (2) navegando las 11 vistas
+  principales no se abre ningún CustomDialogWindow_Error. Hook de automatización: CustomDialogWindow
+  expone AutomationId por tipo (CustomDialogWindow_Error/Warning/Info/Confirm).
+- Rojo→verde real: con el mock viejo el test 1 falla determinista con Assert.Contains("50") →
+  String: "Tasa vigente: 0,00 Bs por dólar" (evidencia del shape de tasa).
+- Verificación: build Release 0/0; suite .NET 1492/1492 + WPF E2E 15/15; 0 procesos huérfanos.
+- Nota operativa: Copy-Item preserva timestamps; si se restaura un archivo desde copia, MSBuild
+  puede saltar la recompilación (usar --no-incremental en ese caso).
 ================================================================================
