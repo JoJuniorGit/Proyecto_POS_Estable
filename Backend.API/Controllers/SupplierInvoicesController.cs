@@ -48,4 +48,19 @@ public sealed class SupplierInvoicesController : ControllerBase
 
         return Ok(invoice);
     }
+
+    [HttpPost("{id:int}/confirm")]
+    [ProducesResponseType(typeof(SupplierInvoiceDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<SupplierInvoiceDetailDto>> ConfirmAsync(
+        int id,
+        [FromBody] ConfirmSupplierInvoiceRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var invoice = await _supplierInvoiceService.ConfirmAsync(id, request, cancellationToken);
+        return Ok(invoice);
+    }
 }
