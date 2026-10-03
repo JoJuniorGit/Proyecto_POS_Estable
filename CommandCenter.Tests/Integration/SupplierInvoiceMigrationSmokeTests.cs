@@ -4,7 +4,9 @@ using System.Threading.Tasks;
 using Core.Entities;
 using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Storage;
 using Xunit;
 
 namespace CommandCenter.Tests.Integration;
@@ -61,6 +63,14 @@ public class SupplierInvoiceMigrationSmokeTests
             .Options;
 
         await using var context = new InventoryDbContext(options);
+
+        // La BD aislada puede no existir aun (EF la crea al migrar); crearla vacia primero
+        // para poder snapshotear Products antes de aplicar las migraciones.
+        var databaseCreator = context.Database.GetService<IRelationalDatabaseCreator>();
+        if (!await databaseCreator.ExistsAsync())
+        {
+            await databaseCreator.CreateAsync();
+        }
 
         var productsTableExists = await context.Database.SqlQueryRaw<int>(
             "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.tables " +
