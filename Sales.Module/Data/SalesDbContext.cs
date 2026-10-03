@@ -16,6 +16,8 @@ public class SalesDbContext : DbContext
     public DbSet<Customer> Customers { get; set; } = null!;
     public DbSet<Sale> Sales { get; set; } = null!;
     public DbSet<SaleItem> SaleItems { get; set; } = null!;
+    public DbSet<SaleDelivery> SaleDeliveries { get; set; } = null!;
+    public DbSet<SaleDeliveryItem> SaleDeliveryItems { get; set; } = null!;
     public DbSet<PaymentMethod> PaymentMethods { get; set; } = null!;
     public DbSet<SalePayment> SalePayments { get; set; } = null!;
     public DbSet<CashDrawerSession> CashDrawerSessions { get; set; } = null!;
@@ -97,6 +99,52 @@ modelBuilder.Entity<User>().HasData(
             .HasForeignKey(p => p.SaleId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        modelBuilder.Entity<SaleDelivery>(entity =>
+        {
+            entity.HasOne<Sale>()
+                .WithMany()
+                .HasForeignKey(delivery => delivery.SaleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(delivery => delivery.DeliveredByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.Property(delivery => delivery.DeliveredByName)
+                .HasColumnType("text")
+                .IsRequired();
+
+            entity.HasIndex(delivery => delivery.SaleId)
+                .HasDatabaseName("IX_SaleDeliveries_SaleId");
+        });
+
+        modelBuilder.Entity<SaleDeliveryItem>(entity =>
+        {
+            entity.HasOne<SaleDelivery>()
+                .WithMany(delivery => delivery.Items)
+                .HasForeignKey(deliveryItem => deliveryItem.SaleDeliveryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne<SaleItem>()
+                .WithMany()
+                .HasForeignKey(deliveryItem => deliveryItem.SaleItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.Property(deliveryItem => deliveryItem.ProductName)
+                .IsRequired();
+
+            entity.Property(deliveryItem => deliveryItem.QuantityDelivered)
+                .HasColumnType("numeric(18,3)")
+                .HasPrecision(18, 3);
+
+            entity.HasIndex(deliveryItem => deliveryItem.SaleDeliveryId)
+                .HasDatabaseName("IX_SaleDeliveryItems_SaleDeliveryId");
+
+            entity.HasIndex(deliveryItem => deliveryItem.SaleItemId)
+                .HasDatabaseName("IX_SaleDeliveryItems_SaleItemId");
+        });
+
         modelBuilder.Entity<SalePayment>()
             .Property(p => p.Amount)
             .HasColumnType("decimal(18,2)");
@@ -117,6 +165,7 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<Sale>().Property(s => s.SubtotalBsS).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<Sale>().Property(s => s.RoundingAdjustment).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<SaleItem>().Property(i => i.Quantity).HasColumnType("numeric(18,3)");
+        modelBuilder.Entity<SaleItem>().Property(i => i.DeliveredQuantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitPrice).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<SaleItem>().Property(i => i.Subtotal).HasColumnType("decimal(18,4)");
 
@@ -239,6 +288,12 @@ modelBuilder.Entity<User>().HasData(
         if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
         {
             modelBuilder.Entity<Sale>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+
+            modelBuilder.Entity<SaleItem>()
                 .Property<uint>("xmin")
                 .HasColumnType("xid")
                 .ValueGeneratedOnAddOrUpdate()

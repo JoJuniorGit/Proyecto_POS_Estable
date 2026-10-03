@@ -19,7 +19,7 @@ Fuente: pedido del usuario, verbatim (L1). Estados y trazabilidad según el pedi
 
 | ID | Specs | Route | Descripción | Estado / commit |
 |----|-------|-------|-------------|-----------------|
-| T1 | S1-S3 | delegated (writer) | Dominio + migración + backfill + smoke (PR1) | pendiente |
+| T1 | S1-S3 | delegated (writer) | Dominio + migración + backfill + smoke (PR1) | hecho — verificado PASS WITH WARNINGS (suite 1543/1543, build 0/0); commit pendiente |
 | T2 | S1-S3 | delegated (writer) | Servicio `DeliverPartialAsync` + endpoint idempotente + tests (PR2) | pendiente |
 | T3 | S7 | delegated (writer) | Nota de Despacho PDF + endpoint (PR3) | pendiente |
 | T4 | S4-S7 | delegated (writer) | UI WPF: modal, badge/progreso, impresión (PR4) | pendiente |

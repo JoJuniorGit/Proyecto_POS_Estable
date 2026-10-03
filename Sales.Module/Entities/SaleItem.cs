@@ -13,6 +13,8 @@ public class SaleItem
     [Column(TypeName = "decimal(18,3)")]
     public decimal Quantity { get; set; }
 
+    public decimal DeliveredQuantity { get; set; }
+
     // Financial Snapshot
     [Column(TypeName = "decimal(18,4)")]
     public decimal UnitPrice { get; set; }

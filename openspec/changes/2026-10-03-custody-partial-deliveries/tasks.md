@@ -28,11 +28,11 @@ Chain strategy: stacked-to-main
 
 ## Phase 1: Domain & Migration
 
-- [ ] 1.1 Append `PartiallyDelivered = 2` to `Sales.Module/Entities/SaleDeliveryStatus.cs` (Delivery States).
-- [ ] 1.2 Add `DeliveredQuantity` to `Sales.Module/Entities/SaleItem.cs`; create `Sales.Module/Entities/SaleDelivery.cs` + `SaleDeliveryItem.cs` (Per-Line Quantities, Delivery Event Log).
-- [ ] 1.3 Configure `Sales.Module/Data/SalesDbContext.cs`: DbSets, `numeric(18,3)`, FKs Restrict, indexes, `xmin` on `SaleItem`.
-- [ ] 1.4 Add migration `AddCustodyPartialDeliveries` under `Sales.Module/Migrations/` with backfill (Delivered → qty = total) and `Down` (Migration and Backfill).
-- [ ] 1.5 Tests: `CommandCenter.Tests/Integration/CustodyPartialDeliveryMigrationSmokeTests.cs` (Postgres-gated backfill cases) + model test.
+- [x] 1.1 Append `PartiallyDelivered = 2` to `Sales.Module/Entities/SaleDeliveryStatus.cs` (Delivery States).
+- [x] 1.2 Add `DeliveredQuantity` to `Sales.Module/Entities/SaleItem.cs`; create `Sales.Module/Entities/SaleDelivery.cs` + `SaleDeliveryItem.cs` (Per-Line Quantities, Delivery Event Log).
+- [x] 1.3 Configure `Sales.Module/Data/SalesDbContext.cs`: DbSets, `numeric(18,3)`, FKs Restrict, indexes, `xmin` on `SaleItem`.
+- [x] 1.4 Add migration `AddCustodyPartialDeliveries` under `Sales.Module/Migrations/` with backfill (Delivered → qty = total) and `Down` (Migration and Backfill).
+- [x] 1.5 Tests: `CommandCenter.Tests/Integration/CustodyPartialDeliveryMigrationSmokeTests.cs` (Postgres-gated backfill cases) + model test.
 
 ## Phase 2: Service & API
 
