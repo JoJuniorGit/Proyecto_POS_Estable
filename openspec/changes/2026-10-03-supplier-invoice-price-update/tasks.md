@@ -42,10 +42,10 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Atomic Apply
 
-- [ ] 3.1 Create `Inventory.Module/Services/SupplierInvoiceService.Apply.cs`: execution strategy, transaction, server re-validation, retail-primary margins, RoundPriceUp, stock + StockMovement, xmin retry; `Core/Helpers/PricingCalculator.cs` (read-only).
-- [ ] 3.2 Add confirm endpoint POST /api/supplier-invoices/{id}/confirm in `Backend.API/Controllers/SupplierInvoicesController.cs`.
-- [ ] 3.3 Test supplier-invoice-apply (Only approved lines applied; Both margins updated; Override recorded; Stock and audit written together) `CommandCenter.Tests/Unit/SupplierInvoiceApplyTests.cs`.
-- [ ] 3.4 Test integration: Forged client validation rejected; atomic rollback leaves untouched rows; Concurrency conflict retried (TEST_POSTGRES_CONNECTION); Cashier blocked 403 `CommandCenter.Tests/Integration/SupplierInvoiceApplyIntegrationTests.cs`.
+- [x] 3.1 Create `Inventory.Module/Services/SupplierInvoiceService.Apply.cs`: execution strategy, transaction, server re-validation, retail-primary margins, RoundPriceUp, stock + StockMovement, xmin retry; `Core/Helpers/PricingCalculator.cs` (read-only).
+- [x] 3.2 Add confirm endpoint POST /api/supplier-invoices/{id}/confirm in `Backend.API/Controllers/SupplierInvoicesController.cs`.
+- [x] 3.3 Test supplier-invoice-apply (Only approved lines applied; Both margins updated; Override recorded; Stock and audit written together) `CommandCenter.Tests/Unit/SupplierInvoiceApplyTests.cs`.
+- [x] 3.4 Test integration: Forged client validation rejected; atomic rollback leaves untouched rows; Concurrency conflict retried (TEST_POSTGRES_CONNECTION); Cashier blocked 403 `CommandCenter.Tests/Integration/SupplierInvoiceApplyIntegrationTests.cs`.
 
 ## Phase 4: WPF Client
 
