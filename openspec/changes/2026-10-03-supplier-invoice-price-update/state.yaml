@@ -1,0 +1,37 @@
+change: 2026-10-03-supplier-invoice-price-update
+store: openspec
+scope: wpf-desktop-only
+created: 2026-10-03
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: tasks-completed
+artifacts:
+  exploration: openspec/changes/2026-10-03-supplier-invoice-price-update/exploration.md
+  proposal: openspec/changes/2026-10-03-supplier-invoice-price-update/proposal.md
+  specs:
+    - openspec/changes/2026-10-03-supplier-invoice-price-update/specs/supplier-invoice-staging/spec.md
+    - openspec/changes/2026-10-03-supplier-invoice-price-update/specs/supplier-product-matching/spec.md
+    - openspec/changes/2026-10-03-supplier-invoice-price-update/specs/supplier-invoice-apply/spec.md
+  design: openspec/changes/2026-10-03-supplier-invoice-price-update/design.md
+  tasks: openspec/changes/2026-10-03-supplier-invoice-price-update/tasks.md
+decisions:
+  confirmed: 2026-10-03
+  research: unselected
+  staging: db-draft-entities
+  module-placement: inventory-module
+  formats-v1: [xlsx, csv, xml]
+  margin-model: retail-primary-drives-wholesale
+  override-persistence: line-plus-product
+  cost-currency: usd-authoritative
+  new-product-behavior: match-only-v1
+  matching: fuzzy-pgtrgm-configurable-threshold
+  apply-api-shape: single-atomic-confirm-endpoint
+  web-scope: wpf-desktop-only
+  design-questions:
+    mapping-entity: SupplierColumnMapping
+    wholesale-independence: Product.HasWholesale
+    prefilled-margin-source: Product.ProfitMarginRetail (fallback ProfitPercentage)
+next: sdd-apply
