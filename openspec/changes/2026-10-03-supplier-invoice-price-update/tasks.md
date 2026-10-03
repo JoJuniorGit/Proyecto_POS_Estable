@@ -34,11 +34,11 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Matching, Staging & Endpoints
 
-- [ ] 2.1 Create `Inventory.Module/Services/SupplierInvoiceService.cs` and `Inventory.Module/Services/SupplierInvoiceService.Staging.cs`: supplier resolve/block, mapping upsert/reuse; mirror `Inventory.Module/Services/InventoryService.Import.cs` (read-only).
-- [ ] 2.2 Create `Inventory.Module/Services/SupplierInvoiceService.Matching.cs`: SKU, supplier code, pg_trgm threshold from settings; lower-Id tie-break; Conflict status.
-- [ ] 2.3 Create `Backend.API/Controllers/SupplierInvoicesController.cs` stage/read endpoints, RBAC Admin/Manager, ProblemDetails.
-- [ ] 2.4 Test supplier-product-matching (Barcode wins; Supplier code fallback; Fuzzy name fallback; Threshold boundary; Two equal-similarity candidates; Match-only v1) `CommandCenter.Tests/Unit/SupplierInvoiceMatchingTests.cs`.
-- [ ] 2.5 Test supplier-invoice-staging (Resolve supplier by fiscal identity; Unmatched supplier blocks staging; Save/Reuse saved mapping; Unparseable or empty file; Status classification per line; No apply before confirm) `CommandCenter.Tests/Unit/SupplierInvoiceStagingTests.cs`.
+- [x] 2.1 Create `Inventory.Module/Services/SupplierInvoiceService.cs` and `Inventory.Module/Services/SupplierInvoiceService.Staging.cs`: supplier resolve/block, mapping upsert/reuse; mirror `Inventory.Module/Services/InventoryService.Import.cs` (read-only).
+- [x] 2.2 Create `Inventory.Module/Services/SupplierInvoiceService.Matching.cs`: SKU, supplier code, pg_trgm threshold from settings; lower-Id tie-break; Conflict status.
+- [x] 2.3 Create `Backend.API/Controllers/SupplierInvoicesController.cs` stage/read endpoints, RBAC Admin/Manager, ProblemDetails.
+- [x] 2.4 Test supplier-product-matching (Barcode wins; Supplier code fallback; Fuzzy name fallback; Threshold boundary; Two equal-similarity candidates; Match-only v1) `CommandCenter.Tests/Unit/SupplierInvoiceMatchingTests.cs`.
+- [x] 2.5 Test supplier-invoice-staging (Resolve supplier by fiscal identity; Unmatched supplier blocks staging; Save/Reuse saved mapping; Unparseable or empty file; Status classification per line; No apply before confirm) `CommandCenter.Tests/Unit/SupplierInvoiceStagingTests.cs`.
 
 ## Phase 3: Atomic Apply
 
