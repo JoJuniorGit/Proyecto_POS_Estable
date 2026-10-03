@@ -59,7 +59,7 @@ public class CashAdvanceCoordinator
 
         if (availableCash < roundedRequested)
         {
-            throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente. Disponible: {availableCash:N2} Bs.S, Requerido: {roundedRequested:N2} Bs.S.");
+            throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente. Disponible: {MoneyFormat.N2(availableCash)} Bs.S, Requerido: {MoneyFormat.N2(roundedRequested)} Bs.S.");
         }
 
         var commissionPercentage = await ResolveCommissionPercentageAsync(isTransfer, cancellationToken);

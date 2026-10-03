@@ -111,6 +111,17 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             });
         });
 
+        // 8.143: el ajuste de formato de moneda cambió en el server; el WPF lo aplica en caliente
+        // y re-notifica las vistas abiertas por el mismo canal de mensajería que la tasa.
+        _hubConnection.On<string>("OnCurrencyFormatUpdated", (format) =>
+        {
+            _dispatcherInvoker.Invoke(() =>
+            {
+                CurrencyDisplay.SetFromSetting(format);
+                WeakReferenceMessenger.Default.Send(new CurrencyFormatChangedMessage());
+            });
+        });
+
         if (_userSession != null)
         {
             _userSession.SessionChanged += OnSessionChanged;

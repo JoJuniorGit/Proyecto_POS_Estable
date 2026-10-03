@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react';
-import { formatNumberEs } from '../../utils/formatters';
+import { formatNumberEs, resolveBsSPrice } from '../../utils/formatters';
 import './SuggestionList.css';
 
 export default function SuggestionList({ suggestions, isLoading, onSelectSuggestion, exchangeRate }) {
@@ -23,7 +23,8 @@ export default function SuggestionList({ suggestions, isLoading, onSelectSuggest
   return (
     <div className="search-dropdown">
       {suggestions.map((item) => {
-        const priceBsS = item.priceBsS > 0 ? item.priceBsS : (item.priceUSD > 0 && exchangeRate > 0 ? Math.ceil(item.priceUSD * exchangeRate * 100) / 100 : 0);
+        // 8.143: precio Bs.S derivado de USD × tasa vigente; snapshot solo como fallback
+        const priceBsS = resolveBsSPrice(item.priceUSD, item.priceBsS, exchangeRate);
         return (
           <div
             key={item.id}

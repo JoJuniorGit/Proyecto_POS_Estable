@@ -64,6 +64,20 @@ public static class TestDatabaseFactory
         return new SalesDbContext(options);
     }
 
+    /// <summary>
+    /// 8.143: variante con conexión explícita (BD aislada por test) que conserva
+    /// EnableRetryOnFailure(3), espejo de la execution strategy de Producción/CI.
+    /// </summary>
+    public static SalesDbContext CreatePostgreSqlSalesDbContextWithRetry(string connString)
+    {
+        TestSchemaBootstrap.EnsureSharedSchema(connString);
+
+        var options = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseNpgsql(connString, npgsql => npgsql.EnableRetryOnFailure(3))
+            .Options;
+        return new SalesDbContext(options);
+    }
+
     public static (InventoryDbContext context, Microsoft.Data.Sqlite.SqliteConnection connection) CreateSqliteInventoryDbContext()
     {
         var connection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=:memory:");
@@ -113,26 +127,25 @@ public static class TestDatabaseFactory
 
         var methods = new (int Id, string Name, bool IsCash)[]
         {
-            // 8.143: nombres canónicos del fixture para la clasificación de moneda; el Id=1 debe
+            // 8.143: nombres canónicos del fixture, espejo exacto del seed InMemory. El Id=1 debe
             // quedar dolarizado (PaymentMethodCurrencyResolver clasifica por nombre, 8.9-M16).
             // Ojo: el esquema de tests se crea con CreateTablesAsync, que inserta el HasData del
-            // modelo ("Cash"/"Card" en Id=1/2); por eso el seed CONVERGE por Id y no asume tabla
-            // vacía. (Id=2/4 conservan nombre/IsCash propios; no contienen "USD": sin efecto
-            // en la clasificación.)
+            // modelo ("Cash"/"Card" en Id=1/2); por eso el seed CONVERGE por Id y no asume tabla vacía.
             (1, "Efectivo USD", true),
-            (2, "Card", false),
+            (2, "Efectivo Bs.S", true),
             (3, "Punto de Venta", false),
-            (4, "Pago Movil", false),
+            (4, "Pago Móvil", false),
             (5, "Zelle", false)
         };
 
         foreach (var (id, name, isCash) in methods)
         {
-            // Convergencia del Id canónico: si la fila ya existe (p. ej. HasData), se actualizan
-            // nombre/tipo, salvo conflicto con otro registro que use el nombre destino (BD sucia).
+            // Convergencia del Id canónico: si la fila ya existe (p. ej. HasData), se restauran
+            // nombre/tipo y actividad (IsActive/IsDeleted) para que una BD local sucia no degrade
+            // el fixture en silencio; se omite si otro registro ya usa el nombre destino.
             await using var convergeCmd = new Npgsql.NpgsqlCommand(
-                "UPDATE \"PaymentMethods\" SET \"Name\" = @name, \"IsCash\" = @isCash " +
-                "WHERE \"Id\" = @id AND (\"Name\" <> @name OR \"IsCash\" <> @isCash) " +
+                "UPDATE \"PaymentMethods\" SET \"Name\" = @name, \"IsCash\" = @isCash, \"IsActive\" = true, \"IsDeleted\" = false " +
+                "WHERE \"Id\" = @id AND (\"Name\" <> @name OR \"IsCash\" <> @isCash OR \"IsActive\" = false OR \"IsDeleted\" = true) " +
                 "AND NOT EXISTS (SELECT 1 FROM \"PaymentMethods\" p2 WHERE p2.\"Name\" = @name AND p2.\"Id\" <> @id)",
                 conn, tx);
             convergeCmd.Parameters.AddWithValue("@id", id);

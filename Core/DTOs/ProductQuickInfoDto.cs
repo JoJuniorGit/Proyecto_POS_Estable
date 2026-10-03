@@ -1,3 +1,5 @@
+using Core.Helpers;
+
 namespace Core.DTOs;
 
 public class ProductQuickInfoDto
@@ -30,6 +32,7 @@ public class ProductQuickInfoDto
     public int VariantCount { get; set; }
     public decimal ConsolidatedStock { get; set; }
 
-    public string DisplayPriceBsS => (IsGroupHeader && HasIndependentPricing) ? "Precios indiv." : PriceBsS.ToString("N2", System.Globalization.CultureInfo.InvariantCulture);
-    public string DisplayPriceUSD => (IsGroupHeader && HasIndependentPricing) ? "Precios indiv." : $"${PriceUSD.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)}";
+    // 8.143: convención es-VE determinista del producto (MoneyFormat), independiente de la cultura del SO.
+    public string DisplayPriceBsS => (IsGroupHeader && HasIndependentPricing) ? "Precios indiv." : MoneyFormat.N2(PriceBsS);
+    public string DisplayPriceUSD => (IsGroupHeader && HasIndependentPricing) ? "Precios indiv." : $"${MoneyFormat.N2(PriceUSD)}";
 }

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import { Package, Search, Loader2, RefreshCw, Tag, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
-import { formatBsS, formatUSD } from '../utils/formatters';
+import { formatBsS, formatUSD, resolveBsSPrice } from '../utils/formatters';
 import { useMediaQuery } from '../utils/useMediaQuery';
 import useDebounce from '../hooks/useDebounce';
 import Pagination from '../components/ui/Pagination';
@@ -294,7 +294,8 @@ function CatalogPageContent() {
               <tbody>
                 {products.map((p) => {
                   const retailUSD = p.priceUSD || 0;
-                  const retailBsS = p.priceBsS > 0 ? p.priceBsS : toBsSCeiling(p.priceUSD, exchangeRate);
+                  // 8.143: precio Bs.S derivado de USD × tasa vigente; snapshot solo como fallback
+                  const retailBsS = resolveBsSPrice(p.priceUSD, p.priceBsS, exchangeRate);
 
                   // Regla 2: ¿Tiene descuento de precio al mayor real configurado?
                   const hasRealWholesale = (p.hasWholesale || p.priceWholesaleUSD > 0) && p.priceWholesaleUSD > 0 && p.priceWholesaleUSD < retailUSD;
@@ -404,7 +405,8 @@ function CatalogPageContent() {
           <div className="catalog-mobile-view">
             {products.map((p) => {
               const retailUSD = p.priceUSD || 0;
-              const retailBsS = p.priceBsS > 0 ? p.priceBsS : toBsSCeiling(p.priceUSD, exchangeRate);
+              // 8.143: precio Bs.S derivado de USD × tasa vigente; snapshot solo como fallback
+              const retailBsS = resolveBsSPrice(p.priceUSD, p.priceBsS, exchangeRate);
 
               const hasRealWholesale = (p.hasWholesale || p.priceWholesaleUSD > 0) && p.priceWholesaleUSD > 0 && p.priceWholesaleUSD < retailUSD;
               const wholesaleUSD = hasRealWholesale ? p.priceWholesaleUSD : retailUSD;

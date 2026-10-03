@@ -123,8 +123,16 @@ public partial class PosViewModel : ObservableObject, IDisposable
         // Sync local property when exchange rate changes globally
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
         {
-            OnPropertyChanged(nameof(CurrentExchangeRate));
-            OnPropertyChanged(nameof(IsRateOutdated));
+            var vm = (PosViewModel)r;
+            vm.OnPropertyChanged(nameof(CurrentExchangeRate));
+            vm.OnPropertyChanged(nameof(IsRateOutdated));
+
+            // 8.143: los DTO de sugerencias no son observables; con una busqueda activa hay que
+            // re-ejecutarla para que el popup derive los Bs.S con la tasa nueva.
+            if (!string.IsNullOrWhiteSpace(vm.SearchText))
+            {
+                vm.ExecuteSearchAsync().SafeFireAndForget("PosViewModel.RateChangedResearch");
+            }
         });
 
         WeakReferenceMessenger.Default.Register<PaymentMethodsChangedMessage>(this, async (r, m) =>
@@ -376,9 +384,10 @@ public partial class PosViewModel : ObservableObject, IDisposable
                 {
                     foreach (var item in results)
                     {
-                        item.PriceBsS = item.PriceBsS > 0
-                        ? item.PriceBsS
-                        : Helpers.PricingHelper.ToBsSCeiling(item.PriceUSD, CurrentExchangeRate);
+                        // 8.143: derivar de USD x tasa vigente; el snapshot PriceBsS solo es fallback sin USD o sin tasa valida.
+                        item.PriceBsS = item.PriceUSD > 0 && CurrentExchangeRate > 0
+                            ? Helpers.PricingHelper.ToBsSCeiling(item.PriceUSD, CurrentExchangeRate)
+                            : item.PriceBsS;
                         Suggestions.Add(item);
                     }
                 }

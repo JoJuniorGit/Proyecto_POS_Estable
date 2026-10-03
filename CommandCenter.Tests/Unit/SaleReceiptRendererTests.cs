@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using Core.Helpers;
 using Sales.Module.Entities;
 using Sales.Module.Receipts;
 using Xunit;
@@ -50,7 +51,7 @@ public class SaleReceiptRendererTests
         var renderer = new SaleReceiptRenderer();
         var context = BuildContext();
 
-        var document = renderer.Render(context);
+        var document = renderer.Render(context, MoneyDisplayFormat.Venezuelan);
 
         Assert.NotNull(document.Bytes);
         Assert.NotEmpty(document.Bytes);
@@ -61,18 +62,33 @@ public class SaleReceiptRendererTests
     }
 
     [Fact]
-    public void SaleReceiptRenderer_Render_IncludesSnapshotAmounts()
+    public void SaleReceiptRenderer_Render_VenezuelanFormat_UsesEsVeNumberFormat()
     {
         var renderer = new SaleReceiptRenderer();
         var context = BuildContext();
 
-        var document = renderer.Render(context);
+        var document = renderer.Render(context, MoneyDisplayFormat.Venezuelan);
+        var content = Encoding.ASCII.GetString(document.Bytes!);
+
+        Assert.Contains("90210", content);
+        Assert.Contains("730,00", content);
+        Assert.Contains("73,0000", content);
+        Assert.Contains("RECIBO NO FISCAL", content);
+        Assert.Contains("Producto A", content);
+    }
+
+    [Fact]
+    public void SaleReceiptRenderer_Render_InternationalFormat_UsesInvariantNumberFormat()
+    {
+        var renderer = new SaleReceiptRenderer();
+        var context = BuildContext();
+
+        var document = renderer.Render(context, MoneyDisplayFormat.International);
         var content = Encoding.ASCII.GetString(document.Bytes!);
 
         Assert.Contains("90210", content);
         Assert.Contains("730.00", content);
         Assert.Contains("73.0000", content);
-        Assert.Contains("RECIBO NO FISCAL", content);
-        Assert.Contains("Producto A", content);
+        Assert.DoesNotContain("730,00", content);
     }
 }

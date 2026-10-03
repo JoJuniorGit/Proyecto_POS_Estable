@@ -271,23 +271,42 @@ public partial class ProductVariantsTests
         int taskCount = 10;
         var tasks = new List<Task>();
 
+        // 8.143: las conexiones se crean e inicializan SECUENCIALMENTE (dejando que EF las abra,
+        // lo que garantiza el registro de ef_add/ef_compare del provider SQLite); con apertura
+        // manual previa y primer uso en paralelo, la traducción de decimales en ExecuteUpdate
+        // podía fallar de forma intermitente ("no such function: ef_add") bajo carga de suite.
+        var taskConnections = new List<(Microsoft.Data.Sqlite.SqliteConnection Conn, InventoryDbContext Context, InventoryService Service)>();
         for (int i = 0; i < taskCount; i++)
         {
-            tasks.Add(Task.Run(async () =>
-            {
-                using var taskConn = new Microsoft.Data.Sqlite.SqliteConnection(connString);
-                taskConn.Open();
-                var options = new DbContextOptionsBuilder<InventoryDbContext>()
-                    .UseSqlite(taskConn)
-                    .Options;
-                using var taskContext = new InventoryDbContext(options);
-                var taskService = new InventoryService(taskContext, userMock.Object);
-
-                await taskService.UpdateStockAsync(variantId, -2m, "Venta concurrente de bolsa", allowNegativeStock: false);
-            }));
+            var taskConn = new Microsoft.Data.Sqlite.SqliteConnection(connString);
+            var options = new DbContextOptionsBuilder<InventoryDbContext>()
+                .UseSqlite(taskConn)
+                .Options;
+            var taskContext = new InventoryDbContext(options);
+            await taskContext.Database.OpenConnectionAsync();
+            taskConnections.Add((taskConn, taskContext, new InventoryService(taskContext, userMock.Object)));
         }
 
-        await Task.WhenAll(tasks);
+        try
+        {
+            foreach (var (_, taskContext, taskService) in taskConnections)
+            {
+                tasks.Add(Task.Run(async () =>
+                {
+                    await taskService.UpdateStockAsync(variantId, -2m, "Venta concurrente de bolsa", allowNegativeStock: false);
+                }));
+            }
+
+            await Task.WhenAll(tasks);
+        }
+        finally
+        {
+            foreach (var (taskConn, taskContext, _) in taskConnections)
+            {
+                taskContext.Dispose();
+                taskConn.Dispose();
+            }
+        }
 
         using (var verifyDb = new InventoryDbContext(masterOptions))
         {

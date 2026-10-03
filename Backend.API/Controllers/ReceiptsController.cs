@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Core.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Sales.Module.Receipts;
@@ -15,12 +16,14 @@ public class ReceiptsController : ControllerBase
     private readonly ISalesReceiptService _receiptService;
     private readonly IReceiptDocumentRenderer _renderer;
     private readonly Core.Interfaces.ICurrentUserService _currentUserService;
+    private readonly Core.Interfaces.ISystemSettingsService _settingsService;
 
-    public ReceiptsController(ISalesReceiptService receiptService, IReceiptDocumentRenderer renderer, Core.Interfaces.ICurrentUserService currentUserService)
+    public ReceiptsController(ISalesReceiptService receiptService, IReceiptDocumentRenderer renderer, Core.Interfaces.ICurrentUserService currentUserService, Core.Interfaces.ISystemSettingsService settingsService)
     {
         _receiptService = receiptService;
         _renderer = renderer;
         _currentUserService = currentUserService;
+        _settingsService = settingsService;
     }
 
     [HttpGet("{saleId:int}/receipt")]
@@ -54,7 +57,17 @@ public class ReceiptsController : ControllerBase
             return this.ApiNotFound("No se pudo generar el contexto de comprobante.");
         }
 
-        var document = _renderer.Render(context);
+        // 8.143: el recibo honra el ajuste de formato de moneda; best-effort (si falla, Venezuelan).
+        string? currencyFormat = null;
+        try
+        {
+            currencyFormat = await _settingsService.GetSettingAsync("CurrencyFormat");
+        }
+        catch
+        {
+        }
+
+        var document = _renderer.Render(context, MoneyFormat.ParseFormat(currencyFormat));
         return File(document.Bytes!, "application/pdf", document.FileName);
     }
 

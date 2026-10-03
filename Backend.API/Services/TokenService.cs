@@ -46,10 +46,10 @@ public class TokenService : ITokenService
         _securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
         _issuer = configuration["JwtSettings:Issuer"] ?? "SolucionesPos";
         _audience = configuration["JwtSettings:Audience"] ?? "PosClient";
-        var expiryMinutesStr = configuration["JwtSettings:ExpiryMinutes"] ?? "120";
+        var expiryMinutesStr = configuration["JwtSettings:ExpiryMinutes"] ?? "720";
         if (!int.TryParse(expiryMinutesStr, out var expiryMinutes) || expiryMinutes <= 0)
         {
-            expiryMinutes = 120;
+            expiryMinutes = 720;
         }
         _expiryMinutes = expiryMinutes;
     }

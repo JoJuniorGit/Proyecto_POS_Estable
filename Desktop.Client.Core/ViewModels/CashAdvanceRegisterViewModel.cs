@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Core.Common;
+using Core.Helpers;
 using Desktop.Client.Services;
 using System;
 using System.Collections.Generic;
@@ -145,7 +146,7 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
         }
         else if (RequestedAmountBsS > AvailableCashLocal)
         {
-            ErrorMessage = $"El monto supera el efectivo en caja ({AvailableCashLocal:N2} Bs.S).";
+            ErrorMessage = $"El monto supera el efectivo en caja ({MoneyFormat.N2(AvailableCashLocal)} Bs.S).";
         }
         else if (SelectedPaymentMethod == null)
         {

@@ -17,6 +17,11 @@
         Title="{Binding DialogTitle}" Height="720" Width="800"
         WindowStartupLocation="CenterScreen" ResizeMode="CanResize">
     
+    <!-- 8.143: guardar/cerrar el modal con Ctrl+Enter; Enter ya no cierra la ventana. -->
+    <Window.InputBindings>
+        <KeyBinding Modifiers="Control" Key="Enter" Command="{Binding SaveCommand}"/>
+    </Window.InputBindings>
+
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
@@ -462,7 +467,8 @@
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="Cancelar" Command="{Binding CancelCommand}" Style="{DynamicResource MaterialDesignFlatButton}" Margin="0,0,15,0" IsCancel="True" TabIndex="13"/>
-                <Button Content="Guardar" Command="{Binding SaveCommand}" IsEnabled="{Binding UserSession.CanMutateCatalog}" Style="{DynamicResource MaterialDesignRaisedButton}" IsDefault="True" TabIndex="12"/>
+                <!-- 8.143: sin IsDefault — Enter ya no guarda/cierra; el atajo es Ctrl+Enter (InputBindings). -->
+                <Button Content="Guardar" Command="{Binding SaveCommand}" IsEnabled="{Binding UserSession.CanMutateCatalog}" Style="{DynamicResource MaterialDesignRaisedButton}" TabIndex="12"/>
             </StackPanel>
         </Grid>
     </Grid>

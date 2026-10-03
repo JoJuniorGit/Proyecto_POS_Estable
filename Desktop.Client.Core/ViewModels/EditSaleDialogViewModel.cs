@@ -73,7 +73,7 @@ public partial class EditSaleDialogViewModel : ObservableObject, IDisposable
         Title = $"Editar Productos del Pedido #{sale.Id}";
         string customerName = sale.CustomerName ?? sale.Customer?.Name ?? "Consumidor Final";
         string customerCedula = sale.CustomerCedula ?? sale.Customer?.CedulaOrRif ?? "-";
-        Subheader = $"Cliente: {customerName} ({customerCedula}) | Total Abonado: ${sale.TotalPaidUSD:N2} USD";
+        Subheader = $"Cliente: {customerName} ({customerCedula}) | Total Abonado: ${CurrencyDisplay.Number(sale.TotalPaidUSD)} USD";
 
         _items.Clear();
         if (sale.Items != null)
@@ -216,7 +216,7 @@ public partial class EditSaleDialogViewModel : ObservableObject, IDisposable
         if (newTotalUsd < _sale.TotalPaidUSD - 0.05m)
         {
             HasValidationError = true;
-            ValidationMessage = $"El nuevo total del pedido (${newTotalUsd:N2}) no puede ser menor al monto ya abonado por el cliente (${_sale.TotalPaidUSD:N2}).";
+            ValidationMessage = $"El nuevo total del pedido (${CurrencyDisplay.Number(newTotalUsd)}) no puede ser menor al monto ya abonado por el cliente (${CurrencyDisplay.Number(_sale.TotalPaidUSD)}).";
             return;
         }
 
@@ -240,9 +240,9 @@ public partial class EditSaleDialogViewModel : ObservableObject, IDisposable
         decimal newTotalBsS = _items.Sum(i => i.SubtotalBsS);
         decimal remainingUsd = Math.Max(0m, newTotalUsd - _sale.TotalPaidUSD);
 
-        NewTotalText = $"${newTotalUsd:N2} (Bs.S {newTotalBsS:N2})";
-        TotalPaidText = $"${_sale.TotalPaidUSD:N2}";
-        RemainingText = $"${remainingUsd:N2}";
+        NewTotalText = $"${CurrencyDisplay.Number(newTotalUsd)} (Bs.S {CurrencyDisplay.Number(newTotalBsS)})";
+        TotalPaidText = $"${CurrencyDisplay.Number(_sale.TotalPaidUSD)}";
+        RemainingText = $"${CurrencyDisplay.Number(remainingUsd)}";
     }
 
     public event EventHandler? CloseRequested;

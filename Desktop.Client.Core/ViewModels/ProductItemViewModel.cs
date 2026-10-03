@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Core.DTOs;
+using Desktop.Client.Services;
 using System;
 
 namespace Desktop.Client.ViewModels;
@@ -91,9 +92,9 @@ public partial class ProductItemViewModel : ObservableObject
 
     public decimal EffectivePriceWholesaleUSD => HasRealWholesale ? PriceWholesaleUSD : PriceUSD;
 
-    public decimal EffectivePriceWholesaleBsS => HasRealWholesale 
-        ? (PriceWholesaleUSD > 0 ? Helpers.PricingHelper.ToBsSCeiling(PriceWholesaleUSD, _exchangeRateService.CurrentRate) : PriceBsS) 
-        : PriceBsS;
+    // 8.143: el Bs.S mostrado se deriva siempre de USD x tasa vigente; el snapshot PriceBsS
+    // queda solo como fallback cuando no hay USD o la tasa no es valida.
+    public decimal EffectivePriceWholesaleBsS => BsSFromRateOrFallback(EffectivePriceWholesaleUSD, PriceBsS);
 
     public decimal EffectiveMinWholesaleQuantity => HasRealWholesale ? (MinWholesaleQuantity > 0 ? MinWholesaleQuantity : 1m) : 1m;
 
@@ -122,18 +123,23 @@ public partial class ProductItemViewModel : ObservableObject
 
     public string WholesalePriceColor => HasRealWholesale ? "#6366F1" : "#D97706";
 
-    public string DisplayCost => (IsGroupHeader && HasIndependentPricing) ? "—" : $"${Cost:N2}";
+    public string DisplayCost => (IsGroupHeader && HasIndependentPricing) ? "—" : $"${CurrencyDisplay.Number(Cost)}";
+
+    // 8.143: todo precio Bs.S mostrado se deriva de USD x tasa vigente (ceiling 2 decimales).
+    // El snapshot persistido solo se usa como fallback sin USD o sin tasa valida.
+    private decimal BsSFromRateOrFallback(decimal usdAmount, decimal fallbackBsS)
+        => usdAmount > 0 && _exchangeRateService.CurrentRate > 0
+            ? Helpers.PricingHelper.ToBsSCeiling(usdAmount, _exchangeRateService.CurrentRate)
+            : fallbackBsS;
 
     public string DisplayRetailPrice
     {
         get
         {
             if (IsGroupHeader && HasIndependentPricing) return "—";
-            if (SelectedCurrency == "USD") return $"${PriceUSD:N2}";
-            decimal bss = PriceBsS > 0 
-                ? PriceBsS 
-                : (_exchangeRateService.CurrentRate > 0 ? Helpers.PricingHelper.ToBsSCeiling(PriceUSD, _exchangeRateService.CurrentRate) : 0m);
-            return $"Bs.S {bss:N2}";
+            if (SelectedCurrency == "USD") return $"${CurrencyDisplay.Number(PriceUSD)}";
+            decimal bss = BsSFromRateOrFallback(PriceUSD, PriceBsS);
+            return $"Bs.S {CurrencyDisplay.Number(bss)}";
         }
     }
 
@@ -142,11 +148,9 @@ public partial class ProductItemViewModel : ObservableObject
         get
         {
             if (IsGroupHeader && HasIndependentPricing) return "—";
-            if (SelectedCurrency == "USD") return $"${EffectivePriceWholesaleUSD:N2}";
-            decimal bss = EffectivePriceWholesaleBsS > 0 
-                ? EffectivePriceWholesaleBsS 
-                : (_exchangeRateService.CurrentRate > 0 ? Helpers.PricingHelper.ToBsSCeiling(EffectivePriceWholesaleUSD, _exchangeRateService.CurrentRate) : 0m);
-            return $"Bs.S {bss:N2}";
+            if (SelectedCurrency == "USD") return $"${CurrencyDisplay.Number(EffectivePriceWholesaleUSD)}";
+            decimal bss = BsSFromRateOrFallback(EffectivePriceWholesaleUSD, PriceBsS);
+            return $"Bs.S {CurrencyDisplay.Number(bss)}";
         }
     }
 
@@ -209,11 +213,31 @@ public partial class ProductItemViewModel : ObservableObject
         OnPropertyChanged(nameof(DisplayWholesalePrice));
     }
 
+    // 8.143: re-notifica los displays formateados cuando el ajuste de moneda cambia en caliente.
+    public void NotifyCurrencyFormatChanged()
+    {
+        OnPropertyChanged(nameof(DisplayCost));
+        OnPropertyChanged(nameof(DisplayRetailPrice));
+        OnPropertyChanged(nameof(DisplayWholesalePrice));
+        OnPropertyChanged(nameof(EffectivePriceWholesaleBsS));
+    }
+
     public void UpdateExchangeRate()
     {
         if (_isCalculating) return;
-        PriceBsS = Helpers.PricingHelper.ToBsSCeiling(PriceUSD, _exchangeRateService.CurrentRate);
-        PriceWholesaleBsS = Helpers.PricingHelper.ToBsSCeiling(PriceWholesaleUSD, _exchangeRateService.CurrentRate);
+
+        // 8.143: no pisar precios Bs.S-only con 0; con USD y tasa valida, recalcular siempre.
+        if (PriceUSD > 0 && _exchangeRateService.CurrentRate > 0)
+        {
+            PriceBsS = Helpers.PricingHelper.ToBsSCeiling(PriceUSD, _exchangeRateService.CurrentRate);
+        }
+
+        if (PriceWholesaleUSD > 0 && _exchangeRateService.CurrentRate > 0)
+        {
+            PriceWholesaleBsS = Helpers.PricingHelper.ToBsSCeiling(PriceWholesaleUSD, _exchangeRateService.CurrentRate);
+        }
+
+        OnPropertyChanged(nameof(EffectivePriceWholesaleBsS));
         OnPropertyChanged(nameof(DisplayRetailPrice));
         OnPropertyChanged(nameof(DisplayWholesalePrice));
     }

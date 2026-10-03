@@ -163,6 +163,15 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             }
         });
 
+        // 8.143: cambio en caliente del ajuste de moneda; re-notificar los displays de las filas.
+        WeakReferenceMessenger.Default.Register<CurrencyFormatChangedMessage>(this, (r, m) =>
+        {
+            foreach (var product in Products)
+            {
+                product.NotifyCurrencyFormatChanged();
+            }
+        });
+
         WeakReferenceMessenger.Default.Register<CatalogUpdatedMessage>(this, async (r, m) =>
         {
             await MergeProductsAsync();

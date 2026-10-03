@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Builders;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using Sales.Module.Services;
@@ -24,6 +25,29 @@ namespace CommandCenter.Tests.Integration;
 [Collection(PostgresRealCollection.Name)]
 public class DailyClosureRetryIntegrationTests
 {
+    // 8.143: helpers duplicados a propósito desde ConcurrencyCapacityTests (patrón del repo,
+    // FaultToleranceTests también los duplica) para aislar cada corrida en su propia BD.
+    private static async Task<string> CreateIsolatedDatabaseAsync(string baseConnString, string dbName)
+    {
+        var masterCs = new NpgsqlConnectionStringBuilder(baseConnString) { Database = "postgres" }.ConnectionString;
+        await using var master = new NpgsqlConnection(masterCs);
+        await master.OpenAsync();
+        await using var create = master.CreateCommand();
+        create.CommandText = $"CREATE DATABASE \"{dbName}\"";
+        await create.ExecuteNonQueryAsync();
+        return dbName;
+    }
+
+    private static async Task DropIsolatedDatabaseAsync(string baseConnString, string dbName)
+    {
+        var masterCs = new NpgsqlConnectionStringBuilder(baseConnString) { Database = "postgres" }.ConnectionString;
+        await using var master = new NpgsqlConnection(masterCs);
+        await master.OpenAsync();
+        await using var drop = master.CreateCommand();
+        drop.CommandText = $"DROP DATABASE IF EXISTS \"{dbName}\" WITH (FORCE)";
+        await drop.ExecuteNonQueryAsync();
+    }
+
     [Fact]
     public async Task CreateClosureFromCommandAsync_UnderRetryingStrategyAndSerializableTransaction_CreatesClosureCleanly()
     {
@@ -39,48 +63,59 @@ public class DailyClosureRetryIntegrationTests
             return;
         }
 
-        using var context = TestDatabaseFactory.CreatePostgreSqlSalesDbContextWithRetry();
-        Assert.NotNull(context);
-        await TestDatabaseFactory.SeedStandardSalesDataAsync(context!);
+        // 8.143: BD aislada por corrida para que un lastClosure previo de pos_test no rompa el rerun local.
+        var dbName = "pos_retry_" + Guid.NewGuid().ToString("N")[..8];
+        var isolated = new NpgsqlConnectionStringBuilder(connStr) { Database = dbName }.ConnectionString;
 
-        var puntoDeVenta = await context!.PaymentMethods.SingleAsync(p => p.Name == "Punto de Venta");
-        var puntoDeVentaId = puntoDeVenta.Id;
+        try
+        {
+            await CreateIsolatedDatabaseAsync(connStr, dbName);
+            using var context = TestDatabaseFactory.CreatePostgreSqlSalesDbContextWithRetry(isolated);
+            await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
 
-        var saleBase = DateTime.UtcNow.Date.AddDays(1).AddHours(9);
-        int idSuffix = Environment.TickCount & 0x3FFFF;
-        context.Sales.Add(new Sale { Id = idSuffix + 500, Status = SaleStatus.Completed, Date = saleBase.AddHours(1) });
-        context.SalePayments.Add(new SalePayment { SaleId = idSuffix + 500, PaymentMethodId = 1, AmountBsS = 1000m });
-        context.Sales.Add(new Sale { Id = idSuffix + 501, Status = SaleStatus.Completed, Date = saleBase.AddHours(2) });
-        context.SalePayments.Add(new SalePayment { SaleId = idSuffix + 501, PaymentMethodId = puntoDeVentaId, AmountBsS = 2500m });
-        await context.SaveChangesAsync();
+            var puntoDeVenta = await context.PaymentMethods.SingleAsync(p => p.Name == "Punto de Venta");
+            var puntoDeVentaId = puntoDeVenta.Id;
 
-        var command = new CreateClosureCommand(
-            saleBase.AddHours(3).AddMinutes(30),
-            "Admin Auditor",
-            "Cierre bajo strategy + Serializable (8.106-C1)",
-            new List<DeclaredPaymentAmount>
+            var saleBase = DateTime.UtcNow.Date.AddDays(1).AddHours(9);
+            int idSuffix = Environment.TickCount & 0x3FFFF;
+            context.Sales.Add(new Sale { Id = idSuffix + 500, Status = SaleStatus.Completed, Date = saleBase.AddHours(1) });
+            context.SalePayments.Add(new SalePayment { SaleId = idSuffix + 500, PaymentMethodId = 1, AmountBsS = 1000m });
+            context.Sales.Add(new Sale { Id = idSuffix + 501, Status = SaleStatus.Completed, Date = saleBase.AddHours(2) });
+            context.SalePayments.Add(new SalePayment { SaleId = idSuffix + 501, PaymentMethodId = puntoDeVentaId, AmountBsS = 2500m });
+            await context.SaveChangesAsync();
+
+            var command = new CreateClosureCommand(
+                saleBase.AddHours(3).AddMinutes(30),
+                "Admin Auditor",
+                "Cierre bajo strategy + Serializable (8.106-C1)",
+                new List<DeclaredPaymentAmount>
+                {
+                    new(1, 20m),
+                    new(puntoDeVentaId, 2500m)
+                });
+
+            var closureService = CommandCenter.Tests.TestHelpers.DailyClosureTestHelper.CreateService(context);
+
+            var result = await context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
             {
-                new(1, 20m),
-                new(puntoDeVentaId, 2500m)
+                await using var tx = await context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+                var created = await closureService.CreateClosureFromCommandAsync(command, CancellationToken.None);
+                await tx.CommitAsync();
+                return created;
             });
 
-        var closureService = CommandCenter.Tests.TestHelpers.DailyClosureTestHelper.CreateService(context);
+            var saved = await context.DailyClosures.AsNoTracking().FirstAsync(dc => dc.Id == result.ClosureId);
+            Assert.True(saved.Id > 0);
+            Assert.Equal(3500m, saved.TotalExpectedBsS);
+            Assert.Equal(3500m, saved.TotalActualBsS);
+            Assert.Equal(0m, saved.TotalDifferenceBsS);
 
-        var result = await context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            var totalsAfter = await closureService.GetExpectedTotalsByPaymentMethodAsync(saleBase.AddHours(3).AddMinutes(35));
+            Assert.All(totalsAfter, t => Assert.Equal(0m, t.ExpectedAmountBsS));
+        }
+        finally
         {
-            await using var tx = await context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
-            var created = await closureService.CreateClosureFromCommandAsync(command, CancellationToken.None);
-            await tx.CommitAsync();
-            return created;
-        });
-
-        var saved = await context.DailyClosures.AsNoTracking().FirstAsync(dc => dc.Id == result.ClosureId);
-        Assert.True(saved.Id > 0);
-        Assert.Equal(3500m, saved.TotalExpectedBsS);
-        Assert.Equal(3500m, saved.TotalActualBsS);
-        Assert.Equal(0m, saved.TotalDifferenceBsS);
-
-        var totalsAfter = await closureService.GetExpectedTotalsByPaymentMethodAsync(saleBase.AddHours(3).AddMinutes(35));
-        Assert.All(totalsAfter, t => Assert.Equal(0m, t.ExpectedAmountBsS));
+            await DropIsolatedDatabaseAsync(connStr, dbName);
+        }
     }
 }

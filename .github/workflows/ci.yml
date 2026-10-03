@@ -122,8 +122,8 @@ jobs:
 
   frontend-lint-and-test:
     name: Frontend Lint & Test (React 19 + Node.js)
-    # 8.128: Node 24 (npm 11) alineado con el lockfile versionado; npm 10 rechaza
-    # la resolucion de dependencias opcionales @emnapi/* con EUSAGE.
+    # 8.143: el runner usa Node 24 (npm 12); el lockfile se regeneró con npm 12.1.0 porque
+    # las versiones previas (10/11) rechazaban las dependencias opcionales @emnapi/* con EUSAGE.
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

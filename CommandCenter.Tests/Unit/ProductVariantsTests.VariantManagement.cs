@@ -374,8 +374,9 @@ public partial class ProductVariantsTests
             PriceUSD = 3.00m
         };
 
-        Assert.Equal("150.50", dto.DisplayPriceBsS);
-        Assert.Equal("$3.00", dto.DisplayPriceUSD);
+        // 8.143: convención es-VE determinista (MoneyFormat), independiente de la cultura del SO.
+        Assert.Equal("150,50", dto.DisplayPriceBsS);
+        Assert.Equal("$3,00", dto.DisplayPriceUSD);
     }
 
 

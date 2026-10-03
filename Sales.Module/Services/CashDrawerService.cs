@@ -288,7 +288,7 @@ public class CashDrawerService : ICashDrawerService
                     var currentBalance = await GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
                     if (currentBalance < amountLocal)
                     {
-                        throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para realizar el egreso. Disponible: {currentBalance:N2} Bs.S, Requerido: {amountLocal:N2} Bs.S.");
+                        throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para realizar el egreso. Disponible: {MoneyFormat.N2(currentBalance)} Bs.S, Requerido: {MoneyFormat.N2(amountLocal)} Bs.S.");
                     }
                 }
 
@@ -382,7 +382,7 @@ public class CashDrawerService : ICashDrawerService
         decimal available = currentBalanceDb + pendingCashIncomeBsS;
         if (available < changeBsS)
         {
-            throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para registrar el vuelto de la venta #{saleId}. Disponible: {available:N2} Bs.S, Vuelto requerido: {changeBsS:N2} Bs.S.");
+            throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para registrar el vuelto de la venta #{saleId}. Disponible: {MoneyFormat.N2(available)} Bs.S, Vuelto requerido: {MoneyFormat.N2(changeBsS)} Bs.S.");
         }
 
         var changeTx = new CashTransaction

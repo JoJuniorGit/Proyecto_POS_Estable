@@ -267,6 +267,7 @@
                               VirtualizingStackPanel.IsVirtualizing="True"
                               VirtualizingStackPanel.VirtualizationMode="Recycling"
                               VirtualizingPanel.ScrollUnit="Pixel"
+                              FrozenColumnCount="1"
                               ScrollViewer.IsDeferredScrollingEnabled="False"
                               BorderThickness="0"
                               Background="Transparent"
@@ -292,7 +293,31 @@
                         </DataGrid.Style>
 
                         <DataGrid.Columns>
+                            <!-- 8.143: el eliminar va primero y con FrozenColumnCount=1: queda fijo al extremo
+                                 izquierdo y visible siempre, aunque el carrito tenga scroll horizontal. -->
+                            <DataGridTemplateColumn Width="46">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{DynamicResource MaterialDesignToolButton}"
+                                                Padding="0"
+                                                Width="28" Height="28"
+                                                ToolTip="Eliminar producto"
+                                                HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                Margin="6,0,0,0"
+                                                Command="{Binding Data.Cart.RemoveItemCommand, Source={StaticResource Proxy}}"
+                                                CommandParameter="{Binding}">
+                                            <materialDesign:PackIcon Kind="TrashCanOutline" Width="16" Height="16" Foreground="#94A3B8"/>
+                                        </Button>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
                             <DataGridTemplateColumn Header="Producto" Width="*" MinWidth="120" MaxWidth="350">
+                                <DataGridTemplateColumn.HeaderTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.HeaderTemplate>
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,2">
@@ -307,6 +332,11 @@
                             </DataGridTemplateColumn>
                             
                             <DataGridTemplateColumn Header="Cant." Width="Auto" MinWidth="80">
+                                <DataGridTemplateColumn.HeaderTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.HeaderTemplate>
                                 <DataGridTemplateColumn.HeaderStyle>
                                     <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
                                         <Setter Property="HorizontalContentAlignment" Value="Center"/>
@@ -335,16 +365,21 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTemplateColumn Header="Precio" IsReadOnly="True" Width="Auto" MinWidth="110" MaxWidth="160">
+                                <DataGridTemplateColumn.HeaderTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.HeaderTemplate>
                                 <DataGridTemplateColumn.HeaderStyle>
                                     <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
-                                        <Setter Property="HorizontalContentAlignment" Value="Right"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Center"/>
                                     </Style>
                                 </DataGridTemplateColumn.HeaderStyle>
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding UnitPriceBsS, StringFormat='{}{0:N2}'}" 
                                                    FontWeight="Bold" FontSize="14" 
-                                                   HorizontalAlignment="Right" VerticalAlignment="Center" 
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" 
                                                    Typography.NumeralAlignment="Tabular"
                                                    Margin="0,2"/>
                                     </DataTemplate>
@@ -352,9 +387,14 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTemplateColumn Header="Total" IsReadOnly="True" Width="Auto" MinWidth="110" MaxWidth="160">
+                                <DataGridTemplateColumn.HeaderTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.HeaderTemplate>
                                 <DataGridTemplateColumn.HeaderStyle>
                                     <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
-                                        <Setter Property="HorizontalContentAlignment" Value="Right"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Center"/>
                                     </Style>
                                 </DataGridTemplateColumn.HeaderStyle>
                                 <DataGridTemplateColumn.CellTemplate>
@@ -362,29 +402,13 @@
                                         <TextBlock Text="{Binding SubtotalBsS, StringFormat='{}{0:N2}'}" 
                                                    FontWeight="Bold" FontSize="15" 
                                                    Foreground="{DynamicResource PrimaryHueMidBrush}" 
-                                                   HorizontalAlignment="Right" VerticalAlignment="Center" 
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" 
                                                    Typography.NumeralAlignment="Tabular"
                                                    Margin="0,2"/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
-                            <!-- Column: Delete Action Button per Row -->
-                            <DataGridTemplateColumn Width="46">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Button Style="{DynamicResource MaterialDesignToolButton}"
-                                                Padding="0"
-                                                Width="28" Height="28"
-                                                ToolTip="Eliminar producto"
-                                                HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                Command="{Binding Data.Cart.RemoveItemCommand, Source={StaticResource Proxy}}"
-                                                CommandParameter="{Binding}">
-                                            <materialDesign:PackIcon Kind="TrashCanOutline" Width="16" Height="16" Foreground="#94A3B8"/>
-                                        </Button>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>

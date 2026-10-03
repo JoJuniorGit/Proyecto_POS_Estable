@@ -11449,16 +11449,10 @@ C. CORRECCIONES A UN ANÁLISIS EXTERNO (descartadas por improcedentes)
   el gate de versión (pre-routing), no el pipeline de errores.
 - "Upgrade de paquete vulnerable": no hay vulnerabilidades; era falso positivo del gate.
 
-D. DEUDA RESIDUAL (fuera de alcance, sin cobertura en CI)
-- Misma clase de formato por cultura en: ClosurePdfGenerator, DailyClosureViewModel,
-  CashDrawerViewModel línea 426 y mensajes de caja (CashAdvanceCoordinator/CashDrawerService).
-  En host no-es-VE, el PDF del mismo cierre puede diferir del TXT ya normalizado.
-- Seed PG: Id=2 sigue "Card"/IsCash=false (InMemory usa "Efectivo Bs.S"/true) y
-  "Pago Movil" sin tilde; no afecta la clasificación de moneda (no contienen "USD").
-- Convergencia del seed: en un pos_test local "sucio" (fila canónica soft-deleted) puede
-  no restaurar IsActive/IsDeleted; CI recrea la base por run (ci.yml). Recomendación:
-  recrear pos_test local si se reutiliza.
-- Comentario 8.128 del job frontend en ci.yml menciona "npm 11"; el runner corre npm 12.
+D. DEUDA RESIDUAL
+Cerrada al 2026-09-27 (adendas F..N): comprobantes de cierre y displays siguen el ajuste de moneda;
+DailyClosureRetryIntegrationTests aislado en BD propia (sin recrear pos_test); sin literales "0,00"
+fijos en el PDF; flake de concurrencia SQLite (ef_add) estabilizado. Sin deuda residual abierta.
 
 E. ARCHIVOS
 - Fixes: Core/Helpers/MoneyFormat.cs (nuevo), Desktop.Client.Core/ViewModels/CashDrawerViewModel.cs,
@@ -11467,4 +11461,114 @@ E. ARCHIVOS
   CommandCenter.Tests/Builders/TestDatabaseFactory.cs, CommandCenter.Tests/Integration/CashAdvanceEnvelopeTests.cs,
   CommandCenter.Tests/Integration/WebApplicationFactorySmokeTests.cs, .github/workflows/ci.yml,
   Web.Frontend/package-lock.json.
+
+F. ADENDA (2026-09-27) — CIERRE DE RESIDUALES DE FORMATO (misma fecha)
+- Resueltos con MoneyFormat es-VE: ClosurePdfGenerator, DailyClosureViewModel (incluido
+  el caso cero de DifferenceDisplay), CashDrawerViewModel:426, CashAdvanceCoordinator,
+  CashDrawerService (mensajes de saldo) y CashAdvanceRegisterViewModel.
+- Seed PG endurecido: la convergencia restaura también IsActive/IsDeleted de los Id
+  canónicos. Validado end-to-end: Id=1 corrompido a "Cash"/inactivo/soft-deleted →
+  restaurado a "Efectivo USD" y el test de cierre pasó sobre esa base.
+- Tests con host en-US forzado: VM de cierre (asertos exactos) y PDF de cierre (content
+  stream ASCII extraíble; rojo→verde real). Suite .NET completa re-verificada contra
+  PostgreSQL real: 1452/1452; build 0/0.
+
+G. ADENDA 2 (2026-09-27) — LA FAMILIA PRECIOS/CHECKOUT HONRA EL AJUSTE DE MONEDA
+- Decisión de producto: honrar el ajuste existente Venezuelan/International
+  (SettingsController, clave "CurrencyFormat", default Venezuelan) — fix de raíz.
+- Core: MoneyDisplayFormat + MoneyFormat.Number/ParseFormat (aditivo; N0/N2 del cierre
+  intactos).
+- WPF: CurrencyDisplay (estado activo) sincronizado en App.OnStartup y Settings
+  (carga/cambio/catch); aplicado a ProductItemViewModel, EditSaleDialogViewModel,
+  PendingPickupsViewModel, InventoryViewModel.Operations y CurrencyMultiplierConverter.
+- Server: el recibo de venta PDF (por request) y el recibo encolado
+  (ReceiptPrintBackgroundService, scope propio por documento) siguen el ajuste; el nombre
+  de archivo usa fecha InvariantCulture. Evidencia: "730,00"/"73,0000" (VE) vs
+  "730.00"/"73.0000" (INT) en el mismo PDF.
+- Tests: rojo→verde real (2 fallos deterministas → 94/94 focal); suite .NET completa
+  1470/1470 contra PostgreSQL real; build 0/0.
+
+H. ADENDA 3 (2026-09-27) — PRECIOS EN Bs.S REACTIVOS A LA TASA (catálogo y buscador WPF)
+- Causa raíz: los displays preferían el snapshot persistido PriceBsS (fijado al alta con la
+  tasa de ese momento) en vez de derivar USD × tasa vigente; el F5 del catálogo recargaba
+  los DTO con el snapshot (pisando el recálculo del handler de tasa) y el buscador del POS
+  no regeneraba sugerencias al cambiar la tasa (DTO no observables); UpdateExchangeRate
+  podía pisar con 0 los productos sin USD.
+- Fix (rate-first con fallback al snapshot solo sin USD o sin tasa válida): ProductItemViewModel
+  (DisplayRetailPrice / DisplayWholesalePrice / EffectivePriceWholesaleBsS + UpdateExchangeRate
+  con guardas), PosViewModel (derivación en ExecuteSearchAsync + re-búsqueda al
+  ExchangeRateChangedMessage con búsqueda activa) y VariantSelectionViewModel.BasePriceBsS.
+- Tests: rojo→verde real (6 tests rate-first fallando → 106/106 focal; incluye re-search
+  asíncrono con polling acotado y limpieza del bus). Suite .NET completa: 1478/1478 contra
+  PostgreSQL real; build 0/0.
+
+I. ADENDA 4 (2026-09-27) — PRECIOS Bs.S REACTIVOS A LA TASA EN LA WEB
+- Helper canónico `resolveBsSPrice` en Web.Frontend/src/utils/formatters.js (rate-first con
+  fallback al snapshot solo sin USD o sin tasa válida) y aplicación en CatalogPage (desktop
+  y móvil), SuggestionList (buscador del POS) y VariantSelectorModal; `formatProductDisplayPrice`
+  alineado al mismo criterio. La web ya re-renderiza con el contexto de tasa, así que el fix
+  es únicamente la derivación (sin plumbing extra).
+- Tests: rojo→verde real (6 fallos: 1 regresión de formatProductDisplayPrice + 5 de
+  resolveBsSPrice → 293/293); oxlint 0 diagnósticos; build OK. Bundle regenerado en
+  Backend.API/wwwroot (convención del repo).
+
+J. ADENDA 5 (2026-09-27) — CIERRE DE RESIDUALES DE LA SECCIÓN D
+- Web escáner: el quick-info del producto encontrado (BarcodeScannerModal) deriva el precio de
+  USD × tasa vigente (useExchangeRate + ref para los loops de cámara + resolveBsSPrice); las
+  tarjetas de "últimos escaneados" quedan en contexto de venta (derivan del carrito). npm test
+  293/293; oxlint 0; bundle regenerado.
+- Refresco live del formato (WPF): nuevo CurrencyFormatChangedMessage emitido desde Settings y
+  desde el SignalR OnCurrencyFormatUpdated (ExchangeRateService); re-notifican CashDrawerViewModel,
+  InventoryViewModel (+ ProductItemViewModel.NotifyCurrencyFormatChanged) y DailyClosureViewModel
+  (+ ClosureDetailRow). Los displays de Caja/Cierre pasan de MoneyFormat fijo a CurrencyDisplay
+  (default Venezuelan byte-idéntico a los strings previos; los comprobantes server-side siguen es-VE).
+- ProductQuickInfoDto: DisplayPriceBsS/DisplayPriceUSD pasan a MoneyFormat es-VE (sin consumidores
+  de UI; solo tests).
+- Arranque WPF: la carga del ajuste se acota a 2 s (WaitAsync + catch TimeoutException) — un
+  backend caído ya no demora MainWindow.Show().
+- Verificación: suite .NET 1481/1481 contra PostgreSQL real (3 tests nuevos); build 0/0.
+
+K. ADENDA 6 (2026-09-27) — FEEDBACK AL ESCANEAR CÓDIGO DESCONOCIDO (WPF)
+- Causa: AddProductByCodeAsync (escáner wedge del POS) retornaba en silencio cuando el código
+  no correspondía a ningún producto — no-op sin feedback para el cajero.
+- Fix: advertencia explícita "Producto no encontrado — El código {code} no corresponde a ningún
+  producto." (IDialogService, mismo canal que el resto de los avisos del POS). El producto de
+  adelanto de efectivo conserva su no-op deliberado (tiene flujo propio); la búsqueda por teclado
+  ya mostraba placeholder y la ventana de escáner su tarjeta de estado (sin cambios).
+- Tests: 2 nuevos (warning en no-encontrado + happy path agrega sin warning). Suite .NET:
+  1483/1483 contra PostgreSQL real; build 0/0.
+
+L. ADENDA 7 (2026-09-27) — CIERRE DE TRIVIALES DE LA SECCIÓN D
+- Seed PG: los métodos 2..5 quedan espejo exacto del fixture InMemory ("Efectivo Bs.S"/IsCash=true
+  y "Pago Móvil" con tilde); la convergencia por Id los restaura igual que el Id=1. Evidencia SQL:
+  PaymentMethods 1..5 = Efectivo USD / Efectivo Bs.S / Punto de Venta / Pago Móvil / Zelle.
+- ci.yml: comentario del job frontend actualizado (el runner usa npm 12; el lockfile se regeneró
+  con npm 12.1.0). Cambio de SOLO comentario (diff verificado línea a línea).
+- Verificación: suite .NET completa 1483/1483 contra PostgreSQL real (seed nuevo ejercitado por
+  los tests PG); build 0/0.
+
+M. ADENDA 8 (2026-09-27) — CIERRE DE LA SECCIÓN D (comprobantes con ajuste + test aislado)
+- Comprobantes de CIERRE honran el ajuste: DailyClosureService recibe ISystemSettingsService
+  (opcional; default Venezuelan) y WriteClosedClosureReceiptsAsync resuelve "CurrencyFormat"
+  best-effort; GenerateReceiptContent y ClosurePdfGenerator aceptan MoneyDisplayFormat (default
+  Venezuelan para callers existentes) y MoneyFormat.CultureFor agrega el mapeo de cultura.
+  Evidencia: TXT/PDF con "1,500.00" (INT) vs "1.500,00" (VE); la diff balanceada dejó de ser
+  literal fijo ("0,00") y sigue el ajuste.
+- DailyClosureRetryIntegrationTests aislado en su propia BD por corrida (pos_retry_<guid8>, creada
+  y dropeada en finally, patrón pos_conc/pos_fault): el rerun local ya no depende de recrear
+  pos_test. Evidencia: suite PG completa sin restos pos_retry_*.
+- Verificación: suite .NET 1485/1485 contra PostgreSQL real; build 0/0.
+
+N. ADENDA 9 (2026-09-27) — UI DEL POS (carrito + modal) Y ESTABILIZACIÓN DE FLAKE
+- Carrito: el botón de eliminar quedó anclado al extremo derecho de la fila; las columnas
+  "Precio" y "Total" centran encabezado y montos (aplicado por columna).
+- Modal de productos: se quitó IsDefault del botón Guardar (Enter ya no guarda/cierra) y el
+  atajo pasó a Ctrl+Enter vía InputBindings del Window (bindea SaveCommand).
+- Flake detectado en la verificación de este lote: UpdateStockAsync_..._Relational (SQLite)
+  falló 1 vez bajo suite con "no such function: ef_add" (conexiones pre-abiertas a mano +
+  primer uso concurrente). Estabilizado: las conexiones se crean e inicializan SECUENCIALMENTE
+  dejando que EF las abra (registro de funciones del provider), y las deducciones siguen
+  concurrentes; el assert de negocio (sin updates perdidos) no cambió. Validado: 3/3 focal +
+  suite completa verde; CI acumulará evidencia.
+- Verificación: build 0/0; suite .NET 1485/1485 contra PostgreSQL real.
 ================================================================================

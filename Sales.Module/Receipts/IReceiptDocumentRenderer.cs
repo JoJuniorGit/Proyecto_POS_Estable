@@ -1,6 +1,8 @@
+using Core.Helpers;
+
 namespace Sales.Module.Receipts;
 
 public interface IReceiptDocumentRenderer
 {
-    ReceiptDocument Render(SaleReceiptContext context);
+    ReceiptDocument Render(SaleReceiptContext context, MoneyDisplayFormat format);
 }
