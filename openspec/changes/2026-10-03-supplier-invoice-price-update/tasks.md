@@ -49,11 +49,11 @@ Chain strategy: stacked-to-main
 
 ## Phase 4: WPF Client
 
-- [ ] 4.1 Create `Desktop.Client.Core/Services/SupplierInvoiceService.cs` and `Desktop.Client.Core/Services/SupplierInvoiceService.Parsing.cs` (xlsx/csv/xml); mirror `Desktop.Client.Core/Services/ProductImportService.cs` (read-only).
-- [ ] 4.2 Create `Desktop.Client.Core/ViewModels/SupplierInvoiceViewModel.cs`, `Desktop.Client.Core/ViewModels/SupplierInvoiceViewModel.Staging.cs`, `Desktop.Client.Core/ViewModels/SupplierInvoiceViewModel.Pricing.cs`: badges, approval ON, RoundPriceUp recalc; reference `Desktop.Client.Core/ViewModels/ProductDialogViewModel.Pricing.cs` (read-only).
-- [ ] 4.3 Create `Desktop.Client/Views/SupplierInvoiceView.xaml` and `Desktop.Client/Views/SupplierInvoiceView.xaml.cs` with BindingProxy virtualization.
-- [ ] 4.4 Wire DI/nav in `Desktop.Client/App.xaml.cs`, `Desktop.Client/MainWindow.xaml`, `Desktop.Client.Core/ViewModels/MainViewModel.cs`.
-- [ ] 4.5 Test client (Instant client-side recalc; Ingest each supported format) plus approval default ON, no per-keystroke API calls in `CommandCenter.Tests/Unit/SupplierInvoiceClientTests.cs`.
+- [x] 4.1 Create `Desktop.Client.Core/Services/SupplierInvoiceService.cs` and `Desktop.Client.Core/Services/SupplierInvoiceService.Parsing.cs` (xlsx/csv/xml); mirror `Desktop.Client.Core/Services/ProductImportService.cs` (read-only).
+- [x] 4.2 Create `Desktop.Client.Core/ViewModels/SupplierInvoiceViewModel.cs`, `Desktop.Client.Core/ViewModels/SupplierInvoiceViewModel.Staging.cs`, `Desktop.Client.Core/ViewModels/SupplierInvoiceViewModel.Pricing.cs`: badges, approval ON, RoundPriceUp recalc; reference `Desktop.Client.Core/ViewModels/ProductDialogViewModel.Pricing.cs` (read-only).
+- [x] 4.3 Create `Desktop.Client/Views/SupplierInvoiceView.xaml` and `Desktop.Client/Views/SupplierInvoiceView.xaml.cs` with BindingProxy virtualization.
+- [x] 4.4 Wire DI/nav in `Desktop.Client/App.xaml.cs`, `Desktop.Client/MainWindow.xaml`, `Desktop.Client.Core/ViewModels/MainViewModel.cs`.
+- [x] 4.5 Test client (Instant client-side recalc; Ingest each supported format) plus approval default ON, no per-keystroke API calls in `CommandCenter.Tests/Unit/SupplierInvoiceClientTests.cs`.
 
 ## Phase 5: Verification
 

@@ -273,9 +273,15 @@ public partial class App : Application
             client.BaseAddress = baseAddressUri;
         }));
 
+        ConfigureClient(builder.Services.AddHttpClient<ISupplierInvoiceService, SupplierInvoiceService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
         builder.Services.AddSingleton<DailyClosureViewModel>();
         builder.Services.AddSingleton<CashDrawerViewModel>();
         builder.Services.AddSingleton<ImportProductsViewModel>();
+        builder.Services.AddSingleton<SupplierInvoiceViewModel>();
 
         // Main Window Registration
         builder.Services.AddSingleton<MainWindow>();

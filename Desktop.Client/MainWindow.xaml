@@ -45,6 +45,9 @@
         <DataTemplate DataType="{x:Type vm:ImportProductsViewModel}">
             <views:ImportProductsView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SupplierInvoiceViewModel}">
+            <views:SupplierInvoiceView/>
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:LoginViewModel}">
             <views:LoginView/>
         </DataTemplate>
@@ -161,6 +164,22 @@
                                                          Width="18" Height="18"
                                                          VerticalAlignment="Center"/>
                                 <TextBlock Text="Import Products"
+                                           Margin="10,0,0,0"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="BtnSupplierInvoices"
+                                AutomationProperties.AutomationId="Nav_BtnSupplierInvoices"
+                                Style="{DynamicResource NavItemButtonStyle}"
+                                Command="{Binding NavigateToSupplierInvoicesCommand}"
+                                IsEnabled="{Binding UserSession.CanMutateCatalog}"
+                                ToolTip="Revisar y procesar facturas de proveedores">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="FileDocumentOutline"
+                                                         Width="18" Height="18"
+                                                         VerticalAlignment="Center"/>
+                                <TextBlock Text="Facturas de proveedores"
                                            Margin="10,0,0,0"
                                            VerticalAlignment="Center"/>
                             </StackPanel>
