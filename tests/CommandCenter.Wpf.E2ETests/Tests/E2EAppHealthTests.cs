@@ -76,6 +76,7 @@ public class E2EAppHealthTests : IClassFixture<WpfAppFixture>
             "Nav_BtnSettings",
             "Nav_BtnUsersManagement",
             "Nav_BtnImportProducts",
+            "Nav_BtnSupplierInvoices",
             "Nav_BtnPos"
         };
 

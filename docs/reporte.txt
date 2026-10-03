@@ -11705,8 +11705,8 @@ D. LIMITACIONES CONOCIDAS
 D1. Los tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en local (smoke
     de migración contra BD real, consulta pg_trgm real, retry xmin real); quedan
     cubiertos al configurar la variable.
-D2. La lista de navegación del E2E WPF no incluye la vista nueva
-    Nav_BtnSupplierInvoices.
+D2. (Cubierto 2026-10-03) La lista de navegación del E2E de salud ya incluye
+    Nav_BtnSupplierInvoices; el test navega las 12 vistas sin diálogos de error.
 D3. El constructor de 3 argumentos de SupplierInvoiceService (solo tests) deja
     UserId null; producción usa DI con el de 4.
 
@@ -11725,8 +11725,19 @@ F1. sdd-verify: PASS WITH WARNINGS — 0 CRITICAL, 3 WARNING; 21/22 escenarios
     specs). Reporte: openspec/changes/2026-10-03-supplier-invoice-price-update/
     verify-report.md.
 F2. Warnings: los tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en
-    local (retry xmin real y smoke de migración contra BD real); el validador
-    nativo `gentle-ai sdd-verify-validate` no existe en este build, por lo que la
-    persistencia del reporte se hizo por decisión del orquestador, sin
-    settlement nativo.
+    local (retry xmin real y smoke de migración contra BD real) — la cobertura
+    real corre en CI; el validador nativo `gentle-ai sdd-verify-validate` no
+    existe en este build ni en la versión actualizada (main@0dda8895, verificado
+    2026-10-03), por lo que la persistencia del reporte se hizo por decisión del
+    orquestador, sin settlement nativo.
+
+G. REMEDIACIÓN DE WARNINGS (2026-10-03)
+
+G1. E2E: E2EAppHealthTests.MainViews_WhenNavigated_DoNotOpenErrorDialogs
+    ampliado con Nav_BtnSupplierInvoices; verde 1/1 (12 vistas, ~33s).
+G2. Gated Postgres: la cobertura real de los tests gated corre en CI (ci.yml
+    crea pos_test y define TEST_POSTGRES_CONNECTION); en local se ejecutan
+    configurando la variable con credenciales válidas de la instancia.
+G3. Validador nativo: ausente también tras actualizar gentle-ai a
+    main@0dda8895 (2026-10-03); pendiente de superficie upstream.
 ================================================================================
