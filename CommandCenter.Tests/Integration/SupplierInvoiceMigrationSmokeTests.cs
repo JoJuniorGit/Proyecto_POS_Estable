@@ -44,8 +44,20 @@ public class SupplierInvoiceMigrationSmokeTests
         var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
         if (string.IsNullOrWhiteSpace(connectionString)) return;
 
+        // 8.144: migrar sobre una BD aislada propia (patron pos_smoke/pos_zero). Migrar la
+        // pos_test compartida colisiona con las tablas pre-creadas por otros tests (42P07
+        // "Products already exists"): esa BD no tiene historial EF.
+        var supplierSmokeDatabaseName =
+            Environment.GetEnvironmentVariable("SMOKE_DB_SUFFIX") is { Length: > 0 } suffix
+                ? $"pos_supplier_{suffix}"
+                : "pos_supplier_test";
+        var connectionBuilder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString)
+        {
+            Database = supplierSmokeDatabaseName
+        };
+
         var options = new DbContextOptionsBuilder<InventoryDbContext>()
-            .UseNpgsql(connectionString)
+            .UseNpgsql(connectionBuilder.ConnectionString)
             .Options;
 
         await using var context = new InventoryDbContext(options);
