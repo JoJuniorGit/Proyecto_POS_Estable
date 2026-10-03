@@ -57,5 +57,5 @@ Chain strategy: stacked-to-main
 
 ## Phase 5: Verification
 
-- [ ] 5.1 `dotnet build CommandCenter.slnx -c Release`, `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj`, coverage via `scripts/check-coverage.py` (read-only; Inventory ≥0.72).
-- [ ] 5.2 Register ANEXO in `docs/reporte.txt`; note migration-down rollback.
+- [x] 5.1 `dotnet build CommandCenter.slnx -c Release`, `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj`, coverage via `scripts/check-coverage.py` (read-only; Inventory ≥0.72).
+- [x] 5.2 Register ANEXO in `docs/reporte.txt`; note migration-down rollback.
