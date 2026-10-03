@@ -11717,4 +11717,16 @@ E1. La migración AddSupplierInvoice es aditiva y su Down elimina solo las tabla
 E2. Cada slice es revertible por commit; quitar el registro DI/nav y los
     endpoints desactiva la feature.
 E3. Ventas históricas intactas (snapshots inmutables).
+
+F. VERIFY SDD
+
+F1. sdd-verify: PASS WITH WARNINGS — 0 CRITICAL, 3 WARNING; 21/22 escenarios
+    conformes (15 requisitos / 22 escenarios contados desde los headings de las
+    specs). Reporte: openspec/changes/2026-10-03-supplier-invoice-price-update/
+    verify-report.md.
+F2. Warnings: los tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en
+    local (retry xmin real y smoke de migración contra BD real); el validador
+    nativo `gentle-ai sdd-verify-validate` no existe en este build, por lo que la
+    persistencia del reporte se hizo por decisión del orquestador, sin
+    settlement nativo.
 ================================================================================
