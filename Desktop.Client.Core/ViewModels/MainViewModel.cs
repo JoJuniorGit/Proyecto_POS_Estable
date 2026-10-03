@@ -36,6 +36,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly ExchangeRateViewModel? _exchangeRateViewModel;
     private readonly CashDrawerViewModel? _cashDrawerViewModel;
     private readonly ImportProductsViewModel? _importProductsViewModel;
+    private readonly SupplierInvoiceViewModel? _supplierInvoiceViewModel;
     private readonly DailyClosureViewModel? _dailyClosureViewModel;
     private readonly UsersManagementViewModel? _usersManagementViewModel;
 
@@ -60,7 +61,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         UsersManagementViewModel? usersManagementViewModel,
         IHealthPollingService? healthPollingService = null,
         IDialogService? dialogService = null,
-        IExchangeRateService? exchangeRateService = null)
+        IExchangeRateService? exchangeRateService = null,
+        SupplierInvoiceViewModel? supplierInvoiceViewModel = null)
     {
         UserSession = userSession;
         _loginViewModel = loginViewModel;
@@ -73,6 +75,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _exchangeRateViewModel = exchangeRateViewModel;
         _cashDrawerViewModel = cashDrawerViewModel;
         _importProductsViewModel = importProductsViewModel;
+        _supplierInvoiceViewModel = supplierInvoiceViewModel;
         _dailyClosureViewModel = dailyClosureViewModel;
         _usersManagementViewModel = usersManagementViewModel;
         _healthPollingService = healthPollingService;
@@ -139,6 +142,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _exchangeRateViewModel,
             _cashDrawerViewModel,
             _importProductsViewModel,
+            _supplierInvoiceViewModel,
             _dailyClosureViewModel,
             _usersManagementViewModel
         };
@@ -266,6 +270,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (UserSession == null || !UserSession.IsLoggedIn || _importProductsViewModel == null) return;
         Title = "IMPORT PRODUCTS";
         CurrentViewModel = _importProductsViewModel;
+    }
+
+    [RelayCommand]
+    private void NavigateToSupplierInvoices()
+    {
+        if (UserSession == null || !UserSession.IsLoggedIn || !UserSession.CanMutateCatalog || _supplierInvoiceViewModel == null) return;
+        Title = "FACTURAS DE PROVEEDORES";
+        CurrentViewModel = _supplierInvoiceViewModel;
     }
 
     [RelayCommand]

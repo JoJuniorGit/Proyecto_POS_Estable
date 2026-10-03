@@ -25,7 +25,7 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
     private readonly HttpClient _httpClient;
     private readonly IDispatcherInvoker _dispatcherInvoker;
     private readonly UserSession? _userSession;
-    private readonly HubConnection _hubConnection;
+    private readonly HubConnection? _hubConnection;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private decimal _currentRate;
     private DateTime? _lastUpdated;
@@ -43,84 +43,90 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
         PropertyNameCaseInsensitive = true
     };
 
-    public ExchangeRateService(HttpClient httpClient, IDispatcherInvoker? dispatcherInvoker = null, UserSession? userSession = null)
+    // 8.143-fix: enableRealtime=false en el modo E2E (--e2e): la app no debe intentar conectarse
+    // al hub SignalR real (reintentos en background y riesgo de recibir tasas reales, rompiendo
+    // el mock determinista). En producción el parámetro queda en true (comportamiento intacto).
+    public ExchangeRateService(HttpClient httpClient, IDispatcherInvoker? dispatcherInvoker = null, UserSession? userSession = null, bool enableRealtime = true)
     {
         _httpClient = httpClient;
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
         _userSession = userSession;
 
-        var baseAddress = httpClient.BaseAddress ?? new Uri("http://localhost:5000/");
-        var hubUri = new Uri(baseAddress, "hubs/exchange-rate");
+        if (enableRealtime)
+        {
+            var baseAddress = httpClient.BaseAddress ?? new Uri("http://localhost:5000/");
+            var hubUri = new Uri(baseAddress, "hubs/exchange-rate");
 
-        _hubConnection = new HubConnectionBuilder()
-            .WithUrl(hubUri, options =>
-            {
-                options.AccessTokenProvider = CreateAccessTokenProvider(hubUri, userSession);
-                options.HttpMessageHandlerFactory = handler =>
+            _hubConnection = new HubConnectionBuilder()
+                .WithUrl(hubUri, options =>
                 {
-                    if (handler is HttpClientHandler clientHandler)
+                    options.AccessTokenProvider = CreateAccessTokenProvider(hubUri, userSession);
+                    options.HttpMessageHandlerFactory = handler =>
                     {
-                        // 8.16-R18: pinning TOFU compartido. Acepta certificados válidos o, en hosts
-                        // privados/locales, autofirmados bajo Trust-On-First-Use (primer fingerprint
-                        // registrado; certificados distintos posteriores son rechazados). Ya no se acepta
-                        // cualquier certificado inválido por el único hecho de ser loopback.
-                        clientHandler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
+                        if (handler is HttpClientHandler clientHandler)
                         {
-                            return CertificatePinning.IsTrusted(message.RequestUri?.Host ?? baseAddress.Host, cert, errors);
-                        };
-                    }
-                    return handler;
-                };
-            })
-            .WithAutomaticReconnect()
-            .Build();
+                            // 8.16-R18: pinning TOFU compartido. Acepta certificados válidos o, en hosts
+                            // privados/locales, autofirmados bajo Trust-On-First-Use (primer fingerprint
+                            // registrado; certificados distintos posteriores son rechazados). Ya no se acepta
+                            // cualquier certificado inválido por el único hecho de ser loopback.
+                            clientHandler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
+                            {
+                                return CertificatePinning.IsTrusted(message.RequestUri?.Host ?? baseAddress.Host, cert, errors);
+                            };
+                        }
+                        return handler;
+                    };
+                })
+                .WithAutomaticReconnect()
+                .Build();
 
-        _hubConnection.Closed += error =>
-        {
-            if (Volatile.Read(ref _isDisposed) == 0)
+            _hubConnection.Closed += error =>
             {
-                ClientStateLogger.LogWarning($"[SIGNALR] Conexión en tiempo real cerrada: {error?.Message ?? "sin detalle"}", nameof(ExchangeRateService));
-            }
-            return Task.CompletedTask;
-        };
+                if (Volatile.Read(ref _isDisposed) == 0)
+                {
+                    ClientStateLogger.LogWarning($"[SIGNALR] Conexión en tiempo real cerrada: {error?.Message ?? "sin detalle"}", nameof(ExchangeRateService));
+                }
+                return Task.CompletedTask;
+            };
 
-        _hubConnection.Reconnected += _ =>
-        {
-            ClientStateLogger.LogInfo("[SIGNALR] Conexión en tiempo real restablecida.", nameof(ExchangeRateService));
-            return Task.CompletedTask;
-        };
-
-        _hubConnection.On<decimal>("ReceiveRateUpdate", async (newRate) =>
-        {
-            await UpdateRateLocallyAsync(newRate);
-        });
-
-        _hubConnection.On("OnHoldSalesUpdated", () =>
-        {
-            _dispatcherInvoker.Invoke(() =>
+            _hubConnection.Reconnected += _ =>
             {
-                WeakReferenceMessenger.Default.Send(new OnHoldSalesRefreshMessage());
+                ClientStateLogger.LogInfo("[SIGNALR] Conexión en tiempo real restablecida.", nameof(ExchangeRateService));
+                return Task.CompletedTask;
+            };
+
+            _hubConnection.On<decimal>("ReceiveRateUpdate", async (newRate) =>
+            {
+                await UpdateRateLocallyAsync(newRate);
             });
-        });
 
-        _hubConnection.On("OnPaymentMethodsUpdated", () =>
-        {
-            _dispatcherInvoker.Invoke(() =>
+            _hubConnection.On("OnHoldSalesUpdated", () =>
             {
-                WeakReferenceMessenger.Default.Send(new Desktop.Client.ViewModels.PaymentMethodsChangedMessage());
+                _dispatcherInvoker.Invoke(() =>
+                {
+                    WeakReferenceMessenger.Default.Send(new OnHoldSalesRefreshMessage());
+                });
             });
-        });
 
-        // 8.143: el ajuste de formato de moneda cambió en el server; el WPF lo aplica en caliente
-        // y re-notifica las vistas abiertas por el mismo canal de mensajería que la tasa.
-        _hubConnection.On<string>("OnCurrencyFormatUpdated", (format) =>
-        {
-            _dispatcherInvoker.Invoke(() =>
+            _hubConnection.On("OnPaymentMethodsUpdated", () =>
             {
-                CurrencyDisplay.SetFromSetting(format);
-                WeakReferenceMessenger.Default.Send(new CurrencyFormatChangedMessage());
+                _dispatcherInvoker.Invoke(() =>
+                {
+                    WeakReferenceMessenger.Default.Send(new Desktop.Client.ViewModels.PaymentMethodsChangedMessage());
+                });
             });
-        });
+
+            // 8.143: el ajuste de formato de moneda cambió en el server; el WPF lo aplica en caliente
+            // y re-notifica las vistas abiertas por el mismo canal de mensajería que la tasa.
+            _hubConnection.On<string>("OnCurrencyFormatUpdated", (format) =>
+            {
+                _dispatcherInvoker.Invoke(() =>
+                {
+                    CurrencyDisplay.SetFromSetting(format);
+                    WeakReferenceMessenger.Default.Send(new CurrencyFormatChangedMessage());
+                });
+            });
+        }
 
         if (_userSession != null)
         {
@@ -158,6 +164,11 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             return;
         }
 
+        if (_hubConnection == null)
+        {
+            return;
+        }
+
         StartSignalRAsync().SafeFireAndForget("ExchangeRateService.SessionChangedReconnect");
     }
 
@@ -174,8 +185,11 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             // Rate stays at 0; user will see "0.00" and can set it manually
         }
 
-        // Start SignalR in background — never blocks the UI
-        StartSignalRAsync().SafeFireAndForget("ExchangeRateService.StartSignalR");
+        // Start SignalR in background — never blocks the UI (omitido en modo E2E sin tiempo real)
+        if (_hubConnection != null)
+        {
+            StartSignalRAsync().SafeFireAndForget("ExchangeRateService.StartSignalR");
+        }
     }
 
     public decimal CurrentRate
@@ -239,6 +253,11 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
 
     private async Task StartSignalRAsync()
     {
+        if (_hubConnection == null)
+        {
+            return;
+        }
+
         if (Interlocked.CompareExchange(ref _signalRStartInProgress, 1, 0) != 0)
         {
             return;

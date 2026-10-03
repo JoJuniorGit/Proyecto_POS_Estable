@@ -39,6 +39,8 @@ public static class ServiceCollectionExtensions
         builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
         builder.Services.AddScoped<IInventoryService, InventoryService>();
         builder.Services.AddScoped<IProductManagementService>(sp => (InventoryService)sp.GetRequiredService<IInventoryService>());
+        builder.Services.AddScoped<ISupplierProductSimilaritySearch, PostgresSupplierProductSimilaritySearch>();
+        builder.Services.AddScoped<ISupplierInvoiceService, SupplierInvoiceService>();
         builder.Services.AddScoped<IReservationService, Inventory.Module.Services.ReservationService>();
         builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
         builder.Services.AddScoped<ITimeZoneProvider, Core.Services.TimeZoneProvider>();

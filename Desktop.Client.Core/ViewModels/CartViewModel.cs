@@ -162,8 +162,16 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
                 var idToRestore = SelectedSaleItem?.Id;
 
                 CartItems.Clear();
-                decimal rateToUse = CurrentSale.AppliedRate > 0 ? CurrentSale.AppliedRate : _exchangeRateService.CurrentRate;
                 bool isHistorical = CurrentSale.Status != "Pending";
+                // Fix desincronización al recuperar pedido: en ventas Pending los Bs.S se derivan de la
+                // tasa VIGENTE (rate-first), igual que UpdateAllPrices cuando la tasa cambia en runtime.
+                // El AppliedRate persistido queda solo como fallback si la tasa vigente aún no está
+                // cargada (arranque offline). Antes, un pedido recuperado tras un cierre inesperado
+                // mostraba la tasa vieja en la tabla mientras el modal de cobro usaba la nueva.
+                decimal currentRate = _exchangeRateService.CurrentRate;
+                decimal rateToUse = isHistorical
+                    ? (CurrentSale.AppliedRate > 0 ? CurrentSale.AppliedRate : currentRate)
+                    : (currentRate > 0 ? currentRate : CurrentSale.AppliedRate);
                 foreach (var item in CurrentSale.Items)
                 {
                     CartItems.Add(new CartItemViewModel(item, RecalculateTotals, rateToUse, isHistorical, CommitItemQuantityAsync));

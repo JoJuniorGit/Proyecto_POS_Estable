@@ -11571,4 +11571,177 @@ N. ADENDA 9 (2026-09-27) — UI DEL POS (carrito + modal) Y ESTABILIZACIÓN DE F
   concurrentes; el assert de negocio (sin updates perdidos) no cambió. Validado: 3/3 focal +
   suite completa verde; CI acumulará evidencia.
 - Verificación: build 0/0; suite .NET 1485/1485 contra PostgreSQL real.
+
+O. ADENDA 10 (2026-10-02) — PEDIDO RECUPERADO: Bs.S DERIVADOS DE LA TASA VIGENTE (WPF) + AUDITORÍA WEB
+- Causa raíz: CartViewModel.UpdateCollection hidrataba los ítems de una venta Pending con el
+  AppliedRate persistido (tasa "A" del momento del autoguardado) cuando era > 0. Tras un cierre
+  inesperado y un cambio de tasa a "B", el carrito recuperado mostraba Bs.S con "A" mientras el
+  modal de cobro (que tras FlushAllQuantitiesAsync recalcula en el servidor con "B") mostraba "B".
+- Fix (Desktop.Client.Core/ViewModels/CartViewModel.cs): en ventas Pending la tasa de derivación
+  de los ítems es la VIGENTE (rate-first), el mismo criterio que UpdateAllPrices al cambiar la
+  tasa en runtime y que selectEffectiveRate de la web; el AppliedRate queda solo como fallback si
+  la tasa vigente aún no está cargada (arranque offline). Las ventas no-Pending (histórico)
+  conservan los snapshots persistidos (sin cambios). Redondeo idéntico a agregar un producto:
+  ToBsSCeiling por unidad + RoundToDigital por cantidad.
+- Tests: 6 nuevos en CommandCenter.Tests/Unit/CartRecoveryRateHydrationTests.cs (rojo→verde real:
+  3 fallos deterministas antes del fix), incluido el flujo completo de recuperación huérfana vía
+  PosViewModel.InitializeForSessionAsync; cubren ceiling (0.81 × 842.21 → 682.20), fallback sin
+  tasa vigente, inmutabilidad del snapshot y ventas históricas.
+- Auditoría Web (criterio 4): la desincronización NO se replica. CartTable/CartList/CheckoutModal
+  comparten selectEffectiveRate (tasa vigente primero) y, en contexto de venta, el snapshot es ley
+  (decisión 8.143-H/I) con convergencia automática: CartContext dispara updateSaleExchangeRate
+  (debounce 1.5 s) al cambiar la tasa o recuperar una venta Pending, y el servidor recalcula
+  AppliedRate/snapshots; ambas superficies quedan siempre mutuamente consistentes. Sin cambios web.
+- Verificación: build Release 0/0; suite .NET 1492/1492 + WPF E2E 13/13. Nota: sin
+  TEST_POSTGRES_CONNECTION local (credenciales del cluster no disponibles — bloqueo preexistente,
+  no se reseteó el cluster) las clases PG quedan en skip documentado; el total local no ejerce
+  esos caminos.
+- Hallazgo de infraestructura de tests (no bloqueante): los E2E WPF dejan procesos Desktop.Client
+  huérfanos porque WpfAppFixture.Launch() reemplaza App sin cerrar la instancia previa (clases con
+  >1 Launch: WpfIndependentFlowsTests ×4, LoginViewTests ×2) y Dispose() solo cierra la última;
+  los huérfanos retienen el pipe de stdout y hacen que un `dotnet test ... | Select-Object` parezca
+  colgado tras terminar las pruebas. Pendiente: fix del fixture (kill de todas las instancias).
+
+P. ADENDA 11 (2026-10-02) — FIXTURE E2E WPF: SIN PROCESOS HUÉRFANOS
+- Causa raíz del "cuelgue": WpfAppFixture.Launch() reemplazaba App sin cerrar la instancia previa
+  y Dispose() solo cerraba la última; las clases con >1 Launch (WpfIndependentFlowsTests ×4,
+  LoginViewTests ×2) dejaban 4 Desktop.Client.exe --e2e huérfanos por corrida. Los huérfanos
+  heredan el stdout del testhost y PowerShell espera EOF de todos los writers del pipe: el
+  comando `dotnet test ... | Select-Object` no retornaba aunque las pruebas ya habían terminado.
+- Fix (tests/CommandCenter.Wpf.E2ETests/Fixtures/WpfAppFixture.cs): el fixture trackea todas las
+  apps lanzadas; Launch() termina la instancia previa antes de lanzar la nueva y Dispose() termina
+  todas (Close(killIfCloseFails: true) + Kill de respaldo). Cada test conserva su app fresca.
+- Verificación: el comando exacto `dotnet test CommandCenter.slnx -c Release --no-build --nologo
+  -v q | Select-Object -Last 8` retorna normalmente; suite .NET 1492/1492 + WPF E2E 13/13; 0
+  procesos Desktop.Client al finalizar (antes: 4 por corrida). Build 0/0.
+
+Q. ADENDA 12 (2026-10-02) — MODO --e2e: MOCK ALINEADO AL CONTRATO REAL (SIN ERRORES VISUALES)
+- Causa raíz: el mock E2E estaba desalineado con los contratos de los servicios cliente (no era
+  "falta de backend": el modo --e2e es autocontenido por diseño). Evidencia: api/sales/start
+  devolvía [] y el cliente espera SaleDto (JsonException → "Error de Venta" al entrar al POS);
+  api/PaymentMethods/active caía al fallback {} y el cliente espera lista (3 reintentos →
+  "Error de Conexión"); api/exchange-rate/today devolvía {rate} y el cliente lee {value,updatedAt}
+  (tasa 0 en el header); api/products paginado devolvía array vs PagedResultDto; api/sales/history
+  array vs SalesHistoryResponse.
+- Fix: E2EMockHttpMessageHandler reescrito con respuestas contrato-exactas (camelCase, enums
+  numéricos, listas vs objetos) y estado de venta mínimo (start/add/update/remove/complete) para
+  que el POS funcione de punta a punta: catálogo, sugerencias, quick-check, métodos de pago,
+  clientes, caja (sesión/balance/historial), cierre diario, ajustes, usuarios y tasa
+  (today/history/save/sync-bcv). CompleteSale devuelve el N° de factura crudo como la API real.
+- Aislamiento total: ExchangeRateService acepta enableRealtime (default true; producción intacta);
+  App lo pasa en false en E2E para no abrir el hub SignalR real (antes reintentaba 5×5s y podía
+  recibir tasas reales, rompiendo el determinismo del mock).
+- Test de regresión (E2EAppHealthTests, 2 tests): (1) tras login, el badge "Tasa" muestra 50 y no
+  aparecen diálogos de error durante la inicialización del POS; (2) navegando las 11 vistas
+  principales no se abre ningún CustomDialogWindow_Error. Hook de automatización: CustomDialogWindow
+  expone AutomationId por tipo (CustomDialogWindow_Error/Warning/Info/Confirm).
+- Rojo→verde real: con el mock viejo el test 1 falla determinista con Assert.Contains("50") →
+  String: "Tasa vigente: 0,00 Bs por dólar" (evidencia del shape de tasa).
+- Verificación: build Release 0/0; suite .NET 1492/1492 + WPF E2E 15/15; 0 procesos huérfanos.
+- Nota operativa: Copy-Item preserva timestamps; si se restaura un archivo desde copia, MSBuild
+  puede saltar la recompilación (usar --no-incremental en ese caso).
+================================================================================
+
+================================================================================
+ANEXO 8.144 — ACTUALIZACIÓN AUTOMATIZADA DE PRECIOS Y RENTABILIDAD VÍA FACTURA DE PROVEEDOR (SDD) — 2026-10-03
+================================================================================
+Change SDD: 2026-10-03-supplier-invoice-price-update; artefactos en
+openspec/changes/2026-10-03-supplier-invoice-price-update/ (proposal, 3 specs,
+design, tasks, state).
+
+Alcance: backend (Core, Inventory.Module, Backend.API) + cliente WPF
+(Desktop.Client / Desktop.Client.Core). Web.Frontend sin cambios; la UI es
+únicamente WPF. Entrega por slices en ramas locales apiladas s1→s4 sobre V0.15
+@735237a; push/PR pendiente de decisión del mantenedor.
+
+A. ENTREGA POR SLICE
+
+A1. feat/supplier-invoice-s1 — commits 4483ac9 (docs de planificación) + a66053d:
+    entidades Supplier, SupplierColumnMapping, SupplierProductCode, SupplierInvoice
+    y SupplierInvoiceLine (+ enums), DTOs, InventoryDbContext (índice único
+    filtrado IX_SupplierProductCodes_Supplier_Code, xmin) y migración aditiva
+    20261003173222_AddSupplierInvoice; smoke test 2/2.
+A2. feat/supplier-invoice-s2 — 0125492: resolución de proveedor (RIF/NIT/nombre,
+    con bloqueo si es ambiguo), plantilla de mapeo por proveedor (upsert/reuso),
+    matching por prioridad barcode (SKU) → código de proveedor → similitud
+    pg_trgm (umbral desde SystemSetting
+    SupplierInvoice.ProductMatchSimilarityThreshold, default 0.30 inclusivo;
+    desempate por Id ascendente; sin auto-creación de productos), staging draft
+    en BD y endpoints POST/GET /api/supplier-invoices y GET/POST /api/suppliers
+    con RBAC Admin/Manager y ProblemDetails; 14/14 tests.
+A3. feat/supplier-invoice-s3 — 1d53f6a: confirm atómico POST
+    /api/supplier-invoices/{id}/confirm (execution strategy + transacción,
+    re-validación zero-trust, márgenes retail-primary con regla HasWholesale,
+    PricingCalculator.RoundPriceUp, incremento de stock + StockMovement con
+    usuario, reintento único por conflicto xmin); 10/10 tests (incluye rollback
+    transaccional en SQLite y 403 Cashier en TestServer).
+A4. feat/supplier-invoice-s4 — bd54fb0: cliente WPF (parsing .xlsx/.csv/.xml;
+    tabla de staging con badges [NEW]/[UPDATE] (costo anterior→nuevo)/
+    [UNCHANGED]/[CONFLICT]; margen editable con recálculo instantáneo local
+    (RoundPriceUp, cero llamadas por tecla); aprobación ON por defecto; mapeo
+    automático/override desde el lookup de proveedores — expansión backend
+    aprobada por el mantenedor: SupplierSummaryDto.ColumnMapping + proyección en
+    el lookup —; confirm con solo filas aprobadas y overrides; DI/nav); 17/17
+    tests del cliente.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa CommandCenter.Tests: 1535/1535 (0 fallos, 0 omitidos).
+B3. Cobertura (gate del repo): Core 0.8554 (≥0.70), Sales.Module 0.8596 (≥0.80),
+    Inventory.Module 0.8130 (≥0.72) — PASS.
+B4. Smoke E2E WPF de arranque y navegación: 1/1.
+B5. Tests de la feature: 43/43 (Client 17, Matching 7, Staging 7, Apply 4,
+    ApplyIntegration 6, MigrationSmoke 2).
+B6. Verificación independiente por slice: PASS.
+
+C. HOOKS Y GGA
+
+core.hooksPath=.githooks activo; los commits se realizaron sin --no-verify. El
+pre-push de GGA es opt-in y no se ejecutó (no hubo push).
+
+D. LIMITACIONES CONOCIDAS
+
+D1. Los tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en local (smoke
+    de migración contra BD real, consulta pg_trgm real, retry xmin real); quedan
+    cubiertos al configurar la variable.
+D2. (Cubierto 2026-10-03) La lista de navegación del E2E de salud ya incluye
+    Nav_BtnSupplierInvoices; el test navega las 12 vistas sin diálogos de error.
+D3. El constructor de 3 argumentos de SupplierInvoiceService (solo tests) deja
+    UserId null; producción usa DI con el de 4.
+
+E. ROLLBACK
+
+E1. La migración AddSupplierInvoice es aditiva y su Down elimina solo las tablas
+    Supplier*.
+E2. Cada slice es revertible por commit; quitar el registro DI/nav y los
+    endpoints desactiva la feature.
+E3. Ventas históricas intactas (snapshots inmutables).
+
+F. VERIFY SDD
+
+F1. sdd-verify: PASS WITH WARNINGS — 0 CRITICAL, 3 WARNING; 21/22 escenarios
+    conformes (15 requisitos / 22 escenarios contados desde los headings de las
+    specs). Reporte: openspec/changes/2026-10-03-supplier-invoice-price-update/
+    verify-report.md.
+F2. Warnings: los tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en
+    local (retry xmin real y smoke de migración contra BD real) — la cobertura
+    real corre en CI; el validador nativo `gentle-ai sdd-verify-validate` no
+    existe en este build ni en la versión actualizada (main@0dda8895, verificado
+    2026-10-03), por lo que la persistencia del reporte se hizo por decisión del
+    orquestador, sin settlement nativo.
+
+G. REMEDIACIÓN DE WARNINGS (2026-10-03)
+
+G1. E2E: E2EAppHealthTests.MainViews_WhenNavigated_DoNotOpenErrorDialogs
+    ampliado con Nav_BtnSupplierInvoices; verde 1/1 (12 vistas, ~33s).
+G2. Gated Postgres: la cobertura real de los tests gated corre en CI (ci.yml
+    crea pos_test y define TEST_POSTGRES_CONNECTION); en local se ejecutan
+    configurando la variable con credenciales válidas de la instancia.
+G3. Validador nativo: ausente también tras actualizar gentle-ai a
+    main@0dda8895 (2026-10-03); pendiente de superficie upstream.
+G4. CI de la pila completa (PR #20): el test gated del reintento xmin detectó que el
+    reintento no re-insertaba el StockMovement revertido por savepoint (stock
+    actualizado sin fila de auditoría). Corregido en SupplierInvoiceService.Apply.cs:
+    cada intento crea su propio movimiento y descarta el del intento fallido.
 ================================================================================
