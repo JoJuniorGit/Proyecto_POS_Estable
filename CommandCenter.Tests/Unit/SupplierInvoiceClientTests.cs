@@ -309,7 +309,7 @@ public sealed class SupplierInvoiceClientTests
     private static Desktop.Client.Services.SupplierInvoiceService CreateClientService() => new(new HttpClient());
 
     private static Inventory.Module.Services.SupplierInvoiceService CreateBackendService(InventoryDbContext context) =>
-        new(context, Mock.Of<ISystemSettingsService>(), Mock.Of<ISupplierProductSimilaritySearch>());
+        new(context, Mock.Of<ISystemSettingsService>(), Mock.Of<ISupplierProductSimilaritySearch>(), Mock.Of<ICurrentUserService>());
 
     private static SupplierInvoiceDetailDto CreateInvoice(params SupplierInvoiceLineDto[] lines) =>
         new(42, 7, "Draft", lines);

@@ -233,7 +233,7 @@ public class SupplierInvoiceMatchingTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<SupplierProductSimilarityCandidate>());
 
-        return (new SupplierInvoiceService(context, settings.Object, similaritySearch.Object), context, similaritySearch);
+        return (new SupplierInvoiceService(context, settings.Object, similaritySearch.Object, Mock.Of<ICurrentUserService>()), context, similaritySearch);
     }
 
     private static async Task<Supplier> AddSupplierAsync(InventoryDbContext context)

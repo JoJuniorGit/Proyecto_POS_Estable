@@ -12,20 +12,6 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
     private readonly ISystemSettingsService _systemSettingsService;
     private readonly ISupplierProductSimilaritySearch _similaritySearch;
 
-    public SupplierInvoiceService(
-        InventoryDbContext context,
-        ISystemSettingsService systemSettingsService,
-        ISupplierProductSimilaritySearch similaritySearch)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(systemSettingsService);
-        ArgumentNullException.ThrowIfNull(similaritySearch);
-
-        _context = context;
-        _systemSettingsService = systemSettingsService;
-        _similaritySearch = similaritySearch;
-    }
-
     private static SupplierInvoiceDetailDto ToDetailDto(SupplierInvoice invoice) => new(
         invoice.Id,
         invoice.SupplierId,
