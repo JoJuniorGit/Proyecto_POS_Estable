@@ -92,7 +92,6 @@
                 <ComboBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
                           ItemsSource="{Binding Suppliers}"
                           SelectedItem="{Binding SelectedSupplier, Mode=TwoWay}"
-                          DisplayMemberPath="CommercialName"
                           Style="{StaticResource MaterialDesignOutlinedComboBox}"
                           materialDesign:HintAssist.Hint="Seleccione el proveedor"
                           IsEnabled="{Binding CanMutateCatalog}">
