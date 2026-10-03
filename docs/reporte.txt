@@ -11740,4 +11740,8 @@ G2. Gated Postgres: la cobertura real de los tests gated corre en CI (ci.yml
     configurando la variable con credenciales válidas de la instancia.
 G3. Validador nativo: ausente también tras actualizar gentle-ai a
     main@0dda8895 (2026-10-03); pendiente de superficie upstream.
+G4. CI de la pila completa (PR #20): el test gated del reintento xmin detectó que el
+    reintento no re-insertaba el StockMovement revertido por savepoint (stock
+    actualizado sin fila de auditoría). Corregido en SupplierInvoiceService.Apply.cs:
+    cada intento crea su propio movimiento y descarta el del intento fallido.
 ================================================================================

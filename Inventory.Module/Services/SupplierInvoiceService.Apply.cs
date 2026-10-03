@@ -129,7 +129,6 @@ public partial class SupplierInvoiceService
         ConfirmLineDto confirmation,
         CancellationToken cancellationToken)
     {
-        StockMovement? movement = null;
         for (var attempt = 0; attempt < 2; attempt++)
         {
             var product = await _context.Products
@@ -151,27 +150,17 @@ public partial class SupplierInvoiceService
             product.StockQuantity += line.Quantity;
             product.UpdatedAt = DateTime.UtcNow;
 
-            if (movement is null)
+            var movement = new StockMovement
             {
-                movement = new StockMovement
-                {
-                    Product = product,
-                    ProductId = product.Id,
-                    QuantityChange = line.Quantity,
-                    NewStockLevel = product.StockQuantity,
-                    Reason = $"Supplier invoice {invoiceId} applied",
-                    MovementDate = DateTime.UtcNow,
-                    UserId = _currentUserService?.UserId
-                };
-                _context.StockMovements.Add(movement);
-            }
-            else
-            {
-                movement.Product = product;
-                movement.ProductId = product.Id;
-                movement.QuantityChange = line.Quantity;
-                movement.NewStockLevel = product.StockQuantity;
-            }
+                Product = product,
+                ProductId = product.Id,
+                QuantityChange = line.Quantity,
+                NewStockLevel = product.StockQuantity,
+                Reason = $"Supplier invoice {invoiceId} applied",
+                MovementDate = DateTime.UtcNow,
+                UserId = _currentUserService?.UserId
+            };
+            _context.StockMovements.Add(movement);
 
             try
             {
@@ -181,6 +170,13 @@ public partial class SupplierInvoiceService
             catch (DbUpdateConcurrencyException exception) when (
                 attempt == 0 && exception.Entries.Any(entry => entry.Entity is Product))
             {
+                // 8.144: el savepoint revierte la fila insertada en el intento fallido, pero el
+                // tracker puede dejarla como guardada; se descarta y el reintento crea otra.
+                if (_context.Entry(movement).State != EntityState.Detached)
+                {
+                    _context.Entry(movement).State = EntityState.Detached;
+                }
+
                 _context.Entry(product).State = EntityState.Detached;
             }
         }
