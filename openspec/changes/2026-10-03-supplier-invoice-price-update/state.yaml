@@ -7,7 +7,7 @@ preflight:
   artifact_store: openspec
   delivery_strategy: ask-on-risk
   chain_strategy: stacked-to-main
-phase: tasks-completed
+phase: apply-in-progress
 artifacts:
   exploration: openspec/changes/2026-10-03-supplier-invoice-price-update/exploration.md
   proposal: openspec/changes/2026-10-03-supplier-invoice-price-update/proposal.md
@@ -35,3 +35,7 @@ decisions:
     wholesale-independence: Product.HasWholesale
     prefilled-margin-source: Product.ProfitMarginRetail (fallback ProfitPercentage)
 next: sdd-apply
+apply:
+  slice: 2/4
+  branch: feat/supplier-invoice-s2
+  completed_tasks: [1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 2.5]
