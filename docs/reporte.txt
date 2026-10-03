@@ -11744,4 +11744,9 @@ G4. CI de la pila completa (PR #20): el test gated del reintento xmin detectó q
     reintento no re-insertaba el StockMovement revertido por savepoint (stock
     actualizado sin fila de auditoría). Corregido en SupplierInvoiceService.Apply.cs:
     cada intento crea su propio movimiento y descarta el del intento fallido.
+G5. Crash al abrir la vista de facturas de proveedor: el ComboBox de proveedores
+    tenía DisplayMemberPath y ItemTemplate a la vez (InvalidOperationException de
+    WPF al cargar la plantilla). Se quitó DisplayMemberPath (el ItemTemplate ya
+    muestra nombre + RIF). E2E de salud endurecido: falla si la aplicación se
+    cierra durante la navegación o si una vista no renderiza su título.
 ================================================================================
