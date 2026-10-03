@@ -19,7 +19,7 @@ Fuente: pedido del usuario, verbatim (L1). Estados y trazabilidad según el pedi
 
 | ID | Specs | Route | Descripción | Estado / commit |
 |----|-------|-------|-------------|-----------------|
-| T1 | S1-S3 | delegated (writer) | Dominio + migración + backfill + smoke (PR1) | hecho — verificado PASS WITH WARNINGS (suite 1543/1543, build 0/0); commit pendiente |
+| T1 | S1-S3 | delegated (writer) | Dominio + migración + backfill + smoke (PR1) | hecho — verificado PASS WITH WARNINGS (suite 1543/1543, build 0/0); commit 1f17988 |
 | T2 | S1-S3 | delegated (writer) | Servicio `DeliverPartialAsync` + endpoint idempotente + tests (PR2) | pendiente |
 | T3 | S7 | delegated (writer) | Nota de Despacho PDF + endpoint (PR3) | pendiente |
 | T4 | S4-S7 | delegated (writer) | UI WPF: modal, badge/progreso, impresión (PR4) | pendiente |
@@ -53,3 +53,4 @@ Cadena elegida (2026-10-03): stacked-to-main (opción 1). Trabajo en V0.15; cada
 - L2 (2026-10-03) — Evidencia de exploración (codegraph + explorer read-only): flujo actual `ConfirmPickupAsync` plano (`SalesService.History.cs:16-40`), endpoint `POST /api/sales/{id}/confirm-pickup` (`SalesController.Checkout.cs:193-210`), enum binario (`SaleDeliveryStatus.cs:3-7`), sin log de eventos, sin cantidad entregada por línea; RDD OFF (clone-local); openspec activo; ANEXO siguiente 8.145.
 - L3 (2026-10-03) — Artefactos SDD creados: exploration, proposal, 4 specs, design, tasks, state.yaml (chain pendiente). Supuesto S8 (ambos frontends) pendiente de confirmación implícita del usuario al aprobar el plan.
 - L4 (2026-10-03) — Usuario eligió estrategia de cadena: stacked-to-main (opción 1). El usuario no objetó el alcance de ambos frontends (S8 sigue como supuesto de implementación). Próximo: T1 (dominio + migración + backfill) delegado a writer, luego verificación independiente antes del commit del slice.
+- L5 (2026-10-03) — T1 completado (commit 1f17988) y verificado independientemente: PASS WITH WARNINGS — suite completa 1543/1543, build Release 0/0, migración/backfill estáticamente correctos, xmin de SaleItem consistente con el precedente (AddXminConcurrencyTokensToSales: sin DDL, solo snapshot). Warnings: smoke Postgres gated no ejecutado localmente (TEST_POSTGRES_CONNECTION ausente); xmin en SaleItem afecta updates existentes pero sin cobertura Postgres local. Próximo: T2 (servicio DeliverPartialAsync + endpoint idempotente).
