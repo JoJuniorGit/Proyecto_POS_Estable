@@ -1,0 +1,33 @@
+change: 2026-10-03-custody-partial-deliveries
+store: openspec
+scope: backend+wpf+web
+created: 2026-10-03
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: tasks
+artifacts:
+  exploration: openspec/changes/2026-10-03-custody-partial-deliveries/exploration.md
+  proposal: openspec/changes/2026-10-03-custody-partial-deliveries/proposal.md
+  specs:
+    - openspec/changes/2026-10-03-custody-partial-deliveries/specs/custody-partial-delivery/spec.md
+    - openspec/changes/2026-10-03-custody-partial-deliveries/specs/custody-delivery-receipt/spec.md
+    - openspec/changes/2026-10-03-custody-partial-deliveries/specs/custody-delivery-wpf/spec.md
+    - openspec/changes/2026-10-03-custody-partial-deliveries/specs/custody-delivery-web/spec.md
+  design: openspec/changes/2026-10-03-custody-partial-deliveries/design.md
+  tasks: openspec/changes/2026-10-03-custody-partial-deliveries/tasks.md
+decisions:
+  confirmed: 2026-10-03
+  enum-extension: PartiallyDelivered-2
+  delivered-quantity: saleitem-counter-rebuildable-from-log
+  audit-model: header-plus-lines
+  concurrency: xmin-saleitem-no-auto-retry-409
+  idempotency: required-key-resolveIdempotencyAsync
+  legacy-confirm: delegates-full-remaining
+  receipt: sync-pdf-endpoint-shared-stack
+  module-placement: sales-module
+  scope-frontends: both-wpf-and-web
+  chain-strategy: stacked-to-main-user-selected
+next: apply-slice-1
