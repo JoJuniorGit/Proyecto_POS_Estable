@@ -49,6 +49,12 @@ public class SaleBuilder
         return this;
     }
 
+    public SaleBuilder WithItemDeliveredQuantity(int saleItemId, decimal deliveredQuantity)
+    {
+        _items.Single(item => item.Id == saleItemId).DeliveredQuantity = deliveredQuantity;
+        return this;
+    }
+
     public SaleBuilder WithPayment(int paymentMethodId, decimal amountUsd, decimal? amountBsS = null, string? reference = null)
     {
         decimal bsS = amountBsS ?? Math.Round(amountUsd * _appliedRate, 2, MidpointRounding.AwayFromZero);

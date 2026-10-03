@@ -313,7 +313,22 @@ public class HoldNotClaimedPreconditionTests
             TotalUSD = 100m,
             Status = SaleStatus.Completed,
             DeliveryStatus = SaleDeliveryStatus.PendingPickup,
-            AppliedRate = 50m
+            AppliedRate = 50m,
+            Items = new System.Collections.Generic.List<SaleItem>
+            {
+                new SaleItem
+                {
+                    Id = 1,
+                    SaleId = 1,
+                    ProductId = 101,
+                    ProductName = "Harina Pan",
+                    Quantity = 1m,
+                    UnitPrice = 100m,
+                    UnitPriceBsS = 5000m,
+                    Subtotal = 100m,
+                    SubtotalBsS = 5000m
+                }
+            }
         };
         context.Sales.Add(sale);
         await context.SaveChangesAsync();

@@ -19,6 +19,15 @@ public interface ISalesService
     Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task CancelSaleAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<PaymentInfo> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, System.Threading.CancellationToken cancellationToken = default, int? actingUserId = null);
+    Task<DeliveryReceiptDto> DeliverPartialAsync(
+        int saleId,
+        IReadOnlyList<(int SaleItemId, decimal Quantity)> items,
+        string? notes,
+        int? actingUserId = null,
+        System.Threading.CancellationToken cancellationToken = default,
+        string? idempotencyKey = null,
+        byte[]? idempotencyPayloadHash = null,
+        string? requestPath = null);
     Task<SaleHistoryDto> ConfirmPickupAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync(int? cashierId = null, int limit = 200, int offset = 0, System.Threading.CancellationToken cancellationToken = default);
     Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, System.DateTime? startDate, System.DateTime? endDate, string? search = null, int? cashierId = null, System.Threading.CancellationToken cancellationToken = default);

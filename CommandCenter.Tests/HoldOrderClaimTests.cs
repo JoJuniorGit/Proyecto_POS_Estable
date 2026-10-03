@@ -367,7 +367,22 @@ public class HoldOrderClaimTests
             ClaimedByUserId = 7,
             ClaimedByUserName = "Cajero Siete",
             ClaimAction = SaleClaimAction.Checkout,
-            ClaimedAtUtc = claimedAt
+            ClaimedAtUtc = claimedAt,
+            Items = new()
+            {
+                new SaleItem
+                {
+                    Id = 1,
+                    SaleId = 1,
+                    ProductId = 101,
+                    ProductName = "Harina Pan",
+                    Quantity = 1m,
+                    UnitPrice = 100m,
+                    UnitPriceBsS = 5000m,
+                    Subtotal = 100m,
+                    SubtotalBsS = 5000m
+                }
+            }
         });
         await context.SaveChangesAsync();
 

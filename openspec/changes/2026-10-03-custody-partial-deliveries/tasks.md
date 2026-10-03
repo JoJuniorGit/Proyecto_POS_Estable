@@ -36,13 +36,13 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Service & API
 
-- [ ] 2.1 DTOs: extend `Sales.Module/DTOs/PendingPickupDto.cs`; create `PendingPickupItemDto.cs`, `PartialDeliveryDtos.cs` (Pending list read model).
-- [ ] 2.2 RED: `CommandCenter.Tests/Unit/CustodyPartialDeliveryTests.cs` — over-pending, zero, foreign, duplicate, accumulation, completion, legacy parity (Validation, Legacy Equivalence).
-- [ ] 2.3 Create `Sales.Module/Services/SalesService.Deliveries.cs`: transactional `DeliverPartialAsync` + conflict mapping (Delivery Validation and Atomicity).
-- [ ] 2.4 Modify `SalesService.History.cs`: include `PartiallyDelivered`; `ConfirmPickupAsync` delegates to full-remaining core.
-- [ ] 2.5 Extend `Sales.Module/Interfaces/ISalesService.cs`; keep legacy signature.
-- [ ] 2.6 Create `Backend.API/Controllers/SalesController.Deliveries.cs`: `POST /{id}/deliveries` (Idempotency-Key required, RBAC, Driver 403, ProblemDetails 400/409/422) (Idempotent Delivery Endpoint).
-- [ ] 2.7 Tests: controller/idempotency/409 (`TEST_POSTGRES_CONNECTION`) + `ClientHttpContractTests` route assertions.
+- [x] 2.1 DTOs: extend `Sales.Module/DTOs/PendingPickupDto.cs`; create `PendingPickupItemDto.cs`, `PartialDeliveryDtos.cs` (Pending list read model).
+- [x] 2.2 RED: `CommandCenter.Tests/Unit/CustodyPartialDeliveryTests.cs` — over-pending, zero, foreign, duplicate, accumulation, completion, legacy parity (Validation, Legacy Equivalence).
+- [x] 2.3 Create `Sales.Module/Services/SalesService.Deliveries.cs`: transactional `DeliverPartialAsync` + conflict mapping (Delivery Validation and Atomicity).
+- [x] 2.4 Modify `SalesService.History.cs`: include `PartiallyDelivered`; `ConfirmPickupAsync` delegates to full-remaining core.
+- [x] 2.5 Extend `Sales.Module/Interfaces/ISalesService.cs`; keep legacy signature.
+- [x] 2.6 Create `Backend.API/Controllers/SalesController.Deliveries.cs`: `POST /{id}/deliveries` (Idempotency-Key required, RBAC, Driver 403, ProblemDetails 400/409/422) (Idempotent Delivery Endpoint).
+- [x] 2.7 Tests: controller/idempotency/409 (`TEST_POSTGRES_CONNECTION`) + `ClientHttpContractTests` route assertions.
 
 ## Phase 3: Delivery Note PDF
 
