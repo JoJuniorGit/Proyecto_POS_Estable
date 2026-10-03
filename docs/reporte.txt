@@ -11652,7 +11652,7 @@ design, tasks, state).
 Alcance: backend (Core, Inventory.Module, Backend.API) + cliente WPF
 (Desktop.Client / Desktop.Client.Core). Web.Frontend sin cambios; la UI es
 únicamente WPF. Entrega por slices en ramas locales apiladas s1→s4 sobre V0.15
-@735237a; push/PR pendiente de decisión del mantenedor.
+@735237a.
 
 A. ENTREGA POR SLICE
 
