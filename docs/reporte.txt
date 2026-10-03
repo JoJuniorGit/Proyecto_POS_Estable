@@ -11641,3 +11641,103 @@ Q. ADENDA 12 (2026-10-02) — MODO --e2e: MOCK ALINEADO AL CONTRATO REAL (SIN ER
 - Nota operativa: Copy-Item preserva timestamps; si se restaura un archivo desde copia, MSBuild
   puede saltar la recompilación (usar --no-incremental en ese caso).
 ================================================================================
+
+================================================================================
+ANEXO 8.144 — ACTUALIZACIÓN AUTOMATIZADA DE PRECIOS Y RENTABILIDAD VÍA FACTURA DE PROVEEDOR (SDD) — 2026-10-03
+================================================================================
+Change SDD: 2026-10-03-supplier-invoice-price-update; artefactos en
+openspec/changes/2026-10-03-supplier-invoice-price-update/ (proposal, 3 specs,
+design, tasks, state).
+
+Alcance: backend (Core, Inventory.Module, Backend.API) + cliente WPF
+(Desktop.Client / Desktop.Client.Core). Web.Frontend sin cambios; la UI es
+únicamente WPF. Entrega por slices en ramas locales apiladas s1→s4 sobre V0.15
+@735237a; push/PR pendiente de decisión del mantenedor.
+
+A. ENTREGA POR SLICE
+
+A1. feat/supplier-invoice-s1 — commits 4483ac9 (docs de planificación) + a66053d:
+    entidades Supplier, SupplierColumnMapping, SupplierProductCode, SupplierInvoice
+    y SupplierInvoiceLine (+ enums), DTOs, InventoryDbContext (índice único
+    filtrado IX_SupplierProductCodes_Supplier_Code, xmin) y migración aditiva
+    20261003173222_AddSupplierInvoice; smoke test 2/2.
+A2. feat/supplier-invoice-s2 — 0125492: resolución de proveedor (RIF/NIT/nombre,
+    con bloqueo si es ambiguo), plantilla de mapeo por proveedor (upsert/reuso),
+    matching por prioridad barcode (SKU) → código de proveedor → similitud
+    pg_trgm (umbral desde SystemSetting
+    SupplierInvoice.ProductMatchSimilarityThreshold, default 0.30 inclusivo;
+    desempate por Id ascendente; sin auto-creación de productos), staging draft
+    en BD y endpoints POST/GET /api/supplier-invoices y GET/POST /api/suppliers
+    con RBAC Admin/Manager y ProblemDetails; 14/14 tests.
+A3. feat/supplier-invoice-s3 — 1d53f6a: confirm atómico POST
+    /api/supplier-invoices/{id}/confirm (execution strategy + transacción,
+    re-validación zero-trust, márgenes retail-primary con regla HasWholesale,
+    PricingCalculator.RoundPriceUp, incremento de stock + StockMovement con
+    usuario, reintento único por conflicto xmin); 10/10 tests (incluye rollback
+    transaccional en SQLite y 403 Cashier en TestServer).
+A4. feat/supplier-invoice-s4 — bd54fb0: cliente WPF (parsing .xlsx/.csv/.xml;
+    tabla de staging con badges [NEW]/[UPDATE] (costo anterior→nuevo)/
+    [UNCHANGED]/[CONFLICT]; margen editable con recálculo instantáneo local
+    (RoundPriceUp, cero llamadas por tecla); aprobación ON por defecto; mapeo
+    automático/override desde el lookup de proveedores — expansión backend
+    aprobada por el mantenedor: SupplierSummaryDto.ColumnMapping + proyección en
+    el lookup —; confirm con solo filas aprobadas y overrides; DI/nav); 17/17
+    tests del cliente.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa CommandCenter.Tests: 1535/1535 (0 fallos, 0 omitidos).
+B3. Cobertura (gate del repo): Core 0.8554 (≥0.70), Sales.Module 0.8596 (≥0.80),
+    Inventory.Module 0.8130 (≥0.72) — PASS.
+B4. Smoke E2E WPF de arranque y navegación: 1/1.
+B5. Tests de la feature: 43/43 (Client 17, Matching 7, Staging 7, Apply 4,
+    ApplyIntegration 6, MigrationSmoke 2).
+B6. Verificación independiente por slice: PASS.
+
+C. HOOKS Y GGA
+
+core.hooksPath=.githooks activo; los commits se realizaron sin --no-verify. El
+pre-push de GGA es opt-in y no se ejecutó (no hubo push).
+
+D. LIMITACIONES CONOCIDAS
+
+D1. Los tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en local (smoke
+    de migración contra BD real, consulta pg_trgm real, retry xmin real); quedan
+    cubiertos al configurar la variable.
+D2. (Cubierto 2026-10-03) La lista de navegación del E2E de salud ya incluye
+    Nav_BtnSupplierInvoices; el test navega las 12 vistas sin diálogos de error.
+D3. El constructor de 3 argumentos de SupplierInvoiceService (solo tests) deja
+    UserId null; producción usa DI con el de 4.
+
+E. ROLLBACK
+
+E1. La migración AddSupplierInvoice es aditiva y su Down elimina solo las tablas
+    Supplier*.
+E2. Cada slice es revertible por commit; quitar el registro DI/nav y los
+    endpoints desactiva la feature.
+E3. Ventas históricas intactas (snapshots inmutables).
+
+F. VERIFY SDD
+
+F1. sdd-verify: PASS WITH WARNINGS — 0 CRITICAL, 3 WARNING; 21/22 escenarios
+    conformes (15 requisitos / 22 escenarios contados desde los headings de las
+    specs). Reporte: openspec/changes/2026-10-03-supplier-invoice-price-update/
+    verify-report.md.
+F2. Warnings: los tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en
+    local (retry xmin real y smoke de migración contra BD real) — la cobertura
+    real corre en CI; el validador nativo `gentle-ai sdd-verify-validate` no
+    existe en este build ni en la versión actualizada (main@0dda8895, verificado
+    2026-10-03), por lo que la persistencia del reporte se hizo por decisión del
+    orquestador, sin settlement nativo.
+
+G. REMEDIACIÓN DE WARNINGS (2026-10-03)
+
+G1. E2E: E2EAppHealthTests.MainViews_WhenNavigated_DoNotOpenErrorDialogs
+    ampliado con Nav_BtnSupplierInvoices; verde 1/1 (12 vistas, ~33s).
+G2. Gated Postgres: la cobertura real de los tests gated corre en CI (ci.yml
+    crea pos_test y define TEST_POSTGRES_CONNECTION); en local se ejecutan
+    configurando la variable con credenciales válidas de la instancia.
+G3. Validador nativo: ausente también tras actualizar gentle-ai a
+    main@0dda8895 (2026-10-03); pendiente de superficie upstream.
+================================================================================

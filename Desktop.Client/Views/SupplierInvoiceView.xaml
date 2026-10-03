@@ -1,0 +1,294 @@
+<UserControl x:Class="Desktop.Client.Views.SupplierInvoiceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
+             xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             mc:Ignorable="d"
+             d:DesignHeight="720" d:DesignWidth="1100"
+             TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+             TextElement.FontWeight="Regular"
+             TextElement.FontSize="13"
+             TextOptions.TextFormattingMode="Ideal"
+             TextOptions.TextRenderingMode="Auto"
+             Background="Transparent"
+             FontFamily="{DynamicResource MaterialDesignFont}"
+             d:DataContext="{d:DesignInstance Type=vm:SupplierInvoiceViewModel}">
+
+    <UserControl.Resources>
+        <helpers:BindingProxy x:Key="ViewModelProxy" Data="{Binding}" />
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </UserControl.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
+            <Button Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
+                    CommandParameter="{x:Static Dock.Right}"
+                    Style="{StaticResource MaterialDesignIconButton}"
+                    ToolTip="Abrir menú de navegación"
+                    Margin="0,0,16,0" VerticalAlignment="Center">
+                <materialDesign:PackIcon Kind="Menu" Width="24" Height="24" />
+            </Button>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="ACTUALIZACIÓN DE PRECIOS POR FACTURA DE PROVEEDOR"
+                           AutomationProperties.AutomationId="SupplierInvoice_Title"
+                           Style="{DynamicResource MaterialDesignHeadline5TextBlock}"
+                           FontWeight="Bold" />
+                <TextBlock Text="Revise costos, márgenes y coincidencias antes de procesar los cambios."
+                           Style="{DynamicResource MaterialDesignSubtitle2TextBlock}"
+                           Foreground="{DynamicResource MaterialDesignTextBoxBorder}" />
+            </StackPanel>
+        </StackPanel>
+
+        <materialDesign:Card Grid.Row="1" Padding="16" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBox Grid.Row="0" Grid.Column="0"
+                         Text="{Binding SupplierRifOrNit, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                         materialDesign:HintAssist.Hint="RIF / NIT"
+                         IsEnabled="{Binding CanMutateCatalog}"
+                         Margin="0,0,10,8" />
+                <TextBox Grid.Row="0" Grid.Column="1"
+                         Text="{Binding SupplierCommercialName, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                         materialDesign:HintAssist.Hint="Nombre comercial"
+                         IsEnabled="{Binding CanMutateCatalog}"
+                         Margin="0,0,10,8" />
+                <Button Grid.Row="0" Grid.Column="2"
+                        Command="{Binding LookupSupplierCommand}"
+                        Content="Buscar proveedor"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        IsEnabled="{Binding CanLookupSupplier}"
+                        Margin="0,0,8,8" />
+                <Button Grid.Row="0" Grid.Column="3"
+                        Command="{Binding CreateSupplierCommand}"
+                        Content="Registrar proveedor"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        IsEnabled="{Binding CanCreateSupplier}"
+                        Margin="0,0,0,8" />
+
+                <ComboBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
+                          ItemsSource="{Binding Suppliers}"
+                          SelectedItem="{Binding SelectedSupplier, Mode=TwoWay}"
+                          DisplayMemberPath="CommercialName"
+                          Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                          materialDesign:HintAssist.Hint="Seleccione el proveedor"
+                          IsEnabled="{Binding CanMutateCatalog}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding CommercialName}" />
+                                <TextBlock Text="{Binding RifOrNit}" Margin="10,0,0,0"
+                                           Foreground="{DynamicResource MaterialDesignBodyLight}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </Grid>
+        </materialDesign:Card>
+
+        <Grid Grid.Row="2" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0"
+                    Command="{Binding SelectFileCommand}"
+                    Style="{StaticResource MaterialDesignRaisedButton}"
+                    IsEnabled="{Binding CanSelectFile}"
+                    Margin="0,0,12,0">
+                <StackPanel Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="FileUploadOutline" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock Text="Seleccionar factura (.xlsx, .csv, .xml)" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <TextBox Grid.Column="1"
+                     Text="{Binding SelectedFilePath}"
+                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                     IsReadOnly="True"
+                     VerticalContentAlignment="Center" />
+            <ProgressBar Grid.Column="2"
+                         IsIndeterminate="{Binding IsBusy}"
+                         Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"
+                         Width="100" Height="10" Margin="12,0,0,0"
+                         VerticalAlignment="Center" />
+        </Grid>
+
+        <materialDesign:Card Grid.Row="3" Padding="16" Margin="0,0,0,12"
+                             Visibility="{Binding HasMappings, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <TextBlock Text="Asignar columnas del archivo"
+                           FontWeight="SemiBold" Margin="0,0,0,8" />
+                <ItemsControl ItemsSource="{Binding ColumnMappings}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="0,0,12,8" Width="190">
+                                <TextBlock Text="{Binding Label}"
+                                           FontWeight="Medium"
+                                           Foreground="{DynamicResource MaterialDesignBodyLight}" />
+                                <ComboBox ItemsSource="{Binding AvailableColumns}"
+                                          SelectedItem="{Binding SelectedColumnName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                                          IsEnabled="{Binding DataContext.CanMutateCatalog, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          Margin="0,4,0,0" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Command="{Binding StageInvoiceCommand}"
+                        Content="Preparar factura para revisión"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        IsEnabled="{Binding CanStageInvoice}"
+                        HorizontalAlignment="Right"
+                        Margin="0,4,0,0" />
+            </StackPanel>
+        </materialDesign:Card>
+
+        <DataGrid Grid.Row="4"
+                  ItemsSource="{Binding Lines}"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  IsReadOnly="False"
+                  HeadersVisibility="All"
+                  Background="{DynamicResource MaterialDesignPaper}"
+                  VirtualizingStackPanel.IsVirtualizing="True"
+                  VirtualizingStackPanel.VirtualizationMode="Recycling"
+                  EnableRowVirtualization="True"
+                  EnableColumnVirtualization="True"
+                  ScrollViewer.CanContentScroll="True"
+                  ScrollViewer.IsDeferredScrollingEnabled="False">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow" BasedOn="{StaticResource MaterialDesignDataGridRow}">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsConflict}" Value="True">
+                            <Setter Property="Opacity" Value="0.78" />
+                            <Setter Property="ToolTip" Value="La línea requiere revisión y no se aplicará al catálogo." />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Producto" Binding="{Binding Name}" Width="*" MinWidth="160" />
+                <DataGridTextColumn Header="Código proveedor" Binding="{Binding SupplierCode}" Width="130" />
+                <DataGridTextColumn Header="Código de barras" Binding="{Binding Barcode}" Width="130" />
+                <DataGridTemplateColumn Header="Estado" Width="115">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Border Padding="7,3" CornerRadius="8" HorizontalAlignment="Center">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="#E3F2FD" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[NEW]">
+                                                <Setter Property="Background" Value="#E8F5E9" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[UPDATE]">
+                                                <Setter Property="Background" Value="#FFF3E0" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[UNCHANGED]">
+                                                <Setter Property="Background" Value="#ECEFF1" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[CONFLICT]">
+                                                <Setter Property="Background" Value="#FFEBEE" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="{Binding StatusLabel}" FontWeight="SemiBold" />
+                            </Border>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Cantidad" Binding="{Binding Quantity, StringFormat={}{0:N3}}" Width="90" />
+                <DataGridTextColumn Header="Costo USD" Binding="{Binding UnitCostUSD, StringFormat={}{0:N2}}" Width="100" />
+                <DataGridTextColumn Header="Costo anterior → nuevo" Binding="{Binding CostComparison}" Width="160" />
+                <DataGridTemplateColumn Header="Margen detal %" Width="125"
+                                        Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBox Text="{Binding MarginRetailOverride, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     IsEnabled="{Binding CanApprove}"
+                                     HorizontalContentAlignment="Right"
+                                     Padding="5,2" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Precio detal sugerido USD" Binding="{Binding SuggestedRetailPriceUSD, StringFormat={}{0:N2}}" Width="150" />
+                <DataGridTemplateColumn Header="Margen mayor %" Width="125"
+                                        Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBox Text="{Binding MarginWholesaleOverride, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     IsEnabled="{Binding CanApprove}"
+                                     HorizontalContentAlignment="Right"
+                                     Padding="5,2" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Precio mayor sugerido USD" Binding="{Binding SuggestedWholesalePriceUSD, StringFormat={}{0:N2}}" Width="160" />
+                <DataGridTemplateColumn Header="Aprobar" Width="85"
+                                        Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding IsApproved, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      IsEnabled="{Binding CanApprove}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      AutomationProperties.Name="Aprobar línea de factura" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <Grid Grid.Row="5" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="{Binding StatusMessage}"
+                       Foreground="{DynamicResource PrimaryHueMidBrush}"
+                       VerticalAlignment="Center" FontWeight="SemiBold" />
+            <Button Grid.Column="1" Command="{Binding ClearInvoiceCommand}"
+                    Content="Limpiar" Style="{StaticResource MaterialDesignFlatButton}"
+                    Margin="0,0,12,0" />
+            <Button Grid.Column="2" Command="{Binding ConfirmInvoiceCommand}"
+                    Content="Confirmar y Procesar Factura"
+                    Style="{StaticResource MaterialDesignRaisedButton}"
+                    IsEnabled="{Binding CanConfirmInvoice}"
+                    FontWeight="Bold" />
+        </Grid>
+    </Grid>
+</UserControl>

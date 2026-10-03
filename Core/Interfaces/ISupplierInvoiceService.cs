@@ -30,6 +30,10 @@ public interface ISupplierInvoiceService
         CancellationToken cancellationToken = default);
 }
 
-public sealed record SupplierSummaryDto(int Id, string? RifOrNit, string CommercialName);
+public sealed record SupplierSummaryDto(
+    int Id,
+    string? RifOrNit,
+    string CommercialName,
+    SupplierColumnMappingDto? ColumnMapping = null);
 
 public sealed record CreateSupplierRequestDto(string? RifOrNit, string CommercialName);

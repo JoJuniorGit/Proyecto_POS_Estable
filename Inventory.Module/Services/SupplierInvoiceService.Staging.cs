@@ -88,7 +88,15 @@ public partial class SupplierInvoiceService
             .Select(supplier => new SupplierSummaryDto(
                 supplier.Id,
                 supplier.RifOrNit,
-                supplier.CommercialName))
+                supplier.CommercialName,
+                supplier.ColumnMapping == null
+                    ? null
+                    : new SupplierColumnMappingDto(
+                        supplier.ColumnMapping.BarcodeColumnName,
+                        supplier.ColumnMapping.SupplierCodeColumnName,
+                        supplier.ColumnMapping.NameColumnName,
+                        supplier.ColumnMapping.QuantityColumnName,
+                        supplier.ColumnMapping.UnitCostColumnName)))
             .ToListAsync(cancellationToken);
     }
 
@@ -142,7 +150,7 @@ public partial class SupplierInvoiceService
         _context.Suppliers.Add(supplier);
         await _context.SaveChangesAsync(cancellationToken);
 
-        return new SupplierSummaryDto(supplier.Id, supplier.RifOrNit, supplier.CommercialName);
+        return new SupplierSummaryDto(supplier.Id, supplier.RifOrNit, supplier.CommercialName, null);
     }
 
     private async Task<Supplier> ResolveSupplierAsync(

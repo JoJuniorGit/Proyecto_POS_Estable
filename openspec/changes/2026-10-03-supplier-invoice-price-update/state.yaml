@@ -7,7 +7,7 @@ preflight:
   artifact_store: openspec
   delivery_strategy: ask-on-risk
   chain_strategy: stacked-to-main
-phase: apply-in-progress
+phase: verified
 artifacts:
   exploration: openspec/changes/2026-10-03-supplier-invoice-price-update/exploration.md
   proposal: openspec/changes/2026-10-03-supplier-invoice-price-update/proposal.md
@@ -34,8 +34,9 @@ decisions:
     mapping-entity: SupplierColumnMapping
     wholesale-independence: Product.HasWholesale
     prefilled-margin-source: Product.ProfitMarginRetail (fallback ProfitPercentage)
-next: sdd-apply
+next: sdd-archive
+verify: pass_with_warnings (0 critical, 3 warnings; verify-report.md)
 apply:
-  slice: 3/4
-  branch: feat/supplier-invoice-s3
-  completed_tasks: [1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4]
+  slice: 4/4
+  branch: feat/supplier-invoice-s4
+  completed_tasks: [1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4, 4.1, 4.2, 4.3, 4.4, 4.5, 5.1, 5.2]
