@@ -325,19 +325,31 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
 
-                                    <!-- Botón de Acción Plano (Flat Design, #5E35B1) con espacio superior para respirar -->
-                                    <Button Command="{Binding Data.ConfirmPickupCommand, Source={StaticResource Proxy}}"
-                                            CommandParameter="{Binding}"
-                                            Style="{DynamicResource MaterialDesignFlatMidBgButton}"
-                                            materialDesign:ButtonAssist.CornerRadius="6"
-                                            Background="#5E35B1" Foreground="White"
-                                            Height="36" HorizontalAlignment="Right" Padding="18,0"
-                                            Margin="0,14,0,0">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <materialDesign:PackIcon Kind="PackageCheck" Width="16" Height="16" VerticalAlignment="Center"/>
-                                            <TextBlock Text="Confirmar Retiro / Entregar" Margin="8,0,0,0" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </Button>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                                        <Button Command="{Binding Data.DeliverAllCommand, Source={StaticResource Proxy}}"
+                                                CommandParameter="{Binding}"
+                                                AutomationProperties.AutomationId="PendingPickups_DeliverAllButton"
+                                                Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                                BorderBrush="#5E35B1" Foreground="#5E35B1"
+                                                Height="36" Padding="16,0" Margin="0,0,8,0">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Kind="PackageCheck" Width="16" Height="16" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Retiro Completo" Margin="8,0,0,0" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding Data.ConfirmPickupCommand, Source={StaticResource Proxy}}"
+                                                CommandParameter="{Binding}"
+                                                AutomationProperties.AutomationId="PendingPickups_ConfirmButton"
+                                                Style="{DynamicResource MaterialDesignFlatMidBgButton}"
+                                                materialDesign:ButtonAssist.CornerRadius="6"
+                                                Background="#5E35B1" Foreground="White"
+                                                Height="36" Padding="18,0">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Kind="PackageCheck" Width="16" Height="16" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Confirmar Retiro / Entregar" Margin="8,0,0,0" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
 

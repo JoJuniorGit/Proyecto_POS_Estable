@@ -135,6 +135,102 @@ public class PendingPickupsViewModelTests
     }
 
     [Fact]
+    public async Task DeliverAll_PrefillsAllPending_AndPostsAllPending()
+    {
+        var pickup = CreatePickup(42, totalUnits: 3m, deliveredUnits: 0.5m, deliveryStatus: "PartiallyDelivered");
+        pickup.Items.Add(new PendingPickupItemDto
+        {
+            SaleItemId = 143,
+            ProductId = 10,
+            ProductName = "Segundo producto",
+            Quantity = 4m,
+            DeliveredQuantity = 1m,
+            PendingQuantity = 3m
+        });
+        pickup.Items.Add(new PendingPickupItemDto
+        {
+            SaleItemId = 144,
+            ProductId = 11,
+            ProductName = "Producto ya entregado",
+            Quantity = 1m,
+            DeliveredQuantity = 1m,
+            PendingQuantity = 0m
+        });
+
+        PartialDeliveryDialogResult? receivedDraft = null;
+        _salesServiceMock
+            .Setup(s => s.GetPendingPickupsPagedAsync(It.IsAny<int>(), 0))
+            .ReturnsAsync((new List<PendingPickupClientDto> { pickup }, 1));
+        _dialogServiceMock
+            .Setup(d => d.ShowPartialDeliveryDialogAsync(It.IsAny<PendingPickupClientDto>()))
+            .Returns((PendingPickupClientDto receivedPickup) =>
+            {
+                receivedDraft = receivedPickup.PendingDraft;
+                return Task.FromResult(receivedPickup.PendingDraft);
+            });
+        _dialogServiceMock
+            .Setup(d => d.ShowConfirm(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(false);
+        _salesServiceMock
+            .Setup(s => s.DeliverPartialAsync(
+                42,
+                It.IsAny<IReadOnlyList<PartialDeliveryItemRequestDto>>(),
+                It.IsAny<string?>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateReceipt(42, "Delivered"));
+
+        var vm = CreateViewModel();
+        await vm.EnsureLoadedAsync();
+
+        await vm.DeliverAllCommand.ExecuteAsync(pickup);
+
+        Assert.NotNull(receivedDraft);
+        Assert.Equal(new[] { (142, 2.5m), (143, 3m) },
+            receivedDraft!.Items.Select(item => (item.SaleItemId, item.Quantity)));
+        _salesServiceMock.Verify(s => s.DeliverPartialAsync(
+            42,
+            It.Is<IReadOnlyList<PartialDeliveryItemRequestDto>>(items =>
+                items.Count == 2
+                && items[0].SaleItemId == 142 && items[0].Quantity == 2.5m
+                && items[1].SaleItemId == 143 && items[1].Quantity == 3m),
+            It.IsAny<string?>(),
+            It.Is<string>(key => key.Length == 32),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeliverAll_WhenNoPendingItems_DoesNotPrefillOrPost()
+    {
+        var pickup = CreatePickup(43, totalUnits: 1m, deliveredUnits: 1m, deliveryStatus: "PartiallyDelivered");
+        PartialDeliveryDialogResult? receivedDraft = null;
+        _salesServiceMock
+            .Setup(s => s.GetPendingPickupsPagedAsync(It.IsAny<int>(), 0))
+            .ReturnsAsync((new List<PendingPickupClientDto> { pickup }, 1));
+        _dialogServiceMock
+            .Setup(d => d.ShowPartialDeliveryDialogAsync(It.IsAny<PendingPickupClientDto>()))
+            .Returns((PendingPickupClientDto receivedPickup) =>
+            {
+                receivedDraft = receivedPickup.PendingDraft;
+                return Task.FromResult(receivedPickup.PendingDraft);
+            });
+
+        var vm = CreateViewModel();
+        await vm.EnsureLoadedAsync();
+
+        await vm.DeliverAllCommand.ExecuteAsync(pickup);
+
+        Assert.NotNull(receivedDraft);
+        Assert.Empty(receivedDraft!.Items);
+        _salesServiceMock.Verify(s => s.DeliverPartialAsync(
+            It.IsAny<int>(),
+            It.IsAny<IReadOnlyList<PartialDeliveryItemRequestDto>>(),
+            It.IsAny<string?>(),
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ConfirmPickupAsync_WhenDeliveryIsPartial_ReloadsUpdatedPickup()
     {
         var pickup = CreatePickup(42, totalUnits: 5m);

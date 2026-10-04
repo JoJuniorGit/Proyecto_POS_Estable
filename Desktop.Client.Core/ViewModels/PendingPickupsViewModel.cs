@@ -136,6 +136,26 @@ public partial class PendingPickupsViewModel : ObservableObject
     private async Task RefreshAsync() => await EnsureLoadedAsync();
 
     [RelayCommand]
+    private async Task DeliverAllAsync(PendingPickupClientDto? pickup)
+    {
+        if (pickup == null) return;
+
+        pickup.PendingDraft = new PartialDeliveryDialogResult
+        {
+            Items = pickup.Items
+                .Where(item => item.PendingQuantity > 0m)
+                .Select(item => new PartialDeliveryItemRequestDto
+                {
+                    SaleItemId = item.SaleItemId,
+                    Quantity = item.PendingQuantity
+                })
+                .ToList()
+        };
+
+        await ConfirmPickupAsync(pickup);
+    }
+
+    [RelayCommand]
     private async Task ConfirmPickupAsync(PendingPickupClientDto? pickup)
     {
         if (pickup == null) return;

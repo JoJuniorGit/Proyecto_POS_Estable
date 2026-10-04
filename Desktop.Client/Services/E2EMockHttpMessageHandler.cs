@@ -270,6 +270,34 @@ public class E2EMockHttpMessageHandler : HttpMessageHandler
                             subtotalBsS = 283.05m
                         }
                     }
+                },
+                new
+                {
+                    saleId = 2007,
+                    invoiceNumber = 277,
+                    date = new DateTime(2026, 9, 10, 5, 12, 19, DateTimeKind.Utc),
+                    customerName = "JOseito",
+                    customerCedula = "223456789",
+                    customerPhone = string.Empty,
+                    totalUSD = 10m,
+                    totalBsS = 500m,
+                    totalUnits = 1m,
+                    deliveredUnits = 0.25m,
+                    deliveryStatus = "PartiallyDelivered",
+                    items = new[]
+                    {
+                        new
+                        {
+                            saleItemId = 977,
+                            productId = 1124,
+                            productName = "Producto de retiro parcial E2E",
+                            quantity = 1m,
+                            deliveredQuantity = 0.25m,
+                            pendingQuantity = 0.75m,
+                            unitPriceBsS = 500m,
+                            subtotalBsS = 500m
+                        }
+                    }
                 }
             });
         }
@@ -279,7 +307,7 @@ public class E2EMockHttpMessageHandler : HttpMessageHandler
             return HandleCustomers(method, segments, body);
         }
 
-        if (!int.TryParse(sub, out _))
+        if (!int.TryParse(sub, out var saleId))
         {
             return Json(new { });
         }
@@ -342,6 +370,42 @@ public class E2EMockHttpMessageHandler : HttpMessageHandler
 
             case "confirm-pickup":
                 return Json(new { ok = true });
+
+            case "deliveries":
+                if (method == "GET" && segments.Length == 6 && segments[5].Equals("receipt", StringComparison.OrdinalIgnoreCase))
+                {
+                    var pdfContent = new ByteArrayContent(Encoding.ASCII.GetBytes("%PDF-1.4\n% E2E mock delivery receipt\n%%EOF\n"));
+                    pdfContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/pdf");
+                    return new HttpResponseMessage(HttpStatusCode.OK) { Content = pdfContent };
+                }
+
+                if (method == "POST")
+                {
+                    return Json(new
+                    {
+                        deliveryId = 7001,
+                        saleId,
+                        invoiceNumber = saleId == 2007 ? 277 : 279,
+                        deliveredAt = DateTime.UtcNow,
+                        deliveredByName = "Administrador E2E",
+                        customerName = "JOseito",
+                        deliveryStatus = "Delivered",
+                        totalUnits = 1m,
+                        deliveredUnits = 1m,
+                        pendingUnits = 0m,
+                        items = new[]
+                        {
+                            new
+                            {
+                                saleItemId = saleId == 2007 ? 977 : 981,
+                                productName = "Afeitadoras Dorco Negras 2H 5U",
+                                quantityDelivered = 1m
+                            }
+                        }
+                    });
+                }
+
+                return Json(Array.Empty<object>());
 
             default:
                 return Json(new { });
